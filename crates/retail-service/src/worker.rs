@@ -103,7 +103,10 @@ impl<B: Backend, W: LightningWallet + Send + Sync + 'static> Service<B, W> {
             .ok_or(Error::Conflict("worker offer disappeared"))?;
         let confirmation =
             confirmation.ok_or(Error::Conflict("worker has no accepted confirmation"))?;
-        if confirmation.custody != crate::custody_digest(&made) {
+        if store.commercial(id)? != confirmation.commercial {
+            return Err(Error::Denied);
+        }
+        if confirmation.custody != crate::custody_digest(&made, confirmation.commercial.as_ref()) {
             return Err(Error::Conflict("accepted custody policy changed"));
         }
         let custody_deadline = confirmation

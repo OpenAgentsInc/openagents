@@ -1071,10 +1071,11 @@ fn durable_confirmation_intent_resumes_when_initial_reply_or_append_was_lost() {
             .confirmation(
                 offer_id,
                 &types::Confirmation {
+                    commercial: None,
                     principal,
                     generation,
                     admission: offer.admission.digest(),
-                    custody: custody_digest(&offer),
+                    custody: custody_digest(&offer, None),
                     key_digest: retail_cloud::sha256_hex(CUSTOMER_KEY.as_bytes()),
                     at: NOW as u64,
                 },
@@ -1174,10 +1175,11 @@ fn revocation_after_confirmation_intent_before_hold_creates_no_spend_or_stranded
             .confirmation(
                 id,
                 &types::Confirmation {
+                    commercial: None,
                     principal,
                     generation,
                     admission: offer.admission.digest(),
-                    custody: custody_digest(&offer),
+                    custody: custody_digest(&offer, None),
                     key_digest: retail_cloud::sha256_hex(CUSTOMER_KEY.as_bytes()),
                     at: NOW as u64,
                 },
@@ -1472,6 +1474,7 @@ fn operating_host(f: &Fixture, mode: package::Mode) -> (package::Host, std::path
     .unwrap();
     std::fs::set_permissions(&ingress, std::fs::Permissions::from_mode(0o600)).unwrap();
     let host = package::Host {
+        commercial: None,
         schema: package::HOST_SCHEMA.into(),
         customer,
         listen: "127.0.0.1:9042".parse().unwrap(),
@@ -1714,4 +1717,343 @@ fn runtime_binds_loaded_provider_bytes_and_original_configuration() {
     changed.customer.plan_starts_left = Some(987);
     std::fs::write(&path, serde_json::to_vec(&changed).unwrap()).unwrap();
     assert!(package::Operating::new(host, &path, &f.wallet.node_id(), current).is_err());
+}
+
+struct CommercialFixture {
+    accounts: tenancy::Accounts,
+    config: commercial::Config,
+    entries: Vec<commercial_accounts::Entry>,
+}
+impl CommercialFixture {
+    fn new(f: &Fixture) -> Self {
+        use std::os::unix::fs::PermissionsExt;
+        let root = f.config.ledger.parent().unwrap();
+        let canonical = root.join("canonical");
+        std::fs::create_dir(&canonical).unwrap();
+        std::fs::set_permissions(&canonical, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let accounts = tenancy::Accounts::install(&canonical).unwrap();
+        let mut entries = vec![];
+        for (name, principal) in [
+            ("alice", "key:aaaaaaaaaaaaaaaa"),
+            ("bob", "key:bbbbbbbbbbbbbbbb"),
+        ] {
+            let customer = accounts.create_account(name, &[principal.into()]).unwrap();
+            let workspace = accounts
+                .create_workspace(
+                    &customer.id,
+                    name,
+                    tenancy::WorkspaceKind::Personal,
+                    "fixture",
+                    None,
+                )
+                .unwrap();
+            let owner = accounts.authorize(&workspace.id, &customer.id).unwrap();
+            let credential_file = root.join(format!("commercial-{name}.credential"));
+            std::fs::write(&credential_file, name.as_bytes()).unwrap();
+            std::fs::set_permissions(&credential_file, std::fs::Permissions::from_mode(0o600))
+                .unwrap();
+            let at = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs();
+            entries.push(commercial_accounts::Entry {
+                operator: "fixture-operator".into(),
+                source: tenancy::accounts::commercial::Source {
+                    product: tenancy::accounts::commercial::Product::Retail,
+                    issuer: "retail-fixture".into(),
+                    account: name.into(),
+                    workspace: None,
+                },
+                customer: customer.id.clone(),
+                workspace: workspace.id.clone(),
+                canonical_owner: customer.id,
+                canonical_owner_epoch: owner.epoch,
+                canonical_members_epoch: owner.members_epoch,
+                principal: format!("cli:{name}"),
+                credential_file,
+                generation: 1,
+                native_owner: None,
+                native_owner_epoch: None,
+                native_members_epoch: None,
+                reviewed_at: at,
+                valid_until: at + 3600,
+                previous_authority: None,
+            });
+        }
+        let config = commercial::Config {
+            canonical_directory: canonical,
+            issuer: "retail-fixture".into(),
+            native: commercial_accounts::Config {
+                policy: root.join("commercial-policy.json"),
+                stores: vec![commercial_accounts::NativeStore::Retail {
+                    issuer: "retail-fixture".into(),
+                    ledger: f.config.ledger.clone(),
+                }],
+            },
+        };
+        let fixture = Self {
+            accounts,
+            config,
+            entries,
+        };
+        fixture.write();
+        fixture.admit(0, None);
+        fixture.admit(1, None);
+        fixture
+    }
+    fn write(&self) {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::write(
+            &self.config.native.policy,
+            serde_json::to_vec(&commercial_accounts::Policy {
+                schema: commercial_accounts::SCHEMA.into(),
+                operator: "fixture-operator".into(),
+                entries: self.entries.clone(),
+            })
+            .unwrap(),
+        )
+        .unwrap();
+        std::fs::set_permissions(
+            &self.config.native.policy,
+            std::fs::Permissions::from_mode(0o600),
+        )
+        .unwrap();
+    }
+    fn admit(
+        &self,
+        index: usize,
+        previous_owner: Option<&str>,
+    ) -> tenancy::accounts::commercial::Revision {
+        let entry = &self.entries[index];
+        let sources = commercial_accounts::NativeSources::open(
+            &self.config.canonical_directory,
+            &self.config.native,
+        )
+        .unwrap();
+        let revision = self
+            .accounts
+            .review_commercial(
+                &format!("retail-{}", entry.source.account),
+                &entry.customer,
+                &entry.workspace,
+                &entry.canonical_owner,
+                previous_owner,
+                std::slice::from_ref(&entry.source),
+                &sources,
+            )
+            .unwrap();
+        self.accounts
+            .admit_commercial(&revision, &revision.digest, &sources)
+            .unwrap();
+        revision
+    }
+    fn team(&mut self) -> tenancy::accounts::commercial::Revision {
+        let original = self.accounts.store().unwrap().commercial.bindings["retail-alice"]
+            .last()
+            .unwrap()
+            .clone();
+        let entry = &mut self.entries[0];
+        let team = self
+            .accounts
+            .create_workspace(
+                &entry.customer,
+                "Team",
+                tenancy::WorkspaceKind::Organization,
+                "fixture",
+                Some(4),
+            )
+            .unwrap();
+        let owner = self.accounts.authorize(&team.id, &entry.customer).unwrap();
+        entry.workspace = team.id;
+        entry.canonical_owner_epoch = owner.epoch;
+        entry.canonical_members_epoch = owner.members_epoch;
+        entry.previous_authority = Some(original.sources[0].digest());
+        let previous = entry.customer.clone();
+        self.write();
+        self.admit(0, Some(&previous))
+    }
+}
+#[test]
+fn current_commercial_mapping_fences_confirmation_and_never_moves_customer_money() {
+    let f = Fixture::new();
+    let mut mapping = CommercialFixture::new(&f);
+    // A backup retains the origin, but cannot stand in for the live held ledger.
+    let copied = f.config.ledger.with_extension("copied");
+    std::fs::copy(&f.config.ledger, &copied).unwrap();
+    let mut wrong = mapping.config.clone();
+    let commercial_accounts::NativeStore::Retail { ledger, .. } = &mut wrong.native.stores[0]
+    else {
+        panic!("retail fixture");
+    };
+    *ledger = copied;
+    assert!(f.open().with_commercial(wrong).is_err());
+    let s = f.open().with_commercial(mapping.config.clone()).unwrap();
+    let account = call(&s, "alice", json!({"op":"account"})).unwrap();
+    assert_eq!(
+        account["result"]["commercial"]["customer"],
+        mapping.entries[0].customer
+    );
+    assert_eq!(
+        account["result"]["commercial"]["source"]["account"],
+        "alice"
+    );
+    let offered = made(&s, "alice", "original-personal");
+    let frozen = offered["custody"]["terms"]["commercial"].clone();
+    assert!(matches!(
+        call(&s, "bob", confirmation(&offered)),
+        Err(Error::Denied)
+    ));
+    let team = mapping.team();
+    assert!(matches!(
+        call(&s, "alice", confirmation(&offered)),
+        Err(Error::Denied)
+    ));
+    assert!(
+        call(
+            &s,
+            "alice",
+            json!({"op":"offer","idempotency":"original-personal","task":request()})
+        )
+        .is_err()
+    );
+    let store = s.lock().unwrap();
+    // SQLite replacement must not bypass the original offer's retained attribution.
+    let replacement = serde_json::to_string(&json!({"workspace":team.workspace})).unwrap();
+    let original_id = offered["offer"]["id"].as_str().unwrap();
+    for sql in [
+        "UPDATE offer_commercial SET bytes=?2 WHERE id=?1",
+        "INSERT OR REPLACE INTO offer_commercial(id,bytes) VALUES(?1,?2)",
+    ] {
+        assert!(
+            store
+                .db
+                .execute(sql, rusqlite::params![original_id, replacement])
+                .is_err()
+        );
+    }
+    assert!(
+        store
+            .db
+            .execute("DELETE FROM offer_commercial WHERE id=?1", [original_id])
+            .is_err()
+    );
+    assert!(store.journal.all_funded().unwrap().is_empty());
+    assert_eq!(store.ledger.compute_balance("alice").unwrap().held_msat, 0);
+    assert_eq!(
+        store.ledger.compute_balance("bob").unwrap().available_msat,
+        1_000_000
+    );
+    assert_eq!(
+        store
+            .commercial(offered["offer"]["id"].as_str().unwrap())
+            .unwrap()
+            .unwrap()
+            .workspace,
+        frozen["workspace"].as_str().unwrap()
+    );
+    drop(store);
+    assert!(
+        !f.config
+            .state
+            .join("credentials")
+            .join(offered["offer"]["id"].as_str().unwrap())
+            .exists()
+    );
+    let execution = accepted(&s, "alice", "reviewed-team");
+    let observed = call(&s, "alice", json!({"op":"execution","execution":execution})).unwrap();
+    assert_eq!(
+        observed["result"]["commercial"]["workspace"],
+        team.workspace
+    );
+    assert!(call(&s, "bob", json!({"op":"execution","execution":execution})).is_err());
+    dispatch(&s, &execution);
+    assert_eq!(f.runtime.owner.started(), 1);
+    assert_eq!(f.wallet.issued(), 0);
+    assert_eq!(f.runtime.provider.create_calls(), 1);
+}
+#[test]
+fn changed_commercial_membership_stops_new_worker_effects_and_preserves_original_history() {
+    let f = Fixture::new();
+    let mut mapping = CommercialFixture::new(&f);
+    let s = f.open().with_commercial(mapping.config.clone()).unwrap();
+    let original = made(&s, "alice", "historical-personal");
+    let frozen = original["custody"]["terms"]["commercial"].clone();
+    let execution = call(&s, "alice", confirmation(&original)).unwrap()["result"]["execution"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let team = mapping.team();
+    for n in 1..4 {
+        s.tick(NOW + n).unwrap();
+    }
+    assert_eq!(f.runtime.provider.create_calls(), 0);
+    assert_eq!(f.runtime.owner.started(), 0);
+    let history = call(&s, "alice", json!({"op":"execution","execution":execution})).unwrap();
+    assert_eq!(history["result"]["commercial"], frozen);
+    let receipt = call(&s, "alice", json!({"op":"receipt","execution":execution})).unwrap();
+    assert_eq!(receipt["result"]["commercial"], frozen);
+    let current = call(&s, "alice", json!({"op":"account"})).unwrap();
+    assert_eq!(current["result"]["commercial"]["workspace"], team.workspace);
+    let customer = mapping.entries[0].customer.clone();
+    let bob = mapping.entries[1].customer.clone();
+    let invitation = mapping
+        .accounts
+        .invite(&customer, &team.workspace, tenancy::Role::Member, 3600)
+        .unwrap();
+    mapping
+        .accounts
+        .accept_reviewed(
+            &bob,
+            &invitation.token,
+            &team.workspace,
+            tenancy::Role::Member,
+        )
+        .unwrap();
+    mapping
+        .accounts
+        .transfer_ownership(&customer, &team.workspace, &bob)
+        .unwrap();
+    mapping
+        .accounts
+        .remove_member(&bob, &team.workspace, &customer)
+        .unwrap();
+    assert!(
+        call(
+            &s,
+            "alice",
+            json!({"op":"top_up","idempotency":"revoked","amount_sats":10})
+        )
+        .is_err()
+    );
+    assert!(
+        call(
+            &s,
+            "alice",
+            json!({"op":"offer","idempotency":"revoked","task":request()})
+        )
+        .is_err()
+    );
+    assert_eq!(f.wallet.issued(), 0);
+    assert_eq!(
+        s.lock()
+            .unwrap()
+            .ledger
+            .compute_balance("bob")
+            .unwrap()
+            .available_msat,
+        1_000_000
+    );
+    assert_eq!(
+        mapping.accounts.store().unwrap().commercial.bindings["retail-alice"][0].workspace,
+        frozen["workspace"].as_str().unwrap()
+    );
+    drop(s);
+    let restarted = f.open().with_commercial(mapping.config.clone()).unwrap();
+    let history = call(
+        &restarted,
+        "alice",
+        json!({"op":"receipt","execution":execution}),
+    )
+    .unwrap();
+    assert_eq!(history["result"]["commercial"], frozen);
 }

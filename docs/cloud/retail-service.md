@@ -26,6 +26,16 @@ observation, execution, and disclosure rights for that principal and epoch.
 Account ownership, pairing, a balance, and an invoice grant no retail rights.
 The service uses no cookies and rejects browser `Origin` requests.
 
+An optional host `commercial` configuration names `canonical_directory`,
+`issuer`, and an explicit `commercial-accounts` `native` policy and store set.
+It must select the same held retail ledger. Reviewed bindings add customer
+and workspace attribution without granting product or financial rights.
+Offers freeze that reference in credential-custody terms; confirmation and
+new worker execution or disclosure require the same current revision.
+Credential, membership, or ownership changes require reviewed lineage and a
+new offer. History retains the original reference, while safe cleanup and
+money reconciliation continue under the original native records.
+
 | `op` | Result or effect |
 | --- | --- |
 | `account`, `capacity` | Account-scoped exact millisatoshi balance; existing paid-availability gate |

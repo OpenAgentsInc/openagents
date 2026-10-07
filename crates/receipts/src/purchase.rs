@@ -8,6 +8,77 @@ pub const SCHEMA: &str = "openagents.purchase-context.v1";
 pub const MAX_QUOTE_MS: u64 = 300_000;
 pub const HEADER: &str = "x-openagents-purchase";
 
+/// A product's exact native identity, scoped by its configured issuer.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct CommercialSource {
+    pub product: CommercialProduct,
+    pub issuer: String,
+    pub account: String,
+    pub workspace: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum CommercialProduct {
+    Gateway,
+    Plugin,
+    Retail,
+}
+
+/// Frozen attribution to an operator-reviewed binding. This grants no rights.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct CommercialRef {
+    pub binding: String,
+    pub revision: u64,
+    pub digest: String,
+    pub customer: String,
+    pub workspace: String,
+    pub source: CommercialSource,
+}
+impl CommercialRef {
+    pub fn validate(&self) -> Result<(), &'static str> {
+        let valid = |v: &str| {
+            !v.is_empty()
+                && v.len() <= 256
+                && v.bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b"-_.:/".contains(&b))
+        };
+        if self.revision == 0
+            || !hash(&self.digest)
+            || [
+                &self.binding,
+                &self.customer,
+                &self.workspace,
+                &self.source.issuer,
+                &self.source.account,
+            ]
+            .into_iter()
+            .any(|v| !valid(v))
+            || self.source.workspace.as_ref().is_some_and(|v| !valid(v))
+            || matches!(
+                self.source.product,
+                CommercialProduct::Gateway | CommercialProduct::Plugin
+            ) && self.source.workspace.is_none()
+            || self.source.product == CommercialProduct::Retail && self.source.workspace.is_some()
+        {
+            return Err("Invalid commercial attribution reference.");
+        }
+        Ok(())
+    }
+    pub fn matches_native(
+        &self,
+        product: CommercialProduct,
+        account: &str,
+        workspace: Option<&str>,
+    ) -> bool {
+        self.source.product == product
+            && self.source.account == account
+            && self.source.workspace.as_deref() == workspace
+    }
+}
+
 /// References to the existing gateway price and its bounded reservation.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]

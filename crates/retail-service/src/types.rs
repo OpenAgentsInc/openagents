@@ -104,6 +104,8 @@ pub enum Request {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub(crate) struct Confirmation {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub commercial: Option<receipts::purchase::CommercialRef>,
     pub principal: String,
     pub generation: i64,
     pub admission: Digest,

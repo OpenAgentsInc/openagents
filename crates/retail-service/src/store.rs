@@ -167,6 +167,10 @@ CREATE TABLE IF NOT EXISTS offer (
  id TEXT PRIMARY KEY, account TEXT NOT NULL, principal TEXT NOT NULL,
  generation INTEGER NOT NULL, bytes TEXT NOT NULL, confirmation TEXT,
  ending TEXT, done INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS offer_commercial (id TEXT PRIMARY KEY, bytes TEXT NOT NULL);
+CREATE TRIGGER IF NOT EXISTS offer_commercial_no_replace BEFORE INSERT ON offer_commercial WHEN EXISTS(SELECT 1 FROM offer_commercial WHERE id=NEW.id) BEGIN SELECT RAISE(ABORT, 'Commercial offer is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS offer_commercial_no_update BEFORE UPDATE ON offer_commercial BEGIN SELECT RAISE(ABORT, 'Commercial offer is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS offer_commercial_no_delete BEFORE DELETE ON offer_commercial BEGIN SELECT RAISE(ABORT, 'Commercial offer is retained'); END;
 CREATE TABLE IF NOT EXISTS worker (id INTEGER PRIMARY KEY CHECK(id=1), cursor TEXT NOT NULL);
 INSERT OR IGNORE INTO worker(id,cursor) VALUES(1,'');",
         )?;
@@ -238,6 +242,7 @@ INSERT OR IGNORE INTO worker(id,cursor) VALUES(1,'');",
         principal: &str,
         generation: i64,
         now: i64,
+        commercial: Option<&receipts::purchase::CommercialRef>,
     ) -> Result<()> {
         self.check()?;
         let count: usize = self
@@ -246,8 +251,40 @@ INSERT OR IGNORE INTO worker(id,cursor) VALUES(1,'');",
         if count >= RECORD_MAX {
             return Err(Error::Unavailable("the private offer store is full"));
         }
-        self.db.execute("INSERT INTO offer(id,account,principal,generation,bytes,created_at) VALUES(?,?,?,?,?,?)",params![offer.offer.id,offer.admission.account,principal,generation,serde_json::to_string(offer)?,now])?;
+        let transaction = self.db.unchecked_transaction()?;
+        transaction.execute("INSERT INTO offer(id,account,principal,generation,bytes,created_at) VALUES(?,?,?,?,?,?)",params![offer.offer.id,offer.admission.account,principal,generation,serde_json::to_string(offer)?,now])?;
+        if let Some(value) = commercial {
+            value.validate().map_err(|_| Error::Denied)?;
+            if !value.matches_native(
+                receipts::purchase::CommercialProduct::Retail,
+                &offer.admission.account,
+                None,
+            ) {
+                return Err(Error::Denied);
+            }
+            transaction.execute(
+                "INSERT INTO offer_commercial(id,bytes) VALUES(?,?)",
+                params![offer.offer.id, serde_json::to_string(value)?],
+            )?;
+        }
+        transaction.commit()?;
         Ok(())
+    }
+    pub fn commercial(&self, id: &str) -> Result<Option<receipts::purchase::CommercialRef>> {
+        self.check()?;
+        let bytes: Option<String> = self
+            .db
+            .query_row("SELECT bytes FROM offer_commercial WHERE id=?", [id], |r| {
+                r.get(0)
+            })
+            .optional()?;
+        bytes
+            .map(|bytes| {
+                let value: receipts::purchase::CommercialRef = serde_json::from_str(&bytes)?;
+                value.validate().map_err(|_| Error::Denied)?;
+                Ok(value)
+            })
+            .transpose()
     }
     pub fn confirmation(&self, id: &str, value: &Confirmation) -> Result<()> {
         self.check()?;

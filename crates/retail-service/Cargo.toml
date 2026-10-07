@@ -7,6 +7,9 @@ publish.workspace = true
 description = "Authenticated retail customer transport and restart-durable lifecycle worker."
 
 [dependencies]
+commercial-accounts = { path = "../commercial-accounts" }
+tenancy = { path = "../tenancy" }
+receipts = { path = "../receipts" }
 supervise = { path = "../supervise" }
 nostr = { path = "../nostr" }
 axum = "0.8"

@@ -797,3 +797,228 @@ fn lost_confirm_reply_reopens_the_exact_private_intent_and_one_funded_run() {
     assert_eq!(f.runtime.provider.create_calls(), 1);
     assert_eq!(f.wallet.issued(), 1);
 }
+
+#[test]
+fn installed_client_freezes_reviewed_commercial_attribution_and_refuses_stale_conversion() {
+    let f = Fixture::new();
+    fs::set_permissions(&f.root, fs::Permissions::from_mode(0o700)).unwrap();
+    let canonical = f.root.join("canonical");
+    fs::create_dir(&canonical).unwrap();
+    fs::set_permissions(&canonical, fs::Permissions::from_mode(0o700)).unwrap();
+    let accounts = tenancy::Accounts::install(&canonical).unwrap();
+    let customer = accounts
+        .create_account("Alice", &["key:aaaaaaaaaaaaaaaa".into()])
+        .unwrap();
+    let personal = accounts
+        .create_workspace(
+            &customer.id,
+            "Alice",
+            tenancy::WorkspaceKind::Personal,
+            "fixture",
+            None,
+        )
+        .unwrap();
+    let owner = accounts.authorize(&personal.id, &customer.id).unwrap();
+    let mut entry = commercial_accounts::Entry {
+        operator: "fixture-operator".into(),
+        source: tenancy::accounts::commercial::Source {
+            product: tenancy::accounts::commercial::Product::Retail,
+            issuer: "selected-retail".into(),
+            account: "retail-customer".into(),
+            workspace: None,
+        },
+        customer: customer.id.clone(),
+        workspace: personal.id.clone(),
+        canonical_owner: customer.id.clone(),
+        canonical_owner_epoch: owner.epoch,
+        canonical_members_epoch: owner.members_epoch,
+        principal: "buyer".into(),
+        credential_file: f.root.join("buyer.bearer"),
+        generation: 1,
+        native_owner: None,
+        native_owner_epoch: None,
+        native_members_epoch: None,
+        reviewed_at: retail::now(),
+        valid_until: retail::now() + 3600,
+        previous_authority: None,
+    };
+    let policy = f.root.join("commercial-policy.json");
+    let write = |entry: &commercial_accounts::Entry| {
+        fs::write(
+            &policy,
+            serde_json::to_vec(&commercial_accounts::Policy {
+                schema: commercial_accounts::SCHEMA.into(),
+                operator: "fixture-operator".into(),
+                entries: vec![entry.clone()],
+            })
+            .unwrap(),
+        )
+        .unwrap();
+        fs::set_permissions(&policy, fs::Permissions::from_mode(0o600)).unwrap();
+    };
+    write(&entry);
+    let config = retail_service::commercial::Config {
+        canonical_directory: canonical.clone(),
+        issuer: "selected-retail".into(),
+        native: commercial_accounts::Config {
+            policy: policy.clone(),
+            stores: vec![commercial_accounts::NativeStore::Retail {
+                issuer: "selected-retail".into(),
+                ledger: f.config.ledger.clone(),
+            }],
+        },
+    };
+    let adapter = commercial_accounts::NativeSources::open(&canonical, &config.native).unwrap();
+    let original = accounts
+        .review_commercial(
+            "selected-retail",
+            &customer.id,
+            &personal.id,
+            &customer.id,
+            None,
+            std::slice::from_ref(&entry.source),
+            &adapter,
+        )
+        .unwrap();
+    accounts
+        .admit_commercial(&original, &original.digest, &adapter)
+        .unwrap();
+    let service = Arc::new(
+        Service::open(f.config.clone(), f.runtime.clone(), f.wallet.clone())
+            .unwrap()
+            .with_commercial(config.clone())
+            .unwrap(),
+    );
+    let server = Server::new(service.clone());
+    let client_config = f.client_config(&server.url, "buyer", false);
+    let path = f.root.join("client-commercial.json");
+    private(&path, &serde_json::to_vec(&client_config).unwrap());
+    let key = f.root.join("openai.key");
+    let mut client = Client::from_file(&path).unwrap();
+    let account = client.account().unwrap();
+    assert_eq!(account.commercial.as_ref().unwrap().customer, customer.id);
+    assert!(account.lines().contains(&customer.id));
+    let purchase = client.top_up("commercial-funding", 1000).unwrap();
+    f.wallet.pay_in_full(&purchase.payment_hash);
+    service.tick(retail::now() as i64).unwrap();
+    let review = client.quote("personal-review", f.task(), &key).unwrap();
+    assert_eq!(review.custody.terms["commercial"]["workspace"], personal.id);
+    assert!(review.lines().contains(&personal.id));
+    assert!(review.lines().starts_with("Review "));
+    drop(client);
+    let team = accounts
+        .create_workspace(
+            &customer.id,
+            "Team",
+            tenancy::WorkspaceKind::Organization,
+            "fixture",
+            Some(4),
+        )
+        .unwrap();
+    let owner = accounts.authorize(&team.id, &customer.id).unwrap();
+    entry.workspace = team.id.clone();
+    entry.canonical_owner_epoch = owner.epoch;
+    entry.canonical_members_epoch = owner.members_epoch;
+    entry.previous_authority = Some(original.sources[0].digest());
+    write(&entry);
+    let revision = accounts
+        .review_commercial(
+            "selected-retail",
+            &customer.id,
+            &team.id,
+            &customer.id,
+            Some(&customer.id),
+            std::slice::from_ref(&entry.source),
+            &adapter,
+        )
+        .unwrap();
+    accounts
+        .admit_commercial(&revision, &revision.digest, &adapter)
+        .unwrap();
+    let stale = binary(
+        &path,
+        &[
+            "confirm",
+            "--review",
+            review.digest.as_str(),
+            "--provider-key",
+            key.to_str().unwrap(),
+            "--service-custody",
+        ],
+    );
+    assert!(!stale.status.success());
+    assert_eq!(
+        Ledger::open_read_only(&f.config.ledger)
+            .unwrap()
+            .compute_balance("retail-customer")
+            .unwrap()
+            .held_msat,
+        0
+    );
+    assert_eq!(f.runtime.provider.create_calls(), 0);
+    assert!(
+        fs::read_dir(f.config.state.join("credentials"))
+            .unwrap()
+            .next()
+            .is_none()
+    );
+    let mut client = Client::from_file(&path).unwrap();
+    let reviewed_team = client.quote("team-review", f.task(), &key).unwrap();
+    assert_eq!(
+        reviewed_team.custody.terms["commercial"]["workspace"],
+        team.id
+    );
+    drop(client);
+    let accepted = binary(
+        &path,
+        &[
+            "confirm",
+            "--review",
+            reviewed_team.digest.as_str(),
+            "--provider-key",
+            key.to_str().unwrap(),
+            "--service-custody",
+        ],
+    );
+    assert!(
+        accepted.status.success(),
+        "{}",
+        String::from_utf8_lossy(&accepted.stderr)
+    );
+    let execution = reviewed_team.offer.admission.execution.clone();
+    f.dispatch(&service, &execution);
+    assert_eq!(f.runtime.owner.started(), 1);
+    let client = Client::from_file(&path).unwrap();
+    let frozen = client.execution(&execution).unwrap().commercial.unwrap();
+    assert_eq!(frozen.workspace, team.id);
+    assert_eq!(frozen.source.account, "retail-customer");
+    assert_eq!(
+        client.receipt(&execution).unwrap().commercial.unwrap(),
+        frozen
+    );
+    drop(client);
+    let bob = accounts
+        .create_account("Bob", &["key:bbbbbbbbbbbbbbbb".into()])
+        .unwrap();
+    let invitation = accounts
+        .invite(&customer.id, &team.id, tenancy::Role::Member, 3600)
+        .unwrap();
+    accounts
+        .accept_reviewed(&bob.id, &invitation.token, &team.id, tenancy::Role::Member)
+        .unwrap();
+    accounts
+        .transfer_ownership(&customer.id, &team.id, &bob.id)
+        .unwrap();
+    accounts
+        .remove_member(&bob.id, &team.id, &customer.id)
+        .unwrap();
+    let mut client = Client::from_file(&path).unwrap();
+    assert!(client.quote("revoked", f.task(), &key).is_err());
+    assert_eq!(
+        client.receipt(&execution).unwrap().commercial.unwrap(),
+        frozen
+    );
+    assert_eq!(f.wallet.issued(), 1);
+    assert_eq!(f.runtime.owner.started(), 1);
+    assert!(!String::from_utf8_lossy(&accepted.stdout).contains(KEY));
+}

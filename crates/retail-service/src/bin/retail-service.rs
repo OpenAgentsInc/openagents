@@ -156,6 +156,10 @@ async fn run(args: &[String]) -> Result<(), String> {
         let wallet = openagents_wallet::resident::RemoteWallet::probe(&host.wallet_home)
             .ok_or("selected receiver is unavailable")?;
         Service::open(host.customer.clone(), Arc::new(backend), Arc::new(wallet))
+            .and_then(|s| match host.commercial.clone() {
+                Some(config) => s.with_commercial(config),
+                None => Ok(s),
+            })
             .and_then(|s| s.with_operations(host, &path, provider_source_digest))
             .map(Arc::new)
             .map_err(|_| "retail runtime configuration or custody is unavailable".to_owned())

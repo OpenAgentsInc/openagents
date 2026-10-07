@@ -12,6 +12,7 @@ client = ["dep:retail-cloud", "dep:reqwest", "dep:clap", "dep:fs2", "dep:libc", 
 host = ["dep:pay-ledger", "dep:retail-cloud", "dep:terminal-core"]
 
 [dependencies]
+receipts = { path = "../receipts" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 route-contract = { path = "../route-contract" }
@@ -32,6 +33,8 @@ path = "src/bin/retail-client.rs"
 required-features = ["client"]
 
 [dev-dependencies]
+commercial-accounts = { path = "../commercial-accounts" }
+tenancy = { path = "../tenancy" }
 tempfile = "3"
 retail-service = { path = "../retail-service" }
 retail-qualify = { path = "../retail-qualify" }

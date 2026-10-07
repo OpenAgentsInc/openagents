@@ -59,6 +59,8 @@ pub struct Capabilities {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Account {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub commercial: Option<receipts::purchase::CommercialRef>,
     pub account: String,
     pub generation: i64,
     pub capabilities: Capabilities,
@@ -67,7 +69,8 @@ pub struct Account {
 impl Account {
     pub fn lines(&self) -> String {
         format!(
-            "Account {} / generation {}\nAvailable {}\nHeld {}\nCharged {}\nUnused hold released {} (already available; not a payment refund)\nRights: observe={}, spend={}, execute={}, disclose={}",
+            "{}Account {} / generation {}\nAvailable {}\nHeld {}\nCharged {}\nUnused hold released {} (already available; not a payment refund)\nRights: observe={}, spend={}, execute={}, disclose={}",
+            commercial_line(self.commercial.as_ref()),
             self.account,
             self.generation,
             crate::credits(self.balance.available_msat),
@@ -117,6 +120,11 @@ impl Review {
     /// All disclosure and payment lines precede the separate confirm control.
     pub fn lines(&self) -> String {
         let o = &self.offer;
+        let commercial: Option<receipts::purchase::CommercialRef> = self
+            .custody
+            .terms
+            .get("commercial")
+            .and_then(|v| serde_json::from_value(v.clone()).ok());
         let mut lines = vec![
             format!("Review {}", self.digest),
             format!(
@@ -167,6 +175,9 @@ impl Review {
                 o.quote.version, o.quote.book, o.quote.max_sats, o.offer.expires_at
             ),
         ];
+        if commercial.is_some() {
+            lines.insert(2, commercial_line(commercial.as_ref()).trim_end().into());
+        }
         for line in &o.quote.lines {
             lines.push(format!(
                 "Resource {:?}: payer {:?}, recipient {}, basis {:?}, OpenAgents maximum {} sats",
@@ -213,6 +224,8 @@ pub struct Accepted {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Execution {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub commercial: Option<receipts::purchase::CommercialRef>,
     pub execution: String,
     pub admission: retail_cloud::authority::RetailAdmission,
     pub quote: route_contract::price_book::Quote,
@@ -229,6 +242,8 @@ pub struct Hold {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Receipt {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub commercial: Option<receipts::purchase::CommercialRef>,
     pub execution: String,
     pub cancellation: Option<retail_cloud::cancel::Receipt>,
     pub retention: Option<retail_cloud::retain::Receipt>,
@@ -240,7 +255,8 @@ impl Receipt {
         let deleted = self.retention.as_ref().is_some_and(|r| r.deleted());
         let settlement = self.settlement.as_ref();
         format!(
-            "Execution {}\nStop requested: {}\nExecutor acknowledged: {}\nSandbox deleted: {}\nUsage: {}\nCharged: {}\nUnused hold released: {} (not a payment refund)\nStill held: {}\nChecks: {}\nPayment refund: no refund record supplied\nCustomer OpenAI model expense: unknown; paid separately by the customer\nSponsored inference: off",
+            "{}Execution {}\nStop requested: {}\nExecutor acknowledged: {}\nSandbox deleted: {}\nUsage: {}\nCharged: {}\nUnused hold released: {} (not a payment refund)\nStill held: {}\nChecks: {}\nPayment refund: no refund record supplied\nCustomer OpenAI model expense: unknown; paid separately by the customer\nSponsored inference: off",
+            commercial_line(self.commercial.as_ref()),
             self.execution,
             cancel.is_some(),
             cancel.is_some_and(|c| c.executor.is_some()),
@@ -449,7 +465,20 @@ impl Client {
         Ok(account)
     }
     pub fn account(&self) -> Result<Account> {
-        self.call(json!({"op":"account"}))
+        let account: Account = self.call(json!({"op":"account"}))?;
+        if let Some(reference) = &account.commercial {
+            reference.validate().map_err(Error::Refused)?;
+            if !reference.matches_native(
+                receipts::purchase::CommercialProduct::Retail,
+                &account.account,
+                None,
+            ) {
+                return Err(Error::Refused(
+                    "Commercial account attribution differs from the native account.",
+                ));
+            }
+        }
+        Ok(account)
     }
     pub fn capacity(&self) -> Result<Value> {
         self.call(json!({"op":"capacity"}))
@@ -484,6 +513,16 @@ impl Client {
         let (offer, custody) = self.fetch_offer(idempotency, &task)?;
         if offer.admission.account != account.account {
             return Err(Error::Refused("offer belongs to another service account"));
+        }
+        let offer_commercial: Option<receipts::purchase::CommercialRef> = custody
+            .terms
+            .get("commercial")
+            .map(|v| serde_json::from_value(v.clone()))
+            .transpose()?;
+        if offer_commercial != account.commercial {
+            return Err(Error::Refused(
+                "The current commercial account differs from the offered attribution.",
+            ));
         }
         let mut review = Review {
             endpoint: self.config.endpoint.clone(),
@@ -556,6 +595,20 @@ impl Client {
                 "offer, price, source, disclosure, or custody binding is invalid",
             ));
         }
+        if let Some(value) = custody.terms.get("commercial") {
+            let reference: receipts::purchase::CommercialRef =
+                serde_json::from_value(value.clone())?;
+            reference.validate().map_err(Error::Refused)?;
+            if !reference.matches_native(
+                receipts::purchase::CommercialProduct::Retail,
+                &offer.admission.account,
+                None,
+            ) {
+                return Err(Error::Refused(
+                    "Commercial offer attribution differs from the native account.",
+                ));
+            }
+        }
         Ok((offer, custody))
     }
     /// The exact review digest and separate custody switch are mandatory.
@@ -590,6 +643,17 @@ impl Client {
         {
             return Err(Error::Refused(
                 "review identity or authority generation changed",
+            ));
+        }
+        let reviewed_commercial: Option<receipts::purchase::CommercialRef> = review
+            .custody
+            .terms
+            .get("commercial")
+            .map(|v| serde_json::from_value(v.clone()))
+            .transpose()?;
+        if reviewed_commercial != account.commercial {
+            return Err(Error::Refused(
+                "The reviewed commercial attribution changed.",
             ));
         }
         let key = Secret::read(provider_key, 8192)?;
@@ -634,7 +698,25 @@ impl Client {
         self.call(json!({"op":"executions","after":after}))
     }
     pub fn execution(&self, execution: &str) -> Result<Execution> {
-        self.call(json!({"op":"execution","execution":execution}))
+        let record: Execution = self.call(json!({"op":"execution","execution":execution}))?;
+        if record.execution != execution {
+            return Err(Error::Refused(
+                "Execution history returned another identity.",
+            ));
+        }
+        if let Some(reference) = &record.commercial {
+            reference.validate().map_err(Error::Refused)?;
+            if !reference.matches_native(
+                receipts::purchase::CommercialProduct::Retail,
+                &record.admission.account,
+                None,
+            ) {
+                return Err(Error::Refused(
+                    "Historical commercial attribution differs from its native account.",
+                ));
+            }
+        }
+        Ok(record)
     }
     pub fn reconnect(&mut self, execution: &str) -> Result<Execution> {
         let record = self.execution(execution)?;
@@ -698,7 +780,28 @@ impl Client {
         self.call(json!({"op":"artifact","execution":execution,"name":name}))
     }
     pub fn receipt(&self, execution: &str) -> Result<Receipt> {
-        self.call(json!({"op":"receipt","execution":execution}))
+        let record: Receipt = self.call(json!({"op":"receipt","execution":execution}))?;
+        if record.execution != execution {
+            return Err(Error::Refused("Receipt history returned another identity."));
+        }
+        if let Some(reference) = &record.commercial {
+            reference.validate().map_err(Error::Refused)?;
+            if reference.source.product != receipts::purchase::CommercialProduct::Retail {
+                return Err(Error::Refused(
+                    "Receipt history has another product source.",
+                ));
+            }
+            if let Some(review) = self.state.reviews.values().find(|p| {
+                p.accepted
+                    .as_ref()
+                    .is_some_and(|a| a.execution == execution)
+            }) {
+                if reference.source.account != review.review.account {
+                    return Err(Error::Refused("Receipt history has another native payer."));
+                }
+            }
+        }
+        Ok(record)
     }
 }
 pub fn now() -> u64 {
@@ -720,4 +823,15 @@ fn visible(text: &str) -> String {
             }
         })
         .collect()
+}
+
+fn commercial_line(reference: Option<&receipts::purchase::CommercialRef>) -> String {
+    reference
+        .map(|r| {
+            format!(
+                "Commercial customer {} / workspace {} / binding {} revision {} ({})\n",
+                r.customer, r.workspace, r.binding, r.revision, r.digest
+            )
+        })
+        .unwrap_or_default()
 }

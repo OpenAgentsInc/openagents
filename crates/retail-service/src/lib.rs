@@ -3,6 +3,7 @@
 //! the existing pay-ledger and retail-cloud records.
 
 pub mod backup;
+pub mod commercial;
 mod custody;
 pub mod http;
 pub mod package;
@@ -85,6 +86,7 @@ impl<
 pub struct Service<B: Backend, W: LightningWallet + Send + Sync + 'static> {
     pub(crate) config: Config,
     pub(crate) operations: Option<Arc<package::Operating>>,
+    pub(crate) commercial: Option<commercial::Mapping>,
     pub(crate) store: Mutex<Store>,
     pub(crate) backend: Arc<custody::GuardBackend<B>>,
     pub(crate) wallet: Arc<custody::GuardWallet<W>>,
@@ -162,6 +164,7 @@ impl<B: Backend, W: LightningWallet + Send + Sync + 'static> Service<B, W> {
         Ok(Self {
             config,
             operations: None,
+            commercial: None,
             store: Mutex::new(store),
             backend,
             wallet,
@@ -312,8 +315,10 @@ impl<B: Backend, W: LightningWallet + Send + Sync + 'static> Service<B, W> {
         let active = principal
             .as_ref()
             .is_some_and(|p| p.generation == confirmation.generation && p.revoked_at.is_none());
-        let execute = active && grant.is_some_and(|g| g.execute && g.observe);
-        let disclose = active && grant.is_some_and(|g| g.disclose);
+        let mapped =
+            self.commercial_current(store, &funded.account, confirmation.commercial.as_ref());
+        let execute = active && mapped && grant.is_some_and(|g| g.execute && g.observe);
+        let disclose = active && mapped && grant.is_some_and(|g| g.disclose);
         Ok(Current {
             observe: Some(ObserveGrant {
                 account: funded.account.clone(),
@@ -331,7 +336,7 @@ impl<B: Backend, W: LightningWallet + Send + Sync + 'static> Service<B, W> {
                 withdrawn: !disclose,
             }),
             spend: principal
-                .filter(|p| active && p.rights.spend)
+                .filter(|p| active && mapped && p.rights.spend)
                 .map(|_| SpendRight {
                     account: funded.account.clone(),
                 }),
@@ -354,13 +359,19 @@ impl<B: Backend, W: LightningWallet + Send + Sync + 'static> Service<B, W> {
         let value = match request {
             Request::Account {} => {
                 let b = store.ledger.compute_balance(&identity.account)?;
-                json!({"account":identity.account,"generation":identity.generation,"capabilities":{"observe":grant.observe,"spend":identity.rights.spend,"execute":grant.execute,"disclose":grant.disclose},"balance":{"credited_msat":b.credited_msat,"available_msat":b.available_msat,"held_msat":b.held_msat,"settled_msat":b.settled_msat,"released_msat":b.released_msat}})
+                let commercial = self.commercial_ref(store, &identity.account)?;
+                let mut value = json!({"account":identity.account,"generation":identity.generation,"capabilities":{"observe":grant.observe,"spend":identity.rights.spend,"execute":grant.execute,"disclose":grant.disclose},"balance":{"credited_msat":b.credited_msat,"available_msat":b.available_msat,"held_msat":b.held_msat,"settled_msat":b.settled_msat,"released_msat":b.released_msat}});
+                if let Some(commercial) = commercial {
+                    value["commercial"] = serde_json::to_value(commercial)?;
+                }
+                value
             }
             Request::Capacity {} => serde_json::to_value(self.advertisement(&store, None)?)?,
             Request::TopUp {
                 idempotency,
                 amount_sats,
             } => {
+                self.commercial_ref(store, &identity.account)?;
                 self.require_open(&store, None)?;
                 let purchase = opaque("rt", &identity.account, &idempotency)?;
                 let record = topup::request_top_up(
@@ -388,6 +399,7 @@ impl<B: Backend, W: LightningWallet + Send + Sync + 'static> Service<B, W> {
                 if !grant.execute || !grant.disclose {
                     return Err(Error::Denied);
                 }
+                let commercial = self.commercial_ref(store, &identity.account)?;
                 let id = opaque("ro", &identity.account, &idempotency)?;
                 if let Some((made, owner, generation, _)) = store.offer(&id)? {
                     if made.request != task
@@ -398,7 +410,12 @@ impl<B: Backend, W: LightningWallet + Send + Sync + 'static> Service<B, W> {
                             "the offer retry changed its identity or terms",
                         ));
                     }
-                    offer_value(&made)
+                    if store.commercial(&id)? != commercial {
+                        return Err(Error::Conflict(
+                            "the reviewed commercial attribution changed",
+                        ));
+                    }
+                    offer_value(&made, commercial.as_ref())
                 } else {
                     self.require_open(&store, None)?;
                     let made = offer::make_offer(
@@ -409,8 +426,14 @@ impl<B: Backend, W: LightningWallet + Send + Sync + 'static> Service<B, W> {
                         self.capacity(&store, None)?,
                         now as u64,
                     )?;
-                    store.insert_offer(&made, &identity.id, identity.generation, now)?;
-                    offer_value(&made)
+                    store.insert_offer(
+                        &made,
+                        &identity.id,
+                        identity.generation,
+                        now,
+                        commercial.as_ref(),
+                    )?;
+                    offer_value(&made, commercial.as_ref())
                 }
             }
             Request::Confirm {
@@ -430,6 +453,10 @@ impl<B: Backend, W: LightningWallet + Send + Sync + 'static> Service<B, W> {
                 if owner != identity.id || generation != identity.generation {
                     return Err(Error::Denied);
                 }
+                let commercial = store.commercial(&id)?;
+                if !self.commercial_current(store, &identity.account, commercial.as_ref()) {
+                    return Err(Error::Denied);
+                }
                 if digest != made.offer.digest || admission != made.admission.digest() {
                     return Err(Error::Conflict(
                         "confirmation differs from the displayed offer and admission",
@@ -442,14 +469,15 @@ impl<B: Backend, W: LightningWallet + Send + Sync + 'static> Service<B, W> {
                 {
                     return Err(Error::Invalid("a bounded customer OpenAI key is required"));
                 }
-                if custody != custody_digest(&made) {
+                if custody != custody_digest(&made, commercial.as_ref()) {
                     return Err(Error::Conflict(
                         "credential custody differs from the displayed terms",
                     ));
                 }
                 let key_digest = retail_cloud::sha256_hex(credential.key.as_bytes());
                 if let Some(original) = &existing {
-                    if original.key_digest != key_digest
+                    if original.commercial != commercial
+                        || original.key_digest != key_digest
                         || original.admission != admission
                         || original.custody != custody
                     {
@@ -488,6 +516,7 @@ impl<B: Backend, W: LightningWallet + Send + Sync + 'static> Service<B, W> {
                     store.confirmation(
                         &id,
                         &Confirmation {
+                            commercial: commercial.clone(),
                             principal: identity.id.clone(),
                             generation: identity.generation,
                             admission: admission.clone(),
@@ -541,9 +570,14 @@ impl<B: Backend, W: LightningWallet + Send + Sync + 'static> Service<B, W> {
                 let current = Self::read_current(&funded);
                 let snapshots = retail_cloud::recover::observe(&store.journal, &funded, &current)?;
                 let hold = store.ledger.hold(&funded.request)?;
-                json!({"execution":execution,"admission":funded.admission,"quote":funded.quote,"snapshot":snapshots.last(),"hold":hold.map(|h|json!({"state":h.state.as_str(),"held_msat":if h.state==pay_ledger::compute::HoldState::Settled {0}else{h.request.amount_msat},"charge_msat":h.charge_msat}))})
+                let mut value = json!({"execution":execution,"admission":funded.admission,"quote":funded.quote,"snapshot":snapshots.last(),"hold":hold.map(|h|json!({"state":h.state.as_str(),"held_msat":if h.state==pay_ledger::compute::HoldState::Settled {0}else{h.request.amount_msat},"charge_msat":h.charge_msat}))});
+                if let Some(commercial) = store.commercial(&funded.offer)? {
+                    value["commercial"] = serde_json::to_value(commercial)?;
+                }
+                value
             }
             Request::Progress { execution, after } => {
+                self.commercial_ref(store, &identity.account)?;
                 let funded = self.funded_for(&store, &identity.account, &execution)?;
                 let page = dispatch::observe(
                     &store.journal,
@@ -604,6 +638,7 @@ impl<B: Backend, W: LightningWallet + Send + Sync + 'static> Service<B, W> {
                 }
             }
             Request::Artifact { execution, name } => {
+                self.commercial_ref(store, &identity.account)?;
                 if name.is_empty()
                     || name.len() > 128
                     || !name
@@ -644,7 +679,11 @@ impl<B: Backend, W: LightningWallet + Send + Sync + 'static> Service<B, W> {
                 } else {
                     None
                 };
-                json!({"execution":execution,"cancellation":cancellation,"retention":store.journal.retention_receipt(&execution,now)?,"settlement":retail_cloud::settle::observe(&store.journal,&funded,&current)?})
+                let mut value = json!({"execution":execution,"cancellation":cancellation,"retention":store.journal.retention_receipt(&execution,now)?,"settlement":retail_cloud::settle::observe(&store.journal,&funded,&current)?});
+                if let Some(commercial) = store.commercial(&funded.offer)? {
+                    value["commercial"] = serde_json::to_value(commercial)?;
+                }
+                value
             }
         };
         store.check()?;
@@ -656,15 +695,30 @@ impl From<offer::OfferRefusal> for Error {
         Self::Offer(value)
     }
 }
-fn custody_terms(made: &offer::RetailOffer) -> Value {
-    json!({"schema":"openagents.cloud.retail-credential-custody.v1","admission":made.admission.digest(),"recipient":"the authenticated retail service receiving this confirmation","material":"customer-owned OpenAI API key","uses":["delivery to the exact admitted sandbox and model payer","redaction","removal"],"maximum_seconds":made.quote.max_seconds.saturating_add(2*retail_cloud::provision::READY_DEADLINE_SECS as u64).saturating_add(900),"ends":"remove after acknowledged resource deletion or the maximum custody duration; incomplete cleanup and unknown costs remain recorded"})
+fn custody_terms(
+    made: &offer::RetailOffer,
+    commercial: Option<&receipts::purchase::CommercialRef>,
+) -> Value {
+    let mut terms = json!({"schema":"openagents.cloud.retail-credential-custody.v1","admission":made.admission.digest(),"recipient":"the authenticated retail service receiving this confirmation","material":"customer-owned OpenAI API key","uses":["delivery to the exact admitted sandbox and model payer","redaction","removal"],"maximum_seconds":made.quote.max_seconds.saturating_add(2*retail_cloud::provision::READY_DEADLINE_SECS as u64).saturating_add(900),"ends":"remove after acknowledged resource deletion or the maximum custody duration; incomplete cleanup and unknown costs remain recorded"});
+    if let Some(commercial) = commercial {
+        terms["commercial"] =
+            serde_json::to_value(commercial).expect("commercial reference serializes");
+    }
+    terms
 }
-fn custody_digest(made: &offer::RetailOffer) -> route_contract::Digest {
-    digest_of(&custody_terms(made))
+fn custody_digest(
+    made: &offer::RetailOffer,
+    commercial: Option<&receipts::purchase::CommercialRef>,
+) -> route_contract::Digest {
+    digest_of(&custody_terms(made, commercial))
 }
-fn offer_value(made: &offer::RetailOffer) -> Value {
+fn offer_value(
+    made: &offer::RetailOffer,
+    commercial: Option<&receipts::purchase::CommercialRef>,
+) -> Value {
     let mut value = serde_json::to_value(made).expect("retail offer serializes");
-    value["custody"] = json!({"terms":custody_terms(made),"digest":custody_digest(made)});
+    value["custody"] =
+        json!({"terms":custody_terms(made, commercial),"digest":custody_digest(made, commercial)});
     value
 }
 fn opaque(prefix: &str, account: &str, idempotency: &str) -> Result<String> {
