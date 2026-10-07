@@ -2,7 +2,7 @@
   "issue": 10589,
   "epic": 10590,
   "kind": "simulated",
-  "revision": "02cdee3ba11e23b2cdca8c1e0adcd2aa80fe8e07",
+  "revision": "02cdee3ba11e23b2cdca8c1e0adcd2aa80fe8e07 (local; rebased onto main as 6879f68cbf)",
   "command": "scripts/grid-soak.sh --seconds 1800 --out bench/verse/2026-10-06/grid-soak",
   "relay": "scratch nostr-relay on 127.0.0.1 with its default per-key and per-world limits (pose lane 12/s per key, population cap 20, world budget 300 frames/s); per-address limits raised because every player shares one address",
   "players": "17 `openagents verse walkers` plus simulated phone, desktop, and browser clients (grid_soak example), 20 keys in verse-bare, the population cap",
@@ -37,7 +37,7 @@
       "detail": "zone-everglade/: 20 walkers in verse-everglade for 600 s, 0 refusals, oldest frame 31 ms, worst gap 278 ms; a 21st refused"
     }
   },
-  "found_and_fixed": "Before 02cdee3ba1, a presence session counted pose frames against its 54-event-a-minute budget: a moving player sent about 50 frames and then stopped for the rest of the minute, its world presence lapsed after 15 s, and a 21st player took its slot and refused it. The first trial reproduced it (desktop refused `world is full`, walkers near 1 Hz).",
+  "found_and_fixed": "Before 6879f68cbf, a presence session counted pose frames against its 54-event-a-minute budget: a moving player sent about 50 frames and then stopped for the rest of the minute, its world presence lapsed after 15 s, and a 21st player took its slot and refused it. The first trial reproduced it (desktop refused `world is full`, walkers near 1 Hz).",
   "not_covered": [
     "Real devices: phone GPU, a browser's WebGPU/WebGL2, and a desktop window's present path; the owner's 30-minute run is in NEEDS_OWNER.md.",
     "The public relay over the Internet: one machine, one address, loopback latency.",

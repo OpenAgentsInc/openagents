@@ -430,7 +430,7 @@ The simulated soak passed on 2026-10-06
 phone, desktop, and browser clients for 30 minutes on a scratch relay, with
 frame-time p95 near 6 ms, no refusals, no frame older than 136 ms, and a
 21st player refused by the cap. Real devices haven't run it, and phones and
-the desktop app need a build from `main` after 02cdee3ba1, which stops pose
+the desktop app need a build from `main` after 6879f68cbf, which stops pose
 frames from stalling for most of each minute. To finish checking:
 
 1. Deploy the relay from `main` if it predates the population cap (#10588).
