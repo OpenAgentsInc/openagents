@@ -1,9 +1,8 @@
 # Everglade medieval refactor
 
-Status: proposed October 7, 2026, for the owner's review. Nothing in this
-plan is implemented yet except the export tooling and the private proof.
-No GitHub issues are open for it; the phases below become issues after
-the owner approves the plan.
+Status: approved October 7, 2026. The owner's decisions are recorded in
+[Decisions](#decisions). The phases below are tracked as GitHub issues
+#10894 to #10902 (P1 to P9) under the umbrella #10903.
 
 The owner bought the Fab pack "Modular Medieval Town", a modular kit of
 walls, floors, roofs, doors, and props on a 2 m and 4 m grid, with a demo
@@ -39,12 +38,12 @@ characters and conflict with a kit that builds the town:
 2. "A private pack never enters the Everglade or Grid packs, and the web
    build has no private path."
 
-This plan asks the owner to add a third class beside public packs and
+The owner approved a third class beside public packs and
 private characters, the **licensed kit**: its pieces have committed IDs of
 our own (such as `kit/wall-4x4-timber`), committed placements, and a
 committed pack digest and length, while its bytes live only in the private
 bucket and in builds. Private characters keep today's stricter rules. See
-[Decisions for the owner](#decisions-for-the-owner).
+[Decisions](#decisions).
 
 ## The export tool
 
@@ -545,7 +544,28 @@ What the proof showed:
   files carry material names only; textures and parameters come from the
   separate export.
 
-## Decisions for the owner
+## Decisions
+
+The owner answered the plan's open questions on October 7, 2026:
+
+1. **The licensed-kit class is approved.** Our own kit IDs, the
+   placements, and the kit pack's digest and length are committed; the
+   bytes live only in the private bucket
+   (`openagentsgemini-verse-private-assets`) and in builds.
+2. **Serving the kit pack from the web origin is approved.** The compiled
+   kit pack is served from the OpenAgents web origin to every client: web,
+   desktop, and phone.
+3. **Brownstone Row and the farm are kept.** The kit has no brownstone, so
+   Brownstone Row stays as it is. The farm stays as it is too; P7 rebuilds
+   the farmhouse and barn only if the kit recipe makes it cheap and
+   clearly better.
+4. **4 m stories are approved.** Two-story kit houses stand about 4 m
+   taller than today's.
+5. **Streets.** The pilot street, Stoop Lane, uses the demo's turned,
+   curving lots. The main streets (Main Street, Market Row, and the
+   plaza) stay straight and readable.
+
+The questions as the plan first asked them:
 
 1. Approve the licensed-kit class: committed kit IDs, placements, and the
    kit pack's digest, with the bytes only in the bucket and builds.
