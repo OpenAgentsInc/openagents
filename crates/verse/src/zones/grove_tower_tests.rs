@@ -139,6 +139,11 @@ fn aiming_at_the_towers_side_lays_the_ring_flat_against_it() {
         .unwrap();
     aim(&mut runtime, side);
     let aimed = town(&runtime).swarm().aimed().unwrap();
+    if meteor::LINE_OF_SIGHT {
+        // A dev build reaches anything in sight: the wall itself.
+        assert!(aimed.wall(), "{aimed:?}");
+        return;
+    }
     assert!(!aimed.wall());
     let player = runtime.player.pos;
     assert!(

@@ -38,6 +38,24 @@ pub const DEV_COUNT: usize = 8;
 /// doesn't fit a phone's width; its intent still swings.
 pub const DEV_ORDER: [usize; DEV_COUNT] = [5, 6, 7, 0, 1, 2, 3, 4];
 
+/// Levitate's sentence, with the ceiling this build has
+/// ([`super::LEVITATE_CEILING`]).
+const LEVITATE_TEXT: &str = if DEV_DESTRUCTION {
+    "Hold to rise up to 120 m over the ground and let go to hover there; tap while hovering to fall, or hold X to sink."
+} else {
+    "Hold to rise up to 18 m over the ground and let go to hover there; tap while hovering to fall, or hold X to sink."
+};
+
+/// The range a strike's card shows.
+fn range_detail() -> String {
+    use super::demolition::meteor;
+    if meteor::LINE_OF_SIGHT {
+        "Range: line of sight".into()
+    } else {
+        format!("{:.0} m range", meteor::RANGE)
+    }
+}
+
 /// One slot: the intent it sends, its icon sprite, and its card's name and
 /// sentence. Number keys press them in displayed order. The first
 /// [`COUNT`] are Everglade's bar; the last four show only where
@@ -46,10 +64,7 @@ pub const SLOTS: [(Intent, &str, Tip); FULL_COUNT] = [
     (
         Intent::Levitate,
         "levitate-icon",
-        Tip::new(
-            "Levitate",
-            "Hold to rise up to 18 m over the ground and let go to hover there; tap while hovering to fall, or hold X to sink.",
-        ),
+        Tip::new("Levitate", LEVITATE_TEXT),
     ),
     (
         Intent::FeatherFall,
@@ -233,7 +248,7 @@ fn card_with_key(index: usize, displayed: usize) -> Option<Card> {
         card = card
             .detail("No mana, no cooldown", palette::MANA)
             .detail(format!("{} s cast", meteor::CAST), palette::TIME)
-            .detail(format!("{:.0} m range", meteor::RANGE), palette::RULE);
+            .detail(range_detail(), palette::RULE);
     }
     if matches!(*intent, Intent::Thunderbolt | Intent::MegaThunderbolt) {
         use super::demolition::meteor;
@@ -245,7 +260,7 @@ fn card_with_key(index: usize, displayed: usize) -> Option<Card> {
         card = card
             .detail("No mana, no cooldown", palette::MANA)
             .detail(format!("{cast} s cast"), palette::TIME)
-            .detail(format!("{:.0} m range", meteor::RANGE), palette::RULE);
+            .detail(range_detail(), palette::RULE);
     }
     Some(card)
 }
@@ -536,10 +551,16 @@ mod tests {
             let details: Vec<&str> = card.details.iter().map(|(d, _)| d.as_str()).collect();
             assert!(details.contains(&"No mana, no cooldown"), "{details:?}");
             assert!(details.contains(&cast), "{details:?}");
-            assert!(details.contains(&"36 m range"), "{details:?}");
+            assert!(details.contains(&range_detail().as_str()), "{details:?}");
             assert!(SLOTS[index].2.text.contains("R restores the town"));
         }
-        assert_eq!(meteor::RANGE, 36.0);
+        if DEV_DESTRUCTION {
+            assert_eq!(range_detail(), "Range: line of sight");
+            assert!(SLOTS[0].2.text.contains("120 m"));
+        } else {
+            assert_eq!(range_detail(), "36 m range");
+            assert!(SLOTS[0].2.text.contains("18 m"));
+        }
     }
 
     #[test]
@@ -564,6 +585,25 @@ mod tests {
             );
             assert!(cy >= 0.0 && cy + ch <= top, "above the tray");
         }
+    }
+
+    #[test]
+    fn levitate_reaches_120_m_in_a_dev_build_and_18_m_in_prod() {
+        use super::super::{CLIMB_RATE, LEVITATE_CEILING};
+        if DEV_DESTRUCTION {
+            assert_eq!(LEVITATE_CEILING, 120.0);
+        } else {
+            assert_eq!(LEVITATE_CEILING, 18.0);
+        }
+        // The top is a few seconds of holding away.
+        let seconds = LEVITATE_CEILING / CLIMB_RATE;
+        assert!((5.0..=8.0).contains(&seconds), "{seconds} s to the top");
+        assert!(
+            SLOTS[0]
+                .2
+                .text
+                .contains(&format!("{LEVITATE_CEILING:.0} m"))
+        );
     }
 
     #[test]

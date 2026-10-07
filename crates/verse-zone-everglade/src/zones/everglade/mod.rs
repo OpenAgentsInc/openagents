@@ -113,10 +113,22 @@ const PROBE_CELL: f32 = 8.1;
 /// character's head on the ring.
 const PROBE_HEADROOM: f32 = 3.0;
 
-/// How fast a held Levitate, or a held descent, changes the altitude, m/s.
-pub const CLIMB_RATE: f32 = 3.0;
-/// How high levitation reaches over the ground, m.
-pub const LEVITATE_CEILING: f32 = 18.0;
+/// How fast a held Levitate, or a held descent, changes the altitude, m/s:
+/// faster in a `dev-destruction` build, so its higher ceiling takes about
+/// seven seconds to reach.
+pub const CLIMB_RATE: f32 = if cfg!(feature = "dev-destruction") {
+    18.0
+} else {
+    3.0
+};
+/// How high levitation reaches over the ground, m: 120 m in a
+/// `dev-destruction` build, for a view over the whole town, and 18 m in
+/// every public build.
+pub const LEVITATE_CEILING: f32 = if cfg!(feature = "dev-destruction") {
+    120.0
+} else {
+    18.0
+};
 /// A Levitate press shorter than this is a tap, s: it rises nothing, and
 /// on a player already levitating it ends the levitation.
 pub const TAP: f32 = 0.25;
@@ -872,10 +884,10 @@ impl Everglade {
                 self.landing = self.altitude > floor + 0.001;
             }
             self.altitude = self.altitude.max(floor);
-            let lift = self.lift;
-            player.hold_altitude(
-                before + (self.altitude - before).clamp(-2.0 * lift * dt, 3.0 * lift * dt),
-            );
+            // The character keeps up with a held climb, and sinks two
+            // thirds as fast.
+            let rise = self.climb_rate() * dt;
+            player.hold_altitude(before + (self.altitude - before).clamp(-rise * 2.0 / 3.0, rise));
         } else if self
             .afloat
             .as_mut()

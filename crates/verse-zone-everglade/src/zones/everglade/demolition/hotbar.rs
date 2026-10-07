@@ -128,7 +128,14 @@ pub fn card(index: usize) -> Option<Card> {
         card.detail(format!("{:.0} mana", meteor::COST), palette::MANA)
             .detail(format!("{:.0} s cooldown", meteor::COOLDOWN), palette::TIME)
             .detail(format!("{} s cast", meteor::CAST), palette::TIME)
-            .detail(format!("{:.0} m range", meteor::RANGE), palette::RULE)
+            .detail(
+                if meteor::LINE_OF_SIGHT {
+                    "Range: line of sight".to_string()
+                } else {
+                    format!("{:.0} m range", meteor::RANGE)
+                },
+                palette::RULE,
+            )
     } else {
         card
     })

@@ -861,7 +861,7 @@ impl WorldRuntime {
                         let ground = super::everglade::land(self.player.pos.x, self.player.pos.z);
                         glade.altitude = (glade.altitude
                             + if intent == Intent::Rise { 1.5 } else { -1.5 })
-                        .clamp(ground, ground + 18.0);
+                        .clamp(ground, ground + glade.ceiling());
                     }
                     _ => return Err("Levitate before changing altitude".into()),
                 }

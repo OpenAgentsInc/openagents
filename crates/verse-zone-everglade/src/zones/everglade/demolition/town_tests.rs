@@ -917,3 +917,54 @@ fn a_mega_thunderbolt_breaks_several_times_what_a_thunderbolt_does() {
     assert!(bolt > 0, "the Thunderbolt breaks something");
     assert!(mega >= 3 * bolt, "{mega} is not 3x {bolt}");
 }
+
+#[test]
+fn aimed_from_the_civic_hall_s_roof_the_ring_lies_flat_on_it() {
+    use super::meteor::Strike;
+    let mut town = town();
+    let b = carved_of(&town, "generated/civic_hall");
+    let hall = &town.buildings()[b];
+    let ([cx, cz], _) = hall.rect;
+    let base = hall.base;
+    // The roof's height under the hall's middle, as a ray from above
+    // finds it.
+    let mut player = caster(Vec3::new(cx, 0.0, cz), 0.0);
+    town.target(Strike::Meteors, &player).unwrap();
+    assert!(town.aim(Vec3::new(cx, base + 60.0, cz), Vec3::NEG_Y, &player));
+    let roof = town.swarm().aimed().unwrap().at.y;
+    assert!(roof > base + 5.0, "the roof is at {roof}");
+    // Standing on the roof 8 m west of the middle, the camera behind and
+    // above, aiming at the roof ahead at a shallow angle.
+    player.pos = Vec3::new(cx - 8.0, roof, cz);
+    let eye = Vec3::new(cx - 13.0, roof + 3.0, cz);
+    let at = Vec3::new(cx, roof, cz);
+    assert!(town.aim(eye, (at - eye).normalize(), &player));
+    let aim = town.swarm().aimed().unwrap();
+    assert!(!aim.wall(), "the ring stands up: {aim:?}");
+    assert!(
+        aim.at.y > base + 5.0,
+        "the ring is on the roof, not the ground"
+    );
+    // It lies at the height of the roof where it hit, as a ray from above
+    // finds that point.
+    let hit = aim.at;
+    assert!(town.aim(hit + Vec3::Y * 40.0, Vec3::NEG_Y, &player));
+    let surface = town.swarm().aimed().unwrap().at.y;
+    assert!((hit.y - surface).abs() < 0.3, "{} against {surface}", hit.y);
+}
+
+#[cfg(feature = "dev-destruction")]
+#[test]
+fn a_target_300_m_away_is_in_reach_in_a_dev_build() {
+    use super::meteor::Strike;
+    let mut town = town();
+    let player = caster(Vec3::new(-150.0, 0.0, 0.0), 0.0);
+    town.target(Strike::Lightning, &player).unwrap();
+    let far = Vec3::new(150.0, height(150.0, 0.0), 0.0);
+    let eye = player.pos + Vec3::Y * 30.0;
+    assert!(town.aim(eye, (far - eye).normalize(), &player));
+    let aim = town.swarm().aimed().unwrap();
+    let across = Vec3::new(aim.at.x - player.pos.x, 0.0, aim.at.z - player.pos.z).length();
+    assert!(across > 250.0, "the ring stopped at {across} m");
+    assert!(town.confirm(&player), "the cast begins");
+}

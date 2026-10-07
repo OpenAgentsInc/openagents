@@ -75,8 +75,16 @@ pub const CAST: f32 = 2.5;
 pub const REGEN: f32 = 4.0;
 pub const REST: f32 = 5.0;
 /// Farthest the circle's center may be from the player, m. The SRD's
-/// mile is far past the yard's trees.
-pub const RANGE: f32 = 36.0;
+/// mile is far past the yard's trees. A `dev-destruction` build, where the
+/// owner tests destruction, targets anything in sight instead ([`SIGHT`]).
+pub const RANGE: f32 = if LINE_OF_SIGHT { SIGHT } else { 36.0 };
+/// Whether the strikes reach anything the player can see: only in a
+/// `dev-destruction` build.
+pub const LINE_OF_SIGHT: bool = cfg!(feature = "dev-destruction");
+/// How far the player can see, m: well past where the fog
+/// (`verse_pbr::fog::FOG_END`, 250 m) hides everything, so whatever is
+/// drawn under the cursor is in reach.
+pub const SIGHT: f32 = 600.0;
 /// The circle's radius, m: the strike's whole footprint.
 pub const AREA: f32 = 6.0;
 /// Each explosion's radius, m.
@@ -1057,8 +1065,11 @@ impl Swarm {
     }
 }
 
-/// How far a targeting ray looks for a surface, m.
-const LOOK: f32 = 90.0;
+/// How far a targeting ray looks for a surface, m: past [`RANGE`].
+const LOOK: f32 = if LINE_OF_SIGHT { SIGHT } else { 90.0 };
+/// How long one leg of a targeting ray is, m: the length every surface
+/// test was tuned at.
+const LEG: f32 = 90.0;
 /// How far short of its end a meteor's or a bolt's path may first meet
 /// something and still count as reaching it, m.
 const SLACK: f32 = 2.2;
@@ -1084,7 +1095,14 @@ pub fn surface_aim(
         return None;
     }
     let direction = direction.normalize();
-    let Some(t) = cast(origin, origin + direction * LOOK).map(|f| f * LOOK) else {
+    // In legs of [`LEG`] m, so a long look meets thin walls as a short one
+    // does.
+    let legs = (LOOK / LEG).ceil() as usize;
+    let hit = (0..legs).find_map(|k| {
+        let (a, b) = (k as f32 * LEG, ((k + 1) as f32 * LEG).min(LOOK));
+        cast(origin + direction * a, origin + direction * b).map(|f| a + f * (b - a))
+    });
+    let Some(t) = hit else {
         let flat = Vec3::new(direction.x, 0.0, direction.z).try_normalize()?;
         let p = origin + flat * RANGE;
         return Some(Aim {
@@ -1093,6 +1111,24 @@ pub fn surface_aim(
         });
     };
     let at = origin + direction * t;
+    // A top surface (the ground, a floor, a flat roof, a stair tread)
+    // met by a ray coming down holds a short ray dropped onto it a little
+    // nearer the caster: the ring lies flat there. Beside a wall the same
+    // ray falls past the hit. (Pitched roofs are left to the normal.)
+    let back = Vec3::new(direction.x, 0.0, direction.z).normalize_or_zero() * 0.3;
+    let near = at - back;
+    let (top, bottom) = (near + Vec3::Y * 0.6, near - Vec3::Y * 0.6);
+    if direction.y < -0.02
+        && let Some(f) = cast(top, bottom)
+    {
+        let y = top.y + (bottom.y - top.y) * f;
+        if f > 0.0 && (y - at.y).abs() < 0.2 {
+            return Some(Aim {
+                view: direction,
+                ..Aim::ground(Vec3::new(at.x, y, at.z))
+            });
+        }
+    }
     let normal = face_normal(at, direction, t, cast);
     // The town's roofs are pitched up to about 55 degrees: still roofs.
     if normal.y >= 0.45 {

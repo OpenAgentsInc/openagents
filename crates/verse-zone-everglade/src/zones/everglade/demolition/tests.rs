@@ -345,7 +345,7 @@ mod meteor_swarm {
         swarm.aim_at(Vec3::new(-6.0, 0.0, -14.0), &player);
         let near = swarm.aim().expect("the circle is down");
         assert!((near - Vec3::new(-6.0, 0.0, -14.0)).length() < 1e-4);
-        swarm.aim_at(Vec3::new(-6.0, 0.0, 200.0), &player);
+        swarm.aim_at(Vec3::new(-6.0, 0.0, 2.0 * RANGE + 40.0), &player);
         let far = swarm.aim().unwrap();
         let reach = Vec3::new(far.x - player.pos.x, 0.0, far.z - player.pos.z).length();
         assert!((reach - RANGE).abs() < 1e-3, "{reach}");
