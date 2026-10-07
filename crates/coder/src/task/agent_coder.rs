@@ -269,17 +269,16 @@ impl Hands for HostHands<'_> {
             },
             state: self.state.clone(),
             session: self.session.clone(),
-            // Her words, and on Codex the one line that hands the coding
-            // to it; the session shows both.
-            prompt: if codex {
-                format!("{prompt}\n\n{CODEX_DIRECTIVE}")
-            } else {
-                prompt.to_owned()
-            },
+            // Her words only: terminal mode answers questions and runs
+            // commands, which Coder does itself with read-only commands
+            // her policy confirms. On Codex, her coding goes to Codex in
+            // task mode, in her own worktree.
+            prompt: prompt.to_owned(),
             // Plain Coder: nothing in her Coder session says who she is.
             instructions: None,
             approvals: true,
-            codex_writes: codex,
+            // A gated turn's Codex runs read-only and never asks anyone.
+            codex_writes: false,
             tool_free: self.record.job_role.is_some(),
         };
         if codex {
@@ -288,6 +287,10 @@ impl Hands for HostHands<'_> {
             });
         }
         self.agents.set_doing(&name, Doing::Thinking);
+        self.agents.set_status(
+            &name,
+            &format!("Asking Coder to {}", agent_steer::gist(prompt)),
+        );
         let mut turned = Turned::ended(TurnEnd::Stopped);
         let mut previous: Option<CoderEvent> = None;
         let mut ended_delegations: Vec<String> = Vec::new();
@@ -334,6 +337,7 @@ impl Hands for HostHands<'_> {
                                     &name,
                                     &format!("{name}: Coder handed the work to {delegate}"),
                                 );
+                                agents.set_status(&name, &format!("Waiting for {delegate}"));
                             }
                             previous = Some(event.clone());
                             return None;
@@ -493,6 +497,10 @@ impl Hands for HostHands<'_> {
                                 let _ =
                                     journal(Kind::Proposed, &format!("{command} ({why})"), None);
                                 agents.say(&name, &format!("{name}: proposed: {command}"));
+                                agents.set_status(
+                                    &name,
+                                    &format!("Waiting for you: CONFIRM or REJECT {command}"),
+                                );
                                 let reason = if why.trim().is_empty() {
                                     "Coder needs it for this step".to_string()
                                 } else {

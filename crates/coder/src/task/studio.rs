@@ -2173,9 +2173,17 @@ fn goal_view(goal: &Goal, tasks: &dyn Inbox) -> GoalView {
             }
         })
         .collect();
+    // A change merged, rejected, or with nothing to merge is over too, even
+    // while its task record waits in the inbox.
     let final_tasks = entries
         .iter()
-        .filter(|entry| entry.progress.is_final())
+        .filter(|entry| {
+            entry.progress.is_final()
+                || matches!(
+                    entry.stage,
+                    Some(flow::Stage::Merged | flow::Stage::Rejected | flow::Stage::Unchanged)
+                )
+        })
         .count();
     let total_tasks = entries.len();
     let status = if goal.decision.is_some() {

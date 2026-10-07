@@ -35,8 +35,8 @@ const POLL: Duration = Duration::from_millis(50);
 /// working directory (`openagents coder chat --codex-writes`). Off, Codex
 /// runs read-only, as it always did. On, each Codex delegation runs under
 /// Codex's own `workspace-write` sandbox, which writes the working
-/// directory and its temporary files and turns the network off; in a
-/// gated chat ([`crate::approval`]) each such delegation first asks.
+/// directory and its temporary files and turns the network off. A gated
+/// chat ([`crate::approval`]) keeps Codex read-only and asks nobody.
 static CODEX_WRITES: AtomicBool = AtomicBool::new(false);
 
 /// Lets Codex delegations in this process edit their working directory, or
@@ -44,9 +44,6 @@ static CODEX_WRITES: AtomicBool = AtomicBool::new(false);
 pub fn allow_codex_writes(on: bool) {
     CODEX_WRITES.store(on, Ordering::SeqCst);
 }
-
-/// The command a gated chat asks about before Codex may edit files.
-pub const CODEX_WRITE_COMMAND: &str = "codex exec --sandbox workspace-write";
 
 /// The sandbox the native Codex bridge runs a delegation in.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -71,27 +68,27 @@ impl CodexSandbox {
     }
 }
 
-/// The sandbox for the next Codex delegation in `cwd`: read-only unless
-/// the chat allows writes, and in a gated chat only when the person, or
-/// the agent's policy, confirms the write.
-fn codex_sandbox(cwd: &Path, cancel: &AtomicBool) -> Result<CodexSandbox, String> {
+/// The sandbox for the next Codex delegation: read-only unless the chat
+/// allows writes. A gated chat's Codex is always read-only and asks
+/// nobody: a gated chat answers questions and runs commands one approval
+/// at a time, and a read-only lookup never waits on a person. Writes are
+/// for an ungated turn in a task's own worktree.
+fn codex_sandbox() -> Result<CodexSandbox, String> {
     if !crate::approval::tools_allowed() {
         return Err("The crew charter refuses Codex delegation, including read-only work.".into());
     }
-    if !CODEX_WRITES.load(Ordering::SeqCst) {
-        return Ok(CodexSandbox::ReadOnly);
-    }
-    let Some(desk) = crate::approval::desk() else {
-        return Ok(CodexSandbox::WorkspaceWrite);
-    };
-    let why = format!(
-        "Codex edits files in {} under its own sandbox, with no network",
-        cwd.display()
-    );
-    if desk.ask(CODEX_WRITE_COMMAND, &why, cancel) {
-        Ok(CodexSandbox::WorkspaceWrite)
+    Ok(sandbox_for(
+        CODEX_WRITES.load(Ordering::SeqCst),
+        crate::approval::gated(),
+    ))
+}
+
+/// Codex writes only when the chat allows it and no approval gate runs.
+fn sandbox_for(writes: bool, gated: bool) -> CodexSandbox {
+    if writes && !gated {
+        CodexSandbox::WorkspaceWrite
     } else {
-        Ok(CodexSandbox::ReadOnly)
+        CodexSandbox::ReadOnly
     }
 }
 
@@ -433,7 +430,7 @@ pub async fn acp(
     }
     .ok_or_else(|| format!("The executable for {} is unavailable.", agent.name))?;
     if agent.transport == AgentTransport::CodexCli {
-        let sandbox = codex_sandbox(cwd, cancel)?;
+        let sandbox = codex_sandbox()?;
         return codex_cli(&program, task, cwd, sandbox, cancel, emit).await;
     }
     let environment = std::env::vars()
@@ -1272,6 +1269,14 @@ mod tests {
         assert!(!dir.path().join("changed").exists());
     }
 
+    #[test]
+    fn a_gated_chat_keeps_codex_read_only_and_asks_nobody() {
+        assert_eq!(sandbox_for(true, false), CodexSandbox::WorkspaceWrite);
+        assert_eq!(sandbox_for(true, true), CodexSandbox::ReadOnly);
+        assert_eq!(sandbox_for(false, false), CodexSandbox::ReadOnly);
+        assert_eq!(sandbox_for(false, true), CodexSandbox::ReadOnly);
+    }
+
     #[tokio::test]
     #[cfg(unix)]
     async fn crew_tool_free_scope_refuses_direct_acp_and_codex_without_asking() {
@@ -1297,11 +1302,7 @@ mod tests {
         let _reset = Reset(CODEX_WRITES.swap(true, Ordering::SeqCst));
         // A write setting cannot convert a tool-free refusal into an approval
         // question or a read-only child. Both native transports stop first.
-        assert!(
-            codex_sandbox(dir.path(), &cancel)
-                .unwrap_err()
-                .contains("crew charter")
-        );
+        assert!(codex_sandbox().unwrap_err().contains("crew charter"));
         let mut events = vec![];
         for transport in [AgentTransport::Acp, AgentTransport::CodexCli] {
             let mut native = agent(program.clone());

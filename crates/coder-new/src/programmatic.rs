@@ -57,7 +57,7 @@ Options: --json streams NDJSON events for chat and delegation.
          an approval event, answered by `confirm ID` or `reject ID` on stdin.
          --codex-writes lets a chat's Codex delegations edit the working
          directory under Codex's workspace-write sandbox, with no network;
-         with --approvals, each delegation asks first.
+         with --approvals, Codex stays read-only and asks nobody.
          --approvals tool-free refuses all model tools, including reads.
          --in DIR sets the working directory; --state DIR sets the Coder store.
 Settings default to ~/.openagents/coder-new. Sessions use its sessions directory.
@@ -222,7 +222,7 @@ pub fn run(arguments: &[String], json_mode: bool) -> u8 {
         Err(error) => return print_error(error, json_mode),
     };
     // The host lets this chat's Codex delegations edit the working
-    // directory; a gated chat still asks before each one.
+    // directory; a gated chat keeps Codex read-only.
     if args.iter().any(|arg| arg == "--codex-writes") {
         if args.first().is_none_or(|arg| arg != "chat") {
             return print_error(usage("--codex-writes applies to chat only."), json_mode);

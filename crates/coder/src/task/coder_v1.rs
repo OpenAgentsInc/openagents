@@ -415,10 +415,11 @@ pub enum Ended {
 /// What a workshop agent on Codex adds to each prompt: Coder, on its own
 /// model, hands the coding to Codex and checks what it did. A turn whose
 /// prompt carries it runs with [`Turn::codex_writes`].
-pub const CODEX_DIRECTIVE: &str = "Delegate the coding in this step to the codex agent \
+pub const CODEX_DIRECTIVE: &str = "Delegate the file edits in this task to the codex agent \
      with acp_subagent: give it the task, the files involved, and how to check the result. \
-     Then read its changes and run the checks yourself before you answer. If Codex is \
-     unavailable or out of capacity, do the work yourself and say so.";
+     Then read its changes and run the checks yourself before you answer. Answer questions \
+     and do read-only lookups yourself with read-only commands; never delegate them. If Codex \
+     is unavailable or out of capacity, do the edits yourself and say so.";
 
 /// One turn to run.
 #[derive(Clone, Debug)]
@@ -438,7 +439,7 @@ pub struct Turn {
     pub approvals: bool,
     /// Let the turn's Codex delegations edit the working directory under
     /// Codex's workspace-write sandbox (`--codex-writes`); a gated turn
-    /// still asks before each one.
+    /// keeps Codex read-only.
     pub codex_writes: bool,
     /// Disable every model tool, including read-only commands and delegation.
     pub tool_free: bool,

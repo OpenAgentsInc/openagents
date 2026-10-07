@@ -50,8 +50,8 @@ pub const DEFAULT_LOOK: &str = "alice";
 /// say otherwise (`docs/verse/workshop-agent.md`, "Open questions").
 pub const DEFAULT_CHARTER: &str = "Terminal mode may run read-only commands anywhere in the \
      workspace without asking; any other command waits for the owner's CONFIRM or REJECT. Task \
-     mode changes files only in her own worktree, and the owner merges at the Merge station. \
-     Never push, publish, pay, or read credentials.";
+     mode changes files only in her own worktree, and the owner merges at the Merge station, or \
+     she does when the owner asks her to. Never push, publish, pay, or read credentials.";
 /// The longest an attestation may last: a year.
 pub const ATTESTATION_MAX: u64 = 366 * 24 * 60 * 60;
 /// The most characters a report keeps.

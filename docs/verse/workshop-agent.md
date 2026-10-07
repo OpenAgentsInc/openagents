@@ -432,15 +432,15 @@ prompt in `turns`, `judgments`, and `report`).
 
 `openagents agent engine alice codex` makes Codex do her coding, and
 `openagents agent engine alice coder` returns it to Coder's own model.
-Coder stays the driver on its own model: each of her prompts ends with one
-line that asks Coder to delegate the coding to the Codex agent
-(`acp_subagent`, on your ChatGPT login) and to check the result itself. The
-turn runs with `--codex-writes`, so Codex may edit the working directory
-under its own `workspace-write` sandbox, with no network. In terminal mode
-the turn is gated, so each Codex delegation first asks
-`codex exec --sandbox workspace-write` at her lectern, and her policy or
-you answer it. In task mode the studio's Coder turn has full access to her
-worktree, so Codex writes the worktree without asking.
+Coder stays the driver on its own model. Codex does file edits only, in
+task mode: her brief ends with one line that asks Coder to delegate the
+edits to the Codex agent (`acp_subagent`, on your ChatGPT login), to answer
+questions and read-only lookups itself, and to check Codex's result. The
+studio's Coder turn runs with `--codex-writes` and full access to her
+worktree, so Codex edits the worktree under its own `workspace-write`
+sandbox, with no network, and asks nobody. Terminal mode answers questions
+and runs commands without Codex; a Codex that Coder calls there on its own
+runs read-only and asks nobody either.
 
 - Codex's commands reach her pane and journal as Coder's do, prefixed
   `Codex`; her pane follows the Codex child chat while it runs, and her
@@ -450,6 +450,19 @@ worktree, so Codex writes the worktree without asking.
 - A Codex usage or rate limit goes in the capacity book
   (`~/.openagents/tasks/capacity.json`), she says once that Codex is out of
   capacity until its reset, and Coder works on its own model until then.
+
+#### The Merge station, and her own merge
+
+Ask her where the Merge station is, and she says: the strongroom in the
+Everglade workshop yard, and `openagents studio review TASK --diff` and
+`openagents studio merge TASK` from a terminal. Ask her to merge her change
+("merge it", "can you do that instead of me"), and she merges her newest
+change waiting at the station, whose checks passed to get there, through
+the station's own **Merge**: into the checkout's branch, pushing nothing.
+Neither calls a model. Each request starts her pane on a fresh screen, with
+one `now:` line first that says what she does, such as `Waiting for Codex
+to edit files in my worktree` or `Waiting for you: merge task ID?`. The goal
+bar clears once its goal's tasks are over, merged or rejected included.
 
 ## Persistence
 

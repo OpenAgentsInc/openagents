@@ -191,17 +191,16 @@ pub struct Summary {
 }
 
 impl Summary {
-    /// The goal to show from `view`: the newest goal still under way, else
-    /// the newest goal. `None` for a studio with no goal.
+    /// The goal to show from `view`: the newest goal still under way.
+    /// `None` when every goal is done, so a finished goal's header clears,
+    /// or for a studio with no goal.
     #[must_use]
     pub fn of(view: &View) -> Option<Self> {
-        let newest = |done: bool| {
-            view.goals
-                .iter()
-                .filter(|g| (g.status == GoalStatus::Done) == done)
-                .max_by_key(|g| g.submitted_at)
-        };
-        let goal = newest(false).or_else(|| newest(true))?;
+        let goal = view
+            .goals
+            .iter()
+            .filter(|g| g.status != GoalStatus::Done)
+            .max_by_key(|g| g.submitted_at)?;
         Some(Self {
             text: goal.text.clone(),
             status: goal.status,
@@ -437,10 +436,9 @@ mod tests {
         assert_eq!(summary.counts(), "1/4 tasks");
         assert_eq!(summary.waiting, 2);
         assert!((summary.progress() - 0.25).abs() < 1e-6);
+        // A finished goal's header clears.
         let finished = view(vec![goal("new", GoalStatus::Done, 3, 3, 9)], vec![], vec![]);
-        let summary = Summary::of(&finished).unwrap();
-        assert_eq!(summary.progress(), 1.0);
-        assert_eq!(summary.waiting, 0);
+        assert_eq!(Summary::of(&finished), None);
         let planning = view(
             vec![goal("p", GoalStatus::Planning, 0, 0, 2)],
             vec![],

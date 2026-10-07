@@ -768,8 +768,10 @@ fn on_codex_coder_hands_her_coding_to_codex_and_codex_usage_is_her_spend() {
     let given = seen.given.lock().unwrap().clone();
     assert_eq!(given.len(), 1);
     assert!(given[0].prompt.starts_with("Fix the typo in README.md."));
-    assert!(given[0].prompt.ends_with(CODEX_DIRECTIVE));
-    assert!(given[0].codex_writes && given[0].approvals);
+    // Terminal mode: Coder answers and runs commands itself; a Codex it
+    // calls on its own stays read-only and asks nobody.
+    assert!(!given[0].prompt.contains(CODEX_DIRECTIVE));
+    assert!(!given[0].codex_writes && given[0].approvals);
     for line in [
         "alice: Coder handed the work to Codex",
         "alice: Codex $ sed -i '' s/teh/the/ README.md",
@@ -834,7 +836,6 @@ fn a_codex_limit_is_booked_said_once_and_later_requests_leave_codex_out() {
     finished(&agents);
     let given = seen.given.lock().unwrap().clone();
     assert_eq!(given.len(), 2);
-    assert!(given[0].codex_writes);
-    assert!(!given[1].codex_writes);
+    assert!(given.iter().all(|turn| !turn.codex_writes));
     assert!(!given[1].prompt.contains(CODEX_DIRECTIVE));
 }

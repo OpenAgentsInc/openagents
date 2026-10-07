@@ -1479,7 +1479,7 @@ fn follow_up(next: Move, step: &Step, turned: &Turned) -> String {
 }
 
 /// A prompt as her status line reads it: "run the atif tests".
-fn gist(prompt: &str) -> String {
+pub(crate) fn gist(prompt: &str) -> String {
     let first = prompt.lines().next().unwrap_or_default().trim();
     let first = first
         .split_inclusive(". ")

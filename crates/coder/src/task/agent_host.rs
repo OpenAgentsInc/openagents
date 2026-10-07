@@ -109,6 +109,8 @@ struct Live {
     change: Option<(String, wire::Change)>,
     /// The summary sequence of her subject.
     sequence: u64,
+    /// One plain line on what she does now, shown first in her pane.
+    status: String,
 }
 
 impl Default for Live {
@@ -128,6 +130,7 @@ impl Default for Live {
             release: 0,
             change: None,
             sequence: 0,
+            status: String::new(),
         }
     }
 }
@@ -1321,11 +1324,14 @@ impl Agents {
             .unwrap_or_default();
         let lines: Vec<String> = live
             .map(|l| {
-                let skip = l.lines.len().saturating_sub(wire::MAX_LINES);
-                l.lines
-                    .iter()
-                    .skip(skip)
-                    .map(|line| bounded(line, 512))
+                // Her status first, then the newest lines that fit.
+                let status = (!l.status.is_empty()).then(|| format!("now: {}", l.status));
+                let room = wire::MAX_LINES - usize::from(status.is_some());
+                let skip = l.lines.len().saturating_sub(room);
+                status
+                    .into_iter()
+                    .chain(l.lines.iter().skip(skip).cloned())
+                    .map(|line| bounded(&line, 512))
                     .collect()
             })
             .unwrap_or_else(|| transcript(store));
@@ -1608,7 +1614,18 @@ impl Agents {
             self.finish(&store, &record, &queued, &report, None);
             return;
         }
+        // Each request starts on a fresh screen; her journal keeps the rest.
+        self.with_live(name, |live| live.lines.clear());
+        self.set_status(name, &format!("Working on: {}", one_line(&queued.text)));
         self.say(name, &format!("you: {}", one_line(&queued.text)));
+        // The Merge station: where it is, and her own merge when the owner
+        // asks for it, with no model call.
+        if record.job_role.is_none()
+            && let Some(report) = self.merge_station(&store, &record, &queued)
+        {
+            self.finish(&store, &record, &queued, &report, None);
+            return;
+        }
         let memory = Memory::new(store.clone(), self.screen.clone());
         // "Remember ..." is a note, with no model call.
         if let Some(note) = agent_memory::remembered(&queued.text) {
@@ -1870,6 +1887,17 @@ impl Agents {
         }
         self.set_change(&record.name, &goal, &task, "working");
         self.set_doing(&record.name, Doing::Running);
+        self.set_status(
+            &record.name,
+            &if codex.is_empty() {
+                format!("Working in my own worktree on task {}", short_task(&task))
+            } else {
+                format!(
+                    "Waiting for Codex to edit files in my worktree (task {})",
+                    short_task(&task)
+                )
+            },
+        );
         loop {
             if cancel.load(Ordering::SeqCst) {
                 return Report {
@@ -1878,12 +1906,16 @@ impl Agents {
                     headline: "stopped".into(),
                 };
             }
-            let (stage, word) = self.change_stage(&goal);
+            let (stage, _) = self.change_stage(&goal);
             match stage {
                 ChangeStage::Working(word) => {
                     self.set_change(&record.name, &goal, &task, &word);
                     if word == "checks" {
                         self.set_doing(&record.name, Doing::Testing);
+                        self.set_status(
+                            &record.name,
+                            &format!("Running the checks on task {}", short_task(&task)),
+                        );
                     }
                 }
                 ChangeStage::Merge => {
@@ -1905,7 +1937,8 @@ impl Agents {
                     };
                 }
                 ChangeStage::Ended(outcome, headline) => {
-                    self.set_change(&record.name, &goal, &task, &word);
+                    // An ended change waits on nobody: her header clears.
+                    self.with_live(&record.name, |live| live.change = None);
                     let reply = match outcome {
                         Outcome::Done => format!("The task \"{title}\" ended: {headline}."),
                         _ => format!("The task \"{title}\" did not finish: {headline}."),
@@ -2008,6 +2041,16 @@ impl Agents {
         let sequence = self.with_live(name, |live| {
             live.doing = doing;
             live.headline = report.headline.clone();
+            // Done: her status says what still waits on the owner, if
+            // anything.
+            live.status = match &live.change {
+                Some((_, change)) if change.stage == "merge" => format!(
+                    "Waiting for you: merge task {}? Ask me to merge it, or use the Merge \
+                     station.",
+                    short_task(&change.task)
+                ),
+                _ => String::new(),
+            };
             // The run's last line is its reply already, when the loop
             // said it.
             let line = agent::ascii(&format!("{name}: {}", report.reply));
@@ -2082,6 +2125,12 @@ impl Agents {
 
     fn say(&self, name: &str, line: &str) {
         self.with_live(name, |live| live.say(line));
+    }
+
+    /// Her one plain status line: what she does now, or nothing.
+    pub(super) fn set_status(&self, name: &str, status: &str) {
+        let status = one_line(status);
+        self.with_live(name, |live| live.status = status);
     }
 
     fn set_doing(&self, name: &str, doing: Doing) {
@@ -2721,6 +2770,11 @@ fn activity(doing: Doing) -> Activity {
     }
 }
 
+/// A task ID as people read it: its first twelve characters.
+fn short_task(task: &str) -> &str {
+    task.get(..12).unwrap_or(task)
+}
+
 fn one_line(text: &str) -> String {
     let line = agent::ascii(text).replace('\n', " ");
     bounded(line.trim(), 120)
@@ -2926,6 +2980,9 @@ fn wait<T>(answer: &Receiver<T>, cancel: &AtomicBool, limit: Duration) -> Option
 
 #[path = "agent_coder.rs"]
 mod coder_turn;
+
+#[path = "agent_host_merge.rs"]
+mod merge_station;
 
 #[path = "agent_host_plan.rs"]
 mod plan;
