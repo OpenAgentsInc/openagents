@@ -481,6 +481,22 @@ backend. It establishes installed client behavior and payer attribution, not
 external adoption, actual funding, revenue, or production service qualification.
 Team membership alone supplies no new budget or product spending grant.
 
+## Native team budgets (REV-40, #10847)
+
+Approve the chosen workspace's cumulative currency caps, alert thresholds,
+reviewed native person/team roster, and the supported decision offers before
+enabling `money.hierarchical_budgets`. Install the versioned policy through the
+current owner's authenticated budget route. Qualify real concurrent calls,
+revocation, lowered limits, and recovery against the O5-funded deployment,
+retaining the actual policy, journal, and result evidence privately. Earlier
+unattributed obligations count conservatively against child caps; review that
+exposure without guessing a person or releasing unknown work. The isolated
+fixtures establish enforcement and killed-process recovery with synthetic
+funds, not actual team limits, real funding, deployment, or cross-product
+budgets. Qualify the existing native quota marker recovery too: confirm its
+exact writer has exited before removing its stale marker, and retain both
+journals and every unknown monetary liability.
+
 ## First workflow offer O1 (REV-01, #10808)
 
 Before selling [Coder pilot v1](docs/sales/README.md#first-workflow-offer-v1),

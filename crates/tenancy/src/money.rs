@@ -14,6 +14,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+pub mod budgets;
 pub mod funding;
 
 pub const SCHEMA: &str = "openagents.money.v2";
@@ -134,6 +135,17 @@ pub enum Operation {
         price: Price,
         maximum_usage: Usage,
     },
+    /// Owner-reviewed caps share the same authoritative journal as funding.
+    BudgetPolicy {
+        policy: budgets::Policy,
+    },
+    ReserveScoped {
+        attempt: String,
+        request_digest: String,
+        price: Price,
+        maximum_usage: Usage,
+        budget: budgets::Admission,
+    },
     Settle {
         attempt: String,
         usage: Usage,
@@ -185,6 +197,8 @@ pub enum Phase {
 
 #[derive(Clone, Debug, Serialize)]
 pub struct Hold {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub budget: Option<budgets::Admission>,
     pub price: Price,
     pub request_digest: String,
     pub maximum_usage: Usage,
@@ -237,6 +251,7 @@ struct Account {
     holds: BTreeMap<String, Hold>,
     prices: BTreeMap<String, Price>,
     funding: Option<funding::Book>,
+    budgets: Option<budgets::Book>,
 }
 
 impl Account {
@@ -366,6 +381,14 @@ impl State {
         if at < self.latest_at {
             return Err("accounting clock moved backward; no admission is allowed".into());
         }
+        if let Operation::ReserveScoped { attempt, .. } = &mutation.operation
+            && self
+                .accounts
+                .values()
+                .any(|account| account.holds.contains_key(attempt))
+        {
+            return Err("attempt already reserved under its original native payer".into());
+        }
         if let Operation::BeginFunding { funding } = &mutation.operation
             && self
                 .accounts
@@ -399,6 +422,7 @@ impl State {
                     holds: BTreeMap::new(),
                     prices: BTreeMap::new(),
                     funding: None,
+                    budgets: None,
                 },
             );
         } else {
@@ -481,11 +505,24 @@ impl State {
                 Operation::ReversePromotion { grant, amount } => {
                     funding_book(account)?.reverse_promotion(grant, *amount)?;
                 }
+                Operation::BudgetPolicy { policy } => {
+                    account
+                        .budgets
+                        .get_or_insert_with(budgets::Book::default)
+                        .install(policy, &account.currency, at)?;
+                }
                 Operation::Reserve {
                     attempt,
                     request_digest,
                     price,
                     maximum_usage,
+                }
+                | Operation::ReserveScoped {
+                    attempt,
+                    request_digest,
+                    price,
+                    maximum_usage,
+                    ..
                 } => {
                     identity(attempt)?;
                     identity(request_digest)?;
@@ -505,6 +542,22 @@ impl State {
                         return Err("price version was reused for changed terms".into());
                     }
                     let reserved = price.quote(maximum_usage)?;
+                    let budget = if let Operation::ReserveScoped { budget, .. } =
+                        &mutation.operation
+                    {
+                        let book = account.budgets.as_ref().ok_or("budget policy is missing")?;
+                        if let Some(blocked) = book.check(&account.holds, budget, reserved, at)? {
+                            return Err(blocked.to_string());
+                        }
+                        Some(budget.clone())
+                    } else {
+                        if account.budgets.is_some() {
+                            return Err(
+                                "unscoped reservation bypasses the installed budget policy".into(),
+                            );
+                        }
+                        None
+                    };
                     let used = account.allocation_usage()?;
                     let (funding_policy, allocations) = if let Some(book) = &mut account.funding {
                         (
@@ -518,6 +571,7 @@ impl State {
                     account.holds.insert(
                         attempt.clone(),
                         Hold {
+                            budget,
                             price: price.clone(),
                             request_digest: request_digest.clone(),
                             maximum_usage: maximum_usage.clone(),
@@ -914,6 +968,82 @@ impl Ledger {
     #[must_use]
     pub fn hold(&self, workspace: &str, attempt: &str) -> Option<&Hold> {
         self.state.accounts.get(workspace)?.holds.get(attempt)
+    }
+
+    /// The Gateway's request/attempt namespace is global to this journal.
+    /// Switching the native payer must never redispatch an existing attempt.
+    pub fn has_attempt(&self, attempt: &str) -> bool {
+        self.state
+            .accounts
+            .values()
+            .any(|account| account.holds.contains_key(attempt))
+    }
+
+    pub fn budget_policy(&self, workspace: &str) -> Option<&budgets::Policy> {
+        let book = self.state.accounts.get(workspace)?.budgets.as_ref()?;
+        book.policies.get(&book.active)
+    }
+
+    pub fn budget_admission(
+        &self,
+        workspace: &str,
+        person: &str,
+        revision: &str,
+        epoch: u64,
+    ) -> Result<budgets::Admission, String> {
+        self.state
+            .accounts
+            .get(workspace)
+            .and_then(|a| a.budgets.as_ref())
+            .ok_or("budget policy is missing")?
+            .admission(person, revision, epoch, now()?.max(self.state.latest_at))
+    }
+
+    pub fn check_budget(
+        &self,
+        workspace: &str,
+        admission: &budgets::Admission,
+        amount: u64,
+    ) -> Result<Option<budgets::Blocked>, String> {
+        let account = self
+            .state
+            .accounts
+            .get(workspace)
+            .ok_or("workspace account is missing")?;
+        account
+            .budgets
+            .as_ref()
+            .ok_or("budget policy is missing")?
+            .check(
+                &account.holds,
+                admission,
+                amount,
+                now()?.max(self.state.latest_at),
+            )
+    }
+
+    pub fn budget_view(
+        &self,
+        workspace: &str,
+        person: &str,
+        admin: bool,
+        requested: Option<u64>,
+    ) -> Result<budgets::View, String> {
+        let account = self
+            .state
+            .accounts
+            .get(workspace)
+            .ok_or("workspace account is missing")?;
+        account
+            .budgets
+            .as_ref()
+            .ok_or("budget policy is missing")?
+            .view(&account.holds, person, admin, requested)
+    }
+
+    /// A digest of the durable journal, suitable for a scoped alert's evidence.
+    pub fn head(&self) -> &str {
+        &self.head
     }
 
     /// Every workspace with an account, sorted — the set an account API

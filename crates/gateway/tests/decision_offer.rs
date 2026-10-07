@@ -1,6 +1,9 @@
 //! Synthetic native-counter fixtures over the real admission, ledgers, and
 //! sealed receipt path. No model weights, owner state, or real funds are used.
 
+#[path = "decision_offer_budgets.rs"]
+mod budgets;
+
 use axum::{
     Json,
     extract::State,

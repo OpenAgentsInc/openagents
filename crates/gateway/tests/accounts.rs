@@ -340,6 +340,7 @@ async fn exercise_funded_gateway(installed_cli: Option<std::ffi::OsString>) {
         .unwrap()
         .endpoint = endpoint;
     deployment.config.money = Some(gateway::money::Money {
+        hierarchical_budgets: false,
         ledger: ledger_path,
         doors: [(
             "shared-kev".into(),
@@ -1952,6 +1953,7 @@ async fn purchases_recheck_customer_price_request_and_current_credential_before_
         maximum_usage: [(Resource::InputTokens, 1000)].into(),
     };
     d.config.money = Some(gateway::money::Money {
+        hierarchical_budgets: false,
         ledger: ledger_path.clone(),
         doors: [("acme-kev".into(), priced)].into(),
     });

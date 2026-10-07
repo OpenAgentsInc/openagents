@@ -917,6 +917,18 @@ impl Accounts {
         load(&self.dir)
     }
 
+    /// Hold the membership writer boundary while admitting an external effect.
+    /// The callback must be bounded and must not mutate this Accounts store.
+    /// Recheck its credential here before using the current sealed revision.
+    pub fn read_locked<T, E: From<Trouble>>(
+        &self,
+        read: impl FnOnce(&Store) -> Result<T, E>,
+    ) -> Result<T, E> {
+        let _lock = Lock::acquire(&self.dir)?;
+        let store = load(&self.dir)?;
+        read(&store)
+    }
+
     /// Read an archived revision by digest — the lookup that explains
     /// which membership authorized an earlier call.
     pub fn revision(dir: &Path, digest: &str) -> Result<Store, Trouble> {

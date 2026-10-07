@@ -126,6 +126,7 @@ fn money_config(ledger: &std::path::Path) -> Money {
         maximum_usage: [(tenancy::money::Resource::InputTokens, 1_000)].into(),
     };
     Money {
+        hierarchical_budgets: false,
         ledger: ledger.to_path_buf(),
         doors: [
             ("shared-kev".to_string(), priced("shared")),

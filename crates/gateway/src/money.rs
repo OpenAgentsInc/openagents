@@ -34,6 +34,11 @@ pub const POLICY: &str = "observed-usage-v1";
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Money {
+    /// Enforce reviewed native workspace/team/person caps. Every enabled price
+    /// must be a supported native decision offer; other product ledgers are
+    /// outside this profile. Missing workspace policy refuses paid dispatch.
+    #[serde(default)]
+    pub hierarchical_budgets: bool,
     /// The spending ledger's file: one `tenancy::money` append-only log
     /// the process opens exclusively and holds for its lifetime. Keep it
     /// in a protected directory outside every executor write grant — the
@@ -71,6 +76,9 @@ pub struct Priced {
 /// Why a monetary reservation was refused.
 #[derive(Debug)]
 pub enum Refusal {
+    Budget(tenancy::money::budgets::Blocked),
+    BudgetUnavailable(String),
+    Authorization(String),
     /// This attempt already has a durable hold and cannot dispatch again.
     Duplicate,
     /// The workspace cannot fund the hold — no provisioned account, or
@@ -87,6 +95,10 @@ pub enum Refusal {
 impl std::fmt::Display for Refusal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Budget(blocked) => write!(f, "{blocked}"),
+            Self::BudgetUnavailable(message) | Self::Authorization(message) => {
+                write!(f, "{message}")
+            }
             Self::Duplicate => write!(
                 f,
                 "This request and attempt were already charged. Send a new `X-Attempt` number, or a new `Idempotency-Key` for new work."
@@ -140,9 +152,53 @@ pub fn reserve(
     priced: &Priced,
     binding: (&str, &str),
 ) -> Result<Hold, Refusal> {
+    reserve_inner(
+        ledger,
+        workspace,
+        request,
+        attempt,
+        request_digest,
+        priced,
+        binding,
+        None,
+    )
+}
+
+pub fn reserve_scoped(
+    ledger: &mut Ledger,
+    workspace: &str,
+    request: &str,
+    attempt: u32,
+    request_digest: &str,
+    priced: &Priced,
+    binding: (&str, &str),
+    budget: tenancy::money::budgets::Admission,
+) -> Result<Hold, Refusal> {
+    reserve_inner(
+        ledger,
+        workspace,
+        request,
+        attempt,
+        request_digest,
+        priced,
+        binding,
+        Some(budget),
+    )
+}
+
+fn reserve_inner(
+    ledger: &mut Ledger,
+    workspace: &str,
+    request: &str,
+    attempt: u32,
+    request_digest: &str,
+    priced: &Priced,
+    binding: (&str, &str),
+    budget: Option<tenancy::money::budgets::Admission>,
+) -> Result<Hold, Refusal> {
     let (model, capacity) = binding;
     let key = format!("{request}#{attempt}");
-    if ledger.hold(workspace, &key).is_some() {
+    if ledger.hold(workspace, &key).is_some() || (budget.is_some() && ledger.has_attempt(&key)) {
         return Err(Refusal::Duplicate);
     }
     if let Some(offer) = &priced.offer {
@@ -168,6 +224,14 @@ pub fn reserve(
         )));
     }
     let worst = price.quote(&priced.maximum_usage).map_err(Refusal::Price)?;
+    if let Some(budget) = &budget {
+        if let Some(blocked) = ledger
+            .check_budget(workspace, budget, worst)
+            .map_err(Refusal::BudgetUnavailable)?
+        {
+            return Err(Refusal::Budget(blocked));
+        }
+    }
     let balance = ledger
         .balance_for_price(workspace, price)
         .map_err(|cause| match classify(cause) {
@@ -190,11 +254,21 @@ pub fn reserve(
             workspace: workspace.to_string(),
             source: format!("gateway:{key}:reserve"),
             audit: request_digest.to_string(),
-            operation: Operation::Reserve {
-                attempt: key.clone(),
-                request_digest: request_digest.to_string(),
-                price: price.clone(),
-                maximum_usage: priced.maximum_usage.clone(),
+            operation: if let Some(budget) = budget {
+                Operation::ReserveScoped {
+                    attempt: key.clone(),
+                    request_digest: request_digest.to_string(),
+                    price: price.clone(),
+                    maximum_usage: priced.maximum_usage.clone(),
+                    budget,
+                }
+            } else {
+                Operation::Reserve {
+                    attempt: key.clone(),
+                    request_digest: request_digest.to_string(),
+                    price: price.clone(),
+                    maximum_usage: priced.maximum_usage.clone(),
+                }
             },
         })
         .map_err(classify)?;

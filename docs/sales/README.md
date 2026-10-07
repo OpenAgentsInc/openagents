@@ -377,8 +377,12 @@ connect the existing account roles and invitations to explicit workspace and
 payer selection. A champion can issue a private invitation, a colleague can
 accept it once, and current membership controls access after role changes or
 revocation. Switching workspaces preserves the payer on retained purchases.
-These controls establish the team entry path; budgets, funded product admission,
-admin reporting, and genuine colleague qualification remain separate gates.
+These controls establish the team entry path. The
+[native Gateway budget profile](../decision-models/service/monetary-accounting.md#hierarchical-budgets)
+enforces cumulative workspace, reviewed team, and person caps in its existing
+money journal, with scoped threshold and blocked-action alerts. Other product
+ledgers, funded product admission, admin reporting, and genuine colleague
+qualification remain separate gates.
 Record that qualification under [O8](../../NEEDS_OWNER.md#team-adoption-o8-rev-38-10845)
 before treating a synthetic team fixture as an adopted business account.
 

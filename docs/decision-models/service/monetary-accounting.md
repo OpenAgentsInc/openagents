@@ -126,6 +126,61 @@ restricted deployment credentials, real funding, and a matching typed
 result, charge, and receipt. The isolated tests establish admission and
 accounting behavior without model weights, real funds, or a host deployment.
 
+## Hierarchical budgets
+
+Set `money.hierarchical_budgets` to `true` to enforce reviewed workspace,
+team, and person caps on the native decision route. This profile requires
+accounts and supported native offers for every enabled monetary door. It does
+not span retail, plugin, or other product ledgers. Missing policy or an
+unreviewed person refuses before dispatch. Classification and durable-job
+submission explicitly refuse as `budget_route_disabled` in this profile.
+
+The current workspace owner installs a policy through authenticated
+`PUT /v1/workspaces/{workspace}/budgets`. The request carries a bounded
+`request` ID, `expected_policy` (null for first installation), and a
+`openagents.money.budgets.v1` policy: increasing integer `version`, explicit
+`currency`, `scale: 1000000`, `route: gateway-monetary-v1`, `effective_from`,
+workspace `cap` and `alert_at`, team limits, and native Accounts person IDs
+with their reviewed team and limit. Thresholds use the same millionth unit as
+the cap. The effective bound must not be in the future; the response also
+records the journal's actual `activated_at`. Roster entries must be current
+workspace members and include the owner. A policy grants no membership,
+funding, or execution authority.
+
+Caps are cumulative. Increasing the version, changing a credential, or
+restarting the process never resets usage. Every reservation pins its original
+native person, team, policy digest, and sealed membership revision. Lowering a
+cap preserves those pins and blocks new work when retained exposure exceeds
+it. A team counts its originally admitted work and the historical work of its
+current reviewed members, so moving or renaming a roster cannot restart its
+capacity. Held work, including dispatched work, and unknown work retain the
+full reservation. Verified settlement counts its net charge; only an
+authoritative release or refund restores capacity.
+
+First activation retains earlier workspace obligations. Records without
+trustworthy native person/team evidence remain unattributed and conservatively
+count against each child cap too. They are never assigned to a guessed person.
+Policy and reservation mutations share the existing money journal and writer
+lock. The Gateway rechecks the original credential and current native
+membership under the Accounts writer boundary immediately before appending
+the reservation.
+
+Authenticated `GET /v1/workspaces/{workspace}/budgets?requested=AMOUNT` reports
+remaining capacity, reserved and unknown liabilities, net settled usage,
+owner-declared threshold alerts, and the first bound that blocks the requested
+integer amount. It includes the policy digest, journal head, and observation
+time. Members see their own person, their team's aggregate, and the payer cap;
+admins and owners see the reviewed workspace roster. Alerts explain
+enforcement and cannot grant credit or release a hold. The
+[isolated fixtures](../../../crates/gateway/tests/decision_offer_budgets.rs)
+exercise the actual HTTP route and killed Gateway recovery with synthetic
+members, prices, and funds. After a killed writer, the existing native quota
+PID marker requires confirmed-dead-writer recovery before restart; the
+fixture removes only that exact waited child's marker and retains both
+journals. Monetary recovery keeps the full unknown liability. Production
+qualification remains an
+[owner step](../../../NEEDS_OWNER.md#native-team-budgets-rev-40-10847).
+
 ## Admission
 
 A call under monetary admission runs the existing sequence — authenticate,

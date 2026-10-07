@@ -2488,6 +2488,7 @@ async fn deploy_money(
         commercial: None,
         skills: None,
         money: Some(Money {
+            hierarchical_budgets: false,
             ledger: ledger.clone(),
             doors: priced,
         }),

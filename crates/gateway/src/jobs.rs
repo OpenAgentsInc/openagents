@@ -85,6 +85,19 @@ pub(crate) async fn submit(
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
+    if state
+        .config
+        .money
+        .as_ref()
+        .is_some_and(|m| m.hierarchical_budgets)
+    {
+        return job_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "budget_route_disabled",
+            "This budget profile supports synchronous native decisions. Durable jobs are disabled.",
+            None,
+        );
+    }
     let Ok(envelope) = serde_json::from_slice::<Value>(&body) else {
         return job_error(
             StatusCode::BAD_REQUEST,
@@ -476,6 +489,7 @@ async fn run(state: Arc<ServeState>, id: String) {
     let _ = write_status(&state.dir, &id, &status);
 
     let caller = Caller {
+        budget_credential: None,
         tenant: manifest["tenant"].as_str().map(str::to_string),
         key: manifest["key"].as_str().unwrap_or_default().to_string(),
         workspace: manifest["workspace"].as_str().map(str::to_string),

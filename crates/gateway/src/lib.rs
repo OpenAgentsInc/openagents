@@ -39,6 +39,7 @@ pub mod accounts;
 pub mod advertise;
 #[allow(clippy::result_large_err)]
 pub mod billing;
+mod budgets;
 pub mod classify;
 pub mod config;
 #[allow(clippy::result_large_err)]

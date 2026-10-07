@@ -585,6 +585,13 @@ impl Config {
             }
         }
         if let Some(money) = &self.money {
+            if money.hierarchical_budgets
+                && (self.accounts.is_none()
+                    || money.doors.is_empty()
+                    || money.doors.values().any(|p| p.offer.is_none()))
+            {
+                return Err("Hierarchical budgets require accounts and only supported native decision offers.".into());
+            }
             if !self.require_workspace_membership {
                 return Err(format!(
                     "{}: `money` requires `require_workspace_membership` — a charge \

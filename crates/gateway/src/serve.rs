@@ -163,10 +163,9 @@ impl ServeState {
         if config.commercial.is_some()
             || config.funding.is_some()
             || config.earnings.is_some()
-            || config
-                .money
-                .as_ref()
-                .is_some_and(|m| m.doors.values().any(|p| p.offer.is_some()))
+            || config.money.as_ref().is_some_and(|m| {
+                m.hierarchical_budgets || m.doors.values().any(|p| p.offer.is_some())
+            })
         {
             config
                 .check(std::path::Path::new("gateway.json"))
@@ -506,6 +505,14 @@ fn api_routes(state: &ServeState) -> Vec<(&'static str, MethodRouter<Arc<ServeSt
     ];
     if state.config.money.is_some() {
         routes.push(("/v1/balance", get(balance)));
+        if state
+            .config
+            .money
+            .as_ref()
+            .is_some_and(|m| m.hierarchical_budgets)
+        {
+            routes.extend(crate::budgets::routes());
+        }
     }
     if state.config.accounts.is_some() {
         routes.extend(crate::accounts::routes());
@@ -772,6 +779,7 @@ fn classification_card(state: &ServeState, door: &str, binding: &tenancy::Bindin
 
 /// Who the call is, once authentication has run.
 pub(crate) struct Caller {
+    pub(crate) budget_credential: Option<crate::budgets::Credential>,
     /// The tenant the key resolved to, or `None` for anonymous.
     pub(crate) tenant: Option<String>,
     /// The credential id the call authenticated under — a reference,
@@ -812,6 +820,7 @@ pub(crate) fn authenticate(
         return Ok((
             registry,
             Caller {
+                budget_credential: None,
                 tenant: None,
                 key: "anonymous".to_string(),
                 workspace: None,
@@ -845,6 +854,7 @@ pub(crate) fn authenticate(
             )
         })?;
     let mut workspace = None;
+    let mut budget_credential = None;
     if state.config.require_workspace_membership {
         let mut values = headers.get_all("x-workspace-id").iter();
         let named = values
@@ -872,7 +882,7 @@ pub(crate) fn authenticate(
                 "The service can't check workspace membership right now. Try again later.".into(),
             )
         })?;
-        accounts
+        let member = accounts
             .authenticate_key(registry.manifest(), named, token)
             .map_err(|cause| match cause {
                 tenancy::accounts::Refusal::Store(_) => (
@@ -892,11 +902,23 @@ pub(crate) fn authenticate(
                     "Your API key doesn't belong to an active member of this workspace.".into(),
                 ),
             })?;
+        if state
+            .config
+            .money
+            .as_ref()
+            .is_some_and(|m| m.hierarchical_budgets)
+        {
+            budget_credential = Some(crate::budgets::Credential {
+                token: token.into(),
+                person: member.account,
+            });
+        }
         workspace = Some(named.to_string());
     }
     Ok((
         registry,
         Caller {
+            budget_credential,
             tenant: Some(authenticated.tenant),
             key: authenticated.key_id,
             workspace,
@@ -989,6 +1011,7 @@ fn authenticate_session(
             Ok((
                 registry,
                 Caller {
+                    budget_credential: None,
                     tenant: None,
                     key: "anonymous".to_string(),
                     workspace: None,
@@ -1055,6 +1078,15 @@ fn authenticate_session(
             Ok((
                 registry,
                 Caller {
+                    budget_credential: state
+                        .config
+                        .money
+                        .as_ref()
+                        .is_some_and(|m| m.hierarchical_budgets)
+                        .then(|| crate::budgets::Credential {
+                            token: token.into(),
+                            person: session.user.as_str().into(),
+                        }),
                     tenant: Some(record.tenant),
                     key: format!("session:{}", &session.id.as_str()[..16]),
                     workspace: Some(workspace.to_string()),
@@ -1070,6 +1102,8 @@ pub(crate) type Context = Box<ReceiptContext>;
 
 #[derive(Clone, Default)]
 pub(crate) struct ReceiptContext {
+    /// Scoped evidence for the bound that refused this attempted reservation.
+    pub(crate) budget_alert: Option<Value>,
     /// The credential reference — the key id, or absent for anonymous.
     pub(crate) tenant_ref: Option<String>,
     /// The workspace the membership check admitted, when one did.
@@ -1170,6 +1204,18 @@ pub(crate) async fn classify(
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
+    if state
+        .config
+        .money
+        .as_ref()
+        .is_some_and(|m| m.hierarchical_budgets)
+    {
+        return gateway_error(
+            503,
+            "budget_route_disabled",
+            "This budget profile supports synchronous native decisions. Classification is disabled.",
+        );
+    }
     owned_request(state, headers, body, true).await
 }
 
@@ -1271,6 +1317,9 @@ async fn conclude(
             });
             if let Some(settlement) = ctx.settlement {
                 body["settlement"] = json!(settlement);
+            }
+            if let Some(alert) = &ctx.budget_alert {
+                body["budget_alert"] = alert.clone();
             }
             (
                 status,
@@ -1641,9 +1690,9 @@ async fn verified(
 
 /// Step 4b of every route, only under monetary admission: the durable
 /// worst-case spend reservation against the caller's workspace, taken
-/// before any backend dispatch. A refusal here releases the call's
-/// quota reservation — the hold was fresh, because a replayed
-/// reservation returns standing rather than refusing.
+/// before any backend dispatch. A refusal releases only a fresh quota
+/// reservation. Existing attempts retain their original quota and monetary
+/// obligations even when current authority or policy refuses the retry.
 async fn money_hold(
     state: &ServeState,
     caller: &Caller,
@@ -1679,6 +1728,7 @@ async fn money_hold(
     };
     let ledger = state.money.as_ref().expect("money config opens a ledger");
     let mut ledger = ledger.lock().await;
+    let original_exists = ledger.has_attempt(&format!("{}#{}", naming.request, naming.attempt));
     let reservation = (|| {
         if ledger
             .hold(
@@ -1692,29 +1742,73 @@ async fn money_hold(
                 .check_binding(&admission.binding)
                 .map_err(money::Refusal::Price)?;
         }
-        money::reserve(
-            &mut ledger,
-            &workspace,
-            naming.request,
-            naming.attempt,
-            naming.request_digest,
-            priced,
-            (
-                &admission.binding.artifact.model,
-                lane_name(admission.binding.lane),
-            ),
-        )
+        let binding = (
+            &admission.binding.artifact.model[..],
+            lane_name(admission.binding.lane),
+        );
+        if config.hierarchical_budgets {
+            let credential = caller.budget_credential.as_ref().ok_or_else(|| {
+                money::Refusal::Authorization(
+                    "A current native member credential is required for budgeted spending.".into(),
+                )
+            })?;
+            crate::budgets::with_current(state, credential, &workspace, Some(door), |actor, _| {
+                let budget = ledger
+                    .budget_admission(&workspace, &actor.person, &actor.revision, actor.epoch)
+                    .map_err(money::Refusal::BudgetUnavailable);
+                Ok(match budget {
+                    Ok(budget) => money::reserve_scoped(
+                        &mut ledger,
+                        &workspace,
+                        naming.request,
+                        naming.attempt,
+                        naming.request_digest,
+                        priced,
+                        binding,
+                        budget,
+                    ),
+                    Err(e) => Err(e),
+                })
+            })
+            .map_err(money::Refusal::Authorization)?
+        } else {
+            money::reserve(
+                &mut ledger,
+                &workspace,
+                naming.request,
+                naming.attempt,
+                naming.request_digest,
+                priced,
+                (
+                    &admission.binding.artifact.model,
+                    lane_name(admission.binding.lane),
+                ),
+            )
+        }
     })();
     match reservation {
         Ok(hold) => Ok(Some(hold)),
         Err(refusal) => {
+            let mut refused_ctx = ctx.clone();
+            if let money::Refusal::Budget(blocked) = &refusal {
+                refused_ctx.budget_alert = Some(
+                    json!({"bound": blocked, "ledger_head": ledger.head(), "as_of": unix_now()}),
+                );
+            }
             drop(ledger);
-            // A duplicate belongs to the original execution. Preserve its
-            // quota reservation; other refusals release the fresh reservation.
-            if !matches!(refusal, money::Refusal::Duplicate) {
+            // Any existing attempt belongs to its original execution. Preserve
+            // its quota; only a fresh refused reservation can be released.
+            if !original_exists && !matches!(refusal, money::Refusal::Duplicate) {
                 state.release(naming.request, naming.attempt).await;
             }
             let (status, code) = match &refusal {
+                money::Refusal::Budget(_) => (StatusCode::TOO_MANY_REQUESTS, "budget_exhausted"),
+                money::Refusal::BudgetUnavailable(_) => {
+                    (StatusCode::SERVICE_UNAVAILABLE, "budget_unavailable")
+                }
+                money::Refusal::Authorization(_) => {
+                    (StatusCode::FORBIDDEN, "budget_authority_changed")
+                }
                 money::Refusal::Duplicate => (StatusCode::CONFLICT, "idempotency_conflict"),
                 money::Refusal::Funds(_) => (StatusCode::PAYMENT_REQUIRED, "insufficient_funds"),
                 money::Refusal::Price(_) => (StatusCode::SERVICE_UNAVAILABLE, "price_invalid"),
@@ -1727,7 +1821,7 @@ async fn money_hold(
                 code,
                 message: refusal.to_string(),
                 outcome: Outcome::Refused,
-                ctx: ctx.clone(),
+                ctx: refused_ctx,
             })
         }
     }

@@ -328,6 +328,7 @@ async fn installed_team_flow_joins_once_switches_payers_and_recovers_only_curren
     }
     drop(ledger);
     d.config.money = Some(gateway::money::Money {
+        hierarchical_budgets: false,
         ledger: ledger_path.clone(),
         doors: [(
             "acme-kev".into(),
