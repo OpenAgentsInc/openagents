@@ -35,6 +35,8 @@ pub enum Outcome {
     Deleted,
     /// A worktree removed with `git worktree remove`.
     Removed,
+    /// kache's own collector ran on its store.
+    Collected,
     /// Moved to the background trash (a confirmed cache), emptied after
     /// 24 hours; `undo` puts it back.
     Trashed,
@@ -266,7 +268,12 @@ fn execute_after(
     }
     let freed_sum: u64 = actions
         .iter()
-        .filter(|action| matches!(action.outcome, Outcome::Deleted | Outcome::Removed))
+        .filter(|action| {
+            matches!(
+                action.outcome,
+                Outcome::Deleted | Outcome::Removed | Outcome::Collected
+            )
+        })
         .map(|action| action.bytes)
         .sum();
     let mut observation = Vec::new();
@@ -349,8 +356,13 @@ fn act(env: &Env<'_>, rule: &Rule, item: &Item, run: &str) -> Action {
         undo: None,
         trashed: None,
     };
+    if item.class == Class::Kache {
+        collect(env, &mut action);
+        return action;
+    }
     let touched = match item.class {
         Class::Worktrees | Class::Trash => paths::touched_worktree(&item.path),
+        Class::ClaudeWorktrees => paths::touched_linked(&item.path),
         Class::Judged => plan::newest(&item.path),
         _ => paths::touched(&item.path),
     };
@@ -425,6 +437,32 @@ fn act(env: &Env<'_>, rule: &Rule, item: &Item, run: &str) -> Action {
     action
 }
 
+/// Run kache's own collector for a planned kache item. Nothing under the
+/// store is deleted here; kache decides what to drop.
+fn collect(env: &Env<'_>, action: &mut Action) {
+    let Some(kache) = env.kache else {
+        action.reason = "kache is not set up here".into();
+        return;
+    };
+    match kache.reclaim() {
+        Ok(report) if report.collected => {
+            action.outcome = Outcome::Collected;
+            action.bytes = report.disk_bytes_reclaimed;
+            action.reason = format!(
+                "kache's collector dropped {} entries; the store is {} of its {} cap",
+                report.entries_dropped,
+                bytes(report.after.store_bytes),
+                bytes(report.after.store_limit_bytes)
+            );
+        }
+        Ok(_) => action.reason = "another kache collector held the lock".into(),
+        Err(why) => {
+            action.outcome = Outcome::Failed;
+            action.reason = why;
+        }
+    }
+}
+
 /// Where a confirmed cache goes in the trash: `trash/<run>/<n>-<name>`.
 fn trash_path(layout: &Layout, run: &str, path: &Path) -> PathBuf {
     let name = path
@@ -456,7 +494,7 @@ fn notice(
         .filter(|action| {
             matches!(
                 action.outcome,
-                Outcome::Deleted | Outcome::Removed | Outcome::Trashed
+                Outcome::Deleted | Outcome::Removed | Outcome::Trashed | Outcome::Collected
             )
         })
         .collect();

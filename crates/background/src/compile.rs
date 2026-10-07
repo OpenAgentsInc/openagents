@@ -189,6 +189,14 @@ pub fn class_option(class: Class) -> (&'static str, &'static str) {
         ),
         Class::Trash => ("trash", "The background trash."),
         Class::Judged => ("judged", "Folders the person confirmed as caches."),
+        Class::ClaudeWorktrees => (
+            "claude_worktrees",
+            "Claude Code worktrees that are clean, pushed, and idle.",
+        ),
+        Class::Kache => (
+            "kache",
+            "The kache compile cache, through kache's own collector.",
+        ),
     }
 }
 
@@ -606,7 +614,7 @@ fn keep_free(rule: &mut Rule, level: Level) {
     if level.bytes > 0 {
         let margin = (level.bytes / 5).max(10 * GB);
         rule.goal.stop = Level {
-            bytes: rule.goal.stop.bytes.max(level.bytes + margin),
+            bytes: level.bytes + margin,
             percent: 0,
         };
         rule.goal.emergency = Level {

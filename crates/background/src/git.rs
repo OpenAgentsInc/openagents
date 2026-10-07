@@ -29,6 +29,20 @@ fn git(dir: &Path, args: &[&str]) -> Result<String, String> {
     }
 }
 
+/// Why the linked worktree at `path` is locked (`git worktree lock`, which
+/// Claude Code takes for a running agent), or `None` when it is not.
+#[must_use]
+pub fn locked(path: &Path) -> Option<String> {
+    let lock = crate::paths::git_dir(path)?.join("locked");
+    let reason = std::fs::read_to_string(lock).ok()?;
+    let reason = reason.trim();
+    Some(if reason.is_empty() {
+        "no reason given".into()
+    } else {
+        reason.chars().take(120).collect()
+    })
+}
+
 /// Whether Git ignores `path` inside the checkout `top`.
 #[must_use]
 pub fn ignored(top: &Path, path: &Path) -> bool {

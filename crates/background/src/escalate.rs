@@ -83,7 +83,7 @@ pub fn briefing(env: &Env<'_>, rule: &Rule, report: &Report, judgments: &[Judgme
             .filter(|a| {
                 matches!(
                     a.outcome,
-                    Outcome::Deleted | Outcome::Removed | Outcome::Trashed
+                    Outcome::Deleted | Outcome::Removed | Outcome::Trashed | Outcome::Collected
                 )
             })
             .map(|a| {

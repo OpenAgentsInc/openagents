@@ -62,8 +62,10 @@ The command reads `kache stats --json`, waits while a live process holds
 `gc.lock` (up to 10 tries, 30 seconds apart), then runs `kache gc --json` and
 reports the store's size before and after and the bytes returned. It never
 deletes anything under the store itself. Callers in Rust use
-`background::kache::Kache::reclaim`, which returns the same report; the disk
-cleanup monitor (#10759) schedules it.
+`background::kache::Kache::reclaim`, which returns the same report. The disk
+cleanup monitor's class 9 (#10759) calls it, with two tries a minute
+apart, when the store is over its cap and free space is below the rule's
+start level; a dry run lists the store with its estimated reclaim.
 
 What the store can't free, target directories hold. `kache targets` lists
 each one with what deleting it frees, and the disk cleanup monitor removes

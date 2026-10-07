@@ -25,18 +25,19 @@
   ],
   "goal": {
     "start": {
-      "bytes": 30000000000,
-      "percent": 5
+      "bytes": 200000000000,
+      "percent": 15
     },
     "stop": {
-      "bytes": 60000000000,
-      "percent": 15
+      "bytes": 300000000000,
+      "percent": 20
     },
     "emergency": {
       "bytes": 10000000000,
       "percent": 1
     },
-    "max_freed": 100000000000
+    "max_freed": 100000000000,
+    "pressure_secs": 60
   },
   "actions": [
     {
@@ -52,7 +53,14 @@
     {
       "kind": "delete_caches",
       "classes": [
-        "gate_pools"
+        "claude_worktrees"
+      ]
+    },
+    {
+      "kind": "delete_caches",
+      "classes": [
+        "gate_pools",
+        "kache"
       ]
     },
     {
@@ -70,10 +78,16 @@
       "~/work/*"
     ],
     "idle_days": 3,
+    "agent_idle_hours": 6,
     "checkout_days": 7,
     "keep": 0,
     "orphan_worktree_days": 7,
-    "gate_idle_hours": 1
+    "gate_idle_hours": 1,
+    "claude_checkouts": [
+      "~/code/*",
+      "~/work/*"
+    ],
+    "claude_worktree_hours": 2
   },
   "safety": {
     "allow": [
@@ -82,7 +96,8 @@
       "~/.openagents/worktrees",
       "~/.openagents/gate",
       "~/.openagents/background/trash",
-      "~/work"
+      "~/work",
+      "~/code"
     ],
     "deny": [],
     "report": [
@@ -99,7 +114,9 @@
       "worktrees",
       "gate_pools",
       "incremental",
-      "trash"
+      "trash",
+      "claude_worktrees",
+      "kache"
     ],
     "tasks": true,
     "notify": true

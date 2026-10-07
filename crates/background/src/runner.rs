@@ -106,6 +106,14 @@ struct Runner {
     next: BTreeMap<String, u64>,
 }
 
+/// kache's collector as a run reaches it: two attempts 30 seconds apart,
+/// so a busy collector holds a run up for at most a minute.
+static RUNNER_KACHE: std::sync::LazyLock<crate::kache::Kache> =
+    std::sync::LazyLock::new(|| crate::kache::Kache {
+        attempts: 2,
+        ..crate::kache::Kache::default()
+    });
+
 /// How often the runner looks for ended tasks, watched files, and daily
 /// times.
 const POLL: Duration = Duration::from_secs(30);
@@ -191,7 +199,7 @@ impl Runner {
                 .filter(|rule| self.next.get(&rule.id).is_some_and(|at| now >= *at))
                 .collect();
             for rule in due {
-                if let Some(every) = rule.interval() {
+                if let Some(every) = self.every(&rule) {
                     self.next
                         .insert(rule.id.clone(), engine::next_interval(&rule.id, every, now));
                 }
@@ -209,7 +217,7 @@ impl Runner {
                 .any(|rule| rule.id == *id && rule.interval().is_some())
         });
         for rule in rules {
-            if let Some(every) = rule.interval() {
+            if let Some(every) = self.every(rule) {
                 let at = self
                     .next
                     .entry(rule.id.clone())
@@ -218,6 +226,18 @@ impl Runner {
                 *at = (*at).min(now + every + every / 10);
             }
         }
+    }
+
+    /// How often `rule` is checked now: every minute (the goal's pressure
+    /// interval) while its last check found free space below the start
+    /// level, else its own interval.
+    fn every(&self, rule: &Rule) -> Option<u64> {
+        let state = State::load(&self.layout);
+        let seen = state.rules.get(&rule.id);
+        rule.interval_at(
+            seen.and_then(|state| state.free),
+            seen.and_then(|state| state.total),
+        )
     }
 
     /// Say who runs here and which rules, for the CLI to read (#10349).
@@ -344,6 +364,7 @@ impl Runner {
             volumes: &Statvfs,
             processes: &System,
             now: paths::now(),
+            kache: Some(&RUNNER_KACHE),
         }
     }
 
@@ -533,11 +554,15 @@ pub fn check(env: &Env<'_>, rule: &Rule, cause: Cause) -> Option<Result<Report, 
         .get(&rule.id)
         .cloned()
         .unwrap_or_default();
+    let (free, total) = (
+        fullest.map(|volume| volume.space.free),
+        fullest.map(|volume| volume.space.total),
+    );
     State::update(env.layout, &rule.id, |state| {
         state.last_check = Some(now);
-        state.next_check = rule.interval().map(|every| now + every);
-        state.free = fullest.map(|volume| volume.space.free);
-        state.total = fullest.map(|volume| volume.space.total);
+        state.next_check = rule.interval_at(free, total).map(|every| now + every);
+        state.free = free;
+        state.total = total;
     });
     let spaces: Vec<(u64, u64)> = volumes
         .iter()

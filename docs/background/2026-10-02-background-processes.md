@@ -216,16 +216,19 @@ The first built-in rule, `disk`. Since #10165 it is off on a new host: the same 
 | Setting | Default | On the owner's 1.8 TB disk |
 | --- | --- | --- |
 | Volumes | Each distinct volume holding `~/.openagents`, a Coder workspace, or an agent target directory, by device ID. | One volume. |
-| Check | Every 5 minutes, on every task end, and at host start. A check is one `statvfs` call per volume and costs nothing. | |
-| Start cleaning when | Free space is below `max(30 GB, 5% of the volume)`. | Below 90 GB. |
-| Stop cleaning when | Free space reaches `max(60 GB, 15% of the volume)`, or this run has freed 100 GB, whichever comes first. | At 270 GB free, or after 100 GB. |
-| Emergency when | Free space is below `max(10 GB, 1% of the volume)`. Every class runs, the trash empties, and the notification is immediate. | Below 18 GB. |
+| Check | Every 5 minutes, and every minute while the last check found free space below the start level (`goal.pressure_secs`, 60); on every task end; and at host start. A check is one `statvfs` call per volume and costs nothing. | |
+| Start cleaning when | Free space is below `max(200 GB, 15% of the volume)`. | Below 299 GB. |
+| Stop cleaning when | Free space reaches `max(300 GB, 20% of the volume)`, or this run has freed 100 GB, whichever comes first. | At 399 GB free, or after 100 GB. |
+| Emergency when | Free space is below `max(10 GB, 1% of the volume)`. Every class runs, the trash empties, and the notification is immediate. | Below 20 GB. |
 | Cooldown | 10 minutes after a run, unless free space falls into emergency. | |
 | Free space measure | `f_bavail`, the space available to the user. | |
 
 The monitor measures sizes as allocated blocks (`st_blocks × 512`), not file
 lengths, and caches directory sizes between runs so a check does not walk
-the disk. It reports freed space two ways: the sum of what it deleted and
+the disk. A file hard-linked twice inside a folder counts once, and so does
+an APFS clone family: on macOS, a file that shares blocks (its private size,
+`ATTR_CMNEXT_PRIVATESIZE`, is below its allocation) counts in full the first
+time its clone ID is seen and only its private bytes after that. It reports freed space two ways: the sum of what it deleted and
 the change in free space. On macOS, when the change is much smaller than the
 sum, local Time Machine snapshots probably hold the space; the monitor says
 so and never deletes snapshots.
@@ -238,11 +241,23 @@ a class, it takes the least recently used candidate first.
 | # | Class | Paths | Qualifies when | In use when |
 | --- | --- | --- | --- | --- |
 | 1 | Ended tasks' target directories | `~/.openagents/targets/<project>-<task>-<hash>` (legacy per-task), and any slot past the configured slot count | The task store lists the task as ended (`Finished` or `Cancelled`, checks not running, group clear: the `ended` test in `crates/coder/src/task/targets.rs`). | A live task maps to the directory, or its lock is held. |
-| 2 | Stale target directories | Idle slots `~/.openagents/targets/*-slot-N`; `~/.openagents/coder-one/target`; agent target directories (`~/work/openagents-target-agent*`, configurable); a checkout's `target/` with `CACHEDIR.TAG` | Untouched for 3 days (slots and agent directories) or 7 days (a checkout's `target/`). "Touched" is the newest of the lock file's mtime, `.cargo-lock`'s mtime, and the `.fingerprint` directory's mtime. | `.cargo-lock` or the slot lock is held, or a process has a working directory or open file inside. |
+| 2 | Stale target directories | Idle slots `~/.openagents/targets/*-slot-N`; `~/.openagents/coder-one/target`; agent target directories (`~/work/openagents-target-agent*`, configurable); a checkout's `target/` with `CACHEDIR.TAG` | Untouched for 6 hours (agent directories, `classes.agent_idle_hours`), 3 days (slots and Coder One, `classes.idle_days`), or 7 days (a checkout's `target/`). "Touched" is the newest of the lock file's mtime, `.cargo-lock`'s mtime, and the `.fingerprint` directory's mtime. | `.cargo-lock` or the slot lock is held, or a process has a working directory or open file inside. |
 | 3 | Ended tasks' worktrees | `~/.openagents/worktrees/*` | The task is ended, `git status --porcelain` is empty, it holds no ignored file outside a disposable cache (Safety 4), and no commit is missing from every remote. A worktree with no task record qualifies only when it is also older than 7 days. | A process has a working directory or open file inside, or a task names it. |
 | 4 | Gate pools | Build directories under `~/.openagents/gate/` that carry `CACHEDIR.TAG` | No gate run holds the gate's lock and none ran in the last hour. Checkouts in the gate pool follow class 3's rules. | The gate lock is held, or a gate or `verify-rust` process runs. |
 | 5 | Incremental caches of live target directories | `debug/incremental` and `release/incremental` inside slots and agent target directories | Its Cargo lock is free. Compiled dependencies stay, so the next build is warm. | `.cargo-lock` is held. |
 | 6 | Background trash (emergency only) | `~/.openagents/background/trash/*` | Oldest first. | Never. |
+| 8 | Claude Code worktrees | `<checkout>/.claude/worktrees/*` in each checkout `classes.claude_checkouts` names (`~/code/*`, `~/work/*`) | Class 3's Git checks (clean, no ignored file outside a disposable cache, every commit on some remote, no stash made on it), it is not locked (Claude Code runs `git worktree lock` for a running agent), and its Git state (`HEAD`, index, and `HEAD` log) has not changed for 2 hours (`classes.claude_worktree_hours`). `git worktree remove` removes it; `undo` recreates it on its branch. | A process has a working directory or open file inside, or a task names it. |
+| 9 | The kache store | kache's store (`kache stats --json` names it) | The store is over its cap. The planned size is the overage times the share of the store no target directory also holds. The run calls `background::kache::Kache::reclaim`, which runs `kache gc`; nothing under the store is deleted here. | kache's collector holds `gc.lock`. |
+
+The default rule runs the classes in this order: 1 and 2, 3, 8, 4 and 9,
+5, then 6. Classes 8 and 9 came from the low-disk episodes of 2026-10-04 and
+2026-10-05 (#10759): the runner was live through both, but with only class 5
+eligible it freed less each run, down to nothing, while Claude Code
+worktrees, kache, and agent target directories younger than three days held
+the space. A rule file saved before these settings existed gets the 6-hour
+and 2-hour defaults; it gains classes 8 and 9, the new levels, and the
+one-minute check only by naming them, as the Disk cleanup plugin's 0.2.0
+rule does.
 
 [#10148](https://github.com/OpenAgentsInc/openagents/issues/10148) and this
 monitor work together. Slot reuse stops the per-task growth at its source,

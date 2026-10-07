@@ -246,6 +246,10 @@ pub struct Goal {
     pub emergency: Level,
     /// Stop after freeing this much in one run.
     pub max_freed: u64,
+    /// While the last check found a volume below the start level, check
+    /// this often instead of the rule's interval (seconds; at least 60).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pressure_secs: Option<u64>,
 }
 
 /// The candidate classes, in the order the spec lists them.
@@ -270,6 +274,12 @@ pub enum Class {
     /// 7: folders the person confirmed as caches after a judgment. They
     /// move to the trash, never straight to deletion.
     Judged,
+    /// 8: Claude Code worktrees (`<checkout>/.claude/worktrees/*`) that
+    /// are clean, pushed, unlocked, and idle, under the class 3 checks.
+    ClaudeWorktrees,
+    /// 9: the kache compile cache, reclaimed only through kache's own
+    /// collector; no file under its store is ever deleted here.
+    Kache,
 }
 
 impl Class {
@@ -280,6 +290,19 @@ impl Class {
         Class::GatePools,
         Class::Incremental,
         Class::Trash,
+    ];
+
+    /// Every class a rule may delete from: [`Class::ALL`] (the classes
+    /// conversation names) with Claude Code worktrees and the kache store.
+    pub const DELETABLE: [Class; 8] = [
+        Class::EndedTargets,
+        Class::StaleTargets,
+        Class::Worktrees,
+        Class::GatePools,
+        Class::Incremental,
+        Class::Trash,
+        Class::ClaudeWorktrees,
+        Class::Kache,
     ];
 
     /// The class's number in the spec.
@@ -293,6 +316,8 @@ impl Class {
             Class::Incremental => 5,
             Class::Trash => 6,
             Class::Judged => 7,
+            Class::ClaudeWorktrees => 8,
+            Class::Kache => 9,
         }
     }
 
@@ -315,6 +340,9 @@ impl Class {
             Class::Trash => "trash folders",
             Class::Judged if one => "confirmed cache",
             Class::Judged => "confirmed caches",
+            Class::ClaudeWorktrees if one => "finished Claude Code worktree",
+            Class::ClaudeWorktrees => "finished Claude Code worktrees",
+            Class::Kache => "kache collection",
         }
     }
 }
@@ -416,9 +444,12 @@ pub struct Classes {
     /// Folders whose Git checkouts' `target/` are candidates
     /// (`~/work/*`).
     pub checkouts: Vec<String>,
-    /// Slots, Coder One's target, and agent directories untouched this
-    /// long are stale.
+    /// Slots and Coder One's target untouched this many days are stale.
     pub idle_days: u64,
+    /// Agent target directories untouched this many hours are stale. A
+    /// rule file without it gets the default, [`AGENT_IDLE_HOURS`].
+    #[serde(default = "agent_idle_hours")]
+    pub agent_idle_hours: u64,
     /// A checkout's `target/` untouched this long is stale.
     pub checkout_days: u64,
     /// The most recently used agent target directories always kept.
@@ -437,6 +468,30 @@ pub struct Classes {
     /// Folders confirmed as caches (class 7).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub judged: Vec<Judged>,
+    /// Checkouts whose Claude Code worktrees (`.claude/worktrees/*`) are
+    /// class 8 candidates. A pattern may end its last component with `*`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub claude_checkouts: Vec<String>,
+    /// A Claude Code worktree whose Git state changed within this many
+    /// hours stays. A rule file without it gets the default,
+    /// [`CLAUDE_WORKTREE_HOURS`].
+    #[serde(default = "claude_worktree_hours")]
+    pub claude_worktree_hours: u64,
+}
+
+/// The default staleness of an agent target directory, in hours.
+pub const AGENT_IDLE_HOURS: u64 = 6;
+
+/// The default idle time, in hours, before a Claude Code worktree is a
+/// candidate.
+pub const CLAUDE_WORKTREE_HOURS: u64 = 2;
+
+fn agent_idle_hours() -> u64 {
+    AGENT_IDLE_HOURS
+}
+
+fn claude_worktree_hours() -> u64 {
+    CLAUDE_WORKTREE_HOURS
 }
 
 #[allow(clippy::trivially_copy_pass_by_ref)]
@@ -476,18 +531,19 @@ pub fn disk() -> Rule {
         conditions: Vec::new(),
         goal: Goal {
             start: Level {
-                bytes: 30 * GB,
-                percent: 5,
+                bytes: 200 * GB,
+                percent: 15,
             },
             stop: Level {
-                bytes: 60 * GB,
-                percent: 15,
+                bytes: 300 * GB,
+                percent: 20,
             },
             emergency: Level {
                 bytes: 10 * GB,
                 percent: 1,
             },
             max_freed: 100 * GB,
+            pressure_secs: Some(60),
         },
         actions: vec![
             Action::DeleteCaches {
@@ -495,7 +551,10 @@ pub fn disk() -> Rule {
             },
             Action::PruneWorktrees,
             Action::DeleteCaches {
-                classes: vec![Class::GatePools],
+                classes: vec![Class::ClaudeWorktrees],
+            },
+            Action::DeleteCaches {
+                classes: vec![Class::GatePools, Class::Kache],
             },
             Action::CargoCleanPartial,
             Action::EmptyTrash,
@@ -504,6 +563,7 @@ pub fn disk() -> Rule {
             agent_targets: vec!["~/work/openagents-target-agent*".into()],
             checkouts: vec!["~/work/*".into()],
             idle_days: 3,
+            agent_idle_hours: AGENT_IDLE_HOURS,
             checkout_days: 7,
             keep: 0,
             orphan_worktree_days: 7,
@@ -511,6 +571,8 @@ pub fn disk() -> Rule {
             report_only: Vec::new(),
             worktree_days: 0,
             judged: Vec::new(),
+            claude_checkouts: vec!["~/code/*".into(), "~/work/*".into()],
+            claude_worktree_hours: CLAUDE_WORKTREE_HOURS,
         },
         safety: Safety {
             allow: vec![
@@ -520,6 +582,7 @@ pub fn disk() -> Rule {
                 "~/.openagents/gate".into(),
                 "~/.openagents/background/trash".into(),
                 "~/work".into(),
+                "~/code".into(),
             ],
             deny: Vec::new(),
             report: vec![
@@ -586,6 +649,22 @@ impl Rule {
         })
     }
 
+    /// The check interval given the last observation of the fullest
+    /// volume (`free` of `total`): the goal's pressure interval while free
+    /// space is below the start level, else [`Rule::interval`].
+    #[must_use]
+    pub fn interval_at(&self, free: Option<u64>, total: Option<u64>) -> Option<u64> {
+        let every = self.interval()?;
+        Some(match (free, total, self.goal.pressure_secs) {
+            (Some(free), Some(total), Some(pressure))
+                if self.cleans() && free < self.goal.start.of(total) =>
+            {
+                every.min(pressure)
+            }
+            _ => every,
+        })
+    }
+
     #[must_use]
     pub fn has(&self, wanted: &Trigger) -> bool {
         self.triggers.iter().any(|trigger| trigger == wanted)
@@ -648,8 +727,13 @@ impl Rule {
         {
             return Err("a percent must be at most 90".into());
         }
-        if self.interval().is_some_and(|every| every < 60) {
+        if self.interval().is_some_and(|every| every < 60)
+            || self.goal.pressure_secs.is_some_and(|every| every < 60)
+        {
             return Err("checks must be at least a minute apart".into());
+        }
+        if self.classes.agent_idle_hours == 0 {
+            return Err("an agent build is stale after at least an hour".into());
         }
         for root in &self.safety.allow {
             if !(root.starts_with("~/") || root.starts_with('/')) || root.contains("..") {
@@ -868,15 +952,15 @@ mod tests {
     #[test]
     fn thresholds_on_small_and_large_volumes() {
         let goal = disk().goal;
-        // 1.8 TB: the percentages win.
-        let big = 1_800 * GB;
-        assert_eq!(goal.start.of(big), 90 * GB);
-        assert_eq!(goal.stop.of(big), 270 * GB);
-        assert_eq!(goal.emergency.of(big), 18 * GB);
-        // 256 GB: the floors win.
-        let small = 256 * GB;
-        assert_eq!(goal.start.of(small), 30 * GB);
-        assert_eq!(goal.stop.of(small), 60 * GB);
+        // 2 TB: the percentages win.
+        let big = 2_000 * GB;
+        assert_eq!(goal.start.of(big), 300 * GB);
+        assert_eq!(goal.stop.of(big), 400 * GB);
+        assert_eq!(goal.emergency.of(big), 20 * GB);
+        // 1 TB: the floors win.
+        let small = 1_000 * GB;
+        assert_eq!(goal.start.of(small), 200 * GB);
+        assert_eq!(goal.stop.of(small), 300 * GB);
         assert_eq!(goal.emergency.of(small), 10 * GB);
     }
 

@@ -2,9 +2,10 @@
 
 This local plugin uses the host's background cleaner, not a shell script or
 an independent deletion process. Installation leaves it off. A running host
-checks enabled rules every 5 minutes, when a task ends, and at host start.
+checks enabled rules every 5 minutes (every minute while free space is below
+the start level), when a task ends, and at host start.
 
-The rule starts below `max(30 GB, 5%)`, stops at `max(60 GB, 15%)` or after
+The rule starts below `max(200 GB, 15%)`, stops at `max(300 GB, 20%)` or after
 freeing 100 GB, and treats space below `max(10 GB, 1%)` as an emergency.
 GB means 1,000,000,000 bytes. The host applies a 10-minute cooldown; an
 emergency bypasses it.
@@ -46,15 +47,27 @@ with `openagents background pause disk` to avoid two cleanup policies.
 
 The host permits only ended tasks' build folders, stale build folders,
 clean and pushed linked worktrees of ended tasks or worktrees with no task
-record that have been unused for at least 7 days, idle gate builds, incremental
-caches, and background trash in an emergency. Plugin worktrees without an
-ended task record follow the built-in monitor’s 7-day policy.
+record that have been unused for at least 7 days, clean, pushed, and unlocked
+Claude Code worktrees idle for 2 hours, idle gate builds, a kache collection
+(through kache's own collector), incremental caches, and background trash in
+an emergency. Plugin worktrees without an ended task record follow the
+built-in monitor’s 7-day policy. Agent target directories are stale after 6
+hours.
+
+Version 0.2.0 added Claude Code worktrees, kache, the higher levels, and the
+one-minute check under pressure. A rule you resumed or edited is saved in
+`~/.openagents/background/rules/disk-cleanup.json`, and that file wins over
+the package, so it keeps 0.1.0's classes and levels; only the 6-hour agent
+staleness applies to it without changes. To move it to 0.2.0, install the
+plugin again from the repository root, remove that file, preview with
+`openagents background run disk-cleanup --dry-run`, and run
+`openagents background resume disk-cleanup`.
 
 The host checks task activity, locks, open files, working directories, Git
 status, remote commit coverage, symlinks, volume boundaries, and its protected
 state paths. Unknown or unverifiable safety evidence keeps the candidate.
-The allow roots are not permission to delete arbitrary files under `~/work`.
-Source checkouts and unsaved or unpushed work stay protected.
+The allow roots are not permission to delete arbitrary files under `~/work`
+or `~/code`. Source checkouts and unsaved or unpushed work stay protected.
 
 Inspect the audit log and restore removed worktrees:
 

@@ -207,7 +207,9 @@ pub fn log_line(record: &Record) -> String {
         .filter(|action| {
             matches!(
                 action.outcome,
-                crate::run::Outcome::Deleted | crate::run::Outcome::Removed
+                crate::run::Outcome::Deleted
+                    | crate::run::Outcome::Removed
+                    | crate::run::Outcome::Collected
             )
         })
         .count();
@@ -240,7 +242,9 @@ pub fn stats(records: &[Record]) -> Vec<(String, u64)> {
         for action in &record.actions {
             if matches!(
                 action.outcome,
-                crate::run::Outcome::Deleted | crate::run::Outcome::Removed
+                crate::run::Outcome::Deleted
+                    | crate::run::Outcome::Removed
+                    | crate::run::Outcome::Collected
             ) {
                 *totals
                     .entry(format!(

@@ -71,6 +71,7 @@ fn base(id: &str, name: &str) -> Rule {
     rule.classes = Classes {
         agent_targets: Vec::new(),
         checkouts: Vec::new(),
+        claude_checkouts: Vec::new(),
         ..disk().classes
     };
     rule.safety = Safety {

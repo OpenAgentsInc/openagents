@@ -527,6 +527,7 @@ pub(crate) fn compile_words(
                 volumes: &background::volume::Statvfs,
                 processes: &background::inuse::System,
                 now: clock.now,
+                kache: Some(&KACHE),
             };
             let mut lines = compile::card(&draft);
             lines.extend(compile::show_dry_run(&compile::dry_run(
@@ -819,6 +820,7 @@ pub(crate) fn run_rule(
         volumes: &background::volume::Statvfs,
         processes: &background::inuse::System,
         now: background::paths::now(),
+        kache: Some(&KACHE),
     };
     let report = if rule.cleans() {
         run::run(&env, rule, Cause::Manual, dry_run, true)?
@@ -1015,6 +1017,7 @@ fn judge_now(output: &Output, layout: &Layout) -> Result<(), Failure> {
         volumes: &background::volume::Statvfs,
         processes: &background::inuse::System,
         now: background::paths::now(),
+        kache: Some(&KACHE),
     };
     let judgments = background::judged::consider(&env, &rule, &judge).map_err(Failure::Refused)?;
     output.emit(&json!({ "judgments": judgments }), |_| {
@@ -1038,6 +1041,15 @@ fn judge_now(output: &Output, layout: &Layout) -> Result<(), Failure> {
     });
     Ok(())
 }
+
+/// kache's collector as a cleanup run reaches it (the kache class): two
+/// attempts 30 seconds apart, so a busy collector holds a run up for at
+/// most a minute.
+static KACHE: std::sync::LazyLock<background::kache::Kache> =
+    std::sync::LazyLock::new(|| background::kache::Kache {
+        attempts: 2,
+        ..background::kache::Kache::default()
+    });
 
 /// Reclaim the kache store through kache's own collector (#10758).
 fn kache(output: &Output, status_only: bool) -> Result<(), Failure> {

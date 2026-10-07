@@ -749,6 +749,7 @@ fn conditions_hold_or_say_why_not() {
         volumes: &volumes,
         processes: &Idle,
         now: TEN_AM,
+        kache: None,
     };
     let failed = Event {
         task: Some(ended("aaaabbbbccccdddd", true)),
@@ -826,6 +827,7 @@ fn a_notify_rule_runs_on_each_failed_task_and_is_logged() {
         volumes: &volumes,
         processes: &Idle,
         now: TEN_AM,
+        kache: None,
     };
     let rule = notify_rule(vec![Condition::TaskOutcome {
         outcomes: vec![TaskOutcome::Failed],
@@ -909,6 +911,7 @@ fn a_dry_run_says_what_a_rule_would_do_now() {
         volumes: &volumes,
         processes: &Idle,
         now: TEN_AM,
+        kache: None,
     };
     let low = notify_rule(vec![Condition::FreeBelow {
         level: Level {

@@ -353,10 +353,42 @@ pub fn touched_worktree(path: &Path) -> u64 {
         .unwrap_or(0)
 }
 
+/// The administrative folder Git keeps for a linked worktree, from its
+/// `.git` file (`gitdir: PATH`).
+#[must_use]
+pub fn git_dir(path: &Path) -> Option<PathBuf> {
+    let meta = std::fs::symlink_metadata(path.join(".git")).ok()?;
+    if !meta.is_file() {
+        return None;
+    }
+    let text = std::fs::read_to_string(path.join(".git")).ok()?;
+    let dir = PathBuf::from(text.strip_prefix("gitdir:")?.trim());
+    Some(if dir.is_absolute() {
+        dir
+    } else {
+        path.join(dir)
+    })
+}
+
+/// When a linked worktree was last used, Git's view included: the newest
+/// of [`touched_worktree`] and its administrative folder's `HEAD`, index,
+/// and `HEAD` log, which every commit, checkout, and `git add` moves.
+#[must_use]
+pub fn touched_linked(path: &Path) -> u64 {
+    let mut newest = touched_worktree(path);
+    if let Some(admin) = git_dir(path) {
+        for part in ["HEAD", "index", "logs/HEAD"] {
+            newest = newest.max(mtime(&admin.join(part)).unwrap_or(0));
+        }
+    }
+    newest
+}
+
 /// What a walk found under a folder.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Measure {
-    /// Allocated bytes (`st_blocks × 512`).
+    /// Allocated bytes (`st_blocks × 512`), each hard-linked file and each
+    /// APFS clone family counted once.
     pub bytes: u64,
     /// A folder inside sits on another volume.
     pub foreign: bool,
@@ -408,6 +440,9 @@ fn walk(path: &Path, skip: &dyn Fn(&Path) -> bool) -> std::io::Result<Measure> {
     // Cargo hard-links outputs (`debug/foo` and `debug/deps/foo-…`):
     // count each linked file once, as deleting the folder frees it once.
     let mut linked = std::collections::HashSet::new();
+    // APFS clones (kache restores outputs as clones) share blocks under
+    // different inodes: count a clone family's shared blocks once.
+    let mut clones = std::collections::HashSet::new();
     let mut stack = vec![path.to_owned()];
     while let Some(dir) = stack.pop() {
         let Ok(entries) = std::fs::read_dir(&dir) else {
@@ -423,7 +458,16 @@ fn walk(path: &Path, skip: &dyn Fn(&Path) -> bool) -> std::io::Result<Measure> {
             if !meta.is_dir() && meta.nlink() > 1 && !linked.insert((meta.dev(), meta.ino())) {
                 continue;
             }
-            out.bytes = out.bytes.saturating_add(meta.blocks() * 512);
+            let mut size = meta.blocks() * 512;
+            if meta.is_file()
+                && let Some(clone) = clone::shared(&entry.path(), size)
+                && !clones.insert((meta.dev(), clone.id))
+            {
+                // Another member of this family was counted: only this
+                // file's own blocks are new.
+                size = clone.private;
+            }
+            out.bytes = out.bytes.saturating_add(size);
             if meta.is_dir() {
                 if meta.dev() == device {
                     stack.push(entry.path());
@@ -434,6 +478,69 @@ fn walk(path: &Path, skip: &dyn Fn(&Path) -> bool) -> std::io::Result<Measure> {
         }
     }
     Ok(out)
+}
+
+/// APFS clone families, read through `getattrlist`.
+mod clone {
+    use std::path::Path;
+
+    /// A file that shares blocks with another: its clone family and the
+    /// bytes it alone holds.
+    pub(super) struct Shared {
+        pub id: u64,
+        pub private: u64,
+    }
+
+    /// The clone family of a file that shares some of its `allocated`
+    /// bytes, or `None` for a file that shares none (or where the
+    /// file system cannot say).
+    #[cfg(target_os = "macos")]
+    pub(super) fn shared(path: &Path, allocated: u64) -> Option<Shared> {
+        use std::os::unix::ffi::OsStrExt;
+        let name = std::ffi::CString::new(path.as_os_str().as_bytes()).ok()?;
+        let mut list = libc::attrlist {
+            bitmapcount: libc::ATTR_BIT_MAP_COUNT,
+            reserved: 0,
+            commonattr: libc::ATTR_CMN_RETURNED_ATTRS,
+            volattr: 0,
+            dirattr: 0,
+            fileattr: 0,
+            forkattr: libc::ATTR_CMNEXT_PRIVATESIZE | libc::ATTR_CMNEXT_CLONEID,
+        };
+        // Length, the returned attribute set (five groups), the private
+        // size (an off_t), and the clone ID.
+        let mut buffer = [0u8; 4 + 20 + 8 + 8];
+        // SAFETY: the name is NUL-terminated, the list and buffer outlive
+        // the call, and the buffer's length is passed.
+        let rc = unsafe {
+            libc::getattrlist(
+                name.as_ptr(),
+                std::ptr::from_mut(&mut list).cast(),
+                buffer.as_mut_ptr().cast(),
+                buffer.len(),
+                libc::FSOPT_NOFOLLOW | libc::FSOPT_ATTR_CMN_EXTENDED,
+            )
+        };
+        if rc != 0 {
+            return None;
+        }
+        let word = |at: usize| u32::from_ne_bytes(buffer[at..at + 4].try_into().unwrap_or([0; 4]));
+        let long = |at: usize| u64::from_ne_bytes(buffer[at..at + 8].try_into().unwrap_or([0; 8]));
+        // The fork group's returned bits sit last in the set.
+        let returned = word(4 + 16);
+        let want = libc::ATTR_CMNEXT_PRIVATESIZE | libc::ATTR_CMNEXT_CLONEID;
+        if returned & want != want {
+            return None;
+        }
+        let private = long(24);
+        let id = long(32);
+        (private < allocated).then_some(Shared { id, private })
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    pub(super) fn shared(_path: &Path, _allocated: u64) -> Option<Shared> {
+        None
+    }
 }
 
 /// A path shown to a person: `~/…` under the home.
@@ -577,5 +684,28 @@ mod tests {
         // A hard link to the same file counts once.
         std::fs::hard_link(outside.join("big"), outside.join("again")).unwrap();
         assert!(measure(&outside, dir.path()).unwrap().bytes < once + 4096 * 4);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn apfs_clones_count_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let tree = dir.path().join("tree");
+        std::fs::create_dir_all(&tree).unwrap();
+        std::fs::write(tree.join("big"), vec![7u8; 4 << 20]).unwrap();
+        let once = measure(&tree, dir.path()).unwrap().bytes;
+        // `cp -c` makes an APFS clone; elsewhere it fails and the test
+        // has nothing to measure.
+        let cloned = std::process::Command::new("cp")
+            .arg("-c")
+            .arg(tree.join("big"))
+            .arg(tree.join("clone"))
+            .status()
+            .is_ok_and(|status| status.success());
+        if !cloned {
+            return;
+        }
+        let twice = measure(&tree, dir.path()).unwrap().bytes;
+        assert!(twice < once + (1 << 20), "{once} then {twice}");
     }
 }

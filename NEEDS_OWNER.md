@@ -1,3 +1,13 @@
+## Disk cleanup 0.2.0 on the Mac (#10759)
+
+The running Disk cleanup rule is the saved
+`~/.openagents/background/rules/disk-cleanup.json` from plugin 0.1.0, so it
+lacks Claude Code worktrees, kache, the 200 GB/15% start level, and the
+one-minute check. Install `plugins/disk-cleanup` again, remove that file,
+preview with `openagents background run disk-cleanup --dry-run`, then run
+`openagents background resume disk-cleanup`. Also start a host build from
+main: no background runner has been live on this Mac since 2026-10-06 10:43.
+
 ## Shared compute account views (#10719)
 
 On a scratch Mac, use the same private compute configuration with

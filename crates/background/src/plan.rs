@@ -45,6 +45,8 @@ pub struct Env<'a> {
     pub volumes: &'a dyn Volumes,
     pub processes: &'a dyn Processes,
     pub now: u64,
+    /// How to reach kache's collector; `None` skips the kache class.
+    pub kache: Option<&'a crate::kache::Kache>,
 }
 
 /// The tasks one check sees.
@@ -220,7 +222,7 @@ pub(crate) fn check(
     if class == Class::Judged && path.join(".git").exists() {
         return Err("a Git checkout".into());
     }
-    let undo = if class == Class::Worktrees {
+    let undo = if matches!(class, Class::Worktrees | Class::ClaudeWorktrees) {
         Some(git::removable(path)?)
     } else {
         None
@@ -250,6 +252,16 @@ pub(crate) fn newest(path: &Path) -> u64 {
 
 fn days(secs: u64) -> u64 {
     secs / 86_400
+}
+
+/// A span of time in words: hours below two days, days from there.
+fn span(secs: u64) -> String {
+    if secs < 2 * 86_400 {
+        let hours = secs / 3600;
+        format!("{hours} hour{}", if hours == 1 { "" } else { "s" })
+    } else {
+        format!("{} days", days(secs))
+    }
 }
 
 /// Cached sizes, so repeated runs do not walk unchanged folders.
@@ -338,6 +350,27 @@ fn checkout_targets(layout: &Layout, rule: &Rule) -> Vec<PathBuf> {
             }
         }
     }
+    found
+}
+
+/// Claude Code worktrees: `.claude/worktrees/*` inside each checkout the
+/// rule names (a folder whose `.git` is a directory), never through a link.
+fn claude_worktrees(layout: &Layout, rule: &Rule) -> Vec<PathBuf> {
+    let mut found = Vec::new();
+    for pattern in &rule.classes.claude_checkouts {
+        for top in glob(pattern, &layout.home) {
+            let dir = top.join(".claude").join("worktrees");
+            if !real_dir(&top.join(".git")) || !real_dir(&top.join(".claude")) || !real_dir(&dir) {
+                continue;
+            }
+            found.extend(entries(&dir).into_iter().filter(|path| {
+                path.file_name()
+                    .is_some_and(|name| !name.to_string_lossy().starts_with('.'))
+            }));
+        }
+    }
+    found.sort();
+    found.dedup();
     found
 }
 
@@ -442,12 +475,12 @@ fn candidates(
                         class,
                         path.clone(),
                         touched,
-                        format!("{what}, unused {} days", days(age)),
+                        format!("{what}, unused {}", span(age)),
                     );
                     candidate.locks = inuse::locks_of(&path);
                     found.push(candidate);
                 } else {
-                    keep(&path, &format!("{what}, used {} days ago", days(age)), kept);
+                    keep(&path, &format!("{what}, used {} ago", span(age)), kept);
                 }
             };
             for path in entries(&layout.targets()) {
@@ -473,7 +506,8 @@ fn candidates(
                 if index < rule.classes.keep {
                     keep(&path, "one of the most recent agent builds kept", &mut kept);
                 } else {
-                    stale(path, idle, "agent build", &mut found, &mut kept);
+                    let limit = rule.classes.agent_idle_hours * 3600;
+                    stale(path, limit, "agent build", &mut found, &mut kept);
                 }
             }
             let mut found_checkouts = Vec::new();
@@ -543,6 +577,33 @@ fn candidates(
                 }
             }
         }
+        Class::ClaudeWorktrees => {
+            let idle = rule.classes.claude_worktree_hours * 3600;
+            for path in claude_worktrees(layout, rule) {
+                if let Some(why) = git::locked(&path) {
+                    keep(&path, &format!("locked: {why}"), &mut kept);
+                    continue;
+                }
+                let touched = paths::touched_linked(&path);
+                let age = now.saturating_sub(touched);
+                if age < idle {
+                    keep(
+                        &path,
+                        &format!("Claude Code worktree, used {} ago", span(age)),
+                        &mut kept,
+                    );
+                    continue;
+                }
+                found.push(Candidate::new(
+                    class,
+                    path.clone(),
+                    touched,
+                    format!("Claude Code worktree, unused {}", span(age)),
+                ));
+            }
+        }
+        // Planned apart, in `plan`: it is a collection, not a folder.
+        Class::Kache => {}
         Class::GatePools => {
             for path in gate_builds(layout) {
                 let touched = paths::touched(&path);
@@ -717,6 +778,32 @@ pub fn plan(env: &Env<'_>, rule: &Rule, force: bool) -> Plan {
         if (class == Class::EndedTargets || class == Class::Worktrees) && env.facts.is_none() {
             continue;
         }
+        if class == Class::Kache {
+            match kache_item(env) {
+                None => {}
+                Some(Ok(item)) => {
+                    let device = std::fs::symlink_metadata(&item.path).map(|meta| meta.dev());
+                    let volume = volumes.iter_mut().find(|volume| {
+                        device
+                            .as_ref()
+                            .is_ok_and(|device| volume.space.device == *device)
+                    });
+                    match volume {
+                        Some(_) if rule.classes.report_only.contains(&class) => kept.push(Kept {
+                            class,
+                            path: item.path,
+                            why: "report only".into(),
+                        }),
+                        Some(volume) if volume.planned() < volume.needed => {
+                            volume.items.push(item);
+                        }
+                        _ => {}
+                    }
+                }
+                Some(Err((path, why))) => kept.push(Kept { class, path, why }),
+            }
+            continue;
+        }
         let (found, class_kept) = candidates(env, rule, &view, class);
         kept.extend(class_kept);
         for candidate in found {
@@ -835,6 +922,48 @@ pub fn plan(env: &Env<'_>, rule: &Rule, force: bool) -> Plan {
         plan.not_cleaned = not_cleaned(env.layout, rule);
     }
     plan
+}
+
+/// The kache store as one planned collection: what kache's own collector
+/// would return, estimated from how far the store is over its cap and the
+/// share of it no target directory also holds. Nothing under the store is
+/// ever deleted here; running the item runs `kache gc`. `None` where kache
+/// is not set up or does not answer.
+fn kache_item(env: &Env<'_>) -> Option<Result<Item, (PathBuf, String)>> {
+    let (store, disk, lock) = env.kache?.status().ok()?;
+    if matches!(lock, crate::kache::Lock::Held { alive: true, .. }) {
+        return Some(Err((store, "kache's collector is running now".into())));
+    }
+    let over = disk.store_bytes.saturating_sub(disk.store_limit_bytes);
+    if over == 0 {
+        return Some(Err((
+            store,
+            format!(
+                "under its cap ({} of {})",
+                paths::bytes(disk.store_bytes),
+                paths::bytes(disk.store_limit_bytes)
+            ),
+        )));
+    }
+    let share = u128::from(over) * u128::from(disk.disk_private_bytes)
+        / u128::from(disk.store_bytes.max(1));
+    Some(Ok(Item {
+        class: Class::Kache,
+        path: store,
+        bytes: u64::try_from(share).unwrap_or(u64::MAX),
+        touched: env.now,
+        why: format!(
+            "kache store {} over its {} cap; kache's collector reclaims it",
+            paths::bytes(over),
+            paths::bytes(disk.store_limit_bytes)
+        ),
+        evidence: Evidence {
+            markers: vec!["kache gc".into()],
+            ..Evidence::default()
+        },
+        locks: Vec::new(),
+        undo: None,
+    }))
 }
 
 /// The rule's report-only folders with their sizes, largest first.

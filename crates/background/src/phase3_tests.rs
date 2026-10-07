@@ -206,6 +206,7 @@ fn env<'a>(home: &'a Home, volumes: &'a Fixed, processes: &'a dyn Processes) -> 
         volumes,
         processes,
         now: crate::paths::now(),
+        kache: None,
     }
 }
 
@@ -763,7 +764,7 @@ fn a_rule_that_falls_short_escalates_once_a_day_with_a_code_built_briefing() {
     assert!(prompt.contains("propose changes"));
     assert!(prompt.contains("Do not delete"));
     assert!(
-        prompt.contains("cleans below 50 GB, aims for 150 GB"),
+        prompt.contains("cleans below 200 GB, aims for 300 GB"),
         "{prompt}"
     );
     assert!(

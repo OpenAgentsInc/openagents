@@ -383,6 +383,7 @@ pub fn admit(mut asked: Rule, plugin: &Installed) -> Result<Rule, String> {
         .agent_targets
         .iter()
         .chain(&asked.classes.checkouts)
+        .chain(&asked.classes.claude_checkouts)
     {
         if !under_host(pattern) {
             return Err(named(format!(

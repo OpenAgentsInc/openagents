@@ -29,7 +29,10 @@ fn plugin(dir: &Path, change: impl FnOnce(&mut Value)) {
     let mut rule = serde_json::to_value(background::rule::disk()).unwrap();
     rule["id"] = json!("disk-cleanup");
     rule["needs"] = json!({
-        "delete": ["ended_targets", "stale_targets", "worktrees", "gate_pools", "incremental", "trash"],
+        "delete": [
+            "ended_targets", "stale_targets", "worktrees", "gate_pools", "incremental", "trash",
+            "claude_worktrees", "kache",
+        ],
         "tasks": true,
         "notify": true,
     });

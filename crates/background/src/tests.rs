@@ -94,6 +94,7 @@ fn env<'a>(
         volumes,
         processes,
         now: crate::paths::now(),
+        kache: None,
     }
 }
 
@@ -121,7 +122,12 @@ fn target(path: &Path, size: usize) {
 
 /// Set everything under `path` (and its slot lock) to `days` ago.
 fn age(path: &Path, days: u64) {
-    let when = SystemTime::now() - Duration::from_secs(days * 86_400);
+    age_secs(path, days * 86_400);
+}
+
+/// Set everything under `path` (and its slot lock) to `secs` ago.
+fn age_secs(path: &Path, secs: u64) {
+    let when = SystemTime::now() - Duration::from_secs(secs);
     let mut lock = path.as_os_str().to_owned();
     lock.push(".lock");
     let mut stack = vec![path.to_owned(), PathBuf::from(lock)];
@@ -531,11 +537,11 @@ fn classes_run_in_order_oldest_first_until_the_goal() {
     let leftover = home.layout.targets().join("p-slot-6");
     target(&leftover, 2_000_000);
     let facts = home.facts();
-    // Free space 1 MB short of the stop level, on a small volume: one item
-    // meets the goal.
-    let total = 200 * GB;
+    // Free space 1 MB short of the stop level (300 GB on a 1 TB volume):
+    // one item meets the goal.
+    let total = 1_000 * GB;
     let volumes = Fixed {
-        free: 60 * GB - 1_000_000,
+        free: 300 * GB - 1_000_000,
         total,
     };
     let env = env(&home, &facts, &volumes, &Idle);
@@ -543,7 +549,7 @@ fn classes_run_in_order_oldest_first_until_the_goal() {
     assert_eq!(planned(&found), vec![leftover.clone()]);
     // More needed: class 1 first, then class 2 oldest first.
     let volumes = Fixed {
-        free: 60 * GB - 10_000_000,
+        free: 300 * GB - 10_000_000,
         total,
     };
     let env = Env {
@@ -554,7 +560,7 @@ fn classes_run_in_order_oldest_first_until_the_goal() {
     assert_eq!(planned(&found), vec![leftover, older, old]);
     // A trigger (not forced) plans nothing above the start level.
     let volumes = Fixed {
-        free: 50 * GB,
+        free: 250 * GB,
         total,
     };
     let env = Env {
@@ -715,7 +721,7 @@ fn plugin_rule(id: &str) -> Rule {
         version: "9".into(),
     };
     rule.needs = crate::rule::Needs {
-        delete: crate::rule::Class::ALL.to_vec(),
+        delete: crate::rule::Class::DELETABLE.to_vec(),
         tasks: true,
         notify: true,
         coder: false,
@@ -918,7 +924,7 @@ fn shipped_disk_cleanup_package_is_pinned_opt_in_and_matches_host_policy() {
     assert_eq!(rule.goal, disk().goal);
     assert_eq!(rule.triggers, disk().triggers);
     assert_eq!(rule.actions, disk().actions);
-    assert_eq!(rule.needs.delete, crate::rule::Class::ALL);
+    assert_eq!(rule.needs.delete, crate::rule::Class::DELETABLE);
     install(&home, "disk-cleanup", &rule);
     assert!(crate::plugins::rules(&home.layout).is_empty());
     crate::plugins::set_enabled(&home.layout, "disk-cleanup", true).unwrap();
@@ -1058,4 +1064,350 @@ fn checking_many_worktrees_at_once_agrees_with_checking_each() {
             "{index}"
         );
     }
+}
+
+// Claude Code worktrees, the kache class, and the faster defaults (#10759).
+
+/// Processes whose open files or working folders are these paths.
+struct Inside(Vec<PathBuf>);
+
+impl Processes for Inside {
+    fn snapshot(&self) -> Result<Snapshot, String> {
+        Ok(Snapshot::new(self.0.clone()))
+    }
+}
+
+/// A checkout at `~/code/repo` pushed to a bare remote, with Claude Code
+/// worktrees `names` under its `.claude/worktrees`, each on its own branch
+/// at the pushed `main`.
+fn claude_checkout(home: &Home, names: &[&str]) -> (PathBuf, Vec<PathBuf>) {
+    let code = home.layout.home.join("code");
+    std::fs::create_dir_all(&code).unwrap();
+    git(&code, &["init", "-q", "--bare", "remote.git"]);
+    git(&code, &["init", "-q", "-b", "main", "repo"]);
+    let repo = code.join("repo");
+    std::fs::write(repo.join(".gitignore"), ".claude/\n").unwrap();
+    std::fs::write(repo.join("file"), "one").unwrap();
+    git(&repo, &["add", "file", ".gitignore"]);
+    git(&repo, &["commit", "-q", "-m", "one"]);
+    let remote = code.join("remote.git");
+    git(
+        &repo,
+        &["remote", "add", "origin", remote.to_str().unwrap()],
+    );
+    git(&repo, &["push", "-q", "origin", "main"]);
+    let dir = repo.join(".claude/worktrees");
+    std::fs::create_dir_all(&dir).unwrap();
+    let trees = names
+        .iter()
+        .map(|name| {
+            let path = dir.join(name);
+            let branch = format!("worktree-{name}");
+            git(
+                &repo,
+                &[
+                    "worktree",
+                    "add",
+                    "-q",
+                    "-b",
+                    &branch,
+                    path.to_str().unwrap(),
+                    "main",
+                ],
+            );
+            path
+        })
+        .collect();
+    (repo, trees)
+}
+
+/// Make a linked worktree look idle for `secs`: the folder, its `.git`
+/// file, and Git's administrative files for it.
+fn idle_worktree(path: &Path, secs: u64) {
+    let admin = crate::paths::git_dir(path).unwrap();
+    age_secs(&admin, secs);
+    age_secs(path, secs);
+}
+
+#[test]
+fn a_clean_pushed_idle_claude_worktree_goes_and_others_stay() {
+    let home = Home::new();
+    let (repo, trees) = claude_checkout(
+        &home,
+        &["clean", "unpushed", "live", "locked", "recent", "dirty"],
+    );
+    let [clean, unpushed, live, locked, recent, dirty] = [
+        &trees[0], &trees[1], &trees[2], &trees[3], &trees[4], &trees[5],
+    ];
+    std::fs::write(unpushed.join("file"), "two").unwrap();
+    git(unpushed, &["commit", "-q", "-am", "local only"]);
+    std::fs::write(dirty.join("file"), "unsaved").unwrap();
+    git(
+        &repo,
+        &[
+            "worktree",
+            "lock",
+            "--reason",
+            "claude agent locked (pid 1)",
+            locked.to_str().unwrap(),
+        ],
+    );
+    for tree in [clean, unpushed, live, locked, dirty] {
+        idle_worktree(tree, 3 * 3600);
+    }
+    let facts = home.facts();
+    let volumes = low();
+    let using = Inside(vec![live.clone()]);
+    let env = env(&home, &facts, &volumes, &using);
+    let rule = disk();
+    let found = plan(&env, &rule, true);
+    let claude: Vec<&crate::plan::Item> = found
+        .items()
+        .filter(|item| item.class == crate::rule::Class::ClaudeWorktrees)
+        .collect();
+    assert_eq!(claude.len(), 1, "{:?}", found.kept);
+    assert_eq!(&claude[0].path, clean);
+    assert!(
+        claude[0]
+            .why
+            .starts_with("Claude Code worktree, unused 3 hours")
+    );
+    assert!(claude[0].bytes > 0);
+    let why = |path: &Path| {
+        found
+            .kept
+            .iter()
+            .find(|kept| kept.path == path)
+            .map(|kept| kept.why.clone())
+            .unwrap_or_default()
+    };
+    assert_eq!(why(unpushed), "commits not on any remote");
+    assert!(why(live).starts_with("in use"), "{}", why(live));
+    assert!(
+        why(locked).starts_with("locked: claude agent"),
+        "{}",
+        why(locked)
+    );
+    assert!(why(recent).contains("used 0 hours ago"), "{}", why(recent));
+    assert_eq!(why(dirty), "uncommitted changes");
+    // The run removes only the clean one, and its undo brings it back.
+    let report = run::run(&env, &rule, Cause::Manual, false, true).unwrap();
+    assert!(!clean.exists());
+    for tree in [unpushed, live, locked, recent, dirty] {
+        assert!(tree.exists(), "{}", tree.display());
+    }
+    let record = report.record.unwrap();
+    let removed: Vec<&run::Action> = record
+        .actions
+        .iter()
+        .filter(|action| action.outcome == Outcome::Removed)
+        .collect();
+    assert_eq!(removed.len(), 1);
+    assert_eq!(removed[0].class, crate::rule::Class::ClaudeWorktrees);
+    let undone = run::undo(&home.layout, &record.run).unwrap();
+    assert!(
+        undone.iter().all(|(_, result)| result.is_ok()),
+        "{undone:?}"
+    );
+    assert!(clean.join("file").exists());
+}
+
+#[test]
+fn claude_worktrees_outside_the_named_checkouts_are_not_candidates() {
+    let home = Home::new();
+    let (_, trees) = claude_checkout(&home, &["clean"]);
+    idle_worktree(&trees[0], 3 * 3600);
+    let facts = home.facts();
+    let volumes = low();
+    let env = env(&home, &facts, &volumes, &Idle);
+    let mut rule = disk();
+    rule.classes.claude_checkouts = vec!["~/work/*".into()];
+    assert_eq!(plan(&env, &rule, true).items().count(), 0);
+}
+
+/// A stand-in `kache` whose store is `store` bytes against a cap of 100,
+/// all of it private, and whose collector brings it to 80.
+fn fake_kache(dir: &Path, cache: &Path, store: u64) -> PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+    let disk = |store: u64| {
+        format!(
+            r#"{{"store_bytes":{store},"store_limit_bytes":100,"disk_private_bytes":{store},"cloned_into_targets_bytes":0}}"#
+        )
+    };
+    let stats = format!(
+        r#"{{"disk":{},"stores":[{{"path":"{}"}}]}}"#,
+        disk(store),
+        cache.display()
+    );
+    let gc = format!(
+        r#"{{"skipped":false,"disk":{},"entries_dropped":7,"store_bytes_removed":420,"disk_bytes_reclaimed":410}}"#,
+        disk(80)
+    );
+    let script = dir.join("kache");
+    std::fs::write(
+        &script,
+        format!(
+            "#!/bin/sh\ncase \"$1\" in\n  stats) echo '{stats}' ;;\n  gc) echo '{gc}' ;;\n  *) exit 2 ;;\nesac\n"
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    script
+}
+
+#[test]
+fn the_kache_class_plans_a_collection_and_never_deletes_store_files() {
+    let home = Home::new();
+    let cache = home.layout.home.join("Library/Caches/kache");
+    let store = cache.join("store");
+    std::fs::create_dir_all(&store).unwrap();
+    std::fs::write(store.join("blob"), vec![1u8; 4096]).unwrap();
+    let bin = home.layout.home.join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    let kache = crate::kache::Kache {
+        program: fake_kache(&bin, &cache, 500),
+        attempts: 1,
+        wait: Duration::ZERO,
+    };
+    let facts = home.facts();
+    let volumes = low();
+    let env = Env {
+        kache: Some(&kache),
+        ..env(&home, &facts, &volumes, &Idle)
+    };
+    let rule = disk();
+    let found = plan(&env, &rule, true);
+    let items: Vec<&crate::plan::Item> = found.items().collect();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].class, crate::rule::Class::Kache);
+    assert_eq!(items[0].path, store);
+    // 400 bytes over the cap, all private.
+    assert_eq!(items[0].bytes, 400);
+    assert!(items[0].why.contains("kache's collector reclaims it"));
+    let lines = run::describe(&found, &home.layout.home, false);
+    assert!(
+        lines
+            .iter()
+            .any(|line| line.contains("~/Library/Caches/kache/store")),
+        "{lines:?}"
+    );
+    let report = run::run(&env, &rule, Cause::Manual, false, true).unwrap();
+    let record = report.record.unwrap();
+    assert_eq!(record.actions.len(), 1);
+    assert_eq!(record.actions[0].outcome, Outcome::Collected);
+    assert_eq!(record.actions[0].bytes, 410);
+    assert_eq!(record.freed_sum, 410);
+    // kache's collector decides what goes; this crate removed nothing.
+    assert!(store.join("blob").exists());
+    // Under its cap, the store is kept and says why.
+    let under = crate::kache::Kache {
+        program: fake_kache(&bin, &cache, 90),
+        ..kache
+    };
+    let env = Env {
+        kache: Some(&under),
+        ..env
+    };
+    let found = plan(&env, &rule, true);
+    assert_eq!(found.items().count(), 0);
+    assert!(found.kept.iter().any(
+        |kept| kept.class == crate::rule::Class::Kache && kept.why.starts_with("under its cap")
+    ));
+}
+
+#[test]
+fn agent_builds_are_stale_after_six_hours() {
+    let home = Home::new();
+    let old = home.layout.agent_dir("openagents-target-agent1");
+    let fresh = home.layout.agent_dir("openagents-target-agent2");
+    target(&old, 4096);
+    target(&fresh, 4096);
+    age_secs(&old, 7 * 3600);
+    age_secs(&fresh, 3600);
+    let facts = home.facts();
+    let volumes = low();
+    let env = env(&home, &facts, &volumes, &Idle);
+    let mut rule = disk();
+    let found = plan(&env, &rule, true);
+    let agent: Vec<PathBuf> = found
+        .items()
+        .filter(|item| item.class == crate::rule::Class::StaleTargets)
+        .map(|item| item.path.clone())
+        .collect();
+    assert_eq!(agent, vec![old.clone()]);
+    assert!(
+        found
+            .kept
+            .iter()
+            .any(|kept| kept.path == fresh && kept.why == "agent build, used 1 hour ago")
+    );
+    // The rule's own setting moves it.
+    rule.classes.agent_idle_hours = 8;
+    let found = plan(&env, &rule, true);
+    assert!(
+        !found
+            .items()
+            .any(|item| item.class == crate::rule::Class::StaleTargets)
+    );
+}
+
+#[test]
+fn rule_files_without_the_new_settings_get_the_defaults() {
+    let mut value = serde_json::to_value(disk()).unwrap();
+    let classes = value["classes"].as_object_mut().unwrap();
+    classes.remove("agent_idle_hours");
+    classes.remove("claude_worktree_hours");
+    classes.remove("claude_checkouts");
+    value["goal"]
+        .as_object_mut()
+        .unwrap()
+        .remove("pressure_secs");
+    let rule: Rule = serde_json::from_value(value).unwrap();
+    assert_eq!(rule.classes.agent_idle_hours, crate::rule::AGENT_IDLE_HOURS);
+    assert_eq!(rule.classes.agent_idle_hours, 6);
+    assert_eq!(rule.classes.claude_worktree_hours, 2);
+    assert!(rule.classes.claude_checkouts.is_empty());
+    assert_eq!(rule.goal.pressure_secs, None);
+    rule.validate().unwrap();
+    // The built-in rule: 200 GB or 15% to start, a minute under pressure.
+    let built_in = disk();
+    assert_eq!(built_in.goal.start.of(1_000 * GB), 200 * GB);
+    assert_eq!(built_in.goal.start.of(2_000 * GB), 300 * GB);
+    assert_eq!(built_in.goal.pressure_secs, Some(60));
+    assert_eq!(
+        built_in.classes.claude_checkouts,
+        vec!["~/code/*".to_owned(), "~/work/*".to_owned()]
+    );
+    let mut bad = disk();
+    bad.goal.pressure_secs = Some(30);
+    assert!(bad.validate().is_err());
+    let mut bad = disk();
+    bad.classes.agent_idle_hours = 0;
+    assert!(bad.validate().is_err());
+}
+
+#[test]
+fn checks_come_every_minute_under_pressure_and_every_five_otherwise() {
+    let rule = disk();
+    let total = 1_000 * GB;
+    assert_eq!(rule.interval_at(None, None), Some(300));
+    assert_eq!(rule.interval_at(Some(500 * GB), Some(total)), Some(300));
+    assert_eq!(rule.interval_at(Some(150 * GB), Some(total)), Some(60));
+    let mut calm = disk();
+    calm.goal.pressure_secs = None;
+    assert_eq!(calm.interval_at(Some(150 * GB), Some(total)), Some(300));
+    // A check records the shorter interval as the next one.
+    let home = Home::new();
+    let facts = home.facts();
+    let volumes = Fixed {
+        free: 150 * GB,
+        total,
+    };
+    let env = env(&home, &facts, &volumes, &Idle);
+    let mut on = disk();
+    on.enabled = true;
+    let _ = crate::runner::check(&env, &on, Cause::Interval);
+    let state = crate::store::State::load(&home.layout);
+    let seen = &state.rules["disk"];
+    assert_eq!(seen.next_check, Some(env.now + 60));
 }
