@@ -297,12 +297,13 @@ fn the_world_draws_seats_lamps_beacons_and_live_boards() {
 #[test]
 fn each_activity_has_its_posture() {
     use Activity as A;
-    // At its own desk a seat sits, typing while it works.
+    // At its own standing desk a seat stands, typing while it works; no
+    // posture sits.
     for activity in [A::Editing, A::Thinking, A::Reading, A::Judging] {
         assert_eq!(Posture::of(activity, At::Desk, true, false), Posture::Type);
     }
     for activity in [A::Idle, A::Paused, A::Done] {
-        assert_eq!(Posture::of(activity, At::Desk, true, false), Posture::Sit);
+        assert_eq!(Posture::of(activity, At::Desk, true, false), Posture::Stand);
     }
     // A seat with no desk of its own stands at the desks station.
     assert_eq!(
@@ -327,8 +328,8 @@ fn each_activity_has_its_posture() {
             "{activity:?}"
         );
     }
-    // A standing seat gestures while it speaks; a seated or busy one keeps
-    // its posture.
+    // A seat at ease gestures while it speaks; a busy one keeps its
+    // posture.
     assert_eq!(
         Posture::of(A::Waiting, At::Podium, false, true),
         Posture::Talk
@@ -338,6 +339,7 @@ fn each_activity_has_its_posture() {
         Posture::Talk
     );
     assert_eq!(Posture::of(A::Editing, At::Desk, true, true), Posture::Type);
+    assert_eq!(Posture::of(A::Idle, At::Desk, true, true), Posture::Talk);
     assert_eq!(
         Posture::of(A::Reading, At::Library, false, true),
         Posture::Read
@@ -672,10 +674,10 @@ fn the_workshop_agent_works_and_walks_in_the_owners_house() {
     let mut studio = Studio::default();
     studio.set_active(true);
     studio.set_resident(vec![alice.clone()]);
-    // She sits at her workstation on the great room's floor, drawn as
-    // herself, seated and typing.
+    // She stands at her workstation on the great room's floor, drawn as
+    // herself, typing.
     let at = studio.seat_position(WORKSHOP_AGENT).unwrap();
-    let (spot, _) = AliceSpot::Seat.world();
+    let (spot, _) = AliceSpot::Desk.world();
     assert!((at.x - spot[0]).abs() < 1e-3 && (at.z - spot[1]).abs() < 1e-3);
     assert!((at.y - floor()).abs() < 1e-3, "{at}");
     let figure = studio.figures().remove(0);

@@ -1,7 +1,7 @@
 {
   "model": "greco_house.glb",
   "frame": "glTF: 1 unit = 1 m, +Y up, +Z out of the front door, origin on the ground at the center of the front wall",
-  "triangles": 6672,
+  "triangles": 6632,
   "boxes": [
     {
       "name": "planter",
@@ -267,12 +267,12 @@
       "name": "workstation",
       "center": [
         -4.6,
-        1.98,
+        2.1,
         -22.6
       ],
       "half_extents": [
         1.48,
-        0.38,
+        0.5,
         0.5
       ]
     },

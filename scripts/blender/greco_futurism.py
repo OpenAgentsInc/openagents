@@ -538,13 +538,15 @@ def desk(b, x, y, z0, rot=0.0):
 
 
 def workstation(b, x, y, z0, rot=0.0):
-    """The workshop agent's workstation: a long walnut desk on two
+    """The workshop agent's workstation, a standing desk: she never sits,
+    so it has no chair. A long walnut desk at standing height on two
     pedestals with a copper edge, a front panel inscribed with circuit
-    lines toward the room, three slim bronze-framed screens glowing amber
-    toward her chair, a keyboard, and her chair. The screens stay low, so
-    the room sees her over them."""
+    lines toward the room, three slim bronze-framed screens on stands
+    glowing amber toward her at a standing figure's eye level, and a
+    keyboard at her edge. The screens' tops stay under her eyes, so the
+    room sees her face over them."""
     xf = local((x, y, z0), rot)
-    w, d, h = 2.96, 1.0, 0.76
+    w, d, h = 2.96, 1.0, 1.0
     box(b, (-w / 2, -d / 2, h - 0.06), (w / 2, d / 2, h), "walnut", xf=xf, name="DeskTop")
     box(b, (-w / 2 - 0.02, -d / 2 - 0.02, h - 0.09), (w / 2 + 0.02, d / 2 + 0.02, h - 0.06), "copper", skip="+z",
         xf=xf, name="DeskEdge")
@@ -558,20 +560,16 @@ def workstation(b, x, y, z0, rot=0.0):
     if FAR:
         return
     circuit_lines(b, xf @ Matrix.Translation(Vector((0.0, -d / 2 + 0.04, 0.0))), 1.5, 0.2, h - 0.33)
-    # Three slim screens toward her chair, the side ones turned in.
+    # Three slim screens toward her, the side ones turned in, their
+    # middles 0.36 m over the desk: 1.36 m over the floor.
     for u, turn in ((-0.94, 18.0), (0.0, 0.0), (0.94, -18.0)):
         sx = xf @ Matrix.Translation(Vector((u, -0.22, h))) @ Matrix.Rotation(math.radians(turn), 4, "Z")
-        box(b, (-0.46, -0.03, 0.07), (0.46, 0.0, 0.38), "bronze", skip="-z", xf=sx, name="ScreenFrame")
-        box(b, (-0.43, 0.0, 0.1), (0.43, 0.004, 0.35), "amber", skip=only("+y"), xf=sx, name="EmitScreen")
-        box(b, (-0.025, -0.06, 0.0), (0.025, -0.03, 0.07), "copper", skip="-z +z", xf=sx, name="ScreenStand")
-    # The keyboard, with an amber line of keys.
-    box(b, (-0.36, 0.12, h), (0.36, 0.32, h + 0.02), "bronze", skip="-z", xf=xf, name="Keyboard")
-    box(b, (-0.3, 0.17, h + 0.02), (0.3, 0.27, h + 0.021), "amber", skip=only("+z"), xf=xf, name="EmitKeys")
-    # Her chair, behind the desk, facing the room.
-    box(b, (-0.28, 0.9, 0.42), (0.28, 1.4, 0.5), "redbrown", xf=xf, name="Chair")
-    box(b, (-0.28, 1.35, 0.5), (0.28, 1.43, 1.0), "redbrown", xf=xf, name="Chair")
-    box(b, (-0.03, 1.12, 0.0), (0.03, 1.18, 0.42), "copper", skip="-z +z", xf=xf, name="ChairPost")
-    box(b, (-0.3, 0.95, 0.0), (0.3, 1.35, 0.03), "copper", skip="-z", xf=xf, name="ChairFoot")
+        box(b, (-0.46, -0.03, 0.2), (0.46, 0.0, 0.52), "bronze", skip="-z", xf=sx, name="ScreenFrame")
+        box(b, (-0.43, 0.0, 0.23), (0.43, 0.004, 0.49), "amber", skip=only("+y"), xf=sx, name="EmitScreen")
+        box(b, (-0.025, -0.06, 0.0), (0.025, -0.03, 0.2), "copper", skip="-z +z", xf=sx, name="ScreenStand")
+    # The keyboard at her edge, with an amber line of keys.
+    box(b, (-0.36, 0.24, h), (0.36, 0.44, h + 0.02), "bronze", skip="-z", xf=xf, name="Keyboard")
+    box(b, (-0.3, 0.29, h + 0.02), (0.3, 0.39, h + 0.021), "amber", skip=only("+z"), xf=xf, name="EmitKeys")
 
 
 def console(b, xf, h=1.0, w=1.4, d=0.75):

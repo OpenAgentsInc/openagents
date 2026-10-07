@@ -324,10 +324,12 @@ house.
 - **Workstation.** The workshop agent, Alice, works here
   ([Workshop agent](workshop-agent.md)). West of the desk, in front of the
   engraved-door wall (`estate::WORKSTATION`), stands her workstation
-  (`workstation`, a kit piece of 194 triangles): a long walnut desk on two
-  pedestals with a copper edge, a front panel inscribed with circuit lines
-  toward the room, three slim bronze-framed screens and a keyboard glowing
-  `EmitAmber` toward her chair, and the chair she sits in, facing the room.
+  (`workstation`, a kit piece of 152 triangles): a long walnut standing
+  desk, 1 m high, on two pedestals with a copper edge, a front panel
+  inscribed with circuit lines toward the room, three slim bronze-framed
+  screens on stands, their middles 1.36 m over the floor, and a keyboard
+  glowing `EmitAmber` toward her, facing the room. It has no chair: she
+  stands to work and never sits.
   While a command runs she stands at a walnut console with an inclined
   amber screen by the east wall, and while she waits for an approval,
   behind a limestone lectern with an amber slit, east of the entry walk.
@@ -347,7 +349,7 @@ house.
   glowing faintly. Outside, lanterns hang on the inner piers, lanterns on
   posts mark both flights of the stair, and uplights wash the door and its
   screens. The workstation adds only its screens' own glow.
-- **Budget.** 6,448 triangles near and 1,016 far, with its light
+- **Budget.** 6,406 triangles near and 1,016 far, with its light
   fixtures and the workstation.
 
 Rebuild it and admit it:

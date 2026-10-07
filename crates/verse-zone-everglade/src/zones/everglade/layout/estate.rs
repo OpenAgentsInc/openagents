@@ -64,7 +64,7 @@ pub const GRECO_HOUSE: Model = Model {
         // The workshop agent's workstation at the spot kept for it, the
         // console she works at by the east wall, and the lectern where she
         // waits for an approval.
-        [-6.1, -3.1, -23.1, -22.1, 2.38],
+        [-6.1, -3.1, -23.1, -22.1, 2.62],
         [8.85, 9.55, -22.3, -20.9, 2.6],
         [4.75, 5.25, -15.25, -14.75, 2.66],
         // The reception's chair and its desk, turned toward the door.
@@ -343,19 +343,21 @@ pub fn flames() -> Vec<Vec3> {
 pub const FLOOR: f32 = 1.62;
 
 /// The workshop agent's spots in the great room, in the house's frame:
-/// where she stands, and the point she faces there. She sits at the
-/// workstation ([`WORKSTATION`]) facing the room, works at the console by
-/// the east wall
-/// while a command runs, and waits at the lectern for an approval, all
-/// off the entry walkway.
-pub const ALICE_SEAT: ([f32; 2], [f32; 2]) = ([-4.6, -23.75], [-4.6, -20.0]);
+/// where she stands, and the point she faces there. She stands at her
+/// standing desk, the workstation ([`WORKSTATION`]), facing the room, works
+/// at the console by the east wall while a command runs, and waits at the
+/// lectern for an approval, all off the entry walkway. She never sits.
+/// At the desk she stands the walker's clearance behind it; her typing
+/// posture steps her up to it (`pose::DESK_STEP`).
+pub const ALICE_DESK: ([f32; 2], [f32; 2]) = ([-4.6, -23.65], [-4.6, -20.0]);
 /// Her place at the console by the east wall: the workbench.
 pub const ALICE_WORKBENCH: ([f32; 2], [f32; 2]) = ([8.1, -21.6], [9.2, -21.6]);
 /// Her place behind the lectern: the podium.
 pub const ALICE_PODIUM: ([f32; 2], [f32; 2]) = ([5.0, -15.95], [5.0, -13.0]);
 /// The middle of her screens, in the house's frame, and its height over
-/// the floor, m: where she looks while she types.
-pub const ALICE_SCREENS: ([f32; 2], f32) = ([-4.6, -22.4], 1.0);
+/// the floor, m: where she looks while she types, a little under a
+/// standing figure's eyes.
+pub const ALICE_SCREENS: ([f32; 2], f32) = ([-4.6, -22.4], 1.36);
 /// The square she walks in, in the house's frame: its center and half
 /// side, m. It holds the great room.
 pub const ALICE_ROOM: ([f32; 2], f32) = ([0.0, -18.4], 9.5);
@@ -363,7 +365,7 @@ pub const ALICE_ROOM: ([f32; 2], f32) = ([0.0, -18.4], 9.5);
 /// Which of her spots a station puts her at.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AliceSpot {
-    Seat,
+    Desk,
     Workbench,
     Podium,
 }
@@ -377,7 +379,7 @@ impl AliceSpot {
         match station {
             Station::Workbench | Station::ProvingGround => Self::Workbench,
             Station::Podium => Self::Podium,
-            _ => Self::Seat,
+            _ => Self::Desk,
         }
     }
 
@@ -385,7 +387,7 @@ impl AliceSpot {
     #[must_use]
     pub fn local(self) -> ([f32; 2], [f32; 2]) {
         match self {
-            Self::Seat => ALICE_SEAT,
+            Self::Desk => ALICE_DESK,
             Self::Workbench => ALICE_WORKBENCH,
             Self::Podium => ALICE_PODIUM,
         }
@@ -523,6 +525,20 @@ mod tests {
     }
 
     #[test]
+    fn her_workstation_is_a_standing_desk() {
+        let [x0, x1, z0, z1, top] = GRECO_HOUSE
+            .blocks
+            .iter()
+            .copied()
+            .find(|b| b[..4] == [-6.1, -3.1, -23.1, -22.1])
+            .expect("the workstation's block");
+        // She never sits: the desk stands at a standing worker's height.
+        let height = top - FLOOR;
+        assert!((0.95..=1.12).contains(&height), "desk {height} m high");
+        assert!(x1 - x0 > 2.5 && z1 - z0 < 1.2);
+    }
+
+    #[test]
     fn the_workstation_spot_holds_only_the_workstation_and_is_lit() {
         let [wx, wz] = WORKSTATION;
         for &[x0, x1, z0, z1, _] in GRECO_HOUSE.blocks {
@@ -580,7 +596,7 @@ mod tests {
         let blocks = room_blocks();
         // Just inside the front door, past the facade.
         let door = [0.0 - cx, -12.4 - cz];
-        for spot in [AliceSpot::Seat, AliceSpot::Workbench, AliceSpot::Podium] {
+        for spot in [AliceSpot::Desk, AliceSpot::Workbench, AliceSpot::Podium] {
             let ([x, z], toward) = spot.local();
             // Inside the walls, off the entry walkway, and facing into the
             // house's interior.
@@ -597,7 +613,7 @@ mod tests {
                 .unwrap_or_else(|e| panic!("{spot:?} is out of reach of the door: {e:?}"));
             assert!(!route.waypoints.is_empty());
             // Between her spots too, as she walks while she works.
-            for other in [AliceSpot::Seat, AliceSpot::Workbench, AliceSpot::Podium] {
+            for other in [AliceSpot::Desk, AliceSpot::Workbench, AliceSpot::Podium] {
                 let ([ox, oz], _) = other.local();
                 nav::plan([x - cx, z - cz], [ox - cx, oz - cz], &blocks, half)
                     .unwrap_or_else(|e| panic!("{spot:?} to {other:?}: {e:?}"));
@@ -614,7 +630,7 @@ mod tests {
         use verse_world::social::nav;
         let ([cx, cz], half) = ALICE_ROOM;
         let blocks = room_blocks();
-        let ([x, z], toward) = ALICE_SEAT;
+        let ([x, z], toward) = ALICE_DESK;
         let len = (toward[0] - x).hypot(toward[1] - z);
         // Where `--workshop-ask` and the captures stand the player.
         let walk_up = 2.2;

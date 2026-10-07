@@ -10,7 +10,8 @@ missing](#what-exists-and-what-is-missing) says which parts exist.
 The workshop agent is **Alice**, our original character
 ([Female character](female-character.md)). She works in the owner's house
 at the east end of Library Way ([Greco-futurism](greco-futurism.md#the-owners-house)):
-she sits at her workstation in the great room, drawn as her own character,
+she stands at her workstation, a standing desk, in the great room, drawn as
+her own character; she never sits,
 and you walk in through the front door, up to her desk, and press F to talk
 to her. While a command runs she stands at the console by the east wall, and
 while she waits for your approval she stands behind the lectern; her walks
@@ -552,9 +553,11 @@ the desk, on the phone, or with `openagents agent log NAME`.
 - **Look.** An outfitted character from the Everglade pack in your colors,
   the same pipeline studio seats use (`player::Cast`), with a look you
   choose. Its nameplate shows its name, its activity word, and its route.
-- **Desk.** Alice's workstation in the owner's house: a long walnut desk
-  with three slim amber screens, a keyboard, and her chair, facing the great
-  room (`everglade::layout::estate::AliceSpot`).
+- **Desk.** Alice's workstation in the owner's house: a long walnut
+  standing desk, 1 m high, with three slim amber screens at a standing
+  figure's eye level and a keyboard, facing the great room, with no chair
+  (`everglade::layout::estate::AliceSpot`). She stands there, and types
+  standing.
 - **Stations.** It walks to the stations its activity maps to, as seats do.
   Alice's stations are in the house: running commands and testing at the
   console by the east wall (her Workbench), waiting on you behind the

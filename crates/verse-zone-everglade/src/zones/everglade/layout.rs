@@ -162,8 +162,8 @@ impl Board {
     }
 }
 
-/// One seat's desk in the hall: where the seat stands, facing the
-/// workbench, and the monitor board on the bench.
+/// One seat's standing desk in the hall: where the seat stands, facing
+/// the desk, and the monitor board on it, at a standing seat's eye level.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Desk {
     /// Standing point, x and z, m, facing +z (yaw zero).
@@ -172,14 +172,14 @@ pub struct Desk {
     pub monitor: Board,
 }
 
-/// Where the row of workbenches stands, z, m.
+/// Where the row of standing desks stands, z, m.
 const DESK_Z: f32 = 7.0;
 
 const fn desk(seat: [f32; 2]) -> Desk {
     Desk {
         seat,
         monitor: Board {
-            center: Vec3::new(seat[0], 1.3, 7.3),
+            center: Vec3::new(seat[0], 1.4, 7.3),
             facing: PI,
             size: [0.84, 0.5],
         },
@@ -1669,23 +1669,19 @@ fn orchard(out: &mut Vec<Placement>) {
 
 /// Furniture ahead of each station's standing point.
 fn stations(out: &mut Vec<Placement>) {
-    // Desks: one workbench per seat; the monitor boards are drawn by Verse.
+    // Desks: one standing desk per seat, a workbench brought up to a
+    // standing desk's height, with no stool: a seat stands to type. The
+    // monitor boards are drawn by Verse.
     for desk in DESKS {
-        out.push(Placement::new(
-            "props/Workbench",
-            [desk.seat[0], DESK_Z],
-            PI,
-            Collision::Bounds,
-        ));
-        // The stool the desk's seat sits on to type. Walking passes it, so
-        // the seat reaches its place at the bench.
-        let [x, z] = super::studio::at_desk(&desk);
-        out.push(Placement::new(
-            "props/Stool",
-            [x, z + super::pose::SEAT_FORWARD],
-            0.0,
-            Collision::None,
-        ));
+        out.push(
+            Placement::new(
+                "props/Workbench",
+                [desk.seat[0], DESK_Z],
+                PI,
+                Collision::Bounds,
+            )
+            .scale(super::pose::DESK_SCALE),
+        );
     }
     // Library: the gallery's bookcases behind a timber arch, and a reading
     // table with books and a scroll.

@@ -1716,7 +1716,7 @@ impl App {
             && let Some(text) = self.connection_options.workshop_ask.take()
         {
             // Across her workstation in the owner's house, facing her.
-            let (_, facing) = zones::everglade::layout::estate::AliceSpot::Seat.world();
+            let (_, facing) = zones::everglade::layout::estate::AliceSpot::Desk.world();
             let toward = Vec3::new(facing.sin(), 0.0, facing.cos());
             self.runtime.player.pos = at + toward * crate::workshop::WALK_UP;
             self.runtime.player.yaw = (-toward.x).atan2(-toward.z);

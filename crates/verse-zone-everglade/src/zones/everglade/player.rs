@@ -1430,7 +1430,7 @@ mod tests {
     }
 
     #[test]
-    fn the_workshop_agent_draws_as_alice_and_sits_at_her_desk() {
+    fn the_workshop_agent_draws_as_alice_and_stands_at_her_desk() {
         let pack = super::super::tests::pack();
         let at = PlayerController::new(Vec3::ZERO, 0.0);
         let mut cast = Cast::new(pack, &at).unwrap().expect("the pack's character");
@@ -1440,9 +1440,10 @@ mod tests {
         let player = cast.figure().vertices.len();
         let rig = &cast.forms.iter().find(|(n, _)| n == &alice.name).unwrap().1;
         let hers = rig.template.len();
-        // She sits typing at her desk: her rig authors the seated postures
-        // from her idle, as it does for the player's character.
-        assert!(rig.authored(Posture::Type) && rig.authored(Posture::Sit));
+        // She stands typing at her standing desk: her rig authors the
+        // typing posture from her idle, as it does for the player's
+        // character, and idle at the desk is her idle itself.
+        assert!(rig.authored(Posture::Type) && !rig.authored(Posture::Stand));
         let seats = [
             SeatFigure {
                 form: super::super::npcs::form_of("alice"),
@@ -1523,15 +1524,15 @@ mod tests {
                 "{center}"
             );
         }
-        // The typing seat sits: its highest point is lower than the
-        // waiting seat's, who stands.
+        // The typing seat stands at its desk: its highest point is as
+        // high as the waiting seat's, who stands too.
         let top = |i: usize| {
             all.vertices[(i + 1) * each..(i + 2) * each]
                 .iter()
                 .map(|v| v.pos[1])
                 .fold(f32::MIN, f32::max)
         };
-        assert!(top(0) < top(1) - 0.2, "{} {}", top(0), top(1));
+        assert!((top(0) - top(1)).abs() < 0.1, "{} {}", top(0), top(1));
         // A seat that leaves is no longer drawn.
         cast.advance(&at, &seats[1..], 0.05);
         assert_eq!(cast.figure().vertices.len(), 2 * each);

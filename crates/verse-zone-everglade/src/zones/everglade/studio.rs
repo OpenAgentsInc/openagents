@@ -13,8 +13,8 @@
 //! - Every seat as a character at the station its activity names. The
 //!   host already classified the seat's newest ATIF step with
 //!   `atif::classify`, so the snapshot's station is the place; this module
-//!   only turns it into a standing point and a [`Posture`]: typing seated
-//!   at its desk, reading at the library, leaning at the proving ground,
+//!   only turns it into a standing point and a [`Posture`]: typing
+//!   standing at its desk, reading at the library, leaning at the proving ground,
 //!   waiting at the podium. Seats walk the zone's navigation around
 //!   obstacles, and run a long way. When a seat's station changes while it
 //!   is still walking to the last one, or the walk would take longer than
@@ -363,14 +363,13 @@ fn tint(seat: &wire::Seat, index: usize) -> [f32; 3] {
 }
 
 /// How a seat holds itself at its station when it is not walking. The
-/// zone's character plays a clip for each (`pose::authored`).
+/// zone's character plays a clip for each (`pose::authored`). Every
+/// posture stands: the desks are standing desks, and a seat never sits.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Posture {
     /// At ease: the idle clip.
     Stand,
-    /// Seated at its desk, hands on its thighs.
-    Sit,
-    /// Seated at its desk, typing.
+    /// Standing at its desk, typing.
     Type,
     /// Reading a book held open, at the library.
     Read,
@@ -389,9 +388,8 @@ pub enum Posture {
 
 impl Posture {
     /// Every posture, in clip order.
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 8] = [
         Self::Stand,
-        Self::Sit,
         Self::Type,
         Self::Read,
         Self::Lean,
@@ -419,7 +417,7 @@ impl Posture {
                 | Activity::Blocked
                 | Activity::Paused
                 | Activity::Done
-                | Activity::Failed => Self::Sit,
+                | Activity::Failed => Self::Stand,
             },
             wire::Station::Library => Self::Read,
             wire::Station::ProvingGround => Self::Lean,

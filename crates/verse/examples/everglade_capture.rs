@@ -180,7 +180,7 @@ fn main() -> Result<(), String> {
     };
     runtime.settle_zone_light();
     runtime.set_spawn(at, yaw)?;
-    // With VERSE_CAPTURE_ALICE set, Alice sits at her desk as the workshop
+    // With VERSE_CAPTURE_ALICE set, Alice stands at her desk as the workshop
     // agent's resident seat does in a desktop window, with no host.
     if std::env::var_os("VERSE_CAPTURE_ALICE").is_some() {
         use coder_access::studio::{Activity, Role, Spend, Station};
@@ -475,7 +475,7 @@ fn alice(
                 .studio()
                 .seat_position(verse::workshop::NAME)
                 .ok_or("Alice has no seat")?;
-            let (_, facing) = AliceSpot::Seat.world();
+            let (_, facing) = AliceSpot::Desk.world();
             let toward = glam::Vec3::new(facing.sin(), 0.0, facing.cos());
             let stand = at + toward * verse::workshop::WALK_UP;
             runtime.set_spawn(

@@ -44,7 +44,7 @@
 //! `--studio-notice <text>` leads Everglade's caption with a notice;
 //! `openagents studio up` passes both.
 //!
-//! In Everglade, `alice`, the workshop agent, sits at her workstation in
+//! In Everglade, `alice`, the workshop agent, stands at her workstation in
 //! the owner's house at the east end of Library Way; walk in through the
 //! front door, up to her, and press F to talk (`docs/verse/workshop-agent.md`).
 //! `--owners-house` opens Everglade just inside the owner's house's front

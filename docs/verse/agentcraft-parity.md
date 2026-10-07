@@ -59,7 +59,7 @@ limit; **Missing** does not exist.
 
 | AgentCraft | Studio today | Gap issue |
 | --- | --- | --- |
-| Distinct characters per agent that sit at desks, with postures and head look | Done: the Ranger in each seat's outfit color, with postures authored on its skeleton at load | |
+| Distinct characters per agent that stand at standing desks, with postures and head look | Done: the Ranger in each seat's outfit color, with postures authored on its skeleton at load | |
 | Pathfinding around the studio | Done: routes around the zone's blockers, run when long, with skip-ahead | |
 | Speech bubbles for messages; a "!" over the agent that owns a decision | Partial: bubbles for questions to you and the lead's task hand-outs; seats send each other no other messages | Characters and life |
 | State particles (thinking, working, error, done) | Done | |

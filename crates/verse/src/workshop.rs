@@ -1116,7 +1116,7 @@ impl Workshop {
     }
 
     /// Her studio seat: at her desk, with what she is doing and her status
-    /// on her nameplate. She sits there whether or not a host answers.
+    /// on her nameplate. She stands there whether or not a host answers.
     #[must_use]
     pub fn seats(&self) -> Vec<seat_wire::Seat> {
         if !self.loaded {

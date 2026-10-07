@@ -1,6 +1,6 @@
 //! Seat postures authored on the pack character's skeleton when the zone
-//! loads, so the studio's seats sit, read, lean, and gesture without new
-//! clips in the pinned pack.
+//! loads, so the studio's seats type, read, lean, and gesture without new
+//! clips in the pinned pack. Every posture stands: a seat never sits.
 //!
 //! The pack names no joints, so [`Skeleton::find`] finds the ones a posture
 //! moves by the skeleton's shape: the pelvis is the joint with two mirrored
@@ -21,13 +21,19 @@ use verse_engine::assets::{BoneKeys, Clip};
 use super::studio::Posture;
 use crate::zones::everglade_pack::{Clip as PackClip, Joint};
 
-/// Height of a desk stool's seat, m: the pack's `props/Stool`.
-pub const STOOL: f32 = 0.58;
+/// Height of a standing desk's top, m: the workshop agent's workstation in
+/// the owner's house and the hall's desks, which are the pack's
+/// `props/Workbench` scaled by [`DESK_SCALE`].
+pub const DESK: f32 = 1.0;
+/// The scale of the hall's desks: the pack's workbench, 0.9 m tall,
+/// brought up to a standing desk's height.
+pub const DESK_SCALE: f32 = 1.1;
 /// Height of a workbench's top, m: the pack's `props/Workbench`.
 pub const BENCH: f32 = 0.9;
-/// How far forward of the standing point a seated seat sits, m, so its
-/// hands reach the bench.
-pub const SEAT_FORWARD: f32 = 0.2;
+/// How far forward of its standing point a typing seat steps up to its
+/// desk, m. The standing point keeps the walker's clearance from the desk;
+/// the step brings the hands over the keys.
+pub const DESK_STEP: f32 = 0.2;
 /// Keys per authored loop; typing taps four times a loop, so a tap has
 /// eight keys.
 const KEYS: usize = 32;
@@ -299,39 +305,23 @@ fn pose(
     let [left, right] = skeleton.arms;
     match posture {
         Posture::Stand => {}
-        Posture::Sit | Posture::Type => {
-            let hip = p.at(skeleton.pelvis);
-            let feet: Vec<Vec3> = skeleton.legs.iter().map(|l| p.at(l.end)).collect();
-            p.shift(
-                skeleton.pelvis,
-                Vec3::new(0.0, STOOL + 0.1 - hip.y, SEAT_FORWARD - 0.03 - hip.z),
-            );
-            for (leg, foot) in skeleton.legs.iter().zip(feet) {
-                let thigh = p.at(leg.upper);
-                let target = Vec3::new(thigh.x * 1.3, foot.y, thigh.z + 0.4);
-                p.reach(*leg, target, Vec3::new(0.0, 0.4, 1.0));
-            }
-            let lean = if posture == Posture::Type { 0.14 } else { 0.04 };
+        Posture::Type => {
+            // Standing at the desk: a step up to it, a slight lean, and the
+            // hands on the keys, each tapping in turn.
+            p.shift(skeleton.pelvis, Vec3::Z * DESK_STEP);
             p.turn(
                 skeleton.spine,
-                Quat::from_rotation_x(lean + 0.01 * wave(1.0, 0.0)),
+                Quat::from_rotation_x(0.1 + 0.01 * wave(1.0, 0.0)),
             );
             for (i, arm) in [left, right].into_iter().enumerate() {
                 let sign = side(arm, &p);
                 let shoulder = p.at(arm.upper);
-                let target = if posture == Posture::Type {
-                    // Hands on the bench, each tapping in turn.
-                    let tap = wave(4.0, i as f32 * std::f32::consts::PI).max(0.0);
-                    Vec3::new(
-                        shoulder.x * 0.55,
-                        BENCH + 0.03 + 0.025 * tap,
-                        shoulder.z + 0.4,
-                    )
-                } else {
-                    // Hands resting on the thighs.
-                    let knee = p.at(skeleton.legs[i].lower);
-                    knee.lerp(p.at(skeleton.legs[i].upper), 0.4) + Vec3::Y * 0.08
-                };
+                let tap = wave(4.0, i as f32 * std::f32::consts::PI).max(0.0);
+                let target = Vec3::new(
+                    shoulder.x * 0.55,
+                    DESK + 0.03 + 0.025 * tap,
+                    shoulder.z + 0.38,
+                );
                 p.reach(arm, target, Vec3::new(sign, -0.4, -0.6));
             }
         }
@@ -560,44 +550,42 @@ mod tests {
     }
 
     #[test]
-    fn a_seated_seat_sits_on_its_stool_and_types_at_the_bench() {
+    fn a_typing_seat_stands_at_its_desk_with_its_hands_on_the_keys() {
         let character = character();
         let joints = &character.joints;
         let skeleton = Skeleton::find(joints).unwrap();
         let idle = character.clip("idle").unwrap();
         assert!(authored(&skeleton, joints, idle, Posture::Stand, 30).is_none());
-        let wait = authored(&skeleton, joints, idle, Posture::Wait, 31).unwrap();
-        let standing = posed(joints, &wait, 0.0);
-        for posture in [Posture::Sit, Posture::Type] {
-            let clip = authored(&skeleton, joints, idle, posture, 32).unwrap();
+        let standing: Vec<Vec3> = globals(joints, &sample(joints, idle, idle.duration / 3.0))
+            .iter()
+            .map(|m| m.w_axis.truncate())
+            .collect();
+        let clip = authored(&skeleton, joints, idle, Posture::Type, 32).unwrap();
+        assert!(
+            clip.bones
+                .iter()
+                .all(|b| { b.rotation.iter().all(|k| Quat::from_array(k.1).is_finite()) })
+        );
+        let at = posed(joints, &clip, clip.duration / 3.0);
+        let hip = at[skeleton.pelvis];
+        // She stands: the hips at their standing height, a step forward.
+        let up = standing[skeleton.pelvis];
+        assert!((hip.y - up.y).abs() < 0.03, "hips at {hip}, standing {up}");
+        assert!((hip.z - up.z - DESK_STEP).abs() < 0.03, "{hip}");
+        // The feet stay on the ground under her, and the knees straight.
+        for leg in skeleton.legs {
+            let foot = at[leg.end];
             assert!(
-                clip.bones
-                    .iter()
-                    .all(|b| { b.rotation.iter().all(|k| Quat::from_array(k.1).is_finite()) })
+                (foot.y - standing[leg.end].y).abs() < 0.05,
+                "a foot at {foot}"
             );
-            let at = posed(joints, &clip, clip.duration / 3.0);
-            let hip = at[skeleton.pelvis];
-            // The hips rest on the stool, over its middle.
-            assert!(
-                (hip.y - (STOOL + 0.1)).abs() < 0.03,
-                "{posture:?} hips at {hip}"
-            );
-            assert!((hip.z - (SEAT_FORWARD - 0.03)).abs() < 0.03, "{hip}");
-            assert!(hip.y < standing[skeleton.pelvis].y - 0.2);
-            // The knees come forward and the feet stay on the ground.
-            for leg in skeleton.legs {
-                let knee = at[leg.lower];
-                assert!(knee.z > hip.z + 0.25, "{posture:?} knee at {knee}");
-                assert!((at[leg.end].y - standing[leg.end].y).abs() < 0.05);
-            }
-            if posture == Posture::Type {
-                // The hands are out over the bench's height.
-                for arm in skeleton.arms {
-                    let hand = at[arm.end];
-                    assert!((hand.y - BENCH).abs() < 0.15, "a hand at {hand}");
-                    assert!(hand.z > at[skeleton.chest].z + 0.2, "a hand at {hand}");
-                }
-            }
+            assert!(at[leg.lower].y > foot.y + 0.3);
+        }
+        // The hands are out over the desk's height.
+        for arm in skeleton.arms {
+            let hand = at[arm.end];
+            assert!((hand.y - DESK).abs() < 0.12, "a hand at {hand}");
+            assert!(hand.z > at[skeleton.chest].z + 0.2, "a hand at {hand}");
         }
     }
 

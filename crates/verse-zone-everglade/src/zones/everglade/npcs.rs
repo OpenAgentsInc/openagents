@@ -1,9 +1,10 @@
 //! Everglade's placed characters (NPCs): characters the world places, not
 //! bodies a player can choose. Today that is Alice, our original
 //! explorer-druid (`docs/verse/female-character.md`), who is the workshop
-//! agent's body (`docs/verse/workshop-agent.md`): she sits at the last desk
-//! in the workshop hall as a resident studio seat, and walks to the
-//! Workbench while a command runs and to the Podium while a proposal waits.
+//! agent's body (`docs/verse/workshop-agent.md`): she stands at her
+//! standing desk in the owner's house as a resident studio seat, and walks
+//! to the console while a command runs and to the lectern while a proposal
+//! waits. She never sits.
 //!
 //! So she no longer stands by the approach as a still creature: the studio
 //! draws her where her work puts her, as the pack's form [`ALICE_FORM`],
