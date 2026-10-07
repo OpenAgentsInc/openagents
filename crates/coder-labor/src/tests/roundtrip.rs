@@ -1150,10 +1150,11 @@ fn invoice_clock_case(
         .mode(0o700)
         .create(&home)
         .unwrap();
-    let scratch = PathBuf::from(std::env::var_os("OPENAGENTS_SCRATCH").unwrap());
+    // A lease may use a long retained scratch path. Keep only this private
+    // socket alias under /tmp so Darwin can connect as well as bind it.
     let alias = tempfile::Builder::new()
         .prefix("lic-")
-        .tempdir_in(scratch.parent().unwrap())
+        .tempdir_in("/tmp")
         .unwrap();
     std::os::unix::fs::symlink(root, alias.path().join("s")).unwrap();
     let home = alias.path().join("s/clock-wallet");
@@ -1169,7 +1170,12 @@ fn invoice_clock_case(
     let stop = server.stop_flag();
     let serving_wallet = wallet.clone();
     let serving = std::thread::spawn(move || server.run(serving_wallet));
-    let remote = openagents_wallet::resident::RemoteWallet::probe(&home).unwrap();
+    let remote = openagents_wallet::resident::RemoteWallet::probe(&home).unwrap_or_else(|| {
+        panic!(
+            "private fixture resident did not answer at {}",
+            home.display()
+        )
+    });
     let reserved = openagents_wallet::resident::REPLY_WAIT.as_secs() + 1;
     let due = provider.book.market().payment_due_at;
     assert!(
@@ -1485,11 +1491,9 @@ fn cli_paid(
         .unwrap();
     // Darwin's Unix socket path bound is shorter than the retained session
     // root. A private short alias changes no wallet custody or source path.
-    let scratch =
-        PathBuf::from(std::env::var_os("OPENAGENTS_SCRATCH").expect("leased scratch root"));
     let alias = tempfile::Builder::new()
         .prefix("lus-")
-        .tempdir_in(scratch.parent().unwrap())
+        .tempdir_in("/tmp")
         .unwrap();
     std::os::unix::fs::symlink(root, alias.path().join("s")).unwrap();
     let wallet_home = alias.path().join("s/cli-wallet");
