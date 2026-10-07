@@ -545,6 +545,11 @@ fn builds(access: Access) -> bool {
     matches!(access, Access::Full | Access::Toolchains)
 }
 
+/// How long a run with a slot waits in the broker's queue for its counted
+/// `build` lease before it runs without one, as a run with no free slot
+/// builds outside the slots.
+const BUILD_LEASE_WAIT: Duration = Duration::from_secs(600);
+
 /// What a run's command boundary is built from at admission.
 #[derive(Clone, Debug)]
 struct CommandPolicy {
@@ -826,6 +831,21 @@ impl Host {
                 }
             }
             _ => None,
+        };
+        // A run with a slot also holds one counted `build` lease from the
+        // host broker, so Coder's builds and every other agent's share one
+        // build count (#10756). Its processes inherit the lease, so a
+        // nested `openagents lease build` or `cargo` shim passes through.
+        let target = match target {
+            Some(mut lease) => Some(
+                tokio::task::spawn_blocking(move || {
+                    lease.hold_build("coder", BUILD_LEASE_WAIT);
+                    lease
+                })
+                .await
+                .map_err(|_| Error::InvalidCommand("the build lease request stopped"))?,
+            ),
+            None => None,
         };
         // The owner's login environment, for a full-access run, is read in
         // the background: nothing before the first command needs it, and
@@ -1293,6 +1313,11 @@ impl Host {
                         "CARGO_TARGET_DIR".into(),
                         target.path.as_os_str().to_owned(),
                     ));
+                    let leases = target.lease_environment();
+                    environment
+                        .variables
+                        .retain(|(key, _)| !leases.iter().any(|(name, _)| name == key));
+                    environment.variables.extend(leases);
                 }
                 // Installs go to this run's own prefix (#10336).
                 if let Some(prefix) = &self.installs {
@@ -1591,6 +1616,9 @@ impl Host {
         }
         if let Some(target) = &self.policy.target {
             variables.push(("CARGO_TARGET_DIR".into(), target.as_os_str().to_owned()));
+        }
+        if let Some(target) = &self.target {
+            variables.extend(target.lease_environment());
         }
         // A relative local remote resolves against the main checkout, not
         // this worktree (#10333).

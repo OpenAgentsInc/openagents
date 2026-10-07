@@ -304,6 +304,8 @@ async fn main() -> ExitCode {
         );
         return ExitCode::SUCCESS;
     }
+    // Delegates' heavy `cargo` commands take build leases (#10756).
+    coder::task::targets::enable_lease_shims();
     if args
         .first()
         .is_some_and(|argument| argument == "repository")

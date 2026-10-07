@@ -26,6 +26,9 @@
 //! builds drain on their own: the broker never signals, pauses, or slows a
 //! process.
 //!
+//! [`shim`] writes the `cargo` shim Coder puts first on a delegate's
+//! `PATH`, so a delegate's heavy builds take `build` leases.
+//!
 //! `docs/coder/runtime/leases.md` is the operator's page.
 
 mod broker;
@@ -34,6 +37,7 @@ mod holder;
 mod limits;
 mod resource;
 mod root;
+pub mod shim;
 mod table;
 
 pub use broker::{

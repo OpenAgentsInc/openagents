@@ -145,7 +145,16 @@ impl Seal {
         command.env("GIT_CONFIG_KEY_0", "credential.helper");
         command.env("GIT_CONFIG_VALUE_0", "");
         let mut path = OsString::from(self.stubs.as_os_str());
-        if let Some(rest) = std::env::var_os("PATH").filter(|rest| !rest.is_empty()) {
+        // A `PATH` the command already sets, such as one with the lease
+        // shims first, stays behind the stubs.
+        let set = command
+            .get_envs()
+            .find(|(name, _)| *name == "PATH")
+            .and_then(|(_, value)| value.map(OsString::from));
+        if let Some(rest) = set
+            .or_else(|| std::env::var_os("PATH"))
+            .filter(|rest| !rest.is_empty())
+        {
             path.push(":");
             path.push(rest);
         }

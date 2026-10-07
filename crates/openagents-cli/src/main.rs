@@ -284,6 +284,15 @@ fn main() -> ExitCode {
         return ExitCode::from(EXIT_USAGE);
     };
     let rest = rest.to_vec();
+    // The commands that run Coder or its delegates put the lease shims on
+    // the delegates' `PATH`, so their heavy `cargo` commands take build
+    // leases (#10756).
+    if matches!(
+        command.as_str(),
+        "coder" | "host" | "task" | "chat" | "terminal" | "studio"
+    ) {
+        coder::task::targets::enable_lease_shims();
+    }
     let code = match command.as_str() {
         "coder" => coder_new::programmatic::run(&rest, json),
         "help" | "--help" | "-h" => {

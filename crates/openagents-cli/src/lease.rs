@@ -18,6 +18,7 @@ use crate::Output;
 
 pub(crate) const USAGE: &str =
     "usage: openagents lease RESOURCE [--amount N] [--no-wait] [--receipt PATH] -- CMD [ARGS...]
+       openagents lease build [--keep-target-dir] [--no-wait] [--receipt PATH] -- CMD [ARGS...]
   list           Every lease held and waiting: resource, holder session, agent,
                  process, command name, and how long, with the build count,
                  memory budget, and disk floor the counted leases share.
@@ -37,7 +38,12 @@ OPENAGENTS_LEASE_ID, OPENAGENTS_LEASES, and OPENAGENTS_SESSION; a command
 already under a lease on RESOURCE runs without taking another. On release,
 a receipt lands in ~/.openagents/leases/receipts/ (OPENAGENTS_LEASE_ROOT
 moves the root), and --receipt PATH writes a copy; with --json it is
-printed after CMD's output.";
+printed after CMD's output.
+build also takes one of Coder's target slots for the current repository
+(~/.openagents/targets, shared with Coder tasks and capped at 25 GB) and
+sets CARGO_TARGET_DIR to it; --keep-target-dir keeps a CARGO_TARGET_DIR
+already set. Below the free-space floor (10 GB, OPENAGENTS_SLOT_FREE_GB) it
+refuses and names the reclaim command.";
 
 /// What each command does, for the chat router's command tree
 /// (`coder::cli_route::tree`).
@@ -270,6 +276,7 @@ struct Hold {
     amount: Option<u64>,
     no_wait: bool,
     receipt: Option<PathBuf>,
+    keep_target_dir: bool,
     command: Vec<String>,
 }
 
@@ -282,9 +289,19 @@ fn parse_hold(words: &[String]) -> Result<Hold, String> {
     if command.is_empty() {
         return Err("a command is required after `--`".to_owned());
     }
-    let args =
-        crate::argv::parse_command(options, "lease", &["amount", "receipt"], &["no-wait"], 1, 1)?;
+    let args = crate::argv::parse_command(
+        options,
+        "lease",
+        &["amount", "receipt"],
+        &["no-wait", "keep-target-dir"],
+        1,
+        1,
+    )?;
     let resource = Resource::parse(&args.positional()[0])?;
+    let keep_target_dir = args.switch("keep-target-dir");
+    if keep_target_dir && resource != Resource::Build {
+        return Err("--keep-target-dir goes with build only".to_owned());
+    }
     let amount = match args.option("amount") {
         None => None,
         Some(text) => Some(
@@ -299,6 +316,7 @@ fn parse_hold(words: &[String]) -> Result<Hold, String> {
         amount,
         no_wait: args.switch("no-wait"),
         receipt: args.option("receipt").map(PathBuf::from),
+        keep_target_dir,
         command: command.to_vec(),
     })
 }
@@ -349,6 +367,7 @@ fn hold(output: &Output, words: &[String]) -> u8 {
     if let Some(amount) = hold.amount {
         request = request.amount(amount);
     }
+    let shim = std::env::var_os(SHIM_VAR).is_some_and(|value| value == "1");
     let lease = match broker.acquire_notify(request, &mut |blocked| {
         eprintln!(
             "openagents lease: waiting for {}: {}",
@@ -367,9 +386,45 @@ fn hold(output: &Output, words: &[String]) -> u8 {
                 ),
             );
         }
+        // The cargo shim runs cargo anyway when the lease table can't be
+        // written, such as inside a sandbox that keeps the home unwritten.
+        Err(Error::Io(error)) if shim => {
+            eprintln!(
+                "openagents lease: running {} without a build lease: {error}",
+                hold.command[0]
+            );
+            let (exit, failure) = run_command(&hold.command, &[]);
+            return finish_unleased(exit, failure);
+        }
         Err(error) => return output.fail("lease", &error.to_string()),
     };
-    let (exit, failure) = run_command(&hold.command, &lease.env());
+    let mut env = lease.env();
+    // A build takes a target slot, unless it runs inside another build
+    // lease or keeps a target directory already set.
+    let slot = if hold.resource == Resource::Build && !lease.nested() {
+        let set = std::env::var_os("CARGO_TARGET_DIR").filter(|dir| !dir.is_empty());
+        if hold.keep_target_dir && set.is_some() {
+            None
+        } else {
+            match target_slot(shim) {
+                Ok(slot) => slot,
+                Err(message) => {
+                    drop(lease);
+                    return output.fail("lease", &message);
+                }
+            }
+        }
+    } else {
+        None
+    };
+    if let Some(slot) = &slot {
+        env.push((
+            "CARGO_TARGET_DIR".to_owned(),
+            slot.path.display().to_string(),
+        ));
+    }
+    let (exit, failure) = run_command(&hold.command, &env);
+    drop(slot);
     let receipt = match lease.release(exit) {
         Ok(receipt) => receipt,
         Err(error) => return output.fail("lease", &error.to_string()),
@@ -391,12 +446,78 @@ fn hold(output: &Output, words: &[String]) -> u8 {
     }
 }
 
+/// Set by the `cargo` lease shim (`coder_lease::shim`) when it runs
+/// `openagents lease build`.
+const SHIM_VAR: &str = coder_lease::shim::SHIM_VAR;
+
+/// The exit code of a command run without a lease.
+fn finish_unleased(exit: Option<i32>, failure: Option<String>) -> u8 {
+    if let Some(message) = failure {
+        eprintln!("openagents lease: {message}");
+    }
+    match exit {
+        Some(code) => u8::try_from(code & 0xff).unwrap_or(crate::EXIT_FAILURE),
+        None => crate::EXIT_FAILURE,
+    }
+}
+
+/// One of Coder's target slots for the repository the working directory
+/// is in, from the task store's pool (`coder::task::targets`), so Coder
+/// tasks and conversation agents share one pool and one cap. `None`
+/// outside a Git repository, or, under the shim, when the pool can't be
+/// written. Waits while every slot of the repository is taken.
+fn target_slot(shim: bool) -> Result<Option<coder::task::targets::Lease>, String> {
+    let common = Command::new("git")
+        .args(["rev-parse", "--path-format=absolute", "--git-common-dir"])
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output();
+    let common = match common {
+        Ok(found) if found.status.success() => {
+            PathBuf::from(String::from_utf8_lossy(&found.stdout).trim())
+        }
+        _ => {
+            eprintln!(
+                "openagents lease: not in a Git repository, so the build keeps its own target directory"
+            );
+            return Ok(None);
+        }
+    };
+    let store = coder::task::local::default_store();
+    match coder::task::targets::Lease::acquire_waiting(&store, &common, &mut || {
+        eprintln!(
+            "openagents lease: waiting for a target slot; every slot of this repository is in use"
+        );
+    }) {
+        Ok(slot) => Ok(Some(slot)),
+        Err(coder::task::Error::BuildDiskLow { free, floor }) => Err(disk_low(free, floor)),
+        Err(coder::task::Error::Io(error)) if shim => {
+            eprintln!("openagents lease: building without a target slot: {error}");
+            Ok(None)
+        }
+        Err(error) => Err(format!("no target slot: {error}")),
+    }
+}
+
+/// The refusal below the free-space floor, in decimal gigabytes.
+fn disk_low(free: u64, floor: u64) -> String {
+    #[allow(clippy::cast_precision_loss)]
+    let gb = |bytes: u64| bytes as f64 / 1e9;
+    format!(
+        "builds are refused below the free-space floor: {:.1} GB free, and the floor is {:.0} GB. \
+         Reclaim space with `openagents background run disk`, or lower the floor with \
+         OPENAGENTS_SLOT_FREE_GB.",
+        gb(free),
+        gb(floor)
+    )
+}
+
 /// Runs the command under `supervise`, in a process group of its own that
 /// holds the terminal while it runs, and returns its exit code and, when
 /// it had none, why.
 fn run_command(command: &[String], env: &[(String, String)]) -> (Option<i32>, Option<String>) {
     let mut child = Command::new(&command[0]);
-    child.args(&command[1..]);
+    child.args(&command[1..]).env_remove(SHIM_VAR);
     for (name, value) in env {
         child.env(name, value);
     }
@@ -514,6 +635,7 @@ mod tests {
                 amount: Some(40),
                 no_wait: true,
                 receipt: Some(PathBuf::from("out/r.json")),
+                keep_target_dir: false,
                 command: words(&["cargo", "test", "--json"]),
             }
         );
@@ -527,6 +649,24 @@ mod tests {
                 .unwrap()
                 .resource,
             Resource::Issue(10755)
+        );
+    }
+
+    #[test]
+    fn keep_target_dir_goes_with_build_only() {
+        let hold = parse_hold(&words(&["build", "--keep-target-dir", "--", "cargo"])).unwrap();
+        assert!(hold.keep_target_dir);
+        assert!(parse_hold(&words(&["gpu", "--keep-target-dir", "--", "true"])).is_err());
+    }
+
+    #[test]
+    fn the_disk_refusal_names_free_space_the_floor_and_the_reclaim_command() {
+        let message = disk_low(6_200_000_000, 10_000_000_000);
+        assert!(message.contains("6.2 GB free"), "{message}");
+        assert!(message.contains("the floor is 10 GB"), "{message}");
+        assert!(
+            message.contains("openagents background run disk"),
+            "{message}"
         );
     }
 

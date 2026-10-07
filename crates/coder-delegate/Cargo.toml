@@ -9,6 +9,7 @@ publish.workspace = true
 [dependencies]
 # OpenCode's model names and login lookup (`acp_client::opencode`).
 acp-client = { path = "../acp-client" }
+coder-lease = { path = "../coder-lease" }
 atif = { path = "../atif" }
 coder-boundary = { path = "../coder-boundary" }
 coder-history = { path = "../coder-history", default-features = false }

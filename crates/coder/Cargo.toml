@@ -14,6 +14,7 @@ capability = { path = "../capability" }
 coder-boundary = { path = "../coder-boundary" }
 coder-host = { path = "../coder-host" }
 coder-delegate = { path = "../coder-delegate" }
+coder-lease = { path = "../coder-lease" }
 # OpenCode route models (`acp_client::opencode::Model`).
 acp-client = { path = "../acp-client" }
 coder-terminal = { path = "../coder-terminal" }

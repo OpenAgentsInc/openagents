@@ -887,7 +887,12 @@ impl Gate {
         let started = std::time::Instant::now();
         loop {
             match super::targets::Lease::acquire(store, &common) {
-                Ok(lease) => return Ok(Some(lease)),
+                Ok(mut lease) => {
+                    // The checks build, so they also hold a counted
+                    // `build` lease from the host broker (#10756).
+                    lease.hold_build("coder", SLOT_WAIT);
+                    return Ok(Some(lease));
+                }
                 Err(super::Error::Busy | super::Error::BuildDiskLow { .. })
                     if started.elapsed() < SLOT_WAIT =>
                 {

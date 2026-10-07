@@ -83,6 +83,10 @@ pub struct Lease {
     store: PathBuf,
     policy: Policy,
     cutoff: SystemTime,
+    /// The counted `build` lease from the host broker (`coder-lease`),
+    /// held beside the slot so Coder's builds and every other agent's share
+    /// one build count ([`Lease::hold_build`]).
+    build: Option<coder_lease::Lease>,
 }
 
 #[cfg(unix)]
@@ -137,10 +141,137 @@ impl Lease {
                     store: store.to_owned(),
                     policy,
                     cutoff,
+                    build: None,
                 });
             }
         }
         Err(Error::Busy)
+    }
+
+    /// [`Lease::acquire`], waiting while every slot of the project is
+    /// taken and calling `waiting` once when it starts to wait. A refusal
+    /// below the free-space floor ([`Error::BuildDiskLow`]) returns at once.
+    ///
+    /// # Errors
+    /// As [`Lease::acquire`], except [`Error::Busy`].
+    pub fn acquire_waiting(
+        store: &Path,
+        common: &Path,
+        waiting: &mut dyn FnMut(),
+    ) -> Result<Self, Error> {
+        let mut told = false;
+        loop {
+            match Self::acquire(store, common) {
+                Err(Error::Busy) => {
+                    if !told {
+                        told = true;
+                        waiting();
+                    }
+                    std::thread::sleep(std::time::Duration::from_secs(2));
+                }
+                other => return other,
+            }
+        }
+    }
+
+    /// Takes one counted `build` lease from the host broker for this slot's
+    /// run, waiting up to `wait` in the broker's queue. A run that isn't
+    /// admitted in time, or whose broker can't be used, builds without it
+    /// and says so on standard error, as a run with no free slot builds
+    /// outside the slots.
+    pub fn hold_build(&mut self, command: &str, wait: std::time::Duration) {
+        if self.build.is_some() {
+            return;
+        }
+        let root = std::env::var_os(coder_lease::ROOT_VAR)
+            .filter(|root| !root.is_empty())
+            .map_or_else(|| lease_root(&self.store), PathBuf::from);
+        match coder_lease::Limits::from_env() {
+            Ok(limits) => {
+                let broker = coder_lease::Broker::new(root, limits);
+                self.build = build_lease(&broker, command, wait);
+            }
+            Err(error) => eprintln!("coder: building without a build lease: {error}"),
+        }
+    }
+
+    /// The variables a process of this run gets so a nested `openagents
+    /// lease build` or `cargo` shim passes through the run's build lease:
+    /// `OPENAGENTS_LEASE_ID`, `OPENAGENTS_LEASES`, and `OPENAGENTS_SESSION`.
+    /// Empty without a build lease.
+    #[must_use]
+    pub fn lease_environment(&self) -> Vec<(std::ffi::OsString, std::ffi::OsString)> {
+        self.build
+            .as_ref()
+            .map(|lease| {
+                lease
+                    .env()
+                    .into_iter()
+                    .map(|(name, value)| (name.into(), value.into()))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// Whether this run holds a counted `build` lease.
+    #[must_use]
+    pub fn holds_build(&self) -> bool {
+        self.build.is_some()
+    }
+}
+
+/// Writes the lease shims (`coder_lease::shim`) and puts them first on the
+/// `PATH` of every agent this process delegates to from now on: Claude
+/// Code, Codex, OpenCode, the ACP agents, and Microcoder's commands. The
+/// shim runs the `openagents` beside this program, or this program when it
+/// is `openagents`, else the one on the delegate's `PATH`. A process that
+/// can't write the shims delegates without them. Call it once, from a
+/// program's `main`, never from a library's tests.
+pub fn enable_lease_shims() {
+    let bin = std::env::current_exe().ok().and_then(|exe| {
+        let name = format!("openagents{}", std::env::consts::EXE_SUFFIX);
+        if exe.file_name().is_some_and(|file| file == name.as_str()) {
+            Some(exe)
+        } else {
+            exe.parent()
+                .map(|dir| dir.join(&name))
+                .filter(|bin| bin.is_file())
+        }
+    });
+    let _ = coder_lease::shim::enable_from_env(bin);
+}
+
+/// The lease table a task store's runs share: `leases` beside the store,
+/// so the default store `~/.openagents/tasks` uses the machine's table
+/// `~/.openagents/leases`, and a test's scratch store a scratch table.
+/// `OPENAGENTS_LEASE_ROOT` overrides it.
+#[must_use]
+pub fn lease_root(store: &Path) -> PathBuf {
+    store.parent().unwrap_or(store).join("leases")
+}
+
+/// One counted `build` lease from `broker` for `command`, under the
+/// leases this process already runs under, waiting up to `wait`. `None`,
+/// said on standard error, when it isn't admitted in time or the broker
+/// fails.
+#[cfg(unix)]
+pub fn build_lease(
+    broker: &coder_lease::Broker,
+    command: &str,
+    wait: std::time::Duration,
+) -> Option<coder_lease::Lease> {
+    let request = coder_lease::Request::new(
+        coder_lease::Resource::Build,
+        coder_lease::Holder::detect(command),
+    )
+    .wait(coder_lease::Wait::Up(wait))
+    .inherit_env();
+    match broker.acquire(request) {
+        Ok(lease) => Some(lease),
+        Err(error) => {
+            eprintln!("coder: building without a build lease: {error}");
+            None
+        }
     }
 }
 
@@ -159,6 +290,30 @@ impl Lease {
             "Cargo build slot admission is not supported on this platform",
         )
         .into())
+    }
+
+    /// Refuses as [`Lease::acquire`] does.
+    pub fn acquire_waiting(
+        store: &Path,
+        common: &Path,
+        _waiting: &mut dyn FnMut(),
+    ) -> Result<Self, Error> {
+        Self::acquire(store, common)
+    }
+
+    /// No build lease is taken on this platform.
+    pub fn hold_build(&mut self, _command: &str, _wait: std::time::Duration) {}
+
+    /// Empty: no build lease is taken on this platform.
+    #[must_use]
+    pub fn lease_environment(&self) -> Vec<(std::ffi::OsString, std::ffi::OsString)> {
+        Vec::new()
+    }
+
+    /// Never, on this platform.
+    #[must_use]
+    pub fn holds_build(&self) -> bool {
+        false
     }
 }
 
@@ -489,6 +644,40 @@ fn trim(root: &Path, budget: u64) -> Result<(), Error> {
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_slot_holds_a_counted_build_lease_its_processes_inherit() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = dir.path().join("tasks");
+        let common = dir.path().join("project/.git");
+        std::fs::create_dir_all(&common).unwrap();
+        assert_eq!(lease_root(&store), dir.path().join("leases"));
+        let broker = coder_lease::Broker::new(
+            lease_root(&store),
+            coder_lease::Limits {
+                build: 1,
+                memory_gib: 1,
+                disk_floor_gb: 0,
+            },
+        )
+        .with_poll(std::time::Duration::from_millis(10));
+        let policy = Policy {
+            cap: 1,
+            floor: 0,
+            keep: 3,
+        };
+        let mut slot = Lease::acquire_with(&store, &common, policy, &Free(100)).unwrap();
+        assert!(slot.lease_environment().is_empty());
+        slot.build = build_lease(&broker, "coder", std::time::Duration::from_secs(5));
+        assert!(slot.holds_build());
+        let env = slot.lease_environment();
+        assert!(env.contains(&("OPENAGENTS_LEASES".into(), "build".into())));
+        // The one build lease is held, so a second request isn't admitted.
+        assert!(build_lease(&broker, "cargo", std::time::Duration::from_millis(50)).is_none());
+        drop(slot);
+        assert!(broker.list().unwrap().is_empty());
+        assert!(build_lease(&broker, "cargo", std::time::Duration::from_millis(50)).is_some());
+    }
 
     #[cfg(unix)]
     #[test]

@@ -79,6 +79,9 @@ impl Env for Local {
     async fn run(&self, command: &str, deadline: Duration) -> CommandResult {
         let mut child = Command::new("sh");
         child.arg("-c").arg(SHELL).current_dir(&self.dir);
+        // Heavy `cargo` commands take a build lease through the shim first
+        // on `PATH`, once this process turned the shims on.
+        child.envs(coder_lease::shim::delegate_vars_here());
         // The model's commands never see a key.
         for (name, _) in std::env::vars() {
             if name.ends_with("_API_KEY") || name.ends_with("_TOKEN") || name.ends_with("_SECRET") {

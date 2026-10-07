@@ -5514,6 +5514,12 @@
               },
               {
                 "kind": "option",
+                "name": "keep-target-dir",
+                "optional": true,
+                "repeated": true
+              },
+              {
+                "kind": "option",
                 "name": "for",
                 "value": "DURATION",
                 "open": true,
@@ -5655,6 +5661,26 @@
       "options": [
         {
           "kind": "option",
+          "name": "keep-target-dir",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "no-wait",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "receipt",
+          "value": "PATH",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
           "name": "for",
           "value": "DURATION",
           "open": true,
@@ -5673,20 +5699,6 @@
           "kind": "option",
           "name": "amount",
           "value": "A",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "no-wait",
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "receipt",
-          "value": "PATH",
           "open": true,
           "optional": true,
           "repeated": true

@@ -749,7 +749,10 @@ impl Briefing {
         knowledge: &crate::briefing_knowledge::Knowledge,
         cap: usize,
     ) -> Self {
-        let directions = format!("\n## What to do\n\n{}\n", inputs.directions);
+        let mut directions = format!("\n## What to do\n\n{}\n", inputs.directions);
+        if coder_lease::shim::enabled().is_some() {
+            directions.push_str(LEASED_BUILDS);
+        }
         let fixed = head.chars().count() + directions.chars().count() + 32;
         let room = cap.saturating_sub(fixed);
         let mut included = Vec::new();
@@ -1784,6 +1787,11 @@ pub fn codex_auth_file(env: impl Fn(&str) -> Option<String>) -> Option<PathBuf> 
     }
 }
 
+/// What a briefing tells the delegate when its `cargo` takes build leases.
+pub const LEASED_BUILDS: &str = "\nHeavy `cargo` commands (build, test, check, clippy, run) take a build \
+lease on this machine and may wait their turn; let them wait, and don't change \
+`CARGO_TARGET_DIR`.\n";
+
 /// The `claude` binary: `CODER_ONE_CLAUDE_BIN`, else the first `claude` on
 /// `PATH`, else `~/.local/bin/claude`, where the native installer puts it.
 #[must_use]
@@ -2164,6 +2172,10 @@ impl Cli {
                 .env_remove("ANTHROPIC_API_KEY")
                 .env_remove("ANTHROPIC_AUTH_TOKEN");
         }
+        // Heavy `cargo` commands take a build lease through the shim
+        // first on `PATH` (`coder_lease::shim`), once this process turned
+        // the shims on.
+        command.envs(coder_lease::shim::delegate_vars_here());
         for (name, value) in &self.env {
             command.env(name, value);
         }
