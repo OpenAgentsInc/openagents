@@ -37,7 +37,7 @@ pub use management::{
 /// The account surface, scoped to its client.
 #[derive(Debug)]
 pub struct Account<'a> {
-    client: &'a Client,
+    pub(crate) client: &'a Client,
 }
 
 impl<'a> Account<'a> {

@@ -344,3 +344,6 @@ pub mod env {
     /// the client does not read it.
     pub const LOG_LEVEL: &str = "TYPESAFE_LOG_LEVEL";
 }
+
+mod decision_funding;
+pub use decision_funding::{DecisionFunding, DecisionFundingBalance, DecisionFundingRequest};

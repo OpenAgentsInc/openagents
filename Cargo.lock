@@ -5543,10 +5543,13 @@ version = "0.1.0"
 dependencies = [
  "axum 0.8.9",
  "discovery",
+ "fs2",
  "futures-util",
  "hmac 0.12.1",
  "jev",
+ "libc",
  "nostr",
+ "openagents-wallet",
  "pay-ledger",
  "receipts",
  "reqwest 0.12.28",

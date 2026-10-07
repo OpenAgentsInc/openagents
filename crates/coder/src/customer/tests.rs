@@ -25,7 +25,7 @@ fn context(account: &str, workspace: &str, key: &str) -> Context {
         role: "owner".into(),
         door: "decision-a".into(),
         registry_digest: hash('a'),
-        artifact_digest: hash('b'),
+        artifact_digest: digest_request(&serde_json::to_value(receipt_artifact()).unwrap()),
         price: PriceReference {
             version: "price-1".into(),
             currency: "USD".into(),
@@ -39,6 +39,14 @@ fn context(account: &str, workspace: &str, key: &str) -> Context {
 }
 fn hash(c: char) -> String {
     format!("sha256:{}", c.to_string().repeat(64))
+}
+fn receipt_artifact() -> receipts::execution::Served {
+    receipts::execution::Served {
+        model: "checkpoint-a".into(),
+        adapter: Some("decision-adapter".into()),
+        artifact_signature: hash('b'),
+        execution: [("dtype".into(), "f32".into())].into(),
+    }
 }
 fn body() -> Value {
     json!({"model":"decision-a", "state":"Private fixture content", "questions":{"ready":{"type":"noul", "instructions":"Is the task ready for review?"}}})
@@ -424,7 +432,7 @@ fn proof(
         digest: quote.context.registry_digest.clone(),
         sequence: 1,
     });
-    receipt.requested.model = quote.context.door.clone();
+    receipt.requested = receipt_artifact();
     receipt.outcome = outcome;
     receipt.seal();
     jev::PurchaseReceipt {
@@ -447,7 +455,7 @@ fn only_the_original_verified_receipt_and_money_position_resolve_liability() {
     let q = approved(&mut store, "purchase", &selected.context);
     store.begin("purchase", &selected.context, 120).unwrap();
     store.uncertain("purchase").unwrap();
-    for variant in 0..10 {
+    for variant in 0..14 {
         let mut p = proof(&q.quote, receipts::execution::Outcome::Answered, "settled");
         match variant {
             0 => p.receipt.request = "other".into(),
@@ -459,7 +467,16 @@ fn only_the_original_verified_receipt_and_money_position_resolve_liability() {
             6 => p.cost.as_mut().unwrap().reserved += 1,
             7 => p.cost.as_mut().unwrap().price_version = "other".into(),
             8 => p.cost.as_mut().unwrap().retail = Some(101),
-            _ => p.cost = None,
+            9 => p.cost = None,
+            10 => p.receipt.requested.model = q.quote.context.door.clone(),
+            11 => p.receipt.requested.adapter = None,
+            12 => p.receipt.requested.artifact_signature = hash('f'),
+            _ => {
+                p.receipt
+                    .requested
+                    .execution
+                    .insert("dtype".into(), "f16".into());
+            }
         };
         p.receipt.seal();
         assert!(store.record_proof("purchase", p).is_err());

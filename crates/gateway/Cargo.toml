@@ -7,6 +7,9 @@ description = "The keyed HTTP gateway in front of decision doors: authenticate, 
 publish.workspace = true
 
 [dependencies]
+fs2 = "0.4"
+libc = "0.2"
+openagents-wallet = { path = "../wallet", default-features = false }
 discovery = { path = "../discovery" }
 jev = { path = "../jev" }
 axum = { version = "0.8", features = ["multipart"] }
@@ -25,6 +28,7 @@ tokio = { version = "1", features = ["full"] }
 tokio-tungstenite = { version = "0.30.0", features = ["rustls-tls-webpki-roots"] }
 
 [dev-dependencies]
+nostr = { path = "../nostr", features = ["test-invoice"] }
 tempfile = "3"
 
 [lints]

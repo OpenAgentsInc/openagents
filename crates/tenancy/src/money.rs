@@ -857,6 +857,12 @@ impl Ledger {
 
     /// Funding, promotion, usage, hold releases, and refunds from this ledger.
     /// Wallet liquidity is unobserved; accounting credit is not a wallet read.
+    /// The active funding terms, distinct from archived policy versions.
+    pub fn funding_policy(&self, workspace: &str) -> Option<&funding::Policy> {
+        let book = self.state.accounts.get(workspace)?.funding.as_ref()?;
+        book.policies.get(&book.active)
+    }
+
     pub fn statement(&self, workspace: &str) -> Result<Statement, String> {
         self.statement_at(workspace, now()?.max(self.state.latest_at))
     }

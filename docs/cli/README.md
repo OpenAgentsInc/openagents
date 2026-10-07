@@ -111,6 +111,9 @@ payer, price, and charge ceiling. Review the emitted quote, approve its exact
 An interrupted dispatch remains unknown and blocks another purchase for that
 payer; `reconcile --purchase ID [--receipt DIGEST]` only reads original settlement
 evidence. Invocation prints the requested result; retain it privately if needed.
+Receipt reconciliation verifies the frozen artifact identity, including its
+model, adapter, signature, and execution settings. A door alias can differ from
+the checkpoint name in that receipt.
 
 `change --input FILE` reads a private JSON intent with `id`, `origin`, `account`,
 `credential_alias`, and `action`. Actions are `sign-in` with `output_alias`,
@@ -123,6 +126,24 @@ Unknown outcomes refuse renamed retries. `inspect --operation ID` authenticates
 a retained once-issued credential after interruption without acknowledging an
 unknown historical effect or silently switching accounts. `credentials` reads
 operation references for the selected customer.
+
+`funding --input FILE` sends one private JSON intent to the selected gateway's
+optional decision-funding route. Use `{"op":"quote","id":"funding-one",
+"amount_msat":200000}` to review an exact BTC funding quote, then
+`{"op":"issue","id":"funding-one","approved":"QUOTE_DIGEST"}` to approve
+that retained quote. Invoice creation does not pay an invoice. The gateway
+credits the original workspace only after its admitted receiver observes
+confirmed collection. `read` and `reconcile` intents name the same immutable
+`id`; they cannot substitute a customer, payer, or receiver. Mutations make one
+HTTP attempt. After an interrupted response, inspect that original identity
+before another invoice. `funding-history` retains verified observations and
+uncertain intents even when current credentials are unavailable.
+
+The selected funding lane uses BTC currency-millionths: one ledger unit is
+100,000 millisatoshis (100 satoshis). Fractional units refuse. Funding, reserved
+decision liability, observed settled usage, and wallet liquidity remain separate;
+funding itself earns no usage revenue. The gateway must enable this adapter and
+provision the customer's native monetary account and policy first.
 
 Inputs require private regular files, and the store uses mode `0700` directories
 and `0600` files. HTTPS origins are supported; HTTP is restricted to explicit

@@ -112,6 +112,31 @@ response also carries `x-api-version`, the catalog's declared version.
 
 ## Routes
 
+The optional `funding` configuration requires `accounts`, `money`, and enforced
+workspace membership. It selects an absolute private `state` directory,
+absolute private resident `wallet_home`, compressed `receiver_node`, explicit
+`network`, native funding `policy`, its `conversion` version, and
+`maximum_msat`. The customer's active ledger policy must exactly match. This
+adapter accepts final Lightning collection into BTC currency-millionths with
+an exact conversion of 100,000 millisatoshis per ledger unit; it performs no FX
+and guesses no payment expense. Provision accounts and policies through the
+existing monetary operator tools before enabling it.
+
+`POST /v1/workspaces/{workspace}/decision-funding/{door}` accepts a bounded
+`quote`, `issue`, `read`, or `reconcile` intent under current account credentials,
+workspace membership, and balance visibility. Quote approval pins the original
+customer, receiver, amount, policy, conversion, rights, and decision price.
+Invoice creation persists its dispatch intent first. An uncertain creation
+retains liability and never reissues an invoice. The receiver's authenticated
+lookup establishes collection; client proofs and invoice issuance grant no
+credit. A bounded recovery worker reconciles retained original invoices after
+restart, including when their original credentials retire. Collection posts
+once through the existing money writer. Responses preserve native balances,
+uncovered holds, and funding provenance; they label wallet liquidity and
+production qualification unknown. The installed
+[customer client](../../cli/README.md#commercial-customer-openagents-customer)
+and Rust SDK use one HTTP attempt per funding intent.
+
 - `POST /v1/systemone` — the decision call. The body is the TypeSafe
   request envelope: `state`, a `model` naming the door, and `questions`.
 - `GET /v1/models` — the doors the caller's tenant may name, with the

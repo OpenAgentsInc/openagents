@@ -7165,6 +7165,62 @@
           }
         },
         {
+          "name": "funding",
+          "leaf": {
+            "path": [
+              "customer",
+              "funding"
+            ],
+            "usage": [
+              "funding --input FILE"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "funding"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "input",
+                    "value": "FILE",
+                    "open": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Quote, approve, read, or reconcile an exact gateway funding intent. Issue creates a receiver invoice and never pays from a caller wallet.",
+            "effect": "grants",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "funding-history",
+          "leaf": {
+            "path": [
+              "customer",
+              "funding-history"
+            ],
+            "usage": [
+              "funding-history"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "funding-history"
+                  }
+                ]
+              }
+            ],
+            "summary": "Read retained original funding references, including uncertain outcomes.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
           "name": "credentials",
           "leaf": {
             "path": [

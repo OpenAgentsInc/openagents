@@ -151,6 +151,7 @@ async fn deploy() -> Deployment {
         require_workspace_membership: true,
         accounts: Some(account_config()),
         billing: Some(billing_config()),
+        funding: None,
         earnings: None,
         skills: None,
         money: Some(money_config(&ledger)),

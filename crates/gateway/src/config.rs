@@ -76,6 +76,9 @@ pub struct Config {
     /// without the field.
     #[serde(default)]
     pub money: Option<Money>,
+    /// Optional exact Lightning collection into the decision money writer.
+    #[serde(default)]
+    pub funding: Option<crate::funding::Config>,
     /// The largest request body admitted, in bytes. Default 1 MiB —
     /// a decision request is state plus questions, never a bulk upload.
     #[serde(default = "default_body_max")]
@@ -510,6 +513,15 @@ impl Config {
                 self.reservation_ttl_secs,
                 self.classify_deadline_ms()
             ));
+        }
+        if let Some(funding) = &self.funding {
+            funding.check()?;
+            if self.money.is_none() || self.accounts.is_none() || !self.require_workspace_membership
+            {
+                return Err(
+                    "Decision funding requires monetary, account, and workspace admission.".into(),
+                );
+            }
         }
         if let Some(money) = &self.money {
             if !self.require_workspace_membership {

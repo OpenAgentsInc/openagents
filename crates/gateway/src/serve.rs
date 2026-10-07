@@ -133,6 +133,8 @@ pub struct ServeState {
     /// lifetime when it is.
     money: Option<Mutex<tenancy::money::Ledger>>,
     pub(crate) earnings: Option<Mutex<pay_ledger::Ledger>>,
+    pub(crate) funding: Option<std::sync::Mutex<crate::funding::Store>>,
+    pub(crate) funding_slots: Arc<Semaphore>,
     receipts: Mutex<std::fs::File>,
     /// The process-wide forward bound.
     in_flight: Arc<Semaphore>,
@@ -157,7 +159,8 @@ impl ServeState {
     /// on one ledger would race reservations, and refusing is cheaper
     /// than reconciling them.
     pub fn open(config: Config) -> Result<Arc<Self>, Trouble> {
-        if config.earnings.is_some()
+        if config.funding.is_some()
+            || config.earnings.is_some()
             || config
                 .money
                 .as_ref()
@@ -251,6 +254,13 @@ impl ServeState {
         // queued work waits for `router` to re-spawn it inside the
         // runtime.
         jobs::recover(&config.registry, config.job_retention_ms);
+        let funding = config
+            .funding
+            .as_ref()
+            .map(|f| crate::funding::Store::open(&f.state))
+            .transpose()
+            .map_err(Trouble::Money)?
+            .map(std::sync::Mutex::new);
         let state = Arc::new(Self {
             dir: config.registry.clone(),
             in_flight: Arc::new(Semaphore::new(config.max_in_flight)),
@@ -262,6 +272,8 @@ impl ServeState {
             ledger: Mutex::new(ledger),
             money,
             earnings,
+            funding,
+            funding_slots: Arc::new(Semaphore::new(4)),
             receipts: Mutex::new(receipts),
             doors: Mutex::new(HashMap::new()),
             attempt_ids: AtomicU64::new(0),
@@ -297,6 +309,12 @@ impl ServeState {
 
     /// The workspace spending ledger's guard — billing effects and the
     /// balance read take it. Present only under monetary admission.
+    pub(crate) fn money_blocking_lock(
+        &self,
+    ) -> Option<tokio::sync::MutexGuard<'_, tenancy::money::Ledger>> {
+        self.money.as_ref().map(|ledger| ledger.blocking_lock())
+    }
+
     pub(crate) async fn money_lock(
         &self,
     ) -> Option<tokio::sync::MutexGuard<'_, tenancy::money::Ledger>> {
@@ -334,6 +352,7 @@ pub fn router(state: Arc<ServeState>) -> axum::Router {
     // Queued jobs and pending webhook deliveries resume inside the
     // runtime — `ServeState::open` is synchronous and cannot spawn them.
     jobs::resume(&state);
+    crate::funding::resume(&state);
     router
         .layer(DefaultBodyLimit::max(body_max))
         .layer(middleware::from_fn(purchase_route))
@@ -491,6 +510,9 @@ fn api_routes(state: &ServeState) -> Vec<(&'static str, MethodRouter<Arc<ServeSt
     if state.config.skills.is_some() {
         routes.extend(crate::skills::routes());
     }
+    if state.config.funding.is_some() {
+        routes.extend(crate::funding::routes());
+    }
     if state.config.earnings.is_some() {
         routes.extend(crate::earnings::routes());
     }
@@ -606,8 +628,8 @@ pub(crate) async fn models(
 /// The read is scoped by the same authenticated membership the decision
 /// path requires: the `X-Workspace-Id` header names the account, and a
 /// caller can only ever read a workspace it belongs to. There is no
-/// top-up or payment mutation here — account funding is an operator act
-/// on the ledger itself.
+/// top-up or payment mutation here. The optional decision-funding route
+/// credits confirmed collection through the same monetary writer.
 async fn balance(
     State(state): State<Arc<ServeState>>,
     headers: HeaderMap,

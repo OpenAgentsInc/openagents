@@ -258,6 +258,7 @@ async fn deploy_tuned(
         require_workspace_membership: false,
         accounts: None,
         billing: None,
+        funding: None,
         earnings: None,
         skills: None,
         money: None,
@@ -2481,6 +2482,7 @@ async fn deploy_money(
         require_workspace_membership: true,
         accounts: None,
         billing: None,
+        funding: None,
         earnings: None,
         skills: None,
         money: Some(Money {

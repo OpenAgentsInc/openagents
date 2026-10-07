@@ -29,6 +29,11 @@ pub const USAGE: &str = "usage: openagents customer COMMAND --root DIR [OPTIONS]
   change --input FILE [--recovery-token FILE]
         Apply one private credential intent: sign-in, recover, rotate,
         revoke, or sign-out. Its ID prevents replay after uncertain responses.
+  funding --input FILE
+        Quote, approve, read, or reconcile an exact gateway funding intent.
+        Issue creates a receiver invoice and never pays from a caller wallet.
+  funding-history
+        Read retained original funding references, including uncertain outcomes.
   credentials
         Read credential-operation references for the selected customer.
   inspect --operation ID
@@ -56,6 +61,8 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("invoke", Effect::Spends),
     Declared::computer("reconcile", Effect::LocalWrite),
     Declared::computer("change", Effect::Secret),
+    Declared::computer("funding", Effect::Grants),
+    Declared::computer("funding-history", Effect::ReadOnly),
     Declared::computer("credentials", Effect::ReadOnly),
     Declared::computer("inspect", Effect::Secret),
 ];
@@ -74,12 +81,13 @@ fn parse(words: &[String]) -> Result<Args, String> {
         "import" => &["root", "alias", "input"],
         "account" => &["root", "origin", "alias"],
         "select" => &["root", "origin", "alias", "account", "workspace", "door"],
-        "current" | "history" | "credentials" => &["root"],
+        "current" | "history" | "credentials" | "funding-history" => &["root"],
         "show" | "invoke" => &["root", "purchase"],
         "quote" => &["root", "purchase", "input"],
         "approve" => &["root", "purchase", "digest"],
         "reconcile" => &["root", "purchase", "receipt"],
         "change" => &["root", "input", "recovery-token"],
+        "funding" => &["root", "input"],
         "inspect" => &["root", "operation"],
         _ => return Err("Unknown customer command.".into()),
     };
@@ -169,6 +177,15 @@ async fn execute(args: &Args) -> Result<(Value, bool), String> {
             }
         },
         "history" => json!({"purchases":store.history()}),
+        "funding-history" => json!({"funding":store.funding_history()}),
+        "funding" => {
+            let request: jev::DecisionFundingRequest = serde_json::from_slice(
+                &Store::private_input(Path::new(required(args, "input")?), 32 * 1024)?,
+            )
+            .map_err(|_| "Invalid private funding intent.")?;
+            serde_json::to_value(store.decision_funding(&request).await?)
+                .map_err(|_| "Funding response encoding failed.")?
+        }
         "show" => serde_json::to_value(store.show(required(args, "purchase")?)?)
             .map_err(|_| "Purchase view encoding failed.")?,
         "quote" => {

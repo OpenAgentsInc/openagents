@@ -98,6 +98,8 @@ struct Book {
     purchases: BTreeMap<String, Purchase>,
     #[serde(default)]
     credential_operations: BTreeMap<String, credentials::Operation>,
+    #[serde(default)]
+    funding: BTreeMap<String, funding::Entry>,
 }
 impl Default for Book {
     fn default() -> Self {
@@ -107,6 +109,7 @@ impl Default for Book {
             selected: None,
             purchases: BTreeMap::new(),
             credential_operations: BTreeMap::new(),
+            funding: BTreeMap::new(),
         }
     }
 }
@@ -228,6 +231,7 @@ fn request(value: &Value) -> Result<jev::SystemOneRequest> {
 }
 fn check(book: &Book) -> Result<()> {
     credentials::check_operations(&book.credential_operations)?;
+    funding::check(&book.funding)?;
     if book.schema != SCHEMA || book.purchases.len() > MAX_PURCHASES {
         return Err("Invalid customer state.".into());
     }
@@ -630,7 +634,10 @@ impl Store {
             || receipt.workspace.as_deref() != Some(&context.workspace)
             || receipt.tenant.as_deref() != Some(&context.credential_reference)
             || receipt.request_digest != purchase.quote.request_digest
-            || receipt.requested.model != context.door
+            || digest_request(
+                &serde_json::to_value(&receipt.requested)
+                    .map_err(|_| "Receipt artifact identity cannot be represented.")?,
+            ) != context.artifact_digest
             || receipt
                 .registry
                 .as_ref()
@@ -848,6 +855,7 @@ impl Store {
 }
 
 mod credentials;
+mod funding;
 pub use credentials::{CredentialAction, CredentialCommand, CredentialStatus, CredentialView};
 
 #[cfg(test)]

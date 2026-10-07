@@ -436,6 +436,26 @@ separately, or keep them unknown. Local synthetic checks require no host
 deployment and establish no production price, funded sale, or inference
 qualification. Public terms continue to label qualification unknown.
 
+## Decision funding and installed client O5/O8 (REV-17, #10824)
+
+Select and approve the BTC-denominated decision offer and its native funding
+policy before enabling the optional gateway adapter. Provision the customer's
+monetary account and exact conversion; one BTC currency-millionth is 100,000
+millisatoshis. Supply an explicitly admitted Lightning resident, pin its node
+and network, and protect its private custody and the gateway's funding journal
+from executors. Deploy matching identity-fenced resident and gateway builds.
+Do not infer receiver liquidity or expense from invoice creation.
+
+From an independently installed customer client, retain one actual quote,
+explicit digest approval, invoice, confirmed receiver observation, and original
+workspace credit. Then retain an admitted decision result and its pinned price,
+observed usage, charge, and sealed receipt. Check duplicate settlement, a lost
+reply across restart, an unknown usage hold, changed membership, and reconciliation
+before another attempt. Funding is unused customer credit until verified usage
+settles; keep actual payment/provider expenses separate and unknown when no
+authoritative counter exists. Synthetic HTTP and ledger fixtures establish
+implementation behavior and do not establish a funded sale or commercial launch.
+
 ## Sales outreach launch
 
 The [sales-floor decisions](docs/sales/agent-sales-floor.md#initial-operating-decisions)

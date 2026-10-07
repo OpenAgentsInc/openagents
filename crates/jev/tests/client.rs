@@ -20,6 +20,105 @@ use tokio::sync::Mutex;
 type Outcome = Result<(), Box<dyn std::error::Error>>;
 
 #[tokio::test]
+async fn decision_funding_never_retries_invoice_creation_or_echoes_private_refusal() -> Outcome {
+    let secret = "fixture-private-invoice-only";
+    let body = json!({"error":{"code":"funding_unavailable","message":secret}}).to_string();
+    let (base, seen) = serve(vec![Reply::new(503, &body), Reply::new(200, "{}")]).await?;
+    let client = Client::new(
+        Config::new()
+            .base_url(base)
+            .api_key("fixture-only-key")
+            .retry(eager(3)),
+    )?;
+    let request = jev::DecisionFundingRequest::Issue {
+        id: "funding-one".into(),
+        approved: "sha256:fixture-approval".into(),
+    };
+    let error = client
+        .account()
+        .decision_funding("workspace", "decision", &request)
+        .await
+        .unwrap_err();
+    assert!(!format!("{error:?}").contains(secret));
+    assert!(!error.to_string().contains(secret));
+    let requests = seen.lock().await;
+    assert_eq!(requests.len(), 1);
+    assert_eq!(
+        requests[0].target,
+        "/v1/workspaces/workspace/decision-funding/decision"
+    );
+    assert_eq!(
+        serde_json::from_slice::<Value>(&requests[0].body)?,
+        serde_json::to_value(request)?
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn decision_funding_rejects_path_injection_without_dispatch() -> Outcome {
+    let (base, seen) = serve(vec![Reply::new(200, "{}")]).await?;
+    let client = Client::new(Config::new().base_url(base).api_key("fixture-only-key"))?;
+    let request = jev::DecisionFundingRequest::Read {
+        id: "funding-one".into(),
+    };
+    for (workspace, door) in [
+        ("other/../workspace", "decision"),
+        ("workspace", "decision?payer=other"),
+    ] {
+        assert!(
+            client
+                .account()
+                .decision_funding(workspace, door, &request)
+                .await
+                .is_err()
+        );
+    }
+    assert!(seen.lock().await.is_empty());
+    Ok(())
+}
+
+#[tokio::test]
+async fn decision_funding_preserves_uncovered_holds_and_refuses_rebound_quotes() -> Outcome {
+    let context = json!({"schema":receipts::purchase::SCHEMA,"account":"customer","workspace":"workspace","payer_workspace":"workspace","tenant":"tenant","credential_reference":"key","membership_epoch":1,"workspace_members_epoch":1,"role":"owner","door":"decision","registry_digest":format!("sha256:{}","a".repeat(64)),"artifact_digest":format!("sha256:{}","b".repeat(64)),"price":{"version":"price","currency":"BTC","policy":"observed-usage-v1","terms_digest":format!("sha256:{}","c".repeat(64)),"maximum_usage_digest":format!("sha256:{}","d".repeat(64)),"maximum_charge":1},"can_invoke":true});
+    let quote = json!({"id":"one","context":context,"amount_msat":200_000});
+    let body = json!({"schema":"openagents.decision-funding.v1","quote_digest":receipts::execution::digest_request(&quote),"record":{"quote":quote,"phase":"unknown","invoice":null,"observation":null},"balance":{"currency":"BTC","credited":2,"reserved":2,"settled":0,"refunded":0,"available":0,"spend_remaining":100,"price_versions":["price"],"funding_policy_versions":["btc-v1"],"purchased_funding":2,"promotional_credit":0,"reversed_credit":0,"expired_credit":0,"restricted_credit":0,"operator_loss":0,"uncovered_holds":2},"wallet_liquidity":"unknown","earned_usage":false,"production_qualification":"owner_required_O5_O8"});
+    let mut replies = vec![Reply::new(200, &body.to_string())];
+    for field in ["workspace", "door"] {
+        let mut changed = body.clone();
+        changed["record"]["quote"]["context"][field] = json!("other");
+        changed["quote_digest"] = json!(receipts::execution::digest_request(
+            &changed["record"]["quote"]
+        ));
+        replies.push(Reply::new(200, &changed.to_string()));
+    }
+    let mut leaked = body.clone();
+    leaked["record"]["observation"] = json!({"preimage":"fixture-private-payment-proof"});
+    replies.push(Reply::new(200, &leaked.to_string()));
+    let (base, seen) = serve(replies).await?;
+    let client = Client::new(Config::new().base_url(base).api_key("fixture-only-key"))?;
+    let request = jev::DecisionFundingRequest::Read { id: "one".into() };
+    let view = client
+        .account()
+        .decision_funding("workspace", "decision", &request)
+        .await?;
+    assert_eq!(view.balance.position.reserved, 2);
+    assert_eq!(view.balance.uncovered_holds, 2);
+    assert_eq!(view.balance.purchased_funding, 2);
+    assert!(!view.earned_usage);
+    for _ in 0..3 {
+        assert!(
+            client
+                .account()
+                .decision_funding("workspace", "decision", &request)
+                .await
+                .is_err()
+        );
+    }
+    assert_eq!(seen.lock().await.len(), 4);
+    Ok(())
+}
+
+#[tokio::test]
 async fn account_management_uses_gateway_timestamps_and_masks_grants() -> Outcome {
     let (base, seen) = serve(vec![Reply::new(200, r#"{"session":{"id":"fixture-session","kind":"user","account":"buyer-a","created_at":10,"expires_at":100},"token":"sess_fixture-only-not-a-real-token"}"#)]).await?;
     let client = Client::new(

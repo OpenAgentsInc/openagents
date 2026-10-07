@@ -72,6 +72,7 @@ async fn deploy() -> Deployment {
             anonymous: None,
         }),
         billing: None,
+        funding: None,
         earnings: None,
         skills: None,
         money: None,

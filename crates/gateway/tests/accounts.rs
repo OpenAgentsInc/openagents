@@ -7,6 +7,8 @@
 //! shares state but the shape of the claims being checked.
 
 mod common;
+#[path = "common/funding_receiver.rs"]
+mod funding_receiver;
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -102,6 +104,7 @@ async fn deploy(accounts: Option<config::Accounts>, require_membership: bool) ->
         job_cursor_ttl_ms: 3_600_000,
         public_origin: None,
         billing: None,
+        funding: None,
         earnings: None,
         skills: None,
     };
@@ -238,6 +241,442 @@ async fn join(deployment: &Deployment, label: &str) -> Joined {
 /// The error code a refusal envelope carries.
 fn code(body: &Value) -> &str {
     body["error"]["code"].as_str().unwrap_or_default()
+}
+
+#[tokio::test]
+async fn confirmed_receiver_funding_joins_one_http_decision_and_original_receipt() {
+    exercise_funded_gateway(None).await;
+}
+
+#[tokio::test]
+#[ignore = "requires a freshly built installed customer CLI"]
+async fn installed_customer_funding_and_approved_decision_join_the_native_gateway() {
+    let binary = std::env::var_os("OPENAGENTS_REV17_TEST_CLI")
+        .expect("Set OPENAGENTS_REV17_TEST_CLI to the freshly built openagents binary.");
+    exercise_funded_gateway(Some(binary)).await;
+}
+
+async fn customer_process(
+    binary: std::ffi::OsString,
+    root: std::path::PathBuf,
+    home: std::path::PathBuf,
+    command: Vec<String>,
+) -> std::process::Output {
+    tokio::task::spawn_blocking(move || {
+        std::process::Command::new(binary)
+            .args(["--json", "customer"])
+            .args(command)
+            .arg("--root")
+            .arg(root)
+            .env("HOME", home)
+            .env_remove("OPENAGENTS_API_KEY")
+            .output()
+            .unwrap()
+    })
+    .await
+    .unwrap()
+}
+
+async fn exercise_funded_gateway(installed_cli: Option<std::ffi::OsString>) {
+    use openagents_wallet::LightningWallet;
+    use std::os::unix::fs::PermissionsExt;
+    use tenancy::money::{Ledger, Mutation, Operation, Rate, Resource};
+    let mut deployment = deploy(Some(account_config(None)), true).await;
+    let joined = join(&deployment, "funded-customer").await;
+    deployment.server.abort();
+    let _ = (&mut deployment.server).await;
+    deployment._state.take();
+    let wallet_home = tempfile::Builder::new()
+        .prefix("rev17-")
+        .tempdir_in("/tmp")
+        .unwrap();
+    std::fs::set_permissions(wallet_home.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+    let wallet = Arc::new(funding_receiver::Receiver::new(unix_now()));
+    let resident = openagents_wallet::resident::Server::bind(wallet_home.path()).unwrap();
+    let stop = resident.stop_flag();
+    let served = wallet.clone();
+    let resident_thread = std::thread::spawn(move || resident.run(served));
+    let policy: tenancy::money::funding::Policy = serde_json::from_value(json!({"schema":tenancy::money::funding::POLICY_SCHEMA,"version":"btc-v1","unit":{"kind":"currency-millionths","currency":"BTC"},"conversions":[{"version":"msat-v1","source":{"kind":"millisatoshis"},"target":{"kind":"currency-millionths","currency":"BTC"},"numerator":1,"denominator":100000,"source_ref":"fixture:exact-same-currency","valid_from":0,"valid_until":u64::MAX,"rounding":"exact","fee_payer":"customer","max_fee_units":0}],"purchases":{"required_finality":"final","refunds_allowed":false,"disputes_allowed":false,"spent_credit_loss":"operator"},"promotions":{"total_cap":0,"grant_cap":0,"max_lifetime_seconds":0,"max_admissions":0,"price_policies":[],"reversible":false}})).unwrap();
+    let ledger_path = deployment.dir.path().join("funded-money.jsonl");
+    let mut ledger = Ledger::open(&ledger_path).unwrap();
+    for (source, operation) in [
+        (
+            "create",
+            Operation::Create {
+                currency: "BTC".into(),
+                spend_limit: 100,
+                topups_allowed: true,
+            },
+        ),
+        (
+            "policy",
+            Operation::FundingPolicy {
+                policy: policy.clone(),
+            },
+        ),
+    ] {
+        ledger
+            .apply(Mutation {
+                workspace: joined.workspace.clone(),
+                source: source.into(),
+                audit: "fixture".into(),
+                operation,
+            })
+            .unwrap();
+    }
+    drop(ledger);
+    let (endpoint, forwards) = backend(&artifact('b'), StatusCode::OK, answer(), 0).await;
+    deployment
+        .config
+        .doors
+        .get_mut("shared-kev")
+        .unwrap()
+        .endpoint = endpoint;
+    deployment.config.money = Some(gateway::money::Money {
+        ledger: ledger_path,
+        doors: [(
+            "shared-kev".into(),
+            gateway::money::Priced {
+                offer: None,
+                price: tenancy::money::Price {
+                    version: "fixture-btc-v1".into(),
+                    currency: "BTC".into(),
+                    model: "kev-0.6b".into(),
+                    capacity: "shared".into(),
+                    policy: gateway::money::POLICY.into(),
+                    rates: [(
+                        Resource::InputTokens,
+                        Rate {
+                            millionths: 1,
+                            per_units: 1,
+                        },
+                    )]
+                    .into(),
+                },
+                maximum_usage: [(Resource::InputTokens, 20)].into(),
+            },
+        )]
+        .into(),
+    });
+    deployment.config.funding = Some(gateway::funding::Config {
+        state: deployment.dir.path().join("funding"),
+        wallet_home: wallet_home.path().into(),
+        receiver_node: wallet.node_id(),
+        network: "bitcoin".into(),
+        policy,
+        conversion: "msat-v1".into(),
+        maximum_msat: 10_000_000,
+    });
+    let state = ServeState::open(deployment.config.clone()).unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    deployment.address = format!("http://{}", listener.local_addr().unwrap());
+    deployment.server =
+        tokio::spawn(axum::serve(listener, serve::router(state.clone())).into_future());
+    deployment._state = Some(state);
+    let (status, _) = decide(
+        &deployment,
+        Some(&joined.key_token),
+        Some(&joined.workspace),
+        "shared-kev",
+    )
+    .await;
+    assert_eq!(status, StatusCode::PAYMENT_REQUIRED);
+    assert_eq!(forwards.load(std::sync::atomic::Ordering::SeqCst), 0);
+    let client = jev::Client::new(
+        jev::Config::new()
+            .base_url(&deployment.address)
+            .api_key(joined.key_token.as_str()),
+    )
+    .unwrap();
+    let quote = client
+        .account()
+        .decision_funding(
+            &joined.workspace,
+            "shared-kev",
+            &jev::DecisionFundingRequest::Quote {
+                id: "one".into(),
+                amount_msat: 4_000_000,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(quote.balance.position.credited, 0);
+    let account = client.account();
+    let approval = jev::DecisionFundingRequest::Issue {
+        id: "one".into(),
+        approved: quote.quote_digest,
+    };
+    let (issued, duplicate) = tokio::join!(
+        account.decision_funding(&joined.workspace, "shared-kev", &approval),
+        account.decision_funding(&joined.workspace, "shared-kev", &approval)
+    );
+    let issued = issued.unwrap();
+    assert_eq!(duplicate.unwrap().record, issued.record);
+    assert_eq!(issued.record["phase"], "invoice");
+    assert_eq!(issued.balance.position.credited, 0);
+    wallet.confirm();
+    for _ in 0..2 {
+        let view = client
+            .account()
+            .decision_funding(
+                &joined.workspace,
+                "shared-kev",
+                &jev::DecisionFundingRequest::Reconcile { id: "one".into() },
+            )
+            .await
+            .unwrap();
+        assert_eq!(view.balance.position.credited, 40);
+        assert_eq!(view.balance.purchased_funding, 40);
+        assert!(!view.earned_usage);
+        assert!(view.record["observation"]["preimage"].is_null());
+    }
+    assert_eq!(wallet.invoice_count(), 1);
+    let mut installed_receipt = None;
+    if let Some(binary) = installed_cli {
+        let root = deployment.dir.path().join("installed-customer");
+        let key_file = deployment.dir.path().join("customer-key");
+        let intent_file = deployment.dir.path().join("funding-read.json");
+        std::fs::write(&key_file, &joined.key_token).unwrap();
+        std::fs::write(&intent_file, json!({"op":"read","id":"one"}).to_string()).unwrap();
+        for path in [&key_file, &intent_file] {
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        }
+        let commands = vec![
+            vec![
+                "import".into(),
+                "--alias".into(),
+                "fixture".into(),
+                "--input".into(),
+                key_file.to_string_lossy().into_owned(),
+            ],
+            vec![
+                "select".into(),
+                "--origin".into(),
+                deployment.address.clone(),
+                "--alias".into(),
+                "fixture".into(),
+                "--account".into(),
+                joined.account.clone(),
+                "--workspace".into(),
+                joined.workspace.clone(),
+                "--door".into(),
+                "shared-kev".into(),
+            ],
+            vec![
+                "funding".into(),
+                "--input".into(),
+                intent_file.to_string_lossy().into_owned(),
+            ],
+            vec!["funding-history".into()],
+        ];
+        for (index, command) in commands.into_iter().enumerate() {
+            let binary = binary.clone();
+            let root = root.clone();
+            let home = deployment.dir.path().join("isolated-cli-home");
+            let output = tokio::task::spawn_blocking(move || {
+                std::process::Command::new(binary)
+                    .args(["--json", "customer"])
+                    .args(command)
+                    .arg("--root")
+                    .arg(root)
+                    .env("HOME", home)
+                    .env_remove("OPENAGENTS_API_KEY")
+                    .output()
+                    .unwrap()
+            })
+            .await
+            .unwrap();
+            assert!(
+                output.status.success(),
+                "customer command {index}: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            let result: Value = serde_json::from_slice(&output.stdout).unwrap();
+            assert!(!String::from_utf8_lossy(&output.stdout).contains(&joined.key_token));
+            if index == 2 {
+                assert_eq!(result["record"]["phase"], "funded");
+                assert_eq!(result["balance"]["purchased_funding"], 40);
+            }
+            if index == 3 {
+                assert_eq!(result["funding"].as_array().unwrap().len(), 1);
+                assert_eq!(result["funding"][0]["outcome_uncertain"], false);
+            }
+        }
+        let input = deployment.dir.path().join("decision-input.json");
+        std::fs::write(&input, call("shared-kev").to_string()).unwrap();
+        std::fs::set_permissions(&input, std::fs::Permissions::from_mode(0o600)).unwrap();
+        let home = deployment.dir.path().join("isolated-cli-home");
+        let quoted = customer_process(
+            binary.clone(),
+            root.clone(),
+            home.clone(),
+            vec![
+                "quote".into(),
+                "--purchase".into(),
+                "installed-one".into(),
+                "--input".into(),
+                input.to_string_lossy().into_owned(),
+            ],
+        )
+        .await;
+        assert!(
+            quoted.status.success(),
+            "{}",
+            String::from_utf8_lossy(&quoted.stderr)
+        );
+        let quote: Value = serde_json::from_slice(&quoted.stdout).unwrap();
+        let approved = customer_process(
+            binary.clone(),
+            root.clone(),
+            home.clone(),
+            vec![
+                "approve".into(),
+                "--purchase".into(),
+                "installed-one".into(),
+                "--digest".into(),
+                quote["quote_digest"].as_str().unwrap().into(),
+            ],
+        )
+        .await;
+        assert!(
+            approved.status.success(),
+            "{}",
+            String::from_utf8_lossy(&approved.stderr)
+        );
+        let invoked = customer_process(
+            binary.clone(),
+            root.clone(),
+            home.clone(),
+            vec!["invoke".into(), "--purchase".into(), "installed-one".into()],
+        )
+        .await;
+        assert!(
+            invoked.status.success(),
+            "{}",
+            String::from_utf8_lossy(&invoked.stderr)
+        );
+        let result: Value = serde_json::from_slice(&invoked.stdout).unwrap();
+        assert_eq!(result["result"]["answers"]["q1"]["noul"], 0.9);
+        assert_eq!(result["purchase"]["receipt"]["settlement"], "settled");
+        installed_receipt = Some(
+            result["purchase"]["receipt"]["digest"]
+                .as_str()
+                .unwrap()
+                .to_string(),
+        );
+        let duplicate = customer_process(
+            binary,
+            root,
+            home,
+            vec!["invoke".into(), "--purchase".into(), "installed-one".into()],
+        )
+        .await;
+        assert!(!duplicate.status.success());
+        assert!(!String::from_utf8_lossy(&invoked.stdout).contains(&joined.key_token));
+    }
+    let send = || {
+        reqwest::Client::new()
+            .post(format!("{}/v1/systemone", deployment.address))
+            .bearer_auth(&joined.key_token)
+            .header("x-workspace-id", &joined.workspace)
+            .header("idempotency-key", "funded-decision-one")
+            .header("x-attempt", "0")
+            .json(&call("shared-kev"))
+    };
+    let receipt = if let Some(receipt) = installed_receipt {
+        receipt
+    } else {
+        let response = send().send().await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers()["x-settlement"], "settled");
+        let receipt = response.headers()["x-receipt"]
+            .to_str()
+            .unwrap()
+            .to_string();
+        assert_eq!(
+            response.json::<Value>().await.unwrap()["answers"]["q1"]["noul"],
+            0.9
+        );
+        assert!(!send().send().await.unwrap().status().is_success());
+        receipt
+    };
+    assert_eq!(forwards.load(std::sync::atomic::Ordering::SeqCst), 1);
+    let balance = client.account().balance(&joined.workspace).await.unwrap();
+    assert_eq!(balance.balance.credited, 40);
+    assert_eq!(balance.balance.settled, 10);
+    assert_eq!(balance.balance.reserved, 0);
+    let records = std::fs::read_to_string(deployment.dir.path().join("receipts.jsonl")).unwrap();
+    assert!(records.contains(&receipt));
+    assert!(records.contains(&joined.workspace));
+    deployment.server.abort();
+    let _ = (&mut deployment.server).await;
+    deployment._state.take();
+    let mut incomplete = answer();
+    incomplete.as_object_mut().unwrap().remove("usage");
+    let (endpoint, uncertain_forwards) =
+        backend(&artifact('b'), StatusCode::OK, incomplete, 0).await;
+    deployment
+        .config
+        .doors
+        .get_mut("shared-kev")
+        .unwrap()
+        .endpoint = endpoint;
+    for pass in 0..2 {
+        let state = ServeState::open(deployment.config.clone()).unwrap();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        deployment.address = format!("http://{}", listener.local_addr().unwrap());
+        deployment.server =
+            tokio::spawn(axum::serve(listener, serve::router(state.clone())).into_future());
+        deployment._state = Some(state);
+        let response = reqwest::Client::new()
+            .post(format!("{}/v1/systemone", deployment.address))
+            .bearer_auth(&joined.key_token)
+            .header("x-workspace-id", &joined.workspace)
+            .header("idempotency-key", "usage-unknown-one")
+            .header("x-attempt", "0")
+            .json(&call("shared-kev"))
+            .send()
+            .await
+            .unwrap();
+        if pass == 0 {
+            assert_eq!(response.status(), StatusCode::OK);
+            assert_eq!(response.headers()["x-settlement"], "outstanding");
+        } else {
+            assert!(!response.status().is_success());
+        }
+        let client = jev::Client::new(
+            jev::Config::new()
+                .base_url(&deployment.address)
+                .api_key(joined.key_token.as_str()),
+        )
+        .unwrap();
+        let balance = client.account().balance(&joined.workspace).await.unwrap();
+        assert_eq!(balance.balance.credited, 40);
+        assert_eq!(balance.balance.settled, 10);
+        assert_eq!(balance.balance.reserved, 20);
+        assert_eq!(balance.balance.available, 10);
+        let original = client
+            .account()
+            .decision_funding(
+                &joined.workspace,
+                "shared-kev",
+                &jev::DecisionFundingRequest::Read { id: "one".into() },
+            )
+            .await
+            .unwrap();
+        assert_eq!(original.record["phase"], "funded");
+        assert_eq!(original.balance.purchased_funding, 40);
+        assert_eq!(wallet.invoice_count(), 1);
+        deployment.server.abort();
+        let _ = (&mut deployment.server).await;
+        deployment._state.take();
+    }
+    assert_eq!(
+        uncertain_forwards.load(std::sync::atomic::Ordering::SeqCst),
+        1
+    );
+    stop.store(true, std::sync::atomic::Ordering::Relaxed);
+    resident_thread.join().unwrap();
 }
 
 #[tokio::test]
@@ -1413,6 +1852,7 @@ async fn stores_install_under_accounts_config_and_validate() {
         job_cursor_ttl_ms: 3_600_000,
         public_origin: None,
         billing: None,
+        funding: None,
         earnings: None,
         skills: None,
     };

@@ -503,6 +503,7 @@ pub async fn deploy(manifest: Manifest, endpoint: &str) -> Deployment {
         require_workspace_membership: false,
         accounts: None,
         billing: None,
+        funding: None,
         earnings: None,
         skills: None,
         money: None,

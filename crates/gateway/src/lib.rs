@@ -49,6 +49,7 @@ pub mod discovery;
 #[allow(clippy::result_large_err)]
 pub mod earnings;
 pub mod feedback;
+pub mod funding;
 pub mod jobs;
 pub mod money;
 pub mod open_quota;
