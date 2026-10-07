@@ -195,11 +195,15 @@ impl Configuration {
     }
 
     pub fn validate(&self) -> Result<(), Error> {
+        // Coder V1 on the OpenAgents Gateway is the one vertex route.
+        let coder_on_gateway = self.provider == "vertex"
+            && self.generation_endpoint == super::capacity::CODER_V1_ENDPOINT;
         if self.schema != CONFIG_SCHEMA
-            || !matches!(
-                self.provider.as_str(),
-                "codex" | "claude" | "devin" | "opencode" | "grok" | "synthetic"
-            )
+            || !(coder_on_gateway
+                || matches!(
+                    self.provider.as_str(),
+                    "codex" | "claude" | "devin" | "opencode" | "grok" | "synthetic"
+                ))
             || !identifier(&self.model, true)
             || !identifier(&self.decision_model, true)
             || self
@@ -277,7 +281,7 @@ impl Configuration {
                 // session (#10571) is the local `claude` process, like a
                 // whole agent, and runs on the host itself.
                 self.container.is_none()
-            } else if matches!(route.provider.as_str(), "codex" | "claude")
+            } else if matches!(route.provider.as_str(), "codex" | "claude" | "vertex")
                 && route.generation_endpoint == super::capacity::CODER_V1_ENDPOINT
             {
                 // A Coder V1 turn (#10754) is the local `openagents coder`

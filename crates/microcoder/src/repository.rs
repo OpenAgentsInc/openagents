@@ -694,7 +694,7 @@ impl AgentEngine {
             {
                 Some(AgentEngine::CodexSession)
             }
-            provider @ (Provider::Codex | Provider::Claude)
+            provider @ (Provider::Codex | Provider::Claude | Provider::Vertex)
                 if route.generation_endpoint == coder_v1::CODER_V1_ENDPOINT =>
             {
                 Some(AgentEngine::CoderV1(provider))

@@ -296,6 +296,15 @@ impl Route {
     /// as it always has; only a route that names one is refused.
     #[must_use]
     pub fn refusal(&self, access: adapter::Access) -> Option<String> {
+        if self.engine == Some(RouteEngine::Coder)
+            && self.provider == Provider::Vertex
+            && access != adapter::Access::Full
+        {
+            return Some(format!(
+                "route {self} runs Coder V1 on the OpenAgents Gateway, which only full access admits, and the auto-start policy's access is {}; turn auto-start on with --full-access",
+                access.as_str()
+            ));
+        }
         if !matches!(self.engine, Some(RouteEngine::Session | RouteEngine::Sdk))
             || access == adapter::Access::Full
         {
@@ -384,8 +393,16 @@ impl RouteEngine {
     #[must_use]
     pub const fn runs_on(self, provider: Provider) -> bool {
         match self {
-            RouteEngine::Session | RouteEngine::Loop | RouteEngine::Coder => {
+            RouteEngine::Session | RouteEngine::Loop => {
                 matches!(provider, Provider::Claude | Provider::Codex)
+            }
+            // Coder chooses its own provider; a `vertex/coder` route is
+            // Coder on the OpenAgents Gateway, with no login here.
+            RouteEngine::Coder => {
+                matches!(
+                    provider,
+                    Provider::Claude | Provider::Codex | Provider::Vertex
+                )
             }
             RouteEngine::Sdk => matches!(provider, Provider::Claude),
         }
@@ -2641,6 +2658,8 @@ pub(crate) fn parse_route(text: &str) -> std::result::Result<Route, String> {
             | Provider::OpenCode
             | Provider::Grok),
         ) => provider,
+        // Coder V1 on the OpenAgents Gateway, Coder's own fallback (#10754).
+        Some(Provider::Vertex) if engine == Some(RouteEngine::Coder) => Provider::Vertex,
         Some(Provider::Vertex) => {
             return Err(format!(
                 "usage: `{text}`: repository runs don't generate through vertex; use codex, claude, devin, opencode, or grok"
@@ -3034,6 +3053,19 @@ mod tests {
 
     /// A route may name its engine (#10568): `session` or `loop`, for
     /// Claude and Codex only, and its text shows it back.
+    #[test]
+    fn a_coder_route_runs_coder_v1_under_full_access_only() {
+        let route = parse_route("codex/coder:gpt-6.1-sol").unwrap();
+        assert_eq!(route.engine, Some(RouteEngine::Coder));
+        let gateway = parse_route("vertex/coder:gemini").unwrap();
+        assert_eq!(gateway.provider, Provider::Vertex);
+        assert!(parse_route("vertex:gemini").is_err());
+        assert!(parse_route("devin/coder:x").is_err());
+        assert!(gateway.refusal(adapter::Access::Boundary).is_some());
+        assert!(gateway.refusal(adapter::Access::Full).is_none());
+        assert!(route.refusal(adapter::Access::Boundary).is_none());
+    }
+
     #[test]
     fn a_route_names_its_engine_for_claude_and_codex_only() {
         for text in [

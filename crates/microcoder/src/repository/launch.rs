@@ -40,10 +40,15 @@ fn admit(directory: &Path, bytes: &[u8]) -> Result<(String, PathBuf), Box<dyn st
     // Every provider the repository engine runs a turn on: Codex and
     // Claude Code through Microcoder, Grok Build, OpenCode, and Devin as
     // whole agents over ACP. Grok Build is a local run's default (#10091).
-    if !matches!(
-        configuration.provider.as_str(),
-        "codex" | "claude" | "grok" | "opencode" | "devin"
-    ) {
+    // A vertex route is Coder V1 on the OpenAgents Gateway (#10754).
+    let coder_on_gateway = configuration.provider == "vertex"
+        && configuration.generation_endpoint == task::capacity::CODER_V1_ENDPOINT;
+    if !coder_on_gateway
+        && !matches!(
+            configuration.provider.as_str(),
+            "codex" | "claude" | "grok" | "opencode" | "devin"
+        )
+    {
         return Err(
             "the detached repository CLI requires the codex, claude, grok, opencode, or devin provider"
                 .into(),
