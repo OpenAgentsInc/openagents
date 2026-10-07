@@ -1,4 +1,7 @@
-//! Recorded chamber commands for every physics spell.
+//! Recorded chamber commands for every physics spell, and the scenario
+//! tests for spells on water ([`water`]).
+#[cfg(test)]
+mod water;
 use super::{PROP_ENTITY_BASE, PropKind, PropSpec, command::Command};
 use crate::{
     play::Ability,

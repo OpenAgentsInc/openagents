@@ -33,6 +33,7 @@ mod coast_tests;
 pub mod floats;
 pub mod hotbar;
 pub mod orb;
+pub mod rules;
 pub mod sea;
 pub mod spells;
 pub mod targets;
@@ -58,6 +59,7 @@ use verse_zone_everglade::zones::everglade_pack::ZonePack;
 use verse_zone_grove::zones::grove::draw::{Model, Painter};
 
 pub use floats::{Floats, Kind as FloatKind};
+pub use rules::Demo;
 pub use sea::Hour;
 pub use spells::{Mode, Slot, Spells};
 pub use terrain::{LEVEL, ground};
@@ -339,6 +341,13 @@ pub struct WaterLab {
     /// The dummies' figure beside the character's, once the runtime sets
     /// it from the pack.
     model: Option<Model>,
+    /// The shared spell rules on the lab's water ([`rules`]).
+    pub rules: verse_world::spells::water::WaterSpells,
+    casts: u64,
+    /// Spells still acting each step ([`rules::Running`]).
+    running: Vec<rules::Running>,
+    /// The Sleet Storm's cast while it lasts.
+    sleet_cast: Option<u64>,
 }
 
 /// Floating numbers at once, oldest dropped first.
@@ -406,6 +415,10 @@ impl WaterLab {
             caster: (SPAWN, Vec3::NEG_Z),
             jolts: Vec::new(),
             model: None,
+            rules: verse_world::spells::water::WaterSpells::default(),
+            casts: 0,
+            running: Vec::new(),
+            sleet_cast: None,
         };
         lab.fx.start("water_falls_spray", Spawn::at(sea::landing()));
         for (k, (x, z)) in [
@@ -450,7 +463,7 @@ impl WaterLab {
                 center: c.0.to_array(),
                 dir: c.1.to_array(),
                 half_length: spells::CONTROL_SIDE * 0.5,
-                half_width: 2.4,
+                half_width: verse_world::spells::water::control::TRENCH as f32 * 0.5,
                 amount: s.part,
             });
         }
@@ -458,7 +471,8 @@ impl WaterLab {
             let ramp = ((self.time - c.started) / 2.0).clamp(0.0, 1.0);
             controls.flow = Some(Flow {
                 center: c.center.to_array(),
-                velocity: (c.dir * 2.6 * ramp).to_array(),
+                velocity: (c.dir * verse_world::spells::water::control::MIN_FLOW as f32 * ramp)
+                    .to_array(),
                 radius: spells::CONTROL_SIDE * 0.5,
             });
         }
@@ -486,13 +500,7 @@ impl WaterLab {
                 amount,
             });
         }
-        if let Some((at, amount)) = s.ice {
-            controls.ice = Some(Disc {
-                center: at.to_array(),
-                radius: spells::SLEET_RADIUS,
-                amount,
-            });
-        }
+        controls.ice = self.ice_disc();
         water.controls = controls;
         // The ripple field: the character, the splashes, and every float
         // moving on the surface leaves its wake and foam.
@@ -544,15 +552,23 @@ impl WaterLab {
         self.sources.clear();
         self.time += dt;
         self.spells.tick(dt, self.time);
+        if self.spells.sleet.is_none()
+            && let Some(cast) = self.sleet_cast.take()
+        {
+            let tick = self.rules_tick();
+            self.rules.end_cast(cast, tick);
+        }
+        self.tick_rules(dt);
         self.water.time = self.time;
         // The orbs move first and take in what they touch, so the bodies
         // they hold follow them this step.
         self.tick_orbs(dt);
         let water = self.frame_water();
-        let ice = water.controls;
         // The medium's current carries the bodies, the whirlpool's pull
-        // included; ice holds what it froze around.
-        let push = |_: Vec3| Vec3::ZERO;
+        // included; walkable ice holds what it froze around.
+        // Gust of Wind drives the surface along its line at 15 feet a
+        // round, and the water carries what floats there.
+        let push = self.gust_push();
         let mut floats = std::mem::take(&mut self.floats);
         let medium = Medium {
             lab: &*self,
@@ -562,9 +578,9 @@ impl WaterLab {
         for f in &floats.floats {
             let body = &mut floats.world.bodies_mut()[f.id.0 as usize];
             let at = body.pos.as_vec3();
-            if ice.ice_at(Vec2::new(at.x, at.z)) > 0.6 {
-                body.vel *= 0.8;
-                body.omega *= 0.8;
+            if self.ice_pins(Vec2::new(at.x, at.z)) {
+                body.vel = glam::DVec3::ZERO;
+                body.omega = glam::DVec3::ZERO;
             }
         }
         self.floats = floats;
@@ -652,14 +668,41 @@ impl WaterLab {
             ..Feet::default()
         };
         let surface = self.surface_with(&water, p);
-        let ice = water.controls.ice_at(p);
-        if ice > 0.5 && feet.y > water.level() - 0.5 && self.surface_with(&water, p).is_some() {
-            // Ice is ground, slick and hard going.
-            out.floor = Some(water.level() + 0.04);
-            out.pace = 0.55;
+        let on_ice = surface.filter(|s| feet.y > s.height - 0.5);
+        if let Some(s) = on_ice.filter(|_| self.ice_holds(p)) {
+            // Walkable ice, a floe, or thin ice that bears the character is
+            // ground: Slippery Ice, Difficult Terrain, and a DC 10
+            // Dexterity check the first time each round (SRD 5.2.1).
+            out.floor = Some(s.height + 0.04);
+            let tick = self.rules_tick();
+            let basin = self.basin();
+            if self.speed > 0.3
+                && let Some(check) = self.rules.ice.step_onto(
+                    &basin,
+                    &mut self.dice,
+                    rules::PLAYER,
+                    0,
+                    p.as_dvec2(),
+                    tick,
+                )
+                && !check.success
+            {
+                self.say("You slip on the ice and fall".into());
+            }
+            out.pace = if self.rules.ice.is_prone(rules::PLAYER, tick) {
+                0.0
+            } else {
+                0.5
+            };
         } else if let Some(s) = surface {
             let depth = s.height - feet.y;
-            if self.spells.water_walk && depth < 0.45 {
+            if self.spells.water_walk && depth > 0.45 {
+                // Water Walk carries a diver up at 60 feet a round.
+                out.floor = Some(
+                    (feet.y + verse_world::spells::water::effects::WALK_RISE as f32 * dt)
+                        .min(s.height + 0.02),
+                );
+            } else if self.spells.water_walk {
                 out.floor = Some(s.height + 0.02);
                 if self.speed > 0.5 {
                     self.wake(p, s.height, forward, 0.05);
@@ -799,7 +842,33 @@ impl WaterLab {
                         14.0
                     };
                     let center = Spells::aim(at, forward, reach);
-                    self.spells.control_water(center, flat, now)
+                    let next = self
+                        .spells
+                        .control
+                        .map_or(self.spells.mode, |c| c.mode.next());
+                    let refused = (next == Mode::Whirlpool)
+                        .then(|| {
+                            let basin = self.basin();
+                            let c = center.as_dvec2();
+                            let body = basin.sample_base(c, 0).map(|s| s.body);
+                            match body {
+                                Some(body) => verse_world::spells::water::control::whirlpool_fits(
+                                    &basin, c, body,
+                                )
+                                .err(),
+                                None => Some(verse_world::spells::water::Refusal::NoWater),
+                            }
+                        })
+                        .flatten();
+                    if let Some(refusal) = refused {
+                        // The spell ends rather than cast a whirlpool the
+                        // water can't hold; the next cast floods.
+                        self.spells.control = None;
+                        self.spells.mode = Mode::Flood;
+                        format!("Whirlpool: {}", refusal.reason())
+                    } else {
+                        self.spells.control_water(center, flat, now)
+                    }
                 }
             }
             Slot::CreateWater => {
@@ -824,8 +893,19 @@ impl WaterLab {
             }
             Slot::SleetStorm => {
                 let center = Spells::aim(at, forward, 14.0);
-                let line = self.spells.sleet_storm(center, now);
+                let mut line = self.spells.sleet_storm(center, now);
                 if self.spells.sleet.is_some() {
+                    let cast = self.next_cast();
+                    self.sleet_cast = Some(cast);
+                    let frozen = self.freeze(
+                        verse_world::spells::water::Freeze::SleetStorm,
+                        center,
+                        flat,
+                        cast,
+                    );
+                    if frozen.contains("No water") {
+                        line = frozen;
+                    }
                     let top = LEVEL + spells::SLEET_HEIGHT;
                     self.sleet_fx.extend(
                         self.fx

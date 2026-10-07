@@ -1535,3 +1535,12 @@ REV-62 approval, durable handoff, suppression, and delivery-recovery adapter.
 The default adapter is disabled. Fixtures authorize no campaign, recipient,
 funds, or real contact; an interrupted or unknown external effect remains
 unknown. Human-led first revenue needs none of this activation.
+
+## Spells on water in the Water Lab on a phone (#10780)
+
+The spell rules on water were checked in scenario tests and offscreen
+captures only. On a phone, open the Water Lab, cast Sleet Storm over the
+bay and swim into the slush (it holds no one), cast Control Water through
+its modes out past 50 m (nearer the beach the whirlpool refuses), and
+strike the sea beside a dummy with the Thunderbolt; check that the frame
+rate holds while the ice, trench, and whirlpool draw.

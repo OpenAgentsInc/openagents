@@ -32,8 +32,8 @@ use crate::orb::{glow_blob, line};
 use crate::{WaterLab, terrain};
 
 /// How far lightning conducts through a body of water, m: 20 feet, the
-/// water specification's rule.
-pub const CONDUCTION: f32 = 6.0;
+/// shared rule (`verse_world::spells::water::lightning`).
+pub const CONDUCTION: f32 = verse_world::spells::water::CONDUCTION as f32;
 /// How far ahead a bolt with nothing aimed strikes, m.
 pub const REACH: f32 = 14.0;
 /// How far an orb may stand to be struck with nothing aimed, m.
@@ -386,8 +386,13 @@ impl WaterLab {
     /// none on a success. Ice insulates. Returns how many it reached.
     fn conduct(&mut self, at: Vec3, river: bool, total: f32, direct: &[usize]) -> usize {
         let p = Vec2::new(at.x, at.z);
-        let water = self.frame_water();
-        if water.controls.ice_at(p) > 0.5 {
+        let iced = |lab: &Self, q: Vec2| {
+            lab.rules
+                .ice
+                .state(&lab.basin(), q.as_dvec2(), lab.rules_tick())
+                .is_some_and(|s| s >= verse_world::spells::water::IceState::Floes)
+        };
+        if iced(self, p) {
             return 0;
         }
         self.surges.push((at, self.time));
@@ -400,7 +405,7 @@ impl WaterLab {
                 let q = Vec2::new(d.pos.x, d.pos.z);
                 q.distance(p) <= CONDUCTION
                     && same(q)
-                    && water.controls.ice_at(q) < 0.5
+                    && !iced(self, q)
                     && self
                         .surface_at(q)
                         .is_some_and(|s| d.pos.y < s.height - 0.05)

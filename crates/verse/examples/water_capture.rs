@@ -444,21 +444,27 @@ fn spells(
         .iter()
         .enumerate()
     {
+        if k == 3 {
+            // The whirlpool needs water 25 feet deep over 50 feet square:
+            // cast it from out in the bay, where the bed is that deep.
+            stand(runtime, 2.0, -50.0, PI);
+        }
         runtime.water_press(1, false)?;
         run(runtime, if k == 0 { 9.0 } else { 6.0 });
         let (eye, target) = match k {
             0 => (Vec3::new(26.0, 7.0, 30.0), Vec3::new(-2.0, 0.0, 0.0)),
             1 => (Vec3::new(16.0, 10.0, 6.0), Vec3::new(2.0, -2.0, -12.0)),
             2 => (Vec3::new(16.0, 10.0, 6.0), Vec3::new(2.0, 0.0, -12.0)),
-            _ => (Vec3::new(14.0, 12.0, 4.0), Vec3::new(2.0, -1.5, -11.0)),
+            _ => (Vec3::new(14.0, 12.0, -48.0), Vec3::new(2.0, -1.5, -64.0)),
         };
+        let floats_z = if k == 3 { -60.0 } else { -8.0 };
         if k == 2 || k == 3 {
             // Floats to show the current and the pull.
             if let Some(lab) = runtime.water_lab_mut() {
                 for i in 0..4 {
                     lab.floats.spawn(
                         water::FloatKind::ALL[i % 3],
-                        Vec3::new(-4.0 + i as f32 * 3.0, 1.0, -8.0 - i as f32),
+                        Vec3::new(-4.0 + i as f32 * 3.0, 1.0, floats_z - i as f32),
                         i as f32,
                         Vec3::ZERO,
                     );
@@ -520,6 +526,71 @@ fn spells(
         p + Vec3::new(0.0, 1.0, 0.0),
     )?;
     runtime.water_press(4, false)?;
+    // The shared rules' other spells over the bay (phase W8), on a calm sea
+    // so walkable ice forms as ice rather than floes.
+    if let Some(lab) = runtime.water_lab_mut() {
+        lab.set_sea(0);
+    }
+    for spell in water::Demo::ALL {
+        let name = spell.name().to_lowercase().replace(' ', "-");
+        if name == "sleet-storm" {
+            continue;
+        }
+        let (x, z) = (2.0, 3.0);
+        stand(runtime, x, z, PI);
+        let caster = Vec3::new(x, water::ground(x, z), z);
+        let mut wait = 1.5;
+        if let Some(lab) = runtime.water_lab_mut() {
+            lab.rules = Default::default();
+            if matches!(
+                spell,
+                water::Demo::GustOfWind | water::Demo::Thunderwave | water::Demo::ReverseGravity
+            ) {
+                for i in 0..5 {
+                    let along = match spell {
+                        water::Demo::ReverseGravity => -14.0,
+                        water::Demo::Thunderwave => -1.0,
+                        _ => -4.0,
+                    };
+                    lab.floats.spawn(
+                        water::FloatKind::ALL[i % 3],
+                        Vec3::new(x - 2.0 + i as f32, 0.3, z + along - i as f32 * 0.8),
+                        i as f32,
+                        Vec3::ZERO,
+                    );
+                }
+                run(runtime, 2.0);
+            }
+        }
+        let line = runtime
+            .water_lab_mut()
+            .map(|lab| lab.cast_demo(spell, caster, Vec3::NEG_Z))
+            .unwrap_or_default();
+        eprintln!("{line}");
+        wait = match spell {
+            water::Demo::Freeze(_) if name == "storm-of-vengeance" => 26.0,
+            water::Demo::GustOfWind => 4.0,
+            water::Demo::ReverseGravity => 0.9,
+            water::Demo::MeteorSwarm | water::Demo::Thunderwave => 0.5,
+            water::Demo::Fireball => 0.8,
+            _ => wait,
+        };
+        run(runtime, wait);
+        let (eye, target) = match name.as_str() {
+            "storm-of-vengeance" | "meteor-swarm" => {
+                (Vec3::new(26.0, 14.0, 12.0), Vec3::new(2.0, 0.0, -18.0))
+            }
+            "ray-of-frost" | "ice-knife" => (Vec3::new(9.0, 4.5, 4.0), Vec3::new(2.0, 0.0, -5.0)),
+            "reverse-gravity" => (Vec3::new(18.0, 6.0, 8.0), Vec3::new(2.0, 3.0, -11.0)),
+            "thunderwave" => (Vec3::new(10.0, 5.0, 8.0), Vec3::new(2.0, 0.0, -1.0)),
+            _ => (Vec3::new(17.0, 9.0, 9.0), Vec3::new(2.0, 0.0, -10.0)),
+        };
+        shoot(runtime, &name, eye, target)?;
+    }
+    if let Some(lab) = runtime.water_lab_mut() {
+        lab.rules = Default::default();
+        lab.set_sea(water::sea::DEFAULT_SEA);
+    }
     // Swimming without it.
     stand(runtime, 0.0, -24.0, PI);
     run(runtime, 3.0);

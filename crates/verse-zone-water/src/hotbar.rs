@@ -38,7 +38,7 @@ pub fn tip(slot: Slot) -> Tip {
         ),
         Slot::SleetStorm => Tip::new(
             "Sleet Storm",
-            "Freezing rain fills a 40-foot cylinder ahead and ices the water into slick ground.",
+            "Freezing rain fills a 20-foot cylinder ahead and turns the water to slush.",
         ),
         Slot::WaterBreathing => Tip::new(
             "Water Breathing",

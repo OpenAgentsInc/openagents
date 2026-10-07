@@ -109,8 +109,9 @@ fn a_held_breath_runs_out() {
     assert!(sent_up);
 }
 
-/// Part Water opens a dry trench; Whirlpool pulls the surface down at its
-/// eye; Sleet Storm ices the water so it stands still.
+/// Part Water opens a dry trench; Whirlpool refuses the shallows and pulls
+/// the surface down at its eye out where the bay is 25 feet deep; Sleet
+/// Storm turns the water to slush that holds no one.
 #[test]
 fn control_water_and_sleet_change_the_water() {
     let mut lab = WaterLab::new();
@@ -123,9 +124,26 @@ fn control_water_and_sleet_change_the_water() {
     }
     let middle = Spells::aim(at, Vec3::NEG_Z, spells::CONTROL_SIDE * 0.5 - 2.0);
     assert!(lab.surface_at(middle).is_none());
-    // Whirlpool, two casts on.
+    // Whirlpool, two casts on: the shallows refuse it, and the spell ends.
     lab.press(Slot::ControlWater, false, at, Vec3::NEG_Z, 0.0);
-    lab.press(Slot::ControlWater, false, at, Vec3::NEG_Z, 0.0);
+    let line = lab.press(Slot::ControlWater, false, at, Vec3::NEG_Z, 0.0);
+    assert!(
+        line.contains("25 feet deep") || line.contains("50 feet square"),
+        "{line}"
+    );
+    assert!(lab.spells.control.is_none());
+    // Out past 50 m the bay is deep enough.
+    let out = Vec3::new(0.0, -1.2, -50.0);
+    lab.press(Slot::ControlWater, false, out, Vec3::NEG_Z, 0.0);
+    lab.press(Slot::ControlWater, false, out, Vec3::NEG_Z, 0.0);
+    lab.press(Slot::ControlWater, false, out, Vec3::NEG_Z, 0.0);
+    let line = lab.press(Slot::ControlWater, false, out, Vec3::NEG_Z, 0.0);
+    assert!(line.contains("Whirlpool"), "{line}");
+    assert!(
+        lab.spells
+            .control
+            .is_some_and(|c| c.mode == Mode::Whirlpool)
+    );
     for _ in 0..240 {
         lab.tick(1.0 / 30.0, spawn(), Vec3::NEG_Z);
     }
@@ -139,7 +157,23 @@ fn control_water_and_sleet_change_the_water() {
         lab.tick(1.0 / 30.0, spawn(), Vec3::NEG_Z);
     }
     let center = lab.spells.sleet.unwrap().center;
-    assert!(lab.frame_water().controls.ice_at(center) > 0.99);
+    let state = lab
+        .rules
+        .ice
+        .state(&lab.basin(), center.as_dvec2(), lab.rules_tick());
+    assert_eq!(state, Some(verse_world::spells::water::IceState::Slush));
+    let drawn = lab.frame_water().controls.ice_at(center);
+    assert!((drawn - 0.35).abs() < 0.01, "{drawn}");
+    // Slush holds no one: the character in it still swims.
+    let feet = Vec3::new(center.x, LEVEL - 1.2, center.y);
+    let swim = lab.tick(1.0 / 30.0, feet, Vec3::NEG_Z);
+    assert!(swim.floor.is_none_or(|f| f < LEVEL - 0.5));
+    // A second cast ends it, and the slush dissolves over 20 s.
+    lab.press(Slot::SleetStorm, false, at, Vec3::NEG_Z, 0.0);
+    for _ in 0..(21 * 30) {
+        lab.tick(1.0 / 30.0, spawn(), Vec3::NEG_Z);
+    }
+    assert!(lab.rules.ice.patches.is_empty());
 }
 
 /// Every prop stands on the cove's ground and none in the sea's way.
@@ -472,4 +506,69 @@ fn the_sea_turns_through_its_states() {
     let exact = waves.at_rest(rest.as_dvec2(), &waves.phases(tick));
     assert!((f64::from(moved.y) - exact.height).abs() < 1e-4);
     assert!((f64::from(moved.x) - exact.horizontal.x).abs() < 1e-4);
+}
+
+/// The lab casts the freezing table and the other water spells on the
+/// shared rules: on a calm sea Ice Storm is walkable ice the character
+/// stands on, on a moderate sea it forms as floes; Gust of Wind drives a
+/// float along its line and Reverse Gravity lifts one; fire melts ice.
+#[test]
+fn the_lab_casts_spells_on_the_shared_rules() {
+    use verse_world::spells::water::{Freeze, IceState};
+    let mut lab = quiet_lab();
+    lab.set_sea(0);
+    let at = Vec3::new(0.0, LEVEL - 1.2, -30.0);
+    let line = lab.cast_demo(Demo::Freeze(Freeze::IceStorm), at, Vec3::NEG_Z);
+    assert!(line.contains("walkable ice"), "{line}");
+    let center = Vec2::new(0.0, -44.0);
+    let state = |lab: &WaterLab| {
+        lab.rules
+            .ice
+            .state(&lab.basin(), center.as_dvec2(), lab.rules_tick())
+    };
+    lab.tick(1.0 / 30.0, at, Vec3::NEG_Z);
+    assert_eq!(state(&lab), Some(IceState::Walkable));
+    let stand = lab.tick(
+        1.0 / 30.0,
+        Vec3::new(center.x, LEVEL, center.y),
+        Vec3::NEG_Z,
+    );
+    assert!(stand.floor.is_some_and(|f| f > LEVEL - 0.1), "{stand:?}");
+    // Fire melts it.
+    lab.cast_demo(Demo::Fireball, at, Vec3::NEG_Z);
+    assert_eq!(state(&lab), None);
+
+    let mut lab = quiet_lab();
+    lab.set_sea(1);
+    lab.cast_demo(Demo::Freeze(Freeze::IceStorm), at, Vec3::NEG_Z);
+    lab.tick(1.0 / 30.0, at, Vec3::NEG_Z);
+    assert_eq!(state(&lab), Some(IceState::Floes));
+
+    // Gust of Wind drives a float along its line; Reverse Gravity lifts one.
+    let mut lab = quiet_lab();
+    lab.set_sea(0);
+    lab.floats.spawn(
+        FloatKind::ALL[0],
+        Vec3::new(0.0, 0.3, -36.0),
+        0.0,
+        Vec3::ZERO,
+    );
+    for _ in 0..60 {
+        lab.tick(1.0 / 30.0, at, Vec3::NEG_Z);
+    }
+    let pos = |lab: &WaterLab| lab.floats.world.bodies()[lab.floats.floats[0].id.0 as usize].pos;
+    let before = pos(&lab);
+    lab.cast_demo(Demo::GustOfWind, at, Vec3::NEG_Z);
+    for _ in 0..180 {
+        lab.tick(1.0 / 30.0, at, Vec3::NEG_Z);
+    }
+    let moved = before.z - pos(&lab).z;
+    assert!(moved > 3.0, "{moved}");
+    let floated = pos(&lab).y;
+    let far = Vec3::new(pos(&lab).x as f32, LEVEL - 1.2, pos(&lab).z as f32 + 14.0);
+    lab.cast_demo(Demo::ReverseGravity, far, Vec3::NEG_Z);
+    for _ in 0..45 {
+        lab.tick(1.0 / 30.0, at, Vec3::NEG_Z);
+    }
+    assert!(pos(&lab).y > floated + 2.0, "{}", pos(&lab).y);
 }

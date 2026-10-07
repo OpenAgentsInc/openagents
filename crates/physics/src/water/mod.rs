@@ -45,7 +45,7 @@ pub use apply::{Push, Settings, Term, apply, apply_scaled, apply_where, apply_wi
 pub use body::{
     Course, FRESH, Kind, Level, Outline, SALT, Sample, Station, Surface, WaterBody, WaterId,
 };
-pub use event::{Effect, Event, Eventful, Events, TICK_HZ, tick_at};
+pub use event::{Effect, Event, Eventful, Evented, Events, TICK_HZ, tick_at};
 pub use flow::{FlowGrid, Obstacle};
 pub use medium::{Medium, Stroke};
 pub use set::{Water, WaterSet};

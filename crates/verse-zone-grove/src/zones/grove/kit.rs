@@ -904,8 +904,8 @@ impl Spell {
                     Single,
                 )
             }
-            // A 40-foot-radius storm of sleet: a failed Dexterity save falls
-            // prone, each 3 s.
+            // SRD 5.2.1's 20-foot-radius storm of sleet (SRD 5.1 had 40
+            // feet): a failed Dexterity save falls prone, each 3 s.
             S::SleetStorm => {
                 def.concentration = true;
                 def.rider = Some((C::Prone, 1.5));
@@ -916,7 +916,7 @@ impl Spell {
                     (0, 0),
                     D::Cold,
                     save(Dex, false),
-                    Zone(40.0 * FT),
+                    Zone(20.0 * FT),
                 )
             }
             // A 60-foot cone: 8d8 cold, half on a Constitution save.

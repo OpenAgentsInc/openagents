@@ -332,7 +332,7 @@ pub const fn info(spell: Spell) -> (&'static str, &'static str) {
         ),
         S::SleetStorm => (
             "sleet-storm-icon",
-            "Sleet lashes a 40-foot radius at the dummy ahead, and every 3 seconds a dummy failing a Dexterity save slips and falls.",
+            "Sleet lashes a 20-foot radius at the dummy ahead, and every 3 seconds a dummy failing a Dexterity save slips and falls.",
         ),
         S::ConeOfCold => (
             "cone-of-cold-icon",

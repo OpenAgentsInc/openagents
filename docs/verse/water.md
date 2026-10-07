@@ -479,9 +479,9 @@ the spell's SRD area.
 | Cone of Cold (5) | Polar land | A 60-foot (18 m) cone; 8d8 cold, Constitution save; instantaneous; a creature it kills becomes a frozen statue until it thaws | Still water in the cone | Walkable ice, 15 cm, Slippery Ice | 60 s | Thin ice for 15 s, then floes for 15 s |
 | Storm of Vengeance (9) | Grove row 4 | A storm cloud of 300-foot (90 m) radius (the Grove draws 60 ft); Concentration, up to 1 minute; in rounds 5 to 10, freezing rain deals 1d6 cold and makes the area Difficult Terrain | Still water under the cloud, from round 5 (24 s after the cast) | Thin ice, 2 cm, as a glaze | Until the spell ends | Floes for 15 s |
 
-The Grove kit's Sleet Storm uses SRD 5.1's 40-foot radius (`Zone(40 ft)` in
-`crates/verse-zone-grove/src/zones/grove/kit.rs`); W8 moves its area to SRD
-5.2.1's 20-foot radius when it lands this table.
+The Grove kit's Sleet Storm used SRD 5.1's 40-foot radius; W8 moved it to
+SRD 5.2.1's 20-foot radius (`Zone(20 ft)` in
+`crates/verse-zone-grove/src/zones/grove/kit.rs`).
 
 No other spell on either bar freezes water. These rules apply to every
 freeze (all ours):
@@ -552,7 +552,7 @@ switching modes ends the previous one.
 | Flood | Standing water in the area rises by up to 20 ft (6 m) until the spell ends or the mode changes. In a large body of water, a 20-foot wave instead crosses the area and crashes; Huge or smaller vehicles in its path are carried across, and each one it strikes has a 25 percent chance to capsize. | In a body smaller than the cube, the level inside the cube rises by the chosen amount, up to 6 m, and the outline grows to the terrain at the new level, clipped to the cube's faces, which draw as standing walls of water. When the mode ends, the water falls back over 6 s (ours). In a body larger than the cube, a solitary 6 m wave crosses the cube in 6 s (ours) and carries rowboats; the 25 percent capsize roll is behind the scenes. |
 | Part Water | A trench crosses the area with a wall of water to each side; when the mode ends, the trench refills over the next round. | The trench is 3 m wide (ours) along the caster's facing, the cube's length, down to the bed. Swimmers in its path move to the nearer wall (ours); bodies on the bed stay. It refills over 6 s. |
 | Redirect Flow | Flowing water in the area moves in a chosen direction, even over obstacles or up walls, and resumes its course outside the area. | Flow-field cells in the cube take the chosen direction at the body's peak flow speed, at least 1 m/s. On still water it makes a 1 m/s current in that direction (ours; the SRD names only flowing water). |
-| Whirlpool | Needs an area at least 50 ft square and 25 ft deep (15 m by 7.5 m). It is 5 ft wide at the base, up to 50 ft wide at the top, and 25 ft tall. A creature in the water within 25 ft is pulled 10 ft toward it each round; a creature entering it or ending its turn there takes 2d8 bludgeoning, half on a Strength save; leaving takes an action and a Strength (Athletics) check against the spell save DC. | A vortex flow field pulls swimmers within 7.5 m at 0.5 m/s (3 m every 6 s); damage lands on entry and every 6 s inside; a swimmer escapes by holding the swim-away input for 1 s, which makes the check. Floating bodies spiral in. A body too small or too shallow refuses the cast with the reason; every Everglade pond does, and the Water Lab's basin is sized for it. |
+| Whirlpool | Needs an area at least 50 ft square and 25 ft deep (15 m by 7.5 m). It is 5 ft wide at the base, up to 50 ft wide at the top, and 25 ft tall. A creature in the water within 25 ft is pulled 10 ft toward it each round; a creature entering it or ending its turn there takes 2d8 bludgeoning, half on a Strength save; leaving takes an action and a Strength (Athletics) check against the spell save DC. | A vortex flow field pulls swimmers within 25 feet (7.5 m) of the funnel, whose radius narrows from 7.6 m at the surface to 0.76 m at its base, at 0.5 m/s (3 m every 6 s); damage lands on entry and every 6 s inside; a swimmer escapes by holding the swim-away input for 1 s, which makes the check. Floating bodies spiral in. A body too small or too shallow refuses the cast with the reason; every Everglade pond does, and the Water Lab's bay is 25 feet deep from about 50 m offshore. |
 
 #### Lightning in water
 
@@ -588,6 +588,28 @@ river with the pool are separate bodies, a dummy counts as in the water when
 its feet are under the surface, the strike's own 3.4 m blast takes the place
 of rule 3's direct damage, and floating bodies in the same water within 6 m
 jolt.
+
+#### Status (W8)
+
+**Status (W8, 2026-10-07).** `verse_world::spells::water` implements this
+section as rules and state: `ice` (the four states, the freezing table,
+staged thaw, Thin Ice's rolled 3d10 × 10 lb a cell, Slippery Ice, the
+caught and the pinned, breakable cells, fire melting ice, frozen statues),
+`control` (the four modes, the wave's capsize roll, the whirlpool's
+minimum, pull, damage, and escape), `lightning` (conduction), and
+`effects` (Wind Wall, Gust of Wind, Thunderwave, fire and Meteor Swarm,
+Reverse Gravity, Wall of Stone's dam, Create or Destroy Water, Water Walk,
+Water Breathing, Fog Cloud, plants, webs, teleports, Feather Fall). The
+state, `WaterSpells`, is a field of `SpellWorld`, so checkpoints save it,
+and what changes the water is a `physics::water` event (new effects:
+`Trench`, `Current`, `Vortex`, `Bowl`, and `Surge`, with `Events::end` and
+`Evented`, the water with its events applied). Scenario tests are in
+`verse_world::spells::scenarios::water`. The Water Lab casts on these
+rules ([Coordination with the water demos](#coordination-with-the-water-demos)),
+and `cargo run --release -p verse --example water_capture -- OUT --spells`
+renders each spell over water. No chamber zone has water yet, so the
+chamber's own spells don't call these rules; a zone with water calls them
+from its casts.
 
 #### Water Orb
 
@@ -1221,9 +1243,21 @@ phases above are written so the demos are not duplicated:
   redirect flow, and whirlpool), Create or Destroy Water as rain, Sleet
   Storm, and Water Breathing. Those spells follow
   [Spells and water](#spells-and-water). Where the demo simplifies a rule,
-  W8 brings it in line or records the difference here. The Lab's basin
-  should be at least 15 m square and 7.5 m deep, so the whirlpool meets the
-  SRD's minimum.
+  W8 brings it in line or records the difference here. The Lab's bay is
+  7.5 m deep over 15 m square from about 50 m offshore, so the whirlpool
+  meets the SRD's minimum there and refuses nearer the beach.
+- **W8 differences (2026-10-07).** The Lab runs its spells on the shared
+  rules ([`rules.rs`](../../crates/verse-zone-water/src/rules.rs)): Sleet
+  Storm is the 20-foot slush of the freezing table, Create Water's rain
+  falls for 6 s, Redirect Flow runs at 1 m/s on the still sea, the trench
+  is 3 m wide, the whirlpool checks the SRD's minimum, Water Walk lifts a
+  diver at 3 m/s, and the Thunderbolt conducts 20 feet and stops at ice.
+  Three looks remain the demo's: the renderer has one sea level, so the
+  Lab's flood raises the whole bay by 1.8 m instead of drawing the rules'
+  20-foot wave (`physics::water::Effect::Surge`, which the rules use); it
+  draws one ice disc, the strongest patch, though the rules hold every
+  patch; and its river reaches are not yet bodies in the rules' water set
+  (the sea and the plunge pool are).
 
 ## Owner decisions
 

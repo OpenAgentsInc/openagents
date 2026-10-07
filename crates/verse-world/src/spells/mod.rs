@@ -28,6 +28,7 @@ pub mod telekinesis;
 pub mod thunderwave;
 mod validation;
 pub mod wall_of_stone;
+pub mod water;
 pub mod wind_wall;
 
 use glam::{DQuat, DVec3};
@@ -329,6 +330,10 @@ pub struct SpellWorld {
     pub tentacles: Vec<black_tentacles::Effect>,
     #[serde(default)]
     pub reversed: Vec<reverse_gravity::Effect>,
+    /// Spells' hold on the zone's water: ice, Control Water, dams, rain,
+    /// vapor, Water Walk, and Water Breathing ([`water`]).
+    #[serde(default, skip_serializing_if = "water::WaterSpells::is_empty")]
+    pub water: water::WaterSpells,
     /// Prop poses at the start of the last tick, for presentation.
     previous: Vec<(DVec3, DQuat)>,
     /// Momentum lost as dynamic bodies are removed.
@@ -391,6 +396,7 @@ impl SpellWorld {
             proxies: vec![],
             tentacles: vec![],
             reversed: vec![],
+            water: water::WaterSpells::default(),
             previous: vec![],
             removed: 0,
         }
@@ -414,6 +420,7 @@ impl SpellWorld {
             dice.validate()?;
         }
         self.validate_effects()?;
+        self.water.validate()?;
         if self.feather_falls.len() > 64 {
             return Err("Too many Feather Fall effects".into());
         }
@@ -555,6 +562,8 @@ impl SpellWorld {
             }
         }
         self.fields.retain(|f| f.cast != cast);
+        self.water
+            .end_cast(cast, water::ticks(self.time));
         self.concentration.retain(|_, held| *held != cast);
         let owned: Vec<_> = self
             .owned

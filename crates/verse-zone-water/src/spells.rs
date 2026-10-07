@@ -11,13 +11,18 @@
 //!   vortex 50 feet wide that drags floating things in and down. Casting
 //!   it again while it lasts switches to the next mode.
 //! - **Create or Destroy Water** (instantaneous): Create rains on a
-//!   30-foot cube, wetting what it falls on and filling puddles; Destroy
-//!   lifts water away as vapor, drying the ground and drawing the sea down
-//!   for a moment.
-//! - **Sleet Storm** (concentration, up to 1 minute, a 40-foot-radius,
-//!   20-foot-tall cylinder): freezing rain that ices the water over into
-//!   slick, walkable ground, with steam where it hits open water. The ice
-//!   lasts for the spell, then thaws over a few seconds.
+//!   30-foot cube for 6 s, wetting what it falls on and filling puddles;
+//!   Destroy lifts water away as vapor, drying the ground and drawing the
+//!   sea down for a moment.
+//! - **Sleet Storm** (concentration, up to 1 minute, SRD 5.2.1's
+//!   20-foot-radius, 40-foot-tall cylinder): freezing rain that turns the
+//!   water to slush, which holds no one, for as long as the spell lasts;
+//!   the slush dissolves over 20 s after. The ice itself is the shared
+//!   rules' ([`crate::rules`], `verse_world::spells::water::ice`).
+//!
+//! Control Water's whirlpool needs water 50 feet square and 25 feet deep,
+//! by the shared rules; where the bay is shallower it refuses with the
+//! reason.
 //! - **Water Breathing** (24 hours): the caster can dive and stay under.
 //!   Without it a held breath lasts 1 + Constitution modifier minutes,
 //!   at least 30 seconds (the SRD's suffocation rule); the lab's character
@@ -40,18 +45,15 @@ pub const FLOOD_SWELL: f32 = 2.8;
 pub const WHIRL_RADIUS: f32 = 25.0 * FOOT;
 /// Create Water's cube edge, m.
 pub const RAIN_SIDE: f32 = 30.0 * FOOT;
-/// How long the lab's rain falls, s.
-pub const RAIN_TIME: f32 = 10.0;
+/// How long the rain falls, s: the shared rule's 6 s.
+pub const RAIN_TIME: f32 = verse_world::spells::water::effects::RAIN_TIME as f32;
 /// How long rain's wetness takes to dry, s.
 pub const DRY_TIME: f32 = 45.0;
-/// Sleet Storm's cylinder: radius and height, m, and its longest
-/// concentration, s.
-pub const SLEET_RADIUS: f32 = 40.0 * FOOT;
-pub const SLEET_HEIGHT: f32 = 20.0 * FOOT;
+/// Sleet Storm's cylinder: radius and height, m (SRD 5.2.1: 20 feet and 40
+/// feet), and its longest concentration, s.
+pub const SLEET_RADIUS: f32 = 20.0 * FOOT;
+pub const SLEET_HEIGHT: f32 = 40.0 * FOOT;
 pub const SLEET_DURATION: f32 = 60.0;
-/// How long ice takes to form and to thaw, s.
-pub const FREEZE_TIME: f32 = 3.0;
-pub const THAW_TIME: f32 = 5.0;
 /// The lab character's Constitution modifier.
 pub const CON_MODIFIER: i32 = 1;
 
@@ -186,8 +188,6 @@ pub struct Spells {
     pub wet_radius: f32,
     pub drain: Option<Placed>,
     pub sleet: Option<Placed>,
-    /// The ice: where, and how frozen, 0 to 1.
-    pub ice: Option<(Vec2, f32)>,
     /// How far the flood has raised the sea, m, and its waves' gain.
     pub rise: f32,
     pub swell: f32,
@@ -254,15 +254,11 @@ impl Spells {
             let wet = wet - dt / DRY_TIME;
             self.wet = (wet > 0.0).then_some((at, wet));
         }
-        if let Some(sleet) = self.sleet {
-            let ice = self.ice.map_or(0.0, |(_, a)| a);
-            self.ice = Some((sleet.center, (ice + dt / FREEZE_TIME).min(1.0)));
-            if now - sleet.started > SLEET_DURATION {
-                self.sleet = None;
-            }
-        } else if let Some((at, ice)) = self.ice {
-            let ice = ice - dt / THAW_TIME;
-            self.ice = (ice > 0.0).then_some((at, ice));
+        if self
+            .sleet
+            .is_some_and(|sleet| now - sleet.started > SLEET_DURATION)
+        {
+            self.sleet = None;
         }
     }
 
@@ -314,13 +310,13 @@ impl Spells {
     pub fn sleet_storm(&mut self, center: Vec2, now: f32) -> String {
         if self.sleet.is_some() {
             self.sleet = None;
-            return "Sleet Storm ends; the ice thaws".into();
+            return "Sleet Storm ends; the slush dissolves".into();
         }
         self.sleet = Some(Placed {
             center,
             started: now,
         });
-        "Sleet Storm: freezing rain in a 40-foot cylinder".into()
+        "Sleet Storm: freezing rain in a 20-foot cylinder".into()
     }
 
     /// The point a placed spell lands on: `reach` m ahead of `at`.
@@ -367,7 +363,7 @@ mod tests {
     }
 
     #[test]
-    fn sleet_ices_the_water_for_its_duration_then_it_thaws() {
+    fn sleet_lasts_its_minute_at_most() {
         let mut s = Spells::default();
         s.sleet_storm(Vec2::ZERO, 0.0);
         let mut t = 0.0;
@@ -375,11 +371,12 @@ mod tests {
             s.tick(0.1, t);
             t += 0.1;
         }
-        assert_eq!(s.ice.map(|(_, a)| a), Some(1.0));
-        while t < SLEET_DURATION + THAW_TIME + 1.0 {
+        assert!(s.sleet.is_some());
+        while t < SLEET_DURATION + 1.0 {
             s.tick(0.1, t);
             t += 0.1;
         }
-        assert!(s.ice.is_none());
+        assert!(s.sleet.is_none());
+        assert!((SLEET_RADIUS - 6.096).abs() < 1e-4);
     }
 }

@@ -1,0 +1,6 @@
+{
+  "phase": "W8 (#10780): spells and water",
+  "command": "cargo run --release -p verse --example water_capture -- OUT --only none --spells --frames 1 --size 1200x675",
+  "renderer": "physical, default tier, offscreen",
+  "views": "Each Water Lab hotbar spell and each verse_world::spells::water rule cast over the bay: the freezing table (ray-of-frost, ice-knife, sleet-storm, ice-storm, cone-of-cold, storm-of-vengeance), Control Water's four modes, create and destroy water, water walk and breathing, gust-of-wind, thunderwave, fireball, meteor-swarm, reverse-gravity, and fog-cloud"
+}
