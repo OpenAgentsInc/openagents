@@ -9,7 +9,6 @@ package com.openagents.app
 import android.app.Dialog
 import android.content.Context
 import android.content.Intent
-import android.graphics.Typeface
 import android.view.Gravity
 import android.view.View
 import android.view.Window
@@ -32,13 +31,13 @@ internal class GymViews(private val context: Context, private val tap: (String) 
 
     private fun title(value: String, size: Float, color: Int = Palette.PRIMARY) =
         context.text(value.uppercase(), size, color).apply {
-            setTypeface(Typeface.create("sans-serif-condensed", Typeface.BOLD))
+            typeface = PaperMono.typeface(context, PaperMono.BOLD)
             letterSpacing = 0.03f
         }
 
     private fun body(value: String, tone: String = "body") =
         context.text(value, 16f, if (tone == "quiet") Palette.SECONDARY else Palette.PRIMARY).apply {
-            if (tone == "strong") setTypeface(typeface, Typeface.BOLD)
+            if (tone == "strong") typeface = PaperMono.typeface(context, PaperMono.BOLD)
         }
 
     private fun primary(button: JSONObject, busy: Boolean = false): TextView =
@@ -71,7 +70,7 @@ internal class GymViews(private val context: Context, private val tap: (String) 
     private fun mark(value: String) = context.text(when (value) {
         "check" -> "✓"; "cross" -> "✗"; "wait" -> "…"; "dot" -> "•"; else -> "–"
     }, 16f, if (value == "cross" || value == "none") Palette.TERTIARY else Palette.PRIMARY).apply {
-        setTypeface(typeface, Typeface.BOLD)
+        typeface = PaperMono.typeface(context, PaperMono.BOLD)
         minWidth = context.dp(22)
     }
 
@@ -329,7 +328,7 @@ internal class GymViews(private val context: Context, private val tap: (String) 
         }
         value.textOrNull("indicator")?.let { root.addView(title(it, 13f, Palette.SECONDARY)) }
         root.addView(View(context), LinearLayout.LayoutParams(-1, 0, 1f))
-        root.gap(context.text(value.getString("title"), 26f).apply { setTypeface(typeface, Typeface.BOLD) })
+        root.gap(context.text(value.getString("title"), 26f).apply { typeface = PaperMono.typeface(context, PaperMono.BOLD) })
         value.optJSONArray("lines")?.let { lines -> for (i in 0 until lines.length()) root.gap(body(lines.getString(i), "quiet"), 6) }
         value.optJSONArray("agent")?.takeIf { it.length() == 2 }?.let { agent ->
             root.gap(context.column().apply {

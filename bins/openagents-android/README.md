@@ -171,9 +171,9 @@ see the transcript layout section of
 
 - Rust holds each chat's rows in a transcript source, so they never cross
   the view, and lays them out on a worker thread: it shapes text with the
-  bundled Inter and JetBrains Mono fonts, decides every row's exact height,
+  bundled Paper Mono font, decides every row's exact height,
   and returns display lists with each text run's position. The app draws the
-  runs with the same fonts at those positions.
+  runs with the same font at those positions.
 - The list is a `RecyclerView` whose rows take Rust's heights, so it follows
   new rows while you are at the bottom, stops when you scroll up, shows a
   jump-to-bottom button, and keeps your place when rows arrive above. Wide

@@ -10,7 +10,6 @@ package com.openagents.app
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
-import android.graphics.Typeface
 import android.view.Gravity
 import android.view.View
 import android.widget.HorizontalScrollView
@@ -466,7 +465,7 @@ private class ProbabilityBar(context: Context, private val p: Double, private va
     private val fill = Paint().apply { color = if (strong) 0xD9FFFFFF.toInt() else 0x66FFFFFF }
     private val line = Paint().apply { color = Palette.PRIMARY }
     private val label = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Palette.PRIMARY; textSize = context.dpf(10f); typeface = Typeface.MONOSPACE; textAlign = Paint.Align.RIGHT
+        color = Palette.PRIMARY; textSize = context.dpf(10f); typeface = PaperMono.typeface(context); textAlign = Paint.Align.RIGHT
     }
     init { importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO }
     override fun onDraw(canvas: Canvas) {

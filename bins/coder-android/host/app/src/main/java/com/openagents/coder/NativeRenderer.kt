@@ -6,6 +6,7 @@ import android.graphics.Typeface
 import android.text.SpannableString
 import android.text.style.ClickableSpan
 import android.text.style.ImageSpan
+import android.text.style.StyleSpan
 import android.view.Gravity
 import android.view.ActionMode
 import android.view.Menu
@@ -18,7 +19,11 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Switch
 import android.widget.TextView
+import io.noties.markwon.AbstractMarkwonPlugin
 import io.noties.markwon.Markwon
+import io.noties.markwon.MarkwonSpansFactory
+import io.noties.markwon.core.MarkwonTheme
+import org.commonmark.node.StrongEmphasis
 import org.json.JSONObject
 
 internal const val AMBER = 0xffffb000.toInt()
@@ -45,7 +50,18 @@ class NativeRenderer(private val context: Context, private val activate: (JSONOb
         var text: TextView? = null,
         var scroll: ScrollView? = null, var children: LinearLayout? = null, var toggle: Switch? = null)
     private val mounts = mutableMapOf<String, Mounted>()
-    private val markwon = Markwon.create(context)
+    // Markdown draws code, headings, and strong text in Paper Mono's own
+    // faces instead of Markwon's monospace and synthesized bold defaults.
+    private val markwon = Markwon.builder(context).usePlugin(object : AbstractMarkwonPlugin() {
+        override fun configureTheme(builder: MarkwonTheme.Builder) {
+            builder.codeTypeface(PaperMono.typeface(context))
+                .codeBlockTypeface(PaperMono.typeface(context))
+                .headingTypeface(PaperMono.typeface(context, PaperMono.BOLD))
+        }
+        override fun configureSpansFactory(builder: MarkwonSpansFactory.Builder) {
+            builder.setFactory(StrongEmphasis::class.java) { _, _ -> StyleSpan(Typeface.BOLD) }
+        }
+    }).build()
     private var currentView: JSONObject? = null
     private var currentInstance: String? = null
     private var currentRevision = -1L
@@ -132,7 +148,7 @@ class NativeRenderer(private val context: Context, private val activate: (JSONOb
         val text = mounted.text ?: result as? TextView
         text?.let {
             it.setTextColor(style.optJSONObject("foreground")?.let { c -> color(c) } ?: AMBER)
-            if (style.optString("weight") == "bold") it.setTypeface(it.typeface, Typeface.BOLD)
+            if (style.optString("weight") == "bold") it.typeface = PaperMono.typeface(it.context, PaperMono.BOLD)
             it.gravity = when (style.optString("align")) { "center" -> Gravity.CENTER; "end" -> Gravity.END; else -> Gravity.START }
         }
         return result
@@ -142,10 +158,10 @@ class NativeRenderer(private val context: Context, private val activate: (JSONOb
         if (kind.startsWith("text:")) {
             val role = kind.substringAfter(':')
             val text = context.label("", if (role == "markdown") "$key-text" else key)
-            if (role == "heading") { text.textSize = 18f; text.setTypeface(text.typeface, Typeface.BOLD); if (android.os.Build.VERSION.SDK_INT >= 28) text.isAccessibilityHeading = true }
-            if (role == "code") text.typeface = Typeface.MONOSPACE
+            if (role == "heading") { text.textSize = 18f; text.typeface = PaperMono.typeface(context, PaperMono.BOLD); if (android.os.Build.VERSION.SDK_INT >= 28) text.isAccessibilityHeading = true }
+            if (role == "code") text.typeface = PaperMono.typeface(context)
             // A terminal grid row: monospaced, one line, never wrapped.
-            if (role == "terminal") { text.typeface = Typeface.MONOSPACE; text.textSize = 12f; text.maxLines = 1; text.setHorizontallyScrolling(true) }
+            if (role == "terminal") { text.typeface = PaperMono.typeface(context); text.textSize = 12f; text.maxLines = 1; text.setHorizontallyScrolling(true) }
             if (role == "status") text.textSize = 12f
             text.autoLinkMask = 0
             if (role != "markdown") return Mounted(kind, text, text = text)

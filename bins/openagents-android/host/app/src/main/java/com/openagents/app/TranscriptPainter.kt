@@ -87,7 +87,7 @@ internal object TranscriptFonts {
                 if (spec[2] > 0f) append(", 'opsz' ${spec[2]}")
             }
             val typeface = Typeface.Builder(file(context, spec[0].toInt()))
-                .setFontVariationSettings(variations).build() ?: Typeface.DEFAULT
+                .setFontVariationSettings(variations).build() ?: PaperMono.typeface(context, weight)
             typeface to (spec[3] != 0f)
         }
     }

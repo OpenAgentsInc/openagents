@@ -7,7 +7,6 @@ import android.content.ClipData
 import android.content.ClipDescription
 import android.content.ClipboardManager
 import android.content.Context
-import android.graphics.Typeface
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -18,10 +17,11 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.TextView
 
+/** A text label. Every label is already monospaced Paper Mono, so `mono` changes nothing. */
 internal fun Context.label(value: String, size: Float = 14f, color: Int = Palette.PRIMARY, key: String? = null,
                            bold: Boolean = false, mono: Boolean = false, selectable: Boolean = false): TextView =
     text(value, size, color).apply {
-        if (bold || mono) setTypeface(if (mono) Typeface.MONOSPACE else Typeface.DEFAULT, if (bold) Typeface.BOLD else Typeface.NORMAL)
+        if (bold) typeface = PaperMono.typeface(context, PaperMono.BOLD)
         if (selectable) setTextIsSelectable(true)
         key?.let { tag = it }
     }
@@ -33,7 +33,7 @@ internal fun Context.pill(value: String, key: String? = null, primary: Boolean =
         minHeight = dp(44)
         setPadding(dp(16), dp(10), dp(16), dp(10))
         background = if (primary) rounded(Palette.PRIMARY, 22f) else rounded(Palette.RAISED, 22f, Palette.BORDER)
-        if (primary) setTypeface(typeface, Typeface.BOLD)
+        if (primary) typeface = PaperMono.typeface(context, PaperMono.BOLD)
         isClickable = true; isFocusable = true
         key?.let { tag = it }
         setOnClickListener { if (isEnabled) action() }

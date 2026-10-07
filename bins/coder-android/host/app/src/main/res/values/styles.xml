@@ -1,12 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Every view draws in Paper Mono (res/font/paper_mono.xml); code builds
+         typefaces through PaperMono.kt. -->
     <style name="CoderTheme" parent="android:style/Theme.Material.NoActionBar">
-        <item name="android:fontFamily">sans</item>
+        <item name="android:fontFamily">@font/paper_mono</item>
+        <item name="android:textViewStyle">@style/CoderText</item>
+        <item name="android:editTextStyle">@style/CoderEditText</item>
+        <item name="android:buttonStyle">@style/CoderButton</item>
         <item name="android:colorAccent">#FFB000</item>
         <item name="android:windowLightStatusBar">false</item>
         <item name="android:windowActionModeOverlay">true</item>
         <item name="android:windowBackground">#060500</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+
+    <style name="CoderText" parent="android:style/Widget.Material.TextView">
+        <item name="android:fontFamily">@font/paper_mono</item>
+    </style>
+
+    <style name="CoderEditText" parent="android:style/Widget.Material.EditText">
+        <item name="android:fontFamily">@font/paper_mono</item>
+    </style>
+
+    <style name="CoderButton" parent="android:style/Widget.Material.Button">
+        <item name="android:fontFamily">@font/paper_mono</item>
     </style>
 </resources>

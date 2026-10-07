@@ -2,7 +2,6 @@ package com.openagents.app
 
 import android.content.Context
 import android.graphics.Color
-import android.graphics.Typeface
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -232,8 +231,7 @@ class NativeRenderer(
             text.setTextColor(style.objectOrNull("foreground")?.let { color(it) }
                 ?: if (kind == "text:status") Palette.SECONDARY else Palette.PRIMARY)
             val bold = style.textOrNull("weight") == "bold" || kind == "text:heading"
-            text.setTypeface(if (kind == "text:code" || kind == "text:terminal") Typeface.MONOSPACE else Typeface.DEFAULT,
-                if (bold) Typeface.BOLD else Typeface.NORMAL)
+            text.typeface = PaperMono.typeface(text.context, if (bold) PaperMono.BOLD else PaperMono.REGULAR)
             text.gravity = if (kind == "button") Gravity.CENTER else when (style.textOrNull("align")) {
                 "center" -> Gravity.CENTER_HORIZONTAL; "end" -> Gravity.END; else -> Gravity.START
             }
@@ -385,7 +383,7 @@ object TerminalMetrics {
     const val SIZE_SP = 12f
     fun cell(context: Context): Pair<Float, Float> {
         val paint = android.text.TextPaint().apply {
-            typeface = Typeface.MONOSPACE
+            typeface = PaperMono.typeface(context)
             textSize = android.util.TypedValue.applyDimension(android.util.TypedValue.COMPLEX_UNIT_SP,
                 SIZE_SP, context.resources.displayMetrics)
         }

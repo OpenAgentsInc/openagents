@@ -1,6 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Every view draws in Paper Mono (res/font/paper_mono.xml); code builds
+         typefaces through PaperMono.kt. -->
     <style name="OpenAgentsTheme" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:fontFamily">@font/paper_mono</item>
+        <item name="android:textViewStyle">@style/OpenAgentsText</item>
+        <item name="android:editTextStyle">@style/OpenAgentsEditText</item>
+        <item name="android:buttonStyle">@style/OpenAgentsButton</item>
         <item name="android:colorAccent">#FFFFFFFF</item>
         <item name="android:colorPrimary">#FF000000</item>
         <item name="android:textColorPrimary">#FFFFFFFF</item>
@@ -8,5 +14,17 @@
         <item name="android:windowBackground">#FF000000</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">#FF000000</item>
+    </style>
+
+    <style name="OpenAgentsText" parent="android:style/Widget.Material.TextView">
+        <item name="android:fontFamily">@font/paper_mono</item>
+    </style>
+
+    <style name="OpenAgentsEditText" parent="android:style/Widget.Material.EditText">
+        <item name="android:fontFamily">@font/paper_mono</item>
+    </style>
+
+    <style name="OpenAgentsButton" parent="android:style/Widget.Material.Button">
+        <item name="android:fontFamily">@font/paper_mono</item>
     </style>
 </resources>
