@@ -477,7 +477,8 @@ fn committed_sources_compile_within_budgets_to_the_pinned_pack() {
     }
     // Alice, the placed character: the Universal rig, the player's eight
     // clips, her high-definition level within the character budget, and
-    // one 1,024-pixel atlas.
+    // one 1,024-pixel atlas that an opaque primitive and the hair cards'
+    // alpha-masked one share.
     let alice = pack.form(compile::ALICE_FORM).expect("Alice");
     // The Universal 65 joints and the mesh's and armature's own nodes.
     assert_eq!(alice.joints.len(), 67);
@@ -486,10 +487,36 @@ fn committed_sources_compile_within_budgets_to_the_pinned_pack() {
     }
     assert!(alice.triangles() > 30_000, "{}", alice.triangles());
     assert!(alice.triangles() <= Limits::EVERGLADE.character_triangles);
-    assert_eq!(alice.primitives.len(), 1);
-    let atlas = pack.materials[alice.primitives[0].material as usize]
-        .texture
-        .unwrap();
+    assert_eq!(alice.primitives.len(), 2);
+    let looks: Vec<_> = alice
+        .primitives
+        .iter()
+        .map(|p| &pack.materials[p.material as usize])
+        .collect();
+    assert_eq!(looks[0].texture, looks[1].texture);
+    assert!(looks.iter().any(|m| m.alpha == AlphaMode::Opaque));
+    assert!(
+        looks
+            .iter()
+            .any(|m| matches!(m.alpha, AlphaMode::Mask { .. }) && m.double_sided)
+    );
+    // Her workstation in the owner's house is a standing desk with no
+    // chair: nothing stands at seat height where she works behind it.
+    let house = pack.model("generated/greco_house").expect("the house");
+    let floor = 1.6;
+    let seat = house
+        .primitives
+        .iter()
+        .flat_map(|p| &p.vertices)
+        .filter(|v| {
+            let [x, y, z] = v.position;
+            (x + 4.6).abs() < 1.5
+                && (-24.4..-23.15).contains(&z)
+                && (0.25..0.9).contains(&(y - floor))
+        })
+        .count();
+    assert_eq!(seat, 0, "something stands at seat height behind her desk");
+    let atlas = looks[0].texture.unwrap();
     assert_eq!(
         pack.textures[atlas as usize].width,
         compile::ALICE_TEXTURE_EDGE
