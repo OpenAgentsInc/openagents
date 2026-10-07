@@ -94,6 +94,10 @@ pub(crate) const EXT_USAGE: &str = "usage: openagents plugin COMMAND [OPTIONS]
         and --blossom then names where readers fetch them.
   search [QUERY] [--author PUBKEY] [--limit N]
         The published plugins that match QUERY, best first; all without one.
+  discover --catalog FILE --mirror DIR [--previous FILE] [--query TEXT]
+      [--select KEY:PACKAGE/OPERATION] [--limit N]
+        Inspect curated exact signed releases and service heads. Selection
+        prints evidence only; it installs, discloses, executes, and spends nothing.
   install DIR | NAME | ID [--blossom URL]
         Install the plugin in DIR, or a published one by name or id, on this
         computer. A published one is checked file by file against its signed
@@ -154,7 +158,7 @@ pub(crate) const EXT_USAGE: &str = "usage: openagents plugin COMMAND [OPTIONS]
         release) into the directory Coder reads.
   defaults show [--into DIR]
         Print what the last sync wrote.
-Options for every command:
+Options for relay commands:
   --relay URL         Relay to read (default wss://relay.openagents.com).
   --timeout SECONDS   How long to wait for the relay (default 8).
   --as PROFILE        Verse profile key that answers a NIP-42 challenge.
@@ -176,6 +180,7 @@ pub(crate) const EXT_EFFECTS: &[Declared] = &[
     Declared::computer("run", Effect::ReadOnly),
     Declared::computer("publish", Effect::Publishes),
     Declared::computer("search", Effect::ReadOnly),
+    Declared::computer("discover", Effect::ReadOnly),
     Declared::computer("install", Effect::LocalWrite),
     Declared::computer("installed", Effect::ReadOnly),
     Declared::computer("brainstorm-pilot check", Effect::ReadOnly),
@@ -258,6 +263,10 @@ pub fn ext(output: &Output, words: &[String]) -> u8 {
     #[cfg(unix)]
     if words.first().is_some_and(|word| word == "purchase") {
         return purchase::run(output, &words[1..]);
+    }
+    #[cfg(unix)]
+    if let Some(code) = crate::plugin_discovery::run(output, words) {
+        return code;
     }
     if let Some((command, rest)) = words.split_first()
         && rest.first().is_some_and(|word| word == "--help")

@@ -1231,6 +1231,19 @@ quote/confirmation, changed-right refusal, cancel/reconnect/retained receipt,
 measured billing, credential removal, and live incident handling. No live host
 deployment, buyer credentials, or funds were used for REV-14.
 
+## Curated discovery (O9, REV-46 #10853)
+
+Approve the bounded public publisher/service source set, its exact signed
+releases or service heads, and attributed local review records before using
+`openagents plugin discover` commercially. Maintain fresh publisher checkpoints,
+public source provenance, exact evaluation scope, data and recipient requirements,
+and explicit current fee pins. Retain each JSON snapshot for subsequent refresh
+checks. Qualify actual provider availability and the selected paid lane separately,
+then obtain and approve the owning customer's current total quote. Fixture-backed
+discovery verifies signed metadata and bounded native support; it does not establish
+independent delivery, capacity, a total purchase price, or spending authority.
+No real publisher, service, customer, credentials, or funds were used for REV-46.
+
 ## Alice in the owner's house
 
 Deploy Everglade pack `4cfbbe2bfe74bba084436b5a5fd8dc09ec0c770fcdd613f9ef92986749950abb`

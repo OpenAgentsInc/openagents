@@ -64,6 +64,8 @@ mod pay_plugin;
 mod pay_reconcile;
 mod playtest;
 #[cfg(unix)]
+mod plugin_discovery;
+#[cfg(unix)]
 mod plugin_local;
 #[cfg(unix)]
 mod plugin_new;

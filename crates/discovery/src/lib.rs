@@ -11,5 +11,6 @@
 //! grants it.
 
 pub mod corpus;
+pub mod curated;
 pub mod plugins;
 pub mod site;

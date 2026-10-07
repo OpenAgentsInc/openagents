@@ -89,6 +89,12 @@ pub(crate) fn packet(dir: &Path) -> Result<Packet, Unpriced> {
     let bytes = std::fs::read(&path).map_err(|e| not_invocable(format!("its program: {e}")))?;
     let program: Value =
         serde_json::from_slice(&bytes).map_err(|e| not_invocable(format!("its program: {e}")))?;
+    packet_from_program(&program)
+}
+
+/// Inspect a verified program's supported packet shape without running it.
+/// Package resolution and purchase admission remain the caller's responsibility.
+pub(crate) fn packet_from_program(program: &Value) -> Result<Packet, Unpriced> {
     let definition = &program["definition"];
     let required = definition["requires"]
         .as_array()

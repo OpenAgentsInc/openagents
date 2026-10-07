@@ -89,6 +89,61 @@ under `programs/`, the Wasm crate itself, and a test set under `evals/`.
 The last three are [worked examples](examples/README.md) written to be
 copied, each with its test result and a run on a real repository.
 
+## Inspect a curated publisher or service
+
+On a Unix host, `openagents plugin discover --catalog FILE --mirror DIR --json`
+inspects an explicitly selected source set. It contacts no relay, reputation
+service, provider, or wallet. Add `--query TEXT` to rank signed names and exact
+identities, or `--select KEY:PACKAGE/OPERATION` to print one admitted card.
+Selection prints evidence and grants no installation, disclosure, execution,
+or spending authority.
+
+The catalog is a local operator admission with `schema` set to
+`openagents.discovery.curated.v1`, an attributed `curator`, positive
+`max_age_seconds`, `skew_seconds` from 0 through 300, and at most 64 `items`.
+Each item names `id`, `kind`, exact signed `event`, `operation`, `digest`,
+`evaluations`, optional `review`, and optional advisory `reputation`:
+
+- An `extension` uses the publisher-qualified package ID, exact NIP-EXT release
+  ID and manifest digest, and a component slug. The reader checks the current
+  signed listing, manifest, complete bounded file closure, and fresh signed
+  publisher revocation checkpoint. Dependency closures are unavailable in this
+  selected profile.
+- A `service` uses the full qualified NIP-CAP component ID, exact service-head
+  ID, canonical definition digest, and advertised door name. It checks the
+  publisher, interface, transport, door, and freshness. A service publication
+  does not establish a current price or live capacity.
+
+The explicit mirror contains signed events at `events/ID.json`, current signed
+heads at `heads/KIND/PUBLISHER/SLUG.json`, and exact bytes at
+`artifacts/sha256/DIGEST`. A head file can retain a bounded signed-event array;
+the newest head wins, including hidden or malformed newer publications.
+Locator hints never cause network requests. Symlinks, nonregular objects,
+altered bytes, substituted keys, and excessive source sizes refuse.
+
+Retain the complete JSON output and pass it as `--previous FILE` on the next
+inspection. Its signed evidence preserves head watermarks and monotone publisher
+revocations across source changes. A withheld newer record remains a verification
+limit; fresh evidence does not prove global completeness. This selected reader
+does not advertise general NIP-REG conformance.
+
+Cards separate lexical relevance, advisory reputation, signed publication,
+native supported operation, availability, price, measured evaluation, and local
+review. Native packet inspection reuses the paid-plugin owner's exact single-step
+guest validator and runs nothing. The signed publisher fee excludes endpoint and
+fulfillment charges; an absent fee remains unknown. The owning customer path
+must resolve and approve a separate current total quote.
+
+An optional `review` records `reviewer`, `reviewed_at`, `valid_until`, and the
+exact item `event`, `digest`, `operation`, and `evaluations`, plus
+`publisher_fee_msat`, `data_requirements`, `recipients`, and `limitations`.
+A current scoped review requires those pins and the explicit signed fee to
+match current evidence, with passing signed measurements for the exact subject.
+The reader verifies the published suite, case scope, and subject run lock; it
+does not rerun the cases. Missing, stale, conflicting, or unrelated evidence
+remains unqualified. A reviewed quote candidate still requires provider and paid
+lane qualification, current customer authority, and explicit purchase approval.
+
 ## Make a plugin in chat
 
 In the OpenAgents app on your phone, ask "Help me make a plugin that ...".

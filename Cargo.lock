@@ -4467,6 +4467,7 @@ dependencies = [
 name = "discovery"
 version = "0.1.0"
 dependencies = [
+ "nostr",
  "pulldown-cmark",
  "serde",
  "serde_json",
