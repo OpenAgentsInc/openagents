@@ -70,6 +70,7 @@ nostr-transport = { path = "../nostr-transport" }
 openagents-connect = { path = "../openagents-connect" }
 plugin = { path = "../plugin" }
 receipts = { path = "../receipts" }
+openagents-x402 = { path = "../x402" }
 
 # Owner-only state on Windows, where there are no modes.
 [target.'cfg(windows)'.dependencies]

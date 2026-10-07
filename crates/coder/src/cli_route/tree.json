@@ -21905,6 +21905,278 @@
       "summary": "List published plugins, test a plugin with and without it, add the result to the Gym, check a result, sync Coder's default plugins, and install and turn on plugins here.",
       "children": [
         {
+          "name": "purchase",
+          "children": [
+            {
+              "name": "quote",
+              "leaf": {
+                "path": [
+                  "plugin",
+                  "purchase",
+                  "quote"
+                ],
+                "usage": [
+                  "purchase quote --root DIR --purchase ID --plugin PUBKEY:SLUG --input FILE --wallet-home DIR --max-msat N --max-fee-msat N [--relay URL] [--blossom URL]"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "purchase"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "quote"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "root",
+                        "value": "DIR",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "purchase",
+                        "value": "ID",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "plugin",
+                        "value": "PUBKEY:SLUG",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "input",
+                        "value": "FILE",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "wallet-home",
+                        "value": "DIR",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "max-msat",
+                        "value": "N",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "max-fee-msat",
+                        "value": "N",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "relay",
+                        "value": "URL",
+                        "open": true,
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "blossom",
+                        "value": "URL",
+                        "open": true,
+                        "optional": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Resolve a supported signed release, disclose the supplied private text to the selected customer origin, and retain its exact unpaid invoice.",
+                "effect": "publishes",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "approve",
+              "leaf": {
+                "path": [
+                  "plugin",
+                  "purchase",
+                  "approve"
+                ],
+                "usage": [
+                  "purchase approve --root DIR --purchase ID --digest DIGEST"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "purchase"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "approve"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "root",
+                        "value": "DIR",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "purchase",
+                        "value": "ID",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "digest",
+                        "value": "DIGEST",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Approve the reviewed customer, release, input, invoice, total, fee, resident payer, and expiry after checking current authority and terms.",
+                "effect": "grants",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "invoke",
+              "leaf": {
+                "path": [
+                  "plugin",
+                  "purchase",
+                  "invoke"
+                ],
+                "usage": [
+                  "purchase invoke --root DIR --purchase ID [--wait SECONDS]"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "purchase"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "invoke"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "root",
+                        "value": "DIR",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "purchase",
+                        "value": "ID",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "wait",
+                        "value": "SECONDS",
+                        "open": true,
+                        "optional": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Pay once through the approved resident node and return result/receipts. An uncertain charge or delivery remains unresolved and cannot repay.",
+                "effect": "spends",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "show",
+              "leaf": {
+                "path": [
+                  "plugin",
+                  "purchase",
+                  "show"
+                ],
+                "usage": [
+                  "purchase show|cancel --root DIR --purchase ID"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "purchase"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "show"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "root",
+                        "value": "DIR",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "purchase",
+                        "value": "ID",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Read retained purchase state, or cancel before payment starts.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "cancel",
+              "leaf": {
+                "path": [
+                  "plugin",
+                  "purchase",
+                  "cancel"
+                ],
+                "usage": [
+                  "purchase show|cancel --root DIR --purchase ID"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "purchase"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "cancel"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "root",
+                        "value": "DIR",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "purchase",
+                        "value": "ID",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Read retained purchase state, or cancel before payment starts.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
+        },
+        {
           "name": "new",
           "leaf": {
             "path": [
@@ -23342,6 +23614,94 @@
       "options": [
         {
           "kind": "option",
+          "name": "root",
+          "value": "DIR",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "purchase",
+          "value": "ID",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "plugin",
+          "value": "PUBKEY:SLUG",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "input",
+          "value": "FILE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "wallet-home",
+          "value": "DIR",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "max-msat",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "max-fee-msat",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "relay",
+          "value": "URL",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "blossom",
+          "value": "URL",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "digest",
+          "value": "DIGEST",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "wait",
+          "value": "SECONDS",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
           "name": "name",
           "value": "NAME",
           "open": true,
@@ -23424,14 +23784,6 @@
           "kind": "option",
           "name": "payout",
           "value": "ADDRESS",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "blossom",
-          "value": "URL",
           "open": true,
           "optional": true,
           "repeated": true
@@ -23534,14 +23886,6 @@
         },
         {
           "kind": "option",
-          "name": "input",
-          "value": "FILE",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
           "name": "sources",
           "value": "DIR",
           "open": true,
@@ -23566,24 +23910,8 @@
         },
         {
           "kind": "option",
-          "name": "digest",
-          "value": "D",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
           "name": "thread",
           "value": "ID",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "root",
-          "value": "DIR",
           "open": true,
           "optional": true,
           "repeated": true
@@ -23738,14 +24066,6 @@
           "kind": "option",
           "name": "into",
           "value": "DIR",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "relay",
-          "value": "URL",
           "open": true,
           "optional": true,
           "repeated": true

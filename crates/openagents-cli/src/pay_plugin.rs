@@ -589,7 +589,7 @@ impl PluginSource for NoPlugins {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use nostr::x402::decode_invoice;
     use nostr::x402::test_invoice::{number, payee_of, signed_by, tag, words};
@@ -605,7 +605,7 @@ mod tests {
 
     const NODE: [u8; 32] = [9; 32];
 
-    fn to_hex(bytes: impl AsRef<[u8]>) -> String {
+    pub(crate) fn to_hex(bytes: impl AsRef<[u8]>) -> String {
         bytes.as_ref().iter().map(|b| format!("{b:02x}")).collect()
     }
     const AUTHOR: &str = "a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0";
@@ -613,18 +613,42 @@ mod tests {
         "a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0:explain-error";
     const RELEASE: &str = "5e1ea5e5";
     /// After the v1 split rule takes effect.
-    const NOW: u64 = 1_792_022_400 + 60;
+    pub(crate) const NOW: u64 = 1_792_022_400 + 60;
     const ERROR: &str = "error[E0425]: cannot find value `totl` in this scope\n --> src/main.rs:3:13\n  |\n3 |     println!(\"{}\", totl);\n  |                    ^^^^ help: a local variable with a similar name exists: `total`\n";
 
     /// A receiver that signs real invoices with a test key and keeps each
     /// preimage, so the test buyer "pays" by reading it back.
-    struct FakeReceiver {
-        counter: AtomicU64,
-        preimages: Mutex<HashMap<String, [u8; 32]>>,
+    pub(crate) struct FakeReceiver {
+        pub(crate) counter: AtomicU64,
+        pub(crate) preimages: Mutex<HashMap<String, [u8; 32]>>,
     }
 
     impl FakeReceiver {
-        fn pay(&self, invoice: &str) -> String {
+        pub(crate) fn invoice_at(
+            &self,
+            amount: u64,
+            request_hash: [u8; 32],
+            expiry: u32,
+            at: u64,
+        ) -> Result<String, String> {
+            let n = self.counter.fetch_add(1, Ordering::SeqCst);
+            let mut seed = request_hash.to_vec();
+            seed.extend(n.to_be_bytes());
+            let preimage: [u8; 32] = Sha256::digest(&seed).into();
+            let payment_hash: [u8; 32] = Sha256::digest(preimage).into();
+            let mut fields = tag(1, &words(&payment_hash));
+            fields.extend(tag(16, &words(&[2; 32])));
+            fields.extend(tag(23, &words(&request_hash)));
+            fields.extend(tag(6, &number(u64::from(expiry))));
+            let hrp = format!("lnbc{}n", amount / 100);
+            let invoice = signed_by(NODE, &hrp, fields, false, false, at);
+            self.preimages
+                .lock()
+                .unwrap()
+                .insert(to_hex(payment_hash), preimage);
+            Ok(invoice)
+        }
+        pub(crate) fn pay(&self, invoice: &str) -> String {
             let hash = to_hex(decode_invoice(invoice).unwrap().payment_hash());
             to_hex(self.preimages.lock().unwrap()[&hash])
         }
@@ -640,22 +664,7 @@ mod tests {
             request_hash: [u8; 32],
             expiry: u32,
         ) -> Result<String, String> {
-            let n = self.counter.fetch_add(1, Ordering::SeqCst);
-            let mut seed = request_hash.to_vec();
-            seed.extend(n.to_be_bytes());
-            let preimage: [u8; 32] = Sha256::digest(&seed).into();
-            let payment_hash: [u8; 32] = Sha256::digest(preimage).into();
-            let mut fields = tag(1, &words(&payment_hash));
-            fields.extend(tag(16, &words(&[2; 32])));
-            fields.extend(tag(23, &words(&request_hash)));
-            fields.extend(tag(6, &number(u64::from(expiry))));
-            let hrp = format!("lnbc{}n", amount / 100);
-            let invoice = signed_by(NODE, &hrp, fields, false, false, NOW);
-            self.preimages
-                .lock()
-                .unwrap()
-                .insert(to_hex(payment_hash), preimage);
-            Ok(invoice)
+            self.invoice_at(amount, request_hash, expiry, NOW)
         }
         fn received_msat(&self, _: [u8; 32]) -> Result<Option<u64>, String> {
             Ok(None)
@@ -703,7 +712,7 @@ mod tests {
         )
     }
 
-    fn front_with(
+    pub(crate) fn front_with(
         dir: &Path,
         receiver: Arc<FakeReceiver>,
         sink: Arc<LedgerSink>,
@@ -741,7 +750,7 @@ mod tests {
         }
     }
 
-    fn header<'a>(response: &'a Response, name: &str) -> Option<&'a str> {
+    pub(crate) fn header<'a>(response: &'a Response, name: &str) -> Option<&'a str> {
         response
             .headers
             .iter()
@@ -966,7 +975,7 @@ mod tests {
         );
     }
 
-    mod useful_release;
+    pub(crate) mod useful_release;
 
     #[test]
     fn a_registry_route_needs_an_id_segment_and_no_other_executor() {

@@ -1737,6 +1737,27 @@ only on a confirm.
 
 ## Running a plugin once (`plugin run`)
 
+`plugin purchase` buys the supported signed release through the selected
+`customer` origin. Use `purchase quote --root DIR --purchase ID --plugin PUBKEY:SLUG
+--input FILE --wallet-home DIR --max-msat N --max-fee-msat F` to verify the actual
+packet and disclose only that supplied private text for an unpaid invoice.
+Review the emitted customer, immutable release, packet/input digests, separate
+endpoint and author fee, total, invoice, resident payer, and expiry. Approve its
+`approval_digest` with `purchase approve --root DIR --purchase ID --digest DIGEST`,
+then use `purchase invoke --root DIR --purchase ID` once. Both steps recheck
+current account rights, signed registry state, supported packet, and price.
+
+Only the explicitly selected existing resident Lightning node pays; its private
+configuration determines the admitted network. Upgrade the admitted resident
+to support payment with an expected node identity before purchase; the resident
+checks the approved node immediately before dispatch. Changed terms require a new
+purchase and approval. `purchase cancel` stops an unstarted payment, and
+`purchase show` reads the retained result, execution receipt, settlement, and
+charge. A receipt binding check preserves the guest's verification class;
+`not_run` remains `not_run`. Unknown payment or delivery retains the original
+liability and refuses another attempt or purchase for that payer until recovery
+resolves it. A failed delivery can still carry a confirmed charge.
+
 ```sh
 openagents plugin run crates/plugin-explain-error --in ~/code/shop --request-file failure.txt
 openagents plugin run crates/plugin-dependency-check --in ~/code/shop

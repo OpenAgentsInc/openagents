@@ -1,4 +1,4 @@
-## First paid workflow O2/O8 (REV-10, #10817)
+## First paid workflow O2/O8 (REV-10/11, #10817/#10818)
 
 Review the [meeting action-items package](plugins/meeting-action-items/README.md),
 choose a real publisher, immutable version, per-call author fee, and supported
@@ -12,6 +12,14 @@ payout wallet reference, reconciliation, and consented repeat-use result
 separately. Keep the offer unavailable until this execution and payment path
 is qualified. The retained fixture uses throwaway keys and fake settlement;
 it establishes no deployed availability, independent adoption, ROI, or payout.
+
+Qualify `plugin purchase` in the selected installed CLI with its separately
+authenticated customer and explicit resident payer that checks the expected
+node identity before payment. Review the exact invoice,
+release, input digest, endpoint/author total, routing-fee ceiling, and expiry
+before approval. Retain the actual result and original settlement. REV-12
+recovery and the remaining commercial gates must pass before launch; this
+fixture does not authorize a payment, refund, or public offer.
 
 ## Swimming in Everglade on a phone (#10775)
 

@@ -304,7 +304,7 @@ impl Receiver for Node {
         expiry_secs: u32,
     ) -> Result<String, String> {
         self.0
-            .receive_exact(amount_msat, request_hash, expiry_secs)
+            .receive_exact_from_node(&self.0.node_id(), amount_msat, request_hash, expiry_secs)
             .map(|issued| issued.bolt11)
             .map_err(|error| error.to_string())
     }

@@ -2762,6 +2762,7 @@ dependencies = [
  "openagents-connect",
  "openagents-deck",
  "openagents-desktop",
+ "openagents-x402",
  "openrouter",
  "plugin",
  "private-fs",

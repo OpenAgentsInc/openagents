@@ -100,6 +100,8 @@ struct Book {
     credential_operations: BTreeMap<String, credentials::Operation>,
     #[serde(default)]
     funding: BTreeMap<String, funding::Entry>,
+    #[serde(default)]
+    plugin_purchases: BTreeMap<String, plugins::Purchase>,
 }
 impl Default for Book {
     fn default() -> Self {
@@ -110,6 +112,7 @@ impl Default for Book {
             purchases: BTreeMap::new(),
             credential_operations: BTreeMap::new(),
             funding: BTreeMap::new(),
+            plugin_purchases: BTreeMap::new(),
         }
     }
 }
@@ -232,6 +235,7 @@ fn request(value: &Value) -> Result<jev::SystemOneRequest> {
 fn check(book: &Book) -> Result<()> {
     credentials::check_operations(&book.credential_operations)?;
     funding::check(&book.funding)?;
+    plugins::check(book)?;
     if book.schema != SCHEMA || book.purchases.len() > MAX_PURCHASES {
         return Err("Invalid customer state.".into());
     }
@@ -340,6 +344,11 @@ impl Store {
         for operation in book.credential_operations.values_mut() {
             if operation.status == credentials::CredentialStatus::Pending {
                 operation.status = credentials::CredentialStatus::Unknown;
+                recovered = true;
+            }
+        }
+        for purchase in book.plugin_purchases.values_mut() {
+            if purchase.recover() {
                 recovered = true;
             }
         }
@@ -490,6 +499,9 @@ impl Store {
         now: u64,
     ) -> Result<PurchaseView> {
         request(&body)?;
+        if self.plugin_liability() {
+            return Err("An unresolved plugin payment retains this payer's liability.".into());
+        }
         let selected = self
             .book
             .selected
@@ -573,6 +585,9 @@ impl Store {
         current: &Context,
         now: u64,
     ) -> Result<(Selection, Approval, jev::SystemOneRequest)> {
+        if self.plugin_liability() {
+            return Err("An unresolved plugin payment retains this payer's liability.".into());
+        }
         let purchase = self.visible(id)?;
         if purchase.status != Status::Approved {
             return Err(
@@ -856,6 +871,7 @@ impl Store {
 
 mod credentials;
 mod funding;
+pub mod plugins;
 pub use credentials::{CredentialAction, CredentialCommand, CredentialStatus, CredentialView};
 
 #[cfg(test)]

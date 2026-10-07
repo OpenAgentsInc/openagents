@@ -600,7 +600,10 @@ impl Node {
     /// briefly for the claim to be recorded after the preimage was shown.
     fn received(&self, payment_hash: [u8; 32]) -> Result<Option<u64>, String> {
         for attempt in 0..10 {
-            let record = self.0.lookup(payment_hash).map_err(|e| e.to_string())?;
+            let record = self
+                .0
+                .lookup_from_node(&self.0.node_id(), payment_hash)
+                .map_err(|e| e.to_string())?;
             if let Some(record) = record
                 && record.direction == PaymentDirection::Inbound
                 && record.status == PaymentStatus::Succeeded

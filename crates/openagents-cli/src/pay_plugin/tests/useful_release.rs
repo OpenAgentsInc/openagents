@@ -100,6 +100,45 @@ fn fixture_package(into: &Path) {
     }
 }
 
+pub(crate) fn signed_source(root: &Path) -> (Arc<dyn PluginSource>, String) {
+    let (source, id, _, _) = served_source(root);
+    (source, id)
+}
+
+pub(crate) fn served_source(
+    root: &Path,
+) -> (
+    Arc<dyn PluginSource>,
+    String,
+    Vec<Event>,
+    BTreeMap<String, Vec<u8>>,
+) {
+    let dir = root.join("package");
+    fixture_package(&dir);
+    let signer = RelaySigner::from_secret_hex(&"03".repeat(32)).unwrap();
+    let source = Arc::new(Source {
+        relay: Mutex::new(Relay::default()),
+        blobs: MemoryBlobs::default(),
+        cache: root.join("cache"),
+    });
+    let packed = plugin_registry::pack(&dir, signer.pubkey()).unwrap();
+    plugin_registry::publish(
+        &packed,
+        &signer,
+        &mut *source.relay.lock().unwrap(),
+        &source.blobs,
+        Some(&Fee {
+            msat: 1000,
+            payout: to_hex(payee_of([17; 32])),
+        }),
+        NOW,
+    )
+    .unwrap();
+    let records = source.relay.lock().unwrap().0.clone();
+    let blobs = source.blobs.0.lock().unwrap().clone();
+    (source, packed.package, records, blobs)
+}
+
 fn marker(kind: &str) -> Tag {
     Tag::new(vec!["t".into(), format!("oa:ext:{kind}:v1")])
 }

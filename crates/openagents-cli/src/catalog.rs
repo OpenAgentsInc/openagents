@@ -16,6 +16,9 @@ use serde_json::{Value, json};
 
 use crate::relay::{Client, DEFAULT_WAIT, relay_url, signer_for, unix_now};
 use crate::{Args, Output, out};
+#[cfg(unix)]
+#[path = "plugin_purchase.rs"]
+mod purchase;
 #[cfg(test)]
 use coder::cli_route::tree::{Declared, Effect};
 
@@ -57,6 +60,18 @@ pub(crate) const PRG_EFFECTS: &[Declared] = &[
 ];
 
 pub(crate) const EXT_USAGE: &str = "usage: openagents plugin COMMAND [OPTIONS]
+  purchase quote --root DIR --purchase ID --plugin PUBKEY:SLUG --input FILE
+        --wallet-home DIR --max-msat N --max-fee-msat N [--relay URL] [--blossom URL]
+        Resolve a supported signed release, disclose the supplied private text
+        to the selected customer origin, and retain its exact unpaid invoice.
+  purchase approve --root DIR --purchase ID --digest DIGEST
+        Approve the reviewed customer, release, input, invoice, total, fee,
+        resident payer, and expiry after checking current authority and terms.
+  purchase invoke --root DIR --purchase ID [--wait SECONDS]
+        Pay once through the approved resident node and return result/receipts.
+        An uncertain charge or delivery remains unresolved and cannot repay.
+  purchase show|cancel --root DIR --purchase ID
+        Read retained purchase state, or cancel before payment starts.
   new SLUG [--name NAME] [--in DIR] [--from-rule ID]
         Start a plugin in DIR (default ./SLUG): its package.json, a skill
         under skills/, and a README with the next commands. --from-rule
@@ -150,6 +165,11 @@ for those commands in full.";
 
 #[cfg(test)]
 pub(crate) const EXT_EFFECTS: &[Declared] = &[
+    Declared::computer("purchase quote", Effect::Publishes),
+    Declared::computer("purchase approve", Effect::Grants),
+    Declared::computer("purchase invoke", Effect::Spends),
+    Declared::computer("purchase show", Effect::ReadOnly),
+    Declared::computer("purchase cancel", Effect::LocalWrite),
     Declared::computer("new", Effect::LocalWrite),
     Declared::computer("pin", Effect::LocalWrite),
     Declared::computer("list", Effect::ReadOnly),
@@ -235,6 +255,10 @@ pub fn prg(output: &Output, words: &[String]) -> u8 {
 /// `openagents plugin …`, also `openagents ext …`. `test` is the plugin's
 /// with-and-without evaluation, also `eval`.
 pub fn ext(output: &Output, words: &[String]) -> u8 {
+    #[cfg(unix)]
+    if words.first().is_some_and(|word| word == "purchase") {
+        return purchase::run(output, &words[1..]);
+    }
     if let Some((command, rest)) = words.split_first()
         && rest.first().is_some_and(|word| word == "--help")
         && !matches!(command.as_str(), "test" | "eval" | "defaults" | "run")
