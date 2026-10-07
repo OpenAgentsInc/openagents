@@ -334,19 +334,25 @@ async fn current_credentials_expiry_and_unknown_reconnect_refuse_new_dispatch() 
     let token = u.session_token.clone();
     let workspace = u.workspace.clone();
     let copy = body.clone();
-    let task = tokio::spawn(async move {
-        let _ = reqwest::Client::new()
+    let mut task = tokio::spawn(async move {
+        reqwest::Client::new()
             .post(format!("{address}/v1/systemone"))
             .bearer_auth(token)
             .header("x-workspace-id", workspace)
             .header("idempotency-key", "lost")
-            .timeout(std::time::Duration::from_millis(150))
+            .timeout(std::time::Duration::from_secs(20))
             .json(&copy)
             .send()
-            .await;
+            .await
     });
-    b.response_entered.notified().await;
-    task.await.unwrap();
+    tokio::select! {
+        entered = tokio::time::timeout(std::time::Duration::from_secs(10), b.response_entered.notified()) => {
+            entered.expect("The reviewed backend must receive the request before disconnection.");
+        }
+        response = &mut task => panic!("The request ended before backend handoff: {response:?}"),
+    }
+    task.abort();
+    assert!(task.await.unwrap_err().is_cancelled());
     review(
         &d,
         &u,
@@ -357,7 +363,21 @@ async fn current_credentials_expiry_and_unknown_reconnect_refuse_new_dispatch() 
     )
     .await;
     b.response_resume.notify_one();
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        loop {
+            let recorded = std::fs::read_to_string(d.dir.path().join("receipts.jsonl"))
+                .unwrap_or_default()
+                .lines()
+                .filter_map(|line| receipts::ExecutionReceipt::parse(line).ok())
+                .any(|receipt| receipt.request == "lost" && receipt.team_policy.is_some());
+            if recorded {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("The disconnected native attempt must retain its original receipt.");
     restart(&mut d).await;
     assert_eq!(send(&d, &u, "lost", &body).await.0, StatusCode::FORBIDDEN);
     assert_eq!(b.bodies.lock().unwrap().len(), 1);

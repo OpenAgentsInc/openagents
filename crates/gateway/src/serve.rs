@@ -2060,6 +2060,7 @@ async fn admitted(
     match crate::team_policy::admit(
         state,
         headers,
+        &caller,
         door,
         naming.request,
         envelope,
@@ -2136,6 +2137,7 @@ async fn admitted(
     let policy_guard = match crate::team_policy::admit(
         state,
         headers,
+        &caller,
         door,
         naming.request,
         envelope,

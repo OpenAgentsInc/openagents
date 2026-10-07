@@ -181,6 +181,7 @@ pub fn effect(
 pub(crate) fn admit(
     state: &ServeState,
     headers: &HeaderMap,
+    admitted_caller: &serve::Caller,
     door: &str,
     request: &str,
     envelope: &serde_json::Value,
@@ -188,9 +189,10 @@ pub(crate) fn admit(
     expected: Option<&Snapshot>,
     dispatch: bool,
 ) -> Result<Option<tenancy::accounts::team_policies::Guard>, String> {
-    let (_, caller) = serve::authenticate(state, headers)
-        .map_err(|_| "Current native membership is required.")?;
-    if !required(state, caller.workspace.as_deref())? {
+    // Authentication already admitted this call. Anonymous authentication spends
+    // its budget, so do not repeat it when no team policy applies. Enabled team
+    // effects still authenticate current credentials under the native guard.
+    if !required(state, admitted_caller.workspace.as_deref())? {
         return Ok(None);
     }
     if state.config.team_policy.is_none() {
@@ -198,6 +200,8 @@ pub(crate) fn admit(
             "The workspace policy is active but no qualified native route is configured.".into(),
         );
     }
+    let (_, caller) = serve::authenticate(state, headers)
+        .map_err(|_| "Current native membership is required.")?;
 
     if attempt != 1 {
         return Err("Team disclosure retries require original outcome reconciliation; another attempt is not approval.".into());
