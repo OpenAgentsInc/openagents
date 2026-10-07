@@ -1004,15 +1004,21 @@ fn part_effect(words: &[String]) -> Option<String> {
         args.iter()
             .any(|a| *a == flag || a.starts_with(&format!("{flag}=")))
     };
+    #[rustfmt::skip]
     const PLAIN: &[&str] = &[
         "ls", "pwd", "cat", "head", "tail", "wc", "grep", "rg", "echo", "date", "uname", "df",
         "du", "which", "whoami", "uptime", "file", "stat", "tree", "sort", "uniq", "cut", "tr",
         "jq", "cd", "true", "basename", "dirname", "realpath", "diff", "cmp", "nl", "ps",
-        "sw_vers", "test", "printf", "column", "less",
+        "sw_vers", "test", "printf", "column", "less", "id", "arch", "nproc", "readlink",
+        "shasum", "sha256sum", "md5", "od", "type",
     ];
     let refuse = |why: String| Some(why);
     match program {
         "less" => refuse("`less` waits for keys".into()),
+        // Help and version of a program on the path only print text.
+        _ if !first.contains('/') && only_help(args) => None,
+        "hostname" if args.is_empty() => None,
+        "openagents" => openagents_effect(args),
         _ if PLAIN.contains(&program) => None,
         "find" => {
             let writes = [
@@ -1037,8 +1043,49 @@ fn part_effect(words: &[String]) -> Option<String> {
         }
         "git" => git_effect(args),
         "cargo" => cargo_effect(args),
-        "rustc" | "node" | "python3" | "python" | "go" if args == ["--version"] => None,
         _ => refuse(format!("`{program}` is not on the read-only list")),
+    }
+}
+
+/// Whether `args` only ask a program for its help or version: `--help`,
+/// `-h`, `--version`, or `-V`, alone.
+fn only_help(args: &[&str]) -> bool {
+    matches!(args, ["--help" | "-h" | "--version" | "-V"])
+}
+
+/// Subcommands of `openagents` that only read, under any command group.
+const OPENAGENTS_READS: &[&str] = &["status", "list", "ls", "show", "doctor"];
+
+/// Command groups whose `show` or `list` can reveal secrets.
+const OPENAGENTS_SECRETS: &[&str] = &["key", "keys", "wallet", "pay", "x402", "sov", "provider"];
+
+/// Why an `openagents` command is not read-only, or `None` when it is: its
+/// help or version anywhere, `doctor`, and a group's `status`, `list`,
+/// `ls`, `show`, or `doctor`, outside the groups that hold secrets.
+fn openagents_effect(args: &[&str]) -> Option<String> {
+    let words: Vec<&str> = args
+        .iter()
+        .copied()
+        .filter(|word| *word != "--json")
+        .collect();
+    if words
+        .last()
+        .is_some_and(|word| matches!(*word, "--help" | "-h"))
+    {
+        return None;
+    }
+    match words.as_slice() {
+        [] => None,
+        ["help" | "--help" | "-h", ..] => None,
+        ["version" | "--version" | "doctor" | "status"] => None,
+        [group, verb, ..]
+            if !group.starts_with('-')
+                && OPENAGENTS_READS.contains(verb)
+                && !OPENAGENTS_SECRETS.contains(group) =>
+        {
+            None
+        }
+        [group, ..] => Some(format!("`openagents {group}` can change state")),
     }
 }
 

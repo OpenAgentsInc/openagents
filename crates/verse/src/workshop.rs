@@ -1340,7 +1340,7 @@ impl Workshop {
             out.push((fit(&what), Intensity::Full));
         } else if let Some(pending) = self.pending() {
             out.push((
-                fit(&format!("PROPOSED: {}  ({})", pending.command, pending.why)),
+                fit(&format!("Run: {}? CONFIRM or REJECT", pending.command)),
                 Intensity::Full,
             ));
         }
@@ -1683,12 +1683,12 @@ mod tests {
         let rows = workshop.rows(80, 12);
         assert!(
             rows.iter()
-                .any(|(row, _)| row.starts_with("PROPOSED: touch notes.txt"))
+                .any(|(row, _)| row.starts_with("Run: touch notes.txt? CONFIRM or REJECT"))
         );
         assert!(rows[11].0.starts_with("ENTER CONFIRM  ESC REJECT"));
         let short = workshop.rows(80, 5);
         assert_eq!(short.len(), 5);
-        assert!(short[2].0.starts_with("PROPOSED: touch notes.txt"));
+        assert!(short[2].0.starts_with("Run: touch notes.txt?"));
         let start = Instant::now();
         assert!(workshop.key(PanelKey::Escape));
         let answered = sent(&fake, start);

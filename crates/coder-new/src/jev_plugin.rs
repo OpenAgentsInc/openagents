@@ -709,6 +709,8 @@ mod tests {
                 jev_endpoint: format!("{endpoint}/typesafe"),
                 agents: vec![],
                 cwd: std::path::PathBuf::from("/unused"),
+                instructions: None,
+                shell: false,
             };
             let result = if chat_tool {
                 settings

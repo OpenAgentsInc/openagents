@@ -111,6 +111,7 @@ pub(crate) async fn turn(
         state,
         session: session.clone(),
         prompt,
+        instructions: None,
         approvals: false,
     };
     let cancel = Arc::new(AtomicBool::new(false));

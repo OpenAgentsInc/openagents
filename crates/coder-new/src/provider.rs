@@ -230,6 +230,13 @@ impl Provider {
             request = request.max_tokens(limit);
         }
         let mut history = vec![];
+        if let Some(standing) = execution
+            .instructions
+            .as_deref()
+            .filter(|text| !text.trim().is_empty())
+        {
+            history.push(json!({"role":"system","content":standing}));
+        }
         if !definitions.is_empty() {
             history.push(json!({"role":"system","content":execution.instructions()}));
         }
@@ -1118,6 +1125,8 @@ mod tests {
             jev_endpoint: endpoint,
             agents: vec![],
             cwd: std::path::PathBuf::from("/unused"),
+            instructions: None,
+            shell: false,
         }
     }
 

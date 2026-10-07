@@ -159,6 +159,12 @@ fn current() -> Option<Gate> {
         .clone()
 }
 
+/// Whether a gated chat runs in this process.
+#[must_use]
+pub fn gated() -> bool {
+    current().is_some()
+}
+
 /// The gate's verdict on `command`: always [`Verdict::Run`] when no gated
 /// chat runs. Blocks while the person decides.
 #[must_use]

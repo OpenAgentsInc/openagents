@@ -374,6 +374,8 @@ impl Plugins {
                 .collect(),
             agents: self.bundled.acp_registered(),
             cwd,
+            instructions: None,
+            shell: false,
         }
     }
 

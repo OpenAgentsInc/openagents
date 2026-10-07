@@ -565,11 +565,13 @@ impl App {
         };
         self.screen = Screen::Conversation;
         self.scroll = u16::MAX;
-        let execution = self
+        let mut execution = self
             .plugins
             .execution_settings(self.cwd.clone().unwrap_or_else(|| {
                 std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
             }));
+        execution.instructions = self.live.instructions.clone();
+        execution.shell = crate::approval::gated();
         let kind = if key.is_some() {
             live::Work::Chat {
                 model: self.plugins.model.clone(),

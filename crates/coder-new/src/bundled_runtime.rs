@@ -136,6 +136,58 @@ pub fn cli_tool_definition() -> Value {
     }})
 }
 
+/// The `run` tool of an agent-driven chat: one shell command in the
+/// working directory, under the approval gate.
+pub fn run_tool_definition() -> Value {
+    json!({"type":"function","function":{
+        "name":"Run",
+        "description":"Run one shell command in the working directory and return its exit status and output. Read-only commands run at once: pwd, ls, cat, head, tail, rg, grep, find, wc, git status, log, diff, and show, cargo metadata and tree, and any program's --version or --help. A command that changes files, the repository, or this computer waits for the owner's CONFIRM or REJECT. Never start an interactive program or a pager.",
+        "parameters":{"type":"object","properties":{"command":{"type":"string","minLength":1,"maxLength":8192}},"required":["command"],"additionalProperties":false}
+    }})
+}
+
+/// Runs `script` for the `run` tool: inside the checkout's write boundary,
+/// after the approval gate, as `{"exit","output","timed_out"}`.
+///
+/// # Errors
+/// The working directory is unavailable or the boundary cannot be built.
+pub async fn run_command(
+    script: &str,
+    cwd: &Path,
+    redaction_keys: &[ApiKey],
+    cancel: &Arc<AtomicBool>,
+) -> Result<Value, String> {
+    let directory = cwd
+        .canonicalize()
+        .map_err(|_| "The working directory is unavailable.".to_string())?;
+    let boundary = coder_boundary::Boundary::writing(&directory)
+        .owned_scratch_under(std::env::temp_dir())
+        .build()
+        .map_err(|error| format!("The host could not bound the command: {error}"))?;
+    let checkout = Checkout {
+        directory,
+        boundary,
+        cancel: Arc::clone(cancel),
+        redaction_keys,
+    };
+    let ran = checkout.run(script, Duration::from_secs(120)).await;
+    Ok(json!({"exit":ran.exit,"output":ran.output,"timed_out":ran.timed_out}))
+}
+
+/// `word` as a shell word, quoted only when it needs quoting.
+pub(crate) fn shell_word(word: &str) -> String {
+    let plain = !word.is_empty()
+        && word.chars().all(|c| {
+            c.is_ascii_alphanumeric()
+                || matches!(c, '-' | '_' | '.' | '/' | ':' | '=' | ',' | '@' | '+')
+        });
+    if plain {
+        word.to_owned()
+    } else {
+        format!("'{}'", word.replace('\'', "'\\''"))
+    }
+}
+
 pub fn acp_tool_definition(agents: &[AcpAgent]) -> Option<Value> {
     let ids: Vec<&str> = agents
         .iter()
@@ -229,11 +281,7 @@ async fn cli_at(
         return Err("The CLI call was canceled before it started.".into());
     }
     let shown = std::iter::once("openagents".to_owned())
-        .chain(
-            arguments
-                .iter()
-                .map(|argument| format!("'{}'", argument.replace('\'', "'\\''"))),
-        )
+        .chain(arguments.iter().map(|argument| shell_word(argument)))
         .collect::<Vec<_>>()
         .join(" ");
     if let crate::approval::Verdict::Refused(why) = crate::approval::check(&shown) {

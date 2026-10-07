@@ -26,7 +26,8 @@ macro_rules! command_usage {
         concat!(
             "usage: openagents coder COMMAND [OPTIONS]
   status                              Provider, model, plugins, and working directory.
-  chat [-p TEXT | --prompt-file FILE | --stdin] [--session ID] [--delegation ID]",
+  chat [-p TEXT | --prompt-file FILE | --stdin] [--session ID] [--delegation ID]
+       [--instructions TEXT | --instructions-file FILE]",
             $demo,
             "
                                       Run the same chat and tools as the terminal.
@@ -782,6 +783,22 @@ fn chat(
     let delegation = take_option(&mut args, "--delegation")?;
     let prompt = take_option(&mut args, "-p")?.or(take_option(&mut args, "--prompt")?);
     let file = take_option(&mut args, "--prompt-file")?;
+    let instructions = match (
+        take_option(&mut args, "--instructions")?,
+        take_option(&mut args, "--instructions-file")?,
+    ) {
+        (Some(_), Some(_)) => {
+            return Err(usage(
+                "Supply --instructions or --instructions-file, not both.",
+            ));
+        }
+        (Some(text), None) => Some(text),
+        (None, Some(path)) => Some(
+            fs::read_to_string(context.cwd.join(path))
+                .map_err(|_| Error::from("Cannot read the instructions file."))?,
+        ),
+        (None, None) => None,
+    };
     let stdin = args.iter().any(|arg| arg == "--stdin");
     args.retain(|arg| arg != "--stdin");
     let demo = args.iter().any(|arg| arg == "--demo");
@@ -811,6 +828,18 @@ fn chat(
     if lease.exists()? {
         trajectory::restore_app(app, &lease.read()?)?;
     }
+    // Standing instructions stay beside the session, never in it, so the
+    // transcript, a follower, and an export show only the conversation.
+    let standing = instructions_path(lease.path());
+    if let Some(text) = &instructions {
+        save_instructions(&standing, text)?;
+    }
+    if instructions.is_some() {
+        forget_appended_charter(&mut app.live.entries);
+    }
+    app.live.instructions = instructions
+        .or_else(|| fs::read_to_string(&standing).ok())
+        .filter(|text| !text.trim().is_empty());
     if let Some(id) = delegation {
         app.selected_agent = Some(
             app.delegations
@@ -1241,6 +1270,40 @@ fn runtime_value(event: &RuntimeEvent) -> Value {
     }
 }
 
+/// The marker an earlier host used to append a workshop agent's charter to
+/// the owner's words.
+const APPENDED_CHARTER: &str = "\n\n---\nHow you work, as ";
+
+/// Cuts a charter an earlier host appended from each of the owner's
+/// messages, now that it travels as standing instructions.
+fn forget_appended_charter(entries: &mut [live::Entry]) {
+    for entry in entries {
+        if let live::Entry::User(text) = entry
+            && let Some(at) = text.find(APPENDED_CHARTER)
+        {
+            text.truncate(at);
+        }
+    }
+}
+
+/// Where a session's standing instructions live: beside its document.
+fn instructions_path(session: &Path) -> PathBuf {
+    session.with_extension("instructions")
+}
+
+fn save_instructions(path: &Path, text: &str) -> Result<(), Error> {
+    let temporary = path.with_extension("instructions.tmp");
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    let written = options
+        .open(&temporary)
+        .and_then(|mut file| std::io::Write::write_all(&mut file, text.as_bytes()))
+        .and_then(|()| fs::rename(&temporary, path));
+    written.map_err(|_| Error::from("Cannot save the session's instructions."))
+}
+
 fn new_id() -> String {
     atif::log::session_id(atif::now_ms())
 }
@@ -1267,7 +1330,9 @@ fn sessions(args: &[String], context: &Context) -> Result<Value, Error> {
     match args[0].as_str() {
         "read" => store.read(&args[1]).map_err(Error::from),
         "delete" => {
-            lock_session(context, &args[1])?.delete()?;
+            let lease = lock_session(context, &args[1])?;
+            let _ = fs::remove_file(instructions_path(lease.path()));
+            lease.delete()?;
             Ok(json!({"deleted":args[1]}))
         }
         _ => Err(usage("Use sessions list, read ID, or delete ID.")),
@@ -1422,6 +1487,73 @@ mod tests {
             execute_words(&["import", "copy.json", "--session", "imported"], &context).is_err()
         );
     }
+    #[test]
+    fn standing_instructions_stay_out_of_the_transcript_and_exports() {
+        let temp = tempfile::tempdir().unwrap();
+        let context = context(&temp);
+        // An earlier host appended the charter to the owner's words.
+        execute_words(
+            &[
+                "chat",
+                "-p",
+                "hi\n\n---\nHow you work, as alice, the owner's workshop agent",
+                "--session",
+                "agent-alice",
+                "--demo",
+            ],
+            &context,
+        )
+        .unwrap();
+        execute_words(
+            &[
+                "chat",
+                "-p",
+                "tell me about your environment",
+                "--session",
+                "agent-alice",
+                "--instructions",
+                "HIDDEN CHARTER",
+                "--demo",
+            ],
+            &context,
+        )
+        .unwrap();
+        let session = execute_words(&["sessions", "read", "agent-alice"], &context).unwrap();
+        let text = session.to_string();
+        assert!(!text.contains("HIDDEN CHARTER"));
+        assert!(!text.contains("How you work"));
+        assert!(text.contains("tell me about your environment"));
+        let exported = execute_words(
+            &["export", "agent-alice", "--output", "copy.json"],
+            &context,
+        )
+        .unwrap();
+        assert!(!exported.to_string().contains("HIDDEN CHARTER"));
+        let path = session_path(&context, "agent-alice").unwrap();
+        assert_eq!(
+            fs::read_to_string(instructions_path(&path)).unwrap(),
+            "HIDDEN CHARTER"
+        );
+        assert!(
+            execute_words(
+                &[
+                    "chat",
+                    "-p",
+                    "x",
+                    "--instructions",
+                    "a",
+                    "--instructions-file",
+                    "b",
+                    "--demo"
+                ],
+                &context,
+            )
+            .is_err()
+        );
+        execute_words(&["sessions", "delete", "agent-alice"], &context).unwrap();
+        assert!(!instructions_path(&path).exists());
+    }
+
     #[test]
     fn invalid_key_and_model_options_preserve_saved_settings() {
         let temp = tempfile::tempdir().unwrap();

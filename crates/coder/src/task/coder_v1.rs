@@ -229,7 +229,11 @@ pub struct Turn {
     pub state: PathBuf,
     /// The session the turn continues or starts.
     pub session: String,
+    /// The owner's words, exactly as the session and its follower show them.
     pub prompt: String,
+    /// Standing instructions, such as a workshop agent's charter: the model
+    /// reads them as system instructions, and no transcript shows them.
+    pub instructions: Option<String>,
     /// Ask before any command that is not read-only.
     pub approvals: bool,
 }
@@ -328,6 +332,13 @@ impl Cli {
             .arg(&turn.cwd)
             .arg("-p")
             .arg(&turn.prompt);
+        if let Some(instructions) = turn
+            .instructions
+            .as_deref()
+            .filter(|text| !text.trim().is_empty())
+        {
+            command.arg("--instructions").arg(instructions);
+        }
         if turn.approvals {
             command.arg("--approvals").arg("stdin");
         }
@@ -601,6 +612,7 @@ mod tests {
             state: dir.path().join("state"),
             session: "agent-alice".into(),
             prompt: "hello".into(),
+            instructions: None,
             approvals: true,
         };
         let mut heard = Vec::new();
@@ -646,6 +658,7 @@ mod tests {
             state: PathBuf::from("/"),
             session: "s".into(),
             prompt: "p".into(),
+            instructions: None,
             approvals: true,
         };
         let mut tools = 0;

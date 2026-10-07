@@ -126,6 +126,57 @@ fn read_only_commands_run_and_others_wait() {
 }
 
 #[test]
+fn help_version_and_openagents_reads_never_wait() {
+    for command in [
+        "openagents --help",
+        "openagents '--help'",
+        "openagents -h",
+        "openagents help",
+        "openagents help issue",
+        "openagents --version",
+        "openagents version",
+        "openagents doctor",
+        "openagents --json issue status 12",
+        "openagents issue status 12",
+        "openagents computers list",
+        "openagents agent show alice",
+        "openagents settings show",
+        "openagents task list",
+        "openagents issue claim --help",
+        "openagents pay send -h",
+        "coder --help",
+        "rustc --version",
+        "cargo --version",
+        "node --version",
+        "gh --version",
+        "git --version",
+        "cargo metadata --format-version 1 --no-deps",
+        "git log --oneline -5 && git diff --stat",
+        "cat README.md | head -n 20",
+        "uname -a; hostname; id",
+    ] {
+        assert_eq!(effect(command), Effect::ReadOnly, "{command}");
+    }
+    for command in [
+        "openagents issue claim 12",
+        "openagents key show",
+        "openagents wallet list",
+        "openagents coder chat -p hi",
+        "openagents connect --ssh box",
+        "./script.sh --help",
+        "rm help",
+        "touch version",
+        "hostname box",
+        "git help status --web",
+    ] {
+        assert!(
+            matches!(effect(command), Effect::Approval(_)),
+            "{command} should wait"
+        );
+    }
+}
+
+#[test]
 fn the_report_is_plain_ascii() {
     assert_eq!(
         plain("# Result\n\n- **ok**: `cargo test`"),

@@ -21,6 +21,10 @@ pub struct Chat {
     pub busy: bool,
     pub notice: Option<String>,
     pub tokens: u64,
+    /// Standing instructions the model reads as system instructions every
+    /// turn (`coder chat --instructions`). They are never an entry, so the
+    /// transcript, a follower, and an export never show them.
+    pub instructions: Option<String>,
     pub(crate) cache: crate::ui::TranscriptCache,
 }
 
@@ -412,8 +416,11 @@ fn run_with_provider(
                         }
                         context.reverse();
                         let mut task = context.join("\n\n");
+                        if let Some(standing) = execution.instructions.as_deref().filter(|text| !text.trim().is_empty()) {
+                            task = format!("Standing instructions (from the host, not the user):\n{standing}\n\nThe conversation:\n{task}");
+                        }
                         if execution.cli {
-                            task.push_str("\n\nThe bundled OpenAgents CLI is enabled. Use openagents --help to discover commands, and openagents --json with an argument array's equivalent syntax for requested CLI work. Follow the user's authorization for effects.");
+                            task.push_str("\n\nThe bundled OpenAgents CLI is enabled for requested CLI work: openagents --json with an argument array's equivalent syntax. Answer questions directly from what you know and from read-only commands; read a command group's --help only when you need a command you do not know. Follow the user's authorization for effects.");
                         }
                         let task = execution.redact_text(&task);
                         let client = execution.jev_client()?;
