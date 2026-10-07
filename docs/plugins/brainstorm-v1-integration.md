@@ -2,6 +2,10 @@
 
 Proposal dated October 6, 2026. Target release: October 7, 2026.
 This document proposes implementation; it does not report a shipped integration.
+The [Rust client](../../crates/brainstorm-client/README.md) implements the bounded
+HTTP adapter and local fixtures for REV-34 (#10841). Native settings, commands,
+and provider dispatch remain separate work; deployed qualification is an owner
+check in [NEEDS_OWNER.md](../../NEEDS_OWNER.md).
 The Coder review uses OpenAgents commit
 `f708ce07c072f96e833d17abc3eec59673c174c8`, where `coder-new` is
 `1.0.0-rc.3`. Public Brainstorm discovery and read requests succeeded on

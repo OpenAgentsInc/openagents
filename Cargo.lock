@@ -2104,6 +2104,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "brainstorm-client"
+version = "0.1.0"
+dependencies = [
+ "httpdate",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 2.0.20",
+ "tokio",
+ "url",
+]
+
+[[package]]
 name = "breez-sdk-common"
 version = "0.1.0"
 source = "git+https://github.com/breez/spark-sdk?tag=0.26.0#2c140a5d721f04d21c5ac334fecc3efe7c069943"
