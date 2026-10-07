@@ -4,9 +4,47 @@
   "quality": "auto",
   "pictures": [
     {
-      "name": "lantern",
-      "file": "lantern.png",
-      "sha256": "20b30af3d799f314d1a3506427a96667e5868af0afe31c3ed960d454a0e6fddb",
+      "name": "lantern-above",
+      "file": "lantern-above.png",
+      "sha256": "0ed5011ce7b88fba7717766cb5225546b01033e54e9417557faa6e44d8be3431",
+      "player": [
+        -2.4259684085845947,
+        0.0,
+        21.32785415649414
+      ],
+      "eye": [
+        -3.543635845184326,
+        8.056204795837402,
+        15.157907485961914
+      ],
+      "surface": null,
+      "bed": 0.0,
+      "medium": "ground",
+      "breath": null
+    },
+    {
+      "name": "lantern-eye",
+      "file": "lantern-eye.png",
+      "sha256": "4ea9fca446c71b04eabce19d440a1ce5e99960bc0aa22d159397a37ff9dae2d8",
+      "player": [
+        -2.4259684085845947,
+        0.0,
+        21.32785415649414
+      ],
+      "eye": [
+        -2.4259684085845947,
+        1.6999999284744263,
+        21.32785415649414
+      ],
+      "surface": null,
+      "bed": 0.0,
+      "medium": "ground",
+      "breath": null
+    },
+    {
+      "name": "lantern-swimming",
+      "file": "lantern-swimming.png",
+      "sha256": "2844ad9b643a11a55443b0c84d387ae7b4ccf2acbf55ef251da3d6796f23e7de",
       "player": [
         -1.178246021270752,
         -1.3007206916809082,
@@ -23,17 +61,55 @@
       "breath": null
     },
     {
-      "name": "reed",
-      "file": "reed.png",
-      "sha256": "72458f5f87d3572c5c751e21901d47ba5ae3964733795a212dc837144a11700a",
+      "name": "reed-above",
+      "file": "reed-above.png",
+      "sha256": "3a7462916b739a700bf8f45cbc6f59937ce7deba2f95c1dca5c8b4d6129cc9b0",
+      "player": [
+        4.6367878913879395,
+        0.0,
+        -36.15691375732422
+      ],
+      "eye": [
+        3.212149143218994,
+        8.056204795837402,
+        -30.050537109375
+      ],
+      "surface": null,
+      "bed": 0.0,
+      "medium": "ground",
+      "breath": null
+    },
+    {
+      "name": "reed-eye",
+      "file": "reed-eye.png",
+      "sha256": "3f9ffc01f9882700b12b9c6cb3bd523504ffbc7d053149cccff3d924db0ec7a4",
+      "player": [
+        4.6367878913879395,
+        0.0,
+        -36.15691375732422
+      ],
+      "eye": [
+        4.6367878913879395,
+        1.6999999284744263,
+        -36.15691375732422
+      ],
+      "surface": null,
+      "bed": 0.0,
+      "medium": "ground",
+      "breath": null
+    },
+    {
+      "name": "reed-swimming",
+      "file": "reed-swimming.png",
+      "sha256": "a675d898012e3cab23bf3a3fdbcd9a5bf35d0e721a72ede2dab40f6d9671ca15",
       "player": [
         6.980066776275635,
-        -1.3000000715255737,
+        -1.3198636770248413,
         -41.80133056640625
       ],
       "eye": [
         11.90195083618164,
-        2.542682409286499,
+        2.5228188037872314,
         -40.80361557006836
       ],
       "surface": -0.10000000149011612,
@@ -42,17 +118,55 @@
       "breath": null
     },
     {
-      "name": "thinking",
-      "file": "thinking.png",
-      "sha256": "8db80e8ec1ff12de97bdd56b5eca5ea9c6bc89099037c2319dcd372d83f86d67",
+      "name": "thinking-above",
+      "file": "thinking-above.png",
+      "sha256": "0c5296d59f91e071bdc9f803020446e977503b885df552591023938eb5c97a05",
+      "player": [
+        -108.22264862060547,
+        0.0,
+        -67.95249938964844
+      ],
+      "eye": [
+        -105.18598175048828,
+        5.512333869934082,
+        -70.02999877929688
+      ],
+      "surface": null,
+      "bed": 0.0,
+      "medium": "ground",
+      "breath": null
+    },
+    {
+      "name": "thinking-eye",
+      "file": "thinking-eye.png",
+      "sha256": "d049b97281910c3b1234f34028c2142fecc92b030d37925e3724433bfe5758ca",
+      "player": [
+        -108.22264862060547,
+        0.0,
+        -67.95249938964844
+      ],
+      "eye": [
+        -108.22264862060547,
+        1.6999999284744263,
+        -67.95249938964844
+      ],
+      "surface": null,
+      "bed": 0.0,
+      "medium": "ground",
+      "breath": null
+    },
+    {
+      "name": "thinking-swimming",
+      "file": "thinking-swimming.png",
+      "sha256": "604c92116898cc9ba83764e20024d4b14b610dc03402c3dab8e3a34fec604c17",
       "player": [
         -113.17466735839844,
-        -1.3000000715255737,
+        -1.3007206916809082,
         -64.56464385986328
       ],
       "eye": [
         -109.02983856201172,
-        2.542682409286499,
+        2.541961669921875,
         -67.4002685546875
       ],
       "surface": -0.10000000149011612,
@@ -61,17 +175,55 @@
       "breath": null
     },
     {
-      "name": "fern",
-      "file": "fern.png",
-      "sha256": "20376ee2e08a1ae4a9d22a3d7b993ae947450d7ec74245a07952f263dd5fa14e",
+      "name": "fern-above",
+      "file": "fern-above.png",
+      "sha256": "a5150c75f3d9c415582127cf7725db21ba4b8cdd0503ede8003f20b14f876ee3",
+      "player": [
+        85.66920471191406,
+        0.0,
+        71.15291595458984
+      ],
+      "eye": [
+        81.49141693115234,
+        8.056204795837402,
+        66.4770736694336
+      ],
+      "surface": null,
+      "bed": 0.0,
+      "medium": "ground",
+      "breath": null
+    },
+    {
+      "name": "fern-eye",
+      "file": "fern-eye.png",
+      "sha256": "008ee4354389fe93c27af608cf84c86ddc56982bf0579e50e1c1810f3a824e4e",
+      "player": [
+        85.66920471191406,
+        0.0,
+        71.15291595458984
+      ],
+      "eye": [
+        85.66920471191406,
+        1.6999999284744263,
+        71.15291595458984
+      ],
+      "surface": null,
+      "bed": 0.0,
+      "medium": "ground",
+      "breath": null
+    },
+    {
+      "name": "fern-swimming",
+      "file": "fern-swimming.png",
+      "sha256": "f518b3a0b034781678f3b4d44d886a3a23b0563516d28107d3efa15b5fb19447",
       "player": [
         89.33372497558594,
-        -1.3000000715255737,
+        -1.3007206916809082,
         75.2542953491211
       ],
       "eye": [
         85.9876937866211,
-        2.542682409286499,
+        2.541961669921875,
         71.50936889648438
       ],
       "surface": -0.10000000149011612,
@@ -82,7 +234,7 @@
     {
       "name": "weir",
       "file": "weir.png",
-      "sha256": "eb10f7530e53d44a1e21c5ddf7f603b140b952e2a3f73c54e30913bf1cc1455e",
+      "sha256": "291e4d21b84602a5e268ff580f88b07fb06bcb980fabeaa4cd768a8a22215e04",
       "player": [
         -5.5938310623168945,
         -1.2816414833068848,
@@ -99,28 +251,47 @@
       "breath": null
     },
     {
-      "name": "wading",
-      "file": "wading.png",
-      "sha256": "c6ec798f1e04bf72f1769361e9becad965b56c71761bcb5c18f98e9e92631382",
+      "name": "run-above",
+      "file": "run-above.png",
+      "sha256": "efd7f5862024393cef212507ae7c6cf0ed5b0a9a88bfe3a96de55cc548ed32b3",
       "player": [
-        8.96566104888916,
-        -0.8635959625244141,
-        -73.91567993164062
+        6.099999904632568,
+        0.0,
+        -66.68215942382812
       ],
       "eye": [
-        3.0975303649902344,
-        2.965240001678467,
-        -75.60308837890625
+        3.2343294620513916,
+        7.734748840332031,
+        -60.75318145751953
       ],
-      "surface": -0.13569866120815277,
-      "bed": -0.8635959625244141,
+      "surface": null,
+      "bed": 0.0,
+      "medium": "ground",
+      "breath": null
+    },
+    {
+      "name": "wading",
+      "file": "wading.png",
+      "sha256": "f5eabdaf63663afe3eebb34ca0b025bbd3feb40bc887dcdc4b6280c2412f615b",
+      "player": [
+        9.016923904418945,
+        -0.8630993962287903,
+        -73.90093994140625
+      ],
+      "eye": [
+        3.1487932205200195,
+        2.9657363891601562,
+        -75.58834838867188
+      ],
+      "surface": -0.1356806606054306,
+      "bed": -0.8630993962287903,
       "medium": "wading",
       "breath": null
     },
     {
       "name": "swimming",
       "file": "swimming.png",
-      "sha256": "356aebd226168e815aadc8a836ae72ee3fb4dc9b7c9e95d37fc50713983770ab",
+      "sha256": "04124058b1177c8868fb6b9a1d067025b4cf13162b6d938d1e9cefa2febc8f57",
       "player": [
         -3.193492889404297,
         -1.300035834312439,
@@ -139,7 +310,7 @@
     {
       "name": "diving",
       "file": "diving.png",
-      "sha256": "e57a781d5871af6f77459b81bf067b62fd4a29e492c8f0a06be70dc65a5a2d97",
+      "sha256": "f1f9c4dcd04503c901dab0ee4c8721f868d90bb19885a9ee8c18bfb67552d265",
       "player": [
         -1.000000238418579,
         -3.069999933242798,
@@ -163,7 +334,7 @@
     {
       "name": "exhausted",
       "file": "exhausted.png",
-      "sha256": "cebec075ef6fb531e12d2ddb73de88cbd68c51206f83695121039073f80b9a56",
+      "sha256": "18fc5f474d3fcc8c14362a4954cfb8fec6b0f54493a60c509f7eb3e51ee5d542",
       "player": [
         -0.8352521061897278,
         -3.0633344650268555,

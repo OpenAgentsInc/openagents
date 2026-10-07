@@ -23,6 +23,7 @@ use glam::{DVec2, Vec2, Vec3};
 use verse_pbr::water::{
     Body, Kind, Preset, Water, WaterPatch, WaterSurface, WaterVertex,
     bake::{self, Bake},
+    frame::{RIPPLE_LIFE, Ripple},
 };
 use verse_world::social::everglade_water::{self as ew, PONDS, RUN};
 use verse_world::water::{
@@ -47,10 +48,19 @@ pub const RISE_PITCH: f32 = -0.1;
 const SPACING: f32 = 0.35;
 /// How far past each outline the grid reaches, m.
 const PAD: f32 = 0.6;
+/// How far inside a pond's rim Glade Run's own surface stops, m.
+const POND_OVERLAP: f32 = 0.4;
 /// Breath under which the bar warns, s.
 pub const WARN: f32 = 10.0;
 /// How long the medium's last word stays in the log, s.
 const MOST_LOG: usize = 6;
+/// How often a body in the water rings the surface, s: moving, and still.
+const RIPPLE_MOVING: f32 = 0.35;
+const RIPPLE_STILL: f32 = 1.2;
+/// A ring's starting height, m: moving, and still.
+const RIPPLE_STRENGTH: (f32, f32) = (0.018, 0.008);
+/// The most rings a swimmer keeps, each living `RIPPLE_LIFE`.
+const MOST_RIPPLES: usize = 12;
 
 /// Index of Glade Run in the frame's bodies.
 pub const RUN_BODY: usize = 4;
@@ -84,6 +94,7 @@ pub fn surface() -> Result<WaterSurface, String> {
         )?;
         if body.id == RUN {
             plunge_foam(&mut patch);
+            under_ponds(&mut patch);
         }
         patches.push(patch);
     }
@@ -100,6 +111,20 @@ pub fn landing() -> Vec3 {
     let along = run.weir + 0.5;
     let [x, z] = run.point_at(along);
     Vec3::new(x, run.level_at(along), z)
+}
+
+/// Dries the run's vertices inside a pond, where the run starts in Reed
+/// Pond: the pond's own surface draws there, and two surfaces at one level
+/// would add their reflections twice.
+fn under_ponds(patch: &mut WaterPatch) {
+    for v in &mut patch.vertices {
+        let inside = PONDS
+            .iter()
+            .any(|([cx, cz], r)| (v.pos[0] - cx).hypot(v.pos[2] - cz) < r - POND_OVERLAP);
+        if inside {
+            v.depth = v.depth.min(-POND_OVERLAP);
+        }
+    }
 }
 
 /// White water where the weir's sheet lands, spreading into the pool.
@@ -218,6 +243,14 @@ pub struct Swim {
     pub log: Vec<String>,
     /// How many times breath ran out to the sixth level.
     pub defeats: u32,
+    /// The swimmer's own clock, s, which its ripples start on.
+    clock: f32,
+    /// Until the next ring on the surface, s.
+    ripple_wait: f32,
+    /// Where the feet were last step, for whether the body moves.
+    last: Option<Vec2>,
+    /// Rings the body made where it crosses the surface, on [`Self::clock`].
+    ripples: Vec<Ripple>,
 }
 
 impl Default for Swim {
@@ -238,7 +271,57 @@ impl Swim {
             pitch: 0.28,
             log: Vec::new(),
             defeats: 0,
+            clock: 0.0,
+            ripple_wait: 0.0,
+            last: None,
+            ripples: Vec::new(),
         }
+    }
+
+    /// Puts the rings the body made on `water`, whose clock reads `now`.
+    pub fn ring(&self, water: &mut Water, now: f32) {
+        for (slot, r) in water.ripples.iter_mut().zip(&self.ripples) {
+            *slot = Ripple {
+                start: now - (self.clock - r.start),
+                ..*r
+            };
+        }
+    }
+
+    /// Rings the surface where the body crosses it: often while it moves,
+    /// now and then while it floats still. Wakes are W6's.
+    fn ripple(&mut self, feet: Vec3, dt: f32) {
+        self.clock += dt;
+        let clock = self.clock;
+        self.ripples.retain(|r| clock - r.start < RIPPLE_LIFE);
+        let at = Vec2::new(feet.x, feet.z);
+        let moved = self.last.map_or(0.0, |last| (at - last).length());
+        self.last = Some(at);
+        let crossing = ew::surface(feet.x, feet.z)
+            .is_some_and(|top| feet.y < top && feet.y + medium::EYE_HEIGHT as f32 > top);
+        if !crossing {
+            self.ripple_wait = 0.0;
+            return;
+        }
+        self.ripple_wait -= dt;
+        if self.ripple_wait > 0.0 {
+            return;
+        }
+        let moving = moved > 0.2 * dt;
+        let (wait, strength) = if moving {
+            (RIPPLE_MOVING, RIPPLE_STRENGTH.0)
+        } else {
+            (RIPPLE_STILL, RIPPLE_STRENGTH.1)
+        };
+        self.ripple_wait = wait;
+        if self.ripples.len() >= MOST_RIPPLES {
+            self.ripples.remove(0);
+        }
+        self.ripples.push(Ripple {
+            at: at.to_array(),
+            start: clock,
+            strength,
+        });
     }
 
     /// Sets the camera's pitch, rad, positive looking down.
@@ -366,6 +449,7 @@ impl Swim {
             self.say(format!("You wade into {place}"));
         }
         self.medium = now;
+        self.ripple(player.pos, dt);
         let eye = player.pos.y + medium::EYE_HEIGHT as f32;
         self.under = ew::surface(player.pos.x, player.pos.z).is_some_and(|top| eye < top);
         for event in self.breath.tick(dt, self.under, false) {

@@ -2778,11 +2778,17 @@ impl Photo {
             // Only a sea lights and tints the lit surfaces under it; other
             // bodies absorb over their own baked depth.
             let under = water.sea && eye.y < water.surface_height(eye.x, eye.z, f32::INFINITY);
-            let sea = water.sea_body();
+            // A pond or a stream the zone says the eye is in fogs the view
+            // with its own water, as the sea does from under it. A stage
+            // with a sea keeps the sea's terms, which light its bed.
+            let inside = (!water.sea)
+                .then(|| water.bodies[..water.count].iter().find(|b| b.eye_inside))
+                .flatten();
+            let sea = inside.unwrap_or(water.sea_body());
             uniform.water = [
                 sea.level,
                 if water.sea { 1.0 } else { 0.0 },
-                if under { 1.0 } else { 0.0 },
+                if under || inside.is_some() { 1.0 } else { 0.0 },
                 water.caustics,
             ];
             let e = sea.absorption;

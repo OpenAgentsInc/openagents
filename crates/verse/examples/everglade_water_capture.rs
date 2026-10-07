@@ -6,9 +6,12 @@
 //! and renders with Everglade's hotbar and breath bar into
 //! `OUTPUT_DIRECTORY`:
 //!
-//! - `lantern.png`, `reed.png`, `thinking.png`, `fern.png`: each pond from
-//!   its bank, its water drawn by the shared water shader over its carved
-//!   bowl.
+//! - For each pond (`lantern`, `reed`, `thinking`, and `fern`), its water
+//!   drawn by the shared water shader over its carved bowl:
+//!   `POND-above.png` from high over its bank, `POND-eye.png` in first
+//!   person from the bank, and `POND-swimming.png` with the player
+//!   swimming in it.
+//! - `run-above.png`: Glade Run from high over its bank.
 //! - `weir.png`: Glade Run's weir from downstream: the stones, the falling
 //!   sheet, the plunge pool's foam, and the mist.
 //! - `wading.png`: the player wading across Glade Run.
@@ -63,22 +66,36 @@ fn main() -> Result<(), String> {
     zones::everglade::hotbar::add_sprites(&mut atlas)?;
     let mut records = Vec::new();
 
-    // Each pond with the player swimming in it, looking across the
-    // water toward a bank, the camera close behind over the water.
+    // Each pond from high over its bank, in first person from the bank,
+    // and with the player swimming in it, looking across the water toward
+    // a bank, the camera close behind over the water.
+    // Each pond's swimmer's side, then the bank's, where no tree hides it.
     let ponds = [
-        ("lantern", 0, -1.75_f32),
-        ("reed", 1, 0.2),
-        ("thinking", 2, -0.6),
-        ("fern", 3, -2.3),
+        ("lantern", 0, -1.75_f32, -1.75_f32),
+        ("reed", 1, 0.2, 1.8),
+        ("thinking", 2, -0.6, -0.6),
+        ("fern", 3, -2.3, -2.3),
     ];
-    for (name, k, angle) in ponds {
-        let ([cx, cz], _) = PONDS[k];
+    for (name, k, angle, side) in ponds {
+        let ([cx, cz], r) = PONDS[k];
         let (dx, dz) = (angle.cos(), angle.sin());
+        let bank = r + ew::BANK + 0.8;
+        let on_bank = Vec3::new(cx + side.cos() * bank, 0.0, cz + side.sin() * bank);
+        let center = Vec3::new(cx, 0.0, cz);
+        stand(&mut runtime, on_bank, center)?;
+        frame_camera(&mut runtime, 9.0, 0.8);
+        tick(&mut runtime, &InputState::default(), 0.3);
+        records.push(shot(&runtime, &atlas, &dir, &format!("{name}-above"))?);
+        stand(&mut runtime, on_bank, center)?;
+        runtime.apply(Action::Zoom { lines: 40.0 })?;
+        runtime.camera.pitch = 0.22;
+        tick(&mut runtime, &InputState::default(), 0.6);
+        records.push(shot(&runtime, &atlas, &dir, &format!("{name}-eye"))?);
         let float = ew::surface(cx, cz).unwrap() - medium::FLOAT_DEPTH as f32;
         runtime.set_spawn(Vec3::new(cx + dx, float, cz + dz), (-dx).atan2(-dz))?;
         frame_camera(&mut runtime, 5.5, 0.42);
         tick(&mut runtime, &InputState::default(), 0.3);
-        records.push(shot(&runtime, &atlas, &dir, name)?);
+        records.push(shot(&runtime, &atlas, &dir, &format!("{name}-swimming"))?);
     }
 
     // The weir from downstream: wading in the run below the plunge pool,
@@ -91,6 +108,20 @@ fn main() -> Result<(), String> {
     frame_camera(&mut runtime, 6.0, 0.3);
     tick(&mut runtime, &InputState::default(), 0.5);
     records.push(shot(&runtime, &atlas, &dir, "weir")?);
+
+    // Glade Run from high over its bank, looking along it.
+    let along = 22.0;
+    let [x, z] = run.point_at(along);
+    let [tx, tz] = run.tangent_at(along);
+    let off = run.half_at(along) + ew::BANK + 0.6;
+    stand(
+        &mut runtime,
+        Vec3::new(x + tz * off, 0.0, z - tx * off),
+        Vec3::new(x + tx * 6.0, 0.0, z + tz * 6.0),
+    )?;
+    frame_camera(&mut runtime, 9.0, 0.75);
+    tick(&mut runtime, &InputState::default(), 0.3);
+    records.push(shot(&runtime, &atlas, &dir, "run-above")?);
 
     // Wading across the run, seen from the side.
     let along = 30.0;

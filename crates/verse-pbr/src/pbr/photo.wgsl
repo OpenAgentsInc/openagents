@@ -224,9 +224,9 @@ fn expose(luminance: vec3<f32>) -> vec3<f32> {
 // place of the ramp, and sunlight scattered toward the eye brightens the fog
 // on the Sun's side.
 fn neon_fog(color: vec3<f32>, world: vec3<f32>, weight: f32) -> vec3<f32> {
-    // Under the sea the water's own fog (`water_view`) stands in for the
+    // Under water the water's own fog (`water_view`) stands in for the
     // air's.
-    if f.neon.w < 0.5 || (f.water.y > 0.5 && f.water.z > 0.5) {
+    if f.neon.w < 0.5 || f.water.z > 0.5 {
         return color;
     }
     let d = distance(world.xz, f.eye.xz);
@@ -401,9 +401,9 @@ fn fs_daylight(i: SkyOut) -> @location(0) vec4<f32> {
     let angle = acos(clamp(mu, -1.0, 1.0));
     let disc = 1.0 - smoothstep(r * 0.75, r * 1.15, angle);
     c += f.sky_sun.rgb * disc * 6.0 * (1.0 - 0.8 * density);
-    // Under the sea, only Snell's window above shows the sky; below the
+    // Under water, only Snell's window above shows the sky; below the
     // horizon the eye looks into the water's own color.
-    if f.water.y > 0.5 && f.water.z > 0.5 && d.y < 0.05 {
+    if f.water.z > 0.5 && d.y < 0.05 {
         c = water_fog();
     }
     // Dither below one 8-bit step against banding in the gradient.

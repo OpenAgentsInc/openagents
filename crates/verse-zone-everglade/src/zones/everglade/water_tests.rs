@@ -299,3 +299,49 @@ fn the_water_bakes_over_the_carved_beds_and_draws_from_below_when_the_eye_is_in_
     see_from(&mut water, Vec3::new(cx, pond_level(2) + 1.0, cz));
     assert!(!water.bodies[2].eye_inside);
 }
+
+#[test]
+fn a_swimmer_rings_the_surface_where_it_crosses_it_and_the_frame_draws_the_rings() {
+    let solids = Solids::over(height);
+    let ([cx, cz], _) = PONDS[0];
+    let mut swim = Swim::default();
+    let mut player = floating(cx - 2.0, cz, 1.0, 0.0);
+    // Floating still, then a few strokes.
+    for _ in 0..240 {
+        step(&mut swim, &mut player, &solids, &InputState::default());
+    }
+    assert_eq!(swim.medium, Medium::Swimming);
+    for _ in 0..90 {
+        step(&mut swim, &mut player, &solids, &forward());
+    }
+    assert!(water_surface(player.pos.x, player.pos.z).is_some());
+    let mut water = frame(500.0);
+    swim.ring(&mut water, 500.0);
+    let rings: Vec<_> = water.ripples.iter().filter(|r| r.strength > 0.0).collect();
+    assert!(rings.len() >= 3, "{} rings in 5.5 s afloat", rings.len());
+    for r in &rings {
+        let age = 500.0 - r.start;
+        assert!((0.0..=RIPPLE_LIFE).contains(&age), "{age}");
+        assert!((r.at[0] - player.pos.x).hypot(r.at[1] - player.pos.z) < 6.0);
+    }
+    // A stroke rings the water more strongly than floating still.
+    let newest = rings
+        .iter()
+        .max_by(|a, b| a.start.total_cmp(&b.start))
+        .unwrap();
+    let oldest = rings
+        .iter()
+        .min_by(|a, b| a.start.total_cmp(&b.start))
+        .unwrap();
+    assert!(newest.strength > oldest.strength);
+    assert!(water.valid());
+    // Dry ground makes none.
+    let mut walker = Swim::default();
+    let mut player = standing(cx, cz - 20.0, 0.0, -1.0);
+    for _ in 0..60 {
+        step(&mut walker, &mut player, &solids, &forward());
+    }
+    let mut water = frame(10.0);
+    walker.ring(&mut water, 10.0);
+    assert!(water.ripples.iter().all(|r| r.strength == 0.0));
+}

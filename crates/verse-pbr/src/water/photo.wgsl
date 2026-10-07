@@ -214,14 +214,15 @@ fn water_ambient(world: vec3<f32>) -> vec3<f32> {
 // From above the surface the path runs from the point up to the surface
 // along the refracted ray; from under it, from the point to the eye.
 fn water_view(world: vec3<f32>, radiance: vec3<f32>) -> vec3<f32> {
-    if f.water.y < 0.5 {
-        return radiance;
-    }
     if f.water.z > 0.5 {
-        // The eye is under the sea: everything it sees lies through water,
-        // whatever stands above the surface through the surface too.
+        // The eye is under water, the sea's or the body the zone says it
+        // is in: everything it sees lies through water, whatever stands
+        // above the surface through the surface too.
         let t = exp(-f.water_extinction.rgb * distance(world, f.eye.xyz));
         return radiance * t + water_fog() * (1.0 - t);
+    }
+    if f.water.y < 0.5 {
+        return radiance;
     }
     let depth = water_depth(world);
     if depth <= 0.0 {

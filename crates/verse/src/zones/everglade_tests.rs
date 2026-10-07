@@ -1475,3 +1475,65 @@ fn a_walker_wades_across_glade_run_away_from_the_bridge() {
         assert!(gone > 8.0, "from {from:?}, stopped at {end}");
     }
 }
+
+/// Everglade's draw path carries every pond's and Glade Run's water: the
+/// static world submits a baked patch for each body over a bed carved below
+/// its surface, and each frame's lit stage carries the bodies' optics, which
+/// the physical renderer needs to draw that patch at all.
+#[test]
+fn every_pond_and_glade_run_submits_its_water_over_a_bed_below_it() {
+    use verse_world::social::everglade_water::{self as ew, PONDS};
+    let mut runtime = entered();
+    let surface = runtime
+        .world
+        .mesh
+        .water
+        .clone()
+        .expect("Everglade submits its water surface");
+    surface.validate().unwrap();
+    let wet = |body: usize, x: f32, z: f32, reach: f32| {
+        surface
+            .patches
+            .iter()
+            .flat_map(|p| &p.vertices)
+            .filter(|v| v.body.round() as usize == body && v.depth > 0.0)
+            .filter(|v| (v.pos[0] - x).hypot(v.pos[2] - z) < reach)
+            .map(|v| (v.pos[1], v.depth))
+            .collect::<Vec<_>>()
+    };
+    for (k, &([cx, cz], r)) in PONDS.iter().enumerate() {
+        let level = ew::pond_level(k);
+        let bed = height(cx, cz);
+        assert!(bed < level - 1.0, "pond {k}: bed {bed} under level {level}");
+        let near = wet(k, cx, cz, r * 0.5);
+        assert!(!near.is_empty(), "pond {k} has no water drawn at its center");
+        for (y, depth) in near {
+            assert!((y - level).abs() < 1e-3, "pond {k} drawn at {y}, not {level}");
+            assert!(depth > 0.3, "pond {k} drawn {depth} m deep near its center");
+        }
+    }
+    let run = ew::run();
+    for k in 1..12 {
+        let along = run.length() * k as f32 / 12.0;
+        let [x, z] = run.point_at(along);
+        let level = run.level_at(along);
+        assert!(height(x, z) < level - 0.3, "Glade Run's bed at {along} m");
+        assert!(
+            !wet(water::RUN_BODY, x, z, 0.8).is_empty(),
+            "Glade Run has no water drawn {along} m along"
+        );
+    }
+    // Each frame's stage carries a key light and every body, so the
+    // renderer's water pass runs.
+    runtime.tick(&InputState::default(), 1.0 / 60.0);
+    let mesh = runtime.dynamic_mesh();
+    let neon = mesh.neon.as_ref().expect("Everglade draws on a lit stage");
+    assert!(neon.key.is_some(), "the water pass needs the stage's key");
+    let water = neon.water.as_ref().expect("the stage carries the water");
+    assert!(water.valid());
+    assert!(!water.sea);
+    assert_eq!(water.count, PONDS.len() + 1);
+    for k in 0..PONDS.len() {
+        assert!((water.bodies[k].level - ew::pond_level(k)).abs() < 1e-3);
+    }
+}

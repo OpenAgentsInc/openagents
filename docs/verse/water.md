@@ -432,7 +432,10 @@ the sampled surface, and lily pads and rowboats sit on it (the ponds carry
 no gameplay waves, so they rest still until W6 makes the rowboats buoyant
 bodies). Underwater combat and falling into water are rules with tests, not
 yet called: Everglade has no weapon attacks or falling damage. Hosted
-social avatars still walk the carved bed. Captures are in
+social avatars still walk the carved bed. The town's blended dirt sheet
+clears wherever water stands, because the water pass draws before blended
+surfaces (#10892); a body in the water rings the surface, and an eye in a
+pond or the run sees through that body's water. Captures are in
 `bench/verse/2026-10-07/everglade-water/`
 (`cargo run --release -p verse --example everglade_water_capture`).
 

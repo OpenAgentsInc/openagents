@@ -1138,10 +1138,12 @@ impl Everglade {
         self.elapsed = (self.elapsed + dt) % 1000.0;
         self.advance_clock();
         self.rendered = self.stage(self.elapsed);
-        if self.swim.is_some()
+        if let Some(swim) = &self.swim
             && let Some(neon) = self.rendered.neon.as_mut()
         {
-            neon.water = Some(water::frame(self.elapsed));
+            let mut frame = water::frame(self.elapsed);
+            swim.ring(&mut frame, self.elapsed);
+            neon.water = Some(frame);
         }
         if self.look.is_none() {
             // The owner's house's, the Civic Hall's, the belvedere's, and

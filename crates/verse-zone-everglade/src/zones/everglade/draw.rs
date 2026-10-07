@@ -67,8 +67,11 @@ const FINE: i32 = 4;
 const BANK: f32 = 1.2;
 /// How far the bank's dirt reaches under the water's edge, m.
 const SHALLOWS: f32 = 0.4;
-/// Linear albedo of the mud on the ponds' and the stream's beds.
-const MUD: [f32; 3] = [0.075, 0.06, 0.04];
+/// Water deeper than this clears the dirt sheet entirely, m.
+const DRY_DEPTH: f32 = 0.06;
+/// Linear albedo of the silt on the ponds' and the stream's beds: light
+/// enough that the water's depth tint shows over it.
+const MUD: [f32; 3] = [0.3, 0.25, 0.16];
 /// Height of the dirt sheet above the grass, m: below the hall's and the
 /// strongroom's floors, which sit 0.02 m up.
 pub(super) const DIRT_LIFT: f32 = 0.015;
@@ -439,6 +442,16 @@ fn dirt_v(z: f32) -> f32 {
     (z - DIRT_MIN[1]) / (DIRT_MAX[1] - DIRT_MIN[1])
 }
 
+/// How much of the dirt sheet may show at `(x, z)`, 0 to 1: none where
+/// water stands over the carved ground. The physical renderer draws its
+/// water before blended textured surfaces, so dirt over a pond or the run
+/// would hide the water under a flat sheet.
+pub(super) fn dry(x: f32, z: f32) -> f32 {
+    verse_world::social::everglade_water::surface(x, z).map_or(1.0, |top| {
+        1.0 - smoothstep((top - height(x, z)) / DRY_DEPTH)
+    })
+}
+
 /// A value in 0 to 1 as an 8-bit unorm.
 fn unorm(v: f32) -> u8 {
     (v.clamp(0.0, 1.0) * 255.0).round() as u8
@@ -559,9 +572,10 @@ pub(super) fn dirt_cover(x: f32, z: f32) -> (f32, f32) {
             super::layout::segment_distance(a, b, x, z) - half
         })
         .fold(f32::INFINITY, f32::min);
-    // The banks are a ring from just under the water's edge to the land:
-    // the water pass draws after this blended sheet, so it must not cover
-    // the beds, which the grass layer muddies instead ([`mud`]).
+    // The banks are a ring from just under the water's edge to the land.
+    // The water pass draws before this blended sheet, so [`dirt_image`]
+    // clears it wherever water stands ([`dry`]); the grass layer muddies
+    // the beds instead ([`mud`]).
     let ring = |d: f32, edge: f32| (edge - SHALLOWS - d).max(d - edge - BANK);
     let run = verse_world::social::everglade_water::run();
     let stream = if run.near(x, z) {
@@ -660,7 +674,7 @@ pub(super) fn dirt_image() -> BaseColorImage {
             let z = DIRT_MIN[1] + v * (DIRT_MAX[1] - DIRT_MIN[1]);
             let (yard, path) = dirt_cover(x, z);
             let paved = paved_cover(x, z);
-            let cover = yard.max(path).max(paved);
+            let cover = yard.max(path).max(paved) * dry(x, z);
             let trodden = if yard + path > 0.0 {
                 path / (yard + path)
             } else {
@@ -798,6 +812,29 @@ mod tests {
         for j in 0..h {
             for i in [0, w - 1] {
                 assert_eq!(image.rgba[(j * w + i) * 4 + 3], 0);
+            }
+        }
+        // No dirt lies over standing water: the water draws before this
+        // blended sheet, which would hide it.
+        let alpha = |x: f32, z: f32| {
+            let i = ((x - DIRT_MIN[0]) / (DIRT_MAX[0] - DIRT_MIN[0]) * w as f32) as usize;
+            let j = ((z - DIRT_MIN[1]) / (DIRT_MAX[1] - DIRT_MIN[1]) * h as f32) as usize;
+            image.rgba[(j * w + i) * 4 + 3]
+        };
+        for &([cx, cz], r) in &super::super::layout::PONDS {
+            for k in 0..16 {
+                let a = k as f32 / 16.0 * std::f32::consts::TAU;
+                for s in [0.0, 0.5, 0.8] {
+                    let (x, z) = (cx + a.cos() * r * s, cz + a.sin() * r * s);
+                    assert_eq!(alpha(x, z), 0, "dirt over the pond at ({x}, {z})");
+                }
+            }
+        }
+        let run = verse_world::social::everglade_water::run();
+        for k in 0..40 {
+            let [x, z] = run.point_at(run.length() * k as f32 / 40.0);
+            if (DIRT_MIN[0]..DIRT_MAX[0]).contains(&x) && (DIRT_MIN[1]..DIRT_MAX[1]).contains(&z) {
+                assert_eq!(alpha(x, z), 0, "dirt over Glade Run at ({x}, {z})");
             }
         }
     }
