@@ -74,6 +74,16 @@ confirm the sea, the river, and the falls draw, with foam at the shore and
 the glint path at golden hour (`T` turns the hour). Note the frame rate in
 the Lab next to the beach.
 
+## Water refraction and reflection on a phone (#10777)
+
+Medium's scene copies and half-resolution planar mirror
+(`docs/verse/water.md`, W5) were captured and timed on the desktop and in
+desktop Chrome on WebGPU (`bench/verse/2026-10-07/water-screen/`). On a
+physical phone, swim in Lantern Pond and confirm that the cafe and the
+trees reflect in the water, that the bed and your legs bend through the
+surface, and that foam rings the lily pads and the rowboat. Note the frame
+rate with the pond in view, against the W2 note above.
+
 ## Live Gym interview round and judge marks (#10794)
 
 The five-arm interview suite (`alice-interview-v2`) and the `interview-v1`

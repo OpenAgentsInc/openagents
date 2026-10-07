@@ -1,0 +1,2562 @@
+[
+  {
+    "image": "dry/physical-low-pond-noon.png",
+    "renderer": "physical",
+    "tier": "low",
+    "view": "pond-noon",
+    "water": false,
+    "screen_copies": false,
+    "water_indices": 0,
+    "scene_target": "Rgba8UnormSrgb (no floating-point target)",
+    "samples": 1,
+    "ocean_worker_us": 0.0,
+    "frame_ms_1080p": 0.6544209,
+    "water_gpu_bytes_1080p": 0,
+    "sha256": "f7dd6a9231f585841a6d200dd0a62b1dc2c02e00630b15e35fc4184644dccb04",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "physical-low-pond-noon.png",
+    "renderer": "physical",
+    "tier": "low",
+    "view": "pond-noon",
+    "water": true,
+    "screen_copies": false,
+    "water_indices": 822,
+    "scene_target": "Rgba8UnormSrgb (no floating-point target)",
+    "samples": 1,
+    "ocean_worker_us": 0.0,
+    "frame_ms_1080p": 0.9538708,
+    "water_gpu_bytes_1080p": 12288,
+    "sha256": "21484f61d6d471f5ac32f4f090ffa8da5323abea129908a972a0dd9c78ba352c",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "dry/physical-low-pond-dusk.png",
+    "renderer": "physical",
+    "tier": "low",
+    "view": "pond-dusk",
+    "water": false,
+    "screen_copies": false,
+    "water_indices": 0,
+    "scene_target": "Rgba8UnormSrgb (no floating-point target)",
+    "samples": 1,
+    "ocean_worker_us": 0.0,
+    "frame_ms_1080p": 0.49204590000000004,
+    "water_gpu_bytes_1080p": 0,
+    "sha256": "25fabe9a4621743a1ef5fdb5e3a88b7e2d1d977fc1d3adb74ecdfcff932d9652",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "physical-low-pond-dusk.png",
+    "renderer": "physical",
+    "tier": "low",
+    "view": "pond-dusk",
+    "water": true,
+    "screen_copies": false,
+    "water_indices": 822,
+    "scene_target": "Rgba8UnormSrgb (no floating-point target)",
+    "samples": 1,
+    "ocean_worker_us": 0.0,
+    "frame_ms_1080p": 0.6579958,
+    "water_gpu_bytes_1080p": 12288,
+    "sha256": "2426132b10d204edeeb91952c2de0c378adedefe06c6726bbcde48f669d817e2",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "dry/physical-low-river.png",
+    "renderer": "physical",
+    "tier": "low",
+    "view": "river",
+    "water": false,
+    "screen_copies": false,
+    "water_indices": 0,
+    "scene_target": "Rgba8UnormSrgb (no floating-point target)",
+    "samples": 1,
+    "ocean_worker_us": 0.0,
+    "frame_ms_1080p": 0.4923,
+    "water_gpu_bytes_1080p": 0,
+    "sha256": "1d793215174967130e82b0d93e86ec16d8dce4362ebaa20607daa795c75207f2",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "physical-low-river.png",
+    "renderer": "physical",
+    "tier": "low",
+    "view": "river",
+    "water": true,
+    "screen_copies": false,
+    "water_indices": 996,
+    "scene_target": "Rgba8UnormSrgb (no floating-point target)",
+    "samples": 1,
+    "ocean_worker_us": 0.0,
+    "frame_ms_1080p": 0.8079584000000001,
+    "water_gpu_bytes_1080p": 24264,
+    "sha256": "9607edddb07d4e458ea695128668652c0dc755eb2ebc23280419e5cfc9e171be",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "dry/physical-low-sea.png",
+    "renderer": "physical",
+    "tier": "low",
+    "view": "sea",
+    "water": false,
+    "screen_copies": false,
+    "water_indices": 0,
+    "scene_target": "Rgba8UnormSrgb (no floating-point target)",
+    "samples": 1,
+    "ocean_worker_us": 0.0,
+    "frame_ms_1080p": 1.1119792,
+    "water_gpu_bytes_1080p": 0,
+    "sha256": "d55af6cb51ca01b9739851cd512d534d1c21fc810f5ede8ed11d2fcdd6b31cbe",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "physical-low-sea.png",
+    "renderer": "physical",
+    "tier": "low",
+    "view": "sea",
+    "water": true,
+    "screen_copies": false,
+    "water_indices": 84912,
+    "scene_target": "Rgba8UnormSrgb (no floating-point target)",
+    "samples": 1,
+    "ocean_worker_us": 0.0,
+    "frame_ms_1080p": 1.7163584,
+    "water_gpu_bytes_1080p": 915288,
+    "sha256": "a7c3a2f5a751e83c11d77a704f51e069f8faa5fe0e7c34fff7ec3116cce859e2",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "dry/physical-low-sea-calm.png",
+    "renderer": "physical",
+    "tier": "low",
+    "view": "sea-calm",
+    "water": false,
+    "screen_copies": false,
+    "water_indices": 0,
+    "scene_target": "Rgba8UnormSrgb (no floating-point target)",
+    "samples": 1,
+    "ocean_worker_us": 0.0,
+    "frame_ms_1080p": 1.0983084,
+    "water_gpu_bytes_1080p": 0,
+    "sha256": "62eba77c2b89d23d619e7336b5dd2f246872c7001527e24316828de66e07787d",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "physical-low-sea-calm.png",
+    "renderer": "physical",
+    "tier": "low",
+    "view": "sea-calm",
+    "water": true,
+    "screen_copies": false,
+    "water_indices": 84912,
+    "scene_target": "Rgba8UnormSrgb (no floating-point target)",
+    "samples": 1,
+    "ocean_worker_us": 50.5,
+    "frame_ms_1080p": 1.5585375000000001,
+    "water_gpu_bytes_1080p": 915288,
+    "sha256": "dd067b25c3d3bf1a9e8ff9f88ea4519bcd09bc700bbce0d8ace8355ccfe53018",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "dry/physical-low-sea-moderate.png",
+    "renderer": "physical",
+    "tier": "low",
+    "view": "sea-moderate",
+    "water": false,
+    "screen_copies": false,
+    "water_indices": 0,
+    "scene_target": "Rgba8UnormSrgb (no floating-point target)",
+    "samples": 1,
+    "ocean_worker_us": 50.5,
+    "frame_ms_1080p": 1.1188584000000001,
+    "water_gpu_bytes_1080p": 0,
+    "sha256": "62eba77c2b89d23d619e7336b5dd2f246872c7001527e24316828de66e07787d",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "physical-low-sea-moderate.png",
+    "renderer": "physical",
+    "tier": "low",
+    "view": "sea-moderate",
+    "water": true,
+    "screen_copies": false,
+    "water_indices": 84912,
+    "scene_target": "Rgba8UnormSrgb (no floating-point target)",
+    "samples": 1,
+    "ocean_worker_us": 54.625,
+    "frame_ms_1080p": 1.5647208,
+    "water_gpu_bytes_1080p": 915288,
+    "sha256": "cd305cb60114f8357f1d29aa6dc59d0a07eb42be07e23021380afd5b14face1c",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "dry/physical-low-sea-storm.png",
+    "renderer": "physical",
+    "tier": "low",
+    "view": "sea-storm",
+    "water": false,
+    "screen_copies": false,
+    "water_indices": 0,
+    "scene_target": "Rgba8UnormSrgb (no floating-point target)",
+    "samples": 1,
+    "ocean_worker_us": 54.625,
+    "frame_ms_1080p": 1.1025,
+    "water_gpu_bytes_1080p": 0,
+    "sha256": "62eba77c2b89d23d619e7336b5dd2f246872c7001527e24316828de66e07787d",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "physical-low-sea-storm.png",
+    "renderer": "physical",
+    "tier": "low",
+    "view": "sea-storm",
+    "water": true,
+    "screen_copies": false,
+    "water_indices": 84912,
+    "scene_target": "Rgba8UnormSrgb (no floating-point target)",
+    "samples": 1,
+    "ocean_worker_us": 56.542,
+    "frame_ms_1080p": 1.5994792,
+    "water_gpu_bytes_1080p": 915288,
+    "sha256": "5970cde815442d3a9b9eabdc05780cc5c7c01eed45831bcb92c8c724f29b03c9",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "dry/physical-low-sea-storm-surf.png",
+    "renderer": "physical",
+    "tier": "low",
+    "view": "sea-storm-surf",
+    "water": false,
+    "screen_copies": false,
+    "water_indices": 0,
+    "scene_target": "Rgba8UnormSrgb (no floating-point target)",
+    "samples": 1,
+    "ocean_worker_us": 56.542,
+    "frame_ms_1080p": 1.0996209000000001,
+    "water_gpu_bytes_1080p": 0,
+    "sha256": "ef3a970ab700dc52d8874900a64624f1d9779526149093828dfb442aa2baa3f3",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "physical-low-sea-storm-surf.png",
+    "renderer": "physical",
+    "tier": "low",
+    "view": "sea-storm-surf",
+    "water": true,
+    "screen_copies": false,
+    "water_indices": 84912,
+    "scene_target": "Rgba8UnormSrgb (no floating-point target)",
+    "samples": 1,
+    "ocean_worker_us": 56.458,
+    "frame_ms_1080p": 1.6157667,
+    "water_gpu_bytes_1080p": 915288,
+    "sha256": "33ff2c9e53bcc1a3c5d43689d8d52f46b611616a8f7b3c475ff62fb45bbdfe39",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "dry/physical-low-under.png",
+    "renderer": "physical",
+    "tier": "low",
+    "view": "under",
+    "water": false,
+    "screen_copies": false,
+    "water_indices": 0,
+    "scene_target": "Rgba8UnormSrgb (no floating-point target)",
+    "samples": 1,
+    "ocean_worker_us": 56.458,
+    "frame_ms_1080p": 0.4895417,
+    "water_gpu_bytes_1080p": 0,
+    "sha256": "2eaba45a21bdbb9171fb8e8847893a66b0c8fc5a32a051508633fd2c4bd60b9e",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "physical-low-under.png",
+    "renderer": "physical",
+    "tier": "low",
+    "view": "under",
+    "water": true,
+    "screen_copies": false,
+    "water_indices": 822,
+    "scene_target": "Rgba8UnormSrgb (no floating-point target)",
+    "samples": 1,
+    "ocean_worker_us": 0.0,
+    "frame_ms_1080p": 0.6495082999999999,
+    "water_gpu_bytes_1080p": 12288,
+    "sha256": "c442cf5cb9907defec8e20b567f5a007d78c02c5d7f8367aa0e78505f7ba7976",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "dry/physical-low-pond-posts.png",
+    "renderer": "physical",
+    "tier": "low",
+    "view": "pond-posts",
+    "water": false,
+    "screen_copies": false,
+    "water_indices": 0,
+    "scene_target": "Rgba8UnormSrgb (no floating-point target)",
+    "samples": 1,
+    "ocean_worker_us": 0.0,
+    "frame_ms_1080p": 0.48171669999999994,
+    "water_gpu_bytes_1080p": 0,
+    "sha256": "4803cd3c58608f0a584ac4958d46eac3f4cdf5a7998f21ce76a1bab1ad076052",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "physical-low-pond-posts.png",
+    "renderer": "physical",
+    "tier": "low",
+    "view": "pond-posts",
+    "water": true,
+    "screen_copies": false,
+    "water_indices": 822,
+    "scene_target": "Rgba8UnormSrgb (no floating-point target)",
+    "samples": 1,
+    "ocean_worker_us": 0.0,
+    "frame_ms_1080p": 0.9533958,
+    "water_gpu_bytes_1080p": 12288,
+    "sha256": "62ae73e8fa4f1b066c98681638fe96e7e01d827ef947346059a984e82db94b77",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "dry/imported-low-pond-noon.png",
+    "renderer": "imported",
+    "tier": "low",
+    "view": "pond-noon",
+    "water": false,
+    "water_indices": 0,
+    "frame_ms_with_readback": 1.7378784166666668,
+    "ocean_worker_us": 0.0,
+    "sha256": "ade25311a67cd407ce49981113928a8a4f0ea3db8a8ceadbd038ecfe29229a61",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "imported-low-pond-noon.png",
+    "renderer": "imported",
+    "tier": "low",
+    "view": "pond-noon",
+    "water": true,
+    "water_indices": 822,
+    "frame_ms_with_readback": 2.6009165833333334,
+    "ocean_worker_us": 0.0,
+    "sha256": "d8f6d322dfec91d040c3300268d2b5b195d4e0599bef8c69be9d822875d626a6",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "dry/imported-low-pond-dusk.png",
+    "renderer": "imported",
+    "tier": "low",
+    "view": "pond-dusk",
+    "water": false,
+    "water_indices": 0,
+    "frame_ms_with_readback": 1.7430347500000003,
+    "ocean_worker_us": 0.0,
+    "sha256": "61485a8b2d1b1c5ebd7c64b29541c849f8b72d8a6c2a2090b7dba849e534a254",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "imported-low-pond-dusk.png",
+    "renderer": "imported",
+    "tier": "low",
+    "view": "pond-dusk",
+    "water": true,
+    "water_indices": 822,
+    "frame_ms_with_readback": 1.7155485,
+    "ocean_worker_us": 0.0,
+    "sha256": "f316730751cbce550d9c17790bbed0eb78e5b580fdbf91a9a535444adb44fa0a",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "dry/imported-low-river.png",
+    "renderer": "imported",
+    "tier": "low",
+    "view": "river",
+    "water": false,
+    "water_indices": 0,
+    "frame_ms_with_readback": 1.7378576666666667,
+    "ocean_worker_us": 0.0,
+    "sha256": "1e394ff048d836ab1d99b01ee44452e25923bc85abb47d3a614e282dc3f6c9b0",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "imported-low-river.png",
+    "renderer": "imported",
+    "tier": "low",
+    "view": "river",
+    "water": true,
+    "water_indices": 996,
+    "frame_ms_with_readback": 1.7191005000000001,
+    "ocean_worker_us": 0.0,
+    "sha256": "6e048b14aca19245e80a70c4a7e17f2f1e5b27165759cf9c681b8d9965cf1a4e",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "dry/imported-low-sea.png",
+    "renderer": "imported",
+    "tier": "low",
+    "view": "sea",
+    "water": false,
+    "water_indices": 0,
+    "frame_ms_with_readback": 2.2596945833333333,
+    "ocean_worker_us": 0.0,
+    "sha256": "22ea70d8367589542323fb58bc723db33c14d619a93a5c6e4469e7e02c3156fd",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "imported-low-sea.png",
+    "renderer": "imported",
+    "tier": "low",
+    "view": "sea",
+    "water": true,
+    "water_indices": 84912,
+    "frame_ms_with_readback": 3.29203825,
+    "ocean_worker_us": 0.0,
+    "sha256": "b60e470f8bd1c73b1b590ffb766f51d250f174fe18abbc82cf33f1115f3233ec",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "dry/imported-low-sea-calm.png",
+    "renderer": "imported",
+    "tier": "low",
+    "view": "sea-calm",
+    "water": false,
+    "water_indices": 0,
+    "frame_ms_with_readback": 3.012576333333333,
+    "ocean_worker_us": 0.0,
+    "sha256": "7f7b625a04861eff869bca95e1f36ea7c35f092c5172eb080f640f58cfd4415d",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "imported-low-sea-calm.png",
+    "renderer": "imported",
+    "tier": "low",
+    "view": "sea-calm",
+    "water": true,
+    "water_indices": 84912,
+    "frame_ms_with_readback": 3.507496583333334,
+    "ocean_worker_us": 58.5,
+    "sha256": "e54645ea871439d55f04e587f1fbaec498c4d215367a32146defc7b1bb7fdc1e",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "dry/imported-low-sea-moderate.png",
+    "renderer": "imported",
+    "tier": "low",
+    "view": "sea-moderate",
+    "water": false,
+    "water_indices": 0,
+    "frame_ms_with_readback": 2.9834305833333334,
+    "ocean_worker_us": 0.0,
+    "sha256": "7f7b625a04861eff869bca95e1f36ea7c35f092c5172eb080f640f58cfd4415d",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "imported-low-sea-moderate.png",
+    "renderer": "imported",
+    "tier": "low",
+    "view": "sea-moderate",
+    "water": true,
+    "water_indices": 84912,
+    "frame_ms_with_readback": 3.4517188333333335,
+    "ocean_worker_us": 59.583,
+    "sha256": "c812763b12389a3246a095bfffdde3558b0b08cb768f23218b03632299ecaf84",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "dry/imported-low-sea-storm.png",
+    "renderer": "imported",
+    "tier": "low",
+    "view": "sea-storm",
+    "water": false,
+    "water_indices": 0,
+    "frame_ms_with_readback": 2.2489756666666665,
+    "ocean_worker_us": 0.0,
+    "sha256": "7f7b625a04861eff869bca95e1f36ea7c35f092c5172eb080f640f58cfd4415d",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "imported-low-sea-storm.png",
+    "renderer": "imported",
+    "tier": "low",
+    "view": "sea-storm",
+    "water": true,
+    "water_indices": 84912,
+    "frame_ms_with_readback": 2.0740521666666663,
+    "ocean_worker_us": 55.208,
+    "sha256": "f567067bb37570c6d73933b3a5fa63a5724dee496fa6f9d24f83b08c5b3b9b0d",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "dry/imported-low-sea-storm-surf.png",
+    "renderer": "imported",
+    "tier": "low",
+    "view": "sea-storm-surf",
+    "water": false,
+    "water_indices": 0,
+    "frame_ms_with_readback": 2.4903715,
+    "ocean_worker_us": 0.0,
+    "sha256": "f213dcc5b1f2e37ffb6c1bb1f3d44c3a69f97fdd681c16ccf99b66987736d294",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "imported-low-sea-storm-surf.png",
+    "renderer": "imported",
+    "tier": "low",
+    "view": "sea-storm-surf",
+    "water": true,
+    "water_indices": 84912,
+    "frame_ms_with_readback": 3.4348992499999995,
+    "ocean_worker_us": 54.833,
+    "sha256": "517e856bdee4d7ddf45fc81fd6463efa3cf8e6bfd7d5601ed1099aa5bce4911c",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "dry/imported-low-under.png",
+    "renderer": "imported",
+    "tier": "low",
+    "view": "under",
+    "water": false,
+    "water_indices": 0,
+    "frame_ms_with_readback": 1.7227431666666664,
+    "ocean_worker_us": 0.0,
+    "sha256": "508409a7d32e953e9332a9b895f4ea292db88a1373a370b22fdd5e38278af7c8",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "imported-low-under.png",
+    "renderer": "imported",
+    "tier": "low",
+    "view": "under",
+    "water": true,
+    "water_indices": 822,
+    "frame_ms_with_readback": 1.7437464999999999,
+    "ocean_worker_us": 0.0,
+    "sha256": "1da1e44b2ab091166c4e2dd1fd6b35535cce8c5875d50b34d0c1eb02d682185a",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "dry/imported-low-pond-posts.png",
+    "renderer": "imported",
+    "tier": "low",
+    "view": "pond-posts",
+    "water": false,
+    "water_indices": 0,
+    "frame_ms_with_readback": 1.7445313333333334,
+    "ocean_worker_us": 0.0,
+    "sha256": "7e6f90529d25c1580cb20c637a3d14ce977382fefd70ece37d40458e291efd80",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "imported-low-pond-posts.png",
+    "renderer": "imported",
+    "tier": "low",
+    "view": "pond-posts",
+    "water": true,
+    "water_indices": 822,
+    "frame_ms_with_readback": 3.2566702499999995,
+    "ocean_worker_us": 0.0,
+    "sha256": "d98d88953c27b52c3ba0843b1842f9e89439efd86b4fa7cac5915d05c593de9e",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "dry/physical-medium-pond-noon.png",
+    "renderer": "physical",
+    "tier": "medium",
+    "view": "pond-noon",
+    "water": false,
+    "screen_copies": false,
+    "water_indices": 0,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 0.0,
+    "frame_ms_1080p": 0.963175,
+    "water_gpu_bytes_1080p": 0,
+    "sha256": "2fe455c9a2ec201d4469dacc4a358d5df65b28383c57f97d7ea1f484d425358e",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "w2/physical-medium-pond-noon.png",
+    "renderer": "physical",
+    "tier": "medium",
+    "view": "pond-noon",
+    "water": true,
+    "screen_copies": false,
+    "water_indices": 3000,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 0.0,
+    "frame_ms_1080p": 1.8187332999999999,
+    "water_gpu_bytes_1080p": 27001280,
+    "sha256": "0a1704400e17fb35b974889a6f38c497f140aa699ceb249308cdf56e13d2e351",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "physical-medium-pond-noon.png",
+    "renderer": "physical",
+    "tier": "medium",
+    "view": "pond-noon",
+    "water": true,
+    "screen_copies": true,
+    "water_indices": 3000,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 0.0,
+    "frame_ms_1080p": 1.7515708,
+    "water_gpu_bytes_1080p": 27001280,
+    "sha256": "7704200785f0e10ba3daf041f6d71b3c4edf1d02215d1e07c77b912cc05039d6",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "dry/physical-medium-pond-dusk.png",
+    "renderer": "physical",
+    "tier": "medium",
+    "view": "pond-dusk",
+    "water": false,
+    "screen_copies": false,
+    "water_indices": 0,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 0.0,
+    "frame_ms_1080p": 0.9110457999999999,
+    "water_gpu_bytes_1080p": 0,
+    "sha256": "9249813c2788b642dc5f1407828e7cce3479491b2fc7302101485b2c66cd9f6c",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "w2/physical-medium-pond-dusk.png",
+    "renderer": "physical",
+    "tier": "medium",
+    "view": "pond-dusk",
+    "water": true,
+    "screen_copies": false,
+    "water_indices": 3000,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 0.0,
+    "frame_ms_1080p": 1.3714584,
+    "water_gpu_bytes_1080p": 27001280,
+    "sha256": "ef5b3cbf030ce92f32dc54178ef54693c2a98b142bff659401a2929c9b534379",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "physical-medium-pond-dusk.png",
+    "renderer": "physical",
+    "tier": "medium",
+    "view": "pond-dusk",
+    "water": true,
+    "screen_copies": true,
+    "water_indices": 3000,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 0.0,
+    "frame_ms_1080p": 1.4279791,
+    "water_gpu_bytes_1080p": 27001280,
+    "sha256": "246259f9cec88a91429892998c4621e574bdfefa971631a63dd2d6a6423cc779",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "dry/physical-medium-river.png",
+    "renderer": "physical",
+    "tier": "medium",
+    "view": "river",
+    "water": false,
+    "screen_copies": false,
+    "water_indices": 0,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 0.0,
+    "frame_ms_1080p": 0.9601917,
+    "water_gpu_bytes_1080p": 0,
+    "sha256": "0f41e403e643d15a946fac10debe6660d4b8ce0378ff4a1082b717719af9adc7",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "w2/physical-medium-river.png",
+    "renderer": "physical",
+    "tier": "medium",
+    "view": "river",
+    "water": true,
+    "screen_copies": false,
+    "water_indices": 3462,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 0.0,
+    "frame_ms_1080p": 1.4162041,
+    "water_gpu_bytes_1080p": 27043608,
+    "sha256": "00f2f4ca2362b05aa3bae8b8a1cc6ae95a103917f67f09742ae6ae01f5661f68",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "physical-medium-river.png",
+    "renderer": "physical",
+    "tier": "medium",
+    "view": "river",
+    "water": true,
+    "screen_copies": true,
+    "water_indices": 3462,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 0.0,
+    "frame_ms_1080p": 1.4306375,
+    "water_gpu_bytes_1080p": 27043608,
+    "sha256": "1fe2f0ab527ac45e59ecc153844e54b1b728e53169d059fdbcd4d4352a3a041a",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "dry/physical-medium-sea.png",
+    "renderer": "physical",
+    "tier": "medium",
+    "view": "sea",
+    "water": false,
+    "screen_copies": false,
+    "water_indices": 0,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 0.0,
+    "frame_ms_1080p": 1.8385083000000002,
+    "water_gpu_bytes_1080p": 0,
+    "sha256": "9588d7a3bc1f0382c9297d61e1962cb18f61170a9d762701e67875d3f7fd08e4",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "w2/physical-medium-sea.png",
+    "renderer": "physical",
+    "tier": "medium",
+    "view": "sea",
+    "water": true,
+    "screen_copies": false,
+    "water_indices": 338256,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 0.0,
+    "frame_ms_1080p": 6.8543541,
+    "water_gpu_bytes_1080p": 30583904,
+    "sha256": "4d72ca1abe3d22b781f4d7b7868a47163387341883ff3b46942f1131d850b961",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "physical-medium-sea.png",
+    "renderer": "physical",
+    "tier": "medium",
+    "view": "sea",
+    "water": true,
+    "screen_copies": true,
+    "water_indices": 338256,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 0.0,
+    "frame_ms_1080p": 4.0199709,
+    "water_gpu_bytes_1080p": 30583904,
+    "sha256": "8fc214f1f4b4fa5867451fa41bc9cb9db49c3d238ec466d10921926c2fb20355",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "dry/physical-medium-sea-calm.png",
+    "renderer": "physical",
+    "tier": "medium",
+    "view": "sea-calm",
+    "water": false,
+    "screen_copies": false,
+    "water_indices": 0,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 0.0,
+    "frame_ms_1080p": 1.8641207999999998,
+    "water_gpu_bytes_1080p": 0,
+    "sha256": "a6090da561f4f8332f1f22f0385eaae97e62da77288082ef41d1161cedfaa6eb",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "w2/physical-medium-sea-calm.png",
+    "renderer": "physical",
+    "tier": "medium",
+    "view": "sea-calm",
+    "water": true,
+    "screen_copies": false,
+    "water_indices": 338256,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 117.833,
+    "frame_ms_1080p": 5.52435,
+    "water_gpu_bytes_1080p": 30583904,
+    "sha256": "85459062d0c45e06dc36c5cbadc614fbda17605ed9db87e12ec9c3bed4f72229",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "physical-medium-sea-calm.png",
+    "renderer": "physical",
+    "tier": "medium",
+    "view": "sea-calm",
+    "water": true,
+    "screen_copies": true,
+    "water_indices": 338256,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 118.041,
+    "frame_ms_1080p": 3.8019542,
+    "water_gpu_bytes_1080p": 30583904,
+    "sha256": "a0b533102beae35185ea01c36ee906bc18fa8a6af0e8f8ce3e4c2ecd23df6b66",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "dry/physical-medium-sea-moderate.png",
+    "renderer": "physical",
+    "tier": "medium",
+    "view": "sea-moderate",
+    "water": false,
+    "screen_copies": false,
+    "water_indices": 0,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 118.041,
+    "frame_ms_1080p": 1.8749208,
+    "water_gpu_bytes_1080p": 0,
+    "sha256": "a6090da561f4f8332f1f22f0385eaae97e62da77288082ef41d1161cedfaa6eb",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "w2/physical-medium-sea-moderate.png",
+    "renderer": "physical",
+    "tier": "medium",
+    "view": "sea-moderate",
+    "water": true,
+    "screen_copies": false,
+    "water_indices": 338256,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 122.791,
+    "frame_ms_1080p": 4.6689334,
+    "water_gpu_bytes_1080p": 30583904,
+    "sha256": "412a2771b56b4e10d6c32fbc98c4b5be2f612267cd7861a7b95521f24430b828",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "physical-medium-sea-moderate.png",
+    "renderer": "physical",
+    "tier": "medium",
+    "view": "sea-moderate",
+    "water": true,
+    "screen_copies": true,
+    "water_indices": 338256,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 124.33299999999998,
+    "frame_ms_1080p": 3.7831916999999997,
+    "water_gpu_bytes_1080p": 30583904,
+    "sha256": "068aafbaf50b6f8982149d7834413962987c55714de55120522b9bbefac4a967",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "dry/physical-medium-sea-storm.png",
+    "renderer": "physical",
+    "tier": "medium",
+    "view": "sea-storm",
+    "water": false,
+    "screen_copies": false,
+    "water_indices": 0,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 124.33299999999998,
+    "frame_ms_1080p": 1.8470584000000003,
+    "water_gpu_bytes_1080p": 0,
+    "sha256": "a6090da561f4f8332f1f22f0385eaae97e62da77288082ef41d1161cedfaa6eb",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "w2/physical-medium-sea-storm.png",
+    "renderer": "physical",
+    "tier": "medium",
+    "view": "sea-storm",
+    "water": true,
+    "screen_copies": false,
+    "water_indices": 338256,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 121.209,
+    "frame_ms_1080p": 3.6554124999999997,
+    "water_gpu_bytes_1080p": 30583904,
+    "sha256": "fade9c8d3c22b6b6cc16fc9754c932f5d2f26564a700a2e5d3864541f19768c7",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "physical-medium-sea-storm.png",
+    "renderer": "physical",
+    "tier": "medium",
+    "view": "sea-storm",
+    "water": true,
+    "screen_copies": true,
+    "water_indices": 338256,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 123.66699999999999,
+    "frame_ms_1080p": 3.8208833999999996,
+    "water_gpu_bytes_1080p": 30583904,
+    "sha256": "1179875443ee5f7292cd2085c5fc32bce5447fdbcf8891694d51ddf22402126c",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "dry/physical-medium-sea-storm-surf.png",
+    "renderer": "physical",
+    "tier": "medium",
+    "view": "sea-storm-surf",
+    "water": false,
+    "screen_copies": false,
+    "water_indices": 0,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 123.66699999999999,
+    "frame_ms_1080p": 1.8645875,
+    "water_gpu_bytes_1080p": 0,
+    "sha256": "275ea64c6fe2581350125574f17afd0cd72571cb55922a6377da12005b83a6c3",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "w2/physical-medium-sea-storm-surf.png",
+    "renderer": "physical",
+    "tier": "medium",
+    "view": "sea-storm-surf",
+    "water": true,
+    "screen_copies": false,
+    "water_indices": 338256,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 123.04199999999999,
+    "frame_ms_1080p": 3.4901624999999994,
+    "water_gpu_bytes_1080p": 30583904,
+    "sha256": "5f87464160b5a14e284a5c1decd1c5533c1313e60a1c84cc92e2bd970fabd111",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "physical-medium-sea-storm-surf.png",
+    "renderer": "physical",
+    "tier": "medium",
+    "view": "sea-storm-surf",
+    "water": true,
+    "screen_copies": true,
+    "water_indices": 338256,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 125.08300000000001,
+    "frame_ms_1080p": 3.5674666999999998,
+    "water_gpu_bytes_1080p": 30583904,
+    "sha256": "af973ff8afe1c83cdfc5772d766c576513e8e95fb85b45f543af84a419d1d0d6",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "dry/physical-medium-under.png",
+    "renderer": "physical",
+    "tier": "medium",
+    "view": "under",
+    "water": false,
+    "screen_copies": false,
+    "water_indices": 0,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 125.08300000000001,
+    "frame_ms_1080p": 0.7643500000000001,
+    "water_gpu_bytes_1080p": 0,
+    "sha256": "48d1391b16f7ba38caed552a3914f15a5f924d707e5d3025082e503027ab6e30",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "w2/physical-medium-under.png",
+    "renderer": "physical",
+    "tier": "medium",
+    "view": "under",
+    "water": true,
+    "screen_copies": false,
+    "water_indices": 3000,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 0.0,
+    "frame_ms_1080p": 1.0911791000000002,
+    "water_gpu_bytes_1080p": 27001280,
+    "sha256": "9e659dbf2d4adc94a2a1a7266183f3e4abd30348466b8d75f9bfb7db598bc530",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "physical-medium-under.png",
+    "renderer": "physical",
+    "tier": "medium",
+    "view": "under",
+    "water": true,
+    "screen_copies": true,
+    "water_indices": 3000,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 0.0,
+    "frame_ms_1080p": 0.9589458000000001,
+    "water_gpu_bytes_1080p": 27001280,
+    "sha256": "706df3c16369debccaadf482dd3dea0e4b69e669c798ececd1e13fd3523e4e7c",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "dry/physical-medium-pond-posts.png",
+    "renderer": "physical",
+    "tier": "medium",
+    "view": "pond-posts",
+    "water": false,
+    "screen_copies": false,
+    "water_indices": 0,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 0.0,
+    "frame_ms_1080p": 0.9576457999999999,
+    "water_gpu_bytes_1080p": 0,
+    "sha256": "93d1bb73ea8ea7166423af851f8a6b1a076a2eba77557d293cf3ffa871042248",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "w2/physical-medium-pond-posts.png",
+    "renderer": "physical",
+    "tier": "medium",
+    "view": "pond-posts",
+    "water": true,
+    "screen_copies": false,
+    "water_indices": 3000,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 0.0,
+    "frame_ms_1080p": 1.7058500000000003,
+    "water_gpu_bytes_1080p": 27001280,
+    "sha256": "09ea112546e464910a9772dd21aba976384a1bd77ad3a6c7a4513787378ea19d",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "physical-medium-pond-posts.png",
+    "renderer": "physical",
+    "tier": "medium",
+    "view": "pond-posts",
+    "water": true,
+    "screen_copies": true,
+    "water_indices": 3000,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 0.0,
+    "frame_ms_1080p": 1.6132875000000002,
+    "water_gpu_bytes_1080p": 27001280,
+    "sha256": "ac9e8a49106bfb50ded664a5d31d62edd86c95ec6fbf6aef38d65b43f9567db1",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "dry/imported-medium-pond-noon.png",
+    "renderer": "imported",
+    "tier": "medium",
+    "view": "pond-noon",
+    "water": false,
+    "water_indices": 0,
+    "frame_ms_with_readback": 1.7856389166666664,
+    "ocean_worker_us": 0.0,
+    "sha256": "e914ba4947c86594abc3c2be9ae783f09d756f3bac655e3c014a96db378e8627",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "imported-medium-pond-noon.png",
+    "renderer": "imported",
+    "tier": "medium",
+    "view": "pond-noon",
+    "water": true,
+    "water_indices": 3000,
+    "frame_ms_with_readback": 1.7289582500000003,
+    "ocean_worker_us": 0.0,
+    "sha256": "dd060388fe189ac5d02e3ed4b171d0f5607f005aec22fcc311f8790f29d539fc",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "dry/imported-medium-pond-dusk.png",
+    "renderer": "imported",
+    "tier": "medium",
+    "view": "pond-dusk",
+    "water": false,
+    "water_indices": 0,
+    "frame_ms_with_readback": 1.8489964166666668,
+    "ocean_worker_us": 0.0,
+    "sha256": "224de35c4212085bb06fa27697722386d47a919e018b4e41dbe7db5d7bc9ff9f",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "imported-medium-pond-dusk.png",
+    "renderer": "imported",
+    "tier": "medium",
+    "view": "pond-dusk",
+    "water": true,
+    "water_indices": 3000,
+    "frame_ms_with_readback": 2.4591909999999997,
+    "ocean_worker_us": 0.0,
+    "sha256": "49d9191f2490995a54f03b2572d0e4af1cb8132cf89ec05679aaa3792c82300f",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "dry/imported-medium-river.png",
+    "renderer": "imported",
+    "tier": "medium",
+    "view": "river",
+    "water": false,
+    "water_indices": 0,
+    "frame_ms_with_readback": 1.7568264166666667,
+    "ocean_worker_us": 0.0,
+    "sha256": "82d1bec7e81987b1c5f7380e3e1e23fbdd5a9d018aec7512af91de1458e8c6a9",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "imported-medium-river.png",
+    "renderer": "imported",
+    "tier": "medium",
+    "view": "river",
+    "water": true,
+    "water_indices": 3462,
+    "frame_ms_with_readback": 2.846308916666666,
+    "ocean_worker_us": 0.0,
+    "sha256": "2260edfa2d14fecbad2072c4e560943232a83a42940dec12ff7d1da0a359981d",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "dry/imported-medium-sea.png",
+    "renderer": "imported",
+    "tier": "medium",
+    "view": "sea",
+    "water": false,
+    "water_indices": 0,
+    "frame_ms_with_readback": 3.2980833333333335,
+    "ocean_worker_us": 0.0,
+    "sha256": "11ebed28a452c8d29075a71150ea39f9e1368a62066f86028c46ac00c29ee9c4",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "imported-medium-sea.png",
+    "renderer": "imported",
+    "tier": "medium",
+    "view": "sea",
+    "water": true,
+    "water_indices": 338256,
+    "frame_ms_with_readback": 4.129027666666666,
+    "ocean_worker_us": 0.0,
+    "sha256": "bf84b5e13b9c9ec0ddfdb65b57962230c851677246adffa1c263ac88d887c3b7",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "dry/imported-medium-sea-calm.png",
+    "renderer": "imported",
+    "tier": "medium",
+    "view": "sea-calm",
+    "water": false,
+    "water_indices": 0,
+    "frame_ms_with_readback": 1.8677325833333334,
+    "ocean_worker_us": 0.0,
+    "sha256": "0056605bcdb02f0156202d0bafe50a6e36ca2628b46a9e9efa4929ad93b7d86a",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "imported-medium-sea-calm.png",
+    "renderer": "imported",
+    "tier": "medium",
+    "view": "sea-calm",
+    "water": true,
+    "water_indices": 338256,
+    "frame_ms_with_readback": 5.808566166666667,
+    "ocean_worker_us": 120.959,
+    "sha256": "2ba112184413eae7c798965967a5e91fa649284d6fa11fbcb56b0bc2e6d64f9f",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "dry/imported-medium-sea-moderate.png",
+    "renderer": "imported",
+    "tier": "medium",
+    "view": "sea-moderate",
+    "water": false,
+    "water_indices": 0,
+    "frame_ms_with_readback": 2.068104166666667,
+    "ocean_worker_us": 0.0,
+    "sha256": "0056605bcdb02f0156202d0bafe50a6e36ca2628b46a9e9efa4929ad93b7d86a",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "imported-medium-sea-moderate.png",
+    "renderer": "imported",
+    "tier": "medium",
+    "view": "sea-moderate",
+    "water": true,
+    "water_indices": 338256,
+    "frame_ms_with_readback": 5.229354249999999,
+    "ocean_worker_us": 181.375,
+    "sha256": "c53d59cbbd6e9afd7d656aa4e85b1bb9fba18af9684b1aa79b5bdaa99b6ec95e",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "dry/imported-medium-sea-storm.png",
+    "renderer": "imported",
+    "tier": "medium",
+    "view": "sea-storm",
+    "water": false,
+    "water_indices": 0,
+    "frame_ms_with_readback": 3.2381145,
+    "ocean_worker_us": 0.0,
+    "sha256": "0056605bcdb02f0156202d0bafe50a6e36ca2628b46a9e9efa4929ad93b7d86a",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "imported-medium-sea-storm.png",
+    "renderer": "imported",
+    "tier": "medium",
+    "view": "sea-storm",
+    "water": true,
+    "water_indices": 338256,
+    "frame_ms_with_readback": 5.600836916666666,
+    "ocean_worker_us": 122.667,
+    "sha256": "9760f6a00033b3fdb92ee2601c3329a1ab66d508f6b04c1437228a9987f21dcb",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "dry/imported-medium-sea-storm-surf.png",
+    "renderer": "imported",
+    "tier": "medium",
+    "view": "sea-storm-surf",
+    "water": false,
+    "water_indices": 0,
+    "frame_ms_with_readback": 3.258211833333333,
+    "ocean_worker_us": 0.0,
+    "sha256": "9a29de4f4c354f489c69632e913253196314d6c765f9683a36ec2b033f220cc1",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "imported-medium-sea-storm-surf.png",
+    "renderer": "imported",
+    "tier": "medium",
+    "view": "sea-storm-surf",
+    "water": true,
+    "water_indices": 338256,
+    "frame_ms_with_readback": 6.7221945000000005,
+    "ocean_worker_us": 124.292,
+    "sha256": "fdcf5f7c79a34e2d385668aec771339cafe097f1b4b49f81f4792905f9432f07",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "dry/imported-medium-under.png",
+    "renderer": "imported",
+    "tier": "medium",
+    "view": "under",
+    "water": false,
+    "water_indices": 0,
+    "frame_ms_with_readback": 1.7286249166666667,
+    "ocean_worker_us": 0.0,
+    "sha256": "e7ed96b5b1ae58e05fb13554040826de05c0471adbecea0f7479c40715034cdf",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "imported-medium-under.png",
+    "renderer": "imported",
+    "tier": "medium",
+    "view": "under",
+    "water": true,
+    "water_indices": 3000,
+    "frame_ms_with_readback": 2.0525971666666667,
+    "ocean_worker_us": 0.0,
+    "sha256": "9c071e0c76750e1bd86dfb63d32b186f83e8175b9369ca7edf13e3836856be74",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "dry/imported-medium-pond-posts.png",
+    "renderer": "imported",
+    "tier": "medium",
+    "view": "pond-posts",
+    "water": false,
+    "water_indices": 0,
+    "frame_ms_with_readback": 1.7544166666666665,
+    "ocean_worker_us": 0.0,
+    "sha256": "07105308758bf48b06889137f40f8bc3fb0ea1038eaca2c97b71087bae614918",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "imported-medium-pond-posts.png",
+    "renderer": "imported",
+    "tier": "medium",
+    "view": "pond-posts",
+    "water": true,
+    "water_indices": 3000,
+    "frame_ms_with_readback": 2.875805583333333,
+    "ocean_worker_us": 0.0,
+    "sha256": "b789a884f9d14259d4c7630b3beacb0027617fb980eff607ef100ed123f488a7",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "dry/physical-high-pond-noon.png",
+    "renderer": "physical",
+    "tier": "high",
+    "view": "pond-noon",
+    "water": false,
+    "screen_copies": false,
+    "water_indices": 0,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 0.0,
+    "frame_ms_1080p": 1.4623875,
+    "water_gpu_bytes_1080p": 0,
+    "sha256": "73ade427bb15b9938c61ec0aca103c2df735d8bd069db52899ce0c1b0bd84dc0",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "w2/physical-high-pond-noon.png",
+    "renderer": "physical",
+    "tier": "high",
+    "view": "pond-noon",
+    "water": true,
+    "screen_copies": false,
+    "water_indices": 13080,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 0.0,
+    "frame_ms_1080p": 2.3695125,
+    "water_gpu_bytes_1080p": 45813120,
+    "sha256": "4c2769c872213091040944fa31579186670964c2a66ddc2856244472f736cdab",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "physical-high-pond-noon.png",
+    "renderer": "physical",
+    "tier": "high",
+    "view": "pond-noon",
+    "water": true,
+    "screen_copies": true,
+    "water_indices": 13080,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 0.0,
+    "frame_ms_1080p": 2.5711583,
+    "water_gpu_bytes_1080p": 45813120,
+    "sha256": "81046695bf1b19295f43421a272386000a2efd0935701cd7e6f3057e8399fc46",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "dry/physical-high-pond-dusk.png",
+    "renderer": "physical",
+    "tier": "high",
+    "view": "pond-dusk",
+    "water": false,
+    "screen_copies": false,
+    "water_indices": 0,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 0.0,
+    "frame_ms_1080p": 1.2848959,
+    "water_gpu_bytes_1080p": 0,
+    "sha256": "b61ca99e0bc48a2dc3d360aca35916ca32ab2eb7ebd228e1c7ff6e5dbd91b070",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "w2/physical-high-pond-dusk.png",
+    "renderer": "physical",
+    "tier": "high",
+    "view": "pond-dusk",
+    "water": true,
+    "screen_copies": false,
+    "water_indices": 13080,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 0.0,
+    "frame_ms_1080p": 1.9109500000000001,
+    "water_gpu_bytes_1080p": 45813120,
+    "sha256": "a0e491410bfa056b9b28374f5a94b7589f7ff613c68b881af3b8345a2908611c",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "physical-high-pond-dusk.png",
+    "renderer": "physical",
+    "tier": "high",
+    "view": "pond-dusk",
+    "water": true,
+    "screen_copies": true,
+    "water_indices": 13080,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 0.0,
+    "frame_ms_1080p": 2.1408625,
+    "water_gpu_bytes_1080p": 45813120,
+    "sha256": "412675df4287c98b60cecbfb6c3cec32d8d39444fe1c208b1692ba05cff3c8b2",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "dry/physical-high-river.png",
+    "renderer": "physical",
+    "tier": "high",
+    "view": "river",
+    "water": false,
+    "screen_copies": false,
+    "water_indices": 0,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 0.0,
+    "frame_ms_1080p": 1.4117542,
+    "water_gpu_bytes_1080p": 0,
+    "sha256": "a82b20a18297798e3422fbc8ab2d7a38df6c42b1445b57ee7347222277f7e300",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "w2/physical-high-river.png",
+    "renderer": "physical",
+    "tier": "high",
+    "view": "river",
+    "water": true,
+    "screen_copies": false,
+    "water_indices": 14556,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 0.0,
+    "frame_ms_1080p": 2.0300374999999997,
+    "water_gpu_bytes_1080p": 46001424,
+    "sha256": "3e6e4acff338cb8b996f75f5c0d31590acd561613909b627d07837fd2fa079ce",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "physical-high-river.png",
+    "renderer": "physical",
+    "tier": "high",
+    "view": "river",
+    "water": true,
+    "screen_copies": true,
+    "water_indices": 14556,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 0.0,
+    "frame_ms_1080p": 2.10175,
+    "water_gpu_bytes_1080p": 46001424,
+    "sha256": "324039d24413e449f5a4cff05e688d81cbd3af84782cf9ab6b10eb0cb690c1c9",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "dry/physical-high-sea.png",
+    "renderer": "physical",
+    "tier": "high",
+    "view": "sea",
+    "water": false,
+    "screen_copies": false,
+    "water_indices": 0,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 0.0,
+    "frame_ms_1080p": 2.2673542,
+    "water_gpu_bytes_1080p": 0,
+    "sha256": "fe7e3c7717dff1a5bfd1788771d59d4da1ba8e57d4bc4e5dea730ec54ba3e320",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "w2/physical-high-sea.png",
+    "renderer": "physical",
+    "tier": "high",
+    "view": "sea",
+    "water": true,
+    "screen_copies": false,
+    "water_indices": 1556748,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 0.0,
+    "frame_ms_1080p": 14.202879099999999,
+    "water_gpu_bytes_1080p": 62265312,
+    "sha256": "b1f1411f31771c81279e726f4841e929c9f0221220d1ca3e7db84a09579afb86",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "physical-high-sea.png",
+    "renderer": "physical",
+    "tier": "high",
+    "view": "sea",
+    "water": true,
+    "screen_copies": true,
+    "water_indices": 1556748,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 0.0,
+    "frame_ms_1080p": 9.4644334,
+    "water_gpu_bytes_1080p": 62265312,
+    "sha256": "56b65a0ef7f36795df26c2fb163f56f1cd4b1de7eac91ed817e0733c2fc557de",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "dry/physical-high-sea-calm.png",
+    "renderer": "physical",
+    "tier": "high",
+    "view": "sea-calm",
+    "water": false,
+    "screen_copies": false,
+    "water_indices": 0,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 0.0,
+    "frame_ms_1080p": 2.1269,
+    "water_gpu_bytes_1080p": 0,
+    "sha256": "ddc852bb2816a2daa51678308a5ce331cb809e397e5aa43dd3c325f41b2253b4",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "w2/physical-high-sea-calm.png",
+    "renderer": "physical",
+    "tier": "high",
+    "view": "sea-calm",
+    "water": true,
+    "screen_copies": false,
+    "water_indices": 1556748,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 621.2080000000001,
+    "frame_ms_1080p": 18.839375,
+    "water_gpu_bytes_1080p": 62265312,
+    "sha256": "5c657d301eb8f318c1fa851cd090832c7899a560920b876f3492bafe7c7fc2f6",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "physical-high-sea-calm.png",
+    "renderer": "physical",
+    "tier": "high",
+    "view": "sea-calm",
+    "water": true,
+    "screen_copies": true,
+    "water_indices": 1556748,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 628.167,
+    "frame_ms_1080p": 7.9112667000000005,
+    "water_gpu_bytes_1080p": 62265312,
+    "sha256": "08bcc98622a736573362b5ae87ee2f250858485eb498f3fcabb64537845a69f6",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "dry/physical-high-sea-moderate.png",
+    "renderer": "physical",
+    "tier": "high",
+    "view": "sea-moderate",
+    "water": false,
+    "screen_copies": false,
+    "water_indices": 0,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 628.167,
+    "frame_ms_1080p": 2.166225,
+    "water_gpu_bytes_1080p": 0,
+    "sha256": "ddc852bb2816a2daa51678308a5ce331cb809e397e5aa43dd3c325f41b2253b4",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "w2/physical-high-sea-moderate.png",
+    "renderer": "physical",
+    "tier": "high",
+    "view": "sea-moderate",
+    "water": true,
+    "screen_copies": false,
+    "water_indices": 1556748,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 628.375,
+    "frame_ms_1080p": 8.1208375,
+    "water_gpu_bytes_1080p": 62265312,
+    "sha256": "d6076ea8121ce2b8b8a6bfbb4e50cfab652a93bfec57ec072126d6cb4a425fd8",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "physical-high-sea-moderate.png",
+    "renderer": "physical",
+    "tier": "high",
+    "view": "sea-moderate",
+    "water": true,
+    "screen_copies": true,
+    "water_indices": 1556748,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 649.458,
+    "frame_ms_1080p": 6.3740958999999995,
+    "water_gpu_bytes_1080p": 62265312,
+    "sha256": "21ded8e3668ce41a60238234bf8350f09ddd94cb482eab2eda63e5f57d168a23",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "dry/physical-high-sea-storm.png",
+    "renderer": "physical",
+    "tier": "high",
+    "view": "sea-storm",
+    "water": false,
+    "screen_copies": false,
+    "water_indices": 0,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 649.458,
+    "frame_ms_1080p": 2.1325833,
+    "water_gpu_bytes_1080p": 0,
+    "sha256": "ddc852bb2816a2daa51678308a5ce331cb809e397e5aa43dd3c325f41b2253b4",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "w2/physical-high-sea-storm.png",
+    "renderer": "physical",
+    "tier": "high",
+    "view": "sea-storm",
+    "water": true,
+    "screen_copies": false,
+    "water_indices": 1556748,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 623.5,
+    "frame_ms_1080p": 6.0313792,
+    "water_gpu_bytes_1080p": 62265312,
+    "sha256": "64ebfb20cecd90adeeae0f13f12077ed780cb14f1e35280d8757fed3826d2088",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "physical-high-sea-storm.png",
+    "renderer": "physical",
+    "tier": "high",
+    "view": "sea-storm",
+    "water": true,
+    "screen_copies": true,
+    "water_indices": 1556748,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 620.334,
+    "frame_ms_1080p": 6.2249625,
+    "water_gpu_bytes_1080p": 62265312,
+    "sha256": "ca26bce89f4178113c7d6e725c5a4e924d453389cb4e96055c12eb40d3a0ee2c",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "dry/physical-high-sea-storm-surf.png",
+    "renderer": "physical",
+    "tier": "high",
+    "view": "sea-storm-surf",
+    "water": false,
+    "screen_copies": false,
+    "water_indices": 0,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 620.334,
+    "frame_ms_1080p": 2.2469708,
+    "water_gpu_bytes_1080p": 0,
+    "sha256": "8f88e6756e4915b2138692c924c04cac8e5f65564bdaae90998d8eba7b17737a",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "w2/physical-high-sea-storm-surf.png",
+    "renderer": "physical",
+    "tier": "high",
+    "view": "sea-storm-surf",
+    "water": true,
+    "screen_copies": false,
+    "water_indices": 1556748,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 623.375,
+    "frame_ms_1080p": 5.5369,
+    "water_gpu_bytes_1080p": 62265312,
+    "sha256": "c74d6cd03f5192b9ad76cbb3ecc56d820bc1da72dfe724173a89209e6fe3ddd9",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "physical-high-sea-storm-surf.png",
+    "renderer": "physical",
+    "tier": "high",
+    "view": "sea-storm-surf",
+    "water": true,
+    "screen_copies": true,
+    "water_indices": 1556748,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 652.2080000000001,
+    "frame_ms_1080p": 5.8484375,
+    "water_gpu_bytes_1080p": 62265312,
+    "sha256": "75ff5e8f0c65b3660f439907b5b4d122698e5f5e7c6711a88f5f466699d10572",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "dry/physical-high-under.png",
+    "renderer": "physical",
+    "tier": "high",
+    "view": "under",
+    "water": false,
+    "screen_copies": false,
+    "water_indices": 0,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 652.2080000000001,
+    "frame_ms_1080p": 1.1549958,
+    "water_gpu_bytes_1080p": 0,
+    "sha256": "04bfe4d8ce2321effb7fc9e2846a0414e8a944407f0f4f3f80badbb286ff654b",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "w2/physical-high-under.png",
+    "renderer": "physical",
+    "tier": "high",
+    "view": "under",
+    "water": true,
+    "screen_copies": false,
+    "water_indices": 13080,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 0.0,
+    "frame_ms_1080p": 1.4690208,
+    "water_gpu_bytes_1080p": 45813120,
+    "sha256": "8c3b238da0b5e869334a17c6b7e3f0b932e63a4d918fadfcc792ff9909b35bd3",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "physical-high-under.png",
+    "renderer": "physical",
+    "tier": "high",
+    "view": "under",
+    "water": true,
+    "screen_copies": true,
+    "water_indices": 13080,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 0.0,
+    "frame_ms_1080p": 1.3838,
+    "water_gpu_bytes_1080p": 45813120,
+    "sha256": "7dd5b072789a6619b835136f1cb9254cf101a9f662b0e4fe9b8722ab5f0da06e",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "dry/physical-high-pond-posts.png",
+    "renderer": "physical",
+    "tier": "high",
+    "view": "pond-posts",
+    "water": false,
+    "screen_copies": false,
+    "water_indices": 0,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 0.0,
+    "frame_ms_1080p": 1.3345708,
+    "water_gpu_bytes_1080p": 0,
+    "sha256": "0965f82df02d935a7c36c7caf400859a3d5d2482a9c588136de14dcb405950dd",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "w2/physical-high-pond-posts.png",
+    "renderer": "physical",
+    "tier": "high",
+    "view": "pond-posts",
+    "water": true,
+    "screen_copies": false,
+    "water_indices": 13080,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 0.0,
+    "frame_ms_1080p": 2.2433584,
+    "water_gpu_bytes_1080p": 45813120,
+    "sha256": "0e65d8330fdd52b96327b66392014c28524cc84cdc52f90b3276ad3aaa1947f3",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "physical-high-pond-posts.png",
+    "renderer": "physical",
+    "tier": "high",
+    "view": "pond-posts",
+    "water": true,
+    "screen_copies": true,
+    "water_indices": 13080,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 0.0,
+    "frame_ms_1080p": 2.43435,
+    "water_gpu_bytes_1080p": 45813120,
+    "sha256": "965f244beed49461b89f1cadbc9b777aa3b982571ae31ee1b5868056f7e41591",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "dry/imported-high-pond-noon.png",
+    "renderer": "imported",
+    "tier": "high",
+    "view": "pond-noon",
+    "water": false,
+    "water_indices": 0,
+    "frame_ms_with_readback": 1.7640486666666664,
+    "ocean_worker_us": 0.0,
+    "sha256": "e914ba4947c86594abc3c2be9ae783f09d756f3bac655e3c014a96db378e8627",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "imported-high-pond-noon.png",
+    "renderer": "imported",
+    "tier": "high",
+    "view": "pond-noon",
+    "water": true,
+    "water_indices": 13080,
+    "frame_ms_with_readback": 1.7303718333333333,
+    "ocean_worker_us": 0.0,
+    "sha256": "0b24be97a1f49fda32489acfa84f2ea456848f632ce9dd1393290f01faf87a32",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "dry/imported-high-pond-dusk.png",
+    "renderer": "imported",
+    "tier": "high",
+    "view": "pond-dusk",
+    "water": false,
+    "water_indices": 0,
+    "frame_ms_with_readback": 1.7232640000000001,
+    "ocean_worker_us": 0.0,
+    "sha256": "224de35c4212085bb06fa27697722386d47a919e018b4e41dbe7db5d7bc9ff9f",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "imported-high-pond-dusk.png",
+    "renderer": "imported",
+    "tier": "high",
+    "view": "pond-dusk",
+    "water": true,
+    "water_indices": 13080,
+    "frame_ms_with_readback": 3.268559166666667,
+    "ocean_worker_us": 0.0,
+    "sha256": "9053b488a5ef6fa68b57617c7bfa14141db75ad67d2b09b2f8384cdc073c5428",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "dry/imported-high-river.png",
+    "renderer": "imported",
+    "tier": "high",
+    "view": "river",
+    "water": false,
+    "water_indices": 0,
+    "frame_ms_with_readback": 1.7333368333333334,
+    "ocean_worker_us": 0.0,
+    "sha256": "82d1bec7e81987b1c5f7380e3e1e23fbdd5a9d018aec7512af91de1458e8c6a9",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "imported-high-river.png",
+    "renderer": "imported",
+    "tier": "high",
+    "view": "river",
+    "water": true,
+    "water_indices": 14556,
+    "frame_ms_with_readback": 3.0056595833333333,
+    "ocean_worker_us": 0.0,
+    "sha256": "2ba7776e4d44236814f208cf27705f407d9a6f5aa38f7240a4004eda77ee13cd",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "dry/imported-high-sea.png",
+    "renderer": "imported",
+    "tier": "high",
+    "view": "sea",
+    "water": false,
+    "water_indices": 0,
+    "frame_ms_with_readback": 3.376305666666666,
+    "ocean_worker_us": 0.0,
+    "sha256": "11ebed28a452c8d29075a71150ea39f9e1368a62066f86028c46ac00c29ee9c4",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "imported-high-sea.png",
+    "renderer": "imported",
+    "tier": "high",
+    "view": "sea",
+    "water": true,
+    "water_indices": 1556748,
+    "frame_ms_with_readback": 7.802690999999999,
+    "ocean_worker_us": 0.0,
+    "sha256": "8549a8f58c3e67db2030f9c44c3859d2530f9766920ec9377fa10fbae9c8e79e",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "dry/imported-high-sea-calm.png",
+    "renderer": "imported",
+    "tier": "high",
+    "view": "sea-calm",
+    "water": false,
+    "water_indices": 0,
+    "frame_ms_with_readback": 3.3867953333333327,
+    "ocean_worker_us": 0.0,
+    "sha256": "0056605bcdb02f0156202d0bafe50a6e36ca2628b46a9e9efa4929ad93b7d86a",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "imported-high-sea-calm.png",
+    "renderer": "imported",
+    "tier": "high",
+    "view": "sea-calm",
+    "water": true,
+    "water_indices": 1556748,
+    "frame_ms_with_readback": 10.753149416666668,
+    "ocean_worker_us": 647.833,
+    "sha256": "e04c76fdca7551b888af85bbf969ed6f49a533c96b96a1d6d37b781dd3debd93",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "dry/imported-high-sea-moderate.png",
+    "renderer": "imported",
+    "tier": "high",
+    "view": "sea-moderate",
+    "water": false,
+    "water_indices": 0,
+    "frame_ms_with_readback": 3.304538083333334,
+    "ocean_worker_us": 0.0,
+    "sha256": "0056605bcdb02f0156202d0bafe50a6e36ca2628b46a9e9efa4929ad93b7d86a",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "imported-high-sea-moderate.png",
+    "renderer": "imported",
+    "tier": "high",
+    "view": "sea-moderate",
+    "water": true,
+    "water_indices": 1556748,
+    "frame_ms_with_readback": 9.130874833333332,
+    "ocean_worker_us": 640.417,
+    "sha256": "c2312295a1b082e27ca65945d95f6f8dc55290029d3c5519b52073e78cf8595e",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "dry/imported-high-sea-storm.png",
+    "renderer": "imported",
+    "tier": "high",
+    "view": "sea-storm",
+    "water": false,
+    "water_indices": 0,
+    "frame_ms_with_readback": 3.297982583333333,
+    "ocean_worker_us": 0.0,
+    "sha256": "0056605bcdb02f0156202d0bafe50a6e36ca2628b46a9e9efa4929ad93b7d86a",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "imported-high-sea-storm.png",
+    "renderer": "imported",
+    "tier": "high",
+    "view": "sea-storm",
+    "water": true,
+    "water_indices": 1556748,
+    "frame_ms_with_readback": 8.531010416666668,
+    "ocean_worker_us": 615.333,
+    "sha256": "bfa5c0b40a5dd5c316bf3f8114fc6641ed71f1a6b0610b74dc6dda8ae7ec5aab",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "dry/imported-high-sea-storm-surf.png",
+    "renderer": "imported",
+    "tier": "high",
+    "view": "sea-storm-surf",
+    "water": false,
+    "water_indices": 0,
+    "frame_ms_with_readback": 3.2455939166666674,
+    "ocean_worker_us": 0.0,
+    "sha256": "9a29de4f4c354f489c69632e913253196314d6c765f9683a36ec2b033f220cc1",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "imported-high-sea-storm-surf.png",
+    "renderer": "imported",
+    "tier": "high",
+    "view": "sea-storm-surf",
+    "water": true,
+    "water_indices": 1556748,
+    "frame_ms_with_readback": 8.068194499999999,
+    "ocean_worker_us": 630.458,
+    "sha256": "06048aab82f30b3329372e8828190da66716cdac938e83bb5bc039b08b040d50",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "dry/imported-high-under.png",
+    "renderer": "imported",
+    "tier": "high",
+    "view": "under",
+    "water": false,
+    "water_indices": 0,
+    "frame_ms_with_readback": 1.7286665833333335,
+    "ocean_worker_us": 0.0,
+    "sha256": "e7ed96b5b1ae58e05fb13554040826de05c0471adbecea0f7479c40715034cdf",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "imported-high-under.png",
+    "renderer": "imported",
+    "tier": "high",
+    "view": "under",
+    "water": true,
+    "water_indices": 13080,
+    "frame_ms_with_readback": 2.3616076666666665,
+    "ocean_worker_us": 0.0,
+    "sha256": "bdaaec1351adeeea1baa2077dbf1cb7ce7ad1b8a83056ddc52827e41206bef0e",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "dry/imported-high-pond-posts.png",
+    "renderer": "imported",
+    "tier": "high",
+    "view": "pond-posts",
+    "water": false,
+    "water_indices": 0,
+    "frame_ms_with_readback": 1.7260345833333333,
+    "ocean_worker_us": 0.0,
+    "sha256": "07105308758bf48b06889137f40f8bc3fb0ea1038eaca2c97b71087bae614918",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  },
+  {
+    "image": "imported-high-pond-posts.png",
+    "renderer": "imported",
+    "tier": "high",
+    "view": "pond-posts",
+    "water": true,
+    "water_indices": 13080,
+    "frame_ms_with_readback": 3.2293471666666664,
+    "ocean_worker_us": 0.0,
+    "sha256": "62432d66b387cc113bc7b4e8b1d2a962f5c1981d424b4fcf0d96021dd73d81ed",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max"
+  }
+]

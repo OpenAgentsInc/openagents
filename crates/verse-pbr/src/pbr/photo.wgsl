@@ -114,6 +114,14 @@ struct Frame {
     water_whirl: vec4<f32>,
     water_wet: vec4<f32>,
     water_ice: vec4<f32>,
+    // Medium and High (`water::screen::Plan::uniform`): x 1 when the scene
+    // copies hold this frame, y the screen-space reflection's steps (0 for
+    // none), z refraction's dispersion, w the particles' soft fade depth
+    // (m, 0 for none).
+    water_screen: vec4<f32>,
+    // The planar mirror: x 1 when drawn this frame, y its plane's level
+    // (m), z the body it mirrors, w unused.
+    water_mirror: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> f: Frame;
@@ -1554,6 +1562,22 @@ fn fs_glow(i: GlowOut) -> @location(0) vec4<f32> {
 @group(3) @binding(3) var fire_noise: texture_3d<f32>;
 @group(3) @binding(4) var fire_lut: texture_2d<f32>;
 @group(3) @binding(5) var fire_sampler: sampler;
+// The water's depth copy (`water::screen`): each pixel's view depth, read
+// for the particles' soft fade on Medium and High.
+@group(3) @binding(6) var fx_scene_depth: texture_2d<f32>;
+
+// How much of a particle at `world` on `pixel` shows in front of the
+// opaque scene: it fades over the last `f.water_screen.w` m before what it
+// meets instead of cutting a hard line (Lorach, "Soft Particles", 2007).
+fn soft_particle(world: vec3<f32>, pixel: vec2<f32>) -> f32 {
+    if f.water_screen.x < 0.5 || f.water_screen.w <= 0.0 {
+        return 1.0;
+    }
+    let size = vec2<i32>(textureDimensions(fx_scene_depth));
+    let p = clamp(vec2<i32>(pixel), vec2<i32>(0), size - vec2<i32>(1));
+    let scene = textureLoad(fx_scene_depth, p, 0).r;
+    return clamp((scene - water_view_w(world)) / f.water_screen.w, 0.0, 1.0);
+}
 
 // Fire Pro volume-march.wgsl: bounded emission/absorption integration.
 // Copyright 2026 Daniel Greenheck, MIT (assets/verse/fx/LICENSE-fire-pro.txt).
@@ -1611,8 +1635,9 @@ fn fs_sprite(i: SpriteOut) -> @location(0) vec4<f32> {
     let coverage = max(texel.a, 1.0 / 255.0);
     let straight = texel.rgb / coverage * i.color.rgb * guide_scale();
     let lit = neon_fog(straight, i.world, 1.0) * texel.a;
-    let rgb = mix(emitted, lit, i.params.w) * alpha;
-    let cover = texel.a * alpha * (1.0 - clamp(i.params.z, 0.0, 1.0));
+    let soft = soft_particle(i.world, i.clip.xy);
+    let rgb = mix(emitted, lit, i.params.w) * alpha * soft;
+    let cover = texel.a * alpha * (1.0 - clamp(i.params.z, 0.0, 1.0)) * soft;
     return vec4<f32>(rgb, cover);
 }
 

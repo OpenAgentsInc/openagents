@@ -17,11 +17,17 @@
 //!   worker thread and uploaded as the `water_waves` array texture.
 //! - [`seas`]: sea states from `assets/verse/water/seas/`.
 //! - [`control`]: the frame's `water_control` vector for a quality tier.
+//! - [`screen`]: what Medium and High copy and trace (W5): the scene's
+//!   color and depth copies, refraction, the planar mirror, and
+//!   screen-space reflection, with `screen.wgsl` as its shader half.
 //!
-//! Each pass draws a surface in two halves inside the scene pass, with no
-//! extra pass or render target on any tier: `fs_water_transmit` multiplies
+//! On Low each pass draws a surface in two halves inside the scene pass,
+//! with no extra pass or render target: `fs_water_transmit` multiplies
 //! what lies behind by the surface's per-channel transmittance, then
-//! `fs_water` adds what it reflects, scatters, and foams. The physical
+//! `fs_water` adds what it reflects, scatters, and foams. On Medium and
+//! High the physical renderer draws its zone water once with
+//! `fs_water_screen`, which reads what lies behind from the scene copy
+//! instead ([`screen`]). The physical
 //! renderer's pass also lights the Water Lab's sea bed and draws its spells,
 //! falls, and orbs, which the imported renderer does not.
 
@@ -31,6 +37,7 @@ pub mod ocean;
 #[cfg(test)]
 mod parity;
 pub mod preset;
+pub mod screen;
 pub mod seas;
 pub mod terms;
 pub mod tile;
@@ -161,6 +168,9 @@ pub struct SurfaceGpu {
     pub vertices: wgpu::Buffer,
     pub indices: wgpu::Buffer,
     pub ranges: Vec<std::ops::Range<u32>>,
+    /// Where each body's surface lies at rest (seas, ponds, and streams;
+    /// not falls or orbs), for choosing the body a planar mirror reflects.
+    pub bounds: [Option<screen::Bounds>; MAX_BODIES],
 }
 
 impl SurfaceGpu {
@@ -172,6 +182,7 @@ impl SurfaceGpu {
         let stride = if tier == Tier::Low { 2 } else { 1 };
         let vertices = surface.vertices();
         let (indices, ranges) = surface.ranges(stride);
+        let bounds = body_bounds(&vertices);
         let make = |label, contents: &[u8], usage| {
             device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some(label),
@@ -196,6 +207,7 @@ impl SurfaceGpu {
                 wgpu::BufferUsages::INDEX,
             ),
             ranges,
+            bounds,
         }
     }
 
@@ -209,6 +221,23 @@ impl SurfaceGpu {
     #[must_use]
     pub fn bytes(&self) -> u64 {
         self.vertices.size() + self.indices.size()
+    }
+
+    /// Draws each patch once through `pipeline`, which reads what lies
+    /// behind the surface from the scene copy ([`screen`]).
+    pub fn draw_once<'a>(
+        &'a self,
+        pass: &mut wgpu::RenderPass<'a>,
+        pipeline: &'a wgpu::RenderPipeline,
+    ) {
+        pass.set_vertex_buffer(0, self.vertices.slice(..));
+        pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
+        pass.set_pipeline(pipeline);
+        for range in &self.ranges {
+            if !range.is_empty() {
+                pass.draw_indexed(range.clone(), 0, 0..1);
+            }
+        }
     }
 
     /// Draws each patch through both halves of a water pass: `transmit`
@@ -232,4 +261,29 @@ impl SurfaceGpu {
             pass.draw_indexed(range.clone(), 0, 0..1);
         }
     }
+}
+
+/// Where each body's surface lies at rest, from the vertices of seas,
+/// ponds, and streams.
+#[must_use]
+pub fn body_bounds(vertices: &[WaterVertex]) -> [Option<screen::Bounds>; MAX_BODIES] {
+    let mut out: [Option<screen::Bounds>; MAX_BODIES] = [None; MAX_BODIES];
+    for v in vertices {
+        // Sea and body codes lie below 2.99; falls are 3 and orbs above 4.
+        if !(v.kind < 2.99) || !v.body.is_finite() {
+            continue;
+        }
+        let p = glam::Vec3::from_array(v.pos);
+        if !p.is_finite() {
+            continue;
+        }
+        let slot = &mut out[(v.body.max(0.0) as usize).min(MAX_BODIES - 1)];
+        *slot = Some(
+            slot.map_or(screen::Bounds { min: p, max: p }, |b| screen::Bounds {
+                min: b.min.min(p),
+                max: b.max.max(p),
+            }),
+        );
+    }
+    out
 }

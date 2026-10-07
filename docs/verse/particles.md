@@ -138,9 +138,11 @@ The fragment shader samples two flipbook frames and blends them, both
 samples first in uniform control flow, from one texture array with every
 sheet as a layer. It uses only vertex buffers and a 2D array texture,
 which WebGL2 and OpenGL ES 3.0 support; the low tier uploads the sheets at
-half size. Sprites near the camera fade out, as the glows do. Soft depth
-fade against the scene isn't implemented: it needs the scene depth as a
-texture during the scene pass, which the multisampled targets don't offer.
+half size. Sprites near the camera fade out, as the glows do. On Medium and
+High, a frame that draws particles copies the opaque scene's depth first
+(`verse_pbr::water::screen`), and each sprite fades over the last 0.6 m
+before what it meets instead of cutting a hard line; Low has no depth copy
+and keeps the hard line.
 
 ### Preview
 

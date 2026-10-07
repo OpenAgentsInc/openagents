@@ -1,0 +1,709 @@
+{
+  "capture_command": "cargo run --release -p verse-pbr --example water_capture -- OUTPUT_DIRECTORY --baseline bench/verse/2026-10-07/water-w4",
+  "capture": "Real GPU output from both renderers at each tier, each view without water (dry/), with the two-half water every tier drew before W5 (w2/, physical Medium and High), and with the tier's water; no grading or editing.",
+  "timing": "Each frame time is at 1920 by 1080: the fastest of seven rounds of ten frames submitted back to back and waited on once, divided by ten, run under the build lease's quiet lease; water_ms is the wet frame less the dry one, and added_by_copies_ms the tier's water less the two halves.",
+  "water_drawn_in_every_view": true,
+  "copies_change_every_medium_and_high_view": true,
+  "low_unchanged_from_baseline": true,
+  "low_tier": "Low draws into an 8-bit sRGB scene target with one sample and adds no pass or render target: its water is the two halves inside the scene pass, as before W5.",
+  "tiers": [
+    {
+      "tier": "low",
+      "passes_added": "none",
+      "water_gpu_bytes_1080p": 915288,
+      "copies_and_mirror_bytes_1080p": 0,
+      "gpu_bytes_budget": 8388608,
+      "worst_water_ms_1080p": 0.6043792000000001,
+      "worst_added_by_copies_ms_1080p": 0.0,
+      "gpu_ms_budget": 1.5,
+      "added_within_budget": true,
+      "views_over_time_budget": []
+    },
+    {
+      "tier": "medium",
+      "passes_added": "a half-resolution planar mirror, the scene's resolve into a color copy, and a depth copy",
+      "water_gpu_bytes_1080p": 30583904,
+      "copies_and_mirror_bytes_1080p": 26956800,
+      "gpu_bytes_budget": 33554432,
+      "worst_water_ms_1080p": 2.1814625999999997,
+      "worst_added_by_copies_ms_1080p": 0.16547089999999987,
+      "gpu_ms_budget": 2.5,
+      "added_within_budget": true,
+      "views_over_time_budget": []
+    },
+    {
+      "tier": "high",
+      "passes_added": "a full-resolution planar mirror, the scene's resolve into a color copy, and a depth copy; screen-space reflection runs inside the water's own draw",
+      "water_gpu_bytes_1080p": 62265312,
+      "copies_and_mirror_bytes_1080p": 45619200,
+      "gpu_bytes_budget": 100663296,
+      "worst_water_ms_1080p": 7.197079200000001,
+      "worst_added_by_copies_ms_1080p": 0.3115375,
+      "gpu_ms_budget": 4.0,
+      "added_within_budget": true,
+      "views_over_time_budget": [
+        {
+          "view": "sea",
+          "water_ms_1080p": 7.197079200000001,
+          "two_halves_water_ms_1080p": 11.935524899999999
+        },
+        {
+          "view": "sea-calm",
+          "water_ms_1080p": 5.7843667000000005,
+          "two_halves_water_ms_1080p": 16.712475
+        },
+        {
+          "view": "sea-moderate",
+          "water_ms_1080p": 4.2078709,
+          "two_halves_water_ms_1080p": 5.9546125000000005
+        },
+        {
+          "view": "sea-storm",
+          "water_ms_1080p": 4.0923792,
+          "two_halves_water_ms_1080p": 3.8987959
+        }
+      ]
+    }
+  ],
+  "views": [
+    {
+      "image": "physical-low-pond-noon.png",
+      "renderer": "physical",
+      "tier": "low",
+      "view": "pond-noon",
+      "pixels_changed_by_water": 0.3959645061728395,
+      "water_drawn": true,
+      "water_ms_1080p": 0.29944990000000005,
+      "added_by_copies_ms_1080p": 0.0,
+      "water_gpu_bytes_1080p": 12288,
+      "pixels_changed_from_w2": 0.05855902777777778
+    },
+    {
+      "image": "physical-low-pond-dusk.png",
+      "renderer": "physical",
+      "tier": "low",
+      "view": "pond-dusk",
+      "pixels_changed_by_water": 0.26470679012345677,
+      "water_drawn": true,
+      "water_ms_1080p": 0.16594989999999998,
+      "added_by_copies_ms_1080p": 0.0,
+      "water_gpu_bytes_1080p": 12288,
+      "pixels_changed_from_w2": 0.2264043209876543
+    },
+    {
+      "image": "physical-low-river.png",
+      "renderer": "physical",
+      "tier": "low",
+      "view": "river",
+      "pixels_changed_by_water": 0.1865162037037037,
+      "water_drawn": true,
+      "water_ms_1080p": 0.31565840000000006,
+      "added_by_copies_ms_1080p": 0.0,
+      "water_gpu_bytes_1080p": 24264,
+      "pixels_changed_from_w2": 0.025333719135802468
+    },
+    {
+      "image": "physical-low-sea.png",
+      "renderer": "physical",
+      "tier": "low",
+      "view": "sea",
+      "pixels_changed_by_water": 0.3643730709876543,
+      "water_drawn": true,
+      "water_ms_1080p": 0.6043792000000001,
+      "added_by_copies_ms_1080p": 0.0,
+      "water_gpu_bytes_1080p": 915288,
+      "pixels_changed_from_w2": 0.17239197530864198
+    },
+    {
+      "image": "physical-low-sea-calm.png",
+      "renderer": "physical",
+      "tier": "low",
+      "view": "sea-calm",
+      "pixels_changed_by_water": 0.4660378086419753,
+      "water_drawn": true,
+      "water_ms_1080p": 0.46022910000000006,
+      "added_by_copies_ms_1080p": 0.0,
+      "water_gpu_bytes_1080p": 915288,
+      "pixels_changed_from_baseline": 0.0,
+      "baseline": "bench/verse/2026-10-07/water-w4/physical-low-sea-calm.png",
+      "low_unchanged": true
+    },
+    {
+      "image": "physical-low-sea-moderate.png",
+      "renderer": "physical",
+      "tier": "low",
+      "view": "sea-moderate",
+      "pixels_changed_by_water": 0.46891589506172837,
+      "water_drawn": true,
+      "water_ms_1080p": 0.44586239999999977,
+      "added_by_copies_ms_1080p": 0.0,
+      "water_gpu_bytes_1080p": 915288,
+      "pixels_changed_from_baseline": 0.0,
+      "baseline": "bench/verse/2026-10-07/water-w4/physical-low-sea-moderate.png",
+      "low_unchanged": true
+    },
+    {
+      "image": "physical-low-sea-storm.png",
+      "renderer": "physical",
+      "tier": "low",
+      "view": "sea-storm",
+      "pixels_changed_by_water": 0.46660300925925924,
+      "water_drawn": true,
+      "water_ms_1080p": 0.49697919999999995,
+      "added_by_copies_ms_1080p": 0.0,
+      "water_gpu_bytes_1080p": 915288,
+      "pixels_changed_from_baseline": 0.0,
+      "baseline": "bench/verse/2026-10-07/water-w4/physical-low-sea-storm.png",
+      "low_unchanged": true
+    },
+    {
+      "image": "physical-low-sea-storm-surf.png",
+      "renderer": "physical",
+      "tier": "low",
+      "view": "sea-storm-surf",
+      "pixels_changed_by_water": 0.45806134259259257,
+      "water_drawn": true,
+      "water_ms_1080p": 0.5161457999999999,
+      "added_by_copies_ms_1080p": 0.0,
+      "water_gpu_bytes_1080p": 915288,
+      "pixels_changed_from_baseline": 0.0,
+      "baseline": "bench/verse/2026-10-07/water-w4/physical-low-sea-storm-surf.png",
+      "low_unchanged": true
+    },
+    {
+      "image": "physical-low-under.png",
+      "renderer": "physical",
+      "tier": "low",
+      "view": "under",
+      "pixels_changed_by_water": 1.0,
+      "water_drawn": true,
+      "water_ms_1080p": 0.1599665999999999,
+      "added_by_copies_ms_1080p": 0.0,
+      "water_gpu_bytes_1080p": 12288,
+      "pixels_changed_from_w2": 0.4050906635802469
+    },
+    {
+      "image": "physical-low-pond-posts.png",
+      "renderer": "physical",
+      "tier": "low",
+      "view": "pond-posts",
+      "pixels_changed_by_water": 0.3734375,
+      "water_drawn": true,
+      "water_ms_1080p": 0.4716791000000001,
+      "added_by_copies_ms_1080p": 0.0,
+      "water_gpu_bytes_1080p": 12288
+    },
+    {
+      "image": "physical-medium-pond-noon.png",
+      "renderer": "physical",
+      "tier": "medium",
+      "view": "pond-noon",
+      "pixels_changed_by_water": 0.4080516975308642,
+      "water_drawn": true,
+      "water_ms_1080p": 0.7883958000000001,
+      "added_by_copies_ms_1080p": -0.06716249999999979,
+      "water_gpu_bytes_1080p": 27001280,
+      "pixels_changed_by_copies": 0.3982908950617284,
+      "copies_change_the_water": true
+    },
+    {
+      "image": "physical-medium-pond-dusk.png",
+      "renderer": "physical",
+      "tier": "medium",
+      "view": "pond-dusk",
+      "pixels_changed_by_water": 0.27617091049382714,
+      "water_drawn": true,
+      "water_ms_1080p": 0.5169333,
+      "added_by_copies_ms_1080p": 0.05652069999999987,
+      "water_gpu_bytes_1080p": 27001280,
+      "pixels_changed_by_copies": 0.267139274691358,
+      "copies_change_the_water": true
+    },
+    {
+      "image": "physical-medium-river.png",
+      "renderer": "physical",
+      "tier": "medium",
+      "view": "river",
+      "pixels_changed_by_water": 0.1905401234567901,
+      "water_drawn": true,
+      "water_ms_1080p": 0.4704458,
+      "added_by_copies_ms_1080p": 0.01443339999999993,
+      "water_gpu_bytes_1080p": 27043608,
+      "pixels_changed_by_copies": 0.1455787037037037,
+      "copies_change_the_water": true
+    },
+    {
+      "image": "physical-medium-sea.png",
+      "renderer": "physical",
+      "tier": "medium",
+      "view": "sea",
+      "pixels_changed_by_water": 0.3649903549382716,
+      "water_drawn": true,
+      "water_ms_1080p": 2.1814625999999997,
+      "added_by_copies_ms_1080p": -2.8343832000000004,
+      "water_gpu_bytes_1080p": 30583904,
+      "pixels_changed_by_copies": 0.31631751543209874,
+      "copies_change_the_water": true
+    },
+    {
+      "image": "physical-medium-sea-calm.png",
+      "renderer": "physical",
+      "tier": "medium",
+      "view": "sea-calm",
+      "pixels_changed_by_water": 0.46721064814814817,
+      "water_drawn": true,
+      "water_ms_1080p": 1.9378334000000002,
+      "added_by_copies_ms_1080p": -1.7223958000000001,
+      "water_gpu_bytes_1080p": 30583904,
+      "pixels_changed_by_copies": 0.42865354938271605,
+      "copies_change_the_water": true
+    },
+    {
+      "image": "physical-medium-sea-moderate.png",
+      "renderer": "physical",
+      "tier": "medium",
+      "view": "sea-moderate",
+      "pixels_changed_by_water": 0.47033564814814816,
+      "water_drawn": true,
+      "water_ms_1080p": 1.9082708999999998,
+      "added_by_copies_ms_1080p": -0.8857417000000005,
+      "water_gpu_bytes_1080p": 30583904,
+      "pixels_changed_by_copies": 0.4167997685185185,
+      "copies_change_the_water": true
+    },
+    {
+      "image": "physical-medium-sea-storm.png",
+      "renderer": "physical",
+      "tier": "medium",
+      "view": "sea-storm",
+      "pixels_changed_by_water": 0.47108603395061727,
+      "water_drawn": true,
+      "water_ms_1080p": 1.9738249999999993,
+      "added_by_copies_ms_1080p": 0.16547089999999987,
+      "water_gpu_bytes_1080p": 30583904,
+      "pixels_changed_by_copies": 0.43300925925925926,
+      "copies_change_the_water": true
+    },
+    {
+      "image": "physical-medium-sea-storm-surf.png",
+      "renderer": "physical",
+      "tier": "medium",
+      "view": "sea-storm-surf",
+      "pixels_changed_by_water": 0.46100501543209876,
+      "water_drawn": true,
+      "water_ms_1080p": 1.7028791999999997,
+      "added_by_copies_ms_1080p": 0.07730420000000038,
+      "water_gpu_bytes_1080p": 30583904,
+      "pixels_changed_by_copies": 0.4230401234567901,
+      "copies_change_the_water": true
+    },
+    {
+      "image": "physical-medium-under.png",
+      "renderer": "physical",
+      "tier": "medium",
+      "view": "under",
+      "pixels_changed_by_water": 1.0,
+      "water_drawn": true,
+      "water_ms_1080p": 0.19459579999999999,
+      "added_by_copies_ms_1080p": -0.1322333000000001,
+      "water_gpu_bytes_1080p": 27001280,
+      "pixels_changed_by_copies": 9.645061728395062e-06
+    },
+    {
+      "image": "physical-medium-pond-posts.png",
+      "renderer": "physical",
+      "tier": "medium",
+      "view": "pond-posts",
+      "pixels_changed_by_water": 0.39390046296296294,
+      "water_drawn": true,
+      "water_ms_1080p": 0.6556417000000003,
+      "added_by_copies_ms_1080p": -0.0925625000000001,
+      "water_gpu_bytes_1080p": 27001280,
+      "pixels_changed_by_copies": 0.39391203703703703,
+      "copies_change_the_water": true
+    },
+    {
+      "image": "physical-high-pond-noon.png",
+      "renderer": "physical",
+      "tier": "high",
+      "view": "pond-noon",
+      "pixels_changed_by_water": 0.4118074845679012,
+      "water_drawn": true,
+      "water_ms_1080p": 1.1087708,
+      "added_by_copies_ms_1080p": 0.2016458000000001,
+      "water_gpu_bytes_1080p": 45813120,
+      "pixels_changed_by_copies": 0.3965817901234568,
+      "copies_change_the_water": true
+    },
+    {
+      "image": "physical-high-pond-dusk.png",
+      "renderer": "physical",
+      "tier": "high",
+      "view": "pond-dusk",
+      "pixels_changed_by_water": 0.2777469135802469,
+      "water_drawn": true,
+      "water_ms_1080p": 0.8559665999999999,
+      "added_by_copies_ms_1080p": 0.22991249999999974,
+      "water_gpu_bytes_1080p": 45813120,
+      "pixels_changed_by_copies": 0.2629012345679012,
+      "copies_change_the_water": true
+    },
+    {
+      "image": "physical-high-river.png",
+      "renderer": "physical",
+      "tier": "high",
+      "view": "river",
+      "pixels_changed_by_water": 0.19067322530864197,
+      "water_drawn": true,
+      "water_ms_1080p": 0.6899957999999999,
+      "added_by_copies_ms_1080p": 0.07171250000000029,
+      "water_gpu_bytes_1080p": 46001424,
+      "pixels_changed_by_copies": 0.15009066358024692,
+      "copies_change_the_water": true
+    },
+    {
+      "image": "physical-high-sea.png",
+      "renderer": "physical",
+      "tier": "high",
+      "view": "sea",
+      "pixels_changed_by_water": 0.3655729166666667,
+      "water_drawn": true,
+      "water_ms_1080p": 7.197079200000001,
+      "added_by_copies_ms_1080p": -4.738445699999998,
+      "water_gpu_bytes_1080p": 62265312,
+      "pixels_changed_by_copies": 0.315108024691358,
+      "copies_change_the_water": true
+    },
+    {
+      "image": "physical-high-sea-calm.png",
+      "renderer": "physical",
+      "tier": "high",
+      "view": "sea-calm",
+      "pixels_changed_by_water": 0.46804398148148146,
+      "water_drawn": true,
+      "water_ms_1080p": 5.7843667000000005,
+      "added_by_copies_ms_1080p": -10.9281083,
+      "water_gpu_bytes_1080p": 62265312,
+      "pixels_changed_by_copies": 0.35336805555555556,
+      "copies_change_the_water": true
+    },
+    {
+      "image": "physical-high-sea-moderate.png",
+      "renderer": "physical",
+      "tier": "high",
+      "view": "sea-moderate",
+      "pixels_changed_by_water": 0.4702854938271605,
+      "water_drawn": true,
+      "water_ms_1080p": 4.2078709,
+      "added_by_copies_ms_1080p": -1.746741600000001,
+      "water_gpu_bytes_1080p": 62265312,
+      "pixels_changed_by_copies": 0.3551639660493827,
+      "copies_change_the_water": true
+    },
+    {
+      "image": "physical-high-sea-storm.png",
+      "renderer": "physical",
+      "tier": "high",
+      "view": "sea-storm",
+      "pixels_changed_by_water": 0.47271026234567903,
+      "water_drawn": true,
+      "water_ms_1080p": 4.0923792,
+      "added_by_copies_ms_1080p": 0.19358330000000024,
+      "water_gpu_bytes_1080p": 62265312,
+      "pixels_changed_by_copies": 0.3587326388888889,
+      "copies_change_the_water": true
+    },
+    {
+      "image": "physical-high-sea-storm-surf.png",
+      "renderer": "physical",
+      "tier": "high",
+      "view": "sea-storm-surf",
+      "pixels_changed_by_water": 0.46198109567901235,
+      "water_drawn": true,
+      "water_ms_1080p": 3.6014667,
+      "added_by_copies_ms_1080p": 0.3115375,
+      "water_gpu_bytes_1080p": 62265312,
+      "pixels_changed_by_copies": 0.3102353395061728,
+      "copies_change_the_water": true
+    },
+    {
+      "image": "physical-high-under.png",
+      "renderer": "physical",
+      "tier": "high",
+      "view": "under",
+      "pixels_changed_by_water": 1.0,
+      "water_drawn": true,
+      "water_ms_1080p": 0.2288041999999999,
+      "added_by_copies_ms_1080p": -0.0852208000000001,
+      "water_gpu_bytes_1080p": 45813120,
+      "pixels_changed_by_copies": 5.015432098765432e-05
+    },
+    {
+      "image": "physical-high-pond-posts.png",
+      "renderer": "physical",
+      "tier": "high",
+      "view": "pond-posts",
+      "pixels_changed_by_water": 0.39785686728395064,
+      "water_drawn": true,
+      "water_ms_1080p": 1.0997791999999997,
+      "added_by_copies_ms_1080p": 0.19099159999999982,
+      "water_gpu_bytes_1080p": 45813120,
+      "pixels_changed_by_copies": 0.39260416666666664,
+      "copies_change_the_water": true
+    },
+    {
+      "image": "imported-low-pond-noon.png",
+      "renderer": "imported",
+      "tier": "low",
+      "view": "pond-noon",
+      "pixels_changed_by_water": 0.3989776234567901,
+      "water_drawn": true
+    },
+    {
+      "image": "imported-low-pond-dusk.png",
+      "renderer": "imported",
+      "tier": "low",
+      "view": "pond-dusk",
+      "pixels_changed_by_water": 0.3669965277777778,
+      "water_drawn": true
+    },
+    {
+      "image": "imported-low-river.png",
+      "renderer": "imported",
+      "tier": "low",
+      "view": "river",
+      "pixels_changed_by_water": 0.2071875,
+      "water_drawn": true
+    },
+    {
+      "image": "imported-low-sea.png",
+      "renderer": "imported",
+      "tier": "low",
+      "view": "sea",
+      "pixels_changed_by_water": 0.5127121913580247,
+      "water_drawn": true
+    },
+    {
+      "image": "imported-low-sea-calm.png",
+      "renderer": "imported",
+      "tier": "low",
+      "view": "sea-calm",
+      "pixels_changed_by_water": 0.570727237654321,
+      "water_drawn": true
+    },
+    {
+      "image": "imported-low-sea-moderate.png",
+      "renderer": "imported",
+      "tier": "low",
+      "view": "sea-moderate",
+      "pixels_changed_by_water": 0.5622145061728395,
+      "water_drawn": true
+    },
+    {
+      "image": "imported-low-sea-storm.png",
+      "renderer": "imported",
+      "tier": "low",
+      "view": "sea-storm",
+      "pixels_changed_by_water": 0.5728896604938272,
+      "water_drawn": true
+    },
+    {
+      "image": "imported-low-sea-storm-surf.png",
+      "renderer": "imported",
+      "tier": "low",
+      "view": "sea-storm-surf",
+      "pixels_changed_by_water": 0.5310706018518518,
+      "water_drawn": true
+    },
+    {
+      "image": "imported-low-under.png",
+      "renderer": "imported",
+      "tier": "low",
+      "view": "under",
+      "pixels_changed_by_water": 0.660733024691358,
+      "water_drawn": true
+    },
+    {
+      "image": "imported-low-pond-posts.png",
+      "renderer": "imported",
+      "tier": "low",
+      "view": "pond-posts",
+      "pixels_changed_by_water": 0.394008487654321,
+      "water_drawn": true
+    },
+    {
+      "image": "imported-medium-pond-noon.png",
+      "renderer": "imported",
+      "tier": "medium",
+      "view": "pond-noon",
+      "pixels_changed_by_water": 0.4106076388888889,
+      "water_drawn": true
+    },
+    {
+      "image": "imported-medium-pond-dusk.png",
+      "renderer": "imported",
+      "tier": "medium",
+      "view": "pond-dusk",
+      "pixels_changed_by_water": 0.32810378086419756,
+      "water_drawn": true
+    },
+    {
+      "image": "imported-medium-river.png",
+      "renderer": "imported",
+      "tier": "medium",
+      "view": "river",
+      "pixels_changed_by_water": 0.2082079475308642,
+      "water_drawn": true
+    },
+    {
+      "image": "imported-medium-sea.png",
+      "renderer": "imported",
+      "tier": "medium",
+      "view": "sea",
+      "pixels_changed_by_water": 0.5336728395061728,
+      "water_drawn": true
+    },
+    {
+      "image": "imported-medium-sea-calm.png",
+      "renderer": "imported",
+      "tier": "medium",
+      "view": "sea-calm",
+      "pixels_changed_by_water": 0.5690239197530864,
+      "water_drawn": true
+    },
+    {
+      "image": "imported-medium-sea-moderate.png",
+      "renderer": "imported",
+      "tier": "medium",
+      "view": "sea-moderate",
+      "pixels_changed_by_water": 0.5821392746913581,
+      "water_drawn": true
+    },
+    {
+      "image": "imported-medium-sea-storm.png",
+      "renderer": "imported",
+      "tier": "medium",
+      "view": "sea-storm",
+      "pixels_changed_by_water": 0.5690335648148148,
+      "water_drawn": true
+    },
+    {
+      "image": "imported-medium-sea-storm-surf.png",
+      "renderer": "imported",
+      "tier": "medium",
+      "view": "sea-storm-surf",
+      "pixels_changed_by_water": 0.5259452160493827,
+      "water_drawn": true
+    },
+    {
+      "image": "imported-medium-under.png",
+      "renderer": "imported",
+      "tier": "medium",
+      "view": "under",
+      "pixels_changed_by_water": 0.6615489969135803,
+      "water_drawn": true
+    },
+    {
+      "image": "imported-medium-pond-posts.png",
+      "renderer": "imported",
+      "tier": "medium",
+      "view": "pond-posts",
+      "pixels_changed_by_water": 0.4111053240740741,
+      "water_drawn": true
+    },
+    {
+      "image": "imported-high-pond-noon.png",
+      "renderer": "imported",
+      "tier": "high",
+      "view": "pond-noon",
+      "pixels_changed_by_water": 0.4135165895061728,
+      "water_drawn": true
+    },
+    {
+      "image": "imported-high-pond-dusk.png",
+      "renderer": "imported",
+      "tier": "high",
+      "view": "pond-dusk",
+      "pixels_changed_by_water": 0.3477565586419753,
+      "water_drawn": true
+    },
+    {
+      "image": "imported-high-river.png",
+      "renderer": "imported",
+      "tier": "high",
+      "view": "river",
+      "pixels_changed_by_water": 0.20829475308641976,
+      "water_drawn": true
+    },
+    {
+      "image": "imported-high-sea.png",
+      "renderer": "imported",
+      "tier": "high",
+      "view": "sea",
+      "pixels_changed_by_water": 0.5408699845679013,
+      "water_drawn": true
+    },
+    {
+      "image": "imported-high-sea-calm.png",
+      "renderer": "imported",
+      "tier": "high",
+      "view": "sea-calm",
+      "pixels_changed_by_water": 0.5921238425925925,
+      "water_drawn": true
+    },
+    {
+      "image": "imported-high-sea-moderate.png",
+      "renderer": "imported",
+      "tier": "high",
+      "view": "sea-moderate",
+      "pixels_changed_by_water": 0.5937152777777778,
+      "water_drawn": true
+    },
+    {
+      "image": "imported-high-sea-storm.png",
+      "renderer": "imported",
+      "tier": "high",
+      "view": "sea-storm",
+      "pixels_changed_by_water": 0.5864390432098765,
+      "water_drawn": true
+    },
+    {
+      "image": "imported-high-sea-storm-surf.png",
+      "renderer": "imported",
+      "tier": "high",
+      "view": "sea-storm-surf",
+      "pixels_changed_by_water": 0.5311689814814815,
+      "water_drawn": true
+    },
+    {
+      "image": "imported-high-under.png",
+      "renderer": "imported",
+      "tier": "high",
+      "view": "under",
+      "pixels_changed_by_water": 0.6614621913580246,
+      "water_drawn": true
+    },
+    {
+      "image": "imported-high-pond-posts.png",
+      "renderer": "imported",
+      "tier": "high",
+      "view": "pond-posts",
+      "pixels_changed_by_water": 0.41523341049382717,
+      "water_drawn": true
+    }
+  ],
+  "low_baseline": "Low is compared with the capture made before W5 that has the same view: W4's for the spectral seas (unchanged, 0 pixels). W4 changed Low's other views (its spectral tile and swell), so their difference from W2 (pixels_changed_from_w2) is W4's; before W4 landed, W5's Low matched W2's capture in all six of them with 0 pixels changed.",
+  "web": {
+    "check": "scripts/build-everglade-web.sh --with-pack SITE, then `openagents browser run -- python3 -I bench/verse/2026-10-07/water/webcheck.py SITE OUT CDP` (headless Chrome, 960 by 540, the Water Lab).",
+    "webgpu": "web-webgpu.png: Medium in the browser; the Water Lab's calm sea refracts the sand and the dummies' legs near the beach, with foam where the dummies and rocks stand in it.",
+    "webgl2": "web-webgl2.png: Low, the two halves as before.",
+    "median_work_ms_webgpu": 3.45,
+    "median_work_ms_webgl2": 3.31,
+    "work_ms_note": "work_ms is the page's own per-frame work time from its console, the median after the first two reports. The unchanged Low path (WebGL2) measured 3.3 ms in the same run, against about 2.0 ms in W2's check, so most of the rise is the machine's load, not the copies."
+  },
+  "everglade": {
+    "capture_command": "VERSE_QUALITY=medium|high cargo run --release -p verse --example everglade_water_capture -- OUTPUT_DIRECTORY",
+    "pictures": "everglade-medium/ and everglade-high/: Lantern Pond and Reed Pond from the bank, mirrored (half size on Medium), refracted, with foam around the lily pads, the rowboat, and the swimmer; compare bench/verse/2026-10-07/everglade-water/."
+  },
+  "imported_pictures": "The imported renderer draws as before W5 (two halves on every tier); its pictures were checked in this run (water_drawn) and are not kept here, as they match W2's and W4's captures."
+}

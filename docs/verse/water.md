@@ -3,11 +3,12 @@
 Status: specification, 2026-10-06, updated the same day with the owner's
 answers to its open questions ([Owner decisions](#owner-decisions)). Phases
 W1 ([Coupling with `crates/physics`](#coupling-with-cratesphysics)), W2
-([Shaders per tier](#shaders-per-tier)), and W3
+and W4 ([Shaders per tier](#shaders-per-tier)), W3
 ([Gameplay rules](#gameplay-rules): Everglade's water, swimming, and
-breath) are implemented; nothing else in this document is implemented yet
-unless a section says so. The phases at
-the end are tracked as GitHub issues on the
+breath), and W5 ([Rendering passes](#rendering-passes): scene copies,
+refraction, and reflection) are implemented; nothing else in this document
+is implemented yet unless a section says so. The phases at the end are
+tracked as GitHub issues on the
 [OpenAgents project board](../project-board.md). The coastal zone that builds
 on the ocean phases has its own specification, [The coast](coast.md).
 
@@ -937,6 +938,26 @@ interfere. Captures of the three sea states and the storm's surf through
 both renderers at every tier are in `bench/verse/2026-10-07/water-w4/`. The
 Water Lab's sea is the spectral sea; **Y** turns it from calm to moderate to
 storm.
+
+**Status (W5, 2026-10-07).** On Medium and High, the physical renderer
+draws a frame with water or particles in two scene passes around
+`water::screen`'s copies: the opaque scene resolves into a color copy, a
+full-screen pass writes each pixel's view depth into a half-float depth
+copy, and the water then draws once (`fs_water_screen`) over the kept
+multisampled scene. It refracts the copy along the bent view (Sousa 2005),
+with dispersion on High, absorbs over the depth the copy finds under each
+pixel, and gathers foam where something stands in the water. The nearest
+visible flat body is mirrored first: the opaque scene from the reflected
+eye, clipped at the plane by an oblique near plane (Lengyel 2005), at half
+size on Medium and full size on High. High also marches a screen-space
+reflection (McGuire and Mara 2014) for the water the mirror does not
+take. Particles fade against the depth copy. Low adds no pass or target
+and draws as before; its captures match those made before W5. The imported
+renderer still draws every tier in two halves; no zone draws water through
+it yet. At
+1080p the copies and mirror take 27 MB on Medium and 46 MB on High, and
+cost under 0.4 ms over the two halves. Captures, timings, and the browser
+check are in `bench/verse/2026-10-07/water-screen/`.
 
 ### Coupling with `crates/physics`
 

@@ -1,15 +1,26 @@
 //! Fixed water views through both Verse renderers at every quality tier
-//! (`docs/verse/water.md`, phases W2 and W4).
+//! (`docs/verse/water.md`, phases W2, W4, and W5).
 //!
-//! Usage: water_capture OUTPUT_DIRECTORY
+//! Usage: water_capture OUTPUT_DIRECTORY [--baseline DIRECTORY]...
 //!
-//! Renders five views (a pond at noon and at dusk, a river around two rocks,
-//! a sea rolling onto a beach toward a low sun, and the pond from under its
-//! surface), and the spectral sea in its calm, moderate, and storm states
-//! (`sea-calm`, `sea-moderate`, `sea-storm`, and the storm's surf,
-//! `sea-storm-surf`, phase W4), through the
-//! physical renderer and the imported renderer at Low,
-//! Medium, and High, each with and without its water (the latter into
+//! The physical renderer draws each view three ways: without water (into
+//! `dry/`), with the water every tier drew before W5 (its two halves over
+//! the scene, into `w2/`, Medium and High only), and with this tier's
+//! water (W5: refraction, the planar mirror, and on High screen-space
+//! reflection over the scene copies). Each is also timed at 1920 by 1080,
+//! the fastest of several batches of frames, and `validation.json` records
+//! what the copies add per tier in time and memory against
+//! `docs/verse/water.md`'s budgets. With `--baseline`, each Low picture is
+//! compared with the same picture in the first earlier capture that has
+//! it, which it must match.
+//!
+//! Renders six views (a pond at noon and at dusk, a river around two rocks,
+//! a sea rolling onto a beach toward a low sun, the pond from under its
+//! surface, and the still pond with posts standing in it, phase W5), and
+//! the spectral sea in its calm, moderate, and storm states (`sea-calm`,
+//! `sea-moderate`, `sea-storm`, and the storm's surf, `sea-storm-surf`,
+//! phase W4), through the physical renderer and the imported renderer at
+//! Low, Medium, and High, each with and without its water (the latter into
 //! `dry/`, for the comparison only), and writes the PNGs,
 //! `capture.json` (one record a picture, with its digest and frame times),
 //! and `validation.json` (what each picture shows was checked). Water bodies
@@ -36,7 +47,7 @@ use verse_pbr::{
         gpu::{Batches, Capability, Photo, Stage},
     },
     water::{
-        Body, Kind, Preset, Sky, Water, WaterSurface,
+        Body, Kind, Preset, Sky, Swell, Water, WaterSurface,
         bake::{self, Bake},
         frame::wind_sea,
     },
@@ -45,8 +56,14 @@ use wgpu::util::DeviceExt;
 
 const WIDTH: u32 = 960;
 const HEIGHT: u32 = 540;
-/// Frames timed a view, after one to warm up.
+/// Frames timed a view, after one to warm up (the imported renderer).
 const TIMED: usize = 12;
+/// Rounds of [`BATCH`] frames timed a physical view at the budget size,
+/// after one to warm up; the fastest stands.
+const ROUNDS: usize = 7;
+const BATCH: usize = 10;
+/// The size the budgets in `docs/verse/water.md` are stated for.
+const BUDGET_SIZE: [u32; 2] = [1920, 1080];
 const TIERS: [Tier; 3] = [Tier::Low, Tier::Medium, Tier::High];
 
 /// The water clock every view shows, s.
@@ -73,6 +90,11 @@ struct ViewSpec {
     dusk: bool,
     /// The eye is in the water.
     under: bool,
+    /// Posts stand in and around the pond (W5): for refraction, the mirror,
+    /// and contact foam.
+    posts: bool,
+    /// The water has no swell, so the mirror takes it.
+    still: bool,
 }
 
 /// The views, or those `WATER_CAPTURE_VIEWS` (a comma-separated list) names.
@@ -95,6 +117,8 @@ fn all_views() -> Vec<ViewSpec> {
             sun: Vec3::new(0.35, 0.86, -0.38).normalize(),
             dusk: false,
             under: false,
+            posts: false,
+            still: false,
         },
         ViewSpec {
             name: "pond-dusk",
@@ -104,6 +128,8 @@ fn all_views() -> Vec<ViewSpec> {
             sun: Vec3::new(0.08, 0.13, -1.0).normalize(),
             dusk: true,
             under: false,
+            posts: false,
+            still: false,
         },
         ViewSpec {
             name: "river",
@@ -113,6 +139,8 @@ fn all_views() -> Vec<ViewSpec> {
             sun: Vec3::new(-0.4, 0.75, -0.5).normalize(),
             dusk: false,
             under: false,
+            posts: false,
+            still: false,
         },
         ViewSpec {
             name: "sea",
@@ -122,6 +150,8 @@ fn all_views() -> Vec<ViewSpec> {
             sun: Vec3::new(0.12, 0.2, -1.0).normalize(),
             dusk: true,
             under: false,
+            posts: false,
+            still: false,
         },
         ViewSpec {
             name: "sea-calm",
@@ -131,6 +161,8 @@ fn all_views() -> Vec<ViewSpec> {
             sun: Vec3::new(0.35, 0.42, -0.84).normalize(),
             dusk: false,
             under: false,
+            posts: false,
+            still: false,
         },
         ViewSpec {
             name: "sea-moderate",
@@ -140,6 +172,8 @@ fn all_views() -> Vec<ViewSpec> {
             sun: Vec3::new(0.35, 0.42, -0.84).normalize(),
             dusk: false,
             under: false,
+            posts: false,
+            still: false,
         },
         ViewSpec {
             name: "sea-storm",
@@ -149,6 +183,8 @@ fn all_views() -> Vec<ViewSpec> {
             sun: Vec3::new(0.35, 0.42, -0.84).normalize(),
             dusk: false,
             under: false,
+            posts: false,
+            still: false,
         },
         ViewSpec {
             name: "sea-storm-surf",
@@ -158,6 +194,8 @@ fn all_views() -> Vec<ViewSpec> {
             sun: Vec3::new(0.35, 0.42, -0.84).normalize(),
             dusk: false,
             under: false,
+            posts: false,
+            still: false,
         },
         ViewSpec {
             name: "under",
@@ -167,6 +205,19 @@ fn all_views() -> Vec<ViewSpec> {
             sun: Vec3::new(0.35, 0.86, -0.38).normalize(),
             dusk: false,
             under: true,
+            posts: false,
+            still: false,
+        },
+        ViewSpec {
+            name: "pond-posts",
+            eye: Vec3::new(-9.5, 2.6, 9.0),
+            target: Vec3::new(1.5, -0.6, -1.5),
+            ground: Ground::Pond,
+            sun: Vec3::new(0.35, 0.86, -0.38).normalize(),
+            dusk: false,
+            under: false,
+            posts: true,
+            still: true,
         },
     ]
 }
@@ -358,6 +409,9 @@ fn water(world: &World, spec: &ViewSpec) -> Water {
         eye_inside: spec.under,
         ..Body::from_physics(&world.body, &preset)
     };
+    if spec.still {
+        water.bodies[0].swell = Swell::default();
+    }
     water.time = TIME;
     let (zenith, horizon, color) = palette(spec.dusk);
     water.sky = Some(Sky {
@@ -378,9 +432,47 @@ fn palette(dusk: bool) -> ([f32; 3], [f32; 3], [f32; 3]) {
     }
 }
 
+/// Grass, sand, and painted wood: what a triangle of the bed is.
+const GRASS: u8 = 0;
+const SAND: u8 = 1;
+const POST: u8 = 2;
+
+/// Where the posts stand (x, z), and their half width, m.
+const POSTS: [(f32, f32, f32); 5] = [
+    (1.5, -1.0, 0.3),
+    (-2.5, 2.0, 0.25),
+    (4.0, 3.0, 0.35),
+    (-0.5, -5.5, 0.3),
+    (-6.0, -2.0, 0.3),
+];
+
+/// A box from `bottom` to `top` around (x, z), its sides and top.
+fn post(out: &mut Vec<(Vec3, Vec3, u8)>, x: f32, z: f32, s: f32, bottom: f32, top: f32) {
+    let corners: Vec<Vec3> = (0..8)
+        .map(|i| {
+            Vec3::new(
+                x + if i & 1 == 0 { -s } else { s },
+                if i & 2 == 0 { bottom } else { top },
+                z + if i & 4 == 0 { -s } else { s },
+            )
+        })
+        .collect();
+    for (a, b, c, d, n) in [
+        (0, 1, 3, 2, -Vec3::Z),
+        (4, 6, 7, 5, Vec3::Z),
+        (0, 2, 6, 4, -Vec3::X),
+        (1, 5, 7, 3, Vec3::X),
+        (2, 3, 7, 6, Vec3::Y),
+    ] {
+        for i in [a, b, c, a, c, d] {
+            out.push((corners[i], n, POST));
+        }
+    }
+}
+
 /// The bed as triangles with smooth normals: a grid of `step` m, sand under
-/// and near the water, grass above it.
-fn bed_triangles(world: &World, step: f32) -> Vec<(Vec3, Vec3, bool)> {
+/// and near the water, grass above it, and the posts when `posts`.
+fn bed_triangles(world: &World, step: f32, posts: bool) -> Vec<(Vec3, Vec3, u8)> {
     let (lo, hi) = world.bounds;
     let cols = ((hi.x - lo.x) / step) as usize + 1;
     let rows = ((hi.y - lo.y) / step) as usize + 1;
@@ -402,7 +494,11 @@ fn bed_triangles(world: &World, step: f32) -> Vec<(Vec3, Vec3, bool)> {
     for r in 0..rows - 1 {
         for c in 0..cols - 1 {
             let quad = [at(c, r), at(c + 1, r), at(c + 1, r + 1), at(c, r + 1)];
-            let sand = quad.iter().any(|(p, _)| p.y < 0.6);
+            let sand = if quad.iter().any(|(p, _)| p.y < 0.6) {
+                SAND
+            } else {
+                GRASS
+            };
             for i in [0, 2, 1, 0, 3, 2] {
                 out.push((quad[i].0, quad[i].1, sand));
             }
@@ -432,26 +528,32 @@ fn bed_triangles(world: &World, step: f32) -> Vec<(Vec3, Vec3, bool)> {
                 (2, 3, 7, 6, Vec3::Y),
             ] {
                 for i in [a, b, c, a, c, d] {
-                    out.push((corners[i], n, false));
+                    out.push((corners[i], n, GRASS));
                 }
             }
+        }
+    }
+    if posts {
+        for &(x, z, s) in &POSTS {
+            let bottom = h(x, z) - 0.3;
+            post(&mut out, x, z, s, bottom, 1.4 + 0.3 * (x * 1.7).sin().abs());
         }
     }
     out
 }
 
-fn lit(triangles: &[(Vec3, Vec3, bool)]) -> Vec<LitVertex> {
+fn lit(triangles: &[(Vec3, Vec3, u8)]) -> Vec<LitVertex> {
     triangles
         .iter()
-        .map(|&(p, n, sand)| LitVertex {
+        .map(|&(p, n, kind)| LitVertex {
             pos: p.to_array(),
             normal: n.to_array(),
             tangent: n.any_orthonormal_vector().to_array(),
             local: p.to_array(),
-            color: if sand {
-                [0.62, 0.55, 0.42]
-            } else {
-                [0.22, 0.34, 0.14]
+            color: match kind {
+                SAND => [0.62, 0.55, 0.42],
+                POST => [0.62, 0.16, 0.10],
+                _ => [0.22, 0.34, 0.14],
             },
             params: [0.0, 0.9, Material::Stage.code(), 1.0],
         })
@@ -538,17 +640,33 @@ fn capability(tier: Tier) -> Capability {
     }
 }
 
+/// How the physical renderer draws a view's water.
+#[derive(Clone, Copy, PartialEq)]
+enum Wet {
+    /// No water.
+    Dry,
+    /// The two halves every tier drew before W5.
+    Halves,
+    /// This tier's water: on Medium and High, over the scene copies.
+    Tier,
+}
+
+/// A view through the physical renderer at `size`: its pixels (at the
+/// capture size only), its frame time (the fastest of [`ROUNDS`]
+/// batches), the water's index count, and the bytes its scene copies and
+/// surface hold.
 fn physical(
     gpu: &Gpu,
     photo: &mut Photo,
     tier: Tier,
     spec: &ViewSpec,
-    with_water: bool,
-) -> Result<(Vec<u8>, f64, u32), String> {
+    wet: Wet,
+    size: [u32; 2],
+) -> Result<(Vec<u8>, f64, u32, u64), String> {
     let world = world(spec.ground);
     let surface = surface(&world, tier)?;
     let water_gpu = photo.upload_water(&gpu.device, &surface);
-    let geometry = lit(&bed_triangles(&world, 0.5));
+    let geometry = lit(&bed_triangles(&world, 0.5, spec.posts));
     let buffer = gpu
         .device
         .create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -556,11 +674,18 @@ fn physical(
             contents: bytemuck::cast_slice(&geometry),
             usage: wgpu::BufferUsages::VERTEX,
         });
+    let with_water = wet != Wet::Dry;
+    photo.water_copies = wet == Wet::Tier;
     let neon = stage(spec, with_water.then(|| water(&world, spec)));
-    let mut targets = photo.targets(&gpu.device, WIDTH, HEIGHT);
+    let [width, height] = size;
+    let mut targets = photo.targets(&gpu.device, width, height);
     let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
         label: Some("water capture"),
-        size: extent(),
+        size: wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
         mip_level_count: 1,
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
@@ -569,12 +694,24 @@ fn physical(
         view_formats: &[],
     });
     let output = texture.create_view(&Default::default());
+    let capture = size == [WIDTH, HEIGHT];
     let mut pixels = Vec::new();
-    let mut total = 0.0;
     // Every frame shows the spectral sea at exactly the clock's tick.
     photo.ocean.exact = true;
-    for frame in 0..=TIMED {
-        let started = Instant::now();
+    let mut times = Vec::new();
+    let mut view = camera(spec);
+    view.view_proj = Mat4::perspective_rh(0.9, width as f32 / height as f32, 0.1, 400.0)
+        * Mat4::look_at_rh(spec.eye, spec.target, Vec3::Y);
+    let batches = &Batches {
+        streamed: None,
+        lit: (&buffer, geometry.len() as u32),
+        faces: [(&buffer, 0); 2],
+        lines: [(&buffer, 0); 2],
+        textured: None,
+        figure: None,
+        water: with_water.then_some(&water_gpu),
+    };
+    let mut frame = |photo: &mut Photo| {
         let mut encoder = gpu.device.create_command_encoder(&Default::default());
         photo.encode(
             &gpu.device,
@@ -582,25 +719,54 @@ fn physical(
             &mut encoder,
             &output,
             &mut targets,
-            camera(spec),
+            view,
             Stage::Neon(&neon),
-            Batches {
-                streamed: None,
-                lit: (&buffer, geometry.len() as u32),
-                faces: [(&buffer, 0); 2],
-                lines: [(&buffer, 0); 2],
-                textured: None,
-                figure: None,
-                water: with_water.then_some(&water_gpu),
-            },
+            Batches { ..*batches },
             None,
         );
-        pixels = read(gpu, &texture, encoder)?;
-        if frame > 0 {
-            total += started.elapsed().as_secs_f64();
+        encoder
+    };
+    let wait = || {
+        gpu.device
+            .poll(wgpu::PollType::Wait {
+                submission_index: None,
+                timeout: Some(std::time::Duration::from_secs(20)),
+            })
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    };
+    if capture {
+        let warm = frame(photo);
+        gpu.queue.submit([warm.finish()]);
+        wait()?;
+        pixels = read(gpu, &texture, frame(photo))?;
+    } else {
+        // Frames submitted back to back and waited on once a batch, so the
+        // time is the GPU's throughput rather than one submission's
+        // latency.
+        for round in 0..=ROUNDS {
+            let started = Instant::now();
+            for _ in 0..BATCH {
+                let encoder = frame(photo);
+                gpu.queue.submit([encoder.finish()]);
+            }
+            wait()?;
+            if round > 0 {
+                times.push(started.elapsed().as_secs_f64() * 1e3 / BATCH as f64);
+            }
         }
     }
-    Ok((pixels, total / TIMED as f64 * 1e3, water_gpu.0.count()))
+    photo.water_copies = true;
+    // The fastest round: the one other work on a shared machine disturbed
+    // least.
+    let fastest = times.iter().copied().fold(f64::INFINITY, f64::min);
+    let fastest = if fastest.is_finite() { fastest } else { 0.0 };
+    Ok((
+        pixels,
+        fastest,
+        water_gpu.0.count(),
+        targets.water_bytes() + water_gpu.bytes(),
+    ))
 }
 
 fn extent() -> wgpu::Extent3d {
@@ -679,7 +845,7 @@ fn imported(directory: &Path, tier: Tier) -> Result<Vec<Value>, String> {
         let assets = tempfile::tempdir().map_err(|e| e.to_string())?;
         let mut pack = verse_content::compiler::original::generate(assets.path())?;
         let texture = flat::white_texture(&mut pack, assets.path())?;
-        let triangles = bed_triangles(&world, 0.5);
+        let triangles = bed_triangles(&world, 0.5, spec.posts);
         let mut sand = flat::surface(texture, [0.62, 0.55, 0.42], Topology::Triangles);
         let mut grass = flat::surface(texture, [0.22, 0.34, 0.14], Topology::Triangles);
         for s in [&mut sand, &mut grass] {
@@ -695,8 +861,8 @@ fn imported(directory: &Path, tier: Tier) -> Result<Vec<Value>, String> {
                 weights: [1.0, 0.0, 0.0, 0.0],
             });
         };
-        for &(p, n, is_sand) in &triangles {
-            push(if is_sand { &mut sand } else { &mut grass }, p, n);
+        for &(p, n, kind) in &triangles {
+            push(if kind == SAND { &mut sand } else { &mut grass }, p, n);
         }
         pack.models.insert(
             "water-bed".into(),
@@ -822,57 +988,184 @@ fn decode(path: &Path) -> Result<Vec<u8>, String> {
     Ok(buffer)
 }
 
+/// `docs/verse/water.md`'s budgets for water at 1080p: GPU time, ms, and
+/// GPU memory, bytes.
+fn budget(tier: Tier) -> (f64, u64) {
+    let mib = 1024 * 1024;
+    match tier {
+        Tier::Low => (1.5, 8 * mib),
+        Tier::Medium => (2.5, 32 * mib),
+        Tier::High => (4.0, 96 * mib),
+    }
+}
+
 fn main() -> Result<(), String> {
     let mut args = std::env::args().skip(1);
     let directory = PathBuf::from(args.next().ok_or("Expected an output directory")?);
     std::fs::create_dir_all(directory.join("dry")).map_err(|e| e.to_string())?;
-    if args.next().as_deref() == Some("--imported") {
-        let tier =
-            Tier::parse(&args.next().ok_or("--imported needs a tier")?).ok_or("unknown tier")?;
-        let records = imported(&directory, tier)?;
-        std::fs::write(
-            directory.join(format!("imported-{}.json", tier_name(tier))),
-            serde_json::to_vec_pretty(&records).map_err(|e| e.to_string())?,
-        )
-        .map_err(|e| e.to_string())?;
-        return Ok(());
+    std::fs::create_dir_all(directory.join("w2")).map_err(|e| e.to_string())?;
+    let mut baseline: Vec<PathBuf> = Vec::new();
+    match args.next().as_deref() {
+        Some("--imported") => {
+            let tier = Tier::parse(&args.next().ok_or("--imported needs a tier")?)
+                .ok_or("unknown tier")?;
+            let records = imported(&directory, tier)?;
+            std::fs::write(
+                directory.join(format!("imported-{}.json", tier_name(tier))),
+                serde_json::to_vec_pretty(&records).map_err(|e| e.to_string())?,
+            )
+            .map_err(|e| e.to_string())?;
+            return Ok(());
+        }
+        Some("--baseline") => {
+            baseline.push(PathBuf::from(
+                args.next().ok_or("--baseline needs a directory")?,
+            ));
+            while args.next().as_deref() == Some("--baseline") {
+                baseline.push(PathBuf::from(
+                    args.next().ok_or("--baseline needs a directory")?,
+                ));
+            }
+        }
+        _ => {}
     }
     let gpu = gpu()?;
     let mut records = Vec::new();
+    let mut checks = Vec::new();
+    let mut tiers = Vec::new();
+    // `WATER_CAPTURE_TIERS` (a comma-separated list) narrows the tiers, and
+    // `WATER_CAPTURE_IMPORTED=0` skips the imported renderer, for a quick
+    // look; the committed capture runs everything.
+    let only = std::env::var("WATER_CAPTURE_TIERS").ok();
+    let imported_too = std::env::var("WATER_CAPTURE_IMPORTED").as_deref() != Ok("0");
     for tier in TIERS {
+        if only
+            .as_deref()
+            .is_some_and(|only| !only.split(',').any(|name| name == tier_name(tier)))
+        {
+            continue;
+        }
         let mut photo = Photo::new(
             &gpu.device,
             &gpu.queue,
             capability(tier),
             wgpu::TextureFormat::Rgba8UnormSrgb,
         )?;
+        let mut worst_ms: f64 = 0.0;
+        let mut worst_added: f64 = 0.0;
+        let mut worst_bytes = 0;
+        let mut over = Vec::new();
+        let (ms_budget, bytes_budget) = budget(tier);
         for spec in views() {
-            for with_water in [false, true] {
-                let (pixels, ms, count) = physical(&gpu, &mut photo, tier, &spec, with_water)?;
-                let name = format!(
-                    "{}physical-{}-{}.png",
-                    if with_water { "" } else { "dry/" },
-                    tier_name(tier),
-                    spec.name,
-                );
+            let mut shots = Vec::new();
+            let ways: &[Wet] = if tier == Tier::Low {
+                &[Wet::Dry, Wet::Tier]
+            } else {
+                &[Wet::Dry, Wet::Halves, Wet::Tier]
+            };
+            for &wet in ways {
+                let (pixels, _, count, _) =
+                    physical(&gpu, &mut photo, tier, &spec, wet, [WIDTH, HEIGHT])?;
+                let (_, ms, _, bytes) = physical(&gpu, &mut photo, tier, &spec, wet, BUDGET_SIZE)?;
+                let folder = match wet {
+                    Wet::Dry => "dry/",
+                    Wet::Halves => "w2/",
+                    Wet::Tier => "",
+                };
+                let name = format!("{folder}physical-{}-{}.png", tier_name(tier), spec.name);
                 png(&directory.join(&name), &pixels)?;
-                eprintln!("{name}: {ms:.2} ms a frame with readback");
+                eprintln!("{name}: {ms:.2} ms a frame at 1080p");
                 records.push(json!({
                     "image": name,
                     "renderer": "physical",
                     "tier": tier_name(tier),
                     "view": spec.name,
-                    "water": with_water,
-                    "water_indices": if with_water { count } else { 0 },
+                    "water": wet != Wet::Dry,
+                    "screen_copies": wet == Wet::Tier && tier != Tier::Low,
+                    "water_indices": if wet == Wet::Dry { 0 } else { count },
                     "scene_target": if tier == Tier::Low { "Rgba8UnormSrgb (no floating-point target)" } else { "Rgba16Float" },
                     "samples": capability(tier).samples,
-                    "frame_ms_with_readback": ms,
                     "ocean_worker_us": photo.ocean.micros,
+                    "frame_ms_1080p": ms,
+                    "water_gpu_bytes_1080p": if wet == Wet::Dry { 0 } else { bytes },
                     "sha256": digest(&directory.join(&name))?,
                     "resolution": [WIDTH, HEIGHT],
                     "adapter": gpu.adapter,
                 }));
+                shots.push((wet, name, pixels, ms, bytes));
             }
+            let find = |wet: Wet| shots.iter().find(|s| s.0 == wet);
+            let (Some(dry), Some(wet)) = (find(Wet::Dry), find(Wet::Tier)) else {
+                return Err("a view is missing a picture".into());
+            };
+            let halves = find(Wet::Halves);
+            let water_ms = wet.3 - dry.3;
+            let added_ms = halves.map_or(0.0, |h| wet.3 - h.3);
+            worst_ms = worst_ms.max(water_ms);
+            worst_added = worst_added.max(added_ms);
+            worst_bytes = worst_bytes.max(wet.4);
+            if water_ms > ms_budget {
+                over.push(json!({
+                    "view": spec.name,
+                    "water_ms_1080p": water_ms,
+                    "two_halves_water_ms_1080p": halves.map(|h| h.3 - dry.3),
+                }));
+            }
+            let mut check = json!({
+                "image": wet.1,
+                "renderer": "physical",
+                "tier": tier_name(tier),
+                "view": spec.name,
+                "pixels_changed_by_water": changed(&wet.2, &dry.2),
+                "water_drawn": changed(&wet.2, &dry.2) > 0.02,
+                "water_ms_1080p": water_ms,
+                "added_by_copies_ms_1080p": added_ms,
+                "water_gpu_bytes_1080p": wet.4,
+            });
+            if let Some(h) = halves {
+                // Refraction, the mirror, and the trace change what the
+                // water shows over the two halves. From under the surface
+                // the copies show what the halves did (W7 refracts it).
+                check["pixels_changed_by_copies"] = json!(changed(&wet.2, &h.2));
+                if !spec.under {
+                    check["copies_change_the_water"] = json!(changed(&wet.2, &h.2) > 0.01);
+                }
+            }
+            if tier == Tier::Low
+                && let Some(earlier) = baseline
+                    .iter()
+                    .map(|base| base.join(&wet.1))
+                    .find(|earlier| earlier.exists())
+            {
+                let share = changed(&wet.2, &decode(&earlier)?);
+                check["pixels_changed_from_baseline"] = json!(share);
+                check["baseline"] = json!(earlier.display().to_string());
+                check["low_unchanged"] = json!(share < 0.001);
+            }
+            checks.push(check);
+        }
+        tiers.push(json!({
+            "tier": tier_name(tier),
+            "passes_added": match tier {
+                Tier::Low => "none",
+                Tier::Medium => "a half-resolution planar mirror, the scene's resolve into a color copy, and a depth copy",
+                Tier::High => "a full-resolution planar mirror, the scene's resolve into a color copy, and a depth copy; screen-space reflection runs inside the water's own draw",
+            },
+            "water_gpu_bytes_1080p": worst_bytes,
+            "copies_and_mirror_bytes_1080p": verse_pbr::water::screen::Plan::of(tier).bytes(1920, 1080, 8),
+            "gpu_bytes_budget": bytes_budget,
+            "worst_water_ms_1080p": worst_ms,
+            "worst_added_by_copies_ms_1080p": worst_added,
+            "gpu_ms_budget": ms_budget,
+            // What W5 adds: its targets within the memory budget, and its
+            // time no more than the budget's whole allowance.
+            "added_within_budget": worst_bytes <= bytes_budget && worst_added <= ms_budget,
+            // Views whose water costs more than the budget on this machine
+            // whichever way it draws: the cost lies in the surface itself.
+            "views_over_time_budget": over,
+        }));
+        if !imported_too {
+            continue;
         }
         let status =
             std::process::Command::new(std::env::current_exe().map_err(|e| e.to_string())?)
@@ -895,32 +1188,33 @@ fn main() -> Result<(), String> {
         std::fs::remove_file(&part).map_err(|e| e.to_string())?;
         records.extend(imported);
     }
-    // Each view with water differs from the same view without it, and the
-    // water's cost is the difference of the frame times.
-    let mut checks = Vec::new();
-    for record in records.iter().filter(|r| r["water"] == true) {
+    // The imported renderer keeps the two halves on every tier.
+    for record in records
+        .iter()
+        .filter(|r| r["water"] == true && r["renderer"] == "imported")
+    {
         let wet = record["image"].as_str().unwrap_or_default();
         let dry = format!("dry/{wet}");
         let share = changed(
             &decode(&directory.join(wet))?,
             &decode(&directory.join(&dry))?,
         );
-        let dry_ms = records
-            .iter()
-            .find(|r| r["image"] == dry.as_str())
-            .and_then(|r| r["frame_ms_with_readback"].as_f64())
-            .unwrap_or(0.0);
         checks.push(json!({
             "image": wet,
-            "renderer": record["renderer"],
+            "renderer": "imported",
             "tier": record["tier"],
             "view": record["view"],
             "pixels_changed_by_water": share,
             "water_drawn": share > 0.02,
-            "water_ms_with_readback": record["frame_ms_with_readback"].as_f64().unwrap_or(0.0) - dry_ms,
         }));
     }
     let all = checks.iter().all(|c| c["water_drawn"] == true);
+    let copies = checks
+        .iter()
+        .all(|c| c.get("copies_change_the_water").is_none_or(|v| v == true));
+    let low = checks
+        .iter()
+        .all(|c| c.get("low_unchanged").is_none_or(|v| v == true));
     std::fs::write(
         directory.join("capture.json"),
         serde_json::to_vec_pretty(&records).map_err(|e| e.to_string())?,
@@ -929,10 +1223,14 @@ fn main() -> Result<(), String> {
     std::fs::write(
         directory.join("validation.json"),
         serde_json::to_vec_pretty(&json!({
-            "capture_command": "cargo run --release -p verse-pbr --example water_capture -- OUTPUT_DIRECTORY",
-            "capture": "Real GPU output from both renderers at each tier, each view with and without its water; no grading or editing.",
+            "capture_command": "cargo run --release -p verse-pbr --example water_capture -- OUTPUT_DIRECTORY --baseline bench/verse/2026-10-07/water-w4",
+            "capture": "Real GPU output from both renderers at each tier, each view without water (dry/), with the two-half water every tier drew before W5 (w2/, physical Medium and High), and with the tier's water; no grading or editing.",
+            "timing": "Each frame time is at 1920 by 1080: the fastest of seven rounds of ten frames submitted back to back and waited on once, divided by ten, run under the build lease's quiet lease; water_ms is the wet frame less the dry one, and added_by_copies_ms the tier's water less the two halves.",
             "water_drawn_in_every_view": all,
-            "low_tier": "The physical renderer's Low draws into an 8-bit sRGB scene target with one sample; both renderers draw water inside the scene pass, so no tier adds a pass or a render target for it.",
+            "copies_change_every_medium_and_high_view": copies,
+            "low_unchanged_from_baseline": low,
+            "low_tier": "Low draws into an 8-bit sRGB scene target with one sample and adds no pass or render target: its water is the two halves inside the scene pass, as before W5.",
+            "tiers": tiers,
             "views": checks,
         }))
         .map_err(|e| e.to_string())?,

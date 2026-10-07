@@ -1,11 +1,12 @@
 //! Shared local-light and coverage semantics before backend shader translation.
 
 /// Expands `// VERSE_SHARED_SHADING` into the shared shading and fire
-/// functions, `// VERSE_WATER` into the shared water shader and the
-/// physical renderer's water pass (`water/water.wgsl` and
-/// `water/photo.wgsl`), and `// VERSE_WATER_IMPORTED` into the shared water
-/// shader and the imported renderer's pass (`water/imported.wgsl`), as the
-/// renderers do before compiling a shader. Public so the `verse` GLES
+/// functions, `// VERSE_WATER` into the shared water shader, its screen
+/// half, and the physical renderer's water pass (`water/water.wgsl`,
+/// `water/screen.wgsl`, and `water/photo.wgsl`), and
+/// `// VERSE_WATER_IMPORTED` into the shared water shader and the imported
+/// renderer's pass (`water/imported.wgsl`), as the renderers do before
+/// compiling a shader. Public so the `verse` GLES
 /// translation test expands shaders exactly as the renderer does.
 pub fn source(source: &str) -> String {
     source
@@ -23,7 +24,12 @@ pub fn source(source: &str) -> String {
         )
         .replace(
             "// VERSE_WATER",
-            &format!("{}\n{}", crate::water::SHARED, crate::water::PHOTO),
+            &format!(
+                "{}\n{}\n{}",
+                crate::water::SHARED,
+                crate::water::screen::SHADER,
+                crate::water::PHOTO
+            ),
         )
 }
 
@@ -56,6 +62,15 @@ mod tests {
                     assert!(
                         module.entry_points.iter().any(|e| e.name == entry),
                         "{name} has {entry}"
+                    );
+                }
+                if name == "pbr/photo.wgsl" {
+                    assert!(
+                        module
+                            .entry_points
+                            .iter()
+                            .any(|e| e.name == "fs_water_screen"),
+                        "the physical renderer reads its scene copies"
                     );
                 }
             }

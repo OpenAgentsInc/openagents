@@ -12,6 +12,20 @@
 @group(2) @binding(4) var water_tile: texture_2d<f32>;
 @group(2) @binding(5) var water_tile_sampler: sampler;
 @group(2) @binding(6) var water_waves: texture_2d_array<f32>;
+// The scene copies and the planar mirror (`water::screen`, Medium and
+// High), the water pipelines' group 1; placeholders on Low, whose water
+// never reads them.
+@group(1) @binding(2) var water_scene: texture_2d<f32>;
+@group(1) @binding(3) var water_scene_depth: texture_2d<f32>;
+@group(1) @binding(4) var water_mirror: texture_2d<f32>;
+@group(1) @binding(5) var water_screen_sampler: sampler;
+
+// What `water_fragment` found in the copies for the fragment it shaded,
+// for `fs_water_screen` to read after it.
+var<private> water_screen_on: bool;
+var<private> water_refraction: WaterRefraction;
+var<private> water_shading_normal: vec3<f32>;
+var<private> water_roughness: f32;
 
 // ---- Hooks the shared water shading calls.
 
@@ -55,6 +69,18 @@ fn water_host_light(world: vec3<f32>, n: vec3<f32>, pixel: vec2<f32>) -> vec3<f3
 
 fn water_host_shadow(world: vec3<f32>, n: vec3<f32>, pixel: vec2<f32>) -> f32 {
     return sun_shadow(world, vec3<f32>(0.0, 1.0, 0.0), pixel);
+}
+
+fn water_host_view_proj() -> mat4x4<f32> {
+    return f.view_proj;
+}
+
+fn water_host_inv_view_proj() -> mat4x4<f32> {
+    return f.inv_view_proj;
+}
+
+fn water_host_eye() -> vec3<f32> {
+    return f.eye.xyz;
 }
 
 // ---- Spells on the water (`water::Controls`), read from the frame.
@@ -311,6 +337,13 @@ fn water_fragment(i: WaterOut) -> WaterShade {
     let v = normalize(f.eye.xyz - world);
     let kind = i.look.y;
     let b = water_body_index(i.extra.x);
+    let uv0 = pixel * f.viewport.zw;
+    water_refraction.uv_r = uv0;
+    water_refraction.uv_g = uv0;
+    water_refraction.uv_b = uv0;
+    water_refraction.found = 0.0;
+    water_shading_normal = vec3<f32>(0.0, 1.0, 0.0);
+    water_roughness = 1.0;
 
     if kind > 3.5 {
         return water_orb(i, v, pixel, t);
@@ -383,6 +416,8 @@ fn water_fragment(i: WaterOut) -> WaterShade {
         s.extra_foam = foam * water.bodies[b].scatter.w;
     }
     let wn = water_normal(s);
+    water_shading_normal = wn.n;
+    water_roughness = wn.roughness;
 
     // The eye under this body's surface: the sea knows from the frame,
     // other bodies from their own flag. A body the eye is beside rather
@@ -398,6 +433,15 @@ fn water_fragment(i: WaterOut) -> WaterShade {
         none.transmit = vec3<f32>(1.0);
         return none;
     }
+    if water_screen_on {
+        // What lies behind, from the copies: the refracted view's end, the
+        // water it crosses, and how near the scene stands to the surface.
+        let r = water_screen_refraction(world, v, wn.n, water_view_w(world), uv0, water_edge(s.depth), f.water_screen.z);
+        water_refraction = r;
+        s.screen = r.found;
+        s.path = r.path;
+        s.contact = r.contact;
+    }
     var o = water_shade(s, wn);
     if s.calm > 0.01 {
         // Ice: frosted, cracked, and nearly opaque, over the water's own
@@ -411,6 +455,7 @@ fn water_fragment(i: WaterOut) -> WaterShade {
         let ice_rgb = vec3<f32>(0.62, 0.78, 0.88) * frost * light + sky * 0.08;
         o.emit = mix(o.emit, ice_rgb, ice);
         o.transmit = mix(o.transmit, vec3<f32>(0.06), ice);
+        o.reflect *= 1.0 - ice;
     }
     return o;
 }
@@ -432,6 +477,55 @@ fn fs_water(i: WaterOut) -> @location(0) vec4<f32> {
 fn fs_water_transmit(i: WaterOut) -> @location(0) vec4<f32> {
     let shade = water_fragment(i);
     return vec4<f32>(clamp(shade.transmit, vec3<f32>(0.0), vec3<f32>(1.0)), 1.0);
+}
+
+// Medium and High (`water::screen`): the whole surface in one draw over
+// the scene, what lies behind read from the color copy along the refracted
+// view, and the sky's reflection replaced by the planar mirror on the
+// mirrored body or, on High, a screen-space reflection where its march
+// hits. The copies are already exposed and fogged; the mirror and the
+// march carry the fog of the whole reflected path, so only the surface's
+// own light is fogged here. Without this frame's copies it shades as the
+// two halves would over the copy.
+@fragment
+fn fs_water_screen(i: WaterOut) -> @location(0) vec4<f32> {
+    water_screen_on = f.water_screen.x > 0.5;
+    let shade = water_fragment(i);
+    let world = i.world_depth.xyz;
+    let v = normalize(f.eye.xyz - world);
+    let n = water_shading_normal;
+    let uv0 = i.clip.xy * f.viewport.zw;
+    let b = water_body_index(i.extra.x);
+    let sharp = 1.0 - smoothstep(0.08, 0.35, water_roughness);
+    var reflected = vec3<f32>(0.0);
+    var weight = 0.0;
+    let level = water.bodies[b].absorb.w;
+    let mirrored = f.water_mirror.x > 0.5 && u32(f.water_mirror.z + 0.5) == b && abs(level - f.water_mirror.y) < 0.02;
+    if water_screen_on && shade.reflect > 0.0 && f.eye.y > world.y {
+        if mirrored {
+            reflected = water_mirror_at(world, v, n, uv0);
+            weight = sharp;
+        } else if f.water_screen.y > 0.5 {
+            let hit = water_ssr(world, reflect(-v, water_reflect_normal(n)), i32(f.water_screen.y), i.clip.xy);
+            if hit.weight > 0.0 {
+                reflected = textureSampleLevel(water_scene, water_screen_sampler, hit.uv, 0.0).rgb;
+                weight = hit.weight * sharp;
+            }
+        }
+    }
+    // Where nothing of the surface shows (dry ground the patch runs over),
+    // leave the scene and its depth alone.
+    if all(shade.transmit >= vec3<f32>(0.999)) && all(abs(shade.emit) <= vec3<f32>(1e-6)) {
+        discard;
+    }
+    let swapped = shade.reflect * weight;
+    let own = shade.emit - shade.sky * swapped;
+    let behind = water_scene_through(water_refraction);
+    let air = neon_fog(vec3<f32>(0.0), world, 1.0);
+    let transmit = clamp(shade.transmit, vec3<f32>(0.0), vec3<f32>(1.0));
+    let lit = neon_fog(expose(max(own, vec3<f32>(0.0))), world, 1.0) - air * (transmit + swapped);
+    let rgb = behind * transmit + reflected * swapped + lit;
+    return vec4<f32>(max(rgb, vec3<f32>(0.0)), 1.0);
 }
 
 // ---- Orbs (`water::Kind::Orb`): free bodies of water, such as the Water

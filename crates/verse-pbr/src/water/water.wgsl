@@ -28,6 +28,10 @@
 //   (`water::ocean`) and read from `water_waves`: displacement and slopes,
 //   whitecaps where the Jacobian folds the surface, linear shoaling capped
 //   by McCowan's breaker limit (1894), and surf where waves break.
+// - Depth from a scene copy (Medium and High, `water/screen.wgsl`): the
+//   absorption path is the distance to the scene behind the surface, and
+//   foam gathers where that distance is short, as soft particles fade
+//   (Lorach, "Soft Particles", NVIDIA, 2007).
 //
 // The host shader declares the bindings and four hooks:
 //
@@ -559,10 +563,14 @@ fn water_foam(b: u32, rest: vec2<f32>, shore: f32, crest: f32, extra: f32, noise
 
 // What one surface fragment adds and lets through: `emit` the radiance it
 // adds (premultiplied, host units, before exposure), `transmit` the share
-// of what lies behind it that comes through, per channel.
+// of what lies behind it that comes through, per channel. `emit` includes
+// the sky's reflection, `sky` times `reflect`, so a host with a sharper
+// reflection (a planar mirror or a screen-space trace) can swap it out.
 struct WaterShade {
     emit: vec3<f32>,
     transmit: vec3<f32>,
+    sky: vec3<f32>,
+    reflect: f32,
 };
 
 // The surface seen from below, from inside body `b`: Snell's window, with
@@ -618,6 +626,14 @@ struct WaterFragment {
     column: f32,
     // The sun's disc, rad.
     disc: f32,
+    // 1 when the host read its scene's depth behind the surface (Medium and
+    // High): `path` is then the water the refracted view crosses to the
+    // scene behind (m), and `contact` how far the straight view runs
+    // through the water before it meets anything (m). 0 on Low, where the
+    // baked depth stands in.
+    screen: f32,
+    path: f32,
+    contact: f32,
 };
 
 // The normal at a surface fragment and the roughness its lost detail adds.
@@ -708,6 +724,14 @@ fn water_shade(s: WaterFragment, wn: WaterNormal) -> WaterShade {
             foam = max(foam, clamp(surf * amount, 0.0, 1.0));
         }
     }
+    if s.screen > 0.5 {
+        // Only where something stands nearer than the bed: over a shallow
+        // bed the view meets the bed itself soon after the surface, and
+        // the shore's own lace covers that.
+        let bed = max(s.depth, 0.02) / max(s.v.y, 0.1);
+        let standing = 1.0 - smoothstep(0.35, 0.75, s.contact / bed);
+        foam = max(foam, water_contact_foam(b, s.contact, noise) * standing);
+    }
     let foam_rgb = vec3<f32>(0.9, 0.94, 0.95) * water_host_light(s.world, vec3<f32>(0.0, 1.0, 0.0), s.pixel);
     // The column under the surface: its in-scatter, and what of the bed
     // comes through, per channel.
@@ -716,15 +740,48 @@ fn water_shade(s: WaterFragment, wn: WaterNormal) -> WaterShade {
     if s.column > 0.5 {
         let ci = clamp(dot(v, vec3<f32>(0.0, 1.0, 0.0)), 0.0, 1.0);
         through = water_transmittance(b, s.depth, ci);
+        if s.screen > 0.5 {
+            through = exp(-water.bodies[b].absorb.rgb * max(s.path, 0.0));
+        }
         body = water_inscatter(b) * (vec3<f32>(1.0) - through);
     }
     let clear = sky * fresnel + glint + crest + body * (1.0 - fresnel);
     // Thin water at the very edge fades out instead of ending in a line;
     // the shore's foam runs on to the waterline itself.
-    let edge = smoothstep(-0.05, 0.12, s.depth);
+    let edge = water_edge(s.depth);
     let cover = foam * smoothstep(-0.08, 0.0, s.depth);
     o.emit = clear * edge * (1.0 - cover) + foam_rgb * cover;
     let passed = mix(vec3<f32>(1.0), through * (1.0 - fresnel), edge);
     o.transmit = passed * (1.0 - cover);
+    o.sky = sky;
+    o.reflect = fresnel * edge * (1.0 - cover);
     return o;
+}
+
+// How much of the surface shows over water `depth` m deep at rest: thin
+// water at the very edge fades out instead of ending in a line.
+fn water_edge(depth: f32) -> f32 {
+    return smoothstep(-0.05, 0.12, depth);
+}
+
+// The width of the foam where the surface meets what stands in it, m.
+const WATER_CONTACT_BAND: f32 = 0.22;
+
+// Foam where the surface meets what stands in it, `contact` m along the
+// view from the surface to the scene behind it, broken by the mottled
+// noise like the shore's lace.
+fn water_contact_foam(b: u32, contact: f32, noise: f32) -> f32 {
+    let near = 1.0 - smoothstep(0.0, WATER_CONTACT_BAND, contact);
+    return near * smoothstep(0.3, 0.6, noise + 0.25 * near) * water.bodies[b].scatter.w;
+}
+
+// The direction a view ray toward the surface takes into water of index
+// `ior` through normal `n` (`v` toward the eye); straight down the
+// reflected ray where the view cannot enter.
+fn water_refracted(v: vec3<f32>, n: vec3<f32>, ior: f32) -> vec3<f32> {
+    let d = refract(-v, n, 1.0 / ior);
+    if dot(d, d) < 1e-6 {
+        return reflect(-v, n);
+    }
+    return d;
 }

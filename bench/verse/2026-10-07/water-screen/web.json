@@ -1,0 +1,306 @@
+{
+  "webgpu": {
+    "url": "?zone=water&frames",
+    "probe": {
+      "canvas_has_webgl2": false,
+      "navigator_gpu": true,
+      "webgpu_adapter": true,
+      "status": null,
+      "title": "Everglade"
+    },
+    "console": [
+      {
+        "level": "error",
+        "text": "Failed to load resource: the server responded with a status of 404 (File not found)"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":53,\"gap_ms\":19.2,\"gap_max_ms\":166.6,\"work_ms\":6.32,\"work_max_ms\":153.30,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":61,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":3.39,\"work_max_ms\":3.70,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":60,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":3.32,\"work_max_ms\":3.50,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":61,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":3.31,\"work_max_ms\":3.40,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":60,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":3.36,\"work_max_ms\":3.60,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":61,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":3.46,\"work_max_ms\":4.20,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":60,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":3.32,\"work_max_ms\":3.50,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":61,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":3.35,\"work_max_ms\":3.70,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":60,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":3.36,\"work_max_ms\":3.70,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":61,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":3.36,\"work_max_ms\":3.80,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":61,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":3.33,\"work_max_ms\":4.40,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":61,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":3.35,\"work_max_ms\":3.60,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":60,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":3.29,\"work_max_ms\":3.40,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":60,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":3.27,\"work_max_ms\":3.40,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":61,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":3.28,\"work_max_ms\":3.50,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":60,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":3.44,\"work_max_ms\":4.20,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":60,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":3.43,\"work_max_ms\":4.00,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":61,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":3.45,\"work_max_ms\":3.60,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":61,\"gap_ms\":16.7,\"gap_max_ms\":16.7,\"work_ms\":3.51,\"work_max_ms\":3.70,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":60,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":3.44,\"work_max_ms\":4.20,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":61,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":3.47,\"work_max_ms\":3.70,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":60,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":4.52,\"work_max_ms\":4.90,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":60,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":4.72,\"work_max_ms\":5.10,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":61,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":4.71,\"work_max_ms\":4.90,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":60,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":4.71,\"work_max_ms\":4.90,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":61,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":4.71,\"work_max_ms\":4.90,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":60,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":4.78,\"work_max_ms\":5.00,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":61,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":4.76,\"work_max_ms\":4.90,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":60,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":4.76,\"work_max_ms\":4.90,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":61,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":4.72,\"work_max_ms\":4.90,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":60,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":4.75,\"work_max_ms\":4.90,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":60,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":4.75,\"work_max_ms\":4.90,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      }
+    ]
+  },
+  "webgl2": {
+    "url": "?gl&zone=water&frames",
+    "probe": {
+      "canvas_has_webgl2": true,
+      "navigator_gpu": true,
+      "webgpu_adapter": true,
+      "status": null,
+      "title": "Everglade"
+    },
+    "console": [
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":2,\"gap_ms\":1524.9,\"gap_max_ms\":3049.9,\"work_ms\":116.00,\"work_max_ms\":227.00,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":1,\"gap_ms\":1000.0,\"gap_max_ms\":1000.0,\"work_ms\":6.60,\"work_max_ms\":6.60,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":61,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":3.43,\"work_max_ms\":4.20,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":60,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":3.28,\"work_max_ms\":3.50,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":61,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":3.21,\"work_max_ms\":3.40,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":60,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":3.12,\"work_max_ms\":3.40,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":61,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":3.14,\"work_max_ms\":3.30,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":61,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":3.08,\"work_max_ms\":3.30,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":61,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":3.07,\"work_max_ms\":3.30,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":61,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":2.84,\"work_max_ms\":3.00,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":60,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":2.96,\"work_max_ms\":3.30,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":61,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":3.19,\"work_max_ms\":3.30,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":60,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":3.40,\"work_max_ms\":3.70,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":60,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":3.54,\"work_max_ms\":3.70,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":61,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":3.55,\"work_max_ms\":3.70,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":60,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":3.54,\"work_max_ms\":3.70,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":61,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":3.52,\"work_max_ms\":3.70,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":61,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":3.51,\"work_max_ms\":3.70,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":60,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":3.49,\"work_max_ms\":4.40,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":61,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":3.49,\"work_max_ms\":3.70,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":60,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":3.49,\"work_max_ms\":3.60,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":61,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":3.51,\"work_max_ms\":3.60,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":61,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":3.50,\"work_max_ms\":3.70,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":61,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":3.47,\"work_max_ms\":3.70,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":60,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":3.31,\"work_max_ms\":3.70,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":61,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":3.13,\"work_max_ms\":3.30,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":61,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":3.14,\"work_max_ms\":3.50,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":61,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":3.30,\"work_max_ms\":3.60,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":61,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":3.53,\"work_max_ms\":3.70,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":60,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":3.53,\"work_max_ms\":3.70,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":61,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":3.52,\"work_max_ms\":3.70,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":60,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":3.54,\"work_max_ms\":3.70,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":61,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":3.16,\"work_max_ms\":3.60,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":61,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":3.23,\"work_max_ms\":3.70,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":60,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":2.60,\"work_max_ms\":3.40,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":60,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":3.01,\"work_max_ms\":3.30,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      },
+      {
+        "level": "info",
+        "text": "Everglade frames {\"frames\":61,\"gap_ms\":16.7,\"gap_max_ms\":16.8,\"work_ms\":3.15,\"work_max_ms\":3.30,\"raised\":0,\"pieces\":0,\"chunks\":0}"
+      }
+    ]
+  }
+}

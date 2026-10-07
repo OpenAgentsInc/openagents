@@ -45,6 +45,8 @@ use verse_engine::lighting::{
 use verse_engine::quality::{Platform, Probe, Quality, ShadowFilter, Tier};
 use verse_engine::render_graph::{PhotoPass, PhotoPlan};
 
+mod water_screen;
+
 pub const DEPTH: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 const SHADOW_SIZE: u32 = 2048;
 
@@ -121,6 +123,11 @@ struct Frame {
     water_scatter: [f32; 4],
     /// Spells on the water ([`super::water::Water::control_terms`]).
     water_controls: [[f32; 4]; 6],
+    /// The water's scene copies this frame
+    /// ([`crate::water::screen::Plan::uniform`]).
+    water_screen: [f32; 4],
+    /// The planar mirror: 1 when drawn, its plane's level, and its body.
+    water_mirror: [f32; 4],
 }
 
 impl Frame {
@@ -221,7 +228,8 @@ pub struct Capability {
 
 impl Capability {
     /// Reserve both ordinary and physical targets before native allocation.
-    /// Includes cascade maps and a conservative screen-space allowance; excludes swapchain images.
+    /// Includes cascade maps, a conservative screen-space allowance, and
+    /// the water's scene copies and mirror; excludes swapchain images.
     pub fn target_reservation(&self, width: u32, height: u32, output_bytes: u64) -> u64 {
         let pixels = u64::from(width) * u64::from(height);
         let samples = u64::from(self.samples);
@@ -255,10 +263,18 @@ impl Capability {
         } else {
             0
         };
+        // The water's scene copies and mirror (`water::screen`), which a
+        // direct target never makes.
+        let water = if self.hdr.is_some() {
+            crate::water::screen::Plan::of(self.quality.tier).bytes(width, height, scene_bytes)
+        } else {
+            0
+        };
         ordinary
             + physical
             + post
             + screen
+            + water
             + u64::from(SHADOW_SIZE).pow(2) * u64::from(self.quality.cascades) * 4
     }
     pub fn probe(
@@ -534,11 +550,29 @@ pub struct PhotoTargets {
     guide_groups: [wgpu::BindGroup; 2],
     /// The high tier's prepass depth and screen-space terms.
     screen: Option<ScreenTargets>,
+    /// The resolved scene, kept to copy from when it has one sample.
+    scene_texture: wgpu::Texture,
+    /// Medium and High: the water's scene copies and planar mirror
+    /// ([`crate::water::screen`]).
+    water: Option<water_screen::WaterTargets>,
+    /// The water pipelines' group 1: the copies and the mirror, or
+    /// placeholders where the tier makes none.
+    water_group: wgpu::BindGroup,
+    /// The particles' group 3 with the depth copy for their soft fade.
+    fx_group: wgpu::BindGroup,
+    water_bytes: u64,
 }
 
 impl PhotoTargets {
     pub fn size(&self) -> [u32; 2] {
         self.size
+    }
+
+    /// The bytes the water's scene copies and planar mirror hold at this
+    /// size; zero on Low, which makes none.
+    #[must_use]
+    pub fn water_bytes(&self) -> u64 {
+        self.water_bytes
     }
 
     /// The adapt texture the next frame writes.
@@ -622,10 +656,93 @@ pub struct Photo {
     water_group: wgpu::BindGroup,
     /// The spectral sea's cascades.
     pub ocean: crate::water::OceanGpu,
+    /// Medium and High: the mirror's and the copies' pipelines.
+    water_screen: Option<water_screen::WaterScreen>,
+    /// The water pipelines' group 1 (`water_scene` and the rest in
+    /// `water/photo.wgsl`).
+    water_screen_layout: wgpu::BindGroupLayout,
+    /// One texel each, for the bindings a tier without copies leaves
+    /// unread: a color and a depth copy.
+    placeholder_color: wgpu::TextureView,
+    placeholder_depth: wgpu::TextureView,
+    /// The particles' group 3 and what fills it, rebuilt with each view
+    /// size's depth copy.
+    fx_layout: wgpu::BindGroupLayout,
+    fx_parts: FxParts,
     /// The display's headroom over reference white for space frames.
     pub headroom: f32,
     /// Enable bounded optical fire; disabling it keeps the original flipbooks for comparisons.
     pub fire_volumes: bool,
+    /// Draw Medium and High water over the scene copies, with refraction
+    /// and the mirror (`water::screen`); disabling it keeps the two halves
+    /// every tier drew before, for comparisons.
+    pub water_copies: bool,
+}
+
+/// The particles' sheets and fire textures, kept to build each view
+/// size's group 3.
+struct FxParts {
+    sheets: wgpu::TextureView,
+    sampler: wgpu::Sampler,
+    fire_noise: wgpu::TextureView,
+    fire_lut: wgpu::TextureView,
+    fire_sampler: wgpu::Sampler,
+}
+
+impl FxParts {
+    fn group(
+        &self,
+        device: &wgpu::Device,
+        layout: &wgpu::BindGroupLayout,
+        depth: &wgpu::TextureView,
+    ) -> wgpu::BindGroup {
+        let view = |binding, view| wgpu::BindGroupEntry {
+            binding,
+            resource: wgpu::BindingResource::TextureView(view),
+        };
+        device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("verse fx sheets"),
+            layout,
+            entries: &[
+                view(0, &self.sheets),
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&self.sampler),
+                },
+                view(3, &self.fire_noise),
+                view(4, &self.fire_lut),
+                wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: wgpu::BindingResource::Sampler(&self.fire_sampler),
+                },
+                view(6, depth),
+            ],
+        })
+    }
+}
+
+/// A one-texel texture for a binding nothing reads.
+fn placeholder(
+    device: &wgpu::Device,
+    label: &str,
+    format: wgpu::TextureFormat,
+) -> wgpu::TextureView {
+    device
+        .create_texture(&wgpu::TextureDescriptor {
+            label: Some(label),
+            size: wgpu::Extent3d {
+                width: 1,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        })
+        .create_view(&Default::default())
 }
 
 fn shader(device: &wgpu::Device, label: &str, source: &str) -> wgpu::ShaderModule {
@@ -1269,6 +1386,8 @@ impl Photo {
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,
                 },
+                // The water's depth copy, for the soft fade.
+                texture_entry(6, d2, wgpu::TextureSampleType::Float { filterable: false }),
             ],
         });
         let sprite_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -1301,32 +1420,24 @@ impl Photo {
             min_filter: wgpu::FilterMode::Linear,
             ..Default::default()
         });
-        let fx_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("verse fx sheets"),
-            layout: &fx_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&fx_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&fx_sampler),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: wgpu::BindingResource::TextureView(&fire_noise),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 4,
-                    resource: wgpu::BindingResource::TextureView(&fire_lut),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 5,
-                    resource: wgpu::BindingResource::Sampler(&fire_sampler),
-                },
-            ],
-        });
+        let placeholder_color = placeholder(
+            device,
+            "verse water placeholder",
+            wgpu::TextureFormat::Rgba8Unorm,
+        );
+        let placeholder_depth = placeholder(
+            device,
+            "verse water placeholder depth",
+            crate::water::screen::DEPTH_COPY,
+        );
+        let fx_parts = FxParts {
+            sheets: fx_view,
+            sampler: fx_sampler,
+            fire_noise,
+            fire_lut,
+            fire_sampler,
+        };
+        let fx_group = fx_parts.group(device, &fx_layout, &placeholder_depth);
         // The water's uniform and the low tier's normal tile, at bindings
         // the textured material's group leaves free in this module.
         let [tile_entry, tile_sampler_entry] = crate::water::tile_entries(4);
@@ -1370,12 +1481,40 @@ impl Photo {
                 },
             ],
         });
+        // Group 1 of the water pipelines: the scene copies and the mirror
+        // (`water::screen`), which the water reads instead of the guides.
+        let filterable = wgpu::TextureSampleType::Float { filterable: true };
+        let fragment_texture = |binding, sample_type| wgpu::BindGroupLayoutEntry {
+            binding,
+            visibility: wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Texture {
+                sample_type,
+                view_dimension: d2,
+                multisampled: false,
+            },
+            count: None,
+        };
+        let water_screen_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("verse water screen"),
+                entries: &[
+                    fragment_texture(2, filterable),
+                    fragment_texture(3, wgpu::TextureSampleType::Float { filterable: false }),
+                    fragment_texture(4, filterable),
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 5,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+            });
         let water_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("verse water"),
                 bind_group_layouts: &[
                     Some(&scene_layout),
-                    Some(&guide_layout),
+                    Some(&water_screen_layout),
                     Some(&water_layout),
                 ],
                 immediate_size: 0,
@@ -1578,6 +1717,73 @@ impl Photo {
             ),
         };
         let _ = LEGACY;
+        // Medium and High copy the scene for their water and mirror the
+        // nearest flat body (`water::screen`); a direct target has no
+        // floating-point scene to copy.
+        let water_plan = crate::water::screen::Plan::of(capability.quality.tier);
+        let water_screen = (water_plan.copies && !direct).then(|| {
+            let mirror_frame = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("verse water mirror frame"),
+                size: std::mem::size_of::<Frame>() as u64,
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+            let mirror_scene_group = self::scene_group(
+                device,
+                &scene_layout,
+                &mirror_frame,
+                &shadow,
+                &shadow_compare,
+                &probes,
+                &linear_clamp,
+                &sky_textures,
+                &linear_repeat,
+                &sky_light.view,
+            );
+            // The mirror never traces screen-space terms.
+            let mirror_constants = [
+                ("DIRECT", 0.0),
+                ("DEBUG", f64::from(debug)),
+                pcss,
+                detail,
+                ("SCREEN", 0.0),
+            ];
+            water_screen::WaterScreen::new(
+                device,
+                water_plan,
+                water_screen::Parts {
+                    module: &module,
+                    constants: &mirror_constants,
+                    scene_format,
+                    samples,
+                    sky_layout: &layout,
+                    guide_layout: &guide_pipeline_layout,
+                    textured_layout: &textured_layout_groups,
+                    legacy: wgpu::VertexBufferLayout {
+                        array_stride: legacy_size,
+                        step_mode: wgpu::VertexStepMode::Vertex,
+                        attributes: &LEGACY,
+                    },
+                    // It replaces what lies behind with the copy seen through
+                    // it, tested against the scene's depth without writing
+                    // it, so glass and decals still draw over it as they
+                    // drew over the two halves.
+                    water: make(
+                        &water_pipeline_layout,
+                        "verse water screen",
+                        "vs_water",
+                        Some("fs_water_screen"),
+                        &water_vertices,
+                        triangles,
+                        depth_state(false, wgpu::CompareFunction::GreaterEqual),
+                        None,
+                        samples,
+                    ),
+                    mirror_scene_group,
+                    mirror_frame,
+                },
+            )
+        });
         let textured_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("verse textured base color"),
             address_mode_u: wgpu::AddressMode::Repeat,
@@ -1640,8 +1846,15 @@ impl Photo {
             water_buffer,
             water_group,
             ocean,
+            water_screen,
+            water_screen_layout,
+            placeholder_color,
+            placeholder_depth,
+            fx_layout,
+            fx_parts,
             headroom: 1.0,
             fire_volumes: true,
+            water_copies: true,
         })
     }
 
@@ -1688,6 +1901,20 @@ impl Photo {
             &self.linear_repeat,
             &self.sky_light.view,
         );
+        if let Some(water) = &mut self.water_screen {
+            water.mirror_scene_group = scene_group(
+                device,
+                &self.scene_layout,
+                &water.mirror_frame,
+                &self.shadow,
+                &self.shadow_compare,
+                &self.probes,
+                &self.linear_clamp,
+                &self.sky_textures,
+                &self.linear_repeat,
+                &self.sky_light.view,
+            );
+        }
     }
 
     fn update_probes(
@@ -1958,6 +2185,19 @@ impl Photo {
         order: &[usize],
         which: Pass,
     ) {
+        self.draw_textured_with(pass, textured, order, which, &self.pipelines.textured);
+    }
+
+    /// [`Self::draw_textured`] through `pipelines`, indexed by pass and
+    /// then by double-sidedness.
+    fn draw_textured_with(
+        &self,
+        pass: &mut wgpu::RenderPass<'_>,
+        textured: Option<&TexturedGpu>,
+        order: &[usize],
+        which: Pass,
+        pipelines: &[[wgpu::RenderPipeline; 2]],
+    ) {
         let Some(gpu) = textured else {
             return;
         };
@@ -1978,7 +2218,7 @@ impl Photo {
                 pass.set_bind_group(3, &gpu.light_group, &[]);
             }
             if sides != Some(material.double_sided) {
-                let pipeline = &self.pipelines.textured[which as usize];
+                let pipeline = &pipelines[which as usize];
                 pass.set_pipeline(&pipeline[usize::from(material.double_sided)]);
                 sides = Some(material.double_sided);
             }
@@ -2040,6 +2280,7 @@ impl Photo {
         let attach = wgpu::TextureUsages::RENDER_ATTACHMENT;
         let sampled = attach | wgpu::TextureUsages::TEXTURE_BINDING;
         let samples = self.capability.samples;
+        let copies = self.water_screen.is_some();
         let msaa = (samples > 1).then(|| {
             texture(
                 "verse photo msaa",
@@ -2052,16 +2293,22 @@ impl Photo {
             )
             .create_view(&Default::default())
         });
-        let scene = texture(
+        // With the water's copies, a single-sample scene is copied from and
+        // the depth buffer is read by the depth copy.
+        let scene_texture = texture(
             "verse photo scene",
             scene_format,
             width,
             height,
             1,
             1,
-            sampled,
-        )
-        .create_view(&Default::default());
+            if copies {
+                sampled | wgpu::TextureUsages::COPY_SRC
+            } else {
+                sampled
+            },
+        );
+        let scene = scene_texture.create_view(&Default::default());
         let depth = texture(
             "verse photo depth",
             DEPTH,
@@ -2069,7 +2316,7 @@ impl Photo {
             height,
             samples,
             1,
-            attach,
+            if copies { sampled } else { attach },
         )
         .create_view(&Default::default());
         let adapt = output::adapt_textures(device, scene_format);
@@ -2100,7 +2347,51 @@ impl Photo {
                 ],
             })
         });
+        let water = self.water_screen.as_ref().map(|water| {
+            water.targets(
+                device,
+                scene_format,
+                width,
+                height,
+                &depth,
+                &self.frame,
+                &self.guide_layout,
+                &adapt[0],
+                &self.screen_white,
+            )
+        });
+        let (scene_copy, depth_copy, mirror) = water.as_ref().map_or(
+            (
+                &self.placeholder_color,
+                &self.placeholder_depth,
+                &self.placeholder_color,
+            ),
+            |w| (&w.copy_view, &w.depth_copy, &w.mirror),
+        );
+        let view = |binding, view| wgpu::BindGroupEntry {
+            binding,
+            resource: wgpu::BindingResource::TextureView(view),
+        };
+        let water_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("verse water screen"),
+            layout: &self.water_screen_layout,
+            entries: &[
+                view(2, scene_copy),
+                view(3, depth_copy),
+                view(4, mirror),
+                wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: wgpu::BindingResource::Sampler(&self.linear_clamp),
+                },
+            ],
+        });
+        let fx_group = self.fx_parts.group(device, &self.fx_layout, depth_copy);
+        let water_bytes = self.water_screen.as_ref().map_or(0, |water| {
+            let scene_bytes = u64::from(scene_format.block_copy_size(None).unwrap_or(8));
+            water.plan.bytes(width, height, scene_bytes)
+        });
         PhotoTargets {
+            water_bytes,
             guide_groups,
             screen,
             size: [width, height],
@@ -2108,6 +2399,10 @@ impl Photo {
             scene,
             depth,
             output: chain,
+            scene_texture,
+            water,
+            water_group,
+            fx_group,
         }
     }
 
@@ -2818,6 +3113,49 @@ impl Photo {
             );
             queue.write_buffer(&self.water_buffer, 0, bytemuck::bytes_of(&packed));
         }
+        // Medium and High copy the opaque scene for the water and the
+        // particles when the frame draws either (`water::screen`), and
+        // mirror the nearest flat body in view.
+        let zone_water = world
+            .water
+            .filter(|gpu| water.is_some() && gpu.0.count() > 0);
+        let split = self.post.is_some()
+            && self.water_copies
+            && targets.water.is_some()
+            && self.water_screen.is_some()
+            && (zone_water.is_some()
+                || (water.is_some() && self.liquid.count > 0)
+                || self.sprites.count > 0);
+        let mut mirror = None;
+        if let (true, Some(screen), Some(gpu), Some(water), Some(water_targets)) = (
+            split,
+            &self.water_screen,
+            zone_water,
+            &water,
+            &targets.water,
+        ) && screen.plan.mirror_divisor > 0
+            && let Some(body) = crate::water::screen::pick(
+                &water.bodies[..water.count],
+                &gpu.0.bounds,
+                view.view_proj,
+                view.eye,
+            )
+        {
+            let level = water.bodies[body].level;
+            let m = crate::water::screen::Mirror::new(
+                view.view_proj,
+                view.eye,
+                level,
+                reversed_depth(),
+            );
+            uniform.water_mirror = [1.0, level, body as f32, 0.0];
+            let frame = water_screen::mirror_frame(&uniform, &m, water_targets.mirror_size);
+            queue.write_buffer(&screen.mirror_frame, 0, bytemuck::bytes_of(&frame));
+            mirror = Some(m);
+        }
+        if let Some(screen) = &self.water_screen {
+            uniform.water_screen = screen.plan.uniform(split);
+        }
         queue.write_buffer(&self.frame, 0, bytemuck::bytes_of(&uniform));
         if let Some(shadow) = &shadow {
             self.encode_shadow(queue, encoder, &uniform, shadow, &world);
@@ -2842,123 +3180,115 @@ impl Photo {
         } else {
             Vec::new()
         };
-        let direct = self.post.is_none();
-        let (target, resolve) = match (&targets.msaa, direct) {
-            (Some(msaa), false) => (msaa, Some(&targets.scene)),
-            (None, false) => (&targets.scene, None),
-            (Some(msaa), true) => (msaa, Some(output)),
-            (None, true) => (output, None),
+        let field = neon.field.map(f64::from);
+        let clear = wgpu::Color {
+            r: field[0],
+            g: field[1],
+            b: field[2],
+            a: 1.0,
         };
+        let opaque = Opaque {
+            world: &world,
+            order: &order,
+            figure_order: &figure_order,
+            daylight: daylight.is_some(),
+            lit: lit.is_some(),
+        };
+        if let (Some(m), Some(screen), Some(water_targets)) =
+            (&mirror, &self.water_screen, &targets.water)
         {
-            let field = neon.field.map(f64::from);
-            let clear = wgpu::Color {
-                r: field[0],
-                g: field[1],
-                b: field[2],
-                a: 1.0,
+            let cull = verse_engine::presentation::View {
+                view_proj: m.cull,
+                eye: m.eye,
             };
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("verse neon scene"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: target,
-                    depth_slice: None,
-                    resolve_target: resolve,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(clear),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &targets.depth,
-                    depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(0.0),
-                        store: wgpu::StoreOp::Discard,
-                    }),
-                    stencil_ops: None,
-                }),
-                timestamp_writes: None,
-                occlusion_query_set: None,
-                multiview_mask: None,
-            });
-            pass.set_bind_group(1, &targets.guide_groups[0], &[]);
-            pass.set_bind_group(0, &self.scene_group, &[]);
-            if daylight.is_some() {
-                // Drawn first, at infinity, without depth: everything covers it.
-                pass.set_pipeline(&self.pipelines.daylight);
-                pass.draw(0..3, 0..1);
-            }
-            if lit.is_some() {
-                pass.set_pipeline(&self.pipelines.lit);
-                for (buffer, count) in [
-                    world.lit,
-                    (&self.dynamic_lit.buffer, self.dynamic_lit.count),
-                ] {
-                    if count > 0 {
-                        pass.set_vertex_buffer(0, buffer.slice(..));
-                        pass.draw(0..count, 0..1);
-                    }
-                }
-                for which in [Pass::Opaque, Pass::Masked] {
-                    self.draw_textured(&mut pass, world.textured, &order, which);
-                    self.draw_textured(&mut pass, world.figure, &figure_order, which);
-                }
-            }
-            #[cfg(not(target_arch = "wasm32"))]
-            if let Some((source, globals)) = world.streamed {
-                source.draw(&mut pass, globals, true);
-                pass.set_bind_group(0, &self.scene_group, &[]);
-                pass.set_bind_group(1, &targets.guide_groups[0], &[]);
-            }
-            pass.set_pipeline(&self.pipelines.legacy);
-            for (buffer, count) in world.faces {
-                if count > 0 {
-                    pass.set_vertex_buffer(0, buffer.slice(..));
-                    pass.draw(0..count, 0..1);
-                }
-            }
-            // The water over everything opaque, before glass and particles.
-            if let (Some(gpu), Some(_)) = (world.water, &water)
-                && gpu.0.count() > 0
+            let mirror_order = if lit.is_some() {
+                Self::textured_order(world.textured, cull, far)
+            } else {
+                Vec::new()
+            };
+            self.encode_mirror(
+                encoder,
+                screen,
+                water_targets,
+                clear,
+                &opaque,
+                &mirror_order,
+            );
+        }
+        let direct = self.post.is_none();
+        if split && let (Some(screen), Some(water_targets)) = (&self.water_screen, &targets.water) {
+            // The opaque scene, kept for the second pass and resolved into
+            // the color copy.
+            let (target, resolve) = match &targets.msaa {
+                Some(msaa) => (msaa, Some(&water_targets.copy_view)),
+                None => (&targets.scene, None),
+            };
             {
-                pass.set_bind_group(1, &targets.guide_groups[0], &[]);
-                pass.set_bind_group(2, &self.water_group, &[]);
-                gpu.0.draw(
-                    &mut pass,
-                    &self.pipelines.water_transmit,
-                    &self.pipelines.water,
+                let mut pass = scene_pass(
+                    encoder,
+                    "verse neon opaque",
+                    target,
+                    resolve,
+                    &targets.depth,
+                    wgpu::LoadOp::Clear(clear),
+                    wgpu::LoadOp::Clear(0.0),
+                    wgpu::StoreOp::Store,
+                );
+                self.draw_opaque(&mut pass, targets, &opaque);
+            }
+            if targets.msaa.is_none() {
+                encoder.copy_texture_to_texture(
+                    targets.scene_texture.as_image_copy(),
+                    water_targets.copy.as_image_copy(),
+                    wgpu::Extent3d {
+                        width,
+                        height,
+                        depth_or_array_layers: 1,
+                    },
                 );
             }
-            // Free water, such as an orb in the air, over the zone's water.
-            if water.is_some() && self.liquid.count > 0 {
-                pass.set_bind_group(1, &targets.guide_groups[0], &[]);
-                pass.set_bind_group(2, &self.water_group, &[]);
-                pass.set_vertex_buffer(0, self.liquid.buffer.slice(..));
-                pass.set_pipeline(&self.pipelines.water_transmit);
-                pass.draw(0..self.liquid.count, 0..1);
-                pass.set_pipeline(&self.pipelines.water);
-                pass.draw(0..self.liquid.count, 0..1);
-            }
-            self.draw_textured(&mut pass, world.textured, &order, Pass::Blended);
-            self.draw_textured(&mut pass, world.figure, &figure_order, Pass::Blended);
-            pass.set_pipeline(&self.pipelines.wide);
-            for (buffer, count) in world.lines {
-                if count >= 2 {
-                    pass.set_vertex_buffer(0, buffer.slice(..));
-                    pass.draw(0..6, 0..count / 2);
-                }
-            }
-            if self.glow.count > 0 {
-                pass.set_pipeline(&self.pipelines.glow);
-                pass.set_vertex_buffer(0, self.glow.buffer.slice(..));
-                pass.draw(0..self.glow.count, 0..1);
-            }
-            if self.sprites.count > 0 {
-                pass.set_pipeline(&self.pipelines.sprites);
-                pass.set_bind_group(2, &self.empty_group, &[]);
-                pass.set_bind_group(3, &self.fx_group, &[]);
-                pass.set_vertex_buffer(0, self.sprites.buffer.slice(..));
-                pass.draw(0..self.sprites.count, 0..1);
-            }
+            screen.encode_copy(encoder, water_targets);
+            // The water and everything blended over the kept scene.
+            let resolve = targets.msaa.as_ref().map(|_| &targets.scene);
+            let mut pass = scene_pass(
+                encoder,
+                "verse neon water",
+                target,
+                resolve,
+                &targets.depth,
+                wgpu::LoadOp::Load,
+                wgpu::LoadOp::Load,
+                wgpu::StoreOp::Discard,
+            );
+            pass.set_bind_group(0, &self.scene_group, &[]);
+            self.draw_water(
+                &mut pass,
+                targets,
+                zone_water,
+                water.is_some(),
+                Some(&screen.water),
+            );
+            self.draw_blended(&mut pass, targets, &opaque);
+        } else {
+            let (target, resolve) = match (&targets.msaa, direct) {
+                (Some(msaa), false) => (msaa, Some(&targets.scene)),
+                (None, false) => (&targets.scene, None),
+                (Some(msaa), true) => (msaa, Some(output)),
+                (None, true) => (output, None),
+            };
+            let mut pass = scene_pass(
+                encoder,
+                "verse neon scene",
+                target,
+                resolve,
+                &targets.depth,
+                wgpu::LoadOp::Clear(clear),
+                wgpu::LoadOp::Clear(0.0),
+                wgpu::StoreOp::Discard,
+            );
+            self.draw_opaque(&mut pass, targets, &opaque);
+            self.draw_water(&mut pass, targets, zone_water, water.is_some(), None);
+            self.draw_blended(&mut pass, targets, &opaque);
         }
         self.post_chain(
             queue,
@@ -2982,6 +3312,189 @@ impl Photo {
         );
     }
 
+    /// The opaque part of a neon stage's scene pass: the daylight sky, lit
+    /// surfaces, opaque and masked textured cells, streamed cells, and
+    /// legacy faces.
+    fn draw_opaque<'a>(
+        &'a self,
+        pass: &mut wgpu::RenderPass<'a>,
+        targets: &'a PhotoTargets,
+        opaque: &Opaque<'_, 'a>,
+    ) {
+        let world = opaque.world;
+        pass.set_bind_group(1, &targets.guide_groups[0], &[]);
+        pass.set_bind_group(0, &self.scene_group, &[]);
+        if opaque.daylight {
+            // Drawn first, at infinity, without depth: everything covers it.
+            pass.set_pipeline(&self.pipelines.daylight);
+            pass.draw(0..3, 0..1);
+        }
+        if opaque.lit {
+            pass.set_pipeline(&self.pipelines.lit);
+            for (buffer, count) in [
+                world.lit,
+                (&self.dynamic_lit.buffer, self.dynamic_lit.count),
+            ] {
+                if count > 0 {
+                    pass.set_vertex_buffer(0, buffer.slice(..));
+                    pass.draw(0..count, 0..1);
+                }
+            }
+            for which in [Pass::Opaque, Pass::Masked] {
+                self.draw_textured(pass, world.textured, opaque.order, which);
+                self.draw_textured(pass, world.figure, opaque.figure_order, which);
+            }
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some((source, globals)) = world.streamed {
+            source.draw(pass, globals, true);
+            pass.set_bind_group(0, &self.scene_group, &[]);
+            pass.set_bind_group(1, &targets.guide_groups[0], &[]);
+        }
+        pass.set_pipeline(&self.pipelines.legacy);
+        for (buffer, count) in world.faces {
+            if count > 0 {
+                pass.set_vertex_buffer(0, buffer.slice(..));
+                pass.draw(0..count, 0..1);
+            }
+        }
+    }
+
+    /// The zone's water, then free water over it. With `screen`, the
+    /// zone's water draws once through it, reading the copies; without,
+    /// in two halves. Group 0 must be bound.
+    fn draw_water<'a>(
+        &'a self,
+        pass: &mut wgpu::RenderPass<'a>,
+        targets: &'a PhotoTargets,
+        zone: Option<&'a WaterGpu>,
+        any: bool,
+        screen: Option<&'a wgpu::RenderPipeline>,
+    ) {
+        if !any {
+            return;
+        }
+        pass.set_bind_group(1, &targets.water_group, &[]);
+        pass.set_bind_group(2, &self.water_group, &[]);
+        if let Some(gpu) = zone {
+            match screen {
+                Some(pipeline) => gpu.0.draw_once(pass, pipeline),
+                None => gpu
+                    .0
+                    .draw(pass, &self.pipelines.water_transmit, &self.pipelines.water),
+            }
+        }
+        // Free water, such as an orb in the air, over the zone's water.
+        if self.liquid.count > 0 {
+            pass.set_vertex_buffer(0, self.liquid.buffer.slice(..));
+            pass.set_pipeline(&self.pipelines.water_transmit);
+            pass.draw(0..self.liquid.count, 0..1);
+            pass.set_pipeline(&self.pipelines.water);
+            pass.draw(0..self.liquid.count, 0..1);
+        }
+    }
+
+    /// What a neon stage draws after its water: blended textured cells,
+    /// guide lines, glows, and particles. Group 0 must be bound.
+    fn draw_blended<'a>(
+        &'a self,
+        pass: &mut wgpu::RenderPass<'a>,
+        targets: &'a PhotoTargets,
+        opaque: &Opaque<'_, 'a>,
+    ) {
+        let world = opaque.world;
+        pass.set_bind_group(1, &targets.guide_groups[0], &[]);
+        self.draw_textured(pass, world.textured, opaque.order, Pass::Blended);
+        self.draw_textured(pass, world.figure, opaque.figure_order, Pass::Blended);
+        pass.set_pipeline(&self.pipelines.wide);
+        for (buffer, count) in world.lines {
+            if count >= 2 {
+                pass.set_vertex_buffer(0, buffer.slice(..));
+                pass.draw(0..6, 0..count / 2);
+            }
+        }
+        if self.glow.count > 0 {
+            pass.set_pipeline(&self.pipelines.glow);
+            pass.set_vertex_buffer(0, self.glow.buffer.slice(..));
+            pass.draw(0..self.glow.count, 0..1);
+        }
+        if self.sprites.count > 0 {
+            pass.set_pipeline(&self.pipelines.sprites);
+            pass.set_bind_group(2, &self.empty_group, &[]);
+            pass.set_bind_group(3, &targets.fx_group, &[]);
+            pass.set_vertex_buffer(0, self.sprites.buffer.slice(..));
+            pass.draw(0..self.sprites.count, 0..1);
+        }
+    }
+
+    /// The planar mirror (`water::screen`): the opaque scene from the eye
+    /// reflected in the water's plane, clipped at the plane, without
+    /// particles, glass, lines, or screen-space terms, into the mirror
+    /// target. The mirror's frame must be written.
+    fn encode_mirror(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        screen: &water_screen::WaterScreen,
+        targets: &water_screen::WaterTargets,
+        clear: wgpu::Color,
+        opaque: &Opaque<'_, '_>,
+        order: &[usize],
+    ) {
+        let mut pass = scene_pass(
+            encoder,
+            "verse water mirror",
+            &targets.mirror,
+            None,
+            &targets.mirror_depth,
+            wgpu::LoadOp::Clear(clear),
+            wgpu::LoadOp::Clear(0.0),
+            wgpu::StoreOp::Discard,
+        );
+        let world = opaque.world;
+        let pipelines = &screen.mirror;
+        pass.set_bind_group(0, &screen.mirror_scene_group, &[]);
+        pass.set_bind_group(1, &targets.mirror_guides, &[]);
+        if opaque.daylight {
+            pass.set_pipeline(&pipelines.daylight);
+            pass.draw(0..3, 0..1);
+        }
+        if opaque.lit {
+            pass.set_pipeline(&pipelines.lit);
+            for (buffer, count) in [
+                world.lit,
+                (&self.dynamic_lit.buffer, self.dynamic_lit.count),
+            ] {
+                if count > 0 {
+                    pass.set_vertex_buffer(0, buffer.slice(..));
+                    pass.draw(0..count, 0..1);
+                }
+            }
+            for which in [Pass::Opaque, Pass::Masked] {
+                self.draw_textured_with(
+                    &mut pass,
+                    world.textured,
+                    order,
+                    which,
+                    &pipelines.textured,
+                );
+                self.draw_textured_with(
+                    &mut pass,
+                    world.figure,
+                    opaque.figure_order,
+                    which,
+                    &pipelines.textured,
+                );
+            }
+        }
+        pass.set_pipeline(&pipelines.legacy);
+        for (buffer, count) in world.faces {
+            if count > 0 {
+                pass.set_vertex_buffer(0, buffer.slice(..));
+                pass.draw(0..count, 0..1);
+            }
+        }
+    }
+
     /// Bloom, exposure adaptation, and the graded output transform into
     /// `output`. Direct mode has no float target and skips it.
     fn post_chain(
@@ -2996,6 +3509,55 @@ impl Photo {
             post.encode(queue, encoder, output, chain, look);
         }
     }
+}
+
+/// What a neon stage's opaque scene draws: its batches, the textured
+/// cells and figure batches in drawing order, and whether the daylight sky
+/// and lit surfaces draw.
+struct Opaque<'w, 'a> {
+    world: &'w Batches<'a>,
+    order: &'w [usize],
+    figure_order: &'w [usize],
+    daylight: bool,
+    lit: bool,
+}
+
+/// Begins a scene pass into `target` (resolved into `resolve`) over
+/// `depth`.
+#[allow(clippy::too_many_arguments)]
+fn scene_pass<'e>(
+    encoder: &'e mut wgpu::CommandEncoder,
+    label: &str,
+    target: &wgpu::TextureView,
+    resolve: Option<&wgpu::TextureView>,
+    depth: &wgpu::TextureView,
+    load: wgpu::LoadOp<wgpu::Color>,
+    depth_load: wgpu::LoadOp<f32>,
+    depth_store: wgpu::StoreOp,
+) -> wgpu::RenderPass<'e> {
+    encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+        label: Some(label),
+        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+            view: target,
+            depth_slice: None,
+            resolve_target: resolve,
+            ops: wgpu::Operations {
+                load,
+                store: wgpu::StoreOp::Store,
+            },
+        })],
+        depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+            view: depth,
+            depth_ops: Some(wgpu::Operations {
+                load: depth_load,
+                store: depth_store,
+            }),
+            stencil_ops: None,
+        }),
+        timestamp_writes: None,
+        occlusion_query_set: None,
+        multiview_mask: None,
+    })
 }
 
 /// The scene a physical frame shows.
