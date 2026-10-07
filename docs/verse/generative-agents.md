@@ -1,6 +1,6 @@
 # Generative agents in Verse
 
-Status: in progress, October 6, 2026. The owner approved the plan, and
+Status: implemented, October 7, 2026. The owner approved the plan, and
 [#10795](https://github.com/OpenAgentsInc/openagents/issues/10795) tracks it,
 one issue per phase. [Decisions](#decisions) records the answers to the open
 questions. [What we already have](#what-we-already-have) lists the code each
@@ -1054,7 +1054,7 @@ fixtures and a small demo.
 | B2. Reflection | 2 (implemented) | [#10789](https://github.com/OpenAgentsInc/openagents/issues/10789) | B1 |
 | B3. Interviews | The rest of item 7 (implemented) | [#10794](https://github.com/OpenAgentsInc/openagents/issues/10794) | B2, D |
 | C1. Clock and districts | The town clock, time of day, and district data (implemented) | [#10786](https://github.com/OpenAgentsInc/openagents/issues/10786) | None; runs beside A and B |
-| C2. World | 3 | [#10788](https://github.com/OpenAgentsInc/openagents/issues/10788) | C1 |
+| C2. World | 3 (implemented) | [#10788](https://github.com/OpenAgentsInc/openagents/issues/10788) | C1 |
 | D. Days | 4 (implemented) | [#10790](https://github.com/OpenAgentsInc/openagents/issues/10790) | C2, B2 |
 | E1. Townsfolk | 5: routines, definitions, and spawn mechanics (implemented) | [#10791](https://github.com/OpenAgentsInc/openagents/issues/10791) | C2 |
 | E2. Town talk | 5: rumors, memory of the player, and dialogue (implemented) | [#10792](https://github.com/OpenAgentsInc/openagents/issues/10792) | E1, B1 |
