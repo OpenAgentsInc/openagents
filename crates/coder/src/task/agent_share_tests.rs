@@ -180,7 +180,7 @@ fn a_general_lesson_becomes_a_draft_that_passes_the_lint_and_the_screen_and_cite
             .unwrap()
             .starts_with("knowledge drafting: model fake-writer; cost $0.0100; drafted 1, kept 0")
     );
-    let rows = draft_rows(&store);
+    let rows = draft_rows(&store).unwrap();
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].kind, "environment");
     assert!(rows[0].publish.starts_with("microcoder kb publish --dir "));

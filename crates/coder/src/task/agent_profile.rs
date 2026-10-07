@@ -136,6 +136,10 @@ pub fn current(record: &Record, event: &Event) -> bool {
 /// When her key can't be read, the profile doesn't verify, or the file
 /// can't be written.
 pub fn refresh(store: &Store, record: &Record, now: u64) -> Result<Option<Event>, String> {
+    super::sales::privacy::check_agent_copy(
+        store,
+        &serde_json::to_string(record).map_err(|_| "agent profile source serialization failed")?,
+    )?;
     if record.pubkey.is_none() || record.attestation.is_none() {
         return Ok(None);
     }

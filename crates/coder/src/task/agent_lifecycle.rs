@@ -367,6 +367,7 @@ pub fn rotate(
     expires_at: u64,
     now: u64,
 ) -> Result<Rotated, String> {
+    super::sales::privacy::check_agent_copy(store, reason)?;
     let mut record = store
         .load()?
         .ok_or_else(|| format!("there is no agent named {}", store.name()))?;
@@ -809,7 +810,7 @@ pub fn export(
     } else {
         Vec::new()
     };
-    Ok(Snapshot {
+    let snapshot = Snapshot {
         schema: SNAPSHOT_SCHEMA.into(),
         v: 1,
         exported_at: now,
@@ -826,7 +827,12 @@ pub fn export(
         memory,
         core,
         entries,
-    })
+    };
+    super::sales::privacy::check_agent_copy(
+        store,
+        &serde_json::to_string(&snapshot).map_err(|_| "agent snapshot serialization failed")?,
+    )?;
+    Ok(snapshot)
 }
 
 fn read_core(
@@ -869,6 +875,18 @@ pub fn import(
     expires_at: u64,
     now: u64,
 ) -> Result<Record, String> {
+    {
+        let root = store
+            .dir()
+            .parent()
+            .and_then(Path::parent)
+            .ok_or("agent host root is unavailable")?;
+        super::sales::privacy::check_record_copy(
+            root,
+            snapshot.job_role.is_some(),
+            &serde_json::to_string(snapshot).map_err(|_| "agent snapshot serialization failed")?,
+        )?;
+    }
     if snapshot.schema != SNAPSHOT_SCHEMA || snapshot.v != 1 {
         return Err("a snapshot this host doesn't read".into());
     }

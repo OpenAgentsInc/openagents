@@ -167,7 +167,7 @@ pub struct Assignment {
     pub revoked_at: Option<u64>,
     pub revocation: Option<Artifact>,
     /// Credential digests never leave an assigned agent projection.
-    credential_sha256: String,
+    pub(super) credential_sha256: String,
 }
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -480,7 +480,7 @@ pub struct OwnerView {
     pub policies: Vec<PolicyRecord>,
     pub certificates: Vec<CertRecord>,
 }
-fn scope(lead: &Lead) -> Result<String> {
+pub(super) fn scope(lead: &Lead) -> Result<String> {
     // This private admission digest never enters a memory or public projection.
     Ok(digest(
         &serde_json::to_vec(&(
@@ -494,7 +494,7 @@ fn scope(lead: &Lead) -> Result<String> {
         .map_err(|e| e.to_string())?,
     ))
 }
-fn parse<T: for<'a> Deserialize<'a>>(bytes: &[u8]) -> Result<T> {
+pub(super) fn parse<T: for<'a> Deserialize<'a>>(bytes: &[u8]) -> Result<T> {
     if bytes.len() > MAX_COMMAND {
         return Err("sales agent command exceeds 32 KiB".into());
     }
@@ -710,7 +710,7 @@ impl Store {
                 if source.anchor != agent {
                     return Err("native agent charter or identity changed".into());
                 }
-                Self::agent_scope(found, &agent, policy, now)?;
+                self.agent_scope(found, &agent, policy, now)?;
                 if expires_at <= now
                     || expires_at
                         > agent
@@ -952,7 +952,7 @@ impl Store {
         }
         Ok(&record.policy)
     }
-    fn agent_scope(lead: &Lead, agent: &Anchor, policy: &Policy, now: u64) -> Result<()> {
+    fn agent_scope(&self, lead: &Lead, agent: &Anchor, policy: &Policy, now: u64) -> Result<()> {
         let channel = contact(&lead.contact)?
             .split_once(':')
             .ok_or("sales contact channel is unavailable")?
@@ -988,6 +988,7 @@ impl Store {
         {
             return Err("sales agent is outside the current recipient boundary".into());
         }
+        self.contact_admitted(lead, &channel)?;
         Ok(())
     }
     fn checked_sales_agent(
@@ -1028,7 +1029,7 @@ impl Store {
         if native.anchor != grant.anchor {
             return Err("native agent charter or identity changed".into());
         }
-        Self::agent_scope(lead, &native.anchor, policy, now)?;
+        self.agent_scope(lead, &native.anchor, policy, now)?;
         self.recheck_sales_agent(access, &native)?;
         Ok((lead, grant, policy, native))
     }
@@ -1059,7 +1060,7 @@ impl Store {
                     .into(),
             );
         }
-        Self::agent_scope(lead, &grant.anchor, policy, now)
+        self.agent_scope(lead, &grant.anchor, policy, now)
     }
     pub fn authenticate_sales_agent(&mut self, secret: &str) -> Result<AgentAccess> {
         self.refresh()?;
@@ -1144,6 +1145,10 @@ impl Store {
     pub fn apply_sales_agent(&mut self, access: &AgentAccess, bytes: &[u8]) -> Result<Receipt> {
         self.refresh()?;
         let (lead, grant, policy, native) = self.checked_sales_agent(access)?;
+        super::privacy::check_credentials(
+            &self.state,
+            std::str::from_utf8(bytes).map_err(|_| "sales agent command is not UTF-8")?,
+        )?;
         let command: AgentCommand = parse(bytes)?;
         if command.schema != AGENT_COMMAND_SCHEMA {
             return Err("unsupported sales agent command".into());

@@ -280,6 +280,9 @@ impl EngramStore {
     /// Reads `store`'s engrams without writing anything.
     #[must_use]
     pub fn read(store: &Store, screen: &secret_screen::Screen) -> Opened {
+        Self::read_inner(store, screen, true)
+    }
+    fn read_inner(store: &Store, screen: &secret_screen::Screen, privacy: bool) -> Opened {
         let record = match store.load() {
             Ok(Some(record)) => record,
             Ok(None) => return Opened::Skipped(format!("{} has no record", store.name())),
@@ -318,6 +321,12 @@ impl EngramStore {
             };
             if engram.d != stem {
                 return Opened::Unreadable(format!("{stem}.json holds another head"));
+            }
+            if privacy
+                && let Err(why) =
+                    super::sales::privacy::check_agent_copy(store, &engram.body.to_json())
+            {
+                return Opened::Unreadable(why);
             }
             heads.insert(stem, engram);
         }
@@ -478,6 +487,12 @@ impl EngramStore {
     /// event cannot be written.
     pub fn put(&mut self, body: Body, now: u64) -> Result<Engram, String> {
         let plaintext = body.to_json();
+        super::sales::privacy::check_agent_directory(
+            self.dir
+                .parent()
+                .ok_or("agent engram directory is unavailable")?,
+            &plaintext,
+        )?;
         if let Err(refusal) = self.screen.check(&plaintext) {
             return Err(format!("the secret screen refuses this engram: {refusal}"));
         }
@@ -540,6 +555,12 @@ impl EngramStore {
     /// When the event doesn't verify for this pair or can't be written.
     pub fn adopt(&mut self, event: &Event) -> Result<bool, String> {
         let engram = engram::validate_and_decrypt(event, &self.pair).map_err(|e| e.to_string())?;
+        super::sales::privacy::check_agent_directory(
+            self.dir
+                .parent()
+                .ok_or("agent engram directory is unavailable")?,
+            &engram.body.to_json(),
+        )?;
         if let Some(head) = self.heads.get(&engram.d) {
             let candidates = [head.clone(), engram.clone()];
             let winner = engram::select_head(candidates.iter()).map(|h| h.id.clone());
@@ -671,6 +692,38 @@ impl EngramStore {
         }
         out
     }
+}
+
+/// Minimize local owned heads only. A tombstone cannot prove deletion of old
+/// relay or unmanaged copies, and this operation never contacts a relay.
+pub(crate) fn scrub_customer(
+    store: &Store,
+    now: u64,
+    identifies: impl Fn(&str) -> Result<bool, String>,
+) -> Result<(), String> {
+    let mut engrams = match EngramStore::read_inner(store, &secret_screen::Screen::shapes(), false)
+    {
+        Opened::Ready(store) => store,
+        Opened::Skipped(_) => return Ok(()),
+        Opened::Unreadable(_) => return Err("local engram cleanup is unavailable".into()),
+    };
+    let mut slugs = vec![];
+    for head in engrams.heads() {
+        if identifies(&head.body.to_json())? {
+            slugs.push(head.slug().clone());
+        }
+    }
+    for slug in slugs {
+        if slug.is_core() {
+            engrams.put(
+                Body::core("Private customer material stays in the canonical pipeline."),
+                now,
+            )?;
+        } else {
+            engrams.tombstone(slug, now)?;
+        }
+    }
+    Ok(())
 }
 
 /// The index stored in `dir`, when there is one that reads.
@@ -1126,7 +1179,10 @@ pub fn owner_read(store: &Store, owner: &SecretKey) -> Result<OwnerView, String>
     let mut view = OwnerView::default();
     for (stem, event) in events(&dir_of(store))? {
         match engram::validate_and_decrypt(&event, &pair) {
-            Ok(engram) if engram.d == stem => view.heads.push(engram),
+            Ok(engram) if engram.d == stem => {
+                super::sales::privacy::check_agent_copy(store, &engram.body.to_json())?;
+                view.heads.push(engram);
+            }
             Ok(_) => view
                 .problems
                 .push(format!("{stem}.json holds another head")),

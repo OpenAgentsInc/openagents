@@ -553,10 +553,8 @@ impl Store {
     /// # Errors
     /// When the record cannot be read or is not a v1 record.
     pub fn load(&self) -> Result<Option<Record>, String> {
-        let text = match std::fs::read_to_string(self.record_path()) {
-            Ok(text) => text,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-            Err(e) => return Err(format!("cannot read {}: {e}", self.record_path().display())),
+        let Some(text) = super::sales::privacy::read_agent_text(self, &self.record_path())? else {
+            return Ok(None);
         };
         let record: Record = serde_json::from_str(&text).map_err(|e| {
             format!(
@@ -681,6 +679,16 @@ impl Store {
         record.validate_crew()?;
         private_dir(&self.dir)?;
         let body = serde_json::to_vec_pretty(record).map_err(|e| e.to_string())?;
+        let root = self
+            .dir
+            .parent()
+            .and_then(Path::parent)
+            .ok_or("agent host root is unavailable")?;
+        super::sales::privacy::check_record_copy(
+            root,
+            record.job_role.is_some(),
+            std::str::from_utf8(&body).map_err(|_| "agent definition is not UTF-8")?,
+        )?;
         let temp = self.dir.join(".agent.json.tmp");
         write_private(&temp, &body)?;
         std::fs::rename(&temp, self.record_path())
@@ -982,22 +990,18 @@ impl Store {
     /// # Errors
     /// When the journal cannot be written.
     pub fn append(&self, entry: &Entry) -> Result<(), String> {
+        super::sales::privacy::check_agent_copy(
+            self,
+            &serde_json::to_string(entry).map_err(|_| "agent journal serialization failed")?,
+        )?;
         private_dir(&self.dir)?;
         let mut line = serde_json::to_vec(entry).map_err(|e| e.to_string())?;
         line.push(b'\n');
-        let mut options = std::fs::OpenOptions::new();
-        options.create(true).append(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            options.mode(0o600);
-        }
-        let mut file = options
-            .open(self.journal_path())
-            .map_err(|e| format!("cannot open {}: {e}", self.journal_path().display()))?;
-        file.write_all(&line)
-            .and_then(|()| file.flush())
-            .map_err(|e| format!("cannot append to {}: {e}", self.journal_path().display()))
+        super::sales::privacy::append_agent_directory_text(
+            &self.dir,
+            &self.journal_path(),
+            std::str::from_utf8(&line).map_err(|_| "agent journal is not UTF-8")?,
+        )
     }
 
     /// The newest `last` journal entries, oldest first. A line that does
@@ -1006,15 +1010,8 @@ impl Store {
     /// # Errors
     /// When the journal exists and cannot be read.
     pub fn journal(&self, last: usize) -> Result<Vec<Entry>, String> {
-        let text = match std::fs::read_to_string(self.journal_path()) {
-            Ok(text) => text,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-            Err(e) => {
-                return Err(format!(
-                    "cannot read {}: {e}",
-                    self.journal_path().display()
-                ));
-            }
+        let Some(text) = super::sales::privacy::read_agent_text(self, &self.journal_path())? else {
+            return Ok(Vec::new());
         };
         let entries: Vec<Entry> = text
             .lines()
@@ -1031,15 +1028,8 @@ impl Store {
     /// # Errors
     /// When the journal exists and cannot be read.
     pub fn journal_rows(&self) -> Result<Vec<(usize, Entry)>, String> {
-        let text = match std::fs::read_to_string(self.journal_path()) {
-            Ok(text) => text,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-            Err(e) => {
-                return Err(format!(
-                    "cannot read {}: {e}",
-                    self.journal_path().display()
-                ));
-            }
+        let Some(text) = super::sales::privacy::read_agent_text(self, &self.journal_path())? else {
+            return Ok(Vec::new());
         };
         Ok(text
             .lines()

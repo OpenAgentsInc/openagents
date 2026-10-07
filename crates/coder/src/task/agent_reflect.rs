@@ -139,6 +139,7 @@ impl Services {
     /// When no runtime starts, or Jev isn't set up: an insight nothing can
     /// check is never written, so the reflection doesn't run.
     pub fn live(store: &Store) -> Result<Self, String> {
+        super::sales::privacy::model_available(store)?;
         let client = crate::decision::from_env()
             .map_err(|e| format!("Jev: {e}"))?
             .ok_or("Jev isn't set up, so a reflection's insights can't be checked")?;
@@ -766,6 +767,8 @@ impl Memory {
         now: u64,
     ) -> Result<(Reflection, Applied), String> {
         let store = self.store();
+        super::sales::privacy::model_available(store)?;
+        super::sales::privacy::check_agent_copy(store, trigger)?;
         let journal = store.journal_rows()?;
         let memory = self.entries()?;
         let sidecar = Scores::of(store);

@@ -87,6 +87,10 @@ impl Store {
         recorded_by: &str,
     ) -> Result<Verdict, String> {
         input.validate().map_err(|e| e.message)?;
+        super::sales::privacy::check_agent_copy(
+            self,
+            &serde_json::to_string(input).map_err(|_| "crew verdict serialization failed")?,
+        )?;
         if std::iter::once(input.id.as_str())
             .chain(std::iter::once(input.subject.reference.as_str()))
             .chain(std::iter::once(input.reason.as_str()))
@@ -252,6 +256,11 @@ impl Store {
                         .into(),
                 );
             }
+            super::sales::privacy::check_agent_copy(
+                self,
+                &serde_json::to_string(&verdict)
+                    .map_err(|_| "crew verdict serialization failed")?,
+            )?;
             verdicts.push(verdict);
         }
         verdicts.sort_by(|a, b| a.input.id.cmp(&b.input.id));

@@ -45,6 +45,7 @@ fn artifact(name: &str) -> Value {
 fn installed_private_agents_share_canonical_fields_without_cross_lead_or_memory_authority() {
     use coder::task::{agent, agent_key::FileKeys};
     let temp = tempfile::tempdir().unwrap();
+    fs::set_permissions(temp.path(), fs::Permissions::from_mode(0o700)).unwrap();
     let base = temp.path();
     let host = base.join("host");
     ok(base, "owner", &["init", "--owner", "operator"]);
@@ -83,6 +84,24 @@ fn installed_private_agents_share_canonical_fields_without_cross_lead_or_memory_
                 .as_str()
                 .unwrap()
                 .to_string(),
+        );
+    }
+    for (i, lead) in leads.iter().enumerate() {
+        use sha2::{Digest, Sha256};
+        let hash = |s: &str| {
+            Sha256::digest(s.as_bytes())
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect::<String>()
+        };
+        write(
+            &command,
+            &json!({"schema":"openagents.sales-contact-command.v1","id":format!("contact-{i}"),"expected_revision":i,"operation":{"kind":"admit","admission":{"lead":lead,"expected_lead_revision":1,"customer":format!("private-account-{i}"),"jurisdiction":"US","source_kind":"given_business_role","permission_kind":"accepted_introduction","source_sha256":hash("private original customer message"),"permission_reference_sha256":hash("private permission text"),"owner_reference":"operator verified actual accepted business introduction","aliases":[format!("email:private-{i}@fixture.invalid")]}}}),
+        );
+        ok(
+            base,
+            "owner",
+            &["privacy", "apply", "--input", command.to_str().unwrap()],
         );
     }
     let policy = json!({"schema":"openagents.sales-policy.v1","id":"floor","version":1,"channels":["email"],"jurisdictions":["US"],"allowed_agents":[paul["pubkey"],frank["pubkey"]],

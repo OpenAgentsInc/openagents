@@ -1516,7 +1516,7 @@ fn memory(
                     .map_err(Fail::Failed)?,
             );
             wire::Memory {
-                drafts: coder::task::agent_share::draft_rows(&store),
+                drafts: coder::task::agent_share::draft_rows(&store).map_err(Fail::Failed)?,
                 memory,
             }
         }
@@ -1706,6 +1706,7 @@ fn engrams_from_relay(output: &Output, root: &Path, name: &str, args: &Args) -> 
             )));
         }
     };
+    coder::task::sales::privacy::check_relay_read(&store, &agent_hex).map_err(Fail::Failed)?;
     let agent = agent_hex
         .parse::<secp256k1::XOnlyPublicKey>()
         .map_err(|_| Fail::Failed(format!("{agent_hex} isn't a public key")))?;
@@ -1721,6 +1722,11 @@ fn engrams_from_relay(output: &Output, root: &Path, name: &str, args: &Args) -> 
     }
     let view =
         agent_sync::owner_read(&agent, &owner, &relays, &agent_sync::Live).map_err(Fail::Failed)?;
+    coder::task::sales::privacy::check_relay_read(&store, &agent_hex).map_err(Fail::Failed)?;
+    for head in &view.heads {
+        coder::task::sales::privacy::check_memory_projection(&store, &head.body.to_json())
+            .map_err(Fail::Failed)?;
+    }
     let heads: Vec<Value> = view.heads.iter().map(|h| head_json(h, true)).collect();
     let value = json!({
         "heads": heads,

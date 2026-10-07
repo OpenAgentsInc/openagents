@@ -1,6 +1,8 @@
 //! Private sales operations through the shipped command, with scratch home/state.
 use serde_json::{Value, json};
 use std::fs;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::process::{Command, Output};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -58,6 +60,8 @@ fn private_pipeline_restart_handoff_authorization_replay_and_suppression() {
     let f = Fixture {
         dir: tempfile::tempdir().unwrap(),
     };
+    #[cfg(unix)]
+    fs::set_permissions(f.dir.path(), fs::Permissions::from_mode(0o700)).unwrap();
     f.ok("owner-token", &["init", "--owner", "founder"]);
     let collaborator = f.dir.path().join("collaborator-token");
     f.ok(

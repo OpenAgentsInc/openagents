@@ -46,6 +46,7 @@ fn source(root: &Path, name: &str, bytes: &[u8]) -> Value {
 #[test]
 fn actual_cli_keeps_pending_briefs_private_and_accepts_only_the_exact_recipient() {
     let work = tempfile::tempdir().unwrap();
+    fs::set_permissions(work.path(), fs::Permissions::from_mode(0o700)).unwrap();
     let base = work.path();
     let host = base.join("host");
     let owner = base.join("owner");

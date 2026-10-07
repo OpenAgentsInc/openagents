@@ -97,6 +97,7 @@ fn already_used_contact_cleanup_slots_do_not_block_remaining_telemetry_withdrawa
     let mut other = store.state.leads[&lead].clone();
     other.id = "historical-other-lead".into();
     other.contact = "email:historical-other@synthetic.invalid".into();
+    other.details.account = "independent-historical-customer".into();
     other.funnel_journeys.clear();
     store.state.leads.insert(other.id.clone(), other.clone());
     // Represent a retained history after other contacts used their reserved

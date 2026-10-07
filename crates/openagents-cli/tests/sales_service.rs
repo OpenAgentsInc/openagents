@@ -75,6 +75,7 @@ fn attempt(root: &Path, id: &str, accepted: bool) -> Value {
 #[test]
 fn real_sales_cli_records_replays_exports_and_feeds_the_verified_operating_report() {
     let dir = tempfile::tempdir().unwrap();
+    fs::set_permissions(dir.path(), fs::Permissions::from_mode(0o700)).unwrap();
     let root = dir.path();
     fs::set_permissions(root, fs::Permissions::from_mode(0o700)).unwrap();
     let host = root.join("host");
@@ -336,6 +337,7 @@ fn real_sales_cli_weekly_review_rechecks_canonical_consent_and_keeps_unpaid_work
     use coder::task::sales::Store;
     use gym::sales_weekly as weekly;
     let dir = tempfile::tempdir().unwrap();
+    fs::set_permissions(dir.path(), fs::Permissions::from_mode(0o700)).unwrap();
     let root = dir.path();
     fs::set_permissions(root, fs::Permissions::from_mode(0o700)).unwrap();
     let at = coder::task::sales::unix_now() - 100;

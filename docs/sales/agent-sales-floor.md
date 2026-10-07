@@ -734,6 +734,20 @@ enforces them where code can.
     no pressure, false urgency, invented scarcity, repeated chasing, or
     deception of any kind.
 
+The implemented REV-60 native slice enforces these contact rules in the
+existing private pipeline. `openagents sales privacy` records exact owner
+business-contact admission, immediate cross-channel opt-out, versioned inactivity
+policy, and attributed engagement; agent assignments and drafts recheck it.
+Suppression survives lead removal and identity changes. Native exports retain
+exact private copy provenance for expiry cleanup, and shared memory, snapshots,
+imports, owner-key reads, and enabled model/relay consumers refuse known customer
+content. Customer model disclosure and sales relay sync remain unavailable;
+opaque REV-53 memory lessons grant neither. Cleanup preserves original financial
+references and keys, reports unavailable copies honestly, and makes no claim
+about unmanaged or historical remote erasure. The [private pipeline guide](README.md#private-sales-pipeline)
+defines the current command shapes and bounds. Sending and future disclosure
+adapters still need their own qualified implementation and owner activation.
+
 This page is a plan, not legal advice. Before the first real send, the owner
 confirms the jurisdictions, the lawful bases, and the message footer with
 counsel; that step goes in `NEEDS_OWNER.md`.

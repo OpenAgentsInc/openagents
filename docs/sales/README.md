@@ -632,6 +632,62 @@ authority. O1 confirms real humans, consent, and retention privately; O6
 separately authorizes any real outreach, as recorded in `NEEDS_OWNER.md`.
 
 
+REV-60 adds `openagents sales privacy view|apply|check|prune` to this same
+store. Before assigning a lead or preparing an agent draft, the owner records an
+`openagents.sales-contact-command.v1` `admit` operation. It pins the current
+lead revision, original customer/account ID, exact source and permission-reference
+digests, known US business scope, and requested contact or accepted introduction.
+Supported source kinds are `given_business_role` and `published_business_role`.
+Only explicit bounded ASCII email and Nostr identities normalize; the proactive
+check supports permissioned business email. Unknown or private source categories,
+unknown jurisdiction, stale pins, ambiguous aliases, and missing consent refuse.
+These are attributed owner records, not independent contact verification.
+`privacy check --lead ID --channel email` confirms current admission and grants
+no sending, model, or relay authority.
+
+A current human writer can record an immediate `opt_out`, including ambiguity,
+without renewing expired permission. The command suppresses every linked alias
+and original customer across hires and channels. Suppression survives source,
+policy, credential, and native-key changes, removal, and reimport. Legacy contacts
+that fail new commercial validation can still be suppressed or deleted. There is
+no unsuppression command. The default inactivity period is 90 days; an owner
+`policy` operation records a new version and bounded period. An `engagement`
+operation records an actual customer reply or accepted introduction with its
+original time and evidence reference. Operator edits and model preferences do
+not extend inactivity. Expiry cleanup runs on native store use, not an idle timer.
+
+Private lead, service, partner, funnel, and weekly exports use one native copy
+writer. It requires an owned private parent (`0700` on Unix), creates an exclusive
+private file (`0600`), and retains exact file identity, digest, recipient, and the
+original retention deadline. Each copy is at most 2 MiB; the store tracks at most
+1,024. Suppression and expiry remove exact retained copies; replaced, unsealed,
+or inaccessible copies remain visibly unavailable for cleanup. Extending a lead
+never extends a service or funnel copy's original boundary. Deletion removes
+assignments and drafts, minimizes owned memory, journals, caches, and local
+encrypted engrams, and preserves native keys and opaque original payment,
+fulfillment, and audit references. Signed historical verdicts containing customer
+material remain unavailable for projection and require owner repair rather than
+rewriting approval evidence. Unmanaged captures and historical relay erasure are
+never reported as verified.
+
+Known customer and credential fingerprints also screen native prompts, records,
+journals, memory, core heads, snapshots, and role-stripped imports. Screening
+checks decoded JSON strings and JSONL, including escaped identifiers. Knowledge
+drafts also screen parsed front-matter fields before writing, projection, and
+cleanup. Native views and queued reports recheck current canonical identifiers;
+legacy leads reconstruct bounded fingerprints from their retained fields. It bounds
+each copy at 2 MiB, 131,072 fingerprint checks, 4,096 JSON nodes, and depth 16;
+exhaustion returns unavailable. The canonical state has its separate 8 MiB bound.
+Customer model disclosure is unavailable for the enabled sales profile before
+model factories run, so it creates no customer Coder trace. Sales relay sync
+stays off, including owner-key relay reads; active-profile relay reads require an
+exact current local non-sales subject and screen decrypted bodies before output.
+Missing configured privacy state refuses these consumers. REV-53's fixed opaque
+memory projection remains available under its original grant. Future model,
+sender, and sync adapters must separately qualify their recipient boundary;
+fixtures do not activate any of them. O6 retains the real-contact and legal
+activation steps in `NEEDS_OWNER.md`.
+
 REV-53 adds owner-issued native agent access to this same private store. Use
 `openagents sales agents anchor --agent paul` to read the current native key,
 owner attestation, job role, and exact charter pins. `agents owner` reads the

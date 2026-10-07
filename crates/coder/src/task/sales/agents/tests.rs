@@ -88,6 +88,32 @@ impl Fixture {
         })
         .unwrap();
         let lead = store.apply(&owner, &bytes).unwrap().lead;
+        let source = store.state.leads.get(&lead).unwrap();
+        let privacy = super::super::privacy::Command {
+            schema: super::super::privacy::COMMAND_SCHEMA.into(),
+            id: "business-contact".into(),
+            expected_revision: 0,
+            operation: super::super::privacy::Operation::Admit {
+                admission: super::super::privacy::Admission {
+                    lead: lead.clone(),
+                    expected_lead_revision: 1,
+                    customer: source.details.account.clone(),
+                    jurisdiction: "US".into(),
+                    source_kind: super::super::privacy::SourceKind::GivenBusinessRole,
+                    permission_kind: super::super::privacy::PermissionKind::AcceptedIntroduction,
+                    source_sha256: digest(source.source.as_bytes()),
+                    permission_reference_sha256: digest(
+                        source.details.permission.reference.as_bytes(),
+                    ),
+                    owner_reference: "operator verified requested private business introduction"
+                        .into(),
+                    aliases: vec![source.contact.clone()],
+                },
+            },
+        };
+        store
+            .apply_sales_privacy(&owner, &serde_json::to_vec(&privacy).unwrap())
+            .unwrap();
         let policy = Policy {
             schema: POLICY_SCHEMA.into(),
             id: "sales-floor".into(),
@@ -890,6 +916,7 @@ fn fresh_assignment_tokens_cannot_reuse_revoked_or_removed_lead_credentials() {
         details: original.details,
     };
     input.details.stage = Stage::Qualified;
+    input.details.account = "independent-new-customer".into();
     let receipt = f
         .store
         .apply(
@@ -906,6 +933,31 @@ fn fresh_assignment_tokens_cannot_reuse_revoked_or_removed_lead_credentials() {
             })
             .unwrap(),
         )
+        .unwrap();
+    let fresh_lead = f.store.state.leads[&receipt.lead].clone();
+    let admission = super::super::privacy::Command {
+        schema: super::super::privacy::COMMAND_SCHEMA.into(),
+        id: "admit-new-buyer".into(),
+        expected_revision: f.store.state.privacy.revision,
+        operation: super::super::privacy::Operation::Admit {
+            admission: super::super::privacy::Admission {
+                lead: receipt.lead.clone(),
+                expected_lead_revision: 1,
+                customer: fresh_lead.details.account.clone(),
+                jurisdiction: "US".into(),
+                source_kind: super::super::privacy::SourceKind::GivenBusinessRole,
+                permission_kind: super::super::privacy::PermissionKind::AcceptedIntroduction,
+                source_sha256: digest(fresh_lead.source.as_bytes()),
+                permission_reference_sha256: digest(
+                    fresh_lead.details.permission.reference.as_bytes(),
+                ),
+                owner_reference: "owner verified independent buyer introduction".into(),
+                aliases: vec![fresh_lead.contact],
+            },
+        },
+    };
+    f.store
+        .apply_sales_privacy(&f.owner, &serde_json::to_vec(&admission).unwrap())
         .unwrap();
     let reused = OwnerOperation::Assign {
         lead: receipt.lead.clone(),

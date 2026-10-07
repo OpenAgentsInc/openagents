@@ -13,6 +13,7 @@ pub mod agents;
 pub mod claims;
 pub mod intake;
 pub mod partners;
+pub mod privacy;
 pub mod referrals;
 
 pub const SCHEMA: &str = "openagents.sales.pipeline.v1";
@@ -285,6 +286,8 @@ struct State {
     claims: claims::State,
     #[serde(default)]
     agents: agents::Book,
+    #[serde(default)]
+    privacy: privacy::Book,
 }
 impl Default for State {
     fn default() -> Self {
@@ -302,6 +305,7 @@ impl Default for State {
             intake_submissions: BTreeMap::new(),
             claims: claims::State::default(),
             agents: agents::Book::default(),
+            privacy: privacy::Book::default(),
         }
     }
 }
@@ -344,7 +348,9 @@ fn text(s: &str, max: usize) -> Result<()> {
     if s.trim().is_empty() || s.len() > max || s.chars().any(|c| c.is_control() && c != '\n') {
         Err("invalid bounded sales text".into())
     } else {
-        Ok(())
+        secret_screen::Screen::shapes()
+            .check(s)
+            .map_err(|_| "sales text refuses credential material".into())
     }
 }
 fn contact(s: &str) -> Result<String> {
@@ -463,7 +469,7 @@ impl Store {
         let lock = super::open_lock(&dir.join("sales.lock")).map_err(|e| e.to_string())?;
         super::take_lock(&lock, Duration::from_secs(5)).map_err(|e| e.to_string())?;
         let path = dir.join("state.json");
-        let state = if super::regular_or_absent(&path).map_err(|e| e.to_string())? {
+        let mut state = if super::regular_or_absent(&path).map_err(|e| e.to_string())? {
             let mut bytes = Vec::new();
             super::private_open(&path, false, false)
                 .map_err(|e| e.to_string())?
@@ -491,6 +497,8 @@ impl Store {
         token(&state.salt)?;
         state.claims.check()?;
         state.agents.check(&state.leads)?;
+        state.privacy.check()?;
+        privacy::remember_retained(&mut state)?;
         if state.leads.values().any(|lead| lead.schema != LEAD_SCHEMA)
             || state
                 .receipts
@@ -556,13 +564,24 @@ impl Store {
         store.refresh()?;
         Ok(store)
     }
-    fn persist(&mut self, next: State) -> Result<()> {
+    fn persist(&mut self, mut next: State) -> Result<()> {
         if self.poisoned {
             return Err("sales store needs recovery".into());
         }
         self.sales_custody()?;
         super::verify_same_file(&self.dir.join("sales.lock"), &self.lock)
             .map_err(|e| e.to_string())?;
+        if next.privacy.deleted.len() > self.state.privacy.deleted.len() {
+            let root = self.dir.parent().ok_or("host root is unavailable")?;
+            let stores = super::agent::Store::all(root);
+            next.privacy.native_cleanup_truncated |= stores.len() > 64;
+            for store in stores.into_iter().take(64) {
+                next.privacy
+                    .agent_cleanup
+                    .insert(store.name().into(), false);
+            }
+        }
+        privacy::retain_credentials(&mut next)?;
         let bytes = serde_json::to_vec_pretty(&next).map_err(|e| e.to_string())?;
         let reserved = Self::funnel_count(&next)
             .saturating_add(next.agents.cleanup_count(&next.leads))
@@ -595,6 +614,7 @@ impl Store {
         ))
     }
     fn remove(state: &mut State, lead: &str, now: u64, reference: &str) -> Result<()> {
+        privacy::remove(state, lead, now, reference)?;
         let found = state.leads.get(lead).ok_or("lead is unavailable")?;
         let key = Self::suppression(state, &found.contact)?;
         if !state.suppressions.contains_key(&key) && state.suppressions.len() >= MAX_RECEIPTS {
@@ -612,10 +632,25 @@ impl Store {
         // Suppression is contact-wide, including separate workflow records.
         // Keeping another active record would permit recontact after deletion.
         let salt = state.salt.clone();
+        let removed = state
+            .leads
+            .values()
+            .filter(|record| {
+                privacy::suppressed(state, record).unwrap_or(true)
+                    || contact(&record.contact)
+                        .map(|address| digest(format!("{salt}:{address}").as_bytes()) == key)
+                        .unwrap_or(true)
+            })
+            .map(|record| record.id.clone())
+            .collect::<Vec<_>>();
+        for id in &removed {
+            privacy::remove(state, id, now, reference)?;
+        }
         state.leads.retain(|_, record| {
-            contact(&record.contact)
-                .map(|address| digest(format!("{salt}:{address}").as_bytes()) != key)
-                .unwrap_or(false)
+            !removed.contains(&record.id)
+                && contact(&record.contact)
+                    .map(|address| digest(format!("{salt}:{address}").as_bytes()) != key)
+                    .unwrap_or(false)
         });
         Ok(())
     }
@@ -628,7 +663,7 @@ impl Store {
         let expired = next
             .leads
             .values()
-            .filter(|l| l.details.data.retain_until <= now)
+            .filter(|l| l.details.data.retain_until <= now || privacy::inactive(&next, l, now))
             .map(|l| l.id.clone())
             .collect::<Vec<_>>();
         for lead in &expired {
@@ -638,6 +673,16 @@ impl Store {
         }
         // Revoked/expired permission stops qualification and cancels proposed handoffs.
         let mut changed = !expired.is_empty();
+        let retired_sales = next
+            .leads
+            .values()
+            .flat_map(|lead| lead.service_sales.values())
+            .filter(|sale| sale.retain_until <= now)
+            .cloned()
+            .collect::<Vec<_>>();
+        for sale in &retired_sales {
+            privacy::retire_service(&mut next, sale)?;
+        }
         for lead in next.leads.values_mut() {
             let unavailable = lead.details.permission.state != PermissionState::Granted
                 || lead.details.permission.expires_at <= now;
@@ -686,6 +731,7 @@ impl Store {
         if changed {
             self.persist(next)?;
         }
+        self.cleanup_sales_copies()?;
         Ok(())
     }
     fn check(&self, access: &Access) -> Result<Role> {
@@ -987,10 +1033,11 @@ impl Store {
         if self.check(access)? == Role::Reader {
             return Err("suppression lookup requires sales write authority".into());
         }
-        Ok(self
+        let legacy = self
             .state
             .suppressions
-            .contains_key(&Self::suppression(&self.state, address)?))
+            .contains_key(&Self::suppression(&self.state, address)?);
+        Ok(legacy || privacy::address_suppressed(&self.state, address)?)
     }
     pub fn apply(&mut self, access: &Access, bytes: &[u8]) -> Result<Receipt> {
         self.apply_with_evidence_root(access, bytes, None)
@@ -1006,6 +1053,10 @@ impl Store {
         if bytes.len() > MAX_COMMAND {
             return Err("sales command exceeds bound".into());
         }
+        privacy::check_credentials(
+            &self.state,
+            std::str::from_utf8(bytes).map_err(|_| "sales command is not UTF-8")?,
+        )?;
         let c: Command = serde_json::from_slice(bytes).map_err(|_| "malformed sales command")?;
         if c.schema != COMMAND_SCHEMA {
             return Err("unsupported sales command schema".into());
@@ -1075,6 +1126,7 @@ impl Store {
             {
                 return Err("contact is suppressed".into());
             }
+            privacy::check_identity(&next, &input.contact, &input.details.account)?;
             lead_id = format!("lead_{}", key);
             revision = 1;
             outcome = "created";
@@ -1102,6 +1154,8 @@ impl Store {
                     agent_records: agents::LeadRecords::default(),
                 },
             );
+            let added = next.leads.get(&lead_id).unwrap().clone();
+            privacy::remember(&mut next, &added)?;
         } else {
             lead_id = c.lead.clone().ok_or("lead identity required")?;
             let found = next.leads.get(&lead_id).ok_or("lead is unavailable")?;
@@ -1428,6 +1482,9 @@ impl Store {
                 lead.updated_at = now;
             }
         }
+        if let Some(lead) = next.leads.get(&lead_id).cloned() {
+            privacy::remember(&mut next, &lead)?;
+        }
         next.sequence = next
             .sequence
             .checked_add(1)
@@ -1489,19 +1546,8 @@ impl Store {
     }
     pub fn export(&mut self, access: &Access, lead: &str, path: &Path) -> Result<String> {
         let record = self.show(access, lead)?;
-        self.external_file(path)?;
         let bytes = serde_json::to_vec_pretty(&record).map_err(|e| e.to_string())?;
-        let mut file = super::private_open(path, true, true).map_err(|e| e.to_string())?;
-        file.write_all(&bytes)
-            .and_then(|()| file.sync_all())
-            .map_err(|e| e.to_string())?;
-        super::sync_directory(
-            path.parent()
-                .filter(|p| !p.as_os_str().is_empty())
-                .unwrap_or(Path::new(".")),
-        )
-        .map_err(|e| e.to_string())?;
-        Ok(digest(&bytes))
+        self.write_sales_copy(access, &[lead.into()], path, &bytes)
     }
 }
 
@@ -1595,6 +1641,11 @@ mod tests {
     }
     fn fixture() -> (TempDir, Store, Access, PathBuf) {
         let dir = TempDir::new().unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+        }
         let mut store = Store::open_with_clock(&dir.path().join("host"), now).unwrap();
         let cred = dir.path().join("operator");
         store.initialize("operator", &cred).unwrap();

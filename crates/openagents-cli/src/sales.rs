@@ -10,6 +10,8 @@ use std::path::Path;
 mod agents;
 #[path = "sales_claims.rs"]
 mod claims;
+#[path = "sales_privacy.rs"]
+mod privacy;
 pub const USAGE: &str = "usage: openagents sales COMMAND --root DIR [--credential FILE] [--json]
   init --owner HUMAN --credential FILE
         Initialize the private pipeline and write its owner's credential.
@@ -30,6 +32,14 @@ pub const USAGE: &str = "usage: openagents sales COMMAND --root DIR [--credentia
         Read the owner's bounded digest-only audit references.
   suppressed --contact CHANNEL:ADDRESS
         Inspect minimum suppression before an authorized future contact.
+  privacy view
+        Read owner-only policy, opaque suppression, and native copy cleanup.
+  privacy apply --input FILE
+        Record owner business admission or immediate human opt-out.
+  privacy check --lead LEAD --channel email
+        Check current contact admission; grants no outbound authority.
+  privacy prune
+        Apply due native retention and registered copy cleanup.
   agents anchor --agent NAME
         Read the owner's exact native agent key and charter pins.
   agents owner
@@ -93,6 +103,10 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("export", Effect::LocalWrite),
     Declared::computer("audit", Effect::ReadOnly),
     Declared::computer("suppressed", Effect::ReadOnly),
+    Declared::computer("privacy view", Effect::ReadOnly),
+    Declared::computer("privacy apply", Effect::Grants),
+    Declared::computer("privacy check", Effect::ReadOnly),
+    Declared::computer("privacy prune", Effect::LocalWrite),
     Declared::computer("agents anchor", Effect::ReadOnly),
     Declared::computer("agents owner", Effect::ReadOnly),
     Declared::computer("agents owner-apply", Effect::Grants),
@@ -111,6 +125,9 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("review", Effect::LocalWrite),
 ];
 pub fn run(output: &Output, words: &[String]) -> u8 {
+    if words.first().is_some_and(|w| w == "privacy") {
+        return privacy::run(output, &words[1..]);
+    }
     if words.first().is_some_and(|w| w == "agents") {
         return agents::run(output, &words[1..]);
     }

@@ -21,7 +21,6 @@
 
 use std::collections::{BTreeMap, HashMap};
 use std::fmt;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock};
 
@@ -537,6 +536,9 @@ impl Services {
     /// priors or BM25.
     #[must_use]
     pub fn live(store: &Store) -> Self {
+        if super::sales::privacy::model_available(store).is_err() {
+            return Self::offline();
+        }
         let judge = match crate::decision::from_env() {
             Ok(Some(client)) => JevJudge::new(client)
                 .ok()
@@ -786,10 +788,10 @@ impl Scores {
     /// # Errors
     /// When the file exists and cannot be read.
     pub fn load(&self) -> Result<HashMap<String, ScoreRow>, String> {
-        let text = match std::fs::read_to_string(&self.path) {
-            Ok(text) => text,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(HashMap::new()),
-            Err(e) => return Err(format!("cannot read {}: {e}", self.path.display())),
+        let directory = self.path.parent().ok_or("score namespace is unavailable")?;
+        let Some(text) = super::sales::privacy::read_agent_directory_text(directory, &self.path)?
+        else {
+            return Ok(HashMap::new());
         };
         Ok(text
             .lines()
@@ -812,17 +814,11 @@ impl Scores {
             body.extend(serde_json::to_vec(row).map_err(|e| e.to_string())?);
             body.push(b'\n');
         }
-        let mut options = std::fs::OpenOptions::new();
-        options.create(true).append(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            options.mode(0o600);
-        }
-        options
-            .open(&self.path)
-            .and_then(|mut file| file.write_all(&body))
-            .map_err(|e| format!("cannot write {}: {e}", self.path.display()))
+        super::sales::privacy::append_agent_directory_text(
+            self.path.parent().ok_or("score namespace is unavailable")?,
+            &self.path,
+            std::str::from_utf8(&body).map_err(|_| "score serialization is not UTF-8")?,
+        )
     }
 }
 
@@ -841,6 +837,8 @@ impl Memory {
         services: &mut Services,
     ) -> Result<Recall, String> {
         let store = self.store();
+        super::sales::privacy::model_available(store)?;
+        super::sales::privacy::check_agent_copy(store, &format!("{request}\n{workspace}"))?;
         let journal = store.journal_rows()?;
         let memory = self.entries()?;
         let sidecar = Scores::of(store);

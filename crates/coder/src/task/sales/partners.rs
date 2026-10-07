@@ -844,22 +844,9 @@ impl Store {
         path: &Path,
     ) -> Result<String> {
         let value = self.partner_show(access, lead, assignment)?;
-        self.external_file(path)?;
         let bytes = serde_json::to_vec_pretty(&value)
             .map_err(|_| "Partner export serialization failed.")?;
-        let mut file =
-            super::super::private_open(path, true, true).map_err(|_| "Partner export refused.")?;
-        use std::io::Write;
-        file.write_all(&bytes)
-            .and_then(|()| file.sync_all())
-            .map_err(|_| "Partner export write failed.")?;
-        super::super::sync_directory(
-            path.parent()
-                .filter(|p| !p.as_os_str().is_empty())
-                .unwrap_or(Path::new(".")),
-        )
-        .map_err(|_| "Partner export sync failed.")?;
-        Ok(super::digest(&bytes))
+        self.write_scoped_sales_copy(access, &[lead.into()], path, &bytes, Some(assignment))
     }
 }
 

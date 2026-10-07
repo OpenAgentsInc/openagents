@@ -659,6 +659,20 @@ adapters and explicit activation. No customer material belongs in memory;
 `agents memory` returns only current admitted random references and fixed fields.
 These owner choices do not block the native records implementation.
 
+REV-60's contact privacy controls are code-qualified with isolated native and
+installed CLI fixtures. Before real use, verify the original customer/account ID,
+US business source, actual requested contact or accepted introduction, exact
+permission pins, linked aliases, human responsibility, and permitted recipients.
+Review the default 90-day inactivity period or record a new owner policy version;
+record engagement only from an actual customer reply or accepted introduction.
+Use private export directories, and review any unavailable or truncated cleanup,
+unmanaged captures, or historical signed records that need repair. Native copy
+removal and local engram minimization do not prove physical or remote erasure.
+The current sales profile admits no customer model disclosure or relay sync and
+no sending; a future adapter needs separate recipient and legal qualification.
+These activation and repair steps do not block the native privacy implementation
+or human-led first revenue.
+
 The [sales-floor decisions](docs/sales/agent-sales-floor.md#initial-operating-decisions)
 start with permissioned US business email and individual approvals. Before
 live outreach, configure the dedicated domain and monitored mailbox; verify

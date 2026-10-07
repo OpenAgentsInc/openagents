@@ -619,6 +619,22 @@ impl Agents {
         crew: Option<CrewStamp>,
     ) -> Report {
         let name = record.name.clone();
+        if crate::task::sales::privacy::model_available(store).is_err()
+            || crate::task::sales::privacy::check_agent_copy(
+                store,
+                &format!(
+                    "{text}\n{briefing}\n{}",
+                    serde_json::to_string(record).unwrap_or_default()
+                ),
+            )
+            .is_err()
+        {
+            return Report {
+                outcome: Outcome::Stopped,
+                reply: "Private customer model disclosure is unavailable.".into(),
+                headline: "privacy refused".into(),
+            };
+        }
         let clock = self.clock;
         let journal = |kind: Kind, line: &str, status: Option<i32>| {
             let mut entry = Entry::new(clock(), kind, line);

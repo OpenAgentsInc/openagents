@@ -277,20 +277,11 @@ impl Store {
         if bytes.len() > MAX_OUTPUT {
             return Err("private funnel output exceeds bound".into());
         }
-        self.external_file(path)?;
-        use std::io::Write;
-        let mut file = super::super::private_open(path, true, true)
-            .map_err(|_| "private funnel output refused")?;
-        file.write_all(bytes)
-            .and_then(|()| file.sync_all())
-            .map_err(|_| "private funnel output write failed")?;
-        super::super::sync_directory(
-            path.parent()
-                .filter(|p| !p.as_os_str().is_empty())
-                .unwrap_or(Path::new(".")),
-        )
-        .map_err(|_| "private funnel output directory sync failed")?;
-        Ok(super::digest(bytes))
+        let leads = snapshots
+            .iter()
+            .map(|s| s.journey.pipeline_lead.clone())
+            .collect::<Vec<_>>();
+        self.write_sales_copy(access, &leads, path, bytes)
     }
     pub fn funnel_export(
         &mut self,
@@ -304,19 +295,6 @@ impl Store {
             .map_err(|_| "funnel export serialization failed")?;
         // A scoped reader can export its own snapshot; operating reviews still
         // require the owner through funnel_write.
-        self.external_file(path)?;
-        use std::io::Write;
-        let mut file =
-            super::super::private_open(path, true, true).map_err(|_| "funnel export refused")?;
-        file.write_all(&bytes)
-            .and_then(|()| file.sync_all())
-            .map_err(|_| "funnel export write failed")?;
-        super::super::sync_directory(
-            path.parent()
-                .filter(|p| !p.as_os_str().is_empty())
-                .unwrap_or(Path::new(".")),
-        )
-        .map_err(|_| "funnel export directory sync failed")?;
-        Ok(super::digest(&bytes))
+        self.write_sales_copy(access, &[lead.into()], path, &bytes)
     }
 }

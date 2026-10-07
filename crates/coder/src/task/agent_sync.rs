@@ -169,6 +169,9 @@ fn write(store: &Store, name: &str, body: &[u8]) -> Result<(), String> {
 /// When a URL isn't a relay URL, there are more than [`MAX_RELAYS`], or the
 /// settings can't be written.
 pub fn set_relays(store: &Store, relays: &[String], now: u64) -> Result<Settings, String> {
+    if !relays.is_empty() {
+        super::sales::privacy::sync_available(store)?;
+    }
     for url in relays {
         canonical(url)?;
     }
@@ -676,6 +679,7 @@ fn pass(
     now: u64,
     status: &mut Status,
 ) -> Result<(), String> {
+    super::sales::privacy::sync_available(store)?;
     let relays = configured(&Settings::load(store)?.memory_relays);
     if relays.is_empty() {
         return Err("relay sync is off".into());

@@ -153,17 +153,13 @@ impl Memory {
     /// # Errors
     /// When the file exists and cannot be read.
     pub fn entries(&self) -> Result<Vec<MemoryEntry>, String> {
-        let read = match std::fs::read_to_string(self.path()) {
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                let _ = super::agent_engrams::rebuild_from_engrams(self);
-                std::fs::read_to_string(self.path())
-            }
-            other => other,
-        };
-        let text = match read {
-            Ok(text) => text,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-            Err(e) => return Err(format!("cannot read {}: {e}", self.path().display())),
+        if std::fs::symlink_metadata(self.path())
+            .is_err_and(|e| e.kind() == std::io::ErrorKind::NotFound)
+        {
+            let _ = super::agent_engrams::rebuild_from_engrams(self);
+        }
+        let Some(text) = super::sales::privacy::read_agent_text(&self.store, &self.path())? else {
+            return Ok(Vec::new());
         };
         Ok(text
             .lines()
@@ -173,6 +169,12 @@ impl Memory {
     }
 
     fn write(&self, entries: &[MemoryEntry]) -> Result<(), String> {
+        for entry in entries {
+            super::sales::privacy::check_agent_copy(
+                &self.store,
+                &serde_json::to_string(entry).map_err(|_| "agent memory serialization failed")?,
+            )?;
+        }
         let mut body = Vec::new();
         for entry in entries {
             body.extend(serde_json::to_vec(entry).map_err(|e| e.to_string())?);
@@ -212,6 +214,7 @@ impl Memory {
         now: u64,
     ) -> Result<u64, String> {
         let text = super::agent::ascii(text.trim());
+        super::sales::privacy::check_agent_copy(&self.store, &text)?;
         if text.trim().is_empty() || text.len() > ENTRY_MAX {
             return Err(format!("a memory entry is 1 to {ENTRY_MAX} bytes"));
         }

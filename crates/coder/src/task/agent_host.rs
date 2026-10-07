@@ -708,7 +708,21 @@ impl Agents {
     /// The reports since the last call, oldest first.
     #[must_use]
     pub fn reports(&self) -> Vec<AgentReport> {
-        std::mem::take(&mut self.lock().reports)
+        let reports = std::mem::take(&mut self.lock().reports);
+        reports
+            .into_iter()
+            .filter(|report| {
+                let Ok((store, record)) = self.store(&report.agent) else {
+                    return false;
+                };
+                super::sales::privacy::check_agent_copy(
+                    &store,
+                    &format!("{}\n{}\n{}", report.agent, report.headline, report.text),
+                )
+                .is_ok()
+                    && store.custody(&record).is_ok()
+            })
+            .collect()
     }
 
     /// Answers one `studio.agent.*` operation for `principal`, whose right
@@ -740,7 +754,19 @@ impl Agents {
                 mode,
                 typist,
             } => {
-                let (_, record) = self.store(agent)?;
+                let (privacy_store, record) = self.store(agent)?;
+                super::sales::privacy::check_agent_copy(
+                    &privacy_store,
+                    &format!(
+                        "{text}\n{context}\n{}",
+                        serde_json::to_string(&record).map_err(|_| Code::Unavailable)?
+                    ),
+                )
+                .map_err(|why| coder_host::tasks::refuse(Code::Forbidden, why))?;
+                if agent_memory::remembered(text).is_none() {
+                    super::sales::privacy::model_available(&privacy_store)
+                        .map_err(|why| coder_host::tasks::refuse(Code::Unavailable, why))?;
+                }
                 if record.crew_charter.as_ref().is_some_and(|charter| {
                     !charter.drafting || *mode == Mode::Task || workspace.is_some() || *typist
                 }) {
@@ -818,7 +844,8 @@ impl Agents {
             }
             Operation::ListAgentMemory { agent, after } => {
                 let (store, _) = self.store(agent)?;
-                let drafts = super::agent_share::draft_rows(&store);
+                let drafts = super::agent_share::draft_rows(&store)
+                    .map_err(|why| coder_host::tasks::refuse(Code::Unavailable, why))?;
                 let mut memory = if after.is_none() {
                     super::agent_consolidate::rows(&store, &self.screen)
                 } else {
@@ -1285,7 +1312,16 @@ impl Agents {
             let Ok(Some(record)) = store.load() else {
                 continue;
             };
-            agents.push(self.view(&store, &record, now));
+            let view = self.view(&store, &record, now);
+            let Ok(text) = serde_json::to_string(&view) else {
+                continue;
+            };
+            if super::sales::privacy::check_agent_copy(&store, &text).is_err()
+                || store.custody(&record).is_err()
+            {
+                continue;
+            }
+            agents.push(view);
         }
         wire::Agents { agents }
     }
@@ -1600,6 +1636,27 @@ impl Agents {
             return;
         }
         drop(guard);
+        if super::sales::privacy::check_agent_copy(
+            &store,
+            &format!(
+                "{}\n{}\n{}",
+                queued.text,
+                queued.context,
+                serde_json::to_string(&record).unwrap_or_default()
+            ),
+        )
+        .is_err()
+            || (agent_memory::remembered(&queued.text).is_none()
+                && super::sales::privacy::model_available(&store).is_err())
+        {
+            let report = Report {
+                outcome: Outcome::Stopped,
+                reply: "Private customer disclosure is unavailable for this crew request.".into(),
+                headline: "privacy refused".into(),
+            };
+            self.finish(&store, &record, &queued, &report, None);
+            return;
+        }
         if record.crew_charter.as_ref().is_some_and(|charter| {
             !charter.drafting
                 || queued.mode == Mode::Task

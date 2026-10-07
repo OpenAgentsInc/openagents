@@ -123,7 +123,8 @@ impl Services {
     /// # Errors
     /// When no runtime starts, or Jev isn't set up: an insight nothing can
     /// judge is never drafted.
-    pub fn live(_store: &Store) -> Result<Self, String> {
+    pub fn live(store: &Store) -> Result<Self, String> {
+        super::sales::privacy::model_available(store)?;
         let client = crate::decision::from_env()
             .map_err(|e| format!("Jev: {e}"))?
             .ok_or("Jev isn't set up, so no insight can be judged for sharing")?;
@@ -689,18 +690,21 @@ pub fn read_drafts(dir: &Path) -> Vec<knowledge::Entry> {
 
 /// The drafts waiting in `store`'s drafts directory, as a device reads
 /// them, each with the command that publishes it.
-#[must_use]
-pub fn draft_rows(store: &Store) -> Vec<coder_host::access::agent::DraftRow> {
+/// # Errors
+/// When private draft custody or customer copy screening is unavailable.
+pub fn draft_rows(store: &Store) -> Result<Vec<coder_host::access::agent::DraftRow>, String> {
     let dir = drafts_dir(store);
-    read_drafts(&dir)
+    let entries = super::sales::privacy::read_agent_drafts(store)?;
+    Ok(entries
         .into_iter()
+        .filter_map(|text| knowledge::Entry::parse(&text).ok())
         .map(|entry| coder_host::access::agent::DraftRow {
             publish: publish_command(&dir, &entry.id),
             kind: entry.kind.to_string(),
             title: entry.title,
             id: entry.id,
         })
-        .collect()
+        .collect())
 }
 
 /// The insights `entries` were drafted from, by memory ID.
@@ -729,6 +733,13 @@ fn refs(rows: &[usize]) -> String {
 /// # Errors
 /// When the journal cannot be written.
 pub fn apply(store: &Store, shared: &Shared, now: u64) -> Result<Vec<PathBuf>, String> {
+    for draft in shared.drafts() {
+        super::sales::privacy::check_agent_draft(store, &draft.text)?;
+        super::sales::privacy::check_agent_copy(
+            store,
+            &serde_json::to_string(&draft.entry).map_err(|_| "agent draft serialization failed")?,
+        )?;
+    }
     let dir = drafts_dir(store);
     let mut written = Vec::new();
     let mut kept = 0;
@@ -789,7 +800,8 @@ pub fn apply(store: &Store, shared: &Shared, now: u64) -> Result<Vec<PathBuf>, S
 
 fn write_new(dir: &Path, id: &str, text: &str) -> Result<PathBuf, String> {
     use std::io::Write;
-    std::fs::create_dir_all(dir).map_err(|e| format!("cannot make {}: {e}", dir.display()))?;
+    super::prepare_directory(dir)
+        .map_err(|_| "private knowledge draft directory is unavailable")?;
     let path = dir.join(format!("{id}.md"));
     let mut options = std::fs::OpenOptions::new();
     options.write(true).create_new(true);
@@ -823,6 +835,7 @@ impl Memory {
         now: u64,
     ) -> Result<(Shared, Vec<PathBuf>), String> {
         let store = self.store();
+        super::sales::privacy::model_available(store)?;
         let journal = store.journal_rows()?;
         let memory = self.entries()?;
         let drafted = drafted(store.name(), &read_drafts(&drafts_dir(store)));
