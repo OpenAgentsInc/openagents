@@ -1287,6 +1287,37 @@ impl Accounts {
     /// belongs to is refused; re-joining after a revocation re-activates
     /// the membership under a fresh epoch.
     pub fn accept(&self, account: &str, token: &str) -> Result<Membership, Refusal> {
+        self.accept_expected(account, token, None, None)
+    }
+
+    /// Refuse a token for another workspace before changing membership.
+    pub fn accept_into(
+        &self,
+        account: &str,
+        token: &str,
+        workspace: &str,
+    ) -> Result<Membership, Refusal> {
+        self.accept_expected(account, token, Some(workspace), None)
+    }
+
+    /// Join only the reviewed workspace and canonical invitation role.
+    pub fn accept_reviewed(
+        &self,
+        account: &str,
+        token: &str,
+        workspace: &str,
+        role: Role,
+    ) -> Result<Membership, Refusal> {
+        self.accept_expected(account, token, Some(workspace), Some(role))
+    }
+
+    fn accept_expected(
+        &self,
+        account: &str,
+        token: &str,
+        expected: Option<&str>,
+        role: Option<Role>,
+    ) -> Result<Membership, Refusal> {
         let (id, secret) = split_invite(token).ok_or(Refusal::MalformedInvitation)?;
         self.mutate(|store, now| {
             if !store.accounts.contains_key(account) {
@@ -1298,6 +1329,11 @@ impl Accounts {
                 .ok_or_else(|| Refusal::UnknownInvitation(id.clone()))?;
             if invitation.digest != digest_secret(&secret) {
                 return Err(Refusal::WrongSecret(id));
+            }
+            if expected.is_some_and(|workspace| workspace != invitation.workspace)
+                || role.is_some_and(|role| role != invitation.role)
+            {
+                return Err(Refusal::MalformedInvitation);
             }
             if invitation.status != InviteStatus::Pending {
                 return Err(Refusal::InvitationClosed {

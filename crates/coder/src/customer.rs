@@ -102,6 +102,8 @@ struct Book {
     funding: BTreeMap<String, funding::Entry>,
     #[serde(default)]
     plugin_purchases: BTreeMap<String, plugins::Purchase>,
+    #[serde(default)]
+    team: BTreeMap<String, team::Operation>,
 }
 impl Default for Book {
     fn default() -> Self {
@@ -113,6 +115,7 @@ impl Default for Book {
             credential_operations: BTreeMap::new(),
             funding: BTreeMap::new(),
             plugin_purchases: BTreeMap::new(),
+            team: BTreeMap::new(),
         }
     }
 }
@@ -236,6 +239,7 @@ fn check(book: &Book) -> Result<()> {
     credentials::check_operations(&book.credential_operations)?;
     funding::check(&book.funding)?;
     plugins::check(book)?;
+    team::check(&book.team)?;
     if book.schema != SCHEMA || book.purchases.len() > MAX_PURCHASES {
         return Err("Invalid customer state.".into());
     }
@@ -328,7 +332,11 @@ impl Store {
             let pending: Book = serde_json::from_slice(&bytes)
                 .map_err(|_| "Interrupted customer state needs inspection.")?;
             check(&pending)?;
-            if !exists && (!pending.purchases.is_empty() || pending.selected.is_some()) {
+            if !exists
+                && (!pending.purchases.is_empty()
+                    || pending.selected.is_some()
+                    || !pending.team.is_empty())
+            {
                 return Err("Uncommitted customer history needs inspection.".into());
             }
             std::fs::remove_file(temporary)
@@ -349,6 +357,12 @@ impl Store {
         }
         for purchase in book.plugin_purchases.values_mut() {
             if purchase.recover() {
+                recovered = true;
+            }
+        }
+        for operation in book.team.values_mut() {
+            if operation.status == team::TeamStatus::Pending {
+                operation.status = team::TeamStatus::Unknown;
                 recovered = true;
             }
         }
@@ -873,6 +887,8 @@ mod credentials;
 mod funding;
 pub mod plugins;
 pub use credentials::{CredentialAction, CredentialCommand, CredentialStatus, CredentialView};
+pub mod team;
+pub use team::{TeamAction, TeamCommand, TeamStatus, TeamView};
 
 #[cfg(test)]
 mod tests;

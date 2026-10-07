@@ -31,12 +31,18 @@ const WORKSPACES_PATH: &str = "/v1/workspaces";
 mod management;
 #[path = "account_referrals.rs"]
 mod referrals;
+#[path = "account_team.rs"]
+mod team;
 pub use management::{
     GatewaySession, KeyGrant, KeyIdentity, PurchaseActivity, PurchaseActivityItem, PurchaseCost,
     PurchaseReceipt, SessionGrant, WorkspaceIdentity, WorkspaceView,
 };
 pub use referrals::{
     ReferralCapture, ReferralIdentity, ReferralKind, ReferralLink, ReferralRecord, ReferralSource,
+};
+pub use team::{
+    InvitationGrant, Team, TeamInvitation, TeamInvitationSummary, TeamMember, TeamRole,
+    TeamWorkspace, TeamWorkspaceIdentity,
 };
 
 /// The account surface, scoped to its client.

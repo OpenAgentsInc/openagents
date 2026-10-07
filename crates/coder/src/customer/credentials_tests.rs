@@ -62,7 +62,7 @@ fn account() -> Value {
     json!({"account":{"id":"ada"},"workspaces":[]})
 }
 fn grant() -> Value {
-    json!({"session":{"id":"fixture-session","kind":"account","account":"ada","created_at":1,"expires_at":100},"token":"sess_private-fixture-issued"})
+    json!({"session":{"id":"fixture-session","kind":"user","account":"ada","created_at":1,"expires_at":100},"token":"sess_private-fixture-issued"})
 }
 fn command(origin: &str) -> CredentialCommand {
     CredentialCommand {
@@ -81,6 +81,40 @@ fn store(dir: &Path) -> Store {
         .import_credential("old-key", &jev::ApiKey::new("oak_private-fixture.old"))
         .unwrap();
     store
+}
+#[tokio::test]
+async fn non_user_or_rebound_session_stays_unknown_with_private_once_issued_custody() {
+    for (kind, issued_account) in [("anonymous", "ada"), ("account", "ada"), ("user", "grace")] {
+        let dir = directory();
+        let mut issued = grant();
+        issued["session"]["kind"] = json!(kind);
+        issued["session"]["account"] = json!(issued_account);
+        let (origin, posts, thread) = fixture(vec![(200, account()), (201, issued)]);
+        let mut store = store(dir.path());
+        let command = command(&origin);
+        let view = store
+            .change_credential(command.clone(), None)
+            .await
+            .unwrap();
+        assert_eq!(view.status, CredentialStatus::Unknown);
+        assert!(!view.credential_available);
+        assert!(store.credential("new-session").is_err());
+        assert_eq!(
+            store.retained_issued(&command.id).unwrap().expose(),
+            "sess_private-fixture-issued"
+        );
+        assert_eq!(
+            store.change_credential(command, None).await.unwrap().status,
+            CredentialStatus::Unknown
+        );
+        assert_eq!(posts.load(Ordering::SeqCst), 1);
+        thread.join().unwrap();
+        assert!(
+            !serde_json::to_string(&view)
+                .unwrap()
+                .contains("private-fixture")
+        );
+    }
 }
 #[tokio::test]
 async fn exact_credential_retries_and_restart_do_not_repeat_the_remote_effect_or_select_an_account()
@@ -305,7 +339,7 @@ async fn rotation_retains_a_once_issued_key_even_when_current_membership_is_unav
 #[tokio::test]
 async fn revoke_and_sign_out_have_explicit_account_authority_and_do_not_replay() {
     let dir = directory();
-    let session = json!({"session":{"id":"fixture-session","kind":"account","account":"ada","created_at":1,"expires_at":100}});
+    let session = json!({"session":{"id":"fixture-session","kind":"user","account":"ada","created_at":1,"expires_at":100}});
     let (origin, posts, thread) = fixture(vec![
         (200, account()),
         (200, json!({})),

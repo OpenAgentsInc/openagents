@@ -56,6 +56,10 @@ pub fn routes() -> Vec<(&'static str, MethodRouter<Arc<ServeState>>)> {
         ("/v1/account", get(account_view)),
         ("/v1/account/access", get(own_access)),
         ("/v1/invitations/accept", post(invitation_accept)),
+        (
+            "/v1/invitations/accept-reviewed",
+            post(invitation_accept_reviewed),
+        ),
         ("/v1/recovery/redeem", post(recovery_redeem)),
         ("/v1/workspaces", post(workspace_create)),
         (
@@ -243,6 +247,22 @@ fn registry(state: &ServeState) -> Result<Registry, Response> {
 /// is a valid credential with no account surface, which is a distinct
 /// answer from a bad one.
 pub(crate) fn principal(state: &ServeState, headers: &HeaderMap) -> Result<Principal, Response> {
+    let principal = principal_unbound(state, headers)?;
+    if let Some(expected) = headers.get("x-openagents-team-account") {
+        if headers.get_all("x-openagents-team-account").iter().count() != 1
+            || expected.to_str().ok() != principal.account()
+        {
+            return Err(refused(
+                StatusCode::CONFLICT,
+                "team_account_changed",
+                "The selected team account changed.",
+            ));
+        }
+    }
+    Ok(principal)
+}
+
+fn principal_unbound(state: &ServeState, headers: &HeaderMap) -> Result<Principal, Response> {
     let token = bearer(headers)?;
     if token.starts_with("sess_") {
         let sessions = sessions_store(state)?;
@@ -1352,6 +1372,27 @@ async fn invitation_revoke(
     }
 }
 
+/// Reviewed acceptance requires both fences; old servers refuse this route.
+async fn invitation_accept_reviewed(
+    state: State<Arc<ServeState>>,
+    headers: HeaderMap,
+    Json(body): Json<Value>,
+) -> Response {
+    if body
+        .get("workspace")
+        .and_then(Value::as_str)
+        .is_none_or(str::is_empty)
+        || !matches!(body["role"].as_str(), Some("admin" | "member"))
+    {
+        return refused(
+            StatusCode::BAD_REQUEST,
+            "invalid_request",
+            "Reviewed acceptance requires the workspace and role.",
+        );
+    }
+    invitation_accept(state, headers, Json(body)).await
+}
+
 /// `POST /v1/invitations/accept` — `{token}` joins the caller's account
 /// to the workspace the token names.
 async fn invitation_accept(
@@ -1382,7 +1423,44 @@ async fn invitation_accept(
         .and_then(|body| body.split('.').next())
         .unwrap_or_default()
         .to_string();
-    match accounts.accept(&account, &token) {
+    let expected = match body.get("workspace") {
+        Some(Value::String(value)) if !value.is_empty() => Some(value.as_str()),
+        None => None,
+        _ => {
+            return refused(
+                StatusCode::BAD_REQUEST,
+                "invalid_request",
+                "Invalid invitation workspace.",
+            );
+        }
+    };
+    let reviewed_role = match body.get("role") {
+        Some(Value::String(value)) if value == "admin" => Some(Role::Admin),
+        Some(Value::String(value)) if value == "member" => Some(Role::Member),
+        None => None,
+        _ => {
+            return refused(
+                StatusCode::BAD_REQUEST,
+                "invalid_request",
+                "Invalid reviewed invitation role.",
+            );
+        }
+    };
+    let result = match (expected, reviewed_role) {
+        (Some(workspace), Some(role)) => {
+            accounts.accept_reviewed(&account, &token, workspace, role)
+        }
+        (Some(workspace), None) => accounts.accept_into(&account, &token, workspace),
+        (None, None) => accounts.accept(&account, &token),
+        _ => {
+            return refused(
+                StatusCode::BAD_REQUEST,
+                "invalid_request",
+                "A reviewed role requires a workspace.",
+            );
+        }
+    };
+    match result {
         Ok(membership) => {
             let store = accounts.store().ok();
             let joined = store

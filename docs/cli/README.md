@@ -127,6 +127,29 @@ a retained once-issued credential after interruption without acknowledging an
 unknown historical effect or silently switching accounts. `credentials` reads
 operation references for the selected customer.
 
+`team members --workspace ID` reads current roles, members, invitation metadata,
+and the selected door's payer context. `team switch --workspace ID --door NAME
+[--alias NAME]` refreshes admission before selecting a workspace for future
+purchases. Existing quotes, approvals, holds, and receipts keep their original
+account and payer.
+
+`team change --input FILE` reads a private intent with `id`, `origin`, `account`,
+`credential_alias`, and `action`. Actions are `create` with `name` and `seats`,
+`invite` with `workspace`, `role`, and `ttl_secs`, `accept` with `workspace`,
+`withdraw` with `workspace` and `invitation`, `role` with `workspace`, `account`,
+and `role`, or `remove` and `transfer` with `workspace` and `account`. Invitation
+and role changes support `admin` or `member`; ownership uses `transfer`.
+An invitation returns a private `invitation_file` path. Transfer that file only
+through an authorized private handoff, then accept it with `--invitation FILE`.
+The CLI sends no invitation and prints no token. Acceptance pins the reviewed
+workspace and file's displayed role against the canonical token before
+membership changes. Tokens expire and can be accepted once.
+Gateways without reviewed acceptance refuse before a membership effect.
+`team inspect --operation ID` reads a retained intent under current account and
+workspace rights. Unknown effects block renamed retries; inspect current
+invitations and membership before reviewing another action. Account recovery
+does not restore revoked team membership or grant another member's keys.
+
 `funding --input FILE` sends one private JSON intent to the selected gateway's
 optional decision-funding route. Use `{"op":"quote","id":"funding-one",
 "amount_msat":200000}` to review an exact BTC funding quote, then

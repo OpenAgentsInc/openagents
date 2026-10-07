@@ -11,6 +11,8 @@ mod common;
 mod funding_receiver;
 #[path = "accounts_referrals/mod.rs"]
 mod referrals;
+#[path = "accounts_team/mod.rs"]
+mod team;
 
 use std::collections::BTreeMap;
 use std::sync::Arc;

@@ -7277,10 +7277,179 @@
                 ]
               }
             ],
-            "summary": "Verify a retained once-issued credential after interruption; never replay the mutation or silently select its account.",
+            "summary": "Verify a retained once-issued credential after interruption; never replay the mutation or silently select its account. Create a private referrer, rotate its public source link, or capture an explicitly consented introduction. Run referral --help for forms.",
             "effect": "secret",
             "runs_on": "connected_computer"
           }
+        },
+        {
+          "name": "team",
+          "children": [
+            {
+              "name": "change",
+              "leaf": {
+                "path": [
+                  "customer",
+                  "team",
+                  "change"
+                ],
+                "usage": [
+                  "team change --input FILE [--invitation FILE]"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "team"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "change"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "input",
+                        "value": "FILE",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "invitation",
+                        "value": "FILE",
+                        "open": true,
+                        "optional": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Apply a reviewed team intent with private invitation custody.",
+                "effect": "secret",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "members",
+              "leaf": {
+                "path": [
+                  "customer",
+                  "team",
+                  "members"
+                ],
+                "usage": [
+                  "team members --workspace ID"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "team"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "members"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "workspace",
+                        "value": "ID",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Read current team roles through the selected account.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "switch",
+              "leaf": {
+                "path": [
+                  "customer",
+                  "team",
+                  "switch"
+                ],
+                "usage": [
+                  "team switch --workspace ID --door NAME [--alias NAME]"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "team"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "switch"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "workspace",
+                        "value": "ID",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "door",
+                        "value": "NAME",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "alias",
+                        "value": "NAME",
+                        "open": true,
+                        "optional": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Switch future purchase context while preserving earlier payers.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "inspect",
+              "leaf": {
+                "path": [
+                  "customer",
+                  "team",
+                  "inspect"
+                ],
+                "usage": [
+                  "team inspect --operation ID"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "team"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "inspect"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "operation",
+                        "value": "ID",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Inspect the original team intent under current rights.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
         },
         {
           "name": "referral",
@@ -7661,6 +7830,20 @@
           "kind": "option",
           "name": "operation",
           "value": "ID",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "help",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "invitation",
+          "value": "FILE",
           "open": true,
           "optional": true,
           "repeated": true

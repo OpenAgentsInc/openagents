@@ -360,6 +360,16 @@ What a team needs to adopt Coder as a company:
   workflows agents handle reliably and where they don't.
 - **Single sign-on and audit export,** when larger customers ask for them.
 
+The installed CLI's [team commands](../cli/README.md#commercial-customer-openagents-customer)
+connect the existing account roles and invitations to explicit workspace and
+payer selection. A champion can issue a private invitation, a colleague can
+accept it once, and current membership controls access after role changes or
+revocation. Switching workspaces preserves the payer on retained purchases.
+These controls establish the team entry path; budgets, funded product admission,
+admin reporting, and genuine colleague qualification remain separate gates.
+Record that qualification under [O8](../../NEEDS_OWNER.md#team-adoption-o8-rev-38-10845)
+before treating a synthetic team fixture as an adopted business account.
+
 ## Hands-on onboarding
 
 Most businesses want someone to fit the tools to their work. We offer

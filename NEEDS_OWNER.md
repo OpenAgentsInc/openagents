@@ -420,6 +420,22 @@ is qualified. Isolated fixtures establish client behavior; they do not establish
 real funding, production deployment, customer acceptance, or another platform's
 account connection. Device pairing and provider login confer no spend authority.
 
+## Team adoption O8 (REV-38, #10845)
+
+Qualify the selected installed CLI's [team commands](docs/cli/README.md#commercial-customer-openagents-customer)
+with a genuine champion and colleague against the chosen gateway. Authorize the
+private invitation handoff, verify the intended account, workspace, role, and
+payer, then retain an independently useful admitted task and its original
+settlement receipt. Check expiry, withdrawal, single use, role changes,
+revocation across open sessions, personal and team switching, and recovery under
+current rights. Recovery must not restore a removed membership or reveal
+another member's credentials. Keep invitation files and customer records private.
+
+The isolated two-client fixture uses synthetic balances and a fake decision
+backend. It establishes installed client behavior and payer attribution, not
+external adoption, actual funding, revenue, or production service qualification.
+Team membership alone supplies no new budget or product spending grant.
+
 ## First workflow offer O1 (REV-01, #10808)
 
 Before selling [Coder pilot v1](docs/sales/README.md#first-workflow-offer-v1),

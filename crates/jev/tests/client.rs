@@ -20,6 +20,106 @@ use tokio::sync::Mutex;
 type Outcome = Result<(), Box<dyn std::error::Error>>;
 
 #[tokio::test]
+async fn team_calls_pin_account_workspace_and_do_not_retry_or_echo_tokens() -> Outcome {
+    let token = "inv_fixture.fixture-private-secret";
+    let body = json!({"v":"openagents.accounts.v1","invitation":{"id":"fixture","workspace":"team","role":"member","expires_unix":100},"token":token}).to_string();
+    let (base, seen) = serve(vec![Reply::new(201, &body)]).await?;
+    let client = Client::new(Config::new().base_url(base).api_key("fixture-only-key"))?;
+    let grant = client
+        .account()
+        .team("buyer")
+        .invite("team", jev::TeamRole::Member, 60)
+        .await?;
+    assert!(!format!("{grant:?}").contains(token));
+    assert_eq!(
+        seen.lock().await[0]
+            .headers
+            .get("x-openagents-team-account")
+            .map(String::as_str),
+        Some("buyer")
+    );
+    let body = json!({"error":{"code":"team_unavailable","message":token}}).to_string();
+    let (base, seen) = serve(vec![Reply::new(500, &body), Reply::new(200, "{}")]).await?;
+    let client = Client::new(
+        Config::new()
+            .base_url(base)
+            .api_key("fixture-only-key")
+            .retry(RetryPolicy {
+                max_retries: 3,
+                ..Default::default()
+            }),
+    )?;
+    let error = client
+        .account()
+        .team("buyer")
+        .accept_reviewed("team", jev::TeamRole::Member, &jev::ApiKey::new(token))
+        .await
+        .unwrap_err();
+    assert!(!error.to_string().contains(token));
+    assert_eq!(seen.lock().await.len(), 1);
+    assert_eq!(
+        seen.lock().await[0].target,
+        "/v1/invitations/accept-reviewed"
+    );
+    assert_eq!(
+        serde_json::from_slice::<Value>(&seen.lock().await[0].body)?["workspace"],
+        "team"
+    );
+    assert_eq!(
+        serde_json::from_slice::<Value>(&seen.lock().await[0].body)?["role"],
+        "member"
+    );
+    let body=json!({"v":"openagents.accounts.v1","membership":{"workspace":"other","account":"other-buyer","role":"member"}}).to_string();
+    let (base, _) = serve(vec![Reply::new(200, &body)]).await?;
+    let client = Client::new(Config::new().base_url(base).api_key("fixture-only-key"))?;
+    assert!(matches!(
+        client
+            .account()
+            .team("buyer")
+            .accept("team", &jev::ApiKey::new(token))
+            .await
+            .unwrap_err(),
+        Error::ResponseValidation { .. }
+    ));
+    let body=json!({"v":"openagents.accounts.v1","membership":{"workspace":"team","account":"buyer","role":"admin"}}).to_string();
+    let (base, _) = serve(vec![Reply::new(200, &body)]).await?;
+    let client = Client::new(Config::new().base_url(base).api_key("fixture-only-key"))?;
+    assert!(matches!(
+        client
+            .account()
+            .team("buyer")
+            .accept_reviewed("team", jev::TeamRole::Member, &jev::ApiKey::new(token))
+            .await
+            .unwrap_err(),
+        Error::ResponseValidation { .. }
+    ));
+    let (base, seen) = serve(vec![Reply::new(404, "{}"), Reply::new(200, "{}")]).await?;
+    let client = Client::new(
+        Config::new()
+            .base_url(base)
+            .api_key("fixture-only-key")
+            .retry(RetryPolicy {
+                max_retries: 3,
+                ..Default::default()
+            }),
+    )?;
+    assert!(
+        client
+            .account()
+            .team("buyer")
+            .accept_reviewed("team", jev::TeamRole::Member, &jev::ApiKey::new(token))
+            .await
+            .is_err()
+    );
+    assert_eq!(seen.lock().await.len(), 1);
+    assert_eq!(
+        seen.lock().await[0].target,
+        "/v1/invitations/accept-reviewed"
+    );
+    Ok(())
+}
+
+#[tokio::test]
 async fn decision_funding_never_retries_invoice_creation_or_echoes_private_refusal() -> Outcome {
     let secret = "fixture-private-invoice-only";
     let body = json!({"error":{"code":"funding_unavailable","message":secret}}).to_string();

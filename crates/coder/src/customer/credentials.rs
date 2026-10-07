@@ -360,7 +360,7 @@ impl Store {
                     .map_err(|_| "Sign-in outcome is unknown.")?;
                 self.retain_issued(&command.id, &grant.token)?;
                 if grant.session.account.as_deref() != Some(&command.account)
-                    || grant.session.kind != "account"
+                    || grant.session.kind != "user"
                 {
                     return Err("Issued session does not match the reviewed account.".into());
                 }

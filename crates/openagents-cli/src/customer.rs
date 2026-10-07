@@ -16,10 +16,8 @@ pub(crate) fn tree_usage() -> &'static str {
             USAGE
                 .lines()
                 .skip(1)
-                .take_while(|line| {
-                    (line.is_empty() || line.starts_with(' '))
-                        && !line.starts_with("  referral COMMAND")
-                })
+                .take_while(|line| line.is_empty() || line.starts_with(' '))
+                .filter(|line| !line.starts_with("  referral COMMAND"))
                 .map(str::to_owned),
         );
         for line in referrals::USAGE
@@ -44,6 +42,8 @@ pub(crate) fn tree_effects() -> &'static [Declared] {
         all
     })
 }
+#[path = "customer_team.rs"]
+mod team;
 pub const USAGE: &str = "usage: openagents customer COMMAND --root DIR [OPTIONS]
   import --alias NAME --input FILE
         Import an immutable credential alias from a private file; prints no key.
@@ -81,6 +81,14 @@ pub const USAGE: &str = "usage: openagents customer COMMAND --root DIR [OPTIONS]
   referral COMMAND [OPTIONS]
         Create a private referrer, rotate its public source link, or capture
         an explicitly consented introduction. Run referral --help for forms.
+  team change --input FILE [--invitation FILE]
+        Apply a reviewed team intent with private invitation custody.
+  team members --workspace ID
+        Read current team roles through the selected account.
+  team switch --workspace ID --door NAME [--alias NAME]
+        Switch future purchase context while preserving earlier payers.
+  team inspect --operation ID
+        Inspect the original team intent under current rights.
 
 DIR must be an explicit absolute private directory. Credentials, recovery
 material, and decision requests come from private regular files, never secret
@@ -107,6 +115,10 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("funding-history", Effect::ReadOnly),
     Declared::computer("credentials", Effect::ReadOnly),
     Declared::computer("inspect", Effect::Secret),
+    Declared::computer("team change", Effect::Secret),
+    Declared::computer("team members", Effect::ReadOnly),
+    Declared::computer("team switch", Effect::LocalWrite),
+    Declared::computer("team inspect", Effect::ReadOnly),
 ];
 fn required<'a>(args: &'a Args, flag: &str) -> Result<&'a str, String> {
     args.option(flag)
@@ -160,6 +172,9 @@ fn secret(path: &str) -> Result<jev::ApiKey, String> {
 pub fn run(output: &Output, words: &[String]) -> u8 {
     if words.first().is_some_and(|word| word == "referral") {
         return referrals::run(output, &words[1..]);
+    }
+    if words.first().is_some_and(|word| word == "team") {
+        return team::run(output, &words[1..]);
     }
     if words
         .first()
