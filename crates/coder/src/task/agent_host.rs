@@ -240,6 +240,9 @@ pub struct Agents {
     briefing: super::agent_recall::Briefing,
     /// What a reflect job's occurrence reflects with.
     reflector: super::agent_reflect::ServicesFactory,
+    /// What a reflection's new insights are drafted as knowledge entries
+    /// with.
+    sharer: super::agent_share::ServicesFactory,
     /// The agents reflecting now; a second occurrence waits for the first.
     reflecting: Arc<Mutex<BTreeSet<String>>>,
     /// What her day plan drafts, decomposes, and reacts with.
@@ -320,6 +323,7 @@ impl Agents {
             host_key: String::new(),
             briefing: super::agent_recall::Briefing::default_scored(),
             reflector: super::agent_reflect::default_factory(),
+            sharer: super::agent_share::default_factory(),
             reflecting: Arc::new(Mutex::new(BTreeSet::new())),
             planner: super::agent_plan::default_factory(),
             planning: Arc::default(),
@@ -353,6 +357,14 @@ impl Agents {
     #[must_use]
     pub fn with_reflector(mut self, reflector: super::agent_reflect::ServicesFactory) -> Self {
         self.reflector = reflector;
+        self
+    }
+
+    /// Draft knowledge entries with the services `sharer` makes instead of
+    /// the live ones, as a test does.
+    #[must_use]
+    pub fn with_sharer(mut self, sharer: super::agent_share::ServicesFactory) -> Self {
+        self.sharer = sharer;
         self
     }
 
@@ -549,10 +561,11 @@ impl Agents {
             }
             Operation::ListAgentMemory { agent, after } => {
                 let (store, _) = self.store(agent)?;
+                let drafts = super::agent_share::draft_rows(&store);
                 let memory = Memory::new(store, self.screen.clone())
                     .rows(*after)
                     .map_err(|why| coder_host::tasks::refuse(Code::Unavailable, why))?;
-                Ok(value(&wire::Memory { memory }))
+                Ok(value(&wire::Memory { memory, drafts }))
             }
             Operation::EditAgentMemory { agent, edit } => {
                 let id = self.edit_memory(agent, edit)?;
@@ -1683,6 +1696,7 @@ impl Agents {
             return;
         }
         let reflector = self.reflector.clone();
+        let sharer = self.sharer.clone();
         let reflecting = self.reflecting.clone();
         let screen = self.screen.clone();
         let store = store.clone();
@@ -1693,8 +1707,13 @@ impl Agents {
             let result = reflector(&store)
                 .and_then(|mut services| memory.reflect(&mut services, &screen, &trigger, now));
             match result {
-                Ok((reflection, _)) => {
-                    let _ = Jobs::new(store.clone()).meter(&job, reflection.usd());
+                Ok((reflection, applied)) => {
+                    let shared = share(&memory, &sharer, &applied.stored, now);
+                    let usd = match (reflection.usd(), shared) {
+                        (Some(a), Some(b)) => Some(a + b),
+                        _ => None,
+                    };
+                    let _ = Jobs::new(store.clone()).meter(&job, usd);
                 }
                 Err(why) => {
                     let _ = store.append(&Entry::new(
@@ -1710,7 +1729,37 @@ impl Agents {
                 .remove(&name);
         });
     }
+}
 
+/// Drafts a reflection's new insights as knowledge entries
+/// (`agent_share`), and returns what that cost: `Some(0.0)` when there
+/// was nothing to draft, `None` when a call reported no cost. A drafting
+/// that can't start is journaled and costs nothing.
+fn share(
+    memory: &Memory,
+    sharer: &super::agent_share::ServicesFactory,
+    stored: &[u64],
+    now: u64,
+) -> Option<f64> {
+    if stored.is_empty() {
+        return Some(0.0);
+    }
+    let result =
+        sharer(memory.store()).and_then(|mut services| memory.share(&mut services, stored, now));
+    match result {
+        Ok((shared, _)) => shared.usd(),
+        Err(why) => {
+            let _ = memory.store().append(&Entry::new(
+                now,
+                Kind::Memory,
+                &format!("{} skipped: {why}", super::agent_share::RUN_PREFIX),
+            ));
+            Some(0.0)
+        }
+    }
+}
+
+impl Agents {
     fn watch_change(&self, store: &Store, record: &Record) {
         let Some((goal, change)) = self
             .lock()

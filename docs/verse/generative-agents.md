@@ -779,6 +779,33 @@ the secret screen, and cites only journal rows that exist.
 
 **Estimate.** 4 agent-hours, after item 2.
 
+**Implemented (phase F).** [`agent_share.rs`](../../crates/coder/src/task/agent_share.rs)
+drafts; nothing in it can sign or publish:
+
+- After a reflection stores insights, the host's reflect occurrence passes
+  each new one to `Memory::share`. Only an active insight she wrote is
+  considered, and only when its sources resolve to journal rows that exist;
+  one that rests on a note or a preference stays private before Jev is
+  asked.
+- Jev answers [`insight-share.json`](../../questions/insight-share.json):
+  `general` (gate, 0.7) and `about_owner` (0.3 or more keeps it private).
+  Both thresholds are provisional until the owner's live run in
+  `NEEDS_OWNER.md`.
+- One model call writes the entry. Code makes it a `candidate` with ID
+  `NAME.SLUG`, `written_from: NAME memory:ID`, and one citation per
+  journal row, `NAME journal:POS DATE sha256:HEX`, the row's record digest.
+  `check_draft` then requires that it parses, passes the knowledge base's
+  lint and the secret screen, and cites only rows of her journal that exist
+  and still hold what was cited.
+- The draft is written to `agents/NAME/kb-drafts/ID.md` and journaled with
+  the command that publishes it, `microcoder kb publish --dir DIR --relay
+  URL ID`, which signs with your knowledge key. A kept insight is journaled
+  with why. The F2 memory page and `openagents agent memory NAME list` show
+  the drafts.
+- Reading reuses `kb sync` and `knowledge::remote::load`: under trust
+  `all`, a published draft from an author the reader doesn't list is a
+  candidate until with-and-without evidence admits it.
+
 ## 7. Gym interviews
 
 **Design.** A pinned Gym suite that interviews agents with the paper's five
@@ -951,7 +978,7 @@ fixtures and a small demo.
 | D. Days | 4 (implemented) | [#10790](https://github.com/OpenAgentsInc/openagents/issues/10790) | C2, B2 |
 | E1. Townsfolk | 5: routines, definitions, and spawn mechanics (implemented) | [#10791](https://github.com/OpenAgentsInc/openagents/issues/10791) | C2 |
 | E2. Town talk | 5: rumors, memory of the player, and dialogue | [#10792](https://github.com/OpenAgentsInc/openagents/issues/10792) | E1, B1 |
-| F. Sharing | 6 | [#10793](https://github.com/OpenAgentsInc/openagents/issues/10793) | B2 |
+| F. Sharing | 6 (implemented) | [#10793](https://github.com/OpenAgentsInc/openagents/issues/10793) | B2 |
 
 [#10795](https://github.com/OpenAgentsInc/openagents/issues/10795) is the
 umbrella. About 49 agent-hours in all, at the pace

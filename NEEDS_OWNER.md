@@ -124,6 +124,16 @@ read what it stored, proposed, and dropped with `openagents agent log
 alice`; accept or reject any proposed preference at F2. A reflection spends
 about $0.05 at Sol list prices.
 
+## Knowledge drafts from a live reflection (#10793)
+
+After a live reflection stores insights, Alice judges each with Jev
+(`questions/insight-share.json`, provisional thresholds: general 0.7, about
+the owner 0.3) and drafts the general lessons as NIP-KB candidates in
+`~/.openagents/host/agents/alice/kb-drafts/`. Read them at F2 or with
+`openagents agent memory alice list`, check that none describes you, and
+publish any you want with the printed `microcoder kb publish --dir DIR
+--relay URL ID`. A draft costs about $0.01.
+
 ## Memory importance calibration and a live interview (#10787)
 
 Alice's briefing now scores importance with Jev

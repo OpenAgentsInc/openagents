@@ -237,6 +237,25 @@ pub struct MemoryRow {
 #[serde(deny_unknown_fields)]
 pub struct Memory {
     pub memory: Vec<MemoryRow>,
+    /// Knowledge entries it drafted that wait for the owner to publish.
+    /// Left out when there are none, so an older client that refuses
+    /// unknown fields still reads the rest.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub drafts: Vec<DraftRow>,
+}
+
+/// One knowledge entry draft as a device reads it. Only the owner
+/// publishes a draft, with the command in `publish`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DraftRow {
+    /// The NIP-KB entry ID.
+    pub id: String,
+    /// `environment`, `edge-case`, or `slip`.
+    pub kind: String,
+    pub title: String,
+    /// The command that publishes it.
+    pub publish: String,
 }
 
 /// One standing job as a device reads it.

@@ -744,9 +744,29 @@ fn a_reflect_occurrence_runs_the_reflection_and_meters_its_cost() {
             recall: crate::task::agent_recall::Services::offline(),
         })
     });
+    // The insight is about the owner, so drafting keeps it private.
+    let judged = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let wrote = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let (j, w) = (judged.clone(), wrote.clone());
+    let sharer: crate::task::agent_share::ServicesFactory = Arc::new(move |_: &Store| {
+        use crate::task::agent_share::fake::{Fixed, Same};
+        Ok(crate::task::agent_share::Services {
+            writer: Box::new(Same {
+                text: String::new(),
+                calls: w.clone(),
+            }),
+            judge: Box::new(Fixed {
+                general: 0.9,
+                about_owner: 0.9,
+                calls: j.clone(),
+            }),
+            corpus: knowledge::lint::Corpus::default(),
+        })
+    });
     let agents = host(&dir, Vec::new())
         .with_facts(Arc::new(Capacity))
-        .with_reflector(reflector);
+        .with_reflector(reflector)
+        .with_sharer(sharer);
     let jobs = Jobs::new(store.clone());
     jobs.add(
         agent_jobs::template("reflect", "", None, None, 0, clock() - 10).unwrap(),
@@ -807,6 +827,16 @@ fn a_reflect_occurrence_runs_the_reflection_and_meters_its_cost() {
         assert!(start.elapsed() < Duration::from_secs(20), "{job:?}");
         std::thread::sleep(Duration::from_millis(20));
     }
+    let journal = store.journal(400).unwrap();
+    assert!(
+        journal.iter().any(|e| e
+            .text
+            .contains("as a knowledge entry: it is about the owner")),
+        "{journal:?}"
+    );
+    assert_eq!(judged.load(std::sync::atomic::Ordering::SeqCst), 1);
+    assert_eq!(wrote.load(std::sync::atomic::Ordering::SeqCst), 0);
+    assert!(!crate::task::agent_share::drafts_dir(&store).exists());
 }
 
 #[test]

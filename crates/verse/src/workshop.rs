@@ -440,14 +440,26 @@ fn page_lines(page: Page, value: &serde_json::Value) -> Vec<String> {
     match page {
         Page::Memory => {
             let memory: wire::Memory = serde_json::from_value(value.clone()).unwrap_or_default();
-            if memory.memory.is_empty() {
-                return vec!["She remembers nothing yet.".into()];
-            }
-            memory
+            let mut lines: Vec<String> = memory
                 .memory
                 .iter()
                 .map(|m| format!("{:>3} {:<10} {:<9} {}", m.id, m.kind, m.state, m.text))
-                .collect()
+                .collect();
+            if lines.is_empty() {
+                lines.push("She remembers nothing yet.".into());
+            }
+            if !memory.drafts.is_empty() {
+                lines.push(String::new());
+                lines.push(format!(
+                    "Knowledge drafts for you to publish ({}); she publishes nothing:",
+                    memory.drafts.len()
+                ));
+                for draft in &memory.drafts {
+                    lines.push(format!("  {} ({}): {}", draft.id, draft.kind, draft.title));
+                    lines.push(format!("  {}", draft.publish));
+                }
+            }
+            lines
         }
         Page::Journal => {
             let journal: wire::Journal = serde_json::from_value(value.clone()).unwrap_or_default();
@@ -1726,6 +1738,30 @@ mod tests {
             "{rows:?}"
         );
         assert!(rows.iter().any(|(row, _)| row.contains("F3 PLAN")));
+    }
+
+    #[test]
+    fn the_memory_page_lists_her_knowledge_drafts_with_the_publish_command() {
+        let value = serde_json::json!({
+            "memory": [],
+            "drafts": [{
+                "id": "alice.mobile-crate-is-its-own-workspace",
+                "kind": "environment",
+                "title": "The mobile crate is its own workspace",
+                "publish": "microcoder kb publish --dir D --relay RELAY alice.mobile-crate-is-its-own-workspace",
+            }],
+        });
+        let lines = page_lines(Page::Memory, &value);
+        assert_eq!(lines[0], "She remembers nothing yet.");
+        assert!(lines.iter().any(|l| l.contains("she publishes nothing")));
+        assert!(lines.iter().any(|l| {
+            l.contains("alice.mobile-crate-is-its-own-workspace (environment): The mobile crate")
+        }));
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.contains("microcoder kb publish --dir D"))
+        );
     }
 
     #[test]

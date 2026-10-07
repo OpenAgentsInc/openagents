@@ -898,6 +898,7 @@ mod tests {
                 "openagents.expectation-support.v1",
                 "openagents.independence.v1",
                 "openagents.independence.v2",
+                "openagents.insight-share.v1",
                 "openagents.insight-support.v1",
                 "openagents.interview-answer.v1",
                 "openagents.memory-importance.v1",

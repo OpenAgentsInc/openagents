@@ -53,7 +53,8 @@ pub const USAGE: &str = "usage: openagents agent COMMAND [--root DIR] [--control
                Her journal, newest last.
   memory NAME list
                Her memory: projects, preferences, outcomes, notes, and
-               insights.
+               insights, then the knowledge entries she drafted, each with
+               the command that publishes it. Only you publish a draft.
   memory NAME note TEXT...
                Tell her something to remember.
   memory NAME forget ID
@@ -784,6 +785,7 @@ fn memory(
         Err(Fail::Refused(refusal)) if refusal.code == "unavailable" => {
             let (store, _) = store(root, name)?;
             wire::Memory {
+                drafts: coder::task::agent_share::draft_rows(&store),
                 memory: coder::task::agent_memory::Memory::new(store, secret_screen_shapes())
                     .rows(None)
                     .map_err(Fail::Failed)?,
@@ -792,15 +794,27 @@ fn memory(
         Err(other) => return Err(other),
     };
     output.emit(&json!(memory), |_| {
-        if memory.memory.is_empty() {
-            return format!("{name} remembers nothing yet.");
-        }
-        memory
+        let mut lines: Vec<String> = memory
             .memory
             .iter()
             .map(|m| format!("{:>4} {:<10} {:<9} {}", m.id, m.kind, m.state, m.text))
-            .collect::<Vec<_>>()
-            .join("\n")
+            .collect();
+        if lines.is_empty() {
+            lines.push(format!("{name} remembers nothing yet."));
+        }
+        if !memory.drafts.is_empty() {
+            lines.push(format!(
+                "\nKnowledge drafts waiting for you ({}); nothing is published until you run:",
+                memory.drafts.len()
+            ));
+            for draft in &memory.drafts {
+                lines.push(format!(
+                    "  {} ({}): {}\n    {}",
+                    draft.id, draft.kind, draft.title, draft.publish
+                ));
+            }
+        }
+        lines.join("\n")
     });
     Ok(())
 }

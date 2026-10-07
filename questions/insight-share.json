@@ -1,0 +1,30 @@
+{
+  "v": 1,
+  "id": "openagents.insight-share.v1",
+  "name": "Whether a workshop agent's checked insight is a lesson to share",
+  "summary": "Asks two independent questions about one insight a workshop agent's reflection already stored after its citations were checked: whether it is a general lesson that would help another agent working elsewhere, and whether it states a fact about the owner. Only an insight that is general and not about the owner becomes a NIP-KB entry draft, and only the owner publishes a draft.",
+  "gate": "general",
+  "questions": {
+    "general": {
+      "type": "noul",
+      "instructions": "The insight in `insight` is a general lesson: how a class of environment, tool, or build behaves, an input or state that breaks common code, or a mistake an agent makes and how to avoid it, which would help another agent working on another computer for another person. Each record in `cited` has a `reference`, a `kind`, a `date`, and its `text`. It isn't general when it only reports what happened once, names a task, person, or date as its point, or holds only for this agent's own setup.",
+      "decision": {
+        "threshold": 0.7
+      }
+    },
+    "about_owner": {
+      "type": "noul",
+      "instructions": "The insight in `insight` states a fact about the owner of the agent named in `agent`: who they are, what they prefer or want, how they work, when they are around, what they own or decided, or anything else that describes the person rather than the software. A lesson about a tool, a build, an environment, or code isn't about the owner, even when the owner's request led to it.",
+      "decision": {
+        "threshold": 0.3
+      }
+    }
+  },
+  "policy": {
+    "v": 1,
+    "state_max_bytes": 16384,
+    "evidence": [
+      "docs/verse/generative-agents.md"
+    ]
+  }
+}
