@@ -8,6 +8,8 @@ description = "The Coder terminal with model, tool, and subagent plugins."
 
 [dependencies]
 atif = { path = "../atif" }
+brainstorm-client = { path = "../brainstorm-client" }
+nostr = { path = "../nostr" }
 coder = { path = "../coder" }
 coder-delegate = { path = "../coder-delegate" }
 code-highlight = { path = "../code-highlight", features = ["grok"] }

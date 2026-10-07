@@ -562,7 +562,11 @@ fn entry_lines(entry: &crate::live::Entry, width: u16, phase: u8) -> Vec<Line<'s
                     span("Running", t::GRAY_BRIGHT),
                 ]));
             } else {
-                lines.extend(crate::tools::parameter_lines(output, width));
+                if name.starts_with("brainstorm.") {
+                    lines.extend(message_body(&crate::brainstorm::summary(output), width));
+                } else {
+                    lines.extend(crate::tools::parameter_lines(output, width));
+                }
             }
         }
         crate::live::Entry::Delegation {

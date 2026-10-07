@@ -12,8 +12,9 @@ arguments, results, and current activity.
 Type `/` to see commands above the input, following the existing OpenAgents
 terminal's slash suggestions. The command and description occupy separate
 columns. Typing filters the list; Up/Down selects, Tab completes, Enter runs,
-and Esc dismisses it. The supported commands are `/demo`, `/plugins`, `/models`,
-and `/help`. `/models` appears when a model provider plugin is enabled.
+and Esc dismisses it. The supported commands include `/demo`, `/plugins`, `/models`,
+`/brainstorm`, and `/help`. `/models` appears when a model provider plugin is enabled;
+`/brainstorm` appears when its plugin is enabled.
 
 Edit examples reuse Coder's port of Grok Build's diff renderer and syntax
 highlighter. Rust tokens keep their syntax colors on red and green change
@@ -51,6 +52,27 @@ on a background worker, with prior live messages included. Esc stops a reply;
 failed requests are not retried automatically. Argument validation errors return
 to the model so it can submit a corrected plugin call within the same bounded
 turn. Call identities, size limits, and completion are checked before dispatch.
+
+**Brainstorm** defaults to off. Its settings show the configured HTTPS recipient
+and the fixed house perspective. Opening, saving, enabling, and disabling cause
+no service read. **Test connection** explicitly reads public discovery after
+you enable the plugin and save the recipient. `/brainstorm search <public query>`
+and `/brainstorm rank <hex-or-npub> [more keys]` work without a model key. The
+exact query or canonical public keys go to the displayed recipient; no files or
+conversation text are added. Esc cancels a lookup, and disabling refuses queued
+or stale dispatch snapshots. Headless chat returns the current lookup's bounded
+JSON observation or typed failure in `finished.reply`. Demo uses labeled fixtures
+without requests.
+
+Brainstorm result rows separate search relevance, raw continuous influence,
+unknown zero coverage, and unavailable scores. They retain source, the separately
+discovered house identity, response algorithms, times, expiry, and body digests.
+These are unsigned HTTP observations; the API does not bind its effective
+observer atomically to the discovered key. Following local and OpenRouter turns
+receive the newest observation or typed failure within an 8 KiB context allowance.
+Earlier observations remain in the existing transcript, without another query
+history store. This supports the current live conversation; observation recovery
+across chat reopening and automatic local-model lookup remain separate work.
 
 Enabled plugins register their tools and usage instructions for OpenRouter
 chat. Tool calls run on the background worker, appear in the transcript, and

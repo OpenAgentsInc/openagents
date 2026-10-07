@@ -113,6 +113,15 @@ pub const DEFINITIONS: &[PluginDefinition] = &[
         model_provider: None,
         composer_rails: &[],
     },
+    PluginDefinition {
+        id: crate::brainstorm::PLUGIN,
+        name: "Brainstorm",
+        description: "Explicit public profile and reputation lookups through the Brainstorm house perspective.",
+        default_enabled: false,
+        tools: &[],
+        model_provider: None,
+        composer_rails: &[],
+    },
 ];
 
 /// The built-in provider uses the same rail registration contract as provider plugins.

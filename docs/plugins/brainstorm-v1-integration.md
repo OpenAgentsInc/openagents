@@ -3,9 +3,14 @@
 Proposal dated October 6, 2026. Target release: October 7, 2026.
 This document proposes implementation; it does not report a shipped integration.
 The [Rust client](../../crates/brainstorm-client/README.md) implements the bounded
-HTTP adapter and local fixtures for REV-34 (#10841). Native settings, commands,
-and provider dispatch remain separate work; deployed qualification is an owner
+HTTP adapter and local fixtures for REV-34 (#10841). Native provider dispatch
+remains separate work; deployed qualification is an owner
 check in [NEEDS_OWNER.md](../../NEEDS_OWNER.md).
+
+The [native Brainstorm module](../../crates/coder-new/src/brainstorm.rs) adds
+disabled persisted settings, explicit commands, cancellation, and bounded live
+conversation observations for REV-35 (#10842). Native provider functions remain
+REV-36 work; this status does not report a packaged release or live qualification.
 The Coder review uses OpenAgents commit
 `f708ce07c072f96e833d17abc3eec59673c174c8`, where `coder-new` is
 `1.0.0-rc.3`. Public Brainstorm discovery and read requests succeeded on
@@ -292,8 +297,8 @@ integration unavailable rather than exposing placeholder success.
 For implementation, run `cargo test -p brainstorm-client -p coder-new` and
 `cargo fmt` with the pinned toolchain and a long-lived external target
 directory. Add other crate tests only when those crates change. Follow the
-release process separately; add no GitHub-billed automation. This proposal
-changes documentation only and needs link/path checks, not Rust tests.
+release process separately; add no GitHub-billed automation. Documentation-only
+updates need link/path checks; implementation changes need focused crate tests.
 
 ## Follow-up operations and plugins
 

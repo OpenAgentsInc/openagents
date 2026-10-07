@@ -3,6 +3,7 @@
 pub mod acp_discovery;
 pub mod agents;
 pub mod approval;
+pub mod brainstorm;
 pub mod bundled_runtime;
 pub mod bundled_settings;
 pub mod credentials;
@@ -76,6 +77,7 @@ pub struct App {
     pub request_id: u64,
     pub checking_key: bool,
     pub checking_jev: bool,
+    pub(crate) brainstorm_job: Option<brainstorm::Job>,
     pub slash_selected: usize,
     pub slash_hidden: bool,
     pub notice: Option<String>,
@@ -252,10 +254,24 @@ impl App {
         slash::matches(&self.draft.text)
             .into_iter()
             .filter(|command| *command != slash::Command::Models || self.plugins.enabled)
+            .filter(|command| {
+                *command != slash::Command::Brainstorm
+                    || self.plugins.bundled.brainstorm.preferences.enabled
+            })
             .collect()
     }
 
     pub fn cancel_request(&mut self) {
+        let brainstorm = self.brainstorm_job.take();
+        if let Some(job) = &brainstorm {
+            job.cancellation.cancel();
+            if matches!(
+                self.plugins.bundled.brainstorm.connection,
+                plugins::Connection::Checking
+            ) {
+                self.plugins.bundled.brainstorm.connection = plugins::Connection::Unchecked;
+            }
+        }
         self.history.dirty |= self.live.busy;
         self.active_delegation = None;
         self.request_id = self.request_id.wrapping_add(1);
@@ -271,7 +287,14 @@ impl App {
             }
             self.live.partial_model = None;
             self.live.busy = false;
-            self.live.notice = Some("Reply stopped.".into());
+            self.live.notice = Some(
+                if brainstorm.is_some() {
+                    "Brainstorm lookup cancelled."
+                } else {
+                    "Reply stopped."
+                }
+                .into(),
+            );
         }
         if matches!(self.plugins.connection, plugins::Connection::Checking) {
             self.plugins.connection = plugins::Connection::Unchecked;
@@ -344,6 +367,52 @@ impl App {
         }
         self.history.dirty |= self.live.busy;
         match update {
+            live::Update::BrainstormFinished {
+                generation, result, ..
+            } => {
+                let Some(job) = self.brainstorm_job.take() else {
+                    return;
+                };
+                if generation != job.generation
+                    || generation != self.plugins.bundled.brainstorm.generation
+                {
+                    self.live.busy = false;
+                    self.live
+                        .stop_tools("Brainstorm settings changed before this result returned.");
+                    return;
+                }
+                if matches!(job.command, brainstorm::Command::Test) {
+                    self.plugins.bundled.brainstorm.connection = match result {
+                        Ok(brainstorm::Outcome::Discovery(discovery))
+                            if discovery.search_supported && discovery.rank_supported =>
+                        {
+                            self.plugins.bundled.brainstorm.discovery = Some(discovery);
+                            plugins::Connection::Verified
+                        }
+                        Ok(_) => plugins::Connection::Failed(
+                            "The origin does not advertise both required public lookup algorithms."
+                                .into(),
+                        ),
+                        Err(error) => plugins::Connection::Failed(error.to_string()),
+                    };
+                    return;
+                }
+                self.live.busy = false;
+                let output = match result {
+                    Ok(outcome) => brainstorm::output(outcome),
+                    Err(error) => serde_json::json!({ "error": error.to_string(), "state": error,
+                        "recipient": job.origin, "operation": job.command.name(), "completed_at_ms": atif::now_ms() }),
+                };
+                self.live.tool(
+                    job.command.name().into(),
+                    job.command.input(&job.origin),
+                    output,
+                    false,
+                );
+                self.live.notice = None;
+                self.history.dirty = true;
+                self.scroll_main_to_end();
+            }
             live::Update::Delegation {
                 delegation,
                 name,
@@ -489,6 +558,7 @@ impl App {
             slash::Command::Models => self.open_models(),
             slash::Command::Export => self.export(None),
             slash::Command::Resume => unreachable!("Resume is handled before clearing the draft"),
+            slash::Command::Brainstorm => self.notice = Some(brainstorm::USAGE.into()),
             slash::Command::Help => self.notice = Some(slash::help()),
         }
     }
@@ -529,10 +599,110 @@ impl App {
         self.cwd = Some(cwd.to_owned());
         self.draft.text = text.into();
         self.draft.cursor = text.len();
+        if self.submit_brainstorm_command() {
+            return;
+        }
         self.submit_live();
     }
 
+    fn submit_brainstorm_command(&mut self) -> bool {
+        let Some(command) = brainstorm::parse(self.draft.text.trim()) else {
+            return false;
+        };
+        match command {
+            Ok(command) => self.start_brainstorm(command),
+            Err(error) => self.live.notice = Some(error.into()),
+        }
+        true
+    }
+
+    fn start_brainstorm(&mut self, command: brainstorm::Command) {
+        if self.live.busy || self.checking_key || self.checking_jev || self.brainstorm_job.is_some()
+        {
+            self.live.notice = Some("Wait for the current work or press Esc to stop it.".into());
+            return;
+        }
+        let settings = &self.plugins.bundled.brainstorm;
+        if !settings.preferences.enabled {
+            self.live.notice = Some("Enable Brainstorm in /plugins before a public lookup.".into());
+            return;
+        }
+        if self.mode == Mode::Demo {
+            if matches!(command, brainstorm::Command::Test) {
+                self.plugins.bundled.brainstorm.fixture = true;
+            } else {
+                self.messages.push(std::mem::take(&mut self.draft.text));
+                self.messages
+                    .push(brainstorm::summary(&serde_json::json!({ "fixture": true })));
+                self.draft.cursor = 0;
+            }
+            return;
+        }
+        let job = match settings.job(command) {
+            Ok(job) => job,
+            Err(error) => {
+                self.live.notice = Some(error);
+                return;
+            }
+        };
+        if matches!(job.command, brainstorm::Command::Test) {
+            let edited = self.plugins.bundled.brainstorm.edited_preferences();
+            if !edited
+                .as_ref()
+                .is_ok_and(|edited| edited == &self.plugins.bundled.brainstorm.preferences)
+            {
+                self.plugins.bundled.brainstorm.error =
+                    Some("Save a valid origin before testing its connection.".into());
+                return;
+            }
+        } else {
+            if !self.ensure_session() {
+                return;
+            }
+            let text = std::mem::take(&mut self.draft.text);
+            self.select_agent(None);
+            self.draft.text = text;
+            self.draft.cursor = self.draft.text.len();
+        }
+        self.cancel_request();
+        if matches!(job.command, brainstorm::Command::Test) {
+            self.plugins.bundled.brainstorm.connection = plugins::Connection::Checking;
+            self.plugins.bundled.brainstorm.discovery = None;
+        } else {
+            self.live
+                .entries
+                .push(live::Entry::User(std::mem::take(&mut self.draft.text)));
+            self.draft.cursor = 0;
+            self.live.tool(
+                job.command.name().into(),
+                job.command.input(&job.origin),
+                serde_json::Value::Null,
+                true,
+            );
+            self.live.busy = true;
+            self.live.notice = None;
+            self.history.dirty = true;
+            self.scroll_main_to_end();
+        }
+        self.brainstorm_job = Some(job.clone());
+        self.request = Some(live::Request {
+            id: self.request_id,
+            key: model_access::ApiKey::new(""),
+            kind: live::Work::Brainstorm { job },
+        });
+    }
+
+    pub fn check_brainstorm_connection(&mut self) {
+        self.start_brainstorm(brainstorm::Command::Test);
+        if self.brainstorm_job.is_none() && self.mode == Mode::Live {
+            self.plugins.bundled.brainstorm.error = self.live.notice.clone();
+        }
+    }
+
     pub fn submit_live(&mut self) {
+        if self.submit_brainstorm_command() {
+            return;
+        }
         if self.live.busy {
             self.live.notice = Some("Wait for the current reply or press Esc to stop it.".into());
             return;
@@ -691,6 +861,7 @@ impl App {
             "openrouter-byok" => self.plugins.begin_settings(),
             "jev" => self.plugins.bundled.begin_settings(),
             "acp-subagents" => self.plugins.bundled.begin_acp(),
+            brainstorm::PLUGIN => self.plugins.bundled.brainstorm.begin(),
             _ => {}
         }
         self.screen = Screen::PluginSettings;
@@ -819,6 +990,13 @@ impl App {
                     picker.paste(&text);
                 } else if self.screen == Screen::PluginSettings {
                     match self.plugins.selected_definition().id {
+                        brainstorm::PLUGIN => {
+                            if self.brainstorm_job.is_some() {
+                                self.cancel_request();
+                            }
+                            self.plugins.bundled.brainstorm.paste(&text);
+                            return true;
+                        }
                         "jev" => {
                             if matches!(
                                 self.plugins.bundled.focus,
@@ -893,6 +1071,37 @@ impl App {
                 }
                 if self.screen == Screen::PluginSettings {
                     match self.plugins.selected_definition().id {
+                        brainstorm::PLUGIN => {
+                            if self.brainstorm_job.is_some()
+                                && (key.code == KeyCode::Esc
+                                    || self.plugins.bundled.brainstorm.focus
+                                        == brainstorm::Focus::Origin
+                                        && matches!(
+                                            key.code,
+                                            KeyCode::Char(_) | KeyCode::Backspace | KeyCode::Delete
+                                        ))
+                            {
+                                self.cancel_request();
+                            }
+                            let closed = self.plugins.bundled.brainstorm.handle(key);
+                            if self.plugins.bundled.brainstorm.check_requested {
+                                self.check_brainstorm_connection();
+                            }
+                            if self.plugins.bundled.brainstorm.save_requested
+                                && self.plugins.bundled.save_brainstorm()
+                            {
+                                if self.brainstorm_job.is_some() {
+                                    self.cancel_request();
+                                }
+                                self.screen = Screen::Plugins;
+                            } else if closed {
+                                if self.brainstorm_job.is_some() {
+                                    self.cancel_request();
+                                }
+                                self.screen = Screen::Plugins;
+                            }
+                            return true;
+                        }
                         "jev" => {
                             if self.mode == Mode::Live
                                 && ((matches!(
@@ -1083,7 +1292,9 @@ impl App {
                         self.draft.insert("\n");
                     }
                     KeyCode::Enter if !ctrl => {
-                        if let Some(selection) = self
+                        if self.submit_brainstorm_command() {
+                            return true;
+                        } else if let Some(selection) = self
                             .draft
                             .text
                             .trim()

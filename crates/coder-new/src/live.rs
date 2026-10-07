@@ -109,39 +109,61 @@ impl Chat {
     }
 
     pub fn messages(&self) -> Vec<Message> {
+        let newest_brainstorm = self.entries.iter().rposition(|entry| matches!(entry,
+            Entry::Tool { name, output, running: false, .. } if name.starts_with("brainstorm.") && (output.get("observation").is_some() || output.get("error").is_some())));
         self.entries
             .iter()
-            .map(|entry| match entry {
-                Entry::User(text) => Message::user(text.clone()),
-                Entry::Assistant { text, .. } => Message {
-                    role: "assistant".into(),
-                    content: text.clone(),
-                },
-                Entry::Tool {
+            .enumerate()
+            .filter_map(|(index, entry)| {
+                if let Entry::Tool {
                     name,
                     output,
-                    running,
+                    running: false,
                     ..
-                } => Message {
-                    role: "assistant".into(),
-                    content: format!(
-                        "Tool observation from {name} ({}): {output}",
-                        if *running { "running" } else { "finished" }
-                    ),
-                },
-                Entry::Delegation {
-                    name,
-                    task,
-                    running,
-                    output,
-                    ..
-                } => Message {
-                    role: "assistant".into(),
-                    content: format!(
-                        "Delegation to {name}: {task} ({}): {output}",
-                        if *running { "running" } else { "finished" }
-                    ),
-                },
+                } = entry
+                {
+                    if name.starts_with("brainstorm.") {
+                        if newest_brainstorm != Some(index) {
+                            return None;
+                        }
+                        return crate::brainstorm::context(output).map(|content| Message {
+                            role: "assistant".into(),
+                            content,
+                        });
+                    }
+                }
+                Some(match entry {
+                    Entry::User(text) => Message::user(text.clone()),
+                    Entry::Assistant { text, .. } => Message {
+                        role: "assistant".into(),
+                        content: text.clone(),
+                    },
+                    Entry::Tool {
+                        name,
+                        output,
+                        running,
+                        ..
+                    } => Message {
+                        role: "assistant".into(),
+                        content: format!(
+                            "Tool observation from {name} ({}): {output}",
+                            if *running { "running" } else { "finished" }
+                        ),
+                    },
+                    Entry::Delegation {
+                        name,
+                        task,
+                        running,
+                        output,
+                        ..
+                    } => Message {
+                        role: "assistant".into(),
+                        content: format!(
+                            "Delegation to {name}: {task} ({}): {output}",
+                            if *running { "running" } else { "finished" }
+                        ),
+                    },
+                })
             })
             .collect()
     }
@@ -163,6 +185,9 @@ pub struct Request {
 }
 
 pub enum Work {
+    Brainstorm {
+        job: crate::brainstorm::Job,
+    },
     Check,
     CheckJev {
         endpoint: String,
@@ -190,6 +215,11 @@ pub enum Work {
 }
 
 pub enum Update {
+    BrainstormFinished {
+        id: u64,
+        generation: u64,
+        result: Result<crate::brainstorm::Outcome, brainstorm_client::Error>,
+    },
     Checked {
         id: u64,
         result: Result<KeyInfo, String>,
@@ -230,6 +260,7 @@ impl Update {
     pub fn id(&self) -> u64 {
         match self {
             Self::Checked { id, .. }
+            | Self::BrainstormFinished { id, .. }
             | Self::CheckedJev { id, .. }
             | Self::Tool { id, .. }
             | Self::Delegation { id, .. }
@@ -271,6 +302,7 @@ impl Background {
                         finished |= matches!(
                             update,
                             Update::Checked { .. }
+                                | Update::BrainstormFinished { .. }
                                 | Update::CheckedJev { .. }
                                 | Update::Finished { .. }
                         );
@@ -281,7 +313,13 @@ impl Background {
                         if !finished {
                             let error =
                                 "The chat worker stopped before completing the request.".into();
-                            app.apply_update(if app.checking_jev {
+                            app.apply_update(if let Some(job) = &app.brainstorm_job {
+                                Update::BrainstormFinished {
+                                    id: *id,
+                                    generation: job.generation,
+                                    result: Err(brainstorm_client::Error::Transport),
+                                }
+                            } else if app.checking_jev {
                                 Update::CheckedJev {
                                     id: *id,
                                     result: Err(error),
@@ -332,6 +370,17 @@ fn run_with_provider(
     canceled: oneshot::Receiver<()>,
     create: impl FnOnce(openrouter::ApiKey) -> Result<Provider, String>,
 ) {
+    let request = match request {
+        Request {
+            id,
+            kind: Work::Brainstorm { job },
+            ..
+        } => {
+            run_brainstorm(id, job, sender, canceled);
+            return;
+        }
+        request => request,
+    };
     let id = request.id;
     let checking = match request.kind {
         Work::Check => 1,
@@ -404,25 +453,7 @@ fn run_with_provider(
                         }
                     };
                     let result = async {
-                        let mut context = Vec::new();
-                        let mut bytes = 0;
-                        for message in messages.iter().rev() {
-                            let row = format!("{}: {}", message.role, message.content);
-                            if bytes + row.len() > 56 * 1024 {
-                                break;
-                            }
-                            bytes += row.len();
-                            context.push(row);
-                        }
-                        context.reverse();
-                        let mut task = context.join("\n\n");
-                        if let Some(standing) = execution.instructions.as_deref().filter(|text| !text.trim().is_empty()) {
-                            task = format!("Standing instructions (from the host, not the user):\n{standing}\n\nThe conversation:\n{task}");
-                        }
-                        if execution.cli {
-                            task.push_str("\n\nThe bundled OpenAgents CLI is enabled for requested CLI work: openagents --json with an argument array's equivalent syntax. Answer questions directly from what you know and from read-only commands; read a command group's --help only when you need a command you do not know. Follow the user's authorization for effects.");
-                        }
-                        let task = execution.redact_text(&task);
+                        let task = local_task(&messages, &execution)?;
                         let client = execution.jev_client()?;
                         let result = crate::bundled_runtime::microcoder_local(
                             &task, &execution.cwd, client, &execution.redaction_keys,
@@ -480,6 +511,80 @@ fn run_with_provider(
             _ = &mut work => {}
         }
     });
+}
+
+fn run_brainstorm(
+    id: u64,
+    job: crate::brainstorm::Job,
+    sender: mpsc::Sender<Update>,
+    canceled: oneshot::Receiver<()>,
+) {
+    let generation = job.generation;
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build();
+    let result = match runtime {
+        Err(_) => Err(brainstorm_client::Error::Transport),
+        Ok(runtime) => runtime.block_on(async {
+            let work = job.run();
+            tokio::pin!(work);
+            tokio::select! {
+                biased;
+                _ = canceled => {
+                    job.cancellation.cancel();
+                    Err(brainstorm_client::Error::Cancelled)
+                }
+                result = &mut work => result,
+            }
+        }),
+    };
+    let _ = sender.send(Update::BrainstormFinished {
+        id,
+        generation,
+        result,
+    });
+}
+
+/// Project the same live messages, including bounded observations, into the local route.
+fn local_conversation(messages: &[Message], limit: usize) -> String {
+    let mut context = Vec::new();
+    let mut bytes = 0;
+    for message in messages.iter().rev() {
+        let row = format!("{}: {}", message.role, message.content);
+        let separator = usize::from(!context.is_empty()) * 2;
+        if bytes + row.len() + separator > limit {
+            break;
+        }
+        bytes += row.len() + separator;
+        context.push(row);
+    }
+    context.reverse();
+    context.join("\n\n")
+}
+
+pub(crate) fn local_task(
+    messages: &[Message],
+    execution: &ExecutionSettings,
+) -> Result<String, String> {
+    const LIMIT: usize = 56 * 1024;
+    let prefix = execution.instructions.as_deref().filter(|text| !text.trim().is_empty())
+        .map(|standing| format!("Standing instructions (from the host, not the user):\n{standing}\n\nThe conversation:\n")).unwrap_or_default();
+    let suffix = if execution.cli {
+        "\n\nThe bundled OpenAgents CLI is enabled for requested CLI work: openagents --json with an argument array's equivalent syntax. Answer questions directly from what you know and from read-only commands; read a command group's --help only when you need a command you do not know. Follow the user's authorization for effects."
+    } else {
+        ""
+    };
+    let allowance = LIMIT
+        .checked_sub(prefix.len().saturating_add(suffix.len()))
+        .ok_or("The host instructions exceed the local route's context allowance.")?;
+    let task = execution.redact_text(&format!(
+        "{prefix}{}{suffix}",
+        local_conversation(messages, allowance)
+    ));
+    if task.len() > LIMIT {
+        return Err("The redacted context exceeds the local route's allowance.".into());
+    }
+    Ok(task)
 }
 
 fn failure(id: u64, checking: u8, sender: &mpsc::Sender<Update>, error: String) {

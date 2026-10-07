@@ -60,6 +60,7 @@ pub(super) fn render(frame: &mut Frame, area: Rect, app: &App) {
             OPENROUTER_PLUGIN => router_settings(frame, body, app),
             "jev" => jev_settings(frame, body, app),
             "acp-subagents" => acp_settings(frame, body, app),
+            crate::brainstorm::PLUGIN => brainstorm_settings(frame, body, app),
             _ => plugin_info(frame, body, app),
         }
     }
@@ -280,6 +281,18 @@ fn plugin_details(app: &App, width: u16) -> Vec<Line<'static>> {
                 )),
             ]);
         }
+        crate::brainstorm::PLUGIN => {
+            lines.push(Line::default());
+            lines.extend([
+                detail("Recipient", &p.bundled.brainstorm.preferences.origin, width),
+                detail("Perspective", "Brainstorm house", width),
+                Line::from(span(
+                    "Explicit queries and public keys go to this recipient.",
+                    t::GRAY,
+                )),
+                Line::from(span("Opening or enabling makes no service read.", t::GRAY)),
+            ]);
+        }
         _ => {}
     }
     if app.mode == Mode::Live {
@@ -306,6 +319,98 @@ fn plugin_info(frame: &mut Frame, area: Rect, app: &App) {
         Paragraph::new(Text::from(lines)).wrap(ratatui::widgets::Wrap { trim: false }),
         area,
     );
+}
+
+fn brainstorm_settings(frame: &mut Frame, area: Rect, app: &App) {
+    use crate::brainstorm::Focus;
+    let settings = &app.plugins.bundled.brainstorm;
+    let mut lines = vec![
+        Line::from(span("Brainstorm house perspective", t::ACCENT_MODEL)),
+        detail("Recipient", &settings.preferences.origin, area.width),
+        Line::from(span(
+            "Explicit queries and public keys go to this HTTPS recipient.",
+            t::GRAY,
+        )),
+        Line::from(span(
+            "Opening, saving, or enabling makes no service read.",
+            t::GRAY,
+        )),
+        Line::from(span(
+            "This integration uses unsigned HTTP observations, not personal or signed scores.",
+            t::GRAY,
+        )),
+        Line::default(),
+    ];
+    let mut cursor = None;
+    let origin = field(
+        &mut lines,
+        "HTTPS origin",
+        settings.field(),
+        settings.focus == Focus::Origin,
+        area.width,
+        &mut cursor,
+    );
+    lines.push(Line::from(span(
+        "Save a changed recipient before testing it. Enable from the plugin list.",
+        t::GRAY,
+    )));
+    lines.push(Line::default());
+    let test = action(
+        &mut lines,
+        "Test connection (public discovery)",
+        settings.focus == Focus::Test,
+        t::ACCENT_SKILL,
+    );
+    let status = if settings.fixture {
+        "Demo fixture · no service read"
+    } else {
+        settings.status()
+    };
+    lines.push(detail("Connection", status, area.width));
+    if let crate::plugins::Connection::Failed(error) = &settings.connection {
+        lines.push(Line::from(span(error, t::DIFF_DELETE_FG)));
+    }
+    if let Some(discovery) = &settings.discovery {
+        lines.push(detail("House key", &discovery.house.pubkey, area.width));
+        lines.push(detail(
+            "Discovered",
+            &format!("{} ms since Unix epoch", discovery.house.discovered_at_ms),
+            area.width,
+        ));
+        lines.push(Line::from(span(
+            "The separately discovered key is not bound atomically to score responses.",
+            t::GRAY,
+        )));
+    }
+    if let Some(error) = &settings.error {
+        lines.push(Line::from(span(error, t::DIFF_DELETE_FG)));
+    }
+    lines.push(Line::default());
+    let save = action(
+        &mut lines,
+        "Save settings",
+        settings.focus == Focus::Save,
+        t::ACCENT_MODEL,
+    );
+    let cancel = action(
+        &mut lines,
+        "Cancel (Esc)",
+        settings.focus == Focus::Cancel,
+        t::TEXT_SECONDARY,
+    );
+    lines.push(Line::default());
+    lines.push(Line::from(span(crate::brainstorm::USAGE, t::GRAY_BRIGHT)));
+    lines.push(Line::from(span(
+        "Tab Move between fields · Enter Select · Esc Cancel pending discovery",
+        t::GRAY,
+    )));
+    let focus = match settings.focus {
+        Focus::Origin => origin,
+        Focus::Test => test,
+        Focus::Save => save,
+        Focus::Cancel => cancel,
+    };
+    render_fields(frame, area, lines, focus, cursor, true);
 }
 
 fn detail(label: &str, value: &str, width: u16) -> Line<'static> {

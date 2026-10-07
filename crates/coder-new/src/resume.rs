@@ -171,6 +171,7 @@ impl App {
         if self.live.busy
             || self.checking_key
             || self.checking_jev
+            || self.brainstorm_job.is_some()
             || self.request.is_some()
             || self.delegations.iter().any(|child| child.running)
         {

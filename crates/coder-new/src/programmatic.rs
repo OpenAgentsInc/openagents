@@ -772,7 +772,7 @@ fn take_option(args: &mut Vec<String>, name: &str) -> Result<Option<String>, Err
     Ok(Some(value))
 }
 
-fn chat(
+pub(crate) fn chat(
     app: &mut App,
     args: &[String],
     context: &Context,
@@ -840,6 +840,8 @@ fn chat(
     app.live.instructions = instructions
         .or_else(|| fs::read_to_string(&standing).ok())
         .filter(|text| !text.trim().is_empty());
+    let brainstorm_lookup = !demo && matches!(crate::brainstorm::parse(prompt.trim()), Some(Ok(_)));
+    let turn_start = app.live.entries.len();
     if let Some(id) = delegation {
         app.selected_agent = Some(
             app.delegations
@@ -980,18 +982,35 @@ fn chat(
     if let Some(error) = &target.notice {
         return Err(error.clone().into());
     }
-    let reply = target
-        .entries
-        .iter()
-        .rev()
-        .find_map(|entry| {
-            if let live::Entry::Assistant { text, .. } = entry {
-                Some(text.as_str())
-            } else {
-                None
-            }
-        })
-        .unwrap_or("");
+    let reply = if brainstorm_lookup {
+        // A lookup completes with its own tool observation, without a model reply.
+        target.entries[turn_start..]
+            .iter()
+            .rev()
+            .find_map(|entry| match entry {
+                live::Entry::Tool {
+                    name,
+                    output,
+                    running: false,
+                    ..
+                } if name.starts_with("brainstorm.") => crate::brainstorm::context(output),
+                _ => None,
+            })
+            .ok_or("The Brainstorm lookup completed without a bounded observation.")?
+    } else {
+        target
+            .entries
+            .iter()
+            .rev()
+            .find_map(|entry| {
+                if let live::Entry::Assistant { text, .. } = entry {
+                    Some(text.clone())
+                } else {
+                    None
+                }
+            })
+            .unwrap_or_default()
+    };
     Ok(
         json!({"event":"finished","session":session,"reply":reply,"tokens":target.tokens,"trajectory":session_path(context,&session)?}),
     )

@@ -32,6 +32,8 @@ struct Preferences {
     #[serde(serialize_with = "write_key", deserialize_with = "read_key")]
     jev_key: Option<ApiKey>,
     acp_agents: Vec<AcpAgent>,
+    #[serde(default)]
+    brainstorm: crate::brainstorm::Preferences,
 }
 
 impl Default for Preferences {
@@ -46,6 +48,7 @@ impl Default for Preferences {
             jev_endpoint: crate::jev_plugin::DEFAULT_ENDPOINT.into(),
             jev_key: None,
             acp_agents: Vec::new(),
+            brainstorm: crate::brainstorm::Preferences::default(),
         }
     }
 }
@@ -137,10 +140,12 @@ impl Preferences {
                 .as_ref()
                 .is_none_or(|key| valid_key(key.expose()))
             && valid_agents(&self.acp_agents).is_ok()
+            && self.brainstorm.valid()
     }
 }
 
 pub struct BundledSettings {
+    pub brainstorm: crate::brainstorm::Settings,
     pub microcoder: bool,
     pub cli: bool,
     pub acp: bool,
@@ -174,6 +179,7 @@ impl Default for BundledSettings {
     fn default() -> Self {
         let defaults = Preferences::default();
         Self {
+            brainstorm: crate::brainstorm::Settings::default(),
             microcoder: true,
             cli: true,
             acp: true,
@@ -217,10 +223,12 @@ impl BundledSettings {
             jev_endpoint: self.jev_endpoint.clone(),
             jev_key: self.jev_key.clone(),
             acp_agents: self.acp_agents.clone(),
+            brainstorm: self.brainstorm.preferences.clone(),
         }
     }
 
     fn apply(&mut self, value: Preferences) {
+        self.brainstorm.configure(value.brainstorm, self.live);
         self.microcoder = value.microcoder;
         self.cli = value.cli;
         self.acp = value.acp;
@@ -238,8 +246,8 @@ impl BundledSettings {
         self.discard();
         let current = self.preferences();
         let next = std::mem::replace(&mut self.other, current);
-        self.apply(next);
         self.live = live;
+        self.apply(next);
         self.connection = Connection::Unchecked;
         self.refresh_acp();
     }
@@ -337,6 +345,7 @@ impl BundledSettings {
             "openagents-cli" => self.cli,
             "acp-subagents" => self.acp,
             "jev" => self.jev_enabled,
+            crate::brainstorm::PLUGIN => self.brainstorm.preferences.enabled,
             _ => false,
         }
     }
@@ -348,6 +357,7 @@ impl BundledSettings {
             "openagents-cli" => &mut value.cli,
             "acp-subagents" => &mut value.acp,
             "jev" => &mut value.jev_enabled,
+            crate::brainstorm::PLUGIN => &mut value.brainstorm.enabled,
             _ => return false,
         };
         *flag = !*flag;
@@ -363,6 +373,7 @@ impl BundledSettings {
             return "Disabled";
         }
         match id {
+            crate::brainstorm::PLUGIN => self.brainstorm.status(),
             "jev" if self.jev_key.is_none() => "Setup required",
             "jev" => match self.connection {
                 Connection::Checking => "Checking",
@@ -409,6 +420,25 @@ impl BundledSettings {
         }
         self.storage_error = None;
         self.configured = true;
+        true
+    }
+
+    pub fn save_brainstorm(&mut self) -> bool {
+        let preferences = match self.brainstorm.edited_preferences() {
+            Ok(preferences) => preferences,
+            Err(error) => {
+                self.brainstorm.error = Some(error.into());
+                return false;
+            }
+        };
+        let mut value = self.preferences();
+        value.brainstorm = preferences;
+        if !self.persist(&value) {
+            self.brainstorm.error = self.storage_error.clone();
+            return false;
+        }
+        self.apply(value);
+        self.brainstorm.begin();
         true
     }
 
