@@ -205,29 +205,111 @@ impl Cube {
     /// another and a smooth sky needs few samples.
     #[must_use]
     pub fn prefilter(size: u32, samples: u32, radiance: impl Fn(Vec3) -> Vec3) -> Self {
+        let mut run = Prefilter::new(size, samples);
+        while !run.advance(u64::MAX, &radiance) {}
+        run.into_cube()
+    }
+}
+
+/// [`Cube::prefilter`] a slice at a time, so a bake can spread over frames:
+/// each [`Prefilter::advance`] evaluates the radiance about as many times
+/// as its budget allows, and the finished cube is the one
+/// [`Cube::prefilter`] gives.
+#[derive(Clone, Debug)]
+pub struct Prefilter {
+    size: u32,
+    samples: u32,
+    count: usize,
+    levels: Vec<Vec<Vec3>>,
+}
+
+impl Prefilter {
+    /// A prefilter of edge `size` (rounded up to a power of two) with
+    /// `samples` GGX samples per blurred texel, not yet started.
+    #[must_use]
+    pub fn new(size: u32, samples: u32) -> Self {
         let size = size.max(1).next_power_of_two();
-        let count = Self::level_count(size) as usize;
-        let levels = (0..count)
+        Self {
+            size,
+            samples: samples.max(1),
+            count: Cube::level_count(size) as usize,
+            levels: Vec::new(),
+        }
+    }
+
+    /// Radiance evaluations the whole prefilter takes.
+    #[must_use]
+    pub fn cost(&self) -> u64 {
+        (0..self.count)
             .map(|level| {
-                let side = (size >> level).max(1);
-                let roughness = Self::roughness(level, count);
-                let mut texels = Vec::with_capacity((6 * side * side) as usize);
-                for face in 0..6 {
-                    for y in 0..side {
-                        for x in 0..side {
-                            let n = texel_direction(face, side, x, y);
-                            texels.push(if roughness <= 0.0 {
-                                radiance(n)
-                            } else {
-                                ggx_average(n, roughness, samples.max(1), &radiance)
-                            });
-                        }
+                let side = u64::from((self.size >> level).max(1));
+                6 * side
+                    * side
+                    * if level == 0 {
+                        1
+                    } else {
+                        u64::from(self.samples)
                     }
-                }
-                texels
             })
-            .collect();
-        Self { size, levels }
+            .sum()
+    }
+
+    /// Whether every level is filled.
+    #[must_use]
+    pub fn done(&self) -> bool {
+        self.levels.len() == self.count
+            && self
+                .levels
+                .last()
+                .is_some_and(|l| l.len() == self.texels(self.count - 1))
+    }
+
+    fn texels(&self, level: usize) -> usize {
+        let side = (self.size >> level).max(1) as usize;
+        6 * side * side
+    }
+
+    /// Fills texels until about `budget` radiance evaluations are spent,
+    /// finishing at least one texel. Returns whether the cube is done.
+    pub fn advance(&mut self, budget: u64, radiance: &impl Fn(Vec3) -> Vec3) -> bool {
+        let mut spent = 0_u64;
+        while !self.done() {
+            if self
+                .levels
+                .last()
+                .is_none_or(|l| l.len() == self.texels(self.levels.len() - 1))
+            {
+                let level = self.levels.len();
+                self.levels.push(Vec::with_capacity(self.texels(level)));
+            }
+            let level = self.levels.len() - 1;
+            let side = (self.size >> level).max(1);
+            let roughness = Cube::roughness(level, self.count);
+            let texels = &mut self.levels[level];
+            let i = texels.len() as u32;
+            let (face, y, x) = (i / (side * side), i / side % side, i % side);
+            let n = texel_direction(face as usize, side, x, y);
+            if roughness <= 0.0 {
+                texels.push(radiance(n));
+                spent += 1;
+            } else {
+                texels.push(ggx_average(n, roughness, self.samples, radiance));
+                spent += u64::from(self.samples);
+            }
+            if spent >= budget {
+                break;
+            }
+        }
+        self.done()
+    }
+
+    /// The finished cube; levels not yet filled are left short.
+    #[must_use]
+    pub fn into_cube(self) -> Cube {
+        Cube {
+            size: self.size,
+            levels: self.levels,
+        }
     }
 }
 
@@ -365,6 +447,20 @@ mod tests {
                     < 1e-5
             );
         }
+    }
+
+    #[test]
+    fn a_prefilter_in_slices_gives_the_whole_cube() {
+        let sky = |d: Vec3| Vec3::new(0.2 + d.y.max(0.0), 0.4, 0.8 - 0.3 * d.x);
+        let whole = Cube::prefilter(8, 16, sky);
+        let mut run = Prefilter::new(8, 16);
+        let budget = 200;
+        let mut slices = 0;
+        while !run.advance(budget, &sky) {
+            slices += 1;
+        }
+        assert!(slices as u64 >= run.cost() / budget - 1, "{slices}");
+        assert_eq!(run.into_cube(), whole);
     }
 
     #[test]

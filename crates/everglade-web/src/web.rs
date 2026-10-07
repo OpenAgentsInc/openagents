@@ -319,6 +319,13 @@ async fn run() -> Result<(), String> {
     }
     let bytes = download(&window).await?;
     let mut runtime = WorldRuntime::new();
+    // The town clock runs, as on the desktop; `?town-clock=off` stops it in
+    // late-morning daylight and `?town-hour=18.5` pins the hour.
+    let setting =
+        query_value(&window, "town-clock").and_then(|v| verse::town_clock::Setting::parse(&v).ok());
+    let hour =
+        query_value(&window, "town-hour").and_then(|v| verse::town_clock::parse_hour(&v).ok());
+    runtime.set_town_clock(verse::town_clock::Clock::from_settings(setting, hour));
     // `?demolition` opens the demolition yard: two kit cottages to knock
     // down with a sledgehammer, as `verse --demolition` does.
     runtime.set_demolition(

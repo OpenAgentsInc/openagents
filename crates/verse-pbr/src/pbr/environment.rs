@@ -18,7 +18,7 @@
 use std::f32::consts::PI;
 
 use glam::Vec3;
-use verse_engine::environment::{Cube, Sh9};
+use verse_engine::environment::{Cube, Prefilter, Sh9};
 use verse_engine::quality::Quality;
 
 use super::Daylight;
@@ -73,7 +73,7 @@ impl SkyLight {
 /// The radiance the sky light holds along each unit direction: the sky
 /// above the horizon, scaled to the key's level, and the ground below it,
 /// lit by the key and that sky.
-pub fn radiance(inputs: &SkyInputs) -> impl Fn(Vec3) -> Vec3 {
+pub fn radiance(inputs: &SkyInputs) -> impl Fn(Vec3) -> Vec3 + use<> {
     let day = inputs.daylight;
     let sun = inputs.sun.normalize_or(Vec3::Y);
     let coverage = cloud_coverage(day.clouds);
@@ -184,6 +184,87 @@ pub fn sky(day: &Daylight, sun: Vec3, coverage: f32, d: Vec3) -> Vec3 {
     c.lerp(cloud, density * 0.92)
 }
 
+/// Radiance evaluations a gradual rebake spends a frame: about 0.7 ms on a
+/// desktop, so the High tier's 64-texel cube, about 15 ms baked at once,
+/// spreads over some 23 frames.
+pub const GRADUAL_BUDGET: u64 = 24_000;
+
+/// What a sky light is baked from, with the cube's size and sample count.
+type BakeKey = (SkyInputs, u32, u32);
+
+/// A sky light baked over several frames.
+struct Pending {
+    key: BakeKey,
+    sh: Sh9,
+    radiance: Box<dyn Fn(Vec3) -> Vec3>,
+    prefilter: Prefilter,
+}
+
+/// Decides when a sky light bakes, with no GPU: at once for a new or
+/// jumped sky, and a [`GRADUAL_BUDGET`] slice a frame for a gradual one,
+/// while the last light stays in use.
+#[derive(Default)]
+pub struct SkyBaker {
+    built: Option<BakeKey>,
+    pending: Option<Pending>,
+}
+
+impl SkyBaker {
+    /// Advances the bake toward `inputs` at a cube of `size` with
+    /// `samples`, and returns a light when one is ready to use. A
+    /// `gradual` change after a first bake takes slices of `budget`; any
+    /// other bakes whole.
+    pub fn step(
+        &mut self,
+        inputs: &SkyInputs,
+        size: u32,
+        samples: u32,
+        gradual: bool,
+        budget: u64,
+    ) -> Option<SkyLight> {
+        let key = (*inputs, size, samples);
+        if self.built == Some(key) {
+            self.pending = None;
+            return None;
+        }
+        let same_cube = self
+            .built
+            .is_some_and(|(_, s, n)| (s, n) == (size, samples));
+        if !(gradual && same_cube) {
+            self.pending = None;
+            self.built = Some(key);
+            return Some(SkyLight::bake(inputs, size, samples));
+        }
+        if self.pending.as_ref().is_none_or(|p| p.key != key) {
+            let radiance = Box::new(radiance(inputs));
+            self.pending = Some(Pending {
+                key,
+                sh: Sh9::project(PROJECTION_SIZE, &radiance),
+                radiance,
+                prefilter: Prefilter::new(size, samples),
+            });
+            // The projection was this frame's work.
+            return None;
+        }
+        let pending = self.pending.as_mut()?;
+        if !pending.prefilter.advance(budget, &pending.radiance) {
+            return None;
+        }
+        let done = self.pending.take()?;
+        self.built = Some(done.key);
+        Some(SkyLight {
+            sh: done.sh,
+            cube: done.prefilter.into_cube(),
+        })
+    }
+
+    /// Whether a gradual bake is under way.
+    #[must_use]
+    pub fn baking(&self) -> bool {
+        self.pending.is_some()
+    }
+}
+
 /// The sky light on the GPU: the prefiltered cube, and the irradiance
 /// coefficients the frame uniform carries.
 pub struct SkyLightGpu {
@@ -192,9 +273,7 @@ pub struct SkyLightGpu {
     pub sh: [[f32; 4]; 9],
     /// The cube's last level, which roughness 1 reads.
     pub max_lod: f32,
-    /// What the uploaded light was baked from, with the cube's size and
-    /// sample count.
-    built: Option<(SkyInputs, u32, u32)>,
+    baker: SkyBaker,
 }
 
 impl SkyLightGpu {
@@ -209,30 +288,33 @@ impl SkyLightGpu {
             view: upload(device, queue, &black),
             sh: [[0.0; 4]; 9],
             max_lod: 0.0,
-            built: None,
+            baker: SkyBaker::default(),
         }
     }
 
     /// Bakes and uploads the sky light of `inputs` at `quality`'s cube size,
-    /// unless it already holds that light. Returns whether the cube's view
-    /// changed, so the caller rebuilds the bind group that holds it.
+    /// unless it already holds that light: at once, or over several frames
+    /// when the change is `gradual` ([`SkyBaker`]). Returns whether the
+    /// cube's view changed, so the caller rebuilds the bind group that holds
+    /// it.
     pub fn update(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         inputs: &SkyInputs,
         quality: &Quality,
+        gradual: bool,
     ) -> bool {
         let (size, samples) = quality.sky_cube();
-        let key = (*inputs, size, samples);
-        if self.built == Some(key) {
+        let Some(light) = self
+            .baker
+            .step(inputs, size, samples, gradual, GRADUAL_BUDGET)
+        else {
             return false;
-        }
-        let light = SkyLight::bake(inputs, size, samples);
+        };
         self.view = upload(device, queue, &light.cube);
         self.sh = light.sh.uniform();
         self.max_lod = light.cube.levels.len().saturating_sub(1) as f32;
-        self.built = Some(key);
         true
     }
 }
@@ -409,5 +491,55 @@ mod tests {
         let away = Vec3::new(-sun.x, 0.6, -sun.z).normalize();
         let (a, b) = (air(&dusk, sun, away), air(&day, sun, away));
         assert!((a - b).abs().max_element() < 0.12, "{a} {b}");
+    }
+
+    /// A town clock's step: the Sun a degree further on.
+    fn stepped(inputs: &SkyInputs) -> SkyInputs {
+        let turn = glam::Quat::from_rotation_y(1f32.to_radians());
+        SkyInputs {
+            sun: (turn * inputs.sun).normalize(),
+            ..*inputs
+        }
+    }
+
+    #[test]
+    fn a_gradual_change_bakes_over_frames_and_a_jump_at_once() {
+        let first = glade();
+        let mut baker = SkyBaker::default();
+        // The first light bakes at once, gradual or not.
+        assert!(baker.step(&first, 16, 32, true, 1).is_some());
+        assert!(baker.step(&first, 16, 32, true, 1).is_none());
+        // A gradual step keeps the last light while it bakes in slices,
+        // then gives the very light a whole bake gives.
+        let next = stepped(&first);
+        let budget = 2_000;
+        let mut frames = 0;
+        let light = loop {
+            frames += 1;
+            assert!(frames < 1_000);
+            if let Some(light) = baker.step(&next, 16, 32, true, budget) {
+                break light;
+            }
+            assert!(baker.baking());
+        };
+        let cost = Prefilter::new(16, 32).cost();
+        assert!(frames as u64 > cost / budget, "{frames} frames");
+        assert_eq!(light, SkyLight::bake(&next, 16, 32));
+        assert!(!baker.baking());
+        // A change that isn't gradual, or a new cube size, bakes at once.
+        let third = stepped(&next);
+        assert!(baker.step(&third, 16, 32, false, 1).is_some());
+        assert!(baker.step(&first, 32, 64, true, 1).is_some());
+        // A step that lands mid-bake starts over toward the newest sky.
+        let a = stepped(&first);
+        assert!(baker.step(&a, 32, 64, true, 1).is_none());
+        let b = stepped(&a);
+        assert!(baker.step(&b, 32, 64, true, 1).is_none());
+        let light = loop {
+            if let Some(light) = baker.step(&b, 32, 64, true, u64::MAX) {
+                break light;
+            }
+        };
+        assert_eq!(light, SkyLight::bake(&b, 32, 64));
     }
 }

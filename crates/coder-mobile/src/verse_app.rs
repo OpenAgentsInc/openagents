@@ -1004,6 +1004,13 @@ impl Scene {
             let mut world = WorldRuntime::new();
             // A phone opens a station's panel with the zone panel's button.
             world.interact_hint = verse::runtime::InteractHint::Tap;
+            // Everglade's town clock runs as on the desktop, so a phone and
+            // a computer see the same hour and villagers; a synthetic
+            // session stays in daylight, so its checks don't change with
+            // the hour.
+            if !config.synthetic {
+                world.set_town_clock(verse::town_clock::Clock::RUNNING);
+            }
             world
         };
         if config.bare {

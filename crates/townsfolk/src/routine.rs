@@ -6,14 +6,17 @@
 //! [`JITTER_SECONDS`], different each day, so villagers don't move in
 //! lockstep. A villager walks from the previous row's node to the row's
 //! node in [`walk_seconds`] of town time, from the straight distance
-//! between the two standing points times [`DETOUR`]; the zone draws the
+//! between the two standing points times [`DETOUR`], at [`WALK_SPEED`] in
+//! real time at the town clock's pace when the walk starts
+//! ([`town_clock::town_per_real`]), so a villager walks at the same speed
+//! by day, when the clock runs slowly, as at night; the zone draws the
 //! walk along its real route at that progress. At a node it stands at the
 //! node's standing point plus a seeded offset ([`SCATTER`]), except at an
 //! exclusive object, where it stands on the point.
 
 use std::collections::BTreeMap;
 
-use town_clock::{DAY_REAL_SECONDS, TOWN_DAY_SECONDS, TownTime};
+use town_clock::{TOWN_DAY_SECONDS, TownTime};
 use world_tree::Tree;
 
 use crate::validate::{self, Checks, NoScreen};
@@ -23,18 +26,23 @@ use crate::{Activity, Npc, Problem, Town};
 pub const WALK_SPEED: f32 = 1.4;
 /// How much longer than the straight line a walk is taken to be.
 pub const DETOUR: f32 = 1.4;
-/// Town seconds per real second.
-pub const TOWN_PER_REAL: f64 = TOWN_DAY_SECONDS as f64 / DAY_REAL_SECONDS as f64;
 /// The longest seeded delay of a departure, town seconds.
 pub const JITTER_SECONDS: u32 = 600;
 /// How far from a node's standing point a villager stands there, m:
 /// at least the first and at most the second.
 pub const SCATTER: [f32; 2] = [1.2, 2.6];
 
-/// Town seconds a walk of `meters` takes.
+/// Town seconds a walk of `meters` takes when it starts `second` into the
+/// day.
 #[must_use]
-pub fn walk_seconds(meters: f32) -> f64 {
-    f64::from(meters) / f64::from(WALK_SPEED) * TOWN_PER_REAL
+pub fn walk_seconds(meters: f32, second: u32) -> f64 {
+    real_walk_seconds(meters) * town_clock::town_per_real(f64::from(second) / 3_600.0)
+}
+
+/// Real seconds a walk of `meters` takes.
+#[must_use]
+pub fn real_walk_seconds(meters: f32) -> f64 {
+    f64::from(meters) / f64::from(WALK_SPEED)
 }
 
 /// The straight distance between two nodes' standing points times
@@ -138,7 +146,10 @@ impl Villager {
                 if from == to {
                     0.0
                 } else {
-                    walk_seconds(leg_meters(tree, from, to).unwrap_or(0.0))
+                    walk_seconds(
+                        leg_meters(tree, from, to).unwrap_or(0.0),
+                        npc.routine[i].second().unwrap_or(0),
+                    )
                 }
             })
             .collect();
@@ -177,6 +188,13 @@ impl Villager {
     #[must_use]
     pub fn walk(&self, row: usize) -> f64 {
         self.walks[row]
+    }
+
+    /// The walk into row `row`, real seconds on the running clock.
+    #[must_use]
+    pub fn real_walk(&self, row: usize) -> f64 {
+        let rate = town_clock::town_per_real(f64::from(self.starts[row]) / 3_600.0);
+        self.walks[row] / rate
     }
 
     /// The town's seed with this villager's own mixed in.

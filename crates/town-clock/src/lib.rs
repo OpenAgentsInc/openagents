@@ -2,13 +2,16 @@
 //!
 //! Town time is a pure function of Unix time: every device that agrees on
 //! the time of day in the real world derives the same town day, hour, and
-//! phase, with no network message. By default ([`Clock::DEFAULT`]) the
-//! time of day stays at [`DAYTIME_HOUR`], late morning, so Everglade is in
-//! daylight; the running cycle is a setting ([`Clock::RUNNING`]): a town
-//! day passes in [`DAY_REAL_SECONDS`] of real time, counted from
-//! [`EPOCH_UNIX`], so a short visit sees the town's routines turn over, or
-//! the wall-clock mode follows real hours. An hour pin fixes the time of
-//! day for captures and debugging while the day count keeps running.
+//! phase, with no network message. The apps run the cycle
+//! ([`Clock::RUNNING`], which [`Clock::from_settings`] gives with no
+//! setting): a town day passes in [`DAY_REAL_SECONDS`] of real time,
+//! counted from [`EPOCH_UNIX`], so a short visit sees the town's routines
+//! turn over. The day doesn't pass evenly: [`PACE`] gives daylight most of
+//! the real hour and dusk and night a few minutes each, so a visitor
+//! usually arrives by day. The wall-clock mode follows real hours instead.
+//! [`Clock::DAYTIME`], the library's default and the apps' off switch,
+//! holds [`DAYTIME_HOUR`], late morning. An hour pin fixes the time of day
+//! for captures and debugging while the day count keeps running.
 //!
 //! The crate reads no clock and has no dependencies: the caller passes the
 //! Unix time, so a render loop passes the real time and a test passes a
@@ -36,6 +39,73 @@ pub enum Mode {
     /// The real time of day, at `utc_offset_minutes` from UTC: one town
     /// day a real day.
     WallClock { utc_offset_minutes: i32 },
+}
+
+/// The compressed day's pace: each stretch's first town hour, and the
+/// minutes of a 60-minute real day it takes to reach the next stretch's
+/// hour. Daylight, 07:00 to 17:00, takes 42 minutes; dawn takes 3, dusk 7,
+/// and the night 7.5, so the Sun is up for three quarters of a visit.
+/// The shares add to 60.
+pub const PACE: [(f64, f64); 5] = [
+    (0.0, 3.0),
+    (5.0, 3.0),
+    (7.0, 42.5),
+    (17.0, 7.0),
+    (20.0, 4.5),
+];
+
+/// The stretch of [`PACE`] that holds `fraction` of a day, measured in real
+/// time when `by_real` is set and in town time otherwise: its start and
+/// span in town time, then in real time, as fractions of a day.
+fn stretch(fraction: f64, by_real: bool) -> (f64, f64, f64, f64) {
+    let (mut town, mut real) = (0.0, 0.0);
+    for (i, &(hour, share)) in PACE.iter().enumerate() {
+        let next = PACE.get(i + 1).map_or(24.0, |p| p.0);
+        let (town_span, real_span) = ((next - hour) / 24.0, share / 60.0);
+        let end = if by_real {
+            real + real_span
+        } else {
+            town + town_span
+        };
+        if fraction < end || i + 1 == PACE.len() {
+            return (town, town_span, real, real_span);
+        }
+        town += town_span;
+        real += real_span;
+    }
+    (0.0, 1.0, 0.0, 1.0)
+}
+
+/// The fraction of a compressed town day gone when `real` of its real time
+/// has passed: [`PACE`]'s piecewise-linear map, increasing from 0 at 0 to 1
+/// at 1.
+#[must_use]
+pub fn town_fraction(real: f64) -> f64 {
+    let real = real.clamp(0.0, 1.0);
+    let (town, town_span, start, real_span) = stretch(real, true);
+    town + (real - start) / real_span * town_span
+}
+
+/// The inverse of [`town_fraction`]: the fraction of the real day gone when
+/// `town` of the town day has.
+#[must_use]
+pub fn real_fraction(town: f64) -> f64 {
+    let town = town.clamp(0.0, 1.0);
+    let (start, town_span, real, real_span) = stretch(town, false);
+    real + (town - start) / town_span * real_span
+}
+
+/// Town seconds per real second at `hours` into a compressed day of
+/// [`DAY_REAL_SECONDS`]: about 14 by day and 53 to 100 at night.
+#[must_use]
+pub fn town_per_real(hours: f64) -> f64 {
+    let fraction = if hours.is_finite() {
+        hours.rem_euclid(24.0) / 24.0
+    } else {
+        0.0
+    };
+    let (_, town_span, _, real_span) = stretch(fraction, false);
+    town_span / real_span * f64::from(TOWN_DAY_SECONDS) / f64::from(DAY_REAL_SECONDS)
 }
 
 impl Mode {
@@ -81,7 +151,37 @@ impl Mode {
     }
 }
 
-/// The hour the default clock holds: late morning, the light Everglade
+/// Whether the cycle runs, as the apps' setting reads it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Setting {
+    /// The cycle stopped at [`DAYTIME_HOUR`]: [`Clock::DAYTIME`].
+    Off,
+    /// The cycle running in a mode.
+    On(Mode),
+}
+
+impl Setting {
+    /// Reads a cycle setting: `off` (late-morning daylight), `on` (the
+    /// compressed day), or any [`Mode::parse`] form.
+    ///
+    /// # Errors
+    ///
+    /// Returns a message naming the accepted forms.
+    pub fn parse(text: &str) -> Result<Self, String> {
+        match text.trim() {
+            "off" => Ok(Self::Off),
+            "on" => Ok(Self::On(Mode::COMPRESSED)),
+            other => Mode::parse(other).map(Self::On).map_err(|_| {
+                format!(
+                    "a town clock is off, on, compressed, compressed:SECONDS, wall, or \
+                     wall:MINUTES, got {text}"
+                )
+            }),
+        }
+    }
+}
+
+/// The hour the stopped clock holds: late morning, the light Everglade
 /// had before it had a clock.
 pub const DAYTIME_HOUR: f64 = 10.5;
 
@@ -96,16 +196,19 @@ pub struct Clock {
     pub pinned_second: Option<u32>,
 }
 
+/// The library's default is [`Clock::DAYTIME`], so a test or a capture that
+/// names no time looks the same at any hour; the apps run the cycle through
+/// [`Clock::from_settings`].
 impl Default for Clock {
     fn default() -> Self {
-        Self::DEFAULT
+        Self::DAYTIME
     }
 }
 
 impl Clock {
-    /// Daytime by default: the compressed day from [`EPOCH_UNIX`] with its
+    /// The stopped clock: the compressed day from [`EPOCH_UNIX`] with its
     /// time of day pinned at [`DAYTIME_HOUR`]. The day count still runs.
-    pub const DEFAULT: Self = Self {
+    pub const DAYTIME: Self = Self {
         epoch_unix: EPOCH_UNIX,
         mode: Mode::COMPRESSED,
         pinned_second: Some((DAYTIME_HOUR * 3_600.0) as u32),
@@ -114,14 +217,18 @@ impl Clock {
     /// The running cycle: the compressed day from [`EPOCH_UNIX`], unpinned.
     pub const RUNNING: Self = Self {
         pinned_second: None,
-        ..Self::DEFAULT
+        ..Self::DAYTIME
     };
 
-    /// The clock the settings give: daytime unless `mode` turns the cycle
-    /// on, then pinned at `hour` when one is given.
+    /// The clock the settings give: the running cycle unless `setting`
+    /// stops it or names another mode, pinned at `hour` when one is given.
     #[must_use]
-    pub fn from_settings(mode: Option<Mode>, hour: Option<f64>) -> Self {
-        let clock = mode.map_or(Self::DEFAULT, |mode| Self::RUNNING.with_mode(mode));
+    pub fn from_settings(setting: Option<Setting>, hour: Option<f64>) -> Self {
+        let clock = match setting {
+            None => Self::RUNNING,
+            Some(Setting::Off) => Self::DAYTIME,
+            Some(Setting::On(mode)) => Self::RUNNING.with_mode(mode),
+        };
         if hour.is_some() {
             clock.pinned(hour)
         } else {
@@ -155,13 +262,16 @@ impl Clock {
     }
 
     /// Town seconds since the epoch at `unix_seconds`, before any pin.
-    /// Monotonic in `unix_seconds`.
+    /// Monotonic in `unix_seconds`. A compressed day keeps [`PACE`].
     #[must_use]
     pub fn town_seconds(&self, unix_seconds: f64) -> f64 {
         let real = unix_seconds - self.epoch_unix as f64;
         match self.mode {
             Mode::Compressed { day_seconds } => {
-                real * f64::from(TOWN_DAY_SECONDS) / f64::from(day_seconds.max(1))
+                let length = f64::from(day_seconds.max(1));
+                let day = (real / length).floor();
+                let into = ((real - day * length) / length).clamp(0.0, 1.0);
+                (day + town_fraction(into)) * f64::from(TOWN_DAY_SECONDS)
             }
             Mode::WallClock { utc_offset_minutes } => real + f64::from(utc_offset_minutes) * 60.0,
         }
@@ -197,12 +307,29 @@ impl Clock {
             return None;
         }
         let now = self.at(unix_seconds).hours();
-        let town_hours = (hour.rem_euclid(24.0) - now).rem_euclid(24.0);
-        let real_per_town_hour = match self.mode {
-            Mode::Compressed { day_seconds } => f64::from(day_seconds.max(1)) / 24.0,
-            Mode::WallClock { .. } => 3_600.0,
-        };
-        Some(town_hours * real_per_town_hour)
+        let target = hour.rem_euclid(24.0);
+        Some(match self.mode {
+            Mode::Compressed { day_seconds } => {
+                let (from, to) = (real_fraction(now / 24.0), real_fraction(target / 24.0));
+                (to - from).rem_euclid(1.0) * f64::from(day_seconds.max(1))
+            }
+            Mode::WallClock { .. } => (target - now).rem_euclid(24.0) * 3_600.0,
+        })
+    }
+
+    /// Town seconds per real second at `hours` into the day: [`PACE`]'s
+    /// rate on a compressed day, 1 on the wall clock, and 0 when pinned.
+    #[must_use]
+    pub fn town_per_real(&self, hours: f64) -> f64 {
+        if self.pinned_second.is_some() {
+            return 0.0;
+        }
+        match self.mode {
+            Mode::Compressed { day_seconds } => {
+                town_per_real(hours) * f64::from(DAY_REAL_SECONDS) / f64::from(day_seconds.max(1))
+            }
+            Mode::WallClock { .. } => 1.0,
+        }
     }
 }
 
@@ -370,22 +497,53 @@ mod tests {
     const INSTANT: i64 = 1_791_376_496;
 
     #[test]
-    fn the_default_is_daytime_and_the_cycle_is_a_setting() {
+    fn the_apps_run_the_cycle_and_off_is_daytime() {
+        // The library's default stays still, so tests don't depend on the
+        // hour; the apps' default setting runs.
         let day = Clock::default().at_unix(INSTANT);
         assert_eq!((day.hour(), day.minute()), (10, 30));
-        assert_eq!(Clock::DEFAULT.pinned_hour(), Some(DAYTIME_HOUR));
-        assert_eq!(Clock::from_settings(None, None), Clock::DEFAULT);
+        assert_eq!(Clock::DAYTIME.pinned_hour(), Some(DAYTIME_HOUR));
+        assert_eq!(Clock::from_settings(None, None), Clock::RUNNING);
+        assert_eq!(Clock::from_settings(None, None).pinned_hour(), None);
         assert_eq!(
-            Clock::from_settings(Some(Mode::COMPRESSED), None),
+            Clock::from_settings(Some(Setting::Off), None),
+            Clock::DAYTIME
+        );
+        assert_eq!(
+            Clock::from_settings(Some(Setting::parse("on").unwrap()), None),
             Clock::RUNNING
         );
-        let wall = Clock::from_settings(Some(Mode::parse("wall").unwrap()), Some(18.5));
+        let wall = Clock::from_settings(Some(Setting::parse("wall").unwrap()), Some(18.5));
         assert_eq!(wall.pinned_hour(), Some(18.5));
         assert!(matches!(wall.mode, Mode::WallClock { .. }));
-        assert_eq!(
-            Clock::from_settings(None, Some(6.0)).pinned_hour(),
-            Some(6.0)
-        );
+        for setting in [None, Some(Setting::Off)] {
+            let pinned = Clock::from_settings(setting, Some(6.0));
+            assert_eq!(pinned.pinned_hour(), Some(6.0));
+            let (a, b) = (pinned.at_unix(INSTANT), pinned.at_unix(INSTANT + 1_234));
+            assert_eq!((a.hour(), a.second), (6, b.second));
+        }
+        assert_eq!(Setting::parse(" off "), Ok(Setting::Off));
+        assert!(Setting::parse("dusk").is_err());
+    }
+
+    #[test]
+    fn the_pace_gives_daylight_most_of_the_hour() {
+        assert!((PACE.iter().map(|p| p.1).sum::<f64>() - 60.0).abs() < 1e-9);
+        assert!(PACE.windows(2).all(|w| w[0].0 < w[1].0));
+        // The real share of the hour from sunrise to sunset.
+        let lit = real_fraction(18.0 / 24.0) - real_fraction(6.0 / 24.0);
+        assert!(lit > 0.75, "{lit}");
+        // Lamps burn from about 18:30 to 05:30; that is under a fifth.
+        let dark = 1.0 - (real_fraction(18.5 / 24.0) - real_fraction(5.5 / 24.0));
+        assert!(dark < 0.2, "{dark}");
+        for step in 0..=1_000 {
+            let real = f64::from(step) / 1_000.0;
+            assert!((real_fraction(town_fraction(real)) - real).abs() < 1e-9);
+        }
+        assert_eq!((town_fraction(0.0), town_fraction(1.0)), (0.0, 1.0));
+        assert!((town_per_real(12.0) - 600.0 / 42.5).abs() < 1e-9);
+        assert!(town_per_real(2.0) > 4.0 * town_per_real(12.0));
+        assert_eq!(Clock::DAYTIME.town_per_real(12.0), 0.0);
     }
 
     #[test]
@@ -406,13 +564,16 @@ mod tests {
     #[test]
     fn a_compressed_day_passes_in_an_hour() {
         let clock = Clock::RUNNING;
-        let noon = clock.at_unix(EPOCH_UNIX + i64::from(DAY_REAL_SECONDS) / 2);
+        // Night and dawn take 6 minutes, then each daylight hour 4.25.
+        let morning = clock.at_unix(EPOCH_UNIX + 360);
+        assert_eq!((morning.hour(), morning.minute()), (7, 0));
+        let noon = clock.at_unix(EPOCH_UNIX + 1_635);
         assert_eq!((noon.day, noon.hour(), noon.minute()), (0, 12, 0));
         let next = clock.at_unix(EPOCH_UNIX + i64::from(DAY_REAL_SECONDS));
         assert_eq!((next.day, next.hour()), (1, 0));
-        // One town minute is 2.5 real seconds.
-        let minute = clock.at(EPOCH_UNIX as f64 + 2.5);
-        assert_eq!(minute.minute(), 1);
+        // By day a town minute is 4.25 real seconds.
+        let minute = clock.at(EPOCH_UNIX as f64 + 1_635.0 + 4.3);
+        assert_eq!((minute.hour(), minute.minute()), (12, 1));
     }
 
     #[test]
@@ -506,7 +667,7 @@ mod tests {
         let wait = clock
             .real_seconds_until(EPOCH_UNIX as f64, 6.0)
             .expect("an unpinned clock moves");
-        assert!((wait - 900.0).abs() < 1e-6);
+        assert!((wait - 270.0).abs() < 1e-6);
         let t = clock.at(EPOCH_UNIX as f64 + wait);
         assert_eq!((t.hour(), t.minute()), (6, 0));
     }

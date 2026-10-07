@@ -286,7 +286,7 @@ impl Everglade {
             look: None,
             wildlife: None,
             guests: Vec::new(),
-            clock: town_clock::Clock::DEFAULT,
+            clock: town_clock::Clock::DAYTIME,
             now: town_clock::TownTime::at_hour(0, 10.5),
             light: time_of_day::Light::at_hours(10.5),
             agora_bell: None,
@@ -627,11 +627,17 @@ impl Everglade {
     /// say it is, and the sky's own light as fill, with low height fog.
     /// Textured meshes draw only on a lit stage.
     fn stage(&self, time: f32) -> Mesh {
+        let neon = self.look.map_or_else(
+            || Neon {
+                // The running clock moves the sky a step at a time, so its
+                // light rebakes over frames rather than stalling one.
+                sky_gradual: self.clock.pinned_hour().is_none(),
+                ..Self::glade_stage(time, &self.light)
+            },
+            |look| look(time),
+        );
         Mesh {
-            neon: Some(
-                self.look
-                    .map_or_else(|| Self::glade_stage(time, &self.light), |look| look(time)),
-            ),
+            neon: Some(neon),
             ..Mesh::default()
         }
     }

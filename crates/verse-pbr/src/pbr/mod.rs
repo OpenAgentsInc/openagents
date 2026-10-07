@@ -311,6 +311,12 @@ pub struct Neon {
     /// How brightly lightning lights the daylight sky this frame, 0 to 1.
     /// The sky pass alone draws it; the sky light keeps its bake.
     pub sky_flash: f32,
+    /// Whether the sky changes only gradually, as a running town clock
+    /// moves it. A gradual change rebakes the sky light over several frames
+    /// ([`environment::SkyLightGpu`]), so the light trails the sky by a
+    /// fraction of a second instead of the frame stalling; any other change
+    /// rebakes at once.
+    pub sky_gradual: bool,
     /// The water this frame: the swell, the ripples, and the water's
     /// color, drawn over the world mesh's [`water::WaterSurface`] on a lit
     /// stage, and the sea's tint on whatever lies under its level.
@@ -514,6 +520,7 @@ impl Neon {
             key_color: [1.0; 3],
             rim_color: [1.0; 3],
             sky_flash: 0.0,
+            sky_gradual: false,
             water: None,
         }
     }

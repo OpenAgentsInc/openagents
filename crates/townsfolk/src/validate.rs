@@ -398,7 +398,7 @@ fn routine(out: &mut Vec<Problem>, npc: &Npc, checks: &Checks) {
                 ));
             }
         }
-        let walk = walk_seconds(leg_meters(tree, from, to).unwrap_or(0.0));
+        let walk = walk_seconds(leg_meters(tree, from, to).unwrap_or(0.0), times[i]);
         let ends = f64::from(times[i]) + f64::from(JITTER_SECONDS) + walk;
         let next = times.get(i + 1).copied().unwrap_or(86_400);
         if ends > f64::from(next) {

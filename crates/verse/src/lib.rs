@@ -79,6 +79,8 @@ pub mod terminal;
 pub mod workbench_opening;
 #[cfg(unix)]
 pub use terminal_control;
+/// The town clock Everglade runs on, for the apps that set it.
+pub use town_clock;
 pub use verse_core::tooltip;
 pub use verse_gfx::ui;
 pub mod world;

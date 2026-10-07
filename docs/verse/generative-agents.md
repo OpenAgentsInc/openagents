@@ -423,23 +423,38 @@ choice at about 1,000 tokens costs $0.00004.
 - [`town-clock`](../../crates/town-clock/src/lib.rs) is the town clock, with
   no dependencies, and builds for `wasm32`. `Clock::at(unix_seconds)` gives
   a `TownTime` (day, hour, minute, and `Phase`: dawn from 05:00, morning,
-  noon, afternoon, dusk from 17:00, and night from 20:00). The default,
-  `Clock::DEFAULT`, holds 10:30 (`DAYTIME_HOUR`); `Clock::RUNNING`
-  compresses a town day into `DAY_REAL_SECONDS` (one real hour) from
-  `EPOCH_UNIX` (2026-10-01T00:00Z), and `Mode::WallClock` follows real hours.
-  `Clock::pinned` fixes the hour and keeps the day count.
+  noon, afternoon, dusk from 17:00, and night from 20:00). The apps run
+  `Clock::RUNNING`, which compresses a town day into `DAY_REAL_SECONDS`
+  (one real hour) from `EPOCH_UNIX` (2026-10-01T00:00Z). The hour doesn't
+  pass evenly: `PACE` gives daylight (07:00 to 17:00) 42.5 minutes, dawn
+  3, dusk 7, and the night 7.5, so the Sun is up for three quarters of a
+  visit and the lamps burn for under a fifth of it. Town day numbers keep
+  one day a real hour, so rumors keep their days. `Mode::WallClock`
+  follows real hours. `Clock::DAYTIME`, the library's default and the off
+  switch, holds 10:30 (`DAYTIME_HOUR`); `Clock::pinned` fixes the hour and
+  keeps the day count.
 - [`time_of_day.rs`](../../crates/verse-zone-everglade/src/zones/everglade/time_of_day.rs)
   turns town time into Everglade's sky, haze, key light, and exposure, from
   keyframes. The Sun rises at 06:00 and sets at 18:00, and stands where the
   old fixed Sun stood at 10:30. At night a dim Moon and an opened exposure
   keep the town playable, and the lamps near the player stand out. The light
   changes in four-town-minute steps, because each change rebuilds the sky's
-  light on the CPU. `Light::lamps_lit` is the lamp state the world tree
-  reads; the street lamps in the pack have no point lights yet.
-- `verse --town-hour 18:30` and `VERSE_TOWN_HOUR` pin the hour;
-  `--town-clock compressed|wall[:MIN]` and `VERSE_TOWN_CLOCK` turn the
-  cycle on. The
-  `everglade_capture` example pins 10:30 unless `VERSE_TOWN_HOUR` is set.
+  light on the CPU. Under the running clock that rebuild spreads over
+  frames (`SkyBaker`, about 0.7 ms a frame), because baking the High
+  tier's sky light at once takes about 15 ms. `Light::lamps_lit` is the
+  lamp state the world tree reads; the street lamps in the pack have no
+  point lights yet.
+- The clock runs by default in `verse` on the desktop, on the phones, and
+  on the web. `verse --town-clock off` and `VERSE_TOWN_CLOCK=off` stop it
+  at 10:30; `--town-clock wall[:MIN]` follows real hours; `verse
+  --town-hour 18:30` and `VERSE_TOWN_HOUR` pin the hour. The web build
+  reads `?town-clock=off` and `?town-hour=18.5`. `verse --capture`, a
+  synthetic phone session, and the `everglade_capture` example stay at
+  10:30 unless an hour is set, so a capture doesn't change with the time.
+- The clock calls no model. Villager routines, rumor spread, the sky, and
+  the lamps are pure functions of town time. A villager's model reply
+  happens only when you talk to it, and Alice's morning plan follows the
+  host's real 07:00, not town time.
 - [`layout/districts.rs`](../../crates/verse-zone-everglade/src/zones/everglade/layout/districts.rs)
   holds the `District` enum with display names, `Building::district`, and
   `of_instance` for the generated instances, the Civic Hall (Main Street),
@@ -658,9 +673,10 @@ spawning (E1); rumors, villager memory of the player, and dialogue (E2).
   the world tree, routes each walk with `perceive::route`, and draws each
   villager within 90 m as the pack's character in its tint, under a
   nameplate with its name, what it is doing, and `CHARACTER / ROLE`. The
-  Verse runtime ticks it with the town clock in Everglade. Under the
-  default daytime clock the villagers stand where 10:30 puts them; with
-  the cycle on (`--town-clock compressed`) they walk their day.
+  Verse runtime ticks it with the town clock in Everglade, where the
+  villagers walk their day; with the clock off they stand where 10:30 puts
+  them. A walk takes the real time `WALK_SPEED` gives at the clock's pace
+  when it starts.
 - The demo town is Mira the baker, Tobin the smith, and Wren the
   bell-ringer, who all stand at the Market Hall from about 12:00 to 13:00.
 - Rumors (E2): `townsfolk::rumor` holds `openagents.verse-rumor.v1` and
@@ -1077,7 +1093,7 @@ setting, so changing it later is a small edit.
 | Disclosure | Jev and the embedding provider may see screened journal text. Alice's [privacy and disclosure](workshop-agent.md#privacy-and-disclosure) section states it. (Owner.) |
 | Reflection cadence | Both: nightly, and early when summed importance since the last reflection passes the threshold. |
 | Alice outside the house | Her plan may name any node she knows, but her walks stay inside the house unless an owner setting widens the bound. |
-| The town clock | Daytime by default; the compressed cycle or wall clock is a setting. |
+| The town clock | Runs by default, a town day an hour weighted toward daylight; `off`, the wall clock, or a pinned hour is a setting. (Owner, October 7.) |
 | Townsfolk talk | Fixed lines first. A model reply only for a player with a configured provider, under a per-player daily cap, so the owner never pays for a stranger on the web build. |
 | Knowledge entries | Alice only drafts; you publish. |
 | Interview judging | Your marks on a sample calibrate the judge. |

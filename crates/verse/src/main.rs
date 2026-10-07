@@ -203,10 +203,11 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<(Option<Shot>, Option
     if let Ok(relay) = std::env::var("VERSE_XP_RELAY") {
         options.xp_relay = Some(relay);
     }
-    // Daylight unless the cycle is on (`--town-clock`, VERSE_TOWN_CLOCK);
-    // `--town-hour` and VERSE_TOWN_HOUR pin the time of day either way.
+    // The town clock runs unless `--town-clock off` or VERSE_TOWN_CLOCK=off
+    // stops it in late-morning daylight; `--town-hour` and VERSE_TOWN_HOUR
+    // pin the time of day either way.
     let mut clock_mode = match std::env::var("VERSE_TOWN_CLOCK") {
-        Ok(mode) => Some(town_clock::Mode::parse(&mode)?),
+        Ok(mode) => Some(town_clock::Setting::parse(&mode)?),
         Err(_) => None,
     };
     if let Ok(outfit) = std::env::var("VERSE_ALICE_OUTFIT") {
@@ -347,7 +348,7 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<(Option<Shot>, Option
                 };
             }
             "--town-hour" => clock_hour = Some(town_clock::parse_hour(&value()?)?),
-            "--town-clock" => clock_mode = Some(town_clock::Mode::parse(&value()?)?),
+            "--town-clock" => clock_mode = Some(town_clock::Setting::parse(&value()?)?),
             "--owners-house" => {
                 options.everglade = true;
                 options.owners_house = true;
@@ -364,6 +365,11 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<(Option<Shot>, Option
             }
             other => return Err(format!("unknown argument {other}")),
         }
+    }
+    // A capture that names no time stays in daylight, so the same command
+    // draws the same picture at any hour.
+    if shot.is_some() && clock_mode.is_none() && clock_hour.is_none() {
+        clock_mode = Some(town_clock::Setting::Off);
     }
     options.town_clock = town_clock::Clock::from_settings(clock_mode, clock_hour);
     let shot = shot.map(|s| Shot {
@@ -396,14 +402,26 @@ mod tests {
             }
         );
         assert!(parse(["--town-hour", "dusk"].map(str::to_owned).into_iter()).is_err());
-        // The cycle runs only when a mode is set.
+        // The cycle runs by default, and `off` stops it in daylight.
+        if std::env::var_os("VERSE_TOWN_CLOCK").is_none()
+            && std::env::var_os("VERSE_TOWN_HOUR").is_none()
+        {
+            let (_, options) = parse(std::iter::empty()).unwrap();
+            assert_eq!(options.town_clock, town_clock::Clock::RUNNING);
+            // A capture that names no time is in daylight.
+            let (_, options) =
+                parse(["--capture", "a.png"].map(str::to_owned).into_iter()).unwrap();
+            assert_eq!(options.town_clock, town_clock::Clock::DAYTIME);
+        }
+        let (_, options) = parse(["--town-clock", "off"].map(str::to_owned).into_iter()).unwrap();
+        assert_eq!(options.town_clock, town_clock::Clock::DAYTIME);
         let (_, options) = parse(
-            ["--town-clock", "compressed"]
+            ["--town-clock", "off", "--town-hour", "21"]
                 .map(str::to_owned)
                 .into_iter(),
         )
         .unwrap();
-        assert_eq!(options.town_clock, town_clock::Clock::RUNNING);
+        assert_eq!(options.town_clock.pinned_hour(), Some(21.0));
     }
 
     #[test]

@@ -2765,7 +2765,10 @@ impl Photo {
                 level: key.sky * exposure,
             };
             let quality = self.capability.quality;
-            if self.sky_light.update(device, queue, &inputs, &quality) {
+            if self
+                .sky_light
+                .update(device, queue, &inputs, &quality, neon.sky_gradual)
+            {
                 self.rebuild_groups(device);
             }
             let flash = if neon.sky_flash.is_finite() {

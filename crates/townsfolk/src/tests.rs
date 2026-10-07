@@ -573,3 +573,31 @@ fn lines_may_be_keyed_by_a_quest_step_and_a_definition_may_carry_a_seed() {
     );
     assert!((0..5).any(|row| a.departure(1, 0, row) != b.departure(1, 0, row)));
 }
+
+#[test]
+fn the_town_links_no_model_or_network_client() {
+    // Routines, rumors, and talk planning run on every frame of a running
+    // clock; a model reply needs an `Answerer` the caller supplies when a
+    // player talks. Keep it that way: no client in the dependencies.
+    let manifest = include_str!("../Cargo.toml");
+    let deps = manifest
+        .split("[dependencies]")
+        .nth(1)
+        .and_then(|rest| rest.split("\n[").next())
+        .unwrap();
+    let names: Vec<&str> = deps
+        .lines()
+        .filter_map(|line| line.split_once(" = ").map(|(name, _)| name.trim()))
+        .collect();
+    assert_eq!(
+        names,
+        [
+            "memory-stream",
+            "serde",
+            "serde_json",
+            "sha2",
+            "town-clock",
+            "world-tree"
+        ]
+    );
+}

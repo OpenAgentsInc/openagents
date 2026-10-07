@@ -75,8 +75,8 @@ const NIGHT: Frame = Frame {
     horizon: [0.035, 0.045, 0.08],
     tint: [0.55, 0.6, 0.7],
     glow: 0.0,
-    lux: [40.0, 10.0, 18.0, 6.0],
-    ev100: 6.5,
+    lux: [40.0, 10.0, 24.0, 8.0],
+    ev100: 6.3,
     key_color: MOON,
     rim_color: MOON_RIM,
     haze_glow: 0.15,
@@ -106,8 +106,8 @@ const FRAMES: [Frame; 13] = [
         zenith: [0.02, 0.03, 0.08],
         horizon: [0.08, 0.08, 0.12],
         tint: [0.4, 0.45, 0.55],
-        lux: [30.0, 10.0, 20.0, 7.0],
-        ev100: 6.6,
+        lux: [40.0, 10.0, 24.0, 8.0],
+        ev100: 6.3,
         ..NIGHT
     },
     // First light: the Sun just under the horizon, the Moon gone.
@@ -118,7 +118,7 @@ const FRAMES: [Frame; 13] = [
         tint: [0.35, 0.2, 0.15],
         glow: 0.5,
         lux: [0.0, 30.0, 80.0, 25.0],
-        ev100: 7.6,
+        ev100: 7.3,
         key_color: [1.0, 0.6, 0.4],
         rim_color: COOL_RIM,
         haze_glow: 0.6,
@@ -210,7 +210,7 @@ const FRAMES: [Frame; 13] = [
         tint: [0.4, 0.22, 0.2],
         glow: 0.5,
         lux: [8.0, 30.0, 80.0, 25.0],
-        ev100: 7.6,
+        ev100: 7.3,
         key_color: MOON,
         rim_color: MOON_RIM,
         haze_glow: 0.4,
@@ -457,6 +457,22 @@ mod tests {
         assert!(crate::pbr::exposure(night.ev100) > 8.0 * crate::pbr::exposure(noon.ev100));
         assert!(night.lamps_lit() && !noon.lamps_lit());
         assert!(Light::at_hours(19.0).lamps_lit() && Light::at_hours(5.0).lamps_lit());
+    }
+
+    #[test]
+    fn the_darkest_moment_stays_readable() {
+        // The running clock passes through every hour, so no hour may go
+        // black: what a level patch of ground shows, as the stage exposes
+        // it, never falls below a tenth of noon's.
+        let level = |l: &Light| exposed(l, l.key_lux * l.key_dir.y + l.sky_lux);
+        let noon = level(&Light::at_hours(12.0));
+        let (darkest, at) = (0..24 * 60)
+            .map(|m| {
+                let light = Light::at_hours(m as f32 / 60.0);
+                (level(&light) / noon, m)
+            })
+            .fold((f32::MAX, 0), |a, b| if b.0 < a.0 { b } else { a });
+        assert!(darkest >= 0.1, "{darkest} at minute {at}");
     }
 
     #[test]

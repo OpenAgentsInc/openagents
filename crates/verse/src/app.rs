@@ -127,9 +127,12 @@ pub struct Options {
     /// the workshop agent at her workstation, once Everglade loads
     /// (`--owners-house`).
     pub owners_house: bool,
-    /// The town clock Everglade's sky follows: daytime by default, the cycle
-    /// compressed or on the wall clock, or its hour pinned (`--town-clock`, `--town-hour`,
-    /// `VERSE_TOWN_CLOCK`, `VERSE_TOWN_HOUR`).
+    /// The town clock Everglade's sky and villagers follow. The command
+    /// line runs the compressed cycle unless `--town-clock off` stops it;
+    /// `--town-clock wall[:MIN]` follows real hours and `--town-hour` pins
+    /// the hour (`VERSE_TOWN_CLOCK`, `VERSE_TOWN_HOUR`). The default here
+    /// is the stopped daytime clock, so a test's world doesn't change with
+    /// the hour.
     pub town_clock: town_clock::Clock,
     /// The pinned chamber the Grid's RITUAL arch joins
     /// ([`crate::ritual::Config`]); `None` draws no arch.
@@ -178,7 +181,7 @@ impl Default for Options {
             workshop_ask: None,
             place: None,
             owners_house: false,
-            town_clock: town_clock::Clock::DEFAULT,
+            town_clock: town_clock::Clock::DAYTIME,
             ritual: crate::ritual::default_config(),
             #[cfg(feature = "remote-chamber")]
             chamber: None,

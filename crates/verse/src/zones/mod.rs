@@ -384,7 +384,7 @@ impl Default for State {
             crypt: None,
             water: None,
             demolition: false,
-            town_clock: town_clock::Clock::DEFAULT,
+            town_clock: town_clock::Clock::DAYTIME,
             dev_destruction: false,
             studio: everglade::studio::Studio::default(),
             townsfolk: everglade::townsfolk::Townsfolk::default(),

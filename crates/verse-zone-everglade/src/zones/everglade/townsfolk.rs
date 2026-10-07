@@ -29,7 +29,7 @@
 use std::collections::HashMap;
 use std::sync::LazyLock;
 
-use ::townsfolk::routine::{TOWN_PER_REAL, Villager};
+use ::townsfolk::routine::Villager;
 use ::townsfolk::validate::Router;
 use ::townsfolk::{Activity, Code, Diffusion, Placement, Problem, Roster, Rumor, Town};
 use glam::Vec3;
@@ -441,7 +441,7 @@ impl Townsfolk {
                     _ => Leg::new(vec![tree.node(from)?.stand, tree.node(to)?.stand]),
                 };
                 let (at, yaw) = leg.at(*progress);
-                let real = villager.walk(*row) / TOWN_PER_REAL;
+                let real = villager.real_walk(*row);
                 let speed = if real > 0.0 {
                     (f64::from(leg.length) / real) as f32
                 } else {

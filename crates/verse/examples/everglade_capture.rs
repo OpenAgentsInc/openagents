@@ -46,6 +46,8 @@
 //!   looking at `(TX, 0, TZ)`, for a closer look at one district.
 //! - `look:EX,EY,EZ,TX,TY,TZ`: a free camera at `(EX, EY, EZ)` looking at
 //!   `(TX, TY, TZ)`, such as a close look at a placed character's face.
+//!   `VERSE_CAPTURE_STAND=X,Z` stands the player at `(X, Z)` instead of the
+//!   spawn, so the villagers near the camera draw.
 //! - `studio-atrium`: inside the gate, at the goal board, with the goal
 //!   bar and its waiting badge over the view.
 //! - `studio-yard`, `studio-hall`, and `studio-atrium`: views of a running
@@ -67,6 +69,21 @@ const SKY_YAW: f32 = -2.48;
 const SKY_TILT: f32 = -250.0;
 /// Where the `reverse` views cast Reverse Gravity, on the approach.
 const REVERSE_Z: f32 = -26.0;
+
+/// Where VERSE_CAPTURE_STAND=X,Z stands the player for a free camera.
+fn stand() -> Result<Option<glam::Vec3>, String> {
+    let Ok(text) = std::env::var("VERSE_CAPTURE_STAND") else {
+        return Ok(None);
+    };
+    match text
+        .split(',')
+        .map(str::parse::<f32>)
+        .collect::<Result<Vec<_>, _>>()
+    {
+        Ok(v) if v.len() == 2 => Ok(Some(glam::Vec3::new(v[0], 0.0, v[1]))),
+        _ => Err(format!("VERSE_CAPTURE_STAND is X,Z, got {text}")),
+    }
+}
 
 fn main() -> Result<(), String> {
     let mut args = std::env::args().skip(1);
@@ -103,7 +120,7 @@ fn main() -> Result<(), String> {
     // The town clock: late morning, as Everglade looked before it had one,
     // unless VERSE_TOWN_HOUR pins another hour (`18`, `6:30`) or
     // VERSE_TOWN_CLOCK=live follows the real clock.
-    let clock = town_clock::Clock::DEFAULT;
+    let clock = town_clock::Clock::DAYTIME;
     let hour = match std::env::var("VERSE_TOWN_HOUR") {
         Ok(hour) => Some(town_clock::parse_hour(&hour)?),
         Err(_) if std::env::var("VERSE_TOWN_CLOCK").is_ok_and(|v| v == "live") => None,
@@ -145,8 +162,14 @@ fn main() -> Result<(), String> {
         // Alice, the workshop agent, as a host answered for her: the
         // player stands in front of her wherever her work puts her.
         other if other.starts_with("alice") => (glam::Vec3::new(0.0, 0.0, 5.0), 0.0, 20.0),
-        // A free camera; the player stands out of its way, at the spawn.
-        other if other.starts_with("look:") => (glam::Vec3::new(0.0, 0.0, -29.0), 0.0, 0.0),
+        // A free camera; the player stands out of its way, at the spawn,
+        // or at VERSE_CAPTURE_STAND=X,Z, so the villagers near the camera
+        // draw: they draw only within 90 m of the player.
+        other if other.starts_with("look:") => (
+            stand()?.unwrap_or(glam::Vec3::new(0.0, 0.0, -29.0)),
+            0.0,
+            0.0,
+        ),
         "town-north" => (glam::Vec3::new(-11.0, 0.0, 14.0), 0.35, 30.0),
         "town-west" => (glam::Vec3::new(-34.0, 0.0, 40.0), 2.9, 30.0),
         // The city's districts, from their streets.

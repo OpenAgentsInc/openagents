@@ -57,6 +57,10 @@ player at that point of Everglade, and `frames` logs a line to the console
 once a second, `Everglade frames {...}`, with the frame gaps, the page's
 work per frame, and the town's raised buildings, pieces, and chunks.
 
+The town clock runs as it does on the desktop: a town day an hour, mostly
+daylight, with the villagers walking their routines. Add `town-clock=off`
+to stay in late-morning daylight, or `town-hour=18.5` to pin an hour.
+
 Add `?demolition` to the page's URL to open the demolition yard instead of
 the glade, as `verse --demolition` does: `1` or a quick tap swings the
 sledgehammer, `2` aims Meteor Swarm (a click or a quick tap casts it where

@@ -210,3 +210,40 @@ fn nameplates_of_villagers_standing_together_stand_apart_and_words_show_over_the
     assert_eq!(folk.saying("mira-baker"), None);
     assert_eq!(folk.draw(eye).faces.len(), plain);
 }
+
+/// Town time `real` seconds into day `day`'s real hour on the running
+/// clock.
+fn running(day: i64, real: f64) -> TownTime {
+    let day_real = f64::from(town_clock::DAY_REAL_SECONDS);
+    TownTime {
+        day,
+        second: town_clock::town_fraction(real / day_real)
+            * f64::from(town_clock::TOWN_DAY_SECONDS),
+    }
+}
+
+#[test]
+fn an_idle_running_day_says_nothing_and_asks_no_model() {
+    // A whole town day ticked as the running clock passes it, with nobody
+    // talking: the villagers walk, and none of them says a word. Words
+    // come only from `say`, which the desktop calls when the player talks
+    // (`verse::town_talk`); the tick has no model path at all, since
+    // `townsfolk` links no client (`townsfolk::talk::Answerer` is the
+    // caller's).
+    let (roster, _) = roster();
+    let tree = world_tree::everglade();
+    let blockers = &world().blockers;
+    let mut folk = Townsfolk::default();
+    let near_market = Vec3::new(-1.0, 0.0, 70.0);
+    let mut walked = false;
+    for step in 0..720 {
+        let time = running(4, f64::from(step) * 5.0);
+        folk.tick_roster(roster, tree, time, blockers, near_market);
+        folk.step(5.0);
+        walked |= folk.people().iter().any(|p| p.walking);
+        for person in folk.people() {
+            assert_eq!(folk.saying(&person.id), None, "{} at {time}", person.id);
+        }
+    }
+    assert!(walked);
+}

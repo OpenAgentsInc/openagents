@@ -44,7 +44,7 @@ static SET: LazyLock<Set> = LazyLock::new(|| {
 
 /// Today's town day under the default clock.
 pub(crate) fn today() -> i64 {
-    town_clock::Clock::DEFAULT
+    town_clock::Clock::DAYTIME
         .at_unix(crate::verse_town::now_unix())
         .day
 }
