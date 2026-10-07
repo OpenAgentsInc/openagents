@@ -239,7 +239,9 @@ The workshop agent has these parts:
 | Look | Its character outfit, colors, and desk items. |
 
 You can have more than one workshop agent; each is a separate seat with its
-own key, charter, and memory. This page describes one.
+own key, charter, and memory. This page describes one. [The crew](crew.md)
+plans the owner's cast of them, from Bob, who builds the town, to the
+adversaries that test it.
 
 ## Giving it work
 
