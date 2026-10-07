@@ -246,6 +246,8 @@ pub struct Agents {
     reconciled: Arc<Mutex<BTreeSet<String>>>,
     /// What she plans, judges, and reports with in terminal mode.
     mind: super::agent_steer::MindFactory,
+    /// Runs each agent's engram relay sync while the owner has it on.
+    relay_sync: Arc<super::agent_sync::Sweeper>,
 }
 
 impl std::fmt::Debug for Agents {
@@ -317,7 +319,19 @@ impl Agents {
             reflecting: Arc::new(Mutex::new(BTreeSet::new())),
             reconciled: Arc::default(),
             mind: super::agent_steer::default_mind(),
+            relay_sync: super::agent_sync::Sweeper::new(Arc::new(super::agent_sync::Live)),
         }
+    }
+
+    /// Sync engrams through `connector` instead of the real relays, as a
+    /// test does.
+    #[must_use]
+    pub fn with_relay_connector(
+        mut self,
+        connector: Arc<dyn super::agent_sync::Connector>,
+    ) -> Self {
+        self.relay_sync = super::agent_sync::Sweeper::new(connector);
+        self
     }
 
     /// Plan, judge, and report with the minds `mind` makes instead of her
@@ -1581,6 +1595,7 @@ impl Agents {
                 continue;
             };
             self.watch_change(&store, &record);
+            let _ = self.relay_sync.sweep(&store, &self.screen, now);
             let path = self
                 .workspace_for(&record, None)
                 .map_or_else(|| PathBuf::from(&record.workspace), |(_, path)| path);

@@ -39,6 +39,7 @@ pub mod agent_profile;
 pub mod agent_recall;
 pub mod agent_reflect;
 pub mod agent_steer;
+pub mod agent_sync;
 pub mod archive;
 pub mod artifact;
 pub mod autostart;

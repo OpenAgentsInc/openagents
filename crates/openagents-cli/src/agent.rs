@@ -62,9 +62,24 @@ pub const USAGE: &str = "usage: openagents agent COMMAND [--root DIR] [--control
                Accept a preference she proposed, so her briefings carry it.
   memory NAME reject ID
                Reject a preference she proposed.
-  memory NAME engrams [--owner-key FILE]
+  memory NAME engrams [--owner-key FILE] [--from-relay] [--relay URL]...
                Her engram heads: slug, time, and event ID. With the owner
-               key in FILE, decrypt each one and print it too.
+               key in FILE, decrypt each one and print it too. With
+               --from-relay, read them from relays with the owner key
+               alone: her write relays from her relay list on each URL,
+               else the URLs, else the relays she syncs with.
+  memory NAME sync on [--relay URL]...
+               Sync her engrams with these relays, by default the owner's
+               relay. Sync is off until you turn it on; a relay sees her
+               key, her owner's, and the sizes and times of her engrams.
+  memory NAME sync off
+               Stop syncing her engrams.
+  memory NAME sync status
+               Her relays and the last pass: heads taken and published,
+               conflicts, refusals, and relays that may hold more.
+  memory NAME sync now
+               Run a pass now when her key is in a file here, else ask the
+               host to run one at its next sweep.
   jobs NAME list
                Her standing jobs, all off until you turn one on.
   jobs NAME add TEMPLATE [--repository OWNER/REPO] [--label L]
@@ -108,6 +123,10 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("memory accept", Effect::Publishes),
     Declared::computer("memory reject", Effect::Publishes),
     Declared::computer("memory engrams", Effect::ReadOnly),
+    Declared::computer("memory sync on", Effect::LocalWrite),
+    Declared::computer("memory sync off", Effect::LocalWrite),
+    Declared::computer("memory sync status", Effect::ReadOnly),
+    Declared::computer("memory sync now", Effect::Publishes),
     Declared::computer("jobs list", Effect::ReadOnly),
     Declared::computer("jobs add", Effect::LocalWrite),
     Declared::computer("jobs on", Effect::LocalWrite),
@@ -116,7 +135,7 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("jobs renew", Effect::LocalWrite),
 ];
 
-const SWITCHES: &[&str] = &["wait"];
+const SWITCHES: &[&str] = &["wait", "from-relay"];
 
 pub fn run(output: &Output, words: &[String]) -> u8 {
     if words
@@ -720,7 +739,11 @@ fn memory(
 ) -> Result<(), Fail> {
     let edit = match rest {
         [] | ["list"] => None,
+        ["engrams"] if args.switch("from-relay") => {
+            return engrams_from_relay(output, root, name, args);
+        }
         ["engrams"] => return engrams(output, root, name, args),
+        ["sync", verb] => return sync(output, root, name, verb, args),
         ["note", text @ ..] if !text.is_empty() => Some(wire::MemoryEdit::Note {
             text: text.join(" "),
         }),
@@ -861,6 +884,194 @@ fn engrams(output: &Output, root: &Path, name: &str, args: &Args) -> Result<(), 
         }
         lines.join("\n")
     });
+    Ok(())
+}
+
+/// Her heads from relays, decrypted with the owner key alone.
+fn engrams_from_relay(output: &Output, root: &Path, name: &str, args: &Args) -> Result<(), Fail> {
+    use coder::task::agent_sync;
+    let owner = owner_key(args)?.ok_or_else(|| {
+        Fail::Failed("--from-relay reads with the owner key: --owner-key FILE".into())
+    })?;
+    let store = Store::new(root, name).map_err(Fail::Failed)?;
+    let record = store.load().map_err(Fail::Failed)?;
+    let agent_hex = match (
+        args.option("agent"),
+        record.as_ref().and_then(|r| r.pubkey.clone()),
+    ) {
+        (Some(hex), _) => hex.to_string(),
+        (None, Some(hex)) => hex,
+        (None, None) => {
+            return Err(Fail::Failed(format!(
+                "{name} isn't on this computer; name her key with --agent HEX"
+            )));
+        }
+    };
+    let agent = agent_hex
+        .parse::<secp256k1::XOnlyPublicKey>()
+        .map_err(|_| Fail::Failed(format!("{agent_hex} isn't a public key")))?;
+    let mut relays: Vec<String> = args
+        .options("relay")
+        .into_iter()
+        .map(str::to_string)
+        .collect();
+    if relays.is_empty() && record.is_some() {
+        relays = agent_sync::Settings::load(&store)
+            .map_err(Fail::Failed)?
+            .memory_relays;
+    }
+    let view =
+        agent_sync::owner_read(&agent, &owner, &relays, &agent_sync::Live).map_err(Fail::Failed)?;
+    let heads: Vec<Value> = view.heads.iter().map(|h| head_json(h, true)).collect();
+    let value = json!({
+        "heads": heads,
+        "relays": view.relays,
+        "forgotten": view.forgotten,
+        "problems": view.problems,
+        "truncated": view.truncated,
+        "decrypted": true,
+    });
+    output.emit(&value, |_| {
+        let mut lines: Vec<String> = vec![format!("From {}:", view.relays.join(", "))];
+        for h in &heads {
+            let text = h["body"]
+                .get("profile")
+                .or_else(|| h["body"].get("value"))
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            lines.push(format!(
+                "{:<28} {:>10} {}\n    {}",
+                h["slug"].as_str().unwrap_or(""),
+                h["created_at"],
+                h["id"].as_str().unwrap_or(""),
+                agent::ascii(text).replace('\n', "\n    ")
+            ));
+        }
+        if heads.is_empty() {
+            lines.push(format!("These relays hold no heads of {name}'s."));
+        }
+        if view.forgotten > 0 {
+            lines.push(format!("{} entries forgotten.", view.forgotten));
+        }
+        for url in &view.truncated {
+            lines.push(format!("{url} answered with its limit and may hold more."));
+        }
+        for problem in &view.problems {
+            lines.push(format!("not read: {problem}"));
+        }
+        lines.join("\n")
+    });
+    Ok(())
+}
+
+/// Her relay sync settings and last pass, as the command prints them.
+fn sync_lines(
+    name: &str,
+    settings: &coder::task::agent_sync::Settings,
+    status: Option<&coder::task::agent_sync::Status>,
+) -> String {
+    if !settings.on() {
+        return format!("Relay sync is off for {name}.");
+    }
+    let mut lines = vec![format!(
+        "{name} syncs with {}.",
+        settings.memory_relays.join(", ")
+    )];
+    let Some(status) = status else {
+        lines.push("No pass has run yet.".into());
+        return lines.join("\n");
+    };
+    lines.push(format!(
+        "Last pass at {}: {} heads taken, {} published.",
+        status.at, status.pulled, status.pushed
+    ));
+    if let Some(error) = &status.error {
+        lines.push(format!("It didn't finish: {error}"));
+    }
+    for relay in &status.relays {
+        let mut line = format!("  {} holds {} heads", relay.url, relay.heads);
+        if relay.truncated {
+            line.push_str(" and may hold more (limit reached)");
+        }
+        if let Some(error) = &relay.error {
+            line.push_str(&format!("; error: {error}"));
+        }
+        lines.push(line);
+        for refused in &relay.refused {
+            lines.push(format!("    refused {refused}"));
+        }
+    }
+    for conflict in &status.conflicts {
+        lines.push(format!("Conflict: {conflict}"));
+    }
+    lines.join("\n")
+}
+
+/// `memory NAME sync on|off|status|now`: the owner's own settings at the
+/// host, and a pass on demand.
+fn sync(output: &Output, root: &Path, name: &str, verb: &str, args: &Args) -> Result<(), Fail> {
+    use coder::task::agent_sync::{self, Settings, Status};
+    let (store, record) = store(root, name)?;
+    let now = coder::task::autostart::unix_now();
+    match verb {
+        "on" | "off" => {
+            let relays: Vec<String> = if verb == "off" {
+                Vec::new()
+            } else {
+                let named: Vec<String> = args
+                    .options("relay")
+                    .into_iter()
+                    .map(str::to_string)
+                    .collect();
+                if named.is_empty() {
+                    vec![agent_sync::DEFAULT_RELAY.to_string()]
+                } else {
+                    named
+                }
+            };
+            if verb == "on" && record.attestation.is_none() {
+                return Err(Fail::Failed(format!(
+                    "{name} has no owner attestation to present to a relay; attest her key first"
+                )));
+            }
+            let settings = agent_sync::set_relays(&store, &relays, now).map_err(Fail::Failed)?;
+            output.emit(&json!({"settings": settings}), |_| {
+                sync_lines(name, &settings, None)
+            });
+        }
+        "status" => {
+            let settings = Settings::load(&store).map_err(Fail::Failed)?;
+            let status = Status::load(&store).map_err(Fail::Failed)?;
+            output.emit(&json!({"settings": settings, "status": status}), |_| {
+                sync_lines(name, &settings, status.as_ref())
+            });
+        }
+        "now" => {
+            let settings = Settings::load(&store).map_err(Fail::Failed)?;
+            if !settings.on() {
+                return Err(Fail::Failed(format!(
+                    "relay sync is off for {name}; turn it on with: openagents agent memory {name} sync on"
+                )));
+            }
+            if store.custody(&record).is_err() || store.key().ok().flatten().is_none() {
+                agent_sync::request(&store, now).map_err(Fail::Failed)?;
+                let said = format!(
+                    "Her key isn't in a file here, so the host runs a pass at its next sweep. \
+                     Check it with: openagents agent memory {name} sync status"
+                );
+                output.emit(&json!({"requested_at": now}), |_| said.clone());
+                return Ok(());
+            }
+            let status = agent_sync::sync(&store, &secret_screen_shapes(), &agent_sync::Live, now);
+            output.emit(&json!({"settings": settings, "status": status}), |_| {
+                sync_lines(name, &settings, Some(&status))
+            });
+            if let Some(error) = &status.error {
+                return Err(Fail::Failed(format!("the pass didn't finish: {error}")));
+            }
+        }
+        _ => return Err(Fail::Failed(format!("unknown sync command; {USAGE}"))),
+    }
     Ok(())
 }
 
@@ -1097,6 +1308,57 @@ mod tests {
         assert!(engrams(&output, &root, "alice", &with_owner).is_ok());
         let missing = args(&["--owner-key", dir.path().join("none").to_str().unwrap()]);
         assert!(engrams(&output, &root, "alice", &missing).is_err());
+    }
+
+    #[test]
+    fn relay_sync_is_off_until_the_owner_turns_it_on() {
+        use coder::task::agent_sync::Settings;
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("host");
+        let owner = dir.path().join("owner.key");
+        std::fs::write(&owner, "07".repeat(32)).unwrap();
+        let output = Output::new(true);
+        let made = args(&[
+            "new",
+            "alice",
+            "--owner-key",
+            owner.to_str().unwrap(),
+            "--workspace",
+            dir.path().to_str().unwrap(),
+        ]);
+        assert!(new(&output, &root, "alice", &made, 1_791_158_400).is_ok());
+        let (store, _) = store(&root, "alice").ok().unwrap();
+        assert!(!Settings::load(&store).unwrap().on());
+        // A pass on demand while off is refused before any connection.
+        assert!(sync(&output, &root, "alice", "now", &args(&[])).is_err());
+        assert!(
+            sync(
+                &output,
+                &root,
+                "alice",
+                "on",
+                &args(&["--relay", "https://x"])
+            )
+            .is_err()
+        );
+        let on = args(&[
+            "--relay",
+            "ws://127.0.0.1:7777/",
+            "--relay",
+            "WS://127.0.0.1:7777",
+        ]);
+        assert!(sync(&output, &root, "alice", "on", &on).is_ok());
+        assert_eq!(
+            Settings::load(&store).unwrap().memory_relays,
+            vec!["ws://127.0.0.1:7777/"]
+        );
+        assert!(sync(&output, &root, "alice", "status", &args(&[])).is_ok());
+        assert!(sync(&output, &root, "alice", "off", &args(&[])).is_ok());
+        assert!(!Settings::load(&store).unwrap().on());
+        assert!(sync(&output, &root, "alice", "bogus", &args(&[])).is_err());
+        // Reading from relays needs the owner key.
+        let from = args(&["--from-relay", "--relay", "ws://127.0.0.1:9"]);
+        assert!(engrams_from_relay(&output, &root, "alice", &from).is_err());
     }
 
     #[test]

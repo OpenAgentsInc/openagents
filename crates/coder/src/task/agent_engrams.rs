@@ -432,6 +432,55 @@ impl EngramStore {
         Ok(written)
     }
 
+    /// The head whose `d` tag is `d`, a tombstone included.
+    #[must_use]
+    pub fn head_at(&self, d: &str) -> Option<&Engram> {
+        self.heads.get(d)
+    }
+
+    /// The signed event that holds the head at `d`, as stored.
+    ///
+    /// # Errors
+    /// When the file can't be read or no longer holds that head.
+    pub fn event(&self, d: &str) -> Result<Option<Event>, String> {
+        let Some(head) = self.heads.get(d) else {
+            return Ok(None);
+        };
+        let path = self.dir.join(format!("{d}.json"));
+        let text = std::fs::read_to_string(&path)
+            .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+        let event: Event = serde_json::from_str(&text)
+            .map_err(|e| format!("{} is not an event: {e}", path.display()))?;
+        if event.id != head.id {
+            return Err(format!("{} changed while it was read", path.display()));
+        }
+        Ok(Some(event))
+    }
+
+    /// Takes `event`, a head another device wrote, when it verifies for
+    /// this pair and wins NIP-AE head selection against the head at its
+    /// `d`. Returns whether it became the head. The store keeps the signed
+    /// event byte for byte, so a relay and the store hold the same event.
+    ///
+    /// # Errors
+    /// When the event doesn't verify for this pair or can't be written.
+    pub fn adopt(&mut self, event: &Event) -> Result<bool, String> {
+        let engram = engram::validate_and_decrypt(event, &self.pair).map_err(|e| e.to_string())?;
+        if let Some(head) = self.heads.get(&engram.d) {
+            let candidates = [head.clone(), engram.clone()];
+            let winner = engram::select_head(candidates.iter()).map(|h| h.id.clone());
+            if head.id == engram.id || winner.as_deref() != Some(engram.id.as_str()) {
+                return Ok(false);
+            }
+        }
+        let json = serde_json::to_vec(event).map_err(|e| e.to_string())?;
+        agent::private_dir(&self.dir)?;
+        write_atomic(&self.dir, &format!("{}.json", engram.d), &json)?;
+        self.heads.insert(engram.d.clone(), engram);
+        self.write_index(&self.index())?;
+        Ok(true)
+    }
+
     /// Writes memory entry `entry` as `mem/entry/ID`.
     ///
     /// # Errors

@@ -11202,7 +11202,7 @@
                   "engrams"
                 ],
                 "usage": [
-                  "memory NAME engrams [--owner-key FILE]"
+                  "memory NAME engrams [--owner-key FILE] [--from-relay] [--relay URL]..."
                 ],
                 "forms": [
                   {
@@ -11225,14 +11225,196 @@
                         "value": "FILE",
                         "open": true,
                         "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "from-relay",
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "relay",
+                        "value": "URL",
+                        "open": true,
+                        "optional": true,
+                        "repeated": true
                       }
                     ]
                   }
                 ],
-                "summary": "Her engram heads: slug, time, and event ID. With the owner key in FILE, decrypt each one and print it too.",
+                "summary": "Her engram heads: slug, time, and event ID. With the owner key in FILE, decrypt each one and print it too. With --from-relay, read them from relays with the owner key alone: her write relays from her relay list on each URL, else the URLs, else the relays she syncs with.",
                 "effect": "read_only",
                 "runs_on": "connected_computer"
               }
+            },
+            {
+              "name": "sync",
+              "children": [
+                {
+                  "name": "on",
+                  "leaf": {
+                    "path": [
+                      "agent",
+                      "memory",
+                      "sync",
+                      "on"
+                    ],
+                    "usage": [
+                      "memory NAME sync on [--relay URL]..."
+                    ],
+                    "forms": [
+                      {
+                        "tokens": [
+                          {
+                            "kind": "literal",
+                            "word": "memory"
+                          },
+                          {
+                            "kind": "positional",
+                            "name": "NAME"
+                          },
+                          {
+                            "kind": "literal",
+                            "word": "sync"
+                          },
+                          {
+                            "kind": "literal",
+                            "word": "on"
+                          },
+                          {
+                            "kind": "option",
+                            "name": "relay",
+                            "value": "URL",
+                            "open": true,
+                            "optional": true,
+                            "repeated": true
+                          }
+                        ]
+                      }
+                    ],
+                    "summary": "Sync her engrams with these relays, by default the owner's relay. Sync is off until you turn it on; a relay sees her key, her owner's, and the sizes and times of her engrams.",
+                    "effect": "local_write",
+                    "runs_on": "connected_computer"
+                  }
+                },
+                {
+                  "name": "off",
+                  "leaf": {
+                    "path": [
+                      "agent",
+                      "memory",
+                      "sync",
+                      "off"
+                    ],
+                    "usage": [
+                      "memory NAME sync off"
+                    ],
+                    "forms": [
+                      {
+                        "tokens": [
+                          {
+                            "kind": "literal",
+                            "word": "memory"
+                          },
+                          {
+                            "kind": "positional",
+                            "name": "NAME"
+                          },
+                          {
+                            "kind": "literal",
+                            "word": "sync"
+                          },
+                          {
+                            "kind": "literal",
+                            "word": "off"
+                          }
+                        ]
+                      }
+                    ],
+                    "summary": "Stop syncing her engrams.",
+                    "effect": "local_write",
+                    "runs_on": "connected_computer"
+                  }
+                },
+                {
+                  "name": "status",
+                  "leaf": {
+                    "path": [
+                      "agent",
+                      "memory",
+                      "sync",
+                      "status"
+                    ],
+                    "usage": [
+                      "memory NAME sync status"
+                    ],
+                    "forms": [
+                      {
+                        "tokens": [
+                          {
+                            "kind": "literal",
+                            "word": "memory"
+                          },
+                          {
+                            "kind": "positional",
+                            "name": "NAME"
+                          },
+                          {
+                            "kind": "literal",
+                            "word": "sync"
+                          },
+                          {
+                            "kind": "literal",
+                            "word": "status"
+                          }
+                        ]
+                      }
+                    ],
+                    "summary": "Her relays and the last pass: heads taken and published, conflicts, refusals, and relays that may hold more.",
+                    "effect": "read_only",
+                    "runs_on": "connected_computer"
+                  }
+                },
+                {
+                  "name": "now",
+                  "leaf": {
+                    "path": [
+                      "agent",
+                      "memory",
+                      "sync",
+                      "now"
+                    ],
+                    "usage": [
+                      "memory NAME sync now"
+                    ],
+                    "forms": [
+                      {
+                        "tokens": [
+                          {
+                            "kind": "literal",
+                            "word": "memory"
+                          },
+                          {
+                            "kind": "positional",
+                            "name": "NAME"
+                          },
+                          {
+                            "kind": "literal",
+                            "word": "sync"
+                          },
+                          {
+                            "kind": "literal",
+                            "word": "now"
+                          }
+                        ]
+                      }
+                    ],
+                    "summary": "Run a pass now when her key is in a file here, else ask the host to run one at its next sweep.",
+                    "effect": "publishes",
+                    "runs_on": "connected_computer"
+                  }
+                }
+              ]
             }
           ]
         },
@@ -11554,6 +11736,20 @@
           "kind": "option",
           "name": "after",
           "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "from-relay",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "relay",
+          "value": "URL",
           "open": true,
           "optional": true,
           "repeated": true
