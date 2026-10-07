@@ -28,9 +28,9 @@ use super::pinned::PinnedFile;
 
 /// Exact content identity of the reviewed kit pack, or empty while none is
 /// published.
-pub const KIT_SHA256: &str = "d831f779d57448341442bfab2152eb1a45abe7c09b76684553e93a9ad75a772f";
+pub const KIT_SHA256: &str = "dae1612d4c22438a933c27b406c1e18fe134b13eab8eb5240ddcf5506ffb0b93";
 /// Transfer size of the reviewed kit pack; zero while none is published.
-pub const KIT_BYTES: u64 = 10238677;
+pub const KIT_BYTES: u64 = 10238689;
 // Retain previous reviewed digests here when changing KIT_SHA256.
 const KIT_HISTORY: &[&str] = &[KIT_SHA256];
 /// Where every client fetches the kit pack: the OpenAgents web origin,
