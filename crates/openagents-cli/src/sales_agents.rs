@@ -69,7 +69,7 @@ fn parse(words: &[String]) -> Result<Args, String> {
     }
     Ok(args)
 }
-fn input(args: &Args) -> Result<Vec<u8>, String> {
+pub(super) fn input(args: &Args) -> Result<Vec<u8>, String> {
     let path = required(args, "input")?;
     let mut bytes = Vec::new();
     if path == "-" {

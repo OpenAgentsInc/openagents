@@ -145,6 +145,7 @@ impl Agents {
         queued: &[(String, String)],
         now: u64,
     ) -> Result<agent_plan::Made, String> {
+        crate::task::sales::privacy::model_available(store)?;
         let jobs = Jobs::new(store.clone()).load()?;
         let plan_job = jobs
             .iter()
@@ -269,6 +270,7 @@ impl Agents {
     /// the owner's request and a scheduled job, and Jev the rest. Journals
     /// what it decided. `None` when there is no plan for today.
     pub(super) fn plan_event(&self, store: &Store, event: &Event, now: u64) -> Option<Reacted> {
+        crate::task::sales::privacy::model_available(store).ok()?;
         agent_plan::today(store, now)?;
         let job = Self::plan_job(store);
         if !job.as_ref().is_some_and(|j| j.enabled) {

@@ -79,6 +79,13 @@ pub fn parse_engine(word: &str) -> Result<String, String> {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SalesModelScope {
+    pub floor: String,
+    pub actor: String,
+}
+
 /// The agent's standing record (`openagents.workshop-agent.v1`).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -134,6 +141,9 @@ pub struct Record {
     /// Enforced sales scope; templates cannot widen host access.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub crew_charter: Option<coder_host::access::crew::Charter>,
+    /// Stable expense scope carried across key rotation and host migration.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sales_model_scope: Option<SalesModelScope>,
 }
 
 fn default_desk() -> u32 {
@@ -564,7 +574,10 @@ impl Store {
         })?;
         if record.schema != RECORD_SCHEMA
             || record.v != 1
-            || record.requires.iter().any(|r| r != "crew-sales.v1")
+            || record
+                .requires
+                .iter()
+                .any(|r| !matches!(r.as_str(), "crew-sales.v1" | "sales-model-budget.v1"))
         {
             return Err(format!(
                 "{} is a record this host does not read",
@@ -657,6 +670,7 @@ impl Store {
             }),
             roles: None,
             job_role: preset.and_then(|p| p.job_role),
+            sales_model_scope: None,
             crew_charter: preset
                 .and_then(|p| p.job_role)
                 .map(coder_host::access::crew::Charter::initial),

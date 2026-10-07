@@ -1739,3 +1739,21 @@ plugin lane refuses unqualified cross-registry funding. Rejected claims retain
 their original liability and history; an appeal requires a separately reviewed
 remediation, not a new invoice, duplicate commission, or payout retry. Synthetic
 checks establish no real customer identity, fraud finding, or payment authority.
+
+## Sales model expense activation (#10861)
+
+Approve an exact private `sales models` policy with reviewed source and price
+revisions, finite full-input, output, retry, and deadline caps, and narrower
+agent and request limits under the fixed $5 Chicago-day floor. Each real
+provider adapter must enforce those caps and reserve every helper or hidden
+downstream call before execution. General sales model paths remain unavailable;
+synthetic fixtures and deterministic local zero-cost helpers establish no
+provider capacity, billing, successful result, qualification, or contact grant.
+Reconcile interrupted usage from actual provider evidence while preserving the
+original receipt, unknown liability, and distinct estimate and billed amounts.
+Migrate the complete private canonical sales book with native expense identity;
+an imported agent alone cannot reset floor or agent costs. Synthetic training
+uses the same expense floor and owner-approved persona/run/source pins without
+customer records or outbound authority. Customer material requires a separate
+typed field-scoped disclosure adapter; arbitrary expense input refuses retained
+protected identifiers and credentials.

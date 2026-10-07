@@ -412,6 +412,7 @@ pub enum OwnerOperation {
     },
 }
 /// A scoped credential capability. It cannot be constructed from a lead or memory.
+#[derive(Clone)]
 pub struct AgentAccess {
     assignment: String,
     lead: String,
@@ -991,7 +992,7 @@ impl Store {
         self.contact_admitted(lead, &channel)?;
         Ok(())
     }
-    fn checked_sales_agent(
+    pub(super) fn checked_sales_agent(
         &self,
         access: &AgentAccess,
     ) -> Result<(&Lead, &Assignment, &Policy, native::Native)> {
@@ -1033,7 +1034,11 @@ impl Store {
         self.recheck_sales_agent(access, &native)?;
         Ok((lead, grant, policy, native))
     }
-    fn recheck_sales_agent(&self, access: &AgentAccess, native: &native::Native) -> Result<()> {
+    pub(super) fn recheck_sales_agent(
+        &self,
+        access: &AgentAccess,
+        native: &native::Native,
+    ) -> Result<()> {
         self.sales_custody()?;
         native.recheck()?;
         let lead = self
@@ -1293,7 +1298,7 @@ impl Store {
         )
     }
 }
-fn business_day(now: u64) -> Result<u64> {
+pub(super) fn business_day(now: u64) -> Result<u64> {
     let seconds = i64::try_from(now).map_err(|_| "sales clock exceeds its bound")?;
     let timestamp = jiff::Timestamp::from_second(seconds).map_err(|_| "sales clock is invalid")?;
     let timezone = jiff::tz::TimeZone::get("America/Chicago")

@@ -24,6 +24,9 @@ struct Fixture {
 }
 impl Fixture {
     fn new() -> Self {
+        Self::with_execution_budget(0)
+    }
+    fn with_execution_budget(execution_budget_usd_millionths: u64) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().join("host");
         let mut store = Store::open_with_clock(&root, now).unwrap();
@@ -129,7 +132,7 @@ impl Fixture {
             timezone: "America/Chicago".into(),
             daily_floor_cap: 5,
             daily_agent_cap: 5,
-            execution_budget_usd_millionths: 0,
+            execution_budget_usd_millionths,
             trust: Trust::IndividualReview,
             read_fields: [ReadField::Stage, ReadField::NextAction, ReadField::Workflow].into(),
             write_fields: [WriteField::Stage, WriteField::NextAction, WriteField::Draft].into(),
@@ -1671,3 +1674,5 @@ fn email_replaced_credential_file_cannot_reuse_preparation_bytes() {
         "host mailbox credential is revoked or changed"
     );
 }
+#[path = "../expenses/tests.rs"]
+mod expense_tests;

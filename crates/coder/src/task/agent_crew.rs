@@ -16,6 +16,15 @@ pub const SALES_CHARTER: &str = "Draft recommendations only from the owner's sup
 
 impl Record {
     pub fn validate_crew(&self) -> Result<(), String> {
+        if self.sales_model_scope.as_ref().is_some_and(|s| {
+            [&s.floor, &s.actor]
+                .iter()
+                .any(|v| v.len() != 64 || !v.bytes().all(|b| b.is_ascii_hexdigit()))
+        }) || self.requires.iter().any(|r| r == "sales-model-budget.v1")
+            != self.sales_model_scope.is_some()
+        {
+            return Err("The native sales model expense scope is missing or changed.".into());
+        }
         match (&self.job_role, &self.crew_charter) {
             (None, None) => Ok(()),
             (Some(_), Some(charter)) => charter.validate().map_err(|e| e.message),

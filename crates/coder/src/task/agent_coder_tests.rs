@@ -188,7 +188,7 @@ fn prompts(seen: &Seen) -> Vec<String> {
 }
 
 #[test]
-fn crew_sales_job_uses_the_shared_turn_and_refuses_even_read_approvals() {
+fn crew_sales_job_without_canonical_budget_refuses_before_the_shared_turn() {
     let dir = tempfile::tempdir().unwrap();
     let mut events = codex_delegation(
         "cat private.txt",
@@ -239,35 +239,33 @@ fn crew_sales_job_uses_the_shared_turn_and_refuses_even_read_approvals() {
             &"d".repeat(64),
         )
         .unwrap();
-    ask(
-        &agents,
-        "crew-request",
-        "Draft a recommendation from these facts.",
+    assert_eq!(
+        agents
+            .answer(
+                "crew-request",
+                &owner(),
+                &Operation::AskAgent {
+                    agent: "alice".into(),
+                    text: "Draft a recommendation from these facts.".into(),
+                    workspace: None,
+                    context: String::new(),
+                    mode: Mode::Terminal,
+                    typist: false,
+                }
+            )
+            .unwrap_err(),
+        Code::Unavailable
     );
-    let view = finished(&agents);
+    let view = view(&agents);
+    assert!(!view.busy);
     assert!(!view.route.contains("coding on Codex"));
-    assert!(!view.lines.iter().any(|line| line.contains("Codex")));
     assert!(!dir.path().join("tasks").join(capacity::FILE).exists());
-    let spent = crate::task::agent_spend::owner_read(&store, &owner_key).unwrap();
-    assert!(
-        spent
-            .records
-            .iter()
-            .all(|record| { record.metric.harness != crate::task::agent_spend::CODEX_HARNESS })
-    );
+    assert_eq!(*seen.engines.lock().unwrap(), 0);
+    assert!(seen.given.lock().unwrap().is_empty());
+    assert!(seen.asked.lock().unwrap().is_empty());
     assert!(store.load().unwrap().unwrap().codes_on_codex());
-    let given = seen.given.lock().unwrap();
-    assert_eq!(given.len(), 1);
-    assert!(given[0].tool_free);
-    assert!(!given[0].codex_writes);
-    assert!(!given[0].prompt.contains("acp_subagent"));
-    assert!(!given[0].prompt.contains("Codex"));
-    assert_eq!(given[0].cwd, store.dir());
-    assert_eq!(given[0].instructions, None);
-    let journal = journal(&dir);
-    assert!(journal.iter().any(|e| e.kind == Kind::Refused));
     assert!(
-        !journal
+        !journal(&dir)
             .iter()
             .any(|e| matches!(e.kind, Kind::Confirmed | Kind::Ran))
     );

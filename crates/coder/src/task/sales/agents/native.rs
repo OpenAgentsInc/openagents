@@ -71,6 +71,23 @@ fn read(path: &Path, max: usize) -> Result<(File, Vec<u8>)> {
     Ok((file, bytes))
 }
 impl Native {
+    pub fn expense_scope(&self) -> Option<&agent::SalesModelScope> {
+        self.record.sales_model_scope.as_ref()
+    }
+    pub fn bind_expense_scope(&self, scope: &agent::SalesModelScope) -> Result<()> {
+        self.recheck()?;
+        if let Some(old) = &self.record.sales_model_scope {
+            if old != scope {
+                return Err("native sales model scope cannot be replaced".into());
+            }
+            return Ok(());
+        }
+        let mut record = self.record.clone();
+        record.sales_model_scope = Some(scope.clone());
+        record.requires.push("sales-model-budget.v1".into());
+        record.validate_crew()?;
+        self.store.save(&record)
+    }
     pub fn read(
         root: &Path,
         name: &str,
@@ -96,7 +113,11 @@ impl Native {
             || record.schema != agent::RECORD_SCHEMA
             || record.v != 1
             || record.state != agent::State::Active
-            || record.requires != ["crew-sales.v1"]
+            || !record.requires.iter().any(|r| r == "crew-sales.v1")
+            || record
+                .requires
+                .iter()
+                .any(|r| !matches!(r.as_str(), "crew-sales.v1" | "sales-model-budget.v1"))
         {
             return Err("native sales agent is inactive or unsupported".into());
         }

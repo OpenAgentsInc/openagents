@@ -12,6 +12,8 @@ mod agents;
 mod claims;
 #[path = "sales_email.rs"]
 mod email;
+#[path = "sales_models.rs"]
+mod models;
 #[path = "sales_privacy.rs"]
 mod privacy;
 pub const USAGE: &str = "usage: openagents sales COMMAND --root DIR [--credential FILE] [--json]
@@ -64,6 +66,16 @@ pub const USAGE: &str = "usage: openagents sales COMMAND --root DIR [--credentia
         Apply a field-scoped change or propose a private draft.
   agents memory
         Read current opaque references and fixed nonidentifying summary fields.
+  models policy-check --input FILE
+        Check finite source prices and floor limits under owner access.
+  models policy --input FILE --approve SHA256
+        Record the exact owner-approved expense policy digest.
+  models settle --reservation ID --input FILE
+        Reconcile original estimates and provider bills; unknown holds remain.
+  models show --reservation ID
+        Read an original expense receipt, including after agent retirement.
+  models history [--after ID] [--limit N]
+        Read bounded owner-only expense attribution without customer text.
   claims source --input FILE
         Review an immutable source over its explicit current source root.
   claims review --input FILE
@@ -128,6 +140,11 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("agents read", Effect::ReadOnly),
     Declared::computer("agents apply", Effect::LocalWrite),
     Declared::computer("agents memory", Effect::ReadOnly),
+    Declared::computer("models policy-check", Effect::ReadOnly),
+    Declared::computer("models policy", Effect::Grants),
+    Declared::computer("models settle", Effect::LocalWrite),
+    Declared::computer("models show", Effect::ReadOnly),
+    Declared::computer("models history", Effect::ReadOnly),
     Declared::computer("claims source", Effect::Grants),
     Declared::computer("claims review", Effect::Grants),
     Declared::computer("claims read", Effect::LocalWrite),
@@ -141,6 +158,9 @@ pub(crate) const EFFECTS: &[Declared] = &[
 pub fn run(output: &Output, words: &[String]) -> u8 {
     if words.first().is_some_and(|w| w == "email") {
         return email::run(output, &words[1..]);
+    }
+    if words.first().is_some_and(|w| w == "models") {
+        return models::run(output, &words[1..]);
     }
     if words.first().is_some_and(|w| w == "privacy") {
         return privacy::run(output, &words[1..]);

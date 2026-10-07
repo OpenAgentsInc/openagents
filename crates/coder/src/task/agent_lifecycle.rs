@@ -763,6 +763,8 @@ pub struct Snapshot {
     pub job_role: Option<coder_host::access::crew::JobRole>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub crew_charter: Option<coder_host::access::crew::Charter>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sales_model_scope: Option<super::agent::SalesModelScope>,
     pub look: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub route: String,
@@ -819,6 +821,7 @@ pub fn export(
         charter: record.charter.clone(),
         job_role: record.job_role,
         crew_charter: record.crew_charter.clone(),
+        sales_model_scope: record.sales_model_scope.clone(),
         look: record.look.clone(),
         route: record.route.clone(),
         desk: record.desk,
@@ -909,6 +912,10 @@ pub fn import(
     record.charter = snapshot.charter.clone();
     record.job_role = snapshot.job_role;
     record.crew_charter = snapshot.crew_charter.clone();
+    record.sales_model_scope = snapshot.sales_model_scope.clone();
+    if record.sales_model_scope.is_some() {
+        record.requires.push("sales-model-budget.v1".into());
+    }
     record.requires.retain(|r| r != "crew-sales.v1");
     if record.job_role.is_some() {
         record.requires.push("crew-sales.v1".into());

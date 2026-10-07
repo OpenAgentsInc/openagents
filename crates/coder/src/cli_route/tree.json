@@ -7387,6 +7387,211 @@
           ]
         },
         {
+          "name": "models",
+          "children": [
+            {
+              "name": "policy-check",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "models",
+                  "policy-check"
+                ],
+                "usage": [
+                  "models policy-check --input FILE"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "models"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "policy-check"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "input",
+                        "value": "FILE",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Check finite source prices and floor limits under owner access.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "policy",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "models",
+                  "policy"
+                ],
+                "usage": [
+                  "models policy --input FILE --approve SHA256"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "models"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "policy"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "input",
+                        "value": "FILE",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "approve",
+                        "value": "SHA256",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Record the exact owner-approved expense policy digest.",
+                "effect": "grants",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "settle",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "models",
+                  "settle"
+                ],
+                "usage": [
+                  "models settle --reservation ID --input FILE"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "models"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "settle"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "reservation",
+                        "value": "ID",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "input",
+                        "value": "FILE",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Reconcile original estimates and provider bills; unknown holds remain.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "show",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "models",
+                  "show"
+                ],
+                "usage": [
+                  "models show --reservation ID"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "models"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "show"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "reservation",
+                        "value": "ID",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Read an original expense receipt, including after agent retirement.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "history",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "models",
+                  "history"
+                ],
+                "usage": [
+                  "models history [--after ID] [--limit N]"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "models"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "history"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "after",
+                        "value": "ID",
+                        "open": true,
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "limit",
+                        "value": "N",
+                        "open": true,
+                        "optional": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Read bounded owner-only expense attribution without customer text.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
+        },
+        {
           "name": "claims",
           "children": [
             {
@@ -7932,6 +8137,22 @@
           "kind": "option",
           "name": "agent",
           "value": "NAME",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "approve",
+          "value": "SHA256",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "reservation",
+          "value": "ID",
           "open": true,
           "optional": true,
           "repeated": true

@@ -13,7 +13,8 @@ use super::{Judge, Reaction, SET, Services, react_request};
 ///
 /// # Errors
 /// When no model is set up. Without Jev, every observed event continues.
-pub fn services(_store: &Store) -> Result<Services, String> {
+pub fn services(store: &Store) -> Result<Services, String> {
+    super::super::sales::privacy::model_available(store)?;
     let judge: Box<dyn Judge + Send> = match crate::decision::from_env() {
         Ok(Some(client)) => Box::new(JevJudge::new(client)?),
         _ => Box::new(Unanswered),

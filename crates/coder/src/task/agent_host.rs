@@ -763,10 +763,6 @@ impl Agents {
                     ),
                 )
                 .map_err(|why| coder_host::tasks::refuse(Code::Forbidden, why))?;
-                if agent_memory::remembered(text).is_none() {
-                    super::sales::privacy::model_available(&privacy_store)
-                        .map_err(|why| coder_host::tasks::refuse(Code::Unavailable, why))?;
-                }
                 if record.crew_charter.as_ref().is_some_and(|charter| {
                     !charter.drafting || *mode == Mode::Task || workspace.is_some() || *typist
                 }) {
@@ -785,6 +781,10 @@ impl Agents {
                             "The crew remains stopped or paused until its owner explicitly resumes it.",
                         ));
                     }
+                }
+                if agent_memory::remembered(text).is_none() {
+                    super::sales::privacy::model_available(&privacy_store)
+                        .map_err(|why| coder_host::tasks::refuse(Code::Unavailable, why))?;
                 }
                 // The owner asking her is the owner wanting her to work: a
                 // paused agent resumes for it. The kill switch's stop holds

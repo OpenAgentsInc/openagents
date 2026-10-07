@@ -12,6 +12,7 @@ use std::time::{Duration, SystemTime};
 pub mod agents;
 pub mod claims;
 pub mod email;
+pub mod expenses;
 pub mod intake;
 pub mod partners;
 pub mod privacy;
@@ -291,6 +292,8 @@ struct State {
     privacy: privacy::Book,
     #[serde(default)]
     email: email::Book,
+    #[serde(default)]
+    expenses: expenses::Book,
 }
 impl Default for State {
     fn default() -> Self {
@@ -310,6 +313,7 @@ impl Default for State {
             agents: agents::Book::default(),
             privacy: privacy::Book::default(),
             email: email::Book::default(),
+            expenses: expenses::Book::default(),
         }
     }
 }
@@ -503,6 +507,7 @@ impl Store {
         state.agents.check(&state.leads)?;
         state.privacy.check()?;
         state.email.check()?;
+        state.expenses.check()?;
         privacy::remember_retained(&mut state)?;
         if state.leads.values().any(|lead| lead.schema != LEAD_SCHEMA)
             || state
@@ -678,6 +683,7 @@ impl Store {
         }
         // Revoked/expired permission stops qualification and cancels proposed handoffs.
         let mut changed = !expired.is_empty();
+        changed |= next.expenses.recover(&self.dir, now)?;
         let retired_sales = next
             .leads
             .values()

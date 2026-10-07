@@ -1301,7 +1301,7 @@ impl Store {
     }
 }
 /// Exhaustion is unavailable evidence, not a match and not permission to erase.
-fn contains_customer(state: &State, text: &str) -> Result<bool> {
+pub(super) fn contains_customer(state: &State, text: &str) -> Result<bool> {
     const CHECKS: usize = 131_072;
     const NODES: usize = 4096;
     if text.len() > MAX_COPY {
@@ -1630,16 +1630,7 @@ pub(crate) fn append_agent_directory_text(directory: &Path, path: &Path, text: &
 }
 pub(crate) fn model_available(store: &super::super::agent::Store) -> Result<()> {
     if store.load()?.is_some_and(|r| r.job_role.is_some()) {
-        let root = store
-            .dir()
-            .parent()
-            .and_then(Path::parent)
-            .ok_or("agent host root is unavailable")?;
-        if raw_state(root)?.is_some_and(|s| s.privacy.enabled) {
-            return Err(
-                "sales customer model disclosure has no qualified recipient adapter".into(),
-            );
-        }
+        return Err("Sales model execution requires a current bounded canonical floor admission; the general model path is unavailable.".into());
     }
     Ok(())
 }
@@ -3037,13 +3028,13 @@ mod tests {
             crate::task::agent_reflect::Services::live(&member)
                 .err()
                 .unwrap(),
-            "sales customer model disclosure has no qualified recipient adapter"
+            "Sales model execution requires a current bounded canonical floor admission; the general model path is unavailable."
         );
         assert_eq!(
             crate::task::agent_share::Services::live(&member)
                 .err()
                 .unwrap(),
-            "sales customer model disclosure has no qualified recipient adapter"
+            "Sales model execution requires a current bounded canonical floor admission; the general model path is unavailable."
         );
         let mut offline = crate::task::agent_recall::Services::live(&member);
         let memory = Memory::new(member, secret_screen::Screen::shapes());
@@ -3052,7 +3043,7 @@ mod tests {
                 .recall("opaque request", "opaque workspace", now(), &mut offline)
                 .err()
                 .unwrap(),
-            "sales customer model disclosure has no qualified recipient adapter"
+            "Sales model execution requires a current bounded canonical floor admission; the general model path is unavailable."
         );
     }
 }

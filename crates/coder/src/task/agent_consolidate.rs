@@ -89,7 +89,8 @@ pub fn default_factory() -> WriterFactory {
     if cfg!(test) {
         Arc::new(|_: &Store| Err("no consolidation model runs in a unit test".to_string()))
     } else {
-        Arc::new(|_: &Store| {
+        Arc::new(|store: &Store| {
+            super::sales::privacy::model_available(store)?;
             super::agent::LiveModel::new().map(|model| Box::new(model) as Box<dyn Writer>)
         })
     }
@@ -278,6 +279,7 @@ pub fn propose(
     now: u64,
 ) -> Result<(Proposed, Option<Reply>), String> {
     let store = memory.store();
+    super::sales::privacy::model_available(store)?;
     let mut engrams = ready(memory, now)?;
     let record = store
         .load()?

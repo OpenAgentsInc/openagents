@@ -1,6 +1,5 @@
 //! Native lifecycle controls and original worker admissions over isolated stores.
 use super::*;
-use crate::task::agent_steer::{Mind, Plan, ScriptedPlanner, Step};
 use coder_host::access::crew::{Control, JobRole};
 use serde_json::Value;
 use std::sync::atomic::AtomicUsize;
@@ -250,48 +249,38 @@ fn delegated_controls_refuse_before_any_native_state_is_created() {
     assert_eq!(CrewGuard::open(agents.root()).unwrap().book.digest, before);
 }
 #[test]
-fn resume_cannot_replace_an_old_workers_cancel_handle_or_revive_queued_approvals() {
+fn resume_preserves_old_worker_cancellation_and_refuses_unbudgeted_sales_work() {
     let dir = tempfile::tempdir().unwrap();
     let agents = host(&dir);
-    let (entered, ready) = mpsc::channel();
-    let (release, blocked) = mpsc::channel();
-    let blocked = Arc::new(Mutex::new(blocked));
-    let planned = Arc::new(Mutex::new(Vec::new()));
-    let requested = planned.clone();
     let engines = Arc::new(AtomicUsize::new(0));
     let count = engines.clone();
-    let agents = agents
-        .with_engine(Arc::new(move |_| {
-            count.fetch_add(1, Ordering::SeqCst);
-            Ok((Box::new(coder_v1::Scripted::default()), "isolated".into()))
-        }))
-        .with_briefing(super::super::agent_recall::Briefing::WordOverlap)
-        .with_mind(Arc::new(move |_| {
-            entered.send(()).unwrap();
-            blocked.lock().unwrap().recv().unwrap();
-            Ok(Mind {
-                planner: Box::new(ScriptedPlanner {
-                    plan: Some(Plan {
-                        understanding: "Synthetic drafting.".into(),
-                        answer_directly: false,
-                        reply_if_direct: None,
-                        steps: vec![Step {
-                            prompt: "Draft supplied facts.".into(),
-                            done_when: "Draft exists.".into(),
-                        }],
-                        verify: None,
-                    }),
-                    report: Some("Synthetic draft.".into()),
-                    asked: requested.clone(),
-                }),
-                judge: None,
-                unjudged: String::new(),
-            })
-        }));
-    request(&agents, "active", "Draft supplied facts.").unwrap();
-    ready.recv_timeout(Duration::from_secs(5)).unwrap();
+    let agents = agents.with_engine(Arc::new(move |_| {
+        count.fetch_add(1, Ordering::SeqCst);
+        Ok((
+            Box::new(coder_v1::Scripted::default()),
+            "unadmitted fixture".into(),
+        ))
+    }));
+    assert_eq!(
+        request(&agents, "active", "Draft supplied facts."),
+        Err(Code::Unavailable)
+    );
+    // A retained worker's cancellation must survive resumption. This fixture
+    // models its blocked lifetime without executing a model or claiming spend.
+    agents.with_live("paul", |live| live.busy = true);
     let old_cancel = agents.lock().live["paul"].cancel.clone();
-    request(&agents, "queued", "Draft a second request.").unwrap();
+    let cancel = old_cancel.clone();
+    let copy = agents.clone();
+    let (release, blocked) = mpsc::channel();
+    let worker = std::thread::spawn(move || {
+        blocked.recv().unwrap();
+        assert!(cancel.load(Ordering::SeqCst));
+        copy.with_live("paul", |live| live.busy = false);
+    });
+    assert_eq!(
+        request(&agents, "queued", "Draft a second request."),
+        Err(Code::Unavailable)
+    );
     let (answer, decision) = mpsc::channel();
     agents.with_live("paul", |live| {
         live.pending = Some((
@@ -301,7 +290,7 @@ fn resume_cannot_replace_an_old_workers_cancel_handle_or_revive_queued_approvals
                 why: "Synthetic pending approval.".into(),
             },
             answer,
-        ))
+        ));
     });
     control(&agents, "stop", ControlAction::Stop);
     assert!(old_cancel.load(Ordering::SeqCst));
@@ -317,13 +306,9 @@ fn resume_cannot_replace_an_old_workers_cancel_handle_or_revive_queued_approvals
     ));
     assert!(agents.decide("paul", 9, true, "owner").is_err());
     release.send(()).unwrap();
-    let start = std::time::Instant::now();
-    while agents.lock().live["paul"].busy {
-        assert!(start.elapsed() < Duration::from_secs(5));
-        std::thread::sleep(Duration::from_millis(10));
-    }
+    worker.join().unwrap();
     assert_eq!(engines.load(Ordering::SeqCst), 0);
-    assert!(planned.lock().unwrap().is_empty());
+    assert!(!agents.lock().live["paul"].busy);
     assert!(agents.lock().live["paul"].queue.is_empty());
 }
 
