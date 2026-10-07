@@ -212,6 +212,7 @@ pub fn dispatch(
         _ => return Err(Error::Invalid("the material is not delivered")),
     }
     let task = task_id(&funded.execution);
+    journal.check_custody()?;
     journal.connection.execute(
         "INSERT INTO dispatch(execution,task,resource,state,transport_attempts,intent_at) VALUES(?,?,?,'intent',0,?) ON CONFLICT(execution) DO NOTHING",
         params![funded.execution, task, resource, now],
@@ -230,6 +231,7 @@ pub fn dispatch(
     if journal.cleanup_requested(&funded.execution)? {
         return Err(Error::Invalid("cleanup prevents dispatch"));
     }
+    journal.check_custody()?;
     journal.connection.execute(
         "UPDATE dispatch SET state='sent', transport_attempts=transport_attempts+1 WHERE execution=?",
         [&funded.execution],
@@ -369,6 +371,7 @@ impl Journal {
     }
 
     fn acknowledge(&mut self, execution: &str, now: i64) -> Result<Dispatch> {
+        self.check_custody()?;
         self.connection.execute(
             "UPDATE dispatch SET state='acknowledged', acknowledged_at=COALESCE(acknowledged_at, ?) WHERE execution=?",
             params![now, execution],

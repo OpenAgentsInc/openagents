@@ -198,6 +198,7 @@ pub fn deliver(
         key_digest: secret.digest(),
         key_path: path,
     };
+    journal.check_custody()?;
     journal.connection.execute(
         "INSERT INTO material(execution,resource,source,payer,key_digest,key_path,delivered_at) VALUES(?,?,?,?,?,?,?)
          ON CONFLICT(execution) DO UPDATE SET resource=excluded.resource, key_digest=excluded.key_digest, delivered_at=excluded.delivered_at, removed_at=NULL",
@@ -240,6 +241,7 @@ pub fn remove_credentials(
     if sandbox.exists(&resource, &path)? {
         return Err(Error::Invalid("the key is still in the sandbox"));
     }
+    journal.check_custody()?;
     journal.connection.execute(
         "UPDATE material SET removed_at=COALESCE(removed_at, ?) WHERE execution=?",
         params![now, execution],

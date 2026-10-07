@@ -217,6 +217,7 @@ fn step_mode(
             };
             if let Some(resource) = resource {
                 if known_resource.is_none() {
+                    journal.check_custody()?;
                     journal.connection.execute("UPDATE provision SET resource=?,state='starting' WHERE execution=? AND attempt=? AND state='creating'",params![resource,funded.execution,provision.attempt])?;
                 }
                 if let Some(expected) = known_resource
@@ -275,6 +276,7 @@ fn step_mode(
                             }
                         }
                         Ok(ResourceState::Ready { address }) => {
+                            journal.check_custody()?;
                             journal.connection.execute("UPDATE provision SET state='ready',address=?,ready_at=COALESCE(ready_at,?) WHERE execution=? AND attempt=? AND resource=? AND state IN ('creating','starting')",params![address,now,funded.execution,provision.attempt,resource])?;
                             match journal.delivered(&funded.execution)? {
                                 Some((material, false))
@@ -291,6 +293,7 @@ fn step_mode(
                                         } else {
                                             match owner.status(&resource, &dispatch.task) {
                                                 Ok(Some(status)) => {
+                                                    journal.check_custody()?;
                                                     journal.connection.execute("UPDATE dispatch SET state='acknowledged',acknowledged_at=COALESCE(acknowledged_at,?) WHERE execution=?",params![now,funded.execution])?;
                                                     state = State::TaskObserved {
                                                         resource: resource.clone(),
@@ -345,6 +348,19 @@ fn step_mode(
             }
         }
     }
+    // Cleanup is a separate lifecycle projection. Preserve an exact observed
+    // candidate/check verdict even when a stop request changes that state.
+    let checks = match &state {
+        State::TaskObserved {
+            status: TaskStatus::Ended { patch, checks, .. },
+            ..
+        } => Some(crate::dispatch::verdict(
+            patch.as_deref(),
+            &funded.task.checks,
+            checks,
+        )),
+        _ => None,
+    };
     if let Some(retention) = journal.retention_receipt(&funded.execution, now)?
         && (!matches!(state, State::NewOfferRequired { .. })
             || journal.cancellation_requested(&funded.execution)?
@@ -362,6 +378,7 @@ fn step_mode(
         ))
         && hold.as_ref().is_some_and(|h| h.state == HoldState::Held)
     {
+        journal.check_custody()?;
         hold = Some(ledger.mark_hold_unknown(&funded.request)?);
     }
     let held_msat = hold.as_ref().map_or(0, |h| {
@@ -371,17 +388,6 @@ fn step_mode(
             h.request.amount_msat
         }
     });
-    let checks = match &state {
-        State::TaskObserved {
-            status: TaskStatus::Ended { patch, checks, .. },
-            ..
-        } => Some(crate::dispatch::verdict(
-            patch.as_deref(),
-            &funded.task.checks,
-            checks,
-        )),
-        _ => None,
-    };
     let usage = journal.usage(&funded.execution)?.map(Usage::from);
     let snapshot = Snapshot {
         execution: funded.execution.clone(),

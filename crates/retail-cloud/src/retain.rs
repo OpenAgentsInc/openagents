@@ -131,6 +131,7 @@ pub fn advance(
     if attempted.is_none() {
         // Persist the attempted collection even when its acknowledgment is
         // lost. Missing bytes remain explicitly incomplete in the receipt.
+        journal.check_custody()?;
         journal.connection.execute(
             "UPDATE retention SET attempted_at=? WHERE execution=? AND attempted_at IS NULL",
             params![now, execution],
@@ -254,6 +255,7 @@ pub fn advance(
         match provider.state(&resource.resource) {
             Ok(ResourceState::Deleted) => acknowledge(journal, execution, &resource.resource, now)?,
             Ok(_) => {
+                journal.check_custody()?;
                 journal.connection.execute(
                     "UPDATE cleanup SET attempts=attempts+1 WHERE execution=? AND resource=?",
                     params![execution, resource.resource],
@@ -269,6 +271,7 @@ pub fn advance(
             Err(_) => {}
         }
     }
+    journal.check_custody()?;
     journal.connection.execute("UPDATE retained_artifact SET bytes=NULL WHERE execution=? AND EXISTS(SELECT 1 FROM retention WHERE execution=? AND expires_at<=?)",params![execution,execution,now])?;
     journal
         .retention_receipt(execution, now)?
@@ -276,6 +279,7 @@ pub fn advance(
 }
 
 fn acknowledge(journal: &Journal, execution: &str, resource: &str, now: i64) -> Result<()> {
+    journal.check_custody()?;
     journal.connection.execute("UPDATE cleanup SET acknowledged_at=COALESCE(acknowledged_at,?) WHERE execution=? AND resource=?",params![now,execution,resource])?;
     Ok(())
 }
@@ -382,6 +386,7 @@ pub fn worker_step(
     };
     let mut outcomes = Vec::new();
     for execution in ids {
+        journal.check_custody()?;
         journal.connection.execute(
             "UPDATE cleanup_discovery SET checked_at=? WHERE execution=?",
             params![now, execution],

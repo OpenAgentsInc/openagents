@@ -8,6 +8,7 @@ description = "Portable private compute account and receipt projections."
 
 [features]
 default = []
+client = ["dep:retail-cloud", "dep:reqwest", "dep:clap", "dep:fs2", "dep:libc", "dep:thiserror"]
 host = ["dep:pay-ledger", "dep:retail-cloud", "dep:terminal-core"]
 
 [dependencies]
@@ -19,8 +20,25 @@ pay-ledger = { path = "../pay-ledger", optional = true }
 retail-cloud = { path = "../retail-cloud", optional = true }
 terminal-core = { path = "../terminal-core", optional = true }
 
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"], optional = true }
+clap = { version = "4", features = ["derive"], optional = true }
+fs2 = { version = "0.4", optional = true }
+libc = { version = "0.2", optional = true }
+thiserror = { version = "2", optional = true }
+
+[[bin]]
+name = "retail-client"
+path = "src/bin/retail-client.rs"
+required-features = ["client"]
+
 [dev-dependencies]
 tempfile = "3"
+retail-service = { path = "../retail-service" }
+retail-qualify = { path = "../retail-qualify" }
+pay-ledger = { path = "../pay-ledger" }
+openagents-wallet = { path = "../wallet", default-features = false }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "sync"] }
+axum = "0.8"
 
 [lints]
 workspace = true

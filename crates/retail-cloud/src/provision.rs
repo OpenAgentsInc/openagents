@@ -425,6 +425,7 @@ impl Journal {
     }
 
     fn start_attempt(&mut self, execution: &str, attempt: u32, now: i64) -> Result<()> {
+        self.check_custody()?;
         self.connection.execute(
             "UPDATE provision SET attempt=?, attempt_at=? WHERE execution=?",
             params![attempt, now, execution],
@@ -435,6 +436,7 @@ impl Journal {
     fn add_abandoned(&mut self, execution: &str, resource: &str) -> Result<()> {
         // A second abandoned sandbox is kept beside the first, comma
         // separated; teardown deletes each.
+        self.check_custody()?;
         self.connection.execute(
             "UPDATE provision SET abandoned = CASE WHEN abandoned IS NULL THEN ? ELSE abandoned || ',' || ? END WHERE execution=?",
             params![resource, resource, execution],

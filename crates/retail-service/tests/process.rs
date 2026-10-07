@@ -72,6 +72,7 @@ async fn killed_service_resumes_original_resource_task_and_settlement() {
     boat.lose_next_create_reply();
     boat.set_usage_seconds(0);
     let ledger_path = root.join("ledger.sqlite");
+    private(&ledger_path, "");
     let mut ledger = Ledger::open(&ledger_path).unwrap();
     let now = retail_service::http::now();
     ledger.create_compute_account("alice", now).unwrap();

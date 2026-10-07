@@ -165,6 +165,7 @@ pub fn settle(
         checks: history.iter().find_map(|s| s.checks.clone()),
     };
     if let Some(amount) = charge_msat {
+        journal.check_custody()?;
         let (settled, _) = ledger.settle_hold(&funded.request, amount, now)?;
         receipt.released_msat = settled.request.amount_msat - amount;
         receipt.held_msat = 0;
@@ -172,6 +173,7 @@ pub fn settle(
         receipt.source = (amount > 0).then(|| format!("debit:{}", funded.request));
         // The ledger commits debit, obligations, and hold release atomically.
         // A crash here reuses that transaction before sealing this receipt.
+        journal.check_custody()?;
         journal.connection.execute(
             "INSERT INTO retail_settlement(execution,binding,ending,bytes) VALUES(?,?,?,?)",
             params![
@@ -182,6 +184,7 @@ pub fn settle(
             ],
         )?;
     } else if hold.state != HoldState::Settled {
+        journal.check_custody()?;
         ledger.mark_hold_unknown(&funded.request)?;
     } else {
         return Err(Error::Conflict("settled hold cannot become unknown"));

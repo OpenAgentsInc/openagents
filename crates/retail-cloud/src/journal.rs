@@ -5,6 +5,7 @@
 //! references to it.
 
 use std::path::Path;
+use std::sync::Arc;
 
 use rusqlite::{Connection, TransactionBehavior};
 
@@ -28,6 +29,7 @@ CREATE TABLE IF NOT EXISTS funded (
 /// serialized by SQLite's immediate transactions.
 pub struct Journal {
     pub(crate) connection: Connection,
+    custody_check: Option<Arc<dyn Fn() -> Result<()> + Send + Sync>>,
 }
 
 impl Journal {
@@ -84,12 +86,40 @@ impl Journal {
         for extra in crate::EXTRA_SCHEMAS {
             connection.execute_batch(extra)?;
         }
-        Ok(Self { connection })
+        Ok(Self {
+            connection,
+            custody_check: None,
+        })
     }
 
+    /// Install the exclusive service's pathname/descriptor fence. The service
+    /// cannot replace or remove it while this journal owns accepted records.
+    pub fn install_custody_check(
+        &mut self,
+        check: impl Fn() -> Result<()> + Send + Sync + 'static,
+    ) -> Result<()> {
+        if self.custody_check.is_some() {
+            return Err(crate::Error::Conflict("journal custody is already bound"));
+        }
+        check()?;
+        self.custody_check = Some(Arc::new(check));
+        Ok(())
+    }
+    pub(crate) fn check_custody(&self) -> Result<()> {
+        if let Some(check) = &self.custody_check {
+            check()?;
+        }
+        Ok(())
+    }
     pub(crate) fn immediate(&mut self) -> Result<rusqlite::Transaction<'_>> {
-        Ok(self
+        self.check_custody()?;
+        let check = self.custody_check.clone();
+        let tx = self
             .connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)?)
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        if let Some(check) = check {
+            check()?;
+        }
+        Ok(tx)
     }
 }

@@ -9,23 +9,34 @@ use route_contract::price_book::Ending;
 use rusqlite::{Connection, OptionalExtension, params};
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
-use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
-use std::path::{Component, Path};
+use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt};
+use std::path::{Component, Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 
 pub(crate) struct Store {
     pub ledger: Ledger,
     pub journal: Journal,
     pub db: Connection,
-    pub _lock: File,
+    pub custody: Arc<Custody>,
 }
 
 /// Reject symlinks in every existing ancestor and require absolute paths.
 /// The deployment must keep these directories inaccessible to other users.
 pub fn private_dir(path: &Path) -> Result<()> {
     check_path(path)?;
-    fs::create_dir_all(path)?;
-    fs::set_permissions(path, fs::Permissions::from_mode(0o700))?;
+    if !path.exists() {
+        fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(path)?;
+    }
+    let m = fs::symlink_metadata(path)?;
+    if !m.is_dir() || m.uid() != unsafe { libc::geteuid() } || m.mode() & 0o077 != 0 {
+        return Err(Error::Invalid(
+            "existing retail directories must be private and owned",
+        ));
+    }
     Ok(())
 }
 pub(crate) fn check_path(path: &Path) -> Result<()> {
@@ -50,21 +61,74 @@ pub(crate) fn check_path(path: &Path) -> Result<()> {
     }
     Ok(())
 }
+fn private_regular(m: &fs::Metadata) -> Result<()> {
+    if !m.is_file()
+        || m.uid() != unsafe { libc::geteuid() }
+        || m.nlink() != 1
+        || m.mode() & 0o077 != 0
+    {
+        return Err(Error::Invalid(
+            "private retail files must be owned, unshared regular files",
+        ));
+    }
+    Ok(())
+}
 fn private_file(path: &Path) -> Result<File> {
     check_path(path)?;
-    let file = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .mode(0o600)
-        .custom_flags(libc::O_NOFOLLOW)
-        .open(path)?;
-    if !file.metadata()?.is_file() {
-        return Err(Error::Invalid("private state must be a regular file"));
-    }
-    file.set_permissions(fs::Permissions::from_mode(0o600))?;
+    let options = || {
+        let mut o = OpenOptions::new();
+        o.read(true)
+            .write(true)
+            .mode(0o600)
+            .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
+        o
+    };
+    let file = match options().create_new(true).open(path) {
+        Ok(f) => f,
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+            private_regular(&fs::symlink_metadata(path)?)?;
+            options().open(path)?
+        }
+        Err(e) => return Err(e.into()),
+    };
+    private_regular(&file.metadata()?)?;
     Ok(file)
+}
+/// Original descriptors fence both the exclusive lock and every durable owner.
+pub(crate) struct Custody {
+    records: Vec<(PathBuf, File, bool)>,
+}
+impl Custody {
+    pub fn check(&self) -> Result<()> {
+        for (path, file, directory) in &self.records {
+            check_path(path)?;
+            let current = fs::symlink_metadata(path)?;
+            let original = file.metadata()?;
+            if *directory {
+                if !current.is_dir()
+                    || current.uid() != unsafe { libc::geteuid() }
+                    || current.mode() & 0o077 != 0
+                {
+                    return Err(Error::Conflict("private retail directory custody changed"));
+                }
+            } else {
+                private_regular(&current)?;
+                private_regular(&original)?;
+                for suffix in ["-journal", "-wal", "-shm"] {
+                    let side = PathBuf::from(format!("{}{suffix}", path.display()));
+                    match fs::symlink_metadata(&side) {
+                        Ok(m) => private_regular(&m)?,
+                        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                        Err(e) => return Err(e.into()),
+                    }
+                }
+            }
+            if (current.dev(), current.ino()) != (original.dev(), original.ino()) {
+                return Err(Error::Conflict("private retail state custody changed"));
+            }
+        }
+        Ok(())
+    }
 }
 impl Store {
     pub fn open(state: &Path, ledger_path: &Path) -> Result<Self> {
@@ -75,9 +139,26 @@ impl Store {
             .map_err(|_| Error::Conflict("the retail worker already owns this state"))?;
         // Do not create an account or a credential while opening the service.
         // Existing compute principals remain the authentication authority.
-        private_file(ledger_path)?;
+        let ledger_file = private_file(ledger_path)?;
         let metadata = state.join("transport.sqlite");
-        private_file(&metadata)?;
+        let metadata_file = private_file(&metadata)?;
+        let lifecycle = state.join("lifecycle.sqlite");
+        let lifecycle_file = private_file(&lifecycle)?;
+        let custody = Arc::new(Custody {
+            records: vec![
+                (state.into(), File::open(state)?, true),
+                (
+                    state.join("credentials"),
+                    File::open(state.join("credentials"))?,
+                    true,
+                ),
+                (state.join("service.lock"), lock, false),
+                (ledger_path.into(), ledger_file, false),
+                (metadata.clone(), metadata_file, false),
+                (lifecycle.clone(), lifecycle_file, false),
+            ],
+        });
+        custody.check()?;
         let db = Connection::open(metadata)?;
         db.busy_timeout(Duration::from_secs(5))?;
         db.execute_batch(
@@ -89,17 +170,43 @@ CREATE TABLE IF NOT EXISTS offer (
 CREATE TABLE IF NOT EXISTS worker (id INTEGER PRIMARY KEY CHECK(id=1), cursor TEXT NOT NULL);
 INSERT OR IGNORE INTO worker(id,cursor) VALUES(1,'');",
         )?;
+        let mut journal = Journal::open(lifecycle)?;
+        let fence = Arc::clone(&custody);
+        journal.install_custody_check(move || {
+            fence
+                .check()
+                .map_err(|_| retail_cloud::Error::Conflict("private retail custody changed"))
+        })?;
         Ok(Self {
             ledger: Ledger::open(ledger_path)?,
-            journal: Journal::open(state.join("lifecycle.sqlite"))?,
+            journal,
             db,
-            _lock: lock,
+            custody,
         })
+    }
+    pub fn check(&self) -> Result<()> {
+        self.custody.check()
+    }
+    pub fn receiver(&self, node: &str) -> Result<String> {
+        self.check()?;
+        self.db.execute_batch("CREATE TABLE IF NOT EXISTS receiver (id INTEGER PRIMARY KEY CHECK(id=1), node TEXT NOT NULL);")?;
+        self.db.execute(
+            "INSERT OR IGNORE INTO receiver(id,node) VALUES(1,?)",
+            [node],
+        )?;
+        let pinned: String =
+            self.db
+                .query_row("SELECT node FROM receiver WHERE id=1", [], |r| r.get(0))?;
+        if pinned != node {
+            return Err(Error::Conflict("the retail receiver node changed"));
+        }
+        Ok(pinned)
     }
     pub fn offer(
         &self,
         id: &str,
     ) -> Result<Option<(RetailOffer, String, i64, Option<Confirmation>)>> {
+        self.check()?;
         let row = self
             .db
             .query_row(
@@ -132,6 +239,7 @@ INSERT OR IGNORE INTO worker(id,cursor) VALUES(1,'');",
         generation: i64,
         now: i64,
     ) -> Result<()> {
+        self.check()?;
         let count: usize = self
             .db
             .query_row("SELECT COUNT(*) FROM offer", [], |r| r.get(0))?;
@@ -142,6 +250,7 @@ INSERT OR IGNORE INTO worker(id,cursor) VALUES(1,'');",
         Ok(())
     }
     pub fn confirmation(&self, id: &str, value: &Confirmation) -> Result<()> {
+        self.check()?;
         self.db.execute(
             "UPDATE offer SET confirmation=? WHERE id=? AND confirmation IS NULL",
             params![serde_json::to_string(value)?, id],
@@ -149,6 +258,7 @@ INSERT OR IGNORE INTO worker(id,cursor) VALUES(1,'');",
         Ok(())
     }
     pub fn ending(&self, id: &str) -> Result<Option<Ending>> {
+        self.check()?;
         let value: Option<String> =
             self.db
                 .query_row("SELECT ending FROM offer WHERE id=?", [id], |r| r.get(0))?;
@@ -157,6 +267,7 @@ INSERT OR IGNORE INTO worker(id,cursor) VALUES(1,'');",
             .transpose()
     }
     pub fn set_ending(&self, id: &str, ending: Ending) -> Result<()> {
+        self.check()?;
         self.db.execute(
             "UPDATE offer SET ending=? WHERE id=? AND ending IS NULL",
             params![serde_json::to_string(&ending)?, id],
@@ -222,10 +333,8 @@ pub(crate) fn vault_read(state: &Path, id: &str) -> Result<Option<Secret>> {
         Err(e) => return Err(e.into()),
     };
     let meta = file.metadata()?;
-    if !meta.is_file()
-        || meta.len() > crate::types::KEY_MAX as u64
-        || meta.permissions().mode() & 0o077 != 0
-    {
+    private_regular(&meta)?;
+    if meta.len() > crate::types::KEY_MAX as u64 || meta.permissions().mode() & 0o077 != 0 {
         return Err(Error::Invalid(
             "the credential file is not private or bounded",
         ));
@@ -245,4 +354,9 @@ pub(crate) fn vault_remove(state: &Path, id: &str) -> Result<()> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(e) => Err(e.into()),
     }
+}
+
+#[cfg(test)]
+pub(crate) fn private_file_fixture(path: &Path) {
+    private_file(path).unwrap();
 }

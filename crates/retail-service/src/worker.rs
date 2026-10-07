@@ -9,7 +9,7 @@ use retail_cloud::{
     dispatch::TaskStatus,
     material::{self, Credential, CustomerSecret},
     offer::{self, ConfirmedVia, FundedRequest},
-    provision::{self, ProvisionState},
+    provision::{self, Provider, ProvisionState},
     recover::{self, State},
     retain, settle,
 };
@@ -29,6 +29,7 @@ impl<B: Backend, W: LightningWallet + Send + Sync + 'static> Service<B, W> {
         let mut guard = self.lock()?;
         let store = &mut *guard;
         retail_cloud::topup::reconcile(&mut store.ledger, &*self.wallet, now)?;
+        store.check()?;
         let mut expired = store.db.prepare(
             "SELECT id FROM offer WHERE confirmation IS NULL AND done=0 AND created_at<=? ORDER BY created_at,id LIMIT 16",
         )?;
@@ -74,6 +75,7 @@ impl<B: Backend, W: LightningWallet + Send + Sync + 'static> Service<B, W> {
                     report.failed.push(id.clone());
                 }
             }
+            store.check()?;
             store
                 .db
                 .execute("UPDATE worker SET cursor=? WHERE id=1", [id])?;
@@ -92,6 +94,7 @@ impl<B: Backend, W: LightningWallet + Send + Sync + 'static> Service<B, W> {
             bindings,
         };
         retain::worker_step(&mut store.journal, &*self.backend, &artifacts, now)?;
+        store.check()?;
         Ok(report)
     }
     fn advance(&self, store: &mut crate::store::Store, id: &str, now: i64) -> Result<bool> {
@@ -374,6 +377,7 @@ impl<B: Backend, W: LightningWallet + Send + Sync + 'static> Service<B, W> {
                 now,
             )?;
         }
+        store.check()?;
         // Preserve the owner's terminal/loss evidence before cleanup changes
         // the read-side projection. A lost stop acknowledgment remains unknown.
         let ending = store.ending(&funded.offer)?.or_else(|| {
@@ -396,6 +400,7 @@ impl<B: Backend, W: LightningWallet + Send + Sync + 'static> Service<B, W> {
                 settle::settle(&mut store.journal, &mut store.ledger, funded, ending, now)?;
             return Ok(retention.deleted() && receipt.held_msat == 0);
         }
+        store.check()?;
         let _ = settle::settle(
             &mut store.journal,
             &mut store.ledger,

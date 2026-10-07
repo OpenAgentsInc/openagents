@@ -2,6 +2,7 @@
 //! Money, execution identities, counters, cleanup, and settlement remain in
 //! the existing pay-ledger and retail-cloud records.
 
+mod custody;
 pub mod http;
 mod store;
 pub mod types;
@@ -82,8 +83,8 @@ impl<
 pub struct Service<B: Backend, W: LightningWallet + Send + Sync + 'static> {
     pub(crate) config: Config,
     pub(crate) store: Mutex<Store>,
-    pub(crate) backend: Arc<B>,
-    pub(crate) wallet: Arc<W>,
+    pub(crate) backend: Arc<custody::GuardBackend<B>>,
+    pub(crate) wallet: Arc<custody::GuardWallet<W>>,
 }
 
 impl<B: Backend, W: LightningWallet + Send + Sync + 'static> Service<B, W> {
@@ -131,6 +132,25 @@ impl<B: Backend, W: LightningWallet + Send + Sync + 'static> Service<B, W> {
             return Err(Error::Invalid("invalid or duplicate retail grant"));
         }
         let store = Store::open(&config.state, &config.ledger)?;
+        let node = wallet.node_id();
+        if node.len() != 66
+            || !(node.starts_with("02") || node.starts_with("03"))
+            || !node
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        {
+            return Err(Error::Invalid("a normalized receiver node is required"));
+        }
+        let node = store.receiver(&node)?;
+        let backend = Arc::new(custody::GuardBackend {
+            inner: backend,
+            custody: Arc::clone(&store.custody),
+        });
+        let wallet = Arc::new(custody::GuardWallet {
+            inner: wallet,
+            custody: Arc::clone(&store.custody),
+            node,
+        });
         Ok(Self {
             config,
             store: Mutex::new(store),
@@ -139,9 +159,12 @@ impl<B: Backend, W: LightningWallet + Send + Sync + 'static> Service<B, W> {
         })
     }
     pub(crate) fn lock(&self) -> Result<MutexGuard<'_, Store>> {
-        self.store
+        let store = self
+            .store
             .lock()
-            .map_err(|_| Error::Unavailable("private retail state is unavailable"))
+            .map_err(|_| Error::Unavailable("private retail state is unavailable"))?;
+        store.check()?;
+        Ok(store)
     }
     fn authenticate(
         &self,
@@ -248,6 +271,7 @@ impl<B: Backend, W: LightningWallet + Send + Sync + 'static> Service<B, W> {
         funded: &FundedRequest,
         confirmation: &Confirmation,
     ) -> Result<Current> {
+        store.check()?;
         // Authentication is not replayed from a stored bearer: the ledger's
         // current principal, revocation epoch, and independently configured
         // retail grant are checked before each worker side effect.
@@ -306,7 +330,7 @@ impl<B: Backend, W: LightningWallet + Send + Sync + 'static> Service<B, W> {
         let value = match request {
             Request::Account {} => {
                 let b = store.ledger.compute_balance(&identity.account)?;
-                json!({"account":identity.account,"generation":identity.generation,"balance":{"credited_msat":b.credited_msat,"available_msat":b.available_msat,"held_msat":b.held_msat,"settled_msat":b.settled_msat,"released_msat":b.released_msat}})
+                json!({"account":identity.account,"generation":identity.generation,"capabilities":{"observe":grant.observe,"spend":identity.rights.spend,"execute":grant.execute,"disclose":grant.disclose},"balance":{"credited_msat":b.credited_msat,"available_msat":b.available_msat,"held_msat":b.held_msat,"settled_msat":b.settled_msat,"released_msat":b.released_msat}})
             }
             Request::Capacity {} => serde_json::to_value(self.advertisement(&store, None)?)?,
             Request::TopUp {
@@ -599,6 +623,7 @@ impl<B: Backend, W: LightningWallet + Send + Sync + 'static> Service<B, W> {
                 json!({"execution":execution,"cancellation":cancellation,"retention":store.journal.retention_receipt(&execution,now)?,"settlement":retail_cloud::settle::observe(&store.journal,&funded,&current)?})
             }
         };
+        store.check()?;
         Ok(json!({"schema":types::SCHEMA,"result":value}))
     }
 }

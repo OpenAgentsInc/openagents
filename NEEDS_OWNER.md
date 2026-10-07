@@ -1223,9 +1223,13 @@ Boat key, resident receiver, exact template and plan/start allowance, real
 funded qualification, and REV-15's supervised TLS deployment from current
 main. No owner host deployment or live credential/fund check was performed
 for REV-13. Use the [service configuration](docs/cloud/retail-operations.md#service-configuration)
-and separately qualify customer controls under REV-14. Isolated install and customer
-onboarding on the native clients, real capacity behavior, and incident
-handling on a live service are unverified.
+and qualify REV-14's native `retail-client` with an explicitly selected HTTPS
+origin, separate retail account/principal/bearer, current spend/execute/disclosure
+rights, and customer-owned OpenAI key. Its actual binary/HTTP acceptance uses
+fake funds/providers only. O3/O4/O8 still require installation and a real funded
+quote/confirmation, changed-right refusal, cancel/reconnect/retained receipt,
+measured billing, credential removal, and live incident handling. No live host
+deployment, buyer credentials, or funds were used for REV-14.
 
 ## Alice in the owner's house
 

@@ -1,9 +1,13 @@
 //! Read-only shared compute projections. Amounts remain exact millisatoshis;
-//! one displayed credit is one sat. This crate owns no ledger or spending path.
+//! one displayed credit is one sat. The optional client calls the retail
+//! service through explicit offer controls; it owns no money ledger.
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "host")]
 pub mod host;
+
+#[cfg(all(feature = "client", unix))]
+pub mod retail;
 
 pub const SCHEMA: &str = "openagents.compute-workbench.v1";
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

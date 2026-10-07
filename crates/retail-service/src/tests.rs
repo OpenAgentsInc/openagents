@@ -29,6 +29,7 @@ struct Runtime {
     stop_calls: AtomicU64,
     artifact_bytes: Mutex<Option<Vec<u8>>>,
     revoke_path: Mutex<Option<std::path::PathBuf>>,
+    replace_path: Mutex<Option<std::path::PathBuf>>,
 }
 impl Provider for Runtime {
     fn create(&self, spec: &CreateSpec) -> std::result::Result<Resource, ProviderError> {
@@ -43,6 +44,10 @@ impl Provider for Runtime {
                 .unwrap()
                 .revoke_principal("cli:alice", NOW + 1)
                 .unwrap();
+        }
+        if let Some(path) = self.replace_path.lock().unwrap().take() {
+            std::fs::rename(&path, path.with_extension("retired")).unwrap();
+            crate::store::private_file_fixture(&path);
         }
         self.provider.state(id)
     }
@@ -211,6 +216,7 @@ impl Fixture {
             supported_plan: plan.digest(),
             plan_starts_left: Some(20),
         };
+        crate::store::private_file_fixture(&config.ledger);
         let mut ledger = pay_ledger::Ledger::open(&config.ledger).unwrap();
         for account in ["alice", "bob"] {
             ledger.create_compute_account(account, NOW).unwrap();
@@ -1192,4 +1198,252 @@ fn revocation_after_confirmation_intent_before_hold_creates_no_spend_or_stranded
     assert_eq!(b.held_msat, 0);
     assert_eq!(b.settled_msat, 0);
     assert_eq!(s.tick(NOW + 3).unwrap().visited, 0);
+}
+
+#[test]
+fn replaced_service_lock_during_provider_lookup_prevents_new_material_or_settlement() {
+    let f = Fixture::new();
+    let s = f.open();
+    let execution = accepted(&s, "alice", "fence");
+    s.tick(NOW + 1).unwrap();
+    assert_eq!(f.runtime.provider.create_calls(), 1);
+    *f.runtime.replace_path.lock().unwrap() = Some(f.config.state.join("service.lock"));
+    assert!(s.tick(NOW + 2).is_err());
+    assert_eq!(f.runtime.owner.started(), 0);
+    assert!(call(&s, "alice", json!({"op":"account"})).is_err());
+    let replacement = f.open();
+    assert_eq!(
+        replacement
+            .lock()
+            .unwrap()
+            .ledger
+            .compute_balance("alice")
+            .unwrap()
+            .settled_msat,
+        0
+    );
+    let _ = dispatch(&replacement, &execution);
+    assert_eq!(f.runtime.provider.create_calls(), 1);
+    assert_eq!(f.runtime.owner.started(), 1);
+}
+
+struct ReplacingWallet {
+    inner: FakeWallet,
+    replace: Mutex<Option<std::path::PathBuf>>,
+}
+impl LightningWallet for ReplacingWallet {
+    fn node_id(&self) -> String {
+        self.inner.node_id()
+    }
+    fn receive_exact(
+        &self,
+        a: u64,
+        h: [u8; 32],
+        e: u32,
+    ) -> std::result::Result<openagents_wallet::IssuedInvoice, openagents_wallet::WalletError> {
+        self.inner.receive_exact(a, h, e)
+    }
+    fn lookup(
+        &self,
+        h: [u8; 32],
+    ) -> std::result::Result<Option<openagents_wallet::PaymentRecord>, openagents_wallet::WalletError>
+    {
+        if let Some(path) = self.replace.lock().unwrap().take() {
+            std::fs::rename(&path, path.with_extension("retired")).unwrap();
+            crate::store::private_file_fixture(&path);
+        }
+        self.inner.lookup(h)
+    }
+    fn pay(
+        &self,
+        i: &str,
+        m: u64,
+        w: Duration,
+    ) -> std::result::Result<openagents_wallet::Proof, openagents_wallet::WalletError> {
+        self.inner.pay(i, m, w)
+    }
+    fn balance(
+        &self,
+    ) -> std::result::Result<openagents_wallet::Balance, openagents_wallet::WalletError> {
+        self.inner.balance()
+    }
+    fn channels(
+        &self,
+    ) -> std::result::Result<Vec<openagents_wallet::Channel>, openagents_wallet::WalletError> {
+        self.inner.channels()
+    }
+    fn funding_address(&self) -> std::result::Result<String, openagents_wallet::WalletError> {
+        self.inner.funding_address()
+    }
+    fn open_channel(
+        &self,
+        n: &str,
+        a: &str,
+        s: u64,
+        b: bool,
+    ) -> std::result::Result<String, openagents_wallet::WalletError> {
+        self.inner.open_channel(n, a, s, b)
+    }
+    fn close_channel(
+        &self,
+        u: &str,
+        c: &str,
+        f: bool,
+    ) -> std::result::Result<(), openagents_wallet::WalletError> {
+        self.inner.close_channel(u, c, f)
+    }
+}
+#[test]
+fn replacement_during_wallet_lookup_cannot_credit_the_old_writer() {
+    let f = Fixture::new();
+    let wallet = Arc::new(ReplacingWallet {
+        inner: FakeWallet::new(),
+        replace: Mutex::new(None),
+    });
+    let s = Service::open(f.config.clone(), f.runtime.clone(), wallet.clone()).unwrap();
+    let p = s
+        .call(
+            "cli:alice",
+            "alice",
+            Request::TopUp {
+                idempotency: "new".into(),
+                amount_sats: 20,
+            },
+            NOW,
+        )
+        .unwrap();
+    let hash = p["result"]["payment_hash"].as_str().unwrap();
+    wallet.inner.pay_in_full(hash);
+    *wallet.replace.lock().unwrap() = Some(f.config.state.join("service.lock"));
+    assert!(s.tick(NOW + 1).is_err());
+    assert_eq!(
+        Ledger::open(&f.config.ledger)
+            .unwrap()
+            .compute_balance("alice")
+            .unwrap()
+            .credited_msat,
+        1_000_000
+    );
+    let replacement = Service::open(f.config.clone(), f.runtime.clone(), wallet.clone()).unwrap();
+    replacement.tick(NOW + 2).unwrap();
+    assert_eq!(
+        replacement
+            .lock()
+            .unwrap()
+            .ledger
+            .compute_balance("alice")
+            .unwrap()
+            .credited_msat,
+        1_020_000
+    );
+    replacement.tick(NOW + 3).unwrap();
+    assert_eq!(
+        replacement
+            .lock()
+            .unwrap()
+            .ledger
+            .compute_balance("alice")
+            .unwrap()
+            .credited_msat,
+        1_020_000
+    );
+}
+#[test]
+fn shared_files_hardlinks_and_directories_are_refused_without_chmod() {
+    use std::os::unix::fs::PermissionsExt;
+    for kind in ["shared-file", "hardlink", "directory"] {
+        let f = Fixture::new();
+        let s = f.open();
+        drop(s);
+        let path = f.config.state.join("transport.sqlite");
+        match kind {
+            "shared-file" => {
+                std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap()
+            }
+            "hardlink" => std::fs::hard_link(&path, f.config.state.join("shared.sqlite")).unwrap(),
+            _ => std::fs::set_permissions(&f.config.state, std::fs::Permissions::from_mode(0o755))
+                .unwrap(),
+        }
+        assert!(Service::open(f.config.clone(), f.runtime.clone(), f.wallet.clone()).is_err());
+        if kind == "shared-file" {
+            assert_eq!(
+                std::fs::metadata(path).unwrap().permissions().mode() & 0o777,
+                0o644
+            );
+        }
+        if kind == "directory" {
+            assert_eq!(
+                std::fs::metadata(&f.config.state)
+                    .unwrap()
+                    .permissions()
+                    .mode()
+                    & 0o777,
+                0o755
+            );
+        }
+    }
+}
+
+#[test]
+fn replacement_after_dispatch_cannot_write_unknown_hold_or_recovery_history() {
+    let f = Fixture::new();
+    let s = f.open();
+    let execution = accepted(&s, "alice", "running-fence");
+    let _ = dispatch(&s, &execution);
+    let (request, revision) = {
+        let store = s.lock().unwrap();
+        let funded = store.journal.funded(&execution).unwrap().unwrap();
+        let revision = store.journal.all_funded().unwrap().len();
+        (funded.request, revision)
+    };
+    assert_eq!(
+        Ledger::open(&f.config.ledger)
+            .unwrap()
+            .hold(&request)
+            .unwrap()
+            .unwrap()
+            .state,
+        pay_ledger::compute::HoldState::Held
+    );
+    let before = rusqlite::Connection::open(f.config.state.join("lifecycle.sqlite"))
+        .unwrap()
+        .query_row(
+            "SELECT revision FROM recovery WHERE execution=?",
+            [&execution],
+            |r| r.get::<_, u32>(0),
+        )
+        .unwrap();
+    *f.runtime.replace_path.lock().unwrap() = Some(f.config.state.join("service.lock"));
+    assert!(s.tick(NOW + 30).is_err());
+    assert_eq!(
+        Ledger::open(&f.config.ledger)
+            .unwrap()
+            .hold(&request)
+            .unwrap()
+            .unwrap()
+            .state,
+        pay_ledger::compute::HoldState::Held
+    );
+    let after = rusqlite::Connection::open(f.config.state.join("lifecycle.sqlite"))
+        .unwrap()
+        .query_row(
+            "SELECT revision FROM recovery WHERE execution=?",
+            [&execution],
+            |r| r.get::<_, u32>(0),
+        )
+        .unwrap();
+    assert_eq!(after, before);
+    let replacement = f.open();
+    assert_eq!(
+        replacement
+            .lock()
+            .unwrap()
+            .journal
+            .all_funded()
+            .unwrap()
+            .len(),
+        revision
+    );
+    replacement.tick(NOW + 31).unwrap();
+    assert_eq!(f.runtime.owner.started(), 1);
 }

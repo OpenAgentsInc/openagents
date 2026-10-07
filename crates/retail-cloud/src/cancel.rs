@@ -186,6 +186,7 @@ fn advance_mode(
             match owner.stopped(&dispatch.resource, &dispatch.task, &request) {
                 Ok(Some(evidence)) => save_evidence(journal, execution, requested, &evidence)?,
                 Ok(None) if sent.is_none() => {
+                    journal.check_custody()?;
                     let claimed = journal.connection.execute(
                         "UPDATE cancellation SET sent_at=? WHERE execution=? AND sent_at IS NULL",
                         params![now, execution],
@@ -261,6 +262,7 @@ fn save_evidence(
     {
         return Err(Error::Invalid("invalid stop acknowledgment"));
     }
+    journal.check_custody()?;
     journal.connection.execute(
         "UPDATE cancellation SET evidence=? WHERE execution=? AND evidence IS NULL",
         params![serde_json::to_string(evidence)?, execution],

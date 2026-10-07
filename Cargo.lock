@@ -3416,13 +3416,23 @@ dependencies = [
 name = "compute-workbench"
 version = "0.1.0"
 dependencies = [
+ "axum 0.8.9",
+ "clap",
+ "fs2",
+ "libc",
+ "openagents-wallet",
  "pay-ledger",
+ "reqwest 0.12.28",
  "retail-cloud",
+ "retail-qualify",
+ "retail-service",
  "route-contract",
  "serde",
  "serde_json",
  "tempfile",
  "terminal-core",
+ "thiserror 2.0.20",
+ "tokio",
  "workbench",
 ]
 

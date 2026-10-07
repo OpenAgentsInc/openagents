@@ -411,17 +411,20 @@ pub fn enforce_ceiling(
         provider.state(&usage.resource),
         Ok(ResourceState::Stopped | ResourceState::Deleted)
     ) {
+        journal.check_custody()?;
         journal.connection.execute(
             "UPDATE meter SET stop_ack=COALESCE(stop_ack,?) WHERE execution=?",
             params![now, execution],
         )?;
     } else if !usage.stop_requested {
         // Claim the first stop atomically across service workers.
+        journal.check_custody()?;
         let changed = journal.connection.execute(
             "UPDATE meter SET stop_intent=? WHERE execution=? AND stop_intent IS NULL",
             params![now, execution],
         )?;
         if changed == 1 && provider.delete(&usage.resource).is_ok() {
+            journal.check_custody()?;
             journal.connection.execute(
                 "UPDATE meter SET stop_ack=COALESCE(stop_ack,?) WHERE execution=?",
                 params![now, execution],

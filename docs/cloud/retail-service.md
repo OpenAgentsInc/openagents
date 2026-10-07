@@ -16,8 +16,8 @@ retail flow. Each section names the module that implements it.
 bounded HTTP JSON (`openagents.cloud.retail-customer.v1`). The binary accepts
 `--config /absolute/private/config.json`, binds only loopback, and starts a
 resident worker independently of customer connections. REV-15 packages the
-external authenticated TLS origin and host deployment; REV-14 adds customer
-controls. This transport has only synthetic qualification.
+external authenticated TLS origin and host deployment; REV-14 adds the selected native customer
+controls below. This transport has only synthetic qualification.
 
 Every request sends `Authorization: Bearer ...` and `x-retail-principal`.
 The central compute ledger resolves the current principal, credential epoch,
@@ -70,6 +70,49 @@ restart preserves uncertainty and cleanup obligations without recreating.
 `GET /healthz` reports only
 process liveness; use authenticated `capacity` and the existing operator
 health reader for admission and obligations.
+
+## Selected native client
+
+`retail-client` (`compute-workbench`, feature `client`) uses this actual service
+adapter. Select a private `openagents.compute-retail-client.v1` configuration
+with `endpoint` (an HTTPS origin ending in `/v1/retail`), `principal`,
+`bearer_file`, `state`, `read_only`, and `development_loopback`. The latter
+admits numeric loopback HTTP only for isolated development. Files must be
+owned, private, unshared, and free of symlinks; existing shared files are
+refused without changing permissions. No credential or state comes from the
+home directory, environment, paired host, or gateway key.
+
+Use `retail-client --config /absolute/private/client.json` with `account`,
+`capacity`, `top-up`, or `top-up-status`. A top-up requests an exact invoice;
+pay it with a separately selected wallet. Only receiver evidence credits the
+central balance. `quote --idempotency ID --task /absolute/private/task.json
+--provider-key /absolute/private/openai.key` displays the supported contract,
+all payer/disclosure lines, expiry, and a retained review digest. Confirm it
+with `confirm --review DIGEST --provider-key /absolute/private/openai.key
+--service-custody`. The key reaches the authenticated service only through
+that explicit confirmation. Task input and shell approval grant nothing.
+Changed terms, key, account, or current rights require a new review; a lost
+confirmation reply retries the identical funded request.
+
+`executions`, `reconnect`, and `progress` observe account-bound execution and
+cursor records. `cancel` requests a stop under current execution authority;
+`receipt` separates the request, executor acknowledgment, deletion, unknown
+usage, actual measured charge, and unused hold release. `artifact` reads a
+logical retained result. Customer model expense remains unknown and separate;
+a failed check does not erase measured compute charges. A `read_only` client
+can observe these records and cannot fund, quote, confirm, or cancel.
+
+Client references replace atomically under an exclusive private lock. The
+service pins its receiver node and fences the original state, lock, journal,
+and ledger descriptors before effects and after blocking collaborator calls.
+The native journal rechecks custody at write boundaries, including recovery's
+unknown-hold mutation; losing custody cannot append a conservative observation
+through the old writer. Replacing or sharing those paths refuses the old writer;
+reconnect preserves
+the original ledger and execution rather than admitting a second purchase.
+These client controls have synthetic binary/HTTP acceptance only. O3/O4/O8
+still gate real funds, TLS deployment, live provider cleanup, and installed
+customer acceptance.
 
 ## Authorities
 
