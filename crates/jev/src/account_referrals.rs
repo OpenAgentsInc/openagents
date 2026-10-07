@@ -1,4 +1,4 @@
-//! Source-only introduction calls share the account transport and never retry.
+//! Authenticated referral calls share the private transport and never retry.
 use super::Account;
 use crate::{Error, Result};
 use reqwest::Method;
@@ -108,7 +108,7 @@ impl Account<'_> {
             .client
             .request_private_headers(method, path, bytes, &headers)
             .await?;
-        if raw.bytes.len() <= 16 * 1024 {
+        if raw.bytes.len() <= 256 * 1024 {
             if let Ok(value) = serde_json::from_slice::<Envelope<T>>(&raw.bytes) {
                 if value.v == "openagents.accounts.v1" {
                     return Ok(value.referral);
@@ -196,4 +196,215 @@ impl Account<'_> {
         )
         .await
     }
+    pub async fn attribution_policy(&self) -> Result<Option<AttributionPolicy>> {
+        self.referral_call(Method::GET, "/v1/account/attribution/policy", None)
+            .await
+    }
+    pub async fn attribution_policy_version(
+        &self,
+        digest: &str,
+    ) -> Result<Option<AttributionPolicy>> {
+        if !digest.strip_prefix("sha256:").is_some_and(|h| {
+            h.len() == 64
+                && h.bytes()
+                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        }) {
+            return Err(Error::Config("Invalid attribution policy digest.".into()));
+        }
+        self.referral_call(
+            Method::GET,
+            &format!("/v1/account/attribution/policy?digest={digest}"),
+            None,
+        )
+        .await
+    }
+    pub async fn attribution(&self) -> Result<Option<AttributionView>> {
+        self.referral_call(Method::GET, "/v1/account/attribution", None)
+            .await
+    }
+    pub async fn propose_attribution(
+        &self,
+        input: &AttributionProposal,
+    ) -> Result<AttributionDecision> {
+        self.referral_call(
+            Method::POST,
+            "/v1/account/attribution",
+            Some(
+                serde_json::to_value(input)
+                    .map_err(|_| Error::Config("Invalid attribution input.".into()))?,
+            ),
+        )
+        .await
+    }
+    pub async fn confirm_attribution(
+        &self,
+        customer: &str,
+        decision: &str,
+    ) -> Result<AttributionConfirmation> {
+        self.referral_call(
+            Method::POST,
+            "/v1/account/attribution/confirm",
+            Some(json!({"customer":customer,"decision":decision})),
+        )
+        .await
+    }
+    pub async fn workspace_attribution(
+        &self,
+        workspace: &str,
+    ) -> Result<Option<WorkspaceAttribution>> {
+        self.referral_call(Method::GET, &workspace_route(workspace)?, None)
+            .await
+    }
+    pub async fn adopt_workspace_attribution(
+        &self,
+        workspace: &str,
+        decision: &str,
+    ) -> Result<WorkspaceAttribution> {
+        self.referral_call(
+            Method::POST,
+            &workspace_route(workspace)?,
+            Some(json!({"decision":decision})),
+        )
+        .await
+    }
+    pub async fn referrer_successors(&self, id: &str) -> Result<Vec<ReferralSuccessor>> {
+        self.referral_call(Method::GET, &format!("{}/lineage", route(id)?), None)
+            .await
+    }
+}
+
+fn workspace_route(workspace: &str) -> Result<String> {
+    if workspace.is_empty()
+        || workspace.len() > 128
+        || !workspace
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"_-".contains(&b))
+    {
+        return Err(Error::Config("Invalid attribution workspace.".into()));
+    }
+    Ok(format!("/v1/workspaces/{workspace}/attribution"))
+}
+#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct AttributionPolicy {
+    pub schema: String,
+    pub version: String,
+    pub rule: String,
+    pub terms: String,
+    pub digest: String,
+}
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ReferralIntroduction {
+    CapturedSource,
+    EarlyAgreement,
+    PreexistingCustomer,
+    MissingEvidence,
+    Correction,
+}
+#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct ReferralEvidence {
+    pub reference: String,
+    pub digest: String,
+}
+#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct AttributionProposal {
+    pub request: String,
+    pub policy_digest: String,
+    pub introduction: ReferralIntroduction,
+    pub referrer: Option<String>,
+    pub evidence: Vec<ReferralEvidence>,
+    pub reason: String,
+    pub consent: bool,
+    pub expected_decision: Option<String>,
+}
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum AttributionStatus {
+    Accepted,
+    Review,
+}
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum AttributionReview {
+    MissingEvidence,
+    PreexistingCustomer,
+    CompetingIntroduction,
+    AwaitingConfirmation,
+    SelfReferral,
+    SourceOnly,
+    UnknownSignup,
+}
+#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct AttributionBinding {
+    pub id: String,
+    pub customer: String,
+    pub referrer: ReferralIdentity,
+    pub policy_digest: String,
+    pub accepted_decision: String,
+}
+#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct AttributionDecision {
+    pub schema: String,
+    pub customer: String,
+    pub sequence: u64,
+    pub prior: Option<String>,
+    pub request: String,
+    pub policy_digest: String,
+    pub introduction: ReferralIntroduction,
+    pub status: AttributionStatus,
+    pub review: Option<AttributionReview>,
+    pub referrer: Option<ReferralIdentity>,
+    pub referrer_owner: Option<String>,
+    pub source: Option<ReferralSource>,
+    pub evidence: Vec<ReferralEvidence>,
+    pub reason: String,
+    pub actor: String,
+    pub confirmed: Option<String>,
+    pub at: u64,
+    pub digest: String,
+}
+#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct AttributionView {
+    pub schema: String,
+    pub customer: String,
+    pub status: AttributionStatus,
+    pub binding: Option<AttributionBinding>,
+    pub decisions: Vec<AttributionDecision>,
+    pub commission_eligibility: bool,
+}
+#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct AttributionConfirmation {
+    pub customer: String,
+    pub decision: String,
+    pub policy_digest: String,
+    pub status: AttributionStatus,
+    pub referrer: ReferralIdentity,
+    pub commission_eligibility: bool,
+}
+#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct WorkspaceAttribution {
+    pub schema: String,
+    pub workspace: String,
+    pub status: AttributionStatus,
+    pub binding: AttributionBinding,
+    pub commission_eligibility: bool,
+}
+#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct ReferralSuccessor {
+    pub referrer: String,
+    pub from: String,
+    pub to: String,
+    pub version: u64,
+    pub accepted_at: u64,
+    pub management_only: bool,
+    pub digest: String,
 }

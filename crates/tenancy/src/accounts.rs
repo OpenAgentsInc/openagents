@@ -313,7 +313,7 @@ impl Store {
                 "{name}: the store's digest does not recompute over its contents"
             ));
         }
-        self.referrals.validate(&self.accounts)?;
+        self.referrals.validate(&self.accounts, &self.workspaces)?;
         let mut principals: BTreeMap<&str, &str> = BTreeMap::new();
         for account in self.accounts.values() {
             if account.id.is_empty() || account.label.is_empty() {
@@ -1161,6 +1161,10 @@ impl Accounts {
                 members,
                 created: granted,
             };
+            store
+                .referrals
+                .inherit_workspace(&workspace)
+                .map_err(|error| Refusal::Store(Trouble::Invalid(error.to_string())))?;
             store.workspaces.insert(id, workspace.clone());
             Ok(workspace)
         })

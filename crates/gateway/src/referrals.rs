@@ -10,6 +10,7 @@ use axum::{
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::sync::Arc;
+use tenancy::accounts::referrals::attribution;
 use tenancy::accounts::referrals::{self, Capture, Error, Kind};
 
 pub(crate) fn routes() -> Vec<(&'static str, MethodRouter<Arc<ServeState>>)> {
@@ -17,6 +18,14 @@ pub(crate) fn routes() -> Vec<(&'static str, MethodRouter<Arc<ServeState>>)> {
         ("/join", get(join)),
         ("/v1/account/acquisition", get(source).post(capture)),
         ("/v1/account/referrers", post(create)),
+        ("/v1/account/attribution/policy", get(policy)),
+        ("/v1/account/attribution", get(attributed).post(propose)),
+        ("/v1/account/attribution/confirm", post(confirm)),
+        (
+            "/v1/workspaces/{workspace}/attribution",
+            get(workspace_attribution).post(adopt),
+        ),
+        ("/v1/account/referrers/{referrer}/lineage", get(lineage)),
         ("/v1/account/referrers/{referrer}", get(show)),
         (
             "/v1/account/referrers/{referrer}/link",
@@ -55,11 +64,156 @@ async fn actor(
     let principal = accounts::principal(state, headers)?;
     let account = accounts::member_account(&principal)?.to_owned();
     if let Some(expected) = headers.get("x-openagents-referral-account") {
-        if expected.to_str().ok() != Some(account.as_str()) {
+        if headers
+            .get_all("x-openagents-referral-account")
+            .iter()
+            .count()
+            != 1
+            || expected.to_str().ok() != Some(account.as_str())
+        {
             return Err(refused(Error::Conflict));
         }
     }
     Ok((accounts::accounts_store(state)?, account))
+}
+
+fn current(state: &ServeState, headers: &HeaderMap, account: &str) -> bool {
+    accounts::principal(state, headers)
+        .ok()
+        .as_ref()
+        .and_then(|p| accounts::member_account(p).ok())
+        == Some(account)
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PolicyQuery {
+    digest: Option<String>,
+}
+async fn policy(
+    State(state): State<Arc<ServeState>>,
+    headers: HeaderMap,
+    Query(query): Query<PolicyQuery>,
+) -> Response {
+    let (store, account) = match actor(&state, &headers).await {
+        Ok(v) => v,
+        Err(e) => return e,
+    };
+    match store.attribution_policy_version(&account, query.digest.as_deref()) {
+        Ok(v) => answer(v),
+        Err(e) => refused(e),
+    }
+}
+async fn attributed(State(state): State<Arc<ServeState>>, headers: HeaderMap) -> Response {
+    let (store, account) = match actor(&state, &headers).await {
+        Ok(v) => v,
+        Err(e) => return e,
+    };
+    match store.attribution(&account) {
+        Ok(v) => answer(v),
+        Err(e) => refused(e),
+    }
+}
+async fn propose(
+    State(state): State<Arc<ServeState>>,
+    headers: HeaderMap,
+    Json(body): Json<Value>,
+) -> Response {
+    let (store, account) = match actor(&state, &headers).await {
+        Ok(v) => v,
+        Err(e) => return e,
+    };
+    let input: attribution::Proposal = match serde_json::from_value(body) {
+        Ok(v) => v,
+        Err(_) => return refused(Error::Invalid),
+    };
+    match store
+        .propose_attribution_guarded(&account, &input, || current(&state, &headers, &account))
+    {
+        Ok(v) => answer(v),
+        Err(e) => refused(e),
+    }
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Confirmation {
+    customer: String,
+    decision: String,
+}
+async fn confirm(
+    State(state): State<Arc<ServeState>>,
+    headers: HeaderMap,
+    Json(body): Json<Value>,
+) -> Response {
+    let (store, account) = match actor(&state, &headers).await {
+        Ok(v) => v,
+        Err(e) => return e,
+    };
+    let input: Confirmation = match serde_json::from_value(body) {
+        Ok(v) => v,
+        Err(_) => return refused(Error::Invalid),
+    };
+    match store.confirm_attribution_guarded(&account, &input.customer, &input.decision, || {
+        current(&state, &headers, &account)
+    }) {
+        Ok(v) => answer(
+            json!({"customer":v.customer,"decision":v.digest,"policy_digest":v.policy_digest,"status":v.status,"referrer":v.referrer,"commission_eligibility":false}),
+        ),
+        Err(e) => refused(e),
+    }
+}
+async fn workspace_attribution(
+    State(state): State<Arc<ServeState>>,
+    headers: HeaderMap,
+    Path(workspace): Path<String>,
+) -> Response {
+    let (store, account) = match actor(&state, &headers).await {
+        Ok(v) => v,
+        Err(e) => return e,
+    };
+    match store.workspace_attribution(&account, &workspace) {
+        Ok(v) => answer(v),
+        Err(e) => refused(e),
+    }
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Adoption {
+    decision: String,
+}
+async fn adopt(
+    State(state): State<Arc<ServeState>>,
+    headers: HeaderMap,
+    Path(workspace): Path<String>,
+    Json(body): Json<Value>,
+) -> Response {
+    let (store, account) = match actor(&state, &headers).await {
+        Ok(v) => v,
+        Err(e) => return e,
+    };
+    let input: Adoption = match serde_json::from_value(body) {
+        Ok(v) => v,
+        Err(_) => return refused(Error::Invalid),
+    };
+    match store.adopt_workspace_attribution_guarded(&account, &workspace, &input.decision, || {
+        current(&state, &headers, &account)
+    }) {
+        Ok(v) => answer(v),
+        Err(e) => refused(e),
+    }
+}
+async fn lineage(
+    State(state): State<Arc<ServeState>>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Response {
+    let (store, account) = match actor(&state, &headers).await {
+        Ok(v) => v,
+        Err(e) => return e,
+    };
+    match store.referrer_successors(&account, &id) {
+        Ok(v) => answer(v),
+        Err(e) => refused(e),
+    }
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -194,7 +348,9 @@ async fn migrate(
         Ok(v) => v,
         Err(_) => return refused(Error::Invalid),
     };
-    match store.offer_referrer_migration(&account, &id, &input.account) {
+    match store.offer_referrer_migration_guarded(&account, &id, &input.account, || {
+        current(&state, &headers, &account)
+    }) {
         Ok(v) => answer(v),
         Err(e) => refused(e),
     }
@@ -208,7 +364,9 @@ async fn accept(
         Ok(v) => v,
         Err(e) => return e,
     };
-    match store.accept_referrer_migration(&account, &id) {
+    match store
+        .accept_referrer_migration_guarded(&account, &id, || current(&state, &headers, &account))
+    {
         Ok(v) => answer(v),
         Err(e) => refused(e),
     }

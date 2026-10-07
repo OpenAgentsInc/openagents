@@ -1336,7 +1336,7 @@ computers:
    on`, merge one of her changes at the Merge station, and check the tip
    with a NIP-GS verifier.
 
-## Referral source activation (REV-27, #10834)
+## Referral source and attribution activation (REV-27/REV-28, #10834/#10835)
 
 Review the public `/join?ref=TOKEN` wording and the explicit
 `openagents.referral.consent.v1` presentation before distributing links. Qualify
@@ -1345,8 +1345,22 @@ account deployment, and identify its canonical private account directory before
 an assisted pipeline owner records an introduction. Synthetic checks establish
 source custody, replay refusal, migration, and redaction; they establish no real
 customer acquisition, permanent attribution terms, commission, or payout. Keep
-OpenAgents sales-agent identities source-only. REV-28 owns competing or changed
-attribution decisions; later commission contracts own payment eligibility.
+OpenAgents sales-agent identities source-only.
+
+Before promising a permanent relationship, agree on the exact attribution terms
+and exception wording, then publish a new immutable policy with
+`tenant-referrals publish --registry DIR --input FILE`. The private input is
+`{ "version": "YOUR_VERSION", "terms": "YOUR_AGREED_TERMS" }`. The implemented
+`consented-permanent-review-v1` rule requires separate customer consent; early
+agreements, existing customers, and corrections require both parties' review.
+Competing or missing evidence does not choose a winner. Legacy source records
+without signup provenance remain unknown and retain their original evidence.
+Keep the agreements identified by private evidence digests under the agreed
+retention policy. Qualify actual customer consent, recovery, team ownership,
+and referrer management succession on the intended account deployment before
+distribution. A successor changes management; it does not transfer a payment
+right. Later commission contracts decide eligible usage and earnings; synthetic
+checks create no real referral, commercial agreement, or commission.
 
 ## Remote placement for gates and benchmarks (#10767)
 

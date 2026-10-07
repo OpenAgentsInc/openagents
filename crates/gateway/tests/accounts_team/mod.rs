@@ -173,20 +173,20 @@ async fn team_accept_pins_workspace_and_current_account_before_changing_membersh
     d.server.abort();
 }
 
-fn private_file(path: &std::path::Path, bytes: &[u8]) {
+pub(super) fn private_file(path: &std::path::Path, bytes: &[u8]) {
     use std::os::unix::fs::PermissionsExt;
     std::fs::write(path, bytes).unwrap();
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).unwrap();
 }
-fn command(id: &str, origin: &str, account: &str, alias: &str, action: Value) -> Value {
+pub(super) fn command(id: &str, origin: &str, account: &str, alias: &str, action: Value) -> Value {
     json!({"id":id,"origin":origin,"account":account,"credential_alias":alias,"action":action})
 }
-struct Installed {
+pub(super) struct Installed {
     binary: std::ffi::OsString,
-    directory: tempfile::TempDir,
+    pub(super) directory: tempfile::TempDir,
 }
 impl Installed {
-    fn new(binary: &std::ffi::OsStr) -> Self {
+    pub(super) fn new(binary: &std::ffi::OsStr) -> Self {
         Self {
             binary: binary.to_owned(),
             directory: tempfile::tempdir().unwrap(),
@@ -195,7 +195,7 @@ impl Installed {
     fn root(&self) -> std::path::PathBuf {
         self.directory.path().join("customer")
     }
-    async fn run(&self, args: Vec<String>) -> (bool, Value) {
+    pub(super) async fn run(&self, args: Vec<String>) -> (bool, Value) {
         let output = customer_process(
             self.binary.clone(),
             self.root(),
@@ -220,12 +220,12 @@ impl Installed {
         );
         (output.status.success(), value)
     }
-    async fn ok(&self, args: Vec<String>) -> Value {
+    pub(super) async fn ok(&self, args: Vec<String>) -> Value {
         let (ok, value) = self.run(args).await;
         assert!(ok, "{value}");
         value
     }
-    async fn import(&self, alias: &str, token: &str) {
+    pub(super) async fn import(&self, alias: &str, token: &str) {
         let path = self.directory.path().join(format!("{alias}.key"));
         private_file(&path, token.as_bytes());
         self.ok(vec![
@@ -237,7 +237,11 @@ impl Installed {
         ])
         .await;
     }
-    async fn change(&self, value: Value, invitation: Option<&std::path::Path>) -> (bool, Value) {
+    pub(super) async fn change(
+        &self,
+        value: Value,
+        invitation: Option<&std::path::Path>,
+    ) -> (bool, Value) {
         let path = self.directory.path().join("intent.json");
         private_file(&path, &serde_json::to_vec(&value).unwrap());
         let mut args = vec![
@@ -251,7 +255,7 @@ impl Installed {
         }
         self.run(args).await
     }
-    async fn select(&self, origin: &str, account: &str, workspace: &str, alias: &str) {
+    pub(super) async fn select(&self, origin: &str, account: &str, workspace: &str, alias: &str) {
         self.ok(vec![
             "select".into(),
             "--origin".into(),

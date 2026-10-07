@@ -266,6 +266,56 @@ async fn referral_mutations_do_not_retry_or_accept_private_share_paths() -> Outc
 }
 
 #[tokio::test]
+async fn attribution_mutations_keep_selected_account_and_do_not_retry_uncertain_confirmation()
+-> Outcome {
+    let body =
+        json!({"error":{"code":"referral_store_unavailable","message":"private-agreement-text"}})
+            .to_string();
+    let (base, seen) = serve(vec![Reply::new(503, &body), Reply::new(200, "{}")]).await?;
+    let client = Client::new(
+        Config::new()
+            .base_url(base)
+            .api_key("fixture-only-key")
+            .retry(RetryPolicy {
+                max_retries: 3,
+                ..RetryPolicy::default()
+            }),
+    )?;
+    let decision = format!("sha256:{}", "a".repeat(64));
+    let error = client
+        .account()
+        .for_referrals_account("source-manager")
+        .confirm_attribution("customer-one", &decision)
+        .await
+        .unwrap_err();
+    assert!(!error.to_string().contains("private-agreement-text"));
+    let calls = seen.lock().await;
+    assert_eq!(calls.len(), 1);
+    assert_eq!(
+        calls[0]
+            .headers
+            .get("x-openagents-referral-account")
+            .map(String::as_str),
+        Some("source-manager")
+    );
+    assert!(
+        client
+            .account()
+            .workspace_attribution("../unrelated-private-customer")
+            .await
+            .is_err()
+    );
+    assert!(
+        client
+            .account()
+            .attribution_policy_version("private-key-material")
+            .await
+            .is_err()
+    );
+    Ok(())
+}
+
+#[tokio::test]
 async fn account_management_uses_gateway_timestamps_and_masks_grants() -> Outcome {
     let (base, seen) = serve(vec![Reply::new(200, r#"{"session":{"id":"fixture-session","kind":"user","account":"buyer-a","created_at":10,"expires_at":100},"token":"sess_fixture-only-not-a-real-token"}"#)]).await?;
     let client = Client::new(

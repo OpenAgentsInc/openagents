@@ -2,6 +2,8 @@
 
 use super::*;
 
+pub mod attribution;
+
 pub const SCHEMA: &str = "openagents.referral.source.v1";
 pub const CONSENT: &str = "openagents.referral.consent.v1";
 const LIMIT: usize = 4096;
@@ -111,6 +113,8 @@ struct Link {
 struct Recorded {
     input: String,
     source: Source,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    at_signup: Option<bool>,
 }
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -121,6 +125,8 @@ pub struct Book {
     links: BTreeMap<String, Link>,
     #[serde(default)]
     sources: BTreeMap<String, Recorded>,
+    #[serde(default, skip_serializing_if = "attribution::State::is_empty")]
+    attribution: attribution::State,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -174,9 +180,16 @@ fn hash(value: &[u8]) -> String {
 
 impl Book {
     pub fn is_empty(&self) -> bool {
-        self.referrers.is_empty() && self.links.is_empty() && self.sources.is_empty()
+        self.referrers.is_empty()
+            && self.links.is_empty()
+            && self.sources.is_empty()
+            && self.attribution.is_empty()
     }
-    pub(super) fn validate(&self, accounts: &BTreeMap<String, Account>) -> Result<(), String> {
+    pub(super) fn validate(
+        &self,
+        accounts: &BTreeMap<String, Account>,
+        workspaces: &BTreeMap<String, Workspace>,
+    ) -> Result<(), String> {
         if self.referrers.len() > LIMIT
             || self.sources.len() > LIMIT
             || self.links.len() > LIMIT * LINKS
@@ -233,7 +246,7 @@ impl Book {
                 }
             }
         }
-        Ok(())
+        self.attribution.validate(self, accounts, workspaces)
     }
     fn capture(
         &mut self,
@@ -290,6 +303,7 @@ impl Book {
             Recorded {
                 input: input_digest,
                 source: source.clone(),
+                at_signup: Some(false),
             },
         );
         Ok((source, true))
@@ -452,7 +466,19 @@ impl Accounts {
         id: &str,
         new_owner: &str,
     ) -> Result<Referrer, Error> {
+        self.offer_referrer_migration_guarded(actor, id, new_owner, || true)
+    }
+    pub fn offer_referrer_migration_guarded(
+        &self,
+        actor: &str,
+        id: &str,
+        new_owner: &str,
+        current: impl FnOnce() -> bool,
+    ) -> Result<Referrer, Error> {
         self.referral_write(|store, _| {
+            if !current() {
+                return Err(Error::Unauthorized);
+            }
             if !store.accounts.contains_key(new_owner) || actor == new_owner {
                 return Err(Error::Invalid);
             }
@@ -464,20 +490,41 @@ impl Accounts {
             if record.owner != actor {
                 return Err(Error::Unauthorized);
             }
+            if record.pending_owner.as_deref() == Some(new_owner) {
+                return Ok((record.clone(), false));
+            }
             record.pending_owner = Some(new_owner.into());
             Ok((record.clone(), true))
         })
     }
     pub fn accept_referrer_migration(&self, actor: &str, id: &str) -> Result<Referrer, Error> {
+        self.accept_referrer_migration_guarded(actor, id, || true)
+    }
+    pub fn accept_referrer_migration_guarded(
+        &self,
+        actor: &str,
+        id: &str,
+        current: impl FnOnce() -> bool,
+    ) -> Result<Referrer, Error> {
         self.referral_write(|store, _| {
+            if !current() {
+                return Err(Error::Unauthorized);
+            }
             let record = store
                 .referrals
                 .referrers
                 .get_mut(id)
                 .ok_or(Error::Unavailable)?;
             if record.pending_owner.as_deref() != Some(actor) {
+                if record.pending_owner.is_none()
+                    && record.owner == actor
+                    && store.referrals.attribution.confirms_manager(record, actor)
+                {
+                    return Ok((record.clone(), false));
+                }
                 return Err(Error::Unauthorized);
             }
+            let predecessor = record.owner.clone();
             record.owner = actor.into();
             record.pending_owner = None;
             record.version = record.version.checked_add(1).ok_or(Error::Bound)?;
@@ -489,7 +536,12 @@ impl Accounts {
             {
                 link.active = false;
             }
-            Ok((record.clone(), true))
+            let successor = record.clone();
+            store
+                .referrals
+                .attribution
+                .record_successor(&successor, &predecessor)?;
+            Ok((successor, true))
         })
     }
     pub fn capture_acquisition(&self, actor: &str, input: &Capture) -> Result<Source, Error> {
@@ -532,6 +584,12 @@ impl Accounts {
             };
             store.accounts.insert(account.id.clone(), account.clone());
             let (source, _) = store.referrals.capture(&account.id, input, now)?;
+            store
+                .referrals
+                .sources
+                .get_mut(&account.id)
+                .ok_or(Error::Unavailable)?
+                .at_signup = Some(true);
             Ok(((account, source), true))
         })
     }

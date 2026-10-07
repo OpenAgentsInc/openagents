@@ -38,7 +38,10 @@ pub use management::{
     PurchaseReceipt, SessionGrant, WorkspaceIdentity, WorkspaceView,
 };
 pub use referrals::{
-    ReferralCapture, ReferralIdentity, ReferralKind, ReferralLink, ReferralRecord, ReferralSource,
+    AttributionBinding, AttributionConfirmation, AttributionDecision, AttributionPolicy,
+    AttributionProposal, AttributionReview, AttributionStatus, AttributionView, ReferralCapture,
+    ReferralEvidence, ReferralIdentity, ReferralIntroduction, ReferralKind, ReferralLink,
+    ReferralRecord, ReferralSource, ReferralSuccessor, WorkspaceAttribution,
 };
 pub use team::{
     InvitationGrant, Team, TeamInvitation, TeamInvitationSummary, TeamMember, TeamRole,

@@ -245,11 +245,23 @@ records a person, agent, author, or partner under a separate referrer ID.
 links and capture explicit consent. `/join?ref=TOKEN` contains random lookup
 material; it grants no account access. Signup preserves missing, declined,
 unknown, disabled, and malformed source outcomes. Exact capture replay preserves
-the original record; changed capture needs the later attribution contract.
+the original record; corrections use a separate attribution decision.
 Rotation and accepted management migration disable earlier links while keeping
 historical source identity. The private pipeline owner can `record_acquisition`
 from the canonical account directory, separately from unverified intake text.
-These source records establish no permanent attribution or earnings right.
+These source records establish no earnings right. The separate
+[`referrals::attribution` decisions](../../crates/tenancy/src/accounts/referrals/attribution.rs)
+retain customer consent to exact operator-published terms. New signup sources
+can establish an accepted relationship; early agreements, existing customers,
+and corrections require explicit review by the customer and current referrer
+manager. Missing, competing, self-referral, and source-only evidence stays in
+review. Legacy records without signup provenance remain unknown. Original
+sources, policy versions, reasons, and earlier decisions stay in the canonical
+account history. Team creation inherits that relationship; ownership transfer
+retains its original customer. Workspace reads require current owner or admin
+authority and expose only the workspace's binding. A key change cannot replace
+the stable referrer, and management succession creates no earnings eligibility.
+Commission terms and settlement remain separate.
 OpenAgents sales-agent sources remain source-only. Review wording and consent
 before distributing links, as recorded in [NEEDS_OWNER.md](../../NEEDS_OWNER.md).
 

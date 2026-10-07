@@ -280,12 +280,15 @@ mod retry;
 mod transport;
 
 pub use account::{
-    Account, AccountDetails, AccountInfo, BalanceView, GatewaySession, InvitationGrant, KeyGrant,
+    Account, AccountDetails, AccountInfo, AttributionBinding, AttributionConfirmation,
+    AttributionDecision, AttributionPolicy, AttributionProposal, AttributionReview,
+    AttributionStatus, AttributionView, BalanceView, GatewaySession, InvitationGrant, KeyGrant,
     KeyIdentity, Position, PurchaseActivity, PurchaseActivityItem, PurchaseCost, PurchaseReceipt,
-    ReferralCapture, ReferralIdentity, ReferralKind, ReferralLink, ReferralRecord, ReferralSource,
-    SessionBudget, SessionGrant, SessionInfo, SessionView, Team, TeamInvitation,
-    TeamInvitationSummary, TeamMember, TeamRole, TeamWorkspace, TeamWorkspaceIdentity, UsageCost,
-    UsageQuery, UsageTotals, UsageUnits, UsageView, WorkspaceIdentity, WorkspaceRef, WorkspaceView,
+    ReferralCapture, ReferralEvidence, ReferralIdentity, ReferralIntroduction, ReferralKind,
+    ReferralLink, ReferralRecord, ReferralSource, ReferralSuccessor, SessionBudget, SessionGrant,
+    SessionInfo, SessionView, Team, TeamInvitation, TeamInvitationSummary, TeamMember, TeamRole,
+    TeamWorkspace, TeamWorkspaceIdentity, UsageCost, UsageQuery, UsageTotals, UsageUnits,
+    UsageView, WorkspaceAttribution, WorkspaceIdentity, WorkspaceRef, WorkspaceView,
 };
 pub use answers::{
     Answer, ChoiceAnswer, MASS_TOLERANCE, NoulAnswer, RawResponse, ScoreAnswer, SystemOneResponse,

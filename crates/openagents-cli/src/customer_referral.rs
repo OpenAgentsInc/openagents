@@ -3,7 +3,7 @@ use crate::{Args, Output};
 #[cfg(test)]
 use coder::cli_route::tree::{Declared, Effect};
 use coder::customer::Store;
-use jev::{ReferralCapture, ReferralKind};
+use jev::{AttributionProposal, ReferralCapture, ReferralKind};
 use serde::Deserialize;
 use serde_json::json;
 use std::path::Path;
@@ -27,10 +27,32 @@ pub const USAGE: &str = "usage: openagents customer referral COMMAND --root DIR 
         Offer management migration to the account in {account:ID}.
   accept --referrer ID
         Accept migration offered to the current authenticated account.
+  lineage --referrer ID
+        Read authorized management successors, which create no earnings right.
+  policy [--digest DIGEST]
+        Read the operator-published attribution terms and exact policy digest.
+  attribution
+        Read the current customer's private decisions and retained binding.
+  propose --input FILE
+        Consent to {request,policy_digest,introduction,referrer,evidence,reason,
+        consent,expected_decision}. An introduction is captured_source,
+        early_agreement, preexisting_customer, missing_evidence, or correction.
+        Evidence contains opaque {reference,digest} pairs. A correction pins
+        the current decision digest and preserves earlier decisions.
+  confirm --input FILE
+        As the referrer manager, confirm {customer,decision} explicitly.
+        Early agreements and reviewed corrections require both parties.
+  workspace --workspace ID
+        Read a workspace relationship as its current owner or admin.
+  adopt --workspace ID --input FILE
+        As owner, attach your accepted relationship using {decision:DIGEST}.
 
 Select a customer first. FILE is a bounded private regular JSON file.
 Links contain only random source lookup material. Source capture records an
-introduction and grants no permanent attribution, commission, or payment right.
+introduction and grants no commission or payment right. Permanent attribution
+requires separate consent to published terms. Missing or competing evidence
+stays in review. Team creation and ownership transfer retain the original
+relationship; current signing keys and wallet destinations do not replace it.
 OpenAgents sales-agent identities are provisioned source-only by the operator.
 Public wording and consent presentation require owner review before distribution.";
 #[cfg(test)]
@@ -43,6 +65,13 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("referral source", Effect::ReadOnly),
     Declared::computer("referral migrate", Effect::Grants),
     Declared::computer("referral accept", Effect::Grants),
+    Declared::computer("referral lineage", Effect::ReadOnly),
+    Declared::computer("referral policy", Effect::ReadOnly),
+    Declared::computer("referral attribution", Effect::ReadOnly),
+    Declared::computer("referral propose", Effect::Grants),
+    Declared::computer("referral confirm", Effect::Grants),
+    Declared::computer("referral workspace", Effect::ReadOnly),
+    Declared::computer("referral adopt", Effect::Grants),
 ];
 fn required<'a>(args: &'a Args, name: &str) -> Result<&'a str, String> {
     args.option(name)
@@ -50,7 +79,7 @@ fn required<'a>(args: &'a Args, name: &str) -> Result<&'a str, String> {
         .ok_or_else(|| format!("--{name} is required"))
 }
 fn input<T: for<'de> Deserialize<'de>>(args: &Args) -> Result<T, String> {
-    let bytes = Store::private_input(Path::new(required(args, "input")?), 4096)?;
+    let bytes = Store::private_input(Path::new(required(args, "input")?), 16 * 1024)?;
     serde_json::from_slice(&bytes).map_err(|_| "Invalid bounded private referral input.".into())
 }
 pub fn run(output: &Output, words: &[String]) -> u8 {
@@ -74,17 +103,23 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         return output.usage("customer referral", "Select one referral command.", USAGE);
     };
     let allowed: &[&str] = match command.as_str() {
-        "create" | "capture" => &["root", "input"],
-        "show" | "link" | "disable" | "accept" => &["root", "referrer"],
+        "create" | "capture" | "propose" | "confirm" => &["root", "input"],
+        "show" | "link" | "disable" | "accept" | "lineage" => &["root", "referrer"],
         "migrate" => &["root", "referrer", "input"],
-        "source" => &["root"],
+        "source" | "attribution" => &["root"],
+        "policy" => &["root", "digest"],
+        "workspace" => &["root", "workspace"],
+        "adopt" => &["root", "workspace", "input"],
         _ => return output.usage("customer referral", "Unknown referral command.", USAGE),
     };
     if args
         .option_names()
         .iter()
         .any(|name| !allowed.contains(name))
-        || allowed.iter().any(|name| required(&args, name).is_err())
+        || allowed
+            .iter()
+            .filter(|name| command != "policy" || **name != "digest")
+            .any(|name| required(&args, name).is_err())
     {
         return output.usage(
             "customer referral",
@@ -130,6 +165,77 @@ async fn execute(args: &Args, command: &str) -> Result<serde_json::Value, String
             )
         }
         "show" => json!(account.referrer(id()?).await.map_err(err)?),
+        "lineage" => json!(account.referrer_successors(id()?).await.map_err(err)?),
+        "policy" => json!(match args.option("digest") {
+            Some(digest) => account
+                .attribution_policy_version(digest)
+                .await
+                .map_err(err)?,
+            None => account.attribution_policy().await.map_err(err)?,
+        }),
+        "attribution" => {
+            let view = account.attribution().await.map_err(err)?;
+            if view
+                .as_ref()
+                .is_some_and(|v| v.customer != selection.context.account)
+            {
+                return Err("Attribution belongs to another account.".into());
+            }
+            json!(view)
+        }
+        "propose" => {
+            let proposal: AttributionProposal = input(args)?;
+            let view = account.propose_attribution(&proposal).await.map_err(err)?;
+            if view.customer != selection.context.account {
+                return Err("Attribution belongs to another account.".into());
+            }
+            json!(view)
+        }
+        "confirm" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields)]
+            struct Confirm {
+                customer: String,
+                decision: String,
+            }
+            let input: Confirm = input(args)?;
+            let view = account
+                .confirm_attribution(&input.customer, &input.decision)
+                .await
+                .map_err(err)?;
+            if view.customer != input.customer {
+                return Err("Confirmation belongs to another account.".into());
+            }
+            json!(view)
+        }
+        "workspace" => {
+            let workspace = required(args, "workspace")?;
+            let view = account
+                .workspace_attribution(workspace)
+                .await
+                .map_err(err)?;
+            if view.as_ref().is_some_and(|v| v.workspace != workspace) {
+                return Err("Attribution belongs to another workspace.".into());
+            }
+            json!(view)
+        }
+        "adopt" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields)]
+            struct Adopt {
+                decision: String,
+            }
+            let input: Adopt = input(args)?;
+            let workspace = required(args, "workspace")?;
+            let view = account
+                .adopt_workspace_attribution(workspace, &input.decision)
+                .await
+                .map_err(err)?;
+            if view.workspace != workspace || view.binding.customer != selection.context.account {
+                return Err("Attribution belongs to another account or workspace.".into());
+            }
+            json!(view)
+        }
         "link" => {
             let value = account.issue_referral_link(id()?).await.map_err(err)?;
             json!({"referrer":value.referrer,"url":format!("{}{}",selection.origin,value.path),"token":value.token})

@@ -7862,6 +7862,259 @@
                 "effect": "grants",
                 "runs_on": "connected_computer"
               }
+            },
+            {
+              "name": "lineage",
+              "leaf": {
+                "path": [
+                  "customer",
+                  "referral",
+                  "lineage"
+                ],
+                "usage": [
+                  "referral lineage --referrer ID"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "referral"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "lineage"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "referrer",
+                        "value": "ID",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Read authorized management successors, which create no earnings right.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "policy",
+              "leaf": {
+                "path": [
+                  "customer",
+                  "referral",
+                  "policy"
+                ],
+                "usage": [
+                  "referral policy [--digest DIGEST]"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "referral"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "policy"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "digest",
+                        "value": "DIGEST",
+                        "open": true,
+                        "optional": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Read the operator-published attribution terms and exact policy digest.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "attribution",
+              "leaf": {
+                "path": [
+                  "customer",
+                  "referral",
+                  "attribution"
+                ],
+                "usage": [
+                  "referral attribution"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "referral"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "attribution"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Read the current customer's private decisions and retained binding.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "propose",
+              "leaf": {
+                "path": [
+                  "customer",
+                  "referral",
+                  "propose"
+                ],
+                "usage": [
+                  "referral propose --input FILE"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "referral"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "propose"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "input",
+                        "value": "FILE",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Consent to {request,policy_digest,introduction,referrer,evidence,reason, consent,expected_decision}. An introduction is captured_source, early_agreement, preexisting_customer, missing_evidence, or correction. Evidence contains opaque {reference,digest} pairs. A correction pins the current decision digest and preserves earlier decisions.",
+                "effect": "grants",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "confirm",
+              "leaf": {
+                "path": [
+                  "customer",
+                  "referral",
+                  "confirm"
+                ],
+                "usage": [
+                  "referral confirm --input FILE"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "referral"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "confirm"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "input",
+                        "value": "FILE",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "As the referrer manager, confirm {customer,decision} explicitly. Early agreements and reviewed corrections require both parties.",
+                "effect": "grants",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "workspace",
+              "leaf": {
+                "path": [
+                  "customer",
+                  "referral",
+                  "workspace"
+                ],
+                "usage": [
+                  "referral workspace --workspace ID"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "referral"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "workspace"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "workspace",
+                        "value": "ID",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Read a workspace relationship as its current owner or admin.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "adopt",
+              "leaf": {
+                "path": [
+                  "customer",
+                  "referral",
+                  "adopt"
+                ],
+                "usage": [
+                  "referral adopt --workspace ID --input FILE"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "referral"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "adopt"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "workspace",
+                        "value": "ID",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "input",
+                        "value": "FILE",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "As owner, attach your accepted relationship using {decision:DIGEST}.",
+                "effect": "grants",
+                "runs_on": "connected_computer"
+              }
             }
           ]
         }

@@ -1851,6 +1851,30 @@ Existing capture cannot be overwritten; `migrate` and `accept` transfer referrer
 management through two authenticated accounts, preserving the stable identity.
 `disable` retires links. These commands create no commission or payment right.
 
+`policy` reads current attribution terms; `policy --digest DIGEST` reads a retained
+version. `propose --input FILE` records separate consent to that digest using
+`request`, `policy_digest`, `introduction`, `referrer`, `evidence`, `reason`,
+`consent`, and `expected_decision`. Evidence contains opaque private
+`{ "reference": "YOUR_REFERENCE", "digest": "sha256:..." }` pairs. The introduction
+is `captured_source`, `early_agreement`, `preexisting_customer`, `missing_evidence`,
+or `correction`. A correction pins the current decision digest and retains the
+earlier decision. `confirm --input FILE` lets the current referrer manager
+explicitly confirm `{ "customer": "ACCOUNT", "decision": "sha256:..." }`.
+Early agreements and corrections require both parties. Missing, competing,
+self-referral, and source-only evidence remains in review; legacy sources with
+unknown signup provenance are not relabeled as existing customers.
+
+`attribution` reads the selected customer's private history. `workspace
+--workspace ID` reads one relationship as its current owner or admin. New teams
+inherit the original customer relationship; ownership transfer preserves it.
+An existing team owner can use `adopt --workspace ID --input FILE` with
+`{ "decision": "sha256:..." }` to attach their accepted relationship. Adoption
+cannot overwrite another customer's binding. `lineage --referrer ID` reads
+management successors. These records create no commission, payout, or spend
+authority. Publish exact agreed terms through the local `tenant-referrals`
+operator command before requesting consent, and qualify the intended deployment
+as recorded in [NEEDS_OWNER.md](../../NEEDS_OWNER.md#referral-source-and-attribution-activation-rev-27rev-28-1083410835).
+
 ## Verify
 
 ```sh
