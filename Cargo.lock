@@ -15479,6 +15479,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "verse-bake"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "glam",
+ "pollster",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "verse-pbr",
+ "verse-zone-everglade",
+ "wgpu",
+]
+
+[[package]]
 name = "verse-content"
 version = "0.1.0"
 dependencies = [

@@ -703,6 +703,15 @@ uses, and marks which are implemented and which are only specified.
   (#10631): the PBR pipelines, baking, sky, and textured scenes (`pbr`), the
   world mesh (`mesh`), streamed content residency, and the fog distances.
   `verse` re-exports each module under its old path.
+- `crates/verse-bake` — Verse's offline lighting baker (#10905): the
+  `verse-bake` binary bakes a textured scene's per-vertex sky light over
+  several bounces, per-vertex sun visibility for each configured sun
+  direction, and the probe grid into a versioned `VBAK` products file keyed
+  by a SHA-256 `bake_key`, with a JSON receipt. The CPU backend walks the
+  bake's `Bvh` on every core; the GPU backend (`gpu` feature, off by
+  default) traces through `wgpu` ray queries, and both share every sample
+  so they agree within `GPU_TOLERANCE`. A rebake of an unchanged scene
+  reproduces the products' digest. Nothing loads the products yet.
 - `crates/verse-core` — what Verse's zones share, under the world runtime
   (#10631): the static `World` and the plaza's layout and `GymSite`, zone
   controls and atmosphere (`zone`), the avatar, the companion agent, the

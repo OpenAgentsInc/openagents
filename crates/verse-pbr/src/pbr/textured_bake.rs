@@ -55,20 +55,20 @@ pub const MAX_AMBIENT: f32 = 4.0;
 /// The share of its open-sky ambient a hit surface is assumed to receive
 /// when it reflects light. The bake follows one bounce, so a hit surface's
 /// own occlusion is not known.
-const HIT_AMBIENT: f32 = 0.6;
+pub const HIT_AMBIENT: f32 = 0.6;
 /// The most light an alpha-tested triangle stops. Its sampled texels miss
 /// the gaps between leaves, so even a fully covered card passes some light.
 const MASK_MAX_OPACITY: f32 = 0.8;
 /// The lowest diffuse multiplier of an alpha-tested vertex, so leaf cards
 /// deep in a canopy, lit through their neighbors, never turn black.
-const FOLIAGE_FLOOR: f32 = 0.3;
+pub const FOLIAGE_FLOOR: f32 = 0.3;
 /// How far ray origins sit off their surface, m.
-const BIAS: f32 = 0.02;
+pub const BIAS: f32 = 0.02;
 /// How far ray origins sit off a far level of detail's surface, m: past
 /// where simplifying moved it from the near level's.
-const FAR_BIAS: f32 = 0.25;
+pub const FAR_BIAS: f32 = 0.25;
 /// How far a ray toward the sun looks for an occluder, m.
-const SUN_REACH: f32 = 1.0e3;
+pub const SUN_REACH: f32 = 1.0e3;
 /// Vertices or probes one [`BakeJob::poll`] advances on a thread-less
 /// target.
 #[cfg(target_arch = "wasm32")]
@@ -355,6 +355,74 @@ impl AmbientProbes {
     }
 }
 
+/// What a bake reads from a scene: its merged vertices, which of them are
+/// leaf cards or far levels of detail, and the triangles that occlude, with
+/// the albedo and opacity sampled from each one's material.
+#[derive(Clone, Debug, PartialEq)]
+pub struct BakeGeometry {
+    /// The scene's merged vertices, in [`TexturedScene::merge`]'s order.
+    pub vertices: Vec<TexturedVertex>,
+    /// Whether each vertex belongs to an alpha-tested material.
+    pub foliage: Vec<bool>,
+    /// Whether each vertex belongs to a far level of detail.
+    pub far: Vec<bool>,
+    /// Every triangle of a near or single level, in merged index order.
+    pub occluders: Vec<Occluder>,
+    /// The merged vertices at each occluder's corners.
+    pub corners: Vec<[u32; 3]>,
+}
+
+impl BakeGeometry {
+    /// Merges `scene` and samples each triangle's material.
+    ///
+    /// # Errors
+    ///
+    /// Returns the scene's validation error.
+    pub fn new(scene: &TexturedScene) -> Result<Self, String> {
+        let merged = scene.merge()?;
+        let mut foliage = vec![false; merged.vertices.len()];
+        let mut far = vec![false; merged.vertices.len()];
+        let mut occluders = Vec::with_capacity(merged.indices.len() / 3);
+        let mut corners_of = Vec::with_capacity(merged.indices.len() / 3);
+        for batch in &merged.batches {
+            let material = &scene.materials[batch.material];
+            let masked = matches!(material.alpha, AlphaMode::Mask { .. });
+            let distant = matches!(batch.level, Level::Far { .. });
+            let range = batch.first as usize..(batch.first + batch.count) as usize;
+            for triangle in merged.indices[range].chunks_exact(3) {
+                let corners =
+                    [triangle[0], triangle[1], triangle[2]].map(|i| &merged.vertices[i as usize]);
+                if masked {
+                    for &i in triangle {
+                        foliage[i as usize] = true;
+                    }
+                }
+                if distant {
+                    for &i in triangle {
+                        far[i as usize] = true;
+                    }
+                    continue;
+                }
+                let (albedo, opacity) = surface(scene, material, corners);
+                occluders.push(Occluder {
+                    corners: corners.map(|v| Vec3::from(v.pos)),
+                    normal: corners.iter().map(|v| Vec3::from(v.normal)).sum::<Vec3>(),
+                    albedo,
+                    opacity,
+                });
+                corners_of.push([triangle[0], triangle[1], triangle[2]]);
+            }
+        }
+        Ok(Self {
+            vertices: merged.vertices,
+            foliage,
+            far,
+            occluders,
+            corners: corners_of,
+        })
+    }
+}
+
 /// A bake in progress: the scene's merged vertices and its hierarchy, with
 /// the vertices and probes done so far.
 pub struct SceneBaker {
@@ -388,38 +456,13 @@ impl SceneBaker {
         settings: BakeSettings,
         key: u64,
     ) -> Result<Self, String> {
-        let merged = scene.merge()?;
-        let mut foliage = vec![false; merged.vertices.len()];
-        let mut far = vec![false; merged.vertices.len()];
-        let mut occluders = Vec::with_capacity(merged.indices.len() / 3);
-        for batch in &merged.batches {
-            let material = &scene.materials[batch.material];
-            let masked = matches!(material.alpha, AlphaMode::Mask { .. });
-            let distant = matches!(batch.level, Level::Far { .. });
-            let range = batch.first as usize..(batch.first + batch.count) as usize;
-            for triangle in merged.indices[range].chunks_exact(3) {
-                let corners =
-                    [triangle[0], triangle[1], triangle[2]].map(|i| &merged.vertices[i as usize]);
-                if masked {
-                    for &i in triangle {
-                        foliage[i as usize] = true;
-                    }
-                }
-                if distant {
-                    for &i in triangle {
-                        far[i as usize] = true;
-                    }
-                    continue;
-                }
-                let (albedo, opacity) = surface(scene, material, corners);
-                occluders.push(Occluder {
-                    corners: corners.map(|v| Vec3::from(v.pos)),
-                    normal: corners.iter().map(|v| Vec3::from(v.normal)).sum::<Vec3>(),
-                    albedo,
-                    opacity,
-                });
-            }
-        }
+        let BakeGeometry {
+            vertices,
+            foliage,
+            far,
+            occluders,
+            ..
+        } = BakeGeometry::new(scene)?;
         let rays = settings.vertex_rays.max(1);
         let probe_rays = settings.probe_rays.max(1);
         let dims = settings.dims();
@@ -432,7 +475,7 @@ impl SceneBaker {
             },
             settings,
             bvh: Bvh::from_occluders(occluders),
-            vertices: merged.vertices,
+            vertices,
             foliage,
             far,
             // About half of a sphere's directions face any one normal.

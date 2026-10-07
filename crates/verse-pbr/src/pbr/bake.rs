@@ -23,6 +23,9 @@ struct Triangle {
     /// alpha-tested cards and glass, which the textured bake treats as
     /// partial occluders.
     opacity: f32,
+    /// The triangle's place in the list the hierarchy was built from, which
+    /// building reorders.
+    id: u32,
 }
 
 /// A triangle for [`Bvh::from_occluders`].
@@ -42,6 +45,16 @@ pub struct Occluder {
 /// Opacity at or above which an occluder counts as solid.
 pub const SOLID: f32 = 0.999;
 
+/// What one ray meets within its range, with the nearest triangle named by
+/// its place in the list the hierarchy was built from.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct IndexedTrace {
+    /// Fraction of light that passes every occluder along the ray.
+    pub transmittance: f32,
+    /// The distance to the nearest triangle crossed, and that triangle.
+    pub nearest: Option<(f32, u32)>,
+}
+
 /// Everything one ray meets within its range.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Trace {
@@ -51,7 +64,13 @@ pub struct Trace {
     pub nearest: Option<(Hit, f32)>,
 }
 
-fn oriented(corners: [Vec3; 3], authored: Vec3, albedo: Vec3, opacity: f32) -> Option<Triangle> {
+fn oriented(
+    id: u32,
+    corners: [Vec3; 3],
+    authored: Vec3,
+    albedo: Vec3,
+    opacity: f32,
+) -> Option<Triangle> {
     let a = corners[0];
     let ab = corners[1] - a;
     let ac = corners[2] - a;
@@ -69,6 +88,7 @@ fn oriented(corners: [Vec3; 3], authored: Vec3, albedo: Vec3, opacity: f32) -> O
         normal,
         albedo,
         opacity: opacity.clamp(0.0, 1.0),
+        id,
     })
 }
 
@@ -117,11 +137,13 @@ impl Bvh {
     pub fn new(vertices: &[LitVertex]) -> Self {
         let triangles = vertices
             .chunks_exact(3)
-            .filter_map(|t| {
+            .enumerate()
+            .filter_map(|(id, t)| {
                 // Winding is not a reliable side; the authored normal is.
                 let authored =
                     Vec3::from(t[0].normal) + Vec3::from(t[1].normal) + Vec3::from(t[2].normal);
                 oriented(
+                    id as u32,
                     [t[0].pos, t[1].pos, t[2].pos].map(Vec3::from),
                     authored,
                     bounce_albedo(&t[0]),
@@ -133,13 +155,15 @@ impl Bvh {
     }
 
     /// Builds a hierarchy over textured or other triangles that may be
-    /// partial occluders.
+    /// partial occluders. [`Self::trace_indexed`] names a triangle by its
+    /// place in `occluders`.
     #[must_use]
     pub fn from_occluders(occluders: impl IntoIterator<Item = Occluder>) -> Self {
         let triangles = occluders
             .into_iter()
-            .filter(|o| o.corners.iter().all(|c| c.is_finite()))
-            .filter_map(|o| oriented(o.corners, o.normal, o.albedo, o.opacity))
+            .enumerate()
+            .filter(|(_, o)| o.corners.iter().all(|c| c.is_finite()))
+            .filter_map(|(id, o)| oriented(id as u32, o.corners, o.normal, o.albedo, o.opacity))
             .collect();
         Self::from_triangles(triangles)
     }
@@ -200,6 +224,37 @@ impl Bvh {
     /// transmittance by one minus their opacity; a solid one stops it.
     #[must_use]
     pub fn trace(&self, origin: Vec3, dir: Vec3, max: f32) -> Trace {
+        let (transmittance, nearest) = self.crossings(origin, dir, max);
+        Trace {
+            transmittance,
+            nearest: nearest.map(|(distance, i)| {
+                let tri = &self.triangles[i];
+                (
+                    Hit {
+                        distance,
+                        normal: tri.normal,
+                        albedo: tri.albedo,
+                    },
+                    tri.opacity,
+                )
+            }),
+        }
+    }
+
+    /// [`Self::trace`], naming the nearest triangle by its place in the list
+    /// the hierarchy was built from rather than by its surface.
+    #[must_use]
+    pub fn trace_indexed(&self, origin: Vec3, dir: Vec3, max: f32) -> IndexedTrace {
+        let (transmittance, nearest) = self.crossings(origin, dir, max);
+        IndexedTrace {
+            transmittance,
+            nearest: nearest.map(|(distance, i)| (distance, self.triangles[i].id)),
+        }
+    }
+
+    /// The transmittance along a ray and the nearest crossing, as an
+    /// internal triangle index.
+    fn crossings(&self, origin: Vec3, dir: Vec3, max: f32) -> (f32, Option<(f32, usize)>) {
         let mut transmittance = 1.0f32;
         let mut nearest: Option<(f32, usize)> = None;
         self.walk(origin, dir, max, |t, i| {
@@ -216,20 +271,7 @@ impl Bvh {
                 None
             }
         });
-        Trace {
-            transmittance,
-            nearest: nearest.map(|(distance, i)| {
-                let tri = &self.triangles[i];
-                (
-                    Hit {
-                        distance,
-                        normal: tri.normal,
-                        albedo: tri.albedo,
-                    },
-                    tri.opacity,
-                )
-            }),
-        }
+        (transmittance, nearest)
     }
 
     /// The fraction of light that passes within `max` meters along the ray,

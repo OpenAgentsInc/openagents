@@ -1,0 +1,32 @@
+[package]
+name = "verse-bake"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Verse's offline lighting baker: deterministic bake products for a textured scene on a CPU backend, or a GPU backend through wgpu ray queries."
+
+[features]
+# The GPU backend: wgpu's experimental ray queries on a Vulkan adapter. Off
+# by default, so no other build compiles it.
+gpu = ["dep:wgpu", "dep:pollster"]
+# Bakes Everglade's current scene from the pinned pack (`--everglade`).
+everglade = ["dep:verse-zone-everglade"]
+
+[[bin]]
+name = "verse-bake"
+path = "src/main.rs"
+
+[dependencies]
+bytemuck = { version = "1.25", features = ["derive"] }
+glam = "0.30.10"
+pollster = { version = "0.4", optional = true }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+verse-pbr = { path = "../verse-pbr" }
+verse-zone-everglade = { path = "../verse-zone-everglade", optional = true }
+wgpu = { version = "29.0.4", optional = true }
+
+[lints]
+workspace = true
