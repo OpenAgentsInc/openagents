@@ -32,6 +32,7 @@ pub mod export;
 pub mod feedback;
 pub mod join;
 pub mod replay;
+pub mod service_sale;
 pub mod validate;
 
 pub use execution::{Evaluation, ExecutionReceipt, Outcome, ReceiptError, SCHEMA, Served, Timing};

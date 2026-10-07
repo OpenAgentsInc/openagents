@@ -105,6 +105,7 @@ coder-labor = { path = "../coder-labor" }
 coder-ssh = { path = "../coder-ssh" }
 
 [dev-dependencies]
+receipts = { path = "../receipts" }
 # `tests/chat.rs` runs a local NIP-42 relay with a scripted chat worker.
 futures-util = "0.3"
 tokio-tungstenite = "0.30"

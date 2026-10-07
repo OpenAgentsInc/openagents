@@ -67,6 +67,9 @@ pub enum Source {
     Commercial {
         receipt: Reference,
     },
+    ServiceSale {
+        export: Reference,
+    },
 }
 /// A retained invoice/payment or funding statement from the chosen lane's
 /// owner. This is an input attestation, not another invoice or payment engine.
@@ -153,6 +156,7 @@ pub enum ExpenseClass {
     Repair,
     Promotion,
     Commission,
+    Fulfillment,
 }
 const REQUIRED_COSTS: [ExpenseClass; 8] = [
     ExpenseClass::Provider,
@@ -247,6 +251,8 @@ pub struct Revenue {
     pub author_liability: u64,
     pub resource_liability: u64,
     pub promotion_liability: u64,
+    /// A separately priced fulfillment obligation, without a referral split.
+    pub fulfillment_liability: u64,
     pub author_allocated: u64,
     pub resource_allocated: u64,
     pub promotion_allocated: u64,
@@ -283,6 +289,7 @@ pub struct OperatingView {
     pub incident_count: u64,
     pub incident_ms: u64,
     pub unresolved_deliveries: u64,
+    pub unresolved_payments: u64,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Report {
@@ -499,6 +506,7 @@ pub fn rebuild(root: &Path, bytes: &[u8]) -> Result<Report, String> {
         let mut incident_count = 0;
         let mut incident_ms = 0;
         let mut unresolved_deliveries = 0;
+        let mut unresolved_payments = 0;
         for entry in &offer.entries {
             let mut entry_expense_ids = BTreeSet::new();
             text(&entry.id)?;
@@ -518,6 +526,7 @@ pub fn rebuild(root: &Path, bytes: &[u8]) -> Result<Report, String> {
             reader.read(&entry.terms.evidence)?;
             reader.read(&entry.delivery_evidence)?;
             let mut r = Revenue::default();
+            let mut service = None;
             let kind;
             match &entry.source {
                 Source::Settlement {
@@ -624,6 +633,12 @@ pub fn rebuild(root: &Path, bytes: &[u8]) -> Result<Report, String> {
                 Source::Commercial { receipt } => {
                     let record: CommercialReceipt = serde_json::from_slice(&reader.read(receipt)?)
                         .map_err(|_| "malformed commercial receipt")?;
+                    if record.kind == CollectionKind::Service {
+                        return Err(
+                            "service earnings require the authoritative REV-18 private export"
+                                .into(),
+                        );
+                    }
                     if record.schema != "openagents.sales.commercial-receipt.v1"
                         || record.account != offer.account
                         || record.offer_version != offer.version
@@ -691,6 +706,166 @@ pub fn rebuild(root: &Path, bytes: &[u8]) -> Result<Report, String> {
                         }
                     }
                 }
+                Source::ServiceSale { export } => {
+                    let record: receipts::service_sale::Export =
+                        serde_json::from_slice(&reader.read(export)?)
+                            .map_err(|_| "malformed private service export")?;
+                    record.validate()?;
+                    let sale = &record.sale;
+                    let facts = receipts::service_sale::verify_sources(
+                        &sale.admission,
+                        &sale.pipeline_lead,
+                        &sale.account,
+                        sale.pipeline_revision_at_admission,
+                        sale.admitted_at,
+                        |r| {
+                            reader.read(&Reference {
+                                path: r.path.clone(),
+                                sha256: r.sha256.clone(),
+                            })
+                        },
+                    )?;
+                    if facts != sale.facts
+                        || sale.account != offer.account
+                        || sale.admission.offer_version != offer.version
+                        || entry.delivery != Delivery::Accepted
+                        || entry.task.is_none()
+                        || entry.terms.billable_failure
+                    {
+                        return Err(
+                            "service export disagrees with accepted customer/offer evidence".into(),
+                        );
+                    }
+                    if !sources.insert(format!("service-sale:{}", sale.admission.id))
+                        || !sources.insert(format!(
+                            "service-invoice:{}:{}",
+                            sale.admission.invoice.payment_route_reference,
+                            sale.admission.invoice.external_reference
+                        ))
+                    {
+                        return Err("duplicate authoritative service sale or invoice".into());
+                    }
+                    for v in &sale.payments {
+                        if v.verified_at < manifest.period_start
+                            || v.verified_at >= manifest.period_end
+                        {
+                            return Err(
+                                "service report period must contain its retained payment history"
+                                    .into(),
+                            );
+                        }
+                        reader.read(&Reference {
+                            path: v.input.evidence.path.clone(),
+                            sha256: v.input.evidence.sha256.clone(),
+                        })?;
+                    }
+                    if let Some(payment) = sale
+                        .payments
+                        .iter()
+                        .find_map(|v| v.input.external_reference.as_ref())
+                    {
+                        if !sources.insert(format!(
+                            "service-payment:{}:{}",
+                            sale.admission.invoice.payment_route_reference, payment
+                        )) {
+                            return Err("duplicate authoritative service payment".into());
+                        }
+                    }
+                    let convert = |minor| {
+                        receipts::service_sale::usd_millionths(
+                            &sale.admission.invoice.currency,
+                            sale.admission.invoice.currency_scale,
+                            minor,
+                        )
+                    };
+                    let source_at = sale
+                        .payments
+                        .iter()
+                        .find(|v| v.input.disposition == receipts::service_sale::Disposition::Paid)
+                        .map_or(sale.admitted_at, |v| v.verified_at);
+                    if entry.at != source_at
+                        || entry.terms.unit != "USD_millionths"
+                        || entry.terms.contractual_charge
+                            != convert(sale.admission.invoice.amount_minor)?
+                        || entry.terms.evidence.sha256 != sale.admission.sources.agreement.sha256
+                    {
+                        return Err("service export and pinned invoice terms disagree".into());
+                    }
+                    let summary = sale.summary()?;
+                    kind = CollectionKind::Service;
+                    r.contractual_charge = convert(sale.admission.invoice.amount_minor)?;
+                    r.collected = convert(summary.paid_minor)?;
+                    r.gross_collected = r.collected;
+                    r.earned_openagents = r.collected;
+                    r.unearned_charge = r.contractual_charge - r.collected;
+                    r.refunds = convert(summary.refunded_minor)?;
+                    r.refund_reversals = convert(summary.refund_reversals_minor)?;
+                    if summary.unresolved {
+                        add(&mut unresolved_payments, 1)?;
+                    }
+                    if let Some(f) = &sale.effective_fulfillment()? {
+                        for verification in &sale.fulfillment_reconciliations {
+                            if verification.verified_at < manifest.period_start
+                                || verification.verified_at >= manifest.period_end
+                            {
+                                return Err(
+                                    "service period must contain its retained fulfillment history"
+                                        .into(),
+                                );
+                            }
+                        }
+                        let verified_at = sale
+                            .fulfillment_reconciliations
+                            .last()
+                            .map_or(sale.admitted_at, |v| v.verified_at);
+                        receipts::service_sale::verify_fulfillment(
+                            f,
+                            &sale.account,
+                            &sale.admission.offer_version,
+                            &sale.admission.invoice.id,
+                            verified_at,
+                            |r| {
+                                reader.read(&Reference {
+                                    path: r.path.clone(),
+                                    sha256: r.sha256.clone(),
+                                })
+                            },
+                        )?;
+                        let triggered = f.trigger
+                            == receipts::service_sale::FulfillmentTrigger::AcceptedDelivery
+                            || summary.paid_minor > 0;
+                        if triggered {
+                            let value = receipts::service_sale::usd_millionths(
+                                &f.currency,
+                                f.currency_scale,
+                                f.amount_minor,
+                            )?;
+                            if f.payment.is_none() {
+                                r.fulfillment_liability = value;
+                            }
+                            let e = Expense {
+                                id: format!("service-fulfillment:{}", f.id),
+                                class: ExpenseClass::Fulfillment,
+                                basis: if f.bill.is_some() {
+                                    Basis::Billed
+                                } else {
+                                    Basis::Unknown
+                                },
+                                unit: "USD_millionths".into(),
+                                amount: f.bill.as_ref().map(|_| value),
+                                payer: Payer::OpenAgents,
+                                evidence: f.bill.as_ref().map(|r| Reference {
+                                    path: r.path.clone(),
+                                    sha256: r.sha256.clone(),
+                                }),
+                                price: None,
+                            };
+                            entry_expense_ids.insert(e.id.clone());
+                            expense(&mut reader, &e, &mut costs, &mut bill_sources)?;
+                        }
+                    }
+                    service = Some(record);
+                }
             }
             let mut accepted = false;
             let mut failed = false;
@@ -708,6 +883,45 @@ pub fn rebuild(root: &Path, bytes: &[u8]) -> Result<Report, String> {
                     .iter()
                     .find(|t| t.id == link.task)
                     .ok_or("task evidence is missing")?;
+                if let Some(record) = &service {
+                    let facts = &record.sale.facts;
+                    let report_ref = Reference {
+                        path: facts.comparison_report.path.clone(),
+                        sha256: facts.comparison_report.sha256.clone(),
+                    };
+                    let retained: serde_json::Value =
+                        serde_json::from_slice(&reader.read(&report_ref)?)
+                            .map_err(|_| "malformed retained service comparison")?;
+                    if study.manifest_digest != facts.comparison_manifest.sha256
+                        || task.task_digest != facts.task_digest
+                        || task.check_digests.values().collect::<BTreeSet<_>>()
+                            != facts
+                                .frozen_checks
+                                .iter()
+                                .map(|r| &r.sha256)
+                                .collect::<BTreeSet<_>>()
+                        || !task.candidate.iter().any(|a| {
+                            a.artifact.sha256 == facts.candidate_sha256
+                                && a.acceptance.as_ref().is_some_and(|accepted| {
+                                    facts.accepted_checks.iter().any(|r| {
+                                        r.path == accepted.check_review.path
+                                            && r.sha256 == accepted.check_review.sha256
+                                    }) && facts.customer_decision_evidence.path
+                                        == accepted.customer_decision.path
+                                        && facts.customer_decision_evidence.sha256
+                                            == accepted.customer_decision.sha256
+                                })
+                        })
+                        || retained
+                            != serde_json::to_value(study)
+                                .map_err(|_| "service comparison serialization failed")?
+                    {
+                        return Err(
+                            "service result differs from independently reverified REV-03 evidence"
+                                .into(),
+                        );
+                    }
+                }
                 if !tasks.insert(format!("{}:{}", study.manifest_digest, task.id)) {
                     return Err("task costs cannot be counted twice".into());
                 }
@@ -804,6 +1018,17 @@ pub fn rebuild(root: &Path, bytes: &[u8]) -> Result<Report, String> {
                 add(&mut unresolved_deliveries, 1)?;
             }
             for adjustment in &entry.adjustments {
+                if service.is_some()
+                    && matches!(
+                        adjustment.kind,
+                        AdjustmentKind::Refund | AdjustmentKind::RefundReversal
+                    )
+                {
+                    return Err(
+                        "service refunds must come from authoritative payment reconciliation"
+                            .into(),
+                    );
+                }
                 text(&adjustment.id)?;
                 reader.read(&adjustment.evidence)?;
                 if !sources.insert(format!("adjustment:{}", adjustment.id)) {
@@ -908,6 +1133,7 @@ pub fn rebuild(root: &Path, bytes: &[u8]) -> Result<Report, String> {
             incident_count,
             incident_ms,
             unresolved_deliveries,
+            unresolved_payments,
         };
         calculate(&mut view, inventory.complete && manifest.gaps.is_empty())?;
         views.push(view);
@@ -930,6 +1156,7 @@ pub fn rebuild(root: &Path, bytes: &[u8]) -> Result<Report, String> {
             incident_count: 0,
             incident_ms: 0,
             unresolved_deliveries: 0,
+            unresolved_payments: 0,
         });
         for (unit, r) in &view.revenue {
             merge_revenue(aggregate.revenue.entry(unit.clone()).or_default(), r)?;
@@ -956,6 +1183,7 @@ pub fn rebuild(root: &Path, bytes: &[u8]) -> Result<Report, String> {
             &mut aggregate.unresolved_deliveries,
             view.unresolved_deliveries,
         )?;
+        add(&mut aggregate.unresolved_payments, view.unresolved_payments)?;
     }
     for view in cohorts.values_mut() {
         view.missing_cost_classes.sort();
@@ -995,6 +1223,7 @@ fn merge_revenue(to: &mut Revenue, from: &Revenue) -> Result<(), String> {
         author_liability,
         resource_liability,
         promotion_liability,
+        fulfillment_liability,
         author_allocated,
         resource_allocated,
         promotion_allocated,
@@ -1011,8 +1240,10 @@ fn merge_revenue(to: &mut Revenue, from: &Revenue) -> Result<(), String> {
     Ok(())
 }
 fn calculate(view: &mut OperatingView, coverage: bool) -> Result<(), String> {
-    let mut complete =
-        coverage && view.missing_cost_classes.is_empty() && view.unresolved_deliveries == 0;
+    let mut complete = coverage
+        && view.missing_cost_classes.is_empty()
+        && view.unresolved_deliveries == 0
+        && view.unresolved_payments == 0;
     for (unit, r) in &view.revenue {
         let mut contribution = i128::from(r.earned_openagents)
             - i128::from(r.funded_promotions)

@@ -31,6 +31,7 @@ customer records, compensation agreements, and negotiations stay private.
 - [Private sales pipeline](#private-sales-pipeline)
 - [Assisted pilot kit](#assisted-pilot-kit)
 - [Delivery, offboarding, and support](#delivery-offboarding-and-support)
+- [Invoiced services](#invoiced-services)
 - [Measures](#measures)
 - [Considerations and risks](#considerations-and-risks)
 - [Open questions](#open-questions)
@@ -522,7 +523,7 @@ openagents sales list --root PRIVATE_HOST_ROOT --credential OWNER_FILE --limit 5
 
 The command envelope uses `openagents.sales.pipeline-command.v1`, a stable
 `id`, `lead` (null for creation), `expected_revision` (zero for creation), and
-an `operation` tagged by `kind`. Operations are `create`, `update`,
+an `operation` tagged by `kind`. General pipeline operations are `create`, `update`,
 `propose_handoff`, `accept_handoff`, `reject_handoff`, `suppress`, and `delete`.
 The Rust `Command`, `Input`, and `Details` types define the bounded JSON shape.
 Keep command files private. Exact-byte retries return the original receipt;
@@ -634,6 +635,37 @@ and private configuration. Publication requires its own authority and any
 applicable [plugin release review](../plugins/README.md). Delivery acceptance,
 cleanup evidence, support acceptance, and service payment remain separate.
 Real O1/O8 customer and support qualification is tracked in `NEEDS_OWNER.md`.
+
+## Invoiced services
+
+REV-18 extends the [private pipeline](#private-sales-pipeline) with bounded
+service records. Only the current owner credential can apply
+`record_service_sale`, `reconcile_service_payment`, or
+`reconcile_service_fulfillment`, using the current lead revision and an explicit
+private `--evidence-root`. The [shared types](../../crates/receipts/src/service_sale.rs)
+pin the original account, offer, agreed USD cents, external invoice route and
+reference, exact accepted REV-06/REV-07 sources, result, and support acknowledgment.
+Frozen check commands use `{path, sha256}` references in the agreement's
+`scope.frozen_check_refs`; their digests must match the protected REV-03 checks.
+The [store](../../crates/coder/src/task/sales/service.rs) checks source bytes,
+authorization, revisions, duplicate invoices/payments, and exact-byte retries
+under the existing pipeline lock. Updating the current lead cannot relabel its
+historical invoice or disclose it to a newly added reader. Original retention
+still expires after a lead extension; deletion removes the service record too.
+
+Record `pending`, `unknown`, `paid`, `reversed`, or `disputed` with bounded
+evidence and the credential-derived verifier and date. Paid requires the exact
+fully collected invoice and external payment reference. An unverified or partial
+claim stays pending or unknown. Refunds retain their exact cumulative amount;
+disputes imply no clawback. Optional fulfillment has its own accepted fixed
+price, payment trigger, bill, and verified payment evidence. It creates no
+referral split. Use `show --lead LEAD --sale SALE` or `export --lead LEAD
+--sale SALE --output FILE` for authorized private service metadata. The export
+feeds the [operating report](evidence.md#operating-revenue-and-full-delivery-cost).
+These attributable owner records send no invoice or payment and change no
+product balance, subscription, entitlement, quota, or plugin accrual. Real
+payment truth, customer rights, and external evidence retention remain O1 work
+in `NEEDS_OWNER.md`.
 
 ## Measures
 

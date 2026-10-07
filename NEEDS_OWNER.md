@@ -167,6 +167,20 @@ new accepted agreement. Record shared-content deletion when due. Synthetic
 private-record walkthroughs establish field mapping, not customer consent,
 real delivery, payment, install qualification, or automatic cap enforcement.
 
+## Service invoice evidence O1 (REV-18, #10825)
+
+Before claiming a real service collection, privately qualify the exact accepted
+pilot agreement, customer result/runbook acknowledgment, support acknowledgment,
+external invoice and payment route, and independently checked comparison.
+Verify the actual collection, refunds, disputes, and any separately priced
+fulfillment bill/payment with the external source, then record their references
+through the owner credential. Keep bank/card details and credentials out of
+records and git. Agree to invoice/consent retention and cleanup of the separate
+source directory and private exports; pipeline deletion does not remove those
+owner-controlled copies. Synthetic recording, replay, and report tests establish
+the code path, not a real payment or remote attestation. No product funding or
+entitlement is created by these service records.
+
 ## Operating cost and revenue reports (#10832)
 
 Retain genuine customer/account attribution, contract terms, payment and

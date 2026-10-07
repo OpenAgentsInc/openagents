@@ -140,6 +140,8 @@ pub struct Lead {
     /// Immutable public-intake provenance; manual records have none.
     #[serde(default)]
     pub intake: Option<intake::Provenance>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub service_sales: BTreeMap<String, receipts::service_sale::Sale>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -176,7 +178,21 @@ pub enum Operation {
     Delete {
         reference: String,
     },
+    RecordServiceSale {
+        admission: receipts::service_sale::Admission,
+    },
+    ReconcileServicePayment {
+        sale: String,
+        payment: receipts::service_sale::PaymentInput,
+    },
+    ReconcileServiceFulfillment {
+        sale: String,
+        fulfillment: receipts::service_sale::FulfillmentInput,
+    },
 }
+
+#[path = "sales/service.rs"]
+pub mod service;
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Receipt {
     pub schema: String,
@@ -430,6 +446,17 @@ impl Store {
         {
             return Err("unsupported sales record schema".into());
         }
+        for lead in state.leads.values() {
+            if lead.service_sales.len() > service::MAX_SALES {
+                return Err("private service sale count exceeds bound".into());
+            }
+            for (id, sale) in &lead.service_sales {
+                sale.validate()?;
+                if id != &sale.admission.id || sale.pipeline_lead != lead.id {
+                    return Err("private service sale ownership disagrees".into());
+                }
+            }
+        }
         if let Some(owner) = &state.owner {
             id(owner)?;
             if !state
@@ -517,6 +544,9 @@ impl Store {
         // Revoked/expired permission stops qualification and cancels proposed handoffs.
         let mut changed = !expired.is_empty();
         for lead in next.leads.values_mut() {
+            let before = lead.service_sales.len();
+            lead.service_sales.retain(|_, sale| sale.retain_until > now);
+            changed |= before != lead.service_sales.len();
             if lead.details.permission.state == PermissionState::Granted
                 && lead.details.permission.expires_at <= now
             {
@@ -742,7 +772,7 @@ impl Store {
         self.refresh()?;
         let found = self.state.leads.get(lead).ok_or("lead is unavailable")?;
         self.readable(access, found)?;
-        Ok(found.clone())
+        Ok(self.visible_lead(access, found))
     }
     pub fn list(
         &mut self,
@@ -763,8 +793,18 @@ impl Store {
                 after.is_none_or(|a| lead.id.as_str() > a) && self.readable(access, lead).is_ok()
             })
             .take(limit)
-            .cloned()
+            .map(|lead| self.visible_lead(access, lead))
             .collect())
+    }
+    fn visible_lead(&self, access: &Access, lead: &Lead) -> Lead {
+        let mut visible = lead.clone();
+        visible.service_sales.retain(|_, sale| {
+            (self.clock)() < sale.retain_until
+                && sale
+                    .admitted_recipients
+                    .contains(&format!("human:{}", access.principal()))
+        });
+        visible
     }
     pub fn audit(&mut self, access: &Access, after: u64, limit: usize) -> Result<Vec<Audit>> {
         self.refresh()?;
@@ -792,6 +832,14 @@ impl Store {
             .contains_key(&Self::suppression(&self.state, address)?))
     }
     pub fn apply(&mut self, access: &Access, bytes: &[u8]) -> Result<Receipt> {
+        self.apply_with_evidence_root(access, bytes, None)
+    }
+    pub fn apply_with_evidence_root(
+        &mut self,
+        access: &Access,
+        bytes: &[u8],
+        evidence_root: Option<&Path>,
+    ) -> Result<Receipt> {
         self.refresh()?;
         let role = self.check(access)?;
         if bytes.len() > MAX_COMMAND {
@@ -882,6 +930,7 @@ impl Store {
                     details: input.details.clone(),
                     proposed_handoff: None,
                     intake: None,
+                    service_sales: BTreeMap::new(),
                 },
             );
         } else {
@@ -1004,6 +1053,71 @@ impl Store {
                     };
                     reference = r.clone();
                 }
+                Operation::RecordServiceSale { admission } => {
+                    self.admin(access)?;
+                    self.readable(access, found)?;
+                    let recorded = self.admit_service(
+                        access,
+                        found,
+                        admission,
+                        &input_digest,
+                        evidence_root,
+                        now,
+                    )?;
+                    next.leads
+                        .get_mut(&lead_id)
+                        .unwrap()
+                        .service_sales
+                        .insert(admission.id.clone(), recorded);
+                    outcome = "service_sale_recorded";
+                    reference = admission.sources.agreement.sha256.clone();
+                }
+                Operation::ReconcileServicePayment { sale, payment } => {
+                    self.admin(access)?;
+                    self.readable(access, found)?;
+                    let verified = self.reconcile_service(
+                        access,
+                        found,
+                        sale,
+                        payment,
+                        &input_digest,
+                        evidence_root,
+                        now,
+                    )?;
+                    next.leads
+                        .get_mut(&lead_id)
+                        .unwrap()
+                        .service_sales
+                        .get_mut(sale)
+                        .unwrap()
+                        .payments
+                        .push(verified);
+                    outcome = "service_payment_reconciled";
+                    reference = payment.evidence.sha256.clone();
+                }
+                Operation::ReconcileServiceFulfillment { sale, fulfillment } => {
+                    self.admin(access)?;
+                    self.readable(access, found)?;
+                    let verified = self.reconcile_fulfillment(
+                        access,
+                        found,
+                        sale,
+                        fulfillment,
+                        &input_digest,
+                        evidence_root,
+                        now,
+                    )?;
+                    next.leads
+                        .get_mut(&lead_id)
+                        .unwrap()
+                        .service_sales
+                        .get_mut(sale)
+                        .unwrap()
+                        .fulfillment_reconciliations
+                        .push(verified);
+                    outcome = "service_fulfillment_reconciled";
+                    reference = fulfillment.bill.sha256.clone();
+                }
                 Operation::Create { .. } => unreachable!(),
             }
             if let Some(lead) = next.leads.get_mut(&lead_id) {
@@ -1090,6 +1204,12 @@ impl Store {
 
 #[cfg(test)]
 mod tests {
+    mod service_fixture {
+        include!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../receipts/tests/support/service_sale.rs"
+        ));
+    }
     use super::*;
     use tempfile::TempDir;
     fn now() -> u64 {
@@ -1721,5 +1841,500 @@ mod tests {
                 .is_err()
         );
         assert!(s.show(&a, &r.lead).unwrap().proposed_handoff.is_none());
+    }
+    fn service_setup() -> (
+        TempDir,
+        Store,
+        Access,
+        String,
+        receipts::service_sale::Admission,
+    ) {
+        use service_fixture::{Comparison, retain};
+        let (dir, mut store, owner, _) = fixture();
+        let lead = store.apply(&owner, &create("service-lead")).unwrap().lead;
+        let root = dir.path().join("evidence");
+        std::fs::create_dir(&root).unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let comparison = Comparison {
+            manifest: retain(
+                &root,
+                "comparison.json",
+                b"synthetic manifest checked by Gym when reported",
+            ),
+            report: retain(
+                &root,
+                "comparison-report.json",
+                b"synthetic report checked by Gym when reported",
+            ),
+            candidate: retain(
+                &root,
+                "candidate.patch",
+                b"synthetic exact accepted candidate",
+            ),
+            check: retain(&root, "independent-check", b"synthetic independent check"),
+            decision: retain(
+                &root,
+                "buyer-decision",
+                b"synthetic buyer accepted exact result",
+            ),
+            frozen_checks: vec![retain(
+                &root,
+                "frozen-command",
+                b"synthetic frozen check command",
+            )],
+        };
+        let admission = service_fixture::admission(
+            &root,
+            now(),
+            &lead,
+            "synthetic-account",
+            "offer-v1",
+            comparison,
+        );
+        (dir, store, owner, lead, admission)
+    }
+    fn service_apply(
+        store: &mut Store,
+        access: &Access,
+        root: &Path,
+        lead: &str,
+        id: &str,
+        operation: Operation,
+    ) -> Receipt {
+        let revision = store.show(access, lead).unwrap().revision;
+        store
+            .apply_with_evidence_root(
+                access,
+                &command(id, Some(lead), revision, operation),
+                Some(root),
+            )
+            .unwrap()
+    }
+    fn service_payment(
+        root: &Path,
+        name: &str,
+        disposition: receipts::service_sale::Disposition,
+        refund: Option<u64>,
+    ) -> receipts::service_sale::PaymentInput {
+        use receipts::service_sale::{Disposition, PaymentInput};
+        PaymentInput {
+            disposition,
+            external_reference: if disposition == Disposition::Unknown {
+                None
+            } else {
+                Some("synthetic-external-payment".into())
+            },
+            paid_minor: if matches!(disposition, Disposition::Paid | Disposition::Reversed) {
+                Some(25000)
+            } else {
+                None
+            },
+            reversed_minor: refund,
+            evidence: service_fixture::retain(root, name, name.as_bytes()),
+        }
+    }
+    #[test]
+    fn service_owner_verified_history_replays_once_after_restart_and_exports_privately() {
+        use receipts::service_sale::Disposition;
+        use std::os::unix::fs::PermissionsExt;
+        let (dir, mut store, owner, lead, admission) = service_setup();
+        let root = dir.path().join("evidence");
+        let bytes = command(
+            "admit-sale",
+            Some(&lead),
+            1,
+            Operation::RecordServiceSale { admission },
+        );
+        let first = store
+            .apply_with_evidence_root(&owner, &bytes, Some(&root))
+            .unwrap();
+        assert_eq!(
+            store
+                .apply_with_evidence_root(&owner, &bytes, None)
+                .unwrap(),
+            first
+        );
+        for (id, disposition, refund) in [
+            ("unknown", Disposition::Unknown, None),
+            ("paid", Disposition::Paid, None),
+            ("refund", Disposition::Reversed, Some(101)),
+            ("restored", Disposition::Paid, Some(51)),
+            ("dispute", Disposition::Disputed, None),
+        ] {
+            let payment = service_payment(&root, id, disposition, refund);
+            service_apply(
+                &mut store,
+                &owner,
+                &root,
+                &lead,
+                id,
+                Operation::ReconcileServicePayment {
+                    sale: "synthetic-sale".into(),
+                    payment,
+                },
+            );
+        }
+        let sale = store.service_show(&owner, &lead, "synthetic-sale").unwrap();
+        let summary = sale.summary().unwrap();
+        assert_eq!(
+            (
+                summary.paid_minor,
+                summary.refunded_minor,
+                summary.refund_reversals_minor
+            ),
+            (25000, 101, 50)
+        );
+        assert!(summary.unresolved);
+        assert_eq!(sale.payments.len(), 5);
+        let output = dir.path().join("private-service-export.json");
+        let hash = store
+            .service_export(&owner, &lead, "synthetic-sale", &output)
+            .unwrap();
+        let exported = std::fs::read(&output).unwrap();
+        assert_eq!(hash, digest(&exported));
+        assert_eq!(
+            std::fs::metadata(&output).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        let text = String::from_utf8(exported).unwrap();
+        assert!(!text.contains("prospect@"));
+        assert!(!text.contains("private-baseline-reference"));
+        assert!(
+            store
+                .service_export(&owner, &lead, "synthetic-sale", &output)
+                .is_err()
+        );
+        drop(store);
+        let mut store = Store::open_with_clock(&dir.path().join("host"), now).unwrap();
+        let owner = store
+            .authenticate(&Store::read_credential(&dir.path().join("operator")).unwrap())
+            .unwrap();
+        assert_eq!(
+            store
+                .apply_with_evidence_root(&owner, &bytes, None)
+                .unwrap(),
+            first
+        );
+        assert_eq!(
+            store.service_show(&owner, &lead, "synthetic-sale").unwrap(),
+            sale
+        );
+        let mut changed: Command = serde_json::from_slice(&bytes).unwrap();
+        if let Operation::RecordServiceSale { admission } = &mut changed.operation {
+            admission.invoice.amount_minor += 1;
+        }
+        assert!(
+            store
+                .apply_with_evidence_root(
+                    &owner,
+                    &serde_json::to_vec(&changed).unwrap(),
+                    Some(&root)
+                )
+                .unwrap_err()
+                .contains("idempotency")
+        );
+    }
+    #[test]
+    fn service_old_scope_stays_pinned_and_new_readers_cannot_receive_historical_invoices() {
+        let (dir, mut store, owner, lead, admission) = service_setup();
+        let root = dir.path().join("evidence");
+        service_apply(
+            &mut store,
+            &owner,
+            &root,
+            &lead,
+            "admit",
+            Operation::RecordServiceSale { admission },
+        );
+        let reader = grant(&dir, &mut store, &owner, "new-reader", Role::Reader);
+        let mut updated = details();
+        updated.account = "different-current-account".into();
+        updated.readers.push("new-reader".into());
+        updated.data.recipients.push("human:new-reader".into());
+        updated.permission.reference = "new reader and account consent".into();
+        service_apply(
+            &mut store,
+            &owner,
+            &root,
+            &lead,
+            "update",
+            Operation::Update { details: updated },
+        );
+        assert_eq!(
+            store
+                .service_show(&owner, &lead, "synthetic-sale")
+                .unwrap()
+                .account,
+            "synthetic-account"
+        );
+        assert!(store.show(&reader, &lead).unwrap().service_sales.is_empty());
+        assert!(
+            store.list(&reader, None, 10).unwrap()[0]
+                .service_sales
+                .is_empty()
+        );
+        assert!(
+            store
+                .service_show(&reader, &lead, "synthetic-sale")
+                .is_err()
+        );
+        let output = dir.path().join("reader-lead.json");
+        store.export(&reader, &lead, &output).unwrap();
+        assert!(
+            !String::from_utf8(std::fs::read(output).unwrap())
+                .unwrap()
+                .contains("synthetic-invoice")
+        );
+        store.revoke(&owner, "new-reader").unwrap();
+        assert!(store.show(&reader, &lead).is_err());
+    }
+    #[test]
+    fn service_write_authority_source_linkage_partial_claim_and_duplicate_invoice_refuse() {
+        use receipts::service_sale::Disposition;
+        let (dir, mut store, owner, lead, admission) = service_setup();
+        let root = dir.path().join("evidence");
+        let writer = grant(&dir, &mut store, &owner, "writer-a", Role::Writer);
+        let bytes = command(
+            "writer-sale",
+            Some(&lead),
+            1,
+            Operation::RecordServiceSale {
+                admission: admission.clone(),
+            },
+        );
+        assert!(
+            store
+                .apply_with_evidence_root(&writer, &bytes, Some(&root))
+                .is_err()
+        );
+        assert!(
+            store
+                .apply_with_evidence_root(&owner, &bytes, None)
+                .is_err()
+        );
+        let mut bad = admission.clone();
+        bad.invoice.amount_minor += 1;
+        let bytes = command(
+            "bad-price",
+            Some(&lead),
+            1,
+            Operation::RecordServiceSale { admission: bad },
+        );
+        assert!(
+            store
+                .apply_with_evidence_root(&owner, &bytes, Some(&root))
+                .is_err()
+        );
+        service_apply(
+            &mut store,
+            &owner,
+            &root,
+            &lead,
+            "admit",
+            Operation::RecordServiceSale {
+                admission: admission.clone(),
+            },
+        );
+        let mut partial = service_payment(&root, "partial", Disposition::Paid, None);
+        partial.paid_minor = Some(1);
+        let bytes = command(
+            "partial",
+            Some(&lead),
+            2,
+            Operation::ReconcileServicePayment {
+                sale: admission.id.clone(),
+                payment: partial,
+            },
+        );
+        assert!(
+            store
+                .apply_with_evidence_root(&owner, &bytes, Some(&root))
+                .is_err()
+        );
+        let mut duplicate = admission;
+        duplicate.id = "other-sale".into();
+        let bytes = command(
+            "duplicate",
+            Some(&lead),
+            2,
+            Operation::RecordServiceSale {
+                admission: duplicate,
+            },
+        );
+        assert!(
+            store
+                .apply_with_evidence_root(&owner, &bytes, Some(&root))
+                .unwrap_err()
+                .contains("duplicate")
+        );
+        std::fs::write(root.join("service-support-ack"), b"changed acknowledgment").unwrap();
+        let payment = service_payment(&root, "paid", Disposition::Paid, None);
+        let bytes = command(
+            "changed-support",
+            Some(&lead),
+            2,
+            Operation::ReconcileServicePayment {
+                sale: "synthetic-sale".into(),
+                payment,
+            },
+        );
+        assert!(
+            store
+                .apply_with_evidence_root(&owner, &bytes, Some(&root))
+                .is_err()
+        );
+        assert!(
+            store
+                .service_show(&owner, &lead, "synthetic-sale")
+                .unwrap()
+                .payments
+                .is_empty()
+        );
+    }
+    #[test]
+    fn service_original_retention_expires_even_after_lead_extension_and_delete_purges() {
+        let (dir, mut store, owner, lead, admission) = service_setup();
+        let root = dir.path().join("evidence");
+        service_apply(
+            &mut store,
+            &owner,
+            &root,
+            &lead,
+            "admit",
+            Operation::RecordServiceSale { admission },
+        );
+        let mut updated = details();
+        updated.data.retain_until = 2500;
+        updated.permission.reference = "new retention consent".into();
+        service_apply(
+            &mut store,
+            &owner,
+            &root,
+            &lead,
+            "extend",
+            Operation::Update { details: updated },
+        );
+        drop(store);
+        let mut store = Store::open_with_clock(&dir.path().join("host"), later).unwrap();
+        let owner = store
+            .authenticate(&Store::read_credential(&dir.path().join("operator")).unwrap())
+            .unwrap();
+        assert!(store.show(&owner, &lead).unwrap().service_sales.is_empty());
+        assert!(
+            !String::from_utf8(std::fs::read(dir.path().join("host/sales/state.json")).unwrap())
+                .unwrap()
+                .contains("synthetic-sale")
+        );
+        service_apply(
+            &mut store,
+            &owner,
+            &root,
+            &lead,
+            "delete",
+            Operation::Delete {
+                reference: "synthetic deletion request".into(),
+            },
+        );
+        assert!(store.show(&owner, &lead).is_err());
+    }
+    #[test]
+    fn service_fulfillment_reconciliation_preserves_price_and_requires_the_separate_payment_trigger()
+     {
+        use receipts::service_sale::Disposition;
+        let (dir, mut store, owner, lead, mut admission) = service_setup();
+        let root = dir.path().join("evidence");
+        admission.fulfillment = Some(service_fixture::fulfillment(&root, now(), &admission));
+        service_apply(
+            &mut store,
+            &owner,
+            &root,
+            &lead,
+            "admit",
+            Operation::RecordServiceSale { admission },
+        );
+        let fulfillment = service_fixture::fulfillment_input(&root, now(), true);
+        let bytes = command(
+            "premature-fulfillment",
+            Some(&lead),
+            2,
+            Operation::ReconcileServiceFulfillment {
+                sale: "synthetic-sale".into(),
+                fulfillment: fulfillment.clone(),
+            },
+        );
+        assert!(
+            store
+                .apply_with_evidence_root(&owner, &bytes, Some(&root))
+                .unwrap_err()
+                .contains("trigger")
+        );
+        let payment = service_payment(&root, "collected", Disposition::Paid, None);
+        service_apply(
+            &mut store,
+            &owner,
+            &root,
+            &lead,
+            "collected",
+            Operation::ReconcileServicePayment {
+                sale: "synthetic-sale".into(),
+                payment,
+            },
+        );
+        let bytes = command(
+            "paid-fulfillment",
+            Some(&lead),
+            3,
+            Operation::ReconcileServiceFulfillment {
+                sale: "synthetic-sale".into(),
+                fulfillment,
+            },
+        );
+        let receipt = store
+            .apply_with_evidence_root(&owner, &bytes, Some(&root))
+            .unwrap();
+        assert_eq!(
+            store
+                .apply_with_evidence_root(&owner, &bytes, None)
+                .unwrap(),
+            receipt
+        );
+        let sale = store.service_show(&owner, &lead, "synthetic-sale").unwrap();
+        assert_eq!(sale.fulfillment_reconciliations.len(), 1);
+        assert_eq!(
+            sale.effective_fulfillment().unwrap().unwrap().amount_minor,
+            5000
+        );
+        assert!(
+            sale.admission
+                .fulfillment
+                .as_ref()
+                .unwrap()
+                .payment
+                .is_none()
+        );
+        let mut bill: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(root.join("fulfillment-bill.json")).unwrap())
+                .unwrap();
+        bill["amount_minor"] = serde_json::json!(6000);
+        let bill = service_fixture::doc(&root, "different-fulfillment-bill.json", bill);
+        let input = receipts::service_sale::FulfillmentInput {
+            bill,
+            payment: None,
+        };
+        let bytes = command(
+            "change-fulfillment-price",
+            Some(&lead),
+            4,
+            Operation::ReconcileServiceFulfillment {
+                sale: "synthetic-sale".into(),
+                fulfillment: input,
+            },
+        );
+        assert!(
+            store
+                .apply_with_evidence_root(&owner, &bytes, Some(&root))
+                .is_err()
+        );
     }
 }

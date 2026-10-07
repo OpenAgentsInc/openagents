@@ -95,14 +95,31 @@ refuse. No home directory, live bill, or live payment is discovered.
 The settlement adapter reads a checkpointed copy of the existing receiver
 ledger through its read-only owner. A retained attribution binds the exact
 snapshot and settlement to the customer and offer. The commercial adapter
-reads retained invoice/payment or funding attestations; it creates no invoice,
-credit, or payment. Their amounts, account, offer, time, and price-term digest
+reads retained funding, agreement, and trial attestations; generic service
+attestations refuse. Their amounts, account, offer, time, and price-term digest
 must agree. These are attributable input records, not remote attestations.
 One payment hash or prepaid debit ID can occur only once in a report, even
 when later ledger snapshots or different offer attestations name it.
 Commercial collections record gross invoice/funding collection; processing
 fees use retained expense rows. Outstanding claims reflect the ledger
 snapshot's book state; a sent payout label alone does not attest wallet movement.
+
+The `service_sale` source requires REV-18's [private service export](README.md#invoiced-services).
+It verifies the frozen scope, customer and support acknowledgments, exact
+invoice terms, owner-verified payment history, and optional fulfillment
+obligation. It reconstructs REV-03 again and compares the exact candidate,
+independent check, customer evidence, task digest, and retained comparison
+report. Before verified collection, invoice-only, pending, and unknown records
+earn nothing. Later unresolved states retain previously verified historical
+amounts and prevent a profitability verdict. Collected,
+accepted service uses declared USD scale-100 cents, checked into
+`USD_millionths`; no currency exchange is inferred. The period must contain
+the invoice's full retained payment and fulfillment history. One sale, invoice,
+or external payment cannot count twice across exports or offer entries.
+Refunds and restorations come from that history, not separate manual adjustment
+rows. A separate fulfillment bill reduces contribution once; its payment clears
+the obligation without charging the expense again. An unbilled triggered
+obligation or unresolved payment prevents a profitability verdict.
 
 Gross external collections, net wallet collections, consumed prepaid balance,
 unspent funding, contractual and prospective agreed charges, unearned charges,

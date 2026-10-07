@@ -16,6 +16,7 @@ tui = ["dep:ratatui", "dep:crossterm", "dep:coder-terminal", "dep:supervise"]
 # keeps a valid prefix of a killed episode.
 atif = { path = "../atif" }
 pay-ledger = { path = "../pay-ledger" }
+receipts = { path = "../receipts" }
 libc = "0.2"
 jev-hosted = { path = "../jev-hosted" }
 # Microcoder runs are in-sample by the knowledge base's provenance, read

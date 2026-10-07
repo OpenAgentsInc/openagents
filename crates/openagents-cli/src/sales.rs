@@ -13,13 +13,13 @@ pub const USAGE: &str = "usage: openagents sales COMMAND --root DIR [--credentia
         Grant a named human private record access; prints no credential.
   revoke --human HUMAN
         Revoke that human's credential and cancel proposed handoffs to them.
-  apply --input FILE
+  apply --input FILE [--evidence-root DIR]
         Apply a bounded versioned JSON command; FILE=- reads stdin.
   list [--after LEAD] [--limit N]
         List only records this credential can read, at most 100.
-  show --lead LEAD
+  show --lead LEAD [--sale SALE]
         Read one authorized private lead/account record.
-  export --lead LEAD --output FILE
+  export --lead LEAD --output FILE [--sale SALE]
         Create a private exclusive JSON export; no shared/public export.
   audit [--after N] [--limit N]
         Read the owner's bounded digest-only audit references.
@@ -30,7 +30,11 @@ All commands require an explicit private host root. Except init, read the
 current human's credential from FILE; do not put its secret on the command
 line. Propose a handoff through apply with that lead's current revision;
 only the named target's credential can accept it. This pipeline grants no
-outbound, provider, execution, or customer-data disclosure authority.";
+outbound, provider, execution, or customer-data disclosure authority.
+Only the owner can record_service_sale, reconcile_service_payment, or
+reconcile_service_fulfillment through apply with --evidence-root DIR.
+Use --sale with show/export for the original authorized service scope.
+These records send no invoice or payment and create no product credit.";
 #[cfg(test)]
 pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("init", Effect::Grants),
@@ -87,10 +91,10 @@ fn parse(words: &[String]) -> Result<Args, String> {
         "init" => &["root", "owner", "credential"],
         "issue" => &["root", "credential", "human", "role", "new-credential"],
         "revoke" => &["root", "credential", "human"],
-        "apply" => &["root", "credential", "input"],
+        "apply" => &["root", "credential", "input", "evidence-root"],
         "list" | "audit" => &["root", "credential", "after", "limit"],
-        "show" => &["root", "credential", "lead"],
-        "export" => &["root", "credential", "lead", "output"],
+        "show" => &["root", "credential", "lead", "sale"],
+        "export" => &["root", "credential", "lead", "output", "sale"],
         "suppressed" => &["root", "credential", "contact"],
         _ => return Err(USAGE.into()),
     };
@@ -175,13 +179,28 @@ fn execute_args(args: &Args) -> Result<Value, String> {
                     .read_to_end(&mut bytes)
                     .map_err(|e| e.to_string())?;
             }
-            serde_json::to_value(store.apply(&access, &bytes)?).map_err(|e| e.to_string())?
+            serde_json::to_value(store.apply_with_evidence_root(
+                &access,
+                &bytes,
+                args.option("evidence-root").map(Path::new),
+            )?)
+            .map_err(|e| e.to_string())?
         }
         "list" => json!({"records":store.list(&access,args.option("after"),page(&args)?)?}),
-        "show" => serde_json::to_value(store.show(&access, required(&args, "lead")?)?)
-            .map_err(|e| e.to_string())?,
+        "show" => if let Some(sale) = args.option("sale") {
+            serde_json::to_value(store.service_show(&access, required(&args, "lead")?, sale)?)
+        } else {
+            serde_json::to_value(store.show(&access, required(&args, "lead")?)?)
+        }
+        .map_err(|e| e.to_string())?,
         "export" => {
-            json!({"sha256":store.export(&access,required(&args,"lead")?,Path::new(required(&args,"output")?))?})
+            let path = Path::new(required(&args, "output")?);
+            let sha = if let Some(sale) = args.option("sale") {
+                store.service_export(&access, required(&args, "lead")?, sale, path)?
+            } else {
+                store.export(&access, required(&args, "lead")?, path)?
+            };
+            json!({"sha256":sha})
         }
         "audit" => {
             let after = args

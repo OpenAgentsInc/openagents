@@ -381,6 +381,7 @@ impl Store {
                     ownership_acceptance: policy.responsibility_acceptance.clone(),
                     details,
                     proposed_handoff: None,
+                    service_sales: BTreeMap::new(),
                     intake: Some(Provenance {
                         policy: policy.id.clone(),
                         offer: policy.offer,

@@ -2,6 +2,12 @@ use super::*;
 use crate::sales_evidence::{self as evidence, Cost, CostBasis, CostComponent};
 use pay_ledger::{Ledger, Rail, SettlementInput, Split};
 use tempfile::TempDir;
+mod service_sources {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../receipts/tests/support/service_sale.rs"
+    ));
+}
 
 const AT: u64 = 1_790_986_000;
 fn retained(root: &Path, name: &str, bytes: &[u8]) -> Reference {
@@ -212,6 +218,393 @@ fn fixture(rail: Rail) -> (TempDir, Manifest) {
 }
 fn build(dir: &TempDir, m: &Manifest) -> Report {
     rebuild(dir.path(), &serde_json::to_vec(m).unwrap()).unwrap()
+}
+fn service_fixture() -> (TempDir, Manifest, receipts::service_sale::Export) {
+    use receipts::service_sale::{self as service, Disposition, Verification};
+    let (dir, mut m) = fixture(Rail::Lightning);
+    let root = dir.path();
+    let mut study: evidence::Manifest =
+        serde_json::from_slice(&fs::read(root.join("comparison.json")).unwrap()).unwrap();
+    let frozen_check = retained(
+        root,
+        "service-frozen-command",
+        b"synthetic frozen check command",
+    );
+    for task in &mut study.tasks {
+        task.check_digests
+            .insert("check".into(), frozen_check.sha256.clone());
+        for attempt in task.baseline.iter_mut().chain(&mut task.candidate) {
+            attempt.checks.get_mut("check").unwrap().check_digest = frozen_check.sha256.clone();
+            for cost in &mut attempt.costs {
+                cost.unit = "USD_millionths".into();
+            }
+        }
+    }
+    let manifest = reference(root, "comparison.json", &study);
+    m.comparisons.insert("comparison".into(), manifest.clone());
+    let checked =
+        evidence::rebuild(root, &fs::read(root.join("comparison.json")).unwrap()).unwrap();
+    let report = reference(root, "service-checked-report.json", &checked);
+    let accepted = &study.tasks[0].candidate[1];
+    let accept = accepted.acceptance.as_ref().unwrap();
+    let convert = |r: &Reference| service::Reference {
+        path: r.path.clone(),
+        sha256: r.sha256.clone(),
+    };
+    let admission = service_sources::admission(
+        root,
+        AT,
+        "synthetic-lead",
+        &m.offers[0].account,
+        &m.offers[0].version,
+        service_sources::Comparison {
+            manifest: convert(&manifest),
+            report: convert(&report),
+            candidate: convert(&accepted.artifact),
+            check: convert(&accept.check_review),
+            decision: convert(&accept.customer_decision),
+            frozen_checks: vec![convert(&frozen_check)],
+        },
+    );
+    let facts = service::verify_sources(
+        &admission,
+        "synthetic-lead",
+        &m.offers[0].account,
+        1,
+        AT,
+        |r| Ok(fs::read(root.join(&r.path)).unwrap()),
+    )
+    .unwrap();
+    let payment = service_sources::retain(
+        root,
+        "service-paid",
+        b"synthetic owner verified exact external invoice collection",
+    );
+    let sale = service::Sale {
+        schema: service::SCHEMA.into(),
+        admission,
+        pipeline_lead: "synthetic-lead".into(),
+        pipeline_revision_at_admission: 1,
+        account: m.offers[0].account.clone(),
+        admitted_by: "operator".into(),
+        admitted_at: AT,
+        admission_command_digest: "d".repeat(64),
+        admitted_recipients: vec!["human:operator".into()],
+        retain_until: AT + 100,
+        facts,
+        payments: vec![Verification {
+            input: service::PaymentInput {
+                disposition: Disposition::Paid,
+                external_reference: Some("synthetic-payment".into()),
+                paid_minor: Some(25000),
+                reversed_minor: None,
+                evidence: payment,
+            },
+            verified_by: "operator".into(),
+            verified_at: AT,
+            command_digest: "e".repeat(64),
+        }],
+        fulfillment_reconciliations: vec![],
+    };
+    let export = service::Export {
+        schema: service::EXPORT_SCHEMA.into(),
+        sale,
+        exported_by: "operator".into(),
+        exported_at: AT,
+    };
+    let entry = &mut m.offers[0].entries[0];
+    entry.source = Source::ServiceSale {
+        export: reference(root, "service-export.json", &export),
+    };
+    entry.terms.evidence = convert_back(&export.sale.admission.sources.agreement);
+    entry.terms.unit = "USD_millionths".into();
+    entry.terms.contractual_charge = 250_000_000;
+    entry.task.as_mut().unwrap().payer = Payer::Customer;
+    for expense in &mut entry.expenses {
+        expense.unit = "USD_millionths".into();
+    }
+    entry.adjustments.clear();
+    entry.incidents.clear();
+    m.offers[0].no_cost.insert(
+        ExpenseClass::Promotion,
+        retained(
+            root,
+            "no-service-promotion",
+            b"synthetic service has no promotional award",
+        ),
+    );
+    (dir, m, export)
+}
+fn convert_back(r: &receipts::service_sale::Reference) -> Reference {
+    Reference {
+        path: r.path.clone(),
+        sha256: r.sha256.clone(),
+    }
+}
+fn service_snapshot(dir: &TempDir, m: &mut Manifest, export: &receipts::service_sale::Export) {
+    m.offers[0].entries[0].source = Source::ServiceSale {
+        export: reference(dir.path(), "service-export.json", export),
+    };
+}
+#[test]
+fn verified_service_acceptance_exact_refunds_and_unknowns_join_checked_delivery() {
+    use receipts::service_sale::{Disposition, PaymentInput, Verification};
+    let (dir, mut m, mut export) = service_fixture();
+    let report = build(&dir, &m);
+    let view = &report.offers[0];
+    assert_eq!(
+        view.revenue["USD_millionths"].earned_openagents,
+        250_000_000
+    );
+    assert_eq!(
+        view.contribution_known_subtotal["USD_millionths"],
+        249_999_968
+    );
+    assert_eq!(view.profitable, Some(true));
+    for (name, disposition, refund) in [
+        ("refund", Disposition::Reversed, Some(101)),
+        ("restored", Disposition::Paid, Some(51)),
+        ("unknown", Disposition::Unknown, None),
+    ] {
+        export.sale.payments.push(Verification {
+            input: PaymentInput {
+                disposition,
+                external_reference: Some("synthetic-payment".into()),
+                paid_minor: if disposition == Disposition::Unknown {
+                    None
+                } else {
+                    Some(25000)
+                },
+                reversed_minor: refund,
+                evidence: service_sources::retain(dir.path(), name, name.as_bytes()),
+            },
+            verified_by: "operator".into(),
+            verified_at: AT,
+            command_digest: "f".repeat(64),
+        });
+    }
+    service_snapshot(&dir, &mut m, &export);
+    let report = build(&dir, &m);
+    let view = &report.offers[0];
+    let r = &view.revenue["USD_millionths"];
+    assert_eq!(
+        (r.gross_collected, r.refunds, r.refund_reversals),
+        (250_000_000, 1_010_000, 500_000)
+    );
+    assert_eq!(
+        view.contribution_known_subtotal["USD_millionths"],
+        249_489_968
+    );
+    assert_eq!(view.unresolved_payments, 1);
+    assert_eq!(view.profitable, None);
+    export.sale.payments.clear();
+    service_snapshot(&dir, &mut m, &export);
+    let view = &build(&dir, &m).offers[0];
+    let r = &view.revenue["USD_millionths"];
+    assert_eq!((r.collected, r.earned_openagents), (0, 0));
+    assert_eq!(r.unearned_charge, 250_000_000);
+    assert_eq!(view.profitable, None);
+}
+#[test]
+fn service_adapter_refuses_generic_receipts_fake_comparisons_and_duplicate_snapshots() {
+    let (dir, mut m, export) = service_fixture();
+    let generic = non_revenue(
+        dir.path(),
+        &m,
+        "generic-service",
+        CollectionKind::Service,
+        250,
+    );
+    m.offers[0].entries.push(generic);
+    freeze(dir.path(), &mut m);
+    assert!(
+        rebuild(dir.path(), &serde_json::to_vec(&m).unwrap())
+            .unwrap_err()
+            .contains("REV-18")
+    );
+    m.offers[0].entries.pop();
+    freeze(dir.path(), &mut m);
+    let mut duplicate = export.clone();
+    duplicate.exported_at += 1;
+    let mut entry = m.offers[0].entries[0].clone();
+    entry.id = "another-entry".into();
+    entry.source = Source::ServiceSale {
+        export: reference(dir.path(), "newer-service-snapshot.json", &duplicate),
+    };
+    m.offers[0].entries.push(entry);
+    freeze(dir.path(), &mut m);
+    assert!(
+        rebuild(dir.path(), &serde_json::to_vec(&m).unwrap())
+            .unwrap_err()
+            .contains("duplicate authoritative")
+    );
+    m.offers[0].entries.pop();
+    freeze(dir.path(), &mut m);
+    m.offers[0].entries[0].delivery = Delivery::Failed;
+    assert!(rebuild(dir.path(), &serde_json::to_vec(&m).unwrap()).is_err());
+    m.offers[0].entries[0].delivery = Delivery::Accepted;
+    // Rebuild every linkage around the changed report to prove digest presence
+    // alone cannot substitute for the independent comparison reconstruction.
+    let mut changed = export;
+    let fake = service_sources::retain(dir.path(), "fake-comparison-report.json", b"{}");
+    let mut handoff: serde_json::Value = serde_json::from_slice(
+        &fs::read(
+            dir.path()
+                .join(&changed.sale.admission.sources.handoff.path),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let mut review: serde_json::Value = serde_json::from_slice(
+        &fs::read(
+            dir.path()
+                .join(&changed.sale.admission.sources.pilot_review.path),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    review["evidence"]["report_sha256"] = serde_json::json!(fake.sha256);
+    review["evidence"]["sales_evidence_report_reference"] = serde_json::json!(fake.path);
+    changed.sale.admission.sources.pilot_review =
+        service_sources::doc(dir.path(), "changed-review.json", review);
+    handoff["sales_evidence_report"] = serde_json::to_value(&fake).unwrap();
+    handoff["pilot_review"] =
+        serde_json::to_value(&changed.sale.admission.sources.pilot_review).unwrap();
+    changed.sale.admission.sources.handoff =
+        service_sources::doc(dir.path(), "changed-handoff.json", handoff);
+    for r in [
+        &mut changed.sale.admission.sources.customer_acceptance,
+        &mut changed.sale.admission.sources.support_acceptance,
+    ] {
+        let mut ack: serde_json::Value =
+            serde_json::from_slice(&fs::read(dir.path().join(&r.path)).unwrap()).unwrap();
+        ack["handoff"] = serde_json::to_value(&changed.sale.admission.sources.handoff).unwrap();
+        *r = service_sources::doc(dir.path(), &format!("changed-{}", r.path), ack);
+    }
+    changed.sale.facts = receipts::service_sale::verify_sources(
+        &changed.sale.admission,
+        &changed.sale.pipeline_lead,
+        &changed.sale.account,
+        1,
+        AT,
+        |r| Ok(fs::read(dir.path().join(&r.path)).unwrap()),
+    )
+    .unwrap();
+    service_snapshot(&dir, &mut m, &changed);
+    assert!(
+        rebuild(dir.path(), &serde_json::to_vec(&m).unwrap())
+            .unwrap_err()
+            .contains("reverified")
+    );
+}
+#[test]
+fn service_fulfillment_obligation_is_separately_priced_billed_and_paid_without_a_split() {
+    use receipts::service_sale::FulfillmentVerification;
+    let (dir, mut m, mut export) = service_fixture();
+    export.sale.admission.fulfillment = Some(service_sources::fulfillment(
+        dir.path(),
+        AT,
+        &export.sale.admission,
+    ));
+    service_snapshot(&dir, &mut m, &export);
+    let view = &build(&dir, &m).offers[0];
+    assert_eq!(
+        view.revenue["USD_millionths"].fulfillment_liability,
+        50_000_000
+    );
+    assert_eq!(view.profitable, None);
+    assert!(
+        view.costs
+            .iter()
+            .any(|c| c.class == ExpenseClass::Fulfillment && c.unknown_items == 1)
+    );
+    export
+        .sale
+        .fulfillment_reconciliations
+        .push(FulfillmentVerification {
+            input: service_sources::fulfillment_input(dir.path(), AT, false),
+            verified_by: "operator".into(),
+            verified_at: AT,
+            command_digest: "1".repeat(64),
+        });
+    service_snapshot(&dir, &mut m, &export);
+    let view = &build(&dir, &m).offers[0];
+    assert_eq!(
+        view.revenue["USD_millionths"].fulfillment_liability,
+        50_000_000
+    );
+    assert_eq!(
+        view.contribution_known_subtotal["USD_millionths"],
+        199_999_968
+    );
+    assert_eq!(view.profitable, Some(true));
+    export
+        .sale
+        .fulfillment_reconciliations
+        .push(FulfillmentVerification {
+            input: service_sources::fulfillment_input(dir.path(), AT, true),
+            verified_by: "operator".into(),
+            verified_at: AT,
+            command_digest: "2".repeat(64),
+        });
+    service_snapshot(&dir, &mut m, &export);
+    let view = &build(&dir, &m).offers[0];
+    assert_eq!(view.revenue["USD_millionths"].fulfillment_liability, 0);
+    assert_eq!(
+        view.contribution_known_subtotal["USD_millionths"],
+        199_999_968
+    );
+    export.sale.payments.clear();
+    service_snapshot(&dir, &mut m, &export);
+    assert!(
+        rebuild(dir.path(), &serde_json::to_vec(&m).unwrap())
+            .unwrap_err()
+            .contains("trigger")
+    );
+}
+#[test]
+fn service_invoice_scope_cannot_substitute_different_frozen_checks() {
+    let (dir, mut m, mut export) = service_fixture();
+    let f = &export.sale.facts;
+    let wrong = service_sources::retain(
+        dir.path(),
+        "different-frozen-command",
+        b"a different check from the agreed comparison",
+    );
+    export.sale.admission = service_sources::admission(
+        dir.path(),
+        AT,
+        &export.sale.pipeline_lead,
+        &export.sale.account,
+        &m.offers[0].version,
+        service_sources::Comparison {
+            manifest: f.comparison_manifest.clone(),
+            report: f.comparison_report.clone(),
+            candidate: receipts::service_sale::Reference {
+                path: "candidate-repair.patch".into(),
+                sha256: f.candidate_sha256.clone(),
+            },
+            check: f.accepted_checks[0].clone(),
+            decision: f.customer_decision_evidence.clone(),
+            frozen_checks: vec![wrong],
+        },
+    );
+    export.sale.facts = receipts::service_sale::verify_sources(
+        &export.sale.admission,
+        &export.sale.pipeline_lead,
+        &export.sale.account,
+        1,
+        AT,
+        |r| Ok(fs::read(dir.path().join(&r.path)).unwrap()),
+    )
+    .unwrap();
+    service_snapshot(&dir, &mut m, &export);
+    m.offers[0].entries[0].terms.evidence = convert_back(&export.sale.admission.sources.agreement);
+    assert!(
+        rebuild(dir.path(), &serde_json::to_vec(&m).unwrap())
+            .unwrap_err()
+            .contains("reverified")
+    );
 }
 #[test]
 fn authoritative_splits_failures_incentives_reversals_and_support_rebuild_exactly() {
