@@ -137,6 +137,36 @@ pub fn advance(
     execution: &str,
     now: i64,
 ) -> Result<Receipt> {
+    advance_mode(
+        journal, ledger, provider, owner, artifacts, execution, now, false,
+    )
+}
+
+/// Advance resident cleanup with bounded cumulative metering. Identical or
+/// exhausted nonfinal observations cannot block later stop/deletion duties.
+pub fn advance_bounded(
+    journal: &mut Journal,
+    ledger: &Ledger,
+    provider: &impl Provider,
+    owner: &impl StopOwner,
+    artifacts: &impl Artifacts,
+    execution: &str,
+    now: i64,
+) -> Result<Receipt> {
+    advance_mode(
+        journal, ledger, provider, owner, artifacts, execution, now, true,
+    )
+}
+fn advance_mode(
+    journal: &mut Journal,
+    ledger: &Ledger,
+    provider: &impl Provider,
+    owner: &impl StopOwner,
+    artifacts: &impl Artifacts,
+    execution: &str,
+    now: i64,
+    bounded: bool,
+) -> Result<Receipt> {
     let (binding, requested, sent, evidence) = journal.connection.query_row(
         "SELECT binding,requested_at,sent_at,evidence FROM cancellation WHERE execution=?",
         [execution],
@@ -194,7 +224,17 @@ pub fn advance(
             .last()
             .map_or(1, |e| e.sequence.saturating_add(1));
         let event = format!("cancel:{execution}:usage:{sequence}");
-        let _ = crate::meter::poll(journal, provider, execution, &event, sequence, now)?;
+        if bounded {
+            let _ = crate::meter::poll_bounded(
+                journal,
+                provider,
+                execution,
+                &format!("cancel:{execution}:bounded"),
+                now,
+            )?;
+        } else {
+            let _ = crate::meter::poll(journal, provider, execution, &event, sequence, now)?;
+        }
     }
     receipt(journal, ledger, &funded, now)
 }
@@ -316,7 +356,9 @@ pub fn observe(
     Ok(Some(receipt(journal, ledger, funded, now)?))
 }
 impl Journal {
-    pub(crate) fn cancellation_requested(&self, execution: &str) -> Result<bool> {
+    /// Whether the service has a durable stop and cleanup duty.
+    /// Reading this flag grants no control or observation authority.
+    pub fn cancellation_requested(&self, execution: &str) -> Result<bool> {
         Ok(self
             .connection
             .query_row(

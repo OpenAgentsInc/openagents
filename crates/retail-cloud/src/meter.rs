@@ -339,6 +339,59 @@ pub fn poll(
         .ok_or(Error::Invalid("missing meter"))
 }
 
+/// Poll for a resident worker without exhausting the observation bound.
+/// Identical cumulative observations add no row. After 4,000 rows, only a
+/// known final counter may add another row; cleanup and unknown holds remain
+/// active while authoritative final evidence is absent.
+///
+/// This does not change [`poll`]'s caller-supplied immutable event contract.
+pub fn poll_bounded(
+    journal: &mut Journal,
+    provider: &impl Provider,
+    execution: &str,
+    prefix: &str,
+    now: i64,
+) -> Result<Usage> {
+    let usage = journal
+        .usage(execution)?
+        .ok_or(Error::Invalid("no metering baseline"))?;
+    if usage.final_usage || usage.events.len() >= 4096 {
+        return Ok(usage);
+    }
+    let stopped = matches!(
+        provider.state(&usage.resource),
+        Ok(ResourceState::Stopped | ResourceState::Deleted)
+    );
+    let seconds = provider.usage_seconds(&usage.resource).ok().flatten();
+    if usage
+        .events
+        .last()
+        .is_some_and(|last| last.seconds == seconds && last.stopped == stopped)
+        || (usage.events.len() >= 4000 && !(stopped && seconds.is_some()))
+    {
+        return Ok(usage);
+    }
+    let sequence = usage
+        .events
+        .last()
+        .map_or(1, |r| r.sequence.saturating_add(1));
+    journal.record_usage(
+        execution,
+        &Reading {
+            event: format!("{prefix}:{sequence}"),
+            sequence,
+            resource: usage.resource,
+            at: now,
+            seconds,
+            stopped,
+            model: None,
+        },
+    )?;
+    journal
+        .usage(execution)?
+        .ok_or(Error::Invalid("missing meter"))
+}
+
 /// Stop at the quoted ceiling. The admitted service owns this cleanup duty
 /// even if the client disconnects or its grant is revoked. Intent precedes
 /// the call; an unknown acknowledgment is observed before any retry.

@@ -56,6 +56,8 @@ pub const WORKSPACE: &str = "/tmp/oa-retail/src";
 pub const SOURCE_FILE: &str = "/tmp/oa-retail/source";
 /// The index file under the adapter's state directory.
 pub const INDEX_FILE: &str = "boat-index.json";
+/// Original create bytes and time, synced before the provider sees them.
+pub const INTENTS_FILE: &str = "boat-create-intents.json";
 /// The bound on one owner command.
 const COMMAND_TIMEOUT_SECS: i64 = 600;
 
@@ -97,10 +99,18 @@ struct Entry {
 }
 
 /// The live Boat binding.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct Creation {
+    spec: CreateSpec,
+    requested_at: i64,
+}
+
 pub struct BoatAdapter {
     client: Client,
     runtime: tokio::runtime::Runtime,
     index_path: PathBuf,
+    intents_path: PathBuf,
+    intents: Mutex<BTreeMap<String, Creation>>,
     /// Provisioning identity to sandbox.
     index: Mutex<BTreeMap<String, Entry>>,
     /// Sandboxes the owner program was written to in this process.
@@ -163,10 +173,18 @@ impl BoatAdapter {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => BTreeMap::new(),
             Err(_) => return Err(Error::Invalid("cannot read the Boat index")),
         };
+        let intents_path = config.state_dir.join(INTENTS_FILE);
+        let intents = match std::fs::read_to_string(&intents_path) {
+            Ok(text) => serde_json::from_str(&text)?,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => BTreeMap::new(),
+            Err(_) => return Err(Error::Invalid("cannot read the Boat creation intents")),
+        };
         Ok(Self {
             client,
             runtime,
             index_path,
+            intents_path,
+            intents: Mutex::new(intents),
             index: Mutex::new(index),
             installed: Mutex::new(BTreeSet::new()),
             specs: Mutex::new(BTreeMap::new()),
@@ -180,10 +198,29 @@ impl BoatAdapter {
     }
 
     fn save(&self, index: &BTreeMap<String, Entry>) -> Result<()> {
-        let tmp = self.index_path.with_extension("json.tmp");
-        std::fs::write(&tmp, serde_json::to_vec_pretty(index)?)
-            .and_then(|()| std::fs::rename(&tmp, &self.index_path))
-            .map_err(|_| Error::Invalid("cannot write the Boat index"))
+        save_private(&self.index_path, &serde_json::to_vec_pretty(index)?)
+    }
+    fn remember_creation(&self, spec: &CreateSpec, now: i64) -> Result<()> {
+        let mut intents = Self::lock(&self.intents);
+        if let Some(original) = intents.get(&spec.provisioning) {
+            if original.spec != *spec
+                || now < original.requested_at
+                || now - original.requested_at > crate::provision::READY_DEADLINE_SECS
+            {
+                return Err(Error::Invalid(
+                    "the original Boat create cannot be replayed",
+                ));
+            }
+        } else {
+            intents.insert(
+                spec.provisioning.clone(),
+                Creation {
+                    spec: spec.clone(),
+                    requested_at: now,
+                },
+            );
+        }
+        save_private(&self.intents_path, &serde_json::to_vec_pretty(&*intents)?)
     }
 
     fn update(&self, id: &str, change: impl FnOnce(&mut Entry)) -> Result<()> {
@@ -303,6 +340,16 @@ impl BoatAdapter {
 
 impl Provider for BoatAdapter {
     fn create(&self, spec: &CreateSpec) -> std::result::Result<Resource, ProviderError> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()
+            .and_then(|d| i64::try_from(d.as_secs()).ok())
+            .ok_or_else(|| ProviderError::Unknown("Boat creation time is unavailable".into()))?;
+        self.remember_creation(spec, now).map_err(|_| {
+            ProviderError::Unknown(
+                "the original Boat create intent cannot be retained or replayed".into(),
+            )
+        })?;
         let params = CreateParams {
             idempotency_key: Some(idempotency_key(&spec.provisioning)),
             body: Some(CreateSandboxRequest {
@@ -347,6 +394,29 @@ impl Provider for BoatAdapter {
                 provisioning: provisioning.to_owned(),
                 account: entry.account.clone(),
             }))
+    }
+
+    fn reconcile_creation(
+        &self,
+        spec: &CreateSpec,
+        now: i64,
+    ) -> std::result::Result<Option<Resource>, ProviderError> {
+        if let Some(resource) = self.find(&spec.provisioning)? {
+            return Ok(Some(resource));
+        }
+        let original = Self::lock(&self.intents).get(&spec.provisioning).cloned();
+        let Some(original) = original else {
+            return Ok(None);
+        };
+        // Ten minutes is conservative within Boat's 24-hour keyed-create
+        // window. A late restart never treats missing index state as absence.
+        if original.spec != *spec
+            || now < original.requested_at
+            || now - original.requested_at > crate::provision::READY_DEADLINE_SECS
+        {
+            return Ok(None);
+        }
+        self.create(spec).map(Some)
     }
 
     fn state(&self, id: &str) -> std::result::Result<ResourceState, ProviderError> {
@@ -775,4 +845,47 @@ mod tests {
         assert_eq!(request_name("stop-1"), "stop-1");
         assert_eq!(request_name("a/b").len(), 64);
     }
+}
+
+fn save_private(path: &std::path::Path, bytes: &[u8]) -> Result<()> {
+    use std::io::Write;
+    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+    if std::fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink()) {
+        return Err(Error::Invalid("Boat state cannot be a symlink"));
+    }
+    let tmp = path.with_extension("json.tmp");
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(&tmp)
+        .or_else(|error| {
+            if error.kind() == std::io::ErrorKind::AlreadyExists
+                && std::fs::symlink_metadata(&tmp)
+                    .is_ok_and(|m| m.is_file() && !m.file_type().is_symlink())
+            {
+                std::fs::remove_file(&tmp)?;
+                std::fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .mode(0o600)
+                    .open(&tmp)
+            } else {
+                Err(error)
+            }
+        })
+        .map_err(|_| Error::Invalid("cannot create private Boat state"))?;
+    file.set_permissions(std::fs::Permissions::from_mode(0o600))
+        .map_err(|_| Error::Invalid("cannot protect Boat state"))?;
+    file.write_all(bytes)
+        .and_then(|()| file.sync_all())
+        .and_then(|()| std::fs::rename(&tmp, path))
+        .and_then(|()| {
+            std::fs::File::open(
+                path.parent()
+                    .ok_or_else(|| std::io::Error::other("Boat state parent"))?,
+            )?
+            .sync_all()
+        })
+        .map_err(|_| Error::Invalid("cannot commit private Boat state"))
 }

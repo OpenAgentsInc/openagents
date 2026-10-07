@@ -10,6 +10,67 @@ money ledger ([compute balance](compute-balance.md)), the router contract
 (`crates/route-contract`), and the receiver wallet's contract into the
 retail flow. Each section names the module that implements it.
 
+## Customer transport and resident worker
+
+[`retail-service`](../../crates/retail-service) mounts `POST /v1/retail` as
+bounded HTTP JSON (`openagents.cloud.retail-customer.v1`). The binary accepts
+`--config /absolute/private/config.json`, binds only loopback, and starts a
+resident worker independently of customer connections. REV-15 packages the
+external authenticated TLS origin and host deployment; REV-14 adds customer
+controls. This transport has only synthetic qualification.
+
+Every request sends `Authorization: Bearer ...` and `x-retail-principal`.
+The central compute ledger resolves the current principal, credential epoch,
+account, and read/spend right. The operator separately configures retail
+observation, execution, and disclosure rights for that principal and epoch.
+Account ownership, pairing, a balance, and an invoice grant no retail rights.
+The service uses no cookies and rejects browser `Origin` requests.
+
+| `op` | Result or effect |
+| --- | --- |
+| `account`, `capacity` | Account-scoped exact millisatoshi balance; existing paid-availability gate |
+| `top_up`, `top_up_status` | Account-scoped idempotent invoice and receiver-observed status; no customer paid callback |
+| `offer`, `confirm` | Frozen supported offer; exact offer, admission, and credential-custody digests plus explicit consent |
+| `executions`, `execution`, `progress` | Account-scoped bounded discovery, retained recovery/hold state, and progress cursor |
+| `cancel` | Durable stop request; acknowledgment, deletion, final usage, and settlement remain separate |
+| `artifact`, `receipt` | Logical retained artifact, retention/deletion, cancellation, and actual settlement records |
+
+The listener admits at most 32 in-flight requests before reading bodies;
+excess requests receive `429 busy`. The request body limit is 32 KiB.
+Idempotency keys contain at most 64 ASCII letters, digits, hyphens, or
+underscores and are scoped to the authenticated account. Offers remain
+immutable in a private store capped at 4,096 records;
+confirmation retries preserve the original execution and credential digest.
+Progress returns at most 128 events and 64 KiB of text per page. Artifact
+names are logical identifiers; the existing eight-artifact and 8 MiB-per-artifact
+bounds and 30-day retention apply.
+
+A confirmation also admits `openagents.cloud.retail-credential-custody.v1`:
+the authenticated service may retain the customer's own OpenAI key in a
+mode-0600 private vault, deliver it only to the exact admitted sandbox and
+model payer, redact it, and remove it. The journal stores only its digest.
+Custody ends after acknowledged resource deletion or the quoted task limit
+plus 35 minutes, whichever comes first; unfinished cleanup and unknown cost
+holds remain recorded. The service never imports a provider login, operator
+model key, environment credential, or home-directory fallback. Configuration
+and state paths reject symlinks; one process owns each service state directory.
+
+The worker visits at most 16 active confirmations per pass, resumes accepted
+confirmations and holds, reconciles original provisioning/task identities,
+and advances material delivery, metered dispatch, deadlines, cancellation,
+credential removal, retention, deletion, and evidenced settlement. It reads
+fresh ledger revocation/generation and spend rights before side effects;
+changing an operator retail grant takes effect on service restart. Cleanup
+continues after revocation. Provider/task uncertainty never becomes another
+resource or task, zero cost, or a released hold. The Boat adapter syncs the
+original create intent before sending; after a process loses the reply and
+local index entry, the freshly admitted worker may reconcile only identical
+create bytes under the original idempotency key within 10 minutes. A later
+restart preserves uncertainty and cleanup obligations without recreating.
+`GET /healthz` reports only
+process liveness; use authenticated `capacity` and the existing operator
+health reader for admission and obligations.
+
 ## Authorities
 
 [`retail_cloud::authority`](../../crates/retail-cloud/src/authority.rs)

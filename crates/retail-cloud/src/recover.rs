@@ -130,6 +130,30 @@ pub fn step(
     funded: &FundedRequest,
     now: i64,
 ) -> Result<Snapshot> {
+    step_mode(journal, ledger, provider, owner, funded, now, false)
+}
+
+/// Reconcile for a resident service using bounded cumulative final readings.
+/// Identity, no-replacement, and unknown-hold rules are identical to [`step`].
+pub fn step_bounded(
+    journal: &mut Journal,
+    ledger: &mut Ledger,
+    provider: &impl Provider,
+    owner: &impl TaskOwner,
+    funded: &FundedRequest,
+    now: i64,
+) -> Result<Snapshot> {
+    step_mode(journal, ledger, provider, owner, funded, now, true)
+}
+fn step_mode(
+    journal: &mut Journal,
+    ledger: &mut Ledger,
+    provider: &impl Provider,
+    owner: &impl TaskOwner,
+    funded: &FundedRequest,
+    now: i64,
+    bounded: bool,
+) -> Result<Snapshot> {
     if journal.funded(&funded.execution)?.as_ref() != Some(funded) {
         return Err(Error::Conflict(
             "recovery requires the original funded identity",
@@ -230,14 +254,24 @@ pub fn step(
                                     .events
                                     .last()
                                     .map_or(1, |r| r.sequence.saturating_add(1));
-                                let _ = crate::meter::poll(
-                                    journal,
-                                    provider,
-                                    &funded.execution,
-                                    &format!("recovery:final:{sequence}"),
-                                    sequence,
-                                    now,
-                                )?;
+                                if bounded {
+                                    let _ = crate::meter::poll_bounded(
+                                        journal,
+                                        provider,
+                                        &funded.execution,
+                                        "recovery:final:bounded",
+                                        now,
+                                    )?;
+                                } else {
+                                    let _ = crate::meter::poll(
+                                        journal,
+                                        provider,
+                                        &funded.execution,
+                                        &format!("recovery:final:{sequence}"),
+                                        sequence,
+                                        now,
+                                    )?;
+                                }
                             }
                         }
                         Ok(ResourceState::Ready { address }) => {

@@ -116,6 +116,18 @@ pub trait Provider {
     fn create(&self, spec: &CreateSpec) -> std::result::Result<Resource, ProviderError>;
     /// The sandbox labeled `provisioning`, if one exists.
     fn find(&self, provisioning: &str) -> std::result::Result<Option<Resource>, ProviderError>;
+    /// Reconcile a create whose reply never reached the local index. The
+    /// caller must recheck provision authority and the original live hold.
+    /// A backend may replay only the identical durably retained request
+    /// inside its idempotency window; absence alone never authorizes creation.
+    /// The default performs no side effect.
+    fn reconcile_creation(
+        &self,
+        _spec: &CreateSpec,
+        _now: i64,
+    ) -> std::result::Result<Option<Resource>, ProviderError> {
+        Ok(None)
+    }
     fn state(&self, id: &str) -> std::result::Result<ResourceState, ProviderError>;
     /// Delete a sandbox. Deleting a deleted one succeeds.
     fn delete(&self, id: &str) -> std::result::Result<(), ProviderError>;

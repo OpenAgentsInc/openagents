@@ -1089,7 +1089,7 @@ top-ups, and the owner program (`owner-v1.sh`) on a real daily template
 (its `git`, `setsid`, and `codex login --with-api-key`) are unverified. A
 failed run opens a defect issue.
 
-## Launch the retail cloud service (#10724)
+## Launch the retail cloud service (#10724, REV-13 #10820)
 
 The launch gate, monitoring, and operator runbook are on main
 ([`docs/cloud/retail-operations.md`](docs/cloud/retail-operations.md));
@@ -1099,7 +1099,15 @@ contract" and "Funded retail cloud qualification" (including #10748's live
 bindings); deploy the service from current main under a separate retail
 Boat account and receiver wallet; pass `--contract-confirmed` and the
 funded receipt to the gate; check `retail-qualify health` is clean; and
-publish the contract and prices to customers. Isolated install and customer
+publish the contract and prices to customers. REV-13 adds the authenticated
+loopback transport and resident worker with synthetic HTTP, fault, and actual
+process-restart checks. Its private credential-custody addendum also needs
+commercial/data-policy approval. O3/O4 still require the dedicated retail
+Boat key, resident receiver, exact template and plan/start allowance, real
+funded qualification, and REV-15's supervised TLS deployment from current
+main. No owner host deployment or live credential/fund check was performed
+for REV-13. Use the [service configuration](docs/cloud/retail-operations.md#service-configuration)
+and separately qualify customer controls under REV-14. Isolated install and customer
 onboarding on the native clients, real capacity behavior, and incident
 handling on a live service are unverified.
 

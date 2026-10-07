@@ -32,9 +32,36 @@ cargo run -p retail-qualify -- advertise --contract-confirmed --receipt FUNDED_R
 The published customer terms are the [retail contract](retail-contract.md)
 (supported class and task, credentials, retention) and the [retail
 prices](retail-prices.md) (charges, holds versus refunds, unknown costs).
-Customers install the standalone terminal or enter the Grid, and see the
-same account, quotes, runs, and receipts in both
-(`crates/compute-workbench`).
+The [customer transport and worker](retail-service.md#customer-transport-and-resident-worker)
+mount these records over loopback HTTP. Native customer controls (REV-14)
+and production TLS/deployment packaging (REV-15) remain separate; the
+compute-workbench host is a read-only observer.
+
+## Service configuration
+
+The `retail-service` binary reads one mode-0600 JSON file. Its `customer`
+object contains the schema `openagents.cloud.retail-customer.v1`, absolute
+private `state` and central `ledger` paths, the supported `template`, explicit
+`grants` (principal, account, ledger generation, observe/execute/disclose),
+`contract_confirmed`, the retained `qualification`, `supported_plan` digest,
+and `plan_starts_left`. Each accepted confirmation consumes one of that
+configured start allowance for this state; an owner must reconcile any
+increased allowance with the provider plan. Existing compute accounts and
+bearer principals are created through the central ledger's operator paths;
+the HTTP service cannot enroll or grant them.
+
+The host fields are `listen` (loopback only), `boat_api_base`, `boat_org`,
+`boat_key_file` (absolute private file for the dedicated retail account),
+`wallet_home` (explicit resident receiver socket), and `poll_seconds` (1–30).
+No live configuration, secret, owner home, or paid qualification is bundled.
+Run the built binary as `retail-service --config /absolute/private/config.json`.
+It owns `transport.sqlite`, `lifecycle.sqlite`, the private credential vault,
+and the Boat index under `state`; the money ledger remains at `ledger`.
+Use the state directory's `lifecycle.sqlite` with `retail-qualify health`.
+Revoke or rotate a central principal to stop its active execution; changing
+configured retail grants requires a service restart. Restart resumes the
+same records. REV-15 owns the exact production configuration, external TLS
+origin, supervision, revision health, and deployment qualification.
 
 ## Deploying
 
