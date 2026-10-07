@@ -67,6 +67,9 @@ MAX_NODES = 256
 MAX_FILE_NAME_BYTES = 96
 MAX_VERTICES = 65536
 MAX_UV = 256.0
+# Kit materials that glow, by a word of their name: candle and lamp flames,
+# and the street lamps' glass.
+EMISSIVE = ("flame", "glass_04")
 PIECE_ID = re.compile(r"^[a-z0-9-]+$")
 
 COMPONENTS = {"SCALAR": 1, "VEC2": 2, "VEC3": 3, "VEC4": 4}
@@ -348,6 +351,10 @@ def build_piece(export, out, piece_id, piece, textures_used):
             gltf_name = sanitize(name or "untextured") + suffix
             color = (1.0, 1.0, 1.0, 1.0)
             factor = [round(min(max(c, 0.0), 1.0), 6) for c in tint[:3]] + [1.0]
+        # Flames and a lamp's glass glow: Everglade lights a material whose
+        # name starts with `Emit` (`zones::everglade::scene::emits`).
+        if any(word in name.lower() for word in EMISSIVE):
+            gltf_name = "Emit_" + gltf_name
         key = (gltf_name, texture, alpha, two_sided, tuple(factor or ()))
         positions, normals, indices = transform(piece, positions, normals, indices)
         uvs = [(uv[0] * tu, uv[1] * tv) for uv in uvs]

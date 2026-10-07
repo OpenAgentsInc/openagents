@@ -1,7 +1,7 @@
 {
   "schema": "openagents.verse-world-tree.v1",
   "zone": "everglade",
-  "digest": "sha256:94cbd845aa55d5b314fe89d5a6f41983c155ed76645f2c1ed37aa9c7edcb3772",
+  "digest": "sha256:abcce5a9d6a964b84bc4be100d6d5e2b65c852bf24c1dfb9e1528e6d8b9cae33",
   "nodes": [
     {
       "id": "everglade",
@@ -474,14 +474,24 @@
       "kind": "building",
       "district": "main-street",
       "stand": [
-        -71.0,
-        49.1
+        -74.0,
+        47.5
+      ],
+      "entry": [
+        [
+          -74.0,
+          47.5
+        ],
+        [
+          -74.0,
+          52.5
+        ]
       ],
       "affordances": [
         "buy-bread",
         "eat"
       ],
-      "source": "front:bakehouse"
+      "source": "door:bakehouse"
     },
     {
       "id": "everglade/main-street/bakehouse/door",
@@ -490,11 +500,12 @@
       "object": "door",
       "district": "main-street",
       "stand": [
-        -71.0,
-        49.1
+        -74.0,
+        47.5
       ],
-      "open": false,
-      "source": "front:bakehouse:door"
+      "facing": 0.0,
+      "open": true,
+      "source": "door:bakehouse:door"
     },
     {
       "id": "everglade/main-street/bakery",
@@ -619,13 +630,23 @@
       "kind": "building",
       "district": "main-street",
       "stand": [
-        56.0,
-        49.0
+        55.0,
+        47.5
+      ],
+      "entry": [
+        [
+          55.0,
+          47.5
+        ],
+        [
+          55.0,
+          52.5
+        ]
       ],
       "affordances": [
         "shop"
       ],
-      "source": "front:cheesemonger"
+      "source": "door:cheesemonger"
     },
     {
       "id": "everglade/main-street/cheesemonger/door",
@@ -634,11 +655,12 @@
       "object": "door",
       "district": "main-street",
       "stand": [
-        56.0,
-        49.0
+        55.0,
+        47.5
       ],
-      "open": false,
-      "source": "front:cheesemonger:door"
+      "facing": 0.0,
+      "open": true,
+      "source": "door:cheesemonger:door"
     },
     {
       "id": "everglade/main-street/civic-hall",
@@ -966,13 +988,23 @@
       "kind": "building",
       "district": "main-street",
       "stand": [
-        -88.0,
-        49.1
+        -86.0,
+        47.5
+      ],
+      "entry": [
+        [
+          -86.0,
+          47.5
+        ],
+        [
+          -86.0,
+          52.5
+        ]
       ],
       "affordances": [
         "shop"
       ],
-      "source": "front:corner shop"
+      "source": "door:corner shop"
     },
     {
       "id": "everglade/main-street/corner-shop/door",
@@ -981,11 +1013,12 @@
       "object": "door",
       "district": "main-street",
       "stand": [
-        -88.0,
-        49.1
+        -86.0,
+        47.5
       ],
-      "open": false,
-      "source": "front:corner shop:door"
+      "facing": 0.0,
+      "open": true,
+      "source": "door:corner shop:door"
     },
     {
       "id": "everglade/main-street/grocer",
@@ -1031,13 +1064,23 @@
       "kind": "building",
       "district": "main-street",
       "stand": [
-        88.0,
-        49.0
+        86.0,
+        47.5
+      ],
+      "entry": [
+        [
+          86.0,
+          47.5
+        ],
+        [
+          86.0,
+          52.5
+        ]
       ],
       "affordances": [
         "shop"
       ],
-      "source": "front:hardware store"
+      "source": "door:hardware store"
     },
     {
       "id": "everglade/main-street/hardware-store/door",
@@ -1046,11 +1089,12 @@
       "object": "door",
       "district": "main-street",
       "stand": [
-        88.0,
-        49.0
+        86.0,
+        47.5
       ],
-      "open": false,
-      "source": "front:hardware store:door"
+      "facing": 0.0,
+      "open": true,
+      "source": "door:hardware store:door"
     },
     {
       "id": "everglade/main-street/market-row-east-1",
@@ -1346,13 +1390,23 @@
       "kind": "building",
       "district": "main-street",
       "stand": [
-        71.4,
-        49.0
+        73.0,
+        47.5
+      ],
+      "entry": [
+        [
+          73.0,
+          47.5
+        ],
+        [
+          73.0,
+          52.5
+        ]
       ],
       "affordances": [
         "shop"
       ],
-      "source": "front:music shop"
+      "source": "door:music shop"
     },
     {
       "id": "everglade/main-street/music-shop/door",
@@ -1361,11 +1415,12 @@
       "object": "door",
       "district": "main-street",
       "stand": [
-        71.4,
-        49.0
+        73.0,
+        47.5
       ],
-      "open": false,
-      "source": "front:music shop:door"
+      "facing": 0.0,
+      "open": true,
+      "source": "door:music shop:door"
     },
     {
       "id": "everglade/main-street/print-shop",
@@ -1373,13 +1428,23 @@
       "kind": "building",
       "district": "main-street",
       "stand": [
-        40.0,
-        49.1
+        42.0,
+        47.5
+      ],
+      "entry": [
+        [
+          42.0,
+          47.5
+        ],
+        [
+          42.0,
+          52.5
+        ]
       ],
       "affordances": [
         "shop"
       ],
-      "source": "front:print shop"
+      "source": "door:print shop"
     },
     {
       "id": "everglade/main-street/print-shop/door",
@@ -1388,11 +1453,12 @@
       "object": "door",
       "district": "main-street",
       "stand": [
-        40.0,
-        49.1
+        42.0,
+        47.5
       ],
-      "open": false,
-      "source": "front:print shop:door"
+      "facing": 0.0,
+      "open": true,
+      "source": "door:print shop:door"
     },
     {
       "id": "everglade/main-street/tailor",
@@ -1400,13 +1466,23 @@
       "kind": "building",
       "district": "main-street",
       "stand": [
-        -56.0,
-        48.8
+        -55.0,
+        47.5
+      ],
+      "entry": [
+        [
+          -55.0,
+          47.5
+        ],
+        [
+          -55.0,
+          52.5
+        ]
       ],
       "affordances": [
         "shop"
       ],
-      "source": "front:tailor"
+      "source": "door:tailor"
     },
     {
       "id": "everglade/main-street/tailor/door",
@@ -1415,11 +1491,12 @@
       "object": "door",
       "district": "main-street",
       "stand": [
-        -56.0,
-        48.8
+        -55.0,
+        47.5
       ],
-      "open": false,
-      "source": "front:tailor:door"
+      "facing": 0.0,
+      "open": true,
+      "source": "door:tailor:door"
     },
     {
       "id": "everglade/main-street/tea-house",
@@ -1427,14 +1504,24 @@
       "kind": "building",
       "district": "main-street",
       "stand": [
-        -40.6,
-        49.0
+        -41.0,
+        47.5
+      ],
+      "entry": [
+        [
+          -41.0,
+          47.5
+        ],
+        [
+          -41.0,
+          52.5
+        ]
       ],
       "affordances": [
         "eat",
         "drink"
       ],
-      "source": "front:tea house"
+      "source": "door:tea house"
     },
     {
       "id": "everglade/main-street/tea-house/door",
@@ -1443,11 +1530,12 @@
       "object": "door",
       "district": "main-street",
       "stand": [
-        -40.6,
-        49.0
+        -41.0,
+        47.5
       ],
-      "open": false,
-      "source": "front:tea house:door"
+      "facing": 0.0,
+      "open": true,
+      "source": "door:tea house:door"
     },
     {
       "id": "everglade/fountain-plaza",
@@ -2257,17 +2345,17 @@
       "kind": "building",
       "district": "fountain-plaza",
       "stand": [
-        -1.0,
-        83.5
+        1.0,
+        82.5
       ],
       "entry": [
         [
-          -1.0,
-          83.5
+          1.0,
+          82.5
         ],
         [
-          -1.0,
-          88.0
+          1.0,
+          87.5
         ]
       ],
       "affordances": [
@@ -2282,8 +2370,8 @@
       "object": "door",
       "district": "fountain-plaza",
       "stand": [
-        -1.0,
-        83.5
+        1.0,
+        82.5
       ],
       "facing": 0.0,
       "open": true,
@@ -2295,14 +2383,24 @@
       "kind": "building",
       "district": "fountain-plaza",
       "stand": [
-        15.0,
-        71.0
+        13.5,
+        69.0
+      ],
+      "entry": [
+        [
+          13.5,
+          69.0
+        ],
+        [
+          18.5,
+          69.0
+        ]
       ],
       "affordances": [
         "eat",
         "drink"
       ],
-      "source": "front:plaza cafe east"
+      "source": "door:plaza cafe east"
     },
     {
       "id": "everglade/fountain-plaza/plaza-cafe-east/door",
@@ -2311,11 +2409,12 @@
       "object": "door",
       "district": "fountain-plaza",
       "stand": [
-        15.0,
-        71.0
+        13.5,
+        69.0
       ],
-      "open": false,
-      "source": "front:plaza cafe east:door"
+      "facing": 1.57,
+      "open": true,
+      "source": "door:plaza cafe east:door"
     },
     {
       "id": "everglade/fountain-plaza/plaza-cafe-west",
@@ -2323,14 +2422,24 @@
       "kind": "building",
       "district": "fountain-plaza",
       "stand": [
-        -15.0,
-        71.0
+        -13.5,
+        69.0
+      ],
+      "entry": [
+        [
+          -13.5,
+          69.0
+        ],
+        [
+          -18.5,
+          69.0
+        ]
       ],
       "affordances": [
         "eat",
         "drink"
       ],
-      "source": "front:plaza cafe west"
+      "source": "door:plaza cafe west"
     },
     {
       "id": "everglade/fountain-plaza/plaza-cafe-west/door",
@@ -2339,11 +2448,12 @@
       "object": "door",
       "district": "fountain-plaza",
       "stand": [
-        -15.0,
-        71.0
+        -13.5,
+        69.0
       ],
-      "open": false,
-      "source": "front:plaza cafe west:door"
+      "facing": -1.57,
+      "open": true,
+      "source": "door:plaza cafe west:door"
     },
     {
       "id": "everglade/creative-district",

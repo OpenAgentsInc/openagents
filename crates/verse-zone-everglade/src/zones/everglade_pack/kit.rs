@@ -179,6 +179,13 @@ pub enum Shape {
     /// Steps rising from the low end at the box's far x to the top at
     /// x = 0, across z.
     Steps,
+    /// A market stall: four posts and an awning over the box.
+    Stall,
+    /// A fountain: a low rim round the box, water inside, and a column in
+    /// the middle.
+    Fountain,
+    /// A lamp post: a slim post and a glowing head at the top.
+    Post,
 }
 
 /// One kit piece as the repository knows it.
@@ -210,7 +217,7 @@ const fn piece(
 }
 
 use Coat::{Cloth, Metal, Plaster, Stone, Tile, Timber, Wood};
-use Shape::{Block, Steps, Window};
+use Shape::{Block, Fountain, Post, Stall, Steps, Window};
 
 /// Where a 4 m doorway's opening is: x from 1.13 to 2.87 m, 2.62 m tall.
 const DOOR_4: Shape = Shape::Doorway {
@@ -261,8 +268,8 @@ pub const PIECES: [Piece; 53] = [
     piece("kit/floor-4x2", [0.0, 0.0, 0.0], [4.0, 0.5, 2.0], Block, Wood),
     piece("kit/flowerpot", [-1.34, -0.04, -0.61], [1.34, 0.5, 0.06], Block, Wood),
     piece("kit/forge", [-3.25, 0.0, -1.37], [3.25, 2.91, 0.93], Block, Stone),
-    piece("kit/fountain", [-3.09, 0.0, -3.09], [3.09, 2.14, 3.09], Block, Stone),
-    piece("kit/lamp", [-0.19, 0.0, -0.58], [0.19, 3.44, 0.58], Block, Metal),
+    piece("kit/fountain", [-3.09, 0.0, -3.09], [3.09, 2.14, 3.09], Fountain, Stone),
+    piece("kit/lamp", [-0.19, 0.0, -0.58], [0.19, 3.44, 0.58], Post, Metal),
     piece("kit/plinth-2", [0.0, 0.0, 0.0], [2.0, 2.0, 0.75], Block, Stone),
     piece("kit/plinth-4", [0.0, 0.0, 0.0], [4.0, 2.0, 0.75], Block, Stone),
     piece("kit/plinth-corner", [0.0, 0.0, -1.25], [1.25, 2.0, 0.0], Block, Stone),
@@ -278,7 +285,7 @@ pub const PIECES: [Piece; 53] = [
     piece("kit/shutter", [0.0, 0.0, -0.02], [1.0, 2.2, 0.1], Block, Wood),
     piece("kit/sign", [-1.01, 0.0, -0.53], [1.01, 0.6, 0.14], Block, Wood),
     piece("kit/stairs", [0.0, 0.0, 0.0], [2.75, 2.0, 2.0], Steps, Wood),
-    piece("kit/stall", [-2.12, -0.01, -0.06], [2.08, 3.48, 2.58], Block, Cloth),
+    piece("kit/stall", [-2.12, -0.01, -0.06], [2.08, 3.48, 2.58], Stall, Cloth),
     piece("kit/table", [-0.5, 0.0, -0.5], [0.5, 0.78, 0.5], Block, Wood),
     piece("kit/wall-2", [0.0, 0.0, -0.04], [2.0, 4.0, 0.54], Block, Plaster),
     piece("kit/wall-2-timber", [0.0, 0.0, -0.12], [2.0, 4.0, 0.63], Block, Plaster),
@@ -347,6 +354,7 @@ pub fn install(pack: &mut ZonePack, kit: Option<&ZonePack>) -> Installed {
     let mut proxies: Option<[u16; 8]> = None;
     let pane = |pack: &mut ZonePack| -> u16 { proxy_material(pack, "kit-proxy/pane", None, true) };
     let mut pane_index = None;
+    let mut glow_index = None;
     for piece in &PIECES {
         let own = kit.and_then(|k| k.model(piece.model).map(|m| (k, m)));
         if let Some((k, model)) = own {
@@ -371,8 +379,11 @@ pub fn install(pack: &mut ZonePack, kit: Option<&ZonePack>) -> Installed {
             out
         });
         let glass = *pane_index.get_or_insert_with(|| pane(pack));
+        // A lamp's head glows: Everglade lights a material named `Emit…`.
+        let glow = *glow_index
+            .get_or_insert_with(|| proxy_material(pack, "kit-proxy/Emit_glow", None, false));
         let coat = coats[Coat::ALL.iter().position(|c| *c == piece.coat).unwrap_or(0)];
-        pack.models.push(proxy(piece, coat, glass));
+        pack.models.push(proxy(piece, coat, glass, glow));
         report.proxies += 1;
     }
     pack.models.sort_by(|a, b| a.name.cmp(&b.name));
@@ -512,12 +523,13 @@ impl Builder {
     }
 }
 
-/// The proxy model of `piece`, in material `coat` with window panes in
-/// `pane`.
-fn proxy(piece: &Piece, coat: u16, pane: u16) -> Model {
+/// The proxy model of `piece`, in material `coat` with window panes and
+/// water in `pane` and a lamp's light in `glow`.
+fn proxy(piece: &Piece, coat: u16, pane: u16, glow: u16) -> Model {
     let (_, tint) = piece.coat.look();
     let mut body = Builder::new(tint);
     let mut glass = Builder::new([0.12, 0.14, 0.17]);
+    let mut light = Builder::new([1.0, 0.78, 0.45]);
     let [x0, y0, z0] = piece.min;
     let [x1, y1, z1] = piece.max;
     match piece.shape {
@@ -578,6 +590,38 @@ fn proxy(piece: &Piece, coat: u16, pane: u16) -> Model {
                 tri(&mut body, 0.0, true);
             }
         }
+        Shape::Stall => {
+            let post = 0.08;
+            let awning = y1 - 0.35;
+            for x in [x0, x1 - post] {
+                for z in [z0, z1 - post] {
+                    body.cuboid([x, y0, z], [x + post, awning, z + post]);
+                }
+            }
+            body.cuboid([x0, awning, z0], [x1, y1, z1]);
+        }
+        Shape::Fountain => {
+            let (rim, wall) = (0.6, 0.4);
+            body.cuboid([x0, y0, z0], [x1, rim, z0 + wall]);
+            body.cuboid([x0, y0, z1 - wall], [x1, rim, z1]);
+            body.cuboid([x0, y0, z0 + wall], [x0 + wall, rim, z1 - wall]);
+            body.cuboid([x1 - wall, y0, z0 + wall], [x1, rim, z1 - wall]);
+            let water = rim - 0.15;
+            glass.quad([
+                [x0 + wall, water, z1 - wall],
+                [x1 - wall, water, z1 - wall],
+                [x1 - wall, water, z0 + wall],
+                [x0 + wall, water, z0 + wall],
+            ]);
+            let (cx, cz) = ((x0 + x1) / 2.0, (z0 + z1) / 2.0);
+            body.cuboid([cx - 0.3, y0, cz - 0.3], [cx + 0.3, y1, cz + 0.3]);
+        }
+        Shape::Post => {
+            let (cx, cz) = ((x0 + x1) / 2.0, (z0 + z1) / 2.0);
+            let head = y1 - 0.5;
+            body.cuboid([cx - 0.07, y0, cz - 0.07], [cx + 0.07, head, cz + 0.07]);
+            light.cuboid([cx - 0.17, head, cz - 0.17], [cx + 0.17, y1, cz + 0.17]);
+        }
         Shape::Steps => {
             let steps = 8;
             let run = (x1 - x0) / steps as f32;
@@ -590,10 +634,14 @@ fn proxy(piece: &Piece, coat: u16, pane: u16) -> Model {
             }
         }
     }
-    let primitives = [body.primitive(coat), glass.primitive(pane)]
-        .into_iter()
-        .flatten()
-        .collect();
+    let primitives = [
+        body.primitive(coat),
+        glass.primitive(pane),
+        light.primitive(glow),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
     Model {
         name: piece.model.to_owned(),
         primitives,

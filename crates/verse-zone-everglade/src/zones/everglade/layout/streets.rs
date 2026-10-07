@@ -127,7 +127,14 @@ fn lamps(out: &mut Vec<Placement>, placed: &mut Vec<([f32; 2], f32)>) {
         .iter()
         .map(|s| (*s, LAMP_STEP, true))
         .chain(LIT_LANES.iter().map(|s| (*s, LANE_LAMP_STEP, false)));
-    for ((a, b, half), step, both) in streets {
+    for (index, ((a, b, half), step, both)) in streets.enumerate() {
+        // Main Street and Market Way, rebuilt from the medieval kit, take
+        // its lamps.
+        let model = if index < 2 && both {
+            "kit/lamp"
+        } else {
+            "generated/lamp_post"
+        };
         let (t, n, length) = frame(a, b);
         let mut k = 0;
         let mut along = step / 2.0;
@@ -139,7 +146,7 @@ fn lamps(out: &mut Vec<Placement>, placed: &mut Vec<([f32; 2], f32)>) {
                     a[0] + t[0] * along + n[0] * offset * s,
                     a[1] + t[1] * along + n[1] * offset * s,
                 ];
-                let lamp = Placement::new("generated/lamp_post", at, 0.0, Collision::Core(0.15));
+                let lamp = Placement::new(model, at, 0.0, Collision::Core(0.15));
                 // The other side when this one is taken.
                 if try_put(out, placed, lamp, 0.25) {
                     break;

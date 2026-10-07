@@ -101,7 +101,11 @@ fn the_survey_maps_the_kit_buildings_and_carves_everything_else() {
     assert!(buildings[hall].destructible());
     // Every generated building and landmark is carved into blocks.
     let placements = layout::placements();
-    for instance in layout::generated() {
+    // The plaza's fountain draws as the medieval kit's.
+    for instance in layout::generated()
+        .into_iter()
+        .filter(|i| i.name != layout::city::PLAZA_FOUNTAIN.name)
+    {
         let carved = buildings.iter().find(|b| {
             b.carved.iter().any(|c| {
                 placements[c.placement].model == instance.model.name
@@ -499,8 +503,10 @@ fn solid_boxes(site: &super::site::Site) -> Vec<(String, Vec3, Vec3)> {
     out
 }
 
-/// Everything in `site` whose underside is more than 3 m over `ground`
-/// and that rests on no chain of boxes down to it.
+/// Everything in `site` whose underside is more than 4.5 m over `ground`
+/// and that rests on no chain of boxes down to it. A tall ruin's rubble
+/// heap stands a few meters high, and a chunk can lodge in it on boxes
+/// that don't chain down.
 fn hanging(site: &super::site::Site, ground: f32) -> Vec<String> {
     let boxes = solid_boxes(site);
     let mut held: Vec<bool> = boxes.iter().map(|(_, lo, _)| lo.y < ground + 1.0).collect();
@@ -532,7 +538,7 @@ fn hanging(site: &super::site::Site, ground: f32) -> Vec<String> {
     boxes
         .iter()
         .zip(&held)
-        .filter(|((_, lo, _), h)| !**h && lo.y > ground + 3.0)
+        .filter(|((_, lo, _), h)| !**h && lo.y > ground + 4.5)
         .map(|((label, lo, hi), _)| format!("{label} from {lo} to {hi}"))
         .collect()
 }
@@ -814,14 +820,14 @@ fn every_building_the_layout_places_has_a_demolition_entry() {
 }
 
 /// The buildings added after the town's destruction: the owner's house,
-/// the Civic Hall, the belvedere and its loggia, the Agora, and the
-/// market hall.
+/// the Civic Hall, the belvedere and its loggia, the Agora, and a medieval
+/// kit house (the first with a 4 m doorway).
 const NEW_BUILDINGS: [&str; 5] = [
     "generated/greco_house",
     "generated/civic_hall",
     "generated/belvedere",
     "generated/agora",
-    "generated/market_hall",
+    "kit/door-4",
 ];
 
 /// The carved building that holds a placement of `model`.

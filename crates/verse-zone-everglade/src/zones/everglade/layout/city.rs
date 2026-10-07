@@ -17,11 +17,10 @@
 //! observatory, which block by their own boxes (`generated`).
 
 use super::generated::{
-    BAKERY, BOARDWALK_CAFE, BOATHOUSE, BROWNSTONE, CHAPEL, CLOCK_TOWER, CORNER_SHOP,
-    COTTAGE_THATCH, COTTAGE_TOWER, DORMER_HOUSE, FARMHOUSE, FOUNTAIN, GAMBREL_BARN, GAMBREL_HOUSE,
-    GAZEBO, GREENHOUSE, GUILD_HALL, HIP_HOUSE, Instance, L_HOUSE, LANTERN_INN, LOG_CABIN, LOOKOUT,
-    MARKET_HALL, MEETING_HALL, MUSIC_HALL, Model, NARROW_HOUSE, OBSERVATORY, SHOP_HOUSE, SMITHY,
-    STONE_COTTAGE, TALL_HOUSE, TAVERN, TIMBER_HOUSE, WINDMILL,
+    BOARDWALK_CAFE, BOATHOUSE, BROWNSTONE, CHAPEL, CLOCK_TOWER, COTTAGE_THATCH, COTTAGE_TOWER,
+    DORMER_HOUSE, FARMHOUSE, FOUNTAIN, GAMBREL_BARN, GAMBREL_HOUSE, GAZEBO, GREENHOUSE, GUILD_HALL,
+    HIP_HOUSE, Instance, L_HOUSE, LANTERN_INN, LOG_CABIN, LOOKOUT, MEETING_HALL, MUSIC_HALL, Model,
+    NARROW_HOUSE, OBSERVATORY, SHOP_HOUSE, SMITHY, STONE_COTTAGE, TAVERN, TIMBER_HOUSE, WINDMILL,
 };
 use super::kit_house::{KitHouse, KitStyle};
 use super::{
@@ -387,14 +386,7 @@ const fn stand_in(
 /// and Stoop Lane, the open market hall on the Fountain Plaza, the tavern
 /// in the Lantern Quarter, terraces of row houses on Brownstone Row, the
 /// observatory on its hill, and the cottage with its tower in Walden Woods.
-pub const STAND_INS: [StandIn; 68] = [
-    stand_in("corner shop", "corner shop", &CORNER_SHOP, 0.0),
-    stand_in("bakehouse", "bakehouse", &BAKERY, 0.0),
-    stand_in("tailor", "tailor", &DORMER_HOUSE, 0.0),
-    stand_in("tea house", "tea house", &TALL_HOUSE, 0.0),
-    stand_in("print shop", "print shop", &CORNER_SHOP, 0.0),
-    stand_in("music shop", "music shop", &TALL_HOUSE, 0.0),
-    stand_in("market hall", "market hall", &MARKET_HALL, 0.0),
+pub const STAND_INS: [StandIn; 57] = [
     // The Lantern Quarter: the round Music Hall, the meeting hall back from
     // Hearth Road behind its porch, the tavern on its corner, and the guild
     // hall, a little south so its turret clears the Music Hall.
@@ -451,12 +443,6 @@ pub const STAND_INS: [StandIn; 68] = [
     // and stone cottages on Brownstone Row, and gambrel, stone, and
     // timber-framed houses through Stoop Lane, the Knowledge District, and
     // the Foundry. Each costs a quarter of a kit-built house's triangles.
-    stand_in("hardware store", "hardware store", &SHOP_HOUSE, 0.0),
-    stand_in("cheesemonger", "cheesemonger", &SHOP_HOUSE, 0.0),
-    // South along its wall, so its walk crosses the plaza clear of the
-    // fountain.
-    stand_in("plaza cafe west", "plaza cafe west", &TIMBER_HOUSE, -2.3),
-    stand_in("plaza cafe east", "plaza cafe east", &SHOP_HOUSE, 0.0),
     stand_in("the fiddle", "the fiddle", &LANTERN_INN, 0.0),
     stand_in("the hearth", "the hearth", &TIMBER_HOUSE, 0.0),
     stand_in("choir house", "choir house", &GAMBREL_HOUSE, 0.0),
@@ -548,7 +534,22 @@ fn replaced(b: &Building) -> bool {
 /// turns from its street, radians, its style, and the front bay that holds
 /// its door. Stoop Lane's lots turn a few degrees either way, after the
 /// kit's demo town, so the lane curves; the main streets stay straight.
-pub const KIT_LOTS: [(&str, f32, KitStyle, usize); 6] = [
+pub const KIT_LOTS: [(&str, f32, KitStyle, usize); 17] = [
+    // Main Street's far blocks, square to the street.
+    ("corner shop", 0.0, KitStyle::Plaster, 0),
+    ("bakehouse", 0.0, KitStyle::Timber, 1),
+    ("tailor", 0.0, KitStyle::Timber, 0),
+    ("tea house", 0.0, KitStyle::Plaster, 1),
+    ("print shop", 0.0, KitStyle::Plaster, 0),
+    ("cheesemonger", 0.0, KitStyle::Timber, 1),
+    ("music shop", 0.0, KitStyle::Plaster, 0),
+    ("hardware store", 0.0, KitStyle::Timber, 1),
+    // The market hall on the Fountain Plaza, its door in the middle, and
+    // the plaza's cafés, each door in the bay south of the fountain.
+    ("market hall", 0.0, KitStyle::Plaster, 2),
+    ("plaza cafe west", 0.0, KitStyle::Timber, 1),
+    ("plaza cafe east", 0.0, KitStyle::Plaster, 0),
+    // Stoop Lane, turned a few degrees either way.
     ("townhouse 1", 0.1, KitStyle::Timber, 0),
     ("townhouse 2", -0.05, KitStyle::Plaster, 1),
     ("townhouse 3", 0.12, KitStyle::Plaster, 0),
@@ -1065,7 +1066,20 @@ pub fn build(out: &mut Vec<Placement>) {
     for (_, house) in kit_houses() {
         house.raise(out);
     }
-    out.extend(instances().iter().map(Instance::placement));
+    // The plaza's fountain draws as the kit's; its instance keeps its
+    // blockers and its place in the world tree.
+    out.extend(
+        instances()
+            .iter()
+            .filter(|i| i.name != PLAZA_FOUNTAIN.name)
+            .map(Instance::placement),
+    );
+    out.push(Placement::new(
+        "kit/fountain",
+        PLAZA_FOUNTAIN.at,
+        PLAZA_FOUNTAIN.yaw,
+        Collision::None,
+    ));
     market(out);
     stoops(out);
     lanterns(out);
@@ -1084,34 +1098,34 @@ fn market(out: &mut Vec<Placement>) {
     // Stalls on the plaza's east side, facing the fountain across it, with
     // their stock beside them.
     for (k, z) in [66.5_f32, 77.0].into_iter().enumerate() {
-        prop(out, super::STALL, [6.5, z], WEST);
-        prop(out, "generated/barrel", [7.9, z + 1.6], 0.3 * k as f32);
+        prop(out, "kit/stall", [6.5, z], WEST);
+        prop(out, "kit/barrel", [7.9, z + 1.6], 0.3 * k as f32);
+        prop(out, "kit/basket", [7.6, z - 1.7], 0.0);
     }
-    prop(out, "village/Prop_Crate", [8.0, 69.0], 0.4);
-    prop(out, "generated/hand_cart", [-8.5, 67.0], 0.5);
-    prop(out, "props/Bench", [-6.0, 69.6], 0.0);
-    prop(out, "props/Bench", [-6.0, 80.8], PI);
+    prop(out, "kit/crate", [8.0, 69.0], 0.4);
+    prop(out, "kit/cart", [-8.5, 67.0], 0.5);
+    prop(out, "kit/bench", [-6.0, 69.6], FRAC_PI_2);
+    prop(out, "kit/bench", [-6.0, 80.8], -FRAC_PI_2);
     // Flower boxes at the fountain's four sides.
     let [fx, fz] = PLAZA_FOUNTAIN.at;
     for (dx, dz, yaw) in [(-3.6, 0.0, FRAC_PI_2), (3.6, 0.0, FRAC_PI_2)] {
         prop(out, "generated/flower_box", [fx + dx, fz + dz], yaw);
     }
-    // The market hall's stock under its arcade, clear of its open bay: a
-    // hand cart of sacks, barrels, and crates.
-    let hall = place(
-        STAND_INS
-            .iter()
-            .find(|s| s.building == "market hall")
-            .unwrap(),
-    );
-    prop(out, "generated/hand_cart", hall.world([-3.0, -4.2]), 1.2);
-    for (k, local) in [[3.0, -4.6], [4.0, -3.6], [-4.6, -6.4]]
+    // The market hall's stock before its front, either side of its steps:
+    // a cart of sacks, barrels, and crates.
+    let (_, hall) = kit_houses()
+        .into_iter()
+        .find(|(b, _)| b.name == "market hall")
+        .expect("the market hall is a kit house");
+    let front = hall.depth / 2.0;
+    prop(out, "kit/cart", hall.world([-6.0, front + 2.2]), 1.2);
+    for (k, local) in [[5.0, front + 1.4], [6.2, front + 1.8], [-9.5, front + 1.5]]
         .into_iter()
         .enumerate()
     {
-        prop(out, "generated/barrel", hall.world(local), 0.9 * k as f32);
+        prop(out, "kit/barrel", hall.world(local), 0.9 * k as f32);
     }
-    prop(out, "village/Prop_Crate", hall.world([3.6, -6.0]), 0.3);
+    prop(out, "kit/crate", hall.world([8.0, front + 1.6]), 0.3);
     for (i, x) in [-80.0_f32, -48.0, 48.0, 80.0].into_iter().enumerate() {
         tree(
             out,
