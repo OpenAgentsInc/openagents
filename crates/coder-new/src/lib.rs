@@ -7,6 +7,7 @@ pub mod brainstorm;
 pub mod bundled_runtime;
 pub mod bundled_settings;
 pub mod credentials;
+mod delegation_events;
 pub mod jev_plugin;
 pub mod live;
 pub mod model_catalog;
@@ -195,6 +196,16 @@ impl App {
                 });
                 self.delegations.len() - 1
             });
+        if let bundled_runtime::RuntimeEvent::Delegation {
+            id: nested,
+            name,
+            task,
+            event,
+        } = event
+        {
+            self.apply_delegation(format!("{id}/{nested}"), name, task, *event);
+            return;
+        }
         let child = &mut self.delegations[index];
         match event {
             bundled_runtime::RuntimeEvent::Text(text) => child.chat.partial.push_str(&text),

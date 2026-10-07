@@ -92,6 +92,7 @@ pub(crate) fn command_environment(
         "DEVIN_BIN",
         "OPENCODE_BIN",
         MODEL_INPUT_ENV,
+        crate::delegation_events::CHANNEL_ENV,
     ]
     .into_iter()
     .filter_map(|name| get(name).map(|value| (name.into(), value)))
@@ -348,7 +349,17 @@ pub fn execute(
     context: &Context,
     emit: &mut dyn FnMut(Value),
 ) -> Result<Value, Error> {
-    execute_with_demo_policy(arguments, context, emit, crate::DEMO_AVAILABLE)
+    let mut parent = crate::delegation_events::Publisher::connect(
+        context
+            .environment
+            .get(crate::delegation_events::CHANNEL_ENV)
+            .map(String::as_str),
+    );
+    let mut events = |value: Value| {
+        parent.send(&value);
+        emit(value);
+    };
+    execute_with_demo_policy(arguments, context, &mut events, crate::DEMO_AVAILABLE)
 }
 
 fn execute_with_demo_policy(

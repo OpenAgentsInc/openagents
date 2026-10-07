@@ -97,6 +97,59 @@ fn begin_delegation(app: &mut App) {
 }
 
 #[test]
+fn nested_cli_delegations_get_their_own_selectable_rows_and_retained_chats() {
+    let mut app = live_app();
+    app.live.busy = true;
+    begin_delegation(&mut app);
+    let nested = |event| RuntimeEvent::Delegation {
+        id: "cli-codex".into(),
+        name: "Codex".into(),
+        task: "Review the nested fixture".into(),
+        event: Box::new(event),
+    };
+    delegation(
+        &mut app,
+        nested(tool(
+            "acp_subagent",
+            json!({"agent":"codex","task":"Review the nested fixture"}),
+            Value::Null,
+            true,
+        )),
+    );
+    delegation(
+        &mut app,
+        nested(RuntimeEvent::Model("fixture/codex".into())),
+    );
+    delegation(
+        &mut app,
+        nested(RuntimeEvent::Text("Nested child reply.".into())),
+    );
+    delegation(
+        &mut app,
+        nested(tool(
+            "acp_subagent",
+            Value::Null,
+            json!({"reply":"Nested child reply.","model":"fixture/codex","tokens":18}),
+            false,
+        )),
+    );
+    assert_eq!(app.delegations.len(), 2);
+    assert_eq!(app.delegations[1].name, "Codex");
+    assert!(!app.delegations[1].running);
+    let buffer = draw(&mut app, 80, 24);
+    assert!(row(&buffer, 21).contains("microcoder"));
+    assert!(row(&buffer, 22).contains("Codex"));
+    app.selected_agent = Some(1);
+    assert!(canvas(&draw(&mut app, 80, 24)).contains("Nested child reply."));
+    let root = tempfile::tempdir().unwrap();
+    let document = coder_new::trajectory::main_document(&app, root.path());
+    let mut restored = App::default();
+    coder_new::trajectory::restore_app(&mut restored, &document).unwrap();
+    assert_eq!(restored.delegations.len(), 2);
+    assert_eq!(restored.delegations[1].chat.tokens, 18);
+}
+
+#[test]
 fn parameter_blocks_keep_keys_readable_and_fit_in_five_physical_rows() {
     let input = json!({
         "state": "A long state value that must not consume every row. ".repeat(30),

@@ -187,6 +187,37 @@ pub enum RuntimeEvent {
     },
 }
 
+impl RuntimeEvent {
+    pub(crate) fn redact(&mut self, keys: &[ApiKey]) {
+        match self {
+            Self::Text(text) | Self::Model(text) => *text = redact_text(text, keys),
+            Self::Delegation {
+                id,
+                name,
+                task,
+                event,
+            } => {
+                *id = redact_text(id, keys);
+                *name = redact_text(name, keys);
+                *task = redact_text(task, keys);
+                event.redact(keys);
+            }
+            Self::Tool {
+                name,
+                input,
+                output,
+                ..
+            } => {
+                *name = redact_text(name, keys);
+                for key in keys {
+                    crate::plugin_tools::redact_value(input, key.expose());
+                    crate::plugin_tools::redact_value(output, key.expose());
+                }
+            }
+        }
+    }
+}
+
 pub fn cli_tool_definition() -> Value {
     json!({"type":"function","function":{
         "name":"openagents_cli",
@@ -214,16 +245,19 @@ pub async fn run_command(
     cwd: &Path,
     redaction_keys: &[ApiKey],
     cancel: &Arc<AtomicBool>,
+    emit: &mut dyn FnMut(RuntimeEvent),
 ) -> Result<Value, String> {
     let directory = cwd
         .canonicalize()
         .map_err(|_| "The working directory is unavailable.".to_string())?;
     let boundary = command_boundary(&directory)?;
+    let sink = RefCell::new(emit);
     let checkout = Checkout {
         directory,
         boundary,
         cancel: Arc::clone(cancel),
         redaction_keys,
+        events: Some(&sink),
     };
     let ran = checkout.run(script, Duration::from_secs(120)).await;
     Ok(json!({"exit":ran.exit,"output":ran.output,"timed_out":ran.timed_out}))
@@ -317,12 +351,13 @@ pub async fn cli(
     arguments: &[String],
     cwd: &Path,
     cancel: &Arc<AtomicBool>,
+    emit: &mut dyn FnMut(RuntimeEvent),
 ) -> Result<Value, String> {
     let program = cli_binary().ok_or_else(|| {
         "The bundled OpenAgents CLI is missing. Install Coder with scripts/install-coder.sh."
             .to_string()
     })?;
-    cli_at(&program, arguments, cwd, cancel).await
+    cli_at(&program, arguments, cwd, cancel, emit).await
 }
 
 pub(crate) async fn cli_at(
@@ -330,6 +365,7 @@ pub(crate) async fn cli_at(
     arguments: &[String],
     cwd: &Path,
     cancel: &Arc<AtomicBool>,
+    emit: &mut dyn FnMut(RuntimeEvent),
 ) -> Result<Value, String> {
     validate_arguments(arguments)?;
     if cancel.load(Ordering::Relaxed) {
@@ -345,9 +381,12 @@ pub(crate) async fn cli_at(
     let mut command = std::process::Command::new(program);
     command.arg("--json").args(arguments).current_dir(cwd);
     prepare_cli_child(&mut command);
+    let sink = RefCell::new(emit);
+    let mut bridge = crate::delegation_events::Bridge::new()?;
+    bridge.prepare(&mut command);
     let job = supervise::Job::from_command(command)
         .bounded(supervise::Limits::within(Duration::from_secs(300)).keeping(TEXT_MAX));
-    let stopped = wait_job(job, cancel).await?;
+    let stopped = wait_job(job, cancel, Some((&mut bridge, &sink)), &[]).await?;
     Ok(
         json!({"exit":stopped.ending.code(),"stdout":String::from_utf8_lossy(&stopped.rest.bytes),"stderr":stopped.stderr.marked(),"timed_out":matches!(stopped.ending,supervise::Ending::TimedOut),"canceled":stopped.requested,"group_clear":stopped.group_clear,"truncated":!stopped.rest.gaps.is_empty()}),
     )
@@ -356,15 +395,31 @@ pub(crate) async fn cli_at(
 async fn wait_job(
     job: supervise::Job,
     cancel: &Arc<AtomicBool>,
+    mut observing: Option<(
+        &mut crate::delegation_events::Bridge,
+        &dyn crate::delegation_events::Sink,
+    )>,
+    keys: &[ApiKey],
 ) -> Result<supervise::Stopped, String> {
     let live = job.start(supervise::Input::Null)?;
     while !live.finished() {
+        if let Some((bridge, sink)) = &mut observing {
+            bridge.drain(*sink, keys);
+        }
         if cancel.load(Ordering::Relaxed) {
-            return Ok(live.stop().await);
+            let stopped = live.stop().await;
+            if let Some((bridge, sink)) = observing {
+                bridge.finish(sink, keys);
+            }
+            return Ok(stopped);
         }
         tokio::time::sleep(POLL).await;
     }
-    Ok(live.wait().await)
+    let stopped = live.wait().await;
+    if let Some((bridge, sink)) = observing {
+        bridge.finish(sink, keys);
+    }
+    Ok(stopped)
 }
 
 fn scrub_credentials(command: &mut std::process::Command) {
@@ -912,11 +967,13 @@ async fn run_microcoder<G: Generate>(
         .canonicalize()
         .map_err(|_| "The working directory is unavailable.".to_string())?;
     let boundary = command_boundary(&directory)?;
+    let sink = RefCell::new(emit);
     let environment = Checkout {
         directory: directory.clone(),
         boundary,
         cancel: Arc::clone(cancel),
         redaction_keys,
+        events: Some(&sink),
     };
     let state = State {
         task: redact_text(task, redaction_keys),
@@ -959,7 +1016,7 @@ async fn run_microcoder<G: Generate>(
         ..Limits::default()
     };
     let mut observer = MicrocoderEvents {
-        emit,
+        emit: &sink,
         reply: String::new(),
         model: None,
         tokens: 0,
@@ -1078,6 +1135,7 @@ struct Checkout<'a> {
     boundary: Option<coder_boundary::Boundary>,
     cancel: Arc<AtomicBool>,
     redaction_keys: &'a [ApiKey],
+    events: Option<&'a dyn crate::delegation_events::Sink>,
 }
 
 impl Env for Checkout<'_> {
@@ -1125,10 +1183,19 @@ impl Env for Checkout<'_> {
                 command.env("TMPDIR", scratch);
             }
             scrub_credentials(&mut command);
+            let mut bridge = self
+                .events
+                .map(|_| crate::delegation_events::Bridge::new())
+                .transpose()?;
+            if let Some(bridge) = &bridge {
+                bridge.prepare(&mut command);
+            }
             wait_job(
                 supervise::Job::from_command(command)
                     .bounded(supervise::Limits::within(deadline).keeping(TEXT_MAX)),
                 &self.cancel,
+                bridge.as_mut().zip(self.events),
+                self.redaction_keys,
             )
             .await
         }
@@ -1184,7 +1251,7 @@ impl Env for Checkout<'_> {
 }
 
 struct MicrocoderEvents<'a> {
-    emit: &'a mut dyn FnMut(RuntimeEvent),
+    emit: &'a dyn crate::delegation_events::Sink,
     reply: String,
     model: Option<String>,
     tokens: u64,
@@ -1198,7 +1265,7 @@ impl Observer for MicrocoderEvents<'_> {
                 if !generated.model.is_empty() {
                     let model = redact_text(&generated.model, self.redaction_keys);
                     self.model = Some(model.clone());
-                    (self.emit)(RuntimeEvent::Model(model));
+                    self.emit.emit(RuntimeEvent::Model(model));
                 }
                 self.tokens = self
                     .tokens
@@ -1210,7 +1277,7 @@ impl Observer for MicrocoderEvents<'_> {
                             bounded(&redact_text(&action.reply, self.redaction_keys), TEXT_MAX);
                     }
                     for command in &action.commands {
-                        (self.emit)(RuntimeEvent::Tool {
+                        self.emit.emit(RuntimeEvent::Tool {
                             name: "Run".into(),
                             input: json!(redact_text(command, self.redaction_keys)),
                             output: Value::Null,
@@ -1218,11 +1285,11 @@ impl Observer for MicrocoderEvents<'_> {
                         });
                     }
                     if action.finished && !self.reply.is_empty() {
-                        (self.emit)(RuntimeEvent::Text(self.reply.clone()));
+                        self.emit.emit(RuntimeEvent::Text(self.reply.clone()));
                     }
                 }
             }
-            Event::Ran { result, .. } => (self.emit)(RuntimeEvent::Tool {
+            Event::Ran { result, .. } => self.emit.emit(RuntimeEvent::Tool {
                 name: "Run".into(),
                 input: json!(result.command),
                 output: json!(result),
@@ -1262,9 +1329,15 @@ mod tests {
         let cwd = dir.path().join("checkout");
         std::fs::create_dir(&cwd).unwrap();
         let cancel = Arc::new(AtomicBool::new(false));
-        let result = run_command("printf 'full access' > ../result", &cwd, &[], &cancel)
-            .await
-            .unwrap();
+        let result = run_command(
+            "printf 'full access' > ../result",
+            &cwd,
+            &[],
+            &cancel,
+            &mut |_| {},
+        )
+        .await
+        .unwrap();
         assert_eq!(result["exit"], 0, "{result}");
         assert_eq!(
             std::fs::read_to_string(dir.path().join("result")).unwrap(),
@@ -1275,6 +1348,7 @@ mod tests {
             boundary: command_boundary(&cwd).unwrap(),
             cancel,
             redaction_keys: &[],
+            events: None,
         };
         assert_eq!(
             environment.read("../result").await.as_deref(),
@@ -1347,6 +1421,7 @@ mod tests {
             boundary: Some(boundary),
             cancel: Arc::new(AtomicBool::new(false)),
             redaction_keys: &[],
+            events: None,
         };
         assert_eq!(environment.read("private.txt").await, None);
         for command in ["cat private.txt", "touch changed"] {
@@ -1765,6 +1840,7 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
             &["doctor".into(), "$(touch injected)".into()],
             dir.path(),
             &Arc::new(AtomicBool::new(false)),
+            &mut |_| {},
         )
         .await
         .unwrap();
@@ -1784,10 +1860,14 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
         std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
         let cancel = Arc::new(AtomicBool::new(false));
         let signal = Arc::clone(&cancel);
-        let (result, ()) = tokio::join!(cli_at(&program, &[], dir.path(), &cancel), async move {
-            tokio::time::sleep(Duration::from_millis(150)).await;
-            signal.store(true, Ordering::Relaxed);
-        });
+        let mut emit = |_| {};
+        let (result, ()) = tokio::join!(
+            cli_at(&program, &[], dir.path(), &cancel, &mut emit),
+            async move {
+                tokio::time::sleep(Duration::from_millis(150)).await;
+                signal.store(true, Ordering::Relaxed);
+            }
+        );
         let result = result.unwrap();
         assert_eq!(result["canceled"], true);
         assert_eq!(result["group_clear"], true);
@@ -1952,6 +2032,77 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
 
     #[tokio::test]
     #[cfg(unix)]
+    async fn local_loop_commands_forward_cli_delegations_without_mixing_parent_text() {
+        use microcoder_loop::models::{Ask, Basis, Generated, NextAction};
+        struct Fixture {
+            command: String,
+            step: Cell<usize>,
+        }
+        impl Generate for Fixture {
+            async fn generate(&self, _system: &str, _prompt: &str) -> Generated {
+                let first = self.step.replace(self.step.get() + 1) == 0;
+                Generated {
+                    action: Ok(NextAction {
+                        rationale: "Run the fixture delegation.".into(),
+                        commands: if first {
+                            vec![self.command.clone()]
+                        } else {
+                            vec![]
+                        },
+                        view: vec![],
+                        freeze_tests: false,
+                        expand: vec![],
+                        finished: !first,
+                        reply: if first {
+                            String::new()
+                        } else {
+                            "Parent reply.".into()
+                        },
+                        ask: Ask::None,
+                    }),
+                    model: "fixture/parent".into(),
+                    prompt_tokens: 1,
+                    completion_tokens: 1,
+                    usd: Some(0.0),
+                    known_usd: 0.0,
+                    cost_unknown: None,
+                    usd_upper: Some(0.0),
+                    cost_basis: Basis::Billed,
+                    milliseconds: 1,
+                }
+            }
+        }
+        let root = tempfile::tempdir().unwrap();
+        let cli = crate::delegation_events::tests::fixture(root.path());
+        let generator = Fixture {
+            command: format!(
+                "{} --json coder delegate codex --task 'Review the fixture' > delegated.jsonl 2>&1",
+                shell_word(&cli.to_string_lossy())
+            ),
+            step: Cell::new(0),
+        };
+        let mut events = Vec::new();
+        let result = run_microcoder(
+            "Run the fixture delegation.",
+            root.path(),
+            &generator,
+            None,
+            &[],
+            &Arc::new(AtomicBool::new(false)),
+            &mut |event| events.push(event),
+        )
+        .await
+        .unwrap();
+        assert_eq!(result["reply"], "Parent reply.");
+        assert_eq!(result["model"], "fixture/parent");
+        assert!(events.iter().any(|event| matches!(event, RuntimeEvent::Delegation { name, event, .. } if name == "Codex" && matches!(event.as_ref(), RuntimeEvent::Text(text) if text == "Fixture child reply."))));
+        assert!(events.iter().all(
+            |event| !matches!(event, RuntimeEvent::Text(text) if text == "Fixture child reply.")
+        ));
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
     async fn microcoder_redacts_command_and_file_observations_before_the_next_generation() {
         use microcoder_loop::models::{Ask, Basis, Generated, NextAction};
         const MARKER: &str = "fixture-saved-provider-credential";
@@ -2011,6 +2162,7 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
             boundary: Some(boundary),
             cancel: Arc::clone(&cancel),
             redaction_keys: &keys,
+            events: None,
         };
         assert_eq!(
             environment.read(".env").await.as_deref(),

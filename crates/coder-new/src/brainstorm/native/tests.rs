@@ -491,6 +491,7 @@ async fn actual_cli_child_retains_model_source_through_programmatic_context() {
             ],
             directory.path(),
             &Arc::new(AtomicBool::new(false)),
+            &mut |_| {},
         )
         .await
         .unwrap();

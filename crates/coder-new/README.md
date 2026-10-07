@@ -125,6 +125,9 @@ Coder starts tools and subagents with full filesystem and network access.
 Native Codex bypasses approvals and its sandbox, and ACP permission requests
 are approved. Explicitly gated hosts retain their approval policies. The host
 closes each child session.
+CLI delegations made through `Run` or `openagents_cli` also appear in the agent
+rail, including when command output is redirected. Nested delegations have
+their own selectable rows and retained chats.
 See the [Jev settings](../../docs/coder-new/jev-settings.svg) and
 [ACP settings](../../docs/coder-new/acp-settings.svg) previews.
 

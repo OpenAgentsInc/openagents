@@ -215,27 +215,14 @@ impl ExecutionSettings {
         {
             return Err("Keep API keys in plugin settings, outside tool arguments.".into());
         }
-        let mut emit = |event: RuntimeEvent| {
-            let event = match event {
-                RuntimeEvent::Text(text) => RuntimeEvent::Text(self.redact_text(&text)),
-                RuntimeEvent::Model(model) => RuntimeEvent::Model(self.redact_text(&model)),
-                RuntimeEvent::Tool {
-                    name,
-                    mut input,
-                    mut output,
-                    running,
-                } => {
-                    self.redact(&mut input);
-                    self.redact(&mut output);
-                    RuntimeEvent::Tool {
-                        name: self.redact_text(&name),
-                        input,
-                        output,
-                        running,
-                    }
-                }
-                event => event,
-            };
+        let keys: Vec<_> = self
+            .redaction_keys
+            .iter()
+            .chain(self.jev_key.iter())
+            .cloned()
+            .collect();
+        let mut emit = |mut event: RuntimeEvent| {
+            event.redact(&keys);
             emit(event);
         };
         let result = match name {
@@ -257,13 +244,14 @@ impl ExecutionSettings {
                     .chain(self.jev_key.iter())
                     .cloned()
                     .collect();
-                bundled_runtime::run_command(&args.command, &self.cwd, &keys, cancel).await
+                bundled_runtime::run_command(&args.command, &self.cwd, &keys, cancel, &mut emit)
+                    .await
             }
             "openagents_cli" if self.registered(ToolBinding::OpenAgentsCli) => {
                 let args: CliArguments = serde_json::from_value(arguments).map_err(
                     |_| "openagents_cli requires an arguments array and no other fields.",
                 )?;
-                bundled_runtime::cli(&args.arguments, &self.cwd, cancel).await
+                bundled_runtime::cli(&args.arguments, &self.cwd, cancel, &mut emit).await
             }
             "acp_subagent" if self.registered(ToolBinding::AcpSubagent) => {
                 let args: AcpArguments = serde_json::from_value(arguments).map_err(
