@@ -174,7 +174,7 @@ const INDOOR_REACH: f32 = 34.0;
 /// The council chamber, in the hall's frame: x, z, and height above the
 /// base from, to, m. Its floor is the podium's top, 1.94 m up; the range
 /// starts lower, so a walker the podium hasn't lifted yet counts as inside.
-const CHAMBER: ([f32; 2], [f32; 2], [f32; 2]) = ([-10.6, 10.6], [-30.0, -10.0], [-1.0, 10.5]);
+pub const CHAMBER: ([f32; 2], [f32; 2], [f32; 2]) = ([-10.6, 10.6], [-30.0, -10.0], [-1.0, 10.5]);
 
 /// The chamber's floor over the hall's ground, m.
 pub const FLOOR: f32 = 1.94;

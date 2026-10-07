@@ -9,6 +9,8 @@ use glam::{Quat, Vec3};
 use nostr::domain::{Event, RelaySigner, Tag};
 use serde::{Deserialize, Serialize};
 
+pub mod object;
+
 /// World definition, addressable.
 pub const WORLD_KIND: u16 = nostr::kinds::MV_WORLD;
 /// Entity state, addressable.

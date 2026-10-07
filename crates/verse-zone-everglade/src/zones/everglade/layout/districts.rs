@@ -46,6 +46,27 @@ impl District {
         Self::Wilds,
     ];
 
+    /// The district's slug in the world tree, such as `main-street`.
+    #[must_use]
+    pub const fn slug(self) -> &'static str {
+        match self {
+            Self::Commons => "commons",
+            Self::MainStreet => "main-street",
+            Self::FountainPlaza => "fountain-plaza",
+            Self::CreativeDistrict => "creative-district",
+            Self::Foundry => "foundry",
+            Self::KnowledgeDistrict => "knowledge-district",
+            Self::StoopLane => "stoop-lane",
+            Self::LanternQuarter => "lantern-quarter",
+            Self::BrownstoneRow => "brownstone-row",
+            Self::WaldenWoods => "walden-woods",
+            Self::Fernhollow => "fernhollow",
+            Self::Gardens => "gardens",
+            Self::Farm => "farm",
+            Self::Wilds => "wilds",
+        }
+    }
+
     /// The district's display name.
     #[must_use]
     pub const fn name(self) -> &'static str {
@@ -68,12 +89,22 @@ impl District {
     }
 }
 
-/// The district of the city building named `name`, one of
-/// [`city::BUILDINGS`] or the beekeeper's hut.
+/// The district of the building named `name`: one of [`city::BUILDINGS`],
+/// the beekeeper's hut, or the first town's (the workshop hall,
+/// [`super::DOORS`], the Stacks, and the bandshell).
 #[must_use]
 pub fn of_building(name: &str) -> Option<District> {
     use District::*;
     Some(match name {
+        // The first town, round the workshop hall.
+        "workshop hall" | "bandshell" => Commons,
+        "bakery" | "cafe" | "bookshop" | "grocer" => MainStreet,
+        "cottage" => StoopLane,
+        n if n.starts_with("home ") => StoopLane,
+        "makers hall" => CreativeDistrict,
+        "server barn" => Foundry,
+        "reading room" | "old college" | "the stacks" => KnowledgeDistrict,
+        "writing cabin" | "code cabin" => WaldenWoods,
         "corner shop" | "bakehouse" | "tailor" | "tea house" | "print shop" | "cheesemonger"
         | "music shop" | "hardware store" => MainStreet,
         n if n.starts_with("market row ") => MainStreet,
@@ -115,7 +146,8 @@ pub fn of_instance(name: &str) -> Option<District> {
         "belvedere" => District::LanternQuarter,
         // North of the market hall, facing the plaza.
         "agora" => District::FountainPlaza,
-        _ => return None,
+        // The first town's generated models.
+        _ => return of_building(name),
     })
 }
 
@@ -172,6 +204,18 @@ mod tests {
             of_instance("owner's house"),
             Some(District::KnowledgeDistrict)
         );
+    }
+
+    #[test]
+    fn every_doorway_and_front_has_a_district() {
+        let names = super::super::doors()
+            .into_iter()
+            .map(|(n, _, _)| n)
+            .chain(super::super::fronts().into_iter().map(|(n, _)| n));
+        let missing: Vec<_> = names.filter(|n| of_instance(n).is_none()).collect();
+        assert!(missing.is_empty(), "no district for {missing:?}");
+        assert_eq!(of_building("makers hall"), Some(District::CreativeDistrict));
+        assert_eq!(of_instance("the stacks"), Some(District::KnowledgeDistrict));
     }
 
     #[test]

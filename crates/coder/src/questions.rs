@@ -901,7 +901,8 @@ mod tests {
                 "openagents.memory-importance.v1",
                 "openagents.method-conformance.v1",
                 "openagents.program.v1",
-                "openagents.review-finding.v1"
+                "openagents.review-finding.v1",
+                "openagents.world-place.v1"
             ]
         );
     }

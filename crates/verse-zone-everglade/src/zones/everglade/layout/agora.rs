@@ -271,7 +271,7 @@ const INDOOR_REACH: f32 = 34.0;
 /// to, m. The trading floor, Paul's office, and the training room; each
 /// range starts below the floor, so a walker the podium hasn't lifted yet
 /// counts as inside.
-const ROOMS: [([f32; 2], [f32; 2], [f32; 2]); 3] = [
+pub const ROOMS: [([f32; 2], [f32; 2], [f32; 2]); 3] = [
     ([-8.0, 8.0], [-27.6, -8.0], [-1.0, 8.6]),
     ([-14.8, -8.0], [-20.6, -10.4], [-1.0, 5.8]),
     ([8.0, 14.8], [-20.6, -10.4], [-1.0, 5.8]),

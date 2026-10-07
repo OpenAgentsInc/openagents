@@ -54,6 +54,8 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
+# The world tree a plan names places in (`task::agent_place`).
+world-tree = { path = "../world-tree" }
 toml = "0.9"
 # The workshop agent's secret screen: credential shapes and this host's
 # exact credential values never reach her memory, journal, or reports.

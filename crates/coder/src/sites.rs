@@ -705,6 +705,7 @@ mod tests {
                 "openagents.method-conformance.v1",
                 "openagents.program.v1",
                 "openagents.review-finding.v1",
+                "openagents.world-place.v1",
             ]
         );
         for set in &inventory.sets {
@@ -719,8 +720,9 @@ mod tests {
         // expectation-support set are asked by Coder One's
         // `evidence.departures` and `accept.grade`, which compile them in,
         // as is the method-conformance set by `verify.method_conformance`,
-        // the memory-importance set by the workshop agent's briefing, and
-        // the insight-support set by her reflection.
+        // the memory-importance set by the workshop agent's briefing,
+        // the insight-support set by her reflection, and the world-place
+        // set by her plans' place choice.
         // The inventory says so rather than letting a run find out at
         // admission.
         let unbound = |set: &str| Problem::UnboundSet {
@@ -737,6 +739,7 @@ mod tests {
                 unbound("openagents.insight-support.v1"),
                 unbound("openagents.memory-importance.v1"),
                 unbound("openagents.method-conformance.v1"),
+                unbound("openagents.world-place.v1"),
             ]
         );
     }

@@ -1,3 +1,12 @@
+## World place calibration (#10788)
+
+Agents walk down the world tree with Jev
+(`questions/world-place.json`), which has no live measurement yet. Run the
+calibration in `docs/decision-models/measurements/2026-10-07-world-place.md`
+with a live Jev key (about 60 labeled activities over
+`crates/world-tree/data/everglade.json`) and record the numbers there. It
+spends a little Jev money.
+
 ## Insight support calibration and a live reflection (#10789)
 
 Alice's reflection checks each insight with Jev

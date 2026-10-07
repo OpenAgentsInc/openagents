@@ -1,0 +1,4981 @@
+{
+  "schema": "openagents.verse-world-tree.v1",
+  "zone": "everglade",
+  "digest": "sha256:f8bd47fc18a7231c2e7b88e3a15cdf7b056ea120e683b30a1007137657210f0b",
+  "nodes": [
+    {
+      "id": "everglade",
+      "name": "Everglade",
+      "kind": "zone",
+      "stand": [
+        -3.0,
+        -27.0
+      ],
+      "facing": 1.57,
+      "source": "zone:everglade"
+    },
+    {
+      "id": "everglade/commons",
+      "name": "The Commons",
+      "kind": "district",
+      "district": "commons",
+      "stand": [
+        8.1,
+        32.0
+      ],
+      "source": "district:commons"
+    },
+    {
+      "id": "everglade/commons/bandshell",
+      "name": "bandshell",
+      "kind": "building",
+      "district": "commons",
+      "stand": [
+        8.1,
+        32.0
+      ],
+      "affordances": [
+        "gather"
+      ],
+      "source": "front:bandshell"
+    },
+    {
+      "id": "everglade/commons/bandshell/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "commons",
+      "stand": [
+        8.1,
+        32.0
+      ],
+      "open": false,
+      "source": "front:bandshell:door"
+    },
+    {
+      "id": "everglade/commons/boathouse",
+      "name": "boathouse",
+      "kind": "building",
+      "district": "commons",
+      "stand": [
+        7.7,
+        36.6
+      ],
+      "affordances": [
+        "rest"
+      ],
+      "source": "front:boathouse"
+    },
+    {
+      "id": "everglade/commons/boathouse/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "commons",
+      "stand": [
+        7.7,
+        36.6
+      ],
+      "open": false,
+      "source": "front:boathouse:door"
+    },
+    {
+      "id": "everglade/commons/gazebo",
+      "name": "gazebo",
+      "kind": "building",
+      "district": "commons",
+      "stand": [
+        29.2,
+        26.0
+      ],
+      "entry": [
+        [
+          29.2,
+          26.0
+        ],
+        [
+          32.7,
+          26.0
+        ]
+      ],
+      "affordances": [
+        "gather"
+      ],
+      "source": "door:gazebo"
+    },
+    {
+      "id": "everglade/commons/gazebo/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "commons",
+      "stand": [
+        29.2,
+        26.0
+      ],
+      "facing": 1.57,
+      "open": true,
+      "source": "door:gazebo:door"
+    },
+    {
+      "id": "everglade/commons/workshop-hall",
+      "name": "workshop hall",
+      "kind": "building",
+      "district": "commons",
+      "stand": [
+        0.0,
+        -14.5
+      ],
+      "affordances": [
+        "work"
+      ],
+      "source": "building:workshop hall"
+    },
+    {
+      "id": "everglade/commons/workshop-hall/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "commons",
+      "stand": [
+        0.0,
+        -2.0
+      ],
+      "facing": 0.0,
+      "open": true,
+      "source": "building:workshop hall:door"
+    },
+    {
+      "id": "everglade/commons/workshop-hall/hall",
+      "name": "hall",
+      "kind": "room",
+      "district": "commons",
+      "stand": [
+        0.0,
+        5.0
+      ],
+      "area": [
+        [
+          -8.0,
+          1.0
+        ],
+        [
+          8.0,
+          11.0
+        ]
+      ],
+      "source": "room:workshop hall"
+    },
+    {
+      "id": "everglade/commons/workshop-hall/strongroom",
+      "name": "strongroom",
+      "kind": "room",
+      "district": "commons",
+      "stand": [
+        10.5,
+        5.0
+      ],
+      "area": [
+        [
+          8.0,
+          2.0
+        ],
+        [
+          14.0,
+          10.0
+        ]
+      ],
+      "source": "room:strongroom"
+    },
+    {
+      "id": "everglade/commons/workshop-hall/yard",
+      "name": "yard",
+      "kind": "room",
+      "district": "commons",
+      "stand": [
+        0.0,
+        -6.5
+      ],
+      "area": [
+        [
+          -13.0,
+          -14.0
+        ],
+        [
+          13.0,
+          1.0
+        ]
+      ],
+      "source": "room:workshop yard"
+    },
+    {
+      "id": "everglade/commons/workshop-hall/approach",
+      "name": "approach",
+      "kind": "object",
+      "object": "station",
+      "district": "commons",
+      "stand": [
+        -3.0,
+        -27.0
+      ],
+      "facing": 1.57,
+      "source": "station:approach"
+    },
+    {
+      "id": "everglade/commons/workshop-hall/yard/task-wall",
+      "name": "task wall",
+      "kind": "object",
+      "object": "task-wall",
+      "district": "commons",
+      "stand": [
+        -7.0,
+        -9.0
+      ],
+      "facing": -1.57,
+      "affordances": [
+        "read",
+        "plan"
+      ],
+      "source": "station:task_wall"
+    },
+    {
+      "id": "everglade/commons/workshop-hall/hall/desks",
+      "name": "desks",
+      "kind": "object",
+      "object": "station",
+      "district": "commons",
+      "stand": [
+        0.0,
+        5.0
+      ],
+      "facing": 0.0,
+      "affordances": [
+        "work"
+      ],
+      "source": "station:desks"
+    },
+    {
+      "id": "everglade/commons/workshop-hall/hall/desk-1",
+      "name": "desk 1",
+      "kind": "object",
+      "object": "workstation",
+      "district": "commons",
+      "stand": [
+        -3.3,
+        5.8
+      ],
+      "facing": 0.0,
+      "affordances": [
+        "work",
+        "run-commands"
+      ],
+      "exclusive": true,
+      "source": "desk:0"
+    },
+    {
+      "id": "everglade/commons/workshop-hall/hall/desk-2",
+      "name": "desk 2",
+      "kind": "object",
+      "object": "workstation",
+      "district": "commons",
+      "stand": [
+        -1.1,
+        5.8
+      ],
+      "facing": 0.0,
+      "affordances": [
+        "work",
+        "run-commands"
+      ],
+      "exclusive": true,
+      "source": "desk:1"
+    },
+    {
+      "id": "everglade/commons/workshop-hall/hall/desk-3",
+      "name": "desk 3",
+      "kind": "object",
+      "object": "workstation",
+      "district": "commons",
+      "stand": [
+        1.1,
+        5.8
+      ],
+      "facing": 0.0,
+      "affordances": [
+        "work",
+        "run-commands"
+      ],
+      "exclusive": true,
+      "source": "desk:2"
+    },
+    {
+      "id": "everglade/commons/workshop-hall/hall/desk-4",
+      "name": "desk 4",
+      "kind": "object",
+      "object": "workstation",
+      "district": "commons",
+      "stand": [
+        3.3,
+        5.8
+      ],
+      "facing": 0.0,
+      "affordances": [
+        "work",
+        "run-commands"
+      ],
+      "exclusive": true,
+      "source": "desk:3"
+    },
+    {
+      "id": "everglade/commons/workshop-hall/hall/library",
+      "name": "library",
+      "kind": "object",
+      "object": "station",
+      "district": "commons",
+      "stand": [
+        -5.0,
+        9.0
+      ],
+      "facing": -1.57,
+      "affordances": [
+        "read"
+      ],
+      "source": "station:library"
+    },
+    {
+      "id": "everglade/commons/workshop-hall/hall/oracle",
+      "name": "oracle",
+      "kind": "object",
+      "object": "station",
+      "district": "commons",
+      "stand": [
+        5.0,
+        9.0
+      ],
+      "facing": 1.57,
+      "affordances": [
+        "review"
+      ],
+      "source": "station:oracle"
+    },
+    {
+      "id": "everglade/commons/workshop-hall/yard/proving-ground",
+      "name": "proving ground",
+      "kind": "object",
+      "object": "station",
+      "district": "commons",
+      "stand": [
+        8.0,
+        -8.0
+      ],
+      "facing": 1.57,
+      "affordances": [
+        "run-commands"
+      ],
+      "source": "station:proving"
+    },
+    {
+      "id": "everglade/commons/workshop-hall/yard/podium",
+      "name": "podium",
+      "kind": "object",
+      "object": "lectern",
+      "district": "commons",
+      "stand": [
+        -3.0,
+        -2.5
+      ],
+      "facing": 0.0,
+      "affordances": [
+        "approve"
+      ],
+      "source": "station:podium"
+    },
+    {
+      "id": "everglade/commons/workshop-hall/strongroom/merge-station",
+      "name": "merge station",
+      "kind": "object",
+      "object": "station",
+      "district": "commons",
+      "stand": [
+        10.5,
+        5.0
+      ],
+      "facing": 1.57,
+      "affordances": [
+        "review",
+        "approve"
+      ],
+      "source": "station:merge"
+    },
+    {
+      "id": "everglade/commons/workshop-hall/lounge",
+      "name": "lounge",
+      "kind": "object",
+      "object": "seats",
+      "district": "commons",
+      "stand": [
+        -24.0,
+        -20.0
+      ],
+      "facing": -1.57,
+      "affordances": [
+        "rest"
+      ],
+      "source": "station:lounge"
+    },
+    {
+      "id": "everglade/commons/workshop-hall/workbench",
+      "name": "workbench",
+      "kind": "object",
+      "object": "station",
+      "district": "commons",
+      "stand": [
+        9.0,
+        -24.0
+      ],
+      "facing": 1.57,
+      "affordances": [
+        "work",
+        "run-commands"
+      ],
+      "source": "station:workbench"
+    },
+    {
+      "id": "everglade/commons/workshop-hall/yard/goal-board",
+      "name": "goal board",
+      "kind": "object",
+      "object": "board",
+      "district": "commons",
+      "stand": [
+        3.9,
+        -12.6
+      ],
+      "facing": 0.0,
+      "affordances": [
+        "read",
+        "plan"
+      ],
+      "source": "board:goal"
+    },
+    {
+      "id": "everglade/main-street",
+      "name": "Main Street",
+      "kind": "district",
+      "district": "main-street",
+      "stand": [
+        7.0,
+        48.5
+      ],
+      "source": "district:main-street"
+    },
+    {
+      "id": "everglade/main-street/bakehouse",
+      "name": "bakehouse",
+      "kind": "building",
+      "district": "main-street",
+      "stand": [
+        -71.0,
+        49.1
+      ],
+      "affordances": [
+        "buy-bread",
+        "eat"
+      ],
+      "source": "front:bakehouse"
+    },
+    {
+      "id": "everglade/main-street/bakehouse/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "main-street",
+      "stand": [
+        -71.0,
+        49.1
+      ],
+      "open": false,
+      "source": "front:bakehouse:door"
+    },
+    {
+      "id": "everglade/main-street/bakery",
+      "name": "bakery",
+      "kind": "building",
+      "district": "main-street",
+      "stand": [
+        -25.0,
+        48.5
+      ],
+      "entry": [
+        [
+          -25.0,
+          48.5
+        ],
+        [
+          -25.0,
+          52.0
+        ]
+      ],
+      "affordances": [
+        "buy-bread",
+        "eat"
+      ],
+      "source": "door:bakery"
+    },
+    {
+      "id": "everglade/main-street/bakery/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "main-street",
+      "stand": [
+        -25.0,
+        48.5
+      ],
+      "facing": 0.0,
+      "open": true,
+      "source": "door:bakery:door"
+    },
+    {
+      "id": "everglade/main-street/bookshop",
+      "name": "bookshop",
+      "kind": "building",
+      "district": "main-street",
+      "stand": [
+        7.0,
+        48.5
+      ],
+      "entry": [
+        [
+          7.0,
+          48.5
+        ],
+        [
+          7.0,
+          52.0
+        ]
+      ],
+      "affordances": [
+        "shop",
+        "read"
+      ],
+      "source": "door:bookshop"
+    },
+    {
+      "id": "everglade/main-street/bookshop/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "main-street",
+      "stand": [
+        7.0,
+        48.5
+      ],
+      "facing": 0.0,
+      "open": true,
+      "source": "door:bookshop:door"
+    },
+    {
+      "id": "everglade/main-street/cafe",
+      "name": "cafe",
+      "kind": "building",
+      "district": "main-street",
+      "stand": [
+        -9.0,
+        48.5
+      ],
+      "entry": [
+        [
+          -9.0,
+          48.5
+        ],
+        [
+          -9.0,
+          52.0
+        ]
+      ],
+      "affordances": [
+        "eat",
+        "drink"
+      ],
+      "source": "door:cafe"
+    },
+    {
+      "id": "everglade/main-street/cafe/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "main-street",
+      "stand": [
+        -9.0,
+        48.5
+      ],
+      "facing": 0.0,
+      "open": true,
+      "source": "door:cafe:door"
+    },
+    {
+      "id": "everglade/main-street/cheesemonger",
+      "name": "cheesemonger",
+      "kind": "building",
+      "district": "main-street",
+      "stand": [
+        56.0,
+        49.0
+      ],
+      "affordances": [
+        "shop"
+      ],
+      "source": "front:cheesemonger"
+    },
+    {
+      "id": "everglade/main-street/cheesemonger/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "main-street",
+      "stand": [
+        56.0,
+        49.0
+      ],
+      "open": false,
+      "source": "front:cheesemonger:door"
+    },
+    {
+      "id": "everglade/main-street/civic-hall",
+      "name": "civic hall",
+      "kind": "building",
+      "district": "main-street",
+      "stand": [
+        103.0,
+        46.0
+      ],
+      "entry": [
+        [
+          103.0,
+          46.0
+        ],
+        [
+          123.6,
+          46.0
+        ]
+      ],
+      "affordances": [
+        "gather"
+      ],
+      "source": "door:civic hall"
+    },
+    {
+      "id": "everglade/main-street/civic-hall/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "main-street",
+      "stand": [
+        103.0,
+        46.0
+      ],
+      "facing": 1.57,
+      "open": true,
+      "source": "door:civic hall:door"
+    },
+    {
+      "id": "everglade/main-street/civic-hall/council-chamber",
+      "name": "council chamber",
+      "kind": "room",
+      "district": "main-street",
+      "stand": [
+        123.6,
+        46.0
+      ],
+      "area": [
+        [
+          114.0,
+          35.4
+        ],
+        [
+          134.0,
+          56.6
+        ]
+      ],
+      "source": "room:council chamber"
+    },
+    {
+      "id": "everglade/main-street/civic-hall/council-chamber/council-benches",
+      "name": "council benches",
+      "kind": "object",
+      "object": "seats",
+      "district": "main-street",
+      "stand": [
+        123.6,
+        46.0
+      ],
+      "affordances": [
+        "gather"
+      ],
+      "source": "civic:benches"
+    },
+    {
+      "id": "everglade/main-street/civic-hall/council-chamber/speakers-lectern",
+      "name": "speaker's lectern",
+      "kind": "object",
+      "object": "lectern",
+      "district": "main-street",
+      "stand": [
+        127.9,
+        46.0
+      ],
+      "facing": -1.57,
+      "affordances": [
+        "gather",
+        "teach"
+      ],
+      "exclusive": true,
+      "source": "civic:lectern"
+    },
+    {
+      "id": "everglade/main-street/civic-hall/lantern-1",
+      "name": "lantern 1",
+      "kind": "object",
+      "object": "lamp",
+      "district": "main-street",
+      "stand": [
+        103.0,
+        46.0
+      ],
+      "source": "light:civic-hall:0"
+    },
+    {
+      "id": "everglade/main-street/civic-hall/uplight-1",
+      "name": "uplight 1",
+      "kind": "object",
+      "object": "lamp",
+      "district": "main-street",
+      "stand": [
+        103.0,
+        46.0
+      ],
+      "source": "light:civic-hall:1"
+    },
+    {
+      "id": "everglade/main-street/civic-hall/lantern-2",
+      "name": "lantern 2",
+      "kind": "object",
+      "object": "lamp",
+      "district": "main-street",
+      "stand": [
+        103.0,
+        46.0
+      ],
+      "source": "light:civic-hall:2"
+    },
+    {
+      "id": "everglade/main-street/civic-hall/lantern-3",
+      "name": "lantern 3",
+      "kind": "object",
+      "object": "lamp",
+      "district": "main-street",
+      "stand": [
+        103.0,
+        46.0
+      ],
+      "source": "light:civic-hall:3"
+    },
+    {
+      "id": "everglade/main-street/civic-hall/uplight-2",
+      "name": "uplight 2",
+      "kind": "object",
+      "object": "lamp",
+      "district": "main-street",
+      "stand": [
+        103.0,
+        46.0
+      ],
+      "source": "light:civic-hall:4"
+    },
+    {
+      "id": "everglade/main-street/civic-hall/lantern-4",
+      "name": "lantern 4",
+      "kind": "object",
+      "object": "lamp",
+      "district": "main-street",
+      "stand": [
+        103.0,
+        46.0
+      ],
+      "source": "light:civic-hall:5"
+    },
+    {
+      "id": "everglade/main-street/civic-hall/council-chamber/candles-1",
+      "name": "candles 1",
+      "kind": "object",
+      "object": "lamp",
+      "district": "main-street",
+      "stand": [
+        123.6,
+        46.0
+      ],
+      "source": "light:civic-hall:6"
+    },
+    {
+      "id": "everglade/main-street/civic-hall/council-chamber/brazier-1",
+      "name": "brazier 1",
+      "kind": "object",
+      "object": "lamp",
+      "district": "main-street",
+      "stand": [
+        123.6,
+        46.0
+      ],
+      "source": "light:civic-hall:7"
+    },
+    {
+      "id": "everglade/main-street/civic-hall/council-chamber/brazier-2",
+      "name": "brazier 2",
+      "kind": "object",
+      "object": "lamp",
+      "district": "main-street",
+      "stand": [
+        123.6,
+        46.0
+      ],
+      "source": "light:civic-hall:8"
+    },
+    {
+      "id": "everglade/main-street/civic-hall/council-chamber/sconce-1",
+      "name": "sconce 1",
+      "kind": "object",
+      "object": "lamp",
+      "district": "main-street",
+      "stand": [
+        123.6,
+        46.0
+      ],
+      "source": "light:civic-hall:9"
+    },
+    {
+      "id": "everglade/main-street/civic-hall/council-chamber/sconce-2",
+      "name": "sconce 2",
+      "kind": "object",
+      "object": "lamp",
+      "district": "main-street",
+      "stand": [
+        123.6,
+        46.0
+      ],
+      "source": "light:civic-hall:10"
+    },
+    {
+      "id": "everglade/main-street/civic-hall/council-chamber/sconce-3",
+      "name": "sconce 3",
+      "kind": "object",
+      "object": "lamp",
+      "district": "main-street",
+      "stand": [
+        123.6,
+        46.0
+      ],
+      "source": "light:civic-hall:11"
+    },
+    {
+      "id": "everglade/main-street/civic-hall/council-chamber/sconce-4",
+      "name": "sconce 4",
+      "kind": "object",
+      "object": "lamp",
+      "district": "main-street",
+      "stand": [
+        123.6,
+        46.0
+      ],
+      "source": "light:civic-hall:12"
+    },
+    {
+      "id": "everglade/main-street/civic-hall/council-chamber/sconce-5",
+      "name": "sconce 5",
+      "kind": "object",
+      "object": "lamp",
+      "district": "main-street",
+      "stand": [
+        123.6,
+        46.0
+      ],
+      "source": "light:civic-hall:13"
+    },
+    {
+      "id": "everglade/main-street/civic-hall/council-chamber/sconce-6",
+      "name": "sconce 6",
+      "kind": "object",
+      "object": "lamp",
+      "district": "main-street",
+      "stand": [
+        123.6,
+        46.0
+      ],
+      "source": "light:civic-hall:14"
+    },
+    {
+      "id": "everglade/main-street/civic-hall/council-chamber/candles-2",
+      "name": "candles 2",
+      "kind": "object",
+      "object": "lamp",
+      "district": "main-street",
+      "stand": [
+        123.6,
+        46.0
+      ],
+      "source": "light:civic-hall:15"
+    },
+    {
+      "id": "everglade/main-street/civic-hall/council-chamber/candles-3",
+      "name": "candles 3",
+      "kind": "object",
+      "object": "lamp",
+      "district": "main-street",
+      "stand": [
+        123.6,
+        46.0
+      ],
+      "source": "light:civic-hall:16"
+    },
+    {
+      "id": "everglade/main-street/civic-hall/council-chamber/candles-4",
+      "name": "candles 4",
+      "kind": "object",
+      "object": "lamp",
+      "district": "main-street",
+      "stand": [
+        123.6,
+        46.0
+      ],
+      "source": "light:civic-hall:17"
+    },
+    {
+      "id": "everglade/main-street/civic-hall/council-chamber/candles-5",
+      "name": "candles 5",
+      "kind": "object",
+      "object": "lamp",
+      "district": "main-street",
+      "stand": [
+        123.6,
+        46.0
+      ],
+      "source": "light:civic-hall:18"
+    },
+    {
+      "id": "everglade/main-street/corner-shop",
+      "name": "corner shop",
+      "kind": "building",
+      "district": "main-street",
+      "stand": [
+        -88.0,
+        49.1
+      ],
+      "affordances": [
+        "shop"
+      ],
+      "source": "front:corner shop"
+    },
+    {
+      "id": "everglade/main-street/corner-shop/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "main-street",
+      "stand": [
+        -88.0,
+        49.1
+      ],
+      "open": false,
+      "source": "front:corner shop:door"
+    },
+    {
+      "id": "everglade/main-street/grocer",
+      "name": "grocer",
+      "kind": "building",
+      "district": "main-street",
+      "stand": [
+        23.0,
+        48.5
+      ],
+      "entry": [
+        [
+          23.0,
+          48.5
+        ],
+        [
+          23.0,
+          52.0
+        ]
+      ],
+      "affordances": [
+        "shop"
+      ],
+      "source": "door:grocer"
+    },
+    {
+      "id": "everglade/main-street/grocer/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "main-street",
+      "stand": [
+        23.0,
+        48.5
+      ],
+      "facing": 0.0,
+      "open": true,
+      "source": "door:grocer:door"
+    },
+    {
+      "id": "everglade/main-street/hardware-store",
+      "name": "hardware store",
+      "kind": "building",
+      "district": "main-street",
+      "stand": [
+        88.0,
+        49.0
+      ],
+      "affordances": [
+        "shop"
+      ],
+      "source": "front:hardware store"
+    },
+    {
+      "id": "everglade/main-street/hardware-store/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "main-street",
+      "stand": [
+        88.0,
+        49.0
+      ],
+      "open": false,
+      "source": "front:hardware store:door"
+    },
+    {
+      "id": "everglade/main-street/market-row-east-1",
+      "name": "market row east 1",
+      "kind": "building",
+      "district": "main-street",
+      "stand": [
+        32.0,
+        72.0
+      ],
+      "source": "front:market row east 1"
+    },
+    {
+      "id": "everglade/main-street/market-row-east-1/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "main-street",
+      "stand": [
+        32.0,
+        72.0
+      ],
+      "open": false,
+      "source": "front:market row east 1:door"
+    },
+    {
+      "id": "everglade/main-street/market-row-east-2",
+      "name": "market row east 2",
+      "kind": "building",
+      "district": "main-street",
+      "stand": [
+        42.0,
+        73.4
+      ],
+      "source": "front:market row east 2"
+    },
+    {
+      "id": "everglade/main-street/market-row-east-2/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "main-street",
+      "stand": [
+        42.0,
+        73.4
+      ],
+      "open": false,
+      "source": "front:market row east 2:door"
+    },
+    {
+      "id": "everglade/main-street/market-row-east-3",
+      "name": "market row east 3",
+      "kind": "building",
+      "district": "main-street",
+      "stand": [
+        49.7,
+        72.0
+      ],
+      "source": "front:market row east 3"
+    },
+    {
+      "id": "everglade/main-street/market-row-east-3/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "main-street",
+      "stand": [
+        49.7,
+        72.0
+      ],
+      "open": false,
+      "source": "front:market row east 3:door"
+    },
+    {
+      "id": "everglade/main-street/market-row-east-4",
+      "name": "market row east 4",
+      "kind": "building",
+      "district": "main-street",
+      "stand": [
+        32.4,
+        77.1
+      ],
+      "source": "front:market row east 4"
+    },
+    {
+      "id": "everglade/main-street/market-row-east-4/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "main-street",
+      "stand": [
+        32.4,
+        77.1
+      ],
+      "open": false,
+      "source": "front:market row east 4:door"
+    },
+    {
+      "id": "everglade/main-street/market-row-east-5",
+      "name": "market row east 5",
+      "kind": "building",
+      "district": "main-street",
+      "stand": [
+        42.0,
+        77.0
+      ],
+      "source": "front:market row east 5"
+    },
+    {
+      "id": "everglade/main-street/market-row-east-5/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "main-street",
+      "stand": [
+        42.0,
+        77.0
+      ],
+      "open": false,
+      "source": "front:market row east 5:door"
+    },
+    {
+      "id": "everglade/main-street/market-row-east-6",
+      "name": "market row east 6",
+      "kind": "building",
+      "district": "main-street",
+      "stand": [
+        52.0,
+        75.6
+      ],
+      "source": "front:market row east 6"
+    },
+    {
+      "id": "everglade/main-street/market-row-east-6/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "main-street",
+      "stand": [
+        52.0,
+        75.6
+      ],
+      "open": false,
+      "source": "front:market row east 6:door"
+    },
+    {
+      "id": "everglade/main-street/market-row-west-1",
+      "name": "market row west 1",
+      "kind": "building",
+      "district": "main-street",
+      "stand": [
+        -34.3,
+        72.0
+      ],
+      "source": "front:market row west 1"
+    },
+    {
+      "id": "everglade/main-street/market-row-west-1/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "main-street",
+      "stand": [
+        -34.3,
+        72.0
+      ],
+      "open": false,
+      "source": "front:market row west 1:door"
+    },
+    {
+      "id": "everglade/main-street/market-row-west-2",
+      "name": "market row west 2",
+      "kind": "building",
+      "district": "main-street",
+      "stand": [
+        -42.0,
+        72.0
+      ],
+      "source": "front:market row west 2"
+    },
+    {
+      "id": "everglade/main-street/market-row-west-2/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "main-street",
+      "stand": [
+        -42.0,
+        72.0
+      ],
+      "open": false,
+      "source": "front:market row west 2:door"
+    },
+    {
+      "id": "everglade/main-street/market-row-west-3",
+      "name": "market row west 3",
+      "kind": "building",
+      "district": "main-street",
+      "stand": [
+        -52.4,
+        71.9
+      ],
+      "source": "front:market row west 3"
+    },
+    {
+      "id": "everglade/main-street/market-row-west-3/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "main-street",
+      "stand": [
+        -52.4,
+        71.9
+      ],
+      "open": false,
+      "source": "front:market row west 3:door"
+    },
+    {
+      "id": "everglade/main-street/market-row-west-4",
+      "name": "market row west 4",
+      "kind": "building",
+      "district": "main-street",
+      "stand": [
+        -32.0,
+        75.6
+      ],
+      "source": "front:market row west 4"
+    },
+    {
+      "id": "everglade/main-street/market-row-west-4/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "main-street",
+      "stand": [
+        -32.0,
+        75.6
+      ],
+      "open": false,
+      "source": "front:market row west 4:door"
+    },
+    {
+      "id": "everglade/main-street/market-row-west-5",
+      "name": "market row west 5",
+      "kind": "building",
+      "district": "main-street",
+      "stand": [
+        -42.0,
+        77.0
+      ],
+      "source": "front:market row west 5"
+    },
+    {
+      "id": "everglade/main-street/market-row-west-5/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "main-street",
+      "stand": [
+        -42.0,
+        77.0
+      ],
+      "open": false,
+      "source": "front:market row west 5:door"
+    },
+    {
+      "id": "everglade/main-street/market-row-west-6",
+      "name": "market row west 6",
+      "kind": "building",
+      "district": "main-street",
+      "stand": [
+        -51.7,
+        77.0
+      ],
+      "source": "front:market row west 6"
+    },
+    {
+      "id": "everglade/main-street/market-row-west-6/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "main-street",
+      "stand": [
+        -51.7,
+        77.0
+      ],
+      "open": false,
+      "source": "front:market row west 6:door"
+    },
+    {
+      "id": "everglade/main-street/music-shop",
+      "name": "music shop",
+      "kind": "building",
+      "district": "main-street",
+      "stand": [
+        71.4,
+        49.0
+      ],
+      "affordances": [
+        "shop"
+      ],
+      "source": "front:music shop"
+    },
+    {
+      "id": "everglade/main-street/music-shop/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "main-street",
+      "stand": [
+        71.4,
+        49.0
+      ],
+      "open": false,
+      "source": "front:music shop:door"
+    },
+    {
+      "id": "everglade/main-street/print-shop",
+      "name": "print shop",
+      "kind": "building",
+      "district": "main-street",
+      "stand": [
+        40.0,
+        49.1
+      ],
+      "affordances": [
+        "shop"
+      ],
+      "source": "front:print shop"
+    },
+    {
+      "id": "everglade/main-street/print-shop/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "main-street",
+      "stand": [
+        40.0,
+        49.1
+      ],
+      "open": false,
+      "source": "front:print shop:door"
+    },
+    {
+      "id": "everglade/main-street/tailor",
+      "name": "tailor",
+      "kind": "building",
+      "district": "main-street",
+      "stand": [
+        -56.0,
+        48.8
+      ],
+      "affordances": [
+        "shop"
+      ],
+      "source": "front:tailor"
+    },
+    {
+      "id": "everglade/main-street/tailor/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "main-street",
+      "stand": [
+        -56.0,
+        48.8
+      ],
+      "open": false,
+      "source": "front:tailor:door"
+    },
+    {
+      "id": "everglade/main-street/tea-house",
+      "name": "tea house",
+      "kind": "building",
+      "district": "main-street",
+      "stand": [
+        -40.6,
+        49.0
+      ],
+      "affordances": [
+        "eat",
+        "drink"
+      ],
+      "source": "front:tea house"
+    },
+    {
+      "id": "everglade/main-street/tea-house/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "main-street",
+      "stand": [
+        -40.6,
+        49.0
+      ],
+      "open": false,
+      "source": "front:tea house:door"
+    },
+    {
+      "id": "everglade/fountain-plaza",
+      "name": "Fountain Plaza",
+      "kind": "district",
+      "district": "fountain-plaza",
+      "stand": [
+        -6.0,
+        78.9
+      ],
+      "source": "district:fountain-plaza"
+    },
+    {
+      "id": "everglade/fountain-plaza/agora",
+      "name": "agora",
+      "kind": "building",
+      "district": "fountain-plaza",
+      "stand": [
+        -24.0,
+        98.0
+      ],
+      "entry": [
+        [
+          -24.0,
+          98.0
+        ],
+        [
+          -24.0,
+          117.0
+        ]
+      ],
+      "affordances": [
+        "work",
+        "sell",
+        "gather"
+      ],
+      "source": "door:agora"
+    },
+    {
+      "id": "everglade/fountain-plaza/agora/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "fountain-plaza",
+      "stand": [
+        -24.0,
+        98.0
+      ],
+      "facing": 0.0,
+      "open": true,
+      "source": "door:agora:door"
+    },
+    {
+      "id": "everglade/fountain-plaza/agora/trading-floor",
+      "name": "trading floor",
+      "kind": "room",
+      "district": "fountain-plaza",
+      "stand": [
+        -24.0,
+        117.0
+      ],
+      "area": [
+        [
+          -32.0,
+          107.0
+        ],
+        [
+          -16.0,
+          126.6
+        ]
+      ],
+      "source": "room:trading floor"
+    },
+    {
+      "id": "everglade/fountain-plaza/agora/pauls-office",
+      "name": "Paul's office",
+      "kind": "room",
+      "district": "fountain-plaza",
+      "stand": [
+        -10.8,
+        114.6
+      ],
+      "area": [
+        [
+          -16.0,
+          109.4
+        ],
+        [
+          -9.2,
+          119.6
+        ]
+      ],
+      "entry": [
+        [
+          -17.0,
+          110.5
+        ],
+        [
+          -14.6,
+          110.5
+        ]
+      ],
+      "source": "room:Paul's office"
+    },
+    {
+      "id": "everglade/fountain-plaza/agora/training-room",
+      "name": "training room",
+      "kind": "room",
+      "district": "fountain-plaza",
+      "stand": [
+        -36.0,
+        110.3
+      ],
+      "area": [
+        [
+          -38.8,
+          109.4
+        ],
+        [
+          -32.0,
+          119.6
+        ]
+      ],
+      "entry": [
+        [
+          -31.0,
+          110.5
+        ],
+        [
+          -33.4,
+          110.5
+        ]
+      ],
+      "source": "room:training room"
+    },
+    {
+      "id": "everglade/fountain-plaza/agora/trading-floor/desk-1",
+      "name": "desk 1",
+      "kind": "object",
+      "object": "workstation",
+      "district": "fountain-plaza",
+      "stand": [
+        -18.4,
+        111.25
+      ],
+      "facing": 0.0,
+      "affordances": [
+        "work",
+        "sell"
+      ],
+      "exclusive": true,
+      "source": "agora:desk:0"
+    },
+    {
+      "id": "everglade/fountain-plaza/agora/trading-floor/desk-2",
+      "name": "desk 2",
+      "kind": "object",
+      "object": "workstation",
+      "district": "fountain-plaza",
+      "stand": [
+        -20.0,
+        111.25
+      ],
+      "facing": 0.0,
+      "affordances": [
+        "work",
+        "sell"
+      ],
+      "exclusive": true,
+      "source": "agora:desk:1"
+    },
+    {
+      "id": "everglade/fountain-plaza/agora/trading-floor/desk-3",
+      "name": "desk 3",
+      "kind": "object",
+      "object": "workstation",
+      "district": "fountain-plaza",
+      "stand": [
+        -21.6,
+        111.25
+      ],
+      "facing": 0.0,
+      "affordances": [
+        "work",
+        "sell"
+      ],
+      "exclusive": true,
+      "source": "agora:desk:2"
+    },
+    {
+      "id": "everglade/fountain-plaza/agora/trading-floor/desk-4",
+      "name": "desk 4",
+      "kind": "object",
+      "object": "workstation",
+      "district": "fountain-plaza",
+      "stand": [
+        -26.4,
+        111.25
+      ],
+      "facing": 0.0,
+      "affordances": [
+        "work",
+        "sell"
+      ],
+      "exclusive": true,
+      "source": "agora:desk:3"
+    },
+    {
+      "id": "everglade/fountain-plaza/agora/trading-floor/desk-5",
+      "name": "desk 5",
+      "kind": "object",
+      "object": "workstation",
+      "district": "fountain-plaza",
+      "stand": [
+        -28.0,
+        111.25
+      ],
+      "facing": 0.0,
+      "affordances": [
+        "work",
+        "sell"
+      ],
+      "exclusive": true,
+      "source": "agora:desk:4"
+    },
+    {
+      "id": "everglade/fountain-plaza/agora/trading-floor/desk-6",
+      "name": "desk 6",
+      "kind": "object",
+      "object": "workstation",
+      "district": "fountain-plaza",
+      "stand": [
+        -29.6,
+        111.25
+      ],
+      "facing": 0.0,
+      "affordances": [
+        "work",
+        "sell"
+      ],
+      "exclusive": true,
+      "source": "agora:desk:5"
+    },
+    {
+      "id": "everglade/fountain-plaza/agora/trading-floor/desk-7",
+      "name": "desk 7",
+      "kind": "object",
+      "object": "workstation",
+      "district": "fountain-plaza",
+      "stand": [
+        -18.4,
+        114.85
+      ],
+      "facing": 0.0,
+      "affordances": [
+        "work",
+        "sell"
+      ],
+      "exclusive": true,
+      "source": "agora:desk:6"
+    },
+    {
+      "id": "everglade/fountain-plaza/agora/trading-floor/desk-8",
+      "name": "desk 8",
+      "kind": "object",
+      "object": "workstation",
+      "district": "fountain-plaza",
+      "stand": [
+        -20.0,
+        114.85
+      ],
+      "facing": 0.0,
+      "affordances": [
+        "work",
+        "sell"
+      ],
+      "exclusive": true,
+      "source": "agora:desk:7"
+    },
+    {
+      "id": "everglade/fountain-plaza/agora/trading-floor/desk-9",
+      "name": "desk 9",
+      "kind": "object",
+      "object": "workstation",
+      "district": "fountain-plaza",
+      "stand": [
+        -21.6,
+        114.85
+      ],
+      "facing": 0.0,
+      "affordances": [
+        "work",
+        "sell"
+      ],
+      "exclusive": true,
+      "source": "agora:desk:8"
+    },
+    {
+      "id": "everglade/fountain-plaza/agora/trading-floor/desk-10",
+      "name": "desk 10",
+      "kind": "object",
+      "object": "workstation",
+      "district": "fountain-plaza",
+      "stand": [
+        -26.4,
+        114.85
+      ],
+      "facing": 0.0,
+      "affordances": [
+        "work",
+        "sell"
+      ],
+      "exclusive": true,
+      "source": "agora:desk:9"
+    },
+    {
+      "id": "everglade/fountain-plaza/agora/trading-floor/desk-11",
+      "name": "desk 11",
+      "kind": "object",
+      "object": "workstation",
+      "district": "fountain-plaza",
+      "stand": [
+        -28.0,
+        114.85
+      ],
+      "facing": 0.0,
+      "affordances": [
+        "work",
+        "sell"
+      ],
+      "exclusive": true,
+      "source": "agora:desk:10"
+    },
+    {
+      "id": "everglade/fountain-plaza/agora/trading-floor/desk-12",
+      "name": "desk 12",
+      "kind": "object",
+      "object": "workstation",
+      "district": "fountain-plaza",
+      "stand": [
+        -29.6,
+        114.85
+      ],
+      "facing": 0.0,
+      "affordances": [
+        "work",
+        "sell"
+      ],
+      "exclusive": true,
+      "source": "agora:desk:11"
+    },
+    {
+      "id": "everglade/fountain-plaza/agora/trading-floor/desk-13",
+      "name": "desk 13",
+      "kind": "object",
+      "object": "workstation",
+      "district": "fountain-plaza",
+      "stand": [
+        -18.4,
+        118.45
+      ],
+      "facing": 0.0,
+      "affordances": [
+        "work",
+        "sell"
+      ],
+      "exclusive": true,
+      "source": "agora:desk:12"
+    },
+    {
+      "id": "everglade/fountain-plaza/agora/trading-floor/desk-14",
+      "name": "desk 14",
+      "kind": "object",
+      "object": "workstation",
+      "district": "fountain-plaza",
+      "stand": [
+        -20.0,
+        118.45
+      ],
+      "facing": 0.0,
+      "affordances": [
+        "work",
+        "sell"
+      ],
+      "exclusive": true,
+      "source": "agora:desk:13"
+    },
+    {
+      "id": "everglade/fountain-plaza/agora/trading-floor/desk-15",
+      "name": "desk 15",
+      "kind": "object",
+      "object": "workstation",
+      "district": "fountain-plaza",
+      "stand": [
+        -21.6,
+        118.45
+      ],
+      "facing": 0.0,
+      "affordances": [
+        "work",
+        "sell"
+      ],
+      "exclusive": true,
+      "source": "agora:desk:14"
+    },
+    {
+      "id": "everglade/fountain-plaza/agora/trading-floor/desk-16",
+      "name": "desk 16",
+      "kind": "object",
+      "object": "workstation",
+      "district": "fountain-plaza",
+      "stand": [
+        -26.4,
+        118.45
+      ],
+      "facing": 0.0,
+      "affordances": [
+        "work",
+        "sell"
+      ],
+      "exclusive": true,
+      "source": "agora:desk:15"
+    },
+    {
+      "id": "everglade/fountain-plaza/agora/trading-floor/desk-17",
+      "name": "desk 17",
+      "kind": "object",
+      "object": "workstation",
+      "district": "fountain-plaza",
+      "stand": [
+        -28.0,
+        118.45
+      ],
+      "facing": 0.0,
+      "affordances": [
+        "work",
+        "sell"
+      ],
+      "exclusive": true,
+      "source": "agora:desk:16"
+    },
+    {
+      "id": "everglade/fountain-plaza/agora/trading-floor/desk-18",
+      "name": "desk 18",
+      "kind": "object",
+      "object": "workstation",
+      "district": "fountain-plaza",
+      "stand": [
+        -29.6,
+        118.45
+      ],
+      "facing": 0.0,
+      "affordances": [
+        "work",
+        "sell"
+      ],
+      "exclusive": true,
+      "source": "agora:desk:17"
+    },
+    {
+      "id": "everglade/fountain-plaza/agora/trading-floor/stand-up-spot",
+      "name": "stand-up spot",
+      "kind": "object",
+      "object": "seats",
+      "district": "fountain-plaza",
+      "stand": [
+        -26.6,
+        121.4
+      ],
+      "facing": 3.14,
+      "affordances": [
+        "gather",
+        "plan"
+      ],
+      "source": "agora:standup"
+    },
+    {
+      "id": "everglade/fountain-plaza/agora/trading-floor/leaderboard",
+      "name": "leaderboard",
+      "kind": "object",
+      "object": "board",
+      "district": "fountain-plaza",
+      "stand": [
+        -24.0,
+        117.0
+      ],
+      "facing": 0.0,
+      "affordances": [
+        "read"
+      ],
+      "source": "agora:leaderboard"
+    },
+    {
+      "id": "everglade/fountain-plaza/agora/pauls-office/pauls-desk",
+      "name": "Paul's desk",
+      "kind": "object",
+      "object": "workstation",
+      "district": "fountain-plaza",
+      "stand": [
+        -10.8,
+        114.6
+      ],
+      "facing": -1.57,
+      "affordances": [
+        "work",
+        "review"
+      ],
+      "exclusive": true,
+      "source": "agora:paul"
+    },
+    {
+      "id": "everglade/fountain-plaza/agora/pauls-office/owners-lectern",
+      "name": "owner's lectern",
+      "kind": "object",
+      "object": "lectern",
+      "district": "fountain-plaza",
+      "stand": [
+        -13.8,
+        118.4
+      ],
+      "facing": -3.14,
+      "affordances": [
+        "approve"
+      ],
+      "exclusive": true,
+      "source": "agora:owner"
+    },
+    {
+      "id": "everglade/fountain-plaza/agora/training-room/whiteboard",
+      "name": "whiteboard",
+      "kind": "object",
+      "object": "board",
+      "district": "fountain-plaza",
+      "stand": [
+        -36.0,
+        110.3
+      ],
+      "facing": 0.0,
+      "affordances": [
+        "teach"
+      ],
+      "exclusive": true,
+      "source": "agora:teacher"
+    },
+    {
+      "id": "everglade/fountain-plaza/agora/training-room/role-play-booths",
+      "name": "role-play booths",
+      "kind": "object",
+      "object": "seats",
+      "district": "fountain-plaza",
+      "stand": [
+        -33.4,
+        110.5
+      ],
+      "facing": -0.31,
+      "affordances": [
+        "practice"
+      ],
+      "source": "agora:booths"
+    },
+    {
+      "id": "everglade/fountain-plaza/agora/lantern-1",
+      "name": "lantern 1",
+      "kind": "object",
+      "object": "lamp",
+      "district": "fountain-plaza",
+      "stand": [
+        -24.0,
+        98.0
+      ],
+      "source": "light:agora:0"
+    },
+    {
+      "id": "everglade/fountain-plaza/agora/lantern-2",
+      "name": "lantern 2",
+      "kind": "object",
+      "object": "lamp",
+      "district": "fountain-plaza",
+      "stand": [
+        -24.0,
+        98.0
+      ],
+      "source": "light:agora:1"
+    },
+    {
+      "id": "everglade/fountain-plaza/agora/lantern-3",
+      "name": "lantern 3",
+      "kind": "object",
+      "object": "lamp",
+      "district": "fountain-plaza",
+      "stand": [
+        -24.0,
+        98.0
+      ],
+      "source": "light:agora:2"
+    },
+    {
+      "id": "everglade/fountain-plaza/agora/uplight-1",
+      "name": "uplight 1",
+      "kind": "object",
+      "object": "lamp",
+      "district": "fountain-plaza",
+      "stand": [
+        -24.0,
+        98.0
+      ],
+      "source": "light:agora:3"
+    },
+    {
+      "id": "everglade/fountain-plaza/agora/lantern-4",
+      "name": "lantern 4",
+      "kind": "object",
+      "object": "lamp",
+      "district": "fountain-plaza",
+      "stand": [
+        -24.0,
+        98.0
+      ],
+      "source": "light:agora:4"
+    },
+    {
+      "id": "everglade/fountain-plaza/agora/uplight-2",
+      "name": "uplight 2",
+      "kind": "object",
+      "object": "lamp",
+      "district": "fountain-plaza",
+      "stand": [
+        -24.0,
+        98.0
+      ],
+      "source": "light:agora:5"
+    },
+    {
+      "id": "everglade/fountain-plaza/agora/trading-floor/sconce-1",
+      "name": "sconce 1",
+      "kind": "object",
+      "object": "lamp",
+      "district": "fountain-plaza",
+      "stand": [
+        -24.0,
+        117.0
+      ],
+      "source": "light:agora:6"
+    },
+    {
+      "id": "everglade/fountain-plaza/agora/trading-floor/sconce-2",
+      "name": "sconce 2",
+      "kind": "object",
+      "object": "lamp",
+      "district": "fountain-plaza",
+      "stand": [
+        -24.0,
+        117.0
+      ],
+      "source": "light:agora:7"
+    },
+    {
+      "id": "everglade/fountain-plaza/agora/trading-floor/lamp-1",
+      "name": "lamp 1",
+      "kind": "object",
+      "object": "lamp",
+      "district": "fountain-plaza",
+      "stand": [
+        -24.0,
+        117.0
+      ],
+      "source": "light:agora:8"
+    },
+    {
+      "id": "everglade/fountain-plaza/agora/trading-floor/lamp-2",
+      "name": "lamp 2",
+      "kind": "object",
+      "object": "lamp",
+      "district": "fountain-plaza",
+      "stand": [
+        -24.0,
+        117.0
+      ],
+      "source": "light:agora:9"
+    },
+    {
+      "id": "everglade/fountain-plaza/agora/trading-floor/lamp-3",
+      "name": "lamp 3",
+      "kind": "object",
+      "object": "lamp",
+      "district": "fountain-plaza",
+      "stand": [
+        -24.0,
+        117.0
+      ],
+      "source": "light:agora:10"
+    },
+    {
+      "id": "everglade/fountain-plaza/agora/trading-floor/lamp-4",
+      "name": "lamp 4",
+      "kind": "object",
+      "object": "lamp",
+      "district": "fountain-plaza",
+      "stand": [
+        -24.0,
+        117.0
+      ],
+      "source": "light:agora:11"
+    },
+    {
+      "id": "everglade/fountain-plaza/agora/trading-floor/lamp-5",
+      "name": "lamp 5",
+      "kind": "object",
+      "object": "lamp",
+      "district": "fountain-plaza",
+      "stand": [
+        -24.0,
+        117.0
+      ],
+      "source": "light:agora:12"
+    },
+    {
+      "id": "everglade/fountain-plaza/agora/trading-floor/lamp-6",
+      "name": "lamp 6",
+      "kind": "object",
+      "object": "lamp",
+      "district": "fountain-plaza",
+      "stand": [
+        -24.0,
+        117.0
+      ],
+      "source": "light:agora:13"
+    },
+    {
+      "id": "everglade/fountain-plaza/agora/pauls-office/candles-1",
+      "name": "candles 1",
+      "kind": "object",
+      "object": "lamp",
+      "district": "fountain-plaza",
+      "stand": [
+        -10.8,
+        114.6
+      ],
+      "source": "light:agora:14"
+    },
+    {
+      "id": "everglade/fountain-plaza/agora/pauls-office/lamp-1",
+      "name": "lamp 1",
+      "kind": "object",
+      "object": "lamp",
+      "district": "fountain-plaza",
+      "stand": [
+        -10.8,
+        114.6
+      ],
+      "source": "light:agora:15"
+    },
+    {
+      "id": "everglade/fountain-plaza/agora/training-room/lamp-1",
+      "name": "lamp 1",
+      "kind": "object",
+      "object": "lamp",
+      "district": "fountain-plaza",
+      "stand": [
+        -36.0,
+        110.3
+      ],
+      "source": "light:agora:16"
+    },
+    {
+      "id": "everglade/fountain-plaza/agora/training-room/sconce-1",
+      "name": "sconce 1",
+      "kind": "object",
+      "object": "lamp",
+      "district": "fountain-plaza",
+      "stand": [
+        -36.0,
+        110.3
+      ],
+      "source": "light:agora:17"
+    },
+    {
+      "id": "everglade/fountain-plaza/fountain",
+      "name": "fountain",
+      "kind": "building",
+      "district": "fountain-plaza",
+      "stand": [
+        -6.0,
+        78.9
+      ],
+      "affordances": [
+        "rest"
+      ],
+      "source": "front:fountain"
+    },
+    {
+      "id": "everglade/fountain-plaza/fountain/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "fountain-plaza",
+      "stand": [
+        -6.0,
+        78.9
+      ],
+      "open": false,
+      "source": "front:fountain:door"
+    },
+    {
+      "id": "everglade/fountain-plaza/market-hall",
+      "name": "market hall",
+      "kind": "building",
+      "district": "fountain-plaza",
+      "stand": [
+        -1.0,
+        83.5
+      ],
+      "entry": [
+        [
+          -1.0,
+          83.5
+        ],
+        [
+          -1.0,
+          88.0
+        ]
+      ],
+      "affordances": [
+        "shop"
+      ],
+      "source": "door:market hall"
+    },
+    {
+      "id": "everglade/fountain-plaza/market-hall/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "fountain-plaza",
+      "stand": [
+        -1.0,
+        83.5
+      ],
+      "facing": 0.0,
+      "open": true,
+      "source": "door:market hall:door"
+    },
+    {
+      "id": "everglade/fountain-plaza/plaza-cafe-east",
+      "name": "plaza cafe east",
+      "kind": "building",
+      "district": "fountain-plaza",
+      "stand": [
+        15.0,
+        71.0
+      ],
+      "affordances": [
+        "eat",
+        "drink"
+      ],
+      "source": "front:plaza cafe east"
+    },
+    {
+      "id": "everglade/fountain-plaza/plaza-cafe-east/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "fountain-plaza",
+      "stand": [
+        15.0,
+        71.0
+      ],
+      "open": false,
+      "source": "front:plaza cafe east:door"
+    },
+    {
+      "id": "everglade/fountain-plaza/plaza-cafe-west",
+      "name": "plaza cafe west",
+      "kind": "building",
+      "district": "fountain-plaza",
+      "stand": [
+        -15.0,
+        71.0
+      ],
+      "affordances": [
+        "eat",
+        "drink"
+      ],
+      "source": "front:plaza cafe west"
+    },
+    {
+      "id": "everglade/fountain-plaza/plaza-cafe-west/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "fountain-plaza",
+      "stand": [
+        -15.0,
+        71.0
+      ],
+      "open": false,
+      "source": "front:plaza cafe west:door"
+    },
+    {
+      "id": "everglade/creative-district",
+      "name": "Creative District",
+      "kind": "district",
+      "district": "creative-district",
+      "stand": [
+        76.0,
+        31.8
+      ],
+      "source": "district:creative-district"
+    },
+    {
+      "id": "everglade/creative-district/atelier-hall",
+      "name": "atelier hall",
+      "kind": "building",
+      "district": "creative-district",
+      "stand": [
+        95.0,
+        26.5
+      ],
+      "entry": [
+        [
+          95.0,
+          26.5
+        ],
+        [
+          95.0,
+          23.0
+        ]
+      ],
+      "affordances": [
+        "work"
+      ],
+      "source": "door:atelier hall"
+    },
+    {
+      "id": "everglade/creative-district/atelier-hall/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "creative-district",
+      "stand": [
+        95.0,
+        26.5
+      ],
+      "facing": 3.14,
+      "open": true,
+      "source": "door:atelier hall:door"
+    },
+    {
+      "id": "everglade/creative-district/boardwalk-cafe-east",
+      "name": "boardwalk cafe east",
+      "kind": "building",
+      "district": "creative-district",
+      "stand": [
+        91.0,
+        32.0
+      ],
+      "affordances": [
+        "eat",
+        "drink"
+      ],
+      "source": "front:boardwalk cafe east"
+    },
+    {
+      "id": "everglade/creative-district/boardwalk-cafe-east/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "creative-district",
+      "stand": [
+        91.0,
+        32.0
+      ],
+      "open": false,
+      "source": "front:boardwalk cafe east:door"
+    },
+    {
+      "id": "everglade/creative-district/boardwalk-cafe-west",
+      "name": "boardwalk cafe west",
+      "kind": "building",
+      "district": "creative-district",
+      "stand": [
+        77.0,
+        26.0
+      ],
+      "affordances": [
+        "eat",
+        "drink"
+      ],
+      "source": "front:boardwalk cafe west"
+    },
+    {
+      "id": "everglade/creative-district/boardwalk-cafe-west/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "creative-district",
+      "stand": [
+        77.0,
+        26.0
+      ],
+      "open": false,
+      "source": "front:boardwalk cafe west:door"
+    },
+    {
+      "id": "everglade/creative-district/makers-hall",
+      "name": "makers hall",
+      "kind": "building",
+      "district": "creative-district",
+      "stand": [
+        43.0,
+        36.5
+      ],
+      "entry": [
+        [
+          43.0,
+          36.5
+        ],
+        [
+          43.0,
+          33.0
+        ]
+      ],
+      "affordances": [
+        "work"
+      ],
+      "source": "door:makers hall"
+    },
+    {
+      "id": "everglade/creative-district/makers-hall/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "creative-district",
+      "stand": [
+        43.0,
+        36.5
+      ],
+      "facing": 3.14,
+      "open": true,
+      "source": "door:makers hall:door"
+    },
+    {
+      "id": "everglade/creative-district/studio",
+      "name": "studio",
+      "kind": "building",
+      "district": "creative-district",
+      "stand": [
+        76.0,
+        31.8
+      ],
+      "affordances": [
+        "work"
+      ],
+      "source": "front:studio"
+    },
+    {
+      "id": "everglade/creative-district/studio/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "creative-district",
+      "stand": [
+        76.0,
+        31.8
+      ],
+      "open": false,
+      "source": "front:studio:door"
+    },
+    {
+      "id": "everglade/foundry",
+      "name": "The Foundry",
+      "kind": "district",
+      "district": "foundry",
+      "stand": [
+        78.3,
+        3.0
+      ],
+      "source": "district:foundry"
+    },
+    {
+      "id": "everglade/foundry/fab-hall",
+      "name": "fab hall",
+      "kind": "building",
+      "district": "foundry",
+      "stand": [
+        95.0,
+        2.5
+      ],
+      "entry": [
+        [
+          95.0,
+          2.5
+        ],
+        [
+          95.0,
+          6.0
+        ]
+      ],
+      "affordances": [
+        "work"
+      ],
+      "source": "door:fab hall"
+    },
+    {
+      "id": "everglade/foundry/fab-hall/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "foundry",
+      "stand": [
+        95.0,
+        2.5
+      ],
+      "facing": 0.0,
+      "open": true,
+      "source": "door:fab hall:door"
+    },
+    {
+      "id": "everglade/foundry/server-barn",
+      "name": "server barn",
+      "kind": "building",
+      "district": "foundry",
+      "stand": [
+        44.5,
+        0.0
+      ],
+      "entry": [
+        [
+          44.5,
+          0.0
+        ],
+        [
+          48.0,
+          0.0
+        ]
+      ],
+      "affordances": [
+        "work"
+      ],
+      "source": "door:server barn"
+    },
+    {
+      "id": "everglade/foundry/server-barn/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "foundry",
+      "stand": [
+        44.5,
+        0.0
+      ],
+      "facing": 1.57,
+      "open": true,
+      "source": "door:server barn:door"
+    },
+    {
+      "id": "everglade/foundry/server-barn-annex",
+      "name": "server barn annex",
+      "kind": "building",
+      "district": "foundry",
+      "stand": [
+        75.6,
+        -3.1
+      ],
+      "affordances": [
+        "work"
+      ],
+      "source": "front:server barn annex"
+    },
+    {
+      "id": "everglade/foundry/server-barn-annex/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "foundry",
+      "stand": [
+        75.6,
+        -3.1
+      ],
+      "open": false,
+      "source": "front:server barn annex:door"
+    },
+    {
+      "id": "everglade/foundry/smithy",
+      "name": "smithy",
+      "kind": "building",
+      "district": "foundry",
+      "stand": [
+        93.0,
+        -3.1
+      ],
+      "affordances": [
+        "work"
+      ],
+      "source": "front:smithy"
+    },
+    {
+      "id": "everglade/foundry/smithy/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "foundry",
+      "stand": [
+        93.0,
+        -3.1
+      ],
+      "open": false,
+      "source": "front:smithy:door"
+    },
+    {
+      "id": "everglade/foundry/workshop",
+      "name": "workshop",
+      "kind": "building",
+      "district": "foundry",
+      "stand": [
+        78.3,
+        3.0
+      ],
+      "affordances": [
+        "work"
+      ],
+      "source": "front:workshop"
+    },
+    {
+      "id": "everglade/foundry/workshop/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "foundry",
+      "stand": [
+        78.3,
+        3.0
+      ],
+      "open": false,
+      "source": "front:workshop:door"
+    },
+    {
+      "id": "everglade/knowledge-district",
+      "name": "Knowledge District",
+      "kind": "district",
+      "district": "knowledge-district",
+      "stand": [
+        57.0,
+        -36.1
+      ],
+      "source": "district:knowledge-district"
+    },
+    {
+      "id": "everglade/knowledge-district/archive",
+      "name": "archive",
+      "kind": "building",
+      "district": "knowledge-district",
+      "stand": [
+        100.4,
+        -25.9
+      ],
+      "affordances": [
+        "read"
+      ],
+      "source": "front:archive"
+    },
+    {
+      "id": "everglade/knowledge-district/archive/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "knowledge-district",
+      "stand": [
+        100.4,
+        -25.9
+      ],
+      "open": false,
+      "source": "front:archive:door"
+    },
+    {
+      "id": "everglade/knowledge-district/clock-tower",
+      "name": "clock tower",
+      "kind": "building",
+      "district": "knowledge-district",
+      "stand": [
+        24.0,
+        -27.6
+      ],
+      "source": "front:clock tower"
+    },
+    {
+      "id": "everglade/knowledge-district/clock-tower/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "knowledge-district",
+      "stand": [
+        24.0,
+        -27.6
+      ],
+      "open": false,
+      "source": "front:clock tower:door"
+    },
+    {
+      "id": "everglade/knowledge-district/college-hall",
+      "name": "college hall",
+      "kind": "building",
+      "district": "knowledge-district",
+      "stand": [
+        53.0,
+        -26.5
+      ],
+      "entry": [
+        [
+          53.0,
+          -26.5
+        ],
+        [
+          53.0,
+          -23.0
+        ]
+      ],
+      "affordances": [
+        "read"
+      ],
+      "source": "door:college hall"
+    },
+    {
+      "id": "everglade/knowledge-district/college-hall/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "knowledge-district",
+      "stand": [
+        53.0,
+        -26.5
+      ],
+      "facing": 0.0,
+      "open": true,
+      "source": "door:college hall:door"
+    },
+    {
+      "id": "everglade/knowledge-district/lecture-hall",
+      "name": "lecture hall",
+      "kind": "building",
+      "district": "knowledge-district",
+      "stand": [
+        79.0,
+        -26.5
+      ],
+      "entry": [
+        [
+          79.0,
+          -26.5
+        ],
+        [
+          79.0,
+          -23.0
+        ]
+      ],
+      "affordances": [
+        "read"
+      ],
+      "source": "door:lecture hall"
+    },
+    {
+      "id": "everglade/knowledge-district/lecture-hall/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "knowledge-district",
+      "stand": [
+        79.0,
+        -26.5
+      ],
+      "facing": 0.0,
+      "open": true,
+      "source": "door:lecture hall:door"
+    },
+    {
+      "id": "everglade/knowledge-district/map-room",
+      "name": "map room",
+      "kind": "building",
+      "district": "knowledge-district",
+      "stand": [
+        73.7,
+        -32.0
+      ],
+      "affordances": [
+        "read"
+      ],
+      "source": "front:map room"
+    },
+    {
+      "id": "everglade/knowledge-district/map-room/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "knowledge-district",
+      "stand": [
+        73.7,
+        -32.0
+      ],
+      "open": false,
+      "source": "front:map room:door"
+    },
+    {
+      "id": "everglade/knowledge-district/observatory",
+      "name": "observatory",
+      "kind": "building",
+      "district": "knowledge-district",
+      "stand": [
+        82.56,
+        -69.0
+      ],
+      "affordances": [
+        "read"
+      ],
+      "source": "front:observatory"
+    },
+    {
+      "id": "everglade/knowledge-district/observatory/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "knowledge-district",
+      "stand": [
+        82.56,
+        -69.0
+      ],
+      "open": false,
+      "source": "front:observatory:door"
+    },
+    {
+      "id": "everglade/knowledge-district/old-college",
+      "name": "old college",
+      "kind": "building",
+      "district": "knowledge-district",
+      "stand": [
+        39.0,
+        -26.5
+      ],
+      "entry": [
+        [
+          39.0,
+          -26.5
+        ],
+        [
+          39.0,
+          -23.0
+        ]
+      ],
+      "affordances": [
+        "read"
+      ],
+      "source": "door:old college"
+    },
+    {
+      "id": "everglade/knowledge-district/old-college/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "knowledge-district",
+      "stand": [
+        39.0,
+        -26.5
+      ],
+      "facing": 0.0,
+      "open": true,
+      "source": "door:old college:door"
+    },
+    {
+      "id": "everglade/knowledge-district/owners-house",
+      "name": "owner's house",
+      "kind": "building",
+      "district": "knowledge-district",
+      "stand": [
+        108.0,
+        -29.0
+      ],
+      "entry": [
+        [
+          108.0,
+          -29.0
+        ],
+        [
+          127.0,
+          -29.0
+        ]
+      ],
+      "source": "door:owner's house"
+    },
+    {
+      "id": "everglade/knowledge-district/owners-house/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "knowledge-district",
+      "stand": [
+        108.0,
+        -29.0
+      ],
+      "facing": 1.57,
+      "open": true,
+      "source": "door:owner's house:door"
+    },
+    {
+      "id": "everglade/knowledge-district/owners-house/great-room",
+      "name": "great room",
+      "kind": "room",
+      "district": "knowledge-district",
+      "stand": [
+        127.0,
+        -29.0
+      ],
+      "area": [
+        [
+          121.0,
+          -38.6
+        ],
+        [
+          134.2,
+          -19.4
+        ]
+      ],
+      "source": "room:great room"
+    },
+    {
+      "id": "everglade/knowledge-district/owners-house/great-room/workstation",
+      "name": "workstation",
+      "kind": "object",
+      "object": "workstation",
+      "district": "knowledge-district",
+      "stand": [
+        132.7,
+        -33.6
+      ],
+      "facing": -1.57,
+      "affordances": [
+        "work",
+        "run-commands"
+      ],
+      "exclusive": true,
+      "source": "estate:workstation"
+    },
+    {
+      "id": "everglade/knowledge-district/owners-house/great-room/console",
+      "name": "console",
+      "kind": "object",
+      "object": "console",
+      "district": "knowledge-district",
+      "stand": [
+        130.6,
+        -20.9
+      ],
+      "facing": 0.0,
+      "affordances": [
+        "run-commands"
+      ],
+      "exclusive": true,
+      "source": "estate:console"
+    },
+    {
+      "id": "everglade/knowledge-district/owners-house/great-room/lectern",
+      "name": "lectern",
+      "kind": "object",
+      "object": "lectern",
+      "district": "knowledge-district",
+      "stand": [
+        124.95,
+        -24.0
+      ],
+      "facing": -1.57,
+      "affordances": [
+        "approve",
+        "review"
+      ],
+      "exclusive": true,
+      "source": "estate:lectern"
+    },
+    {
+      "id": "everglade/knowledge-district/owners-house/lantern-1",
+      "name": "lantern 1",
+      "kind": "object",
+      "object": "lamp",
+      "district": "knowledge-district",
+      "stand": [
+        108.0,
+        -29.0
+      ],
+      "source": "light:owners-house:0"
+    },
+    {
+      "id": "everglade/knowledge-district/owners-house/uplight-1",
+      "name": "uplight 1",
+      "kind": "object",
+      "object": "lamp",
+      "district": "knowledge-district",
+      "stand": [
+        108.0,
+        -29.0
+      ],
+      "source": "light:owners-house:1"
+    },
+    {
+      "id": "everglade/knowledge-district/owners-house/lantern-2",
+      "name": "lantern 2",
+      "kind": "object",
+      "object": "lamp",
+      "district": "knowledge-district",
+      "stand": [
+        108.0,
+        -29.0
+      ],
+      "source": "light:owners-house:2"
+    },
+    {
+      "id": "everglade/knowledge-district/owners-house/lantern-3",
+      "name": "lantern 3",
+      "kind": "object",
+      "object": "lamp",
+      "district": "knowledge-district",
+      "stand": [
+        108.0,
+        -29.0
+      ],
+      "source": "light:owners-house:3"
+    },
+    {
+      "id": "everglade/knowledge-district/owners-house/lantern-4",
+      "name": "lantern 4",
+      "kind": "object",
+      "object": "lamp",
+      "district": "knowledge-district",
+      "stand": [
+        108.0,
+        -29.0
+      ],
+      "source": "light:owners-house:4"
+    },
+    {
+      "id": "everglade/knowledge-district/owners-house/uplight-2",
+      "name": "uplight 2",
+      "kind": "object",
+      "object": "lamp",
+      "district": "knowledge-district",
+      "stand": [
+        108.0,
+        -29.0
+      ],
+      "source": "light:owners-house:5"
+    },
+    {
+      "id": "everglade/knowledge-district/owners-house/lantern-5",
+      "name": "lantern 5",
+      "kind": "object",
+      "object": "lamp",
+      "district": "knowledge-district",
+      "stand": [
+        108.0,
+        -29.0
+      ],
+      "source": "light:owners-house:6"
+    },
+    {
+      "id": "everglade/knowledge-district/owners-house/lantern-6",
+      "name": "lantern 6",
+      "kind": "object",
+      "object": "lamp",
+      "district": "knowledge-district",
+      "stand": [
+        108.0,
+        -29.0
+      ],
+      "source": "light:owners-house:7"
+    },
+    {
+      "id": "everglade/knowledge-district/owners-house/great-room/lamp-1",
+      "name": "lamp 1",
+      "kind": "object",
+      "object": "lamp",
+      "district": "knowledge-district",
+      "stand": [
+        127.0,
+        -29.0
+      ],
+      "source": "light:owners-house:8"
+    },
+    {
+      "id": "everglade/knowledge-district/owners-house/great-room/candles-1",
+      "name": "candles 1",
+      "kind": "object",
+      "object": "lamp",
+      "district": "knowledge-district",
+      "stand": [
+        127.0,
+        -29.0
+      ],
+      "source": "light:owners-house:9"
+    },
+    {
+      "id": "everglade/knowledge-district/owners-house/great-room/sconce-1",
+      "name": "sconce 1",
+      "kind": "object",
+      "object": "lamp",
+      "district": "knowledge-district",
+      "stand": [
+        127.0,
+        -29.0
+      ],
+      "source": "light:owners-house:10"
+    },
+    {
+      "id": "everglade/knowledge-district/owners-house/great-room/sconce-2",
+      "name": "sconce 2",
+      "kind": "object",
+      "object": "lamp",
+      "district": "knowledge-district",
+      "stand": [
+        127.0,
+        -29.0
+      ],
+      "source": "light:owners-house:11"
+    },
+    {
+      "id": "everglade/knowledge-district/owners-house/great-room/candles-2",
+      "name": "candles 2",
+      "kind": "object",
+      "object": "lamp",
+      "district": "knowledge-district",
+      "stand": [
+        127.0,
+        -29.0
+      ],
+      "source": "light:owners-house:12"
+    },
+    {
+      "id": "everglade/knowledge-district/owners-house/great-room/brazier-1",
+      "name": "brazier 1",
+      "kind": "object",
+      "object": "lamp",
+      "district": "knowledge-district",
+      "stand": [
+        127.0,
+        -29.0
+      ],
+      "source": "light:owners-house:13"
+    },
+    {
+      "id": "everglade/knowledge-district/owners-house/great-room/sconce-3",
+      "name": "sconce 3",
+      "kind": "object",
+      "object": "lamp",
+      "district": "knowledge-district",
+      "stand": [
+        127.0,
+        -29.0
+      ],
+      "source": "light:owners-house:14"
+    },
+    {
+      "id": "everglade/knowledge-district/owners-house/great-room/sconce-4",
+      "name": "sconce 4",
+      "kind": "object",
+      "object": "lamp",
+      "district": "knowledge-district",
+      "stand": [
+        127.0,
+        -29.0
+      ],
+      "source": "light:owners-house:15"
+    },
+    {
+      "id": "everglade/knowledge-district/owners-house/great-room/candles-3",
+      "name": "candles 3",
+      "kind": "object",
+      "object": "lamp",
+      "district": "knowledge-district",
+      "stand": [
+        127.0,
+        -29.0
+      ],
+      "source": "light:owners-house:16"
+    },
+    {
+      "id": "everglade/knowledge-district/owners-house/great-room/candles-4",
+      "name": "candles 4",
+      "kind": "object",
+      "object": "lamp",
+      "district": "knowledge-district",
+      "stand": [
+        127.0,
+        -29.0
+      ],
+      "source": "light:owners-house:17"
+    },
+    {
+      "id": "everglade/knowledge-district/owners-house/great-room/candles-5",
+      "name": "candles 5",
+      "kind": "object",
+      "object": "lamp",
+      "district": "knowledge-district",
+      "stand": [
+        127.0,
+        -29.0
+      ],
+      "source": "light:owners-house:18"
+    },
+    {
+      "id": "everglade/knowledge-district/owners-house/great-room/lamp-2",
+      "name": "lamp 2",
+      "kind": "object",
+      "object": "lamp",
+      "district": "knowledge-district",
+      "stand": [
+        127.0,
+        -29.0
+      ],
+      "source": "light:owners-house:19"
+    },
+    {
+      "id": "everglade/knowledge-district/reading-room",
+      "name": "reading room",
+      "kind": "building",
+      "district": "knowledge-district",
+      "stand": [
+        21.0,
+        8.5
+      ],
+      "entry": [
+        [
+          21.0,
+          8.5
+        ],
+        [
+          21.0,
+          12.0
+        ]
+      ],
+      "affordances": [
+        "read"
+      ],
+      "source": "door:reading room"
+    },
+    {
+      "id": "everglade/knowledge-district/reading-room/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "knowledge-district",
+      "stand": [
+        21.0,
+        8.5
+      ],
+      "facing": 0.0,
+      "open": true,
+      "source": "door:reading room:door"
+    },
+    {
+      "id": "everglade/knowledge-district/scriptorium",
+      "name": "scriptorium",
+      "kind": "building",
+      "district": "knowledge-district",
+      "stand": [
+        96.0,
+        -30.6
+      ],
+      "affordances": [
+        "read"
+      ],
+      "source": "front:scriptorium"
+    },
+    {
+      "id": "everglade/knowledge-district/scriptorium/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "knowledge-district",
+      "stand": [
+        96.0,
+        -30.6
+      ],
+      "open": false,
+      "source": "front:scriptorium:door"
+    },
+    {
+      "id": "everglade/knowledge-district/seminar-house",
+      "name": "seminar house",
+      "kind": "building",
+      "district": "knowledge-district",
+      "stand": [
+        57.0,
+        -36.1
+      ],
+      "affordances": [
+        "read"
+      ],
+      "source": "front:seminar house"
+    },
+    {
+      "id": "everglade/knowledge-district/seminar-house/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "knowledge-district",
+      "stand": [
+        57.0,
+        -36.1
+      ],
+      "open": false,
+      "source": "front:seminar house:door"
+    },
+    {
+      "id": "everglade/knowledge-district/sketch-cabin",
+      "name": "sketch cabin",
+      "kind": "building",
+      "district": "knowledge-district",
+      "stand": [
+        42.9,
+        -84.0
+      ],
+      "affordances": [
+        "work"
+      ],
+      "source": "front:sketch cabin"
+    },
+    {
+      "id": "everglade/knowledge-district/sketch-cabin/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "knowledge-district",
+      "stand": [
+        42.9,
+        -84.0
+      ],
+      "open": false,
+      "source": "front:sketch cabin:door"
+    },
+    {
+      "id": "everglade/knowledge-district/the-stacks",
+      "name": "the stacks",
+      "kind": "building",
+      "district": "knowledge-district",
+      "stand": [
+        32.0,
+        -34.9
+      ],
+      "affordances": [
+        "read"
+      ],
+      "source": "front:the stacks"
+    },
+    {
+      "id": "everglade/knowledge-district/the-stacks/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "knowledge-district",
+      "stand": [
+        32.0,
+        -34.9
+      ],
+      "open": false,
+      "source": "front:the stacks:door"
+    },
+    {
+      "id": "everglade/stoop-lane",
+      "name": "Stoop Lane",
+      "kind": "district",
+      "district": "stoop-lane",
+      "stand": [
+        -36.5,
+        16.0
+      ],
+      "source": "district:stoop-lane"
+    },
+    {
+      "id": "everglade/stoop-lane/cottage",
+      "name": "cottage",
+      "kind": "building",
+      "district": "stoop-lane",
+      "stand": [
+        -15.5,
+        4.0
+      ],
+      "entry": [
+        [
+          -15.5,
+          4.0
+        ],
+        [
+          -19.0,
+          4.0
+        ]
+      ],
+      "affordances": [
+        "sleep"
+      ],
+      "source": "door:cottage"
+    },
+    {
+      "id": "everglade/stoop-lane/cottage/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "stoop-lane",
+      "stand": [
+        -15.5,
+        4.0
+      ],
+      "facing": -1.57,
+      "open": true,
+      "source": "door:cottage:door"
+    },
+    {
+      "id": "everglade/stoop-lane/home-1",
+      "name": "home 1",
+      "kind": "building",
+      "district": "stoop-lane",
+      "stand": [
+        -36.5,
+        -16.0
+      ],
+      "entry": [
+        [
+          -36.5,
+          -16.0
+        ],
+        [
+          -40.0,
+          -16.0
+        ]
+      ],
+      "affordances": [
+        "sleep"
+      ],
+      "source": "door:home 1"
+    },
+    {
+      "id": "everglade/stoop-lane/home-1/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "stoop-lane",
+      "stand": [
+        -36.5,
+        -16.0
+      ],
+      "facing": -1.57,
+      "open": true,
+      "source": "door:home 1:door"
+    },
+    {
+      "id": "everglade/stoop-lane/home-2",
+      "name": "home 2",
+      "kind": "building",
+      "district": "stoop-lane",
+      "stand": [
+        -36.5,
+        0.0
+      ],
+      "entry": [
+        [
+          -36.5,
+          0.0
+        ],
+        [
+          -40.0,
+          0.0
+        ]
+      ],
+      "affordances": [
+        "sleep"
+      ],
+      "source": "door:home 2"
+    },
+    {
+      "id": "everglade/stoop-lane/home-2/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "stoop-lane",
+      "stand": [
+        -36.5,
+        0.0
+      ],
+      "facing": -1.57,
+      "open": true,
+      "source": "door:home 2:door"
+    },
+    {
+      "id": "everglade/stoop-lane/home-3",
+      "name": "home 3",
+      "kind": "building",
+      "district": "stoop-lane",
+      "stand": [
+        -36.5,
+        16.0
+      ],
+      "entry": [
+        [
+          -36.5,
+          16.0
+        ],
+        [
+          -40.0,
+          16.0
+        ]
+      ],
+      "affordances": [
+        "sleep"
+      ],
+      "source": "door:home 3"
+    },
+    {
+      "id": "everglade/stoop-lane/home-3/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "stoop-lane",
+      "stand": [
+        -36.5,
+        16.0
+      ],
+      "facing": -1.57,
+      "open": true,
+      "source": "door:home 3:door"
+    },
+    {
+      "id": "everglade/stoop-lane/home-4",
+      "name": "home 4",
+      "kind": "building",
+      "district": "stoop-lane",
+      "stand": [
+        -36.5,
+        32.0
+      ],
+      "entry": [
+        [
+          -36.5,
+          32.0
+        ],
+        [
+          -40.0,
+          32.0
+        ]
+      ],
+      "affordances": [
+        "sleep"
+      ],
+      "source": "door:home 4"
+    },
+    {
+      "id": "everglade/stoop-lane/home-4/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "stoop-lane",
+      "stand": [
+        -36.5,
+        32.0
+      ],
+      "facing": -1.57,
+      "open": true,
+      "source": "door:home 4:door"
+    },
+    {
+      "id": "everglade/stoop-lane/townhouse-1",
+      "name": "townhouse 1",
+      "kind": "building",
+      "district": "stoop-lane",
+      "stand": [
+        -57.0,
+        35.6
+      ],
+      "affordances": [
+        "sleep"
+      ],
+      "source": "front:townhouse 1"
+    },
+    {
+      "id": "everglade/stoop-lane/townhouse-1/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "stoop-lane",
+      "stand": [
+        -57.0,
+        35.6
+      ],
+      "open": false,
+      "source": "front:townhouse 1:door"
+    },
+    {
+      "id": "everglade/stoop-lane/townhouse-2",
+      "name": "townhouse 2",
+      "kind": "building",
+      "district": "stoop-lane",
+      "stand": [
+        -58.4,
+        21.0
+      ],
+      "affordances": [
+        "sleep"
+      ],
+      "source": "front:townhouse 2"
+    },
+    {
+      "id": "everglade/stoop-lane/townhouse-2/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "stoop-lane",
+      "stand": [
+        -58.4,
+        21.0
+      ],
+      "open": false,
+      "source": "front:townhouse 2:door"
+    },
+    {
+      "id": "everglade/stoop-lane/townhouse-3",
+      "name": "townhouse 3",
+      "kind": "building",
+      "district": "stoop-lane",
+      "stand": [
+        -57.2,
+        7.0
+      ],
+      "affordances": [
+        "sleep"
+      ],
+      "source": "front:townhouse 3"
+    },
+    {
+      "id": "everglade/stoop-lane/townhouse-3/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "stoop-lane",
+      "stand": [
+        -57.2,
+        7.0
+      ],
+      "open": false,
+      "source": "front:townhouse 3:door"
+    },
+    {
+      "id": "everglade/stoop-lane/townhouse-4",
+      "name": "townhouse 4",
+      "kind": "building",
+      "district": "stoop-lane",
+      "stand": [
+        -62.8,
+        35.0
+      ],
+      "affordances": [
+        "sleep"
+      ],
+      "source": "front:townhouse 4"
+    },
+    {
+      "id": "everglade/stoop-lane/townhouse-4/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "stoop-lane",
+      "stand": [
+        -62.8,
+        35.0
+      ],
+      "open": false,
+      "source": "front:townhouse 4:door"
+    },
+    {
+      "id": "everglade/stoop-lane/townhouse-5",
+      "name": "townhouse 5",
+      "kind": "building",
+      "district": "stoop-lane",
+      "stand": [
+        -63.0,
+        23.3
+      ],
+      "affordances": [
+        "sleep"
+      ],
+      "source": "front:townhouse 5"
+    },
+    {
+      "id": "everglade/stoop-lane/townhouse-5/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "stoop-lane",
+      "stand": [
+        -63.0,
+        23.3
+      ],
+      "open": false,
+      "source": "front:townhouse 5:door"
+    },
+    {
+      "id": "everglade/stoop-lane/townhouse-6",
+      "name": "townhouse 6",
+      "kind": "building",
+      "district": "stoop-lane",
+      "stand": [
+        -63.0,
+        6.4
+      ],
+      "affordances": [
+        "sleep"
+      ],
+      "source": "front:townhouse 6"
+    },
+    {
+      "id": "everglade/stoop-lane/townhouse-6/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "stoop-lane",
+      "stand": [
+        -63.0,
+        6.4
+      ],
+      "open": false,
+      "source": "front:townhouse 6:door"
+    },
+    {
+      "id": "everglade/lantern-quarter",
+      "name": "Lantern Quarter",
+      "kind": "district",
+      "district": "lantern-quarter",
+      "stand": [
+        -112.0,
+        -5.9
+      ],
+      "source": "district:lantern-quarter"
+    },
+    {
+      "id": "everglade/lantern-quarter/belvedere",
+      "name": "belvedere",
+      "kind": "building",
+      "district": "lantern-quarter",
+      "stand": [
+        -163.0,
+        -8.0
+      ],
+      "entry": [
+        [
+          -163.0,
+          -8.0
+        ],
+        [
+          -185.6,
+          -8.0
+        ]
+      ],
+      "affordances": [
+        "rest"
+      ],
+      "source": "door:belvedere"
+    },
+    {
+      "id": "everglade/lantern-quarter/belvedere/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "lantern-quarter",
+      "stand": [
+        -163.0,
+        -8.0
+      ],
+      "facing": -1.57,
+      "open": true,
+      "source": "door:belvedere:door"
+    },
+    {
+      "id": "everglade/lantern-quarter/choir-house",
+      "name": "choir house",
+      "kind": "building",
+      "district": "lantern-quarter",
+      "stand": [
+        -94.4,
+        21.0
+      ],
+      "affordances": [
+        "gather"
+      ],
+      "source": "front:choir house"
+    },
+    {
+      "id": "everglade/lantern-quarter/choir-house/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "lantern-quarter",
+      "stand": [
+        -94.4,
+        21.0
+      ],
+      "open": false,
+      "source": "front:choir house:door"
+    },
+    {
+      "id": "everglade/lantern-quarter/guild-hall",
+      "name": "guild hall",
+      "kind": "building",
+      "district": "lantern-quarter",
+      "stand": [
+        -92.9,
+        -31.0
+      ],
+      "affordances": [
+        "gather"
+      ],
+      "source": "front:guild hall"
+    },
+    {
+      "id": "everglade/lantern-quarter/guild-hall/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "lantern-quarter",
+      "stand": [
+        -92.9,
+        -31.0
+      ],
+      "open": false,
+      "source": "front:guild hall:door"
+    },
+    {
+      "id": "everglade/lantern-quarter/meeting-hall",
+      "name": "meeting hall",
+      "kind": "building",
+      "district": "lantern-quarter",
+      "stand": [
+        -86.0,
+        -6.4
+      ],
+      "affordances": [
+        "gather"
+      ],
+      "source": "front:meeting hall"
+    },
+    {
+      "id": "everglade/lantern-quarter/meeting-hall/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "lantern-quarter",
+      "stand": [
+        -86.0,
+        -6.4
+      ],
+      "open": false,
+      "source": "front:meeting hall:door"
+    },
+    {
+      "id": "everglade/lantern-quarter/music-hall",
+      "name": "music hall",
+      "kind": "building",
+      "district": "lantern-quarter",
+      "stand": [
+        -80.0,
+        -9.1
+      ],
+      "affordances": [
+        "gather"
+      ],
+      "source": "front:music hall"
+    },
+    {
+      "id": "everglade/lantern-quarter/music-hall/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "lantern-quarter",
+      "stand": [
+        -80.0,
+        -9.1
+      ],
+      "open": false,
+      "source": "front:music hall:door"
+    },
+    {
+      "id": "everglade/lantern-quarter/the-fiddle",
+      "name": "the fiddle",
+      "kind": "building",
+      "district": "lantern-quarter",
+      "stand": [
+        -112.0,
+        -10.0
+      ],
+      "affordances": [
+        "drink",
+        "eat",
+        "gather"
+      ],
+      "source": "front:the fiddle"
+    },
+    {
+      "id": "everglade/lantern-quarter/the-fiddle/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "lantern-quarter",
+      "stand": [
+        -112.0,
+        -10.0
+      ],
+      "open": false,
+      "source": "front:the fiddle:door"
+    },
+    {
+      "id": "everglade/lantern-quarter/the-hearth",
+      "name": "the hearth",
+      "kind": "building",
+      "district": "lantern-quarter",
+      "stand": [
+        -107.0,
+        -26.7
+      ],
+      "affordances": [
+        "drink",
+        "eat",
+        "gather"
+      ],
+      "source": "front:the hearth"
+    },
+    {
+      "id": "everglade/lantern-quarter/the-hearth/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "lantern-quarter",
+      "stand": [
+        -107.0,
+        -26.7
+      ],
+      "open": false,
+      "source": "front:the hearth:door"
+    },
+    {
+      "id": "everglade/lantern-quarter/the-lamplighter",
+      "name": "the lamplighter",
+      "kind": "building",
+      "district": "lantern-quarter",
+      "stand": [
+        -107.0,
+        21.0
+      ],
+      "affordances": [
+        "drink",
+        "eat",
+        "gather"
+      ],
+      "source": "front:the lamplighter"
+    },
+    {
+      "id": "everglade/lantern-quarter/the-lamplighter/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "lantern-quarter",
+      "stand": [
+        -107.0,
+        21.0
+      ],
+      "open": false,
+      "source": "front:the lamplighter:door"
+    },
+    {
+      "id": "everglade/lantern-quarter/the-lantern",
+      "name": "the lantern",
+      "kind": "building",
+      "district": "lantern-quarter",
+      "stand": [
+        -112.0,
+        -5.9
+      ],
+      "affordances": [
+        "drink",
+        "eat",
+        "gather"
+      ],
+      "source": "front:the lantern"
+    },
+    {
+      "id": "everglade/lantern-quarter/the-lantern/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "lantern-quarter",
+      "stand": [
+        -112.0,
+        -5.9
+      ],
+      "open": false,
+      "source": "front:the lantern:door"
+    },
+    {
+      "id": "everglade/lantern-quarter/the-snug",
+      "name": "the snug",
+      "kind": "building",
+      "district": "lantern-quarter",
+      "stand": [
+        -111.1,
+        32.0
+      ],
+      "affordances": [
+        "drink",
+        "eat",
+        "gather"
+      ],
+      "source": "front:the snug"
+    },
+    {
+      "id": "everglade/lantern-quarter/the-snug/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "lantern-quarter",
+      "stand": [
+        -111.1,
+        32.0
+      ],
+      "open": false,
+      "source": "front:the snug:door"
+    },
+    {
+      "id": "everglade/lantern-quarter/well-house-south",
+      "name": "well house south",
+      "kind": "building",
+      "district": "lantern-quarter",
+      "stand": [
+        -60.5,
+        -36.1
+      ],
+      "affordances": [
+        "rest"
+      ],
+      "source": "front:well house south"
+    },
+    {
+      "id": "everglade/lantern-quarter/well-house-south/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "lantern-quarter",
+      "stand": [
+        -60.5,
+        -36.1
+      ],
+      "open": false,
+      "source": "front:well house south:door"
+    },
+    {
+      "id": "everglade/lantern-quarter/well-house-west",
+      "name": "well house west",
+      "kind": "building",
+      "district": "lantern-quarter",
+      "stand": [
+        -70.1,
+        -27.5
+      ],
+      "affordances": [
+        "rest"
+      ],
+      "source": "front:well house west"
+    },
+    {
+      "id": "everglade/lantern-quarter/well-house-west/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "lantern-quarter",
+      "stand": [
+        -70.1,
+        -27.5
+      ],
+      "open": false,
+      "source": "front:well house west:door"
+    },
+    {
+      "id": "everglade/brownstone-row",
+      "name": "Brownstone Row",
+      "kind": "district",
+      "district": "brownstone-row",
+      "stand": [
+        -46.95,
+        -77.1
+      ],
+      "source": "district:brownstone-row"
+    },
+    {
+      "id": "everglade/brownstone-row/brownstone-1",
+      "name": "brownstone 1",
+      "kind": "building",
+      "district": "brownstone-row",
+      "stand": [
+        -16.2,
+        -77.0
+      ],
+      "affordances": [
+        "sleep"
+      ],
+      "source": "front:brownstone 1"
+    },
+    {
+      "id": "everglade/brownstone-row/brownstone-1/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "brownstone-row",
+      "stand": [
+        -16.2,
+        -77.0
+      ],
+      "open": false,
+      "source": "front:brownstone 1:door"
+    },
+    {
+      "id": "everglade/brownstone-row/brownstone-2",
+      "name": "brownstone 2",
+      "kind": "building",
+      "district": "brownstone-row",
+      "stand": [
+        -26.2,
+        -77.0
+      ],
+      "affordances": [
+        "sleep"
+      ],
+      "source": "front:brownstone 2"
+    },
+    {
+      "id": "everglade/brownstone-row/brownstone-2/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "brownstone-row",
+      "stand": [
+        -26.2,
+        -77.0
+      ],
+      "open": false,
+      "source": "front:brownstone 2:door"
+    },
+    {
+      "id": "everglade/brownstone-row/brownstone-3-east",
+      "name": "brownstone 3 east",
+      "kind": "building",
+      "district": "brownstone-row",
+      "stand": [
+        -42.75,
+        -77.1
+      ],
+      "affordances": [
+        "sleep"
+      ],
+      "source": "front:brownstone 3 east"
+    },
+    {
+      "id": "everglade/brownstone-row/brownstone-3-east/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "brownstone-row",
+      "stand": [
+        -42.75,
+        -77.1
+      ],
+      "open": false,
+      "source": "front:brownstone 3 east:door"
+    },
+    {
+      "id": "everglade/brownstone-row/brownstone-3-west",
+      "name": "brownstone 3 west",
+      "kind": "building",
+      "district": "brownstone-row",
+      "stand": [
+        -46.95,
+        -77.1
+      ],
+      "affordances": [
+        "sleep"
+      ],
+      "source": "front:brownstone 3 west"
+    },
+    {
+      "id": "everglade/brownstone-row/brownstone-3-west/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "brownstone-row",
+      "stand": [
+        -46.95,
+        -77.1
+      ],
+      "open": false,
+      "source": "front:brownstone 3 west:door"
+    },
+    {
+      "id": "everglade/brownstone-row/brownstone-4-east",
+      "name": "brownstone 4 east",
+      "kind": "building",
+      "district": "brownstone-row",
+      "stand": [
+        -52.75,
+        -77.1
+      ],
+      "affordances": [
+        "sleep"
+      ],
+      "source": "front:brownstone 4 east"
+    },
+    {
+      "id": "everglade/brownstone-row/brownstone-4-east/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "brownstone-row",
+      "stand": [
+        -52.75,
+        -77.1
+      ],
+      "open": false,
+      "source": "front:brownstone 4 east:door"
+    },
+    {
+      "id": "everglade/brownstone-row/brownstone-4-west",
+      "name": "brownstone 4 west",
+      "kind": "building",
+      "district": "brownstone-row",
+      "stand": [
+        -56.95,
+        -77.1
+      ],
+      "affordances": [
+        "sleep"
+      ],
+      "source": "front:brownstone 4 west"
+    },
+    {
+      "id": "everglade/brownstone-row/brownstone-4-west/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "brownstone-row",
+      "stand": [
+        -56.95,
+        -77.1
+      ],
+      "open": false,
+      "source": "front:brownstone 4 west:door"
+    },
+    {
+      "id": "everglade/brownstone-row/brownstone-5",
+      "name": "brownstone 5",
+      "kind": "building",
+      "district": "brownstone-row",
+      "stand": [
+        -66.2,
+        -77.0
+      ],
+      "affordances": [
+        "sleep"
+      ],
+      "source": "front:brownstone 5"
+    },
+    {
+      "id": "everglade/brownstone-row/brownstone-5/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "brownstone-row",
+      "stand": [
+        -66.2,
+        -77.0
+      ],
+      "open": false,
+      "source": "front:brownstone 5:door"
+    },
+    {
+      "id": "everglade/brownstone-row/brownstone-6",
+      "name": "brownstone 6",
+      "kind": "building",
+      "district": "brownstone-row",
+      "stand": [
+        -76.2,
+        -77.0
+      ],
+      "affordances": [
+        "sleep"
+      ],
+      "source": "front:brownstone 6"
+    },
+    {
+      "id": "everglade/brownstone-row/brownstone-6/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "brownstone-row",
+      "stand": [
+        -76.2,
+        -77.0
+      ],
+      "open": false,
+      "source": "front:brownstone 6:door"
+    },
+    {
+      "id": "everglade/brownstone-row/glasshouse",
+      "name": "glasshouse",
+      "kind": "building",
+      "district": "brownstone-row",
+      "stand": [
+        -52.0,
+        -58.9
+      ],
+      "affordances": [
+        "work"
+      ],
+      "source": "front:glasshouse"
+    },
+    {
+      "id": "everglade/brownstone-row/glasshouse/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "brownstone-row",
+      "stand": [
+        -52.0,
+        -58.9
+      ],
+      "open": false,
+      "source": "front:glasshouse:door"
+    },
+    {
+      "id": "everglade/brownstone-row/row-house-1",
+      "name": "row house 1",
+      "kind": "building",
+      "district": "brownstone-row",
+      "stand": [
+        -11.8,
+        -81.0
+      ],
+      "affordances": [
+        "sleep"
+      ],
+      "source": "front:row house 1"
+    },
+    {
+      "id": "everglade/brownstone-row/row-house-1/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "brownstone-row",
+      "stand": [
+        -11.8,
+        -81.0
+      ],
+      "open": false,
+      "source": "front:row house 1:door"
+    },
+    {
+      "id": "everglade/brownstone-row/row-house-2",
+      "name": "row house 2",
+      "kind": "building",
+      "district": "brownstone-row",
+      "stand": [
+        -24.4,
+        -81.1
+      ],
+      "affordances": [
+        "sleep"
+      ],
+      "source": "front:row house 2"
+    },
+    {
+      "id": "everglade/brownstone-row/row-house-2/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "brownstone-row",
+      "stand": [
+        -24.4,
+        -81.1
+      ],
+      "open": false,
+      "source": "front:row house 2:door"
+    },
+    {
+      "id": "everglade/brownstone-row/row-house-3",
+      "name": "row house 3",
+      "kind": "building",
+      "district": "brownstone-row",
+      "stand": [
+        -44.0,
+        -79.6
+      ],
+      "affordances": [
+        "sleep"
+      ],
+      "source": "front:row house 3"
+    },
+    {
+      "id": "everglade/brownstone-row/row-house-3/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "brownstone-row",
+      "stand": [
+        -44.0,
+        -79.6
+      ],
+      "open": false,
+      "source": "front:row house 3:door"
+    },
+    {
+      "id": "everglade/brownstone-row/row-house-4",
+      "name": "row house 4",
+      "kind": "building",
+      "district": "brownstone-row",
+      "stand": [
+        -51.8,
+        -81.0
+      ],
+      "affordances": [
+        "sleep"
+      ],
+      "source": "front:row house 4"
+    },
+    {
+      "id": "everglade/brownstone-row/row-house-4/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "brownstone-row",
+      "stand": [
+        -51.8,
+        -81.0
+      ],
+      "open": false,
+      "source": "front:row house 4:door"
+    },
+    {
+      "id": "everglade/brownstone-row/row-house-5",
+      "name": "row house 5",
+      "kind": "building",
+      "district": "brownstone-row",
+      "stand": [
+        -64.4,
+        -81.1
+      ],
+      "affordances": [
+        "sleep"
+      ],
+      "source": "front:row house 5"
+    },
+    {
+      "id": "everglade/brownstone-row/row-house-5/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "brownstone-row",
+      "stand": [
+        -64.4,
+        -81.1
+      ],
+      "open": false,
+      "source": "front:row house 5:door"
+    },
+    {
+      "id": "everglade/brownstone-row/row-house-6",
+      "name": "row house 6",
+      "kind": "building",
+      "district": "brownstone-row",
+      "stand": [
+        -74.0,
+        -79.6
+      ],
+      "affordances": [
+        "sleep"
+      ],
+      "source": "front:row house 6"
+    },
+    {
+      "id": "everglade/brownstone-row/row-house-6/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "brownstone-row",
+      "stand": [
+        -74.0,
+        -79.6
+      ],
+      "open": false,
+      "source": "front:row house 6:door"
+    },
+    {
+      "id": "everglade/walden-woods",
+      "name": "Walden Woods",
+      "kind": "district",
+      "district": "walden-woods",
+      "stand": [
+        -101.1,
+        -73.0
+      ],
+      "source": "district:walden-woods"
+    },
+    {
+      "id": "everglade/walden-woods/code-cabin",
+      "name": "code cabin",
+      "kind": "building",
+      "district": "walden-woods",
+      "stand": [
+        -23.0,
+        -41.5
+      ],
+      "entry": [
+        [
+          -23.0,
+          -41.5
+        ],
+        [
+          -23.0,
+          -45.0
+        ]
+      ],
+      "affordances": [
+        "work"
+      ],
+      "source": "door:code cabin"
+    },
+    {
+      "id": "everglade/walden-woods/code-cabin/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "walden-woods",
+      "stand": [
+        -23.0,
+        -41.5
+      ],
+      "facing": 3.14,
+      "open": true,
+      "source": "door:code cabin:door"
+    },
+    {
+      "id": "everglade/walden-woods/prototype-shed",
+      "name": "prototype shed",
+      "kind": "building",
+      "district": "walden-woods",
+      "stand": [
+        -89.0,
+        -85.5
+      ],
+      "entry": [
+        [
+          -89.0,
+          -85.5
+        ],
+        [
+          -89.0,
+          -89.0
+        ]
+      ],
+      "affordances": [
+        "work"
+      ],
+      "source": "door:prototype shed"
+    },
+    {
+      "id": "everglade/walden-woods/prototype-shed/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "walden-woods",
+      "stand": [
+        -89.0,
+        -85.5
+      ],
+      "facing": 3.14,
+      "open": true,
+      "source": "door:prototype shed:door"
+    },
+    {
+      "id": "everglade/walden-woods/quiet-cabin",
+      "name": "quiet cabin",
+      "kind": "building",
+      "district": "walden-woods",
+      "stand": [
+        -111.1,
+        -45.0
+      ],
+      "affordances": [
+        "sleep"
+      ],
+      "source": "front:quiet cabin"
+    },
+    {
+      "id": "everglade/walden-woods/quiet-cabin/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "walden-woods",
+      "stand": [
+        -111.1,
+        -45.0
+      ],
+      "open": false,
+      "source": "front:quiet cabin:door"
+    },
+    {
+      "id": "everglade/walden-woods/woodcutters-cottage",
+      "name": "woodcutter's cottage",
+      "kind": "building",
+      "district": "walden-woods",
+      "stand": [
+        -101.1,
+        -73.0
+      ],
+      "affordances": [
+        "sleep"
+      ],
+      "source": "front:woodcutter's cottage"
+    },
+    {
+      "id": "everglade/walden-woods/woodcutters-cottage/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "walden-woods",
+      "stand": [
+        -101.1,
+        -73.0
+      ],
+      "open": false,
+      "source": "front:woodcutter's cottage:door"
+    },
+    {
+      "id": "everglade/walden-woods/writing-cabin",
+      "name": "writing cabin",
+      "kind": "building",
+      "district": "walden-woods",
+      "stand": [
+        -38.5,
+        -40.0
+      ],
+      "entry": [
+        [
+          -38.5,
+          -40.0
+        ],
+        [
+          -42.0,
+          -40.0
+        ]
+      ],
+      "affordances": [
+        "work"
+      ],
+      "source": "door:writing cabin"
+    },
+    {
+      "id": "everglade/walden-woods/writing-cabin/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "walden-woods",
+      "stand": [
+        -38.5,
+        -40.0
+      ],
+      "facing": -1.57,
+      "open": true,
+      "source": "door:writing cabin:door"
+    },
+    {
+      "id": "everglade/fernhollow",
+      "name": "Fernhollow",
+      "kind": "district",
+      "district": "fernhollow",
+      "stand": [
+        89.1,
+        87.0
+      ],
+      "source": "district:fernhollow"
+    },
+    {
+      "id": "everglade/fernhollow/fern-cabin",
+      "name": "fern cabin",
+      "kind": "building",
+      "district": "fernhollow",
+      "stand": [
+        89.1,
+        87.0
+      ],
+      "affordances": [
+        "sleep"
+      ],
+      "source": "front:fern cabin"
+    },
+    {
+      "id": "everglade/fernhollow/fern-cabin/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "fernhollow",
+      "stand": [
+        89.1,
+        87.0
+      ],
+      "open": false,
+      "source": "front:fern cabin:door"
+    },
+    {
+      "id": "everglade/fernhollow/lookout",
+      "name": "lookout",
+      "kind": "building",
+      "district": "fernhollow",
+      "stand": [
+        67.0,
+        77.0
+      ],
+      "entry": [
+        [
+          67.0,
+          77.0
+        ],
+        [
+          69.5,
+          77.0
+        ]
+      ],
+      "affordances": [
+        "rest"
+      ],
+      "source": "door:lookout"
+    },
+    {
+      "id": "everglade/fernhollow/lookout/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "fernhollow",
+      "stand": [
+        67.0,
+        77.0
+      ],
+      "facing": 1.57,
+      "open": true,
+      "source": "door:lookout:door"
+    },
+    {
+      "id": "everglade/gardens",
+      "name": "Gardens and orchards",
+      "kind": "district",
+      "district": "gardens",
+      "stand": [
+        -75.5,
+        77.0
+      ],
+      "source": "district:gardens"
+    },
+    {
+      "id": "everglade/gardens/beekeepers-hut",
+      "name": "beekeeper's hut",
+      "kind": "building",
+      "district": "gardens",
+      "stand": [
+        -75.5,
+        77.0
+      ],
+      "entry": [
+        [
+          -75.5,
+          77.0
+        ],
+        [
+          -72.0,
+          77.0
+        ]
+      ],
+      "affordances": [
+        "work"
+      ],
+      "source": "door:beekeeper's hut"
+    },
+    {
+      "id": "everglade/gardens/beekeepers-hut/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "gardens",
+      "stand": [
+        -75.5,
+        77.0
+      ],
+      "facing": 1.57,
+      "open": true,
+      "source": "door:beekeeper's hut:door"
+    },
+    {
+      "id": "everglade/farm",
+      "name": "The farm",
+      "kind": "district",
+      "district": "farm",
+      "stand": [
+        30.0,
+        -97.0
+      ],
+      "source": "district:farm"
+    },
+    {
+      "id": "everglade/farm/barn",
+      "name": "barn",
+      "kind": "building",
+      "district": "farm",
+      "stand": [
+        60.6,
+        -99.0
+      ],
+      "affordances": [
+        "work"
+      ],
+      "source": "front:barn"
+    },
+    {
+      "id": "everglade/farm/barn/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "farm",
+      "stand": [
+        60.6,
+        -99.0
+      ],
+      "open": false,
+      "source": "front:barn:door"
+    },
+    {
+      "id": "everglade/farm/farmhouse",
+      "name": "farmhouse",
+      "kind": "building",
+      "district": "farm",
+      "stand": [
+        14.0,
+        -103.1
+      ],
+      "affordances": [
+        "sleep"
+      ],
+      "source": "front:farmhouse"
+    },
+    {
+      "id": "everglade/farm/farmhouse/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "farm",
+      "stand": [
+        14.0,
+        -103.1
+      ],
+      "open": false,
+      "source": "front:farmhouse:door"
+    },
+    {
+      "id": "everglade/farm/windmill",
+      "name": "windmill",
+      "kind": "building",
+      "district": "farm",
+      "stand": [
+        30.0,
+        -97.0
+      ],
+      "affordances": [
+        "work"
+      ],
+      "source": "front:windmill"
+    },
+    {
+      "id": "everglade/farm/windmill/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "farm",
+      "stand": [
+        30.0,
+        -97.0
+      ],
+      "open": false,
+      "source": "front:windmill:door"
+    },
+    {
+      "id": "everglade/wilds",
+      "name": "The wilds",
+      "kind": "district",
+      "district": "wilds",
+      "stand": [
+        4.7,
+        124.0
+      ],
+      "source": "district:wilds"
+    },
+    {
+      "id": "everglade/wilds/chapel",
+      "name": "chapel",
+      "kind": "building",
+      "district": "wilds",
+      "stand": [
+        4.7,
+        124.0
+      ],
+      "affordances": [
+        "pray"
+      ],
+      "source": "front:chapel"
+    },
+    {
+      "id": "everglade/wilds/chapel/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "wilds",
+      "stand": [
+        4.7,
+        124.0
+      ],
+      "open": false,
+      "source": "front:chapel:door"
+    }
+  ]
+}

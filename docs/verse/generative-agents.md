@@ -443,6 +443,42 @@ choice at about 1,000 tokens costs $0.00004.
   and the owner's house (Knowledge District). Tests fail when a building or
   instance has no district.
 
+**Implemented (phase C2): the world tree.**
+
+- [`world-tree`](../../crates/world-tree/src/lib.rs) holds the types, with
+  serde and SHA-256 only, so `coder` and the web build read it: `Tree`
+  (digest, `node`, `children`, `ancestors`, `walk`, `of_kind`,
+  `in_district`, `with_affordance`, `by_source`, `room_at`, `stand`),
+  `Node` (ID, name, kind, object kind, district, standing point, heading,
+  a room's floor, a doorway `entry`, affordances, `exclusive`, a door's
+  `open`, and its layout `source`), and a closed `Affordance` vocabulary.
+  `state::derive` gives object states, `Known` the per-agent subgraph
+  (`enter`, `enter_at`, `see`, `rebase`, `save`, `load`), `descend` the
+  walk down the tree through a `Choose` (fakes `First` and `Scripted`),
+  and `text::dump` the outline.
+- [`world_tree.rs`](../../crates/verse-zone-everglade/src/zones/everglade/world_tree.rs)
+  generates Everglade's tree from `layout::doors`, `layout::fronts`,
+  `STATIONS`, `DESKS`, and the three `LIGHTS` tables: 14 districts, about
+  100 buildings each with a door, and rooms and objects for the workshop
+  hall, the owner's great room (Alice's workstation, console, and
+  lectern), the Civic Hall's chamber, and the Agora. IDs look like
+  `everglade/knowledge-district/owners-house/great-room/workstation`. The
+  first town's buildings now have districts. The tree is checked in as
+  `crates/world-tree/data/everglade.json` (`world_tree::everglade()`); a
+  test fails when it is stale and names the regenerating command.
+- `conditions` derives states from the town clock and the studio
+  snapshot; `perceive::perceive` fills a known subgraph by room and sight
+  sweep; `perceive::route` grounds a node in a route, crossing doorways
+  narrower than navigation's grid straight. The Agora's four booths are
+  one object, because their lecterns stand closer than navigation's
+  clearance.
+- NIP-MV's [object state](../../nips/openagents/NIP-MV.md#object-state)
+  carries an object's state (`verse_net::mv::object`).
+- [`agent_place.rs`](../../crates/coder/src/task/agent_place.rs) is the
+  live `JevChooser` over `questions/world-place.json` (unmeasured; see
+  [its measurement](../decision-models/measurements/2026-10-07-world-place.md))
+  and Alice's `agents/NAME/known.json`.
+
 ## 4. Visible day plans from real work
 
 **Design.** Alice and the studio seats get a day plan you can see, and their

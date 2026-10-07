@@ -1,0 +1,18 @@
+[package]
+name = "world-tree"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Verse's world tree (openagents.verse-world-tree.v1): places as a containment tree of districts, buildings, rooms, and objects with stable IDs, standing points, and affordances; object states; per-agent known subgraphs; and the place choice an agent grounds an action with. Serde and SHA-256 only; builds for wasm32."
+publish.workspace = true
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

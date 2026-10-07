@@ -36,6 +36,7 @@ mod tests;
 pub mod time_of_day;
 pub mod unstick;
 pub mod wildlife;
+pub mod world_tree;
 
 use crate::{
     controller::{Footprint, InputState, PlayerController},

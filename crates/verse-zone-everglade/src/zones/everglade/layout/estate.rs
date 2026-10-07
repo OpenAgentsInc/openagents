@@ -228,7 +228,7 @@ const INDOOR_REACH: f32 = 34.0;
 /// The great room, in the house's frame: x, z, and height above the base
 /// from, to, m. Its floor is the podium's top, 1.6 m up; the range starts
 /// lower, so a walker the podium hasn't lifted yet counts as inside.
-const ROOM: ([f32; 2], [f32; 2], [f32; 2]) = ([-9.6, 9.6], [-25.2, -12.0], [-1.0, 6.2]);
+pub const ROOM: ([f32; 2], [f32; 2], [f32; 2]) = ([-9.6, 9.6], [-25.2, -12.0], [-1.0, 6.2]);
 
 /// The great room's grade: a little darker, warmer, and more contrasty
 /// than the afternoon outside, with cool shadows against warm highlights,

@@ -1,0 +1,24 @@
+{
+  "v": 1,
+  "id": "openagents.world-place.v1",
+  "name": "Which place in the world tree an agent goes to",
+  "summary": "Walks an agent one level down the world tree: from the children of its current place that it knows, that offer what its activity needs, and that nobody occupies, picks the one where the activity happens, or none. Code supplies the options and resolves the chosen node to its standing point, and navigation routes the agent there; on none the agent stays where it is.",
+  "gate": "place",
+  "questions": {
+    "place": {
+      "type": "choice",
+      "instructions": "The agent named in `agent` is in `at`, a place in a town, and is about to do what `activity` says. Each option is a place inside `at`: its name, what kind of place it is, and what it offers. Which option is where the agent should go to do that activity? Prefer the place whose offers and name fit the activity; a place's offers include what the places inside it offer. Answer none when no option is a sensible place for the activity.",
+      "options": "supplied",
+      "criteria": {
+        "none": "No option is a sensible place for this activity, so the agent stays where it is."
+      }
+    }
+  },
+  "policy": {
+    "v": 1,
+    "state_max_bytes": 8192,
+    "evidence": [
+      "docs/decision-models/measurements/2026-10-07-world-place.md"
+    ]
+  }
+}

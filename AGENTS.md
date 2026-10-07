@@ -727,6 +727,15 @@ uses, and marks which are implemented and which are only specified.
   equal-weight combination, and a small bounded stream. Alice's briefing
   (`coder::task::agent_recall`) and Everglade's townsfolk share it; keep it
   free of I/O so it builds for `wasm32`.
+- `crates/world-tree` — Verse's world tree
+  (`openagents.verse-world-tree.v1`): districts, buildings, rooms, and
+  objects with stable IDs, standing points, and affordances; object
+  states; per-agent known subgraphs; and the place choice a plan grounds
+  in. Serde and SHA-256 only, for `coder` and `wasm32`. Everglade's tree
+  is generated in `verse-zone-everglade` (`zones::everglade::world_tree`)
+  and checked in as `data/everglade.json`; regenerate it with
+  `WORLD_TREE_WRITE=1 cargo test -p verse-zone-everglade world_tree_snapshot`
+  after a layout change.
 - `crates/everglade-web` — Everglade in a browser: a `cdylib` over Verse's
   `web` feature (`wasm32-unknown-unknown`) that fetches the pinned pack from
   the same origin and draws the zone with WebGPU or WebGL2.

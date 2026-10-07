@@ -23,6 +23,8 @@ verse-gfx = { path = "../verse-gfx" }
 # `Instant` from `performance.now()` in a browser, where `std::time::Instant`
 # has no clock; the standard types elsewhere.
 web-time = "1.1.0"
+# The world tree's object states, which `mv::object` publishes.
+world-tree = { path = "../world-tree" }
 xp-ledger = { path = "../xp-ledger", optional = true }
 
 # Network, TLS, and threads: native only.

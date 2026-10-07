@@ -2766,6 +2766,7 @@ dependencies = [
  "tokio-tungstenite 0.30.0",
  "toml",
  "wat",
+ "world-tree",
 ]
 
 [[package]]
@@ -15474,6 +15475,7 @@ dependencies = [
  "web-sys",
  "web-time",
  "webpki-roots 1.0.9",
+ "world-tree",
  "xp-ledger",
 ]
 
@@ -15580,10 +15582,12 @@ dependencies = [
  "verse-core",
  "verse-engine",
  "verse-gfx",
+ "verse-net",
  "verse-pbr",
  "verse-private",
  "verse-world",
  "web-time",
+ "world-tree",
 ]
 
 [[package]]
@@ -17320,6 +17324,16 @@ dependencies = [
  "serde",
  "serde_json",
  "workbench",
+]
+
+[[package]]
+name = "world-tree"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
 ]
 
 [[package]]

@@ -262,6 +262,26 @@ The durable record of one entity. Relays store the latest per publisher and
 | `set` | A `bodies` snapshot's body set. Required for `bodies`, absent otherwise. |
 | `b` | A `bodies` snapshot's rest poses. Required for `bodies`, absent otherwise. |
 
+### Object state
+
+A world whose places form a world tree (Verse's
+`openagents.verse-world-tree.v1`) derives the tree on every device from
+its pinned layout, so only what changes is shared. A world authority
+publishes a stateful object, such as a lamp, a door, a workstation, or a
+task board, as an entity state with role `object` when its state changes.
+Its content carries three more fields, which other clients ignore:
+
+| Content field | Meaning |
+| --- | --- |
+| `node` | The object's node ID in the world tree. |
+| `tree` | The digest of the tree the ID names. |
+| `state` | The object's state: `{"kind":"lamp","lit":true}`, `{"kind":"door","open":false}`, `{"kind":"workstation","busy":true,"by":"ada"}`, or `{"kind":"task-wall","columns":[{"name":"PLANNED","count":2}]}`. |
+
+The entity id is `obj-` and the first 20 hex digits of the SHA-256 of
+`node`, since a node ID has slashes; a reader refuses an object whose id
+isn't its node's. `p` is the node's standing point. `verse_net::mv::object`
+encodes and decodes it.
+
 A publisher SHOULD write entity state when an entity joins, when it comes
 to rest after moving, at most every few seconds while it moves, and when it
 leaves (with `online: false`). A publisher SHOULD NOT write entity state at
