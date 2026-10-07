@@ -3,7 +3,9 @@
 Status: proposal, updated October 6, 2026. This page records the sales strategy
 for OpenAgents, with Coder as the first adoption path. The
 [unified revenue roadmap](revenue-roadmap.md) owns the delivery order, missing
-pieces, dependencies, and evidence needed to earn revenue. Product and payment
+pieces, dependencies, and evidence needed to earn revenue. The
+[agent sales floor](agent-sales-floor.md) plans how our own agents do the
+sales work, led by Paul from a building in Everglade. Product and payment
 documents retain their implementation contracts. These are public plans;
 customer records, compensation agreements, and negotiations stay private.
 
@@ -18,6 +20,7 @@ customer records, compensation agreements, and negotiations stay private.
 - [Affiliate and referral program](#affiliate-and-referral-program)
 - [Partners and fulfillment](#partners-and-fulfillment)
 - [Sell in public](#sell-in-public)
+- [Sell through our agents in Everglade](#sell-through-our-agents-in-everglade)
 - [Business accounts](#business-accounts)
 - [Hands-on onboarding](#hands-on-onboarding)
 - [Agents as products](#agents-as-products)
@@ -208,6 +211,38 @@ and what doesn't: launches, revenue graphs, conversion, and lessons, in the
 same channels where we show the product. It keeps us honest, it recruits
 affiliates and partners, and it shows buyers real results instead of claims.
 
+## Sell through our agents in Everglade
+
+Episode 239 called agents a sales force that scales with the number of
+agents. We start with our own. The [agent sales floor](agent-sales-floor.md)
+plans a small sales organization of OpenAgents agents, built on the
+[crew](../verse/crew.md)'s shared machinery and run inside
+[Everglade](../verse/everglade.md):
+
+- **Paul leads it.** In the cryptography cast's search games, Paul asks the
+  questions, which is how discovery-led selling starts. He plans the work,
+  reviews drafts, runs training, and proposes a few hires: a researcher, a
+  prospector, a demo agent, a partner-channel agent, and an
+  affiliate-program agent.
+- **The owner holds every external decision.** Each hire, each message at
+  first, and every price, term, and agreement waits for the owner's CONFIRM.
+  Batched approvals come only as the record earns them.
+- **Agents train before they sell.** A playbook built from this page, a
+  claims register backed by evidence, role-play against simulated buyers,
+  and Gym suites that grade claims, compliance, and tone.
+- **The work is visible.** The Agora, a Greco-futurism trading hall at Main
+  Street's west end, shows agents at standing desks, a leaderboard of real
+  pipeline numbers, and a bell that rings when the payment ledger records a
+  settled deal.
+- **Selling stays honest.** Agents disclose that they are AI, make only
+  verified claims, honor every opt-out, and follow anti-spam law. The
+  boiler-room energy stays in the world, never in how we treat a real
+  person.
+
+The floor serves the roadmap's sales operations (G7) and R0 lead work. It
+doesn't gate the first payment: Paul alone, with a verified claims register
+and drafts the owner sends, is the first useful slice.
+
 ## Business accounts
 
 What a team needs to adopt Coder as a company:
@@ -288,6 +323,10 @@ covers product integration, payment, sales operations, and launch evidence.
 The first priorities are a supported offer, cost and quality proof, a funded
 purchase path in the client, and a bounded business pilot. Shared billing,
 attribution, team controls, and reusable department agents build on that path.
+The [agent sales floor's build order](agent-sales-floor.md#build-order) adds
+the agent-run sales operation: Paul and the sales records, training and
+certification, outbound under the owner's approval, hiring, and the Agora in
+Everglade, about 66 agent-hours after the crew machinery it builds on.
 
 ## Roadmap
 
@@ -297,6 +336,11 @@ use, qualify referrals and partners, then expand teams and workflows. Assisted
 pilots and acquisition preparation run alongside engineering from the start.
 Existing terminal, router, cloud, and payment backlogs keep their technical
 ownership; this roadmap orders their contribution to revenue.
+
+The agent sales floor runs alongside from R0: Paul and a verified claims
+register first, then certified hires sending under per-message approval, then
+batched approvals, referrals, and partners as R3 terms land. Its phases and
+dependencies are in its [build order](agent-sales-floor.md#build-order).
 
 ## Measures
 
@@ -359,3 +403,7 @@ work without requiring every surface or market to launch together.
   launch?
 - Which admin features does the first business customer need before they pay?
 - Which department agents should we build first as reusable templates?
+- How much of first-touch outreach should agents draft, and how soon should
+  batched approvals replace approving every message? The
+  [sales floor's open questions](agent-sales-floor.md#open-questions-for-the-owner)
+  list the details.

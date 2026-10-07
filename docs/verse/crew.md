@@ -25,6 +25,7 @@ attacks. That role is the member's job here too.
 - [Trust, verification, and judgment](#trust-verification-and-judgment)
 - [The adversaries](#the-adversaries)
 - [Guardians and escalation](#guardians-and-escalation)
+- [The sales floor](#the-sales-floor)
 - [Safety rules for the adversaries](#safety-rules-for-the-adversaries)
 - [How members work together](#how-members-work-together)
 - [In Verse](#in-verse)
@@ -53,9 +54,15 @@ attacks. That role is the member's job here too.
   the crew builds. They run only against scratch hosts and fixtures, never
   the owner's real setup, unless the owner grants a named target for a
   bounded time.
+- **A sales floor, led by Paul.** Paul runs an agent sales organization
+  from the Agora in Everglade and hires a few sales agents under the
+  owner's caps; every hire and every external message waits for the
+  owner's CONFIRM. [The agent sales floor](../sales/agent-sales-floor.md)
+  is the plan.
 - **About 106 agent-hours** of crew-specific work after the dependencies,
   in five phases: shared crew machinery, Bob, the members that wrap running
-  processes, the trust and judgment members, and the adversaries.
+  processes, the trust and judgment members, and the adversaries. The sales
+  floor adds about 66 more as phase 5.
 
 ## The roster
 
@@ -88,6 +95,8 @@ separate visual work later.
 | Chuck | Chaos: kill, fill, drop | The demolition yard | Recovery code without a harness | 4 |
 | Oscar | Devil's-advocate design review | The Lounge | Open-question sections, by hand | 4 |
 | Rupert | Repudiator: tests non-repudiation | The archive's records room | `verify_chain`, append-only journals | 4 |
+| Paul | Sales leader: discovery, outreach plans, training, hires | His corner office in the Agora, Main Street's west end | Nothing; sales is run by hand | 5 |
+| Erin, Frank, Pat, Arthur, Vanna | Sales hires: research, outreach, demos, partners, affiliates | Standing desks on the Agora's floor | Nothing | 5 |
 
 ## Rules every member follows
 
@@ -831,6 +840,61 @@ pinned there and in her thread on the phone.
 
 **Talk to her.** "Wendy, what do I need to do today?"
 
+## The sales floor
+
+The sales floor is planned in full in
+[The agent sales floor](../sales/agent-sales-floor.md): the hires, training
+and certification, the end-to-end process, trust levels for approvals, the
+hard rules, and the Agora building. This section gives Paul's entry in the
+crew's format.
+
+### Paul
+
+**Origin.** In combinatorial search games, such as twenty questions with
+lies, Paul asks the questions and Carole answers them; Paul honors Paul
+Erdős, and Carole is an anagram of *oracle*.
+
+**Role.** The sales leader. He runs discovery-led selling: he plans which
+buyers to research and what to ask them, assigns work to his hires, reviews
+their drafts, runs training against simulated buyers (Carole personas), and
+reports the pipeline.
+
+**May.** Plan campaigns from the playbook; assign research, drafting, and
+follow-ups to his hires; attach a recommendation to a draft; schedule
+role-plays; propose playbook changes, hires, and retirements with their
+evidence; draft the weekly sell-in-public update for you to publish.
+
+**Never.** Send, post, or reply outside the crew; hire, retire, or change a
+hire's charter or budget; quote a price outside Ivan's price book, offer a
+discount, agree to terms, or take payment; approve a hire's step; hold a
+sending credential.
+
+**Today.** Nothing. The [sales strategy](../sales/README.md) and the
+[revenue roadmap's pipeline](../sales/revenue-roadmap.md#sales-and-pilot-operations)
+are run by hand.
+
+**Beyond the shared machinery.** The `sales` roles and charter templates;
+lead, draft, send, suppression, hire, certification, and playbook records;
+hire proposals checked against a headcount and spend cap; and three Gym
+suites (claims, compliance, and tone) with a certification gate before any
+agent's first real message.
+
+**His hires.** Each is a crew-style agent with its own key, charter,
+journal, and budget, created only on your CONFIRM: Erin researches public
+information, Frank drafts outreach, Pat prepares demos and qualified
+handoffs, Arthur works the partner channel, and Vanna runs the affiliate
+program. Bob places each body. Retiring a hire is the workshop agent's
+**Retire** action.
+
+**In Verse.** The Agora, a Greco-futurism trading hall at Main Street's
+west end facing the Civic Hall: rows of standing desks, a leaderboard wall,
+a bell that rings on settled revenue, Paul's corner office with the lectern
+where you approve sends and hires, and a training room with role-play
+booths.
+
+**Talk to him.** "Paul, who replied yesterday?" or "Paul, why do you want a
+second prospector?"
+
 ## Safety rules for the adversaries
 
 1. **Scratch only by default.** An adversary runs against a scratch range:
@@ -881,6 +945,13 @@ pinned there and in her thread on the phone.
   they're adopted.
 - **Olivia and everyone.** Any member can ask Olivia; her answers are cited
   data.
+- **Paul and the trust members.** Peggy packages the evidence behind each
+  sales claim, Victor verifies it, Judy settles wording disputes, Grace
+  checks message templates against anti-spam rules, Ivan supplies prices,
+  and Faythe holds the sending credentials.
+- **Mallory, Sybil, and the sales floor.** Mallory injects instructions into
+  scratch replies to test the floor's reply handling; Sybil floods the
+  affiliate program with throwaway referrers to test Vanna's checks.
 
 ## In Verse
 
@@ -920,6 +991,7 @@ list-price estimates, not bills.
 | Grace, Heidi, Oscar | Sol reads of a change or a page | About $0.05 a review |
 | Eve, Craig, Rupert | Code scans; Jev to classify findings | Pennies |
 | Mallory, Trudy, Chuck, Sybil | Campaign runs within each campaign's budget | Set per campaign |
+| Paul and his hires | Sol for plans and drafts, Luna for role-plays, Jev for checks | About $2 to $3 for the floor, under a proposed $5 cap ([costs](../sales/agent-sales-floor.md#costs)) |
 
 The guidance in [Generative agents](generative-agents.md#summary) holds:
 small judgments are Jev questions, routines and checks are code, and a
@@ -938,8 +1010,9 @@ crew-specific work only. Visual looks are separate.
 | 2. Wrap what runs | Carol (3), Dave (6), Trent (3), Peggy (3), Victor (5), Wendy (4) | The broker (#10755, done); claims per session (#10764); OSC 7501 phase 5 helps Wendy | 24 |
 | 3. Trust and judgment | Judy (4), Walter (3), Olivia (3), Eve (5), Faythe (5), Ivan (4), Grace (4), Heidi (3) | OSC 7501 phases 1 to 4 for Eve; the private asset pipeline (#10769) for Grace | 31 |
 | 4. Adversaries | The scratch range (6), Craig (3), Rupert (4), Oscar (2), Mallory (6), Trudy (5), Chuck (6), Sybil (5) | Phase 0; the `quiet` lease (done) and remote placement (#10767) for Sybil | 37 |
+| 5. Sales floor | Paul and the sales records (10), training (12), outbound at per-message approval (14), hiring (6), the Agora (12), life on the floor (6), referrals, partners, and trust levels (6) | Phase 0; Bob; Victor, Judy, Grace, and Faythe; generative agents C1, C2, and D; see [its build order](../sales/agent-sales-floor.md#build-order) | 66 |
 
-About 106 agent-hours in all, plus the dependencies other pages count:
+About 106 agent-hours for phases 0 to 4 and 66 for phase 5, plus the dependencies other pages count:
 about 21 for the generative-agents world and town, about 18 for OSC 7501
 phases 1 to 4, and the open broker issues. Phases 2 and 3 can run in
 parallel once phase 0 lands. Owner checks on real computers go in
@@ -969,3 +1042,8 @@ parallel once phase 0 lands. Owner checks on real computers go in
 9. **Order.** Is phase 2's order (Carol, Dave, Trent, Peggy and Victor, then
    Wendy) the one you want, or should Wendy come first so the rest report
    through her from the start?
+10. **The sales floor.** Is Paul the right sales leader, and should phase 5
+    start with Paul alone (a verified claims register and drafts you send by
+    hand) before the trust members it relies on are built? The
+    [sales floor's open questions](../sales/agent-sales-floor.md#open-questions-for-the-owner)
+    cover caps, channels, and trust levels.

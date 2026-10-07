@@ -193,6 +193,12 @@ onboarding/fulfillment work are separate obligations; interest in the call does
 not establish either agreement. Engineering owns technical delivery, while the
 customer owns workflow acceptance.
 
+The [agent sales floor](agent-sales-floor.md) proposes doing much of the lead
+work through OpenAgents' own agents: research from public information, drafted
+outreach that the owner approves before it is sent, follow-ups, and qualified
+handoffs into the pipeline above. It is G7 tooling and operations. Its
+Everglade building, leaderboard, and hires do not gate R1.
+
 ## Economics, referrals, and partners
 
 For each offer, retain three different records: customer payment and earned

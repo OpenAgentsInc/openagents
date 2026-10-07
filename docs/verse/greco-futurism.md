@@ -407,3 +407,4 @@ Review renders come from
 | Reading chair and side table | Walnut and linen furniture for the great room |
 | Second-floor interior | The upper rooms, once a staircase fits the budget |
 | Dusk lighting | Lamplight in the great room and the transom, when Everglade has a dusk |
+| The Agora | The sales floor's trading hall at Main Street's west end, facing the Civic Hall, with standing desks, a leaderboard wall, a bell, an office, and a training room ([The agent sales floor](../sales/agent-sales-floor.md#the-agora-the-sales-floor-in-everglade)) |

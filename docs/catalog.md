@@ -541,6 +541,14 @@ files are included below.
 | --- | --- | --- |
 | [roadmap/2026-09-29-launch-roadmap.md](roadmap/2026-09-29-launch-roadmap.md) | Design / plan | Launch roadmap: the OpenAgents app MVP for playtesters on 2026-09-29 and the milestones after it |
 
+## sales
+
+| Document | Role | Topic |
+| --- | --- | --- |
+| [sales/README.md](sales/README.md) | Strategy / proposal | Sales and revenue strategy for OpenAgents and Coder |
+| [sales/revenue-roadmap.md](sales/revenue-roadmap.md) | Delivery plan | Unified revenue roadmap: offers, gaps, milestones, and pilot operations |
+| [sales/agent-sales-floor.md](sales/agent-sales-floor.md) | Design / proposal | An agent sales organization led by Paul, run from the Agora in Everglade |
+
 ## terminal
 
 The following guides and plans were added after the September 29 inventory.

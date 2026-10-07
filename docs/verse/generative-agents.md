@@ -566,6 +566,14 @@ scripted answerer, the development partition scores 0 of 7 for no memory and
   pretend chores, and her plan only shows work that exists. Personas belong
   to townsfolk, who are labeled as characters.
 
+**Sales agents use the same mechanics.** The
+[agent sales floor](../sales/agent-sales-floor.md) runs Paul and his hires
+on items 1 to 4: memory and reflection turn sales outcomes into cited
+insights, the Agora adds nodes to the world tree, and day plans come only
+from real sales work (assignments, due follow-ups, replies, and scheduled
+role-plays). The simulated buyers they practice against, Carole personas,
+are labeled fixtures like townsfolk, never working agents.
+
 ## Ethics
 
 The paper's three recommendations map onto rules that already hold for
