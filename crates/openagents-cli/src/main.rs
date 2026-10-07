@@ -73,6 +73,8 @@ mod plugin_new;
 #[cfg(unix)]
 mod plugin_registry;
 #[cfg(unix)]
+mod plugin_team;
+#[cfg(unix)]
 mod plugin_use;
 #[cfg(unix)]
 mod plugin_workbench;

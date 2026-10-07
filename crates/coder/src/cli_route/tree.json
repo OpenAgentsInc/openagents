@@ -23891,6 +23891,557 @@
           }
         },
         {
+          "name": "team",
+          "children": [
+            {
+              "name": "inspect",
+              "leaf": {
+                "path": [
+                  "plugin",
+                  "team",
+                  "inspect"
+                ],
+                "usage": [
+                  "team inspect --registry DIR --credential FILE --workspace ID --catalog FILE --mirror DIR --select KEY:PACKAGE/COMPONENT"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "team"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "inspect"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "registry",
+                        "value": "DIR",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "credential",
+                        "value": "FILE",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "workspace",
+                        "value": "ID",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "catalog",
+                        "value": "FILE",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "mirror",
+                        "value": "DIR",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "select",
+                        "value": "KEY:PACKAGE/COMPONENT",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "prepare",
+              "leaf": {
+                "path": [
+                  "plugin",
+                  "team",
+                  "prepare"
+                ],
+                "usage": [
+                  "team prepare --registry DIR --credential FILE --workspace ID --catalog FILE --mirror DIR --select KEY:PACKAGE/COMPONENT --id ID --member ACCOUNT --input FILE --purpose TEXT --expires-at UNIX"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "team"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "prepare"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "registry",
+                        "value": "DIR",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "credential",
+                        "value": "FILE",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "workspace",
+                        "value": "ID",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "catalog",
+                        "value": "FILE",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "mirror",
+                        "value": "DIR",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "select",
+                        "value": "KEY:PACKAGE/COMPONENT",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "id",
+                        "value": "ID",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "member",
+                        "value": "ACCOUNT",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "input",
+                        "value": "FILE",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "purpose",
+                        "value": "TEXT",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "expires-at",
+                        "value": "UNIX",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "grant",
+              "leaf": {
+                "path": [
+                  "plugin",
+                  "team",
+                  "grant"
+                ],
+                "usage": [
+                  "team grant --registry DIR --credential FILE --workspace ID --catalog FILE --mirror DIR --select KEY:PACKAGE/COMPONENT --request FILE --approve DIGEST"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "team"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "grant"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "registry",
+                        "value": "DIR",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "credential",
+                        "value": "FILE",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "workspace",
+                        "value": "ID",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "catalog",
+                        "value": "FILE",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "mirror",
+                        "value": "DIR",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "select",
+                        "value": "KEY:PACKAGE/COMPONENT",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "request",
+                        "value": "FILE",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "approve",
+                        "value": "DIGEST",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "",
+                "effect": "grants",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "revoke",
+              "leaf": {
+                "path": [
+                  "plugin",
+                  "team",
+                  "revoke"
+                ],
+                "usage": [
+                  "team revoke --registry DIR --credential FILE --workspace ID --grant ID --approve DIGEST"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "team"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "revoke"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "registry",
+                        "value": "DIR",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "credential",
+                        "value": "FILE",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "workspace",
+                        "value": "ID",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "grant",
+                        "value": "ID",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "approve",
+                        "value": "DIGEST",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "",
+                "effect": "grants",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "install",
+              "leaf": {
+                "path": [
+                  "plugin",
+                  "team",
+                  "install"
+                ],
+                "usage": [
+                  "team install --registry DIR --credential FILE --workspace ID --catalog FILE --mirror DIR --select KEY:PACKAGE/COMPONENT --grant ID --operation-id ID"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "team"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "install"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "registry",
+                        "value": "DIR",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "credential",
+                        "value": "FILE",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "workspace",
+                        "value": "ID",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "catalog",
+                        "value": "FILE",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "mirror",
+                        "value": "DIR",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "select",
+                        "value": "KEY:PACKAGE/COMPONENT",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "grant",
+                        "value": "ID",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "operation-id",
+                        "value": "ID",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "enable",
+              "leaf": {
+                "path": [
+                  "plugin",
+                  "team",
+                  "enable"
+                ],
+                "usage": [
+                  "team enable --registry DIR --credential FILE --workspace ID --catalog FILE --mirror DIR --select KEY:PACKAGE/COMPONENT --grant ID --operation-id ID"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "team"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "enable"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "registry",
+                        "value": "DIR",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "credential",
+                        "value": "FILE",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "workspace",
+                        "value": "ID",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "catalog",
+                        "value": "FILE",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "mirror",
+                        "value": "DIR",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "select",
+                        "value": "KEY:PACKAGE/COMPONENT",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "grant",
+                        "value": "ID",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "operation-id",
+                        "value": "ID",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "use",
+              "leaf": {
+                "path": [
+                  "plugin",
+                  "team",
+                  "use"
+                ],
+                "usage": [
+                  "team use --registry DIR --credential FILE --workspace ID --catalog FILE --mirror DIR --select KEY:PACKAGE/COMPONENT --grant ID --operation-id ID --input FILE --approve-input DIGEST"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "team"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "use"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "registry",
+                        "value": "DIR",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "credential",
+                        "value": "FILE",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "workspace",
+                        "value": "ID",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "catalog",
+                        "value": "FILE",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "mirror",
+                        "value": "DIR",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "select",
+                        "value": "KEY:PACKAGE/COMPONENT",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "grant",
+                        "value": "ID",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "operation-id",
+                        "value": "ID",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "input",
+                        "value": "FILE",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "approve-input",
+                        "value": "DIGEST",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Reuse an exact zero-fee Wasm release with current member/action rights, a separately reviewed input digest, and a local output recipient. Evaluation evidence grants no execution; interrupted use stays unknown.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
+        },
+        {
           "name": "install",
           "leaf": {
             "path": [
@@ -25267,6 +25818,94 @@
         },
         {
           "kind": "option",
+          "name": "registry",
+          "value": "DIR",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "credential",
+          "value": "FILE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "workspace",
+          "value": "ID",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "id",
+          "value": "ID",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "member",
+          "value": "ACCOUNT",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "purpose",
+          "value": "TEXT",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "expires-at",
+          "value": "UNIX",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "approve",
+          "value": "DIGEST",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "grant",
+          "value": "ID",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "operation-id",
+          "value": "ID",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "approve-input",
+          "value": "DIGEST",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
           "name": "source",
           "value": "FILE",
           "open": true,
@@ -25317,14 +25956,6 @@
           "kind": "option",
           "name": "snapshot",
           "value": "FILE",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "approve",
-          "value": "DIGEST",
           "open": true,
           "optional": true,
           "repeated": true
@@ -25433,19 +26064,6 @@
           "name": "concurrency",
           "value": "N",
           "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "grant",
-          "value": "read|write|exec|network",
-          "choices": [
-            "read",
-            "write",
-            "exec",
-            "network"
-          ],
           "optional": true,
           "repeated": true
         },

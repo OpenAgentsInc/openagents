@@ -199,13 +199,13 @@ fn render(value: &Value) -> String {
 
 /// Only admitted, digest-addressed mirror paths are opened. Locator hints and
 /// metadata never cause network requests or reads outside this directory.
-struct Mirror {
+pub(crate) struct Mirror {
     root: File,
     bytes: usize,
 }
 
 impl Mirror {
-    fn open(root: &Path) -> Result<Self, String> {
+    pub(crate) fn open(root: &Path) -> Result<Self, String> {
         let root = OpenOptions::new()
             .read(true)
             .custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW)
@@ -320,7 +320,7 @@ impl Source for Mirror {
     }
 }
 
-fn read_file(path: &Path, limit: usize) -> Result<Vec<u8>, String> {
+pub(crate) fn read_file(path: &Path, limit: usize) -> Result<Vec<u8>, String> {
     let file = OpenOptions::new()
         .read(true)
         .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)

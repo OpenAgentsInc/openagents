@@ -33,6 +33,9 @@
 
 pub mod commercial;
 pub mod team_policies;
+pub mod team_capabilities;
+#[cfg(test)]
+mod team_capabilities_tests;
 
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
@@ -265,6 +268,9 @@ pub struct Store {
     /// Current team disclosure limits; empty books preserve legacy digests.
     #[serde(default, skip_serializing_if = "team_policies::Book::is_empty")]
     pub team_policies: team_policies::Book,
+    /// Exact team release and data grants; empty books preserve old digests.
+    #[serde(default, skip_serializing_if = "team_capabilities::Book::is_empty")]
+    pub team_capabilities: team_capabilities::Book,
     /// The digest over every field above.
     pub digest: String,
 }
@@ -424,6 +430,7 @@ impl Store {
         }
         self.commercial.validate(self)?;
         self.team_policies.validate(self)?;
+        self.team_capabilities.validate(self)?;
         Ok(())
     }
 }
@@ -696,10 +703,16 @@ fn invite_status_name(status: InviteStatus) -> &'static str {
 /// reporting the store locked.
 struct Lock {
     path: PathBuf,
+    file: std::fs::File,
+    directory: std::fs::File,
 }
 
 impl Lock {
     fn acquire(dir: &Path) -> Result<Self, Trouble> {
+        let directory = std::fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW)
+            .open(dir)?;
         let path = dir.join(LOCKFILE);
         for _ in 0..LOCK_RETRIES {
             match std::fs::OpenOptions::new()
@@ -709,7 +722,11 @@ impl Lock {
             {
                 Ok(mut file) => {
                     writeln!(file, "pid {}", std::process::id()).ok();
-                    return Ok(Self { path });
+                    return Ok(Self {
+                        path,
+                        file,
+                        directory,
+                    });
                 }
                 Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
                     std::thread::sleep(Duration::from_millis(10));
@@ -719,11 +736,34 @@ impl Lock {
         }
         Err(Trouble::Locked(path.display().to_string()))
     }
+
+    /// Refuse an old writer after its lock or account directory was replaced.
+    fn check(&self) -> Result<(), Trouble> {
+        use std::os::unix::fs::MetadataExt;
+        let matches = |file: &std::fs::File, path: &Path| -> Result<bool, Trouble> {
+            let held = file.metadata()?;
+            let current = std::fs::symlink_metadata(path)?;
+            Ok(!current.file_type().is_symlink()
+                && held.dev() == current.dev()
+                && held.ino() == current.ino())
+        };
+        if !matches(&self.file, &self.path)?
+            || !matches(
+                &self.directory,
+                self.path.parent().expect("a lock has a parent"),
+            )?
+        {
+            return Err(Trouble::Invalid("Account writer custody changed.".into()));
+        }
+        Ok(())
+    }
 }
 
 impl Drop for Lock {
     fn drop(&mut self) {
-        std::fs::remove_file(&self.path).ok();
+        if self.check().is_ok() {
+            std::fs::remove_file(&self.path).ok();
+        }
     }
 }
 
@@ -897,6 +937,7 @@ impl Accounts {
             referrals: referrals::Book::default(),
             commercial: commercial::Book::default(),
             team_policies: team_policies::Book::default(),
+            team_capabilities: team_capabilities::Book::default(),
             digest: String::new(),
         };
         store.seal();
@@ -2429,6 +2470,7 @@ mod tests {
             referrals: referrals::Book::default(),
             commercial: commercial::Book::default(),
             team_policies: team_policies::Book::default(),
+            team_capabilities: team_capabilities::Book::default(),
             digest: String::new(),
         };
         store.seal();

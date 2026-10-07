@@ -18,6 +18,7 @@ brainstorm-client = { path = "../brainstorm-client" }
 receipts = { path = "../receipts" }
 terminal-tty = { path = "../terminal-tty" }
 terminal-core = { path = "../terminal-core" }
+tenancy = { path = "../tenancy" }
 axum = "0.8"
 coder-delegate = { path = "../coder-delegate" }
 jsonschema = { version = "0.33", default-features = false }

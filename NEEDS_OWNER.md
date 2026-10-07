@@ -1332,6 +1332,21 @@ approval cannot replace the native payment, checked delivery, or cleanup
 proof; changing private source bytes closes paid admission. These owner
 activation steps do not block code completion.
 
+## Exact team capability qualification (O9, REV-39 #10846)
+
+Use the selected Unix `openagents plugin team` client with an owner-selected
+native workspace, separate real colleague credential, exact signed zero-fee
+release and scoped evaluation review, and independently authorized input bytes.
+Verify colleague discovery, explicit install/off, exact enablement, local Wasm
+use, and fresh member removal, expiry, source withdrawal, and changed-scope
+refusals. Confirm that publication and the input's rights permit this reuse.
+Offline acceptance uses throwaway native accounts, signed public fixtures, and
+an existing Wasm guest; it establishes no real team agreement or general plugin
+qualification. No host deployment is needed for this local CLI lane. Other
+clients need their separately admitted matching integration, and paid releases
+must use their owning current quote and purchase path. Keep first founder-led
+revenue independent of this qualification.
+
 ## Curated discovery (O9, REV-46 #10853)
 
 Approve the bounded public publisher/service source set, its exact signed

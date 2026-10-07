@@ -89,6 +89,49 @@ under `programs/`, the Wasm crate itself, and a test set under `evals/`.
 The last three are [worked examples](examples/README.md) written to be
 copied, each with its test result and a run on a real repository.
 
+## Reuse an exact release with a colleague
+
+On a Unix host, `openagents plugin team` joins the current native account and
+workspace to the existing signed release, evaluation, installation, and Wasm
+owners. Select an absolute private `--registry DIR`, an explicit mode-0600
+`--credential FILE`, and `--workspace ID`. It uses no ambient gateway key,
+provider login, relay, wallet, or creator workspace.
+
+Use `team inspect` to discover scoped evidence. `team prepare` returns an exact
+request and its approval digest without granting authority. Inspection separates
+source qualification from current action rights and reports insufficient rights,
+withdrawal, unavailable evidence, and unqualified releases. A current owner or
+admin uses `team grant --request FILE --approve DIGEST` to accept one member,
+release, operation, input byte digest, purpose, local output recipient, and
+expiry of at most 30 days. The reviewer must separately hold the input's rights.
+Current credential scopes must permit `team-capabilities.read` and the selected
+`team-capabilities.review`, `.enable`, or `.use` action; read access alone
+cannot enable or run a release.
+
+The admitted colleague uses `team install`, which leaves the plugin off, then
+`team enable`, then `team use --input FILE --approve-input DIGEST`. These
+commands need an explicit `--grant ID` and unique `--operation-id ID`. Every
+new operation rechecks the recipient membership epoch, action rights, expiry,
+source requirements, signed publisher listing and revocation checkpoint, exact
+release and artifact bytes, and scoped evaluation references. A changed release,
+recipient, source, operation, or input needs a new review. `team revoke` ends new
+use. Admitted receipts retain the original revision; completed retries return
+receipt metadata without rerunning or retaining private input or output in the
+account book. An interrupted operation stays unknown and needs inspection and a
+new explicitly reviewed operation.
+
+The supported native lane is a signed zero-fee, single-program Wasm package with
+only `package.json` and its selected program. Its curation review declares
+`data_requirements: ["explicit-request-text"]` and `recipients: ["local-wasm"]`.
+It runs the existing packet host with the approved UTF-8 request and an empty
+snapshot, under the program's fuel, memory, and output bounds. Background rules,
+cache classes, capabilities, creator examples, protected labels, network access,
+and paid releases require their separate owners. Signed evaluation claims remain
+scoped evidence and grant no installation, data, execution, or payment right.
+The source mirror can withhold newer records; fresh signed checkpoints and
+retained head knowledge cannot prove global completeness. Real team data rights,
+publication, and colleague delivery remain in `NEEDS_OWNER.md`.
+
 ## Inspect a curated publisher or service
 
 On a Unix host, `openagents plugin discover --catalog FILE --mirror DIR --json`

@@ -98,9 +98,31 @@ pub(crate) const EXT_USAGE: &str = "usage: openagents plugin COMMAND [OPTIONS]
   search [QUERY] [--author PUBKEY] [--limit N]
         The published plugins that match QUERY, best first; all without one.
   discover --catalog FILE --mirror DIR [--previous FILE] [--query TEXT]
-      [--select KEY:PACKAGE/OPERATION] [--limit N]
+    [--select KEY:PACKAGE/OPERATION] [--limit N]
         Inspect curated exact signed releases and service heads. Selection
         prints evidence only; it installs, discloses, executes, and spends nothing.
+  team inspect --registry DIR --credential FILE --workspace ID
+    --catalog FILE --mirror DIR --select KEY:PACKAGE/COMPONENT
+  team prepare --registry DIR --credential FILE --workspace ID
+    --catalog FILE --mirror DIR --select KEY:PACKAGE/COMPONENT
+    --id ID --member ACCOUNT --input FILE --purpose TEXT --expires-at UNIX
+  team grant --registry DIR --credential FILE --workspace ID
+    --catalog FILE --mirror DIR --select KEY:PACKAGE/COMPONENT
+    --request FILE --approve DIGEST
+  team revoke --registry DIR --credential FILE --workspace ID
+    --grant ID --approve DIGEST
+  team install --registry DIR --credential FILE --workspace ID
+    --catalog FILE --mirror DIR --select KEY:PACKAGE/COMPONENT
+    --grant ID --operation-id ID
+  team enable --registry DIR --credential FILE --workspace ID
+    --catalog FILE --mirror DIR --select KEY:PACKAGE/COMPONENT
+    --grant ID --operation-id ID
+  team use --registry DIR --credential FILE --workspace ID
+    --catalog FILE --mirror DIR --select KEY:PACKAGE/COMPONENT
+    --grant ID --operation-id ID --input FILE --approve-input DIGEST
+        Reuse an exact zero-fee Wasm release with current member/action rights,
+        a separately reviewed input digest, and a local output recipient.
+        Evaluation evidence grants no execution; interrupted use stays unknown.
   install DIR | NAME | ID [--blossom URL]
         Install the plugin in DIR, or a published one by name or id, on this
         computer. A published one is checked file by file against its signed
@@ -185,6 +207,13 @@ pub(crate) const EXT_EFFECTS: &[Declared] = &[
     Declared::computer("publish", Effect::Publishes),
     Declared::computer("search", Effect::ReadOnly),
     Declared::computer("discover", Effect::ReadOnly),
+    Declared::computer("team inspect", Effect::ReadOnly),
+    Declared::computer("team prepare", Effect::ReadOnly),
+    Declared::computer("team grant", Effect::Grants),
+    Declared::computer("team revoke", Effect::Grants),
+    Declared::computer("team install", Effect::LocalWrite),
+    Declared::computer("team enable", Effect::LocalWrite),
+    Declared::computer("team use", Effect::LocalWrite),
     Declared::computer("install", Effect::LocalWrite),
     Declared::computer("installed", Effect::ReadOnly),
     Declared::computer("brainstorm-pilot check", Effect::ReadOnly),
@@ -264,6 +293,10 @@ pub fn prg(output: &Output, words: &[String]) -> u8 {
 /// `openagents plugin …`, also `openagents ext …`. `test` is the plugin's
 /// with-and-without evaluation, also `eval`.
 pub fn ext(output: &Output, words: &[String]) -> u8 {
+    #[cfg(unix)]
+    if let Some(code) = crate::plugin_team::run(output, words) {
+        return code;
+    }
     #[cfg(unix)]
     if words.first().is_some_and(|word| word == "purchase") {
         return purchase::run(output, &words[1..]);
