@@ -959,6 +959,34 @@ it yet. At
 cost under 0.4 ms over the two halves. Captures, timings, and the browser
 check are in `bench/verse/2026-10-07/water-screen/`.
 
+**Status (W10, 2026-10-07).** An unbounded body draws on a geometry
+clipmap (`verse_pbr::water::clipmap`; Losasso and Hoppe 2004): 3, 4, or 5
+levels of `2 × half` cells from 2, 1, or 0.5 m out to 256, 320, or 384 m,
+each snapped to twice its spacing, each ring uploaded with its hole in its
+four places, odd vertices sliding onto even ones toward each rim by the
+eye's distance (Strugar 2009), and an apron of eight geometric rings to
+2–4 km. A test holds every level's rim on the next level's hole and the
+triangles' area to the far square. A zone marks the body with
+`WaterSurface::ocean` (`Ocean { body, sea, field }`); the physical renderer
+draws it before the patches, and the imported renderer still draws patches
+only. Its depth, shore distance, and current come from a
+`water::field::Field`, the zone's resident record baked from its height
+function, whose 128 m pages (16 × 16 of the 8 m cells; the scheduler takes
+at most 64 roots a view) are image chunks under
+`verse_engine::streaming::Residency`: a window of 5, 7, or 8 pages a side
+streams nearest first into a toroidally addressed `Rgba16Float` atlas that
+only the vertex stage reads, within `field::budget` (0.8, 1.6, and 2.1 MB).
+The Water Lab's sea is the clipmap. Clients share the gameplay surface
+through `physics::water::tick_at` (Unix time in 120 Hz steps), and level,
+ice, and dam changes are `physics::water::Event`s with start ticks, kept in
+canonical order by `Events`. The coastal test scene is
+`verse_zone_water::coast`, laid out as [the coast](coast.md)'s bay; its
+tests sample one sea bit for bit on two clients with only an NIP-MV pose
+frame of shared bodies between them, and walk the bay within each tier's
+field budget. Captures and 1080p water timings of the bay and the Lab per
+tier are in `bench/verse/2026-10-07/water-w10/`
+(`cargo run --release -p verse-zone-water --example coast_capture`).
+
 ### Coupling with `crates/physics`
 
 New module `physics::water`:

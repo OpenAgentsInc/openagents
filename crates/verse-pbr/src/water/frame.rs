@@ -755,6 +755,13 @@ pub struct WaterUniform {
     /// The spectral sea's rows ([`super::ocean::rows`]), which the
     /// renderer fills for its tier; zero without one.
     pub ocean: [[f32; 4]; super::ocean::ROWS],
+    /// The ocean's clipmap ([`super::clipmap::rows`]), which the physical
+    /// renderer fills from the eye; zero without one.
+    pub clip: [[f32; 4]; super::clipmap::ROWS],
+    /// The streamed field's shape ([`super::field::Stream::rows`]).
+    pub field: [[f32; 4]; super::field::ROWS],
+    /// The page each slot of the field's atlas holds.
+    pub field_pages: [[f32; 4]; super::field::SLOT_ROWS],
 }
 
 /// How a vertex of a water surface is drawn.
@@ -908,10 +915,27 @@ impl WaterPatch {
     }
 }
 
-/// The water of a zone at rest: one or more patches.
+/// An unbounded body drawn on a clipmap around the eye
+/// ([`super::clipmap`]) instead of a patch: a zone's ocean.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Ocean {
+    /// The body whose terms move and color it ([`Water::bodies`]).
+    pub body: usize,
+    /// Whether it draws as [`Kind::Sea`] (the physical renderer tints the
+    /// bed under it) rather than [`Kind::Body`].
+    pub sea: bool,
+    /// Its depth, shore distance, and current, streamed by page
+    /// ([`super::field`]); open water everywhere without one.
+    pub field: Option<std::sync::Arc<super::field::Field>>,
+}
+
+/// The water of a zone at rest: one or more patches, and an ocean.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct WaterSurface {
     pub patches: Vec<WaterPatch>,
+    /// The ocean, which the physical renderer draws on its clipmap before
+    /// the patches. The imported renderer draws patches only.
+    pub ocean: Option<Ocean>,
 }
 
 impl WaterSurface {
@@ -973,6 +997,11 @@ impl WaterSurface {
     /// # Errors
     /// Names the first patch that is not.
     pub fn validate(&self) -> Result<(), String> {
+        if let Some(ocean) = &self.ocean
+            && ocean.body >= MAX_BODIES
+        {
+            return Err(format!("The ocean's body {} is not a body", ocean.body));
+        }
         for (i, patch) in self.patches.iter().enumerate() {
             if patch.cols < 2 || patch.rows < 2 {
                 return Err(format!("Water patch {i} is smaller than one quad"));
@@ -1075,6 +1104,7 @@ mod tests {
         assert!((patch.vertices[0].shore - 4.0).abs() < 1e-4);
         let surface = WaterSurface {
             patches: vec![patch.clone(), patch],
+            ..WaterSurface::default()
         };
         surface.validate().unwrap();
         // Columns 0 to 4 have a wet corner: four quads across, eight down.

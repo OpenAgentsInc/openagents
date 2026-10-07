@@ -20,10 +20,16 @@
 //! between golden hour and noon, and `Y` turns the sea from calm to
 //! moderate to storm.
 //!
-//! [`terrain`] is the ground; [`sea`] the water's rest shape and light.
+//! [`terrain`] is the ground; [`sea`] the water's rest shape and light, its
+//! sea drawn on the clipmap ocean over a streamed field (phase W10).
+//! [`coast`] is the coastal test scene, laid out as `docs/verse/coast.md`'s
+//! bay, which the coast zone starts from.
 //! `verse` re-exports this crate as `zones::water`.
 
 pub mod bolt;
+pub mod coast;
+#[cfg(test)]
+mod coast_tests;
 pub mod floats;
 pub mod hotbar;
 pub mod orb;

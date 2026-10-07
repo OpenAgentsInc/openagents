@@ -100,6 +100,19 @@ struct WaterUniform {
     // for surf, and the significant height (m); half a texel and the
     // peak's angular frequency (rad/s); and each cascade's slope variance.
     ocean: array<vec4<f32>, 6>,
+    // The ocean's clipmap (`water::clipmap::rows`): per level its center
+    // (x, z, m), spacing (m), and the distance from the eye where its morph
+    // starts (m); then the level count, a level's half width in cells, the
+    // apron's reach (m), and 1 when it draws the sea.
+    clip: array<vec4<f32>, 6>,
+    // The streamed field (`water::field::Stream::rows`): its origin (x, z,
+    // m), texel (m), and window (pages); its pages along x and z, a page's
+    // side (m), and 1 when present; and the depth, shore distance, and
+    // current outside it.
+    field: array<vec4<f32>, 3>,
+    // The page each slot of the field's atlas holds (x × 4096 + z), four
+    // slots a row; −1 for none.
+    field_pages: array<vec4<f32>, 16>,
 };
 
 // A vertex of a water surface at rest (`water::WaterVertex`).

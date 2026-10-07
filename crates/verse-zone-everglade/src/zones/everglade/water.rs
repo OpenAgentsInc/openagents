@@ -99,7 +99,10 @@ pub fn surface() -> Result<WaterSurface, String> {
         patches.push(patch);
     }
     patches.push(weir_sheet());
-    let surface = WaterSurface { patches };
+    let surface = WaterSurface {
+        patches,
+        ocean: None,
+    };
     surface.validate()?;
     Ok(surface)
 }

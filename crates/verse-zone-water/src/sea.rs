@@ -1,13 +1,16 @@
 //! The cove's water at rest (the sea, the river, the falls, and the pool)
 //! and the light it is seen in.
 
+use std::sync::Arc;
+
 use glam::{Vec2, Vec3};
 use verse_pbr::pbr::water::{Body, Kind, Water, WaterPatch, WaterSurface, WaterVertex};
 use verse_pbr::pbr::{Daylight, Grade, HeightFog, Key, Neon};
-use verse_pbr::water::{Preset, SeaState};
+use verse_pbr::water::field::{Field, PAGE, Texel};
+use verse_pbr::water::{Ocean, Preset, SeaState};
 
 use crate::terrain::{
-    self, CENTER, FALL_HALF_WIDTH, FALL_HEADING, FALL_SPEED, LEVEL, LIP, LOWER, POOL, POOL_LEVEL,
+    CENTER, FALL_HALF_WIDTH, FALL_HEADING, FALL_SPEED, LEVEL, LIP, LOWER, POOL, POOL_LEVEL,
     POOL_RADIUS, REACH, Reach, UPPER, ground,
 };
 
@@ -16,50 +19,43 @@ pub const SEA: usize = 0;
 /// The river's, the pool's, and the falls' body: fresh water, a stream's
 /// look.
 pub const FRESH: usize = 1;
+/// The sea's field texel, m.
+pub const FIELD_TEXEL: f32 = 2.0;
+/// The sea's field pages a side: 128 m pages over the cove and past it.
+pub const FIELD_PAGES: u32 = 5;
 
-/// The cove's water surfaces.
+/// The cove's water surfaces: the river, the pool, and the falls as
+/// patches, and the sea on the clipmap over its field ([`field`]).
 #[must_use]
 pub fn surface() -> WaterSurface {
     WaterSurface {
-        patches: vec![
-            sea(),
-            reach(&UPPER, true),
-            pool(),
-            reach(&LOWER, false),
-            fall(),
-        ],
+        patches: vec![reach(&UPPER, true), pool(), reach(&LOWER, false), fall()],
+        ocean: Some(Ocean {
+            body: SEA,
+            sea: true,
+            field: field()
+                .inspect_err(|e| eprintln!("verse: the cove's water field: {e}"))
+                .ok()
+                .map(Arc::new),
+        }),
     }
 }
 
-/// The sea: a warped grid dense over the bay, out to the horizon.
-fn sea() -> WaterPatch {
-    let n = 241u32;
-    let mut vertices = Vec::with_capacity((n * n) as usize);
-    for j in 0..n {
-        for i in 0..n {
-            let u = i as f32 / (n - 1) as f32 * 2.0 - 1.0;
-            let v = j as f32 / (n - 1) as f32 * 2.0 - 1.0;
-            let x = CENTER[0] + terrain::warp(u, REACH);
-            let z = CENTER[1] + terrain::warp(v, REACH);
-            let depth = LEVEL - ground(x, z);
-            vertices.push(WaterVertex::new(
-                Vec3::new(x, LEVEL, z),
-                depth,
-                Kind::Sea(1.0),
-            ));
-        }
-    }
-    let mut patch = WaterPatch {
-        cols: n,
-        rows: n,
-        vertices,
-        decimate: true,
-        // A flood rises over the beach, so the sea keeps quads up to its
-        // height and more.
-        dry: 6.0,
-    };
-    patch.bake_shore();
-    patch
+/// The sea's field: the depth under it at rest and the distance to the
+/// shore, over the cove and out past [`REACH`].
+///
+/// # Errors
+/// Passes on a refused bake.
+pub fn field() -> Result<Field, String> {
+    let side = FIELD_PAGES as f32 * FIELD_TEXEL * PAGE as f32;
+    debug_assert!(side >= 2.0 * REACH);
+    Field::bake(
+        [CENTER[0] - side * 0.5, CENTER[1] - side * 0.5],
+        FIELD_TEXEL,
+        [FIELD_PAGES, FIELD_PAGES],
+        Texel::open(SEA_DEPTH as f32),
+        |x, z| (LEVEL - ground(x, z), [0.0, 0.0]),
+    )
 }
 
 /// Resamples a reach's centerline every `step` m: points, surface heights,

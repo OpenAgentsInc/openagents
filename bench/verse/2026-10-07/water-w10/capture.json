@@ -1,0 +1,626 @@
+{
+  "example": "cargo run --release -p verse-zone-water --example coast_capture",
+  "adapter": "Apple M5 Max (Metal)",
+  "sea_state": "moderate",
+  "tick": 214964928000,
+  "size": [
+    960,
+    540
+  ],
+  "timed_size": [
+    1920,
+    1080
+  ],
+  "timing": "the fastest of 7 batches of 10 frames, submitted back to back",
+  "records": [
+    {
+      "picture": "bay-low.png",
+      "sha256": "0a0bc29b3d7c58e1bfa27c28090829ce2a27ce5b210788f0c6e0fcf8259b2624",
+      "tier": "low",
+      "view": "bay",
+      "eye": [
+        100.0,
+        45.0,
+        -100.0
+      ],
+      "target": [
+        -40.0,
+        -20.0,
+        120.0
+      ],
+      "rings": 3,
+      "clipmap_triangles": 24576,
+      "field_pages_in_place": 25,
+      "field_pages_wanted": 25,
+      "field_gpu_bytes": 832000,
+      "field_gpu_high_water": 832000,
+      "field_gpu_budget": 832000,
+      "field_atlas_bytes": 819200,
+      "surface_bytes": 1336440,
+      "frame_ms_1080p_with_water": 1.0176124999999998,
+      "frame_ms_1080p_without_water": 0.6656042,
+      "water_ms_1080p": 0.35200829999999983,
+      "water_ms_budget": 1.5
+    },
+    {
+      "picture": "surf-low.png",
+      "sha256": "86fb6d537a908e7cb53a3f9f7939fbff959e2edad756020c48e1a2800e7e7147",
+      "tier": "low",
+      "view": "surf",
+      "eye": [
+        31.0,
+        2.200000047683716,
+        29.0
+      ],
+      "target": [
+        32.0,
+        0.0,
+        93.0
+      ],
+      "rings": 3,
+      "clipmap_triangles": 24576,
+      "field_pages_in_place": 25,
+      "field_pages_wanted": 25,
+      "field_gpu_bytes": 832000,
+      "field_gpu_high_water": 832000,
+      "field_gpu_budget": 832000,
+      "field_atlas_bytes": 819200,
+      "surface_bytes": 1336440,
+      "frame_ms_1080p_with_water": 0.9873625,
+      "frame_ms_1080p_without_water": 0.65495,
+      "water_ms_1080p": 0.3324125,
+      "water_ms_budget": 1.5
+    },
+    {
+      "picture": "harbor-low.png",
+      "sha256": "d4ced5bbd1e943a8ade740d07cb7f42b8166f1380b4629bc8f0631effd1d64d4",
+      "tier": "low",
+      "view": "harbor",
+      "eye": [
+        -80.0,
+        8.0,
+        -235.0
+      ],
+      "target": [
+        -170.0,
+        0.0,
+        -200.0
+      ],
+      "rings": 3,
+      "clipmap_triangles": 24576,
+      "field_pages_in_place": 25,
+      "field_pages_wanted": 25,
+      "field_gpu_bytes": 832000,
+      "field_gpu_high_water": 832000,
+      "field_gpu_budget": 832000,
+      "field_atlas_bytes": 819200,
+      "surface_bytes": 1336440,
+      "frame_ms_1080p_with_water": 1.2816542,
+      "frame_ms_1080p_without_water": 0.6503416,
+      "water_ms_1080p": 0.6313126,
+      "water_ms_budget": 1.5
+    },
+    {
+      "picture": "buoys-low.png",
+      "sha256": "6c13d1108c6d7ee6623b486c46825cee0fa493393f3a6ded41db4193d306897d",
+      "tier": "low",
+      "view": "buoys",
+      "eye": [
+        -7.0,
+        2.5999999046325684,
+        44.0
+      ],
+      "target": [
+        -7.0,
+        0.0,
+        68.0
+      ],
+      "rings": 3,
+      "clipmap_triangles": 24576,
+      "field_pages_in_place": 25,
+      "field_pages_wanted": 25,
+      "field_gpu_bytes": 832000,
+      "field_gpu_high_water": 832000,
+      "field_gpu_budget": 832000,
+      "field_atlas_bytes": 819200,
+      "surface_bytes": 1336440,
+      "frame_ms_1080p_with_water": 1.4303959,
+      "frame_ms_1080p_without_water": 0.6509875,
+      "water_ms_1080p": 0.7794083999999999,
+      "water_ms_budget": 1.5
+    },
+    {
+      "picture": "rings-low.png",
+      "sha256": "761c3e2da09378358d24a247bedbf3ff1056977807cd0487ec5717544b85c72e",
+      "tier": "low",
+      "view": "rings",
+      "eye": [
+        40.0,
+        70.0,
+        120.0
+      ],
+      "target": [
+        -120.0,
+        0.0,
+        330.0
+      ],
+      "rings": 3,
+      "clipmap_triangles": 24576,
+      "field_pages_in_place": 25,
+      "field_pages_wanted": 25,
+      "field_gpu_bytes": 832000,
+      "field_gpu_high_water": 832000,
+      "field_gpu_budget": 832000,
+      "field_atlas_bytes": 819200,
+      "surface_bytes": 1336440,
+      "frame_ms_1080p_with_water": 1.288725,
+      "frame_ms_1080p_without_water": 0.6311125,
+      "water_ms_1080p": 0.6576124999999999,
+      "water_ms_budget": 1.5
+    },
+    {
+      "picture": "lab-low.png",
+      "sha256": "a3f65182ea5c62a0b88dd442e618a1c0800187b8fdebe98e2e4d45f3d3fde7a8",
+      "tier": "low",
+      "view": "lab",
+      "eye": [
+        4.0,
+        2.4000000953674316,
+        16.0
+      ],
+      "target": [
+        4.0,
+        0.0,
+        -40.0
+      ],
+      "rings": 3,
+      "clipmap_triangles": 24576,
+      "field_pages_in_place": 25,
+      "field_pages_wanted": 25,
+      "field_gpu_bytes": 832000,
+      "field_gpu_high_water": 832000,
+      "field_gpu_budget": 832000,
+      "field_atlas_bytes": 819200,
+      "surface_bytes": 1488960,
+      "frame_ms_1080p_with_water": 0.9777125,
+      "frame_ms_1080p_without_water": 0.6517833,
+      "water_ms_1080p": 0.32592920000000003,
+      "water_ms_budget": 1.5
+    },
+    {
+      "picture": "lab-cove-low.png",
+      "sha256": "d20e3aa105fa10533f694d35c8cf00c0a1073c1c3b9dd8362dde5ada6a015d00",
+      "tier": "low",
+      "view": "lab-cove",
+      "eye": [
+        70.0,
+        28.0,
+        50.0
+      ],
+      "target": [
+        -10.0,
+        0.0,
+        -60.0
+      ],
+      "rings": 3,
+      "clipmap_triangles": 24576,
+      "field_pages_in_place": 20,
+      "field_pages_wanted": 20,
+      "field_gpu_bytes": 665600,
+      "field_gpu_high_water": 665600,
+      "field_gpu_budget": 832000,
+      "field_atlas_bytes": 819200,
+      "surface_bytes": 1488960,
+      "frame_ms_1080p_with_water": 0.9932917,
+      "frame_ms_1080p_without_water": 0.6594040999999999,
+      "water_ms_1080p": 0.33388760000000006,
+      "water_ms_budget": 1.5
+    },
+    {
+      "picture": "bay-medium.png",
+      "sha256": "f68963f0f2bdb6afa8aba135cd70f14d26c2d61a383cb4967b5d5fd992fb5a5e",
+      "tier": "medium",
+      "view": "bay",
+      "eye": [
+        100.0,
+        45.0,
+        -100.0
+      ],
+      "target": [
+        -40.0,
+        -20.0,
+        120.0
+      ],
+      "rings": 4,
+      "clipmap_triangles": 46720,
+      "field_pages_in_place": 49,
+      "field_pages_wanted": 49,
+      "field_gpu_bytes": 1630720,
+      "field_gpu_high_water": 1630720,
+      "field_gpu_budget": 1630720,
+      "field_atlas_bytes": 1605632,
+      "surface_bytes": 2762400,
+      "frame_ms_1080p_with_water": 1.8287584,
+      "frame_ms_1080p_without_water": 1.1348583,
+      "water_ms_1080p": 0.6939000999999998,
+      "water_ms_budget": 2.5
+    },
+    {
+      "picture": "surf-medium.png",
+      "sha256": "72931491e66625861ff35aa8de619fb9b61e3751f4b22d2580e36f5d4fb9ade0",
+      "tier": "medium",
+      "view": "surf",
+      "eye": [
+        31.0,
+        2.200000047683716,
+        29.0
+      ],
+      "target": [
+        32.0,
+        0.0,
+        93.0
+      ],
+      "rings": 4,
+      "clipmap_triangles": 46720,
+      "field_pages_in_place": 49,
+      "field_pages_wanted": 49,
+      "field_gpu_bytes": 1630720,
+      "field_gpu_high_water": 1630720,
+      "field_gpu_budget": 1630720,
+      "field_atlas_bytes": 1605632,
+      "surface_bytes": 2762400,
+      "frame_ms_1080p_with_water": 2.2999667,
+      "frame_ms_1080p_without_water": 1.2913834000000002,
+      "water_ms_1080p": 1.0085833,
+      "water_ms_budget": 2.5
+    },
+    {
+      "picture": "harbor-medium.png",
+      "sha256": "a1cd52fce373e1afd1805f47103c8bedc07b820cf06a93783f58152ae9978854",
+      "tier": "medium",
+      "view": "harbor",
+      "eye": [
+        -80.0,
+        8.0,
+        -235.0
+      ],
+      "target": [
+        -170.0,
+        0.0,
+        -200.0
+      ],
+      "rings": 4,
+      "clipmap_triangles": 46720,
+      "field_pages_in_place": 49,
+      "field_pages_wanted": 49,
+      "field_gpu_bytes": 1630720,
+      "field_gpu_high_water": 1630720,
+      "field_gpu_budget": 1630720,
+      "field_atlas_bytes": 1605632,
+      "surface_bytes": 2762400,
+      "frame_ms_1080p_with_water": 2.7549792,
+      "frame_ms_1080p_without_water": 1.4268792000000001,
+      "water_ms_1080p": 1.3281,
+      "water_ms_budget": 2.5
+    },
+    {
+      "picture": "buoys-medium.png",
+      "sha256": "b8eee7b1e2e0f0a66167839b575668505b2b0fa1cca25f0abea6e970d9243431",
+      "tier": "medium",
+      "view": "buoys",
+      "eye": [
+        -7.0,
+        2.5999999046325684,
+        44.0
+      ],
+      "target": [
+        -7.0,
+        0.0,
+        68.0
+      ],
+      "rings": 4,
+      "clipmap_triangles": 46720,
+      "field_pages_in_place": 49,
+      "field_pages_wanted": 49,
+      "field_gpu_bytes": 1630720,
+      "field_gpu_high_water": 1630720,
+      "field_gpu_budget": 1630720,
+      "field_atlas_bytes": 1605632,
+      "surface_bytes": 2762400,
+      "frame_ms_1080p_with_water": 3.5018875,
+      "frame_ms_1080p_without_water": 1.8878290999999998,
+      "water_ms_1080p": 1.6140584000000002,
+      "water_ms_budget": 2.5
+    },
+    {
+      "picture": "rings-medium.png",
+      "sha256": "523cc072356c37576557df94323b0dc419530c8bde8dd2a7b3d7b4799766db98",
+      "tier": "medium",
+      "view": "rings",
+      "eye": [
+        40.0,
+        70.0,
+        120.0
+      ],
+      "target": [
+        -120.0,
+        0.0,
+        330.0
+      ],
+      "rings": 4,
+      "clipmap_triangles": 46720,
+      "field_pages_in_place": 49,
+      "field_pages_wanted": 49,
+      "field_gpu_bytes": 1630720,
+      "field_gpu_high_water": 1630720,
+      "field_gpu_budget": 1630720,
+      "field_atlas_bytes": 1605632,
+      "surface_bytes": 2762400,
+      "frame_ms_1080p_with_water": 3.4400583999999994,
+      "frame_ms_1080p_without_water": 1.9253333000000001,
+      "water_ms_1080p": 1.5147250999999993,
+      "water_ms_budget": 2.5
+    },
+    {
+      "picture": "lab-medium.png",
+      "sha256": "dee37a67bb7d4049d93781ee9cbc1abbca04314e9af99a142fc22938088028b3",
+      "tier": "medium",
+      "view": "lab",
+      "eye": [
+        4.0,
+        2.4000000953674316,
+        16.0
+      ],
+      "target": [
+        4.0,
+        0.0,
+        -40.0
+      ],
+      "rings": 4,
+      "clipmap_triangles": 46720,
+      "field_pages_in_place": 25,
+      "field_pages_wanted": 25,
+      "field_gpu_bytes": 832000,
+      "field_gpu_high_water": 832000,
+      "field_gpu_budget": 1630720,
+      "field_atlas_bytes": 1605632,
+      "surface_bytes": 2914920,
+      "frame_ms_1080p_with_water": 3.937954199999999,
+      "frame_ms_1080p_without_water": 2.0478959,
+      "water_ms_1080p": 1.8900582999999993,
+      "water_ms_budget": 2.5
+    },
+    {
+      "picture": "lab-cove-medium.png",
+      "sha256": "b63aa7c61fb774b08db76194b4a8224ad7f2aa0f4855ed3caf051edba078d9f1",
+      "tier": "medium",
+      "view": "lab-cove",
+      "eye": [
+        70.0,
+        28.0,
+        50.0
+      ],
+      "target": [
+        -10.0,
+        0.0,
+        -60.0
+      ],
+      "rings": 4,
+      "clipmap_triangles": 46720,
+      "field_pages_in_place": 25,
+      "field_pages_wanted": 25,
+      "field_gpu_bytes": 832000,
+      "field_gpu_high_water": 832000,
+      "field_gpu_budget": 1630720,
+      "field_atlas_bytes": 1605632,
+      "surface_bytes": 2914920,
+      "frame_ms_1080p_with_water": 2.7338291000000003,
+      "frame_ms_1080p_without_water": 1.8612042,
+      "water_ms_1080p": 0.8726249000000004,
+      "water_ms_budget": 2.5
+    },
+    {
+      "picture": "bay-high.png",
+      "sha256": "ad9e95022f8c52c788d787ddfbe53f0d6e4ba68f5ff6562ddb955988ba321af3",
+      "tier": "high",
+      "view": "bay",
+      "eye": [
+        100.0,
+        45.0,
+        -100.0
+      ],
+      "target": [
+        -40.0,
+        -20.0,
+        120.0
+      ],
+      "rings": 5,
+      "clipmap_triangles": 79872,
+      "field_pages_in_place": 64,
+      "field_pages_wanted": 64,
+      "field_gpu_bytes": 2129920,
+      "field_gpu_high_water": 2129920,
+      "field_gpu_budget": 2129920,
+      "field_atlas_bytes": 2097152,
+      "surface_bytes": 4969160,
+      "frame_ms_1080p_with_water": 3.7000167,
+      "frame_ms_1080p_without_water": 2.7128208000000003,
+      "water_ms_1080p": 0.9871958999999997,
+      "water_ms_budget": 4.0
+    },
+    {
+      "picture": "surf-high.png",
+      "sha256": "4c9c667e4d22dcf50695fb7300b22ce41ecc9f00261e1a82c593e5ba31ceab7c",
+      "tier": "high",
+      "view": "surf",
+      "eye": [
+        31.0,
+        2.200000047683716,
+        29.0
+      ],
+      "target": [
+        32.0,
+        0.0,
+        93.0
+      ],
+      "rings": 5,
+      "clipmap_triangles": 79872,
+      "field_pages_in_place": 64,
+      "field_pages_wanted": 64,
+      "field_gpu_bytes": 2129920,
+      "field_gpu_high_water": 2129920,
+      "field_gpu_budget": 2129920,
+      "field_atlas_bytes": 2097152,
+      "surface_bytes": 4969160,
+      "frame_ms_1080p_with_water": 6.083325,
+      "frame_ms_1080p_without_water": 2.9046374999999998,
+      "water_ms_1080p": 3.1786875000000006,
+      "water_ms_budget": 4.0
+    },
+    {
+      "picture": "harbor-high.png",
+      "sha256": "78b55ad0cb967a60413416b93ec15dbeaafbfe8954ff99cad353f2bcb0f8c2a9",
+      "tier": "high",
+      "view": "harbor",
+      "eye": [
+        -80.0,
+        8.0,
+        -235.0
+      ],
+      "target": [
+        -170.0,
+        0.0,
+        -200.0
+      ],
+      "rings": 5,
+      "clipmap_triangles": 79872,
+      "field_pages_in_place": 56,
+      "field_pages_wanted": 56,
+      "field_gpu_bytes": 1863680,
+      "field_gpu_high_water": 1863680,
+      "field_gpu_budget": 2129920,
+      "field_atlas_bytes": 2097152,
+      "surface_bytes": 4969160,
+      "frame_ms_1080p_with_water": 6.3208,
+      "frame_ms_1080p_without_water": 2.7489084000000004,
+      "water_ms_1080p": 3.5718916,
+      "water_ms_budget": 4.0
+    },
+    {
+      "picture": "buoys-high.png",
+      "sha256": "13e9195fcd859515a9b21ef869fb7749dfb04a5d154031a83ab496931ec5c7a8",
+      "tier": "high",
+      "view": "buoys",
+      "eye": [
+        -7.0,
+        2.5999999046325684,
+        44.0
+      ],
+      "target": [
+        -7.0,
+        0.0,
+        68.0
+      ],
+      "rings": 5,
+      "clipmap_triangles": 79872,
+      "field_pages_in_place": 64,
+      "field_pages_wanted": 64,
+      "field_gpu_bytes": 2129920,
+      "field_gpu_high_water": 2129920,
+      "field_gpu_budget": 2129920,
+      "field_atlas_bytes": 2097152,
+      "surface_bytes": 4969160,
+      "frame_ms_1080p_with_water": 7.0290959,
+      "frame_ms_1080p_without_water": 2.735775,
+      "water_ms_1080p": 4.293320899999999,
+      "water_ms_budget": 4.0
+    },
+    {
+      "picture": "rings-high.png",
+      "sha256": "9287c90d70d0f59520050e177161c85d907343cbb1e83463c05d6b464dbb654c",
+      "tier": "high",
+      "view": "rings",
+      "eye": [
+        40.0,
+        70.0,
+        120.0
+      ],
+      "target": [
+        -120.0,
+        0.0,
+        330.0
+      ],
+      "rings": 5,
+      "clipmap_triangles": 79872,
+      "field_pages_in_place": 64,
+      "field_pages_wanted": 64,
+      "field_gpu_bytes": 2129920,
+      "field_gpu_high_water": 2129920,
+      "field_gpu_budget": 2129920,
+      "field_atlas_bytes": 2097152,
+      "surface_bytes": 4969160,
+      "frame_ms_1080p_with_water": 5.6881583,
+      "frame_ms_1080p_without_water": 2.7043208,
+      "water_ms_1080p": 2.9838374999999995,
+      "water_ms_budget": 4.0
+    },
+    {
+      "picture": "lab-high.png",
+      "sha256": "77c0072ca4842551a4d12cc9ef6e597c3c1c55cb602f2c85637600a6aac3673a",
+      "tier": "high",
+      "view": "lab",
+      "eye": [
+        4.0,
+        2.4000000953674316,
+        16.0
+      ],
+      "target": [
+        4.0,
+        0.0,
+        -40.0
+      ],
+      "rings": 5,
+      "clipmap_triangles": 79872,
+      "field_pages_in_place": 25,
+      "field_pages_wanted": 25,
+      "field_gpu_bytes": 832000,
+      "field_gpu_high_water": 832000,
+      "field_gpu_budget": 2129920,
+      "field_atlas_bytes": 2097152,
+      "surface_bytes": 5121680,
+      "frame_ms_1080p_with_water": 5.0870958,
+      "frame_ms_1080p_without_water": 2.5890625,
+      "water_ms_1080p": 2.4980333000000003,
+      "water_ms_budget": 4.0
+    },
+    {
+      "picture": "lab-cove-high.png",
+      "sha256": "02b3c25718afa5dbc5f881753c2ea03d62fd70901ebd5c177ae0eda974470eef",
+      "tier": "high",
+      "view": "lab-cove",
+      "eye": [
+        70.0,
+        28.0,
+        50.0
+      ],
+      "target": [
+        -10.0,
+        0.0,
+        -60.0
+      ],
+      "rings": 5,
+      "clipmap_triangles": 79872,
+      "field_pages_in_place": 25,
+      "field_pages_wanted": 25,
+      "field_gpu_bytes": 832000,
+      "field_gpu_high_water": 832000,
+      "field_gpu_budget": 2129920,
+      "field_atlas_bytes": 2097152,
+      "surface_bytes": 5121680,
+      "frame_ms_1080p_with_water": 4.3314541,
+      "frame_ms_1080p_without_water": 2.2281167,
+      "water_ms_1080p": 2.1033374,
+      "water_ms_budget": 4.0
+    }
+  ]
+}

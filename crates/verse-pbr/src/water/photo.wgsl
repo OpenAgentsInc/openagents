@@ -12,6 +12,11 @@
 @group(2) @binding(4) var water_tile: texture_2d<f32>;
 @group(2) @binding(5) var water_tile_sampler: sampler;
 @group(2) @binding(6) var water_waves: texture_2d_array<f32>;
+// The ocean's streamed field (`water::field`): depth, shore distance, and
+// current a texel, read where the clipmap places each vertex. The vertex
+// stage alone reads it, so it takes none of the fragment stage's slots.
+@group(2) @binding(7) var water_field: texture_2d<f32>;
+@group(2) @binding(8) var water_field_sampler: sampler;
 // The scene copies and the planar mirror (`water::screen`, Medium and
 // High), the water pipelines' group 1; placeholders on Low, whose water
 // never reads them.
@@ -283,8 +288,77 @@ fn water_kind_scale(kind: f32) -> f32 {
     return 0.0;
 }
 
+// ---- The ocean's clipmap (`water::clipmap`, phase W10).
+
+// The share of a level's half width over which it morphs into the next
+// (`water::clipmap::MORPH`).
+const WATER_CLIP_MORPH: f32 = 0.25;
+// Rings of the apron (`water::clipmap::APRON_RINGS`).
+const WATER_CLIP_APRON: f32 = 8.0;
+// Texels along a page of the field (`water::field::PAGE`).
+const WATER_FIELD_PAGE: f32 = 64.0;
+
+// Where clipmap vertex `v` lies at rest (x, z): its level's snapped center
+// plus its grid coordinates, an odd coordinate sliding onto its even
+// neighbor as the eye's distance grows toward the rim (Losasso and Hoppe's
+// transition regions, with Strugar's vertex morph), and the apron's outer
+// rings stretched out geometrically to the clipmap's reach.
+// `clipmap::position` is its CPU mirror.
+fn water_clip_rest(v: WaterIn) -> vec2<f32> {
+    let level = min(u32(max(v.pos.y, 0.0) + 0.5), 4u);
+    let row = water.clip[level];
+    let half = water.clip[5].y;
+    let s = row.z;
+    let g = v.pos.xz;
+    let d = abs(row.xy + g * s - f.eye.xz);
+    let alpha = clamp((max(d.x, d.y) - row.w) / (WATER_CLIP_MORPH * half * s), 0.0, 1.0);
+    let odd = g - 2.0 * floor(g * 0.5);
+    let morphed = g - odd * alpha;
+    var reach = 1.0;
+    if v.depth > 0.5 {
+        reach = pow(water.clip[5].z / (half * s), v.depth / WATER_CLIP_APRON);
+    }
+    return row.xy + morphed * s * reach;
+}
+
+// The streamed field at `p` (x, z): depth, shore distance, and current;
+// the field's outside values where its page is not in the atlas.
+fn water_field_at(p: vec2<f32>) -> vec4<f32> {
+    let outside = water.field[2];
+    if water.field[1].w < 0.5 {
+        return outside;
+    }
+    let window = water.field[0].w;
+    let local = (p - water.field[0].xy) / water.field[0].z;
+    let page = floor(local / WATER_FIELD_PAGE);
+    if page.x < 0.0 || page.y < 0.0 || page.x >= water.field[1].x || page.y >= water.field[1].y {
+        return outside;
+    }
+    let slot2 = page - window * floor(page / window);
+    let slot = min(u32(slot2.x + slot2.y * window + 0.5), 63u);
+    if abs(water.field_pages[slot / 4u][slot % 4u] - (page.x * 4096.0 + page.y)) > 0.5 {
+        return outside;
+    }
+    return textureSampleLevel(water_field, water_field_sampler, local / (WATER_FIELD_PAGE * window), 0.0);
+}
+
 @vertex
-fn vs_water(v: WaterIn) -> WaterOut {
+fn vs_water(v_in: WaterIn) -> WaterOut {
+    var v = v_in;
+    if v.kind > 5.5 {
+        // A clipmap vertex: placed around the eye, given the field's depth,
+        // shore distance, and current there, then moved as the sea or a
+        // body at full swell.
+        let rest = water_clip_rest(v);
+        let field = water_field_at(rest);
+        let level = water.bodies[water_body_index(v.body)].rest.x;
+        v.pos = vec3<f32>(rest.x, level, rest.y);
+        v.depth = field.x;
+        v.shore = field.y;
+        v.flow = field.zw;
+        v.foam = 0.0;
+        v.kind = select(2.98, 1.0, water.clip[5].w > 0.5);
+    }
     let b = water_body_index(v.body);
     var moved: WaterMoved;
     moved.world = v.pos;

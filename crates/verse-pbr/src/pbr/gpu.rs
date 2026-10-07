@@ -656,6 +656,8 @@ pub struct Photo {
     water_group: wgpu::BindGroup,
     /// The spectral sea's cascades.
     pub ocean: crate::water::OceanGpu,
+    /// The ocean's streamed field (`water::field`), at bindings 7 and 8.
+    pub water_field: crate::water::field::Atlas,
     /// Medium and High: the mirror's and the copies' pipelines.
     water_screen: Option<water_screen::WaterScreen>,
     /// The water pipelines' group 1 (`water_scene` and the rest in
@@ -1441,6 +1443,7 @@ impl Photo {
         // The water's uniform and the low tier's normal tile, at bindings
         // the textured material's group leaves free in this module.
         let [tile_entry, tile_sampler_entry] = crate::water::tile_entries(4);
+        let [field_entry, field_sampler_entry] = crate::water::field::entries(7);
         let water_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("verse water"),
             entries: &[
@@ -1448,8 +1451,11 @@ impl Photo {
                 tile_entry,
                 tile_sampler_entry,
                 crate::water::ocean::entry(6),
+                field_entry,
+                field_sampler_entry,
             ],
         });
+        let water_field = crate::water::field::Atlas::new(device, capability.quality.tier);
         let ocean = crate::water::OceanGpu::new(device, capability.quality.tier);
         let water_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("verse water"),
@@ -1478,6 +1484,14 @@ impl Photo {
                 wgpu::BindGroupEntry {
                     binding: 6,
                     resource: wgpu::BindingResource::TextureView(ocean.view()),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 7,
+                    resource: wgpu::BindingResource::TextureView(&water_field.view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 8,
+                    resource: wgpu::BindingResource::Sampler(&water_field.sampler),
                 },
             ],
         });
@@ -1846,6 +1860,7 @@ impl Photo {
             water_buffer,
             water_group,
             ocean,
+            water_field,
             water_screen,
             water_screen_layout,
             placeholder_color,
@@ -3111,6 +3126,12 @@ impl Photo {
                 f64::from(water.time),
                 sea.swell_gain,
             );
+            // The ocean's clipmap around the eye, and its field's pages
+            // streamed in around it.
+            if let Some(ocean) = world.water.and_then(|gpu| gpu.0.ocean.as_ref()) {
+                (packed.clip, packed.field, packed.field_pages) =
+                    ocean.prepare(queue, &self.water_field, view.eye);
+            }
             queue.write_buffer(&self.water_buffer, 0, bytemuck::bytes_of(&packed));
         }
         // Medium and High copy the opaque scene for the water and the
@@ -3267,6 +3288,7 @@ impl Photo {
                 zone_water,
                 water.is_some(),
                 Some(&screen.water),
+                view.eye,
             );
             self.draw_blended(&mut pass, targets, &opaque);
         } else {
@@ -3287,7 +3309,14 @@ impl Photo {
                 wgpu::StoreOp::Discard,
             );
             self.draw_opaque(&mut pass, targets, &opaque);
-            self.draw_water(&mut pass, targets, zone_water, water.is_some(), None);
+            self.draw_water(
+                &mut pass,
+                targets,
+                zone_water,
+                water.is_some(),
+                None,
+                view.eye,
+            );
             self.draw_blended(&mut pass, targets, &opaque);
         }
         self.post_chain(
@@ -3370,6 +3399,7 @@ impl Photo {
         zone: Option<&'a WaterGpu>,
         any: bool,
         screen: Option<&'a wgpu::RenderPipeline>,
+        eye: Vec3,
     ) {
         if !any {
             return;
@@ -3377,6 +3407,16 @@ impl Photo {
         pass.set_bind_group(1, &targets.water_group, &[]);
         pass.set_bind_group(2, &self.water_group, &[]);
         if let Some(gpu) = zone {
+            // The ocean first: it lies beyond the zone's other water.
+            match screen {
+                Some(pipeline) => gpu.0.draw_ocean(pass, eye, None, pipeline),
+                None => gpu.0.draw_ocean(
+                    pass,
+                    eye,
+                    Some(&self.pipelines.water_transmit),
+                    &self.pipelines.water,
+                ),
+            }
             match screen {
                 Some(pipeline) => gpu.0.draw_once(pass, pipeline),
                 None => gpu

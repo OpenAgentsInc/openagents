@@ -23,12 +23,16 @@
 //!   around obstacles, from the stream function.
 //! - [`medium`]: a character's medium (ground, wading, swimming, diving)
 //!   and a swimmer's float line.
+//! - [`event`]: host events on water (a level change, ice, a dam), each
+//!   with a start tick, and the world tick clients derive from their
+//!   clocks ([`tick_at`]).
 //!
 //! Nothing here renders or reads files; the look of water lives elsewhere
 //! and never feeds back into these forces. See `docs/verse/water.md`.
 
 mod apply;
 mod body;
+pub mod event;
 pub mod fft;
 mod flow;
 pub mod medium;
@@ -41,6 +45,7 @@ pub use apply::{Push, Settings, Term, apply, apply_where, apply_with, record};
 pub use body::{
     Course, FRESH, Kind, Level, Outline, SALT, Sample, Station, Surface, WaterBody, WaterId,
 };
+pub use event::{Effect, Event, Eventful, Events, TICK_HZ, tick_at};
 pub use flow::{FlowGrid, Obstacle};
 pub use medium::{Medium, Stroke};
 pub use set::{Water, WaterSet};

@@ -20,6 +20,9 @@
 //! - [`screen`]: what Medium and High copy and trace (W5): the scene's
 //!   color and depth copies, refraction, the planar mirror, and
 //!   screen-space reflection, with `screen.wgsl` as its shader half.
+//! - [`clipmap`]: the ocean's geometry clipmap around the eye (W10).
+//! - [`field`]: a zone's baked depth, shore distance, and current, whose
+//!   pages stream into an atlas under `verse_engine::streaming` (W10).
 //!
 //! On Low each pass draws a surface in two halves inside the scene pass,
 //! with no extra pass or render target: `fs_water_transmit` multiplies
@@ -32,6 +35,8 @@
 //! falls, and orbs, which the imported renderer does not.
 
 pub mod bake;
+pub mod clipmap;
+pub mod field;
 pub mod frame;
 pub mod ocean;
 #[cfg(test)]
@@ -43,7 +48,7 @@ pub mod terms;
 pub mod tile;
 
 pub use frame::{
-    Body, Controls, Kind, Sky, Water, WaterPatch, WaterSurface, WaterUniform, WaterVertex,
+    Body, Controls, Kind, Ocean, Sky, Water, WaterPatch, WaterSurface, WaterUniform, WaterVertex,
 };
 pub use ocean::OceanGpu;
 pub use preset::{Jerlov, Preset};
@@ -171,6 +176,55 @@ pub struct SurfaceGpu {
     /// Where each body's surface lies at rest (seas, ponds, and streams;
     /// not falls or orbs), for choosing the body a planar mirror reflects.
     pub bounds: [Option<screen::Bounds>; MAX_BODIES],
+    /// The ocean's clipmap, after the patches in both buffers.
+    pub ocean: Option<OceanMesh>,
+}
+
+/// An ocean's clipmap on the GPU ([`clipmap`]) and its field's pages
+/// streaming in ([`field::Stream`]).
+pub struct OceanMesh {
+    pub spec: clipmap::Spec,
+    /// The clipmap's index ranges, offset into [`SurfaceGpu::indices`].
+    pub mesh: clipmap::Mesh,
+    pub sea: bool,
+    /// Kept behind a lock so a frame that only borrows the surface can
+    /// still stream.
+    pub stream: Option<std::sync::Mutex<field::Stream>>,
+}
+
+/// The uniform rows an ocean fills each frame: the clipmap's, the field's
+/// shape, and the field's slot table.
+pub type OceanRows = (
+    [[f32; 4]; clipmap::ROWS],
+    [[f32; 4]; field::ROWS],
+    [[f32; 4]; field::SLOT_ROWS],
+);
+
+impl OceanMesh {
+    /// Streams the field's pages around `eye` into `atlas` and returns the
+    /// uniform's rows.
+    pub fn prepare(&self, queue: &wgpu::Queue, atlas: &field::Atlas, eye: glam::Vec3) -> OceanRows {
+        let at = glam::Vec2::new(eye.x, eye.z);
+        let clip = clipmap::rows(&self.spec, at, self.sea);
+        let none = (clip, [[0.0; 4]; field::ROWS], [[-1.0; 4]; field::SLOT_ROWS]);
+        let Some(Ok(mut stream)) = self.stream.as_ref().map(|s| s.lock()) else {
+            return none;
+        };
+        // A refused view keeps the pages already in place.
+        let _ = stream.update(at, &mut |slot, row, bytes| {
+            atlas.write(queue, slot, row, bytes)
+        });
+        let (shape, slots) = stream.rows();
+        (clip, shape, slots)
+    }
+
+    /// The field's residency so far, when it streams one.
+    #[must_use]
+    pub fn metrics(&self) -> Option<verse_engine::streaming::Metrics> {
+        self.stream
+            .as_ref()
+            .and_then(|s| s.lock().ok().map(|s| s.metrics()))
+    }
 }
 
 impl SurfaceGpu {
@@ -180,9 +234,32 @@ impl SurfaceGpu {
     pub fn upload(device: &wgpu::Device, surface: &WaterSurface, tier: Tier) -> Self {
         use wgpu::util::DeviceExt;
         let stride = if tier == Tier::Low { 2 } else { 1 };
-        let vertices = surface.vertices();
-        let (indices, ranges) = surface.ranges(stride);
+        let mut vertices = surface.vertices();
+        let (mut indices, ranges) = surface.ranges(stride);
         let bounds = body_bounds(&vertices);
+        let ocean = surface.ocean.as_ref().map(|ocean| {
+            let spec = clipmap::Spec::of(tier);
+            let mut mesh = clipmap::mesh(&spec, ocean.body);
+            let (base, first) = (vertices.len() as u32, indices.len() as u32);
+            vertices.append(&mut mesh.vertices);
+            indices.extend(mesh.indices.drain(..).map(|i| i + base));
+            let shift = |r: &std::ops::Range<u32>| r.start + first..r.end + first;
+            for level in &mut mesh.levels {
+                *level = std::array::from_fn(|k| shift(&level[k]));
+            }
+            mesh.apron = shift(&mesh.apron);
+            OceanMesh {
+                spec,
+                mesh,
+                sea: ocean.sea,
+                stream: ocean.field.clone().and_then(|f| {
+                    field::Stream::new(f, tier)
+                        .inspect_err(|e| eprintln!("verse: the water field does not stream: {e}"))
+                        .ok()
+                        .map(std::sync::Mutex::new)
+                }),
+            }
+        });
         let make = |label, contents: &[u8], usage| {
             device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some(label),
@@ -208,19 +285,54 @@ impl SurfaceGpu {
             ),
             ranges,
             bounds,
+            ocean,
         }
     }
 
-    /// Triangles' indices in all.
+    /// Triangles' indices in all, an ocean's one frame's.
     #[must_use]
     pub fn count(&self) -> u32 {
-        self.ranges.iter().map(|r| r.end - r.start).sum()
+        self.ranges.iter().map(|r| r.end - r.start).sum::<u32>()
+            + self.ocean.as_ref().map_or(0, |o| 3 * o.spec.triangles())
     }
 
     /// The bytes the surface holds on the GPU.
     #[must_use]
     pub fn bytes(&self) -> u64 {
         self.vertices.size() + self.indices.size()
+    }
+
+    /// The ocean's index ranges for an eye at `eye`, or none.
+    #[must_use]
+    pub fn ocean_ranges(&self, eye: glam::Vec3) -> Vec<std::ops::Range<u32>> {
+        self.ocean.as_ref().map_or_else(Vec::new, |o| {
+            o.mesh.draw(&o.spec, glam::Vec2::new(eye.x, eye.z))
+        })
+    }
+
+    /// Draws the ocean's clipmap for an eye at `eye` through `transmit`
+    /// and `emit`, or once through `emit` alone when `transmit` is none.
+    pub fn draw_ocean<'a>(
+        &'a self,
+        pass: &mut wgpu::RenderPass<'a>,
+        eye: glam::Vec3,
+        transmit: Option<&'a wgpu::RenderPipeline>,
+        emit: &'a wgpu::RenderPipeline,
+    ) {
+        let ranges = self.ocean_ranges(eye);
+        if ranges.is_empty() {
+            return;
+        }
+        pass.set_vertex_buffer(0, self.vertices.slice(..));
+        pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
+        for range in ranges.into_iter().filter(|r| !r.is_empty()) {
+            if let Some(transmit) = transmit {
+                pass.set_pipeline(transmit);
+                pass.draw_indexed(range.clone(), 0, 0..1);
+            }
+            pass.set_pipeline(emit);
+            pass.draw_indexed(range, 0, 0..1);
+        }
     }
 
     /// Draws each patch once through `pipeline`, which reads what lies

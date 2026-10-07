@@ -397,6 +397,7 @@ fn surface(world: &World, tier: Tier) -> Result<WaterSurface, String> {
     )?;
     Ok(WaterSurface {
         patches: vec![patch],
+        ocean: None,
     })
 }
 

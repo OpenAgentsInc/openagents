@@ -96,6 +96,18 @@ trees reflect in the water, that the bed and your legs bend through the
 surface, and that foam rings the lily pads and the rowboat. Note the frame
 rate with the pond in view, against the W2 note above.
 
+## The clipmap ocean on a phone (#10782)
+
+The Water Lab's sea now draws on the clipmap ocean over a streamed field
+(`docs/verse/water.md`, W10), captured and timed on the desktop only
+(`bench/verse/2026-10-07/water-w10/`). On a physical phone (Medium), walk
+through the WATER LAB arch, look out to sea, and confirm the sea reaches the
+horizon with no seams or holes where its rings meet, and that the foam and
+the shallows along the beach stay put as you walk the length of the beach.
+Note the frame rate. The two-client check of the shared sea ran as a test;
+a two-device run waits for the coast zone (C1, #10885), whose clock is the
+shared world tick. The Lab's clock still starts when you enter.
+
 ## Live Gym interview round and judge marks (#10794)
 
 The five-arm interview suite (`alice-interview-v2`) and the `interview-v1`

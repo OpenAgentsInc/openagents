@@ -388,6 +388,13 @@ From [#10782](https://github.com/OpenAgentsInc/openagents/issues/10782):
   beach and harbor, so C1 starts from it.
 - **Multiplayer split.** W10's two-client test is the base for the coast's
   [Multiplayer](#multiplayer) checks.
+- **Shipped (W10).** `verse_zone_water::coast` holds the scene: `ground`,
+  `ocean` and `water_set` (the gameplay sea), `field` (2 m texels, 128 m
+  pages), `surface` (`WaterSurface::ocean`), `frame_water`, and `Buoys`.
+  The shared clock is `physics::water::tick_at`, and host events are
+  `physics::water::Event`. The bed must reach the horizon (the capture adds
+  a flat far bed), because Medium and High refract what lies under the
+  water.
 
 ### W11 measurement
 

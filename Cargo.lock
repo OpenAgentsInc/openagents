@@ -15783,15 +15783,23 @@ dependencies = [
 name = "verse-zone-water"
 version = "0.1.0"
 dependencies = [
+ "bytemuck",
  "glam",
  "physics",
+ "png",
+ "pollster",
+ "serde_json",
+ "sha2 0.10.9",
  "verse-content",
  "verse-core",
+ "verse-engine",
  "verse-gfx",
+ "verse-net",
  "verse-pbr",
  "verse-world",
  "verse-zone-everglade",
  "verse-zone-grove",
+ "wgpu",
 ]
 
 [[package]]

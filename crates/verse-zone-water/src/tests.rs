@@ -23,16 +23,26 @@ fn the_cove_has_a_beach_a_bay_a_pool_and_a_river() {
     }
 }
 
-/// Every water patch is a whole grid, and the sea covers the bay.
+/// Every water patch is a whole grid, and the sea is the clipmap ocean
+/// over a field that covers the cove with the depth its ground gives.
 #[test]
 fn the_water_surface_is_valid() {
     let surface = sea::surface();
     surface.validate().unwrap();
-    assert_eq!(surface.patches.len(), 5);
-    let triangles = surface.indices(1).len() / 3;
-    assert!(triangles > 50_000, "{triangles}");
-    // The low tier's sea has about a quarter of the triangles.
-    assert!(surface.indices(2).len() < surface.indices(1).len() / 2);
+    assert_eq!(surface.patches.len(), 4);
+    let ocean = surface.ocean.as_ref().expect("the sea is an ocean");
+    assert_eq!(ocean.body, sea::SEA);
+    let field = ocean.field.as_ref().expect("the sea has a field");
+    for (x, z) in [(0.0, -20.0), (16.0, -30.0), (-60.0, -90.0), (0.0, 30.0)] {
+        let depth = LEVEL - ground(x, z);
+        let t = field.sample(x, z);
+        assert!(
+            (t.depth - depth).abs() < 0.35,
+            "({x}, {z}): {t:?} vs {depth}"
+        );
+    }
+    // The shore lies between the reef's shallows and open water.
+    assert!(field.sample(0.0, -5.0).shore < field.sample(0.0, -120.0).shore);
 }
 
 /// A crate dropped in the bay splashes, then floats about a third under
