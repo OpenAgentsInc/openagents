@@ -1161,6 +1161,11 @@ fn a_frame_draws_a_fraction_of_the_city() {
             Vec3::new(0.0, 2.6, -125.0),
             Vec3::new(0.0, -0.05, 1.0),
         ),
+        (
+            "civic hall",
+            Vec3::new(84.0, 2.6, 46.0),
+            Vec3::new(1.0, -0.05, 0.0),
+        ),
     ];
     for (name, eye, toward) in views {
         let (frustum, near, drawn) = drawn_triangles(eye, toward);
@@ -1304,6 +1309,53 @@ fn a_walker_climbs_the_owners_stair_and_walks_into_the_great_room() {
         rose > 1.5,
         "on the podium's floor, not under it: {rose} m up"
     );
+}
+
+#[test]
+fn a_walker_climbs_the_civic_halls_stair_from_main_street_to_the_chamber() {
+    // From Main Street, across the plaza, up the stair between the inner
+    // columns, through the portal's inset door, and across the ring's
+    // front aisle to the middle of the council chamber's well.
+    use crate::zones::everglade::layout::civic::{CIVIC, MIDDLE};
+    let street = [CIVIC.at[0] - 14.0, CIVIC.at[1]];
+    let middle = CIVIC.world(MIDDLE);
+    let (end, rose) = walk_across(street, middle, 10.0);
+    assert!(
+        end.x > middle[0] - 0.5,
+        "stopped at {end}, short of {middle:?}"
+    );
+    assert!(
+        (end.z - middle[1]).abs() < 0.3,
+        "kept to the entry axis: {end}"
+    );
+    assert!(
+        rose > 1.8,
+        "on the podium's floor, not under it: {rose} m up"
+    );
+}
+
+#[test]
+fn the_civic_chamber_is_candlelit_and_graded_only_inside() {
+    use crate::zones::everglade::layout::civic::{CIVIC, MIDDLE};
+    let mut runtime = entered();
+    let idle = InputState::default();
+    let lit = |runtime: &WorldRuntime| {
+        let neon = runtime.dynamic_mesh().neon.expect("a lit stage");
+        let lamps = neon.lamps.iter().filter(|lamp| lamp.lit()).count();
+        (lamps, neon.grade.exposure)
+    };
+    runtime.tick(&idle, 0.05);
+    let (_, outside) = lit(&runtime);
+    // In the chamber: its candles, sconces, and braziers, and a darker
+    // grade.
+    let [x, z] = CIVIC.world(MIDDLE);
+    runtime.set_spawn(Vec3::new(x, 0.0, z), 1.57).unwrap();
+    for _ in 0..10 {
+        runtime.tick(&idle, 0.05);
+    }
+    let (lamps, exposure) = lit(&runtime);
+    assert!(lamps >= 8, "{lamps}");
+    assert!(exposure < outside, "{exposure}");
 }
 
 #[test]

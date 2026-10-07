@@ -517,9 +517,10 @@ const fn brownstone(building: &'static str) -> StandIn {
 /// place: the boathouse on Lantern Pond's north bank, its arch to the
 /// water; the glasshouse in the community garden behind Brownstone Row;
 /// the gazebo on the commons' east lawn; the wayside chapel on the
-/// north trail; and the owner's house at Library Way's east end
-/// (`super::estate`).
-pub const GROUNDS: [Instance; 5] = [
+/// north trail; the owner's house at Library Way's east end
+/// (`super::estate`); and the Civic Hall at Main Street's east end
+/// (`super::civic`).
+pub const GROUNDS: [Instance; 6] = [
     Instance {
         scale: 0.8,
         ..Instance::new("boathouse", &BOATHOUSE, [4.5, 34.2], PI)
@@ -530,6 +531,7 @@ pub const GROUNDS: [Instance; 5] = [
     // (`trails`).
     Instance::new("chapel", &CHAPEL, [3.5, 124.0], FRAC_PI_2),
     super::estate::OWNERS_HOUSE,
+    super::civic::CIVIC,
 ];
 
 /// The Fountain Plaza's fountain, on the plaza's west half clear of
@@ -649,8 +651,9 @@ pub const STREETS: [([f32; 2], [f32; 2], f32); 27] = [
     ([40.0, 0.0], [40.0, 10.0], 1.2),
     ([40.0, 10.0], [64.0, 10.0], 1.2),
     ([64.0, 0.0], [112.0, 0.0], 1.3),
-    // Studio Road east, through the Creative District.
-    ([64.0, 29.0], [112.0, 29.0], 1.3),
+    // Studio Road east, through the Creative District, ending short of
+    // the Civic Hall's planters.
+    ([64.0, 29.0], [100.0, 29.0], 1.3),
     // The paths to Fernhollow and to the orchard.
     ([64.0, 46.0], [64.0, 77.0], 1.1),
     ([-80.0, 46.0], [-80.0, 77.0], 1.1),
@@ -681,12 +684,16 @@ pub const GARDEN: ([f32; 2], [f32; 2]) = ([-66.0, -54.0], [6.0, 5.0]);
 pub const ORCHARD: ([f32; 2], [f32; 2]) = ([-100.0, 76.0], [12.0, 9.0]);
 
 /// The footprints the city reserves: its buildings, the models on open
-/// ground, the plaza, the garden, and the orchard.
+/// ground, the ground kept clear round the Civic Hall, the plaza, the
+/// garden, and the orchard.
 pub fn reserved() -> impl Iterator<Item = ([f32; 2], [f32; 2])> {
-    all()
-        .map(|b| b.rect)
-        .chain(grounds_rects())
-        .chain([PLAZA, GARDEN, ORCHARD, super::WELL_SQUARE])
+    all().map(|b| b.rect).chain(grounds_rects()).chain([
+        super::civic::CLEAR,
+        PLAZA,
+        GARDEN,
+        ORCHARD,
+        super::WELL_SQUARE,
+    ])
 }
 
 /// The centers of a building's doorways on its wall line: a double door in

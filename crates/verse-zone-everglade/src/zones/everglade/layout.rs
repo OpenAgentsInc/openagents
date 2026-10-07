@@ -22,6 +22,7 @@ use std::f32::consts::{FRAC_PI_2, PI, TAU};
 use verse_world::social::everglade::DESK_SEATS;
 
 pub mod city;
+pub mod civic;
 pub mod details;
 pub mod estate;
 pub mod foliage;
@@ -375,11 +376,13 @@ pub const PAVED: [([f32; 2], [f32; 2], f32); 6] = [
 ];
 /// The cobbled squares: center and half extents, m. The Fountain Plaza and
 /// the market hall's forecourt, the little square before the clock
-/// tower on Library Way, and Well Square.
-pub const PAVED_SQUARES: [([f32; 2], [f32; 2]); 3] = [
+/// tower on Library Way, Well Square, and the Civic Hall's plaza at Main
+/// Street's east end.
+pub const PAVED_SQUARES: [([f32; 2], [f32; 2]); 4] = [
     ([0.0, 74.5], [11.0, 10.5]),
     ([24.0, -29.0], [6.5, 3.0]),
     WELL_SQUARE,
+    civic::PLAZA,
 ];
 /// Well Square, the city's second plaza, with its well: south of Hearth
 /// Road, between the Lantern Quarter and Stoop Lane, center and half

@@ -201,7 +201,7 @@ const ROOM: ([f32; 2], [f32; 2], [f32; 2]) = ([-9.6, 9.6], [-25.2, -12.0], [-1.0
 /// The great room's grade: a little darker, warmer, and more contrasty
 /// than the afternoon outside, with cool shadows against warm highlights,
 /// so the candles and lamps read as pools of light.
-const ROOM_GRADE: Grade = Grade {
+pub(super) const ROOM_GRADE: Grade = Grade {
     exposure: -1.0,
     balance: Vec3::new(1.04, 0.99, 0.92),
     saturation: 0.92,

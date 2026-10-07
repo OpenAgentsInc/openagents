@@ -493,6 +493,17 @@ east woods behind it; a walk continues Library Way to its stair. It blocks
 by its own boxes, breaks like the other generated buildings, and doesn't
 smoke.
 
+The Civic Hall (`layout::civic`), the town's seat of government, stands at
+the east end of Main Street in the same style, facing west so it closes
+the street's view: a broad limestone building on a podium, up twelve
+shallow steps from a cobbled plaza, with four bronze-banded columns before
+its pavilion, a deep dentil cornice under a stepped attic, and a very tall
+copper portal whose small inset door stands open. Inside, the council
+chamber holds a ring of tiered benches round a well and the speaker's dais,
+lit by sconces, candle stands, and braziers. It blocks by its own boxes
+and breaks like the other generated buildings; the town's foliage keeps
+off the ground round it, and Studio Road ends short of its planters.
+
 The town has ambient wildlife
 ([`wildlife`](../../crates/verse-zone-everglade/src/zones/everglade/wildlife.rs)): pairs of
 songbirds circling over the commons, Main Street, Walden Woods, and
@@ -509,7 +520,7 @@ farther than 60 m from the player is neither posed nor drawn.
 | District | Built from | Roads |
 | --- | --- | --- |
 | The Commons | Lantern Pond with reeds, stones, lily pads, a jetty, and a rowboat, the generated boathouse on its north bank, benches, park trees, wildflowers, the generated bandshell, the gazebo on the east lawn | The commons walk, west of the hall |
-| Main Street | Twelve shops (bakery, café, bookshop, grocer, tailor, print shop, and more), the generated bakehouse with its bread oven, two generated corner shops, two shop houses, and three townhouses among them, red, blue, and gold market stalls, lamps, painted shop signs, flower boxes, bunting, street trees, litter bins; Market Row behind the far blocks, with twelve houses, shops, and an inn | Main Street, about 200 m long, cobbled; Market Row |
+| Main Street | The Civic Hall at its east end, on its plaza; twelve shops (bakery, café, bookshop, grocer, tailor, print shop, and more), the generated bakehouse with its bread oven, two generated corner shops, two shop houses, and three townhouses among them, red, blue, and gold market stalls, lamps, painted shop signs, flower boxes, bunting, street trees, litter bins; Market Row behind the far blocks, with twelve houses, shops, and an inn | Main Street, about 200 m long, cobbled; Market Row |
 | Fountain Plaza | A cobbled market with the generated fountain, awninged and produce stalls, crates, barrels, a hand cart, a flower cart, a hand pump, a shop house and a timber house with tables out front, planters, the generated market hall with its stock under the arcade | Market Way |
 | Creative District | The Makers' Hall, a studio, two generated Boardwalk Cafés with tables on their decks, the Atelier Hall, the Sculpture Walk's statues, sculpture, and sundial | Studio Road |
 | The Foundry | The Server Barn and fab yard, a workshop, the Fab Hall, the generated smithy with its open forge, an annex | Foundry Road |

@@ -1,7 +1,7 @@
 # Greco-futurism
 
-Status: defined October 6, 2026. The first kit and the first building, the
-owner's house in Everglade, are implemented.
+Status: defined October 6, 2026. The first kit and two buildings in
+Everglade, the owner's house and the Civic Hall, are implemented.
 
 Greco-futurism is an architectural style for Verse: a classical temple front
 reduced to its essentials, with the future carried in its surfaces and doors
@@ -14,7 +14,8 @@ The style comes from four reference images the owner chose: a columned
 entrance with a bronze door behind two smooth columns, the same house seen
 from its lawn between large trees, a study with a coffered ceiling and an
 engraved copper door, and a great room with a long sofa before a dark,
-engraved double door.
+engraved double door. A fifth, a broad limestone civic building behind
+four bronze-banded columns, gave the Civic Hall and its kit pieces.
 
 ## Principles
 
@@ -76,6 +77,13 @@ and a kit piece in `assets/verse/generated/greco/kit/`.
 | Chimney block | `chimney` | A plain limestone block with a cap band | 32 |
 | Circuit wall | `circuit_lines`, `circuit_panel` | Dark walnut paneling inscribed with faint copper circuit lines | 44 (6 by 4 m) |
 | Dentils | `dentils` | A row of small marble blocks under an interior cornice | 4 each |
+| Bronze-banded column | `bronze_column` | A smooth column on a high square plinth, with a bronze band at its foot and a bronze necking under its square capital | 124 |
+| Dentil cornice | `dentil_cornice` | A deep, heavy flat cornice: a frieze with a row of limestone dentils under a fillet and a thick slab overhanging 1 m | 74 (one 4 m bay) |
+| Attic | `attic` | A plain block set back on a cornice, under a thin overhanging cap: the stepped attic over a pavilion | 20 |
+| Circuit-relief portal | `portal`, `seal` | A very tall copper leaf in a deep bronze-framed reveal, carrying the seal in dark bronze, with a small inset door at its foot that stands open | 384 (with its wall) |
+| Paired windows | `paired_windows`, `tall_window` | Two tall narrow dark windows in bronze frames with a mullion and two transoms, over sills and under plain heads | 128 |
+| Bowl planter | `bowl_wall`, `bowl` | A low dark walnut planter wall under a bronze coping, with a shallow bronze bowl planted with a low shrub | 106 |
+| Council ring | `council_ring`, `sector` | Tiered stone benches in a ring, a walnut bench on each tier and a walnut wall behind the last, open in two aisles | 560 |
 
 The props share the vocabulary:
 
@@ -103,8 +111,21 @@ in normalized door coordinates. It holds:
 - a spine down the center with branches that end in square pads, the
   traces of a circuit board.
 
-Every polyline is drawn on the left half and mirrored onto the right. A
-trace is a flat copper inlay 0.035 m wide and 0.02 m proud of the bronze:
+### The seal
+
+The Civic Hall's relief, `seal`, is a second glyph in metres rather than
+normalized coordinates, in dark bronze on a copper leaf: a border; a
+stepped head between two bands; a circle crossed by a spine and a bar
+whose ends turn down, with two half rings stepping down inside its lower
+half; three small amber lights under it; stepped shoulders falling from the
+spine's foot to the edges; and bands round the inset door. Its traces are
+`trace` strips, which run at any angle, so the circle is 28 straight
+pieces. The same seal is inlaid in copper in the council chamber's floor
+and hangs on a copper plate over the speaker's dais.
+
+Every polyline of the machine glyph is drawn on the left half and mirrored
+onto the right. A trace is a flat copper inlay 0.035 m wide and 0.02 m
+proud of the bronze:
 low geometry rather than a texture, two triangles a segment, so it needs no
 image in the pack and breaks with the door. Pads are the same inlay, and
 the amber panes are shallow boxes.
@@ -181,7 +202,9 @@ material:
   (`pbr::gpu::lamp_budget`). So the zone gives a building's lamps only
   while the player is near it (the outside's within 70 m, the inside's
   within 34 m), those on the player's side of the walls first, then the
-  nearest. The owner's house has 20 fixtures, 12 of them inside.
+  nearest. The owner's house has 20 fixtures, 12 of them inside; the Civic
+  Hall has 19, 13 of them inside. Each building fills only the stage's
+  free slots, so the two never pass the limit together.
 - **Grade.** While the player is in the great room, the stage takes a
   darker, warmer, and more contrasty grade (one stop down, cool shadows
   against warm highlights, and a vignette), so the candles read as pools
@@ -312,6 +335,62 @@ python3 scripts/blender/greco_admit.py
 `generated` and `lod` sets and adds only those files to each manifest.
 Review renders come from
 `scripts/blender/greco_views.py -- house IN.glb OUT_DIR`.
+
+## The Civic Hall
+
+`generated/civic_hall` is Everglade's seat of government, the Hall of the
+Commons, after the fifth reference image.
+
+- **Where.** At the east end of Main Street, its stair's foot at
+  (104, 46), facing west down the town's longest street, so the street's
+  view ends at its portico
+  ([`layout/civic.rs`](../../crates/verse-zone-everglade/src/zones/everglade/layout/civic.rs)).
+  A cobbled plaza leads from the street to the stair, Main Street's trees
+  frame it, and the east woods stand behind it. Studio Road now ends at
+  x = 100, short of the hall's planters.
+- **Approach.** Twelve shallow steps of 0.16 by 0.4 m, 14.4 m wide, rise
+  between stepped walnut walls with bronze bowls to the terrace on a 1.92 m
+  podium. Long hedged walnut planters with a bowl at each end run along the
+  podium's foot.
+- **Front.** A broad two-storey block, 36 m wide, with a pavilion 17.2 m
+  wide projecting 1.2 m. Four bronze-banded columns on high plinths stand
+  2 m before it under a deep beam, with a 5.8 m bay at the portal. Over
+  the pavilion are a dentil frieze, a heavy slab overhanging 1 m, and a
+  stepped attic; the wings have their own dentil cornice and a plain
+  parapet. Each wing carries paired tall windows on both storeys, on its
+  front and its sides.
+- **Portal.** A copper leaf 5 m wide and 7.2 m tall, 1 m deep in a reveal
+  with a bronze frame, carrying the seal; its inset door, 2.2 by 2.8 m,
+  stands open under a heavy stepped lintel.
+- **Council chamber.** The enterable ground floor: 21.2 m by 20 m and
+  8.6 m high under a coffered ceiling with a copper inlay in each coffer
+  and the cove's warm line. A ring of three stone tiers with walnut benches
+  surrounds a well whose floor carries the seal's circle and cross in
+  copper. The ring opens in two aisles: the entry aisle from the portal,
+  and, opposite it, the speaker's dais with a lectern and a high-backed
+  chair, under the seal on a copper plate on the back wall. Marble
+  pilasters and walnut wainscot inscribed with faint circuit lines line
+  the side walls. The walk from the portal to the well's middle stays
+  clear, at least 2.5 m wide.
+- **Light.** Sconces on the side walls and beside the inset door, a
+  candelabrum on the lectern, braziers flanking the dais, and tall candle
+  stands in the four corners; outside, lanterns on posts at the stair's
+  foot, lanterns on the wings beside the pavilion, and uplights washing
+  the portal.
+- **Budget.** 7,817 triangles near and 1,038 far, with its fixtures and
+  furniture: about 1.2 times the owner's house.
+
+Rebuild it and admit it:
+
+```sh
+B=/Applications/Blender.app/Contents/MacOS/Blender
+$B -b --factory-startup --python scripts/blender/greco_futurism.py -- \
+    assets/verse/generated/greco civic_hall
+python3 scripts/blender/greco_admit.py civic_hall
+```
+
+Review renders come from
+`scripts/blender/greco_views.py -- civic IN.glb OUT_DIR`.
 
 ## Planned assets
 

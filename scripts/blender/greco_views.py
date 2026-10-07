@@ -4,6 +4,8 @@ Run headless:
     Blender -b --factory-startup --python scripts/blender/greco_views.py -- \
         house IN.glb OUT_DIR
     Blender -b --factory-startup --python scripts/blender/greco_views.py -- \
+        civic IN.glb OUT_DIR
+    Blender -b --factory-startup --python scripts/blender/greco_views.py -- \
         kit KIT_DIR OUT.png
 
 `house` writes `house_<view>.png` for the street front, a three-quarter
@@ -109,6 +111,31 @@ def house(src, out):
         render(os.path.join(out, f"house_{name}.png"))
 
 
+def civic(src, out):
+    """The Civic Hall: the reference image's frontal view from the stair's
+    foot, the approach, the portal, the aerial, the council chamber from
+    the door and from the dais, and the side."""
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    scene(1600, 1000)
+    bpy.ops.import_scene.gltf(filepath=src)
+    for x, y, h, r in ((-22, 1, 15, 6.0), (22, 2, 16, 6.0), (-25, 18, 15, 5.5), (25, 20, 14, 5.0),
+                       (-30, -8, 12, 4.5), (30, -6, 13, 5.0)):
+        tree(x, y, h, r)
+    os.makedirs(out, exist_ok=True)
+    views = {
+        "front": ((0, -17, 2.2), (0, 10, 7.4), 24),
+        "approach": ((-14, -40, 2.0), (0, 10, 6.0), 34),
+        "portal": ((-2.2, 3.6, 3.4), (0.3, 9.4, 5.6), 26),
+        "aerial": ((38, -34, 38), (0, 16, 2.0), 30),
+        "chamber": ((0, 10.9, 3.9), (0, 27, 3.2), 18),
+        "chamber_dais": ((5.5, 28.5, 6.5), (-1.0, 15, 1.6), 20),
+        "side": ((44, 12, 4.0), (0, 16, 6.0), 30),
+    }
+    for name, (loc, target, lens) in views.items():
+        camera(loc, target, lens)
+        render(os.path.join(out, f"civic_{name}.png"))
+
+
 def kit(src_dir, out):
     bpy.ops.wm.read_factory_settings(use_empty=True)
     names = sorted(f for f in os.listdir(src_dir) if f.endswith(".glb"))
@@ -158,6 +185,8 @@ def main():
     mode = args[0]
     if mode == "house":
         house(args[1], args[2])
+    elif mode == "civic":
+        civic(args[1], args[2])
     elif mode == "kit":
         kit(args[1], args[2])
     else:

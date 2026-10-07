@@ -186,8 +186,11 @@ impl Everglade {
                 crate::fx::Spawn::at(Vec3::new(x, height(x, z) + 0.5, z)),
             );
         }
-        // Halos at the owner's house's flames.
-        for at in layout::estate::flames() {
+        // Halos at the owner's house's and the Civic Hall's flames.
+        for at in layout::estate::flames()
+            .into_iter()
+            .chain(layout::civic::flames())
+        {
             smoke.start("greco_candle_glow", crate::fx::Spawn::at(at));
         }
         let drifts = placements.iter().filter(|p| {
@@ -922,10 +925,12 @@ impl Everglade {
         self.elapsed = (self.elapsed + dt) % 1000.0;
         self.rendered = self.stage(self.elapsed);
         if self.look.is_none() {
-            // The owner's house's candles and lanterns near the player
-            // (`layout::estate`); nothing changes elsewhere.
+            // The owner's house's and the Civic Hall's candles and lanterns
+            // near the player (`layout::estate`, `layout::civic`); nothing
+            // changes elsewhere.
             if let Some(neon) = self.rendered.neon.as_mut() {
                 layout::estate::light(neon, at.pos, self.elapsed);
+                layout::civic::light(neon, at.pos, self.elapsed);
             }
         }
         if let Some(smoke) = &mut self.smoke {

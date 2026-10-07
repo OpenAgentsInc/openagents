@@ -44,11 +44,22 @@ Models:
   candles, sconces, a brazier, lamps, and lanterns whose lights and flames
   its footprint records. It also writes `far/greco_house.glb`, the far
   level of detail.
+- `civic_hall`: the Civic Hall, from a fifth reference image: a broad
+  two-storey civic building on a podium, up twelve shallow steps between
+  walnut planter walls with bronze bowls, with four bronze-banded columns
+  on high plinths before a projecting pavilion, a deep dentil cornice
+  under a stepped attic, paired tall windows on its wings, and a very tall
+  copper portal carrying the seal, whose inset door stands open. Inside,
+  the council chamber: a ring of tiered benches round a well with the seal
+  inlaid in its floor, the speaker's dais, and candlelight. It also writes
+  `far/civic_hall.glb`.
 - Kit pieces under `kit/`, for review and later buildings: `column`,
   `pier`, `entablature_bay`, `stair_flight`, `planter_wall`,
   `circuit_door`, `lattice_screen`, `coffer_bay`, `pilaster`, `chimney`,
   `circuit_panel`, `bench_long`, `planter`, `lamp`, `rug`, `desk`, `sofa`,
-  and `bookshelf`.
+  `bookshelf`, and the Civic Hall's `bronze_column`, `dentil_cornice_bay`,
+  `attic`, `circuit_portal`, `paired_window`, `bowl_planter`, and
+  `council_ring`.
 """
 
 import json
@@ -438,11 +449,11 @@ def coffers(b, x0, x1, y0, y1, z, xs, ys, depth=0.5, width=0.36):
         box(b, (x1 - out, y0, z - drop), (x1, y1, z), mat, skip="+z -y +y +x", name="Cove")
 
 
-def dentils(b, xf, u0, u1, z, tooth=0.12, gap=0.14, out=0.12, tall=0.16):
+def dentils(b, xf, u0, u1, z, tooth=0.12, gap=0.14, out=0.12, tall=0.16, mat="marble"):
     """A row of dentils under a cornice on a wall's face."""
     u = u0
     while u + tooth <= u1:
-        box(b, (u, -out, z - tall), (u + tooth, 0.0, z), "marble", skip="+y +z -x +x", xf=xf, name="Dentil")
+        box(b, (u, -out, z - tall), (u + tooth, 0.0, z), mat, skip="+y +z -x +x", xf=xf, name="Dentil")
         u += tooth + gap
 
 
@@ -1071,6 +1082,568 @@ def great_room(b):
     b.inside = (0.0, 18.0)
 
 
+# --------------------------------------------------------------------------
+# The Civic Hall's kit, from the fifth reference image: a broad civic
+# building with a projecting pavilion, columns on high plinths with bronze
+# bands, a deep dentil cornice under a stepped attic, paired tall windows,
+# and a very tall circuit-relief portal with a small door at its foot.
+
+
+def trace(b, xf, p, q, width=0.05, proud=0.025, mat="bronze", name="Trace"):
+    """A straight inlay from `p` to `q`, each (u, z) on a face in the local
+    plane y = 0 facing -y, at any angle: one face, 2 triangles."""
+    (u0, z0), (u1, z1) = p, q
+    length = math.hypot(u1 - u0, z1 - z0)
+    if length < 1e-6:
+        return
+    a = math.atan2(z1 - z0, u1 - u0)
+    m = (xf @ Matrix.Translation(Vector(((u0 + u1) / 2, 0.0, (z0 + z1) / 2)))
+         @ Matrix.Rotation(-a, 4, "Y"))
+    box(b, (-length / 2 - width / 2, -proud, -width / 2), (length / 2 + width / 2, 0.0, width / 2), mat,
+        skip=only("-y"), xf=m, name=name)
+
+
+def polyline(b, xf, pts, mirror=True, **kw):
+    """Inlays along `pts`, and their mirror across u = 0."""
+    for m in ((1, -1) if mirror else (1,)):
+        q = [(u * m, z) for u, z in pts]
+        for p0, p1 in zip(q, q[1:]):
+            trace(b, xf, p0, p1, **kw)
+
+
+def arc(b, xf, c, r, a0, a1, n, **kw):
+    """An arc of inlay round `c` from angle `a0` to `a1` (radians, from +u
+    toward +z), in `n` straight pieces."""
+    pts = [(c[0] + r * math.cos(a0 + (a1 - a0) * i / n), c[1] + r * math.sin(a0 + (a1 - a0) * i / n))
+           for i in range(n + 1)]
+    for p0, p1 in zip(pts, pts[1:]):
+        trace(b, xf, p0, p1, **kw)
+
+
+# The floor's frame for `trace`: the local plane y = 0 laid flat, facing
+# up, with u along x and z along y.
+FLAT = Matrix.Rotation(math.radians(-90.0), 4, "X")
+
+
+def seal(b, xf, w, h, inset=(0.0, 0.0), mat="bronze"):
+    """The Civic Hall's relief on a panel `w` wide and `h` tall, in metres
+    (the local plane y = 0, facing -y, u from -w/2, z from 0): a border, a
+    stepped head between two bands, the circle-and-cross glyph with stepped
+    arches in its lower half, three amber lights under it, stepped
+    shoulders falling to the edges, and bands round the inset door
+    (`inset`: its width and height, or none)."""
+    if FAR:
+        return
+    kw = {"mat": mat}
+    e, top = w / 2 - 0.16, h - 0.14
+    polyline(b, xf, [(e, 0.12), (e, top), (0.0, top)], **kw)
+    # The head: a band, and steps rising to the spine.
+    zb = h * 0.84
+    za, zc = zb + 0.32 * (top - zb), zb + 0.66 * (top - zb)
+    polyline(b, xf, [(e, zb), (0.0, zb)], **kw)
+    polyline(b, xf, [(e, za), (w * 0.3, za), (w * 0.3, zc), (w * 0.14, zc), (w * 0.14, top)], **kw)
+    # The circle and its cross: a spine from under the circle up to the
+    # head's band, a bar whose ends turn down, and two half rings stepping
+    # down inside the circle's lower half.
+    r, cz = w * 0.23, h * 0.64
+    arc(b, xf, (0.0, cz), r, 0.0, 2 * math.pi, 28, **kw)
+    for k in (0.74, 0.5):
+        arc(b, xf, (0.0, cz), r * k, math.pi, 2 * math.pi, 14, **kw)
+    spine = cz - r * 1.18
+    trace(b, xf, (0.0, spine), (0.0, zb), **kw)
+    polyline(b, xf, [(r * 1.22, cz - r * 0.22), (r * 1.22, cz + r * 0.3), (0.0, cz + r * 0.3)], **kw)
+    for u in (-0.18, 0.0, 0.18):
+        box(b, (u - 0.05, -0.03, cz - r * 1.06 - 0.05), (u + 0.05, 0.0, cz - r * 1.06 + 0.05), "amber",
+            skip="+y", xf=xf, name="Pane")
+    # The shoulders: steps falling from the spine's foot to the edges, and
+    # a rule down from each.
+    zs = h * 0.36
+    polyline(b, xf, [(e, zs), (w * 0.36, zs), (w * 0.36, zs + 0.06 * h), (w * 0.24, zs + 0.06 * h),
+                     (w * 0.24, spine), (0.0, spine)], **kw)
+    iw, ih = inset
+    edge = iw / 2 + 0.36 if iw else 0.0
+    polyline(b, xf, [(w * 0.36, zs), (w * 0.36, h * 0.2)], **kw)
+    for z in (h * 0.2, h * 0.12):
+        polyline(b, xf, [(e, z), (edge, z)], **kw)
+    if iw:
+        polyline(b, xf, [(iw / 2 + 0.18, 0.12), (iw / 2 + 0.18, ih + 0.62), (iw * 0.22, ih + 0.62),
+                         (iw * 0.22, ih + 0.84), (0.0, ih + 0.84)], **kw)
+
+
+def portal(b, x, y_face, z0, w=5.0, h=7.2, recess=1.0, depth=1.6, iw=2.2, ih=2.8):
+    """The very tall circuit-relief portal: a bronze frame on the face at
+    `y_face`, a deep reveal, the copper leaf `recess` m in carrying the
+    seal in dark bronze, and the small inset door at its foot standing
+    open; its passage runs through the wall `depth` m deep."""
+    fw = 0.32
+    box(b, (x - w / 2 - fw, y_face - 0.1, z0), (x - w / 2, y_face, z0 + h), "bronze", skip="-z +y",
+        name="PortalFrame")
+    box(b, (x + w / 2, y_face - 0.1, z0), (x + w / 2 + fw, y_face, z0 + h), "bronze", skip="-z +y",
+        name="PortalFrame")
+    box(b, (x - w / 2 - fw, y_face - 0.1, z0 + h), (x + w / 2 + fw, y_face, z0 + h + fw), "bronze", skip="+y",
+        name="PortalFrame")
+    yl, yb = y_face + recess, y_face + depth
+    # The leaf, round the inset's opening and through to the inner face.
+    box(b, (x - w / 2, yl, z0), (x - iw / 2, yb, z0 + h), "copper", skip="-z +y -x", name="Leaf")
+    box(b, (x + iw / 2, yl, z0), (x + w / 2, yb, z0 + h), "copper", skip="-z +y +x", name="Leaf")
+    box(b, (x - iw / 2, yl, z0 + ih), (x + iw / 2, yb, z0 + h), "copper", skip="+z +y -x +x", name="Leaf")
+    # An inner step of the frame round the leaf.
+    for lo, hi in (((x - w / 2, yl - 0.12, z0), (x - w / 2 + 0.22, yl, z0 + h)),
+                   ((x + w / 2 - 0.22, yl - 0.12, z0), (x + w / 2, yl, z0 + h)),
+                   ((x - w / 2 + 0.22, yl - 0.12, z0 + h - 0.22), (x + w / 2 - 0.22, yl, z0 + h))):
+        box(b, lo, hi, "bronze", skip="+y -z", name="PortalFrame")
+    seal(b, local((x, yl, z0), 0.0), w - 0.44, h - 0.22, inset=(iw, ih))
+    # The inset door's frame: jambs and a heavy stepped lintel.
+    box(b, (x - iw / 2 - 0.2, yl - 0.1, z0), (x - iw / 2, yl, z0 + ih), "bronze", skip="-z +y", name="InsetFrame")
+    box(b, (x + iw / 2, yl - 0.1, z0), (x + iw / 2 + 0.2, yl, z0 + ih), "bronze", skip="-z +y", name="InsetFrame")
+    box(b, (x - iw / 2 - 0.36, yl - 0.16, z0 + ih), (x + iw / 2 + 0.36, yl, z0 + ih + 0.3), "bronze", skip="+y",
+        name="InsetLintel")
+    box(b, (x - iw / 2 - 0.12, yl - 0.1, z0 + ih + 0.3), (x + iw / 2 + 0.12, yl, z0 + ih + 0.46), "bronze",
+        skip="+y -z", name="InsetLintel")
+    # Its two leaves, swung in against the passage's sides.
+    leaf_w = iw / 2 - 0.02
+    for s in (-1, 1):
+        hinge = Vector((x + s * iw / 2, yl + 0.08, z0))
+        xf = (Matrix.Translation(hinge) @ Matrix.Rotation(math.radians(-90 * s), 4, "Z")
+              @ Matrix.Translation(Vector((-s * leaf_w / 2, -0.06, 0.0))))
+        box(b, (-leaf_w / 2, 0.0, 0.0), (leaf_w / 2, 0.06, ih - 0.04), "copper", skip="-z", xf=xf,
+            name="InsetLeaf")
+        if not FAR:
+            polyline(b, xf, [(-leaf_w / 2 + 0.12, ih * 0.5), (leaf_w / 2 - 0.12, ih * 0.5)], mirror=False,
+                     width=0.04, proud=0.012)
+
+
+def bronze_column(b, x, y, z0, z1, d=0.85, plinth=1.35, sides=12):
+    """A smooth column on a high square plinth, banded in bronze at its
+    foot and under its plain square capital."""
+    r = d / 2
+    p = r + 0.32
+    box(b, (x - p, y - p, z0), (x + p, y + p, z0 + plinth - 0.14), "lime", skip="-z +z", name="Plinth")
+    box(b, (x - p - 0.06, y - p - 0.06, z0 + plinth - 0.14), (x + p + 0.06, y + p + 0.06, z0 + plinth), "shade",
+        name="PlinthCap")
+    zb = z0 + plinth
+    n = 6 if FAR else sides
+    prism(b, (x, y), r + 0.035, zb, zb + 1.1, n, "bronze", name="BronzeBase", cap=True)
+    prism(b, (x, y), r, zb + 1.1, z1 - 0.9, n, "lime")
+    prism(b, (x, y), r + 0.035, z1 - 0.9, z1 - 0.45, n, "bronze", name="BronzeNeck")
+    box(b, (x - r - 0.08, y - r - 0.08, z1 - 0.45), (x + r + 0.08, y + r + 0.08, z1 - 0.22), "lime",
+        name="Echinus")
+    box(b, (x - r - 0.22, y - r - 0.22, z1 - 0.22), (x + r + 0.22, y + r + 0.22, z1), "lime", skip="+z",
+        name="Abacus")
+    b.collide("column", (x - p - 0.06, y - p - 0.06, z0), (x + p + 0.06, y + p + 0.06, z1))
+
+
+def side_frame(side, at):
+    """The local frame of a face of a plan: `side` is "-y", "+y", "-x", or
+    "+x", the face at y or x = `at`; u runs along it, left to right seen
+    from outside, and -y points out of it."""
+    rot = {"-y": 0.0, "+y": 180.0, "-x": -90.0, "+x": 90.0}[side]
+    origin = (0, at, 0) if side in ("-y", "+y") else (at, 0, 0)
+    return local(origin, rot)
+
+
+def side_span(side, x0, x1, y0, y1):
+    """The u range a face of the plan from (x0, y0) to (x1, y1) covers in
+    `side_frame`."""
+    return {"-y": (x0, x1), "+y": (-x1, -x0), "-x": (-y1, -y0), "+x": (y0, y1)}[side]
+
+
+def dentil_cornice(b, x0, x1, y0, y1, z, frieze=0.8, slab=0.65, out=1.0, sides=("-y", "-x", "+x"),
+                   dentil_to=None):
+    """A deep, heavy flat cornice over a plan: a plain frieze band with a
+    row of dentils under its top, a shade fillet, and a thick flat slab
+    overhanging `out` on every side. Dentils run along `sides`; on the x
+    faces only as far back as `dentil_to`."""
+    zt = z + frieze
+    box(b, (x0, y0, z), (x1, y1, zt), "lime", skip="-z +z", name="Frieze")
+    if not FAR:
+        for side in sides:
+            ya, yb = y0, y1 if dentil_to is None else min(y1, dentil_to)
+            at = {"-y": y0, "+y": y1, "-x": x0, "+x": x1}[side]
+            u0, u1 = side_span(side, x0, x1, ya, yb)
+            dentils(b, side_frame(side, at), u0 + 0.12, u1 - 0.12, zt - 0.1, tooth=0.18, gap=0.16, out=0.2,
+                    tall=0.26, mat="lime")
+        box(b, (x0 - 0.3, y0 - 0.3, zt - 0.1), (x1 + 0.3, y1 + 0.3, zt), "shade", skip="+z", name="Fillet")
+    box(b, (x0 - out, y0 - out, zt), (x1 + out, y1 + out, zt + slab), "lime", name="CorniceSlab")
+    return zt + slab
+
+
+def attic(b, x0, x1, y0, y1, z, h=1.0, cap=0.3, over=0.25):
+    """A plain stepped attic block set back on a cornice, under a thin
+    overhanging cap slab."""
+    box(b, (x0, y0, z), (x1, y1, z + h), "lime", skip="-z +z", name="Attic")
+    box(b, (x0 - over, y0 - over, z + h), (x1 + over, y1 + over, z + h + cap), "lime", skip="-z" if FAR else "",
+        name="AtticCap")
+    return z + h + cap
+
+
+def tall_window(b, xf, u, z0, w=1.0, h=3.0):
+    """A tall narrow dark window on a wall's face, in a bronze frame with a
+    mullion and two transoms, over a stone sill and under a plain head."""
+    box(b, (u - w / 2, -0.02, z0), (u + w / 2, 0.0, z0 + h), "glass", skip=only("-y"), xf=xf, name="Glass")
+    if FAR:
+        return
+    f = 0.08
+    for lo, hi in (((u - w / 2 - f, -0.08, z0), (u - w / 2, 0.0, z0 + h)),
+                   ((u + w / 2, -0.08, z0), (u + w / 2 + f, 0.0, z0 + h)),
+                   ((u - w / 2 - f, -0.08, z0 + h), (u + w / 2 + f, 0.0, z0 + h + f))):
+        box(b, lo, hi, "bronze", skip="+y -z", xf=xf, name="WindowFrame")
+    box(b, (u - 0.025, -0.05, z0), (u + 0.025, 0.0, z0 + h), "bronze", skip="+y -z +z", xf=xf, name="Mullion")
+    for k in (1, 2):
+        zk = z0 + h * k / 3
+        box(b, (u - w / 2, -0.05, zk - 0.025), (u + w / 2, 0.0, zk + 0.025), "bronze", skip="+y -x +x", xf=xf,
+            name="Mullion")
+    box(b, (u - w / 2 - 0.14, -0.14, z0 - 0.12), (u + w / 2 + 0.14, 0.0, z0), "shade", skip="+y", xf=xf,
+        name="Sill")
+    box(b, (u - w / 2 - 0.12, -0.1, z0 + h + f), (u + w / 2 + 0.12, 0.0, z0 + h + f + 0.16), "lime", skip="+y",
+        xf=xf, name="Head")
+
+
+def paired_windows(b, xf, u, z0, w=1.0, h=3.0, gap=1.0):
+    """Two tall narrow windows side by side, `gap` m apart."""
+    for s in (-1, 1):
+        tall_window(b, xf, u + s * (w + gap) / 2, z0, w, h)
+
+
+def bowl(b, x, y, z, r=0.7, h=0.3):
+    """A shallow bronze bowl on a short foot, planted with a low shrub."""
+    n = 6 if FAR else 10
+    b.solid("Bowl", bl.frustum_mesh("Bowl", (x, y), r * 0.3, r * 0.26, z, z + 0.14, 6, b.mats["bronze"],
+                                    cap=False))
+    b.solid("Bowl", bl.frustum_mesh("Bowl", (x, y), r * 0.42, r, z + 0.14, z + 0.14 + h, n, b.mats["bronze"]))
+    if not FAR:
+        sphere(b, (x, y, z + 0.14 + h), r * 0.8, "hedge", segments=8, rings=4, squash=0.42, name="Shrub")
+
+
+def bowl_wall(b, x0, x1, y0, y1, z0, top, hedge=0.0):
+    """A low dark walnut planter wall under a bronze coping, with a low
+    clipped hedge along it."""
+    box(b, (x0, y0, z0), (x1, y1, top - 0.06), "walnut", skip="-z +z", name="BowlWall")
+    box(b, (x0 - 0.04, y0 - 0.04, top - 0.06), (x1 + 0.04, y1 + 0.04, top), "bronze", skip="-z", name="Coping")
+    if hedge > 0:
+        box(b, (x0 + 0.12, y0 + 0.12, top), (x1 - 0.12, y1 - 0.12, top + hedge), "hedge", skip="-z", name="Hedge")
+    b.collide("planter", (x0, y0, z0), (x1, y1, top + hedge))
+
+
+def sector(b, c, r0, r1, a0, a1, z0, z1, mat, faces=("top", "in"), name="Tier"):
+    """A ring sector round `c` between radii `r0` and `r1` and angles `a0`
+    and `a1` (radians, from +x toward +y), from `z0` to `z1`, with only
+    `faces` drawn: top, in (toward the center), out, a0, and a1 (its
+    ends)."""
+    cx, cy = c
+
+    def p(r, a, z):
+        return Vector((cx + r * math.cos(a), cy + r * math.sin(a), z))
+
+    def radial(a):
+        return Vector((math.cos(a), math.sin(a), 0.0))
+
+    am = (a0 + a1) / 2
+    quads = []
+    if "top" in faces:
+        quads.append(([p(r0, a0, z1), p(r0, a1, z1), p(r1, a1, z1), p(r1, a0, z1)], Vector((0, 0, 1))))
+    if "in" in faces:
+        quads.append(([p(r0, a0, z0), p(r0, a1, z0), p(r0, a1, z1), p(r0, a0, z1)], -radial(am)))
+    if "out" in faces:
+        quads.append(([p(r1, a0, z0), p(r1, a1, z0), p(r1, a1, z1), p(r1, a0, z1)], radial(am)))
+    if "a0" in faces:
+        quads.append(([p(r0, a0, z0), p(r1, a0, z0), p(r1, a0, z1), p(r0, a0, z1)], -radial(a0 + math.pi / 2)))
+    if "a1" in faces:
+        quads.append(([p(r0, a1, z0), p(r1, a1, z0), p(r1, a1, z1), p(r0, a1, z1)], radial(a1 + math.pi / 2)))
+    bm = bmesh.new()
+    uv = bm.loops.layers.uv.new("UVMap")
+    for q, want in quads:
+        f = bm.faces.new([bm.verts.new(v) for v in q])
+        f.normal_update()
+        if f.normal.dot(want) < 0:
+            f.normal_flip()
+        for loop in f.loops:
+            co = loop.vert.co
+            loop[uv].uv = (co.x / 2, co.y / 2) if want.z > 0.5 else ((co.x + co.y) / 2, co.z / 2)
+    mesh = bpy.data.meshes.new(name)
+    bm.to_mesh(mesh)
+    bm.free()
+    mesh.materials.append(b.mats[mat])
+    return b.solid(name, mesh)
+
+
+def council_ring(b, c, z0, radii=(3.6, 4.8, 6.0, 7.2), rise=0.32, seg=15.0, gap=37.5):
+    """Tiered benches in a ring round a central floor, open in two aisles
+    along y, each `gap` degrees either side of its axis: stone tiers a step
+    up each, a walnut bench along each tier's back with a copper nosing at
+    its front, and a walnut wall behind the last."""
+    n = round(360 / seg)
+    off = seg / 2
+
+    def open_at(i):
+        mid = off + seg * (i + 0.5)
+        return any(abs((mid - g + 180) % 360 - 180) < gap for g in (90.0, 270.0))
+
+    for i in range(n):
+        if open_at(i):
+            continue
+        a0, a1 = math.radians(off + seg * i), math.radians(off + seg * (i + 1))
+        ends = tuple(e for e, j in (("a0", i - 1), ("a1", i + 1)) if open_at(j % n))
+        for k in range(len(radii) - 1):
+            r0, r1 = radii[k], radii[k + 1]
+            top = z0 + rise * (k + 1)
+            sector(b, c, r0, r1, a0, a1, z0, top, "shade", ("top", "in") + ends)
+            if FAR:
+                continue
+            sector(b, c, r1 - 0.55, r1 - 0.08, a0, a1, top, top + 0.42, "walnut", ("top", "in") + ends, name="Bench")
+            sector(b, c, r0, r0 + 0.06, a0, a1, top, top + 0.004, "copper", ("top",), name="Nosing")
+        last = radii[-1]
+        sector(b, c, last, last + 0.14, a0, a1, z0, z0 + rise * (len(radii) - 1) + 0.9, "walnut",
+               ("top", "in", "out") + ends, name="BenchWall")
+    # Navigation's boxes: three for each half of the ring.
+    cx, cy = c
+    r0, r1 = radii[0], radii[-1] + 0.14
+    top = z0 + rise * (len(radii) - 1) + 0.9
+    lo, hi = math.radians(90.0 - gap), math.radians(17.5)
+    for s in (-1, 1):
+        xa, xb = sorted((s * r0 * math.cos(hi), s * r1))
+        b.collide("tiers", (cx + xa, cy - r1 * math.sin(hi), z0), (cx + xb, cy + r1 * math.sin(hi), top))
+        for t in (-1, 1):
+            xa, xb = sorted((s * r0 * math.cos(lo), s * r1 * math.cos(hi)))
+            ya, yb = sorted((t * r0 * math.sin(hi), t * r1 * math.sin(lo)))
+            b.collide("tiers", (cx + xa, cy + ya, z0), (cx + xb, cy + yb, top))
+
+
+def dais(b, x, y0, y1, z0, w=4.0):
+    """The speaker's dais: two broad steps, stone and marble, with copper
+    nosings."""
+    box(b, (x - w / 2, y0, z0), (x + w / 2, y1, z0 + 0.3), "shade", skip="-z", name="Dais")
+    box(b, (x - w / 2 + 0.5, y0 + 0.5, z0 + 0.3), (x + w / 2 - 0.5, y1, z0 + 0.6), "marble", skip="-z", name="Dais")
+    if not FAR:
+        for (xa, xb, ya, z) in ((x - w / 2, x + w / 2, y0, z0 + 0.3), (x - w / 2 + 0.5, x + w / 2 - 0.5, y0 + 0.5,
+                                                                         z0 + 0.6)):
+            box(b, (xa, ya, z), (xb, ya + 0.06, z + 0.004), "copper", skip=only("+z"), name="Nosing")
+
+
+def high_chair(b, x, y, z0):
+    """The speaker's high-backed walnut chair with a red-brown seat,
+    facing -y."""
+    box(b, (x - 0.36, y - 0.3, 0.0 + z0), (x + 0.36, y + 0.3, z0 + 0.46), "walnut", skip="-z", name="Chair")
+    box(b, (x - 0.32, y - 0.28, z0 + 0.46), (x + 0.32, y + 0.2, z0 + 0.54), "redbrown", skip="-z", name="Chair")
+    box(b, (x - 0.4, y + 0.2, z0), (x + 0.4, y + 0.34, z0 + 1.95), "walnut", skip="-z", name="ChairBack")
+    for s in (-1, 1):
+        box(b, (x + s * 0.4 - 0.06, y - 0.3, z0 + 0.46), (x + s * 0.4 + 0.06, y + 0.2, z0 + 0.78), "walnut",
+            skip="-z", name="ChairArm")
+    if not FAR:
+        box(b, (x - 0.4, y + 0.19, z0 + 1.7), (x + 0.4, y + 0.2, z0 + 1.76), "copper", skip=only("-y"),
+            name="ChairBand")
+    b.collide("chair", (x - 0.46, y - 0.3, z0), (x + 0.46, y + 0.34, z0 + 1.95))
+
+
+def seal_panel(b, xf, w, h, z0):
+    """The seal on a copper plate in a white marble surround on a wall."""
+    box(b, (-w / 2, -0.06, z0), (w / 2, 0.0, z0 + h), "copper", skip="+y", xf=xf, name="SealPlate")
+    m = 0.32
+    for lo, hi in (((-w / 2 - m, -0.12, z0 - m), (-w / 2, 0.0, z0 + h + m)),
+                   ((w / 2, -0.12, z0 - m), (w / 2 + m, 0.0, z0 + h + m)),
+                   ((-w / 2, -0.12, z0 - m), (w / 2, 0.0, z0)),
+                   ((-w / 2, -0.12, z0 + h), (w / 2, 0.0, z0 + h + m))):
+        box(b, lo, hi, "marble", skip="+y", xf=xf, name="SealSurround")
+    seal(b, xf @ Matrix.Translation(Vector((0.0, -0.06, z0))), w, h)
+
+
+# The Civic Hall: heights above the ground, m. The reference image's
+# building is broad and low: two storeys of about 4.6 m on a podium.
+C_FLOOR = 1.92  # The podium: twelve steps of 0.16 m.
+C_PLINTH = 1.35  # The columns' high plinths.
+C_ARCH = C_FLOOR + 8.4  # The columns' tops, and the portico's beam.
+C_WALL = C_FLOOR + 9.3  # The walls' tops.
+C_CEIL = C_FLOOR + 8.6  # The chamber's ceiling, under the roof.
+# Plan, m (Blender y grows away from the street).
+C_HW = 18.0  # The wings' outer faces.
+C_PAV = 8.6  # The pavilion's half width.
+C_PAV_Y = 8.4  # The pavilion's face.
+C_WING_Y = 9.6  # The wings' faces: the pavilion projects 1.2 m.
+C_HALL_Y = 10.0  # The chamber's front wall, inside.
+C_BACK = 30.0  # The back wall, inside.
+C_HALL_HW = 10.6  # The chamber's half width.
+C_COL_Y = 6.4  # The columns' line.
+C_RING = (0.0, 19.6)  # The council ring's center.
+
+
+def civic_body(b):
+    """The Civic Hall's outside: the stair between dark planter walls with
+    bronze bowls, the podium, four columns on high plinths before the
+    pavilion, the portal, the wings with their paired windows, and the
+    crown: the dentil cornices, the pavilion's heavy slab, and its attic."""
+    f, hw = C_FLOOR, C_HW
+    # -- The approach: twelve shallow steps between stepped walnut walls.
+    y_top, _ = stair(b, -7.2, 7.2, 0.0, 0.0, 12, f / 12, 0.4)
+    for s in (-1, 1):
+        x0, x1 = sorted((s * 7.2, s * 9.6))
+        bowl_wall(b, x0, x1, 0.0, 2.4, 0.0, 0.75)
+        bowl_wall(b, x0, x1, 2.4, y_top, 0.0, 1.55)
+        bowl(b, s * 8.4, 1.0, 0.75, r=0.75)
+        bowl(b, s * 8.4, 3.6, 1.55, r=0.75)
+        # Long planters along the podium's foot, hedged, a bowl at the end.
+        x0, x1 = sorted((s * 9.6, s * 16.6))
+        bowl_wall(b, x0, x1, y_top - 1.7, y_top, 0.0, 0.85, hedge=0.4 if not FAR else 0.3)
+        bowl(b, s * 17.4, y_top - 0.85, 0.0, r=0.7)
+    # -- The podium, with a darker base course.
+    box(b, (-hw - 0.4, y_top, 0.0), (hw + 0.4, C_BACK + 0.8, f), "lime", skip="-z", name="Podium")
+    box(b, (-hw - 0.48, y_top - 0.08, 0.0), (hw + 0.48, C_BACK + 0.88, 0.3), "shade", skip="-z",
+        name="BaseCourse")
+    # -- The portico: four columns before the pavilion, under its beam.
+    for x in (-6.9, -2.9, 2.9, 6.9):
+        bronze_column(b, x, C_COL_Y, f, C_ARCH)
+    beam_y = C_COL_Y - 0.8
+    box(b, (-C_PAV, beam_y, C_ARCH), (C_PAV, C_PAV_Y, C_WALL), "lime", skip="+z +y", name="Architrave")
+    # -- The pavilion's face round the portal, and the portal.
+    door_w, door_h = 5.0, 7.2
+    for s in (-1, 1):
+        x0, x1 = sorted((s * door_w / 2, s * C_PAV))
+        box(b, (x0, C_PAV_Y, f), (x1, C_HALL_Y, C_WALL), "lime", skip="-z +z", name="Wall")
+        b.collide("facade", (x0, C_PAV_Y, f), (x1, C_HALL_Y, C_WALL))
+    box(b, (-door_w / 2, C_PAV_Y, f + door_h), (door_w / 2, C_HALL_Y, C_WALL), "lime", skip="+z -x +x",
+        name="Wall")
+    portal(b, 0.0, C_PAV_Y, f, w=door_w, h=door_h)
+    # The chamber's side of the portal: plain wall round the inset door.
+    if not FAR:
+        for lo, hi in (((-door_w / 2, C_HALL_Y, f), (-1.1, C_HALL_Y + 0.01, f + door_h)),
+                       ((1.1, C_HALL_Y, f), (door_w / 2, C_HALL_Y + 0.01, f + door_h)),
+                       ((-1.1, C_HALL_Y, f + 2.8), (1.1, C_HALL_Y + 0.01, f + door_h))):
+            box(b, lo, hi, "lime", skip=only("+y"), name="Wall")
+    # -- The wings: front walls beside the pavilion, side walls, the back
+    # wall, and the chamber's side walls between the wings and the hall.
+    for s in (-1, 1):
+        x0, x1 = sorted((s * C_PAV, s * (hw - 0.4)))
+        box(b, (x0, C_WING_Y, f), (x1, C_HALL_Y, C_WALL), "lime", skip="-z +z -x +x", name="Wall")
+        b.collide("wing", (x0, C_WING_Y, f), (x1, C_HALL_Y, C_WALL))
+        x0, x1 = sorted((s * (hw - 0.4), s * hw))
+        box(b, (x0, C_WING_Y, f), (x1, C_BACK + 0.4, C_WALL), "lime",
+            skip="-z +z +y " + ("-x" if s > 0 else "+x"), name="Wall")
+        b.collide("wall", (x0, C_WING_Y, f), (x1, C_BACK + 0.4, C_WALL))
+        x0, x1 = sorted((s * C_HALL_HW, s * (C_HALL_HW + 0.4)))
+        box(b, (x0, C_HALL_Y, f), (x1, C_BACK, C_WALL), "lime", skip="-z +z -y +y " + ("+x" if s > 0 else "-x"),
+            name="Wall")
+        b.collide("wall", (x0, C_HALL_Y, f), (x1, C_BACK, C_WALL))
+    box(b, (-hw + 0.4, C_BACK, f), (hw - 0.4, C_BACK + 0.4, C_WALL), "lime", skip="-z +z -x +x", name="Wall")
+    b.collide("back", (-hw, C_BACK, f), (hw, C_BACK + 0.4, C_WALL))
+    # The paired windows: on each wing's front and side, both storeys.
+    front = local((0, C_WING_Y, 0), 0.0)
+    for s in (-1, 1):
+        side = side_frame("+x" if s > 0 else "-x", s * hw)
+        for xf, u in ((front, s * 13.1), (side, 15.5 * s), (side, 24.5 * s)):
+            paired_windows(b, xf, u, f + 0.9, h=3.1)
+            paired_windows(b, xf, u, f + 5.1, h=2.7)
+    # A thin band under the cornice, round the wings.
+    if not FAR:
+        for s in (-1, 1):
+            x0, x1 = sorted((s * C_PAV, s * hw))
+            box(b, (x0, C_WING_Y - 0.08, f + 8.15), (x1, C_WING_Y, f + 8.35), "shade", skip="+y -x", name="Band")
+            x0, x1 = sorted((s * hw, s * (hw + 0.08)))
+            box(b, (x0, C_WING_Y - 0.08, f + 8.15), (x1, C_BACK + 0.4, f + 8.35), "shade", skip="-y +y",
+                name="Band")
+    # -- The crown. The wings' cornice: dentils under a slab overhanging
+    # the walls, then a plain parapet block, the walkable roof.
+    if not FAR:
+        for s in (-1, 1):
+            x0, x1 = sorted((s * C_PAV, s * hw))
+            dentils(b, front, x0 + 0.12, x1 - 0.12, C_WALL, tooth=0.16, gap=0.16, out=0.16, tall=0.22,
+                    mat="lime")
+            u0, u1 = side_span("+x" if s > 0 else "-x", -hw, hw, C_WING_Y, C_BACK + 0.4)
+            dentils(b, side_frame("+x" if s > 0 else "-x", s * hw), u0 + 0.12, u1 - 0.12, C_WALL, tooth=0.16,
+                    gap=0.16, out=0.16, tall=0.22, mat="lime")
+    box(b, (-hw - 0.5, C_WING_Y - 0.5, C_WALL), (hw + 0.5, C_BACK + 0.9, C_WALL + 0.45), "lime",
+        name="CorniceSlab")
+    roof = C_WALL + 1.2
+    box(b, (-hw + 0.3, C_WING_Y + 0.3, C_WALL + 0.45), (hw - 0.3, C_BACK + 0.1, roof - 0.15), "lime",
+        skip="-z +z", name="Parapet")
+    box(b, (-hw + 0.2, C_WING_Y + 0.2, roof - 0.15), (hw - 0.2, C_BACK + 0.2, roof), "shade", skip="-z",
+        name="ParapetCap")
+    b.roofs.append(((0.0, (C_WING_Y + C_BACK + 0.4) / 2), True, ((C_BACK - C_WING_Y) / 2, hw - 0.2), roof,
+                    roof + 0.01))
+    # The pavilion's crown: a frieze with dentils over the portico's beam,
+    # the heavy slab, and the stepped attic.
+    crown_y = 14.0
+    slab_top = dentil_cornice(b, -C_PAV, C_PAV, beam_y, crown_y, C_WALL, frieze=0.8, slab=0.65, out=1.0,
+                              dentil_to=C_WING_Y)
+    attic_top = attic(b, -7.8, 7.8, beam_y + 0.4, crown_y - 0.4, slab_top, h=1.0, cap=0.3, over=0.25)
+    b.roofs.append(((0.0, (beam_y + crown_y) / 2), True, ((crown_y - beam_y) / 2 - 0.15, 8.05), attic_top,
+                    attic_top + 0.01))
+    # -- Light: lanterns on posts at the stair's foot, uplights washing the
+    # portal, and lanterns on the wings' faces beside the pavilion.
+    for s in (-1, 1):
+        lantern_post(b, s * 8.4, -0.6, 0.0)
+        uplight(b, s * 3.6, C_PAV_Y - 0.55, f, toward=(0.0, 1.0))
+        wall_lantern(b, s * 10.2, C_WING_Y, f + 3.2)
+    b.front = (0.0, -1.0)
+
+
+def civic_chamber(b):
+    """The council chamber: the ring of tiered benches round a well with a
+    copper seal inlaid in its floor, the speaker's dais and lectern under
+    the seal on the back wall, braziers, a coffered ceiling with copper
+    inlays, pilasters, walnut wainscot inscribed with circuit lines, and
+    candlelight."""
+    b.inside = C_RING
+    if FAR:
+        return
+    f = C_FLOOR
+    x0, x1, y0, y1 = -C_HALL_HW, C_HALL_HW, C_HALL_Y, C_BACK
+    slab(b, x0, x1, y0, y1, f + 0.02, "marble", name="Floor")
+    slab(b, x0, x1, y0, y1, C_CEIL, "shade", down=True, name="Ceiling")
+    xs = [-7.95 + 2.65 * i for i in range(7)]
+    ys = [y0 + (y1 - y0) * (k + 1) / 7 for k in range(6)]
+    coffers(b, x0, x1, y0, y1, C_CEIL, xs=xs, ys=ys)
+    ex, ey = [x0 + 0.55] + xs + [x1 - 0.55], [y0 + 0.55] + ys + [y1 - 0.55]
+    for xa, xb in zip(ex, ex[1:]):
+        for ya, yb in zip(ey, ey[1:]):
+            cx, cy = (xa + xb) / 2, (ya + yb) / 2
+            box(b, (cx - 0.28, cy - 0.28, C_CEIL - 0.012), (cx + 0.28, cy + 0.28, C_CEIL - 0.002), "copper",
+                skip=only("-z"), name="CofferInlay")
+    cove_light(b, x0, x1, y0, y1, C_CEIL - 0.285)
+    # The well: the seal's circle and cross inlaid in copper in the floor.
+    cx, cy = C_RING
+    flat = Matrix.Translation(Vector((0.0, 0.0, f + 0.02))) @ FLAT
+    kw = {"mat": "copper", "width": 0.07, "proud": 0.006}
+    for r in (2.6, 0.7):
+        arc(b, flat, (cx, cy), r, 0.0, 2 * math.pi, 24 if r > 1 else 10, **kw)
+    arc(b, flat, (cx, cy), 3.3, 0.0, 2 * math.pi, 28, **kw)
+    trace(b, flat, (cx - 3.3, cy), (cx + 3.3, cy), **kw)
+    trace(b, flat, (cx, cy - 3.3), (cx, cy + 3.3), **kw)
+    council_ring(b, C_RING, f + 0.02)
+    # The speaker's dais in the ring's back aisle, the lectern on it facing
+    # the room, and the speaker's chair behind.
+    dais(b, 0.0, cy + 4.0, cy + 8.0, f + 0.02)
+    lectern(b, 0.0, cy + 5.3, f + 0.62)
+    candelabra(b, 0.0, cy + 5.3, f + 0.62 + 1.06, arms=0.15, stem=0.2)
+    high_chair(b, 0.0, cy + 7.1, f + 0.62)
+    # The back wall: the seal on a copper plate, pilasters, and braziers.
+    back = local((0, y1, 0), 0.0)
+    seal_panel(b, back, 4.2, 5.6, f + 1.6)
+    for u in (-3.7, 3.7, -8.8, 8.8):
+        pilaster(b, back, u, f, C_CEIL - 0.5)
+    for s in (-1, 1):
+        brazier(b, s * 3.3, y1 - 1.5, f + 0.02)
+    # The side walls: pilasters, walnut wainscot with faint circuit lines,
+    # and a sconce over each panel.
+    for s in (-1, 1):
+        side = local((s * C_HALL_HW, 0, 0), -90 * s)
+        for y in (13.0, 20.0, 27.0):
+            pilaster(b, side, -y * s, f, C_CEIL - 0.5)
+        for ya, yb in ((13.5, 19.5), (20.5, 26.5)):
+            u0, u1 = sorted((-ya * s, -yb * s))
+            uc = (u0 + u1) / 2
+            box(b, (u0 + 0.1, -0.06, f), (u1 - 0.1, 0.0, f + 2.6), "walnut", skip="+y -z", xf=side,
+                name="Wainscot")
+            circuit_lines(b, side @ Matrix.Translation(Vector((uc, -0.06, 0.0))), u1 - u0 - 0.4, f + 0.2, 2.3)
+            sconce(b, side, uc, f + 3.4)
+    # The front wall: sconces flanking the inset door, and tall candle
+    # stands in the four corners.
+    door_face = local((0, y0, 0), 180.0)
+    for u in (-2.4, 2.4):
+        sconce(b, door_face, u, f + 2.6)
+    for x in (-9.5, 9.5):
+        for y in (11.2, 28.8):
+            floor_candelabrum(b, x, y, f + 0.02)
+
+
 def new(name):
     b = bl.Building(name, {"plaster": "cream", "roof": "red", "timber": "dark"})
     b.chimneys = []
@@ -1093,6 +1666,14 @@ def greco_house():
     b = new("greco_house")
     house_body(b)
     great_room(b)
+    return b
+
+
+@model
+def civic_hall():
+    b = new("civic_hall")
+    civic_body(b)
+    civic_chamber(b)
     return b
 
 
@@ -1241,6 +1822,62 @@ def sofa_piece():
 def bookshelf_piece():
     b = new("bookshelf")
     bookshelf(b, local((0, 0, 0)), 0.0, 0.0)
+    return b
+
+
+# The Civic Hall's pieces.
+
+
+@piece
+def bronze_column_piece():
+    b = new("bronze_column")
+    bronze_column(b, 0, 0, 0, 8.4)
+    return b
+
+
+@piece
+def dentil_cornice_bay():
+    b = new("dentil_cornice_bay")
+    dentil_cornice(b, -2.0, 2.0, 0.0, 1.2, 0.0, sides=("-y",))
+    return b
+
+
+@piece
+def attic_piece():
+    b = new("attic")
+    attic(b, -2.0, 2.0, 0.0, 2.0, 0.0)
+    return b
+
+
+@piece
+def circuit_portal():
+    b = new("circuit_portal")
+    box(b, (-3.4, 0.0, 0.0), (-2.5, 1.6, 8.0), "lime", skip="-z", name="Wall")
+    box(b, (2.5, 0.0, 0.0), (3.4, 1.6, 8.0), "lime", skip="-z", name="Wall")
+    box(b, (-2.5, 0.0, 7.2), (2.5, 1.6, 8.0), "lime", name="Wall")
+    portal(b, 0.0, 0.0, 0.0)
+    return b
+
+
+@piece
+def paired_window():
+    b = new("paired_window")
+    paired_windows(b, local((0, 0, 0)), 0.0, 0.0, h=3.1)
+    return b
+
+
+@piece
+def bowl_planter():
+    b = new("bowl_planter")
+    bowl_wall(b, -1.2, 1.2, 0.0, 2.4, 0.0, 0.75)
+    bowl(b, 0.0, 1.2, 0.75, r=0.75)
+    return b
+
+
+@piece
+def council_ring_piece():
+    b = new("council_ring")
+    council_ring(b, (0.0, 0.0), 0.0)
     return b
 
 

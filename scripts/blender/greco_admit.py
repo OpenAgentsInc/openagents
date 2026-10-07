@@ -1,18 +1,19 @@
-"""Admit the Greco-futurism house into the Everglade pack's sources.
+"""Admit the Greco-futurism buildings into the Everglade pack's sources.
 
 Run from the repository root with Python 3, NumPy, and Pillow:
 
-    python3 scripts/blender/greco_admit.py
+    python3 scripts/blender/greco_admit.py [NAME ...]
 
-`scripts/blender/greco_futurism.py` writes the owner's house to
-`assets/verse/generated/greco/greco_house.glb` and its far level of detail
-to `far/greco_house.glb`. This script converts them with
+NAME is `greco_house` (the owner's house) or `civic_hall` (the Civic
+Hall); with none, both. `scripts/blender/greco_futurism.py` writes each to
+`assets/verse/generated/greco/NAME.glb` and its far level of detail to
+`far/NAME.glb`. This script converts them with
 `everglade_admit.py`'s conversion, which keeps the geometry and points the
 limestone and walnut images at the village set's admitted plaster and wood
 trim images with base-color factors:
 
-- `assets/verse/everglade/generated/greco_house.gltf` and `.bin`;
-- `assets/verse/everglade/lod/generated.greco_house.gltf` and `.bin`, the
+- `assets/verse/everglade/generated/NAME.gltf` and `.bin`;
+- `assets/verse/everglade/lod/generated.NAME.gltf` and `.bin`, the
   far level of detail Everglade draws beyond 80 m.
 
 It adds only those files to each set's `manifest.json`, leaving every other
@@ -27,9 +28,7 @@ import sys
 sys.path.insert(0, os.path.dirname(__file__))
 from everglade_admit import LOD, OUT, VILLAGE, convert, mean_linear, sha, write_manifest  # noqa: E402
 
-NAME = "greco_house"
-SOURCE = f"greco/{NAME}.glb"
-FAR_SOURCE = f"greco/far/{NAME}.glb"
+NAMES = ["greco_house", "civic_hall"]
 VILLAGE_FILES = [
     "T_Plaster_Luma.png",
     "T_RoundTiles_Luma.png",
@@ -58,21 +57,28 @@ def admit(source, name, out, how):
 
 
 def main():
-    admit(
-        SOURCE,
-        NAME,
-        OUT,
-        f"converted from assets/verse/generated/{SOURCE} by scripts/blender/greco_admit.py with "
-        "everglade_admit.py's conversion: separate buffer, embedded images replaced by the village "
-        "set's admitted images with base-color factors",
-    )
-    admit(
-        FAR_SOURCE,
-        f"generated.{NAME}",
-        LOD,
-        f"far level of detail of generated/{NAME}, built by scripts/blender/greco_futurism.py and "
-        f"converted from assets/verse/generated/{FAR_SOURCE} by scripts/blender/greco_admit.py",
-    )
+    names = sys.argv[1:] or NAMES
+    for name in names:
+        if name not in NAMES:
+            print(f"unknown model {name}; expected one of {NAMES}")
+            return 1
+    for name in names:
+        source, far_source = f"greco/{name}.glb", f"greco/far/{name}.glb"
+        admit(
+            source,
+            name,
+            OUT,
+            f"converted from assets/verse/generated/{source} by scripts/blender/greco_admit.py with "
+            "everglade_admit.py's conversion: separate buffer, embedded images replaced by the village "
+            "set's admitted images with base-color factors",
+        )
+        admit(
+            far_source,
+            f"generated.{name}",
+            LOD,
+            f"far level of detail of generated/{name}, built by scripts/blender/greco_futurism.py and "
+            f"converted from assets/verse/generated/{far_source} by scripts/blender/greco_admit.py",
+        )
     return 0
 
 

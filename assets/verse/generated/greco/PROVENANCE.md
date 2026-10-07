@@ -5,7 +5,8 @@ prisms, spheres, and flat strips by
 [`scripts/blender/greco_futurism.py`](../../../../scripts/blender/greco_futurism.py),
 with Blender 5.2.2 LTS. The style is defined in
 [Greco-futurism](../../../../docs/verse/greco-futurism.md), from four
-reference images the owner chose; nothing from them ships.
+reference images the owner chose, and the Civic Hall from a fifth;
+nothing from them ships.
 
 Rebuild every model:
 
@@ -31,6 +32,8 @@ points them at the village set's admitted `T_Plaster_Luma.png` and
 | --- | ---: | --- |
 | `greco_house.glb` | 6,156 | The owner's house, with `greco_house.footprint.json` |
 | `far/greco_house.glb` | 1,016 | Its far level of detail |
+| `civic_hall.glb` | 7,817 | The Civic Hall, from a fifth reference image, with `civic_hall.footprint.json` |
+| `far/civic_hall.glb` | 1,038 | Its far level of detail |
 | `kit/column.glb` | 114 | Smooth column with a square capital |
 | `kit/pier.glb` | 28 | Square pier |
 | `kit/entablature_bay.glb` | 56 | 4 m of entablature with its panel frieze |
@@ -49,3 +52,10 @@ points them at the village set's admitted `T_Plaster_Luma.png` and
 | `kit/desk.glb` | 166 | Walnut desk and chair |
 | `kit/sofa.glb` | 132 | Long sofa and low table |
 | `kit/bookshelf.glb` | 176 | Walnut bookcase with books |
+| `kit/bronze_column.glb` | 124 | Column on a high plinth with bronze bands |
+| `kit/dentil_cornice_bay.glb` | 74 | 4 m of the deep dentil cornice |
+| `kit/attic.glb` | 20 | Stepped attic block with its cap |
+| `kit/circuit_portal.glb` | 384 | Copper portal with the seal and its open inset door |
+| `kit/paired_window.glb` | 128 | Paired tall windows |
+| `kit/bowl_planter.glb` | 106 | Walnut planter wall with a bronze bowl |
+| `kit/council_ring.glb` | 560 | Tiered council benches in a ring |
