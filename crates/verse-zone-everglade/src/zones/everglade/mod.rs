@@ -38,6 +38,7 @@ pub mod time_of_day;
 pub mod townsfolk;
 pub mod unstick;
 pub mod water;
+pub mod weather;
 pub mod wildlife;
 pub mod world_tree;
 
@@ -90,7 +91,7 @@ pub const ATMOSPHERE: super::Atmosphere = super::Atmosphere {
 /// The quality tier the town's water effects are budgeted for until the
 /// renderer says ([`Everglade::set_water_tier`]): a phone's or a browser's
 /// Medium, a desktop's High.
-const WATER_TIER: verse_engine::quality::Tier = if cfg!(any(
+pub const WATER_TIER: verse_engine::quality::Tier = if cfg!(any(
     target_arch = "wasm32",
     target_os = "ios",
     target_os = "android"
@@ -208,6 +209,15 @@ pub struct Everglade {
     water_fx: Option<water::WaterFx>,
     /// Impacts on the water since the last frame, for the ripple field.
     pulses: Vec<verse_pbr::water::Source>,
+    /// The town's weather ([`weather`]), in the town only.
+    sky: Option<Box<weather::Sky>>,
+    /// The rain's streaks, splash-back, and drips, in the town only.
+    rainfall: Option<weather::Rainfall>,
+    /// Where rain drips off the eaves.
+    eaves: Vec<[f32; 3]>,
+    /// How wet the player's character is, and until its next drip, s.
+    drying: verse_pbr::water::rain::Drying,
+    drip_wait: f32,
 }
 
 impl Everglade {
@@ -246,6 +256,9 @@ impl Everglade {
             fx.start("water_crest_spray", crate::fx::Spawn::at(at).scaled(0.6));
         }
         zone.water_fx = Some(fx);
+        zone.sky = Some(Box::new(weather::Sky::everglade()));
+        zone.rainfall = Some(weather::Rainfall::new(WATER_TIER));
+        zone.eaves = layout::city::eaves();
         Ok(zone)
     }
 
@@ -340,6 +353,11 @@ impl Everglade {
             afloat: None,
             water_fx: None,
             pulses: Vec::new(),
+            sky: None,
+            rainfall: None,
+            eaves: Vec::new(),
+            drying: verse_pbr::water::rain::Drying::default(),
+            drip_wait: 0.0,
         })
     }
 
@@ -676,7 +694,7 @@ impl Everglade {
     /// say it is, and the sky's own light as fill, with low height fog.
     /// Textured meshes draw only on a lit stage.
     fn stage(&self, time: f32) -> Mesh {
-        let neon = self.look.map_or_else(
+        let mut neon = self.look.map_or_else(
             || Neon {
                 // The running clock moves the sky a step at a time, so its
                 // light rebakes over frames rather than stalling one.
@@ -685,6 +703,10 @@ impl Everglade {
             },
             |look| look(time),
         );
+        // The town's weather over its sky ([`weather`]).
+        if let (None, Some(sky)) = (self.look, &self.sky) {
+            weather::weather_stage(&mut neon, &sky.weather);
+        }
         Mesh {
             neon: Some(neon),
             ..Mesh::default()
@@ -1071,6 +1093,9 @@ impl Everglade {
         if let Some(fx) = &self.water_fx {
             fx.particles.draw(&mut mesh.sprites);
         }
+        if let Some(rainfall) = &self.rainfall {
+            rainfall.draw(&mut mesh.sprites);
+        }
         if let Some(yard) = &self.demolition {
             mesh.extend(&yard.mesh(player, eye, hold));
         } else if let Some(bell) = &self.agora_bell {
@@ -1209,6 +1234,11 @@ impl Everglade {
     pub fn tick(&mut self, dt: f32, at: &PlayerController, seats: &[studio::SeatFigure]) {
         self.elapsed = (self.elapsed + dt) % 1000.0;
         self.advance_clock();
+        if let Some(sky) = &mut self.sky {
+            sky.update(glam::Vec2::new(at.pos.x, at.pos.z));
+            // Rain raises the ponds and the run for every client alike.
+            verse_world::social::everglade_water::set_rise(sky.rise, sky.flow_gain);
+        }
         self.rendered = self.stage(self.elapsed);
         self.tick_water(dt, at);
         if self.look.is_none() {
@@ -1301,6 +1331,50 @@ impl Everglade {
         };
         let mut frame = water::frame(self.elapsed);
         swim.ring(&mut frame);
+        // The weather: rain on the water and the ground, the ponds and the
+        // run risen, the rain's effects around the player, and the
+        // player's character wet from the water or the rain.
+        if let Some(sky) = &self.sky {
+            frame.rain = sky.rain();
+            for body in &mut frame.bodies[..frame.count] {
+                body.level += sky.rise as f32;
+            }
+            let immersed = swim.medium.wet();
+            self.drying.tick(dt, immersed, sky.weather.rain as f32);
+            if self.drying.wet > 0.0 {
+                frame.rain.figure = [at.pos.x, at.pos.y, at.pos.z, self.drying.wet * 0.8];
+            }
+            self.drip_wait -= dt;
+            if !immersed && self.drying.wet > 0.35 && self.drip_wait <= 0.0 {
+                self.drip_wait = 1.2 / self.drying.wet;
+                if let Some(fx) = &mut self.water_fx {
+                    fx.start(
+                        "water_drips",
+                        crate::fx::Spawn::at(at.pos + Vec3::Y * 0.9).scaled(0.7),
+                    );
+                }
+            }
+            if let Some(rainfall) = &mut self.rainfall {
+                let forward = at.forward();
+                rainfall.tick(
+                    dt,
+                    at.pos + Vec3::Y * 1.6,
+                    forward,
+                    &sky.weather,
+                    &sky.ground,
+                    |x, z| {
+                        verse_world::social::everglade_water::surface(x, z)
+                            .is_none()
+                            .then(|| height(x, z))
+                    },
+                    verse_world::social::everglade_water::surface,
+                    &self.eaves,
+                );
+                for source in &rainfall.sources {
+                    frame.add_source(*source);
+                }
+            }
+        }
         let mut fx_starts: Vec<(&'static str, crate::fx::Spawn)> = Vec::new();
         for event in swim.take_events() {
             match event {
@@ -1437,6 +1511,29 @@ impl Everglade {
         }
     }
 
+    /// The town's weather ([`weather`]), in the town.
+    #[must_use]
+    pub fn sky(&self) -> Option<&weather::Sky> {
+        self.sky.as_deref()
+    }
+
+    /// The town's weather, to pin a state or fix the tick for a capture.
+    pub fn sky_mut(&mut self) -> Option<&mut weather::Sky> {
+        self.sky.as_deref_mut()
+    }
+
+    /// The rain's streaks, splash-back, and drips, in the town.
+    #[must_use]
+    pub fn rainfall(&self) -> Option<&weather::Rainfall> {
+        self.rainfall.as_ref()
+    }
+
+    /// How wet the player's character is, 0 to 1.
+    #[must_use]
+    pub fn character_wetness(&self) -> f32 {
+        self.drying.wet
+    }
+
     /// The rowboats and lily pads afloat, in the town.
     #[must_use]
     pub fn afloat(&self) -> Option<&boats::Afloat> {
@@ -1458,6 +1555,9 @@ impl Everglade {
     pub fn set_water_tier(&mut self, tier: verse_engine::quality::Tier) {
         if let Some(fx) = &mut self.water_fx {
             fx.set_tier(tier);
+        }
+        if let Some(rainfall) = &mut self.rainfall {
+            rainfall.set_tier(tier);
         }
     }
 

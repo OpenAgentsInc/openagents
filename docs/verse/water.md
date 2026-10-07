@@ -742,6 +742,25 @@ host events with a start tick.
   example, `--weather rain` on a capture example). Players have no weather
   control except spells.
 
+**Status (W9, 2026-10-07).** `physics::water::weather` is the schedule:
+`Climate` (`TEMPERATE` for Everglade, `COASTAL` for the Water Lab),
+`Schedule::sample` and `sample_at` with spell `Overlay`s, pins from a tick
+on, `ground` (wetness and puddles integrated on a grid fixed to the tick),
+and `rise` and `flow_gain` (mean rain over 30 minutes, at most 0.15 m).
+`verse_world::spells::water::weather` has the SRD conditions,
+`call_lightning_dice(&Weather)`, the spells' overlays, and
+`WaterSpells::overlays`. `verse_pbr::water::rain` carries the frame's
+`Rain`: analytic rain ripples in `water.wgsl` (`water_rain_slope`) on
+every body and in puddles, and wet surfaces, puddles, streaks on High, and
+wet characters in the lit pass from uniforms only, with no new texture.
+Everglade (`everglade::weather`) follows its schedule at the world tick,
+with wind-tilted streaks, splash-back, eave drips, rain drops in the ripple
+field, the ponds and the run risen through `everglade_water::risen`, and
+the sky dimmed and fogged; `VERSE_WEATHER=rain` pins it. The Water Lab
+starts clear and `U` pins the next state; its storm raises the storm sea.
+The Grove keeps its fixed dusk and has no weather yet. Captures are in
+`bench/verse/2026-10-07/everglade-weather/`.
+
 ## Architecture
 
 ### Where the code lives
@@ -1170,6 +1189,8 @@ budget overrun draws less, never fails, as `quality::Overrun` does today.
 | Cosmetic floating chunks | 32 | 64 | 256 |
 | Ripple and wake sources per frame | 8 | 16 | 32 |
 | Water fx particles (within the sprite budget of 160, 768, or 1,536) | 64 | 256 | 512 |
+| Rain streak and splash particles (W9, beside the water fx) | 64 | 320 | 640 |
+| Rain drops written to the ripple field per frame (W9) | 2 | 4 | 8 |
 | Bodies in the shader's caustic and underwater list | 4 | 8 | 8 |
 
 The physics budget stays inside the existing 1 ms per 120 Hz step on the

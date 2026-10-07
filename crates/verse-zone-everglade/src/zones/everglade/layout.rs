@@ -298,7 +298,7 @@ pub fn on_land(mut placement: Placement) -> Placement {
 pub fn afloat(mut placement: Placement, above: f32) -> Placement {
     let [x, z] = placement.at;
     let ground = height(x, z);
-    let top = verse_world::social::everglade_water::surface(x, z).unwrap_or(ground);
+    let top = verse_world::social::everglade_water::rest_surface(x, z).unwrap_or(ground);
     placement.lift = top + above - ground;
     placement
 }

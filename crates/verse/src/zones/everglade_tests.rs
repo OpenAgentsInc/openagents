@@ -1539,7 +1539,10 @@ fn every_pond_and_glade_run_submits_its_water_over_a_bed_below_it() {
     assert!(water.valid());
     assert!(!water.sea);
     assert_eq!(water.count, PONDS.len() + 1);
+    // The rain may have raised them (`ew::set_rise`), never past 0.15 m.
+    let rise = ew::rise().0 as f32;
+    assert!(rise <= 0.15);
     for k in 0..PONDS.len() {
-        assert!((water.bodies[k].level - ew::pond_level(k)).abs() < 1e-3);
+        assert!((water.bodies[k].level - ew::pond_level(k) - rise).abs() < 1e-3);
     }
 }

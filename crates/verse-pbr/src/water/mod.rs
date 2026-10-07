@@ -18,6 +18,8 @@
 //! - [`ripple`]: the interactive ripple and foam field around the camera
 //!   (phase W6), which movers, impacts, and spells write into; it rides
 //!   in one more layer of `water_waves`.
+//! - [`rain`]: the weather's rain on the water and the ground (W9): rain
+//!   ripples, wet surfaces, puddles, and each tier's share of them.
 //! - [`seas`]: sea states from `assets/verse/water/seas/`.
 //! - [`control`]: the frame's `water_control` vector for a quality tier.
 //! - [`screen`]: what Medium and High copy and trace (W5): the scene's
@@ -48,6 +50,7 @@ pub mod ocean;
 #[cfg(test)]
 mod parity;
 pub mod preset;
+pub mod rain;
 pub mod ripple;
 pub mod screen;
 pub mod seas;
@@ -60,6 +63,7 @@ pub use frame::{
 };
 pub use ocean::OceanGpu;
 pub use preset::{Jerlov, Preset};
+pub use rain::Rain;
 pub use ripple::{Ripples, Source};
 pub use seas::SeaState;
 pub use terms::Swell;

@@ -90,7 +90,8 @@ struct WaterUniform {
     // Time (s), detail count, ripple count, and body count.
     params: vec4<f32>,
     // Caustics' strength, the angle one pixel spans at the eye (rad, from
-    // the host renderer; 0 when unknown), and two spare.
+    // the host renderer; 0 when unknown), the rain falling on the water (0
+    // to 1, `water::rain`), and one spare.
     look: vec4<f32>,
     // A sky and a sun for a host that has neither (the imported renderer):
     // zenith (w 1 when set), horizon, the direction toward the sun with its
@@ -496,6 +497,54 @@ fn water_ripples(p: vec2<f32>) -> vec2<f32> {
     return g;
 }
 
+// Rain ripples (`water::rain`): analytic rings from drops landing on a
+// jittered grid, after Lagarde's "Water drop 2b: dynamic rain and its
+// effects" (2013), here computed in the shader rather than read from an
+// animated texture. Each of two layers has one drop per cell per cycle,
+// where a hash under the rain's intensity says a drop lands; its ring
+// spreads at 0.4 m/s and fades over the cycle. Returns the surface slope
+// at `p` for rain `rain` (0 to 1) at time `time` (s), faded once the rings
+// are smaller than the pixel's `footprint` (m). No textures, no
+// derivatives, so the lit pass's puddles call it too.
+fn water_rain_slope(p: vec2<f32>, time: f32, rain: f32, footprint: f32) -> vec2<f32> {
+    if rain <= 0.0 {
+        return vec2<f32>(0.0);
+    }
+    let fade = 1.0 - smoothstep(0.03, 0.12, footprint);
+    if fade <= 0.0 {
+        return vec2<f32>(0.0);
+    }
+    var g = vec2<f32>(0.0);
+    for (var layer = 0; layer < 2; layer++) {
+        let cell = select(0.42, 0.29, layer == 1);
+        let q = p / cell + vec2<f32>(f32(layer) * 0.37, f32(layer) * 0.71);
+        let id = floor(q);
+        let period = 0.85 + 0.3 * water_hash(vec3<f32>(id, 41.0 + f32(layer)));
+        let offset = water_hash(vec3<f32>(id, 53.0 + f32(layer))) * period;
+        let cycle = floor((time + offset) / period);
+        let age = (time + offset) - cycle * period;
+        let lands = water_hash(vec3<f32>(id, cycle * 0.618 + 7.0 + f32(layer)));
+        if lands > rain {
+            continue;
+        }
+        let jitter = vec2<f32>(
+            water_hash(vec3<f32>(id, cycle + 17.0)),
+            water_hash(vec3<f32>(id, cycle + 29.0)),
+        );
+        let center = id + 0.2 + 0.6 * jitter;
+        let to = (q - center) * cell;
+        let d = length(to);
+        let s = d - 0.4 * age;
+        let k = 6.2831853 / 0.045;
+        let life = 1.0 - age / period;
+        let envelope = exp(-s * s / 0.0006) * life * life;
+        // d/dd of 0.0035 cos(k s) under the envelope.
+        let slope = -0.0035 * k * sin(k * s) * envelope;
+        g += to / max(d, 1e-4) * slope;
+    }
+    return g * fade * (0.6 + 0.4 * rain);
+}
+
 // Foam riding the rings of young ripples.
 fn water_ripple_foam(p: vec2<f32>) -> f32 {
     var foam = 0.0;
@@ -733,7 +782,8 @@ fn water_normal(s: WaterFragment) -> WaterNormal {
     }
     let detail = water_flow_detail(s.rest, s.flow, s.footprint, s.dpx, s.dpy);
     let field = water_ripple_field(s.rest);
-    slope = (slope + detail.xy + water_ripples(s.rest) + field.yz + s.slope) * (1.0 - s.calm);
+    let rain = water_rain_slope(s.rest, water.params.x, water.look.z, s.footprint);
+    slope = (slope + detail.xy + water_ripples(s.rest) + field.yz + rain + s.slope) * (1.0 - s.calm);
     o.n = normalize(vec3<f32>(-slope.x, 1.0 - squeeze_y * (1.0 - s.calm), -slope.y));
     let base = water.bodies[s.body].params.y;
     o.roughness = clamp(sqrt(base * base + detail.z + lost), 0.02, 0.6);

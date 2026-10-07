@@ -148,13 +148,30 @@ fn water_ice(p: vec2<f32>) -> f32 {
     return f.water_ice.w * (1.0 - smoothstep(f.water_ice.z - 1.5, f.water_ice.z, r));
 }
 
-// Rain's wetness on the ground at `p`, 0 to 1.
+// How wet the ground at `p` is, 0 to 1: the weather's wetness everywhere
+// (`f.weather.x`, `water::rain`), and Create Water's rain on its disc.
 fn water_wetness(p: vec2<f32>) -> f32 {
-    if f.water_wet.w <= 0.0 {
+    var wet = f.weather.x;
+    if f.water_wet.w > 0.0 {
+        let r = distance(p, f.water_wet.xy);
+        wet = max(wet, f.water_wet.w * (1.0 - smoothstep(f.water_wet.z - 1.0, f.water_wet.z + 0.5, r)));
+    }
+    return wet;
+}
+
+// How wet a character's body at `world` is, 0 to 1: one who swam or stood
+// in the rain darkens for a while (`water::rain::Rain::figure`), within
+// 0.6 m of its feet's axis and 2.1 m above them.
+fn water_figure_wetness(world: vec3<f32>) -> f32 {
+    let fig = f.weather_figure;
+    if fig.w <= 0.0 {
         return 0.0;
     }
-    let r = distance(p, f.water_wet.xy);
-    return f.water_wet.w * (1.0 - smoothstep(f.water_wet.z - 1.0, f.water_wet.z + 0.5, r));
+    let h = world.y - fig.y;
+    if h < 0.03 || h > 2.1 {
+        return 0.0;
+    }
+    return fig.w * (1.0 - smoothstep(0.45, 0.65, distance(world.xz, fig.xz)));
 }
 
 // ---- Light under the water (read by every lit fragment through `shade`,

@@ -15,11 +15,18 @@
 //!   ([`physics::water::FlowGrid::river`]): it speeds up where the run
 //!   narrows and slows across the pool.
 //!
+//! Rain raises them a little (`docs/verse/water.md`, R4): the zone sets
+//! the weather schedule's bounded rise and flow gain with [`set_rise`] each
+//! frame, a pure function of the world tick, and [`risen`] is the water
+//! with them applied, which the swimmers, the boats, and the surface
+//! queries here read.
+//!
 //! Nothing here renders; the zone draws these bodies with the shared water
 //! shader and walks its characters through them with
 //! [`crate::water`]'s rules.
 
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use glam::DVec2;
 use physics::water::{
@@ -512,19 +519,91 @@ pub fn bed_boxes(cell: f32, margin: f32) -> Vec<(glam::DVec3, glam::DVec3)> {
         .collect()
 }
 
-/// The gameplay surface's height over `(x, z)`, m, if there is water. The
-/// ponds and the run carry no waves, so the tick does not matter.
+/// The rain's rise of every body, m, as `f64` bits.
+static RISE: AtomicU64 = AtomicU64::new(0);
+/// How much faster the currents run for it, as `f64` bits (1.0).
+static FLOW_GAIN: AtomicU64 = AtomicU64::new(0x3FF0_0000_0000_0000);
+
+/// Sets the rain's rise of the ponds and the run, m, and how much faster
+/// their currents run: the weather schedule's
+/// (`physics::water::weather::Schedule::rise` and `flow_gain`) at the
+/// world tick, so every client sets the same. The rise is held to
+/// `physics::water::weather::MAX_RISE`.
+pub fn set_rise(rise: f64, flow_gain: f64) {
+    let max = physics::water::weather::MAX_RISE;
+    let rise = if rise.is_finite() {
+        rise.clamp(0.0, max)
+    } else {
+        0.0
+    };
+    let gain = if flow_gain.is_finite() {
+        flow_gain.clamp(1.0, 1.0 + physics::water::weather::MAX_FLOW_GAIN)
+    } else {
+        1.0
+    };
+    RISE.store(rise.to_bits(), Ordering::Relaxed);
+    FLOW_GAIN.store(gain.to_bits(), Ordering::Relaxed);
+}
+
+/// The rain's rise now, m, and the currents' gain.
+#[must_use]
+pub fn rise() -> (f64, f64) {
+    (
+        f64::from_bits(RISE.load(Ordering::Relaxed)),
+        f64::from_bits(FLOW_GAIN.load(Ordering::Relaxed)),
+    )
+}
+
+/// The town's water with the rain's rise ([`set_rise`]) applied: each
+/// surface that much higher and each current that much stronger.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Risen;
+
+impl Water for Risen {
+    fn sample(&self, x: f64, z: f64, tick: u64) -> Option<physics::water::Sample> {
+        let (rise, gain) = rise();
+        water().sample(x, z, tick).map(|mut s| {
+            s.height += rise;
+            s.flow *= gain;
+            s
+        })
+    }
+
+    fn bodies_overlapping(&self, min: DVec2, max: DVec2) -> Vec<WaterId> {
+        water().bodies_overlapping(min, max)
+    }
+}
+
+/// The town's water as rain has raised it ([`Risen`]).
+#[must_use]
+pub fn risen() -> &'static Risen {
+    static RISEN: Risen = Risen;
+    &RISEN
+}
+
+/// The gameplay surface's height over `(x, z)`, m, if there is water, with
+/// the rain's rise. The ponds and the run carry no waves, so the tick does
+/// not matter.
 #[must_use]
 pub fn surface(x: f32, z: f32) -> Option<f32> {
+    risen()
+        .sample(f64::from(x), f64::from(z), 0)
+        .map(|s| s.height as f32)
+}
+
+/// The surface at rest over `(x, z)`, m, without the rain's rise: for what
+/// is built once, such as the mud under the water and placed props.
+#[must_use]
+pub fn rest_surface(x: f32, z: f32) -> Option<f32> {
     water()
         .sample(f64::from(x), f64::from(z), 0)
         .map(|s| s.height as f32)
 }
 
-/// The current at `(x, z)`, m/s in x and z.
+/// The current at `(x, z)`, m/s in x and z, with the rain's gain.
 #[must_use]
 pub fn current(x: f32, z: f32) -> [f32; 2] {
-    water()
+    risen()
         .sample(f64::from(x), f64::from(z), 0)
         .map_or([0.0; 2], |s| [s.flow.x as f32, s.flow.z as f32])
 }

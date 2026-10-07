@@ -859,6 +859,30 @@ pub fn blocks() -> Vec<(Footprint, f32)> {
     out
 }
 
+/// Where rain drips off each kit building's eaves (`docs/verse/water.md`,
+/// R7): points every 2 m along the top of its walls, 0.4 m outside them.
+#[must_use]
+pub fn eaves() -> Vec<[f32; 3]> {
+    let mut out = Vec::new();
+    for b in all().filter(|b| !replaced(b)) {
+        let ([cx, cz], [hx, hz]) = b.rect;
+        let top = height(cx, cz) + WALL_TOP * f32::from(b.stories);
+        let (ox, oz) = (hx + 0.4, hz + 0.4);
+        let steps = |half: f32| (half / 1.0).ceil().max(1.0) as usize;
+        for k in 0..=steps(hx) {
+            let x = cx - hx + 2.0 * hx * k as f32 / steps(hx) as f32;
+            out.push([x, top, cz - oz]);
+            out.push([x, top, cz + oz]);
+        }
+        for k in 0..=steps(hz) {
+            let z = cz - hz + 2.0 * hz * k as f32 / steps(hz) as f32;
+            out.push([cx - ox, top, z]);
+            out.push([cx + ox, top, z]);
+        }
+    }
+    out
+}
+
 /// Each kit building's walls as one footprint per run between doorways,
 /// with their tops, m. A generated model collides by its own triangles
 /// instead (`demolition::carve`).

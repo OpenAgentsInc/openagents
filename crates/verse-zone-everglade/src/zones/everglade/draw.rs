@@ -424,7 +424,7 @@ fn grass_tint(x: f32, z: f32) -> [u8; 4] {
 
 /// `tint` turned to mud where the ground at `p` lies under the water.
 fn mud(tint: [u8; 4], p: Vec3) -> [u8; 4] {
-    let Some(top) = verse_world::social::everglade_water::surface(p.x, p.z) else {
+    let Some(top) = verse_world::social::everglade_water::rest_surface(p.x, p.z) else {
         return tint;
     };
     let under = smoothstep((top - p.y) / 0.3);
@@ -448,7 +448,7 @@ fn dirt_v(z: f32) -> f32 {
 /// water before blended textured surfaces, so dirt over a pond or the run
 /// would hide the water under a flat sheet.
 pub(super) fn dry(x: f32, z: f32) -> f32 {
-    verse_world::social::everglade_water::surface(x, z).map_or(1.0, |top| {
+    verse_world::social::everglade_water::rest_surface(x, z).map_or(1.0, |top| {
         1.0 - smoothstep((top - height(x, z)) / DRY_DEPTH)
     })
 }

@@ -138,6 +138,12 @@ struct Frame {
     water_eye: [f32; 4],
     water_caustic: [[f32; 4]; crate::water::under::WAVE_ROWS],
     water_list: [[f32; 4]; crate::water::under::LIST_ROWS],
+    /// The weather on lit surfaces ([`crate::water::rain::Rain::row`]):
+    /// wetness, puddles, rain, and 1 when the tier streaks vertical faces.
+    weather: [f32; 4],
+    /// A wet character ([`crate::water::rain::Rain::figure`]): its feet and
+    /// how wet it is.
+    weather_figure: [f32; 4],
 }
 
 impl Frame {
@@ -3140,6 +3146,8 @@ impl Photo {
             uniform.water_caustic = waves;
             uniform.water_list = list;
             uniform.water_controls = water.control_terms();
+            uniform.weather = water.rain.row(self.capability.quality.tier);
+            uniform.weather_figure = water.rain.figure;
             let mut packed = water.uniform();
             packed.look[1] = crate::water::pixel_angle(view.view_proj, view.eye, height);
             packed.ocean = self.ocean.prepare(

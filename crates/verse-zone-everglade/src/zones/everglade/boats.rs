@@ -131,7 +131,7 @@ impl Afloat {
     ///
     /// Returns a message when the pack lacks a model.
     pub fn new(pack: &ZonePack, floats: &[Placement]) -> Result<Self, String> {
-        let fleet = Fleet::new(ew::water(), beds(), &moorings(floats));
+        let fleet = Fleet::new(ew::risen(), beds(), &moorings(floats));
         let pads: Vec<Pad> = floats
             .iter()
             .filter(|p| p.model == LILY_PADS)

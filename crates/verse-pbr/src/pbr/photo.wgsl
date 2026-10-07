@@ -139,6 +139,12 @@ struct Frame {
     // level plane (height, slope along x, along z) and residual (−1 for the
     // sea); its extinction and the caustics' strength.
     water_list: array<vec4<f32>, 24>,
+    // The weather on lit surfaces (`water::rain::Rain::row`): x how wet
+    // exposed surfaces are, y how full the puddles are (0 on Low), z the
+    // rain falling now, w 1 when the tier streaks vertical faces (High).
+    weather: vec4<f32>,
+    // A wet character: its feet (xyz) and how wet it is (w, 0 for none).
+    weather_figure: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> f: Frame;
@@ -835,19 +841,50 @@ fn shade(i: Shading) -> vec3<f32> {
     var roughness = clamp(i.params.y, 0.03, 1.0);
     let ao = clamp(i.params.w, 0.0, 1.0);
     var base = i.color;
-    // Rain darkens and glosses what it wets and pools on flat ground;
-    // sleet frosts the ground under its ice (`pbr::water`).
-    if f.water.y > 0.5 {
-        let wet = water_wetness(i.world.xz);
-        if wet > 0.0 {
-            base *= 1.0 - 0.45 * wet;
-            roughness = mix(roughness, 0.18, wet);
-            let flat = smoothstep(0.93, 0.99, geometric.y);
-            let pool = smoothstep(0.52, 0.6, value_noise(vec3<f32>(i.world.xz * 0.45, 3.0)) + 0.25 * wet);
-            let puddle = flat * pool * wet;
-            base = mix(base, base * 0.25, puddle);
-            roughness = mix(roughness, 0.03, puddle);
+    // Rain darkens and glosses what it wets and pools on flat ground
+    // (`water::rain`, after Lagarde's "Water drop" series, 2012–2013): a
+    // porous surface darkens as water fills its pores, every wet surface
+    // turns glossier under its film, and puddles in low ground reach the
+    // water's own smoothness with rain ripples on them. Faces wet less
+    // than tops and, on High, in streaks running down them. Sleet frosts
+    // the ground under its ice (`pbr::water`). The footprint is taken
+    // before the per-fragment branch, as derivatives need.
+    let wet_footprint = length(fwidth(i.world));
+    let wetness = max(water_wetness(i.world.xz), water_figure_wetness(i.world));
+    if wetness > 0.0 {
+        let up = geometric.y;
+        // Rain reaches what is open to the sky: the baked sky fraction
+        // (or occlusion) keeps porches and undersides drier.
+        let open = smoothstep(0.2, 0.6, clamp(i.params.w, 0.0, 1.0));
+        var amount = wetness * mix(0.55, 1.0, smoothstep(0.0, 0.7, up)) * mix(0.7, 1.0, open);
+        if f.weather.w > 0.5 && abs(up) < 0.5 {
+            let along = dot(i.world.xz, vec2<f32>(3.1, 2.3));
+            let streak = value_noise(vec3<f32>(along, i.world.y * 0.4, 5.0));
+            amount *= 0.35 + 0.9 * smoothstep(0.42, 0.68, streak);
         }
+        amount = clamp(amount, 0.0, 1.0);
+        base *= 1.0 - 0.45 * amount * (1.0 - metallic);
+        roughness = mix(roughness, 0.3, amount);
+        // Puddles stand where the low-frequency ground noise dips, more
+        // of it as they fill: the weather's fill, or Create Water's rain.
+        // Grass and leaves soak it up, so they pool on the plainer,
+        // less saturated paths, paving, and bare ground.
+        let fill = max(f.weather.y, select(0.0, wetness, f.water_wet.w > 0.0));
+        let flat = smoothstep(0.93, 0.99, up);
+        let low = value_noise(vec3<f32>(i.world.xz * 0.8, 3.0));
+        let peak = max(base.r, max(base.g, base.b));
+        let saturation = (peak - min(base.r, min(base.g, base.b))) / max(peak, 1e-4);
+        let hard = 1.0 - smoothstep(0.2, 0.4, saturation);
+        let pool = smoothstep(0.72 - 0.16 * fill, 0.77 - 0.16 * fill, low) * hard;
+        let puddle = flat * pool * min(fill * 2.5, 1.0);
+        base = mix(base, base * 0.1, puddle);
+        roughness = mix(roughness, 0.03, puddle);
+        if puddle > 0.0 && f.weather.z > 0.0 {
+            let slope = water_rain_slope(i.world.xz, f.water_scatter.w, f.weather.z, wet_footprint);
+            n = normalize(n + vec3<f32>(-slope.x, 0.0, -slope.y) * puddle);
+        }
+    }
+    if f.water.y > 0.5 {
         if f.water_ice.w > 0.0 && i.world.y > f.water.x - 0.2 {
             let frost = water_ice(i.world.xz) * smoothstep(0.3, 0.8, geometric.y);
             base = mix(base, vec3<f32>(0.78, 0.84, 0.9), frost * 0.7);

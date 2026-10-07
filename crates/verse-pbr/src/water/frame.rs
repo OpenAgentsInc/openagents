@@ -281,6 +281,8 @@ pub struct Water {
     /// zone's surface query: the physical renderer splits the view at it
     /// ([`super::under`]). It finds the sea's itself.
     pub eye: Option<super::under::EyeSurface>,
+    /// The weather's rain on the water and the ground ([`super::rain`]).
+    pub rain: super::rain::Rain,
 }
 
 impl Default for Water {
@@ -310,6 +312,7 @@ impl Water {
             hulls: [Hull::default(); MAX_HULLS],
             hull_count: 0,
             eye: None,
+            rain: super::rain::Rain::default(),
         };
         water.set_detail(0.3, 0.12, 2.4, 0.016);
         water
@@ -544,7 +547,7 @@ impl Water {
             ripples as f32,
             self.count as f32,
         ];
-        u.look = [self.caustics, 0.0, 0.0, 0.0];
+        u.look = [self.caustics, 0.0, self.rain.rain, 0.0];
         for (i, hull) in self.hulls[..self.hull_count.min(MAX_HULLS)]
             .iter()
             .enumerate()
@@ -579,6 +582,7 @@ impl Water {
             && (0.0..=1.0).contains(&self.caustics)
             && self.eye.is_none_or(|e| e.valid(self.count))
             && self.controls.valid()
+            && self.rain.valid()
             && self.source_count <= MAX_SOURCES
             && self.hull_count <= MAX_HULLS
             && self.hulls.iter().all(|h| {
@@ -837,7 +841,8 @@ pub struct WaterUniform {
     pub ripples: [[f32; 4]; MAX_RIPPLES],
     /// Time, detail count, ripple count, and body count.
     pub params: [f32; 4],
-    /// Caustics, and three spare.
+    /// Caustics, the angle a pixel spans (set by the renderer), the rain
+    /// ([`super::rain::Rain::rain`]), and one spare.
     pub look: [f32; 4],
     pub sky_zenith: [f32; 4],
     pub sky_horizon: [f32; 4],

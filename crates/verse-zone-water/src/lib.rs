@@ -17,8 +17,10 @@
 //! current. The hotbar holds the water spells ([`spells`]), the Water Orb
 //! ([`orb`]), and the Grove's Thunderbolt ([`bolt`]), and training dummies
 //! stand on the beach and in the water ([`targets`]); `T` turns the hour
-//! between golden hour and noon, and `Y` turns the sea from calm to
-//! moderate to storm.
+//! between golden hour and noon, `Y` turns the sea from calm to
+//! moderate to storm, and `U` pins the weather (`docs/verse/water.md`,
+//! Weather): the coast's schedule, then clear, overcast, fog, rain, and
+//! storm. A storm raises the storm sea.
 //!
 //! [`terrain`] is the ground; [`sea`] the water's rest shape and light, its
 //! sea drawn on the clipmap ocean over a streamed field (phase W10).
@@ -348,7 +350,19 @@ pub struct WaterLab {
     running: Vec<rules::Running>,
     /// The Sleet Storm's cast while it lasts.
     sleet_cast: Option<u64>,
+    /// The cove's weather: the coastal schedule, its pin, and the spells'
+    /// weather over it ([`everglade::weather`]).
+    pub sky: everglade::weather::Sky,
+    /// The rain's streaks and splash-back around the camera.
+    pub rainfall: everglade::weather::Rainfall,
+    /// Whether the weather's storm is driving the sea.
+    storm_sea: bool,
+    /// How wet the character is.
+    drying: verse_pbr::water::rain::Drying,
 }
+
+/// The cove's weather seed.
+pub const WEATHER_SEED: u64 = 0xC0A5_7A11;
 
 /// Floating numbers at once, oldest dropped first.
 pub const MAX_FLOATERS: usize = 48;
@@ -419,7 +433,19 @@ impl WaterLab {
             casts: 0,
             running: Vec::new(),
             sleet_cast: None,
+            sky: everglade::weather::Sky::new(
+                physics::water::weather::Climate::COASTAL,
+                WEATHER_SEED,
+            ),
+            rainfall: everglade::weather::Rainfall::new(everglade::WATER_TIER),
+            storm_sea: false,
+            drying: verse_pbr::water::rain::Drying::default(),
         };
+        // The lab shows weather on demand: clear until `U` turns it, unless
+        // `VERSE_WEATHER` pinned another state.
+        if lab.sky.schedule.pins().is_empty() {
+            lab.sky.pin(physics::water::weather::State::Clear);
+        }
         lab.fx.start("water_falls_spray", Spawn::at(sea::landing()));
         for (k, (x, z)) in [
             (2.0, -6.0),
@@ -502,6 +528,13 @@ impl WaterLab {
         }
         controls.ice = self.ice_disc();
         water.controls = controls;
+        // The weather's rain on the water and the beach, and the character
+        // wet from the sea or the rain.
+        water.rain = self.sky.rain();
+        if self.drying.wet > 0.0 {
+            let feet = self.caster.0;
+            water.rain.figure = [feet.x, feet.y, feet.z, self.drying.wet * 0.8];
+        }
         // The ripple field: the character, the splashes, and every float
         // moving on the surface leaves its wake and foam.
         for source in &self.sources {
@@ -641,6 +674,7 @@ impl WaterLab {
         }
         self.caster = (feet, forward);
         self.tick_world(dt);
+        self.tick_weather(dt, feet, forward);
         let moved = self.last.map_or(0.0, |last| {
             Vec2::new(feet.x - last.x, feet.z - last.z).length()
         });
@@ -764,6 +798,67 @@ impl WaterLab {
             }
         }
         out
+    }
+
+    /// The weather this step: the schedule at the world tick with the
+    /// spells' rain and fog over it at the rules' tick, a storm's sea, the
+    /// rain around the camera, and the character drying.
+    fn tick_weather(&mut self, dt: f32, feet: Vec3, forward: Vec3) {
+        let tick = self.rules_tick();
+        self.sky.overlays = self.rules.overlays(tick);
+        self.sky.overlay_tick = Some(tick);
+        self.sky.update(Vec2::new(feet.x, feet.z));
+        let storm = self.sky.weather.state == physics::water::weather::State::Storm;
+        if storm != self.storm_sea {
+            self.storm_sea = storm;
+            let name = if storm { "storm" } else { sea::SEAS[self.sea] };
+            self.water.sea_body_mut().spectrum = sea::spectrum(name);
+        }
+        let p = Vec2::new(feet.x, feet.z);
+        let immersed = self.surface_at(p).is_some_and(|s| s.height > feet.y + 0.3);
+        self.drying.tick(dt, immersed, self.sky.weather.rain as f32);
+        let land = |x: f32, z: f32| {
+            let g = ground(x, z);
+            (terrain::fresh_water(Vec2::new(x, z)).is_none() && g > LEVEL + 0.03).then_some(g)
+        };
+        let water = |x: f32, z: f32| {
+            terrain::fresh_water(Vec2::new(x, z))
+                .map(|(h, _)| h)
+                .or_else(|| (ground(x, z) <= LEVEL + 0.03).then_some(LEVEL))
+        };
+        self.rainfall.tick(
+            dt,
+            feet + Vec3::Y * 1.6,
+            forward,
+            &self.sky.weather,
+            &self.sky.ground,
+            land,
+            water,
+            &[],
+        );
+        self.sources.extend(self.rainfall.sources.iter().copied());
+    }
+
+    /// Pins the cove's weather to the next state: the schedule, then clear,
+    /// overcast, fog, rain, storm, and the schedule again.
+    pub fn turn_weather(&mut self) -> String {
+        use physics::water::weather::State;
+        let now = self.sky.schedule.pinned_at(self.sky.tick);
+        let next = match now {
+            None => Some(State::Clear),
+            Some(State::Storm) => None,
+            Some(state) => Some(state.next()),
+        };
+        match next {
+            Some(state) => self.sky.pin(state),
+            None => self.sky.schedule.unpin(),
+        }
+        self.sky.update(Vec2::new(self.caster.0.x, self.caster.0.z));
+        let line = match next {
+            Some(state) => format!("Weather pinned: {}", everglade::weather::name(state)),
+            None => "Weather follows the coast's schedule".to_owned(),
+        };
+        self.say(line)
     }
 
     /// Ripples and foam behind a body moving across the surface.
@@ -1046,6 +1141,7 @@ impl WaterLab {
     #[must_use]
     pub fn stage(&self) -> verse_pbr::pbr::Neon {
         let mut stage = sea::stage(self.time, self.hour, self.frame_water());
+        everglade::weather::weather_stage(&mut stage, &self.sky.weather);
         // Lightning lights the cove and the sky for a moment.
         for (slot, lamp) in stage.lamps.iter_mut().zip(self.lamps()) {
             *slot = lamp;
@@ -1093,6 +1189,7 @@ impl WaterLab {
                 &mut mesh.sprites,
             );
         }
+        self.rainfall.draw(&mut mesh.sprites);
         mesh
     }
 
@@ -1124,6 +1221,7 @@ impl WaterLab {
         if !live.is_empty() {
             lines.push(live.join(", "));
         }
+        lines.push(self.sky.caption());
         if let Some(orb) = self.forming() {
             let full = if orb.radius >= orb::MAX_RADIUS - 1e-3 {
                 " (largest)"
@@ -1146,7 +1244,7 @@ impl WaterLab {
             lines.push(line.clone());
         } else {
             lines.push(
-                "1 to 5 cast, hold 6 for a Water Orb, 7 Thunderbolt, B drops a float, T turns the hour, Y the sea, G leaves"
+                "1 to 5 cast, hold 6 for a Water Orb, 7 Thunderbolt, B drops a float, T turns the hour, Y the sea, U the weather, G leaves"
                     .into(),
             );
         }

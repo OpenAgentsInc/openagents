@@ -13,6 +13,9 @@
 //!   Wind, Thunderwave, Meteor Swarm and the fire spells, Reverse Gravity,
 //!   Wall of Stone's dam, Create or Destroy Water, Water Walk, Water
 //!   Breathing, plants, webs, fog, and steam.
+//! - [`weather`]: SRD 5.2.1's Heavy Precipitation and Strong Wind over the
+//!   zone's weather schedule, Call Lightning's storm bonus, and the spells
+//!   that make weather as local overlays on it.
 //!
 //! [`WaterSpells`] is the authoritative state. It lives in
 //! [`super::SpellWorld`], so a checkpoint saves it; what changes the water
@@ -25,6 +28,7 @@ pub mod control;
 pub mod effects;
 pub mod ice;
 pub mod lightning;
+pub mod weather;
 
 use std::collections::{BTreeMap, BTreeSet};
 

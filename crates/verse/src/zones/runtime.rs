@@ -596,6 +596,20 @@ impl WorldRuntime {
         Ok(lab.turn_sea())
     }
 
+    /// Pins the Water Lab's weather to the next state, or back to the
+    /// coast's schedule.
+    ///
+    /// # Errors
+    /// The player is not in the Water Lab.
+    pub fn water_weather(&mut self) -> Result<String, String> {
+        let lab = self
+            .zone_state
+            .water
+            .as_deref_mut()
+            .ok_or("Enter the Water Lab first")?;
+        Ok(lab.turn_weather())
+    }
+
     /// The Water Lab's hotbar: each slot's icon and state.
     #[must_use]
     pub fn water_bar(&self) -> Option<Vec<(&'static str, super::everglade::hotbar::Slot)>> {

@@ -26,6 +26,9 @@
 //! - [`event`]: host events on water (a level change, ice, a dam), each
 //!   with a start tick, and the world tick clients derive from their
 //!   clocks ([`tick_at`]).
+//! - [`weather`]: each zone's deterministic weather schedule from its
+//!   climate, seed, and the world tick, spell weather over it, the ground's
+//!   wetness and puddles, and rain's bounded rise of ponds and streams.
 //!
 //! Nothing here renders or reads files; the look of water lives elsewhere
 //! and never feeds back into these forces. See `docs/verse/water.md`.
@@ -40,6 +43,7 @@ mod set;
 pub mod spectrum;
 mod submerge;
 mod surface;
+pub mod weather;
 
 pub use apply::{Push, Settings, Term, apply, apply_scaled, apply_where, apply_with, record};
 pub use body::{
@@ -51,6 +55,7 @@ pub use medium::{Medium, Stroke};
 pub use set::{Water, WaterSet};
 pub use spectrum::{Cascade, Field, Spectrum, Synth, Tile};
 pub use submerge::{Plane, Submersion, area, below, submerged, volume};
+pub use weather::{Climate, Ground, Overlay, OverlayKind, Schedule, State as WeatherState, Weather};
 pub use surface::{Displacement, G, INVERSIONS, MAX_WAVES, Phases, Wave, WaveSet};
 
 #[cfg(test)]

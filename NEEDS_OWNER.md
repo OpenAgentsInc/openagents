@@ -96,6 +96,16 @@ confirm the sea, the river, and the falls draw, with foam at the shore and
 the glint path at golden hour (`T` turns the hour). Note the frame rate in
 the Lab next to the beach.
 
+## Weather and rain on a phone (#10781)
+
+Weather (`docs/verse/water.md`, W9) was captured on the desktop on every
+tier (`bench/verse/2026-10-07/everglade-weather/`), and its shaders
+translate to GLSL ES 3.00 and Metal. On a physical phone, in the Water Lab
+press `U` until the weather reads Rain, then Storm, and confirm the rain
+streaks, the rain ripples on the sea, the darker, glossier beach, and the
+storm sea; note the frame rate in rain beside the beach. In Everglade, a
+build run with `VERSE_WEATHER=rain` shows the same over the town.
+
 ## Water refraction and reflection on a phone (#10777)
 
 Medium's scene copies and half-resolution planar mirror

@@ -1,0 +1,27 @@
+# The weather's rain around the camera (docs/verse/water.md, R1): thin
+# streaks falling through a disc 7 m above the eye, tilted by the wind
+# through the effect's axis. A zone runs one to several of these around
+# the eye by how hard it rains, within the tier's rain particle budget.
+description = "Weather rain streaks falling around the camera."
+
+[[emitter]]
+name = "streaks"
+sheet = "sparks"
+frames = [0, 0]
+blend = "alpha"
+light = "lit"
+rate = 60.0
+life = [0.85, 0.95]
+shape = "disc"
+radius = 6.0
+direction = [0.0, -1.0, 0.0]
+spread = 1.5
+speed = [9.0, 10.0]
+gravity = -1.0
+size = [0.012, 0.02]
+stretch = 0.06
+stretch_max = 0.8
+rotate = false
+color = [1.5, 1.55, 1.6]
+alpha = [[0.0, 0.0], [0.08, 0.6], [0.92, 0.6], [1.0, 0.0]]
+priority = 1
