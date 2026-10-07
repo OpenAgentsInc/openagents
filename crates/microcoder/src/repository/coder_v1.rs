@@ -108,6 +108,12 @@ pub(crate) async fn turn(
             return Turn::Ended(ended);
         }
     };
+    // A workshop agent on Codex asks for the delegation in her brief. The
+    // turn has full access to the task's own worktree, which its Microcoder
+    // already writes, so her Codex delegation writes the same worktree under
+    // Codex's sandbox, with no network. Other turns leave the flag off, so
+    // they run on an `openagents` from before it.
+    let codex_writes = prompt.contains(coder_v1::CODEX_DIRECTIVE);
     let turn = coder_v1::Turn {
         cwd: host.workspace().to_path_buf(),
         state,
@@ -115,11 +121,7 @@ pub(crate) async fn turn(
         prompt,
         instructions: None,
         approvals: false,
-        // The turn has full access to the task's own worktree, which its
-        // Microcoder already writes; a Codex delegation it makes, such as
-        // a workshop agent's on Codex, writes the same worktree under
-        // Codex's sandbox, with no network.
-        codex_writes: true,
+        codex_writes,
         tool_free: false,
     };
     let cancel = Arc::new(AtomicBool::new(false));

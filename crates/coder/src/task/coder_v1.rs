@@ -412,6 +412,14 @@ pub enum Ended {
     Cancelled,
 }
 
+/// What a workshop agent on Codex adds to each prompt: Coder, on its own
+/// model, hands the coding to Codex and checks what it did. A turn whose
+/// prompt carries it runs with [`Turn::codex_writes`].
+pub const CODEX_DIRECTIVE: &str = "Delegate the coding in this step to the codex agent \
+     with acp_subagent: give it the task, the files involved, and how to check the result. \
+     Then read its changes and run the checks yourself before you answer. If Codex is \
+     unavailable or out of capacity, do the work yourself and say so.";
+
 /// One turn to run.
 #[derive(Clone, Debug)]
 pub struct Turn {

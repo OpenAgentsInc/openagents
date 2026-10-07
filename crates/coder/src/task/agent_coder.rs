@@ -69,12 +69,7 @@ struct HostHands<'a> {
     codex: bool,
 }
 
-/// What she adds to each prompt when Codex does her coding: Coder, on its
-/// own model, hands the coding to Codex and checks what it did.
-pub(crate) const CODEX_DIRECTIVE: &str = "Delegate the coding in this step to the codex agent \
-     with acp_subagent: give it the task, the files involved, and how to check the result. \
-     Then read its changes and run the checks yourself before you answer. If Codex is \
-     unavailable or out of capacity, do the work yourself and say so.";
+pub(crate) use coder_v1::CODEX_DIRECTIVE;
 
 /// The signed-in Codex login a book entry is kept for; a unit test reads
 /// no login.

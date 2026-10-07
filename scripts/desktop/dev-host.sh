@@ -16,7 +16,9 @@
 # are bound to that designated requirement, so the same host keys, and so
 # every paired phone, keep working with no prompt. It then
 #   - copies the new microcoder over ~/.openagents/bin/microcoder (the
-#     auto-start controller), keeping the old one as microcoder.before-dev-host;
+#     auto-start controller) and the new openagents beside it (which runs a
+#     studio task's Coder V1 turn), keeping each old one as
+#     NAME.before-dev-host;
 #   - stops and disables the app's login agent com.openagents.desktop.host;
 #   - installs and starts ~/Library/LaunchAgents/com.openagents.dev.host.plist
 #     (backing up any earlier one), which runs
@@ -40,7 +42,7 @@
 # not start is put back on the build it replaced. Passes log to
 # ~/.openagents/dev-host/follow.log.
 # uninstall stops the development host, removes its plist, puts the old
-# microcoder back, and enables the app's login agent again; it starts the
+# microcoder and openagents back, and enables the app's login agent again; it starts the
 # next time OpenAgents.app opens (or at login).
 set -euo pipefail
 
@@ -223,11 +225,15 @@ PLIST
     done
     codesign --verify --strict "$dir/coder" "$dir/microcoder" "$dir/openagents" "$dir/coder-new"
     ln -sfn "$dir" "$base/current"
-    if [ -f "$bin/microcoder" ] && [ ! -f "$bin/microcoder.before-dev-host" ]; then
-      cp -p "$bin/microcoder" "$bin/microcoder.before-dev-host"
-    fi
+    # The auto-start controller runs a studio task's Coder V1 turn through
+    # the `openagents` beside it, so that one moves with it.
     mkdir -p "$bin"
-    cp "$dir/microcoder" "$bin/microcoder.new" && mv -f "$bin/microcoder.new" "$bin/microcoder"
+    for name in microcoder openagents; do
+      if [ -f "$bin/$name" ] && [ ! -f "$bin/$name.before-dev-host" ]; then
+        cp -p "$bin/$name" "$bin/$name.before-dev-host"
+      fi
+      cp "$dir/$name" "$bin/$name.new" && mv -f "$bin/$name.new" "$bin/$name"
+    done
     login_path="$(login_path)"
     if [ -f "$plist" ]; then
       cp -p "$plist" "$base/$label.plist.bak.$(date +%Y%m%d%H%M%S)"
@@ -292,9 +298,11 @@ PLIST
   uninstall)
     launchctl bootout "$domain/$label" 2>/dev/null || true
     [ -f "$plist" ] && mv -f "$plist" "$base/$label.plist.removed.$(date +%Y%m%d%H%M%S)"
-    if [ -f "$bin/microcoder.before-dev-host" ]; then
-      mv -f "$bin/microcoder.before-dev-host" "$bin/microcoder"
-    fi
+    for name in microcoder openagents; do
+      if [ -f "$bin/$name.before-dev-host" ]; then
+        mv -f "$bin/$name.before-dev-host" "$bin/$name"
+      fi
+    done
     launchctl enable "$domain/$app_label"
     launchctl bootout "$domain/$follow_label" 2>/dev/null || true
     rm -f "$follow_plist"
