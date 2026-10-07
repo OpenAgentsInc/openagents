@@ -5834,6 +5834,427 @@
       ]
     },
     {
+      "name": "sales",
+      "summary": "Inspect and update the host-private lead/account pipeline.",
+      "children": [
+        {
+          "name": "init",
+          "leaf": {
+            "path": [
+              "sales",
+              "init"
+            ],
+            "usage": [
+              "init --owner HUMAN --credential FILE"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "init"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "owner",
+                    "value": "HUMAN",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "credential",
+                    "value": "FILE",
+                    "open": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Initialize the private pipeline and write its owner's credential.",
+            "effect": "grants",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "issue",
+          "leaf": {
+            "path": [
+              "sales",
+              "issue"
+            ],
+            "usage": [
+              "issue --human HUMAN --role writer|reader --new-credential FILE"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "issue"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "human",
+                    "value": "HUMAN",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "role",
+                    "value": "writer|reader",
+                    "choices": [
+                      "writer",
+                      "reader"
+                    ]
+                  },
+                  {
+                    "kind": "option",
+                    "name": "new-credential",
+                    "value": "FILE",
+                    "open": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Grant a named human private record access; prints no credential.",
+            "effect": "grants",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "revoke",
+          "leaf": {
+            "path": [
+              "sales",
+              "revoke"
+            ],
+            "usage": [
+              "revoke --human HUMAN"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "revoke"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "human",
+                    "value": "HUMAN",
+                    "open": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Revoke that human's credential and cancel proposed handoffs to them.",
+            "effect": "grants",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "apply",
+          "leaf": {
+            "path": [
+              "sales",
+              "apply"
+            ],
+            "usage": [
+              "apply --input FILE"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "apply"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "input",
+                    "value": "FILE",
+                    "open": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Apply a bounded versioned JSON command; FILE=- reads stdin.",
+            "effect": "grants",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "list",
+          "leaf": {
+            "path": [
+              "sales",
+              "list"
+            ],
+            "usage": [
+              "list [--after LEAD] [--limit N]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "list"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "after",
+                    "value": "LEAD",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "limit",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "List only records this credential can read, at most 100.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "show",
+          "leaf": {
+            "path": [
+              "sales",
+              "show"
+            ],
+            "usage": [
+              "show --lead LEAD"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "show"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "lead",
+                    "value": "LEAD",
+                    "open": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Read one authorized private lead/account record.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "export",
+          "leaf": {
+            "path": [
+              "sales",
+              "export"
+            ],
+            "usage": [
+              "export --lead LEAD --output FILE"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "export"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "lead",
+                    "value": "LEAD",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "output",
+                    "value": "FILE",
+                    "open": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Create a private exclusive JSON export; no shared/public export.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "audit",
+          "leaf": {
+            "path": [
+              "sales",
+              "audit"
+            ],
+            "usage": [
+              "audit [--after N] [--limit N]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "audit"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "after",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "limit",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Read the owner's bounded digest-only audit references.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "suppressed",
+          "leaf": {
+            "path": [
+              "sales",
+              "suppressed"
+            ],
+            "usage": [
+              "suppressed --contact CHANNEL:ADDRESS"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "suppressed"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "contact",
+                    "value": "CHANNEL:ADDRESS",
+                    "open": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Inspect minimum suppression before an authorized future contact.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        }
+      ],
+      "options": [
+        {
+          "kind": "option",
+          "name": "owner",
+          "value": "HUMAN",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "credential",
+          "value": "FILE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "human",
+          "value": "HUMAN",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "role",
+          "value": "writer|reader",
+          "choices": [
+            "writer",
+            "reader"
+          ],
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "new-credential",
+          "value": "FILE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "input",
+          "value": "FILE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "after",
+          "value": "LEAD",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "limit",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "lead",
+          "value": "LEAD",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "output",
+          "value": "FILE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "contact",
+          "value": "CHANNEL:ADDRESS",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        }
+      ]
+    },
+    {
       "name": "scratch",
       "summary": "Make and print this session's durable scratch directory, under ~/.openagents/scratch, for files that must outlive a reboot.",
       "leaf": {

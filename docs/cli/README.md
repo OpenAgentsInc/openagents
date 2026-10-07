@@ -69,6 +69,19 @@ app's; otherwise the command keeps its own under `~/.openagents/chat/`, and
 the router's typed metadata, and `--run-coder` accepts a Coder offer through
 the host. The full guide is [chat.md](chat.md).
 
+## Private sales records (`openagents sales`)
+
+`openagents sales` reads and updates the host's private lead/account pipeline
+through `coder::task::sales`. Every operation requires an explicit `--root`;
+initialization writes a private owner credential, and subsequent operations
+require that human's `--credential FILE`. Credentials and exports must remain
+outside the store's `sales` directory. Use `init`, `issue`, `revoke`, `apply`,
+`list`, `show`, `export`, `audit`, and `suppressed`; `--help` describes their
+syntax. The [sales pipeline guide](../sales/README.md#private-sales-pipeline)
+explains conditional revisions, exact-byte retries, recipient boundaries,
+accepted handoffs, retention, and suppression. The command contacts no
+prospect and starts no agent.
+
 ## Coder (`openagents coder`)
 
 `openagents coder` exposes the Coder terminal's chat runtime, plugin settings,

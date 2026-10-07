@@ -67,6 +67,7 @@ pub mod resume;
 pub mod retire;
 pub mod review;
 pub mod run_artifacts;
+pub mod sales;
 pub mod settings;
 pub mod shadow;
 pub mod spare;

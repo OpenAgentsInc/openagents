@@ -165,6 +165,7 @@ pub fn help() -> Vec<GroupHelp<'static>> {
         group("coder", Some(coder_new::programmatic::USAGE), CODER),
         group("task", Some(coder::task::cli::USAGE), TASK),
         group("issue", Some(crate::issue::USAGE), crate::issue::EFFECTS),
+        group("sales", Some(crate::sales::USAGE), crate::sales::EFFECTS),
         group("lease", Some(crate::lease::USAGE), crate::lease::EFFECTS),
         group(
             "scratch",

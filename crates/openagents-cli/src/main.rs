@@ -74,6 +74,7 @@ mod provider_key;
 mod quest;
 mod reach;
 mod relay;
+mod sales;
 mod scratch;
 mod screen;
 #[cfg(unix)]
@@ -138,6 +139,7 @@ Coder:
                every agent and Coder share.
   lease        Run a command under a lease on a shared resource (build slots,
                quiet, the screen, the GPU), and list holders and waiters.
+  sales        Inspect and update the host-private lead/account pipeline.
   scratch      Make and print this session's durable scratch directory, under
                ~/.openagents/scratch, for files that must outlive a reboot.
   browser      Run a command beside a Chrome of its own: a fresh profile and
@@ -327,6 +329,7 @@ fn main() -> ExitCode {
         "task" => runtime().block_on(coder::task::cli::run_with_json(&rest, json)),
         "issue" => issue::run(&output, &rest),
         "lease" | "leases" => lease::run(&output, &rest),
+        "sales" => sales::run(&output, &rest),
         "scratch" => scratch::run(&output, &rest),
         "browser" => browser::run(&output, &rest),
         "capacity" => capacity::run(&output, &rest),

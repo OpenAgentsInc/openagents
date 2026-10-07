@@ -446,6 +446,56 @@ dependencies are in the unified inventory; its
 [build order](agent-sales-floor.md#build-order) retains the detailed S0–S6
 scope and rough effort.
 
+## Private sales pipeline
+
+`openagents sales` stores one private lead/account pipeline in an explicit
+host root. Its records and mutations are owned by
+[`coder::task::sales`](../../crates/coder/src/task/sales.rs); later sales-agent
+adapters extend these records. Initialize it with a named responsible owner
+and a credential file outside the root's `sales` directory:
+
+```sh
+openagents sales init --root PRIVATE_HOST_ROOT --owner founder --credential OWNER_FILE
+openagents sales issue --root PRIVATE_HOST_ROOT --credential OWNER_FILE --human collaborator --role writer --new-credential COLLABORATOR_FILE
+openagents sales apply --root PRIVATE_HOST_ROOT --credential OWNER_FILE --input PRIVATE_COMMAND_FILE --json
+openagents sales list --root PRIVATE_HOST_ROOT --credential OWNER_FILE --limit 50 --json
+```
+
+The command envelope uses `openagents.sales.pipeline-command.v1`, a stable
+`id`, `lead` (null for creation), `expected_revision` (zero for creation), and
+an `operation` tagged by `kind`. Operations are `create`, `update`,
+`propose_handoff`, `accept_handoff`, `reject_handoff`, `suppress`, and `delete`.
+The Rust `Command`, `Input`, and `Details` types define the bounded JSON shape.
+Keep command files private. Exact-byte retries return the original receipt;
+reusing an ID with changed bytes or a different actor refuses. Updates and
+handoffs require the current record revision.
+
+A record retains contact/source/date, jurisdiction, permission evidence and
+expiry, workflow/baseline, recipients/use/retention, stage, accepted human,
+next action/date, and customer decision. Human recipients use `human:ID`.
+The pipeline owner, responsible human, readers, and proposed handoff target
+must fit that boundary. Only the owner can change recipients/use or extend
+retention, with fresh permission evidence. Renewing permission or adding a
+channel also requires fresh evidence. A writer manages its own records;
+a reader sees only expressly granted records. The target accepts a handoff
+with its own credential before accountability changes.
+
+Use `show`, `export`, `audit`, and `suppressed` for private inspection. Exports
+create exclusive private files outside the store. Revocation is checked on
+every operation. Permission expiry closes qualification and cancels handoffs;
+retention expiry, deletion, and suppression remove contact-wide content while
+keeping salted contact hashes and digest-only references to prevent recontact.
+Cleanup runs when the store opens or is used, so an idle host does not purge
+on a timer. The store holds at most 512 live records and 4,096 receipts; it
+reserves cleanup capacity before ordinary history fills. Version 1 has no
+unsuppression or history-compaction operation.
+
+The host stores private files atomically under its existing lock and
+filesystem rules. It stores credential digests and never prints secrets.
+These records grant no outbound, model/provider, or customer-data disclosure
+authority. O1 confirms real humans, consent, and retention privately; O6
+separately authorizes any real outreach, as recorded in `NEEDS_OWNER.md`.
+
 ## Measures
 
 - Weekly active developers, and how many of them pay for anything.

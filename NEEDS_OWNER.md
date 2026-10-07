@@ -77,6 +77,18 @@ browser/network qualification remains unverified.
 
 # Owner checks
 
+## Private pipeline O1/O6 (REV-04, #10811)
+
+Before entering real leads, initialize the [private pipeline](docs/sales/README.md#private-sales-pipeline)
+on the selected host and privately verify each named human, credential,
+reader grant, consent source/date/expiry, jurisdiction, workflow, next action,
+and `human:ID` recipient boundary. Agree to content retention and the minimum
+suppression retained after deletion. Qualify a collaborator handoff with
+that human's acceptance; do not treat a proposed handoff as accountable
+ownership. Scratch fixtures establish persistence and authorization, not
+customer permission. The CLI does not activate messaging; O6 still separately
+authorizes real outbound. Keep customer content and credentials out of git.
+
 ## Pilot evidence O1/O8 (REV-03, #10810)
 
 Before using [pilot comparison evidence](docs/sales/evidence.md) in a sales
