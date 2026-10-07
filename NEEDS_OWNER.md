@@ -1,3 +1,11 @@
+## Cloud BYOK credentials (#10917)
+
+To delegate with an OpenAI API key, fund or replace the configured credential;
+the live check reports exhausted quota. OpenRouter BYOK needs a valid
+replacement credential; the configured keys fail authentication. Codex login
+forwarding and Microcoder through the OpenAgents cloud fallback pass the live
+Boat checks. Credentials remain unchanged.
+
 ## Archive the medieval town kit in the private bucket (#10894)
 
 The `gcloud` login on this Mac needs reauthentication, so the kit's

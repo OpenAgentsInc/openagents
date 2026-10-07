@@ -41,7 +41,7 @@ impl Transport for System {
             h,
             &format!(
                 "bash -c {}",
-                boat::shell_quote(&(pool::BUILD.to_owned() + "oa_build"))
+                boat::shell_quote(&runtime_preparation(pool::BUILD))
             ),
             None,
         )
@@ -363,4 +363,46 @@ touch "$HOME/.oa-pool/busy"
 }
 pub fn cancel_script(dir: &str) -> String {
     runtime::cancel_script(dir)
+}
+
+fn runtime_preparation(build: &str) -> String {
+    format!(
+        r#"set -eu
+d="$HOME/.oa-pool/runs/runtime-prepare-$$"
+mkdir -p "$d"
+printf '%s' "$$" > "$d/pid"
+touch "$HOME/.oa-pool/busy"
+trap 'rm -f "$d/pid"; rmdir "$d" 2>/dev/null || true; touch "$HOME/.oa-pool/busy"' EXIT
+{build}
+oa_build
+"#
+    )
+}
+
+#[cfg(test)]
+mod preparation_tests {
+    #[test]
+    fn preparation_counts_as_pool_activity_and_releases_its_marker_on_failure() {
+        for code in [0, 7] {
+            let home = tempfile::tempdir().unwrap();
+            let script = super::runtime_preparation(&format!(
+                "oa_build() {{ test -f \"$d/pid\" && kill -0 \"$(cat \"$d/pid\")\" || exit 9; return {code}; }}"
+            ));
+            let output = std::process::Command::new("bash")
+                .args(["-c", &script])
+                .env_clear()
+                .env("PATH", std::env::var_os("PATH").unwrap())
+                .env("HOME", home.path())
+                .output()
+                .unwrap();
+            assert_eq!(output.status.code(), Some(code));
+            assert!(home.path().join(".oa-pool/busy").is_file());
+            assert_eq!(
+                std::fs::read_dir(home.path().join(".oa-pool/runs"))
+                    .unwrap()
+                    .count(),
+                0
+            );
+        }
+    }
 }
