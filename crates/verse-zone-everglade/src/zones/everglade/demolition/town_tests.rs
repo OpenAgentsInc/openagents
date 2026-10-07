@@ -2,7 +2,7 @@
 //! protection, collapse, the solids, restoring, and the caps.
 
 use super::site::{Role, Status};
-use super::town::{Building, MAX_CHUNKS, MAX_LIVE, Town};
+use super::town::{Building, MAX_CHUNKS, MAX_LIVE, MAX_PIECES, Town};
 use crate::controller::PlayerController;
 use crate::pbr::textured::{IndexEdits, TexturedScene};
 use crate::zones::everglade::layout::{self, COTTAGE, READING_ROOM, SHOPS};
@@ -743,4 +743,142 @@ fn stone_debris_sinks_and_timber_floats() {
     }
     let splashes = site.take_splashes();
     assert!(splashes.len() >= 4 && splashes.iter().all(|s| s.speed > 2.0));
+}
+
+/// The models that stay as placed and never break: the ground and its
+/// paving, plants, trees, rocks, and water ([`super::carve::carvable`]
+/// refuses them). Every other placement is a piece of a building.
+const EXEMPT: [&str; 23] = [
+    "nature/",
+    "foliage/",
+    "village/Floor_",
+    "village/Prop_ExteriorBorder",
+    "village/Prop_Vine",
+    "generated/birch_low",
+    "generated/oak_low",
+    "generated/pine_low",
+    "generated/spruce_low",
+    "generated/poplar_low",
+    "generated/fruit_tree",
+    "generated/bush_round",
+    "generated/flower_bed",
+    "generated/flower_box",
+    "generated/flower_cart",
+    "generated/flower_patch",
+    "generated/wildflowers",
+    "generated/mushrooms",
+    "generated/lily_pads",
+    "generated/reeds",
+    "generated/mossy_rock",
+    "generated/stump",
+    "generated/fallen_log",
+];
+
+#[test]
+fn every_building_the_layout_places_has_a_demolition_entry() {
+    let town = town();
+    let placements = layout::placements();
+    let mut owner = vec![None; placements.len()];
+    for (index, b) in town.buildings().iter().enumerate() {
+        assert!(b.destructible(), "building {index} at {:?} breaks", b.rect);
+        assert!(
+            b.pieces.len() <= MAX_PIECES,
+            "building {index} at {:?} has {} pieces, more than can be raised",
+            b.rect,
+            b.pieces.len()
+        );
+        for piece in &b.pieces {
+            for &p in piece
+                .placements
+                .iter()
+                .chain(piece.carve.as_ref().map(|c| &c.0))
+            {
+                owner[p] = Some(index);
+            }
+        }
+    }
+    for (index, placement) in placements.iter().enumerate() {
+        if owner[index].is_none() {
+            assert!(
+                EXEMPT.iter().any(|m| placement.model.starts_with(m)),
+                "{} at {:?} is in no destructible building",
+                placement.model,
+                placement.at
+            );
+        }
+    }
+    // The buildings added since destruction was built are among them.
+    for model in NEW_BUILDINGS {
+        carved_of(&town, model);
+    }
+}
+
+/// The buildings added after the town's destruction: the owner's house,
+/// the Civic Hall, the belvedere and its loggia, the Agora, and the
+/// market hall.
+const NEW_BUILDINGS: [&str; 5] = [
+    "generated/greco_house",
+    "generated/civic_hall",
+    "generated/belvedere",
+    "generated/agora",
+    "generated/market_hall",
+];
+
+/// The carved building that holds a placement of `model`.
+fn carved_of(town: &Town, model: &str) -> usize {
+    let placements = layout::placements();
+    town.buildings()
+        .iter()
+        .position(|b| {
+            b.carved
+                .iter()
+                .any(|c| placements[c.placement].model == model)
+        })
+        .unwrap_or_else(|| panic!("{model} is carved"))
+}
+
+/// A point 3 m inside `b`'s south side, on its ground.
+fn inside_south(b: &Building) -> Vec3 {
+    let ([cx, cz], [_, hz]) = b.rect;
+    Vec3::new(cx, b.base, cz - hz + 3.0)
+}
+
+#[test]
+fn meteor_swarm_and_the_thunderbolt_break_the_new_buildings_and_r_restores_them() {
+    use super::meteor::Strike;
+    for strike_with in [Strike::Meteors, Strike::Lightning] {
+        for model in NEW_BUILDINGS {
+            let mut town = town();
+            let b = carved_of(&town, model);
+            let at = inside_south(&town.buildings()[b]);
+            let player = caster(at, 20.0);
+            town.target(strike_with, &player)
+                .expect("the spell is ready");
+            // Aim from above, at whatever the building has there.
+            assert!(
+                town.aim(at + Vec3::Y * 40.0, Vec3::NEG_Y, &player),
+                "{model}"
+            );
+            assert!(town.confirm(&player), "{model}");
+            let dt = 1.0 / 60.0;
+            let mut seconds = 0.0;
+            while town.swarm().casting() || town.swarm().meteors_left() > 0 {
+                town.tick(dt, &player);
+                seconds += dt;
+                assert!(seconds < 8.0, "the strike ends");
+            }
+            run(&mut town, &player, 1.5);
+            assert!(
+                town.raised().contains(&b),
+                "{model} rose for {strike_with:?}"
+            );
+            assert!(
+                pieces(&town, b).iter().any(|&(_, s)| s != Status::Standing),
+                "{strike_with:?} broke {model}"
+            );
+            town.restore();
+            run(&mut town, &player, 0.1);
+            assert!(town.raised().is_empty() && town.hidden() == 0, "{model}");
+        }
+    }
 }

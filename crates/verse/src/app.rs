@@ -38,6 +38,23 @@ use crate::xp;
 use crate::zones::everglade::studio::PanelKind as StudioPanel;
 use crate::zones::{self, Intent as ZoneIntent};
 
+/// The hotbar slot number a digit key presses, 1 to 9, or 0 for any
+/// other key.
+fn hotbar_number(code: KeyCode) -> usize {
+    match code {
+        KeyCode::Digit1 => 1,
+        KeyCode::Digit2 => 2,
+        KeyCode::Digit3 => 3,
+        KeyCode::Digit4 => 4,
+        KeyCode::Digit5 => 5,
+        KeyCode::Digit6 => 6,
+        KeyCode::Digit7 => 7,
+        KeyCode::Digit8 => 8,
+        KeyCode::Digit9 => 9,
+        _ => 0,
+    }
+}
+
 /// How much higher than the chamber's bar Everglade's hotbar sits on
 /// desktop, logical points: none.
 const HOTBAR_BOTTOM: f32 = 0.0;
@@ -3177,15 +3194,14 @@ impl App {
             }
             return;
         }
-        // Holding the zone's Levitate key or L rises; letting go hovers,
-        // and a tap while hovering falls.
+        // Holding the zone's Levitate key (the number key of its slot in
+        // the displayed order) or L rises; letting go hovers, and a tap
+        // while hovering falls.
         if (code == KeyCode::KeyL
-            || code
-                == if self.runtime.zone == zones::ZoneId::MeteorStressTest {
-                    KeyCode::Digit6
-                } else {
-                    KeyCode::Digit1
-                })
+            || zones::everglade::hotbar::key_intent(
+                hotbar_number(code),
+                &self.runtime.everglade_hotbar_order(),
+            ) == Some(ZoneIntent::Levitate))
             && self.in_bare_everglade()
             && !self.runtime.in_demolition()
             && (!pressed || (!self.chat.open && !self.map.expanded))
@@ -3362,20 +3378,12 @@ impl App {
                 }
             }
             // Number keys follow the zone's displayed spell order. In
-            // Everglade, 2 to 5 cast the utility spells; with the dev
-            // build's destruction on, 6 aims Meteor Swarm and 7 swings the
-            // sledgehammer.
+            // Everglade, 1 is Levitate and 2 to 5 cast the utility spells;
+            // with the dev build's destruction on, 1 aims Meteor Swarm, 2
+            // the Thunderbolt, 3 is Levitate, 4 to 7 cast the utility
+            // spells, and 8 swings the sledgehammer.
             if self.in_bare_everglade() {
-                let n = match code {
-                    KeyCode::Digit1 => 1,
-                    KeyCode::Digit2 => 2,
-                    KeyCode::Digit3 => 3,
-                    KeyCode::Digit4 => 4,
-                    KeyCode::Digit5 => 5,
-                    KeyCode::Digit6 => 6,
-                    KeyCode::Digit7 => 7,
-                    _ => 0,
-                };
+                let n = hotbar_number(code);
                 if let Some(intent) =
                     zones::everglade::hotbar::key_intent(n, &self.runtime.everglade_hotbar_order())
                 {

@@ -910,6 +910,21 @@ impl WorldRuntime {
                     .meteor_swarm(&player)?;
                 self.zone_state.error = None;
             }
+            Intent::Thunderbolt => {
+                if !self.casts_destruction() {
+                    return Err("Everglade has no offensive spells".into());
+                }
+                let player = self.player.clone();
+                self.zone_state
+                    .everglade
+                    .as_mut()
+                    .ok_or("Enter Everglade first")?
+                    .target_strike(
+                        super::everglade::demolition::meteor::Strike::Lightning,
+                        &player,
+                    )?;
+                self.zone_state.error = None;
+            }
             Intent::Interact if self.zone == ZoneId::Crypt => {
                 // The heavy door is the way out.
                 if !super::crypt::near_door(self.player.pos) {
@@ -1047,16 +1062,18 @@ impl WorldRuntime {
     }
     /// Source slot indices in the zone's displayed hotbar order: displayed
     /// slot `i` is `SLOTS[order[i]]`. The Meteor Stress Test puts Meteor
-    /// Swarm first and Levitate sixth; elsewhere the bar keeps
+    /// Swarm first and Levitate sixth; Everglade with dev destruction on
+    /// puts Meteor Swarm, the Thunderbolt, then Levitate first
+    /// ([`super::everglade::hotbar::DEV_ORDER`]); elsewhere the bar keeps
     /// [`super::everglade::hotbar::SLOTS`] order. It has one entry per slot
     /// [`Self::everglade_hotbar`] shows.
     #[must_use]
     pub fn everglade_hotbar_order(&self) -> Vec<usize> {
-        use super::everglade::hotbar::{COUNT, FULL_COUNT, in_order};
+        use super::everglade::hotbar::{COUNT, DEV_ORDER, in_order};
         if self.zone == ZoneId::MeteorStressTest {
-            vec![5, 1, 2, 3, 4, 0, 6]
+            vec![5, 1, 2, 3, 4, 0, 7]
         } else if self.everglade_destruction() {
-            in_order(FULL_COUNT)
+            DEV_ORDER.to_vec()
         } else {
             in_order(COUNT)
         }
@@ -1084,8 +1101,9 @@ impl WorldRuntime {
 
     /// Everglade's hotbar of movement and utility spells, in displayed
     /// order ([`Self::everglade_hotbar_order`]), or `None` outside Everglade.
-    /// It has [`super::everglade::hotbar::COUNT`] slots, and Meteor Swarm and
-    /// the sledgehammer too only in the Meteor Stress Test, or while
+    /// It has [`super::everglade::hotbar::COUNT`] slots, and Meteor Swarm,
+    /// the Thunderbolt, and the sledgehammer too only in the Meteor Stress
+    /// Test, or while
     /// [`Self::dev_destruction`] is on in Everglade.
     #[must_use]
     pub fn everglade_hotbar(&self) -> Option<Vec<super::everglade::hotbar::Slot>> {
@@ -1124,10 +1142,20 @@ impl WorldRuntime {
             let (wielding, swarm) = town.bar();
             (wielding, Some(swarm))
         });
-        let meteor = swarm.map_or(on(false, false), |s| {
-            on(s.ready || s.targeting, s.targeting || s.casting.is_some())
-        });
-        bar.extend([meteor, on(glade.town().is_some(), wielding)]);
+        use super::everglade::demolition::meteor::Strike;
+        let strike = |kind| {
+            swarm.map_or(on(false, false), |s| {
+                on(
+                    s.ready || s.targeting,
+                    s.strike == kind && (s.targeting || s.casting.is_some()),
+                )
+            })
+        };
+        bar.extend([
+            strike(Strike::Meteors),
+            strike(Strike::Lightning),
+            on(glade.town().is_some(), wielding),
+        ]);
         Some(
             self.everglade_hotbar_order()
                 .into_iter()

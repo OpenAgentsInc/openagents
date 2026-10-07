@@ -61,7 +61,12 @@ fn everglade_offers_no_offensive_spell_and_its_demolition_still_runs() {
     let slots = runtime.everglade_hotbar().expect("Everglade's hotbar");
     assert_eq!(slots.len(), COUNT);
     // Neither the intents nor the targeting reach the town from input.
-    for intent in [Intent::MeteorSwarm, Intent::Swing, Intent::Rebuild] {
+    for intent in [
+        Intent::MeteorSwarm,
+        Intent::Thunderbolt,
+        Intent::Swing,
+        Intent::Rebuild,
+    ] {
         assert!(runtime.zone_intent(intent).is_err(), "{intent:?}");
     }
     assert!(!runtime.demolition_targeting());
@@ -100,13 +105,47 @@ fn everglade_offers_no_offensive_spell_and_its_demolition_still_runs() {
 fn everglade_casts_meteor_swarm_swings_and_restores_through_its_intents() {
     use crate::controller::InputState;
     use crate::zones::Intent;
-    use crate::zones::everglade::hotbar::COUNT;
+    use crate::zones::everglade::hotbar::{DEV_ORDER, FULL_COUNT, SLOTS};
     let mut runtime = crate::zones::everglade_tests::entered();
     runtime.set_dev_destruction(true).unwrap();
     let slots = runtime.everglade_hotbar().expect("Everglade's hotbar");
-    assert_eq!(slots.len(), COUNT + 2);
-    assert!(slots[COUNT].enabled, "Meteor Swarm is ready");
-    assert!(slots[COUNT + 1].enabled, "the sledgehammer is in reach");
+    assert_eq!(slots.len(), FULL_COUNT);
+    // Meteor Swarm on 1, the Thunderbolt on 2, Levitate on 3, and the
+    // sledgehammer last.
+    assert_eq!(runtime.everglade_hotbar_order(), DEV_ORDER.to_vec());
+    let intents: Vec<Intent> = (0..FULL_COUNT)
+        .map(|i| runtime.everglade_slot_intent(i).unwrap())
+        .collect();
+    assert_eq!(
+        intents[..3],
+        [Intent::MeteorSwarm, Intent::Thunderbolt, Intent::Levitate]
+    );
+    assert_eq!(intents[FULL_COUNT - 1], Intent::Swing);
+    assert_eq!(SLOTS[DEV_ORDER[1]].1, "thunderbolt-icon");
+    assert!(slots[0].enabled, "Meteor Swarm is ready");
+    assert!(slots[1].enabled, "the Thunderbolt is ready");
+    assert!(
+        slots[FULL_COUNT - 1].enabled,
+        "the sledgehammer is in reach"
+    );
+    // The Thunderbolt aims, lights its own slot, and casts.
+    runtime.zone_intent(Intent::Thunderbolt).unwrap();
+    assert!(runtime.demolition_targeting());
+    let swarm = runtime.everglade_swarm().expect("the town's spell");
+    assert_eq!(
+        swarm.strike,
+        crate::zones::everglade::demolition::meteor::Strike::Lightning
+    );
+    let slots = runtime.everglade_hotbar().unwrap();
+    assert!(
+        slots[1].active && !slots[0].active,
+        "the Thunderbolt's slot lights"
+    );
+    assert!(runtime.demolition_confirm(), "the bolt's cast begins");
+    for _ in 0..(3.0 / (1.0 / 60.0)) as usize {
+        runtime.tick(&InputState::default(), 1.0 / 60.0);
+    }
+    assert!(runtime.everglade_swarm().unwrap().ready, "no cooldown");
     // The circle lands ahead of the player at once, for a touch screen.
     runtime.zone_intent(Intent::MeteorSwarm).unwrap();
     assert!(runtime.demolition_targeting());

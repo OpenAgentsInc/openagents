@@ -68,6 +68,9 @@ pub enum Intent {
     Swing,
     MeteorSwarm,
     Rebuild,
+    /// Everglade's dev destruction: aim the Thunderbolt at a wall or the
+    /// ground (`verse::zones::everglade::demolition::meteor::Strike`).
+    Thunderbolt,
 }
 
 /// Linear-light scene values; the Coder application UI keeps its own palette.

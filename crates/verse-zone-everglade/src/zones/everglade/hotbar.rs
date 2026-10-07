@@ -2,12 +2,14 @@
 //! of game-icons.net art with a number key on each slot. Levitate comes
 //! first, held to rise, then the spells that need no enemy
 //! ([`super::spells`]), none with a cooldown. Nothing on Everglade's bar
-//! damages a building, a creature, or a player. Meteor Swarm and the
-//! sledgehammer, which break buildings ([`super::demolition::town`]),
-//! follow in [`SLOTS`] for the Meteor Stress Test's castle, and for
-//! Everglade's town only in a `dev-destruction` build with that test
-//! switched on ([`DEV_DESTRUCTION`]). The runtime chooses how many slots
-//! show ([`COUNT`] or [`FULL_COUNT`]). The icons are sprites in the HUD's atlas, added by
+//! damages a building, a creature, or a player. Meteor Swarm, the
+//! Thunderbolt, and the sledgehammer, which break buildings
+//! ([`super::demolition::town`]), follow in [`SLOTS`] for the Meteor
+//! Stress Test's castle, and for Everglade's town only in a
+//! `dev-destruction` build with that test switched on
+//! ([`DEV_DESTRUCTION`]), where the bar is [`DEV_ORDER`]: Meteor Swarm on
+//! 1, the Thunderbolt on 2, and Levitate on 3. The runtime chooses which
+//! slots show and in what order. The icons are sprites in the HUD's atlas, added by
 //! [`add_sprites`]. Resting the pointer on a slot, or holding a touch on it,
 //! shows its card ([`crate::tooltip`]) with the name and sentence kept in
 //! [`SLOTS`].
@@ -23,12 +25,18 @@ pub const COUNT: usize = 5;
 pub const DEV_DESTRUCTION: bool = cfg!(feature = "dev-destruction");
 
 /// How many slots the bar has where destruction is on: [`COUNT`], then
-/// Meteor Swarm and the sledgehammer.
-pub const FULL_COUNT: usize = COUNT + 2;
+/// Meteor Swarm, the Thunderbolt, and the sledgehammer.
+pub const FULL_COUNT: usize = COUNT + 3;
+
+/// Everglade's bar where destruction is on, as indices into [`SLOTS`]:
+/// Meteor Swarm, the Thunderbolt, Levitate, the four utility spells, and
+/// the sledgehammer last.
+pub const DEV_ORDER: [usize; FULL_COUNT] = [5, 6, 0, 1, 2, 3, 4, 7];
 
 /// One slot: the intent it sends, its icon sprite, and its card's name and
-/// sentence. Number keys press them in order. The first [`COUNT`] are
-/// Everglade's bar; the last two show only where destruction is on.
+/// sentence. Number keys press them in displayed order. The first
+/// [`COUNT`] are Everglade's bar; the last three show only where
+/// destruction is on.
 pub const SLOTS: [(Intent, &str, Tip); FULL_COUNT] = [
     (
         Intent::Levitate,
@@ -76,6 +84,14 @@ pub const SLOTS: [(Intent, &str, Tip); FULL_COUNT] = [
         Tip::new(
             "Meteor Swarm",
             "Calls down six blazing meteors on a circle of ground you choose, blasting apart the town's buildings they reach; R restores the town.",
+        ),
+    ),
+    (
+        Intent::Thunderbolt,
+        "thunderbolt-icon",
+        Tip::new(
+            "Thunderbolt",
+            "Calls one huge bolt of lightning down on the wall or ground you choose, blasting a hole through the building it strikes; R restores the town.",
         ),
     ),
     (
@@ -204,6 +220,13 @@ fn card_with_key(index: usize, displayed: usize) -> Option<Card> {
         card = card
             .detail("No mana, no cooldown", palette::MANA)
             .detail(format!("{} s cast", meteor::CAST), palette::TIME)
+            .detail(format!("{:.0} m range", meteor::RANGE), palette::RULE);
+    }
+    if *intent == Intent::Thunderbolt {
+        use super::demolition::meteor;
+        card = card
+            .detail("No mana, no cooldown", palette::MANA)
+            .detail(format!("{} s cast", meteor::BOLT_CAST), palette::TIME)
             .detail(format!("{:.0} m range", meteor::RANGE), palette::RULE);
     }
     Some(card)
@@ -374,6 +397,7 @@ pub fn draw_of(
 
 #[cfg(test)]
 mod tests {
+    use super::super::demolition::meteor;
     use super::*;
 
     const DESKTOP: [f32; 2] = [1280.0, 800.0];
@@ -446,32 +470,74 @@ mod tests {
         assert_eq!(key_intent(7, &in_order(COUNT)), None);
         assert!(
             bar.iter()
-                .all(|i| !matches!(i, Intent::MeteorSwarm | Intent::Swing)),
+                .all(|i| !matches!(i, Intent::MeteorSwarm | Intent::Thunderbolt | Intent::Swing)),
             "Everglade's bar has no offensive slot"
         );
         assert_eq!(shown(FULL_COUNT + 3).len(), FULL_COUNT);
     }
 
     #[test]
-    fn the_full_bar_ends_with_meteor_swarm_and_the_sledgehammer() {
-        let tail: Vec<Intent> = shown(FULL_COUNT)[COUNT..]
-            .iter()
-            .map(|(i, ..)| *i)
-            .collect();
-        assert_eq!(tail, [Intent::MeteorSwarm, Intent::Swing]);
+    fn the_dev_bar_puts_meteor_swarm_on_1_thunderbolt_on_2_and_levitate_on_3() {
+        let bar: Vec<Intent> = DEV_ORDER.iter().map(|&i| SLOTS[i].0).collect();
         assert_eq!(
-            key_intent(6, &in_order(FULL_COUNT)),
-            Some(Intent::MeteorSwarm)
+            bar,
+            [
+                Intent::MeteorSwarm,
+                Intent::Thunderbolt,
+                Intent::Levitate,
+                Intent::FeatherFall,
+                Intent::WindWall,
+                Intent::ReverseGravity,
+                Intent::WallOfStone,
+                Intent::Swing,
+            ]
         );
-        assert_eq!(key_intent(7, &in_order(FULL_COUNT)), Some(Intent::Swing));
-        let meteor = card(COUNT).expect("a card");
-        assert!(
-            meteor
-                .details
-                .iter()
-                .any(|(d, _)| d.contains("No mana, no cooldown"))
-        );
-        assert!(SLOTS[COUNT].2.text.contains("R restores the town"));
+        // Every slot shows once.
+        let mut sorted = DEV_ORDER;
+        sorted.sort_unstable();
+        assert_eq!(sorted.to_vec(), in_order(FULL_COUNT));
+        // Number keys follow the displayed order.
+        for (n, intent) in bar.iter().enumerate() {
+            assert_eq!(key_intent(n + 1, &DEV_ORDER), Some(*intent));
+        }
+        assert_eq!(key_intent(9, &DEV_ORDER), None);
+        // Each card shows its displayed key; Levitate's says to hold 3.
+        for (displayed, &index) in DEV_ORDER.iter().enumerate() {
+            let card = card_with_key(index, displayed).expect("a card");
+            assert_eq!(card.title, SLOTS[index].2.name);
+            assert!(card.details[0].0.contains(&(displayed + 1).to_string()));
+        }
+        let levitate = card_with_key(0, 2).unwrap();
+        assert_eq!(levitate.details[0].0, "Hold 3 or L");
+        // Meteor Swarm and the Thunderbolt carry their cast and range.
+        for (index, cast) in [(5, meteor::CAST), (6, meteor::BOLT_CAST)] {
+            let card = card_with_key(index, 0).unwrap();
+            let details: Vec<&str> = card.details.iter().map(|(d, _)| d.as_str()).collect();
+            assert!(details.contains(&"No mana, no cooldown"), "{details:?}");
+            assert!(details.contains(&format!("{cast} s cast").as_str()));
+            assert!(details.iter().any(|d| d.ends_with("m range")));
+            assert!(SLOTS[index].2.text.contains("R restores the town"));
+        }
+    }
+
+    #[test]
+    fn the_dev_bar_and_its_cards_fit_a_phone_screen() {
+        let atlas = Atlas::new(14.0);
+        let bottom = 120.0;
+        let [left, top, width, _] = frame_of(PHONE, bottom, FULL_COUNT);
+        assert!(left >= 0.0 && left + width <= PHONE[0], "{left} {width}");
+        for displayed in 0..FULL_COUNT {
+            let mut ui = UiBatch::default();
+            let card = card_with_key(DEV_ORDER[displayed], displayed).unwrap();
+            let [x, _, w, _] = slot_rect_of(PHONE, bottom, FULL_COUNT, displayed);
+            let [cx, cy, cw, ch] = tooltip::draw(&mut ui, &atlas, &card, [x, top, w, 1.0], PHONE);
+            assert!(cx >= tooltip::MARGIN - 0.01, "slot {displayed} at {cx}");
+            assert!(
+                cx + cw <= PHONE[0] - tooltip::MARGIN + 0.01,
+                "slot {displayed}"
+            );
+            assert!(cy >= 0.0 && cy + ch <= top, "above the tray");
+        }
     }
 
     #[test]

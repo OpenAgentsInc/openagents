@@ -1,9 +1,11 @@
 //! Offline visual acceptance of Everglade's destructible town.
-//! Usage: town_capture OUTPUT_DIR
+//! Usage: town_capture OUTPUT_DIR [civic]
 //!
 //! Installs Everglade from the committed, pinned pack, settles its light,
 //! and calls Meteor Swarm down on Main Street's café, seen from the street,
-//! rendering with Everglade's hotbar into `OUTPUT_DIR`:
+//! or with `civic` on the Civic Hall's front, seen from its plaza,
+//! rendering with Everglade's hotbar into `OUTPUT_DIR`. The Civic Hall's
+//! run stops after `aftermath.png` and then writes `restored.png`.
 //!
 //! - `before.png`: the shops on Main Street, whole.
 //! - `target.png`: the targeting circle on the café's front.
@@ -42,6 +44,7 @@ fn main() -> Result<(), String> {
             everglade_pack::PACK_SHA256,
             everglade_pack::PACK_EXTENSION
         ));
+    let civic = std::env::args().nth(2).as_deref() == Some("civic");
     let pack = everglade_pack::ZonePack::load_local(&pack)?;
     let mut runtime = WorldRuntime::new();
     runtime.install_everglade(&pack);
@@ -64,8 +67,19 @@ fn main() -> Result<(), String> {
     };
     // On Main Street, south-west of the café, looking at its front.
     let ([cx, cz], [_, hz]) = zones::everglade::layout::SHOPS[1];
-    let front = glam::Vec3::new(cx, 0.0, cz - hz - 0.4);
-    let stand = glam::Vec3::new(cx - 9.0, 0.0, cz - hz - 17.0);
+    let (front, stand) = if civic {
+        // The Civic Hall's west front, from the plaza before it.
+        let [x, z] = zones::everglade::layout::civic::CIVIC.at;
+        (
+            glam::Vec3::new(x + 1.0, 0.0, z),
+            glam::Vec3::new(x - 3.0, 0.0, z + 10.0),
+        )
+    } else {
+        (
+            glam::Vec3::new(cx, 0.0, cz - hz - 0.4),
+            glam::Vec3::new(cx - 9.0, 0.0, cz - hz - 17.0),
+        )
+    };
     let yaw = (front.x - stand.x).atan2(front.z - stand.z);
     runtime.set_spawn(stand, yaw)?;
     runtime.apply(Action::Zoom { lines: -3.0 })?;
@@ -98,6 +112,11 @@ fn main() -> Result<(), String> {
         .figure
         .map_or(0, |f| f.vertices.len());
     eprintln!("Figure vertices after the strike: {figure}");
+    if civic {
+        runtime.zone_intent(zones::Intent::Rebuild)?;
+        tick(&mut runtime, 0.2);
+        return shot(&runtime, &atlas, &dir.join("restored.png"));
+    }
     // The sledgehammer at the bakery's front, seen from the side.
     let ([bx, bz], [_, bhz]) = zones::everglade::layout::SHOPS[0];
     runtime.set_spawn(glam::Vec3::new(bx + 1.0, 0.0, bz - bhz - 1.05), 0.0)?;
@@ -132,16 +151,22 @@ fn shot(runtime: &WorldRuntime, atlas: &verse::ui::Atlas, path: &Path) -> Result
     let (width, height) = (1280, 800);
     let size = [width as f32, height as f32];
     let mut ui = verse::ui::UiBatch::default();
-    if let Some(slots) = runtime.everglade_hotbar() {
-        zones::everglade::hotbar::draw(&mut ui, atlas, size, 14.0, &slots);
-    }
+    let slots = runtime.everglade_hotbar().unwrap_or_default();
+    zones::everglade::hotbar::draw_ordered(
+        &mut ui,
+        atlas,
+        size,
+        14.0,
+        &slots,
+        &runtime.everglade_hotbar_order(),
+    );
     if let Some(swarm) = runtime.everglade_swarm() {
         zones::everglade::demolition::hotbar::draw_town(
             &mut ui,
             atlas,
             size,
             14.0,
-            zones::everglade::hotbar::FULL_COUNT,
+            slots.len(),
             &swarm,
         );
     }
