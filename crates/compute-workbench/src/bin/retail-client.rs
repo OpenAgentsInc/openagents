@@ -79,15 +79,7 @@ fn run(args: Args) -> Result<String> {
             amount_sats,
         } => {
             let p = client.top_up(&idempotency, amount_sats)?;
-            format!(
-                "Purchase {}: {}\nAmount {}\nPay the exact invoice in your separately selected wallet; this client does not pay it.\nInvoice {}\nPayment hash {}\nExpires at {}\nPayment creates compute credits, not execution authority. Credits cannot be withdrawn as Lightning.",
-                p.purchase,
-                p.state,
-                compute_workbench::credits(p.amount_msat),
-                p.invoice,
-                p.payment_hash,
-                p.expires_at
-            )
+            p.lines()
         }
         Command::TopUpStatus { purchase } => {
             serde_json::to_string_pretty(&client.top_up_status(&purchase)?)?

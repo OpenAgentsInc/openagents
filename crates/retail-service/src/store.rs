@@ -171,6 +171,10 @@ CREATE TABLE IF NOT EXISTS offer_commercial (id TEXT PRIMARY KEY, bytes TEXT NOT
 CREATE TRIGGER IF NOT EXISTS offer_commercial_no_replace BEFORE INSERT ON offer_commercial WHEN EXISTS(SELECT 1 FROM offer_commercial WHERE id=NEW.id) BEGIN SELECT RAISE(ABORT, 'Commercial offer is immutable'); END;
 CREATE TRIGGER IF NOT EXISTS offer_commercial_no_update BEFORE UPDATE ON offer_commercial BEGIN SELECT RAISE(ABORT, 'Commercial offer is immutable'); END;
 CREATE TRIGGER IF NOT EXISTS offer_commercial_no_delete BEFORE DELETE ON offer_commercial BEGIN SELECT RAISE(ABORT, 'Commercial offer is retained'); END;
+CREATE TABLE IF NOT EXISTS funding_commercial (id TEXT PRIMARY KEY, bytes TEXT NOT NULL);
+CREATE TRIGGER IF NOT EXISTS funding_commercial_no_replace BEFORE INSERT ON funding_commercial WHEN EXISTS(SELECT 1 FROM funding_commercial WHERE id=NEW.id) BEGIN SELECT RAISE(ABORT, 'Commercial funding is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS funding_commercial_no_update BEFORE UPDATE ON funding_commercial BEGIN SELECT RAISE(ABORT, 'Commercial funding is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS funding_commercial_no_delete BEFORE DELETE ON funding_commercial BEGIN SELECT RAISE(ABORT, 'Commercial funding is retained'); END;
 CREATE TABLE IF NOT EXISTS worker (id INTEGER PRIMARY KEY CHECK(id=1), cursor TEXT NOT NULL);
 INSERT OR IGNORE INTO worker(id,cursor) VALUES(1,'');",
         )?;
@@ -235,6 +239,80 @@ INSERT OR IGNORE INTO worker(id,cursor) VALUES(1,'');",
             ))
         })
         .transpose()
+    }
+    pub fn funding_commercial(
+        &self,
+        id: &str,
+        account: &str,
+        amount_msat: i64,
+    ) -> Result<Option<receipts::purchase::CommercialRef>> {
+        self.check()?;
+        let bytes: Option<String> = self
+            .db
+            .query_row(
+                "SELECT bytes FROM funding_commercial WHERE id=?",
+                [id],
+                |r| r.get(0),
+            )
+            .optional()?;
+        bytes
+            .map(|bytes| {
+                let (original_account, original_amount, reference): (
+                    String,
+                    i64,
+                    receipts::purchase::CommercialRef,
+                ) = serde_json::from_str(&bytes)?;
+                reference.validate().map_err(|_| Error::Denied)?;
+                if original_account != account
+                    || original_amount != amount_msat
+                    || !reference.matches_native(
+                        receipts::purchase::CommercialProduct::Retail,
+                        account,
+                        None,
+                    )
+                {
+                    return Err(Error::Denied);
+                }
+                Ok(reference)
+            })
+            .transpose()
+    }
+    /// Freeze before requesting an invoice; an interrupted attempt cannot change attribution.
+    pub fn freeze_funding_commercial(
+        &self,
+        id: &str,
+        account: &str,
+        amount_msat: i64,
+        current: Option<&receipts::purchase::CommercialRef>,
+    ) -> Result<Option<receipts::purchase::CommercialRef>> {
+        if let Some(original) = self.funding_commercial(id, account, amount_msat)? {
+            if Some(&original) != current {
+                return Err(Error::Conflict("The original funding attribution changed."));
+            }
+            return Ok(Some(original));
+        }
+        let Some(reference) = current else {
+            return Ok(None);
+        };
+        reference.validate().map_err(|_| Error::Denied)?;
+        if !reference.matches_native(receipts::purchase::CommercialProduct::Retail, account, None) {
+            return Err(Error::Denied);
+        }
+        let count: usize =
+            self.db
+                .query_row("SELECT COUNT(*) FROM funding_commercial", [], |r| r.get(0))?;
+        if count >= RECORD_MAX {
+            return Err(Error::Unavailable("The private funding store is full."));
+        }
+        self.db.execute(
+            "INSERT INTO funding_commercial(id,bytes) VALUES(?,?)",
+            params![
+                id,
+                serde_json::to_string(&(account, amount_msat, reference))?
+            ],
+        )?;
+        self.check()?;
+        Ok(Some(reference.clone()))
     }
     pub fn insert_offer(
         &self,

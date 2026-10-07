@@ -899,6 +899,8 @@ fn installed_client_freezes_reviewed_commercial_attribution_and_refuses_stale_co
     assert_eq!(account.commercial.as_ref().unwrap().customer, customer.id);
     assert!(account.lines().contains(&customer.id));
     let purchase = client.top_up("commercial-funding", 1000).unwrap();
+    assert_eq!(purchase.commercial.as_ref().unwrap().workspace, personal.id);
+    assert!(purchase.lines().contains(&personal.id));
     f.wallet.pay_in_full(&purchase.payment_hash);
     service.tick(retail::now() as i64).unwrap();
     let review = client.quote("personal-review", f.task(), &key).unwrap();
@@ -964,6 +966,10 @@ fn installed_client_freezes_reviewed_commercial_attribution_and_refuses_stale_co
     );
     let mut client = Client::from_file(&path).unwrap();
     let reviewed_team = client.quote("team-review", f.task(), &key).unwrap();
+    let original_funding = client.top_up("commercial-funding", 1000).unwrap();
+    assert_eq!(original_funding.commercial, purchase.commercial);
+    assert_eq!(original_funding.payment_hash, purchase.payment_hash);
+    assert_eq!(f.wallet.issued(), 1);
     assert_eq!(
         reviewed_team.custody.terms["commercial"]["workspace"],
         team.id
@@ -1014,6 +1020,21 @@ fn installed_client_freezes_reviewed_commercial_attribution_and_refuses_stale_co
         .unwrap();
     let mut client = Client::from_file(&path).unwrap();
     assert!(client.quote("revoked", f.task(), &key).is_err());
+    assert!(client.top_up("revoked-funding", 1).is_err());
+    let funding_history = client.top_up_status(&purchase.purchase).unwrap();
+    assert_eq!(funding_history.commercial, purchase.commercial);
+    assert_eq!(funding_history.state, "paid");
+    drop(client);
+    let funding_history = binary(&path, &["top-up-status", &purchase.purchase]);
+    assert!(
+        funding_history.status.success(),
+        "{}",
+        String::from_utf8_lossy(&funding_history.stderr)
+    );
+    let funding_history: retail::Purchase =
+        serde_json::from_slice(&funding_history.stdout).unwrap();
+    assert_eq!(funding_history.commercial, purchase.commercial);
+    let client = Client::from_file(&path).unwrap();
     assert_eq!(
         client.receipt(&execution).unwrap().commercial.unwrap(),
         frozen

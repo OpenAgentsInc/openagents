@@ -1899,11 +1899,34 @@ fn current_commercial_mapping_fences_confirmation_and_never_moves_customer_money
     );
     let offered = made(&s, "alice", "original-personal");
     let frozen = offered["custody"]["terms"]["commercial"].clone();
+    let interrupted_funding = opaque("rt", "alice", "interrupted-funding").unwrap();
+    let reference = serde_json::from_value(frozen.clone()).unwrap();
+    // Crash boundary: attribution is durable, but no invoice has been requested.
+    s.lock()
+        .unwrap()
+        .freeze_funding_commercial(&interrupted_funding, "alice", 10_000, Some(&reference))
+        .unwrap();
     assert!(matches!(
         call(&s, "bob", confirmation(&offered)),
         Err(Error::Denied)
     ));
     let team = mapping.team();
+    assert!(
+        call(
+            &s,
+            "alice",
+            json!({"op":"top_up","idempotency":"interrupted-funding","amount_sats":10})
+        )
+        .is_err()
+    );
+    assert!(
+        s.lock()
+            .unwrap()
+            .ledger
+            .top_up(&interrupted_funding)
+            .unwrap()
+            .is_none()
+    );
     assert!(matches!(
         call(&s, "alice", confirmation(&offered)),
         Err(Error::Denied)
@@ -1978,11 +2001,28 @@ fn changed_commercial_membership_stops_new_worker_effects_and_preserves_original
     let s = f.open().with_commercial(mapping.config.clone()).unwrap();
     let original = made(&s, "alice", "historical-personal");
     let frozen = original["custody"]["terms"]["commercial"].clone();
+    let funding = call(
+        &s,
+        "alice",
+        json!({"op":"top_up","idempotency":"historical-funding","amount_sats":10}),
+    )
+    .unwrap()["result"]
+        .clone();
+    assert_eq!(funding["commercial"], frozen);
     let execution = call(&s, "alice", confirmation(&original)).unwrap()["result"]["execution"]
         .as_str()
         .unwrap()
         .to_owned();
     let team = mapping.team();
+    let repeated_funding = call(
+        &s,
+        "alice",
+        json!({"op":"top_up","idempotency":"historical-funding","amount_sats":10}),
+    )
+    .unwrap();
+    assert_eq!(repeated_funding["result"], funding);
+    f.wallet
+        .pay_in_full(funding["payment_hash"].as_str().unwrap());
     for n in 1..4 {
         s.tick(NOW + n).unwrap();
     }
@@ -2033,7 +2073,7 @@ fn changed_commercial_membership_stops_new_worker_effects_and_preserves_original
         )
         .is_err()
     );
-    assert_eq!(f.wallet.issued(), 0);
+    assert_eq!(f.wallet.issued(), 1);
     assert_eq!(
         s.lock()
             .unwrap()
@@ -2056,4 +2096,20 @@ fn changed_commercial_membership_stops_new_worker_effects_and_preserves_original
     )
     .unwrap();
     assert_eq!(history["result"]["commercial"], frozen);
+    let funding_history = call(
+        &restarted,
+        "alice",
+        json!({"op":"top_up_status","purchase":funding["purchase"]}),
+    )
+    .unwrap();
+    assert_eq!(funding_history["result"]["commercial"], frozen);
+    assert_eq!(funding_history["result"]["state"], "paid");
+    assert!(
+        call(
+            &restarted,
+            "bob",
+            json!({"op":"top_up_status","purchase":funding["purchase"]})
+        )
+        .is_err()
+    );
 }

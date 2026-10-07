@@ -35,6 +35,10 @@ new worker execution or disclosure require the same current revision.
 Credential, membership, or ownership changes require reviewed lineage and a
 new offer. History retains the original reference, while safe cleanup and
 money reconciliation continue under the original native records.
+Mapped funding freezes attribution before invoice creation. Retries and status
+reads retain the original reference after conversion or membership removal;
+an interrupted invoice attempt cannot resume under changed attribution.
+Legacy funding keeps its original native account without a retroactive mapping.
 
 | `op` | Result or effect |
 | --- | --- |

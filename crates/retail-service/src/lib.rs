@@ -371,9 +371,28 @@ impl<B: Backend, W: LightningWallet + Send + Sync + 'static> Service<B, W> {
                 idempotency,
                 amount_sats,
             } => {
-                self.commercial_ref(store, &identity.account)?;
+                let current = self.commercial_ref(store, &identity.account)?;
                 self.require_open(&store, None)?;
                 let purchase = opaque("rt", &identity.account, &idempotency)?;
+                let amount_msat = msat(amount_sats)?;
+                if amount_msat <= 0 || amount_msat > pay_ledger::compute::purchase::TOP_UP_MAX_MSAT
+                {
+                    return Err(Error::Invalid("top-up amount"));
+                }
+                let commercial = if let Some(original) = store.ledger.top_up(&purchase)? {
+                    store.funding_commercial(
+                        &purchase,
+                        &identity.account,
+                        original.top_up.amount_msat,
+                    )?
+                } else {
+                    store.freeze_funding_commercial(
+                        &purchase,
+                        &identity.account,
+                        amount_msat,
+                        current.as_ref(),
+                    )?
+                };
                 let record = topup::request_top_up(
                     &mut store.ledger,
                     &*self.wallet,
@@ -385,7 +404,7 @@ impl<B: Backend, W: LightningWallet + Send + Sync + 'static> Service<B, W> {
                         now,
                     },
                 )?;
-                purchase_value(record)
+                purchase_value(record, commercial.as_ref())
             }
             Request::TopUpStatus { purchase } => {
                 let record = store
@@ -393,7 +412,12 @@ impl<B: Backend, W: LightningWallet + Send + Sync + 'static> Service<B, W> {
                     .top_up(&purchase)?
                     .filter(|p| p.top_up.account == identity.account)
                     .ok_or(Error::Denied)?;
-                purchase_value(record)
+                let commercial = store.funding_commercial(
+                    &purchase,
+                    &identity.account,
+                    record.top_up.amount_msat,
+                )?;
+                purchase_value(record, commercial.as_ref())
             }
             Request::Offer { idempotency, task } => {
                 if !grant.execute || !grant.disclose {
@@ -737,8 +761,16 @@ fn opaque(prefix: &str, account: &str, idempotency: &str) -> Result<String> {
             .trim_start_matches("sha256:")
     ))
 }
-fn purchase_value(p: pay_ledger::compute::Purchase) -> Value {
-    json!({"purchase":p.top_up.id,"account":p.top_up.account,"amount_msat":p.top_up.amount_msat,"invoice":p.top_up.invoice,"payment_hash":p.top_up.payment_hash,"state":p.state.as_str(),"expires_at":p.top_up.expires_at,"observed_at":p.observed_at})
+fn purchase_value(
+    p: pay_ledger::compute::Purchase,
+    commercial: Option<&receipts::purchase::CommercialRef>,
+) -> Value {
+    let mut value = json!({"purchase":p.top_up.id,"account":p.top_up.account,"amount_msat":p.top_up.amount_msat,"invoice":p.top_up.invoice,"payment_hash":p.top_up.payment_hash,"state":p.state.as_str(),"expires_at":p.top_up.expires_at,"observed_at":p.observed_at});
+    if let Some(reference) = commercial {
+        value["commercial"] =
+            serde_json::to_value(reference).expect("commercial reference serializes");
+    }
+    value
 }
 fn msat(sats: u64) -> Result<i64> {
     sats.checked_mul(1000)

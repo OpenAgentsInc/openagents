@@ -202,6 +202,8 @@ impl Review {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Purchase {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub commercial: Option<receipts::purchase::CommercialRef>,
     pub purchase: String,
     pub account: String,
     pub amount_msat: i64,
@@ -210,6 +212,43 @@ pub struct Purchase {
     pub state: String,
     pub expires_at: i64,
     pub observed_at: Option<i64>,
+}
+impl Purchase {
+    pub fn lines(&self) -> String {
+        let attribution = if self.commercial.is_some() {
+            format!(
+                "{}Native retail account {}\n",
+                commercial_line(self.commercial.as_ref()),
+                self.account
+            )
+        } else {
+            String::new()
+        };
+        format!(
+            "{attribution}Purchase {}: {}\nAmount {}\nPay the exact invoice in your separately selected wallet; this client does not pay it.\nInvoice {}\nPayment hash {}\nExpires at {}\nPayment creates compute credits, not execution authority. Credits cannot be withdrawn as Lightning.",
+            self.purchase,
+            self.state,
+            crate::credits(self.amount_msat),
+            self.invoice,
+            self.payment_hash,
+            self.expires_at
+        )
+    }
+    fn validate(self) -> Result<Self> {
+        if let Some(reference) = &self.commercial {
+            reference.validate().map_err(Error::Refused)?;
+            if !reference.matches_native(
+                receipts::purchase::CommercialProduct::Retail,
+                &self.account,
+                None,
+            ) {
+                return Err(Error::Refused(
+                    "Funding attribution differs from its native account.",
+                ));
+            }
+        }
+        Ok(self)
+    }
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -484,11 +523,25 @@ impl Client {
         self.call(json!({"op":"capacity"}))
     }
     pub fn top_up(&self, idempotency: &str, amount_sats: u64) -> Result<Purchase> {
-        self.authority(false)?;
-        self.call(json!({"op":"top_up","idempotency":idempotency,"amount_sats":amount_sats}))
+        let account = self.authority(false)?;
+        let purchase: Purchase =
+            self.call(json!({"op":"top_up","idempotency":idempotency,"amount_sats":amount_sats}))?;
+        let expected = amount_sats
+            .checked_mul(1000)
+            .and_then(|v| i64::try_from(v).ok());
+        if purchase.account != account.account || Some(purchase.amount_msat) != expected {
+            return Err(Error::Refused(
+                "Funding returned another native account or amount.",
+            ));
+        }
+        purchase.validate()
     }
     pub fn top_up_status(&self, purchase: &str) -> Result<Purchase> {
-        self.call(json!({"op":"top_up_status","purchase":purchase}))
+        let record: Purchase = self.call(json!({"op":"top_up_status","purchase":purchase}))?;
+        if record.purchase != purchase {
+            return Err(Error::Refused("Funding history returned another identity."));
+        }
+        record.validate()
     }
     pub fn quote(
         &mut self,
