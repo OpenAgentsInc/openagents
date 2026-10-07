@@ -59,6 +59,10 @@ pub fn routes() -> Vec<(&'static str, MethodRouter<Arc<ServeState>>)> {
         ("/v1/recovery/redeem", post(recovery_redeem)),
         ("/v1/workspaces", post(workspace_create)),
         (
+            "/v1/workspaces/{workspace}/purchase-context/{door}",
+            get(crate::purchase::read),
+        ),
+        (
             "/v1/workspaces/{workspace}",
             get(workspace_view).patch(workspace_update),
         ),

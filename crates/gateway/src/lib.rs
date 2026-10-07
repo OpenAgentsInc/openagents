@@ -61,3 +61,5 @@ pub mod skills;
 pub mod updates;
 #[allow(clippy::result_large_err)]
 pub mod usage;
+
+mod purchase;

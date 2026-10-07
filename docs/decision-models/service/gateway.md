@@ -154,6 +154,11 @@ configuration:
 - `POST /v1/sessions` — sign in with an unconstrained `oak_` key, or mint a funded
   anonymous session with no credential; `GET` and `DELETE /v1/session`
   describe and end it.
+- `GET /v1/workspaces/{workspace}/purchase-context/{door}` — current account,
+  credential, membership, payer, resource, and bounded price references for an
+  explicitly selected monetary purchase. It requires account actions and
+  workspace admission. `can_invoke` describes rights and configuration; it
+  doesn't establish sufficient funds or commercial qualification.
 - `POST /v1/accounts` — self-serve sign-up: account, personal
   workspace, first key, first session. `GET /v1/account` lists the
   caller's workspaces; `GET /v1/account/access` their access history.
@@ -249,6 +254,17 @@ mirrored MCP server card, the versioned `/v1/docs` corpus API
 never trusted. Nothing on the surface decides and nothing on it
 authenticates — the inference routes still require the bearer
 credential.
+
+An explicit purchase uses `x-openagents-purchase` with a frozen quote and
+approval from `receipts::purchase`. The quote names the exact request digest,
+customer, workspace payer, credential reference, membership epochs, artifact,
+and authoritative price terms. It lasts at most five minutes. Its ID is the
+`Idempotency-Key`, with `X-Attempt: 1`; the SDK's
+`Client::approved_system_one` never automatically retries it. The gateway
+rechecks these references before reservation and immediately before dispatch.
+A change during verification releases the undispatched hold. Other routes
+refuse this header. The returned approval digest and `x-receipt` identify the
+serving process's claim; neither supplies authority or remote attestation.
 
 ## Responses
 

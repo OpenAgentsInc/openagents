@@ -118,6 +118,33 @@ impl Account<'_> {
         decode(&raw)
     }
 
+    /// Read current customer, payer, resource, and bounded price references.
+    /// Absence of the selected monetary/account lane is an explicit refusal.
+    pub async fn purchase_context(
+        &self,
+        workspace: &str,
+        door: &str,
+    ) -> Result<receipts::purchase::Context> {
+        identifier(workspace)?;
+        identifier(door)?;
+        let raw = self
+            .client
+            .request_private(
+                Method::GET,
+                &format!("/v1/workspaces/{workspace}/purchase-context/{door}"),
+                None,
+            )
+            .await?;
+        let context: receipts::purchase::Context = decode(&raw)?;
+        context
+            .validate()
+            .map_err(|_| Error::Config("Invalid customer purchase context.".into()))?;
+        if context.workspace != workspace || context.door != door {
+            return Err(Error::Config("Customer purchase selection changed.".into()));
+        }
+        Ok(context)
+    }
+
     /// Consume a recovery token once. A transport failure is uncertain and
     /// requires reconciliation; this method performs no automatic retry.
     pub async fn recover(&self, token: &ApiKey) -> Result<KeyGrant> {

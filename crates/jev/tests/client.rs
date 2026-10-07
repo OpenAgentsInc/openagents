@@ -1716,3 +1716,90 @@ async fn extra_body_keeps_nulls_and_replaces_shallow_fields() -> Outcome {
     assert_eq!(body["questions"]["requestsRefund"]["type"], json!("noul"));
     Ok(())
 }
+
+#[tokio::test]
+async fn approved_purchase_preserves_exact_identity_and_never_retries() -> Outcome {
+    use receipts::purchase::{Approval, Context, HEADER, PriceReference, Quote, SCHEMA};
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_millis() as u64;
+    let hash = format!("sha256:{}", "a".repeat(64));
+    let context = Context {
+        schema: SCHEMA.into(),
+        account: "buyer-a".into(),
+        workspace: "workspace-a".into(),
+        payer_workspace: "workspace-a".into(),
+        tenant: "tenant-a".into(),
+        credential_reference: "key-a".into(),
+        membership_epoch: 1,
+        workspace_members_epoch: 1,
+        role: "owner".into(),
+        door: "decision-a".into(),
+        registry_digest: hash.clone(),
+        artifact_digest: hash.clone(),
+        price: PriceReference {
+            version: "price-1".into(),
+            currency: "USD".into(),
+            policy: "observed-usage-v1".into(),
+            terms_digest: hash.clone(),
+            maximum_usage_digest: hash,
+            maximum_charge: 100,
+        },
+        can_invoke: true,
+    };
+    let request = asking().model("decision-a");
+    let approval = Approval {
+        quote: Quote {
+            id: "purchase-one".into(),
+            context,
+            request_digest: receipts::execution::digest_request(&Value::Object(
+                request.body("decision-a")?,
+            )),
+            created_at_ms: now,
+            expires_at_ms: now + 60_000,
+        },
+        approved_at_ms: now,
+    };
+    let context_body = serde_json::to_string(&approval.quote.context)?;
+    let (base, seen) = serve(vec![
+        Reply::new(200, &context_body),
+        Reply::new(200, RECORDED_RESPONSE).header(HEADER, &approval.digest()),
+    ])
+    .await?;
+    let client = Client::new(Config::new().base_url(base).api_key("fixture-key"))?;
+    assert_eq!(
+        client
+            .account()
+            .purchase_context("workspace-a", "decision-a")
+            .await?,
+        approval.quote.context
+    );
+    client
+        .approved_system_one(&approval, request.clone())
+        .await?;
+    let observed = seen.lock().await;
+    assert_eq!(observed.len(), 2);
+    assert_eq!(observed[1].header("idempotency-key"), Some("purchase-one"));
+    assert_eq!(observed[1].header("x-attempt"), Some("1"));
+    assert_eq!(observed[1].header("x-workspace-id"), Some("workspace-a"));
+    assert_eq!(
+        serde_json::from_str::<Approval>(observed[1].header(HEADER).unwrap())?,
+        approval
+    );
+    drop(observed);
+    let (base, seen) = serve(vec![
+        Reply::new(
+            503,
+            r#"{"error":{"code":"purchase_changed","message":"fixture-private-content"}}"#,
+        ),
+        Reply::new(200, RECORDED_RESPONSE),
+    ])
+    .await?;
+    let error = Client::new(Config::new().base_url(base).api_key("fixture-key"))?
+        .approved_system_one(&approval, request)
+        .await
+        .unwrap_err();
+    assert_eq!(seen.lock().await.len(), 1);
+    assert!(!format!("{error:?}").contains("fixture-private-content"));
+    Ok(())
+}

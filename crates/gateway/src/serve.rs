@@ -294,6 +294,20 @@ impl ServeState {
     }
 }
 
+/// Refuse explicit purchase approval on routes that cannot enforce it.
+async fn purchase_route(request: Request, next: Next) -> Response {
+    if request.headers().contains_key(receipts::purchase::HEADER)
+        && (request.method() != Method::POST || request.uri().path() != "/v1/systemone")
+    {
+        return gateway_error(
+            400,
+            "purchase_unavailable",
+            "Explicit purchase approval is supported only by POST /v1/systemone.",
+        );
+    }
+    next.run(request).await
+}
+
 /// Build the axum router over the state.
 pub fn router(state: Arc<ServeState>) -> axum::Router {
     let body_max = state.config.max_body_bytes;
@@ -309,6 +323,7 @@ pub fn router(state: Arc<ServeState>) -> axum::Router {
     jobs::resume(&state);
     router
         .layer(DefaultBodyLimit::max(body_max))
+        .layer(middleware::from_fn(purchase_route))
         .layer(middleware::from_fn_with_state(state.clone(), cors))
         .with_state(state)
 }
@@ -1010,6 +1025,8 @@ pub(crate) struct ReceiptContext {
     /// How the attempt's monetary hold resolved — `settled`,
     /// `outstanding`, or `released` — when monetary admission ran.
     pub(crate) settlement: Option<&'static str>,
+    /// Digest of the explicit approval rechecked before reservation.
+    pub(crate) purchase_approval: Option<String>,
 }
 
 /// What the admission path produced.
@@ -1132,7 +1149,18 @@ async fn owned_request(
         {
             *status = StatusCode::from_u16(named).unwrap_or(*status);
         }
-        conclude(&state, &naming, started, verdict).await
+        let approval = match &verdict {
+            Verdict::Forwarded { ctx, .. } | Verdict::Refused { ctx, .. } => {
+                ctx.purchase_approval.clone()
+            }
+        };
+        let mut response = conclude(&state, &naming, started, verdict).await;
+        if let Some(approval) = approval.and_then(|value| HeaderValue::from_str(&value).ok()) {
+            response
+                .headers_mut()
+                .insert(receipts::purchase::HEADER, approval);
+        }
+        response
     })
     .await
     {
@@ -1803,6 +1831,26 @@ async fn admitted(
         Ok(permits) => permits,
         Err(verdict) => return verdict,
     };
+    match crate::purchase::check(
+        state,
+        headers,
+        door,
+        &admission,
+        naming.request,
+        naming.request_digest,
+        naming.attempt,
+    ) {
+        Ok(digest) => ctx.purchase_approval = digest,
+        Err(message) => {
+            return Verdict::Refused {
+                status: StatusCode::CONFLICT,
+                code: "purchase_changed",
+                message: message.into(),
+                outcome: Outcome::Refused,
+                ctx,
+            };
+        }
+    }
     let units = units_of(envelope, body.len());
     if let Err(verdict) = reserved(state, &registry, &caller, naming, &units, &mut ctx).await {
         return verdict;
@@ -1828,6 +1876,28 @@ async fn admitted(
     // 6. Forward, then settle from the recorded outcome.
     if cancellation.stopped() {
         return cancelled_before_dispatch(state, naming, &mut ctx, &hold).await;
+    }
+    // Capacity waits and model verification can outlive a membership or quote.
+    // Recheck before dispatch; a changed approval releases the undispatched hold.
+    if let Err(message) = crate::purchase::check(
+        state,
+        headers,
+        door,
+        &admission,
+        naming.request,
+        naming.request_digest,
+        naming.attempt,
+    ) {
+        ctx.purchase_approval = None;
+        ctx.settlement = money_release(state, &hold).await;
+        state.release(naming.request, naming.attempt).await;
+        return Verdict::Refused {
+            status: StatusCode::CONFLICT,
+            code: "purchase_changed",
+            message: message.into(),
+            outcome: Outcome::Refused,
+            ctx,
+        };
     }
     let (status, outcome, body_out, cause) =
         match forward_cancellable(state, &endpoint, body, cancellation).await {

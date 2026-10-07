@@ -7193,6 +7193,7 @@ dependencies = [
  "httpdate",
  "indexmap 2.14.2",
  "rand 0.9.5",
+ "receipts",
  "reqwest 0.12.28",
  "serde",
  "serde_json",

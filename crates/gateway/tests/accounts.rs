@@ -26,7 +26,9 @@ struct Deployment {
     tokens: BTreeMap<String, String>,
     dir: tempfile::TempDir,
     address: String,
-    _state: Arc<ServeState>,
+    _state: Option<Arc<ServeState>>,
+    server: tokio::task::JoinHandle<std::io::Result<()>>,
+    config: Config,
 }
 
 /// The accounts block most tests run: sign-up onto `acme`, the funded
@@ -76,7 +78,7 @@ async fn deploy(accounts: Option<config::Accounts>, require_membership: bool) ->
             )
         })
         .collect();
-    let state = ServeState::open(Config {
+    let config = Config {
         v: SCHEMA.to_string(),
         listen: "127.0.0.1:0".to_string(),
         registry: dir.path().to_path_buf(),
@@ -102,16 +104,18 @@ async fn deploy(accounts: Option<config::Accounts>, require_membership: bool) ->
         billing: None,
         earnings: None,
         skills: None,
-    })
-    .unwrap();
+    };
+    let state = ServeState::open(config.clone()).unwrap();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = format!("http://{}", listener.local_addr().unwrap());
-    tokio::spawn(axum::serve(listener, serve::router(state.clone())).into_future());
+    let server = tokio::spawn(axum::serve(listener, serve::router(state.clone())).into_future());
     Deployment {
         tokens,
         dir,
         address,
-        _state: state,
+        _state: Some(state),
+        server,
+        config,
     }
 }
 
@@ -1440,4 +1444,255 @@ async fn stores_install_under_accounts_config_and_validate() {
         .unwrap()
         .session_cap = 2;
     assert!(config.check(&path).is_err());
+}
+
+#[tokio::test]
+async fn purchases_recheck_customer_price_request_and_current_credential_before_reservation() {
+    use receipts::purchase::{Approval, Context, HEADER, Quote};
+    use tenancy::money::{CreditKind, Ledger, Mutation, Operation, Price, Rate, Resource};
+    let mut d = deploy(Some(account_config(None)), true).await;
+    let ada = join(&d, "ada-purchase").await;
+    let grace = join(&d, "grace-purchase").await;
+    let ledger_path = d.dir.path().join("purchase-money.jsonl");
+    let mut ledger = Ledger::open(&ledger_path).unwrap();
+    for workspace in [&ada.workspace, &grace.workspace] {
+        for (source, operation) in [
+            (
+                "create",
+                Operation::Create {
+                    currency: "USD".into(),
+                    spend_limit: 100_000,
+                    topups_allowed: false,
+                },
+            ),
+            (
+                "fixture-grant",
+                Operation::Credit {
+                    amount: 100_000,
+                    credit_kind: CreditKind::Grant,
+                },
+            ),
+        ] {
+            ledger
+                .apply(Mutation {
+                    workspace: workspace.clone(),
+                    source: source.into(),
+                    audit: "synthetic-purchase-fixture".into(),
+                    operation,
+                })
+                .unwrap();
+        }
+    }
+    drop(ledger);
+    let priced = gateway::money::Priced {
+        price: Price {
+            version: "fixture-price-1".into(),
+            currency: "USD".into(),
+            model: "kev-0.6b".into(),
+            capacity: "dedicated".into(),
+            policy: gateway::money::POLICY.into(),
+            rates: [(
+                Resource::InputTokens,
+                Rate {
+                    millionths: 1,
+                    per_units: 1,
+                },
+            )]
+            .into(),
+        },
+        maximum_usage: [(Resource::InputTokens, 1000)].into(),
+    };
+    d.config.money = Some(gateway::money::Money {
+        ledger: ledger_path.clone(),
+        doors: [("acme-kev".into(), priced)].into(),
+    });
+    // Stop and drop the first fixture host before reopening its exclusive ledgers.
+    d.server.abort();
+    let _ = (&mut d.server).await;
+    d._state.take();
+    let state = ServeState::open(d.config.clone()).unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    d.address = format!("http://{}", listener.local_addr().unwrap());
+    d.server = tokio::spawn(axum::serve(listener, serve::router(state.clone())).into_future());
+    d._state = Some(state);
+    let client = reqwest::Client::new();
+    let path = format!(
+        "{}/v1/workspaces/{}/purchase-context/acme-kev",
+        d.address, ada.workspace
+    );
+    let response = client
+        .get(&path)
+        .bearer_auth(&ada.key_token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let context: Context = response.json().await.unwrap();
+    assert_eq!(context.account, ada.account);
+    assert_eq!(context.payer_workspace, ada.workspace);
+    assert!(context.can_invoke);
+    let body = call("acme-kev");
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
+    let approval = Approval {
+        quote: Quote {
+            id: "fixture-purchase-one".into(),
+            context: context.clone(),
+            request_digest: receipts::execution::digest_request(&body),
+            created_at_ms: now,
+            expires_at_ms: now + 60_000,
+        },
+        approved_at_ms: now,
+    };
+    let (status, reader) = post(
+        &d,
+        &format!("/v1/workspaces/{}/keys", ada.workspace),
+        Some(&ada.session_token),
+        &json!({"name":"purchase-reader", "scopes":{"models":["acme-kev"],"actions":["accounts"]}}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{reader}");
+    let reader = reader["key_token"].as_str().unwrap().to_owned();
+    let readonly: Context = client
+        .get(&path)
+        .bearer_auth(&reader)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert!(!readonly.can_invoke);
+    let send = |token: String, workspace: String, approval: Approval, body: Value, route: &str| {
+        client
+            .post(format!("{}{route}", d.address))
+            .bearer_auth(token)
+            .header("x-workspace-id", workspace)
+            .header("idempotency-key", approval.quote.id.clone())
+            .header(HEADER, serde_json::to_string(&approval).unwrap())
+            .json(&body)
+            .send()
+    };
+    // A forged affirmative context cannot expand the read-only bearer's rights.
+    let mut forged = approval.clone();
+    forged.quote.context = readonly;
+    forged.quote.context.can_invoke = true;
+    assert_eq!(
+        send(
+            reader,
+            ada.workspace.clone(),
+            forged,
+            body.clone(),
+            "/v1/systemone"
+        )
+        .await
+        .unwrap()
+        .status(),
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        send(
+            "host-device-grant-is-not-a-gateway-bearer".into(),
+            ada.workspace.clone(),
+            approval.clone(),
+            body.clone(),
+            "/v1/systemone"
+        )
+        .await
+        .unwrap()
+        .status(),
+        StatusCode::UNAUTHORIZED
+    );
+    let response = send(
+        grace.key_token.clone(),
+        grace.workspace.clone(),
+        approval.clone(),
+        body.clone(),
+        "/v1/systemone",
+    )
+    .await
+    .unwrap();
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+    let mut changed = body.clone();
+    changed["state"] = json!("different request");
+    assert_eq!(
+        send(
+            ada.key_token.clone(),
+            ada.workspace.clone(),
+            approval.clone(),
+            changed,
+            "/v1/systemone"
+        )
+        .await
+        .unwrap()
+        .status(),
+        StatusCode::CONFLICT
+    );
+    let mut changed = approval.clone();
+    changed.quote.context.price.maximum_charge += 1;
+    assert_eq!(
+        send(
+            ada.key_token.clone(),
+            ada.workspace.clone(),
+            changed,
+            body.clone(),
+            "/v1/systemone"
+        )
+        .await
+        .unwrap()
+        .status(),
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        send(
+            ada.key_token.clone(),
+            ada.workspace.clone(),
+            approval.clone(),
+            body.clone(),
+            "/v1/classify"
+        )
+        .await
+        .unwrap()
+        .status(),
+        StatusCode::BAD_REQUEST
+    );
+    // Refusals above precede money reservation: the original approval still executes once.
+    let response = send(
+        ada.key_token.clone(),
+        ada.workspace.clone(),
+        approval.clone(),
+        body.clone(),
+        "/v1/systemone",
+    )
+    .await
+    .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.headers()[HEADER], approval.digest());
+    assert!(response.headers().contains_key("x-receipt"));
+    // Rotation cannot retarget a historical approval to the replacement credential.
+    let rotate = format!(
+        "/v1/workspaces/{}/keys/{}/rotate",
+        ada.workspace, context.credential_reference
+    );
+    let (status, rotated) = post(&d, &rotate, Some(&ada.session_token), &json!({})).await;
+    assert_eq!(status, StatusCode::OK, "{rotated}");
+    let key = rotated["key_token"].as_str().unwrap();
+    let mut old = approval.clone();
+    old.quote.id = "fixture-purchase-after-rotation".into();
+    assert_eq!(
+        send(
+            key.into(),
+            ada.workspace.clone(),
+            old,
+            body,
+            "/v1/systemone"
+        )
+        .await
+        .unwrap()
+        .status(),
+        StatusCode::CONFLICT
+    );
+    assert_eq!(approval.quote.context, context);
 }

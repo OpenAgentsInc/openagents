@@ -330,6 +330,80 @@ impl Client {
         Ok(response)
     }
 
+    /// Invoke one explicitly approved customer purchase without automatic replay.
+    /// The gateway rechecks current rights before reservation and dispatch.
+    pub async fn approved_system_one(
+        &self,
+        approval: &receipts::purchase::Approval,
+        request: SystemOneRequest,
+    ) -> Result<SystemOneResponse> {
+        let body = Value::Object(request.body(&self.inner.default_model)?);
+        let request_digest = receipts::execution::digest_request(&body);
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis()
+            .try_into()
+            .unwrap_or(u64::MAX);
+        approval
+            .validate_current(&approval.quote.context, &request_digest, now)
+            .map_err(|_| Error::Config("Purchase approval does not cover this request.".into()))?;
+        if body.get("model").and_then(Value::as_str) != Some(approval.quote.context.door.as_str()) {
+            return Err(Error::Config(
+                "Purchase approval names a different decision resource.".into(),
+            ));
+        }
+        let mut prepared = self.prepare_system_one(&request)?;
+        prepared.private = true;
+        prepared.retry.max_retries = 0;
+        for (name, value) in [
+            ("x-workspace-id", approval.quote.context.workspace.clone()),
+            ("idempotency-key", approval.quote.id.clone()),
+            ("x-attempt", "1".into()),
+            (
+                receipts::purchase::HEADER,
+                serde_json::to_string(approval)
+                    .map_err(|_| Error::Config("Purchase approval encoding failed.".into()))?,
+            ),
+        ] {
+            prepared.headers.insert(
+                reqwest::header::HeaderName::from_static(name),
+                HeaderValue::from_str(&value)
+                    .map_err(|_| Error::Config("Invalid purchase approval header.".into()))?,
+            );
+        }
+        let raw = self.send_read(&prepared).await?;
+        if raw
+            .headers
+            .get(receipts::purchase::HEADER)
+            .and_then(|v| v.to_str().ok())
+            != Some(approval.digest().as_str())
+        {
+            return Err(Error::ResponseValidation {
+                status: raw.status,
+                field_path: "verified purchase approval".into(),
+                body: None,
+                request_id: None,
+            });
+        }
+        let status = raw.status;
+        let response = SystemOneResponse::decode(raw).map_err(|_| Error::ResponseValidation {
+            status,
+            field_path: "private decision response".into(),
+            body: None,
+            request_id: None,
+        })?;
+        response
+            .check_against(&request.questions)
+            .map_err(|_| Error::ResponseValidation {
+                status,
+                field_path: "private decision answers".into(),
+                body: None,
+                request_id: None,
+            })?;
+        Ok(response)
+    }
+
     /// Ask questions about one state and hand back the response unread, for a
     /// caller that wants the bytes.
     ///
@@ -774,7 +848,11 @@ impl Client {
                 .filter(|code| {
                     matches!(
                         code.as_str(),
-                        "unauthenticated"
+                        "purchase_changed"
+                            | "purchase_unavailable"
+                            | "insufficient_funds"
+                            | "price_invalid"
+                            | "unauthenticated"
                             | "invalid_api_key"
                             | "no_account"
                             | "already_signed_in"

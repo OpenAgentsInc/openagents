@@ -13,6 +13,7 @@ blocking = ["tokio/rt"]
 live = []
 
 [dependencies]
+receipts = { path = "../receipts" }
 http = "1"
 httpdate = "1"
 indexmap = { version = "2", features = ["serde"] }
