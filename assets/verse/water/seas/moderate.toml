@@ -1,0 +1,11 @@
+# A fresh breeze over open water: a wind sea with scattered whitecaps.
+description = "A fresh breeze: a wind sea with scattered whitecaps."
+wind_speed = 9.0
+fetch = 60000.0
+peak_wavelength = 0.0
+amplitude = 1.0
+choppiness = 0.9
+spread = 1.0
+standing = 0.0
+time_scale = 1.0
+patch = 0.0

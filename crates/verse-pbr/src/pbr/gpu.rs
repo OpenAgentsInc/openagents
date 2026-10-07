@@ -617,9 +617,11 @@ pub struct Photo {
     pub sprites: Stream,
     fx_group: wgpu::BindGroup,
     /// The water pass's uniform (group 2, binding 3), with the low tier's
-    /// normal tile at bindings 4 and 5.
+    /// normal tile at bindings 4 and 5 and the spectral sea's cascades at 6.
     water_buffer: wgpu::Buffer,
     water_group: wgpu::BindGroup,
+    /// The spectral sea's cascades.
+    pub ocean: crate::water::OceanGpu,
     /// The display's headroom over reference white for space frames.
     pub headroom: f32,
     /// Enable bounded optical fire; disabling it keeps the original flipbooks for comparisons.
@@ -1334,8 +1336,10 @@ impl Photo {
                 crate::water::uniform_entry(3),
                 tile_entry,
                 tile_sampler_entry,
+                crate::water::ocean::entry(6),
             ],
         });
+        let ocean = crate::water::OceanGpu::new(device, capability.quality.tier);
         let water_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("verse water"),
             size: std::mem::size_of::<crate::water::WaterUniform>() as u64,
@@ -1359,6 +1363,10 @@ impl Photo {
                 wgpu::BindGroupEntry {
                     binding: 5,
                     resource: wgpu::BindingResource::Sampler(&water_tile_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 6,
+                    resource: wgpu::BindingResource::TextureView(ocean.view()),
                 },
             ],
         });
@@ -1631,6 +1639,7 @@ impl Photo {
             fx_group,
             water_buffer,
             water_group,
+            ocean,
             headroom: 1.0,
             fire_volumes: true,
         })
@@ -2798,6 +2807,12 @@ impl Photo {
             uniform.water_controls = water.control_terms();
             let mut packed = water.uniform();
             packed.look[1] = crate::water::pixel_angle(view.view_proj, view.eye, height);
+            packed.ocean = self.ocean.prepare(
+                queue,
+                sea.spectrum.as_ref(),
+                f64::from(water.time),
+                sea.swell_gain,
+            );
             queue.write_buffer(&self.water_buffer, 0, bytemuck::bytes_of(&packed));
         }
         queue.write_buffer(&self.frame, 0, bytemuck::bytes_of(&uniform));

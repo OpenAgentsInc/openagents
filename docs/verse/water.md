@@ -883,6 +883,61 @@ screen-space reflection, refraction, and clipmaps remain W4, W5, and W10.
 Captures for every tier through both renderers are in
 `bench/verse/2026-10-07/water/`.
 
+**Status (W4, 2026-10-07).** The spectral sea is
+`physics::water::Spectrum` and `Synth` (`crates/physics/src/water/spectrum.rs`)
+over our own radix-2 FFT (`fft.rs`, about 150 lines, so the wasm build adds no
+crate): a JONSWAP spectrum from wind speed and fetch [Hasselmann73] with the
+TMA depth factor [Bouws85] and the dispersion ω² = gk·tanh(kh), spread by
+`cos^{2s}(θ/2)` [LonguetHiggins63] with Hasselmann's frequency-dependent `s`
+[Hasselmann80] and Horvath's swell term and normalization [Horvath15]. Each
+lattice mode's height is the spectrum integrated over its cell, with a seeded
+random phase and no random magnitude, so a tile's variance is the spectrum's
+integral by construction; frequencies snap to whole multiples of 2π over a
+256 s loop and phases come from an integer table, so a seed and a tick
+reproduce a tile bit for bit and it loops exactly [Tessendorf01]. Choppy
+displacement, slopes, and the Jacobian come from four complex transforms a
+cascade (two real fields packed in each). Cascade 0 is the gameplay band:
+waves of at least 1/16 of its tile, at 64² on every tier, which
+`WaveSet::with_spectrum` adds to the Gerstner terms, so `Surface::sample`
+floats bodies on exactly the grid the shader filters (`water::parity` holds
+the GPU within 2 mm of it). The wave controls are sea-state files in
+`assets/verse/water/seas/` (calm, moderate, storm), read by
+`verse_pbr::water::SeaState`.
+
+`verse_pbr::water::ocean` synthesizes the tier's cascades on a worker thread
+(in place on `wasm32`) one predicted tick ahead and uploads them to one
+`Rgba16Float` array texture, `water_waves`, two layers a cascade:
+displacement and foam, then slopes and the crest squeeze. One array keeps the
+physical renderer's water pipeline at 14 of WebGL2's 16 sampled textures.
+Low runs cascade 0 alone, so its drawn swell is the gameplay surface, with
+the baked tile (`water::tile`, now one tick of a short-wave spectrum) for
+detail; Medium runs two 64² cascades; High three, its finer two at 128² and
+cascade 0 doubled bilinearly to 128², which its texture filter reproduces
+exactly. Whitecaps are a foam field: each tick the most squeezed share of a
+tile breaks, the share following Monahan and O'Muircheartaigh's coverage for
+the wind [Monahan80], after Dupuy and Bruneton's Jacobian whitecaps
+[Dupuy12]; foam then decays over 2.4 s and drifts downwind by a
+semi-Lagrangian step [Stam99]. The shader shoals each cascade by linear
+shoaling capped at McCowan's breaker limit, H ≤ 0.78 d [McCowan1894], on
+every tier (the Water Lab's floats read the same gain), and on Medium and
+High draws surf: bores at the shallow-water speed and spilling crests where
+the waves reach that limit.
+
+Measured on an Apple M5 Max with `cargo run --release -p verse-pbr --example
+water_fft_cost` (`bench/verse/2026-10-07/water-w4/cost.json`), one tick of
+every cascade, the foam field, and the half-float texels took 0.06 ms on Low,
+0.13 ms on Medium (budget 1 ms), and 0.68 ms on High (budget 2 ms) on a lightly
+loaded machine, and 0.09, 0.20, and 1.1 ms (High's 95th percentile 1.7 ms)
+with a load average near 45, the run `cost.json` records; the gameplay
+band's transform took 0.035 to 0.054 ms a tick. Each cascade's mean variance
+over its loop is its band's spectrum integral within 2%, as is each tick's
+variance of cascade 0 and of the whole surface; a finer cascade's variance
+swings by a few percent from tick to tick, because waves that meet head-on
+interfere. Captures of the three sea states and the storm's surf through
+both renderers at every tier are in `bench/verse/2026-10-07/water-w4/`. The
+Water Lab's sea is the spectral sea; **Y** turns it from calm to moderate to
+storm.
+
 ### Coupling with `crates/physics`
 
 New module `physics::water`:
@@ -1136,9 +1191,17 @@ Still open:
 
 ## References
 
+- [Bouws85] E. Bouws, H. Günther, W. Rosenthal, and C. L. Vincent,
+  "Similarity of the Wind Wave Spectrum in Finite Depth Water," *Journal
+  of Geophysical Research*, 1985 (the TMA spectrum).
 - [Bridson07] Robert Bridson and Matthias Müller-Fischer, "Fluid
   Simulation for Computer Graphics," SIGGRAPH 2007 course notes (height
   field waves).
+- [CooleyTukey65] James W. Cooley and John W. Tukey, "An Algorithm for the
+  Machine Calculation of Complex Fourier Series," *Mathematics of
+  Computation*, 1965.
+- [Dupuy12] Jonathan Dupuy and Eric Bruneton, "Real-time Animation and
+  Rendering of Ocean Whitecaps," SIGGRAPH Asia 2012 technical briefs.
 - [Finch04] Mark Finch, "Effective Water Simulation from Physical Models,"
   *GPU Gems*, chapter 1, NVIDIA, 2004.
 - [Fournier86] Alain Fournier and William T. Reeves, "A Simple Model of
@@ -1148,6 +1211,9 @@ Still open:
 - [Hasselmann73] Klaus Hasselmann et al., "Measurements of Wind-Wave
   Growth and Swell Decay during the Joint North Sea Wave Project
   (JONSWAP)," *Deutsche Hydrographische Zeitschrift*, 1973.
+- [Hasselmann80] D. E. Hasselmann, M. Dunckel, and J. A. Ewing,
+  "Directional Wave Spectra Observed during JONSWAP 1973," *Journal of
+  Physical Oceanography*, 1980.
 - [Horvath15] Christopher J. Horvath, "Empirical Directional Wave Spectra
   for Computer Graphics," DigiPro 2015.
 - [Jerlov76] Nils G. Jerlov, *Marine Optics*, Elsevier, 1976.
@@ -1155,12 +1221,21 @@ Still open:
   Games," Game Developer (Gamasutra), 2015.
 - [Lagarde13] Sébastien Lagarde, "Water drop" series (wet surfaces and
   rain), seblagarde.wordpress.com, 2012–2013.
+- [LonguetHiggins63] M. S. Longuet-Higgins, D. E. Cartwright, and N. D.
+  Smith, "Observations of the Directional Spectrum of Sea Waves Using the
+  Motions of a Floating Buoy," *Ocean Wave Spectra*, Prentice-Hall, 1963.
 - [Losasso04] Frank Losasso and Hugues Hoppe, "Geometry Clipmaps: Terrain
   Rendering Using Nested Regular Grids," SIGGRAPH 2004.
+- [McCowan1894] J. McCowan, "On the Highest Wave of Permanent Type,"
+  *Philosophical Magazine*, 1894.
 - [McGuire14] Morgan McGuire and Michael Mara, "Efficient GPU Screen-Space
   Ray Tracing," *Journal of Computer Graphics Techniques*, 2014.
+- [Monahan80] Edward C. Monahan and Iognáid Ó Muircheartaigh, "Optimal
+  Power-Law Description of Oceanic Whitecap Coverage Dependence on Wind
+  Speed," *Journal of Physical Oceanography*, 1980.
 - [Schlick94] Christophe Schlick, "An Inexpensive BRDF Model for
   Physically-based Rendering," *Computer Graphics Forum*, 1994.
+- [Stam99] Jos Stam, "Stable Fluids," SIGGRAPH 1999.
 - [SRD521] *System Reference Document 5.2.1*, Wizards of the Coast LLC,
   CC-BY-4.0: the rules glossary (Swimming, Suffocation, Exhaustion,
   Underwater Combat, Falling), the environmental effects (Frigid Water,

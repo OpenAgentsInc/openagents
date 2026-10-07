@@ -410,3 +410,48 @@ fn lightning_conducts_six_meters_through_the_same_water() {
         assert_eq!(after[k], before[k], "dummy {k}");
     }
 }
+
+/// `Y` turns the sea from calm to moderate to storm and back, each rougher
+/// than the last offshore, and the floats' surface over open water is the
+/// gameplay band `physics::water` samples.
+#[test]
+fn the_sea_turns_through_its_states() {
+    let mut lab = quiet_lab();
+    assert_eq!(sea::SEAS[lab.sea], "moderate");
+    // Heights at points across the outer bay over twelve seconds, longer
+    // than a storm wave's period.
+    let spread = |lab: &mut WaterLab| -> f32 {
+        let mut heights = Vec::new();
+        for _ in 0..120 {
+            lab.tick_world(0.1);
+            for x in [-60.0, -20.0, 20.0, 60.0] {
+                heights.push(lab.surface_at(Vec2::new(x, -150.0)).unwrap().height);
+            }
+        }
+        let mean = heights.iter().sum::<f32>() / heights.len() as f32;
+        (heights.iter().map(|h| (h - mean).powi(2)).sum::<f32>() / heights.len() as f32).sqrt()
+    };
+    let moderate = spread(&mut lab);
+    assert_eq!(lab.turn_sea(), "Storm");
+    let storm = spread(&mut lab);
+    assert_eq!(lab.turn_sea(), "Calm sea");
+    let calm = spread(&mut lab);
+    assert!(
+        calm < moderate && moderate < storm,
+        "{calm} {moderate} {storm}"
+    );
+    // The floats' surface is the gameplay band physics samples, scaled
+    // only by shoaling, which is one over deep water.
+    lab.set_sea(1);
+    let water = lab.frame_water();
+    let spectrum = water.sea_body().spectrum.unwrap();
+    let waves = physics::water::WaveSet::calm()
+        .with_spectrum(spectrum)
+        .unwrap();
+    let tick = spectrum.tick_at(f64::from(water.time));
+    let rest = Vec2::new(10.0, -200.0);
+    let (moved, _) = water.sea_body().spectral(rest, 1.0e4, water.time).unwrap();
+    let exact = waves.at_rest(rest.as_dvec2(), &waves.phases(tick));
+    assert!((f64::from(moved.y) - exact.height).abs() < 1e-4);
+    assert!((f64::from(moved.x) - exact.horizontal.x).abs() < 1e-4);
+}

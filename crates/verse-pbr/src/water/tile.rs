@@ -1,13 +1,12 @@
 //! The baked looping normal tile the low tier reads in place of analytic
-//! detail waves: the slopes of a sum of short sine waves whose wave vectors
-//! are whole cycles per tile, so it repeats without a seam, built once on
-//! the CPU and uploaded with its mipmaps. Each texel holds the mean slope
-//! (red and green) and, from the first mip on, the slope variance the
-//! averaging lost (blue), which the shader turns into roughness (after
-//! Toksvig, "Mipmapping Normal Maps", 2005). Normal maps from summed waves
-//! follow Finch (*GPU Gems*, chapter 1, 2004).
+//! detail waves and the finer spectral cascades: the slopes of a short-wave
+//! JONSWAP sea synthesized by FFT (`physics::water::Synth`, after
+//! Tessendorf, "Simulating Ocean Water", 2001), so it repeats without a
+//! seam, built once on the CPU and uploaded with its mipmaps. Each texel
+//! holds the mean slope (red and green) and, from the first mip on, the
+//! slope variance the averaging lost (blue), which the shader turns into
+//! roughness (after Toksvig, "Mipmapping Normal Maps", 2005).
 
-use std::f32::consts::TAU;
 use std::sync::OnceLock;
 
 /// Texels along a side of the tile.
@@ -18,6 +17,8 @@ pub const METERS: f32 = 8.0;
 pub const SLOPE: f32 = 0.5;
 /// Mip levels, 64 down to 1.
 pub const LEVELS: usize = 7;
+/// The tile's root-mean-square slope: the low tier's calm detail.
+pub const RMS_SLOPE: f32 = 0.085;
 
 /// The tile's levels, each `side × side` RGBA8 texels, largest first.
 pub fn levels() -> &'static [Vec<[u8; 4]>] {
@@ -25,42 +26,39 @@ pub fn levels() -> &'static [Vec<[u8; 4]>] {
     LEVELS_CELL.get_or_init(build)
 }
 
-/// The slope at each texel of the base level, (dh/dx, dh/dz).
+/// The slope at each texel of the base level, (dh/dx, dh/dz): one tick of
+/// a fixed spectrum of waves from half a meter to the tile's size, scaled
+/// to [`RMS_SLOPE`].
 fn slopes() -> Vec<[f32; 2]> {
-    // A fixed linear congruential sequence (Knuth's MMIX constants) picks
-    // the waves, so the tile is the same on every machine.
-    let mut state = 0x2545_f491_4f6c_dd1du64;
-    let mut next = || {
-        state = state
-            .wrapping_mul(6_364_136_223_846_793_005)
-            .wrapping_add(1_442_695_040_888_963_407);
-        ((state >> 40) as f32) / (1u64 << 24) as f32
+    let spectrum = physics::water::Spectrum {
+        seed: 0x2545_f491,
+        wind_speed: 6.0,
+        wind: 0.6,
+        peak_wavelength: 2.5,
+        spread: 1.0,
+        choppiness: 0.0,
+        patch: f64::from(METERS),
+        ..physics::water::Spectrum::default()
     };
-    let mut waves = Vec::new();
-    while waves.len() < 28 {
-        let m = (next() * 33.0) as i32 - 16;
-        let n = (next() * 33.0) as i32 - 16;
-        let cycles = ((m * m + n * n) as f32).sqrt();
-        if !(2.0..=16.0).contains(&cycles) {
-            continue;
-        }
-        let k = [TAU * m as f32 / METERS, TAU * n as f32 / METERS];
-        let wavelength = METERS / cycles;
-        // Every wave the same steepness, a little under 1/60 of a radian.
-        let amplitude = wavelength * 0.0035;
-        waves.push((k, amplitude, next() * TAU));
-    }
-    let mut out = vec![[0.0; 2]; TEXELS * TEXELS];
-    for (i, slot) in out.iter_mut().enumerate() {
-        let x = (i % TEXELS) as f32 / TEXELS as f32 * METERS;
-        let z = (i / TEXELS) as f32 / TEXELS as f32 * METERS;
-        for (k, a, phase) in &waves {
-            let c = (k[0] * x + k[1] * z + phase).cos() * a;
-            slot[0] += k[0] * c;
-            slot[1] += k[1] * c;
-        }
-    }
-    out
+    let synth =
+        physics::water::Synth::new(&spectrum, 1, TEXELS).expect("the tile's spectrum is valid");
+    let mut tile = physics::water::Tile::default();
+    synth.tile(0, 0, &mut tile);
+    let rms = (tile
+        .sx
+        .iter()
+        .zip(&tile.sz)
+        .map(|(x, z)| x * x + z * z)
+        .sum::<f32>()
+        / tile.sx.len() as f32)
+        .sqrt()
+        .max(1e-9);
+    let scale = RMS_SLOPE / rms;
+    tile.sx
+        .iter()
+        .zip(&tile.sz)
+        .map(|(x, z)| [x * scale, z * scale])
+        .collect()
 }
 
 fn build() -> Vec<Vec<[u8; 4]>> {

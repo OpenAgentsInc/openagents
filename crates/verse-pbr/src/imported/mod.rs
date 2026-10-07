@@ -1216,6 +1216,7 @@ impl Renderer {
             &frame_layout,
             scene_format,
             samples,
+            admission.quality.tier,
         );
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: None,
@@ -1626,10 +1627,16 @@ impl Renderer {
         self.water_pass
             .set_surface(&self.device, surface, self.admission.quality.tier);
     }
-    /// The bytes the water surface and its normal tile hold on the GPU.
+    /// The bytes the water surface, its normal tile, and the spectral
+    /// sea's cascades hold on the GPU.
     #[must_use]
     pub fn water_bytes(&self) -> u64 {
         self.water_pass.bytes()
+    }
+    /// The spectral sea's cascades, to make every frame exact or read the
+    /// worker's cost.
+    pub fn water_ocean(&mut self) -> &mut crate::water::OceanGpu {
+        &mut self.water_pass.ocean
     }
     /// Call between frames. The caller can dispose of retired resources on a worker.
     pub fn commit_reload(&mut self, mut candidate: ReloadCandidate) -> Result<Self, String> {

@@ -18,11 +18,17 @@
 //! notes). Each wave's phase is therefore an integer count of `2π / P`
 //! steps, `(n_i · tick) mod P`, so any tick is reachable in O(1) and
 //! stepping the counter one tick at a time reaches exactly the same bits.
+//!
+//! An ocean adds the gameplay band of a seeded [`Spectrum`] to its terms
+//! ([`super::spectrum`]): the same rest point moves by both, and the
+//! spectral tick is folded on the spectrum's own loop.
 
 use std::f64::consts::TAU;
 
 use glam::{DVec2, DVec3};
 use serde::{Deserialize, Serialize};
+
+use super::spectrum::{self, Field, Spectrum};
 
 /// The most Gerstner terms a surface carries.
 pub const MAX_WAVES: usize = 8;
@@ -77,9 +83,12 @@ pub struct WaveSet {
     pub period: u64,
     /// One tick, s; the world's step.
     pub tick: f64,
-    /// Seed of the spectrum the terms were drawn from, if any. The
-    /// spectral phase (W4) synthesizes its tile from it.
+    /// Seed of the spectrum the terms were drawn from, if any.
     pub seed: Option<u64>,
+    /// A wave spectrum whose gameplay band adds to the terms, for an
+    /// ocean ([`WaveSet::with_spectrum`]).
+    #[serde(default)]
+    pub spectrum: Option<Spectrum>,
 }
 
 impl Default for WaveSet {
@@ -92,6 +101,8 @@ impl Default for WaveSet {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Phases {
     count: [u64; MAX_WAVES],
+    /// The spectrum's tick, folded on its loop.
+    spectral: u64,
 }
 
 /// What the waves do to the particle at a rest position.
@@ -114,6 +125,12 @@ impl Phases {
     pub fn count(&self, i: usize) -> u64 {
         self.count.get(i).copied().unwrap_or(0)
     }
+
+    /// The spectrum's tick, folded on its loop; 0 without a spectrum.
+    #[must_use]
+    pub fn spectral(&self) -> u64 {
+        self.spectral
+    }
 }
 
 impl WaveSet {
@@ -126,6 +143,7 @@ impl WaveSet {
             period: 1,
             tick: 1.0 / 120.0,
             seed: None,
+            spectrum: None,
         }
     }
 
@@ -157,6 +175,7 @@ impl WaveSet {
             period,
             tick,
             seed: None,
+            spectrum: None,
         };
         for wave in &mut set.waves {
             if !(wave.wavelength > 0.0 && wave.wavelength.is_finite()) {
@@ -216,10 +235,41 @@ impl WaveSet {
         Ok(set)
     }
 
+    /// These terms plus `spectrum`'s gameplay band, on the spectrum's own
+    /// clock of `spectrum.tick` s.
+    ///
+    /// # Errors
+    ///
+    /// As [`Spectrum::validate`], and for a spectrum whose tick is not the
+    /// terms' own.
+    pub fn with_spectrum(mut self, spectrum: Spectrum) -> Result<Self, String> {
+        spectrum.validate()?;
+        if (spectrum.tick - self.tick).abs() > 1e-12 {
+            return Err(format!(
+                "the spectrum's tick {} is not the terms' {}",
+                spectrum.tick, self.tick
+            ));
+        }
+        self.seed = Some(spectrum.seed);
+        self.spectrum = Some(spectrum);
+        Ok(self)
+    }
+
     /// Whether the surface ever moves.
     #[must_use]
     pub fn is_calm(&self) -> bool {
         self.waves.iter().all(|w| w.amplitude == 0.0)
+            && self
+                .spectrum
+                .is_none_or(|s| s.amplitude == 0.0 || s.wind_speed == 0.0)
+    }
+
+    /// The spectrum's gameplay band at `phases`, if there is a spectrum.
+    #[must_use]
+    pub fn field(&self, phases: &Phases) -> Option<std::sync::Arc<Field>> {
+        self.spectrum
+            .as_ref()
+            .and_then(|s| spectrum::field(s, phases.spectral))
     }
 
     /// Wave `i`'s angular frequency, rad/s.
@@ -236,13 +286,17 @@ impl WaveSet {
         for (c, wave) in count.iter_mut().zip(&self.waves) {
             *c = (u128::from(wave.harmonic) * folded % u128::from(self.period)) as u64;
         }
-        Phases { count }
+        let spectral = self.spectrum.map_or(0, |s| tick % s.period.max(1));
+        Phases { count, spectral }
     }
 
     /// Advance phase counters by one tick.
     pub fn advance(&self, phases: &mut Phases) {
         for (c, wave) in phases.count.iter_mut().zip(&self.waves) {
             *c = ((u128::from(*c) + u128::from(wave.harmonic)) % u128::from(self.period)) as u64;
+        }
+        if let Some(s) = &self.spectrum {
+            phases.spectral = (phases.spectral + 1) % s.period.max(1);
         }
     }
 
@@ -259,11 +313,15 @@ impl WaveSet {
     }
 
     /// Horizontal displacement only, for the fixed-point inversion.
-    fn horizontal(&self, p0: DVec2, phases: &Phases) -> DVec2 {
+    fn horizontal(&self, p0: DVec2, phases: &Phases, field: Option<&Field>) -> DVec2 {
         let mut d = DVec2::ZERO;
         for (wave, &c) in self.waves.iter().zip(&phases.count) {
             let theta = self.theta(wave, c, p0);
             d += wave.direction * (self.q(wave) * wave.amplitude * theta.cos());
+        }
+        if let Some(field) = field {
+            let s = field.sample(p0);
+            d += DVec2::new(s[0], s[2]);
         }
         d
     }
@@ -277,6 +335,10 @@ impl WaveSet {
     /// position `p0`.
     #[must_use]
     pub fn at_rest(&self, p0: DVec2, phases: &Phases) -> Displacement {
+        self.at_rest_in(p0, phases, self.field(phases).as_deref())
+    }
+
+    fn at_rest_in(&self, p0: DVec2, phases: &Phases, field: Option<&Field>) -> Displacement {
         let mut horizontal = DVec2::ZERO;
         let mut height = 0.0;
         // Tangents ∂P/∂x0 and ∂P/∂z0 of the displaced surface.
@@ -305,6 +367,22 @@ impl WaveSet {
                 q * a * omega * s * d.y,
             );
         }
+        if let Some(field) = field {
+            // The band's tangents by central differences one texel apart.
+            let s = field.sample(p0);
+            horizontal += DVec2::new(s[0], s[2]);
+            height += s[1];
+            velocity += DVec3::new(s[3], s[4], s[5]);
+            let step = field.patch / field.size as f64;
+            let moved = |p: DVec2| {
+                let s = field.sample(p);
+                DVec3::new(s[0], s[1], s[2])
+            };
+            let x = DVec2::new(step, 0.0);
+            let z = DVec2::new(0.0, step);
+            tx += (moved(p0 + x) - moved(p0 - x)) / (2.0 * step);
+            tz += (moved(p0 + z) - moved(p0 - z)) / (2.0 * step);
+        }
         Displacement {
             horizontal,
             height,
@@ -318,7 +396,9 @@ impl WaveSet {
     /// contracts by at most the steepness each round.
     #[must_use]
     pub fn at(&self, x: DVec2, phases: &Phases) -> Displacement {
-        if self.waves.is_empty() {
+        let field = self.field(phases);
+        let field = field.as_deref();
+        if self.waves.is_empty() && field.is_none() {
             return Displacement {
                 horizontal: DVec2::ZERO,
                 height: 0.0,
@@ -328,9 +408,9 @@ impl WaveSet {
         }
         let mut p0 = x;
         for _ in 0..INVERSIONS {
-            p0 = x - self.horizontal(p0, phases);
+            p0 = x - self.horizontal(p0, phases, field);
         }
-        self.at_rest(p0, phases)
+        self.at_rest_in(p0, phases, field)
     }
 }
 

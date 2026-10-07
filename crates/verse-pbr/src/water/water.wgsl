@@ -23,12 +23,18 @@
 //   water types (Jerlov, Marine Optics, 1976).
 // - Flow: two-phase flow-map advection of normals and foam (Vlachos, "Water
 //   Flow in Portal 2", SIGGRAPH 2010).
+// - The spectral sea (body 0): Tessendorf's FFT cascades ("Simulating Ocean
+//   Water", SIGGRAPH 2001) of a JONSWAP spectrum, synthesized on the CPU
+//   (`water::ocean`) and read from `water_waves`: displacement and slopes,
+//   whitecaps where the Jacobian folds the surface, linear shoaling capped
+//   by McCowan's breaker limit (1894), and surf where waves break.
 //
 // The host shader declares the bindings and four hooks:
 //
 //   var<uniform> water: WaterUniform;
 //   var water_tile: texture_2d<f32>;        // `water::tile`, RG slopes
-//   var water_tile_sampler: sampler;
+//   var water_tile_sampler: sampler;         // also samples the cascades
+//   var water_waves: texture_2d_array<f32>; // `water::ocean`, 2 layers a cascade
 //   fn water_host_control() -> vec4<f32>     // `water::control`
 //   fn water_host_sky(dir: vec3<f32>, roughness: f32) -> vec3<f32>
 //   fn water_host_sun() -> vec4<f32>         // toward the sun; w 1 when lit
@@ -84,6 +90,12 @@ struct WaterUniform {
     sky_horizon: vec4<f32>,
     sun: vec4<f32>,
     sun_color: vec4<f32>,
+    // The spectral sea (`water::ocean::rows`): per cascade 1 / tile (1/m),
+    // the shortest wavelength (m), the wavenumber it shoals by (rad/m), and
+    // its gain; then the cascade count, the cascades that move vertices, 1
+    // for surf, and the significant height (m); half a texel and the
+    // peak's angular frequency (rad/s); and each cascade's slope variance.
+    ocean: array<vec4<f32>, 6>,
 };
 
 // A vertex of a water surface at rest (`water::WaterVertex`).
@@ -167,6 +179,64 @@ fn water_gerstner_slope(b: u32, p0: vec2<f32>, depth: f32, scale: f32) -> vec3<f
     return g;
 }
 
+// ---- The spectral sea: body 0's cascades.
+
+// Cascades body `b` carries: the sea's, or none.
+fn water_ocean_count(b: u32) -> i32 {
+    return select(0, i32(water.ocean[3].x), b == 0u);
+}
+
+// Rest point `p` in cascade `c`'s tile, as a texture coordinate: texel
+// (i, j) holds the rest point (i, j) times the tile over the texels.
+fn water_ocean_uv(c: i32, p: vec2<f32>) -> vec2<f32> {
+    return p * water.ocean[c].x + vec2<f32>(water.ocean[4].x);
+}
+
+// Cascade `c`'s gain over water `depth` deep: linear shoaling,
+// 1 / √(tanh(kd) (1 + 2kd / sinh 2kd)), capped so no wave stands higher
+// than 0.78 of the depth (`water::ocean::gain`).
+fn water_ocean_gain(c: i32, depth: f32) -> f32 {
+    let d = max(depth, 0.0);
+    let x = clamp(water.ocean[c].z * d, 0.02, 10.0);
+    let shoal = min(1.0 / sqrt(tanh(x) * (1.0 + 2.0 * x / sinh(2.0 * x))), 2.0);
+    let cap = clamp(0.78 * d / max(water.ocean[3].w * shoal, 1e-3), 0.0, 1.0);
+    return water.ocean[c].w * shoal * cap;
+}
+
+// The cascades' displacement of rest point `p0` over water `depth` deep
+// (xyz, m) and their crest squeeze, 1 − J (w).
+fn water_ocean_move(b: u32, p0: vec2<f32>, depth: f32, scale: f32) -> vec4<f32> {
+    var d = vec4<f32>(0.0);
+    let count = min(water_ocean_count(b), i32(water.ocean[3].y));
+    for (var c = 0; c < count; c++) {
+        let uv = water_ocean_uv(c, p0);
+        let g = water_ocean_gain(c, depth) * scale;
+        let a = textureSampleLevel(water_waves, water_tile_sampler, uv, c * 2, 0.0);
+        let s = textureSampleLevel(water_waves, water_tile_sampler, uv, c * 2 + 1, 0.0);
+        d += vec4<f32>(a.xyz * g, s.z * g);
+    }
+    return d;
+}
+
+// The cascades' slope at rest point `p` (xy), each cascade faded once its
+// shortest wave spans only a few of the pixel's `footprint` (m), the slope
+// variance the fading left behind (z), and the whitecaps' foam (w).
+fn water_ocean_detail(b: u32, p: vec2<f32>, depth: f32, scale: f32, footprint: f32, dpx: vec2<f32>, dpy: vec2<f32>) -> vec4<f32> {
+    var o = vec4<f32>(0.0);
+    let count = water_ocean_count(b);
+    for (var c = 0; c < count; c++) {
+        let row = water.ocean[c];
+        let uv = water_ocean_uv(c, p);
+        let g = water_ocean_gain(c, depth) * scale;
+        let keep = clamp(row.y / (6.0 * max(footprint, 1e-4)) - 0.5, 0.0, 1.0);
+        let a = textureSampleGrad(water_waves, water_tile_sampler, uv, c * 2, dpx * row.x, dpy * row.x);
+        let s = textureSampleGrad(water_waves, water_tile_sampler, uv, c * 2 + 1, dpx * row.x, dpy * row.x);
+        o += vec4<f32>(s.xy * (g * keep), water.ocean[5][c] * g * g * (1.0 - keep * keep), 0.0);
+        o.w = max(o.w, a.w * clamp(g, 0.0, 1.0));
+    }
+    return o;
+}
+
 // Displaces one vertex: `world` the position, `crest` the squeeze.
 struct WaterMoved {
     world: vec3<f32>,
@@ -185,6 +255,11 @@ fn water_move(v: WaterIn, scale: f32, rise: f32) -> WaterMoved {
         let wave = water_gerstner(b, v.pos.xz, v.depth + rise, scale);
         world += wave.xyz;
         o.crest = wave.w;
+    }
+    if scale > 0.0 && water_ocean_count(b) > 0 {
+        let sea = water_ocean_move(b, v.pos.xz, v.depth + rise, scale);
+        world += sea.xyz;
+        o.crest = max(o.crest, sea.w);
     }
     o.world = world;
     return o;
@@ -550,6 +625,8 @@ struct WaterNormal {
     n: vec3<f32>,
     roughness: f32,
     slope: f32,
+    // The spectral sea's whitecaps, 0 to 1.
+    whitecap: f32,
 };
 
 fn water_normal(s: WaterFragment) -> WaterNormal {
@@ -561,11 +638,19 @@ fn water_normal(s: WaterFragment) -> WaterNormal {
         slope = swell.xy;
         squeeze_y = swell.z;
     }
+    var lost = 0.0;
+    o.whitecap = 0.0;
+    if s.scale > 0.0 && water_ocean_count(s.body) > 0 {
+        let sea = water_ocean_detail(s.body, s.rest, s.depth, s.scale, s.footprint, s.dpx, s.dpy);
+        slope += sea.xy;
+        lost = sea.z;
+        o.whitecap = sea.w * (1.0 - s.calm);
+    }
     let detail = water_flow_detail(s.rest, s.flow, s.footprint, s.dpx, s.dpy);
     slope = (slope + detail.xy + water_ripples(s.rest) + s.slope) * (1.0 - s.calm);
     o.n = normalize(vec3<f32>(-slope.x, 1.0 - squeeze_y * (1.0 - s.calm), -slope.y));
     let base = water.bodies[s.body].params.y;
-    o.roughness = clamp(sqrt(base * base + detail.z), 0.02, 0.6);
+    o.roughness = clamp(sqrt(base * base + detail.z + lost), 0.02, 0.6);
     o.slope = length(slope);
     return o;
 }
@@ -596,7 +681,33 @@ fn water_shade(s: WaterFragment, wn: WaterNormal) -> WaterShade {
         }
     }
     let noise = water_foam_noise(s.rest, s.flow);
-    let foam = max(water_foam(b, s.rest, s.shore, s.crest, s.foam, noise), clamp(s.extra_foam, 0.0, 1.0));
+    var foam = max(water_foam(b, s.rest, s.shore, s.crest, s.foam, noise), clamp(s.extra_foam, 0.0, 1.0));
+    if water_ocean_count(b) > 0 && s.scale > 0.0 {
+        let amount = water.bodies[b].scatter.w;
+        // Whitecaps: the foam field, broken up by the mottled cover.
+        let caps = wn.whitecap * smoothstep(0.15, 0.55, noise + 0.35 * wn.whitecap);
+        foam = max(foam, clamp(caps * amount, 0.0, 1.0));
+        // Surf: where the shoaling waves reach their breaking height
+        // (Medium and High), broken waves run up the shore as bands of
+        // white water, each a bore moving at the shallow-water speed
+        // √(g d), and the crests in the zone spill.
+        if water.ocean[3].z > 0.5 {
+            let hs = water.ocean[3].w;
+            let d = max(s.depth, 0.0);
+            let limit = 0.78 * d;
+            let breaking = smoothstep(0.55, 1.1, hs / max(limit, 1e-3));
+            let local = max(min(hs, limit), 0.02);
+            let crest = smoothstep(-0.1 * local, 0.3 * local, s.height);
+            // The bores of the peak's waves and of waves at about twice its
+            // frequency, which break too.
+            let phase = water.ocean[4].y * (water.params.x + s.shore / sqrt(9.81 * max(d, 0.2)));
+            let first = smoothstep(0.35, 0.85, 0.5 + 0.5 * sin(phase + noise * 2.5));
+            let second = smoothstep(0.45, 0.9, 0.5 + 0.5 * sin(phase * 2.13 + 1.7 + noise * 3.1));
+            let bore = max(first, 0.75 * second);
+            let surf = breaking * max(bore, crest) * smoothstep(0.2, 0.6, noise + 0.25 * breaking);
+            foam = max(foam, clamp(surf * amount, 0.0, 1.0));
+        }
+    }
     let foam_rgb = vec3<f32>(0.9, 0.94, 0.95) * water_host_light(s.world, vec3<f32>(0.0, 1.0, 0.0), s.pixel);
     // The column under the surface: its in-scatter, and what of the bed
     // comes through, per channel.

@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 
-use crate::water::{SurfaceGpu, Water, WaterSurface, WaterUniform};
+use crate::water::{OceanGpu, SurfaceGpu, Water, WaterSurface, WaterUniform};
 
 /// The water pass's GPU state.
 pub(super) struct WaterPass {
@@ -14,6 +14,8 @@ pub(super) struct WaterPass {
     emit: wgpu::RenderPipeline,
     transmit: wgpu::RenderPipeline,
     surface: Option<SurfaceGpu>,
+    /// The spectral sea's cascades.
+    pub ocean: OceanGpu,
     /// What [`Self::surface`] was uploaded from, kept to upload again after
     /// a device loss.
     pub source: Option<Arc<WaterSurface>>,
@@ -21,7 +23,8 @@ pub(super) struct WaterPass {
 
 impl WaterPass {
     /// The pipelines over `shader` (the expanded scene shader), group 0 the
-    /// frame and group 1 the water's uniform and normal tile.
+    /// frame and group 1 the water's uniform, normal tile, and the spectral
+    /// sea's cascades for `tier`.
     pub fn new(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
@@ -29,12 +32,19 @@ impl WaterPass {
         frame_layout: &wgpu::BindGroupLayout,
         format: wgpu::TextureFormat,
         samples: u32,
+        tier: verse_engine::quality::Tier,
     ) -> Self {
         let [tile, tile_sampler] = crate::water::tile_entries(8);
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Verse imported water"),
-            entries: &[crate::water::uniform_entry(7), tile, tile_sampler],
+            entries: &[
+                crate::water::uniform_entry(7),
+                tile,
+                tile_sampler,
+                crate::water::ocean::entry(10),
+            ],
         });
+        let ocean = OceanGpu::new(device, tier);
         let buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Verse imported water"),
             size: std::mem::size_of::<WaterUniform>() as u64,
@@ -58,6 +68,10 @@ impl WaterPass {
                 wgpu::BindGroupEntry {
                     binding: 9,
                     resource: wgpu::BindingResource::Sampler(&tile_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 10,
+                    resource: wgpu::BindingResource::TextureView(ocean.view()),
                 },
             ],
         });
@@ -118,6 +132,7 @@ impl WaterPass {
             buffer,
             group,
             surface: None,
+            ocean,
             source: None,
         }
     }
@@ -138,7 +153,7 @@ impl WaterPass {
     /// Writes this frame's water seen through `view` on a target `height`
     /// pixels tall, and returns whether there is any to draw.
     pub fn prepare(
-        &self,
+        &mut self,
         queue: &wgpu::Queue,
         water: Option<&Water>,
         view: verse_engine::presentation::View,
@@ -152,6 +167,13 @@ impl WaterPass {
         }
         let mut uniform = water.uniform();
         uniform.look[1] = crate::water::pixel_angle(view.view_proj, view.eye, height);
+        let sea = water.sea_body();
+        uniform.ocean = self.ocean.prepare(
+            queue,
+            sea.spectrum.as_ref(),
+            f64::from(water.time),
+            sea.swell_gain,
+        );
         queue.write_buffer(&self.buffer, 0, bytemuck::bytes_of(&uniform));
         true
     }
@@ -164,8 +186,11 @@ impl WaterPass {
         }
     }
 
-    /// The bytes the surface and the normal tile hold on the GPU.
+    /// The bytes the surface, the normal tile, and the cascades hold on
+    /// the GPU.
     pub fn bytes(&self) -> u64 {
-        self.surface.as_ref().map_or(0, SurfaceGpu::bytes) + crate::water::tile::bytes()
+        self.surface.as_ref().map_or(0, SurfaceGpu::bytes)
+            + crate::water::tile::bytes()
+            + self.ocean.bytes()
     }
 }

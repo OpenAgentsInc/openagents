@@ -1,11 +1,14 @@
 //! Fixed water views through both Verse renderers at every quality tier
-//! (`docs/verse/water.md`, phase W2).
+//! (`docs/verse/water.md`, phases W2 and W4).
 //!
 //! Usage: water_capture OUTPUT_DIRECTORY
 //!
 //! Renders five views (a pond at noon and at dusk, a river around two rocks,
 //! a sea rolling onto a beach toward a low sun, and the pond from under its
-//! surface) through the physical renderer and the imported renderer at Low,
+//! surface), and the spectral sea in its calm, moderate, and storm states
+//! (`sea-calm`, `sea-moderate`, `sea-storm`, and the storm's surf,
+//! `sea-storm-surf`, phase W4), through the
+//! physical renderer and the imported renderer at Low,
 //! Medium, and High, each with and without its water (the latter into
 //! `dry/`, for the comparison only), and writes the PNGs,
 //! `capture.json` (one record a picture, with its digest and frame times),
@@ -54,6 +57,9 @@ enum Ground {
     Pond,
     River,
     Beach,
+    /// A beach under a spectral sea in the named state
+    /// (`assets/verse/water/seas/`).
+    Sea(&'static str),
 }
 
 /// One fixed view.
@@ -115,6 +121,42 @@ fn all_views() -> Vec<ViewSpec> {
             ground: Ground::Beach,
             sun: Vec3::new(0.12, 0.2, -1.0).normalize(),
             dusk: true,
+            under: false,
+        },
+        ViewSpec {
+            name: "sea-calm",
+            eye: Vec3::new(0.0, 5.0, 31.0),
+            target: Vec3::new(0.0, -0.5, -30.0),
+            ground: Ground::Sea("calm"),
+            sun: Vec3::new(0.35, 0.42, -0.84).normalize(),
+            dusk: false,
+            under: false,
+        },
+        ViewSpec {
+            name: "sea-moderate",
+            eye: Vec3::new(0.0, 5.0, 31.0),
+            target: Vec3::new(0.0, -0.5, -30.0),
+            ground: Ground::Sea("moderate"),
+            sun: Vec3::new(0.35, 0.42, -0.84).normalize(),
+            dusk: false,
+            under: false,
+        },
+        ViewSpec {
+            name: "sea-storm",
+            eye: Vec3::new(0.0, 5.0, 31.0),
+            target: Vec3::new(0.0, -0.5, -30.0),
+            ground: Ground::Sea("storm"),
+            sun: Vec3::new(0.35, 0.42, -0.84).normalize(),
+            dusk: false,
+            under: false,
+        },
+        ViewSpec {
+            name: "sea-storm-surf",
+            eye: Vec3::new(-10.0, 9.0, 36.0),
+            target: Vec3::new(4.0, -1.0, 6.0),
+            ground: Ground::Sea("storm"),
+            sun: Vec3::new(0.35, 0.42, -0.84).normalize(),
+            dusk: false,
             under: false,
         },
         ViewSpec {
@@ -227,6 +269,16 @@ fn sea() -> WaterBody {
     WaterBody::ocean(WaterId(0), 0.0).with_waves(wind_sea(std::f32::consts::PI, 16.0, 1.3, 8))
 }
 
+/// An ocean whose waves are sea state `name`'s spectrum, rolling toward
+/// the beach (+z) over water 30 m deep offshore.
+fn spectral_sea(name: &str) -> WaterBody {
+    let state = verse_pbr::water::SeaState::named(name).expect("a built-in sea state");
+    let waves = physics::water::WaveSet::calm()
+        .with_spectrum(state.spectrum(0.3, 0x5EA, 30.0))
+        .expect("a valid spectrum");
+    WaterBody::ocean(WaterId(0), 0.0).with_waves(waves)
+}
+
 fn beach_bed(x: f64, z: f64) -> f64 {
     // Sand rising toward the camera from a shelf 6 m down.
     let ripple = 0.08 * (x * 0.7).sin() * (z * 0.4).cos();
@@ -263,6 +315,14 @@ fn world(ground: Ground) -> World {
         },
         Ground::Beach => World {
             body: sea(),
+            preset: "ocean",
+            kind: Kind::Body(1.0),
+            bed: beach_bed,
+            extent: Some((Vec2::new(-90.0, -150.0), Vec2::new(90.0, 22.0))),
+            bounds: (Vec2::new(-90.0, -150.0), Vec2::new(90.0, 40.0)),
+        },
+        Ground::Sea(name) => World {
+            body: spectral_sea(name),
             preset: "ocean",
             kind: Kind::Body(1.0),
             bed: beach_bed,
@@ -511,6 +571,8 @@ fn physical(
     let output = texture.create_view(&Default::default());
     let mut pixels = Vec::new();
     let mut total = 0.0;
+    // Every frame shows the spectral sea at exactly the clock's tick.
+    photo.ocean.exact = true;
     for frame in 0..=TIMED {
         let started = Instant::now();
         let mut encoder = gpu.device.create_command_encoder(&Default::default());
@@ -652,6 +714,7 @@ fn imported(directory: &Path, tier: Tier) -> Result<Vec<Value>, String> {
         };
         let mut renderer =
             Renderer::new(pack, assets.path(), WIDTH, HEIGHT, &Atlas::new(1.0), &[bed])?;
+        renderer.water_ocean().exact = true;
         let surface = surface(&world, tier)?;
         let count: u32 = surface.indices(if tier == Tier::Low { 2 } else { 1 }).len() as u32;
         renderer.set_water_surface(Some(Arc::new(surface)));
@@ -700,6 +763,7 @@ fn imported(directory: &Path, tier: Tier) -> Result<Vec<Value>, String> {
                 "water": with_water,
                 "water_indices": if with_water { count } else { 0 },
                 "frame_ms_with_readback": total / TIMED as f64 * 1e3,
+                "ocean_worker_us": renderer.water_ocean().micros,
                 "sha256": digest(&directory.join(&name))?,
                 "resolution": [WIDTH, HEIGHT],
                 "adapter": renderer.adapter_name.clone(),
@@ -803,6 +867,7 @@ fn main() -> Result<(), String> {
                     "scene_target": if tier == Tier::Low { "Rgba8UnormSrgb (no floating-point target)" } else { "Rgba16Float" },
                     "samples": capability(tier).samples,
                     "frame_ms_with_readback": ms,
+                    "ocean_worker_us": photo.ocean.micros,
                     "sha256": digest(&directory.join(&name))?,
                     "resolution": [WIDTH, HEIGHT],
                     "adapter": gpu.adapter,

@@ -9,6 +9,7 @@
 @group(1) @binding(7) var<uniform> water: WaterUniform;
 @group(1) @binding(8) var water_tile: texture_2d<f32>;
 @group(1) @binding(9) var water_tile_sampler: sampler;
+@group(1) @binding(10) var water_waves: texture_2d_array<f32>;
 
 fn water_host_control() -> vec4<f32> {
     return frame.water_control;

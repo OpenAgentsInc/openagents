@@ -1,9 +1,11 @@
-//! Surface parity: the shader's Gerstner displacement, evaluated on the GPU
-//! by the same `water_gerstner` both water passes call, against
-//! `physics::water` in `f64`.
+//! Surface parity: the shader's Gerstner displacement and the spectral
+//! sea's gameplay band, evaluated on the GPU by the same `water_gerstner`
+//! and `water_ocean_move` both water passes call, against `physics::water`
+//! in `f64`.
 
 use glam::DVec2;
-use physics::water::{WaterBody, WaterId, WaveSet};
+use physics::water::{Spectrum, WaterBody, WaterId, WaveSet};
+use verse_engine::quality::Tier;
 
 use super::frame::{Body, Water, WaterUniform};
 use super::preset::Preset;
@@ -22,6 +24,7 @@ fn shader() -> String {
 @group(0) @binding(1) var<uniform> points: array<vec4<f32>, 16>;
 @group(0) @binding(2) var water_tile: texture_2d<f32>;
 @group(0) @binding(3) var water_tile_sampler: sampler;
+@group(0) @binding(4) var water_waves: texture_2d_array<f32>;
 fn water_host_control() -> vec4<f32> { return vec4<f32>(0.0, 1.0, 1.0, 1.0); }
 fn water_host_sky(dir: vec3<f32>, level: f32) -> vec3<f32> { return vec3<f32>(0.0); }
 fn water_host_sun() -> vec4<f32> { return vec4<f32>(0.0); }
@@ -38,13 +41,24 @@ fn water_host_shadow(world: vec3<f32>, n: vec3<f32>, pixel: vec2<f32>) -> f32 { 
     let wave = water_gerstner(0u, p0, 1.0e6, 1.0);
     return vec4<f32>(wave.xyz, 1.0);
 }
+@fragment fn fs_ocean(@builtin(position) at: vec4<f32>) -> @location(0) vec4<f32> {
+    let p0 = points[u32(at.x)].xy;
+    let wave = water_ocean_move(0u, p0, 1.0e6, 1.0);
+    return vec4<f32>(wave.xyz, 1.0);
+}
 "
     )
 }
 
 /// The displacements the GPU computes for `points` under `water`, or none
-/// without an adapter.
-fn gpu_displacements(uniform: &WaterUniform, points: &[[f32; 4]; POINTS]) -> Option<Vec<[f32; 4]>> {
+/// without an adapter: the Gerstner terms', or with `ocean` the spectral
+/// sea's gameplay band at that tick, synthesized and uploaded as the
+/// renderers do.
+fn gpu_displacements(
+    uniform: &WaterUniform,
+    points: &[[f32; 4]; POINTS],
+    ocean: Option<(&Spectrum, u64, Tier)>,
+) -> Option<Vec<[f32; 4]>> {
     use wgpu::util::DeviceExt;
     let instance =
         wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
@@ -55,6 +69,17 @@ fn gpu_displacements(uniform: &WaterUniform, points: &[[f32; 4]; POINTS]) -> Opt
         label: Some("water parity"),
         source: wgpu::ShaderSource::Wgsl(shader().into()),
     });
+    let tier = ocean.map_or(Tier::Medium, |o| o.2);
+    let mut cascades = super::OceanGpu::new(&device, tier);
+    cascades.exact = true;
+    let mut uniform = *uniform;
+    if let Some((spectrum, tick, _)) = ocean {
+        uniform.ocean = cascades.prepare(&queue, Some(spectrum), tick as f64 * spectrum.tick, 1.0);
+        // Cascade 0 alone: the band `physics::water` samples.
+        uniform.ocean[3][1] = 1.0;
+    }
+    let uniform = &uniform;
+    let sampler = super::tile::sampler(&device);
     let buffer = |label, bytes: &[u8]| {
         device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some(label),
@@ -66,7 +91,12 @@ fn gpu_displacements(uniform: &WaterUniform, points: &[[f32; 4]; POINTS]) -> Opt
     let point_buffer = buffer("water parity points", bytemuck::cast_slice(points));
     let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         label: None,
-        entries: &[super::uniform_entry(0), super::uniform_entry(1)],
+        entries: &[
+            super::uniform_entry(0),
+            super::uniform_entry(1),
+            super::tile_entries(2)[1],
+            super::ocean::entry(4),
+        ],
     });
     let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: None,
@@ -79,6 +109,14 @@ fn gpu_displacements(uniform: &WaterUniform, points: &[[f32; 4]; POINTS]) -> Opt
             wgpu::BindGroupEntry {
                 binding: 1,
                 resource: point_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 3,
+                resource: wgpu::BindingResource::Sampler(&sampler),
+            },
+            wgpu::BindGroupEntry {
+                binding: 4,
+                resource: wgpu::BindingResource::TextureView(cascades.view()),
             },
         ],
     });
@@ -102,7 +140,7 @@ fn gpu_displacements(uniform: &WaterUniform, points: &[[f32; 4]; POINTS]) -> Opt
         multisample: Default::default(),
         fragment: Some(wgpu::FragmentState {
             module: &module,
-            entry_point: Some("fs"),
+            entry_point: Some(if ocean.is_some() { "fs_ocean" } else { "fs" }),
             compilation_options: Default::default(),
             targets: &[Some(format.into())],
         }),
@@ -213,7 +251,7 @@ fn the_shader_displacement_matches_the_physics_surface() {
     let mut water = Water::calm(0.0);
     water.bodies[0] = Body::from_physics(&body, &Preset::default());
     for tick in [0u64, 1, 4_321, 120 * 600 - 1, 37_000_017] {
-        let Some(gpu) = gpu_displacements(&water.uniform_at_tick(tick), &points) else {
+        let Some(gpu) = gpu_displacements(&water.uniform_at_tick(tick), &points, None) else {
             eprintln!("No GPU adapter; the parity check did not run");
             return;
         };
@@ -242,4 +280,52 @@ fn the_shader_displacement_matches_the_physics_surface() {
     );
     assert!(highest > 0.1, "the waves move the surface");
     assert!(worst.0 < 1e-3 && worst.1 < 1e-3, "{worst:?}");
+}
+
+/// The GPU's spectral displacement of sixteen points, from the cascades
+/// the worker synthesizes and the shader samples, lands on the gameplay
+/// band `physics::water` samples within a centimeter (half floats and the
+/// texture filter's precision), for a calm and a storm sea, on Medium's
+/// grid and on High's, where cascade 0 is the same grid doubled.
+#[test]
+fn the_shader_spectral_band_matches_the_physics_band() {
+    let mut points = [[0.0f32; 4]; POINTS];
+    for (i, p) in points.iter_mut().enumerate() {
+        let a = i as f32 * 2.399_963;
+        let r = 5.0 + 23.0 * i as f32;
+        *p = [r * a.cos(), r * a.sin(), 0.0, 0.0];
+    }
+    let mut worst = 0.0f64;
+    let mut highest = 0.0f64;
+    for (name, tick, tier) in [
+        ("calm", 9_001u64, Tier::Medium),
+        ("storm", 123_457, Tier::Medium),
+        ("storm", 77_777, Tier::High),
+    ] {
+        let spectrum = super::SeaState::named(name)
+            .unwrap()
+            .spectrum(0.3, 0x5EA, 30.0);
+        let Some(gpu) = gpu_displacements(
+            &Water::calm(0.0).uniform(),
+            &points,
+            Some((&spectrum, tick, tier)),
+        ) else {
+            eprintln!("No GPU adapter; the spectral parity check did not run");
+            return;
+        };
+        let field = physics::water::spectrum::field(&spectrum, tick).unwrap();
+        for (p, g) in points.iter().zip(&gpu) {
+            let exact = field.sample(DVec2::new(f64::from(p[0]), f64::from(p[1])));
+            for k in 0..3 {
+                worst = worst.max((f64::from(g[k]) - exact[k]).abs());
+            }
+            highest = highest.max(exact[1].abs());
+        }
+    }
+    eprintln!(
+        "spectral parity: crests up to {highest:.3} m, worst {:.2} mm",
+        worst * 1e3
+    );
+    assert!(highest > 0.5, "the storm moves the surface");
+    assert!(worst < 0.01, "{worst}");
 }

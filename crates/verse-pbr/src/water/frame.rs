@@ -92,6 +92,10 @@ pub struct Body {
     pub rest: f32,
     /// The Gerstner terms ([`Swell::from_set`]).
     pub swell: Swell,
+    /// The sea's wave spectrum, synthesized into cascades on body 0 only
+    /// ([`super::ocean`]); its gameplay band is the one `physics::water`
+    /// samples.
+    pub spectrum: Option<physics::water::Spectrum>,
     /// Scales the swell's heights: above one in a storm or a flood.
     pub swell_gain: f32,
     /// Absorption per meter, linear rgb (Beer–Lambert).
@@ -127,6 +131,7 @@ impl Body {
             level,
             rest: level,
             swell: Swell::default(),
+            spectrum: None,
             swell_gain: 1.0,
             absorption: preset.absorption,
             scatter: preset.scatter,
@@ -144,16 +149,19 @@ impl Body {
         let level = body.level.at(0.0).0 as f32;
         Self {
             swell: Swell::from_set(&body.waves),
+            spectrum: body.waves.spectrum,
             ..Self::still(level, preset)
         }
     }
 
     /// The swell's displacement of the rest point `p` (x, z) over water
-    /// `depth` deep at `time`: x, height, and z, m.
+    /// `depth` deep at `time`, the spectral band's included: x, height,
+    /// and z, m.
     #[must_use]
     pub fn displacement(&self, p: Vec2, depth: f32, time: f32) -> Vec3 {
         let angles = self.swell.angles(f64::from(time));
         self.swell.displacement(&angles, p, depth, self.swell_gain)
+            + self.spectral(p, depth, time).map_or(Vec3::ZERO, |s| s.0)
     }
 
     /// How fast the water at rest point `p` moves at `time`, m/s.
@@ -161,6 +169,24 @@ impl Body {
     pub fn velocity(&self, p: Vec2, depth: f32, time: f32) -> Vec3 {
         let angles = self.swell.angles(f64::from(time));
         self.swell.velocity(&angles, p, depth, self.swell_gain)
+            + self.spectral(p, depth, time).map_or(Vec3::ZERO, |s| s.1)
+    }
+
+    /// The spectrum's gameplay band at rest point `p` over water `depth`
+    /// deep at `time`, as the shader draws it: displacement and velocity,
+    /// each scaled by the swell gain and the shoaling gain
+    /// ([`super::ocean::gain`]).
+    #[must_use]
+    pub fn spectral(&self, p: Vec2, depth: f32, time: f32) -> Option<(Vec3, Vec3)> {
+        let spectrum = self.spectrum.as_ref()?;
+        let field = physics::water::spectrum::field(spectrum, spectrum.tick_at(f64::from(time)))?;
+        let v = field.sample(p.as_dvec2());
+        let significant = field.significant as f32 * self.swell_gain;
+        let g = self.swell_gain * super::ocean::gain(field.shoal as f32, depth, significant);
+        Some((
+            Vec3::new(v[0] as f32, v[1] as f32, v[2] as f32) * g,
+            Vec3::new(v[3] as f32, v[4] as f32, v[5] as f32) * g,
+        ))
     }
 
     fn valid(&self) -> bool {
@@ -176,6 +202,7 @@ impl Body {
                     && finite(t.q)
                     && t.phase.is_finite()
             })
+            && self.spectrum.is_none_or(|s| s.validate().is_ok())
             && self.absorption.iter().all(|v| finite(*v) && *v >= 0.0)
             && self.scatter.iter().all(|v| finite(*v) && *v >= 0.0)
             && (0.0..=1.0).contains(&self.foam)
@@ -245,6 +272,18 @@ impl Water {
             sky: None,
         };
         water.set_detail(0.3, 0.12, 2.4, 0.016);
+        water
+    }
+
+    /// A sea at `level` whose waves come from `spectrum`: a spectral sea
+    /// with no Gerstner terms, and fine detail from the spectrum's wind.
+    #[must_use]
+    pub fn ocean(level: f32, spectrum: physics::water::Spectrum) -> Self {
+        let mut water = Self::calm(level);
+        water.sea = true;
+        water.bodies[0].spectrum = Some(spectrum);
+        let shortest = spectrum.patch() / physics::water::spectrum::RATIO / 31.0;
+        water.set_detail(spectrum.wind as f32, 0.08, shortest as f32, 0.02);
         water
     }
 
@@ -334,7 +373,13 @@ impl Water {
         let depth = depth + sea.level - sea.rest;
         let calm = 1.0 - self.controls.ice_at(target);
         let angles = sea.swell.angles(f64::from(self.time));
-        let at = |p: Vec2| sea.swell.displacement(&angles, p, depth, sea.swell_gain) * calm;
+        let at = |p: Vec2| {
+            (sea.swell.displacement(&angles, p, depth, sea.swell_gain)
+                + sea
+                    .spectral(p, depth, self.time)
+                    .map_or(Vec3::ZERO, |s| s.0))
+                * calm
+        };
         let mut rest = target;
         for _ in 0..4 {
             let d = at(rest);
@@ -707,6 +752,9 @@ pub struct WaterUniform {
     pub sky_horizon: [f32; 4],
     pub sun: [f32; 4],
     pub sun_color: [f32; 4],
+    /// The spectral sea's rows ([`super::ocean::rows`]), which the
+    /// renderer fills for its tier; zero without one.
+    pub ocean: [[f32; 4]; super::ocean::ROWS],
 }
 
 /// How a vertex of a water surface is drawn.

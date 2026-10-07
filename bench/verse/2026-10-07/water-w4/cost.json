@@ -1,0 +1,165 @@
+{
+  "command": "cargo run --release -p verse-pbr --example water_fft_cost -- OUTPUT.json",
+  "budget_us": {
+    "low": 500,
+    "medium": 1000,
+    "high": 2000
+  },
+  "tiers": [
+    {
+      "tier": "low",
+      "sea": "calm",
+      "cascades": 1,
+      "texels": 64,
+      "upload_bytes": 65536,
+      "build_ms": 3.404375,
+      "worker": {
+        "mean_us": 85.7001683333334,
+        "p50_us": 84.708,
+        "p95_us": 92.375,
+        "max_us": 441.209
+      }
+    },
+    {
+      "tier": "low",
+      "sea": "moderate",
+      "cascades": 1,
+      "texels": 64,
+      "upload_bytes": 65536,
+      "build_ms": 3.588333,
+      "worker": {
+        "mean_us": 89.6335566666667,
+        "p50_us": 89.66699999999999,
+        "p95_us": 93.292,
+        "max_us": 125.12499999999999
+      }
+    },
+    {
+      "tier": "low",
+      "sea": "storm",
+      "cascades": 1,
+      "texels": 64,
+      "upload_bytes": 65536,
+      "build_ms": 5.648584,
+      "worker": {
+        "mean_us": 90.45395,
+        "p50_us": 89.417,
+        "p95_us": 97.208,
+        "max_us": 118.208
+      }
+    },
+    {
+      "tier": "medium",
+      "sea": "calm",
+      "cascades": 2,
+      "texels": 64,
+      "upload_bytes": 131072,
+      "build_ms": 14.606083,
+      "worker": {
+        "mean_us": 193.3545566666666,
+        "p50_us": 191.58399999999997,
+        "p95_us": 205.333,
+        "max_us": 293.542
+      }
+    },
+    {
+      "tier": "medium",
+      "sea": "moderate",
+      "cascades": 2,
+      "texels": 64,
+      "upload_bytes": 131072,
+      "build_ms": 14.894041,
+      "worker": {
+        "mean_us": 204.21354833333336,
+        "p50_us": 199.917,
+        "p95_us": 219.5,
+        "max_us": 1895.042
+      }
+    },
+    {
+      "tier": "medium",
+      "sea": "storm",
+      "cascades": 2,
+      "texels": 64,
+      "upload_bytes": 131072,
+      "build_ms": 24.014833,
+      "worker": {
+        "mean_us": 202.6938433333334,
+        "p50_us": 200.375,
+        "p95_us": 217.625,
+        "max_us": 298.75
+      }
+    },
+    {
+      "tier": "high",
+      "sea": "calm",
+      "cascades": 3,
+      "texels": 128,
+      "upload_bytes": 786432,
+      "build_ms": 59.488625000000006,
+      "worker": {
+        "mean_us": 1266.1042466666672,
+        "p50_us": 1164.25,
+        "p95_us": 1691.3329999999999,
+        "max_us": 5326.417
+      }
+    },
+    {
+      "tier": "high",
+      "sea": "moderate",
+      "cascades": 3,
+      "texels": 128,
+      "upload_bytes": 786432,
+      "build_ms": 61.580541000000004,
+      "worker": {
+        "mean_us": 1100.2898066666662,
+        "p50_us": 1124.334,
+        "p95_us": 1180.6670000000001,
+        "max_us": 2603.417
+      }
+    },
+    {
+      "tier": "high",
+      "sea": "storm",
+      "cascades": 3,
+      "texels": 128,
+      "upload_bytes": 786432,
+      "build_ms": 99.395542,
+      "worker": {
+        "mean_us": 1057.123646666667,
+        "p50_us": 1013.375,
+        "p95_us": 1168.75,
+        "max_us": 1283.541
+      }
+    }
+  ],
+  "gameplay_band": [
+    {
+      "sea": "calm",
+      "field": {
+        "mean_us": 53.84249833333334,
+        "p50_us": 53.5,
+        "p95_us": 57.333,
+        "max_us": 79.458
+      }
+    },
+    {
+      "sea": "moderate",
+      "field": {
+        "mean_us": 53.06061833333336,
+        "p50_us": 52.583999999999996,
+        "p95_us": 54.416000000000004,
+        "max_us": 75.541
+      }
+    },
+    {
+      "sea": "storm",
+      "field": {
+        "mean_us": 53.02524333333331,
+        "p50_us": 52.667,
+        "p95_us": 53.959,
+        "max_us": 73.542
+      }
+    }
+  ]
+}

@@ -15620,6 +15620,7 @@ dependencies = [
  "coder-ui",
  "glam",
  "gltf",
+ "half",
  "naga",
  "physics",
  "png",

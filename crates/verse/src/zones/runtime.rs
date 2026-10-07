@@ -583,6 +583,19 @@ impl WorldRuntime {
         Ok(lab.turn_hour())
     }
 
+    /// Turns the Water Lab's sea from calm to moderate to storm.
+    ///
+    /// # Errors
+    /// The player is not in the Water Lab.
+    pub fn water_sea(&mut self) -> Result<String, String> {
+        let lab = self
+            .zone_state
+            .water
+            .as_deref_mut()
+            .ok_or("Enter the Water Lab first")?;
+        Ok(lab.turn_sea())
+    }
+
     /// The Water Lab's hotbar: each slot's icon and state.
     #[must_use]
     pub fn water_bar(&self) -> Option<Vec<(&'static str, super::everglade::hotbar::Slot)>> {

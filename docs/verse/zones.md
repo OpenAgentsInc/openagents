@@ -192,7 +192,9 @@ river it conducts 6 m through the same water
 in the shallows, and in the river, with the Grove's health bars and
 floating numbers. **B** (or **8**) drops a crate, a barrel, or a plank
 ahead, which splashes and floats on the `physics` crate's rigid bodies.
-**T** turns the hour between golden hour and noon. The lab shows its spell
+**T** turns the hour between golden hour and noon, and **Y** turns the sea
+from calm to moderate to storm: a spectral wind sea
+([water.md](water.md), phase W4) with whitecaps and surf. The lab shows its spell
 bar and no zone panel: **F** at the lantern at the head of the beach, or
 **G** anywhere, returns to the plaza. The `water_capture` example
 renders the zone's views, the spells (`--spells`), the Water Orb and the

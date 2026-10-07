@@ -13,6 +13,9 @@
 //! - [`preset`]: looks from `assets/verse/water/presets/`, with absorption
 //!   from Jerlov's water types.
 //! - [`tile`]: the baked looping normal tile the low tier reads.
+//! - [`ocean`]: the spectral sea's cascades (phase W4), synthesized on a
+//!   worker thread and uploaded as the `water_waves` array texture.
+//! - [`seas`]: sea states from `assets/verse/water/seas/`.
 //! - [`control`]: the frame's `water_control` vector for a quality tier.
 //!
 //! Each pass draws a surface in two halves inside the scene pass, with no
@@ -24,16 +27,20 @@
 
 pub mod bake;
 pub mod frame;
+pub mod ocean;
 #[cfg(test)]
 mod parity;
 pub mod preset;
+pub mod seas;
 pub mod terms;
 pub mod tile;
 
 pub use frame::{
     Body, Controls, Kind, Sky, Water, WaterPatch, WaterSurface, WaterUniform, WaterVertex,
 };
+pub use ocean::OceanGpu;
 pub use preset::{Jerlov, Preset};
+pub use seas::SeaState;
 pub use terms::Swell;
 
 use verse_engine::quality::Tier;
@@ -125,6 +132,7 @@ pub fn uniform_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
 }
 
 /// The tile's and its sampler's layout entries at `binding` and the next.
+/// The vertex stage samples the spectral cascades with the same sampler.
 #[must_use]
 pub fn tile_entries(binding: u32) -> [wgpu::BindGroupLayoutEntry; 2] {
     [
@@ -140,7 +148,7 @@ pub fn tile_entries(binding: u32) -> [wgpu::BindGroupLayoutEntry; 2] {
         },
         wgpu::BindGroupLayoutEntry {
             binding: binding + 1,
-            visibility: wgpu::ShaderStages::FRAGMENT,
+            visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
             ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
             count: None,
         },

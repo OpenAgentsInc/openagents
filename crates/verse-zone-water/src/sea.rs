@@ -4,7 +4,7 @@
 use glam::{Vec2, Vec3};
 use verse_pbr::pbr::water::{Body, Kind, Water, WaterPatch, WaterSurface, WaterVertex};
 use verse_pbr::pbr::{Daylight, Grade, HeightFog, Key, Neon};
-use verse_pbr::water::Preset;
+use verse_pbr::water::{Preset, SeaState};
 
 use crate::terrain::{
     self, CENTER, FALL_HALF_WIDTH, FALL_HEADING, FALL_SPEED, LEVEL, LIP, LOWER, POOL, POOL_LEVEL,
@@ -274,19 +274,37 @@ pub const HEIGHT_FOG: HeightFog = HeightFog {
     sun_exponent: 6.0,
 };
 
-/// The sea's swell and color for the lab: a gentle swell from the
-/// south-west rolling into the bay, clear water over sand (the `cove`
-/// preset), and the fresh water of the river, pool, and falls (`river`).
-/// The swell is `physics::water` terms ([`verse_pbr::water::frame::wind_sea`]),
-/// so the shader, the floats, and the physics share one surface.
+/// The sea states the lab turns through (`assets/verse/water/seas/`).
+pub const SEAS: [&str; 3] = ["calm", "moderate", "storm"];
+/// The sea state the lab opens with, in [`SEAS`].
+pub const DEFAULT_SEA: usize = 1;
+/// The direction the waves travel, rad about +Y: toward the beach (+z), a
+/// little east.
+pub const WIND: f64 = 0.25;
+/// The bay's deepest water, m: the depth the spectrum disperses over.
+pub const SEA_DEPTH: f64 = 16.0;
+/// The seed of the lab's sea.
+pub const SEED: u64 = 0x5EA_C0FE;
+
+/// The spectrum of sea state `name` rolling into the bay.
+#[must_use]
+pub fn spectrum(name: &str) -> Option<physics::water::Spectrum> {
+    SeaState::named(name).map(|s| s.spectrum(WIND, SEED, SEA_DEPTH))
+}
+
+/// The sea's waves and color for the lab: a wind sea from the south-west
+/// rolling into the bay ([`DEFAULT_SEA`] of [`SEAS`]), clear water over sand
+/// (the `cove` preset), and the fresh water of the river, pool, and falls
+/// (`river`). The waves are a `physics::water::Spectrum` whose gameplay
+/// band the shader, the floats, and the physics share; the finer cascades
+/// only draw.
 #[must_use]
 pub fn water() -> Water {
     let preset = |name| Preset::named(name).cloned().unwrap_or_default();
-    // Waves travel toward the beach (+z), a little east.
-    let mut water = Water::sea(LEVEL, 0.25, 22.0, 1.0);
-    let swell = water.sea_body().swell;
+    let spectrum = spectrum(SEAS[DEFAULT_SEA]).expect("the lab's sea states are built in");
+    let mut water = Water::ocean(LEVEL, spectrum);
     *water.sea_body_mut() = Body {
-        swell,
+        spectrum: Some(spectrum),
         ..Body::still(LEVEL, &preset("cove"))
     };
     water.caustics = 0.9;

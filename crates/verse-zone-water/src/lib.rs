@@ -2,7 +2,9 @@
 //! phase W0, and `docs/verse/zones.md`, Water Lab).
 //!
 //! A sandy bay opens south between two rocky headlands. Its sea rolls in
-//! as a Gerstner swell, clear over the sand and deep blue past the reef,
+//! as a spectral wind sea (`docs/verse/water.md`, phase W4), with
+//! whitecaps offshore and surf where the waves shoal, clear over the sand
+//! and deep blue past the reef,
 //! with caustics on the bed, foam along the shore, and the low sun's glitter
 //! on the waves. In the west a river runs across a plateau, falls over a
 //! cliff into a plunge pool, and crosses the beach to the sea. The renderer
@@ -15,7 +17,8 @@
 //! current. The hotbar holds the water spells ([`spells`]), the Water Orb
 //! ([`orb`]), and the Grove's Thunderbolt ([`bolt`]), and training dummies
 //! stand on the beach and in the water ([`targets`]); `T` turns the hour
-//! between golden hour and noon.
+//! between golden hour and noon, and `Y` turns the sea from calm to
+//! moderate to storm.
 //!
 //! [`terrain`] is the ground; [`sea`] the water's rest shape and light.
 //! `verse` re-exports this crate as `zones::water`.
@@ -273,6 +276,8 @@ pub struct Feet {
 pub struct WaterLab {
     pub time: f32,
     pub hour: Hour,
+    /// The sea state, in [`sea::SEAS`].
+    pub sea: usize,
     pub water: Water,
     pub floats: Floats,
     pub spells: Spells,
@@ -358,6 +363,7 @@ impl WaterLab {
         let mut lab = Self {
             time: 0.0,
             hour: Hour::Golden,
+            sea: sea::DEFAULT_SEA,
             water: sea::water(),
             floats: Floats::new(),
             spells: Spells::default(),
@@ -1007,11 +1013,30 @@ impl WaterLab {
             lines.push(line.clone());
         } else {
             lines.push(
-                "1 to 5 cast, hold 6 for a Water Orb, 7 Thunderbolt, B drops a float, T turns the hour, G leaves"
+                "1 to 5 cast, hold 6 for a Water Orb, 7 Thunderbolt, B drops a float, T turns the hour, Y the sea, G leaves"
                     .into(),
             );
         }
         lines.join("\n")
+    }
+
+    /// Turns the sea to the next state: calm, moderate, storm, and calm
+    /// again.
+    pub fn turn_sea(&mut self) -> String {
+        self.set_sea((self.sea + 1) % sea::SEAS.len())
+    }
+
+    /// Sets the sea state to [`sea::SEAS`]`[index]`.
+    pub fn set_sea(&mut self, index: usize) -> String {
+        self.sea = index.min(sea::SEAS.len() - 1);
+        let name = sea::SEAS[self.sea];
+        self.water.sea_body_mut().spectrum = sea::spectrum(name);
+        let line = match name {
+            "calm" => "Calm sea",
+            "moderate" => "Moderate sea",
+            _ => "Storm",
+        };
+        self.say(line.into())
     }
 
     /// Turns the hour.

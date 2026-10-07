@@ -1,0 +1,11 @@
+# A gale over a long fetch: steep, breaking seas and streaks of foam.
+description = "A gale: steep, breaking seas and streaks of foam."
+wind_speed = 17.0
+fetch = 120000.0
+peak_wavelength = 0.0
+amplitude = 1.0
+choppiness = 1.25
+spread = 0.9
+standing = 0.05
+time_scale = 1.0
+patch = 0.0

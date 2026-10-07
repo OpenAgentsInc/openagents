@@ -7,8 +7,12 @@
 //!   density, up to eight Gerstner terms ([`WaveSet`]) with an optional
 //!   spectrum seed, and an optional [`FlowGrid`].
 //! - [`Surface`]: the gameplay surface, level plus Gerstner waves on a
-//!   clock folded on a whole-tick period, sampled in `f64` for height,
-//!   normal, surface velocity, current, and density.
+//!   clock folded on a whole-tick period, plus an ocean's spectral band,
+//!   sampled in `f64` for height, normal, surface velocity, current, and
+//!   density.
+//! - [`Spectrum`] and [`Synth`]: a seeded JONSWAP spectrum with
+//!   directional spreading, synthesized by FFT into looping cascades; the
+//!   lowest is the gameplay band ([`spectrum::field`]).
 //! - [`Water`] and [`WaterSet`]: point queries over a zone's water through
 //!   a uniform grid.
 //! - [`submerged`]: submerged volume, center of buoyancy, and wetted area
@@ -25,9 +29,11 @@
 
 mod apply;
 mod body;
+pub mod fft;
 mod flow;
 pub mod medium;
 mod set;
+pub mod spectrum;
 mod submerge;
 mod surface;
 
@@ -38,8 +44,11 @@ pub use body::{
 pub use flow::{FlowGrid, Obstacle};
 pub use medium::{Medium, Stroke};
 pub use set::{Water, WaterSet};
+pub use spectrum::{Cascade, Field, Spectrum, Synth, Tile};
 pub use submerge::{Plane, Submersion, area, below, submerged, volume};
 pub use surface::{Displacement, G, INVERSIONS, MAX_WAVES, Phases, Wave, WaveSet};
 
+#[cfg(test)]
+mod spectrum_tests;
 #[cfg(test)]
 mod tests;

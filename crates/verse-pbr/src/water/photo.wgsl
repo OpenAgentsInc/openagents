@@ -11,6 +11,7 @@
 @group(2) @binding(3) var<uniform> water: WaterUniform;
 @group(2) @binding(4) var water_tile: texture_2d<f32>;
 @group(2) @binding(5) var water_tile_sampler: sampler;
+@group(2) @binding(6) var water_waves: texture_2d_array<f32>;
 
 // ---- Hooks the shared water shading calls.
 

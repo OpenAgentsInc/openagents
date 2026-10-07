@@ -1,0 +1,225 @@
+{
+  "capture_command": "WATER_CAPTURE_VIEWS=sea-calm,sea-moderate,sea-storm,sea-storm-surf cargo run --release -p verse-pbr --example water_capture -- OUTPUT_DIRECTORY",
+  "capture": "Real GPU output from both renderers at each tier, each view with and without its water; no grading or editing.",
+  "water_drawn_in_every_view": true,
+  "low_tier": "The physical renderer's Low draws into an 8-bit sRGB scene target with one sample; both renderers draw water inside the scene pass, so no tier adds a pass or a render target for it.",
+  "views": [
+    {
+      "image": "physical-low-sea-calm.png",
+      "renderer": "physical",
+      "tier": "low",
+      "view": "sea-calm",
+      "pixels_changed_by_water": 0.4660378086419753,
+      "water_drawn": true,
+      "water_ms_with_readback": 1.4972361666666671
+    },
+    {
+      "image": "physical-low-sea-moderate.png",
+      "renderer": "physical",
+      "tier": "low",
+      "view": "sea-moderate",
+      "pixels_changed_by_water": 0.46891589506172837,
+      "water_drawn": true,
+      "water_ms_with_readback": 1.8810590833333327
+    },
+    {
+      "image": "physical-low-sea-storm.png",
+      "renderer": "physical",
+      "tier": "low",
+      "view": "sea-storm",
+      "pixels_changed_by_water": 0.46660300925925924,
+      "water_drawn": true,
+      "water_ms_with_readback": 1.7576943333333315
+    },
+    {
+      "image": "physical-low-sea-storm-surf.png",
+      "renderer": "physical",
+      "tier": "low",
+      "view": "sea-storm-surf",
+      "pixels_changed_by_water": 0.45806134259259257,
+      "water_drawn": true,
+      "water_ms_with_readback": 1.6974514166666674
+    },
+    {
+      "image": "imported-low-sea-calm.png",
+      "renderer": "imported",
+      "tier": "low",
+      "view": "sea-calm",
+      "pixels_changed_by_water": 0.570727237654321,
+      "water_drawn": true,
+      "water_ms_with_readback": 0.8561005833333333
+    },
+    {
+      "image": "imported-low-sea-moderate.png",
+      "renderer": "imported",
+      "tier": "low",
+      "view": "sea-moderate",
+      "pixels_changed_by_water": 0.5622145061728395,
+      "water_drawn": true,
+      "water_ms_with_readback": 1.0383750833333334
+    },
+    {
+      "image": "imported-low-sea-storm.png",
+      "renderer": "imported",
+      "tier": "low",
+      "view": "sea-storm",
+      "pixels_changed_by_water": 0.5728896604938272,
+      "water_drawn": true,
+      "water_ms_with_readback": 0.5144269999999995
+    },
+    {
+      "image": "imported-low-sea-storm-surf.png",
+      "renderer": "imported",
+      "tier": "low",
+      "view": "sea-storm-surf",
+      "pixels_changed_by_water": 0.5310706018518518,
+      "water_drawn": true,
+      "water_ms_with_readback": 0.4429514166666668
+    },
+    {
+      "image": "physical-medium-sea-calm.png",
+      "renderer": "physical",
+      "tier": "medium",
+      "view": "sea-calm",
+      "pixels_changed_by_water": 0.467554012345679,
+      "water_drawn": true,
+      "water_ms_with_readback": 1.6956804166666686
+    },
+    {
+      "image": "physical-medium-sea-moderate.png",
+      "renderer": "physical",
+      "tier": "medium",
+      "view": "sea-moderate",
+      "pixels_changed_by_water": 0.4708989197530864,
+      "water_drawn": true,
+      "water_ms_with_readback": 0.05563541666666527
+    },
+    {
+      "image": "physical-medium-sea-storm.png",
+      "renderer": "physical",
+      "tier": "medium",
+      "view": "sea-storm",
+      "pixels_changed_by_water": 0.47140239197530864,
+      "water_drawn": true,
+      "water_ms_with_readback": 1.7951840000000008
+    },
+    {
+      "image": "physical-medium-sea-storm-surf.png",
+      "renderer": "physical",
+      "tier": "medium",
+      "view": "sea-storm-surf",
+      "pixels_changed_by_water": 0.46108024691358024,
+      "water_drawn": true,
+      "water_ms_with_readback": 0.3149272500000011
+    },
+    {
+      "image": "imported-medium-sea-calm.png",
+      "renderer": "imported",
+      "tier": "medium",
+      "view": "sea-calm",
+      "pixels_changed_by_water": 0.5690239197530864,
+      "water_drawn": true,
+      "water_ms_with_readback": 4.179822916666666
+    },
+    {
+      "image": "imported-medium-sea-moderate.png",
+      "renderer": "imported",
+      "tier": "medium",
+      "view": "sea-moderate",
+      "pixels_changed_by_water": 0.5821392746913581,
+      "water_drawn": true,
+      "water_ms_with_readback": 2.964576333333334
+    },
+    {
+      "image": "imported-medium-sea-storm.png",
+      "renderer": "imported",
+      "tier": "medium",
+      "view": "sea-storm",
+      "pixels_changed_by_water": 0.5690335648148148,
+      "water_drawn": true,
+      "water_ms_with_readback": 5.28915625
+    },
+    {
+      "image": "imported-medium-sea-storm-surf.png",
+      "renderer": "imported",
+      "tier": "medium",
+      "view": "sea-storm-surf",
+      "pixels_changed_by_water": 0.5259452160493827,
+      "water_drawn": true,
+      "water_ms_with_readback": 2.8270659166666667
+    },
+    {
+      "image": "physical-high-sea-calm.png",
+      "renderer": "physical",
+      "tier": "high",
+      "view": "sea-calm",
+      "pixels_changed_by_water": 0.46926890432098767,
+      "water_drawn": true,
+      "water_ms_with_readback": 14.98174316666666
+    },
+    {
+      "image": "physical-high-sea-moderate.png",
+      "renderer": "physical",
+      "tier": "high",
+      "view": "sea-moderate",
+      "pixels_changed_by_water": 0.47106867283950615,
+      "water_drawn": true,
+      "water_ms_with_readback": 7.113816083333333
+    },
+    {
+      "image": "physical-high-sea-storm.png",
+      "renderer": "physical",
+      "tier": "high",
+      "view": "sea-storm",
+      "pixels_changed_by_water": 0.47311921296296294,
+      "water_drawn": true,
+      "water_ms_with_readback": 3.3267394166666655
+    },
+    {
+      "image": "physical-high-sea-storm-surf.png",
+      "renderer": "physical",
+      "tier": "high",
+      "view": "sea-storm-surf",
+      "pixels_changed_by_water": 0.46210841049382717,
+      "water_drawn": true,
+      "water_ms_with_readback": 4.328284749999999
+    },
+    {
+      "image": "imported-high-sea-calm.png",
+      "renderer": "imported",
+      "tier": "high",
+      "view": "sea-calm",
+      "pixels_changed_by_water": 0.5921238425925925,
+      "water_drawn": true,
+      "water_ms_with_readback": 7.59051375
+    },
+    {
+      "image": "imported-high-sea-moderate.png",
+      "renderer": "imported",
+      "tier": "high",
+      "view": "sea-moderate",
+      "pixels_changed_by_water": 0.5937152777777778,
+      "water_drawn": true,
+      "water_ms_with_readback": 7.369177083333334
+    },
+    {
+      "image": "imported-high-sea-storm.png",
+      "renderer": "imported",
+      "tier": "high",
+      "view": "sea-storm",
+      "pixels_changed_by_water": 0.5864390432098765,
+      "water_drawn": true,
+      "water_ms_with_readback": 10.690941166666665
+    },
+    {
+      "image": "imported-high-sea-storm-surf.png",
+      "renderer": "imported",
+      "tier": "high",
+      "view": "sea-storm-surf",
+      "pixels_changed_by_water": 0.5311689814814815,
+      "water_drawn": true,
+      "water_ms_with_readback": 5.989708333333333
+    }
+  ],
+  "committed": "The pictures with water; the dry pictures each check compares against stay out of the repository."
+}

@@ -3313,7 +3313,7 @@ impl App {
             // The Water Lab: 1 to 7 press its hotbar (Shift ends Control
             // Water or casts Destroy Water; 6, the Water Orb, is handled on
             // press and release above), 8 or B drops a float, T turns the
-            // hour.
+            // hour, and Y the sea.
             if self.runtime.zone == zones::ZoneId::WaterLab {
                 let slot = match code {
                     KeyCode::Digit1 => Some(0),
@@ -3328,6 +3328,7 @@ impl App {
                 let result = match (slot, code) {
                     (Some(slot), _) => Some(self.runtime.water_press(slot, self.keys.shift)),
                     (None, KeyCode::KeyT) => Some(self.runtime.water_hour()),
+                    (None, KeyCode::KeyY) => Some(self.runtime.water_sea()),
                     _ => None,
                 };
                 if let Some(result) = result {
