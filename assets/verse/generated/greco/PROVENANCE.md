@@ -15,6 +15,12 @@ Rebuild every model:
     --python scripts/blender/greco_futurism.py
 ```
 
+The build fails when a saved model or kit piece has faces of two materials
+overlapping in one plane, which z-fight and flicker as the camera moves.
+[`scripts/blender/coplanar.py`](../../../../scripts/blender/coplanar.py)
+finds them, and `greco_admit.py` refuses such a model too. Run it on any
+glTF model to check it.
+
 Two textures are sampled from the Medieval Village MegaKit Standard by
 Quaternius (CC0 1.0; credit: Quaternius), downloaded to
 `~/Downloads/Medieval Village MegaKit[Standard]/`:
@@ -30,19 +36,19 @@ points them at the village set's admitted `T_Plaster_Luma.png` and
 
 | Model | Triangles | What it is |
 | --- | ---: | --- |
-| `greco_house.glb` | 6,156 | The owner's house, with `greco_house.footprint.json` |
-| `far/greco_house.glb` | 1,016 | Its far level of detail |
+| `greco_house.glb` | 6,610 | The owner's house, with `greco_house.footprint.json` |
+| `far/greco_house.glb` | 1,008 | Its far level of detail |
 | `civic_hall.glb` | 7,817 | The Civic Hall, from a fifth reference image, with `civic_hall.footprint.json` |
 | `far/civic_hall.glb` | 1,038 | Its far level of detail |
 | `belvedere.glb` | 3,990 | The belvedere, from a sixth and a seventh reference image, with `belvedere.footprint.json` |
 | `far/belvedere.glb` | 960 | Its far level of detail |
-| `agora.glb` | 7,618 | The Agora, the sales floor's trading hall, with `agora.footprint.json` |
-| `far/agora.glb` | 700 | Its far level of detail |
+| `agora.glb` | 7,586 | The Agora, the sales floor's trading hall, with `agora.footprint.json` |
+| `far/agora.glb` | 690 | Its far level of detail |
 | `kit/column.glb` | 114 | Smooth column with a square capital |
 | `kit/pier.glb` | 28 | Square pier |
 | `kit/entablature_bay.glb` | 56 | 4 m of entablature with its panel frieze |
 | `kit/stair_flight.glb` | 24 | Six shallow steps |
-| `kit/planter_wall.glb` | 40 | Planter wall with a clipped hedge |
+| `kit/planter_wall.glb` | 38 | Planter wall with a clipped hedge |
 | `kit/circuit_door.glb` | 226 | Bronze double door with the machine glyph and amber panes |
 | `kit/lattice_screen.glb` | 328 | Walnut lattice screen |
 | `kit/coffer_bay.glb` | 46 | One bay of a coffered ceiling |
@@ -50,7 +56,7 @@ points them at the village set's admitted `T_Plaster_Luma.png` and
 | `kit/chimney.glb` | 32 | Chimney block |
 | `kit/circuit_panel.glb` | 44 | Dark walnut wall with circuit lines |
 | `kit/bench_long.glb` | 94 | Long low bench with two stools |
-| `kit/planter.glb` | 64 | Planter with a clipped shrub |
+| `kit/planter.glb` | 62 | Planter with a clipped shrub |
 | `kit/lamp.glb` | 40 | Bronze floor lamp with an amber shade |
 | `kit/rug.glb` | 50 | Rug with a classical border |
 | `kit/desk.glb` | 166 | Walnut desk and chair |
@@ -82,5 +88,5 @@ points them at the village set's admitted `T_Plaster_Luma.png` and
 | `kit/bell.glb` | 158 | Bell on its stele and yoke |
 | `kit/glass_partition.glb` | 66 | Glass office wall |
 | `kit/whiteboard.glb` | 50 | Whiteboard |
-| `kit/roleplay_booth.glb` | 306 | Role-play booth's lecterns and screen |
+| `kit/roleplay_booth.glb` | 302 | Role-play booth's lecterns and screen |
 | `kit/pendant.glb` | 38 | Pendant lamp |

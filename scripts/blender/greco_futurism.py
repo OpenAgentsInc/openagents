@@ -95,9 +95,12 @@ from mathutils import Matrix, Vector
 
 sys.path.insert(0, os.path.dirname(__file__))
 import buildings as bl  # noqa: E402
+import coplanar  # noqa: E402
 
 # Whether the far level of detail is being built.
 FAR = False
+# The saved models whose faces overlap in one plane (`coplanar.py`).
+FLICKERS = []
 
 # sRGB colors; `docs/verse/greco-futurism.md` lists their linear values.
 LIMESTONE = (0.88, 0.82, 0.70)
@@ -396,9 +399,13 @@ def stair(b, x0, x1, y0, z0, steps, rise, run, mat="shade"):
 
 
 def planter_wall(b, x0, x1, y0, y1, z0, top, hedge=0.8, ends="-x +x"):
-    """A low limestone planter wall with a clipped hedge standing in it."""
-    box(b, (x0, y0, z0), (x1, y1, top), "lime", skip="-z", name="Planter")
-    if not FAR:
+    """A low limestone planter wall with a clipped hedge standing in it.
+    The wall stops under the coping, so the coping's top is the only face
+    at `top`."""
+    if FAR:
+        box(b, (x0, y0, z0), (x1, y1, top), "lime", skip="-z", name="Planter")
+    else:
+        box(b, (x0, y0, z0), (x1, y1, top - 0.08), "lime", skip="-z +z", name="Planter")
         box(b, (x0 - 0.04, y0 - 0.04, top - 0.08), (x1 + 0.04, y1 + 0.04, top), "shade", skip="-z",
             name="Coping")
     if hedge > 0:
@@ -465,7 +472,9 @@ def coffers(b, x0, x1, y0, y1, z, xs, ys, depth=0.5, width=0.36):
         box(b, (x - width / 2, y0, z - depth), (x + width / 2, y1, z), "lime", skip="+z -y +y", name="Coffer")
     for y in ys:
         box(b, (x0, y - width / 2, z - depth), (x1, y + width / 2, z), "lime", skip="+z -x +x", name="Coffer")
-    for out, drop, mat in ((0.3, 0.5, "shade"), (0.55, 0.28, "lime")):
+    # The shade step hangs 2 cm below the beams, so its soffit and theirs
+    # don't share a plane where the beams run into it.
+    for out, drop, mat in ((0.3, depth + 0.02, "shade"), (0.55, 0.28, "lime")):
         box(b, (x0, y0, z - drop), (x1, y0 + out, z), mat, skip="+z -x +x -y", name="Cove")
         box(b, (x0, y1 - out, z - drop), (x1, y1, z), mat, skip="+z -x +x +y", name="Cove")
         box(b, (x0, y0, z - drop), (x0 + out, y1, z), mat, skip="+z -y +y -x", name="Cove")
@@ -580,7 +589,7 @@ def workstation(b, x, y, z0, rot=0.0):
         box(b, (-0.025, -0.06, 0.0), (0.025, -0.03, 0.2), "copper", skip="-z +z", xf=sx, name="ScreenStand")
     # The keyboard at her edge, with an amber line of keys.
     box(b, (-0.36, 0.24, h), (0.36, 0.44, h + 0.02), "bronze", skip="-z", xf=xf, name="Keyboard")
-    box(b, (-0.3, 0.29, h + 0.02), (0.3, 0.39, h + 0.021), "amber", skip=only("+z"), xf=xf, name="EmitKeys")
+    box(b, (-0.3, 0.29, h + 0.02), (0.3, 0.39, h + 0.023), "amber", skip=only("+z"), xf=xf, name="EmitKeys")
 
 
 def console(b, xf, h=1.0, w=1.4, d=0.75):
@@ -650,7 +659,7 @@ def reception_desk(b, x, y, z0, rot=0.0):
         return
     circuit_lines(b, xf @ Matrix.Translation(Vector((0.0, -d / 2, 0.0))), w - 0.3, 0.14, front - 0.32)
     box(b, (-0.24, 0.02, h), (0.24, 0.3, h + 0.016), "bronze", skip="-z", xf=xf, name="Slate")
-    box(b, (-0.21, 0.05, h + 0.016), (0.21, 0.27, h + 0.017), "amber", skip=only("+z"), xf=xf, name="EmitSlate")
+    box(b, (-0.21, 0.05, h + 0.016), (0.21, 0.27, h + 0.019), "amber", skip=only("+z"), xf=xf, name="EmitSlate")
 
 
 def reception_chair(b, x, y, z0, rot=0.0, seat=RECEPTION_SEAT):
@@ -743,7 +752,9 @@ def bench_long(b, x, y, z0, rot=0.0):
 def planter(b, x, y, z0, size=0.9, ball=1.0):
     """A square limestone planter with a clipped shrub."""
     h = 0.7
-    box(b, (x - size / 2, y - size / 2, z0), (x + size / 2, y + size / 2, z0 + h), "lime", skip="-z",
+    # The body stops under the coping, so the coping's top is the only
+    # face at the rim.
+    box(b, (x - size / 2, y - size / 2, z0), (x + size / 2, y + size / 2, z0 + h - 0.06), "lime", skip="-z +z",
         name="Planter")
     box(b, (x - size / 2 - 0.05, y - size / 2 - 0.05, z0 + h - 0.06), (x + size / 2 + 0.05, y + size / 2 + 0.05,
                                                                         z0 + h), "shade", name="Coping")
@@ -989,8 +1000,9 @@ def house_body(b):
     t = WALL
     for x0, x1 in ((-hw, -screen[1]), (screen[1], hw)):
         box(b, (x0, fy, FLOOR), (x1, fy + t, WALL_TOP), "lime", skip="-z +z", name="Wall")
-    for x0, x1 in ((-screen[0], -door_hw), (door_hw, screen[0])):
-        box(b, (x0, fy, FLOOR), (x1, fy + t, CEILING), "lime", skip="-z +z", name="Wall")
+    # The door's frame covers each wall's reveal.
+    for x0, x1, reveal in ((-screen[0], -door_hw, "+x"), (door_hw, screen[0], "-x")):
+        box(b, (x0, fy, FLOOR), (x1, fy + t, CEILING), "lime", skip="-z +z " + reveal, name="Wall")
     for s in (-1, 1):
         x0, x1 = sorted((s * screen[0], s * screen[1]))
         box(b, (x0, fy, door_top), (x1, fy + t, CEILING), "lime", skip="+z -x +x", name="Wall")
@@ -1056,7 +1068,9 @@ def house_body(b):
                     box(b, (fx0, y - win_hw, z - 0.04), (fx1, y + win_hw, z + 0.04), "walnut", skip="-y +y",
                         name="Mullion")
                 sx0, sx1 = sorted((outer + s * 0.12, outer - s * 0.1))
-                box(b, (sx0, y - win_hw - 0.12, sill - 0.1), (sx1, y + win_hw + 0.12, sill), "shade",
+                # The sill stands 2 cm proud of the wall's top in the opening,
+                # so their tops don't share a plane.
+                box(b, (sx0, y - win_hw - 0.12, sill - 0.1), (sx1, y + win_hw + 0.12, sill + 0.02), "shade",
                     name="Sill")
             # Upper windows: dark glass with a bronze surround.
             gx0, gx1 = sorted((outer, outer + s * 0.04))
@@ -1074,7 +1088,9 @@ def house_body(b):
     # flat roof, and the chimneys.
     entablature(b, -hw, hw, COLUMN_Y - COLUMN_D / 2 - 0.05, by, WALL_TOP)
     crown = WALL_TOP + ENTABLATURE
-    box(b, (-hw + 0.5, COLUMN_Y + 0.2, crown), (hw - 0.5, by - 0.5, crown + ATTIC), "lime", skip="-z",
+    # The attic stops under its cap, so the cap's top is the roof's only
+    # face: a top at the same height flickers against it.
+    box(b, (-hw + 0.5, COLUMN_Y + 0.2, crown), (hw - 0.5, by - 0.5, crown + ATTIC - 0.16), "lime", skip="-z +z",
         name="Attic")
     box(b, (-hw + 0.42, COLUMN_Y + 0.12, crown + ATTIC - 0.16), (hw - 0.42, by - 0.42, crown + ATTIC), "shade",
         skip="-z", name="AtticCap")
@@ -2191,7 +2207,7 @@ def desk_phone(b, xf, u, v, top):
     box(b, (u - 0.11, v - 0.09, top), (u + 0.11, v + 0.09, top + 0.06), "bronze", skip="-z", xf=xf, name="Phone")
     if FAR:
         return
-    box(b, (u - 0.07, v - 0.07, top + 0.06), (u + 0.04, v + 0.03, top + 0.061), "amber", skip=only("+z"), xf=xf,
+    box(b, (u - 0.07, v - 0.07, top + 0.06), (u + 0.04, v + 0.03, top + 0.063), "amber", skip=only("+z"), xf=xf,
         name="EmitKeys")
     box(b, (u + 0.05, v - 0.085, top + 0.06), (u + 0.1, v + 0.085, top + 0.1), "copper", skip="-z", xf=xf,
         name="Handset")
@@ -2396,7 +2412,9 @@ def screen(b, x0, x1, y0, y1, z0, h=1.8, panel=0.95):
     else:
         xf = local(((x0 + x1) / 2, 0.0, z0), 90.0)
         u0, u1 = y0, y1
-    box(b, (u0, -0.04, 0.0), (u1, 0.04, panel), "walnut", skip="-z", xf=xf, name="ScreenPanel")
+    # The frame's posts cover the panel's ends.
+    box(b, (u0, -0.04, 0.0), (u1, 0.04, panel), "walnut", skip="-z" if FAR else "-z -x +x", xf=xf,
+        name="ScreenPanel")
     if FAR:
         box(b, (u0, -0.01, panel), (u1, 0.01, h), "walnut", skip="-z", xf=xf, name="Screen")
     else:
@@ -2486,7 +2504,8 @@ def agora_body(b):
     door_hw, door_top, transom = 1.4, f + 4.6, f + 5.3
     for s in (-1, 1):
         x0, x1 = sorted((s * door_hw, s * hw))
-        box(b, (x0, fy, f), (x1, fy + t, A_WALL), "lime", skip="-z +z", name="Wall")
+        # The door's frame covers the wall's reveal.
+        box(b, (x0, fy, f), (x1, fy + t, A_WALL), "lime", skip="-z +z " + ("-x" if s > 0 else "+x"), name="Wall")
         b.collide("facade", (x0 + 0.1 * s if s > 0 else x0, fy, f), (x1 if s > 0 else x1 - 0.1, fy + t, A_WALL))
     box(b, (-door_hw, fy, transom), (door_hw, fy + t, A_WALL), "lime", skip="+z -x +x", name="Wall")
     box(b, (-door_hw - 0.22, fy - 0.08, f), (-door_hw, fy + t, door_top), "bronze", skip="-z +y", name="DoorFrame")
@@ -2560,7 +2579,9 @@ def agora_body(b):
     # a low attic, and the flat roof.
     entablature(b, -hw, hw, A_COL_Y - 0.55, by + t, A_WALL, panel="amber")
     crown = A_WALL + 1.8
-    box(b, (-hw + 0.5, A_COL_Y, crown), (hw - 0.5, by - 0.1, crown + 0.7), "lime", skip="-z", name="Attic")
+    # The attic stops under its cap, so the cap's top is the roof's only
+    # face: a top at the same height flickers against it.
+    box(b, (-hw + 0.5, A_COL_Y, crown), (hw - 0.5, by - 0.1, crown + 0.54), "lime", skip="-z +z", name="Attic")
     box(b, (-hw + 0.42, A_COL_Y - 0.08, crown + 0.54), (hw - 0.42, by - 0.02, crown + 0.7), "shade", skip="-z",
         name="AtticCap")
     roof = crown + 0.7
@@ -3142,6 +3163,15 @@ def save(b, out):
     for top in b.chimneys:
         print(f"CHIMNEY {b.name} {top[0]} {top[1]} {top[2]}")
     print(f"MODEL {b.name} {b.triangles()}")
+    flickers(os.path.join(out, b.name + ".glb"))
+
+
+def flickers(path):
+    """Checks a saved model for faces of two materials in one plane, which
+    z-fight: the renderer can't tell which is in front, so the surface
+    flickers as the camera moves. `main` fails when any model has them."""
+    if not coplanar.report(path):
+        FLICKERS.append(path)
 
 
 def save_far(b, out):
@@ -3152,6 +3182,7 @@ def save_far(b, out):
                               export_jpeg_quality=88, export_tangents=False, export_cameras=False,
                               export_lights=False, export_extras=False)
     print(f"FAR {b.name} triangles={b.triangles()}")
+    flickers(os.path.join(out, b.name + ".glb"))
 
 
 def main():
@@ -3176,6 +3207,9 @@ def main():
             save(b, os.path.join(out, "kit"))
             # The footprint of a kit piece isn't used; keep the glb alone.
             os.remove(os.path.join(out, "kit", b.name + ".footprint.json"))
+    if FLICKERS:
+        print(f"COPLANAR faces in {len(FLICKERS)} models; offset or remove one face of each pair")
+        sys.exit(1)
 
 
 main()

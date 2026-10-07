@@ -1,7 +1,7 @@
 {
   "model": "agora.glb",
   "frame": "glTF: 1 unit = 1 m, +Y up, +Z out of the front door, origin on the ground at the center of the front wall",
-  "triangles": 7618,
+  "triangles": 7586,
   "boxes": [
     {
       "name": "planter",

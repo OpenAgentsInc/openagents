@@ -1,5 +1,5 @@
 //! Offline visual acceptance of Everglade with the shared renderer.
-//! Usage: [VERSE_TOWN_HOUR=H] everglade_capture OUTPUT.png [approach|winds|stone|stone-crumble|stone-settled|sky|yard|hall|lane-east|lane-west|reverse|reverse-top|overhead|town-north|town-west|tooltip|city-market|city-stoop|city-lantern|city-brownstone|city-observatory|city-foundry|studio-yard|studio-hall|studio-atrium|eyes|hall-eyes|at:X,Z,YAW,TILT|air:EX,EY,EZ,TX,TZ|look:EX,EY,EZ,TX,TY,TZ] [FRAME]
+//! Usage: [VERSE_TOWN_HOUR=H] everglade_capture OUTPUT.png [approach|winds|stone|stone-crumble|stone-settled|sky|yard|hall|lane-east|lane-west|reverse|reverse-top|overhead|town-north|town-west|tooltip|city-market|city-stoop|city-lantern|city-brownstone|city-observatory|city-foundry|studio-yard|studio-hall|studio-atrium|eyes|hall-eyes|at:X,Z,YAW,TILT[,Y]|air:EX,EY,EZ,TX,TZ|look:EX,EY,EZ,TX,TY,TZ] [FRAME]
 //!
 //! Installs Everglade from the committed, pinned pack, as a portal entry
 //! does after the download, and renders one of these views with the zone
@@ -38,8 +38,10 @@
 //!   their streets: the Fountain Plaza and the Market Hall, Stoop Lane's
 //!   townhouses, Hearth Road into the Lantern Quarter, Brownstone Row,
 //!   Observatory Hill, and Foundry Road.
-//! - `at:X,Z,YAW,TILT`: the player standing anywhere, at `(X, Z)` facing
-//!   `YAW` radians, with the camera tilted by `TILT`.
+//! - `at:X,Z,YAW,TILT[,Y]`: the player standing anywhere, at `(X, Z)`
+//!   facing `YAW` radians, with the camera tilted by `TILT`. With `Y`, the
+//!   player drops from height `Y` and lands on what is below, such as a
+//!   roof.
 //! - `air:EX,EY,EZ,TX,TZ`: as `overhead`, from an eye at `(EX, EY, EZ)`
 //!   looking at `(TX, 0, TZ)`, for a closer look at one district.
 //! - `look:EX,EY,EZ,TX,TY,TZ`: a free camera at `(EX, EY, EZ)` looking at
@@ -156,18 +158,21 @@ fn main() -> Result<(), String> {
         "city-foundry" => (glam::Vec3::new(64.0, 0.0, 6.0), 1.2, 30.0),
         // Inside the gate, looking up at the goal board.
         "studio-atrium" => (glam::Vec3::new(2.8, 0.0, -13.3), 0.5, 10.0),
-        // Anywhere: `at:X,Z,YAW,TILT` stands the player at (X, Z) facing
-        // YAW radians with the camera tilted by TILT.
+        // Anywhere: `at:X,Z,YAW,TILT[,Y]` stands the player at (X, Z)
+        // facing YAW radians with the camera tilted by TILT; with Y, it
+        // drops the player from height Y, onto a roof below it.
         other if other.starts_with("at:") => {
             let v: Vec<f32> = other[3..]
                 .split(',')
                 .map(str::parse)
                 .collect::<Result<_, _>>()
-                .map_err(|_| format!("`{other}` is not at:X,Z,YAW,TILT"))?;
-            let [x, z, yaw, tilt] = v[..] else {
-                return Err(format!("`{other}` is not at:X,Z,YAW,TILT"));
+                .map_err(|_| format!("`{other}` is not at:X,Z,YAW,TILT[,Y]"))?;
+            let (x, z, yaw, tilt, y) = match v[..] {
+                [x, z, yaw, tilt] => (x, z, yaw, tilt, 0.0),
+                [x, z, yaw, tilt, y] => (x, z, yaw, tilt, y),
+                _ => return Err(format!("`{other}` is not at:X,Z,YAW,TILT[,Y]")),
             };
-            (glam::Vec3::new(x, 0.0, z), yaw, tilt)
+            (glam::Vec3::new(x, y, z), yaw, tilt)
         }
         other => {
             return Err(format!(
@@ -249,7 +254,9 @@ fn main() -> Result<(), String> {
     if first_person {
         runtime.apply(Action::Zoom { lines: 100.0 })?;
     }
-    for _ in 0..10 {
+    // A player dropped from a height lands before the frame.
+    let settle = if at.y > 0.0 { 80 } else { 10 };
+    for _ in 0..settle {
         runtime.tick(&idle, 0.05);
     }
     let mut atlas = verse::ui::Atlas::new(16.0);

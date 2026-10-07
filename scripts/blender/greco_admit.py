@@ -20,7 +20,9 @@ trim images with base-color factors:
 
 It adds only those files to each set's `manifest.json`, leaving every other
 entry as it is, so it runs beside `everglade_admit.py` without rebuilding
-the other models.
+the other models. It refuses a model whose faces of two materials overlap
+in one plane (`coplanar.py`), because such faces flicker as the camera
+moves.
 """
 
 import json
@@ -28,7 +30,8 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(__file__))
-from everglade_admit import LOD, OUT, VILLAGE, convert, mean_linear, sha, write_manifest  # noqa: E402
+import coplanar  # noqa: E402
+from everglade_admit import LOD, OUT, SOURCES, VILLAGE, convert, mean_linear, sha, write_manifest  # noqa: E402
 
 NAMES = ["greco_house", "civic_hall", "belvedere", "agora"]
 VILLAGE_FILES = [
@@ -64,6 +67,10 @@ def main():
         if name not in NAMES:
             print(f"unknown model {name}; expected one of {NAMES}")
             return 1
+    clean = [coplanar.report(os.path.join(SOURCES, f"greco/{far}{name}.glb")) for name in names for far in ("", "far/")]
+    if not all(clean):
+        print("refusing to admit models with coplanar faces; offset or remove one face of each pair")
+        return 1
     for name in names:
         source, far_source = f"greco/{name}.glb", f"greco/far/{name}.glb"
         admit(
