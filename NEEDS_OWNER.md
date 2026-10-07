@@ -57,6 +57,25 @@ browser/network qualification remains unverified.
 
 # Owner checks
 
+## First workflow offer O1 (REV-01, #10808)
+
+Before selling [Coder pilot v1](docs/sales/README.md#first-workflow-offer-v1),
+confirm the proposed USD 250 service fee on accepted delivery, seven-day
+invoice terms, zero promotional credits, one 30-minute free discovery call,
+one change plus one repair, seven-day review, and three operator hours.
+Changing these defaults creates a new offer version. No buyer agreement or
+commercial activation is recorded by this documentation change.
+
+Privately name the buyer/workflow owner, exact public repository and commit,
+behavior/checks, installed Coder revision, approved provider recipients and
+customer budget, delivery person, monitored support contact/business hours,
+and review date. Approve the data policy, 30-day deletion of shared content,
+invoice/consent retention period, provider terms, cancellation/defect terms,
+and external invoice payment route. Keep secrets and customer records out of
+the repository. Qualify the selected install before work; retain private
+buyer acceptance and confirmed invoice payment before claiming service revenue.
+This service does not activate retail compute, paid plugins, or product credit.
+
 ## Sales outreach launch
 
 The [sales-floor decisions](docs/sales/agent-sales-floor.md#initial-operating-decisions)

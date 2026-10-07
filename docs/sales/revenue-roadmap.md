@@ -71,6 +71,13 @@ improve unfamiliar work, not only the tasks that produced them.
 
 ## First offers and their limits
 
+The frozen [first workflow offer v1](README.md#first-workflow-offer-v1)
+selects a bounded assisted Coder public-repository change as the first
+service lane: proposed USD 250 on accepted delivery, zero promotional credits,
+and buyer-paid local model use. O1 and the buyer's private agreement activate
+its commercial defaults; REV-02/REV-03/REV-04/REV-06/REV-07/REV-18 supply the
+selected service path. This specification is not an accepted customer order.
+
 Recommend a useful paid plugin as the first small product purchase, because the
 pay front and signed-release path already exist. Select it from a recurring
 customer task; an inexpensive call with no useful result is not a viable offer.
@@ -301,7 +308,7 @@ agent floor is being built.
 
 | ID | Issue scope and owner | Depends on | Acceptance |
 | --- | --- | --- | --- |
-| [REV-01](https://github.com/OpenAgentsInc/openagents/issues/10808) | Product/sales: freeze the first workflow offer and commercial defaults | Customer discovery; existing supported contracts | Versioned buyer problem, supported client/resource, price or quote basis, trial/onboarding caps, data boundary, acceptance, payment route, and support owner; unsupported promises are excluded |
+| [REV-01](https://github.com/OpenAgentsInc/openagents/issues/10808) | Product/sales: freeze the first workflow offer and commercial defaults | Customer discovery; existing supported contracts | [Coder pilot v1](README.md#first-workflow-offer-v1) defines the service workflow, proposed price/caps, acceptance, data and support policies; O1 and buyer agreement remain activation gates |
 | [REV-02](https://github.com/OpenAgentsInc/openagents/issues/10809) | Client/release: qualify the selected customer install and first-task path | REV-01; existing install/provider paths | Fresh external-user install finds a usable provider, completes a checked task, and exposes honest unavailable states and recovery/support instructions |
 | [REV-03](https://github.com/OpenAgentsInc/openagents/issues/10810) | Evidence: join baseline, accepted results, timing, and full task cost | REV-01; existing traces and Gym | Comparison retains failed attempts, repairs, checks, setup/queue time, versioned prices, and independent/customer acceptance; actual spend, estimates, and subscription capacity stay distinct |
 | [REV-04](https://github.com/OpenAgentsInc/openagents/issues/10811) | Sales: implement the private lead/account pipeline and accepted human handoff | REV-01 | One durable record set holds permission/source/jurisdiction, stage, responsible human, next action/date, workflow, baseline, data boundary, and customer decision; access and retention are enforced |
@@ -637,7 +644,8 @@ qualification and deployed configuration separately from issue status.
 
 Use the build IDs above to select the first scoped issues:
 
-1. Product/sales start REV-01; client/evidence prepare REV-02/REV-03. Sales
+1. Product/sales use [Coder pilot v1](README.md#first-workflow-offer-v1);
+   client/evidence prepare REV-02/REV-03. Sales
    prepares REV-04/REV-06 and can operate a bounded manual pilot immediately.
 2. Client/payments select REV-09–REV-12 for the first installed paid-plugin
    slice and prepare O2/O8. Cloud REV-13–REV-15 and gateway REV-16/REV-17 can
@@ -656,8 +664,9 @@ Use the build IDs above to select the first scoped issues:
    qualified discovery experiment. Team and wider-supply rows follow buyer
    evidence, not completion of every preceding product lane.
 
-Decisions still open: the first paid workflow, credit and onboarding caps,
-service pricing, live card provider and unit conversion, commission base/share,
+Decisions still open: O1 activation of Coder pilot v1's proposed service price,
+provider budget and support assignment, later business credit, live card
+provider and unit conversion, commission base/share,
 the first team's required controls, and support responsibility. Record each
 decision with its owner and affected milestone. Do not wait for a complete
 enterprise package to resolve the offer, payment path, and first pilot.

@@ -14,6 +14,7 @@ customer records, compensation agreements, and negotiations stay private.
 - [Summary](#summary)
 - [What businesses want](#what-businesses-want)
 - [What we sell](#what-we-sell)
+- [First workflow offer v1](#first-workflow-offer-v1)
 - [Principles](#principles)
 - [How customers arrive](#how-customers-arrive)
 - [Pricing and billing](#pricing-and-billing)
@@ -99,6 +100,77 @@ software to businesses. They recur often enough to shape the product.
 | Business accounts | Teams and companies | Usage plus optional paid onboarding and support |
 | Department agents | Businesses | Built during onboarding, run on usage, measured in the Gym |
 
+## First workflow offer v1
+
+Offer `openagents.sales.coder-pilot.v1`, defined October 7, 2026, selects
+**assisted delivery of one checked public-repository change** as the first
+service offer. The workflow and proposed commercial defaults below are frozen
+for implementation ([REV-01](https://github.com/OpenAgentsInc/openagents/issues/10808)).
+Selling waits for [O1 owner activation](../../NEEDS_OWNER.md#first-workflow-offer-o1-rev-01-10808)
+and a buyer's private agreement; no customer has accepted this specification.
+Paid plugins remain the first proposed small product purchase in the
+[roadmap](revenue-roadmap.md#first-offers-and-their-limits).
+
+| Part | Version 1 definition and source |
+| --- | --- |
+| Buyer and problem | A developer or small team's workflow owner has a recurring repository maintenance task and wants help making it repeatable with Coder. The buyer names the acceptance decision maker before work starts. |
+| Client and resource | Installed `coder` and companion `openagents` on the buyer's macOS arm64 computer, built from a recorded clean commit through the [installer](../../scripts/install-coder.sh). The [local terminal/headless turn](../coder/guides/headless.md) uses a buyer-owned supported login. REV-02 qualifies that exact installed path before the pilot; a demo or another client does not qualify it. |
+| Input | One buyer-authorized public HTTPS GitHub repository, exact 40-character commit, clean isolated worktree, task text at most 16 KiB, and 1–8 frozen acceptance commands of at most 1,024 bytes each. No submodules. These deliberately match the source/request/check envelope of [retail v1](../cloud/retail-contract.md#task-class-retail-repo-change-v1), without purchasing retail compute. |
+| Output | A patch against the pinned commit, candidate digest, each declared check's status and last 64 KiB of output, run summary, private trace reference, and a short setup/repeat-workflow runbook. The buyer applies or publishes it. A reply, executor exit, or unchecked patch does not establish acceptance. |
+| Acceptance | Before generation, the buyer freezes the intended behavior and checks. After generation, a person other than the executor runs those checks on the exact candidate in a clean worktree and records every result; the buyer then accepts the behavior and deliverables explicitly. REV-03 joins baseline, attempts, repairs, elapsed time, and known/unknown costs; no savings claim precedes that evidence. |
+| Delivery cap | One buyer, one repository, one change, at most one repair attempt, and a seven-calendar-day pilot with a dated review. At most three operator hours cover discovery, setup, delivery, and support. Each attempt stops at 30 minutes; each check stops at 15 minutes. These are operator-run engagement limits, not new automatic Coder controls. |
+| Service price | Proposed fixed fee **USD 250**, invoice after the buyer accepts the checked patch and runbook, due in seven calendar days. This is a new design default, not a historical price, demonstrated margin, or active rate. O1 must approve it or create a new offer version before quoting. No fee is earned for an unaccepted result. |
+| Payment and trial | A separately issued service invoice and owner-selected external payment route; retain the invoice, confirmed payment, and buyer acceptance privately. No product balance is credited. Default free discovery is one 30-minute conversation, with **zero** promotional credits and no provider subsidy. The owner approves any exception before spending or quoting. |
+| Resource payers | The buyer pays their model provider and uses their own computer. OpenAgents earns only the service fee. Approved Codex/Claude routing and any separately configured Jev connection name their recipients and payer before use; disable [sponsored cloud fallback](../coder/runtime/cloud-fallback.md) with `CODER_CLOUD=off`. No operator credential or unapproved paid provider is used. Subscription capacity, list-price estimates, and actual API charges remain separate; the buyer accepts a provider budget privately. |
+| Delivery and support owner | The OpenAgents owner supplies delivery and one named private support contact until a collaborator accepts that role. Acknowledge requests within one business day during the agreed business hours; support lasts through the pilot review and stays inside the three-hour cap. There is no availability SLA or continuing maintenance promise. |
+
+**Data policy.** Public source still needs disclosure permission. The buyer
+approves sending the task and relevant source to the named model/decision
+providers, and sharing the patch, checks, and necessary redacted diagnostics
+with the named OpenAgents delivery person. Keys remain on the buyer's machine;
+do not copy credentials, unrelated files, private repositories, or personal
+data into the pilot. [Coder traces](../coder/runtime/traces.md) stay local
+unless the buyer separately approves an exact redacted export. The operator
+deletes shared task content and diagnostic copies within 30 days after review
+and records deletion; this is a manual service obligation, not an implemented
+automatic retention feature. O1 fixes the separate invoice/consent retention
+period and provider terms before activation. The buyer controls local copies.
+Training, reusable customer examples, public benchmarks, and marketing use
+require separate permission; none is included in this offer.
+
+**Cancellation and recovery.** The buyer may stop before acceptance without a
+service invoice; provider charges already incurred remain theirs. Retain the
+stop, partial result, and unknown execution/cost states before any new attempt;
+never replay uncertain writes automatically. An accepted delivery creates the
+invoice obligation. A later defect uses the included repair allowance; any
+refund, credit, extension, or replacement scope needs a recorded private
+agreement. No automatic product refund or Lightning payout is promised.
+
+**Accept, extend, or stop.** At review, accept only the independently checked
+patch, agreed behavior, and runbook. Stop on a missing ready provider, revoked
+disclosure, unsafe input, unconfirmed stop, failed checks after the repair, or
+any cap reached. Extend only with a new versioned scope, price, budget, and
+review date accepted by both parties; silence never extends a pilot.
+Publication, private repositories, new integrations, department-agent training,
+remote shells, guaranteed savings, and autonomous selling are excluded.
+
+A warm buyer can agree through a private introduction and written scope now:
+record the offer version, task/check digests, workflow owner, delivery person,
+data recipients, provider budget, price, support contact, and review date;
+then qualify the install and start only after O1 and buyer acceptance. REV-04
+and REV-06 make that manual record and pilot kit durable. No public offer page,
+shared balance, referral program, or agent floor is required.
+
+If a later pilot buys cloud compute, it needs a separate retail admission and
+O3/O4: [retail v1](../cloud/retail-contract.md) uses Boat `large`, the buyer's
+OpenAI key, and no publication, with [price book `retail-2026-10-06.1`](../cloud/retail-prices.md)
+at 40 millisatoshis/second plus 100 sats per started task, at most 244 sats
+for 60 minutes. A paid plugin likewise needs its own exact release, quote,
+payment, and O2: the current [paid endpoint](../payments/2026-10-02-central-receive-and-splits.md#6-paid-endpoints-on-the-central-receiver)
+admits one guest step requiring no capabilities, with an empty read snapshot.
+Neither product charge is included in the service fee, and a service invoice
+does not qualify product settlement or author payout.
+
 ## Principles
 
 - **A strict upgrade as the goal.** Prove quality, cost, and time on a team's
@@ -139,10 +211,10 @@ handoff from lead to accepted pilot, paid use, and expansion.
 
 ## Pricing and billing
 
-- **Proposed starting offer.** Give a new business account a capped credit
-  and short onboarding session so it can test value on its own work. The
-  amount, eligibility, and onboarding scope remain decisions; do not promise
-  an unlimited trial.
+- **First service offer.** Use [Coder pilot v1](#first-workflow-offer-v1):
+  one checked public-repository change, a proposed USD 250 service fee,
+  one 30-minute free discovery call, and zero promotional credits. O1 and
+  buyer agreement activate it. Broader business credit remains a decision.
 - **Pay as you go.** Usage is metered per resource (compute, gateway calls,
   plugin calls) and charged against a prepaid balance or a card. The retail
   cloud already defines quotes, holds, metering, and settlement
@@ -427,12 +499,12 @@ work without requiring every surface or market to launch together.
 
 ## Open questions
 
-- How large should the starting credit be, and should it depend on a
-  completed onboarding session?
+- Should later business offers add a starting credit, and on what eligibility
+  and spending rules? Coder pilot v1 defaults to zero credit.
 - What referral share is sustainable for permanent attribution, and should
   business referrals earn differently from individual ones?
-- Should onboarding be paid, free with a usage commitment, or free during
-  launch?
+- Does the proposed USD 250 Coder pilot fee cover measured delivery and
+  support costs? Confirm it under O1 before selling; later offers may differ.
 - Which admin features does the first business customer need before they pay?
 - Which department agents should we build first as reusable templates?
 
