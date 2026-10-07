@@ -70,6 +70,13 @@ def import_glb(path):
     for o in new:
         if o.type == "MESH" and o.name.startswith("Icosphere"):
             o.hide_render = True
+    # Only the hair cards are alpha-masked, as the admitted model has it; the
+    # build's opaque material reads the atlas's alpha too.
+    for m in bpy.data.materials:
+        if m.use_nodes and not m.name.startswith("alice_hair"):
+            bsdf = m.node_tree.nodes.get("Principled BSDF")
+            if bsdf and bsdf.inputs["Alpha"].links:
+                m.node_tree.links.remove(bsdf.inputs["Alpha"].links[0])
     arm = next((o for o in new if o.type == "ARMATURE"), None)
     return new, arm, [a for a in bpy.data.actions if a not in acts]
 

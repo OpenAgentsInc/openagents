@@ -1452,100 +1452,100 @@
   {
    "name": "Alice_BaseColor",
    "mimeType": "image/png",
-   "uri": "alice.lod0.png"
+   "uri": "alice.lod1.png"
   }
  ],
  "accessors": [
   {
    "bufferView": 0,
    "componentType": 5126,
-   "count": 45464,
+   "count": 19182,
    "type": "VEC3",
    "min": [
-    -0.850361704826355,
-    -0.0040000006556510925,
-    -0.30093371868133545
+    -0.8499848246574402,
+    -0.0039693149738013744,
+    -0.21506784856319427
    ],
    "max": [
-    0.8503616452217102,
+    0.8499848246574402,
     1.9867745637893677,
-    0.1731109470129013
+    0.17256410419940948
    ]
   },
   {
    "bufferView": 1,
    "componentType": 5126,
-   "count": 45464,
+   "count": 19182,
    "type": "VEC3"
   },
   {
    "bufferView": 2,
    "componentType": 5126,
-   "count": 45464,
+   "count": 19182,
    "type": "VEC2"
   },
   {
    "bufferView": 3,
    "componentType": 5121,
-   "count": 45464,
+   "count": 19182,
    "type": "VEC4"
   },
   {
    "bufferView": 4,
    "componentType": 5126,
-   "count": 45464,
+   "count": 19182,
    "type": "VEC4"
   },
   {
    "bufferView": 5,
    "componentType": 5123,
-   "count": 207840,
+   "count": 74196,
    "type": "SCALAR"
   },
   {
    "bufferView": 6,
    "componentType": 5126,
-   "count": 9154,
+   "count": 5695,
    "type": "VEC3",
    "min": [
-    -0.1554240584373474,
-    1.1683722734451294,
-    -0.1580328792333603
+    -0.1490001529455185,
+    1.1698169708251953,
+    -0.15729857981204987
    ],
    "max": [
-    0.1519555300474167,
-    1.8040894269943237,
-    0.16873563826084137
+    0.14622144401073456,
+    1.8044103384017944,
+    0.1602357178926468
    ]
   },
   {
    "bufferView": 7,
    "componentType": 5126,
-   "count": 9154,
+   "count": 5695,
    "type": "VEC3"
   },
   {
    "bufferView": 8,
    "componentType": 5126,
-   "count": 9154,
+   "count": 5695,
    "type": "VEC2"
   },
   {
    "bufferView": 9,
    "componentType": 5121,
-   "count": 9154,
+   "count": 5695,
    "type": "VEC4"
   },
   {
    "bufferView": 10,
    "componentType": 5126,
-   "count": 9154,
+   "count": 5695,
    "type": "VEC4"
   },
   {
    "bufferView": 11,
    "componentType": 5123,
-   "count": 34098,
+   "count": 21120,
    "type": "SCALAR"
   },
   {
@@ -1559,85 +1559,85 @@
   {
    "buffer": 0,
    "byteOffset": 0,
-   "byteLength": 545568,
+   "byteLength": 230184,
    "target": 34962
   },
   {
    "buffer": 0,
-   "byteOffset": 545568,
-   "byteLength": 545568,
+   "byteOffset": 230184,
+   "byteLength": 230184,
    "target": 34962
   },
   {
    "buffer": 0,
-   "byteOffset": 1091136,
-   "byteLength": 363712,
+   "byteOffset": 460368,
+   "byteLength": 153456,
    "target": 34962
   },
   {
    "buffer": 0,
-   "byteOffset": 1454848,
-   "byteLength": 181856,
+   "byteOffset": 613824,
+   "byteLength": 76728,
    "target": 34962
   },
   {
    "buffer": 0,
-   "byteOffset": 1636704,
-   "byteLength": 727424,
+   "byteOffset": 690552,
+   "byteLength": 306912,
    "target": 34962
   },
   {
    "buffer": 0,
-   "byteOffset": 2364128,
-   "byteLength": 415680,
+   "byteOffset": 997464,
+   "byteLength": 148392,
    "target": 34963
   },
   {
    "buffer": 0,
-   "byteOffset": 2779808,
-   "byteLength": 109848,
+   "byteOffset": 1145856,
+   "byteLength": 68340,
    "target": 34962
   },
   {
    "buffer": 0,
-   "byteOffset": 2889656,
-   "byteLength": 109848,
+   "byteOffset": 1214196,
+   "byteLength": 68340,
    "target": 34962
   },
   {
    "buffer": 0,
-   "byteOffset": 2999504,
-   "byteLength": 73232,
+   "byteOffset": 1282536,
+   "byteLength": 45560,
    "target": 34962
   },
   {
    "buffer": 0,
-   "byteOffset": 3072736,
-   "byteLength": 36616,
+   "byteOffset": 1328096,
+   "byteLength": 22780,
    "target": 34962
   },
   {
    "buffer": 0,
-   "byteOffset": 3109352,
-   "byteLength": 146464,
+   "byteOffset": 1350876,
+   "byteLength": 91120,
    "target": 34962
   },
   {
    "buffer": 0,
-   "byteOffset": 3255816,
-   "byteLength": 68196,
+   "byteOffset": 1441996,
+   "byteLength": 42240,
    "target": 34963
   },
   {
    "buffer": 0,
-   "byteOffset": 3324012,
+   "byteOffset": 1484236,
    "byteLength": 4160
   }
  ],
  "buffers": [
   {
-   "byteLength": 3328172,
-   "uri": "alice.lod0.bin"
+   "byteLength": 1488396,
+   "uri": "alice-light.lod1.bin"
   }
  ]
 }

@@ -31,6 +31,9 @@ pub const ORIGINAL_APPEARANCES: [&str; 1] = ["alice"];
 /// atlas, for the chamber's close views; `lod1`, subdivided, for Everglade's
 /// workshop desk; `lod2` for phones once packs split by tier; and `lod3` for distant
 /// players once skinned levels of detail exist.
+/// Alice's outfits other than the default coat, which her sources carry at
+/// `lod1` (`alice-<outfit>.lod1.gltf`): the coat off, and a summer dress.
+pub const ALICE_OUTFITS: [&str; 2] = ["light", "summer"];
 pub const ALICE_VARIANTS: [(&str, usize); 4] = [
     ("lod0", 100_000),
     ("lod1", 46_000),
@@ -1130,7 +1133,9 @@ pub fn appearance(pack: &mut Pack, dir: &Path, root: &Path, name: &str) -> Resul
 /// built by `scripts/blender/alice.py`) and gives her the runtime clips and
 /// states every Universal appearance has, from the Universal Animation
 /// Library under `universal_root`. Her skeleton is the Universal rig's, so
-/// every clip retargets exactly.
+/// every clip retargets exactly. A variant `<outfit>.<level>`, such as
+/// `light.lod1`, is that level in one of [`ALICE_OUTFITS`]
+/// (`alice-<outfit>.<level>.gltf`).
 ///
 /// # Errors
 ///
@@ -1143,10 +1148,20 @@ pub fn alice(
     alice_root: &Path,
     variant: &str,
 ) -> Result<Model, String> {
-    if !ALICE_VARIANTS.iter().any(|(name, _)| *name == variant) {
+    let (outfit, level) = match variant.split_once('.') {
+        Some((outfit, level)) => (Some(outfit), level),
+        None => (None, variant),
+    };
+    if !ALICE_VARIANTS.iter().any(|(name, _)| *name == level)
+        || outfit.is_some_and(|o| !ALICE_OUTFITS.contains(&o))
+    {
         return Err("Unknown Alice variant".into());
     }
-    let mut model = import(pack, dir, &alice_root.join(format!("alice.{variant}.gltf")))?;
+    let file = match outfit {
+        Some(outfit) => format!("alice-{outfit}.{level}.gltf"),
+        None => format!("alice.{level}.gltf"),
+    };
+    let mut model = import(pack, dir, &alice_root.join(file))?;
     // Her height is her crown's, not the staff's on her back.
     let head = model
         .skin
@@ -1162,12 +1177,101 @@ pub fn alice(
         .fold(0., f32::max);
     animations(&mut model, &universal_root.join("animations.glb"))?;
     relax_arms(&mut model, ALICE_ARMS_OUT)?;
+    contrapposto(&mut model, ALICE_CONTRAPPOSTO)?;
     Ok(model)
 }
 /// How far Alice's upper arms turn out from her sides in every clip,
 /// radians: her coat flares over her hips, and the Universal clips hang a
 /// slimmer figure's arms, which would sink her hands into it.
 pub const ALICE_ARMS_OUT: f64 = 0.17;
+/// How far Alice's hips tilt in her idle, radians: her weight rests on her
+/// left leg, so that hip rises and her right knee relaxes, and her
+/// shoulders tilt the other way, an S-curve rather than a soldier's stance.
+pub const ALICE_CONTRAPPOSTO: f64 = 0.07;
+/// Puts the idle clip's (clip 0) weight on one leg by `angle` radians of hip
+/// tilt: the pelvis rolls and shifts over the left foot, the spine and the
+/// neck counter-roll, the left thigh stays upright under the tilted pelvis,
+/// and the right leg relaxes forward with a soft knee. Each turn is about a
+/// model axis (the model faces +Z with its left at +X and +Y up), applied
+/// to the bone's keys through its parent's rest rotation, as `relax_arms`
+/// does.
+fn contrapposto(model: &mut Model, angle: f64) -> Result<(), String> {
+    let global = globals(model);
+    let skin = model.skin.as_ref().ok_or("The model has no skin")?;
+    let find = |name: &str| {
+        skin.names
+            .iter()
+            .position(|n| n == name)
+            .ok_or_else(|| format!("Missing {name}"))
+    };
+    let roll = |a: f64| Quat::from_xyzw(0., 0., libm::sin(a / 2.), libm::cos(a / 2.));
+    let pitch = |a: f64| rotation_x(a);
+    let turns = [
+        ("pelvis", roll(angle)),
+        ("spine_01", roll(-0.55 * angle)),
+        ("spine_02", roll(-0.4 * angle)),
+        ("spine_03", roll(-0.25 * angle)),
+        ("neck_01", roll(0.3 * angle)),
+        ("Head", roll(0.2 * angle)),
+        ("thigh_l", roll(-angle)),
+        ("thigh_r", roll(-angle) * pitch(-1.5 * angle)),
+        ("calf_r", pitch(3.0 * angle)),
+        ("foot_r", pitch(-1.5 * angle)),
+    ];
+    let mut local = Vec::new();
+    for (name, turn) in turns {
+        let bone = find(name)?;
+        let parent = usize::try_from(model.bones[bone].parent).map_err(|_| "Unparented bone")?;
+        let rest = global[parent].to_scale_rotation_translation().1;
+        local.push((bone, rest.inverse() * turn * rest));
+    }
+    // The hips shift over the standing foot and settle, so it stays on the
+    // ground under the tilt.
+    let pelvis = find("pelvis")?;
+    let parent = usize::try_from(model.bones[pelvis].parent).map_err(|_| "Unparented pelvis")?;
+    let rest = global[parent].to_scale_rotation_translation().1;
+    let shift = rest.inverse() * Vec3::new(0.022, -0.009, 0.);
+    let rests: Vec<RestPose> = skin.rest.clone();
+    for clip in model.clips.iter_mut().filter(|c| c.id == 0) {
+        // A bone the idle leaves at rest gets a key at rest to turn.
+        for &(bone, _) in &local {
+            match clip.bones.iter_mut().find(|t| t.bone == bone) {
+                Some(track) if track.rotation.is_empty() => {
+                    track.rotation = vec![(0., rests[bone].rotation)]
+                }
+                Some(_) => {}
+                None => clip.bones.push(BoneKeys {
+                    bone,
+                    translation: Vec::new(),
+                    rotation: vec![(0., rests[bone].rotation)],
+                    scale: Vec::new(),
+                }),
+            }
+        }
+        if !clip
+            .bones
+            .iter()
+            .any(|t| t.bone == pelvis && !t.translation.is_empty())
+        {
+            if let Some(track) = clip.bones.iter_mut().find(|t| t.bone == pelvis) {
+                track.translation = vec![(0., rests[pelvis].translation)];
+            }
+        }
+        for track in &mut clip.bones {
+            if let Some((_, turn)) = local.iter().find(|(bone, _)| *bone == track.bone) {
+                for key in &mut track.rotation {
+                    key.1 = f4((*turn * q4(key.1)).normalize());
+                }
+            }
+            if track.bone == pelvis {
+                for key in &mut track.translation {
+                    key.1 = f3(v3(key.1) + shift);
+                }
+            }
+        }
+    }
+    Ok(())
+}
 /// Turns both upper arms out from the body by `angle` radians, about the
 /// axis the character faces along, in every clip's keys.
 fn relax_arms(model: &mut Model, angle: f64) -> Result<(), String> {
@@ -1340,6 +1444,55 @@ mod tests {
         .unwrap();
         assert!(model.clips.iter().any(|c| c.id == 200));
         assert!(retarget_clip(&mut model, &root.join("animations.glb"), 200, "Yes").is_err());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    /// Alice's idle rests her weight on her left leg (`contrapposto`).
+    #[test]
+    fn alice_stands_with_her_weight_on_one_leg() {
+        let dir = std::env::temp_dir().join(format!("verse-alice-stance-{}", std::process::id()));
+        let assets = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/verse/characters");
+        let root = assets.join("quaternius");
+        let alice_root = assets.join("original/alice");
+        let mut pack = crate::compiler::original::generate(&dir).unwrap();
+        let model = alice(&mut pack, &dir, &root, &alice_root, "lod1").unwrap();
+        let skin = model.skin.as_ref().unwrap();
+        let pose = verse_engine::animation::pose(&model, 0, 0.3);
+        // A joint where it rests in the mesh's space, from its inverse bind.
+        let bind = |name: &str| {
+            let j = skin.names.iter().position(|n| n == name).unwrap();
+            let at = (glam::Mat4::from_cols_array(&skin.basis)
+                * glam::Mat4::from_cols_array(&skin.inverse_bind[j]).inverse())
+            .transform_point3(glam::Vec3::ZERO);
+            (j, at)
+        };
+        let at = |name: &str| {
+            let (j, p) = bind(name);
+            crate::basis().transform_point3(pose[j].transform_point3(p))
+        };
+        let rest_at = |name: &str| crate::basis().transform_point3(bind(name).1);
+        let (hip_l, hip_r) = (at("thigh_l"), at("thigh_r"));
+        let (ankle_l, ankle_r) = (at("foot_l"), at("foot_r"));
+        let (shoulder_l, shoulder_r) = (at("upperarm_l"), at("upperarm_r"));
+        eprintln!(
+            "hips {hip_l} {hip_r} ankles {ankle_l} {ankle_r} shoulders {shoulder_l} {shoulder_r} rest ankle {}",
+            rest_at("foot_l")
+        );
+        // Her left hip rides higher over her standing leg, her shoulders tilt
+        // the other way, and her standing foot stays on the ground.
+        assert!(hip_l.y - hip_r.y > 0.008, "hips {hip_l} {hip_r}");
+        assert!(
+            shoulder_r.y - shoulder_l.y > 0.002,
+            "shoulders {shoulder_l} {shoulder_r}"
+        );
+        assert!(
+            (ankle_l.y - rest_at("foot_l").y).abs() < 0.02,
+            "standing ankle {ankle_l}"
+        );
+        assert!(
+            ankle_r.y > rest_at("foot_r").y - 0.02,
+            "free ankle {ankle_r}"
+        );
         std::fs::remove_dir_all(dir).unwrap();
     }
 

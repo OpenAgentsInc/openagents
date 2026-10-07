@@ -26,10 +26,11 @@ its asset names and its general qualities; none of its content was opened
 in Blender, rendered, traced, exported, or used, and Alice avoids every Echo
 signature feature the specification lists.
 
-Two Fab characters the owner licensed (a rigged fantasy woman and a
-stylized long-haired woman, both under Fab's standard license) were studied
-only, rendered and measured outside the repository for proportions, face
-painting, hair shape, and texture technique. None of their geometry, UVs,
+Three Fab characters the owner licensed (a rigged fantasy woman, a
+stylized long-haired woman, and a stylized young woman, all under Fab's
+standard license) were studied only, rendered and measured outside the
+repository for proportions, the body's curves, face painting, hair shape,
+and texture technique. None of their geometry, UVs,
 texture pixels, or likeness is in Alice or in this repository.
 
 License: CC0 1.0 (`license.txt`). Credit for the base head and rig:

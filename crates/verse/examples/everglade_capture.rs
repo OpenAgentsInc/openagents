@@ -88,6 +88,10 @@ fn main() -> Result<(), String> {
             everglade_pack::PACK_EXTENSION
         ));
     let pack = everglade_pack::ZonePack::load_local(&pack)?;
+    // VERSE_ALICE_OUTFIT dresses Alice as `verse --alice-outfit` does.
+    if let Ok(outfit) = std::env::var("VERSE_ALICE_OUTFIT") {
+        zones::everglade::npcs::set_alice_outfit(&outfit)?;
+    }
     let mut runtime = WorldRuntime::new();
     // With VERSE_CAPTURE_PRIVATE set to Verse's home, the owner's private
     // characters load through the broker as on the desktop
@@ -186,23 +190,35 @@ fn main() -> Result<(), String> {
     runtime.settle_zone_light();
     runtime.set_spawn(at, yaw)?;
     // With VERSE_CAPTURE_ALICE set, Alice stands at her desk as the workshop
-    // agent's resident seat does in a desktop window, with no host.
+    // agent's resident seat does in a desktop window, with no host. With
+    // VERSE_CAPTURE_ALICE_WALK set too, she then sets off for the console, so
+    // the shot catches her mid-stride.
     if std::env::var_os("VERSE_CAPTURE_ALICE").is_some() {
         use coder_access::studio::{Activity, Role, Spend, Station};
         let agent = zones::everglade::studio::WORKSHOP_AGENT;
-        runtime.set_studio_resident(vec![coder_access::studio::Seat {
+        let seat = |activity, station| coder_access::studio::Seat {
             seat: agent.into(),
             role: Role::Worker,
             route: "idle".into(),
             look: agent.into(),
             desk: 3,
-            activity: Activity::Idle,
-            station: Station::Desk,
+            activity,
+            station,
             task: None,
             paused: false,
             spend: Spend::default(),
-        }]);
+        };
+        runtime.set_studio_resident(vec![seat(Activity::Idle, Station::Desk)]);
         runtime.update_studio(true, 0.0);
+        if std::env::var_os("VERSE_CAPTURE_ALICE_WALK").is_some() {
+            let idle = InputState::default();
+            for _ in 0..20 {
+                runtime.update_studio(true, 0.05);
+                runtime.tick(&idle, 0.05);
+            }
+            runtime.set_studio_resident(vec![seat(Activity::Running, Station::Workbench)]);
+            runtime.update_studio(true, 0.0);
+        }
         eprintln!("alice at {:?}", runtime.studio().seat_position(agent));
     }
     // Kept until the shot is rendered; the recording holds no file in it.

@@ -28,13 +28,43 @@ Defaults taken for the owner's open questions, which the owner can change:
 What was built:
 
 - **Script.** `scripts/blender/alice.py` builds her in three reusable parts:
-  `build_body` (the skin and underlayer that show: hands, legs, and feet,
-  lofted on the Universal rig with scripted weights), the head
+  `build_body` (the complete base body in skin: torso, arms, hands, and
+  legs, lofted on the Universal rig with scripted weights), the head
   (`ubc_head` and `build_head`: the reshaped head, its painted face and
-  eyes, and the hair), and `build_outfit` (tunic, open knee-length coat,
-  collar, sash, satchel and strap, bracers, boots, and a staff on her back).
-  `scripts/blender/alice_paint.py` paints her face, eyes, and hair strips.
-  It writes `alice.<variant>.glb` to `assets/verse/characters/original/alice/build/`.
+  eyes, and the hair), and `build_outfit` (one of the outfits, as layers
+  over the body). `scripts/blender/alice_paint.py` paints her face, eyes,
+  and hair strips. It writes `alice.<variant>.glb` (the coat) and, for
+  `lod1`, `alice-light.lod1.glb` and `alice-summer.lod1.glb` to
+  `assets/verse/characters/original/alice/build/`.
+- **Base body.** A complete body that reads well with little clothing: a
+  waist that narrows to about 60 cm around, hips and glutes about 93 cm
+  around with a real curve in profile, a round bust with a crease under
+  it, collarbones, shoulder blades, the small of the back, thighs that
+  taper to slim knees, calves with a swell behind, and slim ankles and
+  wrists; hands with fingers and painted nails. Its curves come from the
+  body study ([Lessons from a body reference](#lessons-from-a-body-reference)).
+  `--outfit base` builds it in a plain bandeau and briefs, for review only.
+- **Outfits.** Each garment is a layer over the body (or over the garment
+  under it): a surface offset from the one beneath with a tension envelope,
+  so cloth bridges the hollow under the bust and between the breasts where
+  real cloth would, and follows the waist where it's tailored. An outfit
+  hides the skin under its opaque garments, which costs no triangles. Three
+  outfits:
+  - `coat` (the default): a cream linen shirt and close-fitting trousers
+    under a tailored forest-green coat that follows the bust, waist, and
+    hips and flares from the hips to the knee, with the sash cinching it,
+    the satchel, its strap, bracers, and knee boots;
+  - `light`: the coat off, a V-necked shirt with its sleeves rolled to the
+    elbow, tucked into the trousers, and the sash cinching the waist;
+  - `summer`: a fitted sage-linen dress with a straight neckline, narrow
+    straps, and a skirt that flares to the knee, the sash, and ankle
+    boots.
+
+  `lod1` builds all three on one atlas (the wardrobe), so the pack's
+  `npc/alice-light` and `npc/alice-summer` forms add geometry but no
+  texture. The bake shades each outfit on its own, so one outfit's
+  garments don't darken another's skin. The owner picks one with `verse
+  --alice-outfit coat|light|summer` or `VERSE_ALICE_OUTFIT`.
 - **Head.** The CC0 Universal Base Characters female head (Compose mode),
   cut from `Superhero_Female_FullBody.gltf` and reshaped by `reshape`: a
   slightly larger head for our stylized proportions, a softer and narrower
@@ -73,11 +103,16 @@ What was built:
   the face become locks that frame it and fall in front of the shoulders to
   below the bust; the rest fall behind the shoulders to the shoulder blades,
   longest at the middle of the back. An under layer of wider, darker cards
-  fills the volume, and a few thin wisps break the outline. Every card
-  samples one of six painted strips (`alice_paint.hair_strips`) in the
-  atlas's bottom band, so the cards share their texels: strands with dark
-  gaps, shadow toward each clump's edges, dark roots, a sheen near the
-  crown, lighter ends, and tips cut into strands of different lengths.
+  fills the volume, and a few thin wisps break the outline; the hair falls
+  behind the shoulders onto the back, in a line that leans out to meet the
+  shoulder blades rather than kinking over them. Every card samples one of
+  eight painted strips (`alice_paint.hair_strips`) in the atlas's bottom
+  band, so the cards share their texels: soft strands, a gentle shadow
+  toward each clump's edges, dark roots, a glossy band near the crown and
+  a fainter one lower, lighter ends, and tips cut into strands of
+  different lengths. The strips differ in shade, so neighboring locks read
+  apart, and the color is a natural auburn: brown in the shade, copper in
+  the light.
 - **Clothing detail.** The bake paints what a base-color-only renderer can
   show: a crossed weave in the linen, fuzz and long folds in the wool coat
   with princess seams and a row of stitches beside each, grain, creases,
@@ -100,7 +135,7 @@ What was built:
 - **Placement.** The Everglade pack carries `lod1` as the form `npc/alice`
   (the format needs no new section). She is the workshop agent's body
   ([Workshop agent](workshop-agent.md)): the studio draws the seat whose
-  look is `alice` as this form (`everglade::npcs::form_of`), so she stands
+  look is `alice` as the form of the outfit she wears (`everglade::npcs::form_of`), so she stands
   at her workstation, a standing desk, in the owner's house (she never
   sits), walks to its console and its lectern with the player's retargeted
   walk, and holds the studio's postures, which the zone authors from her
@@ -110,21 +145,27 @@ What was built:
   creases sharper than 60 degrees. The cards are never subdivided. Her
   nostrils close to a soft underside and the face bakes with almost no
   occlusion, so no dark wedges show in the eyes, nose, or mouth.
-- **Figure and fit.** A woman's figure: a round bust under the tunic and
-  coat, a waist the sash cinches, hips as wide as her shoulders, slimmer
-  arms and neck, and boots 27 cm long. The coat follows the figure, fitted
-  at the bust and waist and flaring over the hips, with side vents below
-  the hip. The Universal clips hang a slimmer figure's arms, so
-  `characters::alice` turns her upper arms out by `ALICE_ARMS_OUT`
-  (0.17 rad) in every clip, and her hands hang clear of the coat standing
-  and walking; a test checks it.
+- **Stance and motion.** Her idle rests her weight on her left leg: the
+  hips tilt 0.07 rad and shift over that foot, the spine and shoulders
+  tilt back the other way, and the right knee relaxes, an S-curve rather
+  than a stiff stance (`characters::contrapposto`; a test checks it).
+  The Universal clips hang a slimmer figure's arms, so `characters::alice`
+  turns her upper arms out by `ALICE_ARMS_OUT` (0.17 rad) in every clip,
+  and her hands hang clear of the coat standing and walking; a test checks
+  it. The skirt's front and back follow the thighs, so a stride doesn't
+  push a knee through it; the deformation poses in `alice_views.py` (walk,
+  jog, sprint, crouch, cast) show no collapse at the hips or the bust.
+- **Boots.** Shaped to the leg: a fitted shaft, a folded cuff whose edge
+  turns back in to the leg, a narrow ankle, a low heel, and a toe that
+  rises; knee boots with the coat and the light outfit, ankle boots with
+  the dress.
 
 | Variant | Triangles | Budget | Atlas |
 | --- | ---: | ---: | --- |
-| `lod0` (chamber, close views) | 72,332 | 100,000 | 2048 |
-| `lod1` (Everglade, the workshop agent) | 34,554 | 46,000 | 1024 |
-| `lod2` (phones, once packs split by tier) | 6,028 | 10,000 | 256 |
-| `lod3` (distant, once skinned levels of detail exist) | 2,400 | 3,000 | 256 |
+| `lod0` (chamber, close views; the coat) | 80,646 | 100,000 | 2048 |
+| `lod1` (Everglade: coat, light, summer) | 37,712, 31,772, 29,304 | 46,000 | 1024, shared |
+| `lod2` (phones, once packs split by tier) | 6,870 | 10,000 | 256 |
+| `lod3` (distant, once skinned levels of detail exist) | 2,900 | 3,000 | 256 |
 
 `Limits::EVERGLADE` allows a 48,000-triangle character for her near level
 and 590,000 triangles in the pack. The glb files `alice.py` writes go to
@@ -260,6 +301,44 @@ What Alice took, as her own scripted build:
   rounder and stands a little farther forward (5.6 cm at its fullest).
 - Her clothing's procedural shading gained seams, stitching, weave, folds,
   creases, and worn edges.
+
+### Lessons from a body reference
+
+For her body, the owner gave a third Fab model, a stylized young woman in a
+short dress (AI-generated, standard license; one fused mesh, no rig),
+under the same rule: studied only, measured from orthographic silhouettes
+in Blender headless, with nothing of it in the repository. Her arms hang
+in an A pose, so widths are read where they stand clear of her sides. As
+shares of her height (H) and in centimeters at Alice's 1.767 m, beside
+Alice before (her old tunic and coat had no body under them) and after
+(the base body):
+
+| Measure | The reference | Alice before | Alice after |
+| --- | --- | --- | --- |
+| Height in heads | 6.9 | 7.2 (crown to chin 24.5 cm) | 7.2 |
+| Shoulders, deltoid to deltoid | 0.21 H (37 cm) | hidden by the coat | 0.21 H (37 cm) |
+| Bust | 0.125 H deep (22 cm), standing 3.5 cm past the underbust | 30 cm deep in the coat | 24 cm deep, standing about 5 cm past the underbust in skin |
+| Waist | 20 cm wide, 17.5 cm deep, about 59 cm around | 27.6 cm wide in the tunic | 22 cm wide, 16 cm deep, about 60 cm around |
+| Hips and glutes | about 34.5 cm wide, glutes 24 cm deep and 5 cm past the small of the back, about 92 cm around | the coat's 42.6 cm flare | 35.4 cm wide, 22.9 cm deep, about 93 cm around |
+| Waist to hips, around | 0.64 | 0.69 (clothing) | 0.65 |
+| Bust to waist, around | about 1.25 | 1.28 (clothing) | 1.34 |
+| One leg, top of the thigh, above the knee, knee, calf, ankle | 14.2, 10.8, 9.6, 9.6, 6.1 cm | 20 to 22 cm through the trousers | 13.7, 10.3, 9.4, 9.4, 5.5 cm |
+| Crotch height | about 0.45 H | about 0.47 H | about 0.47 H |
+
+What Alice took:
+
+- **A body, not a costume.** Her old torso was the tunic itself, so a
+  lighter outfit had nothing under it. She now has a complete skin body,
+  and every outfit is a layer over it.
+- **Curves that read in silhouette:** the waist narrows to about 0.65 of
+  the hips around, and the hips flow into the thighs without a step (the
+  thighs' tops sit inside the hips). In profile the bust and the glutes
+  both stand clear of the waist, and the small of the back curves in.
+- **Tailoring follows the body.** Her coat is cut from the body's own
+  sections, tight through the waist and flaring from the hips; the shirt
+  and the dress bridge only the hollows real cloth bridges.
+- **Weight on one leg.** The reference stands at ease; Alice's idle now
+  does too, with her hips tilted over her standing leg.
 
 ### Lessons from a long-hair reference
 

@@ -401,9 +401,13 @@ def eyes(marks, width=2048):
 
 # The hair strips: lanes of painted strands every card samples, root at the
 # left and tip at the right. The first two lanes are the under layer's
-# (darker), the next three the top layer's, and the last the wisps'.
-HAIR_LANES = 6
-HAIR = {"dark": "#2A0D07", "mid": "#682814", "light": "#A44E28"}
+# (darker), the next five the top layer's, each a little lighter or darker
+# than the next so neighboring cards read as separate locks, and the last
+# the wisps'. A natural auburn: brown in the shade, copper in the light.
+HAIR_LANES = 8
+HAIR = {"dark": "#24100A", "mid": "#5C2616", "light": "#9A4A2A", "gloss": "#C27A52"}
+# Each lane's brightness.
+LANE_SHADE = (0.66, 0.74, 0.86, 0.94, 1.0, 1.06, 0.97, 0.9)
 
 
 def hair_strips(length, height, lanes=HAIR_LANES, seed=31):
@@ -416,7 +420,7 @@ def hair_strips(length, height, lanes=HAIR_LANES, seed=31):
     t = (np.arange(length) + 0.5) / length
     rows = np.zeros((height, length, 3))
     alpha = np.zeros((height, length))
-    dark, mid, light = (linear(HAIR[k]) for k in ("dark", "mid", "light"))
+    dark, mid, light, gloss = (linear(HAIR[k]) for k in ("dark", "mid", "light", "gloss"))
     edges = np.linspace(0, height, lanes + 1).round().astype(int)
     for lane in range(lanes):
         h0, h1 = edges[lane], edges[lane + 1]
@@ -426,7 +430,7 @@ def hair_strips(length, height, lanes=HAIR_LANES, seed=31):
         # Strands: noise across the strip, stretched along it, a few
         # octaves, each wandering a little as it runs root to tip.
         v = np.zeros_like(S)
-        for freq, amp in ((7, 0.45), (19, 0.35), (47, 0.30), (95, 0.18)):
+        for freq, amp in ((7, 0.30), (19, 0.24), (47, 0.22), (95, 0.14)):
             phase = rng.uniform(0, 1, freq + 2)
             wander = 0.25 * np.sin(2 * np.pi * (T * rng.uniform(0.6, 1.4) + rng.uniform()))
             x = (S + wander / freq) * freq
@@ -436,17 +440,19 @@ def hair_strips(length, height, lanes=HAIR_LANES, seed=31):
             v += amp * (phase[i] * (1 - f) + phase[(i + 1) % (freq + 1)] * f - 0.5)
         tone = 0.5 + v
         # The gaps between strands go dark.
-        gaps = np.clip((0.35 - tone) / 0.2, 0, 1)
+        gaps = np.clip((0.33 - tone) / 0.2, 0, 1)
         edge = np.minimum(S, 1 - S)
-        clump = 0.66 + 0.34 * np.clip(edge / 0.33, 0, 1) ** 0.8
-        root = 0.42 + 0.58 * np.clip(T / 0.16, 0, 1) ** 0.7
-        sheen = 1 + 0.32 * np.exp(-(((T - 0.2) / 0.08) ** 2))
-        ends = 1 + 0.18 * np.clip((T - 0.55) / 0.45, 0, 1)
-        k = np.clip(tone * clump * root * sheen * ends * (1 - 0.35 * gaps), 0, 1.4)
-        if lane < 2:
-            k *= 0.72
+        clump = 0.74 + 0.26 * np.clip(edge / 0.33, 0, 1) ** 0.8
+        root = 0.45 + 0.55 * np.clip(T / 0.16, 0, 1) ** 0.7
+        ends = 1 + 0.12 * np.clip((T - 0.55) / 0.45, 0, 1)
+        k = np.clip(tone * clump * root * ends * (1 - 0.25 * gaps), 0, 1.4) * LANE_SHADE[lane]
         col = np.where((k < 0.6)[..., None], dark + (mid - dark) * (k / 0.6)[..., None],
                        mid + (light - mid) * np.clip((k - 0.6) / 0.6, 0, 1)[..., None])
+        # Gloss: a soft band near the crown and a fainter one lower, broken
+        # by the strands, as light catches smooth hair.
+        band = np.exp(-(((T - 0.22) / 0.06) ** 2)) + 0.45 * np.exp(-(((T - 0.5) / 0.05) ** 2))
+        shine = np.clip(band * (0.6 + 0.8 * (tone - 0.35)) * clump, 0, 1) * 0.55 * LANE_SHADE[lane]
+        col = col * (1 - shine[..., None]) + gloss * shine[..., None]
         # Tips: each strand ends at its own length; the edges fray.
         strand_len = 0.84 + 0.13 * np.interp(s, np.linspace(0, 1, 40), rng.uniform(0, 1, 40))
         fine = 0.04 * np.interp(s, np.linspace(0, 1, 160), rng.uniform(-1, 1, 160))

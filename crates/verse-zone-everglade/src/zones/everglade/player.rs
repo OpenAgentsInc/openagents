@@ -952,11 +952,18 @@ impl Cast {
         };
         let rig = Rig::build(pack, character)?;
         // A placed character that cannot play is left out; its seat draws
-        // as the player's character.
+        // as the player's character. Of Alice's outfits, only the one she
+        // wears is built (the coat when the pack lacks it).
+        let alice = if pack.form(super::npcs::alice_form()).is_some() {
+            super::npcs::alice_form()
+        } else {
+            crate::zones::everglade_pack::compile::ALICE_FORM
+        };
         let forms = pack
             .forms
             .iter()
             .filter(|form| form.name.starts_with("npc/"))
+            .filter(|form| !form.name.starts_with("npc/alice") || form.name == alice)
             .filter_map(|form| {
                 Rig::build_with(pack, form, true)
                     .ok()
@@ -1011,8 +1018,21 @@ impl Cast {
         // Seats drawn as the player's character first, then each seat drawn
         // as a placed character's form, in the scene's order.
         let form_of = |seat: &SeatFigure| {
-            seat.form
-                .and_then(|form| self.forms.iter().position(|(name, _)| name == form))
+            seat.form.and_then(|form| {
+                self.forms
+                    .iter()
+                    .position(|(name, _)| name == form)
+                    .or_else(|| {
+                        // Alice in an outfit the pack lacks: the one built.
+                        form.starts_with("npc/alice")
+                            .then(|| {
+                                self.forms
+                                    .iter()
+                                    .position(|(name, _)| name.starts_with("npc/alice"))
+                            })
+                            .flatten()
+                    })
+            })
         };
         let ordered: Vec<(&SeatFigure, Option<usize>)> = seats
             .iter()

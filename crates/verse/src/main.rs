@@ -50,7 +50,9 @@
 //! the owner's house at the east end of Library Way; walk in through the
 //! front door, up to her, and press F to talk (`docs/verse/workshop-agent.md`).
 //! `--owners-house` opens Everglade just inside the owner's house's front
-//! door, facing her.
+//! door, facing her. `--alice-outfit coat|light|summer` (or
+//! `VERSE_ALICE_OUTFIT`) dresses her: the fitted coat (the default), the coat
+//! off, or a summer dress.
 //! `--workshop-ask <text>` walks you up to her once she is at her desk,
 //! types that request into her panel, and sends it six seconds later, for
 //! a demo or a capture.
@@ -206,6 +208,9 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<(Option<Shot>, Option
             .town_clock
             .with_mode(town_clock::Mode::parse(&mode)?);
     }
+    if let Ok(outfit) = std::env::var("VERSE_ALICE_OUTFIT") {
+        verse::zones::everglade::npcs::set_alice_outfit(&outfit)?;
+    }
     if let Ok(hour) = std::env::var("VERSE_TOWN_HOUR") {
         options.town_clock = options
             .town_clock
@@ -353,6 +358,7 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<(Option<Shot>, Option
                 options.everglade = true;
                 options.owners_house = true;
             }
+            "--alice-outfit" => verse::zones::everglade::npcs::set_alice_outfit(&value()?)?,
             "--ritual" => options.ritual = Some(value()?.into()),
             "--no-ritual" => options.ritual = None,
             "--at" => {

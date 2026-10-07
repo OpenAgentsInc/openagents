@@ -2,7 +2,7 @@
 
 Run headless, one variant per run:
     Blender -b --factory-startup --python scripts/blender/alice.py -- \
-        [OUT_DIR] [lod0|lod1|lod2|lod3] [--quick PREVIEW_DIR]
+        [OUT_DIR] [lod0|lod1|lod2|lod3] [--outfit coat|light|summer|base] [--quick PREVIEW_DIR]
 
 OUT_DIR defaults to assets/verse/characters/original/alice/build and the variant
 to lod1. Each run writes `alice.<variant>.glb` and prints one `MODEL` line.
@@ -81,10 +81,10 @@ LODS = {
     # subdivided.
     "lod0": dict(limb=16, torso=32, head=(32, 22), hair=(40, 10), finger=6, fingers=True, stride=1,
                  tex=2048, budget=100000, samples=128, subdiv=1, head_subdiv=1,
-                 cards=(24, 16, 4), card_steps=(7, 22), card_across=2),
+                 cards=(28, 16, 4), card_steps=(7, 22), card_across=2),
     "lod1": dict(limb=8, torso=16, head=(24, 16), hair=(28, 6), finger=4, fingers=True, stride=1,
                  tex=1024, budget=46000, samples=96, subdiv=1,
-                 cards=(20, 12, 3), card_steps=(6, 16), card_across=2),
+                 cards=(24, 12, 3), card_steps=(6, 16), card_across=2),
     "lod2": dict(limb=10, torso=16, head=(18, 12), hair=(24, 6), finger=4, fingers=False, stride=2,
                  tex=256, budget=10000, samples=64, head_ratio=0.45,
                  cards=(10, 4, 0), card_steps=(3, 7), card_across=1),
@@ -113,6 +113,9 @@ PALETTE = {
     "linen": "#E9DDC2",
     "linen_shade": "#CDBE9C",
     "coat": "#2F5B35",
+    "dress": "#7D9466",
+    "dress_trim": "#5C7349",
+    "nail": "#F2C3B4",
     "coat_inner": "#27482B",
     "coat_trim": "#1F3B25",
     "lining": "#C8B38A",
@@ -175,6 +178,8 @@ class Mesh:
         self.v, self.w, self.f, self.m, self.tag = [], [], [], [], []
         # Per-face UVs, for meshes whose faces carry their own (the cards).
         self.uv = []
+        # Per-face outfits, a bit each (`wardrobe`); empty for one outfit.
+        self.mask = []
         self.part = "body"
 
     def vert(self, p, w):
@@ -197,6 +202,14 @@ class Mesh:
             self.f.append(tuple(base + i for i in reversed(f)))
             self.m.append(m)
             self.tag.append(t)
+
+    def compact(self):
+        """Drops vertices no face uses."""
+        used = sorted({i for f in self.f for i in f})
+        index = {old: new for new, old in enumerate(used)}
+        self.v = [self.v[i] for i in used]
+        self.w = [self.w[i] for i in used]
+        self.f = [tuple(index[i] for i in f) for f in self.f]
 
     def extend(self, other):
         base = len(self.v)
@@ -367,10 +380,8 @@ LEVELS = 127
 FACE_TEXELS = 6.5
 # The atlas's bottom band, a share of its height, holds the hair strips
 # every card samples; STRIPS_PREVIEW is their size in the cards' material.
-HAIR_BAND = 0.16
-STRIPS_PREVIEW = (1024, 192)
-# Her arms are this much slimmer than the lofts' first measurements.
-ARM_SLIM = 0.88
+HAIR_BAND = 0.18
+STRIPS_PREVIEW = (1024, 256)
 
 
 def reshape(p):
@@ -581,34 +592,51 @@ class Rig:
         )
 
 
-# --- Shapes of the body and clothing -------------------------------------------
+# --- Shapes of the body -------------------------------------------------------
+#
+# Alice's base body is complete on its own: a torso from the neck to the
+# crotch, arms from inside the shoulder to the wrist, legs from inside the
+# hip to the ankle, and feet. Its curves follow a study of a stylized
+# reference figure (docs/verse/female-character.md, "Lessons from a body
+# reference"), scaled to the Universal rig: a waist-to-hip girth of about
+# 0.68, a bust about 1.3 times the waist, a bust that stands about 4 cm past
+# the underbust, glutes about 5 cm past the small of the back, and legs that
+# narrow to slim knees and ankles. Clothing is built as layers over it
+# (`Layer`), each a surface offset from the one under it with a tension
+# envelope, so fabric bridges hollows (between the breasts, under the
+# bust) where cloth would, and follows the waist where it is tailored.
 
 # The torso at each height: z, half width, half depth, center y, superellipse
 # exponent. Front is -y.
-TORSO = [
-    # A woman's figure: hips wider than the waist and as wide as the
-    # shoulders, a waist the sash cinches, a bust, and narrower shoulders.
-    (0.80, 0.190, 0.130, 0.012, 2.2, True),
-    (0.86, 0.188, 0.126, 0.014, 2.2, False),
-    (0.93, 0.182, 0.120, 0.016, 2.3, True),
-    (1.00, 0.150, 0.104, 0.010, 2.3, False),
-    (1.06, 0.120, 0.090, 0.006, 2.3, True),
-    (1.12, 0.124, 0.092, 0.000, 2.3, False),
-    (1.19, 0.136, 0.100, -0.004, 2.4, True),
-    (1.225, 0.141, 0.104, -0.004, 2.4, False),
-    (1.26, 0.146, 0.108, -0.004, 2.4, False),
-    (1.29, 0.149, 0.107, -0.002, 2.45, False),
-    (1.32, 0.152, 0.106, 0.000, 2.5, True),
-    (1.38, 0.156, 0.098, 0.010, 2.6, False),
-    (1.43, 0.146, 0.086, 0.015, 2.6, True),
-    (1.47, 0.104, 0.070, 0.020, 2.4, False),
-    (1.50, 0.046, 0.044, 0.022, 2.0, True),
+BODY = [
+    (0.825, 0.050, 0.055, 0.024, 2.0),
+    (0.845, 0.100, 0.075, 0.022, 2.1),
+    (0.87, 0.148, 0.090, 0.020, 2.2),
+    (0.90, 0.172, 0.098, 0.019, 2.3),
+    (0.935, 0.178, 0.100, 0.017, 2.3),
+    (0.97, 0.164, 0.096, 0.013, 2.3),
+    (1.01, 0.134, 0.087, 0.009, 2.3),
+    (1.045, 0.115, 0.084, 0.005, 2.3),
+    (1.075, 0.112, 0.086, 0.003, 2.3),
+    (1.11, 0.113, 0.087, 0.001, 2.3),
+    (1.15, 0.114, 0.087, -0.001, 2.35),
+    (1.19, 0.118, 0.086, -0.002, 2.4),
+    (1.23, 0.124, 0.088, -0.002, 2.4),
+    (1.27, 0.129, 0.089, -0.001, 2.45),
+    (1.31, 0.135, 0.089, 0.001, 2.5),
+    (1.35, 0.143, 0.087, 0.006, 2.6),
+    (1.39, 0.143, 0.080, 0.012, 2.6),
+    (1.42, 0.128, 0.070, 0.016, 2.5),
+    (1.445, 0.100, 0.060, 0.019, 2.3),
+    (1.465, 0.066, 0.051, 0.020, 2.1),
+    (1.49, 0.049, 0.046, 0.020, 2.0),
+    (1.52, 0.045, 0.043, 0.018, 2.0),
 ]
 
 
-def torso_at(z):
-    """Interpolated torso section at height z: (half width, half depth, y, n)."""
-    rows = TORSO
+def body_at(z):
+    """The torso's section at height z: (half width, half depth, y, n)."""
+    rows = BODY
     if z <= rows[0][0]:
         r = rows[0]
         return r[1], r[2], r[3], r[4]
@@ -621,38 +649,151 @@ def torso_at(z):
     return r[1], r[2], r[3], r[4]
 
 
-def bust(d, p):
-    """The torso's bust, a round, natural dome on each side rather than a
-    point, and the shoulder blades."""
+def lobe(x, z, cx, cz, rx, rz_up, rz_down, power=1.6):
+    """A soft super-Gaussian lobe at (cx, cz), fuller above than below when
+    rz_up > rz_down, so it sits on a crease underneath."""
+    rz = rz_up if z >= cz else rz_down
+    r2 = ((x - cx) / rx) ** 2 + ((z - cz) / rz) ** 2
+    return exp(-(r2 ** power))
+
+
+def body_shape(d, p):
+    """What the torso's superellipse leaves out, along the radial direction
+    d at the point p: a round bust with a crease under it, collarbones,
+    shoulder blades, a groove down the spine, the small of the back, and
+    round glutes with a crease under them."""
     out = 0.0
-    if d.y < 0:
-        for sx in (-1, 1):
-            r2 = ((p.x - sx * 0.068) / 0.062) ** 2 + ((p.z - 1.244) / 0.066) ** 2
-            # A super-Gaussian: a full, rounded front that falls off softly.
-            out += 0.056 * exp(-(r2 ** 1.6)) * (-d.y) ** 0.6
-    if d.y > 0:
-        out += 0.006 * exp(-(((abs(p.x) - 0.08) / 0.05) ** 2)) * exp(-(((p.z - 1.36) / 0.06) ** 2)) * d.y
+    front, back = max(0.0, -d.y), max(0.0, d.y)
+    if front > 0:
+        for s in (-1, 1):
+            out += 0.047 * lobe(p.x, p.z, s * 0.068, 1.252, 0.058, 0.080, 0.044) * front ** 0.6
+        # Collarbones: a fine ridge from the notch out toward each shoulder,
+        # with a hollow under it.
+        line = 1.452 + 0.018 * min(1.0, max(0.0, abs(p.x) - 0.018) / 0.10)
+        ridge = exp(-(((p.z - line) / 0.0045) ** 2)) * smoothstep(0.012, 0.03, abs(p.x)) * smoothstep(0.135, 0.10, abs(p.x))
+        hollow = exp(-(((p.z - line + 0.014) / 0.008) ** 2)) * smoothstep(0.03, 0.06, abs(p.x)) * smoothstep(0.13, 0.09, abs(p.x))
+        out += (0.0035 * ridge - 0.0025 * hollow) * front
+        # A soft belly below the navel.
+        out += 0.004 * exp(-((p.x / 0.07) ** 2)) * exp(-(((p.z - 0.985) / 0.03) ** 2)) * front
+    if back > 0:
+        for s in (-1, 1):
+            out += 0.040 * lobe(p.x, p.z, s * 0.064, 0.905, 0.066, 0.075, 0.042, 1.4) * back ** 0.7
+            out += 0.006 * lobe(p.x, p.z, s * 0.075, 1.345, 0.05, 0.06, 0.06) * back
+        out -= 0.004 * exp(-((p.x / 0.010) ** 2)) * smoothstep(1.0, 1.08, p.z) * smoothstep(1.46, 1.40, p.z) * back
+        out -= 0.010 * exp(-(((p.z - 1.06) / 0.05) ** 2)) * exp(-((p.x / 0.08) ** 2)) * back
     return out
 
 
-def section_point(z, theta, grow=0.0, sizes=None):
-    a, b, yc, n = sizes or torso_at(z)
+def body_point(z, theta, sizes=None):
+    """The base body's torso surface at height z and angle theta (from +x,
+    counterclockwise seen from above; the front is -pi/2)."""
+    a, b, yc, n = sizes or body_at(z)
     ct, st = cos(theta), sin(theta)
     ex = 2.0 / n
-    x = math.copysign(abs(ct) ** ex, ct) * (a + grow)
-    y = math.copysign(abs(st) ** ex, st) * (b + grow)
+    x = math.copysign(abs(ct) ** ex, ct) * a
+    y = math.copysign(abs(st) ** ex, st) * b
     p = Vector((x, yc + y, z))
     d = Vector((ct, st, 0)).normalized()
-    return p + d * bust(d, p)
+    return p + d * body_shape(d, p)
+
+
+# Arms (x along the T-posed arm), legs (z down the leg), and their skin
+# sections: x or z, then the half extents (front to back, up and down for an
+# arm; side to side, front to back for a leg).
+ARM = [
+    (0.085, 0.050, 0.054), (0.12, 0.054, 0.058), (0.16, 0.052, 0.055), (0.20, 0.046, 0.048),
+    (0.25, 0.041, 0.042), (0.30, 0.038, 0.038), (0.35, 0.035, 0.034), (0.39, 0.032, 0.031),
+    (0.42, 0.034, 0.032), (0.47, 0.035, 0.032), (0.52, 0.032, 0.028), (0.57, 0.028, 0.024),
+    (0.61, 0.025, 0.020), (0.632, 0.026, 0.019),
+]
+LEG = [
+    (1.00, 0.040, 0.048), (0.96, 0.066, 0.074), (0.92, 0.079, 0.085), (0.88, 0.080, 0.085), (0.84, 0.077, 0.082),
+    (0.78, 0.074, 0.079), (0.72, 0.068, 0.073), (0.66, 0.062, 0.067), (0.61, 0.056, 0.060),
+    (0.575, 0.052, 0.055), (0.545, 0.050, 0.053), (0.515, 0.049, 0.052), (0.48, 0.050, 0.056),
+    (0.44, 0.052, 0.060), (0.40, 0.051, 0.060), (0.35, 0.047, 0.055), (0.29, 0.041, 0.047),
+    (0.23, 0.035, 0.039), (0.17, 0.031, 0.034), (0.12, 0.029, 0.031), (0.085, 0.029, 0.032),
+]
+
+
+def table_at(rows, t, descending=False):
+    """Linear interpolation of a section table at t."""
+    if descending:
+        rows = rows[::-1]
+    if t <= rows[0][0]:
+        return rows[0][1:]
+    for a, b in zip(rows, rows[1:]):
+        if a[0] <= t <= b[0]:
+            u = (t - a[0]) / (b[0] - a[0])
+            return tuple(lerp(a[k], b[k], u) for k in range(1, len(a)))
+    return rows[-1][1:]
+
+
+def leg_shape(d, z):
+    """A leg's muscle: the calf's swell behind, the kneecap in front, and the
+    inner thigh's softness."""
+    out = 0.006 * max(0.0, d.y) * exp(-(((z - 0.42) / 0.06) ** 2))
+    out += 0.004 * max(0.0, -d.y) * exp(-(((z - 0.54) / 0.02) ** 2))
+    out += 0.004 * max(0.0, -d.x) * exp(-(((z - 0.86) / 0.07) ** 2))
+    return out
+
+
+def arm_shape(d, x):
+    """An arm's deltoid over the shoulder and the forearm's swell."""
+    out = 0.006 * max(0.0, d.z) * exp(-(((x - 0.14) / 0.04) ** 2))
+    out += 0.003 * max(0.0, -d.y) * exp(-(((x - 0.46) / 0.04) ** 2))
+    return out
+
+
+def envelope(values, coords, k, wrap=None):
+    """Each value raised to the tension envelope max_j(v_j - k |c_i - c_j|):
+    cloth under tension k bridges hollows narrower than its sag. With
+    `wrap`, coordinates are angles and distances wrap around a circle of
+    that radius."""
+    if k is None:
+        return list(values)
+    out = []
+    for ci in coords:
+        best = -1e9
+        for v, cj in zip(values, coords):
+            dc = abs(ci - cj)
+            if wrap:
+                dc = min(dc, 2 * pi - dc) * wrap
+            best = max(best, v - k * dc)
+        out.append(best)
+    return out
+
+
+# The outfits the Everglade level carries, on one atlas, the default first;
+# and that level.
+WARDROBE = ("coat", "light", "summer")
+WARDROBE_LEVEL = "lod1"
+# The outfits Alice can wear over her base body, and which of the body's
+# parts each one hides everywhere: a part's faces whose every vertex lies in
+# (low, high) along the axis ("z" up, "x" out along the arm) are removed.
+OUTFITS = {
+    # The tailored coat over a shirt and trousers: her default.
+    "coat": {"covers": {"skin_torso": (0.86, 1.455, "z"), "skin_arm": (0.11, 0.615, "x"),
+                        "skin_leg": (0.10, 1.01, "z")}},
+    # The coat off: a V-necked shirt with its sleeves rolled to the elbow,
+    # tucked into fitted trousers, and the sash cinching the waist.
+    "light": {"covers": {"skin_torso": (0.86, 1.37, "z"), "skin_arm": (0.11, 0.345, "x"),
+                         "skin_leg": (0.10, 1.01, "z")}},
+    # A fitted summer dress to the knee, with ankle boots.
+    "summer": {"covers": {"skin_torso": (0.92, 1.36, "z"), "skin_leg": (-1.0, 0.15, "z")}},
+    # The base body alone, in a plain bandeau and briefs, for review.
+    "base": {"covers": {}},
+}
 
 
 # --- The build ----------------------------------------------------------------
 
 
 class Alice:
-    def __init__(self, rig, lod):
+    def __init__(self, rig, lod, outfit="coat"):
         self.R = rig
         self.L = lod
+        self.outfit = outfit
+        self.outer = None
         self.M = Mesh()
         # The hair cards: alpha-tested, never subdivided.
         self.C = Mesh()
@@ -692,6 +833,16 @@ class Alice:
             w = mix(w, {side_name("thigh", s): 1.0}, th)
         return w
 
+    def w_skirt(self, p):
+        """A skirt's weights: like the coat's, but the front and back follow
+        the thighs too, so a stride doesn't push a knee through it."""
+        w = self.w_torso(p, hem=False)
+        if p.z < 1.0:
+            s = 1 if p.x >= 0 else -1
+            th = 0.62 * smoothstep(0.98, 0.70, p.z) * smoothstep(0.0, 0.07, abs(p.x))
+            w = mix(w, {side_name("thigh", s): 1.0}, th)
+        return w
+
     def stations(self, rows):
         """Every station for lod0 and lod1; key stations only beyond."""
         stride = self.L["stride"]
@@ -702,34 +853,6 @@ class Alice:
             keep = [out[0]] + out[1:-1][::2] + [out[-1]]
             out = keep
         return out
-
-    # Torso, neck, pelvis -----------------------------------------------------------
-
-    def tunic(self):
-        M = self.M
-        M.part = "tunic"
-        segs = self.L["torso"]
-        rings = []
-        hem = torso_at(0.905)
-        rows = [(0.905, hem[0] + 0.008, hem[1] + 0.006, hem[2], hem[3], True)]
-        rows += [r for r in TORSO if r[0] > 0.92]
-        for z, a, b, yc, n, key in self.stations(rows):
-            rings.append(dict(c=Vector((0, yc, z)), axis=(0, 0, 1), ref=(1, 0, 0), rx=a, ry=b, n=n,
-                              shape=bust))
-        nrow = len(rings)
-
-        def matfn(i, j):
-            return "linen_shade" if i == 0 else "linen"
-
-        loft(M, rings, segs, "linen", self.w_torso, matfn=matfn)
-        # Briefs under the hem, closing the body between the legs.
-        M.part = "body"
-        br = []
-        for z, a, b in ((0.86, 0.150, 0.100), (0.90, 0.162, 0.108), (0.96, 0.160, 0.106), (1.01, 0.145, 0.100)):
-            br.append(dict(c=Vector((0, 0.012, z)), axis=(0, 0, 1), ref=(1, 0, 0), rx=a, ry=b, n=2.2))
-        loft(M, br, max(8, segs // 2), "leggings", lambda p: self.w_torso(p, hem=True), cap0=True,
-             dome=0.025)
-        return nrow
 
     # Head ------------------------------------------------------------------------------
     #
@@ -770,26 +893,24 @@ class Alice:
 
     def body_radius(self, z, d):
         """How far her clothed body reaches from its axis at height z in the
-        horizontal direction d (a unit vector), and that axis: the coat
-        below the shoulders, the collar and neck above."""
+        horizontal direction d (a unit vector), and that axis: the outermost
+        layer below the shoulders, the collar and neck above."""
         if z <= 1.468:
-            a, b, yc, n = self.coat_size(z)
-            c = Vector((0, yc, 0))
-            phi = math.atan2(d.y, d.x)
-            th = phi
-            for _ in range(4):
-                p = section_point(z, th, sizes=(a, b, yc, n))
-                got = math.atan2(p.y - yc, p.x)
-                th += math.atan2(math.sin(phi - got), math.cos(phi - got))
-            p = section_point(z, th, sizes=(a, b, yc, n))
-            return math.hypot(p.x, p.y - yc), c
+            outer = self.outer
+            th = math.atan2(d.y, d.x)
+            zz = min(max(z, outer.zs[0]), outer.zs[-1])
+            zs = outer.zs
+            fz = (zz - zs[0]) / (zs[-1] - zs[0]) * (len(zs) - 1)
+            i = min(int(fz), len(zs) - 2)
+            c = outer.C[i].lerp(outer.C[i + 1], fz - i)
+            return outer.radius(zz, th), Vector((c.x, c.y, 0))
         # The collar's roll, then the slim neck above it.
         r = lerp(0.104, 0.046, smoothstep(1.47, 1.56, z))
         return r, Vector((0, lerp(0.028, 0.012, smoothstep(1.47, 1.56, z)), 0))
 
     def drape(self, p, gap):
         """`p` pushed out, horizontally, to `gap` beyond her clothed body."""
-        _, _, yc, _ = torso_at(min(p.z, 1.5))
+        _, _, yc, _ = body_at(min(p.z, 1.5))
         c = Vector((0, yc, 0))
         h = Vector((p.x - c.x, p.y - c.y, 0))
         if h.length < 1e-6:
@@ -997,10 +1118,9 @@ class Alice:
         # or behind it.
         if lock:
             a_t = lerp(0.62, 0.95, (a_e - 1.02) / 0.4)
-        elif a_e < 1.75:
-            a_t = 1.95
         else:
-            a_t = max(a_e, 2.05)
+            # Behind the shoulders, onto the back, not over their tops.
+            a_t = lerp(2.35, 3.0, (a_e - 1.42) / (pi - 1.42))
         phase = 2 * pi * (0.35 * a_e * s + 0.15 * rng.random())
         length = E.z - z_end
         for i in range(1, n_fall + 1):
@@ -1023,7 +1143,17 @@ class Alice:
             p = self.clear_head(p, off + 0.004)
             pts.append(p)
             nrm.append(Vector((p.x, p.y - self.HC.y, 0)).normalized())
-        # The tips curl in a little.
+        # Hair falls in a line: where the body pushes it out (the shoulder
+        # blades, the bust), the hair above leans out to meet it gradually
+        # rather than kinking.
+        axis = Vector((0, self.HC.y, 0))
+        for i in range(len(pts) - 2, n_skull, -1):
+            p, q = pts[i], pts[i + 1]
+            hp = Vector((p.x - axis.x, p.y - axis.y, 0))
+            hq = Vector((q.x - axis.x, q.y - axis.y, 0))
+            want = hq.length - 0.6 * (p.z - q.z)
+            if hp.length < want and hp.length > 1e-6:
+                pts[i] = Vector((axis.x, axis.y, p.z)) + hp * (want / hp.length)
         return pts, nrm, n_skull
 
     def cards(self):
@@ -1039,7 +1169,7 @@ class Alice:
         for index, spec in enumerate(self.card_specs()):
             pts, nrm, ns = self.card_path(spec, n_skull, n_fall)
             # The under layer's lanes are darker; the wisps have their own.
-            lane = {0: index % 2, 1: 2 + index % 3, 2: lanes - 1}[spec["layer"]]
+            lane = {0: index % 2, 1: 2 + (index * 7) % 5, 2: lanes - 1}[spec["layer"]]
             n = len(pts)
             rows, uvs = [], []
             for i, (p, nm) in enumerate(zip(pts, nrm)):
@@ -1095,56 +1225,6 @@ class Alice:
                 return a.lerp(b, t)
         return pts[-1].copy()
 
-    SLEEVE = [
-        (0.085, 0.060, 0.064, True), (0.12, 0.060, 0.066, False), (0.16, 0.058, 0.062, True),
-        (0.20, 0.055, 0.058, False), (0.25, 0.051, 0.053, True), (0.30, 0.048, 0.049, False),
-        (0.35, 0.046, 0.046, True), (0.375, 0.045, 0.044, False), (0.392, 0.044, 0.043, True),
-        (0.41, 0.044, 0.043, False), (0.44, 0.045, 0.045, True), (0.50, 0.043, 0.043, False),
-        (0.56, 0.040, 0.039, True), (0.61, 0.036, 0.035, False), (0.641, 0.034, 0.033, True),
-    ]
-
-    def sleeve_radius(self, x):
-        rows = self.SLEEVE
-        if x <= rows[0][0]:
-            return rows[0][1] * ARM_SLIM, rows[0][2] * ARM_SLIM
-        for a, b in zip(rows, rows[1:]):
-            if a[0] <= x <= b[0]:
-                t = (x - a[0]) / (b[0] - a[0])
-                return lerp(a[1], b[1], t) * ARM_SLIM, lerp(a[2], b[2], t) * ARM_SLIM
-        return rows[-1][1] * ARM_SLIM, rows[-1][2] * ARM_SLIM
-
-    def arm_left(self):
-        """The left arm's tunic sleeve, bracer, and hand, in a mesh of its own."""
-        M = Mesh()
-        s = 1
-        chain = self.R.arm(s)
-        segs = self.L["limb"]
-        M.part = "tunic"
-        rings = []
-        for x, ry, rz, key in self.stations(self.SLEEVE):
-            rings.append(dict(c=self.arm_center(s, x), axis=(1, 0, 0), ref=(0, 1, 0), rx=ry * ARM_SLIM, ry=rz * ARM_SLIM))
-        loft(M, rings, segs, "linen", chain.weights)
-        # The bracer: wrapped leather from mid forearm to the wrist, tapering
-        # onto the wrist.
-        M.part = "gear"
-        br = []
-        for x, g, key in ((0.47, 0.004, True), (0.485, 0.008, False), (0.53, 0.009, True), (0.58, 0.009, False),
-                          (0.62, 0.009, True), (0.638, 0.007, False), (0.650, 0.000, True)):
-            ry, rz = self.sleeve_radius(min(x, 0.641))
-            if x >= 0.65:
-                ry, rz = 0.034, 0.026
-            br.append((x, ry + g, rz + g, key))
-        rings = [dict(c=self.arm_center(s, x), axis=(1, 0, 0), ref=(0, 1, 0), rx=ry, ry=rz)
-                 for x, ry, rz, key in self.stations(br)]
-        nb = len(rings)
-
-        def bracer_mat(i, j):
-            return "leather_dark" if i in (1, nb - 3) else "leather"
-
-        loft(M, rings, segs, "leather", chain.weights, matfn=bracer_mat)
-        self.hand_left(M)
-        return M
-
     def hand_left(self, M):
         R = self.R
         s = 1
@@ -1198,9 +1278,16 @@ class Alice:
                 axis = (nxt - prv).normalized()
                 taper = 1.0 - 0.15 * k / len(stations)
                 rings.append(dict(c=c, axis=axis, ref=(0, 0, 1), rx=r0 * sc * taper * 0.92, ry=r0 * sc * taper))
-            loft(M, rings, fsegs, "skin", ch.weights, cap1=True, dome=0.004)
+            nr = len(rings)
 
-    # Legs and boots -----------------------------------------------------------------------
+            def nail(i, j, nr=nr):
+                # The back of the last joint: in the T-pose the hand's back
+                # faces up, the rings' first axis.
+                return "nail" if i >= nr - 3 and cos(2 * pi * (j + 0.5) / fsegs) > 0.35 else "skin"
+
+            loft(M, rings, fsegs, "skin", ch.weights, cap1=True, dome=0.004, matfn=nail)
+
+    # Legs ----------------------------------------------------------------------------------
 
     def leg_center(self, s, z):
         R = self.R
@@ -1217,21 +1304,6 @@ class Alice:
                 return a.lerp(b, t)
         return Vector((ankle.x, ankle.y, z))
 
-    LEGGINGS = [
-        (1.00, 0.072, 0.076, True), (0.95, 0.074, 0.079, False), (0.88, 0.073, 0.079, True),
-        (0.80, 0.070, 0.076, False), (0.72, 0.066, 0.071, True), (0.64, 0.060, 0.065, False),
-        (0.575, 0.055, 0.059, True), (0.555, 0.053, 0.056, False), (0.535, 0.052, 0.055, True),
-        (0.515, 0.052, 0.055, False), (0.49, 0.052, 0.056, True), (0.44, 0.053, 0.060, False),
-        (0.40, 0.050, 0.058, True),
-    ]
-
-    BOOT = [
-        (0.452, 0.054, 0.060, True), (0.447, 0.064, 0.070, False), (0.43, 0.066, 0.072, True),
-        (0.405, 0.063, 0.069, False), (0.398, 0.056, 0.063, True), (0.34, 0.055, 0.062, False),
-        (0.27, 0.049, 0.054, True), (0.20, 0.042, 0.047, False), (0.14, 0.038, 0.043, True),
-        (0.10, 0.037, 0.042, False), (0.075, 0.036, 0.040, True),
-    ]
-
     FOOT = [
         # A boot of a woman's size: 27 cm heel to toe, narrow, with a toe
         # that rises rather than a flat paddle.
@@ -1240,133 +1312,6 @@ class Alice:
         (-0.055, 0.041, 0.074, True), (-0.090, 0.040, 0.064, False), (-0.122, 0.037, 0.058, True),
         (-0.150, 0.032, 0.052, False), (-0.170, 0.023, 0.044, True),
     ]
-
-    def leg_left(self):
-        M = Mesh()
-        s = 1
-        chain = self.R.leg(s)
-        segs = self.L["limb"]
-        M.part = "legs"
-
-        def knee(d, p):
-            return 0.007 * max(0.0, -d.y) * exp(-(((p.z - 0.53) / 0.035) ** 2))
-
-        rings = [dict(c=self.leg_center(s, z), axis=(0, 0, -1), ref=(1, 0, 0), rx=rx, ry=ry, shape=knee)
-                 for z, rx, ry, key in self.stations(self.LEGGINGS)]
-        loft(M, rings, segs, "leggings", chain.weights)
-        M.part = "boots"
-
-        def calf(d, p):
-            return 0.006 * max(0.0, d.y) * exp(-(((p.z - 0.33) / 0.06) ** 2))
-
-        rows = self.stations(self.BOOT)
-        rings = [dict(c=self.leg_center(s, z), axis=(0, 0, -1), ref=(1, 0, 0), rx=rx, ry=ry, shape=calf)
-                 for z, rx, ry, key in rows]
-        cuff_rows = sum(1 for r in rows if r[0] >= 0.398) - 1
-
-        def boot_mat(i, j):
-            return "leather_dark" if i < cuff_rows else "leather"
-
-        loft(M, rings, segs, "leather", chain.weights, matfn=boot_mat)
-        # The foot: heel to toe along -y, its sole flat at the ground.
-        sole = -0.004
-        x0 = self.R.h("foot_l").x
-        rings = []
-        for y, hw, top, key in self.stations(self.FOOT):
-            zc = (top + sole) / 2
-            hz = (top - sole) / 2 + 0.008
-            rings.append(dict(c=Vector((x0 + 0.004 * smoothstep(0.0, -0.2, y), y, zc)), axis=(0, -1, 0),
-                              ref=(0, 0, 1), rx=hz, ry=hw, n=2.8))
-
-        def flat(p):
-            return Vector((p.x, p.y, max(p.z, sole)))
-
-        def w_foot(p):
-            w = chain.weights(Vector((x0, p.y, min(p.z, 0.05))))
-            if p.z > 0.085:
-                w = mix(w, rigid("calf_l"), 0.4 * smoothstep(0.085, 0.12, p.z))
-            return w
-
-        start = len(M.f)
-        loft(M, rings, segs, "leather", w_foot, cap0=True, cap1=True, post=flat, dome=0.004)
-        for k in range(start, len(M.f)):
-            zs = [M.v[i].z for i in M.f[k]]
-            if max(zs) < sole + 0.012:
-                M.m[k] = "sole"
-        return M
-
-    # Coat, hood, sash, satchel, staff ------------------------------------------------------
-
-    # The coat follows her figure: fitted at the bust and the waist, flaring
-    # over the hips to the knee. Columns: height, half width, half depth,
-    # the front opening's half angle (degrees), and whether the station is
-    # a key one.
-    COAT = [
-        (0.47, 0.236, 0.186, 55, True), (0.52, 0.231, 0.181, 53, False), (0.60, 0.224, 0.172, 49, True),
-        (0.70, 0.216, 0.162, 44, False), (0.80, 0.210, 0.154, 38, True), (0.88, 0.206, 0.148, 33, False),
-        (0.94, 0.200, 0.140, 30, True), (1.00, 0.168, 0.120, 27, False), (1.06, 0.136, 0.104, 26, True),
-        (1.12, 0.140, 0.106, 25, False), (1.19, 0.152, 0.114, 23, True), (1.225, 0.157, 0.118, 22, False),
-        (1.26, 0.162, 0.122, 21, False), (1.29, 0.165, 0.121, 20, False), (1.32, 0.168, 0.120, 19, True), (1.38, 0.172, 0.113, 17, False), (1.43, 0.162, 0.101, 15, True),
-        (1.468, 0.118, 0.084, 14, True),
-    ]
-
-    @staticmethod
-    def vent(z):
-        """Half the side vent's opening at height z, radians: closed above the
-        hip, opening toward the hem, so the arms hang clear of the skirt."""
-        return math.radians(11.0) * smoothstep(0.98, 0.72, z)
-
-    def coat(self):
-        M = self.M
-        M.part = "coat"
-        rows = self.stations(self.COAT)
-        cols = max(3, self.L["torso"] // 4 + 1)
-        for s in (1, -1):
-            for piece in ("front", "back"):
-                P = []
-                for z, a, b, opening, key in rows:
-                    _, _, yc, n = torso_at(z)
-                    op = math.radians(opening)
-                    lo, hi = (op, pi / 2 - self.vent(z)) if piece == "front" else (pi / 2 + self.vent(z), pi)
-                    row = []
-                    for j in range(cols):
-                        al = lo + (hi - lo) * j / (cols - 1)
-                        th = -pi / 2 + s * al
-                        row.append(section_point(z, th, sizes=(a, b, yc + 0.006, 2.3 if z < 1.0 else n)))
-                    # Columns counterclockwise about +z, so faces point out.
-                    P.append(row if s > 0 else row[::-1])
-                W = [[self.w_coat(p) for p in row] for row in P]
-                edge = 0 if s > 0 else cols - 2
-
-                def matfn(i, j, edge=edge, piece=piece):
-                    if i == 0 or (piece == "front" and j == edge):
-                        return "coat_trim"
-                    return "coat"
-
-                # Rims on the hem, the shoulder, and the open edges: the
-                # front opening and the side vents.
-                first, last = (piece == "front", True) if s > 0 else (True, piece == "front")
-                shell(M, P, W, 0.007, "coat", "coat_inner", "coat_trim", matfn=matfn,
-                      rims=(True, True, first, last))
-        # Sleeves to the elbow with a turned-back cuff.
-        L = Mesh()
-        L.part = "coat"
-        chain = self.R.arm(1)
-        rows = []
-        for x, g, key in ((0.10, 0.013, True), (0.16, 0.014, False), (0.22, 0.014, True), (0.28, 0.014, False),
-                          (0.33, 0.015, True), (0.355, 0.024, True), (0.395, 0.026, False), (0.41, 0.010, True)):
-            ry, rz = self.sleeve_radius(x)
-            rows.append((x, ry + g, rz + g, key))
-        rings = [dict(c=self.arm_center(1, x), axis=(1, 0, 0), ref=(0, 1, 0), rx=ry, ry=rz)
-                 for x, ry, rz, key in self.stations(rows)]
-        nr = len(rings)
-
-        def cuff(i, j):
-            return "coat_trim" if i >= nr - 3 else "coat"
-
-        loft(L, rings, self.L["limb"], "coat", chain.weights, matfn=cuff)
-        M.extend(L)
-        M.extend_mirrored(L)
 
     def hood(self):
         """The coat's collar: a soft roll about her neck. (Her long hair now
@@ -1393,124 +1338,6 @@ class Alice:
             P.append(row)
         W = [[self.torso_chain.weights(p) for p in row] for row in P]
         grid(M, P, W, "coat", wrap=True)
-
-    def sash(self):
-        M = self.M
-        M.part = "gear"
-        segs = self.L["torso"]
-        rings = []
-        # A soft band with two folds across it.
-        for z, g in ((0.985, 0.010), (0.998, 0.015), (1.012, 0.017), (1.024, 0.013), (1.038, 0.017),
-                     (1.052, 0.015), (1.068, 0.010)):
-            a, b, yc, _ = self.coat_size(z)
-            n = 2.3
-            rings.append(dict(c=Vector((0, yc, z)), axis=(0, 0, 1), ref=(1, 0, 0), rx=a + g, ry=b + g, n=n))
-        loft(M, rings, segs, "sash", self.w_coat)
-        # The knot at her left hip and its two hanging ends.
-        knot = Vector((0.150, -0.075, 1.025))
-        kr = [dict(c=knot + Vector((0, 0, dz)), axis=(0.5, -0.8, 0), ref=(0, 0, 1), rx=r, ry=r * 0.8)
-              for dz, r in ((0.0, 0.01), (0.0, 0.022), (0.0, 0.024), (0.0, 0.012))]
-        for k, r in enumerate(kr):
-            r["c"] = knot + Vector((0.5, -0.8, 0)).normalized() * (0.006 * k - 0.004)
-        loft(M, kr, max(6, segs // 3), "sash", self.w_coat, cap0=True, cap1=True)
-        for dx, length, ang in ((0.0, 0.20, 0.10), (0.03, 0.15, 0.28)):
-            P = []
-            steps = 4 if self.L["stride"] == 1 else 2
-            for i in range(steps + 1):
-                t = i / steps
-                c = knot + Vector((dx + sin(ang) * length * t, -0.012 - 0.01 * t, -length * t))
-                w = 0.026 * (1 - 0.2 * t)
-                tangent = Vector((cos(ang), 0.15, 0)).normalized()
-                P.append([c + tangent * w, c - tangent * w])
-            P.reverse()
-            W = [[self.w_coat(p) for p in row] for row in P]
-            shell(M, [[r[1], r[0]] for r in P], W, 0.004, "sash", "sash", "sash")
-
-    def strap_path(self, steps):
-        """Points where a plane from her left shoulder to her right hip cuts
-        the coat, offset out from it."""
-        A = Vector((0.098, 0.020, 1.478))
-        B = Vector((-0.18, -0.115, 0.985))
-        C = Vector((-0.18, 0.135, 1.005))
-        n = (B - A).cross(C - A).normalized()
-        pts = []
-        for k in range(steps):
-            t = 2 * pi * k / steps
-            z = 1.2
-            for _ in range(12):
-                a, b, yc, nn = self.coat_size(z)
-                p = section_point(z, t, sizes=(a + 0.010, b + 0.010, yc, nn))
-                # Move z so p lies on the plane.
-                dz = -n.dot(p - A) / n.z if abs(n.z) > 1e-6 else 0
-                z = max(0.95, min(1.48, z + dz * 0.8))
-            pts.append(p)
-        return pts, n
-
-    def coat_size(self, z):
-        rows = self.COAT
-        if z <= rows[0][0]:
-            r = rows[0]
-            return r[1], r[2], torso_at(z)[2] + 0.006, 2.3
-        for a, b in zip(rows, rows[1:]):
-            if a[0] <= z <= b[0]:
-                t = (z - a[0]) / (b[0] - a[0])
-                t = t * t * (3 - 2 * t)
-                return lerp(a[1], b[1], t), lerp(a[2], b[2], t), torso_at(z)[2] + 0.006, torso_at(z)[3]
-        r = rows[-1]
-        return r[1], r[2], torso_at(z)[2] + 0.006, torso_at(z)[3]
-
-    def strap(self):
-        M = self.M
-        M.part = "gear"
-        steps = max(12, self.L["torso"])
-        pts, n = self.strap_path(steps)
-        w, t = 0.018, 0.005
-        P = []
-        for k, p in enumerate(pts):
-            q = pts[(k + 1) % steps] - pts[k - 1]
-            out = Vector((p.x, p.y - 0.01, 0)).normalized()
-            side = n
-            P.append([p + side * w, p + side * w + out * t, p - side * w + out * t, p - side * w])
-        # Rings around the band's path: four corners each.
-        rows = [[P[k][c] for k in range(steps)] for c in range(4)]
-        rows.append(rows[0])
-        W = [[self.w_coat(p) for p in row] for row in rows]
-        idx = [[M.vert(rows[i][j], W[i][j]) for j in range(steps)] for i in range(4)]
-        for i in range(4):
-            i2 = (i + 1) % 4
-            for j in range(steps):
-                j2 = (j + 1) % steps
-                q = (idx[i][j], idx[i][j2], idx[i2][j2], idx[i2][j])
-                mid = (M.v[q[0]] + M.v[q[2]]) / 2
-                nrm = (M.v[q[1]] - M.v[q[0]]).cross(M.v[q[3]] - M.v[q[0]])
-                core = (P[j][0] + P[j][1] + P[j][2] + P[j][3]) / 4
-                M.face(q if nrm.dot(mid - core) > 0 else q[::-1], "leather")
-
-    def satchel(self):
-        M = self.M
-        M.part = "gear"
-        c0 = Vector((-0.238, 0.005, 0.935))
-        w = self.w_coat(Vector((-0.20, 0.0, 0.94)))
-        segs = max(8, self.L["limb"])
-        rings = []
-        for dy, sc in ((-0.100, 0.70), (-0.094, 0.92), (-0.080, 1.0), (0.080, 1.0), (0.094, 0.92), (0.100, 0.70)):
-            rings.append(dict(c=c0 + Vector((0, dy, 0)), axis=(0, 1, 0), ref=(1, 0, 0), rx=0.032 * sc,
-                              ry=0.072 * sc, n=3.2))
-        loft(M, rings, segs, "leather", lambda p: w, cap0=True, cap1=True)
-        # The flap over its outer face, and a copper buckle.
-        P = []
-        for i, z in enumerate((0.985, 0.955, 0.925, 0.900)):
-            row = []
-            for y in (-0.096, -0.04, 0.04, 0.096):
-                row.append(Vector((-0.238 - 0.035 - 0.004 * (1 - i / 3), y + 0.005, z)))
-            P.append(row)
-        P.reverse()
-        W = [[w for _ in r] for r in P]
-        shell(M, [r[::-1] for r in P], W, 0.004, "leather_dark", "leather_dark", "leather_dark")
-        bk = Vector((-0.278, 0.005, 0.905))
-        rings = [dict(c=bk + Vector((d, 0, 0)), axis=(-1, 0, 0), ref=(0, 0, 1), rx=0.013, ry=0.011)
-                 for d in (0.0, -0.005)]
-        loft(M, rings, 6, "copper", lambda p: w, cap1=True)
 
     def staff(self):
         """A staff carried across her back, rigid to the upper spine."""
@@ -1543,25 +1370,632 @@ class Alice:
                 M.face(ids, "leaf")
                 M.face(ids[::-1], "leaf")
 
+    # The base body and the layers over it ------------------------------------------
+    #
+    # `build_body` makes the complete skin body; `build_outfit` dresses it in
+    # one of OUTFITS, and `cover` then removes the body's faces that an
+    # opaque garment hides everywhere, so they cost no triangles and cannot
+    # show through. A garment is a `Layer`: a surface offset from the body
+    # (or from the garment under it) with a tension envelope, sampled on a
+    # fine grid and read back at any height and angle.
+
+    def rows_of(self, zs):
+        """`zs` thinned for the far levels."""
+        stride = self.L["stride"]
+        if stride == 1 or len(zs) <= 3:
+            return list(zs)
+        inner = zs[1:-1][::stride]
+        return [zs[0]] + inner + [zs[-1]]
+
+    def mesh_rows(self, M, P, wfn, mat, matfn=None, wrap=True, axis=Vector((0, 0, 1)), cap0=None, cap1=None):
+        """Faces between rows of points (each row a ring about the axis),
+        oriented to face away from each row's center, with optional fans at
+        the first and last rows to the points `cap0` and `cap1`."""
+        W = [[wfn(p) for p in row] for row in P]
+        c0 = sum(P[0], Vector()) / len(P[0])
+        a, b, d = P[0][0], P[0][1 % len(P[0])], P[1][0]
+        flip = (b - a).cross(d - a).dot(a - c0) < 0
+        idx = grid(M, P, W, mat, wrap=wrap, flip=flip, matfn=matfn)
+        for cap, row, out in ((cap0, 0, -1), (cap1, -1, 1)):
+            if cap is not None:
+                fan(M, idx[row], cap, wfn(cap), mat, axis * out)
+        return idx
+
+    def torso_rows(self, zs, segs, fn):
+        """Rings of `segs` points at heights `zs`: fn(z, theta) -> point,
+        theta counterclockwise from the front."""
+        return [[fn(z, -pi / 2 + 2 * pi * j / segs) for j in range(segs)] for z in zs]
+
+    def limb_ring(self, c, axis, ref, rx, ry, segs, shape=None, gap=0.0):
+        a, u, v = frame(axis, ref)
+        out = []
+        for j in range(segs):
+            th = 2 * pi * j / segs
+            dvec = (u * cos(th) * rx + v * sin(th) * ry)
+            dn = dvec.normalized()
+            out.append(c + dvec + dn * ((shape(dn) if shape else 0.0) + gap))
+        return out
+
+    def torso_skin(self):
+        """The torso from the neck's base to the crotch, closed between the
+        legs."""
+        M = self.M
+        M.part = "skin_torso"
+        zs = self.rows_of([r[0] for r in BODY])
+        P = self.torso_rows(zs, self.L["torso"], body_point)
+        self.mesh_rows(M, P, lambda p: self.w_torso(p, hem=True), "skin",
+                       cap0=Vector((0, 0.024, zs[0] - 0.008)))
+
+    def arm_skin(self):
+        """The left arm, from inside the shoulder to the wrist; mirrored."""
+        L = Mesh()
+        L.part = "skin_arm"
+        chain = self.R.arm(1)
+        segs = self.L["limb"]
+        xs = self.rows_of([r[0] for r in ARM])
+        P = [self.limb_ring(self.arm_center(1, x), (1, 0, 0), (0, 1, 0), *table_at(ARM, x), segs,
+                            shape=lambda d, x=x: arm_shape(d, x)) for x in xs]
+        self.mesh_rows(L, P, chain.weights, "skin", axis=Vector((1, 0, 0)))
+        self.hand_left(L)
+        return L
+
+    def leg_skin(self):
+        """The left leg, from inside the hip to the ankle; mirrored."""
+        L = Mesh()
+        L.part = "skin_leg"
+        chain = self.R.leg(1)
+        segs = self.L["limb"]
+        zs = self.rows_of([r[0] for r in LEG])
+        P = [self.limb_ring(self.leg_center(1, z), (0, 0, -1), (1, 0, 0), *table_at(LEG, z, descending=True), segs,
+                            shape=lambda d, z=z: leg_shape(d, z)) for z in zs]
+        self.mesh_rows(L, P, chain.weights, "skin", axis=Vector((0, 0, -1)))
+        return L
+
+    # Layers ---------------------------------------------------------------------------
+
+    class Layer:
+        """A surface about the torso's axis: a radius at each height and
+        angle on a fine grid, read back by `at`."""
+
+        def __init__(self, z0, z1, radius, kz=None, kth=None, step=0.01, nth=72):
+            n = max(2, int(round((z1 - z0) / step)) + 1)
+            self.zs = [z0 + (z1 - z0) * i / (n - 1) for i in range(n)]
+            self.ths = [-pi / 2 + 2 * pi * j / nth for j in range(nth)]
+            self.nth = nth
+            R, D, C = [], [], []
+            for z in self.zs:
+                row_r, row_d = [], []
+                c = None
+                for th in self.ths:
+                    r, d, c = radius(z, th)
+                    row_r.append(r)
+                    row_d.append(d)
+                R.append(row_r)
+                D.append(row_d)
+                C.append(c)
+            # Tension down each column, then around each row.
+            for j in range(nth):
+                col = envelope([R[i][j] for i in range(n)], self.zs, kz)
+                for i in range(n):
+                    R[i][j] = col[i]
+            if kth is not None:
+                for i in range(n):
+                    mean = sum(R[i]) / nth
+                    R[i] = envelope(R[i], self.ths, kth, wrap=mean)
+            self.R, self.D, self.C = R, D, C
+
+        def at(self, z, th, extra=0.0):
+            """The point at height z and angle th, `extra` farther out."""
+            zs = self.zs
+            fz = (min(max(z, zs[0]), zs[-1]) - zs[0]) / (zs[-1] - zs[0]) * (len(zs) - 1)
+            i = min(int(fz), len(zs) - 2)
+            tz = fz - i
+            fj = ((th + pi / 2) % (2 * pi)) / (2 * pi) * self.nth
+            j = int(fj) % self.nth
+            j2 = (j + 1) % self.nth
+            tj = fj - int(fj)
+
+            def bil(G):
+                return (G[i][j] * (1 - tj) + G[i][j2] * tj) * (1 - tz) + (G[i + 1][j] * (1 - tj) + G[i + 1][j2] * tj) * tz
+
+            r = bil(self.R) + extra
+            d = bil(self.D)
+            d = Vector((d.x, d.y, 0)).normalized()
+            c = self.C[i].lerp(self.C[i + 1], tz)
+            return Vector((c.x, c.y, z)) + d * r
+
+        def radius(self, z, th):
+            p = self.at(z, th)
+            zs = self.zs
+            fz = (min(max(z, zs[0]), zs[-1]) - zs[0]) / (zs[-1] - zs[0]) * (len(zs) - 1)
+            i = min(int(fz), len(zs) - 2)
+            c = self.C[i].lerp(self.C[i + 1], fz - i)
+            return math.hypot(p.x - c.x, p.y - c.y)
+
+    def body_radius_fn(self, gap, hull=False):
+        """The base body's radius about its axis, `gap` out (a number or
+        fn(z, theta)); with `hull`, below the hips the hips' hull, as a
+        skirt or a coat's tails hang."""
+        def radius(z, th):
+            zz = max(z, 0.89) if hull else max(z, 0.825)
+            a, b, yc, n = body_at(zz)
+            p = body_point(zz, th, sizes=(a, b, yc, n))
+            c = Vector((0, yc, z))
+            d = Vector((p.x, p.y - yc, 0))
+            r = d.length
+            g = gap(z, th) if callable(gap) else gap
+            return r + g, d.normalized(), c
+        return radius
+
+    def over(self, under, gap):
+        """A radius function `gap` out from the layer `under`."""
+        def radius(z, th):
+            p = under.at(z, th)
+            i = 0
+            c = None
+            zs = under.zs
+            fz = (min(max(z, zs[0]), zs[-1]) - zs[0]) / (zs[-1] - zs[0]) * (len(zs) - 1)
+            i = min(int(fz), len(zs) - 2)
+            c = under.C[i].lerp(under.C[i + 1], fz - i)
+            d = Vector((p.x - c.x, p.y - c.y, 0))
+            g = gap(z, th) if callable(gap) else gap
+            return d.length + g, d.normalized(), Vector((c.x, c.y, z))
+        return radius
+
+    def layer_mesh(self, layer, zs, mat, wfn, matfn=None, ths=None, cap0=None, drop=None):
+        """Faces over `layer` at heights `zs`, all the way around (or over
+        the angles `ths`), skipping faces where drop(center) holds."""
+        M = self.M
+        segs = self.L["torso"]
+        ths = ths or [-pi / 2 + 2 * pi * j / segs for j in range(segs)]
+        P = [[layer.at(z, th) for th in ths] for z in zs]
+        start = len(M.f)
+        self.mesh_rows(M, P, wfn, mat, matfn=matfn, cap0=cap0)
+        if drop:
+            keep = [k for k in range(start, len(M.f))
+                    if not drop(sum((M.v[i] for i in M.f[k]), Vector()) / len(M.f[k]))]
+            M.f[start:] = [M.f[k] for k in keep]
+            M.m[start:] = [M.m[k] for k in keep]
+            M.tag[start:] = [M.tag[k] for k in keep]
+
+    def limb_layer(self, L, rings_at, ts, gap, mat, wfn, matfn=None, axis=Vector((1, 0, 0))):
+        """A sleeve or a trouser leg over a limb: rings_at(t, gap) at each
+        station t, `gap` (a number or fn(t)) out."""
+        P = [rings_at(t, gap(t) if callable(gap) else gap) for t in ts]
+        return self.mesh_rows(L, P, wfn, mat, matfn=matfn, axis=axis)
+
+    def arm_ring(self, x, gap, segs=None):
+        return self.limb_ring(self.arm_center(1, x), (1, 0, 0), (0, 1, 0), *table_at(ARM, min(x, 0.632)),
+                              segs or self.L["limb"], shape=lambda d: arm_shape(d, x), gap=gap)
+
+    def leg_ring(self, z, gap, segs=None):
+        return self.limb_ring(self.leg_center(1, z), (0, 0, -1), (1, 0, 0), *table_at(LEG, max(z, 0.085), descending=True),
+                              segs or self.L["limb"], shape=lambda d: leg_shape(d, z), gap=gap)
+
+    # Garments ---------------------------------------------------------------------------
+
+    def shirt(self, sleeve_end, neckline):
+        """The cream linen shirt, tucked in at the waist: it follows the
+        body closely but bridges the hollow under the bust and between the
+        breasts as cloth does. `neckline`: "crew" or "v"."""
+        M = self.M
+        M.part = "shirt"
+        self.shirt_layer = layer = self.Layer(0.95, 1.48, self.body_radius_fn(0.006), kz=0.55, kth=0.7)
+        zs = self.rows_of([0.97, 1.0, 1.04, 1.075, 1.11, 1.15, 1.19, 1.23, 1.27, 1.31, 1.35, 1.39, 1.42, 1.445,
+                           1.465, 1.478])
+        drop = None
+        if neckline == "v":
+            def drop(c):
+                depth = 1.475 - 0.085 * smoothstep(0.075, 0.0, abs(c.x))
+                return c.y < 0.0 and c.z > depth and abs(c.x) < 0.09
+        self.layer_mesh(layer, zs, "linen", self.w_torso, drop=drop)
+        L = Mesh()
+        L.part = "shirt"
+        chain = self.R.arm(1)
+        xs = [x for x in (0.10, 0.14, 0.18, 0.23, 0.28, 0.33, 0.38, 0.43, 0.48, 0.53, 0.58, 0.625) if x < sleeve_end]
+        xs = self.rows_of(xs + [sleeve_end])
+        rolled = sleeve_end < 0.5
+
+        def gap(x):
+            if rolled:
+                return 0.007 + 0.008 * smoothstep(sleeve_end - 0.035, sleeve_end - 0.02, x)
+            return 0.007
+
+        def matfn(i, j):
+            return "linen_shade" if rolled and xs[min(i + 1, len(xs) - 1)] > sleeve_end - 0.03 else "linen"
+
+        self.limb_layer(L, self.arm_ring, xs, gap, "linen", chain.weights, matfn=matfn)
+        return L
+
+    def trousers(self, knee_boot):
+        """Close-fitting dark trousers with a waistband, into the boots."""
+        M = self.M
+        M.part = "trousers"
+        layer = self.Layer(0.82, 1.05, self.body_radius_fn(lambda z, th: 0.006 + 0.003 * smoothstep(1.0, 1.01, z)),
+                           kz=0.6, kth=0.9)
+        zs = self.rows_of([0.825, 0.845, 0.87, 0.90, 0.935, 0.97, 1.0, 1.01, 1.04])
+
+        def matfn(i, j):
+            return "leather_dark" if zs[i] >= 1.0 else "leggings"
+
+        self.layer_mesh(layer, zs, "leggings", lambda p: self.w_torso(p, hem=True), matfn=matfn,
+                        cap0=Vector((0, 0.024, 0.825 - 0.012)))
+        L = Mesh()
+        L.part = "trousers"
+        chain = self.R.leg(1)
+        bottom = 0.30 if knee_boot else 0.10
+        zs = self.rows_of([z for z in (0.98, 0.95, 0.90, 0.84, 0.78, 0.72, 0.66, 0.61, 0.575, 0.545, 0.515, 0.48,
+                                       0.44, 0.40, 0.35, 0.30, 0.23, 0.17, 0.12, 0.10) if z >= bottom])
+        self.limb_layer(L, self.leg_ring, zs, 0.006, "leggings", chain.weights, axis=Vector((0, 0, -1)))
+        return L
+
+    def boots(self, top):
+        """Boots shaped to the leg: a fitted shaft to `top` with a folded
+        cuff, a narrow ankle, a low heel, and a toe that rises."""
+        L = Mesh()
+        L.part = "boots"
+        chain = self.R.leg(1)
+        zs = [top, top - 0.005, top - 0.025, top - 0.035]
+        zs += [z for z in (0.40, 0.35, 0.29, 0.23, 0.17, 0.13, 0.10, 0.085) if z < top - 0.04]
+        zs = self.rows_of(zs)
+        under = 0.010 if top > 0.3 else 0.006
+
+        def gap(z):
+            cuff = smoothstep(top - 0.04, top - 0.03, z)
+            # The cuff's top edge turns back in to the leg.
+            lip = smoothstep(top - 0.006, top, z)
+            return under + 0.006 * cuff - (under + 0.004) * lip + 0.004 * smoothstep(0.17, 0.10, z)
+
+        def mat(i, j):
+            return "leather_dark" if zs[i] > top - 0.036 else "leather"
+
+        self.limb_layer(L, self.leg_ring, zs, gap, "leather", chain.weights, matfn=mat, axis=Vector((0, 0, -1)))
+        sole = -0.004
+        x0 = self.R.h("foot_l").x
+        rings = []
+        for y, hw, top_z, key in self.stations(self.FOOT):
+            zc = (top_z + sole) / 2
+            hz = (top_z - sole) / 2 + 0.008
+            rings.append(dict(c=Vector((x0 + 0.004 * smoothstep(0.0, -0.2, y), y, zc)), axis=(0, -1, 0),
+                              ref=(0, 0, 1), rx=hz, ry=hw, n=2.8))
+
+        def flat(p):
+            return Vector((p.x, p.y, max(p.z, sole)))
+
+        def w_foot(p):
+            w = chain.weights(Vector((x0, p.y, min(p.z, 0.05))))
+            if p.z > 0.085:
+                w = mix(w, rigid("calf_l"), 0.4 * smoothstep(0.085, 0.12, p.z))
+            return w
+
+        start = len(L.f)
+        loft(L, rings, self.L["limb"], "leather", w_foot, cap0=True, cap1=True, post=flat, dome=0.004)
+        for k in range(start, len(L.f)):
+            zz = [L.v[i].z for i in L.f[k]]
+            if max(zz) < sole + 0.012:
+                L.m[k] = "sole"
+            elif min(L.v[i].y for i in L.f[k]) > 0.075 and max(zz) < 0.04:
+                L.m[k] = "sole"
+        return L
+
+    def bracer(self, under_gap):
+        """Wrapped leather from mid forearm to the wrist."""
+        L = Mesh()
+        L.part = "gear"
+        chain = self.R.arm(1)
+        xs = self.rows_of([0.47, 0.485, 0.53, 0.58, 0.61, 0.628, 0.64])
+        last = len(xs)
+
+        def gap(x):
+            return under_gap + 0.003 + 0.004 * smoothstep(0.47, 0.49, x) * smoothstep(0.645, 0.62, x)
+
+        def mat(i, j):
+            return "leather_dark" if i in (0, last - 2) else "leather"
+
+        self.limb_layer(L, self.arm_ring, xs, gap, "leather", chain.weights, matfn=mat)
+        return L
+
+    def coat(self):
+        """The tailored coat: it follows the bust, the waist, and the hips
+        over the shirt, then flares from the hips to the knee, open in
+        front, with side vents and turned-back cuffs at the elbow."""
+        M = self.M
+        M.part = "coat"
+        base = self.Layer(0.40, 1.48, self.body_radius_fn(0.006, hull=True), kz=0.55, kth=0.7)
+
+        def gap(z, th):
+            return 0.011 + 0.006 * smoothstep(1.0, 0.9, z)
+
+        hip = 0.95
+
+        def radius(z, th):
+            r, d, c = self.over(base, gap)(z, th)
+            if z < hip:
+                rh, _, _ = self.over(base, gap)(hip, th)
+                r = max(r, rh + (hip - z) * 0.30)
+            return r, d, c
+
+        self.coat_layer = layer = self.Layer(0.47, 1.47, radius, kz=0.9, kth=0.8)
+        self.outer = layer
+        rows = self.rows_of([r[0] for r in self.COAT])
+        cols = max(3, self.L["torso"] // 4 + 1)
+        for s in (1, -1):
+            for piece in ("front", "back"):
+                P = []
+                for z in rows:
+                    op = math.radians(self.opening(z))
+                    lo, hi = (op, pi / 2 - self.vent(z)) if piece == "front" else (pi / 2 + self.vent(z), pi)
+                    row = [layer.at(z, -pi / 2 + s * (lo + (hi - lo) * j / (cols - 1))) for j in range(cols)]
+                    P.append(row if s > 0 else row[::-1])
+                W = [[self.w_coat(p) for p in row] for row in P]
+                edge = 0 if s > 0 else cols - 2
+
+                def matfn(i, j, edge=edge, piece=piece):
+                    if i == 0 or (piece == "front" and j == edge):
+                        return "coat_trim"
+                    return "coat"
+
+                first, last = (piece == "front", True) if s > 0 else (True, piece == "front")
+                shell(M, P, W, 0.007, "coat", "coat_inner", "coat_trim", matfn=matfn, rims=(True, True, first, last))
+        # Sleeves to the elbow with a turned-back cuff, over the shirt.
+        L = Mesh()
+        L.part = "coat"
+        chain = self.R.arm(1)
+        xs = self.rows_of([0.10, 0.16, 0.22, 0.28, 0.33, 0.355, 0.395, 0.41])
+
+        def sleeve_gap(x):
+            return 0.020 + 0.012 * smoothstep(0.35, 0.36, x) * smoothstep(0.41, 0.40, x) - 0.012 * smoothstep(0.40, 0.41, x)
+
+        nr = len(xs)
+
+        def cuff(i, j):
+            return "coat_trim" if i >= nr - 3 else "coat"
+
+        self.limb_layer(L, self.arm_ring, xs, sleeve_gap, "coat", chain.weights, matfn=cuff)
+        M.extend(L)
+        M.extend_mirrored(L)
+
+    # The coat's front opening's half angle and the side vents, by height.
+    COAT = [
+        (0.47, 55), (0.52, 53), (0.60, 49), (0.70, 44), (0.80, 38), (0.88, 33), (0.94, 30), (1.00, 27),
+        (1.06, 26), (1.12, 25), (1.19, 23), (1.26, 21), (1.32, 19), (1.38, 17), (1.43, 15), (1.468, 14),
+    ]
+
+    def opening(self, z):
+        return table_at(self.COAT, z)[0]
+
+    @staticmethod
+    def vent(z):
+        """Half the side vent's opening at height z, radians: closed above the
+        hip, opening toward the hem, so the arms hang clear of the skirt."""
+        return math.radians(11.0) * smoothstep(0.98, 0.72, z)
+
+    def dress(self):
+        """A fitted summer dress in sage linen: a bodice that follows the
+        bust and the waist with a straight neckline and narrow straps, and a
+        skirt that flares from the hips to the knee in soft folds."""
+        M = self.M
+        M.part = "dress"
+        top_front, top_back = 1.385, 1.405
+        hip = 0.93
+
+        body = self.body_radius_fn(0.005, hull=True)
+
+        def radius(z, th):
+            r, d, c = body(z, th)
+            if z < hip:
+                rh, _, _ = body(hip, th)
+                fold = 0.010 * smoothstep(hip, 0.55, z) * sin(11 * th + 0.6)
+                r = max(r, rh + (hip - z) * 0.33 + fold)
+            return r, d, c
+
+        self.dress_layer = layer = self.Layer(0.50, 1.42, radius, kz=1.2, kth=0.5)
+        self.outer = layer
+        zs = self.rows_of([0.50, 0.53, 0.58, 0.64, 0.70, 0.76, 0.82, 0.87, 0.91, 0.95, 1.0, 1.04, 1.075, 1.11, 1.15,
+                           1.19, 1.23, 1.27, 1.31, 1.35, 1.38, 1.405])
+
+        def drop(c):
+            top = lerp(top_front, top_back, smoothstep(-0.05, 0.05, c.y))
+            return c.z > top
+
+        def matfn(i, j):
+            return "dress_trim" if i == 0 else "dress"
+
+        self.layer_mesh(layer, zs, "dress", self.w_skirt, matfn=matfn, drop=drop)
+        # The straps, over each shoulder.
+        for s in (1, -1):
+            path = [layer.at(top_front - 0.004, -pi / 2 + s * 0.62, 0.002),
+                    Vector((s * 0.098, -0.03, 1.452)), Vector((s * 0.102, 0.02, 1.468)),
+                    Vector((s * 0.098, 0.07, 1.446)), layer.at(top_back - 0.004, pi / 2 - s * 0.62, 0.002)]
+            for k in (1, 2, 3):
+                p = path[k]
+                th = math.atan2(p.y - 0.01, p.x)
+                q = self.body_radius_fn(0.004)(p.z, th)
+                path[k] = Vector((q[2].x, q[2].y, p.z)) + q[1] * q[0]
+            rings = []
+            for k, c in enumerate(path):
+                t = (path[min(k + 1, 4)] - path[max(k - 1, 0)]).normalized()
+                out = Vector((c.x, c.y - 0.01, 0)).normalized()
+                rings.append(dict(c=c + out * 0.002, axis=t, ref=out, rx=0.0015, ry=0.007))
+            loft(M, rings, 4, "dress_trim", self.w_torso)
+
+    def underwear(self):
+        """A plain bandeau and briefs, for looking at the base body."""
+        M = self.M
+        M.part = "underwear"
+        bra = self.Layer(1.17, 1.33, self.body_radius_fn(0.004), kz=0.8, kth=0.45)
+        self.layer_mesh(bra, self.rows_of([1.18, 1.21, 1.25, 1.29, 1.32]), "linen", self.w_torso)
+        briefs = self.Layer(0.82, 1.0, self.body_radius_fn(0.003), kz=0.8, kth=0.9)
+        # The leg openings are where the thighs cut the gusset.
+        self.layer_mesh(briefs, self.rows_of([0.875, 0.90, 0.935, 0.96]), "linen",
+                        lambda p: self.w_torso(p, hem=True), cap0=Vector((0, 0.024, 0.818)))
+        self.outer = self.Layer(0.6, 1.48, self.body_radius_fn(0.004), kz=0.8, kth=0.6)
+
+    def feet(self):
+        """Bare feet, for the base body only."""
+        L = Mesh()
+        L.part = "skin_foot"
+        chain = self.R.leg(1)
+        x0 = self.R.h("foot_l").x
+        rings = []
+        for y, hw, top, key in self.stations(self.FOOT):
+            rings.append(dict(c=Vector((x0, y, top * 0.42)), axis=(0, -1, 0), ref=(0, 0, 1),
+                              rx=top * 0.42 + 0.004, ry=hw * 0.82, n=2.6))
+
+        def w_foot(p):
+            return chain.weights(Vector((x0, p.y, min(p.z, 0.05))))
+
+        loft(L, rings, self.L["limb"], "skin", w_foot, cap0=True, cap1=True, dome=0.004)
+        return L
+
+    def sash(self):
+        """A rust sash cinching the waist over the outermost layer, knotted
+        at her left hip with two hanging ends."""
+        M = self.M
+        M.part = "gear"
+        segs = self.L["torso"]
+        outer = self.outer
+        zs = (0.985, 0.998, 1.012, 1.024, 1.038, 1.052, 1.068)
+        gaps = (0.003, 0.007, 0.009, 0.005, 0.009, 0.007, 0.003)
+        P = [[outer.at(z, -pi / 2 + 2 * pi * j / segs, g) for j in range(segs)] for z, g in zip(zs, gaps)]
+        self.mesh_rows(M, P, self.w_coat, "sash")
+        knot = outer.at(1.025, -pi / 2 + 0.95, 0.012)
+        kd = Vector((knot.x, knot.y - 0.01, 0)).normalized()
+        kr = [dict(c=knot + kd * (0.006 * k - 0.004), axis=kd, ref=(0, 0, 1), rx=r, ry=r * 0.8)
+              for k, r in enumerate((0.01, 0.022, 0.024, 0.012))]
+        loft(M, kr, max(6, segs // 3), "sash", self.w_coat, cap0=True, cap1=True)
+        for dx, length, ang in ((0.0, 0.20, 0.10), (0.03, 0.15, 0.28)):
+            P = []
+            steps = 4 if self.L["stride"] == 1 else 2
+            for i in range(steps + 1):
+                t = i / steps
+                c = knot + Vector((dx + sin(ang) * length * t, -0.012 - 0.01 * t, -length * t))
+                w = 0.026 * (1 - 0.2 * t)
+                tangent = Vector((cos(ang), 0.15, 0)).normalized()
+                P.append([c + tangent * w, c - tangent * w])
+            P.reverse()
+            W = [[self.w_coat(p) for p in row] for row in P]
+            shell(M, [[r[1], r[0]] for r in P], W, 0.004, "sash", "sash", "sash")
+
+    def strap(self):
+        """The satchel's strap, from her left shoulder across her chest to
+        her right hip and back up over her shoulder blade, laid on the
+        outermost layer."""
+        M = self.M
+        M.part = "gear"
+        steps = max(16, self.L["torso"])
+        outer = self.outer
+        top = Vector((0.095, 0.022, 1.47))
+        guide = [(top, Vector((-0.17, -0.11, 0.985))), (Vector((-0.17, 0.12, 1.0)), top)]
+        pts = []
+        half = steps // 2
+        for (a, b) in guide:
+            for k in range(half):
+                g = a.lerp(b, k / half)
+                z = min(max(g.z, 0.97), 1.47)
+                th = math.atan2(g.y - 0.005, g.x)
+                # Across the coat's open front it lies on the shirt.
+                front = abs(math.atan2(math.sin(th + pi / 2), math.cos(th + pi / 2)))
+                layer = outer
+                if self.outfit == "coat" and front < math.radians(self.opening(z)):
+                    layer = self.shirt_layer
+                p = layer.at(z, th, 0.005)
+                if z > 1.40:
+                    # Over the shoulder: no lower than the body there.
+                    lift = smoothstep(1.40, 1.47, z) * 0.012
+                    p = p + Vector((0, 0, lift))
+                pts.append(p)
+        # Smooth the path (the layers' fine grid shows as kinks otherwise),
+        # then lay it back on the surface where smoothing sank it.
+        for _ in range(3):
+            pts = [pts[k] * 0.5 + (pts[k - 1] + pts[(k + 1) % len(pts)]) * 0.25 for k in range(len(pts))]
+        for k, p in enumerate(pts):
+            z = min(max(p.z, 0.97), 1.47)
+            th = math.atan2(p.y - 0.005, p.x)
+            front = abs(math.atan2(math.sin(th + pi / 2), math.cos(th + pi / 2)))
+            layer = outer
+            if self.outfit == "coat" and front < math.radians(self.opening(z)):
+                layer = self.shirt_layer
+            floor = layer.at(z, th, 0.006)
+            c = Vector((0, 0.005, 0))
+            hp, hf = Vector((p.x, p.y - c.y, 0)), Vector((floor.x, floor.y - c.y, 0))
+            if hp.length < hf.length and hp.length > 1e-6:
+                pts[k] = Vector((c.x, c.y, p.z)) + hp * (hf.length / hp.length)
+        n = (guide[0][1] - top).cross(guide[1][0] - top).normalized()
+        w, t = 0.018, 0.005
+        P = []
+        for k, p in enumerate(pts):
+            out = Vector((p.x, p.y - 0.01, 0)).normalized()
+            tangent = (pts[(k + 1) % len(pts)] - pts[k - 1]).normalized()
+            side = tangent.cross(out).normalized()
+            if side.dot(n) < 0:
+                side = -side
+            P.append([p + side * w, p + side * w + out * t, p - side * w + out * t, p - side * w])
+        steps = len(pts)
+        rows = [[P[k][c] for k in range(steps)] for c in range(4)]
+        W = [[self.w_coat(p) for p in row] for row in rows]
+        idx = [[M.vert(rows[i][j], W[i][j]) for j in range(steps)] for i in range(4)]
+        for i in range(4):
+            i2 = (i + 1) % 4
+            for j in range(steps):
+                j2 = (j + 1) % steps
+                q = (idx[i][j], idx[i][j2], idx[i2][j2], idx[i2][j])
+                mid = (M.v[q[0]] + M.v[q[2]]) / 2
+                nrm = (M.v[q[1]] - M.v[q[0]]).cross(M.v[q[3]] - M.v[q[0]])
+                core = (P[j][0] + P[j][1] + P[j][2] + P[j][3]) / 4
+                M.face(q if nrm.dot(mid - core) > 0 else q[::-1], "leather")
+
+    def satchel(self):
+        M = self.M
+        M.part = "gear"
+        side = self.outer.at(0.935, pi, 0.0)
+        x0 = side.x - 0.034
+        c0 = Vector((x0, 0.005, 0.935))
+        w = self.w_coat(Vector((x0 + 0.04, 0.0, 0.94)))
+        segs = max(8, self.L["limb"])
+        rings = []
+        for dy, sc in ((-0.100, 0.70), (-0.094, 0.92), (-0.080, 1.0), (0.080, 1.0), (0.094, 0.92), (0.100, 0.70)):
+            rings.append(dict(c=c0 + Vector((0, dy, 0)), axis=(0, 1, 0), ref=(1, 0, 0), rx=0.032 * sc,
+                              ry=0.072 * sc, n=3.2))
+        loft(M, rings, segs, "leather", lambda p: w, cap0=True, cap1=True)
+        P = []
+        for i, z in enumerate((0.985, 0.955, 0.925, 0.900)):
+            row = [Vector((x0 - 0.035 - 0.004 * (1 - i / 3), y + 0.005, z)) for y in (-0.096, -0.04, 0.04, 0.096)]
+            P.append(row)
+        P.reverse()
+        W = [[w for _ in r] for r in P]
+        shell(M, [r[::-1] for r in P], W, 0.004, "leather_dark", "leather_dark", "leather_dark")
+        bk = Vector((x0 - 0.040, 0.005, 0.905))
+        rings = [dict(c=bk + Vector((d, 0, 0)), axis=(-1, 0, 0), ref=(0, 0, 1), rx=0.013, ry=0.011)
+                 for d in (0.0, -0.005)]
+        loft(M, rings, 6, "copper", lambda p: w, cap1=True)
+
     def clasps(self):
         """Two copper clasps on the coat's front edges at the chest, and one at
         the collar."""
         M = self.M
         M.part = "gear"
         for z in (1.22, 1.31):
-            a, b, yc, n = self.coat_size(z)
-            op = math.radians(23 if z < 1.25 else 20)
+            op = math.radians(self.opening(z) + 1)
             for s in (1, -1):
                 th = -pi / 2 + s * op
-                p = section_point(z, th, sizes=(a, b, yc, n))
+                p = self.coat_layer.at(z, th, 0.007)
                 d = Vector((cos(th), sin(th), 0)).normalized()
                 rings = [dict(c=p + d * k, axis=d, ref=(0, 0, 1), rx=0.011, ry=0.011) for k in (0.0, 0.006)]
-                loft(M, rings, 6, "copper", lambda q: self.w_coat(p), cap1=True)
-        p = Vector((0, -0.054, 1.468))
+                loft(M, rings, 6, "copper", lambda q, p=p: self.w_coat(p), cap1=True)
+        p = Vector((0, -0.058, 1.468))
         rings = [dict(c=p + Vector((0, -k, 0)), axis=(0, -1, 0), ref=(0, 0, 1), rx=0.012, ry=0.012) for k in (0, 0.007)]
         loft(M, rings, 6, "copper", lambda q: self.torso_chain.weights(p), cap1=True)
 
-    # All of her -----------------------------------------------------------------------------
+    def covered(self, tag, pts):
+        """Whether the outfit hides a body face of part `tag` with the corners
+        `pts` everywhere: a margin inside each garment's edges keeps the skin
+        under its hems."""
+        rule = OUTFITS[self.outfit]["covers"].get(tag)
+        if rule is None:
+            return False
+        lo, hi, axis = rule
+        return all(lo <= (abs(p.x) if axis == "x" else p.z) <= hi for p in pts)
 
     # The build, in three reusable parts --------------------------------------------------
     #
@@ -1569,18 +2003,18 @@ class Alice:
     # outfit is Alice's own.
 
     def build_body(self):
-        """The base body: the skin and underlayer that show (hands, legs,
-        and feet), lofted on the Universal rig."""
-        arm = self.arm_left()
+        """The complete base body: torso, arms with hands, and legs, in skin."""
+        self.torso_skin()
+        arm = self.arm_skin()
         self.M.extend(arm)
         self.M.extend_mirrored(arm)
-        leg = self.leg_left()
+        leg = self.leg_skin()
         self.M.extend(leg)
         self.M.extend_mirrored(leg)
 
     def build_head(self, head, eyes):
-        """The hair and the eyes' highlights, fitted to the reshaped head
-        `head` and eyes `eyes` (Blender objects from `ubc_head`)."""
+        """The hair, fitted to the reshaped head `head` (a Blender object from
+        `ubc_head`)."""
         from mathutils.bvhtree import BVHTree
 
         dg = bpy.context.evaluated_depsgraph_get()
@@ -1588,21 +2022,48 @@ class Alice:
         self.hair()
 
     def build_outfit(self):
-        """Alice's own clothes and gear."""
-        self.tunic()
-        self.coat()
-        self.hood()  # the collar
-        self.sash()
-        if not self.L.get("lite"):
-            self.strap()
-            self.clasps()
-        self.satchel()
+        """One of OUTFITS over the base body, then the hidden skin removed."""
+        outfit = self.outfit
+        M = self.M
+        if outfit == "base":
+            self.underwear()
+            feet = self.feet()
+            M.extend(feet)
+            M.extend_mirrored(feet)
+            return
+        if outfit == "summer":
+            self.dress()
+            boots = self.boots(0.17)
+            M.extend(boots)
+            M.extend_mirrored(boots)
+            self.sash()
+        else:
+            arm = self.shirt(0.632 if outfit == "coat" else 0.37, "crew" if outfit == "coat" else "v")
+            arm.extend(self.bracer(0.007 if outfit == "coat" else 0.0))
+            M.extend(arm)
+            M.extend_mirrored(arm)
+            leg = self.trousers(True)
+            leg.extend(self.boots(0.46))
+            M.extend(leg)
+            M.extend_mirrored(leg)
+            if outfit == "coat":
+                self.coat()
+                self.hood()
+            else:
+                self.outer = self.Layer(0.85, 1.48, self.over(self.shirt_layer, 0.003), kz=0.9, kth=0.8)
+            self.sash()
+            if not self.L.get("lite"):
+                self.strap()
+                if outfit == "coat":
+                    self.clasps()
+            self.satchel()
         self.staff()
 
     def build(self, head, eyes):
         self.build_body()
-        self.build_head(head, eyes)
+        # The hair drapes over the outermost layer, so the outfit comes first.
         self.build_outfit()
+        self.build_head(head, eyes)
         return self.M
 
 
@@ -1718,13 +2179,13 @@ def surface_detail(nt, name, color):
         a = node_value(nt, "ShaderNodeTexWave", pos, 210.0, wave_type="BANDS", bands_direction="X")
         b = node_value(nt, "ShaderNodeTexWave", pos, 210.0, wave_type="BANDS", bands_direction="Z")
         weave = node_math(nt, "MULTIPLY", node_math(nt, "ADD", a, b), 0.5)
-        color = node_scale(nt, color, node_math(nt, "MULTIPLY_ADD", weave, 0.08, 0.96))
+        color = node_scale(nt, color, node_math(nt, "MULTIPLY_ADD", weave, 0.06, 0.97))
         wr = node_value(nt, "ShaderNodeTexWave", pos, 22.0, wave_type="BANDS", bands_direction="Z",
                         Distortion=5.0, Detail=3.0)
         color = node_scale(nt, color, node_math(nt, "MULTIPLY_ADD", wr, 0.10, 0.95))
     elif base in ("coat", "coat_inner", "coat_trim"):
         fuzz = node_value(nt, "ShaderNodeTexNoise", pos, 320.0, Detail=2.0)
-        color = node_scale(nt, color, node_math(nt, "MULTIPLY_ADD", fuzz, 0.10, 0.95))
+        color = node_scale(nt, color, node_math(nt, "MULTIPLY_ADD", fuzz, 0.05, 0.975))
         folds = node_value(nt, "ShaderNodeTexWave", pos, 16.0, wave_type="BANDS", bands_direction="X",
                            Distortion=3.0, Detail=2.0)
         color = node_scale(nt, color, node_math(nt, "MULTIPLY_ADD", folds, 0.16, 0.91))
@@ -1743,15 +2204,15 @@ def surface_detail(nt, name, color):
             color = node_toward(nt, color, node_math(nt, "MULTIPLY", edges, 0.35), linear("#5E7D57"))
     elif base in ("leather", "leather_dark", "sole"):
         grain = node_value(nt, "ShaderNodeTexNoise", pos, 420.0, Detail=2.0)
-        color = node_scale(nt, color, node_math(nt, "MULTIPLY_ADD", grain, 0.12, 0.94))
-        crease = node_value(nt, "ShaderNodeTexWave", pos, 55.0, wave_type="BANDS", bands_direction="Z",
-                            Distortion=7.0, Detail=3.0)
-        lines = node_math(nt, "SUBTRACT", 1.0, node_smooth(nt, crease, 0.0, 0.10))
-        color = node_scale(nt, color, node_math(nt, "MULTIPLY_ADD", lines, -0.28, 1.0))
+        color = node_scale(nt, color, node_math(nt, "MULTIPLY_ADD", grain, 0.06, 0.97))
+        crease = node_value(nt, "ShaderNodeTexWave", pos, 70.0, wave_type="BANDS", bands_direction="Z",
+                            Distortion=5.0, Detail=2.0)
+        lines = node_math(nt, "SUBTRACT", 1.0, node_smooth(nt, crease, 0.0, 0.08))
+        color = node_scale(nt, color, node_math(nt, "MULTIPLY_ADD", lines, -0.16, 1.0))
         color = node_toward(nt, color, node_math(nt, "MULTIPLY", edges, 0.45), linear("#C08A5C"))
     elif base == "leggings":
         knit = node_value(nt, "ShaderNodeTexWave", pos, 260.0, wave_type="BANDS", bands_direction="X")
-        color = node_scale(nt, color, node_math(nt, "MULTIPLY_ADD", knit, 0.10, 0.95))
+        color = node_scale(nt, color, node_math(nt, "MULTIPLY_ADD", knit, 0.06, 0.97))
     elif base == "sash":
         a = node_value(nt, "ShaderNodeTexWave", pos, 230.0, wave_type="BANDS", bands_direction="X")
         color = node_scale(nt, color, node_math(nt, "MULTIPLY_ADD", a, 0.08, 0.96))
@@ -1786,6 +2247,7 @@ def material(name):
         "linen": ("noise", 0.05), "linen_shade": ("noise", 0.05), "coat": ("noise", 0.08),
         "coat_inner": ("noise", 0.06), "coat_trim": ("noise", 0.06), "leather": ("noise", 0.12),
         "leather_dark": ("noise", 0.10), "leggings": ("noise", 0.05), "sash": ("noise", 0.06),
+        "dress": ("noise", 0.05), "dress_trim": ("noise", 0.05), "skin": ("noise", 0.035),
         "hair": ("strands", 0.38), "hair_base": ("strands", 0.30), "hair_inner": ("strands", 0.20), "wood": ("grain", 0.25),
     }.get(name)
     if not variation:
@@ -2011,15 +2473,79 @@ def eye_material(obj, pixels):
     obj.data.materials.append(m)
 
 
+def wardrobe(builds):
+    """One mesh holding several outfits' meshes, (bit, mesh, covered): faces
+    shared by outfits (the body, the trousers and boots the coat and the
+    light outfit both wear) appear once, with every outfit's bit in its mask,
+    so they share the atlas's texels; a body face an outfit covers isn't
+    in that outfit."""
+    U = Mesh()
+    vertices, faces = {}, {}
+    for bit, M, covered in builds:
+        for k, f in enumerate(M.f):
+            if covered and covered(M.tag[k], [M.v[i] for i in f]):
+                continue
+            ids = []
+            for i in f:
+                key = (round(M.v[i].x, 6), round(M.v[i].y, 6), round(M.v[i].z, 6))
+                j = vertices.get(key)
+                if j is None:
+                    j = len(U.v)
+                    U.v.append(M.v[i].copy())
+                    U.w.append(dict(M.w[i]))
+                    vertices[key] = j
+                if j not in ids:
+                    ids.append(j)
+            if len(ids) < 3:
+                # A sliver whose corners merged.
+                continue
+            key = tuple(sorted(ids))
+            if key in faces:
+                U.mask[faces[key]] |= bit
+                continue
+            faces[key] = len(U.f)
+            U.f.append(tuple(ids))
+            U.m.append(M.m[k])
+            U.tag.append(M.tag[k])
+            U.mask.append(bit)
+            if M.uv:
+                U.uv.append(M.uv[k][: len(ids)])
+    return U
+
+
+def outfit_copy(obj, bit):
+    """A copy of `obj` with only the faces outfit `bit` wears (and the faces
+    every outfit wears, whose mask is 0)."""
+    o = obj.copy()
+    o.data = obj.data.copy()
+    bpy.context.scene.collection.objects.link(o)
+    bm = bmesh.new()
+    bm.from_mesh(o.data)
+    layer = bm.faces.layers.int.get("outfits")
+    if layer is not None:
+        gone = [f for f in bm.faces if f[layer] and not (f[layer] & bit)]
+        bmesh.ops.delete(bm, geom=gone, context="FACES")
+        bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context="VERTS")
+    bm.to_mesh(o.data)
+    bm.free()
+    if "outfits" in o.data.attributes:
+        o.data.attributes.remove(o.data.attributes["outfits"])
+    return o
+
+
 def to_object(M, arm):
     me = bpy.data.meshes.new("Alice")
     me.from_pydata([tuple(v) for v in M.v], [], [list(f) for f in M.f])
     me.update()
+    assert not me.validate(verbose=False), "the mesh had invalid geometry"
     if M.uv:
         layer = me.uv_layers.new(name="hairuv")
         for poly, uv in zip(me.polygons, M.uv):
             for li, t in zip(poly.loop_indices, uv):
                 layer.data[li].uv = t
+    if M.mask and len(set(M.mask)) > 1:
+        outfits = me.attributes.new("outfits", "INT", "FACE")
+        outfits.data.foreach_set("value", M.mask)
     obj = bpy.data.objects.new("Alice", me)
     bpy.context.scene.collection.objects.link(obj)
     names = sorted(set(M.m))
@@ -2221,9 +2747,12 @@ def unwrap(obj, lod):
     bpy.ops.object.mode_set(mode="OBJECT")
 
 
-def bake(obj, lod):
+def bake(obj, lod, bits=(1,)):
     """Bake color, ambient occlusion, and object-space normals; return the
-    combined base-color image."""
+    combined base-color image. With several outfits (`bits`), occlusion is
+    baked for each outfit alone and each texel keeps the lightest of the
+    outfits that wear it, so one outfit's garments don't shade another's
+    skin."""
     import numpy as np
 
     scene = bpy.context.scene
@@ -2251,9 +2780,11 @@ def bake(obj, lod):
         if bsdf.inputs["Alpha"].links:
             nt.links.remove(bsdf.inputs["Alpha"].links[0])
             bsdf.inputs["Alpha"].default_value = 1.0
-    for kind, args in (("color", dict(type="DIFFUSE", pass_filter={"COLOR"})), ("ao", dict(type="AO")),
-                       ("normal", dict(type="NORMAL", normal_space="OBJECT")),
-                       ("mask", dict(type="EMIT"))):
+    passes = [("color", dict(type="DIFFUSE", pass_filter={"COLOR"})),
+              ("normal", dict(type="NORMAL", normal_space="OBJECT")), ("mask", dict(type="EMIT"))]
+    if len(bits) == 1:
+        passes.insert(1, ("ao", dict(type="AO")))
+    for kind, args in passes:
         for slot in obj.material_slots:
             nt = slot.material.node_tree
             if kind == "mask":
@@ -2267,7 +2798,10 @@ def bake(obj, lod):
             node.image = images[kind]
             nt.nodes.active = node
         bpy.ops.object.bake(margin=max(2, size // 128), use_clear=True, **args)
-    px = {k: np.array(img.pixels[:], dtype=np.float32).reshape(size, size, 4) for k, img in images.items()}
+    px = {k: np.array(img.pixels[:], dtype=np.float32).reshape(size, size, 4) for k, img in images.items()
+          if k != "ao" or len(bits) == 1}
+    if len(bits) > 1:
+        px["ao"] = outfit_occlusion(obj, bits, images["ao"], size)
     color = px["color"][..., :3]
     ao = px["ao"][..., :1]
     # Soften the occlusion's sampling noise with a small blur.
@@ -2301,6 +2835,46 @@ def bake(obj, lod):
     final.pixels[:] = out.reshape(-1).tolist()
     final.pack()
     return final
+
+
+def outfit_occlusion(obj, bits, image, size):
+    """Occlusion baked for each outfit alone, each texel the lightest of the
+    outfits that wear it (texels no outfit bakes stay open)."""
+    import numpy as np
+
+    seen = bpy.data.images.new("alice_seen", size, size, float_buffer=True)
+    seen.colorspace_settings.name = "Non-Color"
+    best = np.zeros((size, size, 4), dtype=np.float32)
+    any_seen = np.zeros((size, size, 1), dtype=bool)
+    obj.hide_render = True
+    for bit in bits:
+        part = outfit_copy(obj, bit)
+        part.hide_render = False
+        for kind, img, args in (("ao", image, dict(type="AO")), ("seen", seen, dict(type="EMIT"))):
+            for slot in part.material_slots:
+                nt = slot.material.node_tree
+                bsdf = nt.nodes["Principled BSDF"]
+                if kind == "seen":
+                    bsdf.inputs["Emission Color"].default_value = (1, 1, 1, 1)
+                    bsdf.inputs["Emission Strength"].default_value = 1.0
+                node = nt.nodes.get("bake") or nt.nodes.new("ShaderNodeTexImage")
+                node.name = "bake"
+                node.image = img
+                nt.nodes.active = node
+            bpy.ops.object.select_all(action="DESELECT")
+            part.select_set(True)
+            bpy.context.view_layer.objects.active = part
+            bpy.ops.object.bake(margin=max(2, size // 128), use_clear=True, **args)
+        ao = np.array(image.pixels[:], dtype=np.float32).reshape(size, size, 4)
+        mask = np.array(seen.pixels[:], dtype=np.float32).reshape(size, size, 4)[..., :1] > 0.5
+        best = np.where(mask, np.maximum(best, ao), best)
+        any_seen |= mask
+        bpy.data.objects.remove(part, do_unlink=True)
+    obj.hide_render = False
+    bpy.ops.object.select_all(action="DESELECT")
+    obj.select_set(True)
+    bpy.context.view_layer.objects.active = obj
+    return np.where(any_seen, best, 1.0)
 
 
 def finish(obj, image):
@@ -2377,16 +2951,34 @@ def main():
         i = argv.index("--quick")
         quick = argv[i + 1]
         argv = argv[:i] + argv[i + 2:]
+    outfit = None
+    if "--outfit" in argv:
+        i = argv.index("--outfit")
+        outfit = argv[i + 1]
+        argv = argv[:i] + argv[i + 2:]
     out_dir = argv[0] if argv and not argv[0].startswith("lod") else OUT
     variant = next((a for a in argv if a.startswith("lod")), "lod1")
     lod = LODS[variant]
+    # The Everglade level carries every outfit on one atlas; the other
+    # levels, a quick look, and `--outfit` build one.
+    if outfit is None:
+        outfits = list(WARDROBE) if variant == WARDROBE_LEVEL and not quick else ["coat"]
+    else:
+        assert outfit in OUTFITS, outfit
+        outfits = [outfit]
     arm, joints = load_rig()
     head, eyes = ubc_head(lod)
-    alice = Alice(Rig(joints), lod)
-    M = alice.build(head, eyes)
+    builds = []
+    for o in outfits:
+        alice = Alice(Rig(joints), lod, o)
+        alice.build(head, eyes)
+        builds.append(alice)
+    bits = {o: 1 << k for k, o in enumerate(outfits)}
+    M = wardrobe([(bits[a.outfit], a.M, a.covered) for a in builds])
+    C = wardrobe([(bits[a.outfit], a.C, None) for a in builds])
     drop_ears(head)
     obj = to_object(M, arm)
-    cards = to_object(alice.C, arm)
+    cards = to_object(C, arm)
     parts = {}
     for f, tag in zip(M.f, M.tag):
         parts[tag] = parts.get(tag, 0) + len(f) - 2
@@ -2402,26 +2994,48 @@ def main():
     obj = join_head(obj, head, eyes, cards)
     smooth(obj)
     check_weights(obj)
-    tris = sum(len(p.vertices) - 2 for p in obj.data.polygons)
-    print("PARTS", variant, tris, json.dumps(parts))
-    assert tris <= lod["budget"], f"{variant}: {tris} triangles exceeds {lod['budget']}"
+    # Each outfit's triangles: its own faces and the ones every outfit wears.
+    mask = [0] * len(obj.data.polygons)
+    if "outfits" in obj.data.attributes:
+        obj.data.attributes["outfits"].data.foreach_get("value", mask)
+    tris = {o: sum(len(p.vertices) - 2 for p, m in zip(obj.data.polygons, mask) if not m or m & bits[o])
+            for o in outfits}
+    print("PARTS", variant, json.dumps(tris), json.dumps(parts))
+    for o, n in tris.items():
+        assert n <= lod["budget"], f"{variant} {o}: {n} triangles exceeds {lod['budget']}"
     if quick:
-        quick_views(quick, variant)
-        print("QUICK", variant, tris)
+        stem = stem_of(outfits[0])
+        quick_views(quick, f"{stem}.{variant}")
+        bpy.ops.object.select_all(action="SELECT")
+        bpy.ops.export_scene.gltf(filepath=os.path.join(quick, f"{stem}.{variant}.glb"), export_format="GLB",
+                                  export_yup=True, export_apply=True, export_animations=False, export_skins=False,
+                                  export_materials="NONE")
+        print("QUICK", variant, tris[outfits[0]])
         return
     unwrap(obj, lod)
-    image = bake(obj, lod)
+    image = bake(obj, lod, [bits[o] for o in outfits])
     finish(obj, image)
-    out = os.path.join(out_dir, f"alice.{variant}.glb")
     os.makedirs(out_dir, exist_ok=True)
-    bpy.ops.object.select_all(action="SELECT")
-    bpy.ops.export_scene.gltf(filepath=out, export_format="GLB", export_yup=True, export_apply=True,
-                              export_animations=False, export_skins=True, export_image_format="AUTO",
-                              export_texcoords=True, export_normals=True)
-    info = {"out": os.path.relpath(out, kit.REPO), "variant": variant, "triangles": tris,
-            "budget": lod["budget"], "texture": lod["tex"], "vertices": len(M.v), "parts": parts,
-            "bytes": os.path.getsize(out), "blender": bpy.app.version_string}
-    print("MODEL", json.dumps(info))
+    for o in outfits:
+        part = outfit_copy(obj, bits[o]) if len(outfits) > 1 else obj
+        out = os.path.join(out_dir, f"{stem_of(o)}.{variant}.glb")
+        bpy.ops.object.select_all(action="DESELECT")
+        arm.select_set(True)
+        part.select_set(True)
+        bpy.ops.export_scene.gltf(filepath=out, export_format="GLB", export_yup=True, export_apply=True,
+                                  use_selection=True, export_animations=False, export_skins=True,
+                                  export_image_format="AUTO", export_texcoords=True, export_normals=True)
+        if part is not obj:
+            bpy.data.objects.remove(part, do_unlink=True)
+        info = {"out": os.path.relpath(out, kit.REPO), "variant": variant, "outfit": o, "triangles": tris[o],
+                "budget": lod["budget"], "texture": lod["tex"], "parts": parts,
+                "bytes": os.path.getsize(out), "blender": bpy.app.version_string}
+        print("MODEL", json.dumps(info))
+
+
+def stem_of(outfit):
+    """The file stem of an outfit's model: `alice` for the coat."""
+    return "alice" if outfit == "coat" else f"alice-{outfit}"
 
 
 main()

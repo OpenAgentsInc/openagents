@@ -4,25 +4,30 @@
   "license": "CC0-1.0",
   "package": "Alice (original), on the Universal rig",
   "files": {
-    "PROVENANCE.md": "3e79d9d1ad7c453f2c27296daf1c93e5adef46aaac9d9884f296b6b43599228e",
-    "alice.lod0.bin": "bd416a3824ab4733cddebecb6c7da254e5365ca3d8b5347cf17ec6f26302e319",
-    "alice.lod0.gltf": "11dd7d2344265d90f3ea34e29e46170a8e225395d71237fe1c564331837e58d7",
-    "alice.lod0.png": "ae9d76922033151097a2331507886b6495025a6021ba6f9a571572b6c56709a1",
-    "alice.lod1.bin": "71c17c728d99c3ba7e5d8a92322810cc1e945ef4ab7e92187f4152d91047b53f",
-    "alice.lod1.gltf": "101594e5951bfb11c6a87cfd4f063bca7857d7f3fa3226a77af62735578e2fc8",
-    "alice.lod1.png": "067784f93b51d7477b15bbb83e2c8e3d91607c7b2161cdef97a60844f6e83e0d",
-    "alice.lod2.bin": "73aadb2d9f034eadd4d61403c48baa434a66211162566a3a5f9d5b7618f3de0a",
-    "alice.lod2.gltf": "8a6c3fee16fcc2aa8687c1e2d1e3aba611aafb6bfb78ffee95baeda158cf44ae",
-    "alice.lod2.png": "5c38f6cbfb46f7cf79321e491ddf4746526b1363f64754c314db1aa010008d9e",
-    "alice.lod3.bin": "8923ffe819083d208a106194a48f412a15867ee82f4b7d649ffa94c9c9fb66f4",
-    "alice.lod3.gltf": "1ea073064200a47ae8b92233437bf4411eb0c4f5613306ecc0efd3943cb81f41",
-    "alice.lod3.png": "c4d9872789da9ad1f272864882e80f2148efa6271a148e198a67c0cbfc817fba",
-    "license.txt": "edebff74ba5dedf035f1a64ab21359c5399dac48e35aa3b50c0b7992d3a9f93e"
+    "PROVENANCE.md": "b2fe0041c51ee25af736982bf627963c6fa5af875eabd99449fe860a7e7449dc",
+    "alice-light.lod1.bin": "3c020c7a4ad88062e9ba30941f081a45b3bfecbe78713e0349f1f00e237f3f0e",
+    "alice-light.lod1.gltf": "6a642581ccab8aca45d2982d122d2e98e5e7d83ba99553de4e047afea9fb677e",
+    "alice-summer.lod1.bin": "b489c2de8ada92819d2d65ed090350772af044924fda55acdd59ae1d72ef0e9a",
+    "alice-summer.lod1.gltf": "6beaa359092583c29c4c9af5494c16fccdc741f87e3f691703f1d61ce656111e",
+    "alice.lod0.bin": "8ca27abaf8648c3a58a6db089e65a5d47251b7e368792b0c8c369af62902c6ec",
+    "alice.lod0.gltf": "0992fe795ab6a9069985f705f19db8de3ccd992c7f0a6f3fda8b2259924c4b31",
+    "alice.lod0.png": "1e8859de12521d735c96a07cfc7fd52fc4b868d9251af57b8dc5e816c63f9b24",
+    "alice.lod1.bin": "23a1648f704f0817d86982714c42ea8dfef21fce29a78a90e29369bb6d6f36b5",
+    "alice.lod1.gltf": "b8e8b4904dd6bfbe9ec09abd9a19ac3a75c2764c654487cdb01fe9398e405045",
+    "alice.lod1.png": "844361312b142a65897526d8a66431b2d6102e88f77d3ee25d6e6856ffa92093",
+    "alice.lod2.bin": "07bd31f911f4e3f74a124e8bb50ae1cce7dc2d4c1e41f3d40bb5367db25cbb17",
+    "alice.lod2.gltf": "e5df8ef97d93ee665315fea535dc26a3abf514e325bff9de56d8fab5af29fccf",
+    "alice.lod2.png": "1643117061feaeb9fa447807fb1ac197274acd2305af90fca7c22e0eab4afb90",
+    "alice.lod3.bin": "5f7d07d45bc8f288f47a1542985c49739c09b2e9c2643f6c9b81460b6001ce87",
+    "alice.lod3.gltf": "90af655d7da02e8c530538cecc715ffca59284dacdf202aa35fc40d378a02858",
+    "alice.lod3.png": "1870bc571135b633dfddbba010ef285a7a5ce0c57d8196ccb2a7de4234022fd3",
+    "license.txt": "e57f17a3607f090b69c9ffaed62874a2bbd33e871087103ac9c820dcad9bff3f"
   },
   "variants": [
     {
       "variant": "lod0",
-      "triangles": 75872,
+      "outfit": "coat",
+      "triangles": 80646,
       "budget": 100000,
       "primitives": 2,
       "image": [
@@ -32,11 +37,12 @@
       "joint_drift_m": 1.3928724023060113e-06,
       "rest_rotation_delta": 1.4917539195025142e-06,
       "source": "build/alice.lod0.glb",
-      "source_sha256": "2dc242f58fd687f8e8820b22e5865cb7352882c12715dc71b58df8b246db18c6"
+      "source_sha256": "5c36e3e623458ec1533ff0e59dd5b3e0ee1a775f874db99d5e9ef8e004692c8a"
     },
     {
       "variant": "lod1",
-      "triangles": 35144,
+      "outfit": "coat",
+      "triangles": 37712,
       "budget": 46000,
       "primitives": 2,
       "image": [
@@ -46,11 +52,12 @@
       "joint_drift_m": 1.3928724023060113e-06,
       "rest_rotation_delta": 1.4917539195025142e-06,
       "source": "build/alice.lod1.glb",
-      "source_sha256": "5d90b5728cd6a2d94b70384b9ed5838860400621d2611c7f8464f658f9f95726"
+      "source_sha256": "d6da4da40dd7460bd691c096c5dba4f9623a31fb9614bb315571bebb8377aa15"
     },
     {
       "variant": "lod2",
-      "triangles": 6262,
+      "outfit": "coat",
+      "triangles": 6870,
       "budget": 10000,
       "primitives": 2,
       "image": [
@@ -60,11 +67,12 @@
       "joint_drift_m": 1.3928724023060113e-06,
       "rest_rotation_delta": 1.4917539195025142e-06,
       "source": "build/alice.lod2.glb",
-      "source_sha256": "e4ec13f6779ed7fc4ed1e134c17560c6d620df5fa49e8269fbe193105cd195dc"
+      "source_sha256": "4a0f1675576736e7a67f59bb3ed7f417038037dc4eb63f7d2dabebc299f93f06"
     },
     {
       "variant": "lod3",
-      "triangles": 2476,
+      "outfit": "coat",
+      "triangles": 2900,
       "budget": 3000,
       "primitives": 2,
       "image": [
@@ -74,7 +82,37 @@
       "joint_drift_m": 1.3928724023060113e-06,
       "rest_rotation_delta": 1.4917539195025142e-06,
       "source": "build/alice.lod3.glb",
-      "source_sha256": "76376a3b6d4407720498bf9f021436e65fafb6fd5472339cac4aaa440d72d44a"
+      "source_sha256": "5d4f3437b7704ed1c960e4aab8474f45fc6ea14397d75375f160be3caed75891"
+    },
+    {
+      "variant": "lod1",
+      "outfit": "light",
+      "triangles": 31772,
+      "budget": 46000,
+      "primitives": 2,
+      "image": [
+        1024,
+        1024
+      ],
+      "joint_drift_m": 1.3928724023060113e-06,
+      "rest_rotation_delta": 1.4917539195025142e-06,
+      "source": "build/alice-light.lod1.glb",
+      "source_sha256": "1544ff505bd28291bbd873f35337a15bc6a1eb5985bdc0c42072efa6e32dcf8b"
+    },
+    {
+      "variant": "lod1",
+      "outfit": "summer",
+      "triangles": 29304,
+      "budget": 46000,
+      "primitives": 2,
+      "image": [
+        1024,
+        1024
+      ],
+      "joint_drift_m": 1.3928724023060113e-06,
+      "rest_rotation_delta": 1.4917539195025142e-06,
+      "source": "build/alice-summer.lod1.glb",
+      "source_sha256": "8bfdf2667ad99e5071d0c5bc12f1d89a4cac7d3fc5046f472b515dc711204c3a"
     }
   ]
 }

@@ -101,6 +101,9 @@ pub const ALICE_TEXTURE_EDGE: u32 = 1024;
 /// not a body the player can choose. She travels as a form beside the Wild
 /// Shape beasts, so the format needs no new section.
 pub const ALICE_FORM: &str = "npc/alice";
+/// Alice's other outfits' forms, from the sources `alice-<outfit>.<variant>`:
+/// the coat off, and the summer dress (`npcs::ALICE_OUTFITS`).
+pub const ALICE_OUTFIT_FORMS: [&str; 2] = ["npc/alice-light", "npc/alice-summer"];
 /// The longest edge of the player's outfit image.
 pub const PLAYER_TEXTURE_EDGE: u32 = 512;
 /// The longest edge of the player's other base-color images that cover at
@@ -1302,6 +1305,20 @@ pub fn compile(
             ALICE_TEXTURE_EDGE,
         )?;
         builder.contents.forms.push(near);
+        // Her other outfits, on the same atlas, so each adds only geometry.
+        for (outfit, form) in crate::imported::characters::ALICE_OUTFITS
+            .iter()
+            .zip(ALICE_OUTFIT_FORMS)
+        {
+            let dressed = builder.alice(
+                sources,
+                &root,
+                &format!("{outfit}.{ALICE_VARIANT}"),
+                form,
+                ALICE_TEXTURE_EDGE,
+            )?;
+            builder.contents.forms.push(dressed);
+        }
         builder.contents.forms.sort_by(|a, b| a.name.cmp(&b.name));
     }
     let contents = builder.contents;

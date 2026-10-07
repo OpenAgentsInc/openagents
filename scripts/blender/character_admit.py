@@ -39,6 +39,9 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 BASE = os.path.join(ROOT, "assets", "verse", "characters", "quaternius", "base", "Superhero_Female_FullBody.gltf")
 DIR = os.path.join(ROOT, "assets", "verse", "characters", "original", "alice")
 BUDGETS = {"lod0": 100000, "lod1": 46000, "lod2": 10000, "lod3": 3000}
+# The outfits other than the coat (`alice.py`'s WARDROBE); the base body is
+# for review and is never admitted.
+OUTFITS = ("light", "summer")
 # Where alice.py writes its glb files: build output, not committed.
 BUILD = os.path.join(DIR, "build")
 LICENSE = b"""Alice, an original player character for Verse
@@ -51,7 +54,7 @@ reshaped by the script (Compose mode); her face, eyes, brows, and hair are
 painted by scripts/blender/alice_paint.py. Epic Games' Valley of the
 Ancient was studied in Reference-only mode for general qualities
 (docs/verse/female-character.md); none of its content was opened in
-Blender, traced, or used. Two Fab characters were studied only, for
+Blender, traced, or used. Three Fab characters were studied only, for
 measurements and technique; none of their content is in Alice.
 
 Her skeleton is the same file's Universal rig, whose joint names, parents,
@@ -143,8 +146,11 @@ def globals_by_name(doc):
     return out
 
 
-def admit(variant, base):
-    glb = os.path.join(BUILD, f"alice.{variant}.glb")
+def admit(name, variant, base):
+    """Admits `name.variant` (`alice` or `alice-<outfit>`). An outfit whose
+    atlas is the coat's, as the wardrobe level's outfits share one, points
+    at the coat's image rather than writing a copy."""
+    glb = os.path.join(BUILD, f"{name}.{variant}.glb")
     doc, blob = read_glb(glb)
     assert len(doc["skins"]) == 1, "one skin"
     skin = doc["skins"][0]
@@ -226,8 +232,8 @@ def admit(variant, base):
         }
         i = put(idx.astype(np.uint16) if len(pos) <= 65535 else idx, 5123 if len(pos) <= 65535 else 5125,
                 "SCALAR", 34963)
-        name = doc["materials"][prim["material"]]["name"] if "material" in prim else "alice"
-        primitives.append({"attributes": a, "indices": i, "material": 1 if name == "alice_hair" else 0,
+        material = doc["materials"][prim["material"]]["name"] if "material" in prim else "alice"
+        primitives.append({"attributes": a, "indices": i, "material": 1 if material == "alice_hair" else 0,
                            "mode": 4})
     assert triangles <= BUDGETS[variant], f"{variant}: {triangles} triangles"
     # Inverse binds from the base rig's own joints.
@@ -241,7 +247,11 @@ def admit(variant, base):
     root = next(i for i, n in enumerate(base["nodes"]) if n.get("name") == "root")
     nodes.append({"name": "Alice", "mesh": 0, "skin": 0})
     nodes.append({"name": "Armature", "children": [joint_count, root]})
-    stem = f"alice.{variant}"
+    stem = f"{name}.{variant}"
+    image_uri = f"{stem}.png"
+    shared = os.path.join(DIR, f"alice.{variant}.png")
+    if name != "alice" and os.path.exists(shared) and open(shared, "rb").read() == png:
+        image_uri = f"alice.{variant}.png"
     gltf = {
         "asset": {"version": "2.0", "generator": "OpenAgents scripts/blender/character_admit.py"},
         "scene": 0,
@@ -265,7 +275,7 @@ def admit(variant, base):
         }],
         "textures": [{"source": 0, "sampler": 0}],
         "samplers": [{"magFilter": 9729, "minFilter": 9987, "wrapS": 33071, "wrapT": 33071}],
-        "images": [{"name": "Alice_BaseColor", "mimeType": "image/png", "uri": f"{stem}.png"}],
+        "images": [{"name": "Alice_BaseColor", "mimeType": "image/png", "uri": image_uri}],
         "accessors": accessors,
         "bufferViews": views,
         "buffers": [{"byteLength": len(out_bin), "uri": f"{stem}.bin"}],
@@ -275,10 +285,12 @@ def admit(variant, base):
         f.write("\n")
     with open(os.path.join(DIR, f"{stem}.bin"), "wb") as f:
         f.write(bytes(out_bin))
-    with open(os.path.join(DIR, f"{stem}.png"), "wb") as f:
-        f.write(png)
+    if image_uri == f"{stem}.png":
+        with open(os.path.join(DIR, image_uri), "wb") as f:
+            f.write(png)
     return {
         "variant": variant,
+        "outfit": "coat" if name == "alice" else name[len("alice-"):],
         "triangles": triangles,
         "budget": BUDGETS[variant],
         "primitives": len(primitives),
@@ -292,10 +304,12 @@ def admit(variant, base):
 
 def main():
     base = json.load(open(BASE))
-    variants = [v for v in BUDGETS if os.path.exists(os.path.join(BUILD, f"alice.{v}.glb"))]
-    if not variants:
+    # The coat first, so the other outfits can share its atlas.
+    names = ["alice"] + [f"alice-{o}" for o in OUTFITS]
+    builds = [(n, v) for n in names for v in BUDGETS if os.path.exists(os.path.join(BUILD, f"{n}.{v}.glb"))]
+    if not builds:
         sys.exit("no alice.<variant>.glb; run scripts/blender/alice.py first")
-    report = [admit(v, base) for v in variants]
+    report = [admit(n, v, base) for n, v in builds]
     with open(os.path.join(DIR, "license.txt"), "wb") as f:
         f.write(LICENSE)
     files = {}

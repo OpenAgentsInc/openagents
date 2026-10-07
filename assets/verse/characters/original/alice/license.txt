@@ -8,7 +8,7 @@ reshaped by the script (Compose mode); her face, eyes, brows, and hair are
 painted by scripts/blender/alice_paint.py. Epic Games' Valley of the
 Ancient was studied in Reference-only mode for general qualities
 (docs/verse/female-character.md); none of its content was opened in
-Blender, traced, or used. Two Fab characters were studied only, for
+Blender, traced, or used. Three Fab characters were studied only, for
 measurements and technique; none of their content is in Alice.
 
 Her skeleton is the same file's Universal rig, whose joint names, parents,

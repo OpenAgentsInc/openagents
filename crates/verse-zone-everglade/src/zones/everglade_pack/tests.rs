@@ -521,6 +521,26 @@ fn committed_sources_compile_within_budgets_to_the_pinned_pack() {
         pack.textures[atlas as usize].width,
         compile::ALICE_TEXTURE_EDGE
     );
+    // Her other outfits share that atlas, so each adds only geometry, and
+    // each plays her clips within the character budget.
+    for name in compile::ALICE_OUTFIT_FORMS {
+        let dressed = pack.form(name).expect(name);
+        assert_eq!(dressed.joints.len(), alice.joints.len(), "{name}");
+        assert!(
+            dressed.triangles() <= Limits::EVERGLADE.character_triangles,
+            "{name}"
+        );
+        for (clip, _) in compile::PLAYER_CLIPS {
+            assert!(dressed.clip(clip).is_some(), "{name} {clip}");
+        }
+        for primitive in &dressed.primitives {
+            assert_eq!(
+                pack.materials[primitive.material as usize].texture,
+                Some(atlas),
+                "{name}"
+            );
+        }
+    }
     assert!(compiled.triangles >= player.triangles());
     for primitive in &player.primitives {
         let texture = pack.materials[primitive.material as usize].texture.unwrap();
