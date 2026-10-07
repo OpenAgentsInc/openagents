@@ -1,7 +1,7 @@
 //! A workshop agent's typed memory (`docs/verse/workshop-agent.md`,
 //! "Memory"): `agents/NAME/memory.jsonl` under the host root, mode `0600`.
 //!
-//! Each entry is one of four kinds, at most [`ENTRY_MAX`] bytes. A
+//! Each entry is one of five kinds, at most [`ENTRY_MAX`] bytes. A
 //! preference the agent proposes is a candidate, a NIP-POL preference
 //! candidate, and no briefing carries it until the owner accepts it. The
 //! secret screen (`secret-screen`) refuses an entry that looks like a
@@ -39,6 +39,9 @@ pub enum MemoryKind {
     Outcome,
     /// Anything the owner told it to remember.
     Note,
+    /// What a reflection inferred from the records its `sources` cite,
+    /// after code checked each citation (`agent_reflect`).
+    Insight,
 }
 
 impl MemoryKind {
@@ -49,6 +52,7 @@ impl MemoryKind {
             Self::Preference => "preference",
             Self::Outcome => "outcome",
             Self::Note => "note",
+            Self::Insight => "insight",
         }
     }
 }
@@ -320,7 +324,7 @@ impl Memory {
                     .count() as i64;
                 let standing = match e.kind {
                     MemoryKind::Preference | MemoryKind::Note => 1000,
-                    MemoryKind::Project => 10,
+                    MemoryKind::Project | MemoryKind::Insight => 10,
                     MemoryKind::Outcome => 0,
                 };
                 (standing + shared * 5, e)

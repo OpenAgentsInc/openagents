@@ -731,7 +731,7 @@ pub async fn next_action(
     providers: &[ProviderState],
     book: &std::path::Path,
     now: fn() -> u64,
-) -> Result<(NextAction, String), String> {
+) -> Result<(NextAction, String, Option<f64>), String> {
     let session = format!("coder-agent-{}-{}", std::process::id(), atif::now_ms());
     let lanes: Vec<(Route, Provided)> = providers
         .iter()
@@ -755,7 +755,8 @@ pub async fn next_action(
     generator.record_start();
     let generated = generator.generate(system, prompt).await;
     let model = generated.model.clone();
-    generated.action.map(|action| (action, model))
+    let usd = generated.usd;
+    generated.action.map(|action| (action, model, usd))
 }
 
 /// The providers as they stand after a turn: the book read again, and the

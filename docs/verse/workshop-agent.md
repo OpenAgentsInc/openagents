@@ -410,6 +410,7 @@ Memory is typed entries, each at most 2 KiB:
 | `preference` | "Owner wants small commits and Google style in prose." | Proposed by the agent; active only after you accept it |
 | `outcome` | "2026-10-05: fixed atif chunk test; merged by owner." | The host, from the journal |
 | `note` | Anything you tell it to remember | You |
+| `insight` | "cargo test -p verse --release doesn't finish within the 20 minute bound." | A reflection, citing the records behind it in `sources` |
 
 Rules:
 
@@ -438,9 +439,12 @@ Rules:
 
 [Agent identity and engrams](agent-identity-and-engrams.md) makes her
 memory NIP-AE engrams and gives her a loop of her own that steers Coder.
-[Generative agents](generative-agents.md) proposes the next steps for her
-memory: retrieval scored by recency, importance, and relevance, and a
-nightly reflection whose insights cite the journal rows behind them.
+[Generative agents](generative-agents.md) describes her retrieval, scored by
+recency, importance, and relevance, and her reflection, the `reflect`
+standing job, whose insights cite the records behind them. Code checks
+each citation; a dropped insight stays readable in her journal
+(`openagents agent log alice`), and an inferred preference waits for you
+with the other candidates.
 
 ### Privacy and disclosure
 
@@ -692,7 +696,7 @@ commits between October 3 and 5, 2026. The state is as of October 6, 2026.
 | Reporting | Done | Her transcript and nameplate; her own chat thread on the host, which syncs to the desktop app and the phone; a NIP-WS summary whose headline is host state | Walking to you in the world when she reports (she goes to the Podium only to ask) | 0.5 |
 | Journal and kill switch | Done | Stop's four steps, each journaled; pause; resume; retire deletes her key and keeps her journal | Revoking grants on other computers, once she has any | 0 |
 | Memory | Done | Typed entries (project, preference, outcome, note) of at most 2 KiB; preferences she proposes wait for your acceptance; the secret screen moved to the shared `secret-screen` crate, which refuses credential shapes and this host's exact credential values; forgetting journals that it forgot, not what; briefings of at most 12 KiB with the selection receipt journaled | Edit and export; relevance beyond shared words | 1 |
-| Standing jobs | Done | The scheduler on the host's sweep, admission per occurrence (her state, expiry, occurrences, budget, capacity), refusals journaled and skipped, a missed slot fired once, and the three templates, all off until you turn one on | Program actions from `programs/`; metered spend per occurrence (each is recorded as unmetered) | 1.5 |
+| Standing jobs | Done | The scheduler on the host's sweep, admission per occurrence (her state, expiry, occurrences, budget, capacity), refusals journaled and skipped, a missed slot fired once, and the four templates, all off until you turn one on; a reflection's cost is metered | Program actions from `programs/`; metered spend for request occurrences (each is recorded as unmetered) | 1.5 |
 | Phone | Partial | WS summaries and her thread reach the phone | Agent card, composer, memory and journal views | 2 |
 | Other computers | Missing | None | Agent key as a device; invitation flow for it | 2 |
 | Smart terminal `@agent` | Done | `@alice TEXT` on the input line routes to her through `openagents agent ask` | None | 0 |
@@ -720,8 +724,8 @@ real computers are separate and go in `NEEDS_OWNER.md`.
    and retire actions; reports on the phone through WS summaries; `@alice`
    from the smart terminal.
 3. **Standing jobs.** Done for the scheduler, admission per occurrence, and
-   the three templates: nightly check, watch issues, and keep it green, all
-   off by default. Program actions remain.
+   the four templates: nightly check, watch issues, keep it green, and
+   reflect, all off by default. Program actions remain.
 4. **Other computers.** About 2 agent-hours. A delegated grant to the
    agent's key on your Linux host; terminal mode and task mode there.
 5. **Presence and growth.** About 7 agent-hours. NIP-MV opt-in, the AE

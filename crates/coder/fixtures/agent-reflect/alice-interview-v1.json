@@ -1,0 +1,73 @@
+{
+  "schema": "openagents.agent-reflection-script.v1",
+  "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+  "at": 1790564400,
+  "model": "scripted-reflection-v1",
+  "usd": 0.012,
+  "questions": [
+    {
+      "question": "Which of my changes did the owner merge, and when?",
+      "insights": [
+        {
+          "text": "From September 24 to 26 the owner merged three of my changes, one a day: t-125, t-129, and t-131.",
+          "because": ["journal:266", "journal:289", "journal:314"],
+          "supported": 0.93,
+          "preference": 0.04,
+          "expect": "stored"
+        },
+        {
+          "text": "Earlier the owner merged t-108 on September 15 and t-105 on September 16.",
+          "because": ["memory:18", "memory:20"],
+          "supported": 0.9,
+          "preference": 0.03,
+          "expect": "stored"
+        },
+        {
+          "text": "The owner merged t-101 on September 8, the day after I started.",
+          "because": ["journal:999"],
+          "supported": 0.8,
+          "preference": 0.02,
+          "expect": "it cites journal:999, which doesn't exist"
+        },
+        {
+          "text": "Task t-101 was the first change of mine the owner merged.",
+          "because": ["memory:5", "memory:18"],
+          "supported": 0.85,
+          "preference": 0.02,
+          "expect": "it cites memory:5, which wasn't shown for this question"
+        }
+      ]
+    },
+    {
+      "question": "How does the owner want commits and pushes handled?",
+      "insights": [
+        {
+          "text": "The owner wants my changes to reach main only through the Merge station, never by a push of my own.",
+          "because": ["memory:10", "journal:289", "journal:314"],
+          "supported": 0.88,
+          "preference": 0.91,
+          "expect": "proposed"
+        },
+        {
+          "text": "The owner rejects any change whose commit message runs over 72 characters.",
+          "because": ["memory:3", "journal:153"],
+          "supported": 0.12,
+          "preference": 0.7,
+          "expect": "the cited records don't support it"
+        }
+      ]
+    },
+    {
+      "question": "Which tests are slow or need a longer bound to finish?",
+      "insights": [
+        {
+          "text": "cargo test -p verse --release doesn't finish within the 20 minute command bound, so it needs a longer one.",
+          "because": ["journal:240", "journal:241", "memory:36"],
+          "supported": 0.95,
+          "preference": 0.05,
+          "expect": "stored"
+        }
+      ]
+    }
+  ]
+}

@@ -1,3 +1,15 @@
+## Insight support calibration and a live reflection (#10789)
+
+Alice's reflection checks each insight with Jev
+(`questions/insight-support.json`) under provisional thresholds (supported
+0.7, preference 0.5). Run the calibration in
+`docs/decision-models/measurements/2026-10-07-insight-support.md` with a
+live Jev key and record the numbers there. Then turn the job on for one
+night (`openagents agent jobs alice add reflect`, then `on reflect`) and
+read what it stored, proposed, and dropped with `openagents agent log
+alice`; accept or reject any proposed preference at F2. A reflection spends
+about $0.05 at Sol list prices.
+
 ## Memory importance calibration and a live interview (#10787)
 
 Alice's briefing now scores importance with Jev

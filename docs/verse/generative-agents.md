@@ -246,11 +246,12 @@ scored stream:
   to word overlap.
 - The level mapping is provisional until a live calibration:
   [measurement](../decision-models/measurements/2026-10-06-memory-importance.md).
-- `coder interview --arm scored` runs the stream offline (priors and BM25).
-  Scripted answerer on the open partitions: the scored arm carried the
-  answer's evidence for 9 of 14 items against 4 for word overlap, but the
-  scripted answerer, which picks the line sharing the most words, got 4
-  right against 5. A live answerer is the real comparison.
+- `coder interview --arm no-reflection` runs the stream offline (priors
+  and BM25); phase B2 renamed it from `scored`. Scripted answerer on the
+  open partitions: the stream carried the answer's evidence for 9 of 14
+  items against 4 for word overlap, but the scripted answerer, which picks
+  the line sharing the most words, got 4 right against 5. A live answerer
+  is the real comparison.
 
 ## 2. Reflection with checked citations
 
@@ -317,6 +318,44 @@ two early triggers.
   1.3% as the bar to beat.
 
 **Estimate.** 6 agent-hours, after item 1.
+
+**Implemented (phase B2).** [`agent_reflect.rs`](../../crates/coder/src/task/agent_reflect.rs)
+holds the procedure and the checks:
+
+- `reflect` is a pure function of the records and three services: a
+  `Writer` (the agent's model; `LiveModel` reports each call's cost), a
+  `Verify` (Jev with
+  [`insight-support.json`](../../questions/insight-support.json)), and the
+  stream's own services, whose `agent_recall::retrieve` shows the top 15 by
+  score for each question. `check` refuses, in order: no citation, a
+  reference that doesn't read or doesn't exist, one not shown for that
+  question, a depth over 3 (an insight citing only records is depth 1), the
+  secret screen, a Jev failure, and support under 0.7. Support and
+  preference thresholds are provisional:
+  [measurement](../decision-models/measurements/2026-10-07-insight-support.md).
+- `Memory::reflect` reads her files, runs it, appends the sidecar's new
+  score rows, and writes the journal: a row per question with the
+  references it showed, `insight entry N (question Q, depth D) cites ...`,
+  `preference entry N, proposed from an insight ...` (a `Candidate`, at F2
+  with the others), `dropped an unverified insight (question Q): WHY: TEXT;
+  cites ...`, and last the run record, `reflection run (TRIGGER): ...;
+  model M; cost $X; stored S, proposed P, dropped D`.
+  `openagents agent log` shows them all.
+- The `reflect` template (`agent_jobs`): `Trigger::Reflect` fires nightly
+  at 03:00 and early when summed importance since the last run record
+  reaches `EARLY_THRESHOLD` (150), read from the sidecar, the rule table,
+  and priors, at most `EARLY_PER_DAY` (2) early ones a local day. The host
+  runs the occurrence on a thread of its own (`Agents::with_reflector`
+  for tests) and meters its cost into the job's budget.
+- The interview gains `no-reflection` and `full` arms. `full` runs a
+  recorded reflection,
+  [`fixtures/agent-reflect/alice-interview-v1.json`](../../crates/coder/fixtures/agent-reflect/alice-interview-v1.json),
+  through the same checks over the phase A fixture: of 7 insights, 3 are
+  stored, 1 is proposed, and 3 are dropped (a fabricated citation, an
+  unshown one, and an unsupported claim). With the scripted answerer both
+  arms score the same (3 of 7 on calibration, 1 of 7 on development);
+  the full arm carries the stored insights, and a live answerer is the
+  comparison that counts.
 
 ## 3. A world tree generated from the layout
 
@@ -551,7 +590,8 @@ reflections ("what have you learned about how the owner wants commits?").
   partitions `gym::suite` requires; the locked partition is read once.
 - **Arms.** The paper's ablations, plus today's code as the baseline: the
   full architecture; no reflection; no reflection or plan; no memory (an
-  empty briefing); and today's word-overlap briefing.
+  empty briefing); and today's word-overlap briefing. The `full` and
+  `no-reflection` arms exist since phase B2; `full` has no plan yet.
 - **Scoring.** The paper used 100 human evaluators and TrueSkill. Here,
   memory and plan items have answers code can check against the fixture.
   The other items are scored by Jev `noul` questions: the answer is
@@ -649,7 +689,7 @@ fixtures and a small demo.
 | --- | --- | --- | --- |
 | A. Measure first | The fixture, the suite's memory category, and the baseline arm from item 7 (implemented) | [#10785](https://github.com/OpenAgentsInc/openagents/issues/10785) | None |
 | B1. Memory | 1 (implemented) | [#10787](https://github.com/OpenAgentsInc/openagents/issues/10787) | A |
-| B2. Reflection | 2 | [#10789](https://github.com/OpenAgentsInc/openagents/issues/10789) | B1 |
+| B2. Reflection | 2 (implemented) | [#10789](https://github.com/OpenAgentsInc/openagents/issues/10789) | B1 |
 | B3. Interviews | The rest of item 7 | [#10794](https://github.com/OpenAgentsInc/openagents/issues/10794) | B2, D |
 | C1. Clock and districts | The town clock, time of day, and district data (implemented) | [#10786](https://github.com/OpenAgentsInc/openagents/issues/10786) | None; runs beside A and B |
 | C2. World | 3 | [#10788](https://github.com/OpenAgentsInc/openagents/issues/10788) | C1 |

@@ -49,7 +49,8 @@ pub const USAGE: &str = "usage: openagents agent COMMAND [--root DIR] [--control
   log NAME [--after N]
                Her journal, newest last.
   memory NAME list
-               Her memory: projects, preferences, outcomes, and notes.
+               Her memory: projects, preferences, outcomes, notes, and
+               insights.
   memory NAME note TEXT...
                Tell her something to remember.
   memory NAME forget ID
@@ -61,7 +62,8 @@ pub const USAGE: &str = "usage: openagents agent COMMAND [--root DIR] [--control
   jobs NAME list
                Her standing jobs, all off until you turn one on.
   jobs NAME add TEMPLATE [--repository OWNER/REPO] [--label L]
-               Add nightly-check, watch-issues, or keep-green, off.
+               Add nightly-check, watch-issues, keep-green, or reflect,
+               off.
   jobs NAME on JOB
                Turn a job on.
   jobs NAME off JOB

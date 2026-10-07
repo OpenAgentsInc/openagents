@@ -104,6 +104,18 @@ fn both_arms_run_through_the_scripted_answerer_into_a_verified_chain() {
             .iter()
             .all(|c| c.as_str().unwrap().starts_with("memory:"))
     );
+    // The full arm carries the insights the recorded reflection stored;
+    // the no-reflection arm has none to carry.
+    let insights = |arm: &str| {
+        rows.iter()
+            .filter(|r| r["arm"] == arm)
+            .flat_map(|r| r["carried"].as_array().unwrap())
+            .filter_map(|c| c.as_str()?.strip_prefix("memory:")?.parse::<u64>().ok())
+            .filter(|id| *id as usize > fixture.memory.len())
+            .count()
+    };
+    assert_eq!(insights("no-reflection"), 0);
+    assert!(insights("full") > 0);
 
     // The same arm, answerer, and items again is a repeat, not a trial.
     let mut arm = ArmName::NoMemory.build(&dir.path().join("scratch"));

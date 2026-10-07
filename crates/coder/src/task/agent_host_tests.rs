@@ -690,3 +690,121 @@ fn her_replies_never_send_the_owner_through_hoops() {
         assert_eq!(agent::instructs(&why), None, "{why}");
     }
 }
+
+struct Capacity;
+
+impl Facts for Capacity {
+    fn head(&self, _: &Path) -> Option<String> {
+        None
+    }
+    fn issues(
+        &self,
+        _: &str,
+        _: &str,
+    ) -> Result<
+        (
+            Vec<crate::task::issue_pick::Open>,
+            Vec<crate::task::issue_pick::Pull>,
+        ),
+        String,
+    > {
+        Ok((Vec::new(), Vec::new()))
+    }
+    fn capacity(&self) -> bool {
+        true
+    }
+}
+
+#[test]
+fn a_reflect_occurrence_runs_the_reflection_and_meters_its_cost() {
+    use crate::task::agent_reflect::{Recorded, Script, ScriptInsight, ScriptQuestion, Scripted};
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::new(&dir.path().join("host"), "alice").unwrap();
+    let script = Script {
+        schema: crate::task::agent_reflect::SCRIPT_SCHEMA.into(),
+        fixture_digest: String::new(),
+        at: clock(),
+        model: "scripted".into(),
+        usd: 0.02,
+        questions: vec![ScriptQuestion {
+            question: "What keeps stopping me?".into(),
+            insights: vec![ScriptInsight {
+                text: "The owner stopped me fifteen times in one day.".into(),
+                because: vec!["journal:4".into(), "journal:5".into()],
+                supported: 0.9,
+                preference: 0.1,
+                expect: "stored".into(),
+            }],
+        }],
+    };
+    let reflector: crate::task::agent_reflect::ServicesFactory = Arc::new(move |_: &Store| {
+        Ok(crate::task::agent_reflect::Services {
+            writer: Box::new(Scripted::new(script.clone())),
+            verify: Box::new(Recorded::new(&script)),
+            recall: crate::task::agent_recall::Services::offline(),
+        })
+    });
+    let agents = host(&dir, Vec::new())
+        .with_facts(Arc::new(Capacity))
+        .with_reflector(reflector);
+    let jobs = Jobs::new(store.clone());
+    jobs.add(
+        agent_jobs::template("reflect", "", None, None, 0, clock() - 10).unwrap(),
+        clock() - 10,
+    )
+    .unwrap();
+    jobs.edit("reflect", agent_jobs::Edit::On, clock() - 10)
+        .unwrap();
+    // Fifteen stops since it was turned on pass the early threshold.
+    for _ in 0..15 {
+        store
+            .append(&Entry::new(
+                clock() - 5,
+                Kind::Control,
+                "the owner stopped alice",
+            ))
+            .unwrap();
+    }
+    agents.tick();
+    let start = Instant::now();
+    let run = loop {
+        let journal = store.journal(200).unwrap();
+        if let Some(run) = journal
+            .iter()
+            .find(|e| e.text.starts_with(crate::task::agent_reflect::RUN_PREFIX))
+        {
+            break run.clone();
+        }
+        assert!(start.elapsed() < Duration::from_secs(20), "{journal:?}");
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    assert!(
+        run.text
+            .starts_with("reflection run (early: importance 151"),
+        "{}",
+        run.text
+    );
+    assert!(
+        run.text.ends_with("stored 1, proposed 0, dropped 0"),
+        "{}",
+        run.text
+    );
+    let memory = Memory::new(store.clone(), secret_screen::Screen::shapes());
+    assert!(
+        memory
+            .entries()
+            .unwrap()
+            .iter()
+            .any(|e| e.kind == MemoryKind::Insight && e.sources == ["journal:4", "journal:5"])
+    );
+    let start = Instant::now();
+    loop {
+        let job = &jobs.load().unwrap()[0];
+        if job.budget.unmetered == 0 {
+            assert!((job.budget.spent - 0.04).abs() < 1e-9, "{job:?}");
+            break;
+        }
+        assert!(start.elapsed() < Duration::from_secs(20), "{job:?}");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}

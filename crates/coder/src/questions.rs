@@ -897,6 +897,7 @@ mod tests {
                 "openagents.expectation-support.v1",
                 "openagents.independence.v1",
                 "openagents.independence.v2",
+                "openagents.insight-support.v1",
                 "openagents.memory-importance.v1",
                 "openagents.method-conformance.v1",
                 "openagents.program.v1",

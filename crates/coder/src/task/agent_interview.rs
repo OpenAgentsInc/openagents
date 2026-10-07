@@ -6,11 +6,12 @@
 //! briefing the agent would carry, an [`Answerer`] answers from it, and
 //! each answer becomes a code-graded, receipt-chained row in a Gym store.
 //!
-//! Three arms exist: [`ArmName::NoMemory`], an empty briefing;
-//! [`ArmName::WordOverlap`], the baseline [`Memory::briefing`]; and
-//! [`ArmName::Scored`], the scored memory stream. The no-reflection and
-//! no-plan arms plug in as further [`ArmName`] variants with their own
-//! [`Arm`]. The [`FromBriefing`] and
+//! Four arms exist: [`ArmName::NoMemory`], an empty briefing;
+//! [`ArmName::WordOverlap`], the baseline [`Memory::briefing`];
+//! [`ArmName::NoReflection`], the scored memory stream alone; and
+//! [`ArmName::Full`], the stream with the insights a recorded reflection
+//! stored. The no-plan arm plugs in as a further [`ArmName`] variant with
+//! its own [`Arm`]. The [`FromBriefing`] and
 //! [`Canned`] answerers run with no model; [`Live`] asks the agent's
 //! model through the capacity book, and only the command uses it.
 
@@ -123,19 +124,28 @@ pub enum ArmName {
     /// the question.
     WordOverlap,
     /// The scored memory stream (`agent_recall`): recency, importance, and
-    /// relevance over memory entries and journal rows.
-    Scored,
+    /// relevance over memory entries and journal rows, with no insights.
+    NoReflection,
+    /// The full architecture so far: the scored stream with the insights a
+    /// reflection stored (`agent_reflect`).
+    Full,
 }
 
 impl ArmName {
-    pub const ALL: [Self; 3] = [Self::NoMemory, Self::WordOverlap, Self::Scored];
+    pub const ALL: [Self; 4] = [
+        Self::NoMemory,
+        Self::WordOverlap,
+        Self::NoReflection,
+        Self::Full,
+    ];
 
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::NoMemory => "no-memory",
             Self::WordOverlap => "word-overlap",
-            Self::Scored => "scored",
+            Self::NoReflection => "no-reflection",
+            Self::Full => "full",
         }
     }
 
@@ -152,7 +162,8 @@ impl ArmName {
             Self::WordOverlap => Box::new(WordOverlap {
                 root: scratch.join(self.as_str()),
             }),
-            Self::Scored => Box::new(Scored),
+            Self::NoReflection => Box::new(NoReflection),
+            Self::Full => Box::new(Full::new(scratch.join(self.as_str()))),
         }
     }
 }
@@ -204,46 +215,151 @@ impl Arm for WordOverlap {
 }
 
 /// The scored stream (`agent_recall::recall`) over the fixture as it stood
-/// at the interview, with no model: rule and prior importance, BM25
-/// relevance, and recency from the fixture's own selection receipts.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct Scored;
+/// at `ask`, with `insights` beside its memory, and no model: rule and
+/// prior importance, BM25 relevance, and recency from the fixture's own
+/// selection receipts.
+fn stream_brief(fixture: &Fixture, ask: &Ask<'_>, insights: &[MemoryEntry]) -> Briefing {
+    let journal: Vec<(usize, Entry)> = fixture
+        .journal
+        .iter()
+        .enumerate()
+        .filter(|(_, e)| e.at < ask.as_of)
+        .map(|(i, e)| (i + 1, e.clone()))
+        .collect();
+    let memory: Vec<MemoryEntry> = fixture
+        .memory
+        .iter()
+        .chain(insights)
+        .filter(|e| e.at < ask.as_of)
+        .cloned()
+        .collect();
+    let recall = super::agent_recall::recall(
+        &super::agent_recall::Inputs {
+            agent: fixture.agent(),
+            request: ask.question,
+            workspace: fixture.workspace(),
+            now: ask.as_of,
+            journal: &journal,
+            memory: &memory,
+        },
+        &std::collections::HashMap::new(),
+        &mut super::agent_recall::Services::offline(),
+    );
+    Briefing {
+        text: recall.text,
+        carried: recall.carried.iter().map(ToString::to_string).collect(),
+    }
+}
 
-impl Arm for Scored {
+/// The scored stream over the fixture alone: the paper's no-reflection
+/// condition.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct NoReflection;
+
+impl Arm for NoReflection {
     fn name(&self) -> &'static str {
-        ArmName::Scored.as_str()
+        ArmName::NoReflection.as_str()
     }
 
     fn brief(&mut self, fixture: &Fixture, ask: &Ask<'_>) -> Result<Briefing, String> {
-        let journal: Vec<(usize, Entry)> = fixture
-            .journal
-            .iter()
-            .enumerate()
-            .filter(|(_, e)| e.at < ask.as_of)
-            .map(|(i, e)| (i + 1, e.clone()))
-            .collect();
-        let memory: Vec<MemoryEntry> = fixture
-            .memory
-            .iter()
-            .filter(|e| e.at < ask.as_of)
-            .cloned()
-            .collect();
-        let recall = super::agent_recall::recall(
-            &super::agent_recall::Inputs {
-                agent: fixture.agent(),
-                request: ask.question,
-                workspace: fixture.workspace(),
-                now: ask.as_of,
-                journal: &journal,
-                memory: &memory,
-            },
-            &std::collections::HashMap::new(),
-            &mut super::agent_recall::Services::offline(),
-        );
-        Ok(Briefing {
-            text: recall.text,
-            carried: recall.carried.iter().map(ToString::to_string).collect(),
+        Ok(stream_brief(fixture, ask, &[]))
+    }
+}
+
+/// The scored stream with the insights the recorded reflection
+/// (`agent_reflect::Script::alice_v1`) stores when it runs over the
+/// fixture in a scratch host root, through the same checks a live one
+/// passes.
+#[derive(Clone, Debug)]
+pub struct Full {
+    root: PathBuf,
+    insights: Option<Vec<MemoryEntry>>,
+}
+
+impl Full {
+    #[must_use]
+    pub fn new(root: PathBuf) -> Self {
+        Self {
+            root,
+            insights: None,
+        }
+    }
+
+    /// The insight entries the recorded reflection stored, run once.
+    ///
+    /// # Errors
+    /// When the script doesn't match the fixture or the reflection fails.
+    pub fn insights(&mut self, fixture: &Fixture) -> Result<&[MemoryEntry], String> {
+        if self.insights.is_none() {
+            self.insights = Some(reflect_fixture(fixture, &self.root)?.1);
+        }
+        Ok(self.insights.as_deref().unwrap_or_default())
+    }
+}
+
+/// Runs the recorded reflection over `fixture`, as it stood when the
+/// script runs, in a scratch host root under `root`: the reflection and
+/// the active insight entries it stored.
+///
+/// # Errors
+/// When the script doesn't pin this fixture, or the reflection fails.
+pub fn reflect_fixture(
+    fixture: &Fixture,
+    root: &Path,
+) -> Result<(super::agent_reflect::Reflection, Vec<MemoryEntry>), String> {
+    let script = super::agent_reflect::Script::alice_v1()?;
+    if script.fixture_digest != fixture.gym.manifest.digest {
+        return Err(format!(
+            "the recorded reflection pins fixture {}, and this fixture is {}",
+            script.fixture_digest, fixture.gym.manifest.digest
+        ));
+    }
+    let store = Store::new(root, fixture.agent())?;
+    std::fs::create_dir_all(store.dir())
+        .map_err(|e| format!("cannot create {}: {e}", store.dir().display()))?;
+    let lines = |rows: Vec<String>| rows.into_iter().map(|row| row + "\n").collect::<String>();
+    let journal = fixture
+        .journal
+        .iter()
+        .filter(|e| e.at <= script.at)
+        .map(|e| serde_json::to_string(e).map_err(|e| e.to_string()))
+        .collect::<Result<Vec<_>, _>>()?;
+    let memory = fixture
+        .memory
+        .iter()
+        .filter(|e| e.at <= script.at)
+        .map(|e| serde_json::to_string(e).map_err(|e| e.to_string()))
+        .collect::<Result<Vec<_>, _>>()?;
+    for (name, body) in [
+        ("journal.jsonl", lines(journal)),
+        ("memory.jsonl", lines(memory)),
+    ] {
+        let path = store.dir().join(name);
+        std::fs::write(&path, body).map_err(|e| format!("cannot write {}: {e}", path.display()))?;
+    }
+    let screen = secret_screen::Screen::shapes();
+    let memory = Memory::new(store, screen.clone());
+    let mut services = script.services();
+    let (reflection, _) = memory.reflect(&mut services, &screen, "recorded", script.at)?;
+    let insights = memory
+        .entries()?
+        .into_iter()
+        .filter(|e| {
+            e.kind == super::agent_memory::MemoryKind::Insight
+                && e.state == super::agent_memory::MemoryState::Active
         })
+        .collect();
+    Ok((reflection, insights))
+}
+
+impl Arm for Full {
+    fn name(&self) -> &'static str {
+        ArmName::Full.as_str()
+    }
+
+    fn brief(&mut self, fixture: &Fixture, ask: &Ask<'_>) -> Result<Briefing, String> {
+        let insights = self.insights(fixture)?.to_vec();
+        Ok(stream_brief(fixture, ask, &insights))
     }
 }
 
@@ -514,7 +630,8 @@ coder interview [--arm NAME|all] [--partition calibration|development|locked]
 Interviews the workshop agent's frozen fixture (gym suite alice-interview-v1)
 and appends one receipt-chained row per item to a Gym store.
 
-  --arm         no-memory, word-overlap, scored, or all (default all)
+  --arm         no-memory, word-overlap, no-reflection, full, or all
+                (default all)
   --partition   default development; locked is read once and needs --ledger
                 and --reason, and the read is recorded in the ledger
   --answerer    scripted answers from the briefing with no model (default);

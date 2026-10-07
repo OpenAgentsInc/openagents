@@ -10,8 +10,12 @@
 //! fires, against the agent's state, the job's expiry, occurrences, and
 //! budget, and the capacity book; a refused occurrence is journaled with
 //! the reason and skipped, never queued. A time that passed while the host
-//! was down fires once, not once per missed slot. Three templates ship:
-//! the nightly check, watch issues, and keep it green ([`template`]).
+//! was down fires once, not once per missed slot. Four templates ship:
+//! the nightly check, watch issues, keep it green, and reflect
+//! ([`template`]). A reflect occurrence runs the agent's reflection
+//! (`agent_reflect`) instead of handing her a request: nightly, and early
+//! when the summed importance of her records since the last reflection
+//! passes the job's threshold, at most `early_per_day` times a day.
 
 use std::path::{Path, PathBuf};
 
@@ -30,7 +34,7 @@ pub const EXPIRY_MAX: u64 = 90 * 24 * 60 * 60;
 /// The longest title.
 pub const TITLE_MAX: usize = 120;
 /// The templates [`template`] makes.
-pub const TEMPLATES: [&str; 3] = ["nightly-check", "watch-issues", "keep-green"];
+pub const TEMPLATES: [&str; 4] = ["nightly-check", "watch-issues", "keep-green", "reflect"];
 
 /// What makes a job fire.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -51,6 +55,17 @@ pub enum Trigger {
     Issues { repository: String, label: String },
     /// The workspace's default branch moved.
     Checks {},
+    /// A reflection: daily at `at`, as a schedule, and early when the
+    /// summed importance of the agent's records since the last reflection
+    /// reaches `threshold`, at most `early_per_day` times a local day.
+    Reflect {
+        /// `HH:MM`.
+        at: String,
+        #[serde(default)]
+        utc_offset: i32,
+        threshold: u32,
+        early_per_day: u32,
+    },
 }
 
 impl Trigger {
@@ -60,6 +75,7 @@ impl Trigger {
             Self::Schedule { .. } => "schedule",
             Self::Issues { .. } => "issues",
             Self::Checks {} => "checks",
+            Self::Reflect { .. } => "reflect",
         }
     }
 }
@@ -147,6 +163,9 @@ pub struct Occurrence {
     pub quiet: bool,
     /// Keep it green: a failing check becomes a task-mode fix.
     pub fix_on_failure: bool,
+    /// Reflect: what triggered the reflection, such as `nightly`; the host
+    /// runs a reflection in place of a request.
+    pub reflect: Option<String>,
 }
 
 /// An agent's jobs file.
@@ -266,6 +285,25 @@ impl Jobs {
             .append(&Entry::new(now, Kind::Job, &format!("job {id} {word}")))
     }
 
+    /// Records what occurrence spending of job `id` cost: `Some` dollars
+    /// moves one occurrence from unmetered to spent; `None` leaves it
+    /// unmetered.
+    ///
+    /// # Errors
+    /// When the file cannot be read or written.
+    pub fn meter(&self, id: &str, usd: Option<f64>) -> Result<(), String> {
+        let Some(usd) = usd else {
+            return Ok(());
+        };
+        let mut jobs = self.load()?;
+        let Some(job) = jobs.iter_mut().find(|j| j.job == id) else {
+            return Ok(());
+        };
+        job.budget.spent += usd.max(0.0);
+        job.budget.unmetered = job.budget.unmetered.saturating_sub(1);
+        self.save(&jobs)
+    }
+
     /// Turns every job off, as the first step of a stop. Returns how many
     /// were on.
     ///
@@ -347,6 +385,18 @@ pub fn validate(job: &Job, now: u64) -> Result<(), String> {
         if minutes(at).is_none() || weekday.is_some_and(|d| d > 6) {
             return Err("a schedule is HH:MM, and a weekday 0 (Monday) to 6".into());
         }
+    }
+    if let Trigger::Reflect {
+        at,
+        threshold,
+        early_per_day,
+        ..
+    } = &job.trigger
+        && (minutes(at).is_none() || *threshold == 0 || *early_per_day > 24)
+    {
+        return Err(
+            "a reflection is HH:MM, a threshold above 0, and at most 24 early ones a day".into(),
+        );
     }
     if let Trigger::Issues { repository, label } = &job.trigger
         && (!repository.contains('/') || label.trim().is_empty())
@@ -459,6 +509,25 @@ pub fn template(
              failing command with its first error.",
             Mode::Terminal,
         ),
+        "reflect" => {
+            let mut job = base(
+                "reflect",
+                "Reflect",
+                Trigger::Reflect {
+                    at: "03:00".into(),
+                    utc_offset,
+                    threshold: super::agent_reflect::EARLY_THRESHOLD,
+                    early_per_day: super::agent_reflect::EARLY_PER_DAY,
+                },
+                "Reflect on your recent records: ask the three most salient questions, write \
+                 insights that cite the records they rest on, and keep only those that check.",
+                Mode::Terminal,
+            );
+            // Nightly for 30 days, and up to two early ones a day.
+            job.max_occurrences = 90;
+            job.budget.per_occurrence = 0.25;
+            job
+        }
         other => return Err(format!("no job template named `{other}`")),
     })
 }
@@ -485,7 +554,7 @@ pub fn tick(
         if !job.enabled {
             continue;
         }
-        let Some((detail, seen)) = due(job, path, facts, now) else {
+        let Some((detail, seen)) = due(job, store, path, facts, now) else {
             continue;
         };
         changed = true;
@@ -497,6 +566,8 @@ pub fn tick(
             Ok(()) => {
                 job.occurrences += 1;
                 job.budget.unmetered += 1;
+                let reflect = matches!(job.trigger, Trigger::Reflect { .. })
+                    .then(|| detail.clone().unwrap_or_else(|| "nightly".into()));
                 let text = match &detail {
                     Some(detail) => format!("{}\n\n{detail}", job.action),
                     None => job.action.clone(),
@@ -517,6 +588,7 @@ pub fn tick(
                     workspace: job.workspace.clone(),
                     quiet: job.quiet,
                     fix_on_failure: job.template.as_deref() == Some("keep-green"),
+                    reflect,
                 });
             }
             Err(why) => {
@@ -540,6 +612,7 @@ pub fn tick(
 #[allow(clippy::type_complexity)]
 fn due(
     job: &Job,
+    store: &Store,
     path: &Path,
     facts: &dyn Facts,
     now: u64,
@@ -553,6 +626,38 @@ fn due(
             let slot = last_slot(at, *weekday, *utc_offset, now)?;
             let after = job.last_fired.unwrap_or(0).max(job.enabled_at);
             (slot > after).then_some((None, None))
+        }
+        Trigger::Reflect {
+            at,
+            utc_offset,
+            threshold,
+            early_per_day,
+        } => {
+            let today = (now as i64 + i64::from(*utc_offset) * 60).div_euclid(86_400);
+            // `last_seen` is `DAY:EARLY`, the early reflections that day.
+            let early = job
+                .last_seen
+                .as_deref()
+                .and_then(|seen| seen.split_once(':'))
+                .and_then(|(day, n)| Some((day.parse::<i64>().ok()?, n.parse::<u32>().ok()?)))
+                .filter(|(day, _)| *day == today)
+                .map_or(0, |(_, n)| n);
+            let after = job.last_fired.unwrap_or(0).max(job.enabled_at);
+            if last_slot(at, None, *utc_offset, now).is_some_and(|slot| slot > after) {
+                return Some((Some("nightly".into()), Some(format!("{today}:{early}"))));
+            }
+            if early >= *early_per_day {
+                return None;
+            }
+            let summed = super::agent_reflect::pressure(store, job.enabled_at).ok()?;
+            (summed >= f64::from(*threshold)).then(|| {
+                (
+                    Some(format!(
+                        "early: importance {summed:.0} since the last reflection reached {threshold}"
+                    )),
+                    Some(format!("{today}:{}", early + 1)),
+                )
+            })
         }
         Trigger::Checks {} => {
             let head = facts.head(path)?;

@@ -324,7 +324,7 @@ pub fn rule(record: &Record) -> Option<f64> {
             MemoryKind::Note | MemoryKind::Preference => Some(8.0),
             // The host's line for a request that ran clean.
             MemoryKind::Outcome if text.ends_with("(ok exit 0)") => Some(1.0),
-            MemoryKind::Outcome | MemoryKind::Project => None,
+            MemoryKind::Outcome | MemoryKind::Project | MemoryKind::Insight => None,
         },
         Body::Journal(entry) => match entry.kind {
             Kind::Ran if entry.status == Some(0) => Some(1.0),
@@ -343,6 +343,7 @@ pub fn prior(record: &Record) -> f64 {
     match &record.body {
         Body::Memory(entry) => match entry.kind {
             MemoryKind::Note | MemoryKind::Preference => 8.0,
+            MemoryKind::Insight => 6.0,
             MemoryKind::Project => 5.0,
             MemoryKind::Outcome if text.contains("merged") || text.contains("rejected") => 7.0,
             MemoryKind::Outcome => 3.0,
@@ -607,16 +608,38 @@ pub struct Inputs<'a> {
     pub memory: &'a [MemoryEntry],
 }
 
-/// The scored briefing: candidates, importance (sidecar, rule, Jev, then
-/// prior), recency from receipts, and relevance, normalized and summed with
-/// equal weights. Standing records go first, then the best, within
-/// [`BRIEFING_RECORDS`] and [`BRIEFING_MAX`].
+/// The candidates in score order, best first, and the score rows set while
+/// ranking them.
+#[derive(Clone, Debug, Default)]
+pub struct Ranked {
+    pub records: Vec<Record>,
+    /// Indexes into `records`, best first.
+    pub order: Vec<usize>,
+    pub scored: Vec<ScoreRow>,
+}
+
+/// A record's importance as the stream reads it without asking Jev: the
+/// sidecar's row when its digest still matches, else the rule, else the
+/// kind's prior.
 #[must_use]
-pub fn recall(
+pub fn importance_of(record: &Record, known: &HashMap<String, ScoreRow>) -> f64 {
+    known
+        .get(&record.reference.to_string())
+        .filter(|row| row.digest == record.digest())
+        .map(|row| row.importance)
+        .or_else(|| rule(record))
+        .unwrap_or_else(|| prior(record))
+}
+
+/// Ranks the candidates for `inputs`: importance (sidecar, rule, Jev, then
+/// prior), recency from receipts, and relevance, normalized and summed
+/// with equal weights.
+#[must_use]
+pub fn rank(
     inputs: &Inputs<'_>,
     known: &HashMap<String, ScoreRow>,
     services: &mut Services,
-) -> Recall {
+) -> Ranked {
     let records = candidates(inputs.journal, inputs.memory);
     let carried_at = last_carried(inputs.journal, inputs.now);
     let mut scored = Vec::new();
@@ -673,6 +696,47 @@ pub fn recall(
         .collect();
     let scores = memory_stream::score(&terms, memory_stream::Weights::default());
     let order = memory_stream::ranked(&scores);
+    Ranked {
+        records,
+        order,
+        scored,
+    }
+}
+
+/// The `k` best records for `inputs.request` at `inputs.now`, by score, with
+/// no standing priority: what a reflection shows for one question. The
+/// score rows set while ranking come back for the sidecar.
+#[must_use]
+pub fn retrieve(
+    inputs: &Inputs<'_>,
+    known: &HashMap<String, ScoreRow>,
+    services: &mut Services,
+    k: usize,
+) -> (Vec<Record>, Vec<ScoreRow>) {
+    let ranked = rank(inputs, known, services);
+    let best = ranked
+        .order
+        .iter()
+        .take(k)
+        .map(|&i| ranked.records[i].clone())
+        .collect();
+    (best, ranked.scored)
+}
+
+/// The scored briefing: the candidates as [`rank`] orders them, standing
+/// records first, then the best, within [`BRIEFING_RECORDS`] and
+/// [`BRIEFING_MAX`].
+#[must_use]
+pub fn recall(
+    inputs: &Inputs<'_>,
+    known: &HashMap<String, ScoreRow>,
+    services: &mut Services,
+) -> Recall {
+    let Ranked {
+        records,
+        order,
+        scored,
+    } = rank(inputs, known, services);
     let mut text = String::new();
     let mut carried = Vec::new();
     let mut ranked_taken = 0;

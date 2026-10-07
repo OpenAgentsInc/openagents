@@ -1268,6 +1268,9 @@ pub struct LiveModel {
     book: PathBuf,
     /// The model that answered last.
     pub model: Option<String>,
+    /// What the last call cost, in dollars, or `None` when no cost was
+    /// reported.
+    pub usd: Option<f64>,
 }
 
 impl LiveModel {
@@ -1285,6 +1288,7 @@ impl LiveModel {
             runtime,
             book,
             model: None,
+            usd: None,
         })
     }
 
@@ -1319,7 +1323,7 @@ impl Model for LiveModel {
     fn next(&mut self, system: &str, prompt: &str) -> Result<NextAction, String> {
         use crate::delegate_door::microcoder;
         let providers = self.providers();
-        let (action, model) = self.runtime.block_on(microcoder::next_action(
+        let (action, model, usd) = self.runtime.block_on(microcoder::next_action(
             system,
             prompt,
             &providers,
@@ -1327,6 +1331,7 @@ impl Model for LiveModel {
             microcoder::now,
         ))?;
         self.model = Some(model);
+        self.usd = usd;
         Ok(action)
     }
 }

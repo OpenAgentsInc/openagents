@@ -31,7 +31,7 @@
 //! own chat thread, and a NIP-WS activity summary whose headline is host
 //! state ([`Agents::reports`]), which the host carries.
 
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
@@ -237,6 +237,10 @@ pub struct Agents {
     host_key: String,
     /// How a terminal request's briefing is chosen.
     briefing: super::agent_recall::Briefing,
+    /// What a reflect job's occurrence reflects with.
+    reflector: super::agent_reflect::ServicesFactory,
+    /// The agents reflecting now; a second occurrence waits for the first.
+    reflecting: Arc<Mutex<BTreeSet<String>>>,
 }
 
 impl std::fmt::Debug for Agents {
@@ -298,7 +302,17 @@ impl Agents {
             clock: unix_now,
             host_key: String::new(),
             briefing: super::agent_recall::Briefing::default_scored(),
+            reflector: super::agent_reflect::default_factory(),
+            reflecting: Arc::new(Mutex::new(BTreeSet::new())),
         }
+    }
+
+    /// Reflect with the services `reflector` makes instead of the live
+    /// ones, as a test does.
+    #[must_use]
+    pub fn with_reflector(mut self, reflector: super::agent_reflect::ServicesFactory) -> Self {
+        self.reflector = reflector;
+        self
     }
 
     /// Choose terminal briefings by `briefing` instead of the scored
@@ -1498,6 +1512,10 @@ impl Agents {
                 continue;
             };
             for occurrence in fired {
+                if let Some(trigger) = &occurrence.reflect {
+                    self.reflect(&store, &occurrence.job, trigger, now);
+                    continue;
+                }
                 let workspace = Some(occurrence.workspace.clone())
                     .filter(|w| !w.is_empty() && self.workspaces.contains_key(w));
                 let key = format!("job-{}-{}-{now}", record.name, occurrence.job);
@@ -1517,6 +1535,54 @@ impl Agents {
                 );
             }
         }
+    }
+
+    /// Runs a reflect job's occurrence on a thread of its own: the
+    /// reflection writes its insights, drops, and run record to the
+    /// journal, and its cost goes to the job's budget. A failure is
+    /// journaled; an occurrence while one runs is skipped.
+    fn reflect(&self, store: &Store, job: &str, trigger: &str, now: u64) {
+        let name = store.name().to_string();
+        if !self
+            .reflecting
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert(name.clone())
+        {
+            let _ = store.append(&Entry::new(
+                now,
+                Kind::Job,
+                &format!("job {job} skipped: a reflection is already running"),
+            ));
+            return;
+        }
+        let reflector = self.reflector.clone();
+        let reflecting = self.reflecting.clone();
+        let screen = self.screen.clone();
+        let store = store.clone();
+        let job = job.to_string();
+        let trigger = trigger.to_string();
+        std::thread::spawn(move || {
+            let memory = Memory::new(store.clone(), screen.clone());
+            let result = reflector(&store)
+                .and_then(|mut services| memory.reflect(&mut services, &screen, &trigger, now));
+            match result {
+                Ok((reflection, _)) => {
+                    let _ = Jobs::new(store.clone()).meter(&job, reflection.usd());
+                }
+                Err(why) => {
+                    let _ = store.append(&Entry::new(
+                        now,
+                        Kind::Job,
+                        &format!("job {job} reflected nothing: {why}"),
+                    ));
+                }
+            }
+            reflecting
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .remove(&name);
+        });
     }
 
     fn watch_change(&self, store: &Store, record: &Record) {

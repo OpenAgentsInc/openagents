@@ -1,0 +1,30 @@
+{
+  "v": 1,
+  "id": "openagents.insight-support.v1",
+  "name": "Whether a workshop agent's insight rests on what it cites",
+  "summary": "Asks two independent questions about one insight a workshop agent's reflection wrote: whether it follows from the records it cites alone, and whether it states how the owner wants work done. Code has already checked that every cited record exists and was shown for the question; an insight below the support threshold is journaled as unverified and not stored, and a supported one that states how the owner wants work done becomes a preference candidate the owner accepts or rejects.",
+  "gate": "supported",
+  "questions": {
+    "supported": {
+      "type": "noul",
+      "instructions": "The insight in `insight` follows from the records in `cited` alone. Each record has a `reference`, a `kind`, a `date`, and its `text`. It follows when every fact, count, date, name, and cause it states is in those records or a direct consequence of them. It doesn't follow when it states something the records don't hold, generalizes from one record to a habit or a rule, gets a count or a date wrong, or rests on what the agent might know from elsewhere.",
+      "decision": {
+        "threshold": 0.7
+      }
+    },
+    "preference": {
+      "type": "noul",
+      "instructions": "The insight in `insight` states how the owner wants the agent named in `agent` to do its work: a standing instruction about what to always or never do, an order of steps, a format for messages or changes, or a limit the owner set. A fact about what happened, a project's property, a test's behavior, or the agent's own habit that the owner never asked for isn't how the owner wants work done.",
+      "decision": {
+        "threshold": 0.5
+      }
+    }
+  },
+  "policy": {
+    "v": 1,
+    "state_max_bytes": 16384,
+    "evidence": [
+      "docs/decision-models/measurements/2026-10-07-insight-support.md"
+    ]
+  }
+}
