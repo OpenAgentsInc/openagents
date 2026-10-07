@@ -1130,6 +1130,20 @@ impl crate::store::Store {
         wallet: &dyn LightningWallet,
         now: u64,
     ) -> Result<openagents_wallet::IssuedInvoice> {
+        self.prepare_worker_invoice_with_clock(authority, wallet, now, || {
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|time| time.as_secs())
+                .map_err(|_| "current invoice observation time is unavailable".into())
+        })
+    }
+    pub(crate) fn prepare_worker_invoice_with_clock(
+        &mut self,
+        authority: &mut dyn Authority,
+        wallet: &dyn LightningWallet,
+        now: u64,
+        observe: impl FnOnce() -> Result<u64>,
+    ) -> Result<openagents_wallet::IssuedInvoice> {
         self.check_open()?;
         let setup = self
             .book
@@ -1155,17 +1169,23 @@ impl crate::store::Store {
                 "invoice preparation or payment deadline requires manual reconciliation".into(),
             );
         }
-        self.document.paid.invoice_preparation_started = true;
-        self.document.paid.funding_state = Some("unknown".into());
-        self.save()?;
-        let request = receive_hash(&setup, &earned)?;
+        // Reserve the resident's actual reply timeout and one second of
+        // timestamp rounding within the original absolute payment deadline.
         let expiry: u32 = self
             .book
             .market()
             .payment_due_at
             .checked_sub(now)
-            .and_then(|n| n.try_into().ok())
-            .ok_or("payment expiry exceeds wallet bound")?;
+            .and_then(|remaining| {
+                remaining.checked_sub(openagents_wallet::resident::REPLY_WAIT.as_secs() + 1)
+            })
+            .filter(|remaining| *remaining > 0)
+            .and_then(|remaining| remaining.try_into().ok())
+            .ok_or("payment deadline lacks the bounded resident receive reply window")?;
+        self.document.paid.invoice_preparation_started = true;
+        self.document.paid.funding_state = Some("unknown".into());
+        self.save()?;
+        let request = receive_hash(&setup, &earned)?;
         let invoice = wallet
             .receive_exact_from_node(
                 &setup.central_node,
@@ -1174,7 +1194,13 @@ impl crate::store::Store {
                 expiry,
             )
             .map_err(|e| e.to_string())?;
-        check_invoice(&self.book, &setup, &invoice, &earned, now)?;
+        let observed_at = observe()?;
+        if observed_at < now || observed_at >= self.book.market().payment_due_at {
+            return Err("invoice observation time requires manual reconciliation".into());
+        }
+        authority.check(&setup, &self.book, observed_at, false)?;
+        self.check_open()?;
+        check_invoice(&self.book, &setup, &invoice, &earned, observed_at)?;
         self.document.paid.invoice = Some(invoice.clone());
         self.save()?;
         Ok(invoice)

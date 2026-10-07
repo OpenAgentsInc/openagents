@@ -166,6 +166,11 @@ from optional lookup invoice metadata and leaves absent fee evidence unknown.
 Invoice creation and funding lookup carry the admitted node identity to the
 resident, which refuses a replaced node before either operation.
 It rechecks the admitted payout destination after the lookup before accrual.
+Invoice preparation reserves the resident's 60-second reply bound and one second
+of timestamp rounding within the original payment deadline. It refuses an
+insufficient window before issuance, then refreshes the observed clock and
+current admission after creation. The returned and retained invoice shows its
+actual shorter expiry; the signed payment deadline stays fixed.
 
 Interrupted invoice preparation remains unknown and cannot silently issue a
 replacement. Unknown funding creates no liability; failed or conflicting

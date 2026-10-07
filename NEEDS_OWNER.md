@@ -286,6 +286,9 @@ revision/rework terms. Keep current policy, canonical credentials, journals,
 checker, wallet, and ledger outside provider writes. Authorize a new accepted
 order for additional work. Cancellation must retain delivered work, failed
 attempts, support causes, costs, and any already accepted obligation.
+Start a current receiver/resident build that supports node-bound invoice and
+funding calls before admitting an order. Allow its bounded reply window within
+the payment deadline and check the returned invoice's actual shorter expiry.
 
 The fixed postacceptance lane leaves credit risk with the worker and provides no
 escrow. Separately authorize the actual buyer payment through the existing wallet;

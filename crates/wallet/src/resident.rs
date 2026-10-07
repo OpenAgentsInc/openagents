@@ -21,7 +21,7 @@ use crate::model::{Balance, Channel, IssuedInvoice, PaymentRecord, Proof, Wallet
 pub const SOCKET_FILE: &str = "control.sock";
 
 /// How long a client waits for a reply that is not itself a bounded wait.
-const REPLY_WAIT: Duration = Duration::from_secs(60);
+pub const REPLY_WAIT: Duration = Duration::from_secs(60);
 /// Slack a client adds to a payment's own wait before giving up on the reply.
 /// The resident's send may still settle after that; `lookup` tells.
 const PAY_SLACK: Duration = Duration::from_secs(10);

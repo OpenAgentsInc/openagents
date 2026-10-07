@@ -428,6 +428,7 @@ async fn roundtrip(paid: bool, failed_check: bool) {
             payment: Default::default(),
             issued: Default::default(),
             lookup_destination: Default::default(),
+            later_second: false,
         };
         assert!(
             provider
@@ -695,6 +696,7 @@ struct FakeWallet {
     payment: std::sync::Mutex<Option<openagents_wallet::PaymentRecord>>,
     issued: std::sync::atomic::AtomicU32,
     lookup_destination: std::sync::Mutex<Option<(PathBuf, pay_ledger::Payee)>>,
+    later_second: bool,
 }
 impl openagents_wallet::LightningWallet for FakeWallet {
     fn node_id(&self) -> String {
@@ -710,6 +712,17 @@ impl openagents_wallet::LightningWallet for FakeWallet {
         use sha2::{Digest, Sha256};
         self.issued
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let created_at = if self.later_second {
+            loop {
+                let current = wall_time();
+                if current > self.now {
+                    break current;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+        } else {
+            self.now
+        };
         let hash: [u8; 32] = Sha256::digest([7; 32]).into();
         let mut fields = inv::tag(1, &inv::words(&hash));
         fields.extend(inv::tag(16, &inv::words(&[2; 32])));
@@ -721,7 +734,7 @@ impl openagents_wallet::LightningWallet for FakeWallet {
             fields,
             true,
             false,
-            self.now,
+            created_at,
         );
         Ok(openagents_wallet::IssuedInvoice {
             bolt11,
@@ -797,6 +810,7 @@ fn paid_funding(
         payment: Default::default(),
         issued: Default::default(),
         lookup_destination: Default::default(),
+        later_second: false,
     };
     let mut ledger = pay_ledger::Ledger::open(root.join("central.sqlite")).unwrap();
     let setup = f.setup.paid.as_ref().unwrap();
@@ -834,6 +848,7 @@ fn paid_funding(
     assert_eq!(wallet.issued.load(std::sync::atomic::Ordering::Relaxed), 0);
     provider.document.paid = before_invoice;
     provider.save().unwrap();
+    invoice_clock_case(provider, f, p, evidence, root);
     ledger
         .register_payee(pay_ledger::Payee {
             party: setup.worker.provider.clone(),
@@ -1103,6 +1118,136 @@ fn paid_funding(
     );
 }
 
+fn wall_time() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+}
+fn invoice_clock_case(
+    provider: &store::Store,
+    f: &Fixture,
+    p: &super::paid_pipeline::Fixture,
+    evidence: &Blobs,
+    root: &Path,
+) {
+    use std::os::unix::fs::DirBuilderExt;
+    // An independent clock fault branch starts from accepted custody before
+    // invoice preparation. It never funds a second obligation.
+    let copy = |name: &str| {
+        let dir = root.join(name);
+        drop(store::Store::open(&dir, f.setup.clone(), f.provider).unwrap());
+        std::fs::write(
+            dir.join("labor.json"),
+            std::fs::read(provider.dir.join("labor.json")).unwrap(),
+        )
+        .unwrap();
+        store::Store::open(&dir, f.setup.clone(), f.provider).unwrap()
+    };
+    let mut clock_store = copy("later-second-provider");
+    let home = root.join("clock-wallet");
+    std::fs::DirBuilder::new()
+        .mode(0o700)
+        .create(&home)
+        .unwrap();
+    let scratch = PathBuf::from(std::env::var_os("OPENAGENTS_SCRATCH").unwrap());
+    let alias = tempfile::Builder::new()
+        .prefix("lic-")
+        .tempdir_in(scratch.parent().unwrap())
+        .unwrap();
+    std::os::unix::fs::symlink(root, alias.path().join("s")).unwrap();
+    let home = alias.path().join("s/clock-wallet");
+    let started_at = wall_time();
+    let wallet = std::sync::Arc::new(FakeWallet {
+        now: started_at,
+        payment: Default::default(),
+        issued: Default::default(),
+        lookup_destination: Default::default(),
+        later_second: true,
+    });
+    let server = openagents_wallet::resident::Server::bind(&home).unwrap();
+    let stop = server.stop_flag();
+    let serving_wallet = wallet.clone();
+    let serving = std::thread::spawn(move || server.run(serving_wallet));
+    let remote = openagents_wallet::resident::RemoteWallet::probe(&home).unwrap();
+    let reserved = openagents_wallet::resident::REPLY_WAIT.as_secs() + 1;
+    let due = provider.book.market().payment_due_at;
+    assert!(
+        clock_store
+            .prepare_worker_invoice_with_clock(
+                &mut authority(p, evidence),
+                &remote,
+                due - reserved,
+                || Ok(wall_time()),
+            )
+            .unwrap_err()
+            .contains("receive reply window")
+    );
+    assert!(!clock_store.paid_state().invoice_preparation_started);
+    assert_eq!(wallet.issued.load(std::sync::atomic::Ordering::Relaxed), 0);
+    let invoice = clock_store
+        .prepare_worker_invoice_with_clock(&mut authority(p, evidence), &remote, started_at, || {
+            Ok(wall_time())
+        })
+        .unwrap();
+    let decoded = nostr::x402::decode_invoice(&invoice.bolt11).unwrap();
+    assert!(decoded.created_at() > started_at);
+    assert_eq!(invoice.expiry_secs as u64, due - started_at - reserved);
+    assert!(decoded.created_at() + decoded.expiry_seconds() <= due);
+    assert_eq!(clock_store.paid_state().invoice.as_ref(), Some(&invoice));
+    assert_eq!(
+        clock_store
+            .prepare_worker_invoice(&mut authority(p, evidence), &remote, wall_time())
+            .unwrap(),
+        invoice
+    );
+    assert_eq!(wallet.issued.load(std::sync::atomic::Ordering::Relaxed), 1);
+    stop.store(true, std::sync::atomic::Ordering::Relaxed);
+    serving.join().unwrap();
+    // A signer beyond the reserved interval cannot extend the original due
+    // time. The persisted attempt stays unknown and cannot mint another.
+    let mut overrun = copy("overrun-invoice-provider");
+    let overrun_wallet = FakeWallet {
+        now: started_at + reserved + 1,
+        payment: Default::default(),
+        issued: Default::default(),
+        lookup_destination: Default::default(),
+        later_second: false,
+    };
+    assert!(
+        overrun
+            .prepare_worker_invoice_with_clock(
+                &mut authority(p, evidence),
+                &overrun_wallet,
+                started_at,
+                || Ok(started_at + reserved + 1),
+            )
+            .is_err()
+    );
+    assert!(overrun.paid_state().invoice_preparation_started);
+    assert!(overrun.paid_state().invoice.is_none());
+    assert_eq!(
+        overrun.paid_state().funding_state.as_deref(),
+        Some("unknown")
+    );
+    assert!(
+        overrun
+            .prepare_worker_invoice_with_clock(
+                &mut authority(p, evidence),
+                &overrun_wallet,
+                started_at + reserved + 1,
+                || Ok(started_at + reserved + 1),
+            )
+            .is_err()
+    );
+    assert_eq!(
+        overrun_wallet
+            .issued
+            .load(std::sync::atomic::Ordering::Relaxed),
+        1
+    );
+}
+
 #[tokio::test]
 async fn paid_running_command_stops_on_signed_cancellation_zero_rework_or_current_revocation() {
     for mode in ["cancel", "request_rework", "revoke"] {
@@ -1219,7 +1364,8 @@ async fn paid_running_command_stops_on_signed_cancellation_zero_rework_or_curren
                         now: f.now,
                         payment: Default::default(),
                         issued: Default::default(),
-                        lookup_destination: Default::default()
+                        lookup_destination: Default::default(),
+                        later_second: false
                     },
                     f.now
                 )
@@ -1356,6 +1502,7 @@ fn cli_paid(
         payment: std::sync::Mutex::new(Some(payment)),
         issued: Default::default(),
         lookup_destination: Default::default(),
+        later_second: false,
     });
     let server = openagents_wallet::resident::Server::bind(&wallet_home).unwrap();
     let stop = server.stop_flag();
