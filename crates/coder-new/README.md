@@ -277,6 +277,11 @@ to that run and stay redacted from retained output. Each sandbox starts without
 inherited account credentials. Completed jobs stop their sandbox and confirm its
 meter is no longer running. `remote status` reports unresolved cleanup.
 
+To use an existing Codex login, explicitly admit `OA_CODEX_AUTH` containing its
+authentication JSON instead of `OPENAI_API_KEY`. The runtime writes it to a
+private `CODEX_HOME` under `/tmp`, outside the workspace and snapshot. Tokens
+inside the JSON are redacted from output and refused in changed-file artifacts.
+
 The same runtime can run in a granted Google Compute Engine pool:
 
 ```sh

@@ -13,6 +13,13 @@ pub struct Boat {
     pub credentials: Credentials,
 }
 impl Boat {
+    fn environment(&self, r: &Record) -> std::collections::BTreeMap<String, String> {
+        let mut environment = self.credentials.environment();
+        if r.spec.agent == "codex" && environment.remove("OA_CODEX_AUTH").is_some() {
+            environment.insert("CODEX_HOME".into(), format!("/tmp/oa-coder-{}/codex", r.id));
+        }
+        environment
+    }
     pub async fn from_env(names: &[String]) -> Result<Self> {
         let client = Client::from_env().await.map_err(|e| e.to_string())?;
         let credentials = Credentials::from_names(names, |n| std::env::var(n).ok())?;
@@ -140,10 +147,23 @@ impl Boat {
                 status.status.as_str(),
                 "failed" | "cancelled" | "interrupted"
             ) {
-                Some(Err(format!(
-                    "The Boat agent ended with status {}.",
-                    status.status
-                )))
+                let detail = events
+                    .iter()
+                    .rev()
+                    .chain(
+                        r.events[r.binding["turn_start"].as_u64().unwrap_or(0) as usize..]
+                            .iter()
+                            .rev(),
+                    )
+                    .find(|e| e["event"] == "provider_error")
+                    .and_then(|e| e["message"].as_str());
+                Some(Err(match detail {
+                    Some(message) => format!(
+                        "The Boat agent ended with status {}: {}",
+                        status.status, message
+                    ),
+                    None => format!("The Boat agent ended with status {}.", status.status),
+                }))
             } else {
                 let reply = r.events[r.binding["turn_start"].as_u64().unwrap_or(0) as usize..]
                     .iter()
@@ -199,7 +219,7 @@ impl Backend for Boat {
                     type_: Some(r.spec.size.clone()),
                     ttl_seconds: Nullable::Value(r.spec.timeout_seconds as i64),
                     no_env: Some(true),
-                    env: Some(self.credentials.environment()),
+                    env: Some(self.environment(r)),
                     from_: template,
                     setup_script: Some(format!(
                         "mkdir -p {}",
@@ -463,7 +483,7 @@ impl Backend for Boat {
                 .resume(&ResumeParams {
                     sandbox_id: id.into(),
                     body: Some(ResumeRequest {
-                        env: Some(self.credentials.environment()),
+                        env: Some(self.environment(r)),
                         no_env: Some(true),
                         ttl_seconds: Nullable::Value(r.spec.timeout_seconds as i64),
                         ..Default::default()
@@ -559,6 +579,22 @@ fn normalize(r: &Record, events: &[SandboxEvent]) -> Vec<Value> {
         let Some(data) = &event.data else {
             continue;
         };
+        if event.type_ == "prompt" {
+            if let Some(error) = data.get("error").and_then(Value::as_str) {
+                let message = error.chars().take(8192).collect::<String>();
+                if !r
+                    .events
+                    .iter()
+                    .chain(out.iter())
+                    .any(|v| v["event"] == "provider_error" && v["message"] == message)
+                {
+                    out.push(
+                        json!({"event":"provider_error","message":message,"source_id":event.id}),
+                    );
+                }
+            }
+            continue;
+        }
         if event.type_ != "response" {
             continue;
         }
@@ -619,6 +655,21 @@ mod tests {
         let out = normalize(&r, &[event]);
         assert_eq!(out[0]["text"], " world");
         assert_eq!(out[1]["running"], false);
+        let error: SandboxEvent = serde_json::from_value(json!({"id":"p1","type":"prompt","timestamp":3,"data":{"error":"Provider quota exceeded"}})).unwrap();
+        let errors = normalize(&r, std::slice::from_ref(&error));
+        assert_eq!(errors[0]["event"], "provider_error");
+        assert_eq!(errors[0]["message"], "Provider quota exceeded");
+        r.events.extend(errors);
+        assert!(normalize(&r, &[error]).is_empty());
+        let b = Boat {
+            client: Client::new("fixture").unwrap(),
+            credentials: Credentials::from_names(&["OA_CODEX_AUTH".into()], |_| {
+                Some("fixture-auth".into())
+            })
+            .unwrap(),
+        };
+        assert_eq!(b.environment(&r)["CODEX_HOME"], "/tmp/oa-coder-j1/codex");
+        assert!(!b.environment(&r).contains_key("OA_CODEX_AUTH"));
     }
 }
 

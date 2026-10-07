@@ -7,6 +7,7 @@ use std::collections::BTreeMap;
 #[derive(Default)]
 pub struct Credentials {
     values: BTreeMap<String, String>,
+    secrets: Vec<String>,
 }
 impl Credentials {
     pub fn from_names(names: &[String], get: impl Fn(&str) -> Option<String>) -> Result<Self> {
@@ -19,7 +20,18 @@ impl Credentials {
             }
             values.insert(name.clone(), value);
         }
-        Ok(Self { values })
+        let mut secrets = Vec::new();
+        for value in values.values() {
+            if !value.is_empty() {
+                secrets.push(value.clone());
+                if let Ok(document) = serde_json::from_str::<Value>(value) {
+                    credential_fragments(&document, &mut secrets);
+                }
+            }
+        }
+        secrets.sort_by_key(|v| std::cmp::Reverse(v.len()));
+        secrets.dedup();
+        Ok(Self { values, secrets })
     }
     pub fn sanitize_artifacts(&self, value: &mut Value) -> Result<()> {
         use base64::Engine;
@@ -32,7 +44,7 @@ impl Credentials {
                             .ok_or("Missing artifact file content.")?,
                     )
                     .map_err(|_| "Invalid artifact file encoding.")?;
-                for key in self.values.values().filter(|k| !k.is_empty()) {
+                for key in &self.secrets {
                     if bytes.windows(key.len()).any(|part| part == key.as_bytes()) {
                         return Err("A changed remote file contains a selected credential. The artifact was refused.".into());
                     }
@@ -56,7 +68,7 @@ impl Credentials {
     pub fn redact(&self, value: &mut Value) {
         match value {
             Value::String(s) => {
-                for key in self.values.values().filter(|k| !k.is_empty()) {
+                for key in &self.secrets {
                     *s = s.replace(key, "[redacted]");
                 }
             }
@@ -72,6 +84,28 @@ impl Credentials {
             }
             _ => {}
         }
+    }
+}
+
+fn credential_fragments(value: &Value, secrets: &mut Vec<String>) {
+    match value {
+        Value::Object(fields) => {
+            for (name, value) in fields {
+                let name = name.to_ascii_lowercase();
+                if name.contains("token") || name.contains("secret") || name.contains("key") {
+                    if let Some(s) = value.as_str().filter(|s| !s.is_empty()) {
+                        secrets.push(s.into());
+                    }
+                }
+                credential_fragments(value, secrets);
+            }
+        }
+        Value::Array(values) => {
+            for value in values {
+                credential_fragments(value, secrets);
+            }
+        }
+        _ => {}
     }
 }
 
@@ -153,7 +187,10 @@ if [ -n "${{OPENROUTER_API_KEY:-}}" ]; then "$p" coder --state "/tmp/oa-coder-{j
             }
         )
     } else {
-        String::new()
+        format!(
+            "rm -f {}\n",
+            boat::shell_quote(&format!("/tmp/oa-coder-{}.env", record.id))
+        )
     }
 }
 
@@ -174,6 +211,7 @@ p=$(cat "$d/binary")
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:/usr/local/bin:$PATH"
 export CODEX_HOME="/tmp/oa-coder-{job}/codex"
 if [ -f "/tmp/oa-coder-{job}.env" ]; then . "/tmp/oa-coder-{job}.env"; rm -f "/tmp/oa-coder-{job}.env"; fi
+unset OA_CODEX_AUTH
 unset OPENAGENTS_CODER_EVENT_CHANNEL OPENAGENTS_CODER_MODEL_INPUT
 {model_env}
 export OA_CODER_CLOUD_CREDENTIAL_NAMES={credential_names}
@@ -265,7 +303,7 @@ pub fn parse_poll(record: &Record, body: &str) -> Result<crate::Observation> {
                             .cloned()
                     })
                     .ok_or("The remote runtime exited without a result.")?;
-                end = Some(Ok(result));
+                end = Some(Ok(observed_result(result)));
             } else {
                 end = Some(Err(format!(
                     "The remote Coder runtime exited with status {code}."
@@ -284,10 +322,46 @@ pub fn parse_poll(record: &Record, body: &str) -> Result<crate::Observation> {
     })
 }
 
+// Programmatic delegation wraps the native answer in `result`.
+fn observed_result(mut value: Value) -> Value {
+    for field in ["model", "tokens", "usage"] {
+        if value.get(field).is_none() {
+            if let Some(observed) = value.get("result").and_then(|v| v.get(field)).cloned() {
+                value[field] = observed;
+            }
+        }
+    }
+    value
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+    #[test]
+    fn native_result_retains_the_observed_model_and_tokens() {
+        let nested = json!({"reply":"done","model":"served-model","tokens":2680});
+        let answer = observed_result(json!({"session":"job","reply":"done","result":nested}));
+        assert_eq!(answer["model"], "served-model");
+        assert_eq!(answer["tokens"], 2680);
+        assert_eq!(answer["result"], nested);
+        let direct = json!({"model":"direct","tokens":3,"result":nested});
+        assert_eq!(observed_result(direct.clone()), direct);
+    }
+    #[test]
+    fn structured_credentials_redact_tokens_and_refuse_token_artifacts() {
+        use base64::Engine;
+        let auth = json!({"auth_mode":"chatgpt","tokens":{"access_token":"access-secret","refresh_token":"refresh-secret"}}).to_string();
+        let credentials =
+            Credentials::from_names(&["OA_CODEX_AUTH".into()], |_| Some(auth.clone())).unwrap();
+        let mut event = json!({"text":"access-secret refresh-secret"});
+        credentials.redact(&mut event);
+        assert_eq!(event["text"], "[redacted] [redacted]");
+        let mut files = json!({"files":[{"content":base64::engine::general_purpose::STANDARD.encode(b"leaked refresh-secret")}]});
+        assert!(credentials.sanitize_artifacts(&mut files).is_err());
+        let mut safe = json!({"files":[{"content":base64::engine::general_purpose::STANDARD.encode(b"auth_mode chatgpt")}]});
+        assert!(credentials.sanitize_artifacts(&mut safe).is_ok());
+    }
     #[test]
     fn credentials_are_redacted_recursively_and_shell_quoted() {
         let c = Credentials::from_names(&["TEST_API_KEY".into()], |_| Some("secret'value".into()))

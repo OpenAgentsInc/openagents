@@ -159,17 +159,24 @@ Then update `SPEC_SHA256` in `src/lib.rs`; a test fails until it matches.
   tests.
 
 The paid lifecycle test is ignored and requires an explicit cost acceptance,
-a scoped, expiring `BOAT_API_KEY`, and its ID in `OA_BOAT_LIVE_KEY_ID`:
+a scoped, expiring `BOAT_API_KEY`, and its ID in `OA_BOAT_LIVE_KEY_ID`.
+If the scoped key cannot read key metadata, set `OA_BOAT_LIVE_METADATA_KEY`
+to an account key. That key validates the selected key’s server-reported scope;
+all sandbox operations still use the scoped key:
 
 ```sh
 OA_BOAT_LIVE=I_ACCEPT_BOAT_COST cargo test -p boat --test live paid_lifecycle -- --ignored
 ```
 
 The test validates the server-reported key scope, creates one `small` sandbox
-with a 600-second TTL, no inherited environment, and snapshots disabled. It
+with a 600-second TTL, no inherited environment, and snapshot-backed stop. It
 checks streamed execution, a file round trip, detached output, and process-tree
 termination. It attempts stop and deletion even if the exercise fails, polls
-deletion, and requires final usage to be non-running and below $0.01. The cost
+deletion, and requires usage after the exact stop operation to be non-running
+and below $0.01, before deletion removes the scoped usage route. Billing
+and deletion-operation reads require the scoped `account.read` action. If
+provider storage cleanup is blocked, the test requires a confirmed `404` for
+the sandbox and reports the retained operation ID. The cost
 check detects an overrun; it is not a provider-enforced spending cap. An
 ambiguous create failure can leave a sandbox until its TTL expires. Do not use
 an unrestricted account key.

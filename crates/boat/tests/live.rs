@@ -20,6 +20,7 @@ const ACTIONS: &[&str] = &[
     "file.write",
     "sandbox.stop",
     "sandbox.delete",
+    "account.read",
 ];
 
 fn validate_scope(usage: &ApiKeyUsageResponse) -> Result<(), &'static str> {
@@ -187,12 +188,31 @@ async fn paid_lifecycle() -> Result<(), Box<dyn std::error::Error>> {
     let client = Client::builder(ApiKey::new(std::env::var("BOAT_API_KEY")?)?)
         .timeout(Duration::from_secs(20))
         .build()?;
-    let usage = client
-        .api_key_usage(&ApiKeyUsageParams {
-            api_key_id: std::env::var("OA_BOAT_LIVE_KEY_ID")?,
-            ..Default::default()
-        })
-        .await?;
+    // Metadata reads require account authority; the exercised key remains scoped.
+    let metadata = match std::env::var("OA_BOAT_LIVE_METADATA_KEY") {
+        Ok(key) => Client::builder(ApiKey::new(key)?)
+            .timeout(Duration::from_secs(20))
+            .build()?,
+        Err(_) => client.clone(),
+    };
+    let key_id = std::env::var("OA_BOAT_LIVE_KEY_ID")?;
+    let selected = metadata
+        .api_keys()
+        .await?
+        .api_keys
+        .into_iter()
+        .find(|k| k.id == key_id)
+        .ok_or("The selected scoped key is not owned by the metadata account.")?;
+    let secret = std::env::var("BOAT_API_KEY")?;
+    if !secret.starts_with(&selected.key_prefix) || !secret.ends_with(&selected.key_last_four) {
+        return Err("The scope metadata does not identify the exercised credential.".into());
+    }
+    let usage = ApiKeyUsageResponse {
+        credential_lane: selected.credential_lane,
+        expired: selected.expired,
+        scope: serde_json::from_value(serde_json::to_value(selected.scope)?)?,
+        ..Default::default()
+    };
     validate_scope(&usage)?;
     let nonce = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
     let created = client
@@ -202,7 +222,7 @@ async fn paid_lifecycle() -> Result<(), Box<dyn std::error::Error>> {
                 type_: Some("small".into()),
                 ttl_seconds: Nullable::Value(600),
                 no_env: Some(true),
-                snapshots: Some(false),
+                snapshots: Some(true),
                 ..Default::default()
             }),
             ..Default::default()
@@ -218,6 +238,26 @@ async fn lifecycle(client: &Client, id: &str) -> Result<(), Box<dyn std::error::
     let result = tokio::time::timeout(Duration::from_secs(150), exercise(client, &id)).await;
     let stopped = client
         .stop(&StopParams {
+            sandbox_id: id.clone(),
+            ..Default::default()
+        })
+        .await;
+    let stopped = match stopped {
+        Ok(response) => match response.sandbox {
+            Nullable::Value(sandbox) => match sandbox.stop {
+                Nullable::Value(operation) => client
+                    .wait_for_stop(&id, &operation.id, &wait(120))
+                    .await
+                    .map(|_| ()),
+                _ => Err(boat::Error::TerminalState),
+            },
+            _ => Err(boat::Error::TerminalState),
+        },
+        Err(error) => Err(error),
+    };
+    // Deletion removes the scoped usage route. Read the final meter after stop.
+    let billing = client
+        .usage(&UsageParams {
             sandbox_id: id.clone(),
             ..Default::default()
         })
@@ -242,22 +282,36 @@ async fn lifecycle(client: &Client, id: &str) -> Result<(), Box<dyn std::error::
             .map(|_| ()),
         Err(error) => Err(error),
     };
-    // Usage includes retained billing after deletion, not a pre-stop estimate.
-    let billing = client
-        .usage(&UsageParams {
-            sandbox_id: id,
-            ..Default::default()
-        })
-        .await;
-    deletion?;
-    stopped?;
-    result??;
-    let billing = billing?;
+    match deletion {
+        Err(boat::Error::DeletionBlocked(operation)) if operation.target_id == id => {
+            let absent = matches!(client.get(&GetParams { sandbox_id:id.clone(), ..Default::default() }).await,
+                Err(boat::Error::Api(error)) if error.status.as_u16()==404);
+            if !absent {
+                return Err("Deletion is blocked and the sandbox still exists.".into());
+            }
+            println!(
+                "Sandbox deletion confirmed; provider storage cleanup remains blocked (operation {}).",
+                operation.id
+            );
+        }
+        result => {
+            result.map_err(|e| format!("Deletion confirmation failed: {e}"))?;
+        }
+    }
+    stopped.map_err(|e| format!("Stop request failed: {e}"))?;
+    result
+        .map_err(|e| format!("Exercise deadline: {e}"))?
+        .map_err(|e| format!("Exercise failed: {e}"))?;
+    let billing = billing.map_err(|e| format!("Usage read failed: {e}"))?;
     if billing.running || !affordable(billing.dollars) {
         return Err(
             "The sandbox is still billed as running or its cost is not below one cent.".into(),
         );
     }
+    println!(
+        "Stopped meter: ${:.6}, {} seconds, running=false.",
+        billing.dollars, billing.seconds
+    );
     Ok(())
 }
 
@@ -267,17 +321,17 @@ async fn cleanup_runs_after_exercise_and_stop_fail() {
     let (client, job) = serve_sequence(vec![
         Reply::new(400, &[], b""), // Readiness fails.
         Reply::new(400, &[], b""), // Stop fails; deletion must still run.
+        Reply::new(400, &[], b""), // The meter is read before deletion.
         Reply::new(202, &[], br#"{"ok":true,"type":"sandbox.deleting","operation":{"id":"op-test","status":"completed","kind":"sandbox","targetId":"bx_test","reason":"test","attemptCount":1,"requestedAt":"now","completedAt":"now"}}"#),
         Reply::new(200, &[], br#"{"ok":true,"type":"deletion.operation","operation":{"id":"op-test","status":"completed","kind":"sandbox","targetId":"bx_test","reason":"test","attemptCount":1,"requestedAt":"now","completedAt":"now"}}"#),
-        Reply::new(400, &[], b""),
     ], |b| b).await;
     assert!(lifecycle(&client, "bx_test").await.is_err());
     let seen = job.await.expect("server");
     assert_eq!(
         seen.iter().map(|r| r.method.as_str()).collect::<Vec<_>>(),
-        ["GET", "POST", "DELETE", "GET", "GET"]
+        ["GET", "POST", "GET", "DELETE", "GET"]
     );
-    assert_eq!(seen[2].headers["x-ascii-confirm-delete"], "bx_test");
-    assert_eq!(seen[3].target, "/api/v1/deletion-operations/op-test");
-    assert_eq!(seen[4].target, "/api/v1/sandboxes/bx_test/usage");
+    assert_eq!(seen[3].headers["x-ascii-confirm-delete"], "bx_test");
+    assert_eq!(seen[4].target, "/api/v1/deletion-operations/op-test");
+    assert_eq!(seen[2].target, "/api/v1/sandboxes/bx_test/usage");
 }

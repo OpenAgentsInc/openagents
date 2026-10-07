@@ -45,6 +45,24 @@ fn paid_cli_delegation_retains_patches_continues_and_cancels() -> Result<(), Str
         "gce" => ("gce", "coder"),
         _ => return Err("Unknown live placement.".into()),
     };
+    let agent = std::env::var("OA_CODER_CLOUD_LIVE_AGENT").unwrap_or_else(|_| "codex".into());
+    if agent != "codex"
+        && !(agent == "microcoder" && mode == "coder")
+        && !(agent == "opencode" && mode == "integrated")
+    {
+        return Err(
+            "Select Codex, Microcoder in Coder mode, or OpenCode in integrated mode.".into(),
+        );
+    }
+    let credential_names = if agent == "microcoder" {
+        vec![]
+    } else if agent == "opencode" {
+        vec!["OPENROUTER_API_KEY"]
+    } else if std::env::var("OA_CODER_CLOUD_LIVE_AUTH").as_deref() == Ok("codex-login") {
+        vec!["OA_CODEX_AUTH"]
+    } else {
+        vec!["OPENAI_API_KEY"]
+    };
     let scratch = std::env::var_os("OPENAGENTS_SCRATCH")
         .ok_or("Set OPENAGENTS_SCRATCH for retained evidence.")?;
     let root = tempfile::Builder::new()
@@ -82,7 +100,7 @@ fn paid_cli_delegation_retains_patches_continues_and_cancels() -> Result<(), Str
         canceled: None,
         approvals: None,
     };
-    c.input = Some(json!({"enabled":true,"mode":mode,"size":if placement=="boat"{"small"}else{"default"},"credential_names":["OPENAI_API_KEY"]}).to_string());
+    c.input = Some(json!({"enabled":true,"mode":mode,"size":if placement=="boat"{"small"}else{"default"},"credential_names":credential_names}).to_string());
     let mut events = vec![];
     call(
         &c,
@@ -98,22 +116,23 @@ fn paid_cli_delegation_retains_patches_continues_and_cancels() -> Result<(), Str
     let store = coder_cloud::Store::under(c.root.join("remote"));
     let id = format!("live{}", coder_cloud::now_ms());
     let result = (|| {
-        call(
-            &c,
-            &[
-                "delegate",
-                "codex",
-                "--on",
-                placement,
-                "--job",
-                &id,
-                "--task",
-                "Replace cloud-result.txt with exactly first cloud turn followed by a newline. Make no other changes. Reply briefly.",
-                "--timeout",
-                "360",
-            ],
-            &mut events,
-        )?;
+        let model = std::env::var("OA_CODER_CLOUD_LIVE_MODEL").ok();
+        let mut args = vec![
+            "delegate",
+            agent.as_str(),
+            "--on",
+            placement,
+            "--job",
+            id.as_str(),
+            "--task",
+            "Replace cloud-result.txt with exactly first cloud turn followed by a newline. Make no other changes. Reply briefly.",
+            "--timeout",
+            if placement == "gce" { "900" } else { "360" },
+        ];
+        if let Some(model) = model.as_deref() {
+            args.extend(["--model", model]);
+        }
+        call(&c, &args, &mut events)?;
         let first = store.read(&id)?;
         if first.state != coder_cloud::State::Completed
             || !first.cleanup_complete
@@ -123,6 +142,20 @@ fn paid_cli_delegation_retains_patches_continues_and_cancels() -> Result<(), Str
                 "The first remote turn did not complete with retained artifacts and cleanup."
                     .into(),
             );
+        }
+        if agent == "microcoder"
+            && (first
+                .result
+                .as_ref()
+                .and_then(|v| v["model"].as_str())
+                .is_none()
+                || first
+                    .result
+                    .as_ref()
+                    .and_then(|v| v["tokens"].as_u64())
+                    .is_none())
+        {
+            return Err("The remote result omitted its observed model or token count.".into());
         }
         call(
             &c,
@@ -187,10 +220,26 @@ fn paid_cli_delegation_retains_patches_continues_and_cancels() -> Result<(), Str
         {
             return Err("Cancellation did not retain usage and confirmed cleanup.".into());
         }
-        let key = std::env::var("OPENAI_API_KEY")
-            .map_err(|_| "The admitted provider key is unavailable.")?;
-        if serde_json::to_string(&events).unwrap().contains(&key) {
-            return Err("A credential appeared in emitted evidence.".into());
+        let encoded = serde_json::to_string(&events).unwrap();
+        for name in &credential_names {
+            let key =
+                std::env::var(name).map_err(|_| "An admitted provider key is unavailable.")?;
+            if encoded.contains(&key) {
+                return Err("A credential appeared in emitted evidence.".into());
+            }
+        }
+        let credentials = coder_cloud::runtime::Credentials::from_names(
+            &credential_names
+                .iter()
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>(),
+            |name| std::env::var(name).ok(),
+        )?;
+        let mut evidence = json!(events);
+        let original = evidence.clone();
+        credentials.redact(&mut evidence);
+        if evidence != original {
+            return Err("A credential fragment appeared in emitted evidence.".into());
         }
         Ok(())
     })();
