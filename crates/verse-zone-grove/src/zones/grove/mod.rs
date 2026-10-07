@@ -114,7 +114,12 @@ enum Chip {
 /// The Grove's placements as one list, for the static scene and the solids.
 #[must_use]
 pub fn placements() -> Vec<Placement> {
+    // The meadow has none of Everglade's ponds: each piece stands on the
+    // uncarved land.
     layout::placements()
+        .into_iter()
+        .map(everglade::layout::on_land)
+        .collect()
 }
 
 /// The meadow's static world: the textured placements and the grass, with
@@ -292,11 +297,11 @@ impl Grove {
             let _ = fx.start(name, Spawn::at(fire.at + Vec3::Y * lift));
         }
         for &[x, z] in &layout::FIREFLIES {
-            let at = Vec3::new(x, everglade::height(x, z) + 0.9, z);
+            let at = Vec3::new(x, everglade::land(x, z) + 0.9, z);
             let _ = fx.start("grove_fireflies", Spawn::at(at));
         }
         for _ in 0..24 {
-            fx.tick(0.25, everglade::height);
+            fx.tick(0.25, everglade::land);
         }
         fx
     }
@@ -775,8 +780,8 @@ impl Grove {
         self.tick_camera(dt);
         self.last_y = player.pos.y;
         self.feet = player.pos;
-        self.fx.tick(dt, everglade::height);
-        self.ambience.tick(dt, everglade::height);
+        self.fx.tick(dt, everglade::land);
+        self.ambience.tick(dt, everglade::land);
         self.tick_flashes();
         self.floaters.retain(|f| now - f.start < draw::FLOAT);
         glade.set_extra_blocks(self.dummies.iter().map(Dummy::block).collect());

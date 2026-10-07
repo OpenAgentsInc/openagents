@@ -12,18 +12,16 @@ use glam::Vec3;
 pub use verse_world::social::solids::{Roof, STEP, Solids};
 
 /// The solids of `placements` with the models in `pack`, the city's walls,
-/// and the boards and the ponds, which are taller than anyone levitates
-/// past them.
+/// and the boards, which are taller than anyone levitates past, over the
+/// heightfield with its ponds and stream carved: a walker wades into the
+/// water and down to its bed.
 ///
 /// # Errors
 ///
 /// Returns a message when the pack lacks a placed model.
 pub fn build(pack: &ZonePack, placements: &[Placement]) -> Result<Solids, String> {
-    // The ponds are walls to walking, like the boards: nothing stands on
-    // their water.
-    let mut walls = layout::board_blockers();
-    walls.extend(layout::pond_blockers());
-    let mut solids = build_with(pack, placements, &walls)?;
+    let walls = layout::board_blockers();
+    let mut solids = build_over(pack, placements, &walls, height)?;
     // The city's kit walls, one block per run as tall as their stories.
     for (footprint, top) in layout::city::kit_blocks() {
         solids.add_block(footprint, top);
@@ -38,7 +36,9 @@ pub fn build(pack: &ZonePack, placements: &[Placement]) -> Result<Solids, String
 }
 
 /// The solids of `placements` with the models in `pack`, and `boards`,
-/// footprints taller than anyone levitates past.
+/// footprints taller than anyone levitates past, over the uncarved
+/// [`land`](super::land): for a zone that places Everglade's models without
+/// its water, such as the Grove ([`super::layout::on_land`]).
 ///
 /// # Errors
 ///
@@ -48,7 +48,18 @@ pub fn build_with(
     placements: &[Placement],
     boards: &[crate::controller::Footprint],
 ) -> Result<Solids, String> {
-    let mut solids = Solids::over(height);
+    build_over(pack, placements, boards, super::land)
+}
+
+/// The solids of `placements` with the models in `pack` and `boards` over
+/// the heightfield `ground`.
+fn build_over(
+    pack: &ZonePack,
+    placements: &[Placement],
+    boards: &[crate::controller::Footprint],
+    ground: fn(f32, f32) -> f32,
+) -> Result<Solids, String> {
+    let mut solids = Solids::over(ground);
     let carved = super::demolition::carve::carved(placements);
     for (placement, carved) in placements.iter().zip(carved) {
         if carved {

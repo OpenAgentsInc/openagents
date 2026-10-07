@@ -15,7 +15,7 @@
 //! stays reachable and that no blocker covers a path.
 
 use super::scene::Paint;
-use super::{HALL, PATH_HALF_WIDTH, RETURN_PORTAL, STATIONS, STRONGROOM, YARD, height};
+use super::{HALL, PATH_HALF_WIDTH, RETURN_PORTAL, STATIONS, STRONGROOM, YARD, height, land};
 use crate::controller::Footprint;
 use glam::{Mat4, Quat, Vec3};
 use std::f32::consts::{FRAC_PI_2, PI, TAU};
@@ -232,48 +232,22 @@ pub fn board_blockers() -> Vec<Footprint> {
     ]
 }
 
-/// The ponds the ground draws: center and water radius, m. Lantern Pond
-/// lies on the commons; Reed Pond in the long meadow by the Knowledge
-/// District. The city's are the Thinking Pond in Walden Woods and the Fern
-/// Pond in Fernhollow; the Fountain Plaza's fountain is a generated model
-/// (`city::PLAZA_FOUNTAIN`).
-pub const PONDS: [([f32; 2], f32); 4] = [
-    ([-1.0, 29.0], 6.0),
-    ([6.0, -42.0], 4.0),
-    ([-114.0, -64.0], 5.0),
-    ([90.0, 76.0], 4.5),
-];
-
-/// Glade Run: the stream that leaves Reed Pond and runs south through the
-/// long meadow, under Brownstone Row's footbridge, into Walden Woods. Its
-/// course as points on the ground, m.
-pub const STREAM: [[f32; 2]; 8] = [
-    [6.0, -45.5],
-    [5.0, -56.0],
-    [9.0, -66.0],
-    [9.0, -78.0],
-    [6.0, -90.0],
-    [0.0, -102.0],
-    [-6.0, -114.0],
-    [-9.0, -128.0],
-];
-/// Half the stream's width of water, m.
-pub const STREAM_HALF: f32 = 1.1;
+/// The ponds: center and water radius, m. Lantern Pond lies on the
+/// commons; Reed Pond in the long meadow by the Knowledge District. The
+/// city's are the Thinking Pond in Walden Woods and the Fern Pond in
+/// Fernhollow; the Fountain Plaza's fountain is a generated model
+/// (`city::PLAZA_FOUNTAIN`). Every pond is swimmable: its bowl is carved
+/// into the heightfield ([`verse_world::social::everglade_water`]), and
+/// Glade Run's bed with it.
+pub use verse_world::social::everglade_water::{
+    POND_DEPTHS, POND_NAMES, PONDS, STREAM, STREAM_HALF, stream_distance,
+};
 /// The footbridge that carries Brownstone Row over the stream: its center
 /// and heading, as the controller's yaw; the deck runs along the model's z.
 pub const BRIDGE: ([f32; 2], f32) = ([9.0, -78.0], FRAC_PI_2);
 /// The footbridge deck's half length and half width, m, and its rise.
 const BRIDGE_HALF: [f32; 2] = [3.5, 1.0];
 const BRIDGE_RISE: f32 = 0.55;
-
-/// Distance from `(x, z)` to the stream's course, m.
-#[must_use]
-pub fn stream_distance(x: f32, z: f32) -> f32 {
-    STREAM
-        .windows(2)
-        .map(|w| segment_distance(w[0], w[1], x, z))
-        .fold(f32::INFINITY, f32::min)
-}
 
 /// The footbridge's deck as steps to walk over: one footprint per plank
 /// with its top, m, each within a step of the last.
@@ -292,7 +266,8 @@ pub fn bridge_steps() -> Vec<(Footprint, f32)> {
                 (along.x * half).abs() + (along.z * BRIDGE_HALF[1]).abs(),
                 (along.z * half).abs() + (along.x * BRIDGE_HALF[1]).abs(),
             );
-            let top = height(cx, cz) + 0.24 + BRIDGE_RISE * (std::f32::consts::PI * t).sin();
+            // The deck spans the stream's carved bed from bank to bank.
+            let top = land(cx, cz) + 0.24 + BRIDGE_RISE * (std::f32::consts::PI * t).sin();
             (
                 Footprint {
                     min: [cx - hx, cz - hz],
@@ -304,27 +279,27 @@ pub fn bridge_steps() -> Vec<(Footprint, f32)> {
         .collect()
 }
 
-/// Each pond's blockers: a cross of two boxes inside its water, so the
-/// player stops at the bank. Glade Run is shallow: a walker wades across it
-/// anywhere, or crosses on the footbridge.
+/// `placement` lifted so it stands on the uncarved land rather than in a
+/// pond's bowl or the stream's bed: for zones that place Everglade's
+/// models without its water, such as the Grove, and for pieces that span
+/// the water, such as the footbridge.
 #[must_use]
-pub fn pond_blockers() -> Vec<Footprint> {
-    PONDS
-        .iter()
-        .flat_map(|&([x, z], r)| {
-            let (long, short) = (0.85 * r, 0.5 * r);
-            [
-                Footprint {
-                    min: [x - long, z - short],
-                    max: [x + long, z + short],
-                },
-                Footprint {
-                    min: [x - short, z - long],
-                    max: [x + short, z + long],
-                },
-            ]
-        })
-        .collect()
+pub fn on_land(mut placement: Placement) -> Placement {
+    let [x, z] = placement.at;
+    placement.lift += land(x, z) - height(x, z);
+    placement
+}
+
+/// `placement` lifted so its origin sits `above` meters over the water's
+/// gameplay surface at its spot, or over the ground where there is none:
+/// lily pads, rowboats, and anything else that floats.
+#[must_use]
+pub fn afloat(mut placement: Placement, above: f32) -> Placement {
+    let [x, z] = placement.at;
+    let ground = height(x, z);
+    let top = verse_world::social::everglade_water::surface(x, z).unwrap_or(ground);
+    placement.lift = top + above - ground;
+    placement
 }
 
 /// The town's roads, drawn as trodden dirt: each a segment and its half

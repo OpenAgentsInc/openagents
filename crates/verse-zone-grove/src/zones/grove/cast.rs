@@ -156,7 +156,7 @@ impl Grove {
         let point = target.map_or_else(
             || {
                 let mut at = feet + forward * def.range.min(AHEAD).max(3.0);
-                at.y = everglade::height(at.x, at.z);
+                at.y = everglade::land(at.x, at.z);
                 at
             },
             |i| self.dummies[i].pos,
@@ -234,7 +234,7 @@ impl Grove {
                     to.x *= MEADOW_RADIUS / r;
                     to.z *= MEADOW_RADIUS / r;
                 }
-                to.y = everglade::height(to.x, to.z);
+                to.y = everglade::land(to.x, to.z);
                 let look = if spell == Spell::TreeStride {
                     "grove_vines"
                 } else {
@@ -390,7 +390,7 @@ impl Grove {
     /// A burst's area on the ground: a faint ring of light spreading out to
     /// `radius` m around `at`, drawn by particles rather than lines.
     pub(super) fn decal(&mut self, at: Vec3, radius: f32) {
-        let ground = Vec3::new(at.x, everglade::height(at.x, at.z) + 0.05, at.z);
+        let ground = Vec3::new(at.x, everglade::land(at.x, at.z) + 0.05, at.z);
         let _ = self
             .fx
             .start("grove_area_ring", Spawn::at(ground).scaled(radius.max(0.5)));

@@ -111,7 +111,7 @@ impl Frame {
     /// The ground under `p`, m: the meadow's heightfield, never below the
     /// caster's feet.
     fn floor(&self, p: Vec3) -> f32 {
-        crate::zones::everglade::height(p.x, p.z).max(self.ground)
+        crate::zones::everglade::land(p.x, p.z).max(self.ground)
     }
 
     /// A point `x` m to the side, `y` m up, and `z` m forward of the origin.

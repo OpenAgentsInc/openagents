@@ -29,7 +29,6 @@ use glam::Vec3;
 use town_clock::TownTime;
 use world_tree::Tree;
 
-use super::height;
 use super::studio::{Attention, Posture, SeatFigure, plate, plate_transform};
 use super::world_tree::perceive;
 use crate::controller::Footprint;
@@ -331,7 +330,14 @@ impl Townsfolk {
         Some(Townsperson {
             id: npc.id.clone(),
             name: npc.name.clone(),
-            pos: Vec3::new(at[0], height(at[0], at[1]), at[1]),
+            // The same medium as the player's: a villager whose route
+            // crosses Glade Run wades on its bed, and one in a pond's deep
+            // water floats at the float line.
+            pos: Vec3::new(
+                at[0],
+                verse_world::social::everglade_water::stand(at[0], at[1]),
+                at[1],
+            ),
             yaw,
             speed,
             activity: placement.activity(),

@@ -1040,9 +1040,9 @@ fn the_city_is_sixteen_times_the_glade_and_every_door_opens_from_the_spawn() {
             "{name}"
         );
     }
-    // The ponds stop the player at their banks, and their water draws.
+    // Every pond is swimmable: no blocker stops the player at its bank.
     for ([x, z], _) in layout::PONDS {
-        assert!(blockers.iter().any(|b| b.contains(x, z, 0.0)));
+        assert!(!blockers.iter().any(|b| b.contains(x, z, 0.0)));
     }
     // Each district has its buildings: dozens of roofs, not one hall,
     // kit-built and generated.

@@ -13,13 +13,17 @@
 //!   muddy banks, with cobbles on the paved streets and the Fountain Plaza
 //!   (`layout::PAVED`). Its image holds the color and a smooth mask in
 //!   alpha, so the edge against the grass is soft at any grid size.
-//! - The water: a still, glossy disc over each pond (`layout::PONDS`).
+//!
+//! Where the ponds' bowls and Glade Run's bed are carved into the
+//! heightfield, both layers subdivide each 2 m cell into [`FINE`]² cells,
+//! so the banks and beds read as curves. The water itself is not part of
+//! this scene: [`super::water`] draws it with the shared water shader.
 //!
 //! The pinned pack has no tiling ground texture (its `Grass` image is a
 //! strip atlas for grass cards, and `PathRocks_Diffuse` is a stone atlas),
 //! so both images are generated here from tileable value noise.
 
-use super::{HALF_EXTENT, PATH_HALF_WIDTH, RETURN_PORTAL, YARD, height};
+use super::{HALF_EXTENT, PATH_HALF_WIDTH, RETURN_PORTAL, YARD, height, land};
 use crate::pbr::textured::{
     AlphaMode, BaseColorImage, Primitive, TexturedMaterial, TexturedMesh, TexturedScene,
     TexturedVertex, UNBAKED,
@@ -57,15 +61,14 @@ const DIRT_MAX: [f32; 2] = [121.0, 101.0];
 const DIRT_SIZE: [u32; 2] = [1640, 1573];
 /// Side of the square buckets the dirt's roads are indexed in, m.
 const ROAD_BUCKET: f32 = 8.0;
-/// Height of the water above the ground, m, and its look: dark, slightly
-/// green, and glossy, so it takes the sky's reflection.
-pub(super) const WATER_LIFT: f32 = 0.05;
-const WATER: [f32; 4] = [0.02, 0.05, 0.05, 1.0];
-const WATER_ROUGHNESS: f32 = 0.06;
-/// Segments around a pond's rim.
-const WATER_SEGMENTS: u32 = 32;
+/// Subdivisions a side of each 2 m ground cell over the carved water.
+const FINE: i32 = 4;
 /// Width of a pond's muddy bank beyond its water, m.
 const BANK: f32 = 1.2;
+/// How far the bank's dirt reaches under the water's edge, m.
+const SHALLOWS: f32 = 0.4;
+/// Linear albedo of the mud on the ponds' and the stream's beds.
+const MUD: [f32; 3] = [0.075, 0.06, 0.04];
 /// Height of the dirt sheet above the grass, m: below the hall's and the
 /// strongroom's floors, which sit 0.02 m up.
 pub(super) const DIRT_LIFT: f32 = 0.015;
@@ -101,129 +104,120 @@ pub fn shade(color: [f32; 3], a: Vec3, b: Vec3, c: Vec3) -> [f32; 3] {
     color.map(|v| v * k)
 }
 
-/// Triangles the ground adds to the zone: the grass grid, the dirt sheet,
-/// and the ponds' water.
+/// Triangles the ground adds to the zone: the grass grid and the dirt
+/// sheet, each carved cell subdivided.
 #[must_use]
 pub(super) fn triangles() -> u64 {
-    let dirt =
-        ((DIRT_MAX[0] - DIRT_MIN[0]) / CELL) as u64 * ((DIRT_MAX[1] - DIRT_MIN[1]) / CELL) as u64;
-    2 * (CELLS as u64 * CELLS as u64 + dirt)
-        + super::layout::PONDS.len() as u64 * u64::from(WATER_SEGMENTS)
-        + stream_triangles()
+    let carved = carved_cells();
+    let fine = (FINE * FINE) as u64;
+    let grass = CELLS as u64 * CELLS as u64 + carved.len() as u64 * (fine - 1);
+    let in_dirt = |(i, j): &(i32, i32)| {
+        let [x, z] = grid_point(*i, *j);
+        x >= DIRT_MIN[0] && x < DIRT_MAX[0] && z >= DIRT_MIN[1] && z < DIRT_MAX[1]
+    };
+    let dirt = ((DIRT_MAX[0] - DIRT_MIN[0]) / CELL) as u64
+        * ((DIRT_MAX[1] - DIRT_MIN[1]) / CELL) as u64
+        + carved.iter().filter(|c| in_dirt(c)).count() as u64 * (fine - 1);
+    2 * (grass + dirt)
 }
 
-/// Triangles of the stream's water: two per piece of its course.
-fn stream_triangles() -> u64 {
-    2 * stream_points().len().saturating_sub(1) as u64
-}
-
-/// The stream's course resampled every meter or so, each point with the
-/// unit normal across the water there.
-fn stream_points() -> Vec<([f32; 2], [f32; 2])> {
-    let course = &super::layout::STREAM;
-    let mut points = Vec::new();
-    for (i, w) in course.windows(2).enumerate() {
-        let (a, b) = (w[0], w[1]);
-        let length = (b[0] - a[0]).hypot(b[1] - a[1]);
-        let pieces = length.ceil() as usize;
-        let first = if i == 0 { 0 } else { 1 };
-        for k in first..=pieces {
-            let t = k as f32 / pieces as f32;
-            points.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]);
+/// The 2 m ground cells, as grid indices, that a pond's bowl, the stream's
+/// bed, or their banks reach into: they draw subdivided.
+#[must_use]
+pub fn carved_cells() -> &'static std::collections::BTreeSet<(i32, i32)> {
+    static CARVED: std::sync::OnceLock<std::collections::BTreeSet<(i32, i32)>> =
+        std::sync::OnceLock::new();
+    CARVED.get_or_init(|| {
+        let carved = verse_world::social::everglade_water::carved;
+        let mut out = std::collections::BTreeSet::new();
+        for i in 0..CELLS {
+            for j in 0..CELLS {
+                let [x, z] = grid_point(i, j);
+                // A cell with any carved sample, its corners included.
+                let any = (0..=FINE).any(|a| {
+                    (0..=FINE).any(|b| {
+                        carved(
+                            x + CELL * a as f32 / FINE as f32,
+                            z + CELL * b as f32 / FINE as f32,
+                        )
+                    })
+                });
+                if any {
+                    out.insert((i, j));
+                }
+            }
         }
-    }
-    (0..points.len())
-        .map(|i| {
-            let (p, q) = (
-                points[i.saturating_sub(1)],
-                points[(i + 1).min(points.len() - 1)],
-            );
-            let (dx, dz) = (q[0] - p[0], q[1] - p[1]);
-            let length = dx.hypot(dz).max(1e-6);
-            (points[i], [-dz / length, dx / length])
-        })
-        .collect()
-}
-
-/// The stream's water: a ribbon [`WATER_LIFT`] above the ground along its
-/// course, a little wider and narrower as it goes, relative to its first
-/// point.
-fn stream(material: usize) -> (TexturedMesh, [f32; 2]) {
-    let points = stream_points();
-    let origin = points[0].0;
-    let mut vertices = Vec::with_capacity(points.len() * 2);
-    for (i, ([x, z], n)) in points.iter().enumerate() {
-        let half = super::layout::STREAM_HALF
-            * (0.85 + 0.3 * value_noise(i as f32 * 0.2, 0.0, 1 << 12, 97));
-        for s in [-1.0_f32, 1.0] {
-            let (vx, vz) = (x + n[0] * half * s, z + n[1] * half * s);
-            vertices.push(TexturedVertex {
-                pos: [vx - origin[0], height(vx, vz) + WATER_LIFT, vz - origin[1]],
-                normal: [0.0, 1.0, 0.0],
-                uv: [0.0, 0.0],
-                color: [255; 4],
-                light: UNBAKED,
-            });
-        }
-    }
-    let mut indices = Vec::new();
-    for i in 0..points.len() as u32 - 1 {
-        let [a, b, c, d] = [2 * i, 2 * i + 1, 2 * i + 2, 2 * i + 3];
-        // Both windings are tried by the test's facing check; keep the
-        // face up whichever side the normal points.
-        let up = {
-            let p = |k: u32| glam::Vec3::from(vertices[k as usize].pos);
-            (p(b) - p(a)).cross(p(c) - p(a)).y > 0.0
-        };
-        if up {
-            indices.extend_from_slice(&[a, b, c, b, d, c]);
-        } else {
-            indices.extend_from_slice(&[a, c, b, b, c, d]);
-        }
-    }
-    (
-        TexturedMesh {
-            primitives: vec![Primitive {
-                vertices,
-                indices,
-                material,
-            }],
-        },
-        origin,
-    )
+        out
+    })
 }
 
 /// Adds the ground to `scene`: its two images and materials, a grass mesh
-/// per tile, and the dirt sheet, each placed at its own corner.
+/// per tile, and the dirt sheet, each placed at its own corner, over the
+/// carved heightfield.
 pub(super) fn ground(scene: &mut TexturedScene) {
     ground_with(scene, true);
 }
 
-/// Adds the grass to `scene`, and the dirt sheet over the town and the
-/// ponds' water when `dirt` is set.
+/// Adds the grass to `scene`, and the dirt sheet over the town when `dirt`
+/// is set. With `dirt` the ground is Everglade's own, with its ponds and
+/// stream carved; without it, as for the Grove, it is the uncarved land.
 pub fn ground_with(scene: &mut TexturedScene, dirt: bool) {
+    let ground: fn(f32, f32) -> f32 = if dirt { height } else { land };
+    let empty = std::collections::BTreeSet::new();
+    let carved = if dirt { carved_cells() } else { &empty };
     let grass_image = scene.add_image(grass_image());
     let grass = scene.add_material(TexturedMaterial {
         image: Some(grass_image),
         roughness: ROUGHNESS,
         ..TexturedMaterial::default()
     });
+    let grass_attributes = |p: Vec3| {
+        let tint = grass_tint(p.x, p.z);
+        (
+            [p.x / GRASS_REPEAT, p.z / GRASS_REPEAT],
+            if dirt { mud(tint, p) } else { tint },
+        )
+    };
     let tiles = CELLS / TILE_CELLS;
     for ti in 0..tiles {
         for tj in 0..tiles {
             let start = [ti * TILE_CELLS, tj * TILE_CELLS];
             let corner = grid_point(start[0], start[1]);
-            let mesh = grid(start, [TILE_CELLS; 2], corner, 0.0, grass, |p| {
-                (
-                    [p.x / GRASS_REPEAT, p.z / GRASS_REPEAT],
-                    grass_tint(p.x, p.z),
-                )
-            });
+            let shape = Shape {
+                ground,
+                carved,
+                lift: 0.0,
+            };
+            let mesh = grid(
+                start,
+                [TILE_CELLS; 2],
+                corner,
+                &shape,
+                grass,
+                grass_attributes,
+            );
             let mesh = scene.add_mesh(mesh);
             scene.place(
                 mesh,
                 Mat4::from_translation(Vec3::new(corner[0], 0.0, corner[1])),
             );
+            // The tile's carved cells, subdivided.
+            let cells: Vec<(i32, i32)> = carved
+                .iter()
+                .copied()
+                .filter(|&(i, j)| {
+                    (start[0]..start[0] + TILE_CELLS).contains(&i)
+                        && (start[1]..start[1] + TILE_CELLS).contains(&j)
+                })
+                .collect();
+            if !cells.is_empty() {
+                let mesh = fine(&cells, corner, &shape, grass, grass_attributes);
+                let mesh = scene.add_mesh(mesh);
+                scene.place(
+                    mesh,
+                    Mat4::from_translation(Vec3::new(corner[0], 0.0, corner[1])),
+                );
+            }
         }
     }
     if !dirt {
@@ -244,59 +238,42 @@ pub fn ground_with(scene: &mut TexturedScene, dirt: bool) {
         ((DIRT_MAX[0] - DIRT_MIN[0]) / CELL) as i32,
         ((DIRT_MAX[1] - DIRT_MIN[1]) / CELL) as i32,
     ];
-    let mesh = grid(start, cells, DIRT_MIN, DIRT_LIFT, dirt, |p| {
-        ([dirt_u(p.x), dirt_v(p.z)], [255; 4])
-    });
+    let shape = Shape {
+        ground,
+        carved,
+        lift: DIRT_LIFT,
+    };
+    let dirt_attributes = |p: Vec3| ([dirt_u(p.x), dirt_v(p.z)], [255; 4]);
+    let mesh = grid(start, cells, DIRT_MIN, &shape, dirt, dirt_attributes);
     let mesh = scene.add_mesh(mesh);
     scene.place(
         mesh,
         Mat4::from_translation(Vec3::new(DIRT_MIN[0], 0.0, DIRT_MIN[1])),
     );
-    let water = scene.add_material(TexturedMaterial {
-        base_color: WATER,
-        roughness: WATER_ROUGHNESS,
-        ..TexturedMaterial::default()
-    });
-    for ([cx, cz], r) in super::layout::PONDS {
-        let mesh = scene.add_mesh(pond(cx, cz, r, water));
-        scene.place(mesh, Mat4::from_translation(Vec3::new(cx, 0.0, cz)));
+    let inside: Vec<(i32, i32)> = carved
+        .iter()
+        .copied()
+        .filter(|&(i, j)| {
+            (start[0]..start[0] + cells[0]).contains(&i)
+                && (start[1]..start[1] + cells[1]).contains(&j)
+        })
+        .collect();
+    if !inside.is_empty() {
+        let mesh = fine(&inside, DIRT_MIN, &shape, dirt, dirt_attributes);
+        let mesh = scene.add_mesh(mesh);
+        scene.place(
+            mesh,
+            Mat4::from_translation(Vec3::new(DIRT_MIN[0], 0.0, DIRT_MIN[1])),
+        );
     }
-    let (mesh, [ox, oz]) = stream(water);
-    let mesh = scene.add_mesh(mesh);
-    scene.place(mesh, Mat4::from_translation(Vec3::new(ox, 0.0, oz)));
 }
 
-/// A pond's water: a disc of radius `r` around `(cx, cz)`,
-/// [`WATER_LIFT`] above the ground, in coordinates relative to its center.
-fn pond(cx: f32, cz: f32, r: f32, material: usize) -> TexturedMesh {
-    let vertex = |dx: f32, dz: f32| {
-        let (x, z) = (cx + dx, cz + dz);
-        TexturedVertex {
-            pos: [dx, height(x, z) + WATER_LIFT, dz],
-            normal: [0.0, 1.0, 0.0],
-            uv: [0.0, 0.0],
-            color: [255; 4],
-            light: UNBAKED,
-        }
-    };
-    let mut vertices = vec![vertex(0.0, 0.0)];
-    for k in 0..WATER_SEGMENTS {
-        let angle = k as f32 / WATER_SEGMENTS as f32 * std::f32::consts::TAU;
-        vertices.push(vertex(angle.cos() * r, angle.sin() * r));
-    }
-    let mut indices = Vec::with_capacity(3 * WATER_SEGMENTS as usize);
-    for k in 0..WATER_SEGMENTS {
-        let (a, b) = (1 + k, 1 + (k + 1) % WATER_SEGMENTS);
-        // Counterclockwise seen from above, so the face points up.
-        indices.extend_from_slice(&[0, b, a]);
-    }
-    TexturedMesh {
-        primitives: vec![Primitive {
-            vertices,
-            indices,
-            material,
-        }],
-    }
+/// What a ground layer stands on: the heightfield, the cells drawn
+/// subdivided instead, and the layer's height over the ground, m.
+struct Shape<'a> {
+    ground: fn(f32, f32) -> f32,
+    carved: &'a std::collections::BTreeSet<(i32, i32)>,
+    lift: f32,
 }
 
 /// The world x and z of grid point `(i, j)`.
@@ -307,23 +284,24 @@ fn grid_point(i: i32, j: i32) -> [f32; 2] {
     ]
 }
 
-/// The ground's unit normal at `(x, z)`, from the height's slope.
-fn normal(x: f32, z: f32) -> Vec3 {
+/// The unit normal of `ground` at `(x, z)`, from its slope.
+fn normal(ground: fn(f32, f32) -> f32, x: f32, z: f32) -> Vec3 {
     let e = 0.25;
-    let dx = (height(x + e, z) - height(x - e, z)) / (2.0 * e);
-    let dz = (height(x, z + e) - height(x, z - e)) / (2.0 * e);
+    let dx = (ground(x + e, z) - ground(x - e, z)) / (2.0 * e);
+    let dz = (ground(x, z + e) - ground(x, z - e)) / (2.0 * e);
     Vec3::new(-dx, 1.0, -dz).normalize()
 }
 
 /// A heightfield mesh over `cells` grid cells from grid point `start`, in
-/// coordinates relative to `corner` and `lift` meters above the ground.
+/// coordinates relative to `corner` and `shape.lift` meters above
+/// `shape.ground`, leaving out the cells `shape.carved` draws subdivided.
 /// `attributes` gives each vertex's image coordinate and color from its
 /// world position. Front faces point up.
 fn grid(
     start: [i32; 2],
     cells: [i32; 2],
     corner: [f32; 2],
-    lift: f32,
+    shape: &Shape,
     material: usize,
     attributes: impl Fn(Vec3) -> ([f32; 2], [u8; 4]),
 ) -> TexturedMesh {
@@ -332,20 +310,15 @@ fn grid(
     for j in 0..=cells[1] {
         for i in 0..=cells[0] {
             let [x, z] = grid_point(start[0] + i, start[1] + j);
-            let world = Vec3::new(x, height(x, z), z);
-            let (uv, color) = attributes(world);
-            vertices.push(TexturedVertex {
-                pos: [x - corner[0], world.y + lift, z - corner[1]],
-                normal: normal(x, z).to_array(),
-                uv,
-                color,
-                light: UNBAKED,
-            });
+            vertices.push(ground_vertex(shape, x, z, corner, &attributes));
         }
     }
     let mut indices = Vec::with_capacity((cells[0] * cells[1] * 6) as usize);
     for j in 0..cells[1] {
         for i in 0..cells[0] {
+            if shape.carved.contains(&(start[0] + i, start[1] + j)) {
+                continue;
+            }
             let at = |i: i32, j: i32| (j * columns + i) as u32;
             let [a, b, c, d] = [at(i, j), at(i + 1, j), at(i + 1, j + 1), at(i, j + 1)];
             // Seen from above, with x east and z north, a-c-b and a-d-c turn
@@ -359,6 +332,63 @@ fn grid(
             indices,
             material,
         }],
+    }
+}
+
+/// The grid `cells`, each split into [`FINE`]² cells, relative to `corner`.
+fn fine(
+    cells: &[(i32, i32)],
+    corner: [f32; 2],
+    shape: &Shape,
+    material: usize,
+    attributes: impl Fn(Vec3) -> ([f32; 2], [u8; 4]),
+) -> TexturedMesh {
+    let side = (FINE + 1) as u32;
+    let mut vertices = Vec::with_capacity(cells.len() * (side * side) as usize);
+    let mut indices = Vec::with_capacity(cells.len() * (FINE * FINE * 6) as usize);
+    let step = CELL / FINE as f32;
+    for &(ci, cj) in cells {
+        let [x0, z0] = grid_point(ci, cj);
+        let base = vertices.len() as u32;
+        for j in 0..=FINE {
+            for i in 0..=FINE {
+                let (x, z) = (x0 + i as f32 * step, z0 + j as f32 * step);
+                vertices.push(ground_vertex(shape, x, z, corner, &attributes));
+            }
+        }
+        for j in 0..FINE as u32 {
+            for i in 0..FINE as u32 {
+                let at = |i: u32, j: u32| base + j * side + i;
+                let [a, b, c, d] = [at(i, j), at(i + 1, j), at(i + 1, j + 1), at(i, j + 1)];
+                indices.extend_from_slice(&[a, c, b, a, d, c]);
+            }
+        }
+    }
+    TexturedMesh {
+        primitives: vec![Primitive {
+            vertices,
+            indices,
+            material,
+        }],
+    }
+}
+
+/// One ground vertex at world `(x, z)`, relative to `corner`.
+fn ground_vertex(
+    shape: &Shape,
+    x: f32,
+    z: f32,
+    corner: [f32; 2],
+    attributes: &impl Fn(Vec3) -> ([f32; 2], [u8; 4]),
+) -> TexturedVertex {
+    let world = Vec3::new(x, (shape.ground)(x, z), z);
+    let (uv, color) = attributes(world);
+    TexturedVertex {
+        pos: [x - corner[0], world.y + shape.lift, z - corner[1]],
+        normal: normal(shape.ground, x, z).to_array(),
+        uv,
+        color,
+        light: UNBAKED,
     }
 }
 
@@ -384,6 +414,19 @@ fn grass_tint(x: f32, z: f32) -> [u8; 4] {
         let albedo = albedo + (straw - albedo) * dry * 0.9 * (1.0 - t);
         let albedo = albedo + (PATH[i] * 0.75 - albedo) * worn;
         unorm(albedo / DETAIL_MEAN)
+    });
+    [rgb[0], rgb[1], rgb[2], 255]
+}
+
+/// `tint` turned to mud where the ground at `p` lies under the water.
+fn mud(tint: [u8; 4], p: Vec3) -> [u8; 4] {
+    let Some(top) = verse_world::social::everglade_water::surface(p.x, p.z) else {
+        return tint;
+    };
+    let under = smoothstep((top - p.y) / 0.3);
+    let rgb: [u8; 3] = std::array::from_fn(|i| {
+        let grass = f32::from(tint[i]) / 255.0;
+        unorm(grass + (MUD[i] / DETAIL_MEAN - grass) * under)
     });
     [rgb[0], rgb[1], rgb[2], 255]
 }
@@ -516,11 +559,22 @@ pub(super) fn dirt_cover(x: f32, z: f32) -> (f32, f32) {
             super::layout::segment_distance(a, b, x, z) - half
         })
         .fold(f32::INFINITY, f32::min);
+    // The banks are a ring from just under the water's edge to the land:
+    // the water pass draws after this blended sheet, so it must not cover
+    // the beds, which the grass layer muddies instead ([`mud`]).
+    let ring = |d: f32, edge: f32| (edge - SHALLOWS - d).max(d - edge - BANK);
+    let run = verse_world::social::everglade_water::run();
+    let stream = if run.near(x, z) {
+        let s = run.locate(x, z);
+        ring(s.across, run.half_at(s.along))
+    } else {
+        f32::INFINITY
+    };
     let bank = super::layout::PONDS
         .iter()
-        .map(|&([cx, cz], r)| (cx - x).hypot(cz - z) - r - BANK)
+        .map(|&([cx, cz], r)| ring((cx - x).hypot(cz - z), r))
         .fold(f32::INFINITY, f32::min)
-        .min(super::layout::stream_distance(x, z) - super::layout::STREAM_HALF - BANK);
+        .min(stream);
     (cover(yard), cover(path.min(road).min(bank)))
 }
 
@@ -668,30 +722,31 @@ mod tests {
             .iter()
             .position(|m| m.alpha == AlphaMode::Opaque)
             .unwrap();
-        let water = scene
-            .materials
-            .iter()
-            .position(|m| m.roughness == WATER_ROUGHNESS)
-            .unwrap();
+        // No water in the scene: the water pass draws it over the carved
+        // beds (`super::super::water`).
+        assert_eq!(scene.materials.len(), 2);
         let mut extent = 0.0_f32;
+        let mut deepest = 0.0_f32;
         for (pos, normals, material) in &all {
-            let lift = if *material == grass {
-                0.0
-            } else if *material == water {
-                WATER_LIFT
-            } else {
-                DIRT_LIFT
-            };
+            let lift = if *material == grass { 0.0 } else { DIRT_LIFT };
             for p in pos {
                 assert!((p.y - lift - height(p.x, p.z)).abs() < 1e-4, "{p}");
                 extent = extent.max(p.x.abs()).max(p.z.abs());
+                deepest = deepest.min(p.y - lift);
             }
             let face = (pos[1] - pos[0]).cross(pos[2] - pos[0]);
             assert!(face.y > 0.0, "a ground triangle faces down at {}", pos[0]);
+            // The beds' and banks' slopes are steeper than the land's.
+            let wet = verse_world::social::everglade_water::carved(pos[0].x, pos[0].z);
             for n in normals {
-                assert!(n.y > 0.7 && (n.length() - 1.0).abs() < 1e-4);
+                assert!(n.y > if wet { 0.3 } else { 0.7 }, "{} at {}", n, pos[0]);
+                assert!((n.length() - 1.0).abs() < 1e-4);
             }
         }
+        // Lantern Pond's bed is drawn to its full depth.
+        let lantern = verse_world::social::everglade_water::pond_level(0)
+            - verse_world::social::everglade_water::POND_DEPTHS[0];
+        assert!(deepest < lantern + 0.1, "{deepest}");
         assert!((extent - HALF_EXTENT).abs() < 1e-3);
         // Each grass tile lands in a merge cell of its own.
         let merged = scene.merge().unwrap();

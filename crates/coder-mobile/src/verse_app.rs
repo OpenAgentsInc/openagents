@@ -3081,6 +3081,16 @@ impl Scene {
                             index,
                         );
                     }
+                    // The breath bar over the tray under water.
+                    if let Some(breath) = self.world.everglade_breath() {
+                        verse::zones::everglade::water::draw_breath(
+                            &mut bar,
+                            &layout,
+                            self.lifecycle.viewport().logical_size(),
+                            self.hotbar_bottom(),
+                            &breath,
+                        );
+                    }
                     // Meteor Swarm's help and cast bar over the tray.
                     if let Some(swarm) = self.world.everglade_swarm() {
                         verse::zones::everglade::demolition::hotbar::draw_town(

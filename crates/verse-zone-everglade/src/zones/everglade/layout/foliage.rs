@@ -451,7 +451,17 @@ fn cascade(out: &mut Vec<Placement>, ground: &mut Ground) {
     let at = [(a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0];
     // The model's water falls along its +z, downstream.
     let yaw = (b[0] - a[0]).atan2(b[1] - a[1]);
-    out.push(Placement::new("foliage/cascade", at, yaw, Collision::None).scale(0.95));
+    // Its stones' lip, 0.26 m up the model, stands a little over the water
+    // above the weir, and its sheet falls to the plunge pool below.
+    let run = verse_world::social::everglade_water::run();
+    let lip = run.level_at(run.weir - 0.5) + 0.04;
+    let scale = 0.95;
+    let base = lip - 0.26 * scale;
+    out.push(
+        Placement::new("foliage/cascade", at, yaw, Collision::None)
+            .scale(scale)
+            .lift(base - super::height(at[0], at[1])),
+    );
     ground.take(at, 3.0);
     // Trees and ferns along the run's banks in the woods.
     for (k, w) in STREAM.windows(2).enumerate().skip(4) {

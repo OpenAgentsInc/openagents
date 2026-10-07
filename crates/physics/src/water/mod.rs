@@ -17,6 +17,8 @@
 //!   damping as forces for the next step, each a named ledger [`Term`].
 //! - [`FlowGrid::river`]: divergence-free potential flow along a course
 //!   around obstacles, from the stream function.
+//! - [`medium`]: a character's medium (ground, wading, swimming, diving)
+//!   and a swimmer's float line.
 //!
 //! Nothing here renders or reads files; the look of water lives elsewhere
 //! and never feeds back into these forces. See `docs/verse/water.md`.
@@ -24,6 +26,7 @@
 mod apply;
 mod body;
 mod flow;
+pub mod medium;
 mod set;
 mod submerge;
 mod surface;
@@ -33,6 +36,7 @@ pub use body::{
     Course, FRESH, Kind, Level, Outline, SALT, Sample, Station, Surface, WaterBody, WaterId,
 };
 pub use flow::{FlowGrid, Obstacle};
+pub use medium::{Medium, Stroke};
 pub use set::{Water, WaterSet};
 pub use submerge::{Plane, Submersion, area, below, submerged, volume};
 pub use surface::{Displacement, G, INVERSIONS, MAX_WAVES, Phases, Wave, WaveSet};

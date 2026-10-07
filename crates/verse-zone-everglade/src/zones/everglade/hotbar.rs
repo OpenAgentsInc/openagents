@@ -140,7 +140,8 @@ pub fn add_sprites(atlas: &mut Atlas) -> Result<(), String> {
         let icon = icons::icon(key).ok_or_else(|| format!("no hotbar icon for {key}"))?;
         atlas.add_sprite(key, icons::SIZE, icons::SIZE, &icons::rasterize(icon)?)?;
     }
-    Ok(())
+    // The Exhaustion debuff beside the breath bar.
+    super::water::add_sprites(atlas)
 }
 
 /// The tray's frame in logical points for a screen of `size` and a bar of

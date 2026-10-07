@@ -2,9 +2,11 @@
 
 Status: specification, 2026-10-06, updated the same day with the owner's
 answers to its open questions ([Owner decisions](#owner-decisions)). Phases
-W1 ([Coupling with `crates/physics`](#coupling-with-cratesphysics)) and W2
-([Shaders per tier](#shaders-per-tier)) are implemented;
-nothing else in this document is implemented yet unless a section says so. The phases at
+W1 ([Coupling with `crates/physics`](#coupling-with-cratesphysics)), W2
+([Shaders per tier](#shaders-per-tier)), and W3
+([Gameplay rules](#gameplay-rules): Everglade's water, swimming, and
+breath) are implemented; nothing else in this document is implemented yet
+unless a section says so. The phases at
 the end are tracked as GitHub issues on the
 [OpenAgents project board](../project-board.md). The coastal zone that builds
 on the ocean phases has its own specification, [The coast](coast.md).
@@ -411,6 +413,28 @@ The HUD shows a breath bar under the health bar while the eye point is under
 water, with the seconds left, a warning at 10 s, and the Exhaustion level as
 a debuff icon. One constant, `BREATH_SCALE` (1.0), multiplies the hold time
 if the owner later wants a game-scale duration.
+
+**Status (W3, 2026-10-07).** The media, the float line, and climbing out
+are `physics::water::medium`; the SRD rules above (speed, breath,
+Exhaustion, underwater attacks, falling into water, and held swimmers) are
+`verse_world::water`. Everglade's four ponds and Glade Run are
+`verse_world::social::everglade_water`: each pond a bowl carved into
+`everglade::height` to its depth (the uncarved ground is `everglade::land`,
+which the Grove and the Meteor Stress Test stand on), the run a wading
+stream 0.45 to 0.85 m deep with a level profile, a 0.25 m weir, a 1.6 m
+plunge pool, and a current from `FlowGrid::river`. Every bank blocker is
+gone. `verse_zone_everglade::zones::everglade::water` draws the bodies with
+the shared shader, adds the weir's falling sheet, plunge foam, and mist, and
+steps the player's medium and breath, with the HUD's breath bar and
+Exhaustion icon. A forward stroke dives or rises along the camera's pitch,
+and Jump rises. The townsfolk stand or float by the same medium; ducks ride
+the sampled surface, and lily pads and rowboats sit on it (the ponds carry
+no gameplay waves, so they rest still until W6 makes the rowboats buoyant
+bodies). Underwater combat and falling into water are rules with tests, not
+yet called: Everglade has no weapon attacks or falling damage. Hosted
+social avatars still walk the carved bed. Captures are in
+`bench/verse/2026-10-07/everglade-water/`
+(`cargo run --release -p verse --example everglade_water_capture`).
 
 ### Spells and water
 

@@ -12,7 +12,7 @@
 //! ten seconds stands back up at full health where it started.
 
 use super::kit::{Ability, Damage};
-use crate::zones::everglade::height;
+use crate::zones::everglade::land as height;
 use glam::{DVec3, Vec3};
 use verse_world::reverse_gravity as reverse;
 

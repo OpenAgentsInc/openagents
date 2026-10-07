@@ -36,6 +36,7 @@ mod tests;
 pub mod time_of_day;
 pub mod townsfolk;
 pub mod unstick;
+pub mod water;
 pub mod wildlife;
 pub mod world_tree;
 
@@ -58,7 +59,7 @@ use super::everglade_pack::ZonePack;
 use verse_world::social::everglade::UNDULATION;
 pub use verse_world::social::everglade::{
     CLEARING_RADIUS, HALF_EXTENT, HALL, MAX_HEIGHT, PATH_HALF_WIDTH, RING_RADIUS, RING_RISE,
-    STATION_RANGE, STATIONS, STRONGROOM, Station, YARD, height, station_near,
+    STATION_RANGE, STATIONS, STRONGROOM, Station, YARD, height, land, station_near,
 };
 use verse_world::social::everglade::{SPAWN, SPAWN_YAW};
 
@@ -170,6 +171,10 @@ pub struct Everglade {
     /// The Agora's bell (`layout::agora`), in the town only: the zone
     /// draws it hanging from its yoke and swings it when it rings.
     agora_bell: Option<layout::agora::Bell>,
+    /// The player's medium and breath in the town's water ([`water`]), in
+    /// the town only: a zone built from other placements, such as the
+    /// Grove, has no water.
+    swim: Option<Box<water::Swim>>,
 }
 
 impl Everglade {
@@ -187,6 +192,14 @@ impl Everglade {
         creatures.extend(npcs::creatures());
         zone.wildlife = Some(Box::new(wildlife::Wildlife::new(pack, creatures)?));
         zone.agora_bell = Some(layout::agora::Bell::default());
+        zone.swim = Some(Box::default());
+        // Mist and spray where Glade Run's weir lands in its pool.
+        if let Some(smoke) = &mut zone.smoke {
+            smoke.start(
+                "water_falls_spray",
+                crate::fx::Spawn::at(water::landing()).scaled(0.4),
+            );
+        }
         Ok(zone)
     }
 
@@ -277,6 +290,7 @@ impl Everglade {
             now: town_clock::TownTime::at_hour(0, 10.5),
             light: time_of_day::Light::at_hours(10.5),
             agora_bell: None,
+            swim: None,
         })
     }
 
@@ -734,7 +748,10 @@ impl Everglade {
         world.mesh.textured = Some(Arc::new(scene));
         world.blockers = blockers;
         world.blockers.extend(layout::board_blockers());
-        world.blockers.extend(layout::pond_blockers());
+        // The ponds and Glade Run: every pond is swimmable, so no bank
+        // blocks walking into one.
+        let surface = water::surface()?;
+        world.mesh.water = Some(Arc::new(surface));
         world
             .blockers
             .extend(layout::city::blocks().into_iter().map(|(f, _)| f));
@@ -801,6 +818,9 @@ impl Everglade {
         }
         if self.levitating || self.landing {
             input.jump = false;
+            if self.swim.is_some() {
+                player.set_pace(1.0);
+            }
             let before = player.pos.y;
             self.move_on_solids(player, &input, dt);
             let floor = self.solids.floor(player.pos.x, player.pos.z, before);
@@ -815,7 +835,15 @@ impl Everglade {
             );
         } else {
             let (feet, speed) = (player.pos.y, player.vertical_speed());
+            if let Some(swim) = &self.swim {
+                // Wading and swimming are half speed (SRD 5.2.1), and each
+                // Exhaustion level takes a sixth.
+                player.set_pace(swim.pace());
+            }
             self.move_on_solids(player, &input, dt);
+            if let Some(swim) = &mut self.swim {
+                swim.after_step(player, &input, feet, &self.solids, dt);
+            }
             self.spells
                 .after_step(player, feet, speed, &self.solids, dt);
             // A player held in a pocket they can't walk out of, such as a
@@ -1000,6 +1028,36 @@ impl Everglade {
         self.agora_bell.as_ref()
     }
 
+    /// The player's medium and breath in the town's water, in the town.
+    #[must_use]
+    pub fn swim(&self) -> Option<&water::Swim> {
+        self.swim.as_deref()
+    }
+
+    /// The HUD's breath bar, while the player's eye is under water or its
+    /// breath is short.
+    #[must_use]
+    pub fn breath_bar(&self) -> Option<water::BreathBar> {
+        self.swim.as_ref().and_then(|swim| swim.bar())
+    }
+
+    /// Sets the camera's pitch, which steers a swimmer's stroke up or down.
+    pub fn set_look_pitch(&mut self, pitch: f32) {
+        if let Some(swim) = &mut self.swim {
+            swim.set_pitch(pitch);
+        }
+    }
+
+    /// Marks the water body `eye` is in on `mesh`'s stage, so its surface
+    /// shades from below.
+    pub fn see_water_from(&self, mesh: &mut Mesh, eye: Vec3) {
+        if let Some(water) = mesh.neon.as_mut().and_then(|neon| neon.water.as_mut())
+            && self.swim.is_some()
+        {
+            water::see_from(water, eye);
+        }
+    }
+
     /// What a character runs into and stands on here, which the camera
     /// also sees through.
     #[must_use]
@@ -1080,6 +1138,11 @@ impl Everglade {
         self.elapsed = (self.elapsed + dt) % 1000.0;
         self.advance_clock();
         self.rendered = self.stage(self.elapsed);
+        if self.swim.is_some()
+            && let Some(neon) = self.rendered.neon.as_mut()
+        {
+            neon.water = Some(water::frame(self.elapsed));
+        }
         if self.look.is_none() {
             // The owner's house's, the Civic Hall's, the belvedere's, and
             // the Agora's candles and lamps near the player

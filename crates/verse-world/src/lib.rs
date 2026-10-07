@@ -263,4 +263,5 @@ pub mod telekinesis;
 pub mod utilities;
 pub mod visuals;
 pub mod wall_of_stone;
+pub mod water;
 pub mod wind_wall;

@@ -49,7 +49,8 @@ pub fn placements() -> Vec<Placement> {
             tower(x, z, 1.3);
         }
     }
-    castle
+    // The castle stands on the uncarved land, over Lantern Pond's spot.
+    castle.into_iter().map(everglade::layout::on_land).collect()
 }
 
 /// The five stationary casters around the castle perimeter.
@@ -66,7 +67,7 @@ pub fn figures() -> Vec<SeatFigure> {
         .enumerate()
         .map(|(i, [x, z])| SeatFigure {
             name: format!("Meteor caster {}", i + 1),
-            pos: Vec3::new(x, everglade::height(x, z), z),
+            pos: Vec3::new(x, everglade::land(x, z), z),
             yaw: (-x).atan2(-z),
             speed: 0.0,
             posture: Posture::Talk,
@@ -226,7 +227,7 @@ mod integration_tests {
             assert!(town.site().pieces().len() <= MAX_PIECES);
             assert!(town.shake().abs().max_element() <= 0.024001);
             let eye = runtime.view(1.6).eye;
-            assert!(eye.y >= everglade::height(eye.x, eye.z) + 0.25);
+            assert!(eye.y >= everglade::land(eye.x, eye.z) + 0.25);
         }
         assert!(flying, "NPCs must launch real meteors");
         assert!(damaged, "NPC meteors must break castle blocks");

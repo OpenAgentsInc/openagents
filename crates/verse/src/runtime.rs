@@ -565,7 +565,7 @@ impl WorldRuntime {
             framing.eye.y = framing
                 .eye
                 .y
-                .max(crate::zones::everglade::height(framing.eye.x, framing.eye.z) + 0.3);
+                .max(crate::zones::everglade::land(framing.eye.x, framing.eye.z) + 0.3);
         }
         View {
             view_proj: self

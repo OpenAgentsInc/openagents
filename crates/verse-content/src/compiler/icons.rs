@@ -58,6 +58,7 @@ const ICE: [f32; 3] = [0.65, 0.92, 1.0];
 const MOON: [f32; 3] = [0.88, 0.9, 1.0];
 const THORN: [f32; 3] = [0.75, 0.82, 0.45];
 const NECROTIC: [f32; 3] = [0.7, 0.5, 0.95];
+const EXHAUSTED: [f32; 3] = [1.0, 0.58, 0.32];
 const ACID: [f32; 3] = [0.8, 1.0, 0.3];
 const WATER: [f32; 3] = [0.35, 0.72, 1.0];
 
@@ -192,6 +193,9 @@ const DRUID: &[Icon] = &[
         STORM
     ),
     icon!("sleep-icon", "lorc/sleepy.svg", "Lorc", ARCANE),
+    // The Exhaustion debuff, not a spell: the HUD shows it beside the
+    // breath bar while a swimmer suffocates.
+    icon!("exhaustion-icon", "lorc/sleepy.svg", "Lorc", EXHAUSTED),
     icon!(
         "lightning-bolt-icon",
         "lorc/lightning-frequency.svg",

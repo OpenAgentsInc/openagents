@@ -4473,6 +4473,17 @@ impl App {
                             &self.runtime.everglade_hotbar_order(),
                         );
                     }
+                    // The breath bar over the tray while the player is
+                    // under water or catching its breath.
+                    if let Some(breath) = self.runtime.everglade_breath() {
+                        zones::everglade::water::draw_breath(
+                            &mut bar,
+                            atlas,
+                            size.map(|v| v / self.scale),
+                            HOTBAR_BOTTOM,
+                            &breath,
+                        );
+                    }
                     // Meteor Swarm's help and cast bar over the tray.
                     if let Some(swarm) = self.runtime.everglade_swarm() {
                         zones::everglade::demolition::hotbar::draw_town(

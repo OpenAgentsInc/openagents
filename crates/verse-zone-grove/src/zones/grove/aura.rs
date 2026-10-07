@@ -148,7 +148,7 @@ impl Grove {
             for k in 0..=steps {
                 let s = -reach + k as f32 * WALL_STEP;
                 let mut at = point + across * s;
-                at.y = everglade::height(at.x, at.z) + lift;
+                at.y = everglade::land(at.x, at.z) + lift;
                 fx.extend(self.fx.start(name, Spawn::at(at)));
             }
         } else {

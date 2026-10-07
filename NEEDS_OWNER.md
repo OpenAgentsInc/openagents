@@ -13,6 +13,15 @@ separately. Keep the offer unavailable until this execution and payment path
 is qualified. The retained fixture uses throwaway keys and fake settlement;
 it establishes no deployed availability, independent adoption, ROI, or payout.
 
+## Swimming in Everglade on a phone (#10775)
+
+Everglade's ponds and Glade Run (`docs/verse/water.md`, W3) were tested in
+code and captured on the desktop. On a physical phone, walk into Lantern
+Pond from the commons: you should wade at half speed, then swim. Look down
+past about 30 degrees while moving forward to dive, and check that the
+breath bar shows over the hotbar under water and that you float back up when
+you let go. Note the frame rate with the pond in view.
+
 ## Water on a phone (#10774)
 
 The shared water shader (`docs/verse/water.md`, W2) validates and translates

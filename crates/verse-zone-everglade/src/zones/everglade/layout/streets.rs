@@ -63,12 +63,13 @@ pub(super) fn clear(x: f32, z: f32, r: f32) -> bool {
 pub fn build(out: &mut Vec<Placement>) {
     let mut placed: Vec<([f32; 2], f32)> = Vec::new();
     let ([bx, bz], yaw) = super::BRIDGE;
-    out.push(Placement::new(
+    // The bridge spans Glade Run's carved bed from bank to bank.
+    out.push(super::on_land(Placement::new(
         "generated/footbridge",
         [bx, bz],
         yaw,
         Collision::None,
-    ));
+    )));
     placed.push(([bx, bz], 3.6));
     lamps(out, &mut placed);
     fronts(out, &mut placed);
@@ -260,10 +261,10 @@ fn ponds(out: &mut Vec<Placement>) {
         for i in 0..2 {
             let angle = noise(k as u32 * 2 + i, 111) * TAU;
             let at = [x + angle.cos() * r * 0.45, z + angle.sin() * r * 0.45];
-            out.push(
-                Placement::new("generated/lily_pads", at, angle, Collision::None)
-                    .lift(super::super::draw::WATER_LIFT + 0.01),
-            );
+            out.push(super::afloat(
+                Placement::new("generated/lily_pads", at, angle, Collision::None),
+                0.01,
+            ));
         }
     }
 }

@@ -409,7 +409,9 @@ and, past the tree ring, cliff rocks; some stands are glades with a fairy
 ring, and the forest belt's cheap trees fill in round them. A campfire
 with log seats burns in a Walden clearing, with smoke; a circle of standing
 stones stands in the north woods; Glade Run spills over a weir of stones
-in a low cascade; and willows lean over the ponds. In the town, the
+in a low cascade into a plunge pool; and willows lean over the ponds. The
+ponds and the run are carved into the ground and swimmable, with breath
+under the SRD's rules ([Water](water.md), phase W3). In the town, the
 commons' and the streets' trees are the new broadleafs, at a fifth of the
 kit trees' triangles; trees, shrubs, and flowers grow in the yards,
 alleys, and courtyards between the buildings; tall grass, wildflowers, and

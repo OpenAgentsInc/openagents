@@ -698,6 +698,16 @@ impl Page {
         let tip = self.slot_tip();
         if let (Some(layout), Some(slots)) = (&self.layout, self.runtime.everglade_hotbar()) {
             zones::everglade::hotbar::draw(&mut ui, layout, self.css_size(), 0.0, &slots);
+            // The breath bar over the tray under water.
+            if let Some(breath) = self.runtime.everglade_breath() {
+                zones::everglade::water::draw_breath(
+                    &mut ui,
+                    layout,
+                    self.css_size(),
+                    0.0,
+                    &breath,
+                );
+            }
             if let Some(index) = tip {
                 zones::everglade::hotbar::draw_tip(
                     &mut ui,

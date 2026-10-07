@@ -199,7 +199,7 @@ fn stones() -> Vec<(f32, bool)> {
 }
 
 fn ground(at: [f32; 2]) -> f32 {
-    super::super::everglade::height(at[0], at[1])
+    super::super::everglade::land(at[0], at[1])
 }
 
 /// Every light among the sacred grove's placements.

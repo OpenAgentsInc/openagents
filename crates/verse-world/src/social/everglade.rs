@@ -28,6 +28,8 @@ pub const SEAT_EXTENT: f32 = 40.0;
 pub const RING_RISE: f32 = 5.0;
 /// Highest ground anywhere in the zone, m.
 pub const MAX_HEIGHT: f32 = 10.0;
+/// Lowest ground anywhere in the zone, m: Lantern Pond's bed.
+pub const DEEPEST: f32 = -3.2;
 /// Amplitude of the low undulation on the rising ground, m.
 pub const UNDULATION: f32 = 0.6;
 /// Rise per meter beyond the tree ring.
@@ -168,13 +170,28 @@ pub const STATIONS: [Station; 10] = [
     },
 ];
 
-/// Ground height at `(x, z)`, m: zero inside the clearing but for
-/// Observatory Hill ([`OBSERVATORY_HILL`]), rising smoothly to
-/// [`RING_RISE`] at the tree ring with a low undulation, then climbing
-/// gently to the edge of the zone. Always finite and within
-/// `0..=MAX_HEIGHT`; a nonfinite coordinate reads as the clearing.
+/// Ground height at `(x, z)`, m: the [`land`] with every pond's bowl and
+/// Glade Run's bed carved into it ([`super::everglade_water::carve`]), so
+/// the bed under the water and the walking ground are one surface. Always
+/// finite and within `DEEPEST..=MAX_HEIGHT`; a nonfinite coordinate reads
+/// as the clearing.
 #[must_use]
 pub fn height(x: f32, z: f32) -> f32 {
+    if !x.is_finite() || !z.is_finite() {
+        return 0.0;
+    }
+    super::everglade_water::carve(land(x, z), x, z)
+}
+
+/// The land at `(x, z)` before any water is carved, m: zero inside the
+/// clearing but for Observatory Hill ([`OBSERVATORY_HILL`]), rising
+/// smoothly to [`RING_RISE`] at the tree ring with a low undulation, then
+/// climbing gently to the edge of the zone. Zones that stand on the same
+/// placements without Everglade's water, such as the Grove, walk this.
+/// Always finite and within `0..=MAX_HEIGHT`; a nonfinite coordinate reads
+/// as the clearing.
+#[must_use]
+pub fn land(x: f32, z: f32) -> f32 {
     if !x.is_finite() || !z.is_finite() {
         return 0.0;
     }

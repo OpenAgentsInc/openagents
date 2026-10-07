@@ -42,17 +42,24 @@ fn the_ground_is_flat_in_the_clearing_and_rises_gently_within_bounds() {
                 -HALF_EXTENT + j as f32 * step,
             );
             let h = height(x, z);
-            assert!(
-                h.is_finite() && (0.0..=MAX_HEIGHT).contains(&h),
-                "{x},{z}: {h}"
-            );
+            let wet = verse_world::social::everglade_water::carved(x, z);
+            let range = if wet {
+                verse_world::social::everglade::DEEPEST..=land(x, z)
+            } else {
+                0.0..=MAX_HEIGHT
+            };
+            assert!(h.is_finite() && range.contains(&h), "{x},{z}: {h}");
+            // Away from the ponds and the stream, the land itself.
+            assert!(wet || h == land(x, z), "{x},{z}");
             if x.hypot(z) <= CLEARING_RADIUS && !verse_world::social::everglade::on_hill(x, z) {
-                assert_eq!(h, 0.0, "the clearing is flat at {x},{z}");
+                assert_eq!(land(x, z), 0.0, "the clearing is flat at {x},{z}");
             }
-            // Gentle: no step steeper than 0.6 m per meter.
+            // Gentle: no step steeper than 0.6 m per meter, but for the
+            // ponds' bowls and the stream's banks.
             let dx = (height(x + step, z) - h).abs();
             let dz = (height(x, z + step) - h).abs();
-            assert!(dx.max(dz) <= 0.6 * step, "{x},{z} is too steep");
+            let steepest = if wet { 2.5 } else { 0.6 };
+            assert!(dx.max(dz) <= steepest * step, "{x},{z} is too steep");
         }
     }
     // The ground has risen by the tree ring in every direction.
@@ -64,6 +71,26 @@ fn the_ground_is_flat_in_the_clearing_and_rises_gently_within_bounds() {
     for (x, z) in [(f32::NAN, 0.0), (0.0, f32::INFINITY)] {
         assert_eq!(height(x, z), 0.0);
     }
+}
+
+#[test]
+fn every_pond_is_open_to_walk_into_and_its_water_draws() {
+    let world = world();
+    for ([x, z], r) in layout::PONDS {
+        for k in 0..16 {
+            let a = k as f32 / 16.0 * std::f32::consts::TAU;
+            // The boathouse's arch stands over Lantern Pond's north rim.
+            for d in [0.0, 0.5 * r] {
+                let (px, pz) = (x + a.cos() * d, z + a.sin() * d);
+                assert!(
+                    !world.blockers.iter().any(|b| b.contains(px, pz, 0.0)),
+                    "a blocker in the pond at {px},{pz}"
+                );
+            }
+        }
+    }
+    let water = world.mesh.water.as_ref().expect("the zone's water");
+    assert_eq!(water.patches.len(), layout::PONDS.len() + 2);
 }
 
 #[test]
@@ -204,7 +231,6 @@ fn prop_bounds_become_navigation_blockers() {
         .iter()
         .flat_map(|p| p.footprints(pack().model(p.model).unwrap().bounds()))
         .chain(layout::board_blockers())
-        .chain(layout::pond_blockers())
         .chain(layout::city::blocks().into_iter().map(|(f, _)| f))
         .chain(super::npcs::blocks().into_iter().map(|(f, _)| f))
         .collect();
@@ -448,4 +474,42 @@ fn the_towns_buildings_merge_and_repeated_models_draw_as_instances() {
         "{count} of {}",
         scene.placements.len()
     );
+}
+
+#[test]
+fn the_town_player_wades_then_swims_into_every_pond_among_the_placements() {
+    use crate::controller::{InputState, PlayerController};
+    use verse_world::water::Medium;
+    let input = InputState {
+        forward: true,
+        ..InputState::default()
+    };
+    let town = solids::build(pack(), &layout::placements()).unwrap();
+    for (k, &([cx, cz], r)) in layout::PONDS.iter().enumerate() {
+        // From some bank among the town's solids, straight in.
+        let reached = (0..8).any(|i| {
+            let a = i as f32 / 8.0 * std::f32::consts::TAU;
+            let (x, z) = (cx + a.cos() * (r + 2.0), cz + a.sin() * (r + 2.0));
+            let mut player = PlayerController::new(Vec3::new(x, height(x, z), z), 0.0);
+            player.yaw = (cx - x).atan2(cz - z);
+            player.set_surface_height(player.pos.y);
+            let mut zone = Everglade::with_solids(pack(), &player, town.clone()).unwrap();
+            zone.swim = Some(Box::default());
+            let mut seen = Vec::new();
+            for _ in 0..300 {
+                zone.move_controlled(&mut player, &input, &[], 1.0 / 60.0);
+                let medium = zone.swim().unwrap().medium;
+                if seen.last() != Some(&medium) {
+                    seen.push(medium);
+                }
+                if medium == Medium::Swimming {
+                    break;
+                }
+            }
+            let wade = seen.iter().position(|m| *m == Medium::Wading);
+            let swim = seen.iter().position(|m| *m == Medium::Swimming);
+            matches!((wade, swim), (Some(w), Some(s)) if w < s)
+        });
+        assert!(reached, "{} can't be waded into", layout::POND_NAMES[k]);
+    }
 }

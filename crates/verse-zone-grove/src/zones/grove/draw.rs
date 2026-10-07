@@ -381,7 +381,7 @@ impl Painter {
     /// ground to the target's home, which a post never leaves.
     pub fn post(&mut self, dummy: &Dummy) {
         let (x, z) = (dummy.home.x, dummy.home.z);
-        let ground = crate::zones::everglade::height(x, z);
+        let ground = crate::zones::everglade::land(x, z);
         let top = dummy.home.y;
         let wood = [0.32, 0.2, 0.1];
         let stone = [0.46, 0.44, 0.4];
@@ -502,7 +502,7 @@ impl Painter {
 
     /// Web strands from the ground to a rooted dummy.
     pub fn strands(&mut self, dummy: &Dummy, now: f32) {
-        let ground = crate::zones::everglade::height(dummy.pos.x, dummy.pos.z);
+        let ground = crate::zones::everglade::land(dummy.pos.x, dummy.pos.z);
         let color = [0.88, 0.86, 1.0];
         for i in 0..8 {
             let a = i as f32 / 8.0 * TAU + 0.2 * (now * 0.5).sin();
@@ -614,11 +614,8 @@ impl Painter {
                 let fade = ((until - now) / 1.0).clamp(0.0, 1.0);
                 let grow = ((now - start) / 0.3).clamp(0.0, 1.0);
                 let r = 3.0 * grow;
-                let ground = Vec3::new(
-                    at.x,
-                    crate::zones::everglade::height(at.x, at.z) + 0.05,
-                    at.z,
-                );
+                let ground =
+                    Vec3::new(at.x, crate::zones::everglade::land(at.x, at.z) + 0.05, at.z);
                 let color = [0.86, 0.84, 1.0].map(|c| c * fade);
                 for i in 0..10 {
                     let a = i as f32 / 10.0 * TAU;

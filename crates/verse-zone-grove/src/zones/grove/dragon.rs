@@ -155,7 +155,7 @@ impl Grove {
             swap,
             swapped: false,
         });
-        let ground = Vec3::new(feet.x, everglade::height(feet.x, feet.z) + 0.05, feet.z);
+        let ground = Vec3::new(feet.x, everglade::land(feet.x, feet.z) + 0.05, feet.z);
         let size = if to.is_some() { 1.0 } else { 0.8 };
         let _ = self
             .fx
@@ -413,7 +413,7 @@ impl Grove {
         }
         let forward = player.forward();
         let feet = player.pos;
-        let ground = |p: Vec3| Vec3::new(p.x, everglade::height(p.x, p.z) + 0.05, p.z);
+        let ground = |p: Vec3| Vec3::new(p.x, everglade::land(p.x, p.z) + 0.05, p.z);
         match spell {
             Spell::DragonBite => {
                 let i = self.target(player, def.range).ok_or_else(|| {
@@ -638,7 +638,7 @@ impl Grove {
 /// and clear of the ground.
 #[must_use]
 pub(super) fn aloft(glade: &Everglade, player: &PlayerController) -> bool {
-    glade.levitating && player.pos.y > everglade::height(player.pos.x, player.pos.z) + 0.8
+    glade.levitating && player.pos.y > everglade::land(player.pos.x, player.pos.z) + 0.8
 }
 
 use crate::pbr::textured::TexturedVertex;

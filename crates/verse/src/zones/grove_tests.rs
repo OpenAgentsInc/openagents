@@ -1114,7 +1114,7 @@ fn the_flying_target_sits_low_on_its_post_and_nothing_hangs_after_reverse_gravit
         .position(|d| d.kind == Kind::Flying)
         .unwrap();
     let home = grove(&runtime).dummies[flying].home;
-    let ground = crate::zones::everglade::height(home.x, home.z);
+    let ground = crate::zones::everglade::land(home.x, home.z);
     assert!(
         (4.0..=6.5).contains(&(home.y - ground)),
         "{}",
@@ -1127,7 +1127,7 @@ fn the_flying_target_sits_low_on_its_post_and_nothing_hangs_after_reverse_gravit
     idle(&mut runtime, 0.6);
     // Others fall upward; the rooted one stays on the ground.
     let straw = &grove(&runtime).dummies[STRAW];
-    let under = crate::zones::everglade::height(straw.pos.x, straw.pos.z);
+    let under = crate::zones::everglade::land(straw.pos.x, straw.pos.z);
     assert!(straw.pos.y < under + 0.05, "{}", straw.pos.y - under);
     // The root ends with gravity still reversed; the dummy rises, and a
     // second press ends the spell, so every dummy comes back down.
@@ -1140,7 +1140,7 @@ fn the_flying_target_sits_low_on_its_post_and_nothing_hangs_after_reverse_gravit
         if d.anchored() {
             assert_eq!(d.pos.y, d.home.y, "the target never leaves its post");
         } else {
-            let floor = crate::zones::everglade::height(d.pos.x, d.pos.z);
+            let floor = crate::zones::everglade::land(d.pos.x, d.pos.z);
             assert!(
                 d.pos.y < floor + 0.05,
                 "{:?} at {}",

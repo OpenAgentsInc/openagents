@@ -39,10 +39,12 @@ impl WorldRuntime {
                 if !everglade.levitating {
                     everglade.toggle_levitate(&self.player);
                 }
-                let ground = super::everglade::height(self.player.pos.x, self.player.pos.z);
+                let ground = super::everglade::land(self.player.pos.x, self.player.pos.z);
                 everglade.altitude = (everglade.altitude + everglade.climb_rate() * dt)
                     .clamp(ground, ground + everglade.ceiling());
             }
+            // A swimmer strokes down or up along the camera's pitch.
+            everglade.set_look_pitch(self.camera.pitch);
             everglade.move_controlled(&mut self.player, input, &self.world.blockers, dt);
             // In the Water Lab, the water under Water Walk, the swimming
             // level, and ice hold the character up; below them it rises.
@@ -293,10 +295,8 @@ impl WorldRuntime {
         self.zone_state.progress = 1.0;
         self.zone_revision = self.zone_revision.saturating_add(1);
         let _ = self.set_spawn(super::meteor_stress::SPAWN, 0.0);
-        self.player.set_surface_height(super::everglade::height(
-            self.player.pos.x,
-            self.player.pos.z,
-        ));
+        self.player
+            .set_surface_height(super::everglade::land(self.player.pos.x, self.player.pos.z));
         self.camera = crate::camera::FollowCamera::default();
         self.camera.pitch = -0.2;
         self.camera.distance = 6.0;
@@ -368,10 +368,8 @@ impl WorldRuntime {
         self.zone_state.progress = 1.0;
         self.zone_revision = self.zone_revision.saturating_add(1);
         let _ = self.set_spawn(super::grove::SPAWN, super::grove::SPAWN_YAW);
-        self.player.set_surface_height(super::everglade::height(
-            self.player.pos.x,
-            self.player.pos.z,
-        ));
+        self.player
+            .set_surface_height(super::everglade::land(self.player.pos.x, self.player.pos.z));
         self.camera = crate::camera::FollowCamera::default();
     }
     /// Enter the Grove from Everglade's pack bytes the caller already
@@ -847,7 +845,7 @@ impl WorldRuntime {
                     Intent::Sprint => glade.sprinting = !glade.sprinting,
                     Intent::Levitate => glade.toggle_levitate(&self.player),
                     Intent::Rise | Intent::Lower if glade.levitating => {
-                        let ground = super::everglade::height(self.player.pos.x, self.player.pos.z);
+                        let ground = super::everglade::land(self.player.pos.x, self.player.pos.z);
                         glade.altitude = (glade.altitude
                             + if intent == Intent::Rise { 1.5 } else { -1.5 })
                         .clamp(ground, ground + 18.0);
@@ -1059,6 +1057,16 @@ impl WorldRuntime {
         super::everglade::hotbar::SLOTS
             .get(*order.get(index)?)
             .map(|(intent, ..)| *intent)
+    }
+
+    /// The player's breath for the HUD's breath bar in Everglade's town,
+    /// while the eye is under water or breath is short.
+    #[must_use]
+    pub fn everglade_breath(&self) -> Option<super::everglade::water::BreathBar> {
+        if self.zone != ZoneId::Everglade {
+            return None;
+        }
+        self.zone_state.everglade.as_ref()?.breath_bar()
     }
 
     /// Everglade's hotbar of movement and utility spells, in displayed
@@ -1427,7 +1435,7 @@ impl WorldRuntime {
         if let Some(glade) = self.zone_state.everglade.as_mut()
             && glade.levitating
         {
-            let ground = super::everglade::height(x, z);
+            let ground = super::everglade::land(x, z);
             glade.altitude = (glade.altitude
                 + direction.clamp(-1.0, 1.0) * glade.climb_rate() * dt)
                 .clamp(ground, ground + glade.ceiling());
@@ -2507,8 +2515,10 @@ impl WorldRuntime {
             let lights = grove.lights(glade, &self.player, eye);
             mesh.neon = Some(grove.lit_stage(&lights, glade.elapsed()));
         } else if let Some(everglade) = &self.zone_state.everglade {
-            // Carries the lit stage the textured glade draws on.
+            // Carries the lit stage the textured glade draws on, with its
+            // water seen from the eye: from below when the eye is in it.
             mesh.extend(everglade.dynamic());
+            everglade.see_water_from(&mut mesh, self.view(1.0).eye);
             // The player, and the seats when the pack's character draws them.
             // In first person the player's own character is not drawn.
             mesh.extend(&everglade.player_mesh(&self.player, &self.gait, self.hides_avatar()));

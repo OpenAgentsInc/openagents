@@ -11,9 +11,8 @@
 //! on a road, a walk, a building, a pond, or a station; pieces that belong
 //! against a bank or a fence are placed by rule, off the roads.
 
-use super::super::draw::WATER_LIFT;
 use super::streets::try_put;
-use super::{Collision, PONDS, Placement, city, noise, on_road, tree};
+use super::{Collision, PONDS, Placement, afloat, city, noise, on_land, on_road, tree};
 use std::f32::consts::{FRAC_PI_2, PI, TAU};
 
 /// A piece already placed: its center and radius, m.
@@ -78,11 +77,11 @@ fn ponds(out: &mut Vec<Placement>, placed: &mut Placed) {
         for i in 0..2 {
             let angle = noise(k as u32 * 2 + i, 163) * TAU;
             let at = bank(k, angle, r * (0.25 + 0.35 * noise(i, 164 + k as u32)));
-            out.push(
-                Placement::new("generated/lily_pads", at, angle, Collision::None)
-                    .scale(0.8)
-                    .lift(WATER_LIFT + 0.012),
-            );
+            // Floating on the pond's surface.
+            out.push(afloat(
+                Placement::new("generated/lily_pads", at, angle, Collision::None).scale(0.8),
+                0.012,
+            ));
         }
     }
     // Jetties reach from the bank over the water, a boat tied beside each.
@@ -91,20 +90,22 @@ fn ponds(out: &mut Vec<Placement>, placed: &mut Placed) {
         let center = bank(k, angle, r);
         let water = bank(k, angle, 0.0);
         let yaw = toward(center, water);
-        out.push(Placement::new(
+        // The jetty's deck stands at the land's height over the bank.
+        out.push(on_land(Placement::new(
             "generated/dock",
             center,
             yaw,
             Collision::None,
-        ));
+        )));
         placed.push((center, 3.2));
         let side = angle + FRAC_PI_2;
         let boat = bank(k, angle, r - 2.6);
         let boat = [boat[0] + side.cos() * 1.7, boat[1] + side.sin() * 1.7];
-        out.push(
-            Placement::new("generated/rowboat", boat, yaw + 0.25, Collision::None)
-                .lift(WATER_LIFT - 0.18),
-        );
+        // Afloat at its draft on the sampled surface; boarding it is W6's.
+        out.push(afloat(
+            Placement::new("generated/rowboat", boat, yaw + 0.25, Collision::None),
+            -0.18,
+        ));
     }
     if let Some(house) = city::GROUNDS.iter().find(|i| i.name == "boathouse") {
         out.push(

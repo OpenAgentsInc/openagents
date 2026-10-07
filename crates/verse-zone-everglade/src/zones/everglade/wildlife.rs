@@ -17,9 +17,9 @@ use std::sync::Arc;
 
 use glam::Vec3;
 
+use super::height;
 use super::layout::{PONDS, Placement};
 use super::player::{Beast, Motion};
-use super::{draw, height};
 use crate::pbr::textured::{Figure, TexturedScene, TexturedVertex, UNBAKED};
 use crate::pbr::textured_bake::AmbientProbes;
 use crate::zones::everglade_pack::ZonePack;
@@ -205,7 +205,12 @@ pub fn creatures(pack: &ZonePack, placements: &[Placement]) -> Vec<Creature> {
             .map_or(1.0, |m| m.bounds().1[1] * p.scale);
         Vec3::new(p.at[0], height(p.at[0], p.at[1]) + p.lift + lift, p.at[1])
     };
-    let water = |x: f32, z: f32| Vec3::new(x, height(x, z) + draw::WATER_LIFT, z);
+    // On the water's gameplay surface: a duck paddles where a swimmer
+    // floats, and bobs on it.
+    let water = |x: f32, z: f32| {
+        let top = verse_world::social::everglade_water::surface(x, z);
+        Vec3::new(x, top.unwrap_or_else(|| height(x, z)), z)
+    };
     let mut out = Vec::new();
     // Songbirds: pairs circling over the commons, the woods, and Main
     // Street, high enough to clear the roofs.
