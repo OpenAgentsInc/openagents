@@ -1,0 +1,20 @@
+[package]
+name = "townsfolk"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Verse's townsfolk: villager definitions (openagents.verse-npc.v1) and the town roster (openagents.verse-town.v1), validation against a world tree, budgets, digests, owner admission, and deterministic routines from the town clock. Serde and SHA-256 only; builds for wasm32."
+publish.workspace = true
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+town-clock = { path = "../town-clock" }
+world-tree = { path = "../world-tree" }
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

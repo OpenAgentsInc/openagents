@@ -12131,6 +12131,35 @@
           }
         },
         {
+          "name": "town",
+          "leaf": {
+            "path": [
+              "verse",
+              "town"
+            ],
+            "usage": [
+              "town COMMAND"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "town"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "COMMAND"
+                  }
+                ]
+              }
+            ],
+            "summary": "Author Everglade's townsfolk: list, validate, preview, propose, and the owner's admit and remove (openagents verse town --help).",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
           "name": "control",
           "children": [
             {

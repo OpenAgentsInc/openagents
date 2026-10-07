@@ -60,6 +60,9 @@ pub(crate) const USAGE: &str = "usage: openagents verse COMMAND [OPTIONS]
                             this computer: status, open, hide, split, focus,
                             close, send, key, read, tab, zoom
                             (openagents verse terminal --help).
+  town COMMAND              Author Everglade's townsfolk: list, validate,
+                            preview, propose, and the owner's admit and remove
+                            (openagents verse town --help).
   control ENTITY move X,Y,Z [--yaw DEGREES] [--role ROLE] [--name NAME]
   control ENTITY gesture NAME [--to PUBKEY,ENTITY] [--at X,Y,Z]
   control ENTITY leave      Drive another entity this identity publishes (for
@@ -121,6 +124,7 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("load", Effect::LongRunning),
     Declared::computer("walkers", Effect::Publishes),
     Declared::computer("terminal", Effect::LocalWrite),
+    Declared::computer("town", Effect::LocalWrite),
     Declared::computer("move", Effect::Publishes),
     Declared::computer("say", Effect::Publishes),
     Declared::computer("gesture", Effect::Publishes),
@@ -402,6 +406,9 @@ fn run_group(output: &Output, words: &[String], group: &str) -> u8 {
     }
     if group == "verse" && command == "terminal" {
         return crate::verse_terminal::run(output, rest);
+    }
+    if group == "verse" && command == "town" {
+        return crate::verse_town::run(output, rest);
     }
     let canonical = match command.as_str() {
         "nearby" => "look",

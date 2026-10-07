@@ -334,6 +334,9 @@ pub(crate) struct State {
     /// The Agent Studio Everglade draws. It keeps its source across visits
     /// and observes only while the player is in Everglade.
     studio: everglade::studio::Studio,
+    /// Everglade's admitted townsfolk, placed from the town clock
+    /// (`everglade::townsfolk`).
+    townsfolk: everglade::townsfolk::Townsfolk,
     /// What Everglade's caption leads with, such as that no coding agent
     /// can sign in ([`crate::runtime::WorldRuntime::set_studio_notice`]).
     studio_notice: Option<String>,
@@ -384,6 +387,7 @@ impl Default for State {
             town_clock: town_clock::Clock::DEFAULT,
             dev_destruction: false,
             studio: everglade::studio::Studio::default(),
+            townsfolk: everglade::townsfolk::Townsfolk::default(),
             studio_notice: None,
             workshop_owner: false,
             destination: ZoneId::Everglade,

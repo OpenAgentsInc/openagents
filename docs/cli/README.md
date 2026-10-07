@@ -633,6 +633,22 @@ pastes its text through `coder_vt::Terminal::paste` (bracketed when the
 program asked for it); `key` encodes a named key or chord through
 `Terminal::key`, as the keyboard does.
 
+### Authoring townsfolk (`verse town`)
+
+`openagents verse town` reads and stages Everglade's villager definitions
+in `crates/verse-zone-everglade/townsfolk/` of the checkout it runs in
+(`--dir PATH` names another). Anyone may run `list`, `validate`, `preview`,
+and `propose`; only the owner runs `admit` and `remove`, at a terminal.
+[Authoring townsfolk](../verse/generative-agents.md#authoring-townsfolk-for-bob)
+has the file format, the checks, and the budgets.
+
+```sh
+openagents verse town validate --json                  # every definition; exits 1 on a problem
+openagents verse town preview mira-baker --at 07:30,12:30
+openagents verse town propose mira-baker               # writes townsfolk/proposals/mira-baker.json
+openagents verse town admit mira-baker --owner         # asks you to type the ID
+```
+
 ### Driving owned entities (`verse control`)
 
 NIP-MV entities belong to the key that signs them, so `control` drives

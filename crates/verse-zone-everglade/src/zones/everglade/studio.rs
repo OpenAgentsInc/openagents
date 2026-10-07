@@ -304,7 +304,7 @@ fn lamp_height(feet: Vec3, eye: Vec3) -> f32 {
 /// to [`PLATE_LOW`], for a lower eye, such as the camera under the hall's
 /// ceiling. Nearer than `PLATE_TALL / PLATE_ANGLE` it shrinks, so it never
 /// subtends more than about [`PLATE_ANGLE`] however near the eye comes.
-fn plate_transform(feet: Vec3, eye: Vec3) -> Option<Mat4> {
+pub(super) fn plate_transform(feet: Vec3, eye: Vec3) -> Option<Mat4> {
     billboard(feet, plate_lift(feet, eye), eye)
 }
 
@@ -1629,7 +1629,7 @@ fn lamp(mesh: &mut Mesh, at: Vec3, color: [f32; 3]) {
 
 /// A nameplate's faces in plate space: the name over the activity over the
 /// route, the activity in the lamp's color.
-fn plate(text: &[String; 3], attention: Attention) -> Mesh {
+pub(super) fn plate(text: &[String; 3], attention: Attention) -> Mesh {
     const NAME: [f32; 3] = [0.95, 0.92, 0.82];
     const ROUTE: [f32; 3] = [0.6, 0.6, 0.55];
     let mut mesh = Mesh::default();

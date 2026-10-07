@@ -1,0 +1,26 @@
+{
+  "schema": "openagents.verse-town.v1",
+  "zone": "everglade",
+  "seed": 1009,
+  "budgets": {
+    "villagers": 40,
+    "routine_rows": 24,
+    "lines": 8,
+    "rumors_in_flight": 16,
+    "replies_per_player_per_day": 20
+  },
+  "admitted": [
+    {
+      "id": "mira-baker",
+      "digest": "sha256:acad9eaf530f761a6f2fb7edbd332430663c6ef7d76c22e4236ea4efa1659123"
+    },
+    {
+      "id": "tobin-smith",
+      "digest": "sha256:3b5770cae3ef58de5e657317bfd263c0b736a3732b7cf7414eac051bf668e92f"
+    },
+    {
+      "id": "wren-bellringer",
+      "digest": "sha256:ed46cad94717266027fb0604cc30529ee3b23518258e5259e2791a1d5fa7c78e"
+    }
+  ]
+}

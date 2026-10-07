@@ -736,6 +736,14 @@ uses, and marks which are implemented and which are only specified.
   and checked in as `data/everglade.json`; regenerate it with
   `WORLD_TREE_WRITE=1 cargo test -p verse-zone-everglade world_tree_snapshot`
   after a layout change.
+- `crates/townsfolk` — Everglade's villagers as data: definitions
+  (`openagents.verse-npc.v1`), the roster (`openagents.verse-town.v1`)
+  that admits them by digest under budgets with hard ceilings, validation
+  against the world tree with typed problems, deterministic routines from
+  the town clock and a seed, co-location queries, and the propose/admit
+  files flow. The data lives in `crates/verse-zone-everglade/townsfolk/`;
+  `openagents verse town` is its command, and only the owner admits. Read
+  "Authoring townsfolk" in `docs/verse/generative-agents.md` first.
 - `crates/everglade-web` — Everglade in a browser: a `cdylib` over Verse's
   `web` feature (`wasm32-unknown-unknown`) that fetches the pinned pack from
   the same origin and draws the zone with WebGPU or WebGL2.

@@ -1,0 +1,28 @@
+{
+  "schema": "openagents.verse-npc.v1",
+  "id": "tobin-smith",
+  "name": "Tobin",
+  "card": {
+    "character": true,
+    "role": "smith",
+    "about": "The smith on Foundry Road. He breakfasts at the cafe, buys iron at the Market Hall at noon, and drinks at the Hearth after work."
+  },
+  "look": {
+    "tint": [0.32, 0.36, 0.42]
+  },
+  "home": "everglade/stoop-lane/home-2",
+  "workplace": "everglade/foundry/smithy",
+  "routine": [
+    { "at": "00:00", "node": "everglade/stoop-lane/home-2", "activity": "sleep" },
+    { "at": "06:00", "node": "everglade/main-street/cafe", "activity": "eat" },
+    { "at": "07:00", "node": "everglade/foundry/smithy", "activity": "smith" },
+    { "at": "11:00", "node": "everglade/fountain-plaza/market-hall", "activity": "shop" },
+    { "at": "13:00", "node": "everglade/foundry/smithy", "activity": "smith" },
+    { "at": "18:00", "node": "everglade/lantern-quarter/the-hearth", "activity": "drink" },
+    { "at": "21:00", "node": "everglade/stoop-lane/home-2", "activity": "sleep" }
+  ],
+  "lines": [
+    "Mind the sparks.",
+    "Good iron comes in at the Market Hall around noon."
+  ]
+}

@@ -586,6 +586,116 @@ build bounded.
 
 **Estimate.** 12 agent-hours, after item 3 and the town clock.
 
+**Implemented (phase E1).** Routines, definitions, admission, and spawning;
+rumors, villager memory, and dialogue are phase E2's.
+
+- [`crates/townsfolk`](../../crates/townsfolk) (serde, SHA-256, the town
+  clock, and the world tree; builds for wasm32) holds the definition
+  (`Npc`, `openagents.verse-npc.v1`), the roster (`Town`,
+  `openagents.verse-town.v1`), `Budgets`, digests, `validate` (typed
+  `Problem`s that name the field, a `Router` the zone supplies, and a
+  `Screen`), the pure routine (`Villager::at(seed, time)` gives `Placement::At`
+  or `Placement::Walking` with its progress), `routine::gatherings` and
+  `sim::meetings` (who stands together where, for E2's rumors), `sim` (the
+  text day), and `files` (propose, admit, remove, and list).
+- [`zones/everglade/townsfolk.rs`](../../crates/verse-zone-everglade/src/zones/everglade/townsfolk.rs)
+  compiles `townsfolk/town.json` and every `townsfolk/npcs/*.json` into the
+  client (a build script lists the files), loads the admitted ones against
+  the world tree, routes each walk with `perceive::route`, and draws each
+  villager within 90 m as the pack's character in its tint, under a
+  nameplate with its name, what it is doing, and `CHARACTER / ROLE`. The
+  Verse runtime ticks it with the town clock in Everglade. Under the
+  default daytime clock the villagers stand where 10:30 puts them; with
+  the cycle on (`--town-clock compressed`) they walk their day.
+- The demo town is Mira the baker, Tobin the smith, and Wren the
+  bell-ringer, who all stand at the Market Hall from about 12:00 to 13:00.
+
+### Authoring townsfolk (for Bob)
+
+A villager is one JSON file in
+`crates/verse-zone-everglade/townsfolk/npcs/ID.json`:
+
+```json
+{
+  "schema": "openagents.verse-npc.v1",
+  "id": "mira-baker",
+  "name": "Mira",
+  "card": { "character": true, "role": "baker", "about": "Bakes before dawn." },
+  "look": { "tint": [0.85, 0.62, 0.38] },
+  "home": "everglade/stoop-lane/home-1",
+  "workplace": "everglade/main-street/bakery",
+  "routine": [
+    { "at": "00:00", "node": "everglade/stoop-lane/home-1", "activity": "sleep" },
+    { "at": "04:30", "node": "everglade/main-street/bakery", "activity": "bake" },
+    { "at": "11:30", "node": "everglade/fountain-plaza/market-hall", "activity": "sell" },
+    { "at": "21:30", "node": "everglade/stoop-lane/home-1", "activity": "sleep" }
+  ],
+  "lines": ["Fresh loaves at dawn."]
+}
+```
+
+From `at`, the villager leaves for `node` (up to 10 town minutes late, by a
+seeded delay that differs each day), walks there at 1.4 m/s over the straight
+distance times 1.4, and does `activity` until the next row. `look` and
+`lines` are optional. Find node IDs in `crates/world-tree/data/everglade.json`
+or with `cargo run -p verse-zone-everglade --example world_tree`.
+
+Commands, run in a checkout (each takes `--json`):
+
+| Command | Who | What it does |
+| --- | --- | --- |
+| `openagents verse town list` | Anyone | Each villager's state: `draft`, `proposed`, `refused`, `admitted`, `changed`, or `missing`. |
+| `openagents verse town validate [ID...]` | Anyone | Runs every check below; exits 1 on a problem. `--no-routes` skips routing. |
+| `openagents verse town preview [ID] [--at HH:MM,...] [--day N]` | Anyone | The admitted town, with draft `ID` added, at each time: where each villager stands or walks, at what point, who stands together, and the day's meetings. |
+| `openagents verse town propose ID` | Anyone | Validates with routes and writes `townsfolk/proposals/ID.json` (`openagents.verse-town-proposal.v1`: the digest, the result, and the simulated day). |
+| `openagents verse town admit ID --owner` | Owner | Adds the proposed digest to `townsfolk/town.json` after you type the ID at a terminal. |
+| `openagents verse town remove ID --owner` | Owner | Takes the villager off the roster; its file stays. |
+
+For a capture at a town hour, run
+`VERSE_TOWN_HOUR=12:30 cargo run -p verse --features capture --example
+everglade_capture -- out.png at:X,Z,YAW,TILT`, which stands the player at
+`X,Z` facing `YAW` radians: pick a point a few meters from the one `preview`
+prints for the villager.
+
+Validation refuses a definition when:
+
+- `id` isn't 1 to 40 characters of `a-z`, `0-9`, and inner hyphens, or
+  isn't its file's name.
+- `name` is over 24 characters or uses more than letters, digits, spaces,
+  and `- . '`; `card.role` is over 40, `card.about` over 280, or a line
+  over 160 characters; or any of them fails the secret screen.
+- `card.character` isn't `true`.
+- `home` doesn't offer `sleep`, `workplace` offers none of `work`, `sell`,
+  `shop`, `buy-bread`, `pray`, `read`, or `teach`, or the routine never
+  sleeps at home or never visits the workplace.
+- The routine doesn't start at `00:00`, isn't sorted, or names a node that
+  isn't a building, room, or object in the world tree.
+- A row's node offers no affordance its activity fits. The activities are
+  `sleep`, `eat`, `drink`, `bake`, `smith`, `craft`, `tend`, `work`,
+  `sell`, `shop`, `read`, `pray`, `ring-bell`, `gather`, and `rest`
+  (`townsfolk::Activity::fits`).
+- A walk, with its delay, doesn't end before the next row, or before
+  midnight for the last row.
+- A leg has no route around the zone's blockers.
+- It books an exclusive object, such as a desk, while an admitted villager
+  holds it.
+- It would pass a budget.
+
+The budgets are fields of `town.json`, and code caps each one
+(`Budgets::CEILING`): villagers (40), routine rows per villager (24),
+fixed lines per villager (12), rumors in flight (32), and model replies
+per player per town day (50). The demo roster sets 40, 24, 8, 16, and 20.
+
+**Admission.** You (Bob, or any agent) write files and run `propose`.
+Only the owner runs `admit` and `remove`, which need `--owner` and the ID
+typed at a terminal; an agent's task has no terminal on standard input, and
+a workshop agent's charter never grants either command. A client loads a
+definition only when `town.json` admits its exact digest, so editing an
+admitted file takes it out of the town until the owner admits the new
+digest. Changes reach players through a normal commit, which is the owner's
+review. `cargo test -p verse-zone-everglade townsfolk` checks that the
+checked-in roster loads and that every admitted leg routes.
+
 ## 6. Knowledge that spreads through NIP-KB
 
 **Design.** Agents share what they learned as cited knowledge entries, not
@@ -732,7 +842,7 @@ fixtures and a small demo.
 | C1. Clock and districts | The town clock, time of day, and district data (implemented) | [#10786](https://github.com/OpenAgentsInc/openagents/issues/10786) | None; runs beside A and B |
 | C2. World | 3 | [#10788](https://github.com/OpenAgentsInc/openagents/issues/10788) | C1 |
 | D. Days | 4 | [#10790](https://github.com/OpenAgentsInc/openagents/issues/10790) | C2, B2 |
-| E1. Townsfolk | 5: routines, definitions, and spawn mechanics | [#10791](https://github.com/OpenAgentsInc/openagents/issues/10791) | C2 |
+| E1. Townsfolk | 5: routines, definitions, and spawn mechanics (implemented) | [#10791](https://github.com/OpenAgentsInc/openagents/issues/10791) | C2 |
 | E2. Town talk | 5: rumors, memory of the player, and dialogue | [#10792](https://github.com/OpenAgentsInc/openagents/issues/10792) | E1, B1 |
 | F. Sharing | 6 | [#10793](https://github.com/OpenAgentsInc/openagents/issues/10793) | B2 |
 

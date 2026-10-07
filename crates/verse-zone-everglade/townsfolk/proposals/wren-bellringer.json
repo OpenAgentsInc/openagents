@@ -1,0 +1,23 @@
+{
+  "schema": "openagents.verse-town-proposal.v1",
+  "id": "wren-bellringer",
+  "digest": "sha256:ed46cad94717266027fb0604cc30529ee3b23518258e5259e2791a1d5fa7c78e",
+  "proposed_at": 1791363956,
+  "routes_checked": true,
+  "valid": true,
+  "problems": [],
+  "day": [
+    "Wren (bell-ringer, a character): wren-bellringer",
+    "  00:00 sleeping         home 3",
+    "  05:00 ringing the bell chapel, a 47 min walk",
+    "  06:30 praying          chapel",
+    "  09:00 reading          reading room, a 47 min walk",
+    "  11:15 shopping         market hall, a 32 min walk",
+    "  13:00 resting          fountain, a 3 min walk",
+    "  17:00 ringing the bell chapel, a 19 min walk",
+    "  18:30 eating           tea house, a 36 min walk",
+    "  21:00 sleeping         home 3, a 14 min walk",
+    "  meets mira-baker at market hall, 11:55-12:00",
+    "  meets mira-baker, tobin-smith at market hall, 12:00-13:05"
+  ]
+}

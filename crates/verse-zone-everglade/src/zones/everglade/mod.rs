@@ -34,6 +34,7 @@ pub mod studio;
 #[cfg(test)]
 mod tests;
 pub mod time_of_day;
+pub mod townsfolk;
 pub mod unstick;
 pub mod wildlife;
 pub mod world_tree;

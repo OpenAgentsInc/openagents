@@ -96,6 +96,10 @@ verse-world = { path = "../verse-world", features = ["service-net", "service-rea
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 rcgen = { version = "0.14", default-features = false, features = ["crypto", "ring"] }
 verse-lagrange = { path = "../verse-lagrange" }
+# `openagents verse town`: Everglade's townsfolk definitions and roster.
+townsfolk = { path = "../townsfolk" }
+town-clock = { path = "../town-clock" }
+world-tree = { path = "../world-tree" }
 
 # `openagents ssh` runs the system ssh through Unix process groups, and
 # `openagents labor`'s store rests on Unix file modes; Windows builds

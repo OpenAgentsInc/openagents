@@ -96,6 +96,7 @@ mod terminal;
 #[cfg(test)]
 mod tree;
 mod verse_terminal;
+mod verse_town;
 mod walkers;
 #[cfg(unix)]
 mod wallet;

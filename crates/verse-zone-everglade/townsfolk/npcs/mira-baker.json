@@ -1,0 +1,28 @@
+{
+  "schema": "openagents.verse-npc.v1",
+  "id": "mira-baker",
+  "name": "Mira",
+  "card": {
+    "character": true,
+    "role": "baker",
+    "about": "Everglade's baker. She lights the ovens before dawn, sells at the Market Hall at noon, and ends the day at the Lantern."
+  },
+  "look": {
+    "tint": [0.85, 0.62, 0.38]
+  },
+  "home": "everglade/stoop-lane/home-1",
+  "workplace": "everglade/main-street/bakery",
+  "routine": [
+    { "at": "00:00", "node": "everglade/stoop-lane/home-1", "activity": "sleep" },
+    { "at": "04:30", "node": "everglade/main-street/bakery", "activity": "bake" },
+    { "at": "11:30", "node": "everglade/fountain-plaza/market-hall", "activity": "sell" },
+    { "at": "13:00", "node": "everglade/main-street/bakery", "activity": "bake" },
+    { "at": "17:00", "node": "everglade/main-street/tea-house", "activity": "eat" },
+    { "at": "19:00", "node": "everglade/lantern-quarter/the-lantern", "activity": "gather" },
+    { "at": "21:30", "node": "everglade/stoop-lane/home-1", "activity": "sleep" }
+  ],
+  "lines": [
+    "Fresh loaves at dawn, if you're up early enough.",
+    "I keep a stall at the Market Hall at noon."
+  ]
+}

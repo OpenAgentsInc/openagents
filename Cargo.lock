@@ -9899,11 +9899,14 @@ dependencies = [
  "tokio",
  "tokio-tungstenite 0.30.0",
  "toml",
+ "town-clock",
+ "townsfolk",
  "uuid",
  "verse",
  "verse-engine",
  "verse-lagrange",
  "verse-world",
+ "world-tree",
 ]
 
 [[package]]
@@ -14621,6 +14624,18 @@ name = "town-clock"
 version = "0.1.0"
 
 [[package]]
+name = "townsfolk"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "town-clock",
+ "world-tree",
+]
+
+[[package]]
 name = "tracing"
 version = "0.1.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -15603,6 +15618,7 @@ dependencies = [
  "sha2 0.10.9",
  "tempfile",
  "town-clock",
+ "townsfolk",
  "verse-content",
  "verse-core",
  "verse-engine",

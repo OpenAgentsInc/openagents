@@ -2402,11 +2402,19 @@ impl WorldRuntime {
             // The seats move first, so the characters pose where they stand.
             state.studio.set_player(Some(self.player.pos));
             state.studio.tick(dt);
-            let seats = if state.demolition {
+            let mut seats = if state.demolition {
                 Vec::new()
             } else {
                 state.studio.figures()
             };
+            // The townsfolk stand and walk where the town clock puts them,
+            // drawn as seats are.
+            if !state.demolition && self.zone == ZoneId::Everglade {
+                state
+                    .townsfolk
+                    .tick(everglade.town_time(), &self.world.blockers, self.player.pos);
+                seats.extend(state.townsfolk.figures());
+            }
             everglade.tick(dt, &self.player, &seats);
         }
     }
@@ -2491,6 +2499,8 @@ impl WorldRuntime {
                         .studio
                         .draw(eye, !everglade.has_characters()),
                 );
+                // The townsfolk's nameplates.
+                mesh.extend(&self.zone_state.townsfolk.draw(eye));
             }
         }
         mesh
