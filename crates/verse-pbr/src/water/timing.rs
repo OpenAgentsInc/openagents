@@ -40,7 +40,7 @@ pub struct Measurements {
     pub gpu: Option<GpuSample>,
     pub gpu_timestamps: bool,
     pub gpu_bytes: u64,
-    /// Elapsed prepare and draw-encoding work, excluding GPU waits.
+    /// Elapsed preparation, mirror, copy, and surface encoding, excluding GPU waits.
     pub main_ms: f64,
     pub main_cpu_ms: Option<f64>,
     /// Last job duration, reported separately from completed interval work.
