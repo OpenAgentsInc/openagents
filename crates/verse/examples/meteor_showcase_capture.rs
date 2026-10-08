@@ -137,6 +137,12 @@ struct Sample {
     solids: f32,
     chunks: usize,
     posed: usize,
+    rigid_instances: usize,
+    awake_bodies: usize,
+    sleeping_bodies: usize,
+    merged_chunks: usize,
+    contact_points: usize,
+    warm_candidates: usize,
     sprites: usize,
     ribbons: usize,
     ribbon_segments: usize,
@@ -314,6 +320,18 @@ fn report(phases: &[(&str, Vec<Sample>)]) -> serde_json::Value {
                 "town_solids_ms": col(|s| s.solids),
                 "chunks_max": most(|s| s.chunks as u64),
                 "posed_vertices_max": most(|s| s.posed as u64),
+                "rigid_instances_max": most(|s| s.rigid_instances as u64),
+                "awake_bodies_max": most(|s| s.awake_bodies as u64),
+                "sleeping_bodies_max": most(|s| s.sleeping_bodies as u64),
+                "merged_chunks_max": most(|s| s.merged_chunks as u64),
+                "contact_points_max": most(|s| s.contact_points as u64),
+                "warm_candidates_max": most(|s| s.warm_candidates as u64),
+                "debris_end": samples.last().map(|s| serde_json::json!({
+                    "frame": s.index, "rigid_instances": s.rigid_instances,
+                    "awake_bodies": s.awake_bodies, "sleeping_bodies": s.sleeping_bodies,
+                    "merged_chunks": s.merged_chunks, "contact_points": s.contact_points,
+                    "warm_candidates": s.warm_candidates,
+                })),
                 "sprites_max": most(|s| s.sprites as u64),
                 "ribbons_max": most(|s| s.ribbons as u64),
                 "ribbon_segments_max": most(|s| s.ribbon_segments as u64),
@@ -926,6 +944,12 @@ fn main() -> Result<(), String> {
                     sample.solids += town.solids_ms;
                     sample.chunks = town.chunks;
                     sample.posed = town.posed_vertices;
+                    sample.rigid_instances = town.rigid_instances;
+                    sample.awake_bodies = town.awake_bodies;
+                    sample.sleeping_bodies = town.sleeping_bodies;
+                    sample.merged_chunks = town.merged_chunks;
+                    sample.contact_points = town.contact_points;
+                    sample.warm_candidates = town.warm_candidates;
                 }
             }
         }

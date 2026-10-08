@@ -890,6 +890,7 @@ impl Renderer {
         self.scene.textured_baked = None;
         self.scene.textured_edits = None;
         self.scene.figure = None;
+        self.scene.instances = None;
         if let Some(targets) = &mut self.targets.photo {
             targets.reset_temporal_history();
         }
@@ -2776,8 +2777,34 @@ impl Scene {
         if let Some(gpu) = &mut self.textured {
             gpu.update_levels(view.eye);
         }
+        let instances = dynamic
+            .instances
+            .as_ref()
+            .and(self.instances.as_ref().map(|(_, gpu)| gpu));
+        let temporal_enabled = photo_targets.temporal_aa_available()
+            && match stage {
+                Stage::Space(_) => true,
+                Stage::Neon(neon) => neon.temporal_aa,
+            }
+            && std::env::var("VERSE_TEMPORAL_AA").as_deref() != Ok("off");
+        let motion = if temporal_enabled {
+            instances.map_or_else(Vec::new, |gpu| {
+                let (vertices, indices, instances, draws) = gpu.motion_buffers();
+                draws
+                    .into_iter()
+                    .map(|draw| crate::pbr::temporal::MotionDraw {
+                        vertices,
+                        indices,
+                        instances,
+                        draw,
+                    })
+                    .collect()
+            })
+        } else {
+            Vec::new()
+        };
         let batches = Batches {
-            motion: &[],
+            motion: &motion,
             #[cfg(not(target_arch = "wasm32"))]
             streamed: self
                 .streaming
@@ -2797,10 +2824,7 @@ impl Scene {
                 .figure
                 .as_ref()
                 .and(self.figure.as_ref().map(|(_, gpu)| gpu)),
-            instances: dynamic
-                .instances
-                .as_ref()
-                .and(self.instances.as_ref().map(|(_, gpu)| gpu)),
+            instances,
             water: self.water.as_ref(),
         };
         photo.headroom = self.headroom;
