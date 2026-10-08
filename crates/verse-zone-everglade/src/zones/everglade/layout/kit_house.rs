@@ -144,6 +144,28 @@ impl KitHouse {
         ]
     }
 
+    /// Whether `placement` is one of this house's pieces: a kit model on
+    /// the lot, grown for eaves, steps, and a chimney past the wall line.
+    /// A prop set out by the door is not, and neither is a generated
+    /// landmark that stands on the same ground, such as the lookout tower.
+    #[must_use]
+    pub fn holds(&self, placement: &Placement) -> bool {
+        if !placement.model.starts_with("kit/") {
+            return false;
+        }
+        self.on_lot(placement.at)
+    }
+
+    /// Whether `at` stands on the lot, grown for eaves and steps.
+    #[must_use]
+    pub fn on_lot(&self, at: [f32; 2]) -> bool {
+        let (s, c) = self.facing.sin_cos();
+        let (dx, dz) = (at[0] - self.center[0], at[1] - self.center[1]);
+        let u = dx * c - dz * s;
+        let w = dx * s + dz * c;
+        u.abs() <= self.width / 2.0 + 1.5 && w.abs() <= self.depth / 2.0 + 1.5
+    }
+
     /// The ground floor's height, m.
     #[must_use]
     pub fn floor(&self) -> f32 {

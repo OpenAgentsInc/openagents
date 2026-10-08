@@ -126,12 +126,16 @@ pub const OBSERVATORY: Model = Model {
     inside: None,
 };
 
-/// The Fountain Plaza's fountain: a basin around a column of bowls.
+/// The Fountain Plaza's fountain: the medieval kit's basin. Its blockers
+/// match the kit piece's box (`kit/fountain`, about 6.2 m across and 2.1 m
+/// tall), so a walker turns at the rim the same way the drawn fountain does.
+/// The stand is past the rim, clear of the walker's radius; the old
+/// generated basin's stand at 3.4 m now sits inside this wider box.
 pub const FOUNTAIN: Model = Model {
-    name: "generated/fountain",
-    blocks: &[[-2.4, 2.4, -2.4, 2.4, 0.75], [-1.1, 1.1, -1.1, 1.1, 3.0]],
+    name: "kit/fountain",
+    blocks: &[[-3.09, 3.09, -3.09, 3.09, 2.14]],
     roofs: &[],
-    front: [0.0, 3.4],
+    front: [0.0, 4.1],
     inside: None,
 };
 
@@ -178,12 +182,14 @@ pub const BOARDWALK_CAFE: Model = Model {
     inside: None,
 };
 
-/// The smithy and its open forge on its east side (+x).
+/// The smithy and its open forge on its east side (+x). The stand is past
+/// the front wall and clear of the walker's radius: the lot places the
+/// model's origin on the wall line, so a stand at 0.9 sits inside the wall.
 pub const SMITHY: Model = Model {
     name: "generated/smithy",
     blocks: &[[-4.1, 4.1, -8.1, 0.1, 3.12], [4.0, 7.5, -7.8, -0.2, 2.4]],
     roofs: &[gable([0.0, -4.0], false, [4.7, 4.3], 3.12, 9.03)],
-    front: [-1.0, 0.9],
+    front: [-1.0, 1.6],
     inside: None,
 };
 

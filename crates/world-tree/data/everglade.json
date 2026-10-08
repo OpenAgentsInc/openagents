@@ -1,7 +1,7 @@
 {
   "schema": "openagents.verse-world-tree.v1",
   "zone": "everglade",
-  "digest": "sha256:23435b364f00da61be789b5169297a312fb49ea3fc4aa5e48401ce9f838e6b90",
+  "digest": "sha256:6cc2fa3335f40364cc2a607bd4ee55082a9675821c9e2e7d6f1d08f0b67e5161",
   "nodes": [
     {
       "id": "everglade",
@@ -1676,7 +1676,7 @@
       "district": "fountain-plaza",
       "stand": [
         -6.0,
-        78.9
+        79.6
       ],
       "source": "district:fountain-plaza"
     },
@@ -2559,7 +2559,7 @@
       "district": "fountain-plaza",
       "stand": [
         -6.0,
-        78.9
+        79.6
       ],
       "affordances": [
         "rest"
@@ -2574,7 +2574,7 @@
       "district": "fountain-plaza",
       "stand": [
         -6.0,
-        78.9
+        79.6
       ],
       "open": false,
       "source": "front:fountain:door"
@@ -2882,8 +2882,8 @@
       "kind": "district",
       "district": "foundry",
       "stand": [
-        77.0,
-        -1.5
+        78.0,
+        1.5
       ],
       "source": "district:foundry"
     },
@@ -3008,7 +3008,7 @@
       "district": "foundry",
       "stand": [
         93.0,
-        -3.1
+        -2.4
       ],
       "affordances": [
         "work"
@@ -3023,7 +3023,7 @@
       "district": "foundry",
       "stand": [
         93.0,
-        -3.1
+        -2.4
       ],
       "open": false,
       "source": "front:smithy:door"

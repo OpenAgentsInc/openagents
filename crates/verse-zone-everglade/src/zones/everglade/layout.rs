@@ -238,7 +238,7 @@ pub fn board_blockers() -> Vec<Footprint> {
 /// The ponds: center and water radius, m. Lantern Pond lies on the
 /// commons; Reed Pond in the long meadow by the Knowledge District. The
 /// city's are the Thinking Pond in Walden Woods and the Fern Pond in
-/// Fernhollow; the Fountain Plaza's fountain is a generated model
+/// Fernhollow; the Fountain Plaza's fountain is the medieval kit's
 /// (`city::PLAZA_FOUNTAIN`). Every pond is swimmable: its bowl is carved
 /// into the heightfield ([`verse_world::social::everglade_water`]), and
 /// Glade Run's bed with it.

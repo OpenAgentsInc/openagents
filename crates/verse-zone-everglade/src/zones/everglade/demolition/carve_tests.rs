@@ -103,7 +103,7 @@ fn an_open_gazebo_lets_a_walker_in_and_a_closed_door_does_not() {
 
 #[test]
 fn the_fountain_basin_turns_a_walker_aside() {
-    let fountain = instance("generated/fountain");
+    let fountain = instance("kit/fountain");
     let mut player = player_at(&fountain, [0.0, 7.0], [0.0, 0.0]);
     walk(&mut player, 3.0);
     let [x, z] = local(&fountain, &player);
