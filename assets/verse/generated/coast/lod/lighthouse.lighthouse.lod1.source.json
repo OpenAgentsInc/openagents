@@ -1,0 +1,18 @@
+{
+  "out": "lod/lighthouse.lighthouse.lod1.glb",
+  "triangles": 874,
+  "size_xyz_m": [
+    8.0,
+    7.968,
+    23.35
+  ],
+  "bytes": 127452,
+  "actions": [],
+  "blender": "5.2.2 LTS",
+  "mode": "Reference",
+  "external_inputs": [],
+  "triangle_budget": 10000,
+  "generated_from": "1b66464d3f40a0f1b9b123f1e9782d4e344f3b5d321dfe944e322f2973002d64",
+  "level": 1,
+  "sha256": "708b523c24469e669d81c1e85eed95c55824b1530a3ae6e652b0ce9c42d9edde"
+}

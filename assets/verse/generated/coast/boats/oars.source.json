@@ -1,0 +1,17 @@
+{
+  "out": "boats/oars.glb",
+  "triangles": 128,
+  "size_xyz_m": [
+    0.82,
+    2.425,
+    0.056
+  ],
+  "bytes": 11472,
+  "actions": [],
+  "blender": "5.2.2 LTS",
+  "mode": "Reference",
+  "external_inputs": [],
+  "triangle_budget": 3999,
+  "sha256": "8cfd2fe33e90cb040931953aa63292041084099fbef36e8220ef75f9f73fb52c",
+  "effective_density_kg_m3": 550
+}

@@ -1,0 +1,19 @@
+{
+  "out": "wildlife/fish.glb",
+  "triangles": 72,
+  "size_xyz_m": [
+    0.09,
+    0.45,
+    0.225
+  ],
+  "bytes": 15508,
+  "actions": [
+    "idle",
+    "swim"
+  ],
+  "blender": "5.2.2 LTS",
+  "mode": "Reference",
+  "external_inputs": [],
+  "triangle_budget": 799,
+  "sha256": "d981253891148ab399f6cb812a9e81bb3664274aa57b3c270cd6ef59acd3af37"
+}

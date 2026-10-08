@@ -1,0 +1,16 @@
+{
+  "out": "rocks/sea_cave.glb",
+  "triangles": 560,
+  "size_xyz_m": [
+    10.633,
+    5.342,
+    9.599
+  ],
+  "bytes": 86076,
+  "actions": [],
+  "blender": "5.2.2 LTS",
+  "mode": "Reference",
+  "external_inputs": [],
+  "triangle_budget": 4000,
+  "sha256": "a5470deb09ae2cebd5852315774a61f180c96374a98b8952cb2dbe034f46e8c4"
+}

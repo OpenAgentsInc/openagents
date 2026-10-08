@@ -1,0 +1,18 @@
+{
+  "out": "lod/harbor.breakwater.lod2.glb",
+  "triangles": 80,
+  "size_xyz_m": [
+    7.503,
+    3.165,
+    2.56
+  ],
+  "bytes": 34660,
+  "actions": [],
+  "blender": "5.2.2 LTS",
+  "mode": "Reference",
+  "external_inputs": [],
+  "triangle_budget": 2999,
+  "generated_from": "aa6b90caeea5b6afbc8ca504bcb05082fd3adf7b30e13aafea0aaa58de87bbb5",
+  "level": 2,
+  "sha256": "7e733cfd508a75f28e5f59255a61211cdd53fe7d938b43e5433cf1be40acd88e"
+}

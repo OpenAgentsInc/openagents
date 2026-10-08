@@ -1,0 +1,18 @@
+{
+  "out": "lod/harbor.pier.lod2.glb",
+  "triangles": 240,
+  "size_xyz_m": [
+    3.0,
+    4.0,
+    4.0
+  ],
+  "bytes": 31712,
+  "actions": [],
+  "blender": "5.2.2 LTS",
+  "mode": "Reference",
+  "external_inputs": [],
+  "triangle_budget": 2999,
+  "generated_from": "d916fb1f67a7d3a906bc00d3725258f30f770673964e5fe65f5e48b6abec39b0",
+  "level": 2,
+  "sha256": "56c08d53e488e8efec4f23a645a5f126a79391a4f5176bcdd5d14b04f32808ff"
+}

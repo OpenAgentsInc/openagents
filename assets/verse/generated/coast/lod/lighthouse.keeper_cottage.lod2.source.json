@@ -1,0 +1,18 @@
+{
+  "out": "lod/lighthouse.keeper_cottage.lod2.glb",
+  "triangles": 146,
+  "size_xyz_m": [
+    5.503,
+    6.6,
+    4.664
+  ],
+  "bytes": 19652,
+  "actions": [],
+  "blender": "5.2.2 LTS",
+  "mode": "Reference",
+  "external_inputs": [],
+  "triangle_budget": 1500,
+  "generated_from": "f6f174d21202ac5a2b31027f7682dbd4ffb198acbe2e28ae9ded6e138a6731be",
+  "level": 2,
+  "sha256": "f6f174d21202ac5a2b31027f7682dbd4ffb198acbe2e28ae9ded6e138a6731be"
+}

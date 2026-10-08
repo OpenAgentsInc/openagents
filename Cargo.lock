@@ -16053,10 +16053,13 @@ version = "0.1.0"
 dependencies = [
  "glam",
  "physics",
+ "serde_json",
+ "sha2 0.10.9",
  "verse-core",
  "verse-pbr",
  "verse-water-spells",
  "verse-world",
+ "verse-zone-everglade",
  "verse-zone-water",
 ]
 

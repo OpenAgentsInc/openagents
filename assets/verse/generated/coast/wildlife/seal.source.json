@@ -1,0 +1,19 @@
+{
+  "out": "wildlife/seal.glb",
+  "triangles": 272,
+  "size_xyz_m": [
+    1.02,
+    1.641,
+    0.62
+  ],
+  "bytes": 67340,
+  "actions": [
+    "idle",
+    "swim"
+  ],
+  "blender": "5.2.2 LTS",
+  "mode": "Reference",
+  "external_inputs": [],
+  "triangle_budget": 799,
+  "sha256": "1f7184c521e217b2b731549d759811398fc62ef975c9a800203f339c05916a11"
+}

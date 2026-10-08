@@ -1,0 +1,9 @@
+{
+  "mode": "Reference",
+  "external_inputs": [],
+  "frames": 16,
+  "columns": 4,
+  "cell": 64,
+  "encoding": "premultiplied-linear-srgb",
+  "sha256": "134ae6c610400478f301784249bd8d17ee3d262df97b5a711265186ecbd9d9ac"
+}

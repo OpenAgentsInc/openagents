@@ -1,0 +1,19 @@
+{
+  "out": "wildlife/crab.glb",
+  "triangles": 216,
+  "size_xyz_m": [
+    0.732,
+    0.54,
+    0.226
+  ],
+  "bytes": 34148,
+  "actions": [
+    "idle",
+    "walk"
+  ],
+  "blender": "5.2.2 LTS",
+  "mode": "Reference",
+  "external_inputs": [],
+  "triangle_budget": 799,
+  "sha256": "0ba0c6d2ab11849825933989eec6e28f9045ea418f0125d9fb54ac491f6534a5"
+}

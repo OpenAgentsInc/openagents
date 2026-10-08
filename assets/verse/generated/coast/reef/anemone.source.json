@@ -1,0 +1,16 @@
+{
+  "out": "reef/anemone.glb",
+  "triangles": 172,
+  "size_xyz_m": [
+    0.492,
+    0.492,
+    0.339
+  ],
+  "bytes": 22824,
+  "actions": [],
+  "blender": "5.2.2 LTS",
+  "mode": "Reference",
+  "external_inputs": [],
+  "triangle_budget": 300,
+  "sha256": "f2941892f2036016afaae199fbe0de8e3f0815fb1857d42bc6596e73abe5ec6b"
+}

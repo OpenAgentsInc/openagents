@@ -1,0 +1,26 @@
+{
+  "sha256": "105ec8dc07ec7fbd5efa0acc3a57232b95435086e81680b1a3dad58619873d7c",
+  "bytes": 487425,
+  "models": 108,
+  "triangles": 23530,
+  "decoded_texture_bytes": 393216,
+  "source_bytes": 4589203,
+  "forms": [
+    [
+      "beasts/crab",
+      216
+    ],
+    [
+      "beasts/fish",
+      72
+    ],
+    [
+      "beasts/gull",
+      236
+    ],
+    [
+      "beasts/seal",
+      272
+    ]
+  ]
+}

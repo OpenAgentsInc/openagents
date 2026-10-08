@@ -1,0 +1,18 @@
+{
+  "out": "lod/harbor.mooring.lod2.glb",
+  "triangles": 44,
+  "size_xyz_m": [
+    0.856,
+    1.213,
+    0.636
+  ],
+  "bytes": 8280,
+  "actions": [],
+  "blender": "5.2.2 LTS",
+  "mode": "Reference",
+  "external_inputs": [],
+  "triangle_budget": 2999,
+  "generated_from": "8afcc7e2ed523be510dd0e65f1093c663694a6cd6a0a7a83219667f6f54bf776",
+  "level": 2,
+  "sha256": "6e24369f90acd3c83da9be94ae9c4411454d1d6879ba914248c6f88e44758590"
+}

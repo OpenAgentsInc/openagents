@@ -1,0 +1,18 @@
+{
+  "out": "lod/reef.kelp.lod1.glb",
+  "triangles": 13,
+  "size_xyz_m": [
+    0.49,
+    0.137,
+    2.64
+  ],
+  "bytes": 2080,
+  "actions": [],
+  "blender": "5.2.2 LTS",
+  "mode": "Reference",
+  "external_inputs": [],
+  "triangle_budget": 199,
+  "generated_from": "5363d5d8a3aa6a95c74debbb7f83b0281826aab0923a88672278d02a1d21e7d6",
+  "level": 1,
+  "sha256": "ab26e8155ed82682fd8ec1e76a16d0a0c98257f567977b5b02564bc46a7367df"
+}

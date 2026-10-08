@@ -1,0 +1,16 @@
+{
+  "out": "harbor/breakwater.glb",
+  "triangles": 320,
+  "size_xyz_m": [
+    7.663,
+    3.105,
+    2.507
+  ],
+  "bytes": 59176,
+  "actions": [],
+  "blender": "5.2.2 LTS",
+  "mode": "Reference",
+  "external_inputs": [],
+  "triangle_budget": 2999,
+  "sha256": "aa6b90caeea5b6afbc8ca504bcb05082fd3adf7b30e13aafea0aaa58de87bbb5"
+}

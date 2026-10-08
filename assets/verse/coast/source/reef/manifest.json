@@ -1,0 +1,35 @@
+{
+  "creator": "OpenAgents",
+  "files": {
+    "anemone.bin": "fd5c7d009ecd2812d160ea12d716b4c05a7503ee3914c3820be0798da056d5cc",
+    "anemone.gltf": "102d7dda067e3b1085e674fc78b1b390522135bfc32bb511b7e7b9ae18b89d18",
+    "coast_8cdb7ca38b8c1e3f88ee0a1f.png": "8cdb7ca38b8c1e3f88ee0a1f67f5ed9f9c254dfc838d3ab1227ef5748b39732f",
+    "kelp.bin": "2d4b3ab6d639d44d73af844c5f2b0c52792285822aeef997e9a0b6d959f7157f",
+    "kelp.gltf": "30a67feb0deca9510d48dbebe112c51f59d05f4cd1132345f34dbb12da362164",
+    "license.txt": "457b40c28fb92ef776de6b6879d3738ecec6b09d8d2be407a8ffd58e7fc92ec0",
+    "reef_cluster.bin": "883f36cf3091f211c162a92a63702875d45908d93313e8212df0e43895da6760",
+    "reef_cluster.gltf": "2b13165cc396ec1f9781b2788d3e1f849fefb64a7ed5e21fb89e00565ebf3cd3"
+  },
+  "license": "CC0-1.0",
+  "originals": {
+    "anemone.bin": "f2941892f2036016afaae199fbe0de8e3f0815fb1857d42bc6596e73abe5ec6b",
+    "anemone.gltf": "f2941892f2036016afaae199fbe0de8e3f0815fb1857d42bc6596e73abe5ec6b",
+    "coast_8cdb7ca38b8c1e3f88ee0a1f.png": "72bc92dd02718ca7b97c012c7500b05bfb200a9269099b18ae8662eca3d38447",
+    "kelp.bin": "5363d5d8a3aa6a95c74debbb7f83b0281826aab0923a88672278d02a1d21e7d6",
+    "kelp.gltf": "5363d5d8a3aa6a95c74debbb7f83b0281826aab0923a88672278d02a1d21e7d6",
+    "license.txt": "457b40c28fb92ef776de6b6879d3738ecec6b09d8d2be407a8ffd58e7fc92ec0",
+    "reef_cluster.bin": "72bc92dd02718ca7b97c012c7500b05bfb200a9269099b18ae8662eca3d38447",
+    "reef_cluster.gltf": "72bc92dd02718ca7b97c012c7500b05bfb200a9269099b18ae8662eca3d38447"
+  },
+  "package": "Original procedural coast reef",
+  "schema": "openagents.verse.source-manifest.v1",
+  "transforms": {
+    "anemone.bin": "Split original generated GLB; preserve geometry, base color, skin, and clips; lens emission is assigned by the coast renderer",
+    "anemone.gltf": "Split original generated GLB; preserve geometry, base color, skin, and clips; lens emission is assigned by the coast renderer",
+    "coast_8cdb7ca38b8c1e3f88ee0a1f.png": "Split original generated GLB; preserve geometry, base color, skin, and clips; lens emission is assigned by the coast renderer",
+    "kelp.bin": "Split original generated GLB; preserve geometry, base color, skin, and clips; lens emission is assigned by the coast renderer",
+    "kelp.gltf": "Split original generated GLB; preserve geometry, base color, skin, and clips; lens emission is assigned by the coast renderer",
+    "reef_cluster.bin": "Split original generated GLB; preserve geometry, base color, skin, and clips; lens emission is assigned by the coast renderer",
+    "reef_cluster.gltf": "Split original generated GLB; preserve geometry, base color, skin, and clips; lens emission is assigned by the coast renderer"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "out": "beach/driftwood.glb",
+  "triangles": 48,
+  "size_xyz_m": [
+    2.833,
+    1.065,
+    0.54
+  ],
+  "bytes": 4988,
+  "actions": [],
+  "blender": "5.2.2 LTS",
+  "mode": "Reference",
+  "external_inputs": [],
+  "triangle_budget": 599,
+  "sha256": "68f7f10a5f1e3759b05f515a9a46c8fdd780fcbd26ed6f60ddfdedfcad88c701",
+  "effective_density_kg_m3": 550
+}

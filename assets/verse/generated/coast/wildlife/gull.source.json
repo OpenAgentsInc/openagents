@@ -1,0 +1,20 @@
+{
+  "out": "wildlife/gull.glb",
+  "triangles": 236,
+  "size_xyz_m": [
+    1.341,
+    0.75,
+    0.275
+  ],
+  "bytes": 40620,
+  "actions": [
+    "flap",
+    "glide",
+    "idle"
+  ],
+  "blender": "5.2.2 LTS",
+  "mode": "Reference",
+  "external_inputs": [],
+  "triangle_budget": 799,
+  "sha256": "cdd2d29f0e2ac6e3cf1f0414fe1e110fceb80e825b2687f2370a24c690e344fe"
+}

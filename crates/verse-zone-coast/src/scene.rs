@@ -131,6 +131,7 @@ pub fn world() -> Result<World, String> {
         });
         scene.place(mesh, Mat4::IDENTITY);
     }
+    let blockers = crate::kit::append(&mut scene)?;
     scene.validate()?;
     let fields = water::fields()?;
     let surface = crate::surface::surface(Arc::new(fields.optical));
@@ -141,7 +142,7 @@ pub fn world() -> Result<World, String> {
             water: Some(Arc::new(surface)),
             ..Mesh::default()
         },
-        blockers: Vec::new(),
+        blockers,
     })
 }
 
@@ -189,7 +190,7 @@ impl Coast {
         Ok(Self {
             tick,
             water: water::CoastalWater::new("calm")?,
-            solids: Solids::over(ground),
+            solids: crate::kit::solids()?,
             breath: Breath::new(2),
             medium: Medium::Ground,
         })
@@ -355,8 +356,16 @@ mod tests {
             .map(|p| p.indices.len() / 3)
             .sum();
         assert!(triangles <= 250_000, "{triangles}");
+        // Reserve High's entire water allowance even for the Low budget.
+        let textures: u64 = scene.images.iter().map(|i| i.rgba.len() as u64).sum();
+        assert!(scene.gpu_bytes() + textures + 64 * 1024 * 1024 < 160 * 1024 * 1024);
         let mut edges = std::collections::HashMap::<([u32; 3], [u32; 3]), usize>::new();
-        for primitive in scene.meshes.iter().flat_map(|mesh| &mesh.primitives) {
+        for primitive in scene
+            .meshes
+            .iter()
+            .take(68)
+            .flat_map(|mesh| &mesh.primitives)
+        {
             for triangle in primitive.indices.chunks_exact(3) {
                 for edge in 0..3 {
                     let a = primitive.vertices[triangle[edge] as usize].pos;

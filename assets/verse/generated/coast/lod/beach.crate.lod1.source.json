@@ -1,0 +1,18 @@
+{
+  "out": "lod/beach.crate.lod1.glb",
+  "triangles": 60,
+  "size_xyz_m": [
+    0.77,
+    0.75,
+    0.65
+  ],
+  "bytes": 7868,
+  "actions": [],
+  "blender": "5.2.2 LTS",
+  "mode": "Reference",
+  "external_inputs": [],
+  "triangle_budget": 599,
+  "generated_from": "3cc551b6c1c93e3b2b3fdf636ffff67178673a93f707495be8078575b88614f3",
+  "level": 1,
+  "sha256": "3cc551b6c1c93e3b2b3fdf636ffff67178673a93f707495be8078575b88614f3"
+}

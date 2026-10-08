@@ -1,0 +1,16 @@
+{
+  "out": "rocks/reef_rock.glb",
+  "triangles": 80,
+  "size_xyz_m": [
+    2.806,
+    4.105,
+    1.604
+  ],
+  "bytes": 32272,
+  "actions": [],
+  "blender": "5.2.2 LTS",
+  "mode": "Reference",
+  "external_inputs": [],
+  "triangle_budget": 4000,
+  "sha256": "2539d93052bc2d69fc96edbf48625cd991b65783a230762e9cd3c7b18b561170"
+}

@@ -1,0 +1,18 @@
+{
+  "out": "lod/rocks.sea_stack.lod2.glb",
+  "triangles": 80,
+  "size_xyz_m": [
+    4.913,
+    5.21,
+    14.793
+  ],
+  "bytes": 32268,
+  "actions": [],
+  "blender": "5.2.2 LTS",
+  "mode": "Reference",
+  "external_inputs": [],
+  "triangle_budget": 4000,
+  "generated_from": "b34963dd2c92ce8b704b7534ad10289bc3eb7db07a1bfd4d3f4e04bfbb6d750c",
+  "level": 2,
+  "sha256": "b1859591c6f9827be74283bc97ec1000d5aea1f1a5e088cdab0922bf8ec38a00"
+}

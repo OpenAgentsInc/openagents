@@ -1,0 +1,18 @@
+{
+  "out": "lod/beach.net.lod1.glb",
+  "triangles": 112,
+  "size_xyz_m": [
+    1.216,
+    1.216,
+    0.019
+  ],
+  "bytes": 18180,
+  "actions": [],
+  "blender": "5.2.2 LTS",
+  "mode": "Reference",
+  "external_inputs": [],
+  "triangle_budget": 599,
+  "generated_from": "eb701af5c77affcd8d9cbe3913755b9e13245ed6f3773a897a273480cca4f5a8",
+  "level": 1,
+  "sha256": "eb701af5c77affcd8d9cbe3913755b9e13245ed6f3773a897a273480cca4f5a8"
+}

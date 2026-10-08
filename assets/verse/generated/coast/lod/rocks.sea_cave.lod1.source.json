@@ -1,0 +1,18 @@
+{
+  "out": "lod/rocks.sea_cave.lod1.glb",
+  "triangles": 308,
+  "size_xyz_m": [
+    10.633,
+    5.363,
+    9.643
+  ],
+  "bytes": 60304,
+  "actions": [],
+  "blender": "5.2.2 LTS",
+  "mode": "Reference",
+  "external_inputs": [],
+  "triangle_budget": 4000,
+  "generated_from": "a5470deb09ae2cebd5852315774a61f180c96374a98b8952cb2dbe034f46e8c4",
+  "level": 1,
+  "sha256": "2987a8a98ee8e6a256e39e60c1ab55cd90eea6730110c2f18217b482dca32baa"
+}

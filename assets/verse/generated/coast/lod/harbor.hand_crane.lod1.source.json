@@ -1,0 +1,18 @@
+{
+  "out": "lod/harbor.hand_crane.lod1.glb",
+  "triangles": 108,
+  "size_xyz_m": [
+    3.458,
+    1.103,
+    3.615
+  ],
+  "bytes": 38236,
+  "actions": [],
+  "blender": "5.2.2 LTS",
+  "mode": "Reference",
+  "external_inputs": [],
+  "triangle_budget": 2999,
+  "generated_from": "7fa47686fcc0a3622a42846c898ff8ed7489c4b9a0954b9fedfb78fc81b6feb3",
+  "level": 1,
+  "sha256": "5d99f2f7781f03c5496e6cfa1c5569b981c44630832a554a088d7de2189ebaa5"
+}

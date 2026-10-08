@@ -1,0 +1,16 @@
+{
+  "out": "rocks/cliff_straight.glb",
+  "triangles": 400,
+  "size_xyz_m": [
+    12.741,
+    4.369,
+    12.229
+  ],
+  "bytes": 68128,
+  "actions": [],
+  "blender": "5.2.2 LTS",
+  "mode": "Reference",
+  "external_inputs": [],
+  "triangle_budget": 4000,
+  "sha256": "c1f2dec4db350ec132a9d9167a2aec8e88eee17c1efa9a16d2121baed6bd0aeb"
+}

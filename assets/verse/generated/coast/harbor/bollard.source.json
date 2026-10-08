@@ -1,0 +1,16 @@
+{
+  "out": "harbor/bollard.glb",
+  "triangles": 84,
+  "size_xyz_m": [
+    0.64,
+    0.6,
+    0.66
+  ],
+  "bytes": 7604,
+  "actions": [],
+  "blender": "5.2.2 LTS",
+  "mode": "Reference",
+  "external_inputs": [],
+  "triangle_budget": 2999,
+  "sha256": "66b85a7faf6e5093a9b7bed4530f9202c72e8817be384f2ac71bdbf7e978eab7"
+}

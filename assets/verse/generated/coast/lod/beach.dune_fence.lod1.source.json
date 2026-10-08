@@ -1,0 +1,18 @@
+{
+  "out": "lod/beach.dune_fence.lod1.glb",
+  "triangles": 108,
+  "size_xyz_m": [
+    2.0,
+    0.07,
+    1.1
+  ],
+  "bytes": 13720,
+  "actions": [],
+  "blender": "5.2.2 LTS",
+  "mode": "Reference",
+  "external_inputs": [],
+  "triangle_budget": 599,
+  "generated_from": "884316a1e2035b319fae045c742db1432eb4317e70e9a97636bfbfe0391731c7",
+  "level": 1,
+  "sha256": "884316a1e2035b319fae045c742db1432eb4317e70e9a97636bfbfe0391731c7"
+}

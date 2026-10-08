@@ -1,0 +1,41 @@
+{
+  "creator": "OpenAgents",
+  "files": {
+    "coast_8cdb7ca38b8c1e3f88ee0a1f.png": "8cdb7ca38b8c1e3f88ee0a1f67f5ed9f9c254dfc838d3ab1227ef5748b39732f",
+    "crab.bin": "aeaaf1def60d5f200430c826251e4817c345b5e5a1508595afcd25187a2b8d65",
+    "crab.gltf": "48ea7373f51c5921b8b9a82c689d671e038af9cb36146741b4777ba811a6056a",
+    "fish.bin": "bcc4dd93cf1760070e4027357701374b56228b793276a259c236c90376c17b5b",
+    "fish.gltf": "da32803c2d756d38a48170f73b1785f41f974795b9d3178ab70f838ac97d739a",
+    "gull.bin": "c447eb34611c5b4a21a6dc0437b30d1711a0f26749aaf2eb6f5a20e9f8f5737f",
+    "gull.gltf": "94e16b6b68825f854996f2ead4f48e0aa295624673dccc96faf78cb28754f58e",
+    "license.txt": "457b40c28fb92ef776de6b6879d3738ecec6b09d8d2be407a8ffd58e7fc92ec0",
+    "seal.bin": "171fab4472015d550ced2b1f3b78fea8b3fd22fbf3093f0c78ada5a58961a3a2",
+    "seal.gltf": "e6c084615e6229b0d320ff2d0b1d9c72fb96977e47fe29c466b0353173c26162"
+  },
+  "license": "CC0-1.0",
+  "originals": {
+    "coast_8cdb7ca38b8c1e3f88ee0a1f.png": "1f7184c521e217b2b731549d759811398fc62ef975c9a800203f339c05916a11",
+    "crab.bin": "0ba0c6d2ab11849825933989eec6e28f9045ea418f0125d9fb54ac491f6534a5",
+    "crab.gltf": "0ba0c6d2ab11849825933989eec6e28f9045ea418f0125d9fb54ac491f6534a5",
+    "fish.bin": "d981253891148ab399f6cb812a9e81bb3664274aa57b3c270cd6ef59acd3af37",
+    "fish.gltf": "d981253891148ab399f6cb812a9e81bb3664274aa57b3c270cd6ef59acd3af37",
+    "gull.bin": "cdd2d29f0e2ac6e3cf1f0414fe1e110fceb80e825b2687f2370a24c690e344fe",
+    "gull.gltf": "cdd2d29f0e2ac6e3cf1f0414fe1e110fceb80e825b2687f2370a24c690e344fe",
+    "license.txt": "457b40c28fb92ef776de6b6879d3738ecec6b09d8d2be407a8ffd58e7fc92ec0",
+    "seal.bin": "1f7184c521e217b2b731549d759811398fc62ef975c9a800203f339c05916a11",
+    "seal.gltf": "1f7184c521e217b2b731549d759811398fc62ef975c9a800203f339c05916a11"
+  },
+  "package": "Original procedural coast beasts",
+  "schema": "openagents.verse.source-manifest.v1",
+  "transforms": {
+    "coast_8cdb7ca38b8c1e3f88ee0a1f.png": "Split original generated GLB; preserve geometry, base color, skin, and clips; lens emission is assigned by the coast renderer",
+    "crab.bin": "Split original generated GLB; preserve geometry, base color, skin, and clips; lens emission is assigned by the coast renderer",
+    "crab.gltf": "Split original generated GLB; preserve geometry, base color, skin, and clips; lens emission is assigned by the coast renderer",
+    "fish.bin": "Split original generated GLB; preserve geometry, base color, skin, and clips; lens emission is assigned by the coast renderer",
+    "fish.gltf": "Split original generated GLB; preserve geometry, base color, skin, and clips; lens emission is assigned by the coast renderer",
+    "gull.bin": "Split original generated GLB; preserve geometry, base color, skin, and clips; lens emission is assigned by the coast renderer",
+    "gull.gltf": "Split original generated GLB; preserve geometry, base color, skin, and clips; lens emission is assigned by the coast renderer",
+    "seal.bin": "Split original generated GLB; preserve geometry, base color, skin, and clips; lens emission is assigned by the coast renderer",
+    "seal.gltf": "Split original generated GLB; preserve geometry, base color, skin, and clips; lens emission is assigned by the coast renderer"
+  }
+}

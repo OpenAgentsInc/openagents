@@ -1,0 +1,16 @@
+{
+  "out": "rocks/sea_arch.glb",
+  "triangles": 560,
+  "size_xyz_m": [
+    10.633,
+    3.205,
+    9.599
+  ],
+  "bytes": 86080,
+  "actions": [],
+  "blender": "5.2.2 LTS",
+  "mode": "Reference",
+  "external_inputs": [],
+  "triangle_budget": 4000,
+  "sha256": "533df3aa15725dd3a18346fe1b0853b9743de1149e6c465d9b761ffacbea5eb1"
+}

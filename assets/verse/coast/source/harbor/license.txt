@@ -1,0 +1,6 @@
+CC0 1.0 Universal
+
+OpenAgents dedicates these original procedural coast models and textures
+to the public domain under CC0 1.0 Universal.
+https://creativecommons.org/publicdomain/zero/1.0/
+No third-party geometry, images, or licensed kit content is included.

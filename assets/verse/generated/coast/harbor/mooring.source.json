@@ -1,0 +1,16 @@
+{
+  "out": "harbor/mooring.glb",
+  "triangles": 156,
+  "size_xyz_m": [
+    0.86,
+    1.23,
+    0.66
+  ],
+  "bytes": 13640,
+  "actions": [],
+  "blender": "5.2.2 LTS",
+  "mode": "Reference",
+  "external_inputs": [],
+  "triangle_budget": 2999,
+  "sha256": "8afcc7e2ed523be510dd0e65f1093c663694a6cd6a0a7a83219667f6f54bf776"
+}

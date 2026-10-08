@@ -1,0 +1,18 @@
+{
+  "out": "lod/lighthouse.fog_bell.lod2.glb",
+  "triangles": 76,
+  "size_xyz_m": [
+    1.2,
+    0.741,
+    1.103
+  ],
+  "bytes": 11472,
+  "actions": [],
+  "blender": "5.2.2 LTS",
+  "mode": "Reference",
+  "external_inputs": [],
+  "triangle_budget": 500,
+  "generated_from": "11760eea1f50768826d866da500738d5b1764999a05a6ac7473bb7571a9eef76",
+  "level": 2,
+  "sha256": "2e005406e9a59f61cac5c88fef8cf5d58881d5998cb0748002c5abd6624804cb"
+}

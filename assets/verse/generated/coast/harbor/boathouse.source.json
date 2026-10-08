@@ -1,0 +1,16 @@
+{
+  "out": "harbor/boathouse.glb",
+  "triangles": 146,
+  "size_xyz_m": [
+    6.503,
+    9.6,
+    5.814
+  ],
+  "bytes": 19476,
+  "actions": [],
+  "blender": "5.2.2 LTS",
+  "mode": "Reference",
+  "external_inputs": [],
+  "triangle_budget": 2999,
+  "sha256": "2b648daddcc34e48908aa691d0eb7ab9399def63f938a242b27ba0e330975427"
+}

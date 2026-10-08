@@ -1,0 +1,18 @@
+{
+  "out": "lod/beach.barrel.lod2.glb",
+  "triangles": 64,
+  "size_xyz_m": [
+    0.726,
+    0.763,
+    0.907
+  ],
+  "bytes": 8912,
+  "actions": [],
+  "blender": "5.2.2 LTS",
+  "mode": "Reference",
+  "external_inputs": [],
+  "triangle_budget": 599,
+  "generated_from": "47b6bda0661bcef57d690391251017d891d409d5fac5894e788aff01687421ad",
+  "level": 2,
+  "sha256": "2c3d27536067c33dcaf7555542fa109fb07ca544f90f8b60604a637820cd8d95"
+}

@@ -1,0 +1,18 @@
+{
+  "out": "lod/harbor.buoy.lod1.glb",
+  "triangles": 38,
+  "size_xyz_m": [
+    0.951,
+    0.961,
+    2.2
+  ],
+  "bytes": 6620,
+  "actions": [],
+  "blender": "5.2.2 LTS",
+  "mode": "Reference",
+  "external_inputs": [],
+  "triangle_budget": 2999,
+  "generated_from": "65704eb055b858cce8bd82b5a9b4e8223d91a7d1ca5e1a50ba7bc6d5e3e84ee4",
+  "level": 1,
+  "sha256": "10d119729e0ddde65c1d256ee08839ac3e3f2e7666fc8905870c179e8d884635"
+}

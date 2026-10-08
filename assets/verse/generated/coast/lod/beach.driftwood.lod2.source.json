@@ -1,0 +1,18 @@
+{
+  "out": "lod/beach.driftwood.lod2.glb",
+  "triangles": 10,
+  "size_xyz_m": [
+    2.834,
+    1.073,
+    0.491
+  ],
+  "bytes": 3024,
+  "actions": [],
+  "blender": "5.2.2 LTS",
+  "mode": "Reference",
+  "external_inputs": [],
+  "triangle_budget": 599,
+  "generated_from": "68f7f10a5f1e3759b05f515a9a46c8fdd780fcbd26ed6f60ddfdedfcad88c701",
+  "level": 2,
+  "sha256": "52096615459cf9fb42e5febea4efb76f49db456d0a9e1702c2ac5984d487a976"
+}

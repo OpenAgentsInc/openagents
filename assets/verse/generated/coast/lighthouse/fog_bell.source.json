@@ -1,0 +1,16 @@
+{
+  "out": "lighthouse/fog_bell.glb",
+  "triangles": 284,
+  "size_xyz_m": [
+    1.239,
+    0.8,
+    1.13
+  ],
+  "bytes": 22248,
+  "actions": [],
+  "blender": "5.2.2 LTS",
+  "mode": "Reference",
+  "external_inputs": [],
+  "triangle_budget": 500,
+  "sha256": "11760eea1f50768826d866da500738d5b1764999a05a6ac7473bb7571a9eef76"
+}

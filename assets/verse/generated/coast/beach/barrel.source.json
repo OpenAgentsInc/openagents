@@ -1,0 +1,17 @@
+{
+  "out": "beach/barrel.glb",
+  "triangles": 200,
+  "size_xyz_m": [
+    0.7,
+    0.666,
+    0.9
+  ],
+  "bytes": 14664,
+  "actions": [],
+  "blender": "5.2.2 LTS",
+  "mode": "Reference",
+  "external_inputs": [],
+  "triangle_budget": 599,
+  "sha256": "47b6bda0661bcef57d690391251017d891d409d5fac5894e788aff01687421ad",
+  "effective_density_kg_m3": 180
+}
