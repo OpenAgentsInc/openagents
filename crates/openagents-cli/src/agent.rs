@@ -58,6 +58,20 @@ pub const USAGE: &str = "usage: openagents agent COMMAND [--root DIR] [--control
                Other agents stay as they are.
   crew resume --cohort NAME --all --expected DIGEST
                Explicitly resume the same full selection at its current digest.
+  hire propose ID --name NAME --role ROLE --budget USD_MILLIONTHS --reason TEXT
+               --evidence REF=SHA256[,REF=SHA256] [--charter-revision N] [--expires-in SECONDS]
+               Record a durable proposal to hire a sales member. Nothing is made
+               until the owner confirms it; the host refuses one past the cap of
+               Paul plus three active hires or the floor's USD 5 daily ceiling.
+  hire propose ID --retire NAME --reason TEXT [--expires-in SECONDS]
+               Record a proposal to retire a hire. Paul's binding is not a hire.
+  hire confirm|reject ID --expected SHA256 [--workspace DIR] [--reason TEXT]
+               Owner-only decision bound to the exact proposal digest. A
+               confirmed hire is made in DIR through the shared crew path and
+               starts in training; a confirmed retirement stops her, removes
+               her key, and returns her open leads to Paul. Repeating the same
+               decision replays the retained entry.
+  hire list    Owner-only read of every proposal and decision.
                Disabled jobs stay off; stale approvals cannot resume.
   crew resume --cohort NAME --members NAMES --expected DIGEST
                Explicitly resume the same exact subset at its current digest.
@@ -205,6 +219,10 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("crew stop", Effect::Publishes),
     Declared::computer("crew pause", Effect::Publishes),
     Declared::computer("crew resume", Effect::Publishes),
+    Declared::computer("hire propose", Effect::Publishes),
+    Declared::computer("hire confirm", Effect::Publishes),
+    Declared::computer("hire reject", Effect::Publishes),
+    Declared::computer("hire list", Effect::ReadOnly),
     Declared::computer("attest", Effect::LocalWrite),
     Declared::computer("renew", Effect::LocalWrite),
     Declared::computer("list", Effect::ReadOnly),
@@ -333,6 +351,9 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
     let result = match words.as_slice() {
         ["crew", "status"] => crew_status(output, &args),
         ["crew", action @ ("stop" | "pause" | "resume")] => crew_control(output, &args, action),
+        ["hire", "propose", id] => hire_propose(output, &args, id, now),
+        ["hire", verdict @ ("confirm" | "reject"), id] => hire_decide(output, &args, id, verdict),
+        ["hire", "list"] => hire_list(output, &args),
         ["new", name] => new(output, &root, name, &args, now),
         ["charter", name] => charter(output, name, &args),
         ["verdict", name, "record", file] => verdict(output, name, file, &args),
@@ -451,6 +472,104 @@ fn crew_control(output: &Output, args: &Args, action: &str) -> Result<(), Fail> 
         serde_json::to_string_pretty(v).unwrap_or_default()
     });
     Ok(())
+}
+
+fn emit(output: &Output, value: &Value) -> Result<(), Fail> {
+    output.emit(value, |v| {
+        serde_json::to_string_pretty(v).unwrap_or_default()
+    });
+    Ok(())
+}
+
+fn hire_list(output: &Output, args: &Args) -> Result<(), Fail> {
+    emit(output, &call(args, &Operation::ListHires {})?)
+}
+
+fn hire_propose(output: &Output, args: &Args, id: &str, now: u64) -> Result<(), Fail> {
+    use coder_access::crew::{Evidence, HIRE_SCHEMA, HireAction, HireProposal, JobRole};
+    let action = match (args.option("retire"), args.option("name")) {
+        (Some(name), None) => HireAction::Retire { name: name.into() },
+        (None, Some(name)) => HireAction::Hire {
+            name: name.into(),
+            role: JobRole::parse(
+                args.option("role")
+                    .ok_or_else(|| Fail::Failed("Choose --role for the hire.".into()))?,
+            )
+            .map_err(|e| Fail::Failed(e.message))?,
+        },
+        _ => {
+            return Err(Fail::Failed(
+                "Give exactly one of --name NAME (hire) or --retire NAME.".into(),
+            ));
+        }
+    };
+    let evidence = args
+        .option("evidence")
+        .unwrap_or_default()
+        .split(',')
+        .filter(|item| !item.is_empty())
+        .map(|item| {
+            let (reference, sha256) = item
+                .split_once('=')
+                .ok_or_else(|| Fail::Failed("Write each evidence item as REF=SHA256.".into()))?;
+            Ok(Evidence {
+                reference: reference.into(),
+                sha256: sha256.into(),
+            })
+        })
+        .collect::<Result<Vec<_>, Fail>>()?;
+    let proposal = HireProposal {
+        schema: HIRE_SCHEMA.into(),
+        id: id.into(),
+        action,
+        daily_usd_millionths: args.number("budget", 0_u64).map_err(Fail::Failed)?,
+        charter_revision: args
+            .number("charter-revision", 1_u64)
+            .map_err(Fail::Failed)?,
+        reason: args
+            .option("reason")
+            .ok_or_else(|| Fail::Failed("Say why with --reason TEXT.".into()))?
+            .into(),
+        evidence,
+        expires_at: now.saturating_add(
+            args.number("expires-in", 7 * 86_400_u64)
+                .map_err(Fail::Failed)?,
+        ),
+    };
+    proposal.validate().map_err(|e| Fail::Failed(e.message))?;
+    emit(output, &call(args, &Operation::ProposeHire { proposal })?)
+}
+
+fn hire_decide(output: &Output, args: &Args, id: &str, verdict: &str) -> Result<(), Fail> {
+    use coder_access::crew::{HireDecision, HireVerdict};
+    let decision = HireDecision {
+        proposal: id.into(),
+        expected_sha256: args
+            .option("expected")
+            .ok_or_else(|| Fail::Failed("Bind the decision with --expected SHA256.".into()))?
+            .into(),
+        verdict: if verdict == "confirm" {
+            HireVerdict::Confirm
+        } else {
+            HireVerdict::Reject
+        },
+        reason: args
+            .option("reason")
+            .unwrap_or("Owner hire decision from the command line.")
+            .into(),
+    };
+    decision.validate().map_err(|e| Fail::Failed(e.message))?;
+    let workspace = args.option("workspace").map(str::to_owned);
+    emit(
+        output,
+        &call(
+            args,
+            &Operation::DecideHire {
+                decision,
+                workspace,
+            },
+        )?,
+    )
 }
 
 enum Fail {

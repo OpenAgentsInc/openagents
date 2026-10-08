@@ -1834,3 +1834,21 @@ Before using the controls with real assignments, approve the exact Paul binding 
 ## Private Agora board activation (REV-69)
 
 Configure the two explicit private paths in the [Agora observation guide](docs/sales/agent-sales-floor.md#private-agora-observations-rev-69) only for the sales owner. Qualify the original Paul binding, assignment credentials, native key custody, current certificates, and pending proposal references on that computer. Missing or changed custody keeps the boards unavailable. These reads authorize no mailbox, approval, booking, payment, campaign, or shared publication; real model and outreach qualification remains in the existing owner steps.
+
+## Sales hiring activation (REV-64, #10871)
+
+The hiring book, caps, and owner decision path are code-complete and
+exercised by fixtures over scratch hosts. Owner-only steps remain:
+
+- Confirm the floor caps the code enforces: Paul plus at most three active
+  hires and a USD 5 daily model ceiling for the floor. A wider ceiling needs
+  a new owner grant, not a code change.
+- Confirm the first real hire on your own host: `openagents agent hire list`,
+  then `agent hire confirm ID --expected SHA256 --workspace DIR` with the
+  host's owner key present. The hire starts in training and cannot draft
+  for a real person until certified.
+- Deferred, as answered on 2026-10-04: pilot price (proposal USD 250),
+  provider budget per pilot, promotional credit (default none), card
+  provider and unit conversion, commission base and share, support owner
+  and hours, pipeline owner, sales domain and legal review, first-team
+  controls, and store release steps.

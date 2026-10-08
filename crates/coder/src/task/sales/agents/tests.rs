@@ -2351,3 +2351,29 @@ fn outbox_original_payload_retention_is_not_extended_by_current_lead_retention()
     assert_eq!(row.retain_until, original);
     assert!(f.store.state.leads[&f.lead].details.data.retain_until > original);
 }
+
+#[test]
+fn retiring_a_member_releases_her_grants_and_keeps_the_lead() {
+    let mut f = Fixture::new();
+    let before = f.store.state.leads[&f.lead].clone();
+    let released = f
+        .store
+        .release_retired_agent(&f.anchor.name, now())
+        .unwrap();
+    assert_eq!(released, vec![f.lead.clone()]);
+    let after = &f.store.state.leads[&f.lead];
+    assert!(after.agent_records.assignments.values().all(|g| !g.active));
+    assert_eq!(after.revision, before.revision + 1);
+    assert_eq!(after.details.stage, before.details.stage);
+    assert_eq!(
+        f.store.state.audit.last().unwrap().operation,
+        "sales_assignment_released_to_paul"
+    );
+    // Nothing else to release on a second pass.
+    assert!(
+        f.store
+            .release_retired_agent(&f.anchor.name, now())
+            .unwrap()
+            .is_empty()
+    );
+}

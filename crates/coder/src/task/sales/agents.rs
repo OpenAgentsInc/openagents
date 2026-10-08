@@ -1394,3 +1394,57 @@ pub(super) fn business_day(now: u64) -> Result<u64> {
         .parse()
         .map_err(|_| "sales business day is invalid".into())
 }
+
+impl Store {
+    /// Hand a retired member's open leads back to Paul's queue: every active
+    /// assignment of hers is revoked with a host retirement artifact, and
+    /// suppression, drafts, receipts, and certification history stay as they
+    /// were. The host calls this from shared retirement; it needs no owner
+    /// credential because it widens nothing.
+    pub fn release_retired_agent(&mut self, name: &str, now: u64) -> Result<Vec<String>> {
+        self.refresh()?;
+        let mut next = self.state.clone();
+        let mut released = Vec::new();
+        for (lead, record) in &mut next.leads {
+            let mut touched = false;
+            for grant in record.agent_records.assignments.values_mut() {
+                if grant.active && grant.anchor.name == name {
+                    grant.active = false;
+                    grant.revoked_at = Some(now);
+                    grant.revocation = Some(Artifact {
+                        reference: format!("host-retired-{name}"),
+                        sha256: digest(format!("retired:{name}:{now}").as_bytes()),
+                    });
+                    touched = true;
+                }
+            }
+            if touched {
+                record.revision = record
+                    .revision
+                    .checked_add(1)
+                    .ok_or("lead revision overflow")?;
+                record.updated_at = now;
+                released.push(lead.clone());
+            }
+        }
+        if released.is_empty() {
+            return Ok(released);
+        }
+        for lead in &released {
+            next.sequence = next
+                .sequence
+                .checked_add(1)
+                .ok_or("sales sequence overflow")?;
+            next.audit.push(Audit {
+                sequence: next.sequence,
+                at: now,
+                actor: "host".into(),
+                lead: lead.clone(),
+                operation: "sales_assignment_released_to_paul".into(),
+                reference_digest: digest(format!("retired:{name}").as_bytes()),
+            });
+        }
+        self.persist(next)?;
+        Ok(released)
+    }
+}

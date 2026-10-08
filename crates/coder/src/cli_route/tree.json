@@ -16659,8 +16659,270 @@
                     ]
                   }
                 ],
-                "summary": "Explicitly resume the same full selection at its current digest. Disabled jobs stay off; stale approvals cannot resume.",
+                "summary": "Explicitly resume the same full selection at its current digest.",
                 "effect": "publishes",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
+        },
+        {
+          "name": "hire",
+          "children": [
+            {
+              "name": "propose",
+              "leaf": {
+                "path": [
+                  "agent",
+                  "hire",
+                  "propose"
+                ],
+                "usage": [
+                  "hire propose ID --name NAME --role ROLE --budget USD_MILLIONTHS --reason TEXT --evidence REF=SHA256[,REF=SHA256] [--charter-revision N] [--expires-in SECONDS]",
+                  "hire propose ID --retire NAME --reason TEXT [--expires-in SECONDS]"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "hire"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "propose"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "ID"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "name",
+                        "value": "NAME",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "role",
+                        "value": "ROLE",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "budget",
+                        "value": "USD_MILLIONTHS",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "reason",
+                        "value": "TEXT",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "evidence",
+                        "value": "REF=SHA256",
+                        "open": true
+                      },
+                      {
+                        "kind": "positional",
+                        "name": ",REF=SHA256",
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "charter-revision",
+                        "value": "N",
+                        "open": true,
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "expires-in",
+                        "value": "SECONDS",
+                        "open": true,
+                        "optional": true
+                      }
+                    ]
+                  },
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "hire"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "propose"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "ID"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "retire",
+                        "value": "NAME",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "reason",
+                        "value": "TEXT",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "expires-in",
+                        "value": "SECONDS",
+                        "open": true,
+                        "optional": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Record a durable proposal to hire a sales member. Nothing is made until the owner confirms it; the host refuses one past the cap of Paul plus three active hires or the floor's USD 5 daily ceiling.",
+                "effect": "publishes",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "confirm",
+              "leaf": {
+                "path": [
+                  "agent",
+                  "hire",
+                  "confirm"
+                ],
+                "usage": [
+                  "hire confirm|reject ID --expected SHA256 [--workspace DIR] [--reason TEXT]"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "hire"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "confirm"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "ID"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "expected",
+                        "value": "SHA256",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "workspace",
+                        "value": "DIR",
+                        "open": true,
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "reason",
+                        "value": "TEXT",
+                        "open": true,
+                        "optional": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Owner-only decision bound to the exact proposal digest. A confirmed hire is made in DIR through the shared crew path and starts in training; a confirmed retirement stops her, removes her key, and returns her open leads to Paul. Repeating the same decision replays the retained entry.",
+                "effect": "publishes",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "reject",
+              "leaf": {
+                "path": [
+                  "agent",
+                  "hire",
+                  "reject"
+                ],
+                "usage": [
+                  "hire confirm|reject ID --expected SHA256 [--workspace DIR] [--reason TEXT]"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "hire"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "reject"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "ID"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "expected",
+                        "value": "SHA256",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "workspace",
+                        "value": "DIR",
+                        "open": true,
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "reason",
+                        "value": "TEXT",
+                        "open": true,
+                        "optional": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Owner-only decision bound to the exact proposal digest. A confirmed hire is made in DIR through the shared crew path and starts in training; a confirmed retirement stops her, removes her key, and returns her open leads to Paul. Repeating the same decision replays the retained entry.",
+                "effect": "publishes",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "list",
+              "leaf": {
+                "path": [
+                  "agent",
+                  "hire",
+                  "list"
+                ],
+                "usage": [
+                  "hire list"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "hire"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "list"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Owner-only read of every proposal and decision. Disabled jobs stay off; stale approvals cannot resume.",
+                "effect": "read_only",
                 "runs_on": "connected_computer"
               }
             }
@@ -18329,6 +18591,54 @@
         },
         {
           "kind": "option",
+          "name": "name",
+          "value": "NAME",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "budget",
+          "value": "USD_MILLIONTHS",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "evidence",
+          "value": "REF=SHA256[,REF=SHA256",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "charter-revision",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "expires-in",
+          "value": "SECONDS",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "retire",
+          "value": "NAME",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
           "name": "mode",
           "value": "MODE",
           "open": true,
@@ -18374,14 +18684,6 @@
             "core",
             "all"
           ],
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "name",
-          "value": "NAME",
-          "open": true,
           "optional": true,
           "repeated": true
         },

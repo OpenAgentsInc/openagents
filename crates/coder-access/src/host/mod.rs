@@ -1204,6 +1204,9 @@ impl Host {
             | Operation::NewCrewAgent { .. }
             | Operation::CrewStatus {}
             | Operation::ControlCrew { .. }
+            | Operation::ProposeHire { .. }
+            | Operation::DecideHire { .. }
+            | Operation::ListHires {}
             | Operation::SetAgentCharter { .. }
             | Operation::RecordAgentVerdict { .. }
             | Operation::ListAgentVerdicts { .. }
