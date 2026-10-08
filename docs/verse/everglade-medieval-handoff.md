@@ -187,9 +187,13 @@ correction fits actual indexed vertex positions along that axis to its
 source span and leaves UVs and materials intact. The first fixture passes,
 but the rerun exposes loose decimator vertices that do not belong to any
 rendered triangle; measuring all vertices cannot prove the rendered box.
-The extended fixture includes that case. Its check and reruns of batches
-19, 25, and 29 remain pending. The first attempt leaves 289 other files
-byte-identical. These are source-file counts, not final pack admission or
+The extended fixture includes that case and passes. Reruns of batches 19,
+25, and 29 at `a230f7a331` restore all 131 models within 5.95 mm of indexed
+source bounds. Only the three far glTF/bin pairs change; 289 other files
+stay byte-identical. UVs, materials, and indices stay unchanged, with a
+maximum real vertex displacement of 0.131907 m. Exact pre/post boxes are in
+`house-extrema-receipt.json`; `house-level-inventory-corrected.json` passes.
+These are source-file counts, not final pack admission or
 distance-selected acceptance.
 
 The post-gap coplanar reports cover all 65 houses in
@@ -198,7 +202,11 @@ intra-mesh face-pair overlaps per house, about 0.0277 m², in the supplied
 roof-end `T_trim_wood_01_BC`/`T_trim_wood_02_BC` seams. The exact raw-piece
 inspection in `coplanar-roof-input.log` corrects the earlier wood/plaster
 label. No exemption or suppression hides these seams;
-their visual assessment is pending. Actual all-house distance budgets,
+their correction and visual assessment are pending. The bounded prototype
+offsets only `MI_trim_wood_02_01` by +3 mm X before mirroring in the two
+derived roof-end exports. Recipe offsets are limited to 5 mm; original
+vendor GLBs remain untouched. Synthetic mirrored-gap tests and actual
+private preview checks remain pending. Actual all-house distance budgets,
 private pack admission, and captures remain open.
 
 The portable headless CPU runtime is Blender 4.5.14 LTS. Its official archive

@@ -130,10 +130,12 @@
    "mirror_x": true
   },
   "roof-end": {
+   "finish_offsets": {"MI_trim_wood_02_01": [0.003, 0.0, 0.0]},
    "lod0": true,
    "mesh": "Meshes/Architecture/Modules/Roof/SM_roof_A_part_01_02"
   },
   "roof-end-mirror": {
+   "finish_offsets": {"MI_trim_wood_02_01": [0.003, 0.0, 0.0]},
    "lod0": true,
    "mesh": "Meshes/Architecture/Modules/Roof/SM_roof_A_part_01_02",
    "mirror_x": true
