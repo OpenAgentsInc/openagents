@@ -91,11 +91,19 @@ fn reactive_history(uv: vec2<f32>) -> bool {
     }
     var lower = ycocg(current);
     var upper = lower;
+    // The clamp can retain ribbon color at a neighboring rock edge. Its
+    // output depends on every current-color tap, so that same footprint
+    // cannot seed another frame's history when it includes reactive color.
+    var history_reactive = reactive;
     for (var y = -1; y <= 1; y++) {
         for (var x = -1; x <= 1; x++) {
-            let sample = ycocg(max(textureLoad(scene, bounded(p + vec2<i32>(x, y)), 0).rgb, vec3<f32>(0.0)));
+            let tap = bounded(p + vec2<i32>(x, y));
+            let sample = ycocg(max(textureLoad(scene, tap, 0).rgb, vec3<f32>(0.0)));
             lower = min(lower, sample);
             upper = max(upper, sample);
+            if (flags & 2u) != 0u && !history_reactive {
+                history_reactive = textureLoad(reactive_lit, tap, 0).r > 0.0;
+            }
         }
     }
     let conditioned = max(rgb(clamp(ycocg(sampled.rgb), lower, upper)), vec3<f32>(0.0));
@@ -109,5 +117,5 @@ fn reactive_history(uv: vec2<f32>) -> bool {
     // that neighborhood's range marks a new flash or transparent effect.
     let luma_change = max(abs(ycocg(current).x - ycocg(sampled.rgb).x) - (upper.x - lower.x), 0.0) / max(ycocg(current).x, 0.05);
     weight *= 1.0 - clamp(luma_change * 1.5, 0.0, 0.9);
-    return vec4<f32>(mix(current, conditioned, weight), select(view_depth, -view_depth, reactive));
+    return vec4<f32>(mix(current, conditioned, weight), select(view_depth, -view_depth, history_reactive));
 }

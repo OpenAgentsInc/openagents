@@ -20,6 +20,7 @@ struct Fixture<'a> {
     current: Mat4,
     readback: wgpu::Buffer,
     previous: Mat4,
+    sharpen: f32,
 }
 
 fn native_device() -> (wgpu::Device, wgpu::Queue) {
@@ -146,6 +147,7 @@ impl<'a> Fixture<'a> {
             current: Mat4::IDENTITY,
             readback,
             previous: Mat4::IDENTITY,
+            sharpen: 0.0,
         }
     }
 
@@ -282,7 +284,7 @@ impl<'a> Fixture<'a> {
                 1.0 / WIDTH as f32,
                 1.0 / HEIGHT as f32,
             ],
-            settings: [f32::from(u8::from(valid)), 0.9, 0.0, 0.0],
+            settings: [f32::from(u8::from(valid)), 0.9, self.sharpen, 0.0],
         };
         self.temporal.encode(
             self.queue,
@@ -319,6 +321,41 @@ impl<'a> Fixture<'a> {
         let mut encoder = self.device.create_command_encoder(&Default::default());
         {
             let mut pass = color_pass(&mut encoder, "read reactive coverage", &self.scene_view);
+            pass.set_pipeline(&pipeline);
+            pass.set_bind_group(0, &group, &[]);
+            pass.draw(0..3, 0..1);
+        }
+        self.pixels(encoder)
+    }
+
+    fn history(&self) -> Vec<[f32; 4]> {
+        let pipeline = flat_pipeline(
+            self.device,
+            "@group(0) @binding(0) var retained: texture_2d<f32>;
+            @vertex fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+                return vec4<f32>(f32((i << 1u) & 2u) * 2.0 - 1.0, f32(i & 2u) * 2.0 - 1.0, 0.0, 1.0);
+            }
+            @fragment fn fs(@builtin(position) p: vec4<f32>) -> @location(0) vec4<f32> {
+                return textureLoad(retained, vec2<i32>(p.xy), 0);
+            }",
+        );
+        let group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: None,
+            layout: &pipeline.get_bind_group_layout(0),
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(
+                    &self.targets.history[self.targets.write ^ 1],
+                ),
+            }],
+        });
+        let mut encoder = self.device.create_command_encoder(&Default::default());
+        {
+            let mut pass = color_pass(
+                &mut encoder,
+                "read retained temporal history",
+                &self.scene_view,
+            );
             pass.set_pipeline(&pipeline);
             pass.set_bind_group(0, &group, &[]);
             pass.draw(0..3, 0..1);
@@ -504,6 +541,90 @@ fn reactive_history_rejection_matches_the_actual_bilinear_footprint() {
                 assert!(
                     (value - 1.0).abs() < 0.002,
                     "{samples}x corner [{dx},{dy}] leaked reactive history: {value}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+#[ignore = "Requires a native GPU; checks HDR head-dependent conditioning and retained history"]
+fn a_reactive_head_cannot_seed_neighbor_history_through_color_conditioning() {
+    let (device, queue) = native_device();
+    const DIM_RIBBON: [f32; 4] = [2.0, 0.6, 0.1, 1.0];
+    const BRIGHT_RIBBON: [f32; 4] = [8.0, 2.4, 0.4, 1.0];
+    let center = (3 * WIDTH + 10) as usize;
+    for samples in [1, 4] {
+        let mut without_head = Fixture::new(&device, &queue, samples);
+        without_head.sharpen = 0.15;
+        without_head.render(
+            &vec![DIM_RIBBON; (WIDTH * HEIGHT) as usize],
+            &[],
+            &[],
+            false,
+        );
+        without_head.render(
+            &vec![BRIGHT_RIBBON; (WIDTH * HEIGHT) as usize],
+            &[],
+            &[],
+            true,
+        );
+        let narrow = without_head.history()[center];
+        assert!(
+            (narrow[0] - BRIGHT_RIBBON[0]).abs() < 0.01 && narrow[3] > 0.0,
+            "{samples}x uniform current must condition the darker history: {narrow:?}"
+        );
+
+        for marked in [false, true] {
+            let mut fixture = Fixture::new(&device, &queue, samples);
+            fixture.sharpen = 0.15;
+            fixture.render(
+                &vec![DIM_RIBBON; (WIDTH * HEIGHT) as usize],
+                &[],
+                &[],
+                false,
+            );
+
+            // The center is bright ribbon. Only its neighboring head changes the color bounds.
+            let mut pixels = vec![BRIGHT_RIBBON; (WIDTH * HEIGHT) as usize];
+            pixels[(3 * WIDTH + 11) as usize] = ROCK;
+            let ranges = if marked { vec![0..6] } else { vec![] };
+            fixture.render(&pixels, &quad(11.0, 3.0, 12.0, 4.0, 0.6), &ranges, true);
+            let history = fixture.history()[center];
+            let marker = fixture.marker();
+            assert_eq!(
+                marker[center][0], 0.0,
+                "the observed ribbon is not head geometry"
+            );
+            assert_eq!(marker[(3 * WIDTH + 11) as usize][0] > 0.0, marked);
+            if marked {
+                assert!(
+                    history[3] < 0.0,
+                    "{samples}x head-dependent ribbon seeded retainable history: {history:?}"
+                );
+            } else {
+                assert!(
+                    history[3] > 0.0 && history[0] < narrow[0] - 4.0,
+                    "{samples}x control must expose conditioning from the neighboring head: {history:?}"
+                );
+            }
+
+            // The head moves away; darker ribbon detail keeps the old contour within the bounds.
+            pixels = vec![BRIGHT_RIBBON; (WIDTH * HEIGHT) as usize];
+            pixels[(4 * WIDTH) as usize..(5 * WIDTH) as usize].fill(ROCK);
+            pixels[(3 * WIDTH + 14) as usize] = ROCK;
+            let rendered = fixture.render(&pixels, &quad(14.0, 3.0, 15.0, 4.0, 0.6), &ranges, true);
+            if marked {
+                assert!(
+                    (rendered[center][0] - BRIGHT_RIBBON[0]).abs() < 0.01,
+                    "{samples}x displaced head left a ribbon contour after sharpening: {:?}",
+                    rendered[center]
+                );
+            } else {
+                assert!(
+                    rendered[center][0] < BRIGHT_RIBBON[0] - 3.0,
+                    "{samples}x control must retain the conditioned contour: {:?}",
+                    rendered[center]
                 );
             }
         }

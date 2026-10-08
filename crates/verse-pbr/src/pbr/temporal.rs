@@ -197,6 +197,17 @@ pub(super) struct Targets {
     pub enabled: bool,
 }
 
+#[cfg(test)]
+impl Targets {
+    pub(super) fn reactive_view(&self) -> &wgpu::TextureView {
+        &self.reactive
+    }
+
+    pub(super) fn history_view(&self) -> &wgpu::TextureView {
+        &self.history[self.write ^ 1]
+    }
+}
+
 #[derive(Default)]
 struct CameraHistory {
     frame: u64,

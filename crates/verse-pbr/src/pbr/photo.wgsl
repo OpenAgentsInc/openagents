@@ -512,7 +512,7 @@ fn vs_shadow(v: LitIn) -> @builtin(position) vec4<f32> {
 // Lit surfaces.
 
 struct LitOut {
-    @builtin(position) clip: vec4<f32>,
+    @builtin(position) @invariant clip: vec4<f32>,
     @location(0) world: vec3<f32>,
     @location(1) normal: vec3<f32>,
     @location(2) tangent: vec3<f32>,

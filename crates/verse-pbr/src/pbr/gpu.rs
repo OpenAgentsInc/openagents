@@ -5224,6 +5224,10 @@ fn load_sky(device: &wgpu::Device, queue: &wgpu::Queue) -> Result<[wgpu::Texture
 }
 
 #[cfg(test)]
+#[path = "gpu/reactive_lit_tests.rs"]
+mod reactive_lit_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
