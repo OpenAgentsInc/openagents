@@ -4,6 +4,7 @@
 //!
 //! Usage: meteor_showcase_capture OUT_DIR [--video PATH] [--seconds N]
 //! [--every K] [--no-video] [--readback-every-frame] [--gpu-timestamps]
+//! [--temporal-diagnostics --sequence FIRST:LAST]
 //! [--live] [--no-flash-lights]
 //! [--compare-flash-lights] [--impact-frame N] [--settle-light]
 //! [--flash-repeats N] [--flash-every N]
@@ -128,6 +129,7 @@ struct Args {
     particle_every: usize,
     no_temporal_aa: bool,
     compare_temporal_aa: bool,
+    temporal_diagnostics: bool,
     camera: CameraPath,
     static_houses: bool,
     no_destruction_relighting: bool,
@@ -187,6 +189,7 @@ impl Args {
             particle_every: 1,
             no_temporal_aa: false,
             compare_temporal_aa: false,
+            temporal_diagnostics: false,
             camera: CameraPath::Director,
             static_houses: false,
             no_destruction_relighting: false,
@@ -202,7 +205,9 @@ impl Args {
     }
 
     fn submission_policy(&self, frames: usize) -> &'static str {
-        if self.serial_frames {
+        if self.temporal_diagnostics {
+            "serial_temporal_texture_diagnostics"
+        } else if self.serial_frames {
             "serial_explicit"
         } else if !self.live {
             "serial_film"
@@ -233,6 +238,32 @@ impl Args {
                 "bounded_two_frames"
             }
         }
+    }
+
+    #[cfg(any(feature = "temporal-diagnostics", test))]
+    fn temporal_diagnostic_frame(&self, frame: usize) -> bool {
+        self.temporal_diagnostics
+            && self
+                .sequence
+                .is_some_and(|[first, last]| (first..=last).contains(&frame))
+    }
+
+    fn validate_temporal_diagnostics(&self) -> Result<(), String> {
+        if !self.temporal_diagnostics {
+            return Ok(());
+        }
+        if !cfg!(feature = "temporal-diagnostics") {
+            return Err(
+                "--temporal-diagnostics requires the temporal-diagnostics build feature".into(),
+            );
+        }
+        if self.sequence.is_none() {
+            return Err("--temporal-diagnostics requires --sequence FIRST:LAST".into());
+        }
+        if self.no_temporal_aa || self.compare_flash_lights || self.compare_particles {
+            return Err("Temporal texture diagnostics require temporal AA without repeated effect comparisons".into());
+        }
+        Ok(())
     }
 
     fn select_frame(
@@ -698,6 +729,7 @@ fn args() -> Result<Args, String> {
             "--capture-rebuild" => args.capture_rebuild = true,
             "--no-temporal-aa" => args.no_temporal_aa = true,
             "--compare-temporal-aa" => args.compare_temporal_aa = true,
+            "--temporal-diagnostics" => args.temporal_diagnostics = true,
             "--static-houses" => args.static_houses = true,
             "--sequence" => {
                 let range = value()?;
@@ -777,6 +809,7 @@ fn args() -> Result<Args, String> {
             other => return Err(format!("Unknown argument {other}")),
         }
     }
+    args.validate_temporal_diagnostics()?;
     if !(1..=256).contains(&args.flash_repeats) {
         return Err("--flash-repeats must be between 1 and 256".into());
     }
@@ -1208,6 +1241,10 @@ fn main() -> Result<(), String> {
     let mut primary_readback_frames = Vec::new();
     let mut completion_only_frames = Vec::new();
     let mut artifact_readback_frames = Vec::new();
+    #[cfg(feature = "temporal-diagnostics")]
+    let mut temporal_diagnostic_records = Vec::<serde_json::Value>::new();
+    #[cfg(not(feature = "temporal-diagnostics"))]
+    let temporal_diagnostic_records = Vec::<serde_json::Value>::new();
     let aspect = WIDTH as f32 / HEIGHT as f32;
     let mut cast = false;
     let mut pristine_snapshot = None;
@@ -1554,6 +1591,43 @@ fn main() -> Result<(), String> {
                 off_pixels.as_deref(),
             )?;
         }
+        #[cfg(feature = "temporal-diagnostics")]
+        if args.temporal_diagnostic_frame(k) {
+            let started = std::time::Instant::now();
+            let masks = renderer.capture_temporal_diagnostics()?;
+            let readback_ms = started.elapsed().as_secs_f64() * 1000.0;
+            let directory = args.out.join("temporal-diagnostics");
+            std::fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
+            let files = [
+                format!("{k:04}-marker.png"),
+                format!("{k:04}-history-reactive.png"),
+                format!("{k:04}-hdr-scene.png"),
+            ];
+            for (name, pixels) in
+                files
+                    .iter()
+                    .zip([&masks.marker, &masks.history_reactive, &masks.hdr_scene])
+            {
+                write_png(&directory.join(name), pixels)?;
+            }
+            let covered = |pixels: &[u8]| pixels.chunks_exact(4).filter(|p| p[0] > 0).count();
+            temporal_diagnostic_records.push(serde_json::json!({
+                "frame": k,
+                "files": files.map(|name| format!("temporal-diagnostics/{name}")),
+                "readback_ms": readback_ms,
+                "dynamic_lit_vertices": dynamic.lit.len(),
+                "reactive_ranges_valid": dynamic.reactive_lit_valid(),
+                "reactive_ranges": dynamic.reactive_lit.iter().map(|range| [range.start, range.end]).collect::<Vec<_>>(),
+                "marker_covered_pixels": covered(&masks.marker),
+                "marker_written_this_frame": masks.marker_current,
+                "marker_partial_pixels": masks.marker.chunks_exact(4).filter(|p| p[0] > 0 && p[0] < 255).count(),
+                "nonretainable_history_pixels": covered(&masks.history_reactive),
+                "current_jittered_world_to_clip": masks.current,
+                "previous_jittered_world_to_clip": masks.previous,
+                "base_world_to_clip": view.view_proj.to_cols_array_2d(),
+                "eye": view.eye.to_array(),
+            }));
+        }
         if let Some(child) = &mut encoder {
             child
                 .stdin
@@ -1714,6 +1788,12 @@ fn main() -> Result<(), String> {
         "readback_every_frame": args.readback_every_frame,
         "submission_timing": submission_timing,
         "pixel_readback": pixel_readback,
+        "temporal_texture_diagnostics": {
+            "enabled": args.temporal_diagnostics,
+            "timing_acceptance_available": !args.temporal_diagnostics,
+            "method": "After the primary frame, one separate auxiliary draw reads actual resolved R8 coverage, negative saved-history alpha, and the HDR scene after sharpening. Its RGBA8 outputs are read back without changing camera, history, exposure, or simulation. White history pixels are nonretainable. HDR display uses (max(rgb,0)/(1+max(rgb,0)))^(1/2.2). Extra submissions, mapping, and PNG work are diagnostic overhead; this mode establishes no timing gate.",
+            "frames": temporal_diagnostic_records,
+        },
         "width": WIDTH,
         "height": HEIGHT,
         "fps": fps,
@@ -1824,6 +1904,34 @@ mod tests {
         args.readback_every_frame = false;
         args.video = Some(PathBuf::new());
         assert_eq!(args.submission_policy(960), "serial_video");
+    }
+
+    #[test]
+    fn texture_diagnostics_are_optional_and_restricted_to_the_requested_sequence() {
+        let mut args = Args::new(PathBuf::new());
+        args.live = true;
+        args.video = None;
+        args.sequence = Some([439, 484]);
+        assert!(!args.temporal_diagnostic_frame(471));
+        assert_eq!(args.submission_policy(540), "bounded_two_frames");
+        args.temporal_diagnostics = true;
+        assert_eq!(
+            args.submission_policy(540),
+            "serial_temporal_texture_diagnostics"
+        );
+        assert!(!args.temporal_diagnostic_frame(438));
+        assert!(args.temporal_diagnostic_frame(439));
+        assert!(args.temporal_diagnostic_frame(484));
+        assert!(!args.temporal_diagnostic_frame(485));
+        assert_eq!(
+            args.validate_temporal_diagnostics().is_ok(),
+            cfg!(feature = "temporal-diagnostics")
+        );
+        args.sequence = None;
+        assert!(args.validate_temporal_diagnostics().is_err());
+        args.sequence = Some([439, 484]);
+        args.no_temporal_aa = true;
+        assert!(args.validate_temporal_diagnostics().is_err());
     }
 
     #[test]

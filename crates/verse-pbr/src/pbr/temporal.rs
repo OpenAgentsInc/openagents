@@ -195,9 +195,11 @@ pub(super) struct Targets {
     write: usize,
     camera: CameraHistory,
     pub enabled: bool,
+    #[cfg(feature = "diagnostics")]
+    pub(super) reactive_written: bool,
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "diagnostics"))]
 impl Targets {
     pub(super) fn reactive_view(&self) -> &wgpu::TextureView {
         &self.reactive
@@ -205,6 +207,11 @@ impl Targets {
 
     pub(super) fn history_view(&self) -> &wgpu::TextureView {
         &self.history[self.write ^ 1]
+    }
+
+    #[cfg(feature = "diagnostics")]
+    pub(super) fn diagnostic_camera(&self) -> [[[f32; 4]; 4]; 2] {
+        [self.camera.prepared.current, self.camera.prepared.previous]
     }
 }
 
@@ -1479,6 +1486,8 @@ impl Temporal {
             write: 0,
             camera: CameraHistory::default(),
             enabled: false,
+            #[cfg(feature = "diagnostics")]
+            reactive_written: false,
         }
     }
 
@@ -1496,6 +1505,10 @@ impl Temporal {
         }
         let has_motion = motions.iter().any(|motion| motion.draw.has_vertices());
         let has_reactive = reactive.is_some_and(|lit| lit.admitted_ranges().next().is_some());
+        #[cfg(feature = "diagnostics")]
+        {
+            targets.reactive_written = has_reactive;
+        }
         let mut uniform = targets.camera.prepared;
         let camera = Mat4::from_cols_array_2d(&uniform.current);
         uniform.settings[3] = f32::from(u8::from(has_motion) + 2 * u8::from(has_reactive));

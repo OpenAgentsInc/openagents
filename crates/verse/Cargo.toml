@@ -16,6 +16,7 @@ model-host = ["dep:coder", "dep:coder-delegate", "verse-zone-everglade/model-hos
 xp-host = ["dep:xp-ledger", "verse-net/xp"]
 replay-host = ["dep:gym", "dep:knowledge"]
 capture = []
+temporal-diagnostics = ["capture", "verse-pbr/diagnostics"]
 # The crypt lab's models built into the binary (about 5.7 MB), which open
 # the zone and show its plaza arch. A build without them has neither.
 crypt = ["verse-zone-crypt/embedded"]

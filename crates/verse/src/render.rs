@@ -1899,6 +1899,12 @@ pub struct Offscreen {
     warmup_drain_ms: f32,
 }
 
+#[cfg(feature = "temporal-diagnostics")]
+#[path = "render/temporal_diagnostics.rs"]
+mod temporal_diagnostics;
+#[cfg(feature = "temporal-diagnostics")]
+pub use temporal_diagnostics::TemporalDiagnosticPixels;
+
 /// Host observations of one submitted frame. Completion can precede the
 /// callback, so these times bound completion rather than measure GPU work.
 #[cfg(feature = "capture")]

@@ -918,7 +918,36 @@ pub struct PhotoTargets {
     water_effects: verse_engine::quality::WaterEffects,
 }
 
+/// Read-only textures and jittered cameras from the last enabled temporal resolve.
+#[cfg(feature = "diagnostics")]
+pub struct TemporalDiagnosticViews<'a> {
+    pub marker: &'a wgpu::TextureView,
+    /// False when this frame did not write coverage and the texture is stale.
+    pub marker_current: bool,
+    pub history: &'a wgpu::TextureView,
+    pub scene: &'a wgpu::TextureView,
+    pub current: [[f32; 4]; 4],
+    pub previous: [[f32; 4]; 4],
+}
+
 impl PhotoTargets {
+    /// Returns the actual resolved marker, saved history, and HDR scene.
+    /// The history precedes sharpening; the scene follows it.
+    #[cfg(feature = "diagnostics")]
+    #[must_use]
+    pub fn temporal_diagnostic_views(&self) -> Option<TemporalDiagnosticViews<'_>> {
+        let temporal = self.temporal.as_ref().filter(|targets| targets.enabled)?;
+        let [current, previous] = temporal.diagnostic_camera();
+        Some(TemporalDiagnosticViews {
+            marker: temporal.reactive_view(),
+            marker_current: temporal.reactive_written,
+            history: temporal.history_view(),
+            scene: &self.scene,
+            current,
+            previous,
+        })
+    }
+
     /// Whether this view can retain temporal history on its adapter and tier.
     #[must_use]
     pub fn temporal_aa_available(&self) -> bool {
