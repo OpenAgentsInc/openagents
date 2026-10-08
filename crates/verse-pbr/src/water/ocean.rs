@@ -113,7 +113,9 @@ impl Plan {
     /// Bytes per layer, including every filtered level.
     #[must_use]
     pub fn layer_bytes(&self) -> u64 {
-        (0..self.mip_levels()).map(|level| ((self.size >> level).pow(2) * 8) as u64).sum()
+        (0..self.mip_levels())
+            .map(|level| ((self.size >> level).pow(2) * 8) as u64)
+            .sum()
     }
 
     /// Bytes of one tick's texels.
@@ -274,7 +276,8 @@ impl Synthesis {
             mips,
             micros: start.elapsed_ms() * 1000.0,
             cpu_micros: start.cpu_ms().map(|ms| ms * 1000.0),
-            worker_bytes: (self.synth.heap_bytes() + self.tile.heap_bytes()
+            worker_bytes: (self.synth.heap_bytes()
+                + self.tile.heap_bytes()
                 + self.wide.iter().map(|v| v.capacity() * 4).sum::<usize>()
                 + self.foam.iter().map(|v| v.capacity() * 4).sum::<usize>()
                 + self.scratch.capacity() * 4) as u64
@@ -298,9 +301,11 @@ fn box_mips(base: &[[u16; 4]], size: usize, layers: usize) -> Vec<Vec<[u16; 4]>>
                 for x in 0..side {
                     let at = first + 2 * y * n + 2 * x;
                     out.push(std::array::from_fn(|channel| {
-                        let value = [at, at + 1, at + n, at + n + 1].iter()
+                        let value = [at, at + 1, at + n, at + n + 1]
+                            .iter()
                             .map(|&i| half::f16::from_bits(source[i][channel]).to_f32())
-                            .sum::<f32>() * 0.25;
+                            .sum::<f32>()
+                            * 0.25;
                         half(value)
                     }));
                 }
@@ -653,7 +658,9 @@ impl OceanGpu {
 
     /// Whether synthesis executes inline rather than on a worker thread.
     #[must_use]
-    pub fn inline_synthesis(&self) -> bool { matches!(self.worker, Worker::Inline(_)) }
+    pub fn inline_synthesis(&self) -> bool {
+        matches!(self.worker, Worker::Inline(_))
+    }
 
     /// The texture's bytes on the GPU, the ripple layer's included.
     #[must_use]
@@ -665,15 +672,26 @@ impl OceanGpu {
     /// and control-water funnels retain the complete mesh until bounded.
     #[must_use]
     pub fn cull_envelope(&self, water: &super::Water, body: usize) -> Option<glam::Vec3> {
-        if water.controls.part.is_some() || water.controls.whirl.is_some()
-            || !self.ripples.is_quiet() || self.ripples.stats().wakes > 0 { return None; }
+        if water.controls.part.is_some()
+            || water.controls.whirl.is_some()
+            || !self.ripples.is_quiet()
+            || self.ripples.stats().wakes > 0
+        {
+            return None;
+        }
         let body = water.bodies.get(body)?;
         let mut pad = glam::Vec3::ZERO;
         for term in &body.swell.terms[..body.swell.count] {
             let amplitude = term.amplitude.abs() * body.swell_gain.abs() * 2.0;
-            pad += glam::Vec3::new(term.q.abs() * amplitude, amplitude, term.q.abs() * amplitude);
+            pad += glam::Vec3::new(
+                term.q.abs() * amplitude,
+                amplitude,
+                term.q.abs() * amplitude,
+            );
         }
-        if body.spectrum.is_some() { pad += self.envelope * (body.swell_gain.abs() * 2.0); }
+        if body.spectrum.is_some() {
+            pad += self.envelope * (body.swell_gain.abs() * 2.0);
+        }
         Some(pad + glam::Vec3::splat(0.01))
     }
 
@@ -732,7 +750,10 @@ impl OceanGpu {
     }
 
     fn upload(&mut self, queue: &wgpu::Queue, frame: &Frame) {
-        for (level, texels) in std::iter::once(&frame.texels).chain(&frame.mips).enumerate() {
+        for (level, texels) in std::iter::once(&frame.texels)
+            .chain(&frame.mips)
+            .enumerate()
+        {
             let n = (self.plan.size >> level) as u32;
             queue.write_texture(
                 wgpu::TexelCopyTextureInfo {
@@ -759,7 +780,9 @@ impl OceanGpu {
         for cascade in 0..self.plan.displaced {
             let mut bound = glam::Vec3::ZERO;
             for value in &frame.texels[cascade * 2 * pixels..(cascade * 2 + 1) * pixels] {
-                let d = glam::Vec3::from_array(std::array::from_fn(|i| half::f16::from_bits(value[i]).to_f32().abs()));
+                let d = glam::Vec3::from_array(std::array::from_fn(|i| {
+                    half::f16::from_bits(value[i]).to_f32().abs()
+                }));
                 bound = bound.max(d);
             }
             self.envelope += bound;
@@ -785,8 +808,10 @@ impl OceanGpu {
         };
         let tick = spectrum.tick_at(time);
         self.frames = self.frames.wrapping_add(1);
-        if self.exact || self.shown.is_none_or(|(held, _)| held != *spectrum)
-            || self.frames % self.refresh_every.max(1) == 0 {
+        if self.exact
+            || self.shown.is_none_or(|(held, _)| held != *spectrum)
+            || self.frames % self.refresh_every.max(1) == 0
+        {
             self.show(queue, spectrum, tick);
         }
         if self.shown.is_none_or(|(s, _)| s != *spectrum) {
@@ -822,7 +847,9 @@ impl OceanGpu {
         let mut record = |frame: Frame| {
             jobs_completed += 1;
             work_micros += frame.micros;
-            cpu_micros = cpu_micros.zip(frame.cpu_micros).map(|(sum, cost)| sum + cost);
+            cpu_micros = cpu_micros
+                .zip(frame.cpu_micros)
+                .map(|(sum, cost)| sum + cost);
             frame
         };
         let latest = match &mut self.worker {
@@ -838,11 +865,21 @@ impl OceanGpu {
                 };
                 // A new sea, or an exact frame, waits for its own tick.
                 if stale(held(&latest)) && *busy {
-                    latest = frames.recv().ok().and_then(Result::ok).map(&mut record).or(latest);
+                    latest = frames
+                        .recv()
+                        .ok()
+                        .and_then(Result::ok)
+                        .map(&mut record)
+                        .or(latest);
                     *busy = false;
                 }
                 if stale(held(&latest)) && jobs.send((*spectrum, tick)).is_ok() {
-                    latest = frames.recv().ok().and_then(Result::ok).map(&mut record).or(latest);
+                    latest = frames
+                        .recv()
+                        .ok()
+                        .and_then(Result::ok)
+                        .map(&mut record)
+                        .or(latest);
                 }
                 if !*busy && jobs.send((*spectrum, predicted)).is_ok() {
                     *busy = true;
@@ -861,7 +898,10 @@ impl OceanGpu {
         };
         self.completed_jobs += jobs_completed;
         self.completed_micros += work_micros;
-        self.completed_cpu_micros = self.completed_cpu_micros.zip(cpu_micros).map(|(sum, cost)| sum + cost);
+        self.completed_cpu_micros = self
+            .completed_cpu_micros
+            .zip(cpu_micros)
+            .map(|(sum, cost)| sum + cost);
         if let Some(frame) = latest {
             self.upload(queue, &frame);
         }
@@ -903,7 +943,10 @@ mod tests {
         assert_eq!(levels.iter().map(Vec::len).collect::<Vec<_>>(), [8, 2]);
         for level in &levels {
             for (layer, texels) in level.chunks(level.len() / 2).enumerate() {
-                assert!(texels.iter().all(|t| t.iter().all(|v| half::f16::from_bits(*v).to_f32() == layer as f32 * 8.0)));
+                assert!(texels.iter().all(|t| {
+                    t.iter()
+                        .all(|v| half::f16::from_bits(*v).to_f32() == layer as f32 * 8.0)
+                }));
             }
         }
         assert_eq!(vertex_lod(0.0, 1.0), 0.0);

@@ -829,14 +829,23 @@ fn physical(
 
 #[allow(clippy::too_many_arguments)]
 fn physical_sampled(
-    gpu: &Gpu, photo: &mut Photo, tier: Tier, spec: &ViewSpec, wet: Wet,
-    size: [u32; 2], mut measurements: Option<&mut Vec<verse_pbr::water::timing::Measurements>>,
+    gpu: &Gpu,
+    photo: &mut Photo,
+    tier: Tier,
+    spec: &ViewSpec,
+    wet: Wet,
+    size: [u32; 2],
+    mut measurements: Option<&mut Vec<verse_pbr::water::timing::Measurements>>,
 ) -> Result<(Vec<u8>, f64, u32, u64), String> {
     let world = world(spec.ground);
     let mut surface = surface(&world, tier)?;
     if measurements.is_some() && matches!(spec.ground, Ground::Open(_)) {
         surface.patches.clear();
-        surface.ocean = Some(verse_pbr::water::frame::Ocean { body: 0, sea: true, field: None });
+        surface.ocean = Some(verse_pbr::water::frame::Ocean {
+            body: 0,
+            sea: true,
+            field: None,
+        });
     }
     let water_gpu = photo.upload_water(&gpu.device, &surface);
     let geometry = lit(&bed_triangles(&world, 0.5, spec.posts));
@@ -872,7 +881,9 @@ fn physical_sampled(
     // Every frame shows the spectral sea at exactly the clock's tick.
     let sampled = measurements.is_some();
     photo.ocean.exact = !sampled || capture;
-    if sampled { photo.enable_water_timing(&gpu.device, &gpu.queue); }
+    if sampled {
+        photo.enable_water_timing(&gpu.device, &gpu.queue);
+    }
     let mut times = Vec::new();
     let mut view = camera(spec);
     view.view_proj = Mat4::perspective_rh(0.9, width as f32 / height as f32, 0.1, 400.0)
@@ -888,7 +899,9 @@ fn physical_sampled(
     };
     let mut frame = |photo: &mut Photo| {
         let mut encoder = gpu.device.create_command_encoder(&Default::default());
-        if sampled && let Some(water) = &mut neon.water { water.time += 1.0 / 60.0; }
+        if sampled && let Some(water) = &mut neon.water {
+            water.time += 1.0 / 60.0;
+        }
         photo.encode(
             &gpu.device,
             &gpu.queue,
@@ -900,7 +913,9 @@ fn physical_sampled(
             Batches { ..*batches },
             None,
         );
-        if let Some(records) = measurements.as_mut() { records.push(photo.water_measurements()); }
+        if let Some(records) = measurements.as_mut() {
+            records.push(photo.water_measurements());
+        }
         encoder
     };
     let wait = || {
@@ -931,7 +946,9 @@ fn physical_sampled(
             gpu.queue.submit([encoder.finish()]);
             photo.submitted();
             wait()?;
-            if index >= 120 { times.push(submitted.elapsed().as_secs_f64() * 1e3); }
+            if index >= 120 {
+                times.push(submitted.elapsed().as_secs_f64() * 1e3);
+            }
             std::thread::sleep(interval.saturating_sub(frame_started.elapsed()));
         }
     } else {
@@ -1447,16 +1464,52 @@ mod w11 {
         let gpu = gpu().unwrap();
         let mut records = Vec::new();
         for tier in TIERS {
-            for spec in all_views().into_iter().map(placed).filter(|v|
-                ["pond-noon", "pond-posts", "open-storm", "waterline", "under"].contains(&v.name)) {
-                let mut photo = Photo::new(&gpu.device, &gpu.queue, capability(tier), wgpu::TextureFormat::Rgba8UnormSrgb).unwrap();
-                let mut dry_photo = Photo::new(&gpu.device, &gpu.queue, capability(tier), wgpu::TextureFormat::Rgba8UnormSrgb).unwrap();
+            for spec in all_views().into_iter().map(placed).filter(|v| {
+                [
+                    "pond-noon",
+                    "pond-posts",
+                    "open-storm",
+                    "waterline",
+                    "under",
+                ]
+                .contains(&v.name)
+            }) {
+                let mut photo = Photo::new(
+                    &gpu.device,
+                    &gpu.queue,
+                    capability(tier),
+                    wgpu::TextureFormat::Rgba8UnormSrgb,
+                )
+                .unwrap();
+                let mut dry_photo = Photo::new(
+                    &gpu.device,
+                    &gpu.queue,
+                    capability(tier),
+                    wgpu::TextureFormat::Rgba8UnormSrgb,
+                )
+                .unwrap();
                 let mut dry_samples = Vec::new();
-                let (_, dry_fence_ms, _, _) = physical_sampled(&gpu, &mut dry_photo, tier, &spec, Wet::Dry,
-                    BUDGET_SIZE, Some(&mut dry_samples)).unwrap();
+                let (_, dry_fence_ms, _, _) = physical_sampled(
+                    &gpu,
+                    &mut dry_photo,
+                    tier,
+                    &spec,
+                    Wet::Dry,
+                    BUDGET_SIZE,
+                    Some(&mut dry_samples),
+                )
+                .unwrap();
                 let mut samples = Vec::new();
-                let (_, fence_ms, _, bytes) = physical_sampled(&gpu, &mut photo, tier, &spec, Wet::Tier,
-                    BUDGET_SIZE, Some(&mut samples)).unwrap();
+                let (_, fence_ms, _, bytes) = physical_sampled(
+                    &gpu,
+                    &mut photo,
+                    tier,
+                    &spec,
+                    Wet::Tier,
+                    BUDGET_SIZE,
+                    Some(&mut samples),
+                )
+                .unwrap();
                 let steady = &samples[samples.len().saturating_sub(96)..];
                 let summary = |values: Vec<f64>| {
                     let mut values: Vec<_> = values.into_iter().filter(|v| v.is_finite()).collect();
@@ -1467,7 +1520,12 @@ mod w11 {
                 };
                 let gpu_samples: Vec<_> = steady.iter().filter_map(|s| s.gpu).collect();
                 let gpu_ms = summary(gpu_samples.iter().map(|s| s.water_ms).collect());
-                let main = summary(steady.iter().map(|s| s.main_cpu_ms.unwrap_or(s.main_ms)).collect());
+                let main = summary(
+                    steady
+                        .iter()
+                        .map(|s| s.main_cpu_ms.unwrap_or(s.main_ms))
+                        .collect(),
+                );
                 let worker = summary(steady.iter().map(|s| s.worker_ms).collect());
                 let last = steady.last().unwrap();
                 let budget = verse_engine::quality::WaterBudget::of(tier);
@@ -1480,10 +1538,25 @@ mod w11 {
                     && gpu_cost <= budget.gpu_ms;
                 // Capture the final policy and the dry comparison at 540p.
                 let mut capture_samples = Vec::new();
-                let (wet, _, _, _) = physical_sampled(&gpu, &mut photo, tier, &spec, Wet::Tier,
-                    [WIDTH, HEIGHT], Some(&mut capture_samples)).unwrap();
-                let mut dry_photo = Photo::new(&gpu.device, &gpu.queue, capability(tier), wgpu::TextureFormat::Rgba8UnormSrgb).unwrap();
-                let (dry, _, _, _) = physical(&gpu, &mut dry_photo, tier, &spec, Wet::Dry, [WIDTH, HEIGHT]).unwrap();
+                let (wet, _, _, _) = physical_sampled(
+                    &gpu,
+                    &mut photo,
+                    tier,
+                    &spec,
+                    Wet::Tier,
+                    [WIDTH, HEIGHT],
+                    Some(&mut capture_samples),
+                )
+                .unwrap();
+                let mut dry_photo = Photo::new(
+                    &gpu.device,
+                    &gpu.queue,
+                    capability(tier),
+                    wgpu::TextureFormat::Rgba8UnormSrgb,
+                )
+                .unwrap();
+                let (dry, _, _, _) =
+                    physical(&gpu, &mut dry_photo, tier, &spec, Wet::Dry, [WIDTH, HEIGHT]).unwrap();
                 let share = changed(&wet, &dry);
                 let filename = format!("native-{}-{}.png", tier_name(tier), spec.name);
                 png(&directory.join(&filename), &wet).unwrap();
@@ -1501,10 +1574,29 @@ mod w11 {
                     "within_budget":within,"effects_reduced":reduced,"water_changed_pixels":share,
                     "capture":filename,"capture_sha256":digest(&directory.join(&filename)).unwrap(),
                     "samples":samples}));
-                assert!(share > 0.01, "{} {} keeps water visible", tier_name(tier), spec.name);
-                assert!(within || reduced, "{} {} admits cost or reduces effects", tier_name(tier), spec.name);
-                assert!(bytes <= budget.gpu_bytes, "{} {} water residency", tier_name(tier), spec.name);
-                std::fs::write(directory.join("native.json"), serde_json::to_vec_pretty(&records).unwrap()).unwrap();
+                assert!(
+                    share > 0.01,
+                    "{} {} keeps water visible",
+                    tier_name(tier),
+                    spec.name
+                );
+                assert!(
+                    within || reduced,
+                    "{} {} admits cost or reduces effects",
+                    tier_name(tier),
+                    spec.name
+                );
+                assert!(
+                    bytes <= budget.gpu_bytes,
+                    "{} {} water residency",
+                    tier_name(tier),
+                    spec.name
+                );
+                std::fs::write(
+                    directory.join("native.json"),
+                    serde_json::to_vec_pretty(&records).unwrap(),
+                )
+                .unwrap();
             }
         }
     }

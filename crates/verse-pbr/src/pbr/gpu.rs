@@ -2039,8 +2039,11 @@ impl Photo {
             water_measurements: Default::default(),
             // Medium and High already split water from the opaque scene.
             // Low keeps its fused pass unless diagnostics enable a probe.
-            water_timer: if capability.quality.tier == verse_engine::quality::Tier::Low { None }
-                else { crate::water::timing::Timer::new(device, queue) },
+            water_timer: if capability.quality.tier == verse_engine::quality::Tier::Low {
+                None
+            } else {
+                crate::water::timing::Timer::new(device, queue)
+            },
             water_slot: None,
             water_mask: 0,
             water_surface_bytes: 0,
@@ -2520,11 +2523,16 @@ impl Photo {
         let mut water_plan = crate::water::screen::Plan::of(self.capability.quality.tier)
             .with_effects(self.water_policy.effects());
         let scene_bytes = u64::from(scene_format.block_copy_size(None).unwrap_or(8));
-        let base = self.ocean.bytes() + self.water_field.bytes() + crate::water::tile::bytes()
-            + self.water_buffer.size() + self.water_surface_bytes;
+        let base = self.ocean.bytes()
+            + self.water_field.bytes()
+            + crate::water::tile::bytes()
+            + self.water_buffer.size()
+            + self.water_surface_bytes;
         // Admit resources before allocating targets. An unusually large
         // view keeps analytic transmission instead of exceeding residency.
-        if water_plan.bytes(width, height, scene_bytes) + base > self.water_policy.budget().gpu_bytes {
+        if water_plan.bytes(width, height, scene_bytes) + base
+            > self.water_policy.budget().gpu_bytes
+        {
             water_plan.copies = false;
             water_plan.mirror_divisor = 0;
         }
@@ -2635,8 +2643,14 @@ impl Photo {
             ],
         });
         let fx_group = self.fx_parts.group(device, &self.fx_layout, depth_copy);
-        let water_bytes = water.as_ref().map_or(0, |_| water_plan.bytes(width, height, scene_bytes)
-            + if water_plan.mirror_divisor == 0 { scene_bytes + 4 } else { 0 });
+        let water_bytes = water.as_ref().map_or(0, |_| {
+            water_plan.bytes(width, height, scene_bytes)
+                + if water_plan.mirror_divisor == 0 {
+                    scene_bytes + 4
+                } else {
+                    0
+                }
+        });
         PhotoTargets {
             water_bytes,
             water_plan,
@@ -2659,14 +2673,23 @@ impl Photo {
     /// targets. The main scene and shared sky are outside water's budget.
     #[must_use]
     pub fn water_bytes(&self, targets: &PhotoTargets, surface: u64) -> u64 {
-        targets.water_bytes() + surface + self.ocean.bytes() + self.water_field.bytes()
-            + crate::water::tile::bytes() + self.water_buffer.size()
-            + self.water_screen.as_ref().map_or(0, |s| s.mirror_frame.size())
+        targets.water_bytes()
+            + surface
+            + self.ocean.bytes()
+            + self.water_field.bytes()
+            + crate::water::tile::bytes()
+            + self.water_buffer.size()
+            + self
+                .water_screen
+                .as_ref()
+                .map_or(0, |s| s.mirror_frame.size())
             + self.water_timer.as_ref().map_or(0, |t| t.bytes())
     }
 
     #[must_use]
-    pub fn water_measurements(&self) -> crate::water::timing::Measurements { self.water_measurements }
+    pub fn water_measurements(&self) -> crate::water::timing::Measurements {
+        self.water_measurements
+    }
 
     /// Enable per-pass timestamps for fixed-view diagnostics on Low too.
     /// Medium and High sample continuously when the device supports it.
@@ -2677,7 +2700,9 @@ impl Photo {
 
     /// Arm delayed query mapping only after the caller submits this frame.
     pub fn submitted(&mut self) {
-        if let Some(timer) = &mut self.water_timer { timer.submitted(self.water_slot, self.water_mask); }
+        if let Some(timer) = &mut self.water_timer {
+            timer.submitted(self.water_slot, self.water_mask);
+        }
         self.water_mask = 0;
         self.water_slot = None;
     }
@@ -2700,11 +2725,16 @@ impl Photo {
         if targets.water_effects != self.water_policy.effects() {
             *targets = self.targets(device, targets.size[0], targets.size[1]);
         }
-        let (slot, gpu) = self.water_timer.as_mut().map_or((None, None), |timer| timer.begin(device));
+        let (slot, gpu) = self
+            .water_timer
+            .as_mut()
+            .map_or((None, None), |timer| timer.begin(device));
         self.water_slot = slot;
         self.water_mask = 0;
         self.water_measurements = crate::water::timing::Measurements {
-            gpu, gpu_timestamps: self.water_timer.is_some(), inline_synthesis: self.ocean.inline_synthesis(),
+            gpu,
+            gpu_timestamps: self.water_timer.is_some(),
+            inline_synthesis: self.ocean.inline_synthesis(),
             ..Default::default()
         };
         match stage {
@@ -2715,7 +2745,9 @@ impl Photo {
                 self.encode_neon(device, queue, encoder, output, targets, view, neon, world)
             }
         }
-        if let Some(timer) = &self.water_timer { timer.resolve(encoder, self.water_slot, self.water_mask); }
+        if let Some(timer) = &self.water_timer {
+            timer.resolve(encoder, self.water_slot, self.water_mask);
+        }
         if let Some((pipeline, group, buffer, count)) = ui
             && count > 0
         {
@@ -3350,7 +3382,11 @@ impl Photo {
         // stage only, as its surface needs the key for its glint.
         let water = neon.water.filter(|water| lit.is_some() && water.valid());
         let water_started = crate::water::timing::CpuTimer::start();
-        let completed_before = (self.ocean.completed_jobs, self.ocean.completed_micros, self.ocean.completed_cpu_micros);
+        let completed_before = (
+            self.ocean.completed_jobs,
+            self.ocean.completed_micros,
+            self.ocean.completed_cpu_micros,
+        );
         self.water_frames = self.water_frames.wrapping_add(1);
         let effects = self.water_policy.effects();
         self.ocean.refresh_every = effects.refresh_every();
@@ -3398,8 +3434,13 @@ impl Photo {
             uniform.weather_figure = water.rain.figure;
             let mut packed = water.uniform();
             packed.look[1] = crate::water::pixel_angle(view.view_proj, view.eye, height);
-            if effects >= verse_engine::quality::WaterEffects::NoCopies { packed.params[1] = packed.params[1].min(4.0); }
-            if effects.refresh_every() >= 4 { packed.params[1] = 0.0; packed.look[3] = 1.0; }
+            if effects >= verse_engine::quality::WaterEffects::NoCopies {
+                packed.params[1] = packed.params[1].min(4.0);
+            }
+            if effects.refresh_every() >= 4 {
+                packed.params[1] = 0.0;
+                packed.look[3] = 1.0;
+            }
             packed.ocean = self.ocean.prepare(
                 queue,
                 sea.spectrum.as_ref(),
@@ -3419,11 +3460,17 @@ impl Photo {
             queue.write_buffer(&self.water_buffer, 0, bytemuck::bytes_of(&packed));
         }
         self.water_surface_bytes = world.water.map_or(0, |gpu| gpu.bytes());
-        let cull = world.water.and_then(|gpu| gpu.0.ocean.as_ref()).and_then(|ocean| {
-            let water = water.as_ref()?;
-            Some((view.view_proj, water.bodies[ocean.body].level,
-                self.ocean.cull_envelope(water, ocean.body)?))
-        });
+        let cull = world
+            .water
+            .and_then(|gpu| gpu.0.ocean.as_ref())
+            .and_then(|ocean| {
+                let water = water.as_ref()?;
+                Some((
+                    view.view_proj,
+                    water.bodies[ocean.body].level,
+                    self.ocean.cull_envelope(water, ocean.body)?,
+                ))
+            });
         // Medium and High copy the opaque scene for the water and the
         // particles when the frame draws either (`water::screen`), and
         // mirror the nearest flat body in view.
@@ -3532,7 +3579,9 @@ impl Photo {
             );
             self.water_mask |= 1;
             water_draw_ms += mirror_started.elapsed_ms();
-            water_draw_cpu_ms = water_draw_cpu_ms.zip(mirror_started.cpu_ms()).map(|(sum, cost)| sum + cost);
+            water_draw_cpu_ms = water_draw_cpu_ms
+                .zip(mirror_started.cpu_ms())
+                .map(|(sum, cost)| sum + cost);
         }
         let direct = self.post.is_none();
         if split && let (Some(screen), Some(water_targets)) = (&self.water_screen, &targets.water) {
@@ -3552,7 +3601,9 @@ impl Photo {
                     wgpu::LoadOp::Clear(clear),
                     wgpu::LoadOp::Clear(0.0),
                     wgpu::StoreOp::Store,
-                    self.water_timer.as_ref().and_then(|t| t.boundary(self.water_slot, 1)),
+                    self.water_timer
+                        .as_ref()
+                        .and_then(|t| t.boundary(self.water_slot, 1)),
                 );
                 self.draw_opaque(&mut pass, targets, &opaque);
             }
@@ -3569,11 +3620,18 @@ impl Photo {
                 );
             }
             self.water_mask |= 2;
-            screen.encode_copy(encoder, water_targets,
-                self.water_timer.as_ref().and_then(|t| t.boundary(self.water_slot, 2)));
+            screen.encode_copy(
+                encoder,
+                water_targets,
+                self.water_timer
+                    .as_ref()
+                    .and_then(|t| t.boundary(self.water_slot, 2)),
+            );
             self.water_mask |= 4;
             water_draw_ms += copies_started.elapsed_ms();
-            water_draw_cpu_ms = water_draw_cpu_ms.zip(copies_started.cpu_ms()).map(|(sum, cost)| sum + cost);
+            water_draw_cpu_ms = water_draw_cpu_ms
+                .zip(copies_started.cpu_ms())
+                .map(|(sum, cost)| sum + cost);
             // The water and everything blended over the kept scene.
             let resolve = targets.msaa.as_ref().map(|_| &targets.scene);
             let mut pass = scene_pass_timed(
@@ -3585,7 +3643,9 @@ impl Photo {
                 wgpu::LoadOp::Load,
                 wgpu::LoadOp::Load,
                 wgpu::StoreOp::Store,
-                self.water_timer.as_ref().and_then(|t| t.boundary(self.water_slot, 3)),
+                self.water_timer
+                    .as_ref()
+                    .and_then(|t| t.boundary(self.water_slot, 3)),
             );
             pass.set_bind_group(0, &self.scene_group, &[]);
             let draw_started = crate::water::timing::CpuTimer::start();
@@ -3599,14 +3659,26 @@ impl Photo {
                 cull,
             );
             water_draw_ms += draw_started.elapsed_ms();
-                water_draw_cpu_ms = water_draw_cpu_ms.zip(draw_started.cpu_ms()).map(|(sum, cost)| sum + cost);
+            water_draw_cpu_ms = water_draw_cpu_ms
+                .zip(draw_started.cpu_ms())
+                .map(|(sum, cost)| sum + cost);
             if self.water_timer.is_some() {
                 drop(pass);
                 self.water_mask |= 8;
-                let mut pass = scene_pass(encoder, "verse neon blended", target, resolve,
-                    &targets.depth, wgpu::LoadOp::Load, wgpu::LoadOp::Load, wgpu::StoreOp::Discard);
+                let mut pass = scene_pass(
+                    encoder,
+                    "verse neon blended",
+                    target,
+                    resolve,
+                    &targets.depth,
+                    wgpu::LoadOp::Load,
+                    wgpu::LoadOp::Load,
+                    wgpu::StoreOp::Discard,
+                );
                 self.draw_blended(&mut pass, targets, &opaque);
-            } else { self.draw_blended(&mut pass, targets, &opaque); }
+            } else {
+                self.draw_blended(&mut pass, targets, &opaque);
+            }
         } else {
             let (target, resolve) = match (&targets.msaa, direct) {
                 (Some(msaa), false) => (msaa, Some(&targets.scene)),
@@ -3616,62 +3688,124 @@ impl Photo {
             };
             if self.water_timer.is_some() && water.is_some() {
                 {
-                    let mut pass = scene_pass_timed(encoder, "verse neon opaque", target, resolve,
-                        &targets.depth, wgpu::LoadOp::Clear(clear), wgpu::LoadOp::Clear(0.0),
-                        wgpu::StoreOp::Store, self.water_timer.as_ref().and_then(|t| t.boundary(self.water_slot, 1)));
+                    let mut pass = scene_pass_timed(
+                        encoder,
+                        "verse neon opaque",
+                        target,
+                        resolve,
+                        &targets.depth,
+                        wgpu::LoadOp::Clear(clear),
+                        wgpu::LoadOp::Clear(0.0),
+                        wgpu::StoreOp::Store,
+                        self.water_timer
+                            .as_ref()
+                            .and_then(|t| t.boundary(self.water_slot, 1)),
+                    );
                     self.draw_opaque(&mut pass, targets, &opaque);
                 }
                 self.water_mask |= 2;
                 {
-                    let mut pass = scene_pass_timed(encoder, "verse neon water", target, resolve,
-                        &targets.depth, wgpu::LoadOp::Load, wgpu::LoadOp::Load, wgpu::StoreOp::Store,
-                        self.water_timer.as_ref().and_then(|t| t.boundary(self.water_slot, 3)));
+                    let mut pass = scene_pass_timed(
+                        encoder,
+                        "verse neon water",
+                        target,
+                        resolve,
+                        &targets.depth,
+                        wgpu::LoadOp::Load,
+                        wgpu::LoadOp::Load,
+                        wgpu::StoreOp::Store,
+                        self.water_timer
+                            .as_ref()
+                            .and_then(|t| t.boundary(self.water_slot, 3)),
+                    );
                     pass.set_bind_group(0, &self.scene_group, &[]);
                     let draw_started = crate::water::timing::CpuTimer::start();
                     self.draw_water(&mut pass, targets, zone_water, true, None, view.eye, cull);
                     water_draw_ms += draw_started.elapsed_ms();
-                water_draw_cpu_ms = water_draw_cpu_ms.zip(draw_started.cpu_ms()).map(|(sum, cost)| sum + cost);
+                    water_draw_cpu_ms = water_draw_cpu_ms
+                        .zip(draw_started.cpu_ms())
+                        .map(|(sum, cost)| sum + cost);
                 }
                 self.water_mask |= 8;
-                let mut pass = scene_pass(encoder, "verse neon blended", target, resolve,
-                    &targets.depth, wgpu::LoadOp::Load, wgpu::LoadOp::Load, wgpu::StoreOp::Discard);
+                let mut pass = scene_pass(
+                    encoder,
+                    "verse neon blended",
+                    target,
+                    resolve,
+                    &targets.depth,
+                    wgpu::LoadOp::Load,
+                    wgpu::LoadOp::Load,
+                    wgpu::StoreOp::Discard,
+                );
                 self.draw_blended(&mut pass, targets, &opaque);
             } else {
-                let mut pass = scene_pass(encoder, "verse neon scene", target, resolve,
-                    &targets.depth, wgpu::LoadOp::Clear(clear), wgpu::LoadOp::Clear(0.0), wgpu::StoreOp::Discard);
+                let mut pass = scene_pass(
+                    encoder,
+                    "verse neon scene",
+                    target,
+                    resolve,
+                    &targets.depth,
+                    wgpu::LoadOp::Clear(clear),
+                    wgpu::LoadOp::Clear(0.0),
+                    wgpu::StoreOp::Discard,
+                );
                 self.draw_opaque(&mut pass, targets, &opaque);
                 let draw_started = crate::water::timing::CpuTimer::start();
-                self.draw_water(&mut pass, targets, zone_water, water.is_some(), None, view.eye, cull);
+                self.draw_water(
+                    &mut pass,
+                    targets,
+                    zone_water,
+                    water.is_some(),
+                    None,
+                    view.eye,
+                    cull,
+                );
                 water_draw_ms += draw_started.elapsed_ms();
-                water_draw_cpu_ms = water_draw_cpu_ms.zip(draw_started.cpu_ms()).map(|(sum, cost)| sum + cost);
+                water_draw_cpu_ms = water_draw_cpu_ms
+                    .zip(draw_started.cpu_ms())
+                    .map(|(sum, cost)| sum + cost);
                 self.draw_blended(&mut pass, targets, &opaque);
             }
         }
         if water.is_some() {
             self.water_measurements.gpu_bytes = self.water_bytes(targets, self.water_surface_bytes);
             self.water_measurements.main_ms = water_main_ms + water_draw_ms;
-            self.water_measurements.main_cpu_ms = water_main_cpu_ms.zip(water_draw_cpu_ms).map(|(a,b)| a+b);
+            self.water_measurements.main_cpu_ms =
+                water_main_cpu_ms.zip(water_draw_cpu_ms).map(|(a, b)| a + b);
             self.water_measurements.synthesis_ms = self.ocean.micros / 1000.0;
             self.water_measurements.synthesis_cpu_ms = self.ocean.cpu_micros.map(|us| us / 1000.0);
-            self.water_measurements.completed_jobs = self.ocean.completed_jobs.saturating_sub(completed_before.0);
-            self.water_measurements.completed_synthesis_ms = (self.ocean.completed_micros - completed_before.1).max(0.0) / 1000.0;
-            let worker_cpu_ms = self.ocean.completed_cpu_micros.zip(completed_before.2)
-                .map(|(after,before)| (after-before).max(0.0) / 1000.0);
-            self.water_measurements.worker_cpu_supported = !self.ocean.inline_synthesis() && worker_cpu_ms.is_some();
-            self.water_measurements.worker_ms = if self.ocean.inline_synthesis() { 0.0 }
-                else { worker_cpu_ms.unwrap_or(self.water_measurements.completed_synthesis_ms) };
+            self.water_measurements.completed_jobs =
+                self.ocean.completed_jobs.saturating_sub(completed_before.0);
+            self.water_measurements.completed_synthesis_ms =
+                (self.ocean.completed_micros - completed_before.1).max(0.0) / 1000.0;
+            let worker_cpu_ms = self
+                .ocean
+                .completed_cpu_micros
+                .zip(completed_before.2)
+                .map(|(after, before)| (after - before).max(0.0) / 1000.0);
+            self.water_measurements.worker_cpu_supported =
+                !self.ocean.inline_synthesis() && worker_cpu_ms.is_some();
+            self.water_measurements.worker_ms = if self.ocean.inline_synthesis() {
+                0.0
+            } else {
+                worker_cpu_ms.unwrap_or(self.water_measurements.completed_synthesis_ms)
+            };
             self.water_measurements.worker_bytes = self.ocean.worker_bytes;
             self.water_measurements.ripple_cpu_bytes = self.ocean.ripples.heap_bytes();
             self.water_measurements.refresh_every = effects.refresh_every();
             self.water_measurements.copies = split;
             self.water_measurements.mirror = mirror.is_some();
             self.water_measurements.ssr = split && targets.water_plan.ssr_steps > 0;
-            self.water_measurements.effects_reduced = effects != verse_engine::quality::WaterEffects::Full
+            self.water_measurements.effects_reduced = effects
+                != verse_engine::quality::WaterEffects::Full
                 || (self.water_screen.is_some() && !targets.water_plan.copies);
             self.water_policy.observe(verse_engine::quality::WaterLoad {
                 gpu_ms: self.water_measurements.gpu.map(|s| s.water_ms),
                 gpu_bytes: self.water_measurements.gpu_bytes,
-                main_ms: self.water_measurements.main_cpu_ms.unwrap_or(self.water_measurements.main_ms),
+                main_ms: self
+                    .water_measurements
+                    .main_cpu_ms
+                    .unwrap_or(self.water_measurements.main_ms),
                 worker_ms: self.water_measurements.worker_ms,
             });
         }
@@ -3853,7 +3987,9 @@ impl Photo {
             wgpu::LoadOp::Clear(clear),
             wgpu::LoadOp::Clear(0.0),
             wgpu::StoreOp::Discard,
-            self.water_timer.as_ref().and_then(|t| t.boundary(self.water_slot, 0)),
+            self.water_timer
+                .as_ref()
+                .and_then(|t| t.boundary(self.water_slot, 0)),
         );
         let world = opaque.world;
         let pipelines = &screen.mirror;
@@ -3930,17 +4066,39 @@ struct Opaque<'w, 'a> {
 /// Begins a scene pass into `target` (resolved into `resolve`) over
 /// `depth`.
 #[allow(clippy::too_many_arguments)]
-fn scene_pass<'e>(encoder: &'e mut wgpu::CommandEncoder, label: &str,
-    target: &wgpu::TextureView, resolve: Option<&wgpu::TextureView>, depth: &wgpu::TextureView,
-    load: wgpu::LoadOp<wgpu::Color>, depth_load: wgpu::LoadOp<f32>, depth_store: wgpu::StoreOp) -> wgpu::RenderPass<'e> {
-    scene_pass_timed(encoder, label, target, resolve, depth, load, depth_load, depth_store, None)
+fn scene_pass<'e>(
+    encoder: &'e mut wgpu::CommandEncoder,
+    label: &str,
+    target: &wgpu::TextureView,
+    resolve: Option<&wgpu::TextureView>,
+    depth: &wgpu::TextureView,
+    load: wgpu::LoadOp<wgpu::Color>,
+    depth_load: wgpu::LoadOp<f32>,
+    depth_store: wgpu::StoreOp,
+) -> wgpu::RenderPass<'e> {
+    scene_pass_timed(
+        encoder,
+        label,
+        target,
+        resolve,
+        depth,
+        load,
+        depth_load,
+        depth_store,
+        None,
+    )
 }
 
 #[allow(clippy::too_many_arguments)]
 fn scene_pass_timed<'e>(
-    encoder: &'e mut wgpu::CommandEncoder, label: &str, target: &wgpu::TextureView,
-    resolve: Option<&wgpu::TextureView>, depth: &wgpu::TextureView,
-    load: wgpu::LoadOp<wgpu::Color>, depth_load: wgpu::LoadOp<f32>, depth_store: wgpu::StoreOp,
+    encoder: &'e mut wgpu::CommandEncoder,
+    label: &str,
+    target: &wgpu::TextureView,
+    resolve: Option<&wgpu::TextureView>,
+    depth: &wgpu::TextureView,
+    load: wgpu::LoadOp<wgpu::Color>,
+    depth_load: wgpu::LoadOp<f32>,
+    depth_store: wgpu::StoreOp,
     timestamp_writes: Option<wgpu::RenderPassTimestampWrites<'_>>,
 ) -> wgpu::RenderPass<'e> {
     encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
