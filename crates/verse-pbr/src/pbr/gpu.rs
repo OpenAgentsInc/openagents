@@ -544,13 +544,16 @@ impl TexturedGpu {
         let mut changed = fallback_groups != self.fallback_groups;
         self.fallback_groups = fallback_groups;
         for (group, previous) in self.detail_groups.iter().zip(&mut self.group_levels) {
-            let now = group.selected(eye,placed.then_some(*previous));
+            let now = group.selected(eye, placed.then_some(*previous));
             changed |= now != *previous;
             *previous = now;
         }
         for (batch, near) in self.batches.iter().zip(&mut self.near) {
             let now = match batch.level {
-                super::textured::Level::Group { group, level, .. } => self.group_levels.get(usize::from(group)).is_some_and(|selected| *selected==level),
+                super::textured::Level::Group { group, level, .. } => self
+                    .group_levels
+                    .get(usize::from(group))
+                    .is_some_and(|selected| *selected == level),
                 _ => batch.level.near(eye, placed.then_some(*near)),
             };
             changed |= now != *near;
