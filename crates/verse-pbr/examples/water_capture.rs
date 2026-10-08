@@ -1471,6 +1471,7 @@ mod w11 {
         std::fs::create_dir_all(&directory).unwrap();
         let gpu = gpu().unwrap();
         let mut records = Vec::new();
+        let selected = std::env::var("WATER_W11_CASE").ok();
         for tier in TIERS {
             for spec in all_views().into_iter().map(placed).filter(|v| {
                 [
@@ -1482,6 +1483,10 @@ mod w11 {
                 ]
                 .contains(&v.name)
             }) {
+                let case = format!("{}/{}", tier_name(tier), spec.name);
+                if selected.as_ref().is_some_and(|selected| selected != &case) {
+                    continue;
+                }
                 let mut photo = Photo::new(
                     &gpu.device,
                     &gpu.queue,
@@ -1567,6 +1572,12 @@ mod w11 {
                     "within_budget":within,"effects_reduced":reduced,"water_changed_pixels":share,
                     "capture":filename,"capture_sha256":digest(&directory.join(&filename)).unwrap(),
                     "samples":samples}));
+                // Keep failed-view evidence before evaluating acceptance.
+                std::fs::write(
+                    directory.join("native.json"),
+                    serde_json::to_vec_pretty(&records).unwrap(),
+                )
+                .unwrap();
                 assert!(
                     share > 0.01,
                     "{} {} keeps water visible",
@@ -1585,12 +1596,11 @@ mod w11 {
                     tier_name(tier),
                     spec.name
                 );
-                std::fs::write(
-                    directory.join("native.json"),
-                    serde_json::to_vec_pretty(&records).unwrap(),
-                )
-                .unwrap();
             }
         }
+        assert!(
+            !records.is_empty(),
+            "WATER_W11_CASE must select a known view"
+        );
     }
 }
