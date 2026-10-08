@@ -72,6 +72,8 @@
 //!   hall, and the first with a decision waiting for the atrium. It prints every frame's index and label, so another frame can
 //!   be chosen. These views need the `model-host` feature.
 use std::path::{Path, PathBuf};
+#[path = "support/baked.rs"]
+mod baked;
 use verse::{
     controller::InputState,
     runtime::{Action, WorldRuntime},
@@ -118,6 +120,7 @@ fn main() -> Result<(), String> {
             everglade_pack::PACK_EXTENSION
         ));
     let pack = everglade_pack::ZonePack::load_local(&pack)?;
+    baked::require_layers(&pack)?;
     // VERSE_ALICE_OUTFIT dresses Alice as `verse --alice-outfit` does.
     if let Ok(outfit) = std::env::var("VERSE_ALICE_OUTFIT") {
         zones::everglade::npcs::set_alice_outfit(&outfit)?;
@@ -139,7 +142,12 @@ fn main() -> Result<(), String> {
         Err(_) if std::env::var("VERSE_TOWN_CLOCK").is_ok_and(|v| v == "live") => None,
         Err(_) => Some(10.5),
     };
-    runtime.set_town_clock(clock.pinned(hour));
+    let clock = if let Ok(hour) = std::env::var("VERSE_CAPTURE_RUNNING_HOUR") {
+        baked::running_clock(town_clock::parse_hour(&hour)?)
+    } else {
+        clock.pinned(hour)
+    };
+    runtime.set_town_clock(clock);
     runtime.install_everglade(&pack);
     if runtime.zone != zones::ZoneId::Everglade {
         return Err("Everglade did not install from the pinned pack".into());

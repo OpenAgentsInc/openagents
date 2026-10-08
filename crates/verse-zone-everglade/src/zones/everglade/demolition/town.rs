@@ -48,7 +48,6 @@ use crate::mesh::Mesh;
 use crate::pbr::textured::{
     Figure, IndexRange, Primitive, TexturedMesh, TexturedScene, TexturedVertex, UNBAKED,
 };
-use crate::pbr::textured_bake::AmbientProbes;
 use crate::zones::everglade::floaters::{FLOAT, Floater, Painter};
 use crate::zones::everglade::height;
 use crate::zones::everglade::layout::{self, Placement};
@@ -2005,9 +2004,9 @@ impl Town {
     }
 
     /// The frame's figure: the character's `cast` figure followed by the
-    /// town's drawn chunks, lit by `probes` when the bake has them.
+    /// town's drawn chunks, whose dynamic light follows their current pose.
     #[must_use]
-    pub fn figure(&self, cast: Figure, probes: Option<&AmbientProbes>) -> Figure {
+    pub fn figure(&self, cast: Figure) -> Figure {
         if self.pool.spans.is_empty() {
             return cast;
         }
@@ -2019,11 +2018,10 @@ impl Town {
                 vertices.extend_from_slice(&cast.vertices);
                 let start = vertices.len();
                 vertices.extend_from_slice(&self.pool.posed);
-                if let Some(probes) = probes {
-                    for (material, &used) in self.pool.used.iter().enumerate() {
-                        let from = start + self.pool.offsets[material];
-                        probes.shade(&mut vertices[from..from + used]);
-                    }
+                // Original probes include walls that have fallen. Chunks
+                // take current direct shadows and open-sky vertex lighting.
+                for vertex in &mut vertices[start..] {
+                    vertex.light = UNBAKED;
                 }
                 Figure {
                     scene: joined.clone(),

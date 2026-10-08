@@ -24,6 +24,8 @@
 //! has Meteor Swarm and the sledgehammer only in a dev build, so run it with
 //! `--features dev-destruction`.
 use std::path::{Path, PathBuf};
+#[path = "support/baked.rs"]
+mod baked;
 use verse::{
     controller::InputState,
     runtime::{Action, WorldRuntime},
@@ -51,7 +53,11 @@ fn main() -> Result<(), String> {
     let mega = civic && std::env::args().nth(3).as_deref() == Some("mega");
     let stoop = std::env::args().nth(2).as_deref() == Some("stoop");
     let pack = everglade_pack::ZonePack::load_local(&pack)?;
+    baked::require_layers(&pack)?;
     let mut runtime = WorldRuntime::new();
+    if let Ok(hour) = std::env::var("VERSE_CAPTURE_RUNNING_HOUR") {
+        runtime.set_town_clock(baked::running_clock(town_clock::parse_hour(&hour)?));
+    }
     runtime.install_everglade(&pack);
     if runtime.zone != zones::ZoneId::Everglade {
         return Err("Everglade did not install from the pinned pack".into());

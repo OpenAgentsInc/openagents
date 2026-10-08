@@ -479,11 +479,11 @@ impl Everglade {
     }
 
     /// `figure`, a figure of the scene [`Self::set_figure_scene`] named,
-    /// followed by the town's drawn chunks, lit by the baked probes.
+    /// followed by the town's drawn chunks under their current dynamic light.
     #[must_use]
     pub fn with_town(&self, figure: crate::pbr::textured::Figure) -> crate::pbr::textured::Figure {
         match &self.town {
-            Some(town) => town.figure(figure, self.probes.as_deref()),
+            Some(town) => town.figure(figure),
             None => figure,
         }
     }
@@ -1790,7 +1790,7 @@ impl Everglade {
                     figure = yard.figure(Some(figure));
                 }
                 if let Some(town) = &self.town {
-                    figure = town.figure(figure, self.probes.as_deref());
+                    figure = town.figure(figure);
                 }
                 Mesh {
                     figure: Some(figure),

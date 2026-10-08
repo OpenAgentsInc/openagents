@@ -38,7 +38,7 @@ The umbrella issue is #10903.
 | P9: cleanup | #10902 | `f008baa090`, repin `4b9ad70748` | Closed; both suites and pack consistency pass |
 | B1: offline baker | #10905 | `0360046732`, `983432c41f` | Closed |
 | B2: lightmap layers | #10906 | by its subagent | See its issue |
-| B3: time of day and destruction | #10907 | `codex/everglade-b3` | In progress; source changes await checks and private captures |
+| B3: time of day and destruction | #10907 | `codex/everglade-b3` | Checkpointed; source changes await checks and private captures |
 | B4: tiers and measurement | #10908 | none | Not started |
 
 The town has 65 medieval kit houses: Stoop Lane, Main Street, the Fountain
@@ -61,17 +61,36 @@ unchanged.
   merged house with the demo's, side by side.
 - **B2 (#10906).** Its issue holds what its subagent landed and what
   remains.
-- **B3 (#10907).** Claimed on October 8 on `codex/everglade-b3`.
-  The branch adds shader interpolation between the two nearest sun layers,
-  lamp fading, support-neighbor damage masks, selective two-millisecond
-  dynamic-light batches, and restore. These changes are unverified. Run
-  the focused regressions and shader checks before landing. No layer digest
-  is published yet; the private quick and full layers share scene digest
-  `5c8b974b01c2d83e1e7ab0169c6328ec4cce49670334daf169a72ac5bff3e706`.
-  Verify them against the current scene, or rebuild through the
-  `everglade-kit-bake` queue on `coderos-4080`. Acceptance needs actual
-  matching baked layers for the clock and destruction captures, plus the
-  measured blend cost.
+- **B3 (#10907).** Checkpointed on October 8 on `codex/everglade-b3`
+  while P3 takes priority. The issue claim is released. The branch adds GPU
+  sun interpolation, lamp fading, support-neighbor damage masks, selective
+  two-millisecond dynamic-light batches, restore, and one repair worker that
+  coalesces newer revision and light requests. Drawn chunks use current
+  dynamic light rather than stale baked probes. All B3 source is unverified;
+  no Cargo command, bake, capture, or measurement has run for this branch.
+  Resume with affected-package formatting, the `verse-pbr` baked-layer and
+  shader-interface regressions, `verse-zone-everglade` baked/clock/support/
+  restore regressions, and a Verse consumer check with `capture` and
+  `dev-destruction`. Run the selective ray repair fixture only remotely.
+  No layer digest is published yet. The previous private full layer is
+  `bakes/full/ad9e34d5df07e3dbd0c9d54a34818827d289b3ec5f2f77553f3e5184481fd894.vlay`
+  (45,124,891 bytes; content SHA-256
+  `b3476a685d948d0984ac23f81adb9833b6003e78c742ae790b177f170c8984da`).
+  Its scene is `5c8b974b01c2d83e1e7ab0169c6328ec4cce49670334daf169a72ac5bff3e706`
+  with 4,191,245 vertices. The pinned private kit and these layers are copied
+  outside Git on `coderos-4080`. The remote artifact CLI supports
+  `everglade-kit-bake`, and its Git push access passed a dry run. Set
+  `VERSE_REQUIRE_BAKED=1` so acceptance tools verify the current scene digest
+  before installing or rendering. If it differs, submit the matching bake
+  queue remotely, upload the private layers, and verify the queue's pin.
+  `baked_light_capture` provides dawn/noon/dusk/night and sun-pair boundary
+  captures through an unpinned production clock, plus alternating warmed
+  blend-enabled/disabled frame timings. `town_capture ... stoop` provides
+  matching meteor before/after/restore evidence; set
+  `VERSE_CAPTURE_RUNNING_HOUR` to exercise the same clock adapter. Keep all
+  captures private. Check ground receivers for lingering baked shadows as
+  well as changed pieces and support neighbors. Rebase and obtain the
+  coordinator's landing approval only after these checks pass.
 - **B4 (#10908).** Not started. It needs B2 and P8. One 512 px kit pack
   serves every tier today (10.2 MB to transfer, about 28 MiB decoded),
   which is over the phone's 8 MiB transfer budget. A phone tier is part of

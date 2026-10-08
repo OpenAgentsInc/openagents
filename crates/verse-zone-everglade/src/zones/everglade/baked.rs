@@ -26,7 +26,7 @@ pub(super) fn clock_light(mut light: time_of_day::Light, time: town_clock::TownT
 pub(super) fn choice(light: &time_of_day::Light) -> Option<LayerChoice> {
     let layers = kit_bake::offered()?;
     Some(LayerChoice {
-        sun: layers.sun_blend(light.key_dir),
+        sun: layers.sun_blend(light.sun),
         ratio: sun_ratio(&layers, light),
         layers,
     })
@@ -185,7 +185,7 @@ impl BakedLight {
     /// Only four scalars change each frame; vertex light is never recombined.
     pub(super) fn sun(&self, light: &time_of_day::Light) -> [f32; 4] {
         if !self.active { return [0.0; 4]; }
-        self.layers.sun_blend(light.key_dir)
+        self.layers.sun_blend(light.sun)
             .uniform(sun_ratio(&self.layers, light))
     }
 
@@ -200,7 +200,7 @@ impl BakedLight {
         }
         if self.hour == light.hours { return None; }
         self.hour = light.hours;
-        Some(self.layers.blended_probes(self.layers.sun_blend(light.key_dir),
+        Some(self.layers.blended_probes(self.layers.sun_blend(light.sun),
             sun_ratio(&self.layers, light)))
     }
 
@@ -354,7 +354,7 @@ mod tests {
                 vertices: vec![[100, 100, 100, 255]], probes: vec![[i as f32; 12]] });
         }
         let sample = |light: &time_of_day::Light| {
-            layers.blended_probes(layers.sun_blend(light.key_dir), sun_ratio(&layers, light)).grid.data[0][0]
+            layers.blended_probes(layers.sun_blend(light.sun), sun_ratio(&layers, light)).grid.data[0][0]
         };
         let mut last = sample(&time_of_day::Light::at_hours(0.0));
         let mut pairs = BTreeSet::new();
@@ -363,7 +363,7 @@ mod tests {
             let now = sample(&light);
             assert!((now - last).abs() < 0.03, "second {second}: {last} to {now}");
             if light.sun.y > 0.0 {
-                let blend = layers.sun_blend(light.key_dir);
+                let blend = layers.sun_blend(light.sun);
                 pairs.insert((blend.first, blend.second));
             }
             last = now;
