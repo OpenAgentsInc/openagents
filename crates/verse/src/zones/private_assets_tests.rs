@@ -68,7 +68,7 @@ fn a_seated_private_placement_sits_at_the_reception() {
         tick_until(&mut runtime, |r| r.private_guests() == 1),
         "the cached private pack never sat its character"
     );
-    let everglade = runtime.zone_state.everglade.as_ref().unwrap();
+    let everglade = runtime.zone_state.everglade.as_deref().unwrap();
     let (feet, yaw) = super::everglade::layout::estate::reception();
     assert_eq!(
         everglade.guests()[0].creatures()[0].route,

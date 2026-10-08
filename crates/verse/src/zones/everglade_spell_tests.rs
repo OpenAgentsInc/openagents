@@ -132,7 +132,7 @@ fn feather_fall_caps_a_fall_and_ends_on_landing() {
         "{}",
         runtime.player.vertical_speed()
     );
-    let glade = runtime.zone_state.everglade.as_ref().unwrap();
+    let glade = runtime.zone_state.everglade.as_deref().unwrap();
     assert!(
         !glade.spell_mesh(&runtime.player).faces.is_empty(),
         "feathers"
@@ -149,7 +149,7 @@ fn feather_fall_caps_a_fall_and_ends_on_landing() {
     }
     assert!(seconds > plain * 2.0, "{seconds} against {plain}");
     assert!(!slot(&runtime, Spell::FeatherFall).active);
-    let glade = runtime.zone_state.everglade.as_ref().unwrap();
+    let glade = runtime.zone_state.everglade.as_deref().unwrap();
     assert!(glade.spell_mesh(&runtime.player).faces.is_empty());
 }
 
@@ -161,7 +161,7 @@ fn wall_of_stone_blocks_walking_until_it_ends() {
     runtime.zone_intent(Intent::WallOfStone).unwrap();
     let bar = slot(&runtime, Spell::WallOfStone);
     assert!(bar.active && bar.enabled && bar.cooldown == 0.0);
-    let glade = runtime.zone_state.everglade.as_ref().unwrap();
+    let glade = runtime.zone_state.everglade.as_deref().unwrap();
     assert!(!glade.spell_mesh(&runtime.player).faces.is_empty());
     // Head-on and at a slant, the panels four meters ahead stop the walk.
     let ahead = |runtime: &WorldRuntime| (runtime.player.pos - start).dot(forward);
@@ -187,7 +187,7 @@ fn wall_of_stone_blocks_walking_until_it_ends() {
     runtime.player.pos = start + forward * -6.0;
     idle(&mut runtime, 0.5);
     runtime.zone_intent(Intent::WallOfStone).unwrap();
-    let glade = runtime.zone_state.everglade.as_mut().unwrap();
+    let glade = runtime.zone_state.everglade.as_deref_mut().unwrap();
     assert_eq!(glade.spells().count(Spell::WallOfStone), 2);
     // Once they end, the way is open.
     glade.long_rest();
@@ -228,7 +228,7 @@ fn rapid_casts_all_fire_and_spells_stand_together() {
     for n in 1..=5 {
         runtime.zone_intent(Intent::WindWall).unwrap();
         runtime.tick(&InputState::default(), DT);
-        let glade = runtime.zone_state.everglade.as_ref().unwrap();
+        let glade = runtime.zone_state.everglade.as_deref().unwrap();
         assert_eq!(glade.spells().count(Spell::WindWall), n);
     }
     // No concentration: a Wall of Stone and Reverse Gravity join them.
@@ -241,7 +241,7 @@ fn rapid_casts_all_fire_and_spells_stand_together() {
     for spell in [Spell::WindWall, Spell::WallOfStone, Spell::ReverseGravity] {
         assert!(slot(&runtime, spell).active, "{spell:?}");
     }
-    let glade = runtime.zone_state.everglade.as_ref().unwrap();
+    let glade = runtime.zone_state.everglade.as_deref().unwrap();
     assert_eq!(glade.spells().count(Spell::WallOfStone), 2);
     // Reverse Gravity stays single: a second press ends it.
     runtime.zone_intent(Intent::ReverseGravity).unwrap();
@@ -259,10 +259,10 @@ fn the_oldest_wind_wall_drops_past_the_cap() {
         // Each cast a quarter meter further along, so the walls differ.
         runtime.player.pos = start + Vec3::X * (n as f32 * 0.25);
         runtime.zone_intent(Intent::WindWall).unwrap();
-        let glade = runtime.zone_state.everglade.as_ref().unwrap();
+        let glade = runtime.zone_state.everglade.as_deref().unwrap();
         firsts.push(glade.spells().wind_wall().unwrap().clone());
     }
-    let glade = runtime.zone_state.everglade.as_ref().unwrap();
+    let glade = runtime.zone_state.everglade.as_deref().unwrap();
     let walls: Vec<_> = glade.spells().wind_walls().collect();
     assert_eq!(walls.len(), cap);
     // The two oldest are gone; the third cast is now the oldest standing.
@@ -287,7 +287,7 @@ fn every_one_of_several_wind_walls_lifts_the_player() {
         runtime.zone_intent(Intent::WindWall).unwrap();
     }
     runtime.player.yaw = yaw;
-    let glade = runtime.zone_state.everglade.as_ref().unwrap();
+    let glade = runtime.zone_state.everglade.as_deref().unwrap();
     assert_eq!(glade.spells().count(Spell::WindWall), 3);
     // Three walls draw three times the streaks of one.
     let lines = glade.spell_mesh(&runtime.player).lines.len();
@@ -310,7 +310,7 @@ fn wind_wall_rises_ahead_and_its_updraft_throws_the_player_up() {
     let start = runtime.player.pos;
     let forward = runtime.player.forward();
     runtime.zone_intent(Intent::WindWall).unwrap();
-    let glade = runtime.zone_state.everglade.as_ref().unwrap();
+    let glade = runtime.zone_state.everglade.as_deref().unwrap();
     assert!(glade.spell_mesh(&runtime.player).lines.len() > 40);
     // Standing in the wind keeps the player aloft.
     runtime.player.pos = start + forward * 4.0;
@@ -353,7 +353,7 @@ fn reverse_gravity_lifts_to_the_top_hovers_and_drops_when_ended() {
     );
     assert!(runtime.player.vertical_speed().abs() < 0.2);
     // Only particles draw it: no guide lines, and a crowd of glows.
-    let glade = runtime.zone_state.everglade.as_ref().unwrap();
+    let glade = runtime.zone_state.everglade.as_deref().unwrap();
     let mesh = glade.spell_mesh(&runtime.player);
     assert!(mesh.lines.is_empty(), "{}", mesh.lines.len());
     assert!(mesh.glow.len() > 6 * 300, "{}", mesh.glow.len());
@@ -377,7 +377,7 @@ fn reverse_gravity_inside_the_hall_stops_at_the_roof() {
     let head = runtime.player.pos.y + AVATAR_HEIGHT;
     assert!(head > crate::zones::everglade::layout::WALL_TOP, "{head}");
     // The head rests against the roof's underside.
-    let glade = runtime.zone_state.everglade.as_ref().unwrap();
+    let glade = runtime.zone_state.everglade.as_deref().unwrap();
     let (x, z) = (runtime.player.pos.x, runtime.player.pos.z);
     let roof = glade.solids.ceiling(x, z, head - 0.01).expect("a roof");
     assert!((roof - head).abs() < 0.01, "head {head}, roof {roof}");

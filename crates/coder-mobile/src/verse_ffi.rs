@@ -181,8 +181,8 @@ pub struct VerseHandle {
 /// The renderer on the native surface: the Grid draws through the engine,
 /// every other zone through the legacy renderer until its own migration.
 pub(crate) enum Surface {
-    Legacy(verse::render::Renderer),
-    Grid(verse::grid_engine::GridEngine),
+    Legacy(Box<verse::render::Renderer>),
+    Grid(Box<verse::grid_engine::GridEngine>),
 }
 
 impl Surface {
@@ -274,7 +274,7 @@ pub unsafe extern "C" fn coder_verse_create(
         coder_verse_create_inner(layer, bytes, len)
     }));
     match result {
-        Ok(Ok(handle)) => Box::into_raw(Box::new(handle)),
+        Ok(Ok(handle)) => Box::into_raw(handle),
         error => {
             let message = match error {
                 Ok(Err(message)) => message,
@@ -293,23 +293,23 @@ unsafe fn coder_verse_create_inner(
     layer: *mut c_void,
     bytes: *const u8,
     len: usize,
-) -> Result<VerseHandle, String> {
+) -> Result<Box<VerseHandle>, String> {
     let config: Config = serde_json::from_slice(unsafe { std::slice::from_raw_parts(bytes, len) })
         .map_err(|_| "Invalid native Verse configuration".to_owned())?;
-    let scene = create_scene(move || Scene::new(config).map(Box::new))?;
+    let scene = create_scene(move || Scene::new(config))?;
     create_renderer(layer, scene)
 }
 
 #[cfg(target_os = "ios")]
 #[inline(never)]
-fn create_renderer(layer: *mut c_void, scene: Box<Scene>) -> Result<VerseHandle, String> {
-    let mut handle = VerseHandle {
+fn create_renderer(layer: *mut c_void, scene: Box<Scene>) -> Result<Box<VerseHandle>, String> {
+    let mut handle = Box::new(VerseHandle {
         scene,
         renderer: None,
         rendered_zone_revision: u64::MAX,
         rendered_chamber_revision: 0,
         layer,
-    };
+    });
     handle.open_renderer()?;
     Ok(handle)
 }
@@ -366,15 +366,15 @@ impl VerseHandle {
 /// until the handle is dropped or detached.
 #[cfg(target_os = "android")]
 #[inline(never)]
-fn create_renderer(layer: *mut c_void, scene: Box<Scene>) -> Result<VerseHandle, String> {
+fn create_renderer(layer: *mut c_void, scene: Box<Scene>) -> Result<Box<VerseHandle>, String> {
     let viewport = scene.lifecycle.viewport();
-    let mut handle = VerseHandle {
+    let mut handle = Box::new(VerseHandle {
         scene,
         renderer: None,
         rendered_zone_revision: u64::MAX,
         rendered_chamber_revision: 0,
         layer: ptr::null_mut(),
-    };
+    });
     // SAFETY: the caller's contract is the same as `attach_android`'s.
     unsafe { handle.attach_android(layer, viewport.width(), viewport.height(), viewport.scale()) }?;
     Ok(handle)
@@ -382,7 +382,7 @@ fn create_renderer(layer: *mut c_void, scene: Box<Scene>) -> Result<VerseHandle,
 
 #[cfg(not(any(target_os = "ios", target_os = "android")))]
 #[inline(never)]
-fn create_renderer(_layer: *mut c_void, _scene: Box<Scene>) -> Result<VerseHandle, String> {
+fn create_renderer(_layer: *mut c_void, _scene: Box<Scene>) -> Result<Box<VerseHandle>, String> {
     Err("Metal native surfaces require an iOS host".into())
 }
 
@@ -509,7 +509,7 @@ impl VerseHandle {
         scale: f32,
         hdr: bool,
         presence: Option<BarePresence>,
-    ) -> Result<Self, String> {
+    ) -> Result<Box<Self>, String> {
         unsafe {
             Self::create_bare_with_gym(
                 layer,
@@ -535,7 +535,7 @@ impl VerseHandle {
         hdr: bool,
         presence: Option<BarePresence>,
         gym: BareGym,
-    ) -> Result<Self, String> {
+    ) -> Result<Box<Self>, String> {
         if layer.is_null() {
             return Err("No native layer to draw in".into());
         }
@@ -566,7 +566,7 @@ impl VerseHandle {
             if let Some(relay) = check_relay {
                 scene.relay = Some(relay);
             }
-            Ok(Box::new(scene))
+            Ok(scene)
         })?;
         create_renderer(layer, scene)
     }
@@ -764,7 +764,7 @@ impl VerseHandle {
                         let lighting = verse::grid_frame::lighting(&self.scene.world.atmosphere());
                         let view = self.scene.world.view(engine.aspect());
                         engine.draw(view, &dynamic, &self.scene.map_ui(), &lighting)?;
-                        self.scene.presented_entities = verse::mesh::Mesh::default();
+                        self.scene.presented_entities = Box::new(verse::mesh::Mesh::default());
                         self.scene.frames = self.scene.frames.saturating_add(1);
                     }
                     Some(Surface::Legacy(renderer)) => {
@@ -797,7 +797,7 @@ impl VerseHandle {
                         let view = self.scene.world.view(renderer.aspect());
                         match renderer.draw(view, &mesh, &self.scene.map_ui()) {
                             verse::render::DrawStatus::Presented => {
-                                self.scene.presented_entities = entities;
+                                self.scene.presented_entities = Box::new(entities);
                                 self.scene.frames = self.scene.frames.saturating_add(1);
                             }
                             verse::render::DrawStatus::Skipped(_) => {}
@@ -898,7 +898,7 @@ mod tests {
         ))
         .unwrap();
         let mut handle = VerseHandle {
-            scene: Box::new(scene),
+            scene,
             renderer: None,
             rendered_zone_revision: 0,
             rendered_chamber_revision: 0,
@@ -942,7 +942,7 @@ mod tests {
         })
         .unwrap();
         let mut handle = VerseHandle {
-            scene: Box::new(scene),
+            scene,
             renderer: None,
             rendered_zone_revision: 0,
             rendered_chamber_revision: 0,
@@ -1022,7 +1022,7 @@ mod tests {
                         synthetic: true,
                         ..bare_config(64, 64, 1.0, false, None)
                     };
-                    std::hint::black_box(Scene::new(config).map(Box::new)).unwrap();
+                    std::hint::black_box(Scene::new(config)).unwrap();
                 }
             })
             .unwrap()

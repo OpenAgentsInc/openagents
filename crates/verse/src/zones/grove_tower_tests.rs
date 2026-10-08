@@ -54,7 +54,7 @@ fn town(runtime: &WorldRuntime) -> &Town {
     runtime
         .zone_state
         .everglade
-        .as_ref()
+        .as_deref()
         .and_then(|glade| glade.town())
         .expect("the Grove's tower can break")
 }
@@ -63,13 +63,13 @@ fn town_mut(runtime: &mut WorldRuntime) -> &mut Town {
     runtime
         .zone_state
         .everglade
-        .as_mut()
+        .as_deref_mut()
         .and_then(|glade| glade.town_mut())
         .expect("the Grove's tower can break")
 }
 
 fn grove(runtime: &WorldRuntime) -> &Grove {
-    runtime.zone_state.grove.as_ref().expect("in the Grove")
+    runtime.zone_state.grove.as_deref().expect("in the Grove")
 }
 
 /// Casts `spell` from its slot on the bar.
@@ -84,7 +84,7 @@ fn cast(runtime: &mut WorldRuntime, spell: Spell) {
 fn aim(runtime: &mut WorldRuntime, point: Vec3) {
     let player = runtime.player.clone();
     let eye = player.pos + Vec3::Y * 1.6;
-    let glade = runtime.zone_state.everglade.as_mut().unwrap();
+    let glade = runtime.zone_state.everglade.as_deref_mut().unwrap();
     assert!(glade.aim_swarm(eye, (point - eye).normalize(), &player));
 }
 
@@ -824,7 +824,7 @@ fn the_dragon_pressed_against_the_tower_keeps_its_head_out_of_the_wall() {
         "it walked up to the wall: {feet}"
     );
     // Flying into it at the jaws' height stops it the same way.
-    let glade = runtime.zone_state.everglade.as_ref().unwrap();
+    let glade = runtime.zone_state.everglade.as_deref().unwrap();
     let solids = glade.solids();
     use verse_world::social::sight::Sight;
     let from = feet + Vec3::Y * 3.1;

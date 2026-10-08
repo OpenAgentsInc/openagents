@@ -31,7 +31,7 @@ impl WorldRuntime {
             let flying = self
                 .zone_state
                 .grove
-                .as_ref()
+                .as_deref()
                 .and_then(super::grove::Grove::form)
                 .is_some_and(super::grove::shape::Form::flies);
             if flying && input.jump {
@@ -72,7 +72,7 @@ impl WorldRuntime {
     /// assets. Everglade's pack is named by its digest.
     pub fn configure_zone_cache(&mut self, path: std::path::PathBuf) {
         self.zone_cancel_loading();
-        self.zone_state.everglade_loader = Some(everglade_pack::Loader::new(path));
+        self.zone_state.everglade_loader = Some(Box::new(everglade_pack::Loader::new(path)));
     }
     /// Whether an Everglade entry downloads the pinned medieval kit pack
     /// from the OpenAgents web origin when the cache lacks it
@@ -110,7 +110,7 @@ impl WorldRuntime {
         let everglade = self
             .zone_state
             .everglade_loader
-            .as_mut()
+            .as_deref_mut()
             .and_then(everglade_pack::Loader::poll);
         #[cfg(not(target_arch = "wasm32"))]
         self.poll_private_assets();
@@ -179,7 +179,7 @@ impl WorldRuntime {
         } else {
             Lagrange::world()
         };
-        self.zone_state.lagrange = Some(zone);
+        self.zone_state.lagrange = Some(Box::new(zone));
         self.zone = ZoneId::Lagrange1;
         self.zone_state.progress = 1.0;
         self.zone_revision = self.zone_revision.saturating_add(1);
@@ -194,7 +194,7 @@ impl WorldRuntime {
         self.zone_state.plaza_pose = Some((self.player.pos, self.player.yaw));
         self.zone_cancel_loading();
         self.world = Lab::world();
-        self.zone_state.lab = Some(Lab::new());
+        self.zone_state.lab = Some(Box::new(Lab::new()));
         self.zone = ZoneId::PhysicsLab;
         self.zone_state.progress = 1.0;
         self.zone_revision = self.zone_revision.saturating_add(1);
@@ -249,7 +249,7 @@ impl WorldRuntime {
         }
         self.zone_state.plaza_pose = Some((self.player.pos, self.player.yaw));
         self.world = world;
-        self.zone_state.everglade = Some(everglade);
+        self.zone_state.everglade = Some(Box::new(everglade));
         self.zone = ZoneId::Everglade;
         self.zone_state.loading = LoadState::Idle;
         self.zone_state.error = None;
@@ -319,7 +319,7 @@ impl WorldRuntime {
         };
         self.zone_state.plaza_pose = Some((self.player.pos, self.player.yaw));
         self.world = world;
-        self.zone_state.everglade = Some(glade);
+        self.zone_state.everglade = Some(Box::new(glade));
         self.zone = ZoneId::MeteorStressTest;
         self.zone_state.loading = LoadState::Idle;
         self.zone_state.error = None;
@@ -353,7 +353,7 @@ impl WorldRuntime {
         };
         self.zone_state.plaza_pose = Some((self.player.pos, self.player.yaw));
         self.world = world;
-        self.zone_state.everglade = Some(glade);
+        self.zone_state.everglade = Some(Box::new(glade));
         self.zone = ZoneId::MeteorShowcase;
         self.zone_state.loading = LoadState::Idle;
         self.zone_state.error = None;
@@ -377,7 +377,7 @@ impl WorldRuntime {
         }
         self.zone_state
             .everglade
-            .as_mut()
+            .as_deref_mut()
             .is_some_and(|glade| super::meteor_showcase::stage(glade, delay).is_ok())
     }
 
@@ -386,7 +386,7 @@ impl WorldRuntime {
     pub fn everglade_town_profile(
         &self,
     ) -> Option<super::everglade::demolition::town::TownProfile> {
-        Some(self.zone_state.everglade.as_ref()?.town()?.profile())
+        Some(self.zone_state.everglade.as_deref()?.town()?.profile())
     }
 
     /// Loads the Meteor Showcase from the plaza.
@@ -456,8 +456,8 @@ impl WorldRuntime {
         }
         self.zone_state.plaza_pose = Some((self.player.pos, self.player.yaw));
         self.world = world;
-        self.zone_state.everglade = Some(glade);
-        self.zone_state.grove = Some(grove);
+        self.zone_state.everglade = Some(Box::new(glade));
+        self.zone_state.grove = Some(Box::new(grove));
         self.zone = ZoneId::Grove;
         self.zone_state.loading = LoadState::Idle;
         self.zone_state.error = None;
@@ -531,8 +531,8 @@ impl WorldRuntime {
         world.mesh.textured = Some(std::sync::Arc::new(hall.scene));
         self.zone_state.plaza_pose = Some((self.player.pos, self.player.yaw));
         self.world = world;
-        self.zone_state.everglade = Some(glade);
-        self.zone_state.crypt = Some(live);
+        self.zone_state.everglade = Some(Box::new(glade));
+        self.zone_state.crypt = Some(Box::new(live));
         self.zone = ZoneId::Crypt;
         self.zone_state.loading = LoadState::Idle;
         self.zone_state.error = None;
@@ -571,7 +571,7 @@ impl WorldRuntime {
         }
         self.zone_state.plaza_pose = Some((self.player.pos, self.player.yaw));
         self.world = world;
-        self.zone_state.everglade = Some(glade);
+        self.zone_state.everglade = Some(Box::new(glade));
         self.zone_state.water = Some(Box::new(lab));
         self.zone = ZoneId::WaterLab;
         self.zone_state.loading = LoadState::Idle;
@@ -624,7 +624,7 @@ impl WorldRuntime {
         forward: Vec3,
     ) -> String {
         let state = &mut self.zone_state;
-        let (Some(glade), Some(lab)) = (state.everglade.as_mut(), state.water.as_deref_mut())
+        let (Some(glade), Some(lab)) = (state.everglade.as_deref_mut(), state.water.as_deref_mut())
         else {
             return String::new();
         };
@@ -811,11 +811,12 @@ impl WorldRuntime {
             && let Some(spell) = self
                 .zone_state
                 .grove
-                .as_ref()
+                .as_deref()
                 .and_then(|grove| grove.resolve(intent))
         {
             let state = &mut self.zone_state;
-            let (Some(grove), Some(glade)) = (state.grove.as_mut(), state.everglade.as_mut())
+            let (Some(grove), Some(glade)) =
+                (state.grove.as_deref_mut(), state.everglade.as_deref_mut())
             else {
                 return Err("Enter the Grove first".into());
             };
@@ -914,7 +915,7 @@ impl WorldRuntime {
                 let lagrange = self
                     .zone_state
                     .lagrange
-                    .as_mut()
+                    .as_deref_mut()
                     .ok_or("Enter Lagrange 1 first")?;
                 lagrange.overlay = !lagrange.overlay;
                 lagrange.tick();
@@ -923,7 +924,7 @@ impl WorldRuntime {
                 let lagrange = self
                     .zone_state
                     .lagrange
-                    .as_mut()
+                    .as_deref_mut()
                     .ok_or("Enter Lagrange 1 first")?;
                 lagrange.art = !lagrange.art;
                 lagrange.tick();
@@ -932,7 +933,7 @@ impl WorldRuntime {
                 let lagrange = self
                     .zone_state
                     .lagrange
-                    .as_mut()
+                    .as_deref_mut()
                     .ok_or("Enter Lagrange 1 first")?;
                 lagrange.station.apply(if intent == Intent::Grab {
                     Input::Grab
@@ -946,7 +947,7 @@ impl WorldRuntime {
                 let lagrange = self
                     .zone_state
                     .lagrange
-                    .as_mut()
+                    .as_deref_mut()
                     .ok_or("Enter Lagrange 1 first")?;
                 let station = &mut lagrange.station;
                 station.apply(if station.tethered() {
@@ -967,7 +968,7 @@ impl WorldRuntime {
                 let lab = self
                     .zone_state
                     .lab
-                    .as_mut()
+                    .as_deref_mut()
                     .ok_or("Enter the Physics Lab first")?;
                 match intent {
                     Intent::KnobPrev => lab.cycle_knob(false),
@@ -984,7 +985,7 @@ impl WorldRuntime {
                 let glade = self
                     .zone_state
                     .everglade
-                    .as_mut()
+                    .as_deref_mut()
                     .ok_or("Enter Everglade first")?;
                 match intent {
                     Intent::Jump => glade.jump = true,
@@ -1015,7 +1016,7 @@ impl WorldRuntime {
                     super::everglade::spells::Spell::of(intent).ok_or("Not an Everglade spell")?;
                 self.zone_state
                     .everglade
-                    .as_mut()
+                    .as_deref_mut()
                     .ok_or("Enter Everglade first")?
                     .cast_hotbar_spell(spell, &self.player)?;
                 self.zone_state.error = None;
@@ -1026,7 +1027,7 @@ impl WorldRuntime {
                 }
                 self.zone_state
                     .everglade
-                    .as_mut()
+                    .as_deref_mut()
                     .ok_or("Enter Everglade first")?
                     .demolish(intent == Intent::Rebuild)?;
                 self.zone_state.error = None;
@@ -1038,7 +1039,7 @@ impl WorldRuntime {
                 let player = self.player.clone();
                 self.zone_state
                     .everglade
-                    .as_mut()
+                    .as_deref_mut()
                     .ok_or("Enter Everglade first")?
                     .meteor_swarm(&player)?;
                 self.zone_state.error = None;
@@ -1056,7 +1057,7 @@ impl WorldRuntime {
                 };
                 self.zone_state
                     .everglade
-                    .as_mut()
+                    .as_deref_mut()
                     .ok_or("Enter Everglade first")?
                     .target_strike(strike, &player)?;
                 self.zone_state.error = None;
@@ -1100,7 +1101,7 @@ impl WorldRuntime {
         let lagrange = self
             .zone_state
             .lagrange
-            .as_mut()
+            .as_deref_mut()
             .ok_or("no simulation zone is loaded")?;
         let station = &mut lagrange.station;
         let result = match command.cmd.as_str() {
@@ -1173,7 +1174,7 @@ impl WorldRuntime {
     /// Map status and marker while an EVA pack autopilot owns map taps.
     #[must_use]
     pub fn eva_map_status(&self) -> Option<(&'static str, Option<[f32; 2]>)> {
-        let station = &self.zone_state.lagrange.as_ref()?.station;
+        let station = &self.zone_state.lagrange.as_deref()?.station;
         Some(match station.target {
             Some(t) => ("Flying", Some([t.x as f32, t.z as f32])),
             None => ("Choose a point to fly to", None),
@@ -1181,7 +1182,7 @@ impl WorldRuntime {
     }
     /// Fly the EVA pack toward a map point at the current altitude.
     pub(crate) fn lagrange_fly_to(&mut self, destination: [f32; 2]) -> Option<Result<(), String>> {
-        let lagrange = self.zone_state.lagrange.as_mut()?;
+        let lagrange = self.zone_state.lagrange.as_deref_mut()?;
         let y = lagrange.station.astronaut().pos.y;
         Some(
             lagrange
@@ -1233,7 +1234,7 @@ impl WorldRuntime {
         if self.zone != ZoneId::Everglade {
             return None;
         }
-        self.zone_state.everglade.as_ref()?.breath_bar()
+        self.zone_state.everglade.as_deref()?.breath_bar()
     }
 
     /// Everglade's hotbar of movement and utility spells, in displayed
@@ -1252,7 +1253,7 @@ impl WorldRuntime {
         ) {
             return None;
         }
-        let glade = self.zone_state.everglade.as_ref()?;
+        let glade = self.zone_state.everglade.as_deref()?;
         if glade.demolition().is_some() {
             return None;
         }
@@ -1311,7 +1312,7 @@ impl WorldRuntime {
             return false;
         }
         let player = self.player.clone();
-        let Some(glade) = self.zone_state.everglade.as_mut() else {
+        let Some(glade) = self.zone_state.everglade.as_deref_mut() else {
             return false;
         };
         glade.meteor_swarm(&player).is_ok() && glade.confirm_swarm(&player)
@@ -1353,7 +1354,7 @@ impl WorldRuntime {
         }
         self.zone_state
             .everglade
-            .as_ref()
+            .as_deref()
             .map_or(Vec3::ZERO, Everglade::shake)
     }
 
@@ -1365,7 +1366,7 @@ impl WorldRuntime {
             && self
                 .zone_state
                 .everglade
-                .as_ref()
+                .as_deref()
                 .and_then(Everglade::swarm)
                 .is_some_and(super::everglade::demolition::meteor::Swarm::targeting)
     }
@@ -1381,7 +1382,7 @@ impl WorldRuntime {
         ) {
             return None;
         }
-        let town = self.zone_state.everglade.as_ref()?.town()?;
+        let town = self.zone_state.everglade.as_deref()?.town()?;
         let site = town.site();
         let chunks = site
             .pieces()
@@ -1400,7 +1401,7 @@ impl WorldRuntime {
         if !self.everglade_destruction() {
             return None;
         }
-        let glade = self.zone_state.everglade.as_ref()?;
+        let glade = self.zone_state.everglade.as_deref()?;
         Some(glade.town()?.swarm().status())
     }
 
@@ -1419,7 +1420,7 @@ impl WorldRuntime {
         let player = self.player.clone();
         self.zone_state
             .everglade
-            .as_mut()
+            .as_deref_mut()
             .is_some_and(|glade| glade.aim_swarm(origin, direction, &player))
     }
 
@@ -1431,7 +1432,7 @@ impl WorldRuntime {
         let player = self.player.clone();
         self.zone_state
             .everglade
-            .as_mut()
+            .as_deref_mut()
             .is_some_and(|glade| glade.confirm_swarm(&player))
     }
 
@@ -1443,7 +1444,7 @@ impl WorldRuntime {
         }
         self.zone_state
             .everglade
-            .as_mut()
+            .as_deref_mut()
             .is_some_and(Everglade::cancel_swarm)
     }
 
@@ -1487,7 +1488,7 @@ impl WorldRuntime {
         if !self.breaks_things() {
             return None;
         }
-        let site = self.zone_state.everglade.as_ref()?.town()?.site();
+        let site = self.zone_state.everglade.as_deref()?.town()?.site();
         let chunks = site
             .pieces()
             .iter()
@@ -1504,7 +1505,7 @@ impl WorldRuntime {
         if self.zone != ZoneId::Grove {
             return None;
         }
-        let glade = self.zone_state.everglade.as_ref()?;
+        let glade = self.zone_state.everglade.as_deref()?;
         Some(glade.town()?.swarm().status())
     }
 
@@ -1514,7 +1515,7 @@ impl WorldRuntime {
         if self.zone != ZoneId::Everglade {
             return None;
         }
-        let glade = self.zone_state.everglade.as_ref()?;
+        let glade = self.zone_state.everglade.as_deref()?;
         Some(glade.demolition()?.bar())
     }
 
@@ -1533,7 +1534,7 @@ impl WorldRuntime {
         let Some(slot) = self
             .zone_state
             .grove
-            .as_ref()
+            .as_deref()
             .and_then(|grove| grove.slot_of(intent))
         else {
             return Ok(false);
@@ -1543,7 +1544,7 @@ impl WorldRuntime {
         } else {
             Ok(())
         };
-        if let Some(grove) = self.zone_state.grove.as_mut() {
+        if let Some(grove) = self.zone_state.grove.as_deref_mut() {
             grove.hold(slot, down);
         }
         result.map(|()| true)
@@ -1554,7 +1555,7 @@ impl WorldRuntime {
     pub(crate) fn grove_camera(&self) -> f32 {
         self.zone_state
             .grove
-            .as_ref()
+            .as_deref()
             .map_or(1.0, super::grove::Grove::camera)
     }
 
@@ -1562,14 +1563,14 @@ impl WorldRuntime {
     pub(crate) fn grove_shake(&self) -> Vec3 {
         self.zone_state
             .grove
-            .as_ref()
+            .as_deref()
             .map_or(Vec3::ZERO, super::grove::Grove::shake)
     }
 
     /// Lets go of every held Grove hotbar key, as when the window loses
     /// focus.
     pub fn grove_release(&mut self) {
-        if let Some(grove) = self.zone_state.grove.as_mut() {
+        if let Some(grove) = self.zone_state.grove.as_deref_mut() {
             grove.release();
         }
     }
@@ -1578,15 +1579,15 @@ impl WorldRuntime {
     /// newest lines, oldest first, or `None` outside the Grove.
     #[must_use]
     pub fn grove_log(&self) -> Option<(String, Vec<String>)> {
-        let grove = self.zone_state.grove.as_ref()?;
+        let grove = self.zone_state.grove.as_deref()?;
         Some((grove.status(), grove.log.clone()))
     }
 
     /// The Grove's hotbar, or `None` outside the Grove.
     #[must_use]
     pub fn grove_bar(&self) -> Option<super::grove::hotbar::Bar> {
-        let grove = self.zone_state.grove.as_ref()?;
-        let glade = self.zone_state.everglade.as_ref()?;
+        let grove = self.zone_state.grove.as_deref()?;
+        let glade = self.zone_state.everglade.as_deref()?;
         Some(grove.bar(&self.player, glade))
     }
 
@@ -1596,7 +1597,7 @@ impl WorldRuntime {
     pub fn grove_form_flies(&self) -> bool {
         self.zone_state
             .grove
-            .as_ref()
+            .as_deref()
             .and_then(super::grove::Grove::form)
             .is_some_and(super::grove::shape::Form::flies)
     }
@@ -1608,13 +1609,13 @@ impl WorldRuntime {
         // A flying form on the ground, such as the Grove's dragon, takes
         // off as the climb begins.
         let takes_off = direction > 0.0 && self.grove_form_flies();
-        if let Some(glade) = self.zone_state.everglade.as_mut()
+        if let Some(glade) = self.zone_state.everglade.as_deref_mut()
             && takes_off
             && !glade.levitating
         {
             glade.toggle_levitate(&self.player);
         }
-        if let Some(glade) = self.zone_state.everglade.as_mut()
+        if let Some(glade) = self.zone_state.everglade.as_deref_mut()
             && glade.levitating
         {
             let ground = super::everglade::land(x, z);
@@ -1637,7 +1638,7 @@ impl WorldRuntime {
         let glade = self
             .zone_state
             .everglade
-            .as_mut()
+            .as_deref_mut()
             .filter(|glade| glade.demolition().is_none())
             .ok_or("Enter Everglade first")?;
         if pressed {
@@ -1655,7 +1656,7 @@ impl WorldRuntime {
     pub fn everglade_levitating(&self) -> bool {
         self.zone_state
             .everglade
-            .as_ref()
+            .as_deref()
             .is_some_and(|glade| glade.levitating)
     }
 
@@ -1665,7 +1666,7 @@ impl WorldRuntime {
     pub fn everglade_ring_agora_bell(&mut self) -> bool {
         self.zone_state
             .everglade
-            .as_mut()
+            .as_deref_mut()
             .is_some_and(|glade| glade.ring_agora_bell())
     }
 
@@ -1799,7 +1800,7 @@ impl WorldRuntime {
             let counts = self
                 .zone_state
                 .everglade
-                .as_ref()
+                .as_deref()
                 .and_then(Everglade::town)
                 .map_or([0, 0], |town| town.bombardment());
             format!(
@@ -1814,7 +1815,7 @@ impl WorldRuntime {
             let flying = self
                 .zone_state
                 .everglade
-                .as_ref()
+                .as_deref()
                 .and_then(Everglade::town)
                 .map_or(0, |town| town.bombardment()[1]);
             format!(
@@ -1843,7 +1844,7 @@ impl WorldRuntime {
         } else if let Some(yard) = self
             .zone_state
             .everglade
-            .as_ref()
+            .as_deref()
             .and_then(Everglade::demolition)
         {
             // The yard's hotbar ([`Self::demolition_bar`]) draws these;
@@ -1959,9 +1960,9 @@ impl WorldRuntime {
             station: self
                 .zone_state
                 .lagrange
-                .as_ref()
+                .as_deref()
                 .map(|l| l.station.snapshot()),
-            lab: self.zone_state.lab.as_ref().map(Lab::snapshot),
+            lab: self.zone_state.lab.as_deref().map(Lab::snapshot),
             caption,
         }
     }
@@ -2162,7 +2163,7 @@ impl WorldRuntime {
         let requested = self
             .zone_state
             .everglade_loader
-            .as_mut()
+            .as_deref_mut()
             .ok_or("Zone storage is unavailable")?
             .request();
         if !requested {
@@ -2291,7 +2292,7 @@ impl WorldRuntime {
     pub fn everglade_loader_idle(&mut self) -> bool {
         self.zone_state
             .everglade_loader
-            .as_mut()
+            .as_deref_mut()
             .is_some_and(everglade_pack::Loader::idle)
     }
 
@@ -2344,7 +2345,7 @@ impl WorldRuntime {
     /// later entry.
     pub fn set_town_clock(&mut self, clock: town_clock::Clock) {
         self.zone_state.town_clock = clock;
-        if let Some(everglade) = self.zone_state.everglade.as_mut() {
+        if let Some(everglade) = self.zone_state.everglade.as_deref_mut() {
             everglade.set_clock(clock);
         }
     }
@@ -2353,7 +2354,7 @@ impl WorldRuntime {
     /// Everglade itself rather than a zone built on it.
     pub(crate) fn everglade_atmosphere(&self) -> Option<crate::zones::Atmosphere> {
         matches!(self.zone, ZoneId::Everglade | ZoneId::MeteorShowcase)
-            .then_some(self.zone_state.everglade.as_ref())
+            .then_some(self.zone_state.everglade.as_deref())
             .flatten()
             .map(Everglade::atmosphere)
     }
@@ -2363,7 +2364,7 @@ impl WorldRuntime {
     #[must_use]
     pub fn town_time(&self) -> Option<town_clock::TownTime> {
         (self.zone == ZoneId::Everglade)
-            .then_some(self.zone_state.everglade.as_ref())
+            .then_some(self.zone_state.everglade.as_deref())
             .flatten()
             .map(Everglade::town_time)
     }
@@ -2373,7 +2374,7 @@ impl WorldRuntime {
     pub fn in_demolition(&self) -> bool {
         self.zone_state
             .everglade
-            .as_ref()
+            .as_deref()
             .is_some_and(|glade| glade.demolition().is_some())
     }
 
@@ -2563,7 +2564,7 @@ impl WorldRuntime {
         if self.zone != ZoneId::Everglade || self.zone_state.demolition {
             return None;
         }
-        self.zone_state.everglade.as_mut()
+        self.zone_state.everglade.as_deref_mut()
     }
 
     /// Everglade's rowboats, while the player is in the town.
@@ -2571,7 +2572,7 @@ impl WorldRuntime {
         if self.zone != ZoneId::Everglade || self.zone_state.demolition {
             return None;
         }
-        self.zone_state.everglade.as_mut()?.afloat_mut()
+        self.zone_state.everglade.as_deref_mut()?.afloat_mut()
     }
 
     /// The interact key by one of Everglade's rowboats: boards it, leaves
@@ -2581,7 +2582,7 @@ impl WorldRuntime {
         if self.zone != ZoneId::Everglade || self.zone_state.demolition || self.zone_loading() {
             return None;
         }
-        let glade = self.zone_state.everglade.as_mut()?;
+        let glade = self.zone_state.everglade.as_deref_mut()?;
         glade.interact_boat(&mut self.player)
     }
 
@@ -2926,7 +2927,7 @@ mod tests {
         let before = world
             .zone_state
             .lagrange
-            .as_ref()
+            .as_deref()
             .unwrap()
             .station
             .astronaut()
@@ -2939,7 +2940,7 @@ mod tests {
             world
                 .zone_state
                 .lagrange
-                .as_ref()
+                .as_deref()
                 .unwrap()
                 .station
                 .target
@@ -2950,7 +2951,7 @@ mod tests {
             world
                 .zone_state
                 .lagrange
-                .as_ref()
+                .as_deref()
                 .unwrap()
                 .station
                 .target
@@ -2976,7 +2977,7 @@ mod tests {
             world
                 .zone_state
                 .lagrange
-                .as_ref()
+                .as_deref()
                 .unwrap()
                 .station
                 .astronaut()

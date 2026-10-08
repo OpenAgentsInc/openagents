@@ -22,7 +22,7 @@ use crate::render::View;
 use crate::ui::{Atlas, UiBatch};
 
 pub struct GridEngine {
-    renderer: Renderer,
+    renderer: Box<Renderer>,
     presenter: Presenter,
     size: [u32; 2],
     reattach: Reattach,
@@ -112,14 +112,14 @@ impl GridEngine {
         let pack = grid_pack::load_pinned()?;
         let statics = grid_frame::statics(&pack);
         let size = [width.max(1), height.max(1)];
-        let renderer = Renderer::new(
+        let renderer = Box::new(Renderer::new(
             pack,
             &grid_pack::pinned_dir(),
             size[0],
             size[1],
             atlas,
             &statics,
-        )?;
+        )?);
         let presenter = renderer.attach_window(window.clone())?;
         Ok(Self {
             renderer,
@@ -236,7 +236,7 @@ impl GridEngine {
         atlas: &Atlas,
         width: u32,
         height: u32,
-    ) -> Result<Self, String> {
+    ) -> Result<Box<Self>, String> {
         // SAFETY: the caller's contract is this function's.
         unsafe { Self::from_metal_layer_with(layer, Content::grid()?, atlas, width, height) }
     }
@@ -253,7 +253,7 @@ impl GridEngine {
         atlas: &Atlas,
         width: u32,
         height: u32,
-    ) -> Result<Self, String> {
+    ) -> Result<Box<Self>, String> {
         if layer.is_null() {
             return Err("native Metal layer is null".into());
         }
@@ -265,7 +265,7 @@ impl GridEngine {
         }
         .map_err(|e| format!("cannot create a Metal surface: {e}"))?;
         let gpu = Gpu::open(instance, &surface)?;
-        Self::on_surface_with(gpu, surface, content, atlas, width, height)
+        Self::on_surface_with(gpu, surface, content, atlas, width, height).map(Box::new)
     }
 
     /// Opens the engine renderer on an acquired Android `ANativeWindow`,
@@ -280,7 +280,7 @@ impl GridEngine {
         atlas: &Atlas,
         width: u32,
         height: u32,
-    ) -> Result<Self, String> {
+    ) -> Result<Box<Self>, String> {
         // SAFETY: the caller's contract is this function's.
         unsafe { Self::from_android_window_with(window, Content::grid()?, atlas, width, height) }
     }
@@ -297,7 +297,7 @@ impl GridEngine {
         atlas: &Atlas,
         width: u32,
         height: u32,
-    ) -> Result<Self, String> {
+    ) -> Result<Box<Self>, String> {
         let window = std::ptr::NonNull::new(window).ok_or("native Android window is null")?;
         let mut failures = Vec::new();
         let mut content = Some(content);
@@ -322,7 +322,7 @@ impl GridEngine {
                     Self::on_surface_with(gpu, surface, content, atlas, width, height)
                 });
             match result {
-                Ok(engine) => return Ok(engine),
+                Ok(engine) => return Ok(Box::new(engine)),
                 Err(error) => {
                     failures.push(format!("{backends:?}: {error}"));
                     if content.is_none() {

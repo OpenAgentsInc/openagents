@@ -48,7 +48,7 @@ pub struct EngineFrame {
 
 /// The same scene the mobile C ABI mounts, exposed without platform pointers.
 pub struct GridSurface {
-    scene: Scene,
+    scene: Box<Scene>,
 }
 
 impl GridSurface {
@@ -216,7 +216,7 @@ impl GridSurface {
     pub fn public_key(&self) -> Option<&str> {
         self.scene
             .session
-            .as_ref()
+            .as_deref()
             .map(verse::session::Session::pubkey)
     }
     pub fn identity_key(&self) -> String {
@@ -258,7 +258,7 @@ impl GridSurface {
                 }),
         );
         mesh.extend(&entities);
-        self.scene.presented_entities = entities;
+        self.scene.presented_entities = Box::new(entities);
         let size = self.scene.lifecycle.viewport().logical_size();
         Frame {
             view: self.scene.world.view(size[0] / size[1].max(1.0)),
@@ -279,7 +279,7 @@ impl GridSurface {
                 session.crowd.figures(std::time::Instant::now(), dt)
             });
         let instances = verse::grid_frame::dynamic(&self.scene.world, &peers, &[]);
-        self.scene.presented_entities = verse::mesh::Mesh::default();
+        self.scene.presented_entities = Box::new(verse::mesh::Mesh::default());
         let size = self.scene.lifecycle.viewport().logical_size();
         EngineFrame {
             view: self.scene.world.view(size[0] / size[1].max(1.0)),

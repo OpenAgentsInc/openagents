@@ -43,11 +43,15 @@ fn entered() -> WorldRuntime {
 }
 
 fn grove(runtime: &WorldRuntime) -> &Grove {
-    runtime.zone_state.grove.as_ref().expect("in the Grove")
+    runtime.zone_state.grove.as_deref().expect("in the Grove")
 }
 
 fn grove_mut(runtime: &mut WorldRuntime) -> &mut Grove {
-    runtime.zone_state.grove.as_mut().expect("in the Grove")
+    runtime
+        .zone_state
+        .grove
+        .as_deref_mut()
+        .expect("in the Grove")
 }
 
 fn idle(runtime: &mut WorldRuntime, seconds: f32) {

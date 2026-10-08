@@ -255,7 +255,7 @@ impl Drop for NativeWindow {
 /// Verse's bare world and the window it draws in. Fields drop in order: the
 /// renderer goes before the window it renders into.
 struct AndroidVerse {
-    handle: VerseHandle,
+    handle: Box<VerseHandle>,
     window: Option<NativeWindow>,
 }
 

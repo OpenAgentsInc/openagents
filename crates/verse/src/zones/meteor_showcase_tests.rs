@@ -33,7 +33,7 @@ fn town(runtime: &WorldRuntime) -> &Town {
     runtime
         .zone_state
         .everglade
-        .as_ref()
+        .as_deref()
         .and_then(Everglade::town)
         .expect("the showcase has its houses' demolition")
 }
@@ -109,7 +109,7 @@ fn the_showcase_is_reached_by_its_flag_and_no_arch() {
 #[test]
 fn eight_meteors_on_distinct_arcs_break_both_houses_and_the_debris_rests() {
     let mut runtime = installed();
-    let glade = runtime.zone_state.everglade.as_ref().unwrap();
+    let glade = runtime.zone_state.everglade.as_deref().unwrap();
     assert_eq!(glade.clock().pinned_hour(), Some(HOUR));
     let houses = buildings(town(&runtime));
     assert_ne!(houses[0], houses[1]);

@@ -822,9 +822,9 @@ pub(crate) struct Scene {
     door_notice: Option<String>,
     zone_hud: verse::zones::hud::Hud,
     pub lifecycle: SurfaceLifecycle,
-    pub session: Option<Session>,
+    pub session: Option<Box<Session>>,
     /// Remote geometry from the last presented frame, also used for picking.
-    pub presented_entities: verse::mesh::Mesh,
+    pub presented_entities: Box<verse::mesh::Mesh>,
     secret: secp256k1::SecretKey,
     public_key: String,
     pub(crate) relay: Option<String>,
@@ -906,7 +906,7 @@ pub(crate) struct Scene {
     pub frames: u64,
     pub error: Option<String>,
     /// The shared chamber, from the RITUAL arch until the return.
-    pub(crate) chamber: Option<crate::chamber::Play>,
+    pub(crate) chamber: Option<Box<crate::chamber::Play>>,
 }
 
 /// The ledger the XP preview shows: six tutorial reproductions of 50 XP
@@ -962,7 +962,7 @@ impl Scene {
     /// `#[inline(never)]` keeps this frame out of its callers'; the creation
     /// path's frames must stay small (#10928).
     #[inline(never)]
-    pub fn new(config: Config) -> Result<Self, String> {
+    pub fn new(config: Config) -> Result<Box<Self>, String> {
         let secret = config
             .secret_hex
             .parse()
@@ -1067,7 +1067,7 @@ impl Scene {
                 site.yaw_of(std::f32::consts::FRAC_PI_2),
             )?;
         }
-        Ok(Self {
+        Ok(Box::new(Self {
             world,
             atlas,
             map: verse::minimap::MapHud::default(),
@@ -1077,7 +1077,7 @@ impl Scene {
             zone_hud,
             lifecycle,
             session: None,
-            presented_entities: verse::mesh::Mesh::default(),
+            presented_entities: Box::new(verse::mesh::Mesh::default()),
             secret,
             public_key: verse::identity::Identity::from_secret("phone", secret)?
                 .signer
@@ -1145,7 +1145,7 @@ impl Scene {
             frames: 0,
             error: initial_error,
             chamber: None,
-        })
+        }))
     }
 
     pub fn activate(&mut self, active: bool) -> Result<(), String> {
@@ -1172,7 +1172,7 @@ impl Scene {
             self.map.clear_contacts();
             self.door_hud.clear_contacts();
             self.world.cancel_door_interactions();
-            self.presented_entities = verse::mesh::Mesh::default();
+            self.presented_entities = Box::new(verse::mesh::Mesh::default());
             self.touches.clear();
             self.jump = false;
             self.sprint = false;
@@ -1197,7 +1197,7 @@ impl Scene {
         let relay = validated_world_relay(&relay)?;
         self.session = None;
         self.hall = None;
-        self.presented_entities = verse::mesh::Mesh::default();
+        self.presented_entities = Box::new(verse::mesh::Mesh::default());
         self.relay = Some(relay);
         // Joining from the computer must keep the current pose and panel. Only
         // a new app mount restores the signed pose from a remembered relay.
@@ -1448,7 +1448,7 @@ impl Scene {
         self.reset_motion();
         self.gym_board.set_active(false);
         self.results.set_active(false);
-        self.session = Some(session);
+        self.session = Some(Box::new(session));
         if self.world.is_bare() && self.hall.is_none() {
             self.hall = Some(verse::gym_hall::Hall::new(
                 verse::gym_hall::Config {
@@ -1488,7 +1488,7 @@ impl Scene {
     }
 
     pub fn disconnect(&mut self) {
-        self.presented_entities = verse::mesh::Mesh::default();
+        self.presented_entities = Box::new(verse::mesh::Mesh::default());
         self.session = None;
         self.hall = None;
         self.evals_open = false;
@@ -2329,7 +2329,7 @@ impl Scene {
         self.frame_timestamp = Some(timestamp);
         if let Some(config) = self.world.take_ritual_crossing() {
             self.reset_zone_inputs();
-            self.chamber = Some(crate::chamber::Play::open(config, self.secret));
+            self.chamber = Some(Box::new(crate::chamber::Play::open(config, self.secret)));
             // The Grid's presence pauses while the player is in the chamber.
             self.session = None;
         }
@@ -3493,7 +3493,7 @@ impl Scene {
         self.door_hud.clear_contacts();
         self.zone_hud.clear_contacts();
         self.world.cancel_door_interactions();
-        self.presented_entities = verse::mesh::Mesh::default();
+        self.presented_entities = Box::new(verse::mesh::Mesh::default());
         self.touches.clear();
         self.jump = false;
         self.sprint = false;
@@ -3533,7 +3533,7 @@ impl Scene {
             // Through an arch: the old world's presence ends before the new
             // world's pose ticks, so nobody sees a player in two places.
             self.session = None;
-            self.presented_entities = verse::mesh::Mesh::default();
+            self.presented_entities = Box::new(verse::mesh::Mesh::default());
         }
         if wanted.is_none() {
             self.spawn_pending = false;
@@ -4164,7 +4164,7 @@ mod studio_tests;
 mod tests {
     use super::*;
 
-    fn scene() -> Scene {
+    fn scene() -> Box<Scene> {
         Scene::new(Config {
             secret_hex: "11".repeat(32),
             width: 800,
@@ -4202,7 +4202,7 @@ mod tests {
 
     /// A plaza scene standing before Everglade's arch, with the committed,
     /// pinned Everglade pack in its zone cache.
-    fn cached_zone_scene() -> (Scene, tempfile::TempDir) {
+    fn cached_zone_scene() -> (Box<Scene>, tempfile::TempDir) {
         use verse::zones::everglade_pack::{PACK_DIRECTORY, PACK_EXTENSION, PACK_SHA256};
         let cache = tempfile::tempdir().unwrap();
         let name = format!("{PACK_SHA256}.{PACK_EXTENSION}");
@@ -4374,7 +4374,7 @@ mod tests {
         assert!(!scene.world.zone_loading());
     }
 
-    fn gym_scene() -> Scene {
+    fn gym_scene() -> Box<Scene> {
         Scene::new(Config {
             secret_hex: "11".repeat(32),
             width: 800,
@@ -4400,7 +4400,7 @@ mod tests {
         .unwrap()
     }
 
-    fn door_scene(id: DoorId) -> Scene {
+    fn door_scene(id: DoorId) -> Box<Scene> {
         let mut scene = scene();
         scene.activate(true).unwrap();
         scene
@@ -4608,7 +4608,7 @@ mod tests {
         }
     }
 
-    fn companion_scene() -> (Scene, [f32; 2]) {
+    fn companion_scene() -> (Box<Scene>, [f32; 2]) {
         let mut scene = scene();
         scene.activate(true).unwrap();
         scene.update(1.0).unwrap();
@@ -5098,7 +5098,7 @@ mod tests {
         assert_eq!(packet["computer_open"], false);
         assert!(packet["computer"]["screen_x"].as_f64().unwrap().is_finite());
     }
-    fn computer_scene() -> (Scene, [f32; 2]) {
+    fn computer_scene() -> (Box<Scene>, [f32; 2]) {
         let mut scene = scene();
         scene.activate(true).unwrap();
         let mut spawn = verse::world::SPAWN;
@@ -5464,7 +5464,7 @@ mod tests {
         }
     }
 
-    fn bare_scene() -> Scene {
+    fn bare_scene() -> Box<Scene> {
         let mut scene = Scene::new(Config {
             secret_hex: "11".repeat(32),
             width: 800,
@@ -6258,7 +6258,7 @@ mod tests {
         assert!((a - b).abs() < 0.0001, "{a} != {b}");
     }
 
-    fn motion_scene() -> Scene {
+    fn motion_scene() -> Box<Scene> {
         let mut scene = scene();
         scene.activate(true).unwrap();
         scene.update(1.0).unwrap();

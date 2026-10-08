@@ -6,7 +6,7 @@
 use super::{Config, PointerPhase, Request, Scene, WorldTarget};
 use crate::verse_ffi::{BareGym, VerseHandle, bare_config_with_gym};
 
-fn preview() -> Scene {
+fn preview() -> Box<Scene> {
     Scene::new(bare_config_with_gym(
         800,
         1200,
@@ -155,7 +155,7 @@ fn without_the_native_panel_the_board_never_opens() {
 #[test]
 fn the_native_json_path_carries_the_grids_board() {
     let mut handle = VerseHandle {
-        scene: Box::new(preview()),
+        scene: preview(),
         renderer: None,
         rendered_zone_revision: 0,
         rendered_chamber_revision: 0,

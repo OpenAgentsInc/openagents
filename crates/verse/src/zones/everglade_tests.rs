@@ -821,7 +821,7 @@ fn movement_drives_the_characters_clips() {
         runtime
             .zone_state
             .everglade
-            .as_ref()
+            .as_deref()
             .and_then(Everglade::player_motion)
     };
     runtime.tick(&InputState::default(), 0.05);
@@ -1411,7 +1411,7 @@ fn the_agora_is_lit_and_graded_inside_and_its_bell_rings() {
     for _ in 0..8 {
         runtime.tick(&idle, 0.05);
     }
-    let glade = runtime.zone_state.everglade.as_ref().unwrap();
+    let glade = runtime.zone_state.everglade.as_deref().unwrap();
     let bell = glade.agora_bell().expect("the town's bell");
     assert!(
         bell.ringing() && bell.angle().abs() > 0.2,

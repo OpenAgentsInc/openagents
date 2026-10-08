@@ -70,7 +70,8 @@ impl WorldRuntime {
             signer,
             home.join(verse_private::placements::CACHE),
             recheck,
-        );
+        )
+        .map(Box::new);
     }
 
     /// Stands each private character that has arrived in Everglade.
@@ -126,7 +127,7 @@ impl WorldRuntime {
     pub fn private_guests(&self) -> usize {
         self.zone_state
             .everglade
-            .as_ref()
+            .as_deref()
             .map_or(0, super::Everglade::guest_count)
     }
 }
