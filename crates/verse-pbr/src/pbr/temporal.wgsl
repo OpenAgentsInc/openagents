@@ -84,7 +84,7 @@ fn reactive_history(uv: vec2<f32>) -> bool {
     // Explicitly marked geometry uses current color and cannot seed later history.
     var reactive = false;
     if (flags & 2u) != 0u {
-        reactive = textureLoad(reactive_lit, p, 0).r > 0.0;
+        reactive = any(textureLoad(reactive_lit, p, 0).rg > vec2<f32>(0.0));
     }
     if reactive || reactive_history(old_uv) || !(retained_depth > 0.0) || abs(retained_depth - old_depth) > max(0.04, old_depth * 0.005) {
         weight = 0.0;
@@ -102,7 +102,7 @@ fn reactive_history(uv: vec2<f32>) -> bool {
             lower = min(lower, sample);
             upper = max(upper, sample);
             if (flags & 2u) != 0u && !history_reactive {
-                history_reactive = textureLoad(reactive_lit, tap, 0).r > 0.0;
+                history_reactive = any(textureLoad(reactive_lit, tap, 0).rg > vec2<f32>(0.0));
             }
         }
     }

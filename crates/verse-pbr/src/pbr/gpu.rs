@@ -466,6 +466,7 @@ struct Pipelines {
     glow: wgpu::RenderPipeline,
     /// Particle sprites from every fx sheet, premultiplied (`crate::fx`).
     sprites: wgpu::RenderPipeline,
+    sprites_reactive: Option<wgpu::RenderPipeline>,
     legacy: wgpu::RenderPipeline,
     wide: wgpu::RenderPipeline,
     /// Water surfaces ([`crate::water`]): the emitted half, added over
@@ -2028,7 +2029,51 @@ impl Photo {
         const SPRITE: [wgpu::VertexAttribute; 6] = wgpu::vertex_attr_array![
             0 => Float32x3, 1 => Float32x4, 2 => Float32x2, 3 => Float32x2, 4 => Float32x4, 5 => Float32x4
         ];
+        let sprites_reactive = super::temporal::supported(
+            Platform::current(),
+            capability.quality.tier,
+            capability.hdr.is_some(),
+            capability.gles,
+        )
+        .then(|| {
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("verse photo sprites with temporal coverage"),
+                layout: Some(&sprite_layout),
+                vertex: wgpu::VertexState {
+                    module: &module,
+                    entry_point: Some("vs_sprite"),
+                    compilation_options: options.clone(),
+                    buffers: &[wgpu::VertexBufferLayout {
+                        array_stride: std::mem::size_of::<crate::fx::SpriteVertex>() as u64,
+                        step_mode: wgpu::VertexStepMode::Vertex,
+                        attributes: &SPRITE,
+                    }],
+                },
+                primitive: Default::default(),
+                depth_stencil: Some(depth_state(false, wgpu::CompareFunction::GreaterEqual)),
+                multisample: wgpu::MultisampleState {
+                    count: samples,
+                    ..Default::default()
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &module,
+                    entry_point: Some("fs_sprite_reactive"),
+                    compilation_options: options.clone(),
+                    targets: &[
+                        color(Some(PREMULTIPLIED))[0].clone(),
+                        Some(wgpu::ColorTargetState {
+                            format: wgpu::TextureFormat::Rg8Unorm,
+                            blend: Some(PREMULTIPLIED),
+                            write_mask: wgpu::ColorWrites::GREEN,
+                        }),
+                    ],
+                }),
+                multiview_mask: None,
+                cache: None,
+            })
+        });
         let pipelines = Pipelines {
+            sprites_reactive,
             // Seen from above and below, so neither face is culled. The
             // transmitted half multiplies the scene, then the emitted half
             // adds to it, each tested against the depth without writing it.
@@ -3721,19 +3766,42 @@ impl Photo {
                 pass.set_vertex_buffer(0, self.glow.buffer.slice(..));
                 pass.draw(0..self.glow.count, 0..1);
             }
-            if self.sprites.count > 0 {
+            if self.sprites.count > 0 && !self.reactive_sprites(targets) {
                 pass.set_pipeline(&self.pipelines.sprites);
                 pass.set_bind_group(2, &self.empty_group, &[]);
                 pass.set_bind_group(3, &self.fx_group, &[]);
                 pass.set_vertex_buffer(0, self.sprites.buffer.slice(..));
                 pass.draw(0..self.sprites.count, 0..1);
             }
-            if sky.sun_visible > 0.0 {
+            if sky.sun_visible > 0.0 && !self.reactive_sprites(targets) {
                 pass.set_pipeline(&self.pipelines.flare);
                 pass.draw(0..6, 0..1);
             }
         }
 
+        if self.encode_reactive_sprites(encoder, targets, targets.parity() ^ 1, &self.fx_group) {
+            targets
+                .temporal
+                .as_mut()
+                .expect("temporal sprite target")
+                .reactive_fx_seeded = true;
+            // The flare remains after the sprites, as in the single scene pass.
+            if sky.sun_visible > 0.0 {
+                let mut pass = scene_pass(
+                    encoder,
+                    "verse photo flare",
+                    target,
+                    resolve,
+                    &targets.depth,
+                    wgpu::LoadOp::Load,
+                    wgpu::LoadOp::Load,
+                    wgpu::StoreOp::Store,
+                );
+                pass.set_bind_group(0, &self.scene_group, &[]);
+                pass.set_pipeline(&self.pipelines.flare);
+                pass.draw(0..6, 0..1);
+            }
+        }
         let camera = sky.camera;
         self.encode_temporal(queue, encoder, targets, world.motion, world.reactive_lit);
         self.post_chain(
@@ -4666,6 +4734,13 @@ impl Photo {
                 worker_ms: self.water_measurements.worker_ms,
             });
         }
+        if self.encode_reactive_sprites(encoder, targets, 0, &targets.fx_group) {
+            targets
+                .temporal
+                .as_mut()
+                .expect("temporal sprite target")
+                .reactive_fx_seeded = true;
+        }
         self.encode_temporal(
             queue,
             encoder,
@@ -4823,7 +4898,7 @@ impl Photo {
             pass.set_vertex_buffer(0, self.glow.buffer.slice(..));
             pass.draw(0..self.glow.count, 0..1);
         }
-        if self.sprites.count > 0 {
+        if self.sprites.count > 0 && !self.reactive_sprites(targets) {
             pass.set_pipeline(&self.pipelines.sprites);
             pass.set_bind_group(2, &self.empty_group, &[]);
             pass.set_bind_group(3, &targets.fx_group, &[]);
@@ -4909,6 +4984,70 @@ impl Photo {
                 pass.draw(0..count, 0..1);
             }
         }
+    }
+
+    fn reactive_sprites(&self, targets: &PhotoTargets) -> bool {
+        self.sprites.count > 0
+            && self.pipelines.sprites_reactive.is_some()
+            && targets.temporal.as_ref().is_some_and(|t| t.enabled)
+    }
+
+    // Draw the original sprite stream once. The second attachment records
+    // actual additive output, attenuated by later sprites' original coverage.
+    fn encode_reactive_sprites(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        targets: &PhotoTargets,
+        guides: usize,
+        fx_group: &wgpu::BindGroup,
+    ) -> bool {
+        if !self.reactive_sprites(targets) {
+            return false;
+        }
+        let temporal = targets.temporal.as_ref().expect("temporal sprite target");
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("verse sprites and temporal coverage"),
+            color_attachments: &[
+                Some(wgpu::RenderPassColorAttachment {
+                    view: targets.msaa.as_ref().unwrap_or(&targets.scene),
+                    resolve_target: targets.msaa.as_ref().map(|_| &targets.scene),
+                    depth_slice: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                }),
+                Some(wgpu::RenderPassColorAttachment {
+                    view: temporal.reactive_attachment(),
+                    resolve_target: temporal.reactive_resolve(),
+                    depth_slice: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                        // The later lit marker pass retains these exact samples.
+                        store: wgpu::StoreOp::Store,
+                    },
+                }),
+            ],
+            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                view: &targets.depth,
+                depth_ops: None,
+                stencil_ops: None,
+            }),
+            ..Default::default()
+        });
+        pass.set_pipeline(
+            self.pipelines
+                .sprites_reactive
+                .as_ref()
+                .expect("temporal sprite pipeline"),
+        );
+        pass.set_bind_group(0, &self.scene_group, &[]);
+        pass.set_bind_group(1, &targets.guide_groups[guides], &[]);
+        pass.set_bind_group(2, &self.empty_group, &[]);
+        pass.set_bind_group(3, fx_group, &[]);
+        pass.set_vertex_buffer(0, self.sprites.buffer.slice(..));
+        pass.draw(0..self.sprites.count, 0..1);
+        true
     }
 
     fn encode_temporal(
@@ -5792,6 +5931,7 @@ mod tests {
         };
         for (vertex, fragment) in [
             ("vs_sprite", "fs_sprite"),
+            ("vs_sprite", "fs_sprite_reactive"),
             ("vs_textured", "fs_textured"),
             ("vs_textured", "fs_textured_masked"),
             ("vs_textured", "fs_textured_blend"),

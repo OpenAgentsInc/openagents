@@ -195,6 +195,7 @@ pub(super) struct Targets {
     write: usize,
     camera: CameraHistory,
     pub enabled: bool,
+    pub(super) reactive_fx_seeded: bool,
     #[cfg(feature = "diagnostics")]
     pub(super) reactive_written: bool,
 }
@@ -289,12 +290,22 @@ fn direction(view: View) -> Vec3 {
 }
 
 impl Targets {
+    pub(super) fn reactive_attachment(&self) -> &wgpu::TextureView {
+        self.reactive_msaa.as_ref().unwrap_or(&self.reactive)
+    }
+
+    pub(super) fn reactive_resolve(&self) -> Option<&wgpu::TextureView> {
+        self.reactive_msaa.as_ref().map(|_| &self.reactive)
+    }
+
     pub fn reset(&mut self) {
+        self.reactive_fx_seeded = false;
         self.camera = CameraHistory::default();
         self.enabled = false;
     }
 
     pub fn prepare(&mut self, view: View, time: f32, enabled: bool) -> View {
+        self.reactive_fx_seeded = false;
         self.enabled = enabled && usable_camera(view);
         self.camera.prepare(view, self.size, time, self.enabled)
     }
@@ -521,8 +532,8 @@ mod tests {
             }
         }
         assert!(!supported(Platform::Desktop, Tier::Low, true, false));
-        assert_eq!(bytes(1920, 1080, 1), 51_840_000);
-        assert_eq!(bytes(1920, 1080, 4), 60_134_400);
+        assert_eq!(bytes(1920, 1080, 1), 53_913_600);
+        assert_eq!(bytes(1920, 1080, 4), 70_502_400);
     }
 
     #[test]
@@ -1137,8 +1148,15 @@ mod tests {
 }
 
 pub(super) fn bytes(width: u32, height: u32, samples: u32) -> u64 {
-    // Two RGBA16 histories, RGBA16 motion, and resolved/sample-matched R8 markers.
-    u64::from(width) * u64::from(height) * (25 + if samples > 1 { u64::from(samples) } else { 0 })
+    // Two RGBA16 histories, RGBA16 motion, and resolved/sample-matched RG8 markers.
+    u64::from(width)
+        * u64::from(height)
+        * (26
+            + if samples > 1 {
+                2 * u64::from(samples)
+            } else {
+                0
+            })
 }
 
 fn depth_source(source: &str, samples: u32) -> String {
@@ -1344,7 +1362,11 @@ impl Temporal {
                 module: &reactive_shader,
                 entry_point: Some("fs"),
                 compilation_options: Default::default(),
-                targets: &[Some(wgpu::TextureFormat::R8Unorm.into())],
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: wgpu::TextureFormat::Rg8Unorm,
+                    blend: None,
+                    write_mask: wgpu::ColorWrites::RED,
+                })],
             }),
             multiview_mask: None,
             cache: None,
@@ -1412,7 +1434,7 @@ impl Temporal {
                     mip_level_count: 1,
                     sample_count: samples,
                     dimension: wgpu::TextureDimension::D2,
-                    format: wgpu::TextureFormat::R8Unorm,
+                    format: wgpu::TextureFormat::Rg8Unorm,
                     usage: wgpu::TextureUsages::RENDER_ATTACHMENT
                         | wgpu::TextureUsages::TEXTURE_BINDING,
                     view_formats: &[],
@@ -1486,6 +1508,7 @@ impl Temporal {
             write: 0,
             camera: CameraHistory::default(),
             enabled: false,
+            reactive_fx_seeded: false,
             #[cfg(feature = "diagnostics")]
             reactive_written: false,
         }
@@ -1504,7 +1527,8 @@ impl Temporal {
             return;
         }
         let has_motion = motions.iter().any(|motion| motion.draw.has_vertices());
-        let has_reactive = reactive.is_some_and(|lit| lit.admitted_ranges().next().is_some());
+        let has_lit = reactive.is_some_and(|lit| lit.admitted_ranges().next().is_some());
+        let has_reactive = has_lit || targets.reactive_fx_seeded;
         #[cfg(feature = "diagnostics")]
         {
             targets.reactive_written = has_reactive;
@@ -1552,7 +1576,7 @@ impl Temporal {
                 }
             }
         }
-        if let Some(lit) = reactive.filter(|_| has_reactive) {
+        if let Some(lit) = reactive.filter(|_| has_lit) {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("verse reactive lit visibility"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -1560,7 +1584,11 @@ impl Temporal {
                     resolve_target: targets.reactive_msaa.as_ref().map(|_| &targets.reactive),
                     depth_slice: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                        load: if targets.reactive_fx_seeded {
+                            wgpu::LoadOp::Load
+                        } else {
+                            wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT)
+                        },
                         store: if targets.reactive_msaa.is_some() {
                             wgpu::StoreOp::Discard
                         } else {
@@ -1597,6 +1625,7 @@ impl Temporal {
             pass.draw(0..3, 0..1);
         }
         targets.write ^= 1;
+        targets.reactive_fx_seeded = false;
     }
 }
 

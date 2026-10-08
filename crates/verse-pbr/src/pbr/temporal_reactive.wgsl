@@ -7,4 +7,4 @@ struct Camera {
 @vertex fn vs(@location(0) position: vec3<f32>) -> @builtin(position) @invariant vec4<f32> {
     return camera.current * vec4<f32>(position, 1.0);
 }
-@fragment fn fs() -> @location(0) f32 { return 1.0; }
+@fragment fn fs() -> @location(0) vec2<f32> { return vec2<f32>(1.0, 0.0); }

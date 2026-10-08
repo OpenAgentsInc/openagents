@@ -10,17 +10,18 @@ struct Masks {
     @location(0) marker: vec4<f32>,
     @location(1) history: vec4<f32>,
     @location(2) scene: vec4<f32>,
+    @location(3) additive_fx: vec4<f32>,
 };
 @vertex fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
     return vec4<f32>(f32((i << 1u) & 2u) * 2.0 - 1.0, f32(i & 2u) * 2.0 - 1.0, 0.0, 1.0);
 }
 @fragment fn fs(@builtin(position) p: vec4<f32>) -> Masks {
     let at = vec2<i32>(p.xy);
-    let coverage = clamp(textureLoad(marker, at, 0).r, 0.0, 1.0);
+    let visibility = clamp(textureLoad(marker, at, 0).rg, vec2<f32>(0.0), vec2<f32>(1.0));
     let reactive = select(0.0, 1.0, textureLoad(history, at, 0).a < 0.0);
     let hdr = max(textureLoad(scene, at, 0).rgb, vec3<f32>(0.0));
     let displayed = pow(hdr / (vec3<f32>(1.0) + hdr), vec3<f32>(1.0 / 2.2));
-    return Masks(vec4<f32>(vec3<f32>(coverage), 1.0), vec4<f32>(vec3<f32>(reactive), 1.0), vec4<f32>(displayed, 1.0));
+    return Masks(vec4<f32>(vec3<f32>(visibility.r), 1.0), vec4<f32>(vec3<f32>(reactive), 1.0), vec4<f32>(displayed, 1.0), vec4<f32>(vec3<f32>(visibility.g), 1.0));
 }";
 
 const STAGE_SOURCE: &str = "
@@ -42,7 +43,7 @@ fn displayed(rgb: vec3<f32>) -> vec4<f32> {
     return Stages(displayed(textureLoad(before_temporal, at, 0).rgb), displayed(textureLoad(history, at, 0).rgb));
 }";
 
-const PLANES: usize = 5;
+const PLANES: usize = 6;
 
 /// Tightly packed RGBA8 diagnostics from one already rendered frame.
 /// These visualizations never replace the physical scene or its history.
@@ -55,6 +56,8 @@ pub struct TemporalDiagnosticPixels {
     pub history_reactive: Vec<u8>,
     /// HDR scene after sharpening, displayed with `(rgb / (1 + rgb))^(1/2.2)`.
     pub hdr_scene: Vec<u8>,
+    /// Additive sprite output after later particle coverage, resolved over visible samples.
+    pub additive_fx: Vec<u8>,
     /// Current resolved HDR scene before temporal resolve, using the same display curve.
     pub hdr_before_temporal: Vec<u8>,
     /// Newly written temporal history RGB before sharpening, using the same curve.
@@ -114,7 +117,7 @@ impl Offscreen {
         let outputs = textures
             .each_ref()
             .map(|t| t.create_view(&Default::default()));
-        let pipeline = readback_pipeline(device, SOURCE, 3);
+        let pipeline = readback_pipeline(device, SOURCE, 4);
         let stage_pipeline = readback_pipeline(device, STAGE_SOURCE, 2);
         let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("verse temporal diagnostic sources"),
@@ -159,10 +162,10 @@ impl Offscreen {
         });
         let mut encoder = device.create_command_encoder(&Default::default());
         // The device requests the portable floor of four color attachments.
-        // Keep the five diagnostic planes in passes of three and two.
+        // Keep the six diagnostic planes in passes of four and two.
         for (outputs, pipeline, group) in [
-            (&outputs[..3], &pipeline, &group),
-            (&outputs[3..], &stage_pipeline, &stage_group),
+            (&outputs[..4], &pipeline, &group),
+            (&outputs[4..], &stage_pipeline, &stage_group),
         ] {
             let attachments: Vec<_> = outputs
                 .iter()
@@ -221,6 +224,7 @@ impl Offscreen {
             marker,
             history_reactive,
             hdr_scene,
+            additive_fx,
             hdr_before_temporal,
             hdr_history,
         ] = unpack(&mapped, row, self.width, self.height)?;
@@ -231,6 +235,7 @@ impl Offscreen {
             marker_current: views.marker_current,
             history_reactive,
             hdr_scene,
+            additive_fx,
             hdr_before_temporal,
             hdr_history,
             current: views.current,

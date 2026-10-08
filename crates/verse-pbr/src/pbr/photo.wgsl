@@ -1807,8 +1807,7 @@ fn sprite_surface(i: SpriteOut, texel: vec4<f32>) -> vec3<f32> {
     return neon_fog(expose(albedo / PI * (ambient + sun + points)), i.world, 1.0) * texel.a;
 }
 
-@fragment
-fn fs_sprite(i: SpriteOut) -> @location(0) vec4<f32> {
+fn sprite_color(i: SpriteOut) -> vec4<f32> {
     // Both samples come first, in uniform control flow.
     let layer = i32(i.params.y + 0.5);
     let a = textureSample(fx_sheets, fx_sampler, i.uv_a, layer);
@@ -1841,6 +1840,25 @@ fn fs_sprite(i: SpriteOut) -> @location(0) vec4<f32> {
     let rgb = mix(emitted, lit, lit_share) * alpha * soft;
     let cover = texel.a * alpha * (1.0 - clamp(i.params.z, 0.0, 1.0)) * soft;
     return vec4<f32>(rgb, cover);
+}
+
+@fragment
+fn fs_sprite(i: SpriteOut) -> @location(0) vec4<f32> {
+    return sprite_color(i);
+}
+
+struct ReactiveSprite {
+    @location(0) color: vec4<f32>,
+    @location(1) reactive: vec4<f32>,
+};
+
+// Evaluate the same sheets, volume, lighting, and soft depth exactly once.
+// The mask's blend uses the original cover so later smoke hides earlier fire.
+@fragment
+fn fs_sprite_reactive(i: SpriteOut) -> ReactiveSprite {
+    let color = sprite_color(i);
+    let additive = i.params.z > 0.0 && any(color.rgb > vec3<f32>(0.0));
+    return ReactiveSprite(color, vec4<f32>(0.0, select(0.0, 1.0, additive), 0.0, color.a));
 }
 
 struct LegacyIn {

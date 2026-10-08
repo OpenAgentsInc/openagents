@@ -1604,6 +1604,7 @@ fn main() -> Result<(), String> {
                 format!("{k:04}-marker.png"),
                 format!("{k:04}-history-reactive.png"),
                 format!("{k:04}-hdr-scene.png"),
+                format!("{k:04}-additive-fx.png"),
                 format!("{k:04}-hdr-before-temporal.png"),
                 format!("{k:04}-hdr-history.png"),
             ];
@@ -1611,6 +1612,7 @@ fn main() -> Result<(), String> {
                 &masks.marker,
                 &masks.history_reactive,
                 &masks.hdr_scene,
+                &masks.additive_fx,
                 &masks.hdr_before_temporal,
                 &masks.hdr_history,
             ]) {
@@ -1628,6 +1630,9 @@ fn main() -> Result<(), String> {
                 "reactive_ranges_valid": dynamic.reactive_lit_valid(),
                 "reactive_ranges": dynamic.reactive_lit.iter().map(|range| [range.start, range.end]).collect::<Vec<_>>(),
                 "marker_covered_pixels": covered(&masks.marker),
+                "additive_fx_covered_pixels": covered(&masks.additive_fx),
+                "additive_fx_partial_pixels": masks.additive_fx.chunks_exact(4).filter(|p| p[0] > 0 && p[0] < 255).count(),
+                "marker_channels": "R: depth-equal reactive lit geometry; G: actual positive additive sprite output, attenuated by later sprite coverage, from the same color fragment evaluation",
                 "marker_written_this_frame": masks.marker_current,
                 "marker_partial_pixels": masks.marker.chunks_exact(4).filter(|p| p[0] > 0 && p[0] < 255).count(),
                 "nonretainable_history_pixels": covered(&masks.history_reactive),
@@ -1800,7 +1805,7 @@ fn main() -> Result<(), String> {
         "temporal_texture_diagnostics": {
             "enabled": args.temporal_diagnostics,
             "timing_acceptance_available": !args.temporal_diagnostics,
-            "method": "Only requested sequence frames allocate a snapshot of the single-sample HDR scene and copy it in the primary encoder after color/MSAA resolve, immediately before temporal processing. The final primary snapshot is retained if internal warm-ups also render. After the primary frame, two auxiliary draws (three and two color attachments, within the portable four-attachment floor) read actual resolved R8 coverage, negative saved-history alpha, current HDR before temporal resolve, newly written history RGB, and HDR after sharpening. RGBA8 outputs use identical (max(rgb,0)/(1+max(rgb,0)))^(1/2.2) display mapping for all three RGB stages. Readback advances no camera, history, exposure, or simulation. White history pixels are nonretainable. The snapshot copy is inside any enabled primary GPU timestamp span; auxiliary submissions/readback leave the primary timers unchanged. Allocation, copy, extra submissions, mapping, and PNG work are diagnostic overhead; this mode establishes no timing gate.",
+            "method": "Only requested sequence frames allocate a snapshot of the single-sample HDR scene and copy it in the primary encoder after color/MSAA resolve, immediately before temporal processing. The final primary snapshot is retained if internal warm-ups also render. After the primary frame, two auxiliary draws (four and two color attachments, within the portable four-attachment floor) read actual resolved RG8 coverage (separate lit-body R and additive-FX G), negative saved-history alpha, current HDR before temporal resolve, newly written history RGB, and HDR after sharpening. RGBA8 outputs use identical (max(rgb,0)/(1+max(rgb,0)))^(1/2.2) display mapping for all three RGB stages. Readback advances no camera, history, exposure, or simulation. White history pixels are nonretainable. The snapshot copy is inside any enabled primary GPU timestamp span; auxiliary submissions/readback leave the primary timers unchanged. Allocation, copy, extra submissions, mapping, and PNG work are diagnostic overhead; this mode establishes no timing gate.",
             "frames": temporal_diagnostic_records,
         },
         "width": WIDTH,
