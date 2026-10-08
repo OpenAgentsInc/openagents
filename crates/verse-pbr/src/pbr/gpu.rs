@@ -4382,9 +4382,9 @@ impl Photo {
         let zone_water = world
             .water
             .filter(|gpu| water.is_some() && gpu.0.count() > 0);
-        // The sprite MRT pass loads the stored MSAA scene and resolves it.
-        // Without water, nothing reads the intermediate HDR scene.
-        let defer_scene_resolve = self.post.is_some()
+        // Water reads the opaque color copy; sprites read only its depth copy.
+        // Keep the physical depth copy and stored MSAA samples for the later draws.
+        let skip_opaque_color_copy = self.post.is_some()
             && self.capability.samples == 4
             && targets.msaa.is_some()
             && neon.water.is_none()
@@ -4507,9 +4507,10 @@ impl Photo {
         }
         let direct = self.post.is_none();
         if split && let (Some(screen), Some(water_targets)) = (&self.water_screen, &targets.water) {
-            // The opaque scene, kept for the second pass and resolved into
-            // the color copy.
+            // Keep the opaque scene for the second pass. Water also needs
+            // its resolved color copy.
             let (target, resolve) = match &targets.msaa {
+                Some(msaa) if skip_opaque_color_copy => (msaa, None),
                 Some(msaa) => (msaa, Some(&water_targets.copy_view)),
                 None => (&targets.scene, None),
             };
@@ -4555,11 +4556,7 @@ impl Photo {
                 .zip(copies_started.cpu_ms())
                 .map(|(sum, cost)| sum + cost);
             // The water and everything blended over the kept scene.
-            let resolve = if defer_scene_resolve {
-                None
-            } else {
-                targets.msaa.as_ref().map(|_| &targets.scene)
-            };
+            let resolve = targets.msaa.as_ref().map(|_| &targets.scene);
             let mut pass = scene_pass_timed(
                 encoder,
                 "verse neon water",
@@ -4611,7 +4608,6 @@ impl Photo {
             }
         } else {
             let (target, resolve) = match (&targets.msaa, direct) {
-                (Some(msaa), false) if defer_scene_resolve => (msaa, None),
                 (Some(msaa), false) => (msaa, Some(&targets.scene)),
                 (None, false) => (&targets.scene, None),
                 (Some(msaa), true) => (msaa, Some(output)),
