@@ -88,7 +88,7 @@ unchanged.
 
 ## What's open
 
-- **B2 (#10906).** The coordinator holds the claim. The landed per-vertex
+- **B2 (#10906).** The coordinator holds the claim. After the owner stopped repeat baking, recover the already generated queue commit `e7410b0015ceac5460369d93cbe8c395ae7f3258` under the artifact lease. Rebase its existing pin, rerun `--layers --check`, and push; do not regenerate because unrelated commits moved `main`. Compare the baker, renderer, scene, assets, and artifact recipe against the completed bake before rebasing. The recovery script is in the coordinator's private `b2-verification/recover-queue.sh` evidence directory. Publication is pending until that check and push succeed. The landed per-vertex
   layers pass the lamp/bounce fixture, three format and combination tests,
   the missing/stale-layer fallback test, and scoped formatting on
   `coderos-4080`. Artifact submission `01791470792224747042-2390831-0`
