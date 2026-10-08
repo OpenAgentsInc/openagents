@@ -1,0 +1,166 @@
+[
+  {
+    "case": "water-webgpu-dry",
+    "harness_success": true,
+    "visual_capture_valid": false,
+    "capture_sha256": "82a2e41ba517809f5b58a7da95b52f22e165cd40afabe2fa4b082bc45388d894",
+    "channel_extrema": [
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ]
+    ]
+  },
+  {
+    "case": "water-webgpu",
+    "harness_success": true,
+    "visual_capture_valid": false,
+    "capture_sha256": "82a2e41ba517809f5b58a7da95b52f22e165cd40afabe2fa4b082bc45388d894",
+    "channel_extrema": [
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ]
+    ],
+    "signed_wet_minus_dry_fence_ms": -0.22672176286167678
+  },
+  {
+    "case": "water-webgl2-dry",
+    "harness_success": true,
+    "visual_capture_valid": true,
+    "capture_sha256": "43ae37d6df80c0230901f88c2f8053598aba333f9610724fa6c674d10b9b3cb5",
+    "channel_extrema": [
+      [
+        16,
+        255
+      ],
+      [
+        17,
+        243
+      ],
+      [
+        10,
+        196
+      ]
+    ]
+  },
+  {
+    "case": "water-webgl2",
+    "harness_success": true,
+    "visual_capture_valid": true,
+    "capture_sha256": "a4e6d43f311cf3b77bc7f93b23fa58cf48f7232ac8f7efe2867c55adbd03a398",
+    "channel_extrema": [
+      [
+        16,
+        255
+      ],
+      [
+        17,
+        247
+      ],
+      [
+        10,
+        196
+      ]
+    ],
+    "signed_wet_minus_dry_fence_ms": 0.7741367910306369
+  },
+  {
+    "case": "everglade-webgpu-dry",
+    "harness_success": true,
+    "visual_capture_valid": false,
+    "capture_sha256": "82a2e41ba517809f5b58a7da95b52f22e165cd40afabe2fa4b082bc45388d894",
+    "channel_extrema": [
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ]
+    ]
+  },
+  {
+    "case": "everglade-webgpu",
+    "harness_success": true,
+    "visual_capture_valid": false,
+    "capture_sha256": "82a2e41ba517809f5b58a7da95b52f22e165cd40afabe2fa4b082bc45388d894",
+    "channel_extrema": [
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ]
+    ],
+    "signed_wet_minus_dry_fence_ms": -0.026305227906636586
+  },
+  {
+    "case": "everglade-webgl2-dry",
+    "harness_success": true,
+    "visual_capture_valid": true,
+    "capture_sha256": "d5a74cec17e151cda49d1c370805fc65f59a0859b10f883d556c0cc7c0a4cfb7",
+    "channel_extrema": [
+      [
+        6,
+        225
+      ],
+      [
+        7,
+        234
+      ],
+      [
+        2,
+        255
+      ]
+    ]
+  },
+  {
+    "case": "everglade-webgl2",
+    "harness_success": true,
+    "visual_capture_valid": true,
+    "capture_sha256": "d32e5425eac7cbc660e1fb6cad4da5500e79dcbc26391a6bb322a21b9db3bebf",
+    "channel_extrema": [
+      [
+        6,
+        252
+      ],
+      [
+        8,
+        252
+      ],
+      [
+        4,
+        255
+      ]
+    ],
+    "signed_wet_minus_dry_fence_ms": 0.1749016289865999
+  }
+]
