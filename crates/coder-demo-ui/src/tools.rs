@@ -1,7 +1,5 @@
 //! Local tool, plugin, and delegation displays for the conversation previews.
 
-use code_highlight::grok::{ColorLevel, Palette};
-use coder_terminal::components::diff;
 use ratatui::{
     style::{Color, Modifier, Style},
     text::{Line, Span},
@@ -15,71 +13,6 @@ pub use coder_ui::demo::tools::{PluginCall, ToolCall, ToolKind, ToolState};
 pub fn spinner(phase: u8) -> &'static str {
     const FRAMES: [&str; 8] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧"];
     FRAMES[usize::from(phase) % FRAMES.len()]
-}
-
-/// Display bounded parameter rows without letting serialized objects run off screen.
-pub fn parameter_lines(value: &serde_json::Value, width: u16) -> Vec<Line<'static>> {
-    use serde_json::Value;
-    fn fields(value: &Value, prefix: &str, depth: usize, result: &mut Vec<(String, String)>) {
-        match value {
-            Value::Object(object) if depth < 2 => {
-                for (key, value) in object {
-                    let key = if prefix.is_empty() {
-                        key.clone()
-                    } else {
-                        format!("{prefix}.{key}")
-                    };
-                    fields(value, &key, depth + 1, result);
-                }
-            }
-            Value::Null if prefix.is_empty() => {}
-            value => {
-                let text = match value {
-                    Value::String(text) => text.replace('\n', " ↵ "),
-                    _ => value.to_string(),
-                };
-                result.push((
-                    if prefix.is_empty() {
-                        "value".into()
-                    } else {
-                        prefix.into()
-                    },
-                    text,
-                ));
-            }
-        }
-    }
-    let mut values = Vec::new();
-    fields(value, "", 0, &mut values);
-    let omitted = values
-        .len()
-        .saturating_sub(if values.len() > 5 { 4 } else { 5 });
-    let mut rows = Vec::new();
-    for (key, value) in values.iter().take(if omitted > 0 { 4 } else { 5 }) {
-        let key = truncate(key, width.saturating_sub(8));
-        let available = width.saturating_sub(7 + key.width() as u16);
-        rows.push(
-            Line::from(vec![
-                styled("   │ ", t::GRAY_DIM),
-                styled(format!("{key}: "), t::TEXT_SECONDARY),
-                styled(truncate(value, available), t::GRAY_BRIGHT),
-            ])
-            .style(Style::default().bg(t::BG_DARK)),
-        );
-    }
-    if omitted > 0 {
-        rows.push(
-            Line::from(vec![
-                styled("   │ ", t::GRAY_DIM),
-                styled(
-                    truncate(&format!("… {omitted} more fields"), width.saturating_sub(5)),
-                    t::GRAY,
-                ),
-            ])
-            .style(Style::default().bg(t::BG_DARK)),
-        );
-    }
-    rows
 }
 
 pub fn tool_lines(call: &ToolCall, phase: u8, width: u16) -> Vec<Line<'static>> {
@@ -105,28 +38,25 @@ pub fn tool_lines(call: &ToolCall, phase: u8, width: u16) -> Vec<Line<'static>> 
     ])];
 
     if call.kind == ToolKind::Edit && call.state == ToolState::Complete {
-        let changes = diff::hunks(call.output);
+        let changes = coder_ui::components::diff::hunks(call.output);
         let added = changes
             .iter()
             .flatten()
-            .filter(|line| line.tag == diff::ChangeTag::Insert)
+            .filter(|line| line.change == coder_ui::components::diff::Change::Insert)
             .count();
         let removed = changes
             .iter()
             .flatten()
-            .filter(|line| line.tag == diff::ChangeTag::Delete)
+            .filter(|line| line.change == coder_ui::components::diff::Change::Delete)
             .count();
         lines[0].spans.extend([
             styled(format!(" +{added}"), t::DIFF_INSERT_FG),
             styled(format!(" -{removed}"), t::DIFF_DELETE_FG),
         ]);
-        lines.extend(t::usgc_lines(diff::lines(
+        lines.extend(crate::rich_lines(coder_ui::components::diff::lines(
             call.output,
             call.input,
-            0,
             usize::from(width),
-            Palette::Night,
-            ColorLevel::TrueColor,
         )));
         return lines;
     }

@@ -687,3 +687,28 @@ mod rail_tests {
         );
     }
 }
+
+impl Plugins {
+    pub(crate) fn demo_view(&self) -> coder_ui::demo::plugins::Plugins {
+        let mut value = coder_ui::demo::plugins::Plugins::default();
+        value.selected = self.selected;
+        value.bundled = self.bundled.demo_view();
+        value.enabled = self.enabled;
+        value.key_configured = self.key_configured;
+        value.model = self.model.clone();
+        value.options = crate::demo::options(&self.options);
+        value.focus = crate::demo::focus(self.focus);
+        value.key_draft = crate::demo::draft(&self.key_draft);
+        value.model_draft = crate::demo::draft(&self.model_draft);
+        value.remove_key = self.remove_key;
+        value.error = self.error;
+        value.storage_error = self.storage_error.clone();
+        value.connection = crate::demo::connection(&self.connection);
+        value.check_requested = self.check_requested;
+        value.saved = self.saved;
+        value.credential_changed = self.credential_changed;
+        value.live = self.live;
+        value.saved_connection = self.saved_connection.as_ref().map(crate::demo::connection);
+        value
+    }
+}

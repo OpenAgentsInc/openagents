@@ -2,9 +2,7 @@
 
 mod models;
 mod plugins;
-mod resume;
 
-use coder_terminal::{Colors, Ladder, components::turn::markdown_body};
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
@@ -29,12 +27,6 @@ fn span(text: impl Into<String>, color: Color) -> Span<'static> {
 }
 
 pub fn render(frame: &mut Frame, app: &mut App) {
-    if app.mode == Mode::Demo {
-        let mut demo = app.demo_view();
-        coder_demo_ui::render(frame, &mut demo);
-        app.scroll = demo.scroll;
-        return;
-    }
     let area = frame.area();
     let terminal_width = area.width;
     let terminal_x = area.x;
@@ -56,27 +48,6 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         width: area.width.saturating_sub(4),
         height: area.height.saturating_sub(2),
     };
-    if let Some(event) = &app.disclosure_event {
-        let input = serde_json::to_string_pretty(&event["input"]).unwrap_or_default();
-        let text = format!(
-            "Send this exact lookup to Brainstorm?\n\nRecipient: {}\n\n{}\n\nNo files or conversation are added. This approves this lookup input only.\n\nY: confirm · N: reject · Esc: cancel · PgUp/PgDn: review",
-            event["recipient"].as_str().unwrap_or_default(),
-            input
-        );
-        let paragraph = Paragraph::new(text).wrap(Wrap { trim: false });
-        let lines = paragraph.line_count(area.width);
-        let max_scroll = lines
-            .saturating_sub(usize::from(area.height))
-            .min(usize::from(u16::MAX)) as u16;
-        app.disclosure_scroll = app.disclosure_scroll.min(max_scroll);
-        app.disclosure_seen |= app.disclosure_scroll == max_scroll;
-        frame.render_widget(paragraph.scroll((app.disclosure_scroll, 0)), area);
-        return;
-    }
-    if app.resume_picker.is_some() {
-        resume::render(frame, area, app);
-        return;
-    }
     if matches!(app.screen, Screen::Plugins | Screen::PluginSettings) {
         plugins::render(frame, area, app);
         if app.model_picker.is_some() {
@@ -85,12 +56,11 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         return;
     }
     let (draft, cursor) = app.draft.wrapped(terminal_width.saturating_sub(3));
-    let rail_height = (if app.mode == Mode::Demo {
-        DEMOS.len()
+    let rail_height = if app.mode == Mode::Demo {
+        DEMOS.len().min(usize::from(area.height.saturating_sub(6))) as u16
     } else {
-        app.delegations.len()
-    })
-    .min(usize::from(area.height.saturating_sub(6))) as u16;
+        0
+    };
     let composer_height = (draft.len() as u16).clamp(1, 6) + 2;
     let reserved = rail_height + 3;
     let [header, body, composer, context, rail] = Layout::vertical([
@@ -132,25 +102,8 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         app.selected_agent.is_none(),
         app.model_picker.is_none(),
         &app.plugins,
-        if app.mode == Mode::Live && !(app.plugins.enabled && app.plugins.key_configured) {
-            let chat = app
-                .selected_agent
-                .and_then(|index| app.delegations.get(index))
-                .map_or(&app.live, |agent| &agent.chat);
-            chat.partial_model
-                .as_deref()
-                .or_else(|| {
-                    chat.entries.iter().rev().find_map(|entry| match entry {
-                        crate::live::Entry::Assistant {
-                            model: Some(model), ..
-                        } => Some(model.as_str()),
-                        _ => None,
-                    })
-                })
-                .or(Some("auto"))
-        } else {
-            None
-        },
+        (app.mode == Mode::Live && !(app.plugins.enabled && app.plugins.key_configured))
+            .then_some("auto"),
     );
     context_view(frame, context, app);
     agent_rail(frame, rail, app);
@@ -160,35 +113,20 @@ pub fn render(frame: &mut Frame, app: &mut App) {
 }
 
 fn agent_rail(frame: &mut Frame, area: Rect, app: &App) {
-    let agents: Vec<_> = if app.mode == Mode::Demo {
-        DEMOS
-            .iter()
-            .map(|agent| {
-                (
-                    agent.name,
-                    agent.task,
-                    agent.tokens.to_owned(),
-                    agent.elapsed_seconds.saturating_add(app.elapsed_seconds),
-                )
-            })
-            .collect()
-    } else {
-        app.delegations
-            .iter()
-            .map(|agent| {
-                (
-                    agent.name.as_str(),
-                    agent.task.as_str(),
-                    token_count(agent.chat.tokens),
-                    if agent.running {
-                        app.elapsed_seconds.saturating_sub(agent.started_at)
-                    } else {
-                        agent.elapsed_seconds
-                    },
-                )
-            })
-            .collect()
-    };
+    if app.mode != Mode::Demo {
+        return;
+    }
+    let agents: Vec<_> = DEMOS
+        .iter()
+        .map(|agent| {
+            (
+                agent.name,
+                agent.task,
+                agent.tokens.to_owned(),
+                agent.elapsed_seconds.saturating_add(app.elapsed_seconds),
+            )
+        })
+        .collect();
     if area.height == 0 {
         return;
     }
@@ -310,14 +248,6 @@ fn agent_rail(frame: &mut Frame, area: Rect, app: &App) {
     }
 }
 
-fn token_count(tokens: u64) -> String {
-    if tokens >= 1_000 {
-        format!("{:.1}k", tokens as f64 / 1_000.0)
-    } else {
-        tokens.to_string()
-    }
-}
-
 pub(crate) fn truncate(text: &str, width: u16) -> String {
     if text.width() <= usize::from(width) {
         return text.into();
@@ -339,14 +269,9 @@ pub(crate) fn truncate(text: &str, width: u16) -> String {
 }
 
 fn header_view(frame: &mut Frame, area: Rect, app: &App) {
-    let agent = if app.screen == Screen::Conversation {
-        app.selected_agent.and_then(|index| {
-            if app.mode == Mode::Demo {
-                DEMOS.get(index).map(|agent| agent.name)
-            } else {
-                app.delegations.get(index).map(|agent| agent.name.as_str())
-            }
-        })
+    let agent = if app.screen == Screen::Conversation && app.mode == Mode::Demo {
+        app.selected_agent
+            .and_then(|index| DEMOS.get(index).map(|agent| agent.name))
     } else {
         None
     };
@@ -395,7 +320,10 @@ fn context_view(frame: &mut Frame, area: Rect, app: &App) {
 }
 
 fn message_body(text: &str, width: u16) -> Vec<Line<'static>> {
-    t::usgc_lines(markdown_body(text, width, Ladder::new(Colors::True)))
+    crate::rich_lines(coder_ui::components::markdown::lines(
+        text,
+        usize::from(width),
+    ))
 }
 
 fn prompt(text: &str, width: u16) -> Vec<Line<'static>> {
@@ -416,7 +344,8 @@ fn prompt(text: &str, width: u16) -> Vec<Line<'static>> {
 fn wrap_display(lines: Vec<Line<'static>>, width: u16) -> Vec<Line<'static>> {
     let mut rows = Vec::new();
     for line in lines {
-        for range in coder_terminal::wrap_rows(&line.to_string(), usize::from(width).max(1)) {
+        for range in coder_ui::components::wrap_ranges(&line.to_string(), usize::from(width).max(1))
+        {
             let mut offset = 0;
             let spans = line
                 .spans
@@ -446,12 +375,8 @@ fn wrap_display(lines: Vec<Line<'static>>, width: u16) -> Vec<Line<'static>> {
 }
 
 fn conversation(frame: &mut Frame, area: Rect, app: &mut App) {
-    if app.mode == Mode::Live {
-        live_conversation(frame, area, app);
-        return;
-    }
-    let mut lines = if app.mode == Mode::Live {
-        live_lines(app, area.width)
+    let mut lines = if app.mode != Mode::Demo {
+        Vec::new()
     } else if let Some(agent) = app.selected_agent.and_then(|index| DEMOS.get(index)) {
         let mut lines = Vec::new();
         for (index, message) in agent.conversation.iter().enumerate() {
@@ -534,314 +459,6 @@ fn conversation(frame: &mut Frame, area: Rect, app: &mut App) {
     frame.render_widget(paragraph.scroll((app.scroll, 0)), area);
 }
 
-fn entry_lines(entry: &crate::live::Entry, width: u16, phase: u8) -> Vec<Line<'static>> {
-    let mut lines = Vec::new();
-    match entry {
-        crate::live::Entry::User(text) => {
-            lines.extend(prompt(text, width));
-        }
-        crate::live::Entry::Assistant {
-            text,
-            model,
-            elapsed_ms,
-        } => {
-            reply_lines(&mut lines, text, model.as_deref(), *elapsed_ms, width);
-        }
-        crate::live::Entry::Tool {
-            name,
-            input,
-            output,
-            running,
-        } => {
-            let glyph = if *running {
-                crate::tools::spinner(phase)
-            } else if output.get("error").is_some() {
-                "×"
-            } else {
-                "◆"
-            };
-            let native = matches!(name.as_str(), "Run" | "Read" | "Edit" | "Search");
-            let label = if native { name.as_str() } else { "Plugin" };
-            lines.push(Line::from(vec![
-                span(format!(" {glyph} "), t::ACCENT_SKILL),
-                Span::styled(
-                    label.to_owned(),
-                    Style::default()
-                        .fg(t::ACCENT_SKILL)
-                        .add_modifier(Modifier::BOLD),
-                ),
-                span(
-                    truncate(
-                        &if native {
-                            String::new()
-                        } else {
-                            format!(" {name}")
-                        },
-                        width.saturating_sub(9),
-                    ),
-                    t::TEXT_PRIMARY,
-                ),
-            ]));
-            lines.extend(crate::tools::parameter_lines(input, width));
-            if *running {
-                lines.push(Line::from(vec![
-                    span("   ╰ ", t::GRAY_DIM),
-                    span("Running", t::GRAY_BRIGHT),
-                ]));
-            } else {
-                if crate::brainstorm::is_tool(name) {
-                    lines.extend(message_body(&crate::brainstorm::summary(output), width));
-                } else {
-                    lines.extend(crate::tools::parameter_lines(output, width));
-                }
-            }
-        }
-        crate::live::Entry::Delegation {
-            name,
-            task,
-            running,
-            output,
-            ..
-        } => {
-            lines.push(Line::from(vec![
-                span(
-                    format!(
-                        " {} ",
-                        if *running {
-                            crate::tools::spinner(phase)
-                        } else if output.get("error").is_some() {
-                            "×"
-                        } else {
-                            "◆"
-                        }
-                    ),
-                    t::ACCENT_DELEGATE,
-                ),
-                Span::styled(
-                    "Delegate",
-                    Style::default()
-                        .fg(t::ACCENT_MODEL)
-                        .add_modifier(Modifier::BOLD),
-                ),
-                span(format!(" {name}"), t::TEXT_PRIMARY),
-            ]));
-            let status = if *running {
-                "Running"
-            } else if output.get("error").is_some() {
-                "Failed"
-            } else {
-                "Done"
-            };
-            let detail = format!("{} · {status}", truncate(task, width.saturating_sub(17)));
-            lines.push(Line::from(vec![
-                span("   ╰ ", t::GRAY_DIM),
-                span(detail, t::GRAY_BRIGHT),
-            ]));
-        }
-    }
-    lines.push(Line::default());
-    lines
-}
-
-#[derive(Default)]
-pub struct TranscriptCache {
-    width: u16,
-    entries: Vec<CachedEntry>,
-    partial: Option<CachedEntry>,
-    pub builds: usize,
-}
-
-struct CachedEntry {
-    entry: crate::live::Entry,
-    lines: Vec<Line<'static>>,
-}
-
-impl TranscriptCache {
-    fn refresh(&mut self, chat: &crate::live::Chat, width: u16, phase: u8) {
-        if self.width != width {
-            self.entries.clear();
-            self.partial = None;
-            self.width = width;
-        }
-        self.entries.truncate(chat.entries.len());
-        for (index, entry) in chat.entries.iter().enumerate() {
-            if self
-                .entries
-                .get(index)
-                .is_none_or(|cached| cached.entry != *entry)
-            {
-                let cached = CachedEntry {
-                    entry: entry.clone(),
-                    lines: entry_lines(entry, width, phase),
-                };
-                if index < self.entries.len() {
-                    self.entries[index] = cached;
-                } else {
-                    self.entries.push(cached);
-                }
-                self.builds += 1;
-            } else if matches!(
-                entry,
-                crate::live::Entry::Tool { running: true, .. }
-                    | crate::live::Entry::Delegation { running: true, .. }
-            ) {
-                self.entries[index].lines = entry_lines(entry, width, phase);
-            }
-        }
-        if chat.partial.is_empty() {
-            self.partial = None;
-        } else {
-            let entry = crate::live::Entry::Assistant {
-                elapsed_ms: None,
-                text: chat.partial.clone(),
-                model: chat.partial_model.clone(),
-            };
-            if self
-                .partial
-                .as_ref()
-                .is_none_or(|cached| cached.entry != entry)
-            {
-                self.partial = Some(CachedEntry {
-                    lines: entry_lines(&entry, width, phase),
-                    entry,
-                });
-                self.builds += 1;
-            }
-        }
-    }
-
-    fn blocks(&self) -> impl Iterator<Item = &CachedEntry> {
-        self.entries.iter().chain(self.partial.iter())
-    }
-
-    fn count(&self) -> usize {
-        self.blocks().map(|cached| cached.lines.len()).sum()
-    }
-
-    fn visible(
-        &self,
-        tail: &[Line<'static>],
-        mut offset: usize,
-        height: usize,
-    ) -> Vec<Line<'static>> {
-        let mut rows = Vec::with_capacity(height);
-        for block in self
-            .blocks()
-            .map(|cached| cached.lines.as_slice())
-            .chain(std::iter::once(tail))
-        {
-            if offset >= block.len() {
-                offset -= block.len();
-                continue;
-            }
-            rows.extend(
-                block
-                    .iter()
-                    .skip(offset)
-                    .take(height.saturating_sub(rows.len()))
-                    .cloned(),
-            );
-            offset = 0;
-            if rows.len() >= height {
-                break;
-            }
-        }
-        rows
-    }
-}
-
-fn live_lines(app: &App, width: u16) -> Vec<Line<'static>> {
-    let mut lines = app
-        .live
-        .entries
-        .iter()
-        .flat_map(|entry| entry_lines(entry, width, app.animation_frame))
-        .collect::<Vec<_>>();
-    if !app.live.partial.is_empty() {
-        reply_lines(
-            &mut lines,
-            &app.live.partial,
-            app.live.partial_model.as_deref(),
-            None,
-            width,
-        );
-    }
-    lines
-}
-
-fn live_conversation(frame: &mut Frame, area: Rect, app: &mut App) {
-    let phase = app.animation_frame;
-    let notice = app.notice.clone();
-    let chat = app
-        .selected_agent
-        .and_then(|index| app.delegations.get_mut(index))
-        .map_or(&mut app.live, |agent| &mut agent.chat);
-    let mut cache = std::mem::take(&mut chat.cache);
-    cache.refresh(chat, area.width, phase);
-    let mut tail = Vec::new();
-    if chat.busy {
-        tail.extend(wrap_display(
-            vec![Line::from(vec![
-                span(
-                    format!("{} ", crate::tools::spinner(phase)),
-                    t::ACCENT_MODEL,
-                ),
-                span("Working", t::GRAY),
-            ])],
-            area.width,
-        ));
-    }
-    for (message, color) in [
-        (chat.notice.as_ref(), t::DIFF_DELETE_FG),
-        (notice.as_ref(), t::GRAY),
-    ] {
-        if let Some(message) = message {
-            tail.extend(
-                message_body(message, area.width)
-                    .into_iter()
-                    .map(|mut line| {
-                        line.style.fg = Some(color);
-                        for span in &mut line.spans {
-                            span.style.fg = Some(color);
-                        }
-                        line
-                    }),
-            );
-            tail.push(Line::default());
-        }
-    }
-    let count = cache.count() + tail.len();
-    let max_scroll = count
-        .saturating_sub(usize::from(area.height))
-        .min(usize::from(u16::MAX)) as u16;
-    app.scroll = app.scroll.min(max_scroll);
-    let visible = cache.visible(&tail, usize::from(app.scroll), usize::from(area.height));
-    frame.render_widget(Paragraph::new(visible), area);
-    chat.cache = cache;
-}
-
-fn reply_lines(
-    lines: &mut Vec<Line<'static>>,
-    text: &str,
-    model: Option<&str>,
-    elapsed_ms: Option<u64>,
-    width: u16,
-) {
-    lines.extend(message_body(text, width));
-    let elapsed = elapsed_ms.map(|ms| format!("{:.1}s", ms as f64 / 1000.0));
-    let footer = match (model, elapsed) {
-        (Some(model), Some(elapsed)) => {
-            let suffix = format!(" · {elapsed}");
-            let available = width.saturating_sub(suffix.width() as u16);
-            format!("{}{suffix}", truncate(model, available))
-        }
-        (Some(model), None) => model.to_owned(),
-        (None, Some(elapsed)) => elapsed,
-        (None, None) => return,
-    };
-    lines.push(Line::from(span(truncate(&footer, width), t::GRAY)).right_aligned());
-}
-
 fn composer_rail_text(text: &str, width: u16) -> String {
     if text.width() <= usize::from(width) {
         return text.to_owned();
@@ -886,7 +503,7 @@ fn composer_view(
             RailSlot::ComposerBottomRight => area.height.saturating_sub(1),
         };
         let text = composer_rail_text(&contribution.text, area.width.saturating_sub(6));
-        coder_terminal::rail(
+        crate::rail(
             area,
             frame.buffer_mut(),
             offset,

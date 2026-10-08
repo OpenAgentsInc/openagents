@@ -18,10 +18,54 @@ const WASM: &str = "coder_components_web_bg.wasm";
 
 pub(crate) fn routes() -> Router<App> {
     Router::new()
+        .route("/demo", get(demo))
         .route("/components", get(index))
         .route("/components/{component}", get(component))
         .route("/components/manifest.json", get(manifest))
         .route("/components/assets/{file}", get(asset))
+}
+
+async fn demo(State(app): State<App>) -> Response {
+    let mut state = coder_ui::demo::DemoState::default();
+    let snapshot = coder_demo_ui::capture(&mut state, 110, 36);
+    let preview = coder_demo_ui::svg(&snapshot);
+    let readable = escape(
+        &snapshot
+            .cells
+            .chunks(110)
+            .map(|row| {
+                row.iter()
+                    .map(|cell| cell.symbol.as_str())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
+    );
+    let interactive = app
+        .config
+        .components_build
+        .as_ref()
+        .is_some_and(|dir| dir.join(GLUE).is_file() && dir.join(WASM).is_file());
+    let (status, script) = if interactive {
+        (
+            "Loading the local Rust demo…",
+            "<script type=\"module\" src=\"/components/assets/demo-start.js\"></script>",
+        )
+    } else {
+        (
+            "Static demo preview. Build the browser module to enable local interaction.",
+            "",
+        )
+    };
+    let html = format!(
+        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><meta name=\"color-scheme\" content=\"dark\"><title>Coder demo · OpenAgents</title><link rel=\"icon\" href=\"/favicon.svg\"><link rel=\"stylesheet\" href=\"/components/assets/native.css\"><link rel=\"stylesheet\" href=\"/components/assets/demo.css\"></head><body><main id=\"demo-root\" aria-label=\"Local Coder demo\"><div id=\"demo-mount\">{preview}</div><pre id=\"demo-readable\" aria-label=\"Coder demo terminal text\">{readable}</pre></main><p id=\"demo-status\" role=\"status\">{status}</p><pre id=\"demo-initial\" hidden>{{\"schema\":\"openagents.coder.demo.v1\"}}</pre>{script}</body></html>"
+    );
+    let mut response = Html(html).into_response();
+    response.headers_mut().insert(
+        header::CONTENT_SECURITY_POLICY,
+        HeaderValue::from_static(POLICY),
+    );
+    response
 }
 
 #[derive(Default, Deserialize)]
@@ -259,6 +303,14 @@ async fn asset(State(app): State<App>, Path(file): Path<String>) -> Response {
         "start.js" => (
             "text/javascript; charset=utf-8",
             include_bytes!("../static/components-start.js").to_vec(),
+        ),
+        "demo-start.js" => (
+            "text/javascript; charset=utf-8",
+            include_bytes!("../static/demo-start.js").to_vec(),
+        ),
+        "demo.css" => (
+            "text/css; charset=utf-8",
+            include_bytes!("../static/demo.css").to_vec(),
         ),
         GLUE | WASM => {
             let Some(directory) = &app.config.components_build else {

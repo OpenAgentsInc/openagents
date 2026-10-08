@@ -1224,3 +1224,46 @@ mod tests {
         assert!(valid_agents(&[agent]).is_ok());
     }
 }
+
+impl BundledSettings {
+    pub(crate) fn demo_view(&self) -> coder_ui::demo::bundled_settings::BundledSettings {
+        let mut value = coder_ui::demo::bundled_settings::BundledSettings::default();
+        value.brainstorm = self.brainstorm.demo_view();
+        value.boat = crate::demo::cloud(&self.boat);
+        value.gce = crate::demo::cloud(&self.gce);
+        value.cloud_editor = self.cloud_editor.as_ref().map(crate::demo::editor);
+        value.microcoder = self.microcoder;
+        value.cli = self.cli;
+        value.acp = self.acp;
+        value.jev_enabled = self.jev_enabled;
+        value.acp_agents = self
+            .acp_agents
+            .iter()
+            .map(|a| coder_ui::demo::bundled_settings::AcpAgent {
+                id: a.id.clone(),
+                name: a.name.clone(),
+                program: a.program.clone(),
+                enabled: a.enabled,
+            })
+            .collect();
+        value.acp_selected = self.acp_selected;
+        value.acp_available = self.acp_available.clone();
+        value.focus = crate::demo::focus(self.focus);
+        value.error = self.error;
+        value.storage_error = self.storage_error.clone();
+        value.connection = crate::demo::connection(&self.connection);
+        value.check_requested = self.check_requested;
+        value.saved = self.saved;
+        value.credential_changed = self.credential_changed;
+        value.jev_key = self.jev_key.as_ref().map(|_| ());
+        value.jev_model = self.jev_model.clone();
+        value.jev_endpoint = self.jev_endpoint.clone();
+        value.key_draft = crate::demo::draft(&self.key_draft);
+        value.model_draft = crate::demo::draft(&self.model_draft);
+        value.endpoint_draft = crate::demo::draft(&self.endpoint_draft);
+        value.remove_key = self.remove_key;
+        value.live = self.live;
+        value.saved_connection = self.saved_connection.as_ref().map(crate::demo::connection);
+        value
+    }
+}

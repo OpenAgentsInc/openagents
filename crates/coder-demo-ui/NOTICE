@@ -1,0 +1,15 @@
+Coder demo terminal adapter
+
+The terminal geometry, tools, plugin screens, model picker, and SVG exporter
+are extracted from the public OpenAgents coder-new crate. The portable
+controller and source colors belong to coder-ui. This adapter contains no
+provider, filesystem, credential store, or process implementation.
+
+Markdown and diff rows use coder-ui's public portable projections. Their
+grok-build attribution (Apache-2.0, Copyright 2023-2026 SpaceXAI) and the
+Grok Night theme attribution remain in coder-ui/NOTICE and
+code-highlight/NOTICE.
+
+The native reference fixture was captured from OpenAgents commit
+d2fb95d33d1d5c668be3d85c53c9bedaaab174af before the extraction. Each digest
+covers the original terminal cell symbols, colors, modifiers, and skip flags.

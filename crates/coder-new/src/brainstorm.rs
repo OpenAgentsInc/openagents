@@ -645,3 +645,34 @@ pub fn summary(output: &serde_json::Value) -> String {
 
 #[cfg(test)]
 mod tests;
+
+impl Settings {
+    pub(crate) fn demo_view(&self) -> coder_ui::demo::brainstorm::Settings {
+        use coder_ui::demo::brainstorm as view;
+        view::Settings {
+            preferences: view::Preferences {
+                enabled: self.preferences.enabled,
+                origin: self.preferences.origin.clone(),
+                perspective: view::Perspective::House,
+            },
+            focus: match self.focus {
+                Focus::Origin => view::Focus::Origin,
+                Focus::Test => view::Focus::Test,
+                Focus::Save => view::Focus::Save,
+                Focus::Cancel => view::Focus::Cancel,
+            },
+            error: self.error.clone(),
+            connection: crate::demo::connection(&self.connection),
+            discovery: self.discovery.as_ref().map(|d| view::Discovery {
+                house: view::House {
+                    pubkey: d.house.pubkey.clone(),
+                    discovered_at_ms: d.house.discovered_at_ms,
+                },
+            }),
+            check_requested: self.check_requested,
+            save_requested: self.save_requested,
+            fixture: self.fixture,
+            draft: crate::demo::draft(&self.draft),
+        }
+    }
+}

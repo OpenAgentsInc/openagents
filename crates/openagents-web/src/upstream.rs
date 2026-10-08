@@ -33,7 +33,7 @@ use hyper_util::rt::{TokioExecutor, TokioIo};
 
 /// The paths this site answers itself, exactly or as a prefix. `/app`, the
 /// local task browser, is never proxied; the host guard keeps it local.
-const OWNED_EXACT: [&str; 36] = [
+const OWNED_EXACT: [&str; 37] = [
     "/",
     "/download",
     "/pilot",
@@ -56,6 +56,7 @@ const OWNED_EXACT: [&str; 36] = [
     "/health",
     "/app",
     "/components",
+    "/demo",
     "/cloud",
     paper_mono::WOFF2_PATH,
     "/.well-known/apple-app-site-association",

@@ -1,0 +1,22 @@
+[package]
+name = "coder-demo-ui"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "The portable Ratatui adapter for Coder's local demo."
+
+[dependencies]
+coder-ui = { path = "../coder-ui" }
+rust-native = { path = "../rust-native" }
+ratatui = { version = "0.30", default-features = false, features = ["std", "layout-cache", "unstable-rendered-line-info"] }
+unicode-segmentation = "1"
+unicode-width = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+sha2 = "0.10"
+
+[lints]
+workspace = true

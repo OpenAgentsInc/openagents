@@ -43,7 +43,8 @@ adoption remains separate work.
 | `rust-native-web` | Reusable escaped HTML/CSS mapping and Rust/Wasm DOM mounting, focus, input/IME, selection, scrolling, browser measurement, and capability reporting. No Coder-specific screens or domain effects. |
 | `coder-new` and other application projections | Convert existing state/events into shared presentation values; resolve product intents through existing controllers and authority. Backend/session/provider state stays with its existing owner. |
 | Terminal/native adapters | Render shared component meaning with existing terminal facilities or platform controls. Ratatui values stay on the terminal side of the boundary. |
-| `openagents-web` | Own `/components`, catalog navigation, fixture selection, assets, and the page shell. Compose the same library later in the authenticated app. |
+| `coder-demo-ui` | Portable Ratatui adapter for the original demo's exact terminal cells, cursor, and hit regions; no terminal I/O or application runtime. |
+| `openagents-web` | Own `/components`, the standalone `/demo`, fixture selection, assets, and the page shell. Compose the same library later in the authenticated app. |
 
 Application components are Rust functions/types that compose generic elements.
 Keep transcript, agent rail, plugin manager, picker, and settings definitions in
@@ -68,6 +69,14 @@ and produce validated views. Browser and terminal code cannot independently
 decide a tool's status, actual model, cost, or permission from display text.
 
 ## Initial deliverable at `/components`
+
+The standalone `/demo` uses the original demo's five conversations and controls,
+with the shared `coder-ui::demo` controller and `coder-demo-ui` cell renderer.
+The native Demo projection uses the same renderer; Live execution keeps its
+existing controller. The browser mounts the exact SVG frame in a locally
+registered Rust Native surface and uses a semantic field for text and IME.
+All demo settings and messages stay in page memory; export downloads only the
+displayed synthetic records. The demo and catalog remain direct-link pages.
 
 Serve this catalog from the Rust web app in this repository. Explicitly own the
 route instead of forwarding it to the legacy sidecar. Public examples contain

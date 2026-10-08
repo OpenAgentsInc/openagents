@@ -11,6 +11,7 @@ pub mod cloud_settings;
 pub mod cloud_tools;
 pub mod credentials;
 mod delegation_events;
+mod demo;
 pub mod jev_plugin;
 pub mod live;
 pub mod model_catalog;

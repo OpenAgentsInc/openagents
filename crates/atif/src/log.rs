@@ -924,7 +924,9 @@ mod tests {
         if let Some(version) = version {
             header["schema_version"] = json!(version);
         }
-        let step = json!({"record":"step","step":Step::said(Source::User, "hello")});
+        let mut recorded_step = Step::said(Source::User, "hello");
+        recorded_step.at = 1_000;
+        let step = json!({"record":"step","step":recorded_step});
         let end = json!({"record":"end","at":2_000,"state":ENDED});
         format!("{header}\n{step}\n{end}\n")
     }

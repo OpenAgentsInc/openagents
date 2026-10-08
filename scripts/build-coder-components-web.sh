@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the Rust component catalog controller and its generated loader glue.
+# Build the Rust catalog and demo controllers and their generated loader glue.
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"

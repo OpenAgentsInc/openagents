@@ -2914,6 +2914,7 @@ dependencies = [
 name = "coder-components-web"
 version = "0.1.0"
 dependencies = [
+ "coder-demo-ui",
  "coder-ui",
  "js-sys",
  "rust-native",
@@ -2922,6 +2923,7 @@ dependencies = [
  "serde_json",
  "wasm-bindgen",
  "web-sys",
+ "zeroize",
 ]
 
 [[package]]
@@ -3035,6 +3037,20 @@ dependencies = [
  "supervise",
  "tempfile",
  "tokio",
+]
+
+[[package]]
+name = "coder-demo-ui"
+version = "0.1.0"
+dependencies = [
+ "coder-ui",
+ "ratatui",
+ "rust-native",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "unicode-segmentation",
+ "unicode-width",
 ]
 
 [[package]]
@@ -3240,6 +3256,7 @@ dependencies = [
  "coder-boundary",
  "coder-cloud",
  "coder-delegate",
+ "coder-demo-ui",
  "coder-terminal",
  "coder-ui",
  "codex-transport",
@@ -3254,6 +3271,7 @@ dependencies = [
  "reqwest 0.12.28",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "supervise",
  "tempfile",
  "tokio",
@@ -3401,6 +3419,8 @@ dependencies = [
 name = "coder-ui"
 version = "0.1.0"
 dependencies = [
+ "atif",
+ "nostr",
  "pulldown-cmark",
  "rust-native",
  "serde",
@@ -3409,6 +3429,8 @@ dependencies = [
  "two-face",
  "unicode-segmentation",
  "unicode-width",
+ "url",
+ "zeroize",
 ]
 
 [[package]]
@@ -10273,6 +10295,7 @@ dependencies = [
  "coder",
  "coder-access",
  "coder-cloud",
+ "coder-demo-ui",
  "coder-host",
  "coder-project",
  "coder-pty",

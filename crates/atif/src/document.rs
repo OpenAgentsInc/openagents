@@ -607,6 +607,13 @@ fn question_ids(questions: &Value) -> Vec<String> {
 /// The whole session as one ATIF document.
 #[must_use]
 pub fn document(session: &Session, steps: &[Step]) -> Value {
+    document_at(session, steps, now_ms())
+}
+
+/// Export a session with an explicit export timestamp in milliseconds since the epoch.
+/// This projection reads no clock and preserves the steps' original timestamps.
+#[must_use]
+pub fn document_at(session: &Session, steps: &[Step], exported_at_ms: u64) -> Value {
     let values: Vec<Value> = steps
         .iter()
         .enumerate()
@@ -655,7 +662,7 @@ pub fn document(session: &Session, steps: &[Step]) -> Value {
         },
         "extra": {
             "exporter": EXPORTER,
-            "exported_at": iso(now_ms()),
+            "exported_at": iso(exported_at_ms),
             "repository": session.repository,
             "directive": session.directive,
             "state": session.state,
@@ -991,6 +998,28 @@ mod tests {
             purpose: Some("look".to_string()),
             extra: Map::new(),
         }
+    }
+
+    #[test]
+    fn explicit_export_time_preserves_original_records_without_reading_a_clock() {
+        let step = Step {
+            at: 1_600_000_000_123,
+            source: Source::User,
+            message: "Original retained message".into(),
+            reasoning: None,
+            model: None,
+            call: None,
+            tokens: None,
+            milliseconds: None,
+            extensions: Map::new(),
+        };
+        let portable = document_at(&a_session(), &[step.clone()], 0);
+        assert_eq!(portable["extra"]["exported_at"], "1970-01-01T00:00:00.000Z");
+        assert_eq!(portable["steps"][0]["timestamp"], iso(step.at));
+        assert_eq!(portable, document_at(&a_session(), &[step.clone()], 0));
+        let mut native = document(&a_session(), &[step]);
+        native["extra"]["exported_at"] = portable["extra"]["exported_at"].clone();
+        assert_eq!(native, portable);
     }
 
     /// A document names the format, the agent, and the session, and numbers

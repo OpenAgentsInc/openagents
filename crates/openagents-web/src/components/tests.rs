@@ -117,3 +117,59 @@ async fn only_named_build_assets_are_served_and_wasm_enables_the_loader() {
     assert!(crate::upstream::owned("/components/assets/private.json"));
     assert!(crate::upstream::owned(paper_mono::WOFF2_PATH));
 }
+
+#[tokio::test]
+async fn demo_is_owned_public_and_standalone_without_a_task_store() {
+    let root = tempfile::tempdir().unwrap();
+    let store = root.path().join("must-not-be-created");
+    let mut config = crate::Config::development(store.clone());
+    config.public_hosts.push("openagents.com".into());
+    assert!(crate::upstream::owned("/demo"));
+    let (status, headers, html) = request(config, "/demo", "openagents.com").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(html.contains("<svg"));
+    assert!(html.contains("id=\"demo-root\""));
+    assert!(html.contains("openagents.coder.demo.v1"));
+    assert!(!html.contains("<header"));
+    assert!(!html.contains("<footer"));
+    assert!(!html.contains("src=\"/components/assets/demo-start.js\""));
+    assert!(
+        headers[header::CONTENT_SECURITY_POLICY]
+            .to_str()
+            .unwrap()
+            .contains("connect-src 'self'")
+    );
+    assert!(!store.exists());
+}
+
+#[tokio::test]
+async fn demo_uses_only_registered_wasm_assets_and_has_no_url_state() {
+    let root = tempfile::tempdir().unwrap();
+    std::fs::write(root.path().join(GLUE), "export function start_demo(){};").unwrap();
+    std::fs::write(root.path().join(WASM), b"\0asm").unwrap();
+    let mut config = crate::Config::development(root.path().join("tasks"));
+    config.components_build = Some(root.path().to_owned());
+    let (_, _, original) = request(config.clone(), "/demo", "127.0.0.1:4300").await;
+    let (status, _, with_state) = request(
+        config.clone(),
+        "/demo?draft=never-accept-this&mode=live&width=65535",
+        "127.0.0.1:4300",
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(original, with_state);
+    assert!(original.contains("src=\"/components/assets/demo-start.js\""));
+    for (asset, mime) in [
+        ("demo-start.js", "text/javascript; charset=utf-8"),
+        ("demo.css", "text/css; charset=utf-8"),
+    ] {
+        let (status, headers, _) = request(
+            config.clone(),
+            &format!("/components/assets/{asset}"),
+            "127.0.0.1:4300",
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(headers[header::CONTENT_TYPE], mime);
+    }
+}

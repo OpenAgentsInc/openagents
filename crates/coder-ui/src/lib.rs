@@ -3,6 +3,7 @@ pub mod catalog;
 pub mod components;
 pub mod control;
 pub mod coordination;
+pub mod demo;
 pub mod observation;
 pub mod source_theme;
 pub mod theme;

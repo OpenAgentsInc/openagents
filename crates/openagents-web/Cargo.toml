@@ -15,6 +15,7 @@ base64 = "0.22"
 coder = { path = "../coder" }
 coder-access = { path = "../coder-access", default-features = false }
 coder-host = { path = "../coder-host", default-features = false }
+coder-demo-ui = { path = "../coder-demo-ui" }
 coder-ui = { path = "../coder-ui" }
 rust-native = { path = "../rust-native" }
 rust-native-web = { path = "../rust-native-web" }

@@ -18,6 +18,7 @@ coder-delegate = { path = "../coder-delegate" }
 code-highlight = { path = "../code-highlight", features = ["grok"] }
 coder-terminal = { path = "../coder-terminal" }
 coder-ui = { path = "../coder-ui" }
+coder-demo-ui = { path = "../coder-demo-ui" }
 acp-client = { path = "../acp-client" }
 coder-boundary = { path = "../coder-boundary" }
 codex-transport = { path = "../codex-transport" }
@@ -36,6 +37,7 @@ unicode-segmentation = "1"
 unicode-width = "0.2"
 
 [dev-dependencies]
+sha2 = "0.10"
 tempfile = "3"
 
 [lints]
