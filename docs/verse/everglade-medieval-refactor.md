@@ -205,7 +205,7 @@ village kit, plus the first town's kit houses around the Commons.
 | Fountain Plaza and Market Row | The market hall, the two plaza cafés, Market Row east and west, the plaza fountain. | The market hall follows the demo's market composition; the kit fountain replaces the generated one at `PLAZA_FOUNTAIN`. Market stalls, tents, carts, and baskets dress the row. |
 | Stoop Lane | The townhouses and homes 1 to 3. | The pilot street (P5): a terrace, which is how the kit works best. |
 | Lantern Quarter | The Hearth, the Lantern, and their neighbors. | The tavern's stone base and timber upper stories. |
-| The Foundry | The smithy and its yard. | The demo's blacksmith composition, the anvil, the fireplace. |
+| The Foundry | The workshop, the fab hall, and the server barn annex. | The smithy keeps its generated model and open forge (see P7's "As built"). |
 | The Commons' first town | The cottage, the four shops, the four homes, the two cabins, the reading room, the makers' hall, the server barn. | Today's Quaternius kit houses. |
 | Creative and Knowledge districts | The college, lecture, fab, and atelier halls; the district's houses. | Stone `Walls_B` pieces with arched windows suit the halls. |
 | Farm | Farmhouse and barn. | Optional, after P7. |
@@ -513,6 +513,18 @@ kit pack loaded and without it, saved outside the repository.
 - Acceptance: as P6, for every rebuilt district; the Greco-futurism
   district and the workshop hall unchanged (their captures match).
 - Captures: `city-lantern`, `city-foundry`, `approach`, `overhead`.
+- As built (`19cc9a02c1`, #10900): Market Row, the Lantern Quarter's pubs
+  and halls, Well Square, the Knowledge District's college, and the
+  Foundry's and Creative District's workshops and halls are kit houses
+  (`city::KIT_LOTS`). The round Music Hall, the smithy with its open
+  forge, the two Boardwalk Cafés, the cabins in Walden Woods and the long
+  meadow, the beekeeper's hut, and the farm keep their generated models
+  (`city::STAND_INS`); their shapes (a round hall, an open forge, decks on
+  the street) are not the kit's lot-and-bay houses, and the decisions keep
+  the farm. Rebuilding any of them later changes the
+  town's geometry, so it needs a new private pack (whole-house levels for
+  the new recipe) and a new bake, because the published light layers bind
+  to the exact scene digest (`pbr::baked_layers::scene_digest`).
 
 ### P8: Web and phone
 
