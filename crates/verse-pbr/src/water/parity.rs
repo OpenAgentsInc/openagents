@@ -43,7 +43,7 @@ fn water_host_shadow(world: vec3<f32>, n: vec3<f32>, pixel: vec2<f32>) -> f32 { 
 }
 @fragment fn fs_ocean(@builtin(position) at: vec4<f32>) -> @location(0) vec4<f32> {
     let p0 = points[u32(at.x)].xy;
-    let wave = water_ocean_move(0u, p0, 1.0e6, 1.0);
+    let wave = water_ocean_move(0u, p0, 1.0e6, 1.0, 0.0);
     return vec4<f32>(wave.xyz, 1.0);
 }
 "
