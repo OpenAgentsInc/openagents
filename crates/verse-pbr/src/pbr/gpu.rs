@@ -539,6 +539,8 @@ pub struct TexturedGpu {
     /// Whether this is a figure, whose vertices are rewritten each frame.
     figure: bool,
     rigid_meshes: Vec<Vec<textured::Batch>>,
+    rigid_vertex_offsets: Vec<u32>,
+    instance_lights: Option<std::sync::Arc<Vec<[u8; 4]>>>,
     rendered_instances: instanced::RenderedInstances,
     rigid_indirect: Option<RigidIndirect>,
     motion_draws: Vec<instanced::Draw>,
@@ -606,7 +608,12 @@ impl TexturedGpu {
         queue: &wgpu::Queue,
         frame: &textured::InstancedFigure,
     ) {
-        let (mut records, batches) = instanced::rigid_frame(&self.rigid_meshes, &frame.instances);
+        let (mut records, batches) = instanced::rigid_frame_lit(
+            &self.rigid_meshes,
+            &frame.instances,
+            &self.rigid_vertex_offsets,
+            frame.vertex_lights.as_ref(),
+        );
         self.rendered_instances
             .update(&frame.motion_epoch, &mut records);
         let bytes: &[u8] = bytemuck::cast_slice(&records);
@@ -803,6 +810,24 @@ impl TexturedGpu {
             );
         }
     }
+}
+
+// The rigid upload concatenates primitive vertices in source mesh order.
+fn rigid_vertex_offsets(scene: &TexturedScene) -> Vec<u32> {
+    let mut first = 0_u32;
+    scene
+        .meshes
+        .iter()
+        .map(|mesh| {
+            let offset = first;
+            first += mesh
+                .primitives
+                .iter()
+                .map(|primitive| primitive.vertices.len() as u32)
+                .sum::<u32>();
+            offset
+        })
+        .collect()
 }
 
 /// An RGBA8 array texture laid out as the light texture is
@@ -2351,6 +2376,7 @@ impl Photo {
         let (prepared, meshes) = instanced::rigid_meshes(&frame.scene);
         let mut gpu = self.upload_textured_with(device, queue, &frame.scene, &prepared, true);
         gpu.rigid_meshes = meshes;
+        gpu.rigid_vertex_offsets = rigid_vertex_offsets(&frame.scene);
         if let Some(previous) = previous {
             gpu.rendered_instances
                 .adopt(&mut previous.rendered_instances, &frame.motion_epoch);
@@ -2378,8 +2404,55 @@ impl Photo {
                 motion_runs: Vec::new(),
             });
         }
+        self.write_instance_lights(device, queue, &mut gpu, frame.vertex_lights.as_ref());
         gpu.write_instances(device, queue, frame);
         gpu
+    }
+
+    /// Uploads changed per-vertex lighting without rewriting rigid mesh vertices.
+    /// A shared texel Arc keeps ordinary instance frames from uploading it again.
+    pub fn write_instance_lights(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        gpu: &mut TexturedGpu,
+        stream: Option<&textured::VertexLightStream>,
+    ) {
+        let Some(stream) = stream else {
+            gpu.instance_lights = None;
+            return;
+        };
+        if gpu
+            .instance_lights
+            .as_ref()
+            .is_some_and(|old| std::sync::Arc::ptr_eq(old, &stream.texels))
+        {
+            return;
+        }
+        let size = gpu.light.size();
+        let capacity =
+            u64::from(size.width) * u64::from(size.height) * u64::from(size.depth_or_array_layers);
+        if stream.texels.len() as u64 > capacity {
+            let (rows, layers) = instanced::light_extent(stream.texels.len());
+            gpu.light = light_texture(
+                device,
+                "verse rigid repaired light",
+                instanced::LIGHT_WIDTH,
+                rows,
+                layers,
+            );
+            gpu.light_rows = rows;
+            gpu.light_group = self.light_group(device, &gpu.light, &gpu.lamps, &gpu.suns);
+        }
+        gpu.texels = stream.texels.len();
+        TexturedGpu::write_texels(
+            &gpu.light,
+            gpu.texels,
+            gpu.light_rows,
+            queue,
+            stream.texels.iter().copied(),
+        );
+        gpu.instance_lights = Some(stream.texels.clone());
     }
 
     /// Writes a static scene's baked lamp light ([`crate::pbr::baked_layers`]),
@@ -2748,6 +2821,8 @@ impl Photo {
             texels: prepared.lights.len(),
             figure,
             rigid_meshes: Vec::new(),
+            rigid_vertex_offsets: Vec::new(),
+            instance_lights: None,
             rendered_instances: instanced::RenderedInstances::default(),
             rigid_indirect: None,
             motion_draws: Vec::new(),
@@ -4980,6 +5055,70 @@ fn load_sky(device: &wgpu::Device, queue: &wgpu::Queue) -> Result<[wgpu::Texture
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn repaired_ranges_follow_uploaded_vertices_across_meshes_and_primitives() {
+        use std::sync::Arc;
+        use textured::{DynamicInstance, Primitive, TexturedMesh, VertexLightStream};
+        let primitive = |start: f32| Primitive {
+            vertices: (0..3)
+                .map(|i| {
+                    TexturedVertex::new(Vec3::new(start + i as f32, 0.0, 0.0), Vec3::Y, [0.0; 2])
+                })
+                .collect(),
+            indices: vec![0, 1, 2],
+            material: 0,
+        };
+        let mut scene = TexturedScene::default();
+        scene.add_material(TexturedMaterial::default());
+        scene.add_mesh(TexturedMesh {
+            primitives: vec![primitive(0.0)],
+        });
+        scene.add_mesh(TexturedMesh {
+            primitives: vec![primitive(3.0), primitive(6.0)],
+        });
+        let (prepared, meshes) = instanced::rigid_meshes(&scene);
+        let offsets = rigid_vertex_offsets(&scene);
+        let instance = DynamicInstance {
+            id: 7,
+            mesh: 1,
+            current: Mat4::IDENTITY,
+            previous: Mat4::IDENTITY,
+            color: [1.0; 4],
+            light: [64, 80, 96, 255],
+            settled: false,
+        };
+        let stream = VertexLightStream {
+            texels: Arc::new((0..8).map(|i| [i, 0, 0, 255]).collect()),
+            ranges: Arc::new([(7, 2)].into()),
+        };
+        let (records, draws) =
+            instanced::rigid_frame_lit(&meshes, &[instance], &offsets, Some(&stream));
+        assert_eq!(offsets, [0, 3]);
+        assert_eq!(
+            records[0].light,
+            u32::MAX,
+            "the range may wrap onto the direct-light sentinel"
+        );
+        assert_eq!(
+            records[0].ambient, 1,
+            "the range flag distinguishes that sentinel"
+        );
+        let addressed: Vec<_> = draws
+            .iter()
+            .flat_map(|draw| {
+                let first = draw.first as usize;
+                prepared.indices[first..first + draw.count as usize]
+                    .iter()
+                    .map(|&index| records[0].light.wrapping_add(index))
+            })
+            .collect();
+        assert_eq!(addressed, [2, 3, 4, 5, 6, 7]);
+        for (index, texel) in (3..9).zip(addressed) {
+            assert_eq!(prepared.vertices[index].pos[0], index as f32);
+            assert_eq!(stream.texels[texel as usize][0], texel as u8);
+        }
+    }
 
     #[test]
     fn particle_comparison_controls_preserve_fire_settings() {

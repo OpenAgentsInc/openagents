@@ -3140,6 +3140,7 @@ impl Scene {
                 let gpu = photo.upload_instances_with_previous(device, queue, frame, previous);
                 self.instances = Some((frame.scene.clone(), gpu));
             } else if let Some((_, gpu)) = &mut self.instances {
+                photo.write_instance_lights(device, queue, gpu, frame.vertex_lights.as_ref());
                 gpu.write_instances(device, queue, frame);
             }
         } else if let Some((_, gpu)) = &mut self.instances {
