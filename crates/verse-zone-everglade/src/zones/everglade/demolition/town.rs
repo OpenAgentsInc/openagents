@@ -737,6 +737,116 @@ impl Pool {
         self.instances.clear();
         self.previous.clear();
     }
+
+    fn reset_motion(&mut self) {
+        self.previous.clear();
+        // Retain rebuilds body and piece IDs. Detach a renderer's retained
+        // source so its GPU history cannot confuse the old and new bodies.
+        let _ = Arc::make_mut(&mut self.scene);
+    }
+}
+
+#[cfg(test)]
+mod motion_tests {
+    use super::*;
+
+    #[test]
+    fn retained_house_resets_cpu_and_renderer_motion_without_dropping_meshes() {
+        let source = crate::zones::everglade::tests::world()
+            .mesh
+            .textured
+            .as_ref()
+            .unwrap()
+            .clone();
+        let mut town = Town::new(
+            crate::zones::everglade::tests::pack(),
+            &super::super::super::layout::placements(),
+            Arc::new(TexturedScene {
+                edits: Default::default(),
+                ..source.as_ref().clone()
+            }),
+        )
+        .unwrap();
+        let hut = town
+            .wreck
+            .buildings
+            .iter()
+            .position(|building| {
+                let center = super::super::super::layout::city::BEEKEEPER.rect.0;
+                (building.rect.0[0] - center[0]).abs() < 0.01
+                    && (building.rect.0[1] - center[1]).abs() < 0.01
+            })
+            .unwrap();
+        let removed = town
+            .wreck
+            .buildings
+            .iter()
+            .enumerate()
+            .filter(|&(index, building)| index != hut && building.destructible())
+            .min_by_key(|(_, building)| building.pieces.len())
+            .map(|(index, _)| index)
+            .unwrap();
+        assert!(town.wreck.lift(removed, &[]));
+        assert!(town.wreck.lift(hut, &[removed]));
+        // Chip both houses so each contributes cached instance IDs before retain.
+        let centers: Vec<_> = town
+            .wreck
+            .site
+            .specs()
+            .iter()
+            .map(|spec| spec.center)
+            .collect();
+        for (piece, center) in centers.into_iter().enumerate() {
+            town.wreck.site.damage(piece, 1, center, DVec3::ZERO);
+        }
+        town.sync();
+        town.pose();
+        let before = town.instances(None).unwrap();
+        let prior: BTreeMap<_, _> = before
+            .instances
+            .iter()
+            .map(|instance| (instance.id, instance.current))
+            .collect();
+
+        town.wreck.let_go(removed);
+        town.sync();
+        town.pose();
+        let after = town.instances(None).unwrap();
+        assert!(town.wreck.refs.iter().all(|&(building, _)| building == hut));
+        assert!(
+            after.instances.iter().any(|instance| {
+                prior
+                    .get(&instance.id)
+                    .is_some_and(|&old| old != instance.current)
+            }),
+            "the fixture must reuse a removed body's ID for the retained house"
+        );
+        assert!(
+            !Arc::ptr_eq(&before.scene, &after.scene),
+            "a retained renderer must discard its old ID history"
+        );
+        assert_eq!(
+            before.scene.meshes, after.scene.meshes,
+            "cached local meshes survive structural retain"
+        );
+        assert!(
+            after
+                .instances
+                .iter()
+                .all(|instance| instance.previous == instance.current)
+        );
+
+        // Ordinary damage changes the site's revision without renumbering bodies.
+        let center = town.wreck.site.specs()[0].center;
+        town.wreck.site.damage(0, 1, center, DVec3::ZERO);
+        town.sync();
+        town.pose();
+        let ordinary = town.instances(None).unwrap();
+        assert!(
+            Arc::ptr_eq(&after.scene, &ordinary.scene),
+            "ordinary physics changes keep renderer history"
+        );
+    }
 }
 
 /// An autonomous caster with its own targeting, cast, and meteor state.
@@ -1745,6 +1855,9 @@ impl Town {
             })
             .collect();
         let seen = (self.wreck.revision, self.wreck.site.revision());
+        if seen.0 != self.seen.0 {
+            self.pool.reset_motion();
+        }
         if seen != self.seen
             || drawn != self.pool.drawn
             || self.pool.spans.len() != self.count_spans(&drawn, &live)
