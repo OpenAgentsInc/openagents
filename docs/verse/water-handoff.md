@@ -1,6 +1,6 @@
 # Water handoff
 
-Status: W11 checkpointed and unclaimed, 2026-10-08. Phases W1 to W10 are landed. This page records what
+Status: W11 active with the coordinator, 2026-10-08. Phases W1 to W10 are landed. This page records what
 landed, what remains open, and how to pick the work up again. The
 specification is [Water](water.md), and the coastal zone's is
 [The coast](coast.md).
@@ -11,9 +11,14 @@ The coordinator resumes W11 directly and holds #10783. The branch is
 rebased on `7afd440fe8`. Candidate `0383832589` resolves only timestamp
 pairs for passes the frame actually wrote; omitted mirror and copy
 queries previously entered the resolve. Bounded `diagnostics` output
-retains the first 16 frames' raw counters. This correction is not yet
-verified; run focused checks and the native timing cases before accepting
-it. Cargo waits for the B2 website image build, keeping commands serial.
+retains the first 16 frames' raw counters. Focused timing tests and scoped
+formatting pass. The release harness at `bc0e969e3a` passes Low pond-posts,
+Low waterline, and Medium pond-noon on the RTX 4080. Low pond-posts retains
+96 of 96 steady GPU samples, with a 1.997 ms mean and 3.596 ms p95; its
+old target is exceeded and effects are reduced. The remaining tier matrix
+is running. These Linux measurements supplement the required Mac and
+browser calibration. Missing GPU samples no longer use queue-fence timing
+as a substitute or admit a budget. No new bake runs are needed.
 
 The earlier checkpoint below remains historical evidence.
 
