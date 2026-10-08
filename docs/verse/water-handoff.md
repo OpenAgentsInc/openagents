@@ -48,6 +48,16 @@ metadata is in `bench/verse/2026-10-08/everglade-pond-optics/`; current images
 contain licensed kit content and stay in private scratch. Coast C1 through
 C6 remain separate work.
 
+C1 (#10885) is in progress. Its first checkpoint extracts the Water Lab's
+existing simulation, projectiles, and hotbar into `verse-water-spells`, with
+the old `verse-zone-water` paths re-exported. `verse-zone-coast` adds the
+named bathymetry, shared-tick tide, estuary, marsh, isolated tide pools,
+harbor shelter, boundary current, and deterministic optical and shelter
+fields. Focused release tests pass: 27 shared-water tests, 3 retained W10
+fixture tests, and 5 coast terrain and water tests. Zone entry, rendering,
+GPU shelter admission, and the bay captures are still pending; this
+checkpoint does not complete C1. No lighting bake runs.
+
 The earlier checkpoint below remains historical evidence.
 
 W11 (#10783) remains open on the pushed branch

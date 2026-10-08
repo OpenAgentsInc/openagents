@@ -15969,6 +15969,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "verse-water-spells"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "glam",
+ "physics",
+ "png",
+ "pollster",
+ "serde_json",
+ "sha2 0.10.9",
+ "verse-content",
+ "verse-core",
+ "verse-engine",
+ "verse-gfx",
+ "verse-net",
+ "verse-pbr",
+ "verse-world",
+ "verse-zone-everglade",
+ "verse-zone-grove",
+ "wgpu",
+]
+
+[[package]]
 name = "verse-world"
 version = "0.1.0"
 dependencies = [
@@ -15992,6 +16015,17 @@ dependencies = [
  "verse-engine",
  "wasm-bindgen-futures",
  "web-time",
+]
+
+[[package]]
+name = "verse-zone-coast"
+version = "0.1.0"
+dependencies = [
+ "glam",
+ "physics",
+ "verse-pbr",
+ "verse-water-spells",
+ "verse-zone-water",
 ]
 
 [[package]]
@@ -16103,6 +16137,7 @@ dependencies = [
  "verse-gfx",
  "verse-net",
  "verse-pbr",
+ "verse-water-spells",
  "verse-world",
  "verse-zone-everglade",
  "verse-zone-grove",
