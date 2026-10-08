@@ -327,6 +327,7 @@ impl Overlook {
             let mut others = spectator.crowd.mesh(now, dt);
             others.neutralize();
             others.lit.clear();
+            others.reactive_lit.clear();
             others.glow.clear();
             others.neon = None;
             mesh.extend(&others);

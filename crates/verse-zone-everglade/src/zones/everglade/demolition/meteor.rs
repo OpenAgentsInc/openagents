@@ -1947,6 +1947,7 @@ fn meteor_ribbon(meteor: &Meteor, fade: f32) -> Ribbon {
 /// The meteor's rock: a lumpy boulder of chipped faces, charred dark, that
 /// tumbles as it flies, its size and shape its own.
 fn rock(mesh: &mut Mesh, meteor: &Meteor, clock: f32) {
+    let first = mesh.lit.len() as u32;
     let at = meteor.at(meteor.t);
     let radius = METEOR_RADIUS * meteor.size;
     let seed = meteor.seed;
@@ -1999,6 +2000,7 @@ fn rock(mesh: &mut Mesh, meteor: &Meteor, clock: f32) {
             });
         }
     }
+    mesh.reactive_lit.push(first..mesh.lit.len() as u32);
 }
 
 /// A unit sphere of chipped faces: an icosahedron split twice, its points
@@ -2198,6 +2200,34 @@ impl Swarm {
 #[cfg(test)]
 mod impact_fx_tests {
     use super::*;
+
+    #[test]
+    fn rock_history_exclusion_addresses_only_its_own_triangles() {
+        let meteor = Meteor {
+            start: Vec3::Y * 10.0,
+            end: Vec3::ZERO,
+            t: 0.5,
+            fall: 1.0,
+            bow: Vec3::X,
+            size: 2.0,
+            seed: 42,
+            fire: None,
+            face: Vec3::ZERO,
+        };
+        let mut reference = Mesh::default();
+        rock(&mut reference, &meteor, 3.0);
+        let prefix = vec![reference.lit[0]; 3];
+        let mut mesh = Mesh {
+            lit: prefix.clone(),
+            ..Mesh::default()
+        };
+        rock(&mut mesh, &meteor, 3.0);
+        assert_eq!(&mesh.lit[..3], prefix.as_slice());
+        assert_eq!(&mesh.lit[3..], reference.lit.as_slice());
+        assert_eq!(mesh.reactive_lit, vec![3..mesh.lit.len() as u32]);
+        assert!(mesh.reactive_lit_valid());
+        assert!(mesh.sprites.is_empty() && mesh.ribbons.is_empty());
+    }
 
     #[test]
     fn npc_impact_shake_uses_the_viewer_instead_of_the_caster() {

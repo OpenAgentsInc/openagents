@@ -835,6 +835,7 @@ impl VerseHandle {
 pub(crate) fn bare_entities(mut entities: verse::mesh::Mesh) -> verse::mesh::Mesh {
     entities.neutralize();
     entities.lit.clear();
+    entities.reactive_lit.clear();
     entities.glow.clear();
     entities.neon = None;
     entities

@@ -1279,6 +1279,9 @@ fn validate_frame(view: View, dynamic: &Mesh, ui: &UiBatch) -> Result<(), String
     // Sizes are not checked here: `fit_frame` trims a frame to the
     // renderer's capacity and quality budget instead of refusing it.
     let _ = ui;
+    if !dynamic.reactive_lit_valid() {
+        return Err("reactive lit ranges must contain whole triangles in the lit stream".into());
+    }
     if !lit_finite(&dynamic.lit)
         || dynamic.glow.iter().any(|g| {
             g.pos
@@ -1459,6 +1462,10 @@ pub fn fit_frame(
     fitted.faces.truncate(faces);
     fitted.lines.truncate(lines);
     fitted.lit.truncate(lit);
+    fitted.reactive_lit.retain_mut(|range| {
+        range.end = range.end.min(fitted.lit.len() as u32);
+        range.start < range.end
+    });
     fitted.glow.truncate(glow);
     if !budget.overrun(frame_with(quality, &fitted)?).fits() {
         fitted.figure = None;
@@ -1467,6 +1474,7 @@ pub fn fit_frame(
     if !budget.overrun(frame_with(quality, &fitted)?).fits() {
         fitted.textured = None;
         fitted.lit.clear();
+        fitted.reactive_lit.clear();
         fitted.glow.clear();
     }
     Ok((Some(fitted), fitted_ui))
@@ -3209,6 +3217,11 @@ impl Scene {
         };
         let batches = Batches {
             motion: &motion,
+            reactive_lit: temporal_enabled.then_some(crate::pbr::temporal::ReactiveLit {
+                vertices: &photo.dynamic_lit.buffer,
+                count: photo.dynamic_lit.count,
+                ranges: &dynamic.reactive_lit,
+            }),
             #[cfg(not(target_arch = "wasm32"))]
             streamed: self
                 .streaming

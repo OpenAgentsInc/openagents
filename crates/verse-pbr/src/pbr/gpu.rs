@@ -356,7 +356,7 @@ impl Capability {
                 self.hdr.is_some(),
                 self.gles,
             ) {
-                super::temporal::bytes(width, height)
+                super::temporal::bytes(width, height, self.samples)
             } else {
                 0
             }
@@ -3288,7 +3288,7 @@ impl Photo {
         }
 
         let camera = sky.camera;
-        self.encode_temporal(queue, encoder, targets, world.motion);
+        self.encode_temporal(queue, encoder, targets, world.motion, world.reactive_lit);
         self.post_chain(
             queue,
             encoder,
@@ -4018,7 +4018,13 @@ impl Photo {
             );
             self.draw_blended(&mut pass, targets, &opaque);
         }
-        self.encode_temporal(queue, encoder, targets, world.motion);
+        self.encode_temporal(
+            queue,
+            encoder,
+            targets,
+            world.motion,
+            world.reactive_lit.filter(|_| lit.is_some()),
+        );
         self.post_chain(
             queue,
             encoder,
@@ -4257,9 +4263,10 @@ impl Photo {
         encoder: &mut wgpu::CommandEncoder,
         targets: &mut PhotoTargets,
         motions: &[super::temporal::MotionDraw<'_>],
+        reactive: Option<super::temporal::ReactiveLit<'_>>,
     ) {
         if let (Some(temporal), Some(history)) = (&self.temporal, &mut targets.temporal) {
-            temporal.encode(queue, encoder, &targets.scene, history, motions);
+            temporal.encode(queue, encoder, &targets.scene, history, motions, reactive);
         }
     }
 
@@ -4400,6 +4407,8 @@ fn eye_water(water: &crate::water::Water, view_proj: Mat4, eye: Vec3) -> (Option
 pub struct Batches<'a> {
     /// Moving objects with previous transforms for temporal reprojection.
     pub motion: &'a [super::temporal::MotionDraw<'a>],
+    /// Visible lit triangles excluded from temporal history.
+    pub reactive_lit: Option<super::temporal::ReactiveLit<'a>>,
     #[cfg(not(target_arch = "wasm32"))]
     pub streamed: Option<(&'a crate::streaming::Source, &'a wgpu::BindGroup)>,
     pub lit: (&'a wgpu::Buffer, u32),
