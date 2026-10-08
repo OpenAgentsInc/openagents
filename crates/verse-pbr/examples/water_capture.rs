@@ -864,6 +864,7 @@ fn physical(
         * Mat4::look_at_rh(spec.eye, spec.target, Vec3::Y);
     let batches = &Batches {
         motion: &[],
+        reactive_lit: None,
         streamed: None,
         lit: (&buffer, geometry.len() as u32),
         faces: [(&buffer, 0); 2],

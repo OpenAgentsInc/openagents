@@ -32,6 +32,8 @@ pub struct Mesh {
     pub faces: Vec<Vertex>,
     /// Physically lit triangles.
     pub lit: Vec<crate::pbr::LitVertex>,
+    /// Whole lit triangles whose visible pixels are excluded from temporal history.
+    pub reactive_lit: Vec<std::ops::Range<u32>>,
     /// Additive emissive triangles in physical luminance.
     pub glow: Vec<crate::pbr::GlowVertex>,
     /// Textured particle sprites in physical frames (see [`crate::fx`]).
@@ -63,6 +65,17 @@ pub struct Mesh {
 }
 
 impl Mesh {
+    /// Whether each reactive range addresses whole triangles in the lit stream.
+    #[must_use]
+    pub fn reactive_lit_valid(&self) -> bool {
+        self.reactive_lit.iter().all(|range| {
+            range.start <= range.end
+                && range.end as usize <= self.lit.len()
+                && range.start % 3 == 0
+                && range.end % 3 == 0
+        })
+    }
+
     /// Appends one amber segment.
     pub fn line(&mut self, a: Vec3, b: Vec3, step: Intensity) {
         self.line_with_fog(a, b, step, 1.0);
@@ -158,7 +171,14 @@ impl Mesh {
     pub fn extend(&mut self, other: &Mesh) {
         self.lines.extend_from_slice(&other.lines);
         self.faces.extend_from_slice(&other.faces);
+        let lit_base = self.lit.len() as u32;
         self.lit.extend_from_slice(&other.lit);
+        self.reactive_lit.extend(
+            other
+                .reactive_lit
+                .iter()
+                .map(|range| (lit_base + range.start)..(lit_base + range.end)),
+        );
         self.glow.extend_from_slice(&other.glow);
         self.sprites.extend_from_slice(&other.sprites);
         self.ribbons.extend_from_slice(&other.ribbons);
@@ -195,6 +215,28 @@ fn vertex(p: Vec3, color: palette::Linear, fog: f32) -> Vertex {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn extending_reactive_geometry_preserves_its_triangle_addresses() {
+        let vertex = crate::pbr::LitVertex::zeroed();
+        let mut mesh = Mesh {
+            lit: vec![vertex; 3],
+            ..Mesh::default()
+        };
+        let other = Mesh {
+            lit: vec![vertex; 9],
+            reactive_lit: vec![3..6, 6..9],
+            ..Mesh::default()
+        };
+        mesh.extend(&other);
+        assert_eq!(mesh.reactive_lit, vec![6..9, 9..12]);
+        assert!(mesh.reactive_lit_valid());
+        for invalid in [1..3, 0..13, 6..3] {
+            mesh.reactive_lit.push(invalid);
+            assert!(!mesh.reactive_lit_valid());
+            mesh.reactive_lit.pop();
+        }
+    }
 
     #[test]
     fn a_cube_has_twelve_edges_and_twelve_triangles() {

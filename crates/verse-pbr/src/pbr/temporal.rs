@@ -23,6 +23,29 @@ pub struct MotionDraw<'a> {
     pub draw: MotionCommand<'a>,
 }
 
+/// Current lit triangles whose color must not enter temporal history.
+/// The buffer is the dynamic lit stream already drawn by the color pass.
+#[derive(Clone, Copy)]
+pub struct ReactiveLit<'a> {
+    pub vertices: &'a wgpu::Buffer,
+    pub count: u32,
+    pub ranges: &'a [std::ops::Range<u32>],
+}
+
+impl ReactiveLit<'_> {
+    fn admitted_ranges(&self) -> impl Iterator<Item = std::ops::Range<u32>> + '_ {
+        self.ranges
+            .iter()
+            .filter(|range| {
+                range.start < range.end
+                    && range.end <= self.count
+                    && range.start % 3 == 0
+                    && range.end % 3 == 0
+            })
+            .cloned()
+    }
+}
+
 /// Direct draws are portable; native devices can share one indirect command stream.
 pub enum MotionCommand<'a> {
     Indexed {
@@ -147,9 +170,12 @@ pub(super) struct Temporal {
     resolve_layout: wgpu::BindGroupLayout,
     sharpen_layout: wgpu::BindGroupLayout,
     motion_layout: wgpu::BindGroupLayout,
+    reactive_layout: wgpu::BindGroupLayout,
+    samples: u32,
     resolve: wgpu::RenderPipeline,
     sharpen: wgpu::RenderPipeline,
     motion: [wgpu::RenderPipeline; 2],
+    reactive: wgpu::RenderPipeline,
     sampler: wgpu::Sampler,
 }
 
@@ -157,6 +183,10 @@ pub(super) struct Temporal {
 pub(super) struct Targets {
     history: [wgpu::TextureView; 2],
     motion: wgpu::TextureView,
+    reactive: wgpu::TextureView,
+    reactive_msaa: Option<wgpu::TextureView>,
+    reactive_group: wgpu::BindGroup,
+    depth: wgpu::TextureView,
     resolve: [wgpu::BindGroup; 2],
     sharpen: [wgpu::BindGroup; 2],
     motion_group: wgpu::BindGroup,
@@ -473,7 +503,8 @@ mod tests {
             }
         }
         assert!(!supported(Platform::Desktop, Tier::Low, true, false));
-        assert_eq!(bytes(1920, 1080), 49_766_400);
+        assert_eq!(bytes(1920, 1080, 1), 51_840_000);
+        assert_eq!(bytes(1920, 1080, 4), 60_134_400);
     }
 
     #[test]
@@ -482,6 +513,7 @@ mod tests {
             for source in [
                 include_str!("temporal.wgsl"),
                 include_str!("temporal_motion.wgsl"),
+                include_str!("temporal_reactive.wgsl"),
                 include_str!("temporal_sharpen.wgsl"),
             ] {
                 let source = depth_source(source, samples);
@@ -512,7 +544,7 @@ mod tests {
                     })
                     .count();
                 assert!(
-                    images <= 4,
+                    images <= 5,
                     "temporal pass exceeds its separate texture budget"
                 );
                 let naga::TypeInner::Struct { members, .. } = &module.types[camera].inner else {
@@ -705,6 +737,7 @@ mod tests {
             &scene_view,
             &mut targets,
             if clipped_draw { &motions } else { &[] },
+            None,
         );
         encoder.copy_texture_to_buffer(
             scene.as_image_copy(),
@@ -1085,8 +1118,9 @@ mod tests {
     }
 }
 
-pub(super) fn bytes(width: u32, height: u32) -> u64 {
-    u64::from(width) * u64::from(height) * 24 // Two RGBA16 histories and RGBA16 motion.
+pub(super) fn bytes(width: u32, height: u32, samples: u32) -> u64 {
+    // Two RGBA16 histories, RGBA16 motion, and resolved/sample-matched R8 markers.
+    u64::from(width) * u64::from(height) * (25 + if samples > 1 { u64::from(samples) } else { 0 })
 }
 
 fn depth_source(source: &str, samples: u32) -> String {
@@ -1142,6 +1176,7 @@ impl Temporal {
                 texture(2, float, false),
                 texture(3, wgpu::TextureSampleType::Depth, samples > 1),
                 texture(4, float, false),
+                texture(6, float, false),
                 wgpu::BindGroupLayoutEntry {
                     binding: 5,
                     visibility: wgpu::ShaderStages::FRAGMENT,
@@ -1160,6 +1195,10 @@ impl Temporal {
                 uniform,
                 texture(1, wgpu::TextureSampleType::Depth, samples > 1),
             ],
+        });
+        let reactive_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("verse reactive lit geometry"),
+            entries: &[uniform],
         });
         let make = |label,
                     source: String,
@@ -1248,6 +1287,50 @@ impl Temporal {
                 (!double_sided).then_some(wgpu::Face::Back),
             )
         });
+        let reactive_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("verse reactive lit geometry"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("temporal_reactive.wgsl").into()),
+        });
+        let reactive_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("verse reactive lit geometry"),
+                bind_group_layouts: &[Some(&reactive_layout)],
+                immediate_size: 0,
+            });
+        let reactive = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("verse reactive lit geometry"),
+            layout: Some(&reactive_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &reactive_shader,
+                entry_point: Some("vs"),
+                compilation_options: Default::default(),
+                buffers: &[wgpu::VertexBufferLayout {
+                    array_stride: std::mem::size_of::<super::LitVertex>() as u64,
+                    step_mode: wgpu::VertexStepMode::Vertex,
+                    attributes: &POSITION,
+                }],
+            },
+            primitive: Default::default(),
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: wgpu::TextureFormat::Depth32Float,
+                depth_write_enabled: Some(false),
+                depth_compare: Some(wgpu::CompareFunction::Equal),
+                stencil: Default::default(),
+                bias: Default::default(),
+            }),
+            multisample: wgpu::MultisampleState {
+                count: samples,
+                ..Default::default()
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &reactive_shader,
+                entry_point: Some("fs"),
+                compilation_options: Default::default(),
+                targets: &[Some(wgpu::TextureFormat::R8Unorm.into())],
+            }),
+            multiview_mask: None,
+            cache: None,
+        });
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("verse temporal history"),
             min_filter: wgpu::FilterMode::Linear,
@@ -1258,9 +1341,12 @@ impl Temporal {
             resolve_layout,
             sharpen_layout,
             motion_layout,
+            reactive_layout,
+            samples,
             resolve,
             sharpen,
             motion,
+            reactive,
             sampler,
         }
     }
@@ -1296,6 +1382,28 @@ impl Temporal {
             texture("verse temporal history B"),
         ];
         let motion = texture("verse temporal object motion");
+        let marker = |samples, label| {
+            device
+                .create_texture(&wgpu::TextureDescriptor {
+                    label: Some(label),
+                    size: wgpu::Extent3d {
+                        width: size[0],
+                        height: size[1],
+                        depth_or_array_layers: 1,
+                    },
+                    mip_level_count: 1,
+                    sample_count: samples,
+                    dimension: wgpu::TextureDimension::D2,
+                    format: wgpu::TextureFormat::R8Unorm,
+                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                        | wgpu::TextureUsages::TEXTURE_BINDING,
+                    view_formats: &[],
+                })
+                .create_view(&Default::default())
+        };
+        let reactive = marker(1, "verse reactive lit visibility");
+        let reactive_msaa =
+            (self.samples > 1).then(|| marker(self.samples, "verse reactive lit samples"));
         let uniform = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("verse temporal camera"),
             size: std::mem::size_of::<Uniform>() as u64,
@@ -1320,6 +1428,7 @@ impl Temporal {
                     view(2, &history[write ^ 1]),
                     view(3, depth),
                     view(4, &motion),
+                    view(6, &reactive),
                     wgpu::BindGroupEntry {
                         binding: 5,
                         resource: wgpu::BindingResource::Sampler(&self.sampler),
@@ -1339,9 +1448,18 @@ impl Temporal {
             layout: &self.motion_layout,
             entries: &[camera(), view(1, depth)],
         });
+        let reactive_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("verse reactive lit geometry"),
+            layout: &self.reactive_layout,
+            entries: &[camera()],
+        });
         Targets {
             history,
             motion,
+            reactive,
+            reactive_msaa,
+            reactive_group,
+            depth: depth.clone(),
             resolve,
             sharpen,
             motion_group,
@@ -1360,14 +1478,16 @@ impl Temporal {
         scene: &wgpu::TextureView,
         targets: &mut Targets,
         motions: &[MotionDraw<'_>],
+        reactive: Option<ReactiveLit<'_>>,
     ) {
         if !targets.enabled {
             return;
         }
         let has_motion = motions.iter().any(|motion| motion.draw.has_vertices());
+        let has_reactive = reactive.is_some_and(|lit| lit.admitted_ranges().next().is_some());
         let mut uniform = targets.camera.prepared;
         let camera = Mat4::from_cols_array_2d(&uniform.current);
-        uniform.settings[3] = f32::from(u8::from(has_motion));
+        uniform.settings[3] = f32::from(u8::from(has_motion) + 2 * u8::from(has_reactive));
         queue.write_buffer(&targets.uniform, 0, bytemuck::bytes_of(&uniform));
         if has_motion {
             // An entirely clipped stream still clears the preceding frame's motion.
@@ -1406,6 +1526,37 @@ impl Temporal {
                         pass.multi_draw_indexed_indirect(buffer, u64::from(*first) * 20, *count);
                     }
                 }
+            }
+        }
+        if let Some(lit) = reactive.filter(|_| has_reactive) {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("verse reactive lit visibility"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: targets.reactive_msaa.as_ref().unwrap_or(&targets.reactive),
+                    resolve_target: targets.reactive_msaa.as_ref().map(|_| &targets.reactive),
+                    depth_slice: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                        store: if targets.reactive_msaa.is_some() {
+                            wgpu::StoreOp::Discard
+                        } else {
+                            wgpu::StoreOp::Store
+                        },
+                    },
+                })],
+                // Read the exact samples written by the opaque color geometry.
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &targets.depth,
+                    depth_ops: None,
+                    stencil_ops: None,
+                }),
+                ..Default::default()
+            });
+            pass.set_pipeline(&self.reactive);
+            pass.set_bind_group(0, &targets.reactive_group, &[]);
+            pass.set_vertex_buffer(0, lit.vertices.slice(..));
+            for range in lit.admitted_ranges() {
+                pass.draw(range, 0..1);
             }
         }
         let write = targets.write;
@@ -1447,3 +1598,7 @@ fn color_pass<'a>(
         multiview_mask: None,
     })
 }
+
+#[cfg(test)]
+#[path = "temporal_reactive_tests.rs"]
+mod reactive_tests;

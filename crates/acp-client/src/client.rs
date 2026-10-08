@@ -326,6 +326,26 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Client<R, W> {
         .await
     }
 
+    /// `authenticate` with the agent's advertised method `method_id`.
+    ///
+    /// # Errors
+    /// See [`ClientError`]; an agent that is not signed in refuses.
+    pub async fn authenticate(
+        &mut self,
+        method_id: &str,
+        wait: Wait<'_>,
+        handler: &mut dyn Handler,
+    ) -> Result<(), ClientError> {
+        self.request(
+            method::AUTHENTICATE,
+            &json!({"methodId": method_id}),
+            wait,
+            handler,
+        )
+        .await
+        .map(|_| ())
+    }
+
     /// `session/new` in `cwd`, with no MCP servers and `meta` as the
     /// session's `_meta`.
     ///

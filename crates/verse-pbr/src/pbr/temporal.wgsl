@@ -14,6 +14,7 @@ struct Camera {
 @group(0) @binding(3) var scene_depth: DepthTexture;
 @group(0) @binding(4) var motion: texture_2d<f32>;
 @group(0) @binding(5) var linear_clamp: sampler;
+@group(0) @binding(6) var reactive_lit: texture_2d<f32>;
 
 @vertex fn vs(@builtin(vertex_index) index: u32) -> @builtin(position) vec4<f32> {
     let x = f32((index << 1u) & 2u);
@@ -32,6 +33,22 @@ fn rgb(value: vec3<f32>) -> vec3<f32> {
     return vec3<f32>(value.x + value.y - value.z, value.x + value.z, value.x - value.y - value.z);
 }
 
+// Match the clamped bilinear footprint, excluding taps with zero weight.
+fn reactive_history(uv: vec2<f32>) -> bool {
+    let coordinate = clamp(uv, vec2<f32>(0.0), vec2<f32>(1.0)) * camera.size.xy - vec2<f32>(0.5);
+    let first = vec2<i32>(floor(coordinate));
+    let fraction = fract(coordinate);
+    for (var y = 0; y < 2; y++) {
+        for (var x = 0; x < 2; x++) {
+            let weight = select(1.0 - fraction.x, fraction.x, x == 1) * select(1.0 - fraction.y, fraction.y, y == 1);
+            if weight > 0.0 && textureLoad(history, bounded(first + vec2<i32>(x, y)), 0).a < 0.0 {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 @fragment fn fs(@builtin(position) pixel: vec4<f32>) -> @location(0) vec4<f32> {
     let p = vec2<i32>(pixel.xy);
     let uv = pixel.xy * camera.size.zw;
@@ -47,7 +64,8 @@ fn rgb(value: vec3<f32>) -> vec3<f32> {
     var old_depth = min(abs(previous.w), 60000.0);
     // Empty streams use camera reprojection without reading stale object motion.
     var object = vec4<f32>(0.0);
-    if camera.settings.w > 0.5 {
+    let flags = u32(camera.settings.w);
+    if (flags & 1u) != 0u {
         object = textureLoad(motion, p, 0);
     }
     if object.w > 0.5 {
@@ -63,7 +81,12 @@ fn rgb(value: vec3<f32>) -> vec3<f32> {
     let sampled = textureSampleLevel(history, linear_clamp, clamp(old_uv, vec2<f32>(0.0), vec2<f32>(1.0)), 0.0);
     let old_p = bounded(vec2<i32>(old_uv * camera.size.xy));
     let retained_depth = textureLoad(history, old_p, 0).a;
-    if !(retained_depth > 0.0) || abs(retained_depth - old_depth) > max(0.04, old_depth * 0.005) {
+    // Explicitly marked geometry uses current color and cannot seed later history.
+    var reactive = false;
+    if (flags & 2u) != 0u {
+        reactive = textureLoad(reactive_lit, p, 0).r > 0.0;
+    }
+    if reactive || reactive_history(old_uv) || !(retained_depth > 0.0) || abs(retained_depth - old_depth) > max(0.04, old_depth * 0.005) {
         weight = 0.0;
     }
     var lower = ycocg(current);
@@ -86,5 +109,5 @@ fn rgb(value: vec3<f32>) -> vec3<f32> {
     // that neighborhood's range marks a new flash or transparent effect.
     let luma_change = max(abs(ycocg(current).x - ycocg(sampled.rgb).x) - (upper.x - lower.x), 0.0) / max(ycocg(current).x, 0.05);
     weight *= 1.0 - clamp(luma_change * 1.5, 0.0, 0.9);
-    return vec4<f32>(mix(current, conditioned, weight), view_depth);
+    return vec4<f32>(mix(current, conditioned, weight), select(view_depth, -view_depth, reactive));
 }

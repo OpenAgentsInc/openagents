@@ -486,10 +486,12 @@ pub async fn acp(
         let sandbox = codex_sandbox()?;
         return codex_cli(&program, task, cwd, sandbox, cancel, emit).await;
     }
+    let cursor = agent.id == "cursor";
     let admitted = std::env::var("OA_CODER_CLOUD_CREDENTIAL_NAMES").unwrap_or_default();
-    let environment = std::env::vars()
+    let environment: Vec<(String, String)> = std::env::vars()
         .filter(|(name, _)| {
             admitted.split(',').any(|allowed| allowed == name)
+                || (cursor && acp_client::cursor::CREDENTIAL_VARS.contains(&name.as_str()))
                 || !(name.ends_with("_API_KEY")
                     || name.ends_with("_TOKEN")
                     || name.ends_with("_SECRET"))
@@ -505,6 +507,9 @@ pub async fn acp(
         _ => agent.arguments.clone(),
     };
     let mode = agent.mode.clone().or_else(|| {
+        if cursor {
+            return Some(acp_client::cursor::Mode::Agent.id().to_owned());
+        }
         (agent.id == "devin-cli").then(|| {
             if crate::approval::gated() {
                 acp_client::devin::Permission::AcceptEdits
@@ -521,6 +526,9 @@ pub async fn acp(
     {
         arguments.insert(0, "--sandbox".into());
     }
+    if cursor {
+        cursor_signed_in(&program, &environment, cwd).await?;
+    }
     let opening = Opening {
         spec: acp_client::process::Spec {
             program,
@@ -531,10 +539,21 @@ pub async fn acp(
         resume: None,
         meta: None,
         mode,
+        authenticate: cursor.then(|| acp_client::cursor::AUTH_METHOD.to_owned()),
     };
-    let mut session = Session::open(&opening, &canceled)
-        .await
-        .map_err(|error| error.to_string())?;
+    let mut session =
+        Session::open(&opening, &canceled)
+            .await
+            .map_err(|failure| match &failure {
+                _ if cursor && failure.unauthenticated() => acp_client::cursor::SIGN_IN.to_owned(),
+                acp_client::Failure::Protocol {
+                    error: acp_client::ClientError::Silent { method, .. },
+                    ..
+                } if cursor && method == acp_client::wire::method::AUTHENTICATE => {
+                    acp_client::cursor::SILENT_SIGN_IN.to_owned()
+                }
+                _ => failure.to_string(),
+            })?;
     let id = session.id().to_owned();
     let model = session.opened.model().map(str::to_owned);
     if let Some(model) = &model {
@@ -557,6 +576,21 @@ pub async fn acp(
     let text = handler.text;
     let group_clear = session.close(Duration::from_secs(2)).await;
     result.map(|reply| json!({"session":id,"reply":text,"model":model,"stop_reason":reply.stop_reason.as_str(),"usage":reply.usage,"group_clear":group_clear})).map_err(|error| format!("ACP task failed: {error}; process group cleared: {group_clear}."))
+}
+
+/// Refuse a Cursor delegation that has neither a credential variable nor a
+/// stored login, before the agent starts.
+async fn cursor_signed_in(
+    program: &Path,
+    environment: &[(String, String)],
+    cwd: &Path,
+) -> Result<(), String> {
+    if !acp_client::cursor::has_credential(environment)
+        && acp_client::cursor::signed_in(program, environment, cwd).await == Some(false)
+    {
+        return Err(acp_client::cursor::SIGN_IN.into());
+    }
+    Ok(())
 }
 
 fn codex_failure_reason(ending: &supervise::Ending, error: Option<&str>, stderr: &str) -> String {
@@ -862,6 +896,25 @@ impl Handler for AcpEvents<'_> {
         })
     }
 
+    fn notification(&mut self, method: &str, params: &Value) {
+        if let Some(notice) = acp_client::cursor::Notice::parse(method, params) {
+            self.cursor_notice(notice, Value::Null);
+        }
+    }
+
+    fn reverse(
+        &mut self,
+        method: &str,
+        params: &Value,
+    ) -> Result<Value, acp_client::wire::RpcError> {
+        let answer = acp_client::cursor::answer(method, params)
+            .ok_or_else(|| acp_client::wire::RpcError::method_not_found(method))?;
+        if let Some(notice) = acp_client::cursor::Notice::parse(method, params) {
+            self.cursor_notice(notice, answer["outcome"].clone());
+        }
+        Ok(answer)
+    }
+
     fn update(&mut self, update: Update) {
         match update {
             Update::Usage(usage) if !usage.subagent => {
@@ -915,6 +968,58 @@ impl Handler for AcpEvents<'_> {
             }
             _ => {}
         }
+    }
+}
+
+impl AcpEvents<'_> {
+    /// Show one of Cursor's extension methods as a finished tool row, with
+    /// the client's `answer` when the agent waited on one.
+    fn cursor_notice(&mut self, notice: acp_client::cursor::Notice, answer: Value) {
+        use acp_client::cursor::Notice;
+        let todos = |todos: &[acp_client::cursor::Todo]| {
+            todos
+                .iter()
+                .map(|todo| json!({"content": bounded(&todo.content, 512), "status": todo.status}))
+                .collect::<Vec<_>>()
+        };
+        let (name, input) = match notice {
+            Notice::Question { title, prompts } => (
+                "Question",
+                json!({"title": title, "questions": prompts.iter().map(|p| bounded(p, 512)).collect::<Vec<_>>()}),
+            ),
+            Notice::Plan {
+                name,
+                overview,
+                plan,
+                todos: steps,
+            } => (
+                "Plan",
+                json!({"name": name, "overview": overview, "plan": bounded(&plan, TEXT_MAX), "todos": todos(&steps)}),
+            ),
+            Notice::Todos {
+                todos: entries,
+                merge,
+            } => ("Todos", json!({"todos": todos(&entries), "merge": merge})),
+            Notice::Task {
+                description,
+                subagent,
+                model,
+                duration_ms,
+            } => (
+                "Task",
+                json!({"description": bounded(&description, 512), "subagent": subagent, "model": model, "duration_ms": duration_ms}),
+            ),
+            Notice::Image { description, path } => (
+                "Image",
+                json!({"description": bounded(&description, 512), "path": path}),
+            ),
+        };
+        (self.emit)(RuntimeEvent::Tool {
+            name: name.into(),
+            input,
+            output: answer,
+            running: false,
+        });
     }
 }
 
@@ -2111,6 +2216,132 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
             .find(|frame| frame["id"] == "permission-1")
             .unwrap();
         assert_eq!(answer["result"]["outcome"]["optionId"], "allow");
+    }
+
+    /// A Cursor agent over a recorded `cursor-agent acp` session.
+    fn cursor_agent(program: PathBuf) -> AcpAgent {
+        let mut agent = agent(program);
+        agent.id = "cursor".into();
+        agent.name = "Cursor".into();
+        agent.arguments = acp_client::cursor::arguments();
+        agent
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn a_cursor_delegation_signs_in_runs_agent_mode_and_approves_its_command() {
+        let _gate_lock = crate::approval::test_lock().lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let program = acp_client::replay::script(
+            dir.path(),
+            &acp_client::replay::blocks(acp_client::replay::CURSOR_TURN),
+        );
+        let mut events = vec![];
+        let result = acp(
+            &cursor_agent(program),
+            "Run echo, then reply done.",
+            dir.path(),
+            None,
+            &Arc::new(AtomicBool::new(false)),
+            &mut |event| events.push(event),
+        )
+        .await
+        .unwrap();
+        assert!(result["reply"].as_str().unwrap().ends_with("done"));
+        assert_eq!(result["stop_reason"], "end_turn");
+        assert_eq!(result["model"], "grok-4.5[effort=high,fast=true]");
+        assert!(events.iter().any(|event| matches!(event,
+            RuntimeEvent::Tool { name, running: false, .. } if name == "`echo hi > probe.txt`")));
+        let sent = acp_client::replay::received(dir.path());
+        assert_eq!(sent[1]["method"], "authenticate");
+        assert_eq!(sent[1]["params"]["methodId"], "cursor_login");
+        assert_eq!(sent[3]["method"], "session/set_mode");
+        assert_eq!(sent[3]["params"]["modeId"], "agent");
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn a_cursor_plan_is_accepted_and_shown_in_the_rail() {
+        let _gate_lock = crate::approval::test_lock().lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let program = acp_client::replay::script(
+            dir.path(),
+            &acp_client::replay::blocks(acp_client::replay::CURSOR_PLAN),
+        );
+        let mut events = vec![];
+        let result = acp(
+            &cursor_agent(program),
+            "Plan a README.",
+            dir.path(),
+            None,
+            &Arc::new(AtomicBool::new(false)),
+            &mut |event| events.push(event),
+        )
+        .await
+        .unwrap();
+        assert_eq!(result["stop_reason"], "end_turn");
+        assert!(events.iter().any(|event| matches!(event,
+            RuntimeEvent::Tool { name, input, output, running: false }
+                if name == "Plan" && input["name"] == "Add folder README" && output["outcome"] == "accepted")));
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn a_signed_out_cursor_says_how_to_sign_in() {
+        let _gate_lock = crate::approval::test_lock().lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let program = acp_client::replay::script(
+            dir.path(),
+            &acp_client::replay::blocks(acp_client::replay::CURSOR_SIGNED_OUT),
+        );
+        let error = acp(
+            &cursor_agent(program),
+            "Say hi.",
+            dir.path(),
+            None,
+            &Arc::new(AtomicBool::new(false)),
+            &mut |_| {},
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(error, acp_client::cursor::SIGN_IN);
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn a_cursor_without_a_login_or_key_is_refused_before_it_starts() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let program = dir.path().join("cursor-agent");
+        std::fs::write(
+            &program,
+            "#!/bin/sh\nprintf '{\"isAuthenticated\":%s}' \"$SIGNED\"\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let env = |signed: &str, key: &str| {
+            vec![
+                ("PATH".to_owned(), "/bin:/usr/bin".to_owned()),
+                ("SIGNED".to_owned(), signed.to_owned()),
+                ("CURSOR_API_KEY".to_owned(), key.to_owned()),
+            ]
+        };
+        assert_eq!(
+            cursor_signed_in(&program, &env("false", ""), dir.path()).await,
+            Err(acp_client::cursor::SIGN_IN.into())
+        );
+        assert_eq!(
+            cursor_signed_in(&program, &env("true", ""), dir.path()).await,
+            Ok(())
+        );
+        assert_eq!(
+            cursor_signed_in(&program, &env("false", "key"), dir.path()).await,
+            Ok(())
+        );
+        assert_eq!(
+            cursor_signed_in(&dir.path().join("missing"), &env("", ""), dir.path()).await,
+            Ok(())
+        );
     }
 
     /// A devin-cli agent over the recorded Devin turn.

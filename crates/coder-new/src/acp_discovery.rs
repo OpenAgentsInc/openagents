@@ -18,6 +18,7 @@ pub const ENVIRONMENT: &[&str] = &[
     "GROK_BIN",
     "DEVIN_BIN",
     "OPENCODE_BIN",
+    "CURSOR_AGENT_BIN",
     "CODER_ACP_CWD",
     "CODER_ONE_CODEX_BIN",
 ];
@@ -114,9 +115,23 @@ pub fn discover(variable: &dyn Fn(&str) -> Option<OsString>) -> Vec<AcpAgent> {
         ),
         acp_client::opencode::arguments(),
     );
+    add(
+        "goose",
+        "Goose",
+        resolve(Path::new("goose"), variable),
+        vec!["acp".into()],
+    );
+    add(
+        "cursor",
+        "Cursor",
+        native_binary(
+            acp_client::cursor::BIN_VAR,
+            acp_client::cursor::binary,
+            variable,
+        ),
+        acp_client::cursor::arguments(),
+    );
     for (id, name, command) in [
-        ("goose", "Goose", "goose"),
-        ("cursor", "Cursor", "cursor-agent"),
         ("oh-my-pi", "Oh My Pi", "omp"),
         ("kimi", "Kimi Code", "kimi"),
     ] {

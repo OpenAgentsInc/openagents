@@ -394,6 +394,7 @@ mod tests {
             resume: None,
             meta: Some(json!({ crate::devin::ENGINE_META_KEY: "openagents-coder-engine" })),
             mode: None,
+            authenticate: None,
         }
     }
 

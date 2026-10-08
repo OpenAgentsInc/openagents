@@ -17,6 +17,7 @@
 //!   is empty.
 //! - [`session`]: start, hand-shake, open or reattach, set the mode, prompt,
 //!   and stop.
+//! - [`cursor`]: the Cursor CLI's specifics (`cursor-agent acp`).
 //! - [`devin`]: the Devin CLI's specifics (`devin acp`).
 //! - [`opencode`]: OpenCode's specifics (`opencode acp`).
 //! - [`grok`]: Grok Build's specifics (`grok agent stdio`).
@@ -27,6 +28,7 @@
 //! Coder repository and reimplemented here with typed payloads.
 
 pub mod client;
+pub mod cursor;
 pub mod devin;
 pub mod grok;
 pub mod opencode;
@@ -83,6 +85,7 @@ mod tests {
             resume: None,
             meta: Some(devin::engine_meta("openagents-coder-engine")),
             mode: Some(devin::Permission::Bypass.mode_id().into()),
+            authenticate: None,
         }
     }
 

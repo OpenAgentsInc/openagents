@@ -11,7 +11,7 @@ accents and cursors. Shared semantic CSS tokens preserve the native palette,
 including status colors and translucent control states. The game scenes retain
 their content colors. The interactive pages run scripts under a
 policy that allows its one same-site script and same-origin requests: the
-homepage's terminal (`static/ask.js`, requests to `/ask`), `/live`'s
+homepage composer (`static/chat.js`, form posts to `/chat`), `/live`'s
 map (`static/flow.js`, requests to `/api/flow/*`, drawn on a canvas in the
 application theme's colors), and `/everglade`'s loader (`static/everglade.js`),
 whose policy also allows `'wasm-unsafe-eval'` to compile the Everglade
@@ -90,20 +90,37 @@ the `Host` headers `127.0.0.1:4300` and `localhost:4300`.
 | `--cloud-config PRIVATE_JSON` | none | Explicit account-service origin, public origin, and protected CSRF key. Native user sessions and current workspace membership scope each request. |
 | `--cloud-hosts PRIVATE_JSON` | none | Protected account/workspace/epoch bindings to host-signed Observe grants, device keys, and exact host routes and generations. No host enrollment or task effect comes from sign-in. |
 | `--everglade DIRECTORY` | none | The Everglade web build (`scripts/build-everglade-web.sh`'s output, `everglade_web.js` and `everglade_web_bg.wasm`) with the pinned pack under `pack/`, served at `/everglade`. Without it, `/everglade` says Everglade is unavailable. |
-| `--pilot-config PRIVATE_JSON` | none | Explicit task root and create-only intake credential for `/pilot`. The pipeline owner provisions the capability separately. Without accepted terms, the proposed offer renders with intake unavailable. |
+| `--pilot-config PRIVATE_JSON` | none | Explicit task root and create-only intake credential. `/pilot` answers 404; POST intake stays available to the configured pipeline. |
 
 A development server needs no secrets and makes no network requests:
 everything it serves is compiled in or read from this repository.
+
+## Styles
+
+`static/site.css` styles the site. The homepage composer also uses
+Tailwind utilities with a `tw:` prefix, served from the checked-in
+`static/tailwind.css`. After you add or change a `tw:` class in `src/` or
+`static/*.js`, regenerate that file from the monorepo root and commit it:
+
+```sh
+scripts/build-web-tailwind.sh
+```
+
+The script downloads the pinned Tailwind CSS standalone CLI once, checks its
+SHA-256, and builds from `static/tailwind.input.css`. It needs no Node. The
+build has no preflight, so the site's own base rules stay in charge, and its
+colors map to the Coder Noir `--noir-*` variables.
 
 ## Pages
 
 | Route | Source | Development server |
 | --- | --- | --- |
-| `/` | What OpenAgents is, one `[ Download OpenAgents ]` link, and the **Ask OpenAgents** terminal | Renders. |
+| `/` | What OpenAgents is, one `[ Download OpenAgents ]` link, and a composer that starts `/chat/{uuid}` | Renders. |
+| `/chat`, `/chat/{uuid}` | In-memory chat started from the homepage composer | Renders in this process; a restart forgets the chat. |
 | `/download` | `src/pages/download.rs`: the notarized OpenAgents for Mac `.dmg` in `openagentsgemini-oa-updates`, OpenAgents Terminal's install commands, and one link to build everything else from source | Renders. |
-| `/pilot`, `/pilot/install` | `src/pilot.rs`: [Coder pilot v1](../../docs/sales/README.md#first-workflow-offer-v1), proposed USD 250 service terms, the selected source-built macOS arm64 installation path, and bounded private intake. General downloads do not qualify the pilot. No comparative or customer-result claims. | Renders proposed terms; intake is unavailable without owner configuration. |
+| `/pilot`, `/pilot/install` | Archived Coder-pilot offer copy in `src/pilot.rs` (`ARCHIVED_OFFER`, `ARCHIVED_INSTALL`) | `404`. |
 | `/install`, `/desktop` | Permanent redirect (`308`) to `/download`, so older links keep working | Redirects. |
-| `POST /ask` | The homepage terminal's questions (`src/ask.rs`, #10106): a NIP-CJ job to the OpenAgents chat worker through `relay.openagents.com`, surface `web`, signed with a key derived from the visitor's `oa_visitor` cookie and the server's secret (`OPENAGENTS_WEB_ASK_SALT`, random per process when unset). The worker answers about OpenAgents only and never offers Coder, a computer, a command, or a screen. One question at a time and 6 a minute per visitor, 32 waiting at once for everyone, besides the worker's quotas. Streams newline-delimited JSON | Answers from the live chat worker. |
+| `POST /ask` | Former homepage terminal questions (`src/ask.rs`, #10106): a NIP-CJ job to the OpenAgents chat worker through `relay.openagents.com`, surface `web`, signed with a key derived from the visitor's `oa_visitor` cookie and the server's secret (`OPENAGENTS_WEB_ASK_SALT`, random per process when unset). The worker answers about OpenAgents only and never offers Coder, a computer, a command, or a screen. One question at a time and 6 a minute per visitor, 32 waiting at once for everyone, besides the worker's quotas. Streams newline-delimited JSON | Answers from the live chat worker. |
 | `/docs`, `/docs/{slug}` | `content/docs/*.md`, short guides in reading order, compiled in: what OpenAgents is, download (`/docs/install` redirects to `/docs/download`), connecting a computer, chat, Coder, plugins (what they are, writing, testing, publishing and sharing), the Verse, the Grid (with its screenshot, `static/verse-grid.jpg`, captured from the live relay with `crates/verse/examples/overlook_capture.rs`), privacy and security, and help | Renders. |
 | `/live` | `src/pages/live.rs` and `static/flow.js` (#10197): the route map drawn from the pay host's flow snapshot, each streamed event animated as the desktop deck's `routes-live` scene does (white request out, gold payment back, gold share to the author, gold payout to the wallet, a ring for a bonus), a totals ticker, the last event's time, and the recent events. Reads `/api/flow/snapshot` and `/api/flow/stream` on this origin (#10195); never draws synthetic traffic. The mapping's tests are `static/flow.test.js` (`node --test`) | Says the flow stream is unreachable until `/api/flow/*` answers. |
 | `/everglade` | `src/pages/everglade.rs` and `static/everglade.js` (#10525): a canvas that fills the window, with no site header or footer and no page zoom, and a loader that imports the Everglade web build's glue (#10524) and calls its `init()`. `/everglade/{file}` serves the `.js` and `.wasm` files in the `--everglade` directory (five minutes' cache) and `/everglade/pack/{sha256}.vtp` the digest-named pack in its `pack/` (a year's immutable cache); nothing else on disk. Policy: same-origin scripts and requests and `'wasm-unsafe-eval'`. The Verse guide links it. The glue's file name is `GLUE` in `src/pages/everglade.rs` and must match the build script's output | Says Everglade is unavailable unless started with `--everglade DIR`. |
@@ -118,7 +135,7 @@ everything it serves is compiled in or read from this repository.
 | `/cloud/app/hosts/{binding}/tasks`, `/cloud/app/hosts/{binding}/tasks/{task}` | Bounded, signed resident task reads under current Observe authority; original ATIF messages, tools, child references, checks, cost, and source pins | Requires a separately provisioned host binding. It reads no local `/app` records. |
 | `/app`, `/app/tasks/{id}` | The local task store | Reads the store; local hosts only. |
 
-The header links Download, Docs, and Pilot; the footer links the terms and the
+The header links Download and Docs; the footer links the terms and the
 privacy policy. Cloud, Components, and Demo remain direct-link pages.
 
 The Forum, Gym, Traces, Earn, Weights, and QA sections of the old site are
