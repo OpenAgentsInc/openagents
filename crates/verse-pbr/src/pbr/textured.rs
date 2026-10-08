@@ -399,19 +399,9 @@ impl Level {
                 level,
                 ..
             } => {
-                let distance = (eye.x - anchor[0]).hypot(eye.z - anchor[1]);
-                let (low, high) = match level {
-                    0 => (f32::NEG_INFINITY, switches[0]),
-                    1 => (switches[0], switches[1]),
-                    2 => (switches[1], f32::INFINITY),
-                    _ => return false,
-                };
-                let margin = match was {
-                    None => 0.0,
-                    Some(true) => HYSTERESIS,
-                    Some(false) => -HYSTERESIS,
-                };
-                return distance >= low - margin && distance < high + margin;
+                // A group's history belongs to the shared selector, never to
+                // separate batches. Without it, choose the exact distance.
+                return DetailGroup { anchor, switches, fallback: 0 }.selected(eye,None)==level;
             }
         };
         let distance = (eye.x - anchor[0]).hypot(eye.z - anchor[1]);
@@ -465,6 +455,22 @@ pub struct DetailGroup {
     pub switches: [f32; 2],
     /// The original pieces: near (0), or a separate fallback (3).
     pub fallback: u8,
+}
+
+impl DetailGroup {
+    /// Chooses exactly one level, retaining the shared earlier level within
+    /// its hysteresis band. A teleport can cross both switches at once.
+    #[must_use]
+    pub fn selected(self, eye: Vec3, was: Option<u8>) -> u8 {
+        let distance = (eye.x-self.anchor[0]).hypot(eye.z-self.anchor[1]);
+        match was {
+            Some(0) if distance < self.switches[0]+HYSTERESIS => return 0,
+            Some(1) if distance >= self.switches[0]-HYSTERESIS && distance < self.switches[1]+HYSTERESIS => return 1,
+            Some(2) if distance >= self.switches[1]-HYSTERESIS => return 2,
+            _ => {}
+        }
+        if distance < self.switches[0] { 0 } else if distance < self.switches[1] { 1 } else { 2 }
+    }
 }
 
 /// Everything a zone's textured static geometry needs, in one value.
@@ -1708,19 +1714,23 @@ mod tests {
                 fallback: 0,
             })
             .collect();
-        let mut was = [None; 3];
+        let group = DetailGroup { anchor: [0.0;2], switches: [40.0,80.0], fallback: 0 };
+        let mut was = None;
         for distance in (0..1000)
             .map(|n| n as f32 / 10.0)
             .chain((0..1000).rev().map(|n| n as f32 / 10.0))
         {
             let eye = Vec3::new(0.0, 2.0, distance);
-            let mut selected = 0;
-            for (i, level) in levels.iter().enumerate() {
-                let now = level.near(eye, was[i]);
-                selected += usize::from(level.drawn(now));
-                was[i] = Some(now);
-            }
-            assert_eq!(selected, 1, "distance {distance}");
+            let selected = group.selected(eye,was);
+            assert_eq!(levels.iter().enumerate().filter(|(i,level)| level.drawn(*i==usize::from(selected))).count(),1,"distance {distance}");
+            was = Some(selected);
+        }
+        let mut was = None;
+        for (distance, expected) in [(10.0,0),(80.1,2),(39.9,0),(120.0,2),(40.1,1),(10.0,0),(79.9,1),(120.0,2),(39.9,0),(0.0,0),(80.0,2),(79.9,2),(37.4,0),(42.6,1),(82.6,2),(77.4,1),(37.4,0)] {
+            let selected = group.selected(Vec3::new(0.0,2.0,distance),was);
+            assert_eq!(selected,expected,"jump to {distance} from {was:?}");
+            assert_eq!(levels.iter().enumerate().filter(|(i,level)| level.drawn(*i==usize::from(selected))).count(),1);
+            was=Some(selected);
         }
         for (distance, selected) in [(10.0, 0), (50.0, 1), (120.0, 2)] {
             assert!(levels[selected].drawn_from(Vec3::new(0.0, 2.0, distance)));
