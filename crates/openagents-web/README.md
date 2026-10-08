@@ -90,6 +90,37 @@ Public deployments require the bucket and shared salt at startup.
 Production must retain CPU outside requests for background answer observation.
 The former `POST /ask` route returns `410` and links to the homepage.
 
+## Source and runtime selections
+
+The homepage and chat share repository, branch, and Environment controls.
+`GET /composer/{kind}` renders a bounded selector; `POST` updates signed,
+visitor-bound selection state and, for an existing chat, saves it with a
+generation precondition. Selection changes preserve the textarea. Each accepted
+message freezes its source and runtime pins; exact retries include those pins.
+
+Public source selection uses GitHub's public repository and branch endpoints
+at `api.github.com`, with the [versioned REST API](https://docs.github.com/en/rest/about-the-rest-api/api-versions)
+header `2026-03-10`, no credential, no redirects, a 512 KiB response bound, and
+at most 100 listed branches. A branch selection resolves its current 40-character
+commit. Metadata supplies question context and authorizes no repository commands.
+
+An authenticated native operator can choose admitted projects and base runtimes.
+The server rechecks the current account, workspace membership, grant, profile,
+and exact source before staging the existing reviewed Cloud request. A retained
+chat reference opens its actual native review or canonical job at `/chat/{uuid}`;
+the native journal owns confirmation, continuation, recovery, and original output.
+Frozen native references keep the chat private after a later selection change.
+Cloud session cookies cover the site, and the host guard refuses to forward them
+to the legacy upstream. Without configured native access, the selector explains
+availability and links to Cloud access. It starts no simulated job.
+
+**Context** opens source controls. **Model** explains the current web policy or
+native profile and links to runtime selection. **Voice input** reports its
+current availability; browser speech capture is not implemented. A base runtime
+does not establish a saved environment or an awake development server. See the
+[managed computer plan](../../docs/cloud/managed-computers.md) and
+[glossary](../../docs/glossary.md#cloud-computers-and-repository-environments).
+
 ## Run the component catalog
 
 From the monorepo root, use an external build directory and a scratch asset

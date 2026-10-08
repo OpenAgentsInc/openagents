@@ -145,6 +145,136 @@ async fn finished(fixture: &Fixture, id: &str) -> coder_cloud::Record {
     .await
     .expect("synthetic worker completes")
 }
+
+async fn composer_page(response: Response) -> Answer {
+    let status = response.status();
+    let headers = response.headers().clone();
+    let body = String::from_utf8(
+        to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .unwrap()
+            .to_vec(),
+    )
+    .unwrap();
+    Answer {
+        status,
+        headers,
+        body,
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn chat_composer_stages_review_and_continuation_over_the_original_native_job() {
+    use crate::chat_store::Selection;
+    use crate::cloud::composer;
+
+    let (fixture, native, cookies) = connected(true, true).await;
+    enroll(&fixture, &cookies).await;
+    let app = crate::App(Arc::new(crate::Inner {
+        config: fixture.config.clone(),
+    }));
+    let mut headers = HeaderMap::new();
+    headers.insert(header::HOST, HOST.parse().unwrap());
+    headers.insert(header::COOKIE, cookies.header().parse().unwrap());
+    headers.insert(header::ORIGIN, ORIGIN.parse().unwrap());
+    let choices = composer::choices(&app, &headers).await.unwrap();
+    assert_eq!(choices.len(), 1);
+    assert!(choices[0].available);
+    assert_eq!(choices[0].runtime.workspace, "checkout");
+    assert_eq!(choices[0].runtime.account, "alice");
+    assert_eq!(choices[0].runtime.members_epoch, 3);
+    assert_eq!(choices[0].size, "small");
+    let selected = Selection {
+        revision: 1,
+        repository: None,
+        runtime: Some(choices[0].runtime.clone()),
+    };
+    let runtime = selected.runtime.as_ref().unwrap();
+    composer::validate(&app, &headers, runtime).await.unwrap();
+    composer::authorize(&app, &headers, runtime).await.unwrap();
+    let prompt = "Exact chat-selected synthetic intent";
+    let retained = composer::stage(&app, &headers, "owner", "message", &selected, prompt, None)
+        .await
+        .unwrap();
+    assert!(jobs(&fixture).is_empty());
+    let packet = saved(&fixture, &retained.request)["pending"].clone();
+    assert_eq!(
+        composer::stage(&app, &headers, "owner", "message", &selected, prompt, None)
+            .await
+            .unwrap(),
+        retained
+    );
+    assert_eq!(saved(&fixture, &retained.request)["pending"], packet);
+    assert_eq!(
+        composer::stage(
+            &app, &headers, "owner", "message", &selected, "Changed", None
+        )
+        .await
+        .unwrap_err()
+        .status(),
+        StatusCode::CONFLICT
+    );
+    let review = composer_page(composer::view(&app, &headers, &retained).await).await;
+    expect(&review, StatusCode::OK);
+    assert!(review.body.contains("Exact reviewed operation"));
+    assert!(review.body.contains(prompt));
+    assert!(jobs(&fixture).is_empty());
+    let (confirm, input) = confirm_form(&fixture, &cookies, &retained.request).await;
+    expect(
+        &post(&fixture, &cookies, &confirm, &input).await,
+        StatusCode::OK,
+    );
+    let record = finished(&fixture, &retained.request).await;
+    assert_eq!(record.spec.task, prompt);
+    let job = composer_page(composer::view(&app, &headers, &retained).await).await;
+    expect(&job, StatusCode::OK);
+    assert!(job.body.contains("Original job projection"));
+    assert!(job.body.contains(&format!(
+        "method=\"post\" action=\"{CLOUD}/jobs/{}\"",
+        retained.request
+    )));
+    let continuation = composer::stage(
+        &app,
+        &headers,
+        "owner",
+        "follow-up",
+        &selected,
+        "Continue the same synthetic job",
+        Some(&retained),
+    )
+    .await
+    .unwrap();
+    assert_eq!(jobs(&fixture).len(), 1);
+    assert_eq!(
+        saved(&fixture, &continuation.request)["action"]["kind"],
+        "cloud.continue"
+    );
+    let continuation_review =
+        composer_page(composer::view(&app, &headers, &continuation).await).await;
+    expect(&continuation_review, StatusCode::OK);
+    assert!(
+        continuation_review
+            .body
+            .contains("Exact reviewed operation")
+    );
+    assert!(continuation_review.body.contains(&retained.request));
+    std::fs::write(
+        directory(&fixture).join("resident-checkout/operator.fixture"),
+        "Source drift\n",
+    )
+    .unwrap();
+    assert!(composer::validate(&app, &headers, runtime).await.is_err());
+    composer::authorize(&app, &headers, runtime).await.unwrap();
+    native.authority.revoke(&native.device, now()).unwrap();
+    assert!(matches!(
+        composer::authorize(&app, &headers, runtime)
+            .await
+            .unwrap_err()
+            .status(),
+        StatusCode::FORBIDDEN | StatusCode::SERVICE_UNAVAILABLE
+    ));
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn stage_is_inert_and_signed_confirm_reuses_original_job_and_packet_after_restart() {
     let (mut fixture, native, cookies) = connected(true, true).await;

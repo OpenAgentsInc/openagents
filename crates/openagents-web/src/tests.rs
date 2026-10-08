@@ -144,14 +144,24 @@ async fn every_public_page_answers_in_development() {
         assert_eq!(status, StatusCode::OK, "{uri}: {body}");
         let lower = body.to_ascii_lowercase();
         assert!(lower.starts_with("<!doctype html>"), "{uri}");
-        // The homepage composer and the live map (#10197) are the
-        // site's scripts.
+        // The composer loads HTMX, its SSE extension, and the Rust adapter.
+        // The live map loads its own single script.
         let script = uri == "/" || uri == "/live";
         assert_eq!(
             lower.matches("<script").count(),
-            usize::from(script),
+            if uri == "/" { 3 } else { usize::from(script) },
             "{uri} runs a script"
         );
+        if uri == "/" {
+            for asset in ["htmx.min.js", "htmx-sse.js", "chat-start.js"] {
+                assert!(
+                    body.contains(&format!("src=\"/static/{asset}\"")),
+                    "{asset}"
+                );
+            }
+            assert!(body.contains("&quot;allowEval&quot;:false"));
+            assert!(!body.contains("src=\"/static/chat.js\""));
+        }
         assert!(body.contains("href=\"/terms\""), "{uri} links the terms");
         assert!(body.contains("href=\"/privacy\""), "{uri} links the policy");
         assert!(body.contains("class=\"wordmark\""), "{uri} has the header");
@@ -159,7 +169,11 @@ async fn every_public_page_answers_in_development() {
         assert!(policy.starts_with("default-src 'none'"), "{uri}: {policy}");
         if script {
             assert!(policy.contains("script-src 'self'"), "{uri}: {policy}");
-            assert!(!policy.contains("unsafe"), "{uri}: {policy}");
+            assert!(!policy.contains("'unsafe-inline'"), "{uri}: {policy}");
+            assert!(!policy.contains("'unsafe-eval'"), "{uri}: {policy}");
+            if uri == "/" {
+                assert!(policy.contains("'wasm-unsafe-eval'"), "{uri}: {policy}");
+            }
         } else {
             assert!(!policy.contains("script-src"), "{uri}: {policy}");
         }
@@ -234,7 +248,9 @@ async fn the_homepage_links_one_download_page_and_starts_a_chat() {
     assert!(!home.contains("curl ") && !home.contains("irm "));
     assert!(home.contains("id=\"chat-input\""));
     assert!(home.contains("action=\"/chat\""));
-    assert!(home.contains("<script src=\"/static/chat.js\" defer></script>"));
+    assert!(home.contains("<script type=\"module\" src=\"/static/chat-start.js\"></script>"));
+    assert!(home.contains("<script src=\"/static/htmx.min.js\" defer></script>"));
+    assert!(home.contains("<script src=\"/static/htmx-sse.js\" defer></script>"));
     assert!(!home.contains("term-input") && !home.contains("/static/ask.js"));
     assert!(!home.contains("href=\"/pilot\""));
     assert!(!home.contains("<img"));
@@ -248,14 +264,15 @@ async fn the_homepage_links_one_download_page_and_starts_a_chat() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(headers[header::CONTENT_TYPE], "image/jpeg");
     assert!(image.starts_with(&[0xff, 0xd8, 0xff]), "a JPEG");
-    let (status, headers, script) = get_with(site, "/static/chat.js", LOCAL).await;
+    let (status, headers, script) = get_with(site, "/static/chat-start.js", LOCAL).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(
         headers[header::CONTENT_TYPE],
         "text/javascript; charset=utf-8"
     );
-    assert!(script.contains("chat-form"));
-    assert!(script.contains("requestSubmit"));
+    assert!(script.contains("import init, { start } from '/chat/assets/coder_chat_web.js'"));
+    assert!(script.contains("await init()") && script.contains("start()"));
+    assert!(!script.contains("innerHTML") && !script.contains("fetch("));
 }
 
 #[tokio::test]
@@ -293,8 +310,48 @@ async fn the_composer_card_is_styled_by_the_served_tailwind_utilities() {
 
 #[tokio::test]
 async fn posting_the_homepage_composer_opens_a_chat_page() {
+    struct OfflineChat;
+    impl ask::Chat for OfflineChat {
+        fn door(
+            &self,
+            _: secp256k1::SecretKey,
+        ) -> Result<Box<dyn openagents_chat::basic_coder::Door>, String> {
+            Err("The synthetic test chat has no network connection.".into())
+        }
+    }
     let root = tempfile::tempdir().unwrap();
-    let site = router(config(root.path().into()));
+    let mut configured = config(root.path().join("tasks"));
+    configured.chat = Arc::new(OfflineChat);
+    let site = router(configured);
+    let (_, home_headers, home) = get_with(site.clone(), "/", LOCAL).await;
+    let visitor = home_headers[header::SET_COOKIE]
+        .to_str()
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap();
+    let field = |name: &str| {
+        home.split_once(&format!("name=\"{name}\""))
+            .unwrap()
+            .1
+            .split('>')
+            .next()
+            .unwrap()
+            .split_once("value=\"")
+            .unwrap()
+            .1
+            .split('"')
+            .next()
+            .unwrap()
+    };
+    let input = url::form_urlencoded::Serializer::new(String::new())
+        .extend_pairs([
+            ("q", "Set up OpenAgents"),
+            ("request_id", field("request_id")),
+            ("csrf", field("csrf")),
+            ("selection", field("selection")),
+        ])
+        .finish();
     let response = site
         .clone()
         .oneshot(
@@ -302,8 +359,10 @@ async fn posting_the_homepage_composer_opens_a_chat_page() {
                 .method("POST")
                 .uri("/chat")
                 .header(header::HOST, LOCAL)
+                .header(header::COOKIE, visitor)
+                .header(header::ORIGIN, format!("http://{LOCAL}"))
                 .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
-                .body(Body::from("q=Set+up+OpenAgents"))
+                .body(Body::from(input))
                 .unwrap(),
         )
         .await
@@ -314,8 +373,21 @@ async fn posting_the_homepage_composer_opens_a_chat_page() {
         location.starts_with("/chat/") && location.len() == 42,
         "{location}"
     );
-    let (status, html) = get(site.clone(), location).await;
-    assert_eq!(status, StatusCode::OK);
+    let chat = site
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(location)
+                .header(header::HOST, LOCAL)
+                .header(header::COOKIE, visitor)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(chat.status(), StatusCode::OK);
+    let html =
+        String::from_utf8(to_bytes(chat.into_body(), 1 << 20).await.unwrap().to_vec()).unwrap();
     assert!(html.contains("Set up OpenAgents"));
     assert!(html.contains(&format!("action=\"{location}\"")));
     assert!(html.contains("<header class=\"site-header\">"));
@@ -1475,19 +1547,98 @@ async fn misplaced_cloud_credentials_never_proxy_on_unowned_paths() {
         "Bearer sess_synthetic_private",
         "bEaReR  sess_synthetic_private",
     ] {
-        let response = site
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .uri("/old-private-api")
-                    .header(header::HOST, "unknown.openagents.com")
-                    .header(header::AUTHORIZATION, authorization)
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        for path in [
+            "/old-private-api",
+            "/",
+            "/chat/00000000-0000-4000-8000-000000000000",
+        ] {
+            let response = site
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .uri(path)
+                        .header(header::HOST, "unknown.openagents.com")
+                        .header(header::AUTHORIZATION, authorization)
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::FORBIDDEN, "{path}");
+            assert_eq!(
+                response.headers()[header::CACHE_CONTROL],
+                "no-store, private"
+            );
+        }
+    }
+    assert_eq!(hits.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn cloud_cookies_reach_owned_pages_only_on_a_configured_host() {
+    use std::sync::atomic::Ordering;
+    let root = tempfile::tempdir().unwrap();
+    let (url, hits) = echo_upstream().await;
+    let site = router(proxying(root.path(), &url));
+    for cookie in [
+        "oa_cloud_session=sess_synthetic_private",
+        "oa_cloud_workspace=synthetic",
+        "oa_cloud_login=synthetic",
+        "oa_cloud_future=synthetic",
+        "oa_cloud_session=sess_synthetic_private; oa_cloud_workspace=synthetic; oa_cloud_login=synthetic",
+    ] {
+        for host in ["openagents.com", LOCAL, "localhost:4300"] {
+            for path in ["/", "/demo", "/static/chat-start.js", "/cloud"] {
+                let response = site
+                    .clone()
+                    .oneshot(
+                        Request::builder()
+                            .uri(path)
+                            .header(header::HOST, host)
+                            .header(header::COOKIE, cookie)
+                            .body(Body::empty())
+                            .unwrap(),
+                    )
+                    .await
+                    .unwrap();
+                assert_eq!(response.status(), StatusCode::OK, "{host}{path} {cookie}");
+            }
+        }
+        for (host, path) in [
+            ("openagents.com", "/old-private-api"),
+            (LOCAL, "/old-private-api"),
+            ("localhost:4300", "/old-private-api"),
+            ("unknown.openagents.com", "/old-private-api"),
+            ("unknown.openagents.com", "/"),
+            ("unknown.openagents.com", "/demo"),
+            ("unknown.openagents.com", "/cloud"),
+            (
+                "unknown.openagents.com",
+                "/chat/00000000-0000-4000-8000-000000000000",
+            ),
+        ] {
+            let response = site
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .uri(path)
+                        .header(header::HOST, host)
+                        .header(header::COOKIE, cookie)
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(
+                response.status(),
+                StatusCode::FORBIDDEN,
+                "{host}{path} {cookie}"
+            );
+            assert_eq!(
+                response.headers()[header::CACHE_CONTROL],
+                "no-store, private"
+            );
+        }
     }
     assert_eq!(hits.load(Ordering::SeqCst), 0);
 }

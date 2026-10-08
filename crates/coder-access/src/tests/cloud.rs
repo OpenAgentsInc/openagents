@@ -208,6 +208,96 @@ fn cloud_aliases_bounds_and_read_semantics_are_closed() {
 }
 
 #[test]
+fn cloud_profile_labels_decode_older_catalogs_without_inventing_a_size() {
+    let mut profile: crate::cloud::Profile = serde_json::from_value(serde_json::json!({
+        "name": "fixture",
+        "revision": format!("sha256:{}", "a".repeat(64)),
+        "source_revision": "b".repeat(40),
+        "source_digest": format!("sha256:{}", "c".repeat(64)),
+        "placement": "boat",
+        "pool": "fixture-pool",
+        "mode": "coder",
+        "executor": "codex",
+        "model": null,
+        "credential_names": [],
+        "max_timeout_seconds": 600,
+        "availability": "configured"
+    }))
+    .unwrap();
+    assert!(profile.validate().is_ok());
+    assert_eq!(profile.repository, None);
+    assert_eq!(profile.branch, None);
+    assert_eq!(profile.template, None);
+    assert_eq!(profile.size, "");
+    profile.repository = Some("OpenAgentsInc/openagents".into());
+    profile.branch = Some("codex/environment-setup".into());
+    profile.template = Some("oa-project-fixture-v1".into());
+    profile.size = "small".into();
+    assert!(profile.validate().is_ok());
+    let round_trip: crate::cloud::Profile =
+        serde_json::from_value(serde_json::to_value(&profile).unwrap()).unwrap();
+    assert_eq!(round_trip, profile);
+    profile.size = "a".repeat(129);
+    assert!(profile.validate().is_err());
+    profile.size = "small".into();
+    profile.template = Some("a".repeat(257));
+    assert!(profile.validate().is_err());
+}
+
+#[test]
+fn cloud_repository_and_branch_labels_are_bounded_and_cannot_override_submission() {
+    for value in ["OpenAgentsInc/openagents", "a/.github", "a/repo_name-v1.2"] {
+        assert!(crate::cloud::repository(value).is_ok(), "{value}");
+    }
+    for value in [
+        "https://github.com/a/b",
+        "a/b/c",
+        "a/..",
+        "a/.",
+        "a//b",
+        "-a/b",
+        "a--b/c",
+        "a/b?token=value",
+    ] {
+        assert!(crate::cloud::repository(value).is_err(), "{value}");
+    }
+    assert!(crate::cloud::repository(&format!("{}/b", "a".repeat(40))).is_err());
+    assert!(crate::cloud::repository(&format!("a/{}", "b".repeat(101))).is_err());
+    for value in ["main", "codex/environment-setup", "refs/heads/release-v1.2"] {
+        assert!(crate::cloud::branch(value).is_ok(), "{value}");
+    }
+    for value in [
+        "",
+        "-main",
+        "/main",
+        "main/",
+        "a//b",
+        "a/../b",
+        ".main",
+        "main.",
+        "main.lock",
+        "main@{1}",
+        "main\nother",
+    ] {
+        assert!(crate::cloud::branch(value).is_err(), "{value}");
+    }
+    assert!(crate::cloud::branch(&"a".repeat(257)).is_err());
+    let Operation::CloudSubmit { intent } = submit() else {
+        unreachable!();
+    };
+    for (name, value) in [
+        ("repository", "a/b"),
+        ("branch", "other"),
+        ("template", "other"),
+        ("size", "large"),
+    ] {
+        let mut encoded = serde_json::to_value(&intent).unwrap();
+        encoded[name] = value.into();
+        assert!(serde_json::from_value::<crate::cloud::Submit>(encoded).is_err());
+    }
+}
+
+#[test]
 fn cloud_original_replies_bound_encoded_bytes_and_exact_requested_limits() {
     use base64::Engine;
     let scope = crate::cloud::Scope {

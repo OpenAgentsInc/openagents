@@ -411,7 +411,7 @@ async fn enrollment_removal_invalidates_the_private_control_projection() {
     enroll(&fixture, &cookies).await;
     let page = get_page(&fixture, &cookies, CREATE).await;
     expect(&page, StatusCode::OK);
-    assert!(page.body.contains("id=\"cloud-private\" hidden"));
+    private_mount(&page.body);
     let descriptor = resource_descriptor(&page.body);
     let endpoint = descriptor["endpoint"].as_str().unwrap();
     expect(

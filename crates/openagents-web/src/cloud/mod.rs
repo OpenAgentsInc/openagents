@@ -1,6 +1,7 @@
 //! Same-origin Cloud pages over current native account authority. The public
 //! site, local task browser, and separately granted services remain distinct.
 
+pub(crate) mod composer;
 mod controls;
 mod effects;
 pub mod hosts;
@@ -222,8 +223,16 @@ async fn sign_in(State(app): State<App>, headers: HeaderMap) -> Response {
         Ok(value) => value,
         Err(response) => return response,
     };
-    if service.authenticate(&headers).await.is_ok() {
-        return protect(Redirect::to("/cloud/app").into_response());
+    if let Ok(viewer) = service.authenticate(&headers).await {
+        let cookies = match service.refresh_cookies(&headers, &viewer) {
+            Ok(value) => value,
+            Err(error) => return refused(error),
+        };
+        let mut response = protect(Redirect::to("/cloud/app").into_response());
+        for cookie in cookies {
+            response.headers_mut().append(header::SET_COOKIE, cookie);
+        }
+        return response;
     }
     let csrf = match service.login_csrf(&headers, "sign-in", "") {
         Ok(value) => value,
@@ -237,6 +246,9 @@ async fn sign_in(State(app): State<App>, headers: HeaderMap) -> Response {
         "<h1>Sign in to your workspace</h1><p>Use an existing native account API key. The selected account service issues a revocable session. This form creates no computer, execution, sales, or spending grant.</p><form method=\"post\" action=\"/cloud/sign-in\">{}{field}<p><button type=\"submit\">Sign in</button></p></form><p class=\"dim\">Account creation and recovery remain with the native account owner. After recovery or key rotation, sign in with the new key.</p>",
         ticket(&csrf.token)
     ));
+    for cookie in csrf.legacy_cookies {
+        response.headers_mut().append(header::SET_COOKIE, cookie);
+    }
     if let Some(cookie) = csrf.cookie {
         response.headers_mut().append(header::SET_COOKIE, cookie);
     }
@@ -316,9 +328,11 @@ async fn select_workspace(
         return refused(error);
     }
     let mut response = protect(Redirect::to("/cloud/app").into_response());
-    match service.workspace_cookie(&form.workspace) {
-        Ok(cookie) => {
-            response.headers_mut().append(header::SET_COOKIE, cookie);
+    match service.workspace_cookies(&form.workspace) {
+        Ok(cookies) => {
+            for cookie in cookies {
+                response.headers_mut().append(header::SET_COOKIE, cookie);
+            }
         }
         Err(error) => return refused(error),
     }

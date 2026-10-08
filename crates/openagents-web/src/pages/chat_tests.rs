@@ -1,0 +1,468 @@
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+use axum::body::{Body, to_bytes};
+use axum::http::{Method, Request as HttpRequest};
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+use tower::ServiceExt;
+
+use super::*;
+use crate::chat_store::{RepositorySource, RuntimeSelection};
+
+const OWNER: &str = "0123456789abcdef0123456789abcdef";
+const OTHER_OWNER: &str = "abcdef0123456789abcdef0123456789";
+const CHAT: &str = "12345678-1234-4234-8234-123456789abc";
+const NEXT: &str = "22345678-1234-4234-8234-123456789abc";
+const TEXT: &str = "Explain this repository";
+const HOST: &str = "127.0.0.1:4300";
+
+struct NoWorker(Arc<AtomicUsize>);
+
+impl crate::ask::Chat for NoWorker {
+    fn door(&self, _: secp256k1::SecretKey) -> Result<Box<dyn basic_coder::Door>, String> {
+        self.0.fetch_add(1, Ordering::SeqCst);
+        Err("This offline fixture cannot contact a worker.".into())
+    }
+}
+
+struct Fixture {
+    _directory: tempfile::TempDir,
+    app: App,
+    router: Router,
+    worker_calls: Arc<AtomicUsize>,
+}
+
+impl Fixture {
+    fn new() -> Self {
+        // Build leases supply scratch; standalone tests still use isolated storage.
+        let directory = match std::env::var_os("OPENAGENTS_SCRATCH") {
+            Some(root) => tempfile::Builder::new()
+                .prefix("web-composer-tests-")
+                .tempdir_in(root)
+                .unwrap(),
+            None => tempfile::tempdir().unwrap(),
+        };
+        let worker_calls = Arc::new(AtomicUsize::new(0));
+        let mut config = crate::Config::development(directory.path().join("tasks"));
+        config.ask_salt = [11; 32];
+        config.chat = Arc::new(NoWorker(worker_calls.clone()));
+        let app = App(Arc::new(crate::Inner {
+            config: config.clone(),
+        }));
+        Self {
+            _directory: directory,
+            app,
+            router: crate::router(config),
+            worker_calls,
+        }
+    }
+
+    async fn record(&self, selection: Option<Selection>) -> Loaded {
+        self.app
+            .config
+            .chat_store
+            .create(&Conversation {
+                id: CHAT.into(),
+                owner: OWNER.into(),
+                revision: 1,
+                title: "Existing conversation".into(),
+                messages: vec![
+                    Message {
+                        role: Role::User,
+                        text: TEXT.into(),
+                        request_id: Some(CHAT.into()),
+                    },
+                    Message {
+                        role: Role::Assistant,
+                        text: "Retained answer".into(),
+                        request_id: Some(CHAT.into()),
+                    },
+                ],
+                pending: None,
+                requests: vec![Request {
+                    id: CHAT.into(),
+                    digest: request_digest(TEXT, selection.as_ref()),
+                    outcome: Outcome::Answered,
+                    selection: selection.clone(),
+                    cloud: None,
+                }],
+                selection,
+                updated_unix: 1,
+            })
+            .await
+            .unwrap()
+    }
+
+    async fn read(&self) -> Loaded {
+        self.app
+            .config
+            .chat_store
+            .load(OWNER, CHAT)
+            .await
+            .unwrap()
+            .unwrap()
+    }
+
+    async fn request(
+        &self,
+        method: Method,
+        uri: &str,
+        owner: &str,
+        fields: &[(&str, &str)],
+    ) -> (StatusCode, String) {
+        let mut builder = HttpRequest::builder()
+            .method(method.clone())
+            .uri(uri)
+            .header(header::HOST, HOST)
+            .header(header::COOKIE, format!("oa_visitor={owner}"))
+            .header("HX-Request", "true");
+        let body = if method == Method::POST {
+            builder = builder
+                .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+                .header(header::ORIGIN, format!("http://{HOST}"))
+                .header("Sec-Fetch-Site", "same-origin");
+            Body::from(form(fields))
+        } else {
+            Body::empty()
+        };
+        let response = self
+            .router
+            .clone()
+            .oneshot(builder.body(body).unwrap())
+            .await
+            .unwrap();
+        let status = response.status();
+        let bytes = to_bytes(response.into_body(), 2 * 1024 * 1024)
+            .await
+            .unwrap();
+        (status, String::from_utf8(bytes.to_vec()).unwrap())
+    }
+
+    fn no_worker(&self) {
+        assert_eq!(self.worker_calls.load(Ordering::SeqCst), 0);
+    }
+}
+
+fn form(fields: &[(&str, &str)]) -> String {
+    let mut serializer = url::form_urlencoded::Serializer::new(String::new());
+    serializer.extend_pairs(fields.iter().copied());
+    serializer.finish()
+}
+
+fn source() -> Selection {
+    Selection {
+        revision: 1,
+        repository: Some(RepositorySource {
+            repository: "OpenAgentsInc/openagents".into(),
+            branch: "main".into(),
+            revision: "a".repeat(40),
+        }),
+        runtime: None,
+    }
+}
+
+fn native() -> Selection {
+    let mut selection = source();
+    selection.runtime = Some(RuntimeSelection {
+        binding: "fixture-host".into(),
+        account: "fixture-account".into(),
+        workspace: "fixture-workspace".into(),
+        members_epoch: 7,
+        project: "openagents".into(),
+        profile: "boat-codex".into(),
+        profile_revision: format!("sha256:{}", "b".repeat(64)),
+        source_revision: "a".repeat(40),
+        source_digest: format!("sha256:{}", "c".repeat(64)),
+        placement: "boat".into(),
+        executor: "codex".into(),
+        model: Some("synthetic".into()),
+        max_timeout_seconds: 300,
+    });
+    selection
+}
+
+#[tokio::test]
+async fn selector_csrf_refusal_preserves_the_conversation() {
+    let fixture = Fixture::new();
+    let initial = fixture.record(Some(source())).await;
+    let token = crate::composer::seal(&fixture.app, OWNER, &source());
+    let (status, _) = fixture
+        .request(
+            Method::POST,
+            "/composer/repository",
+            OWNER,
+            &[
+                ("selection", &token),
+                ("csrf", "changed"),
+                ("chat", CHAT),
+                ("value", "none"),
+            ],
+        )
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let retained = fixture.read().await;
+    assert_eq!(retained.generation, initial.generation);
+    assert_eq!(retained.conversation.selection, Some(source()));
+    fixture.no_worker();
+}
+
+#[tokio::test]
+async fn selection_changes_freeze_accepted_sources_and_reject_stale_followups() {
+    let fixture = Fixture::new();
+    let initial = fixture.record(Some(source())).await;
+    let old_token = crate::composer::seal(&fixture.app, OWNER, &source());
+    let csrf = csrf(&fixture.app, OWNER);
+    let (status, body) = fixture
+        .request(
+            Method::POST,
+            "/composer/repository",
+            OWNER,
+            &[
+                ("selection", &old_token),
+                ("csrf", &csrf),
+                ("chat", CHAT),
+                ("value", "none"),
+            ],
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body.matches("id=\"composer-state\"").count(), 1);
+    assert_eq!(body.matches("id=\"composer-controls\"").count(), 1);
+    assert!(body.contains("hx-swap-oob=\"outerHTML\""));
+    assert!(!body.contains("<textarea") && !body.contains("id=\"chat-form\""));
+    let retained = fixture.read().await;
+    assert_eq!(retained.conversation.revision, 2);
+    assert_eq!(
+        retained.conversation.selection,
+        Some(Selection {
+            revision: 2,
+            repository: None,
+            runtime: None,
+        })
+    );
+    assert_eq!(retained.conversation.requests.len(), 1);
+    assert_eq!(retained.conversation.requests[0].selection, Some(source()));
+    assert_eq!(
+        retained.conversation.requests[0].digest,
+        initial.conversation.requests[0].digest
+    );
+    assert_eq!(retained.conversation.messages.len(), 2);
+    let (status, body) = fixture
+        .request(
+            Method::POST,
+            &format!("/chat/{CHAT}"),
+            OWNER,
+            &[
+                ("q", "Another question"),
+                ("request_id", NEXT),
+                ("csrf", &csrf),
+                ("selection", &old_token),
+            ],
+        )
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    assert_eq!(fixture.read().await.generation, retained.generation);
+    fixture.no_worker();
+}
+
+#[tokio::test]
+async fn changed_and_other_browser_source_tickets_cannot_create_chats() {
+    let fixture = Fixture::new();
+    let token = crate::composer::seal(&fixture.app, OWNER, &source());
+    let (payload, tag) = token.split_once('.').unwrap();
+    let mut value: serde_json::Value =
+        serde_json::from_slice(&URL_SAFE_NO_PAD.decode(payload).unwrap()).unwrap();
+    value["repository"]["branch"] = serde_json::json!("other");
+    let changed = format!(
+        "{}.{}",
+        URL_SAFE_NO_PAD.encode(serde_json::to_vec(&value).unwrap()),
+        tag
+    );
+    for (owner, ticket) in [(OWNER, &changed), (OTHER_OWNER, &token)] {
+        let csrf = csrf(&fixture.app, owner);
+        let (status, body) = fixture
+            .request(
+                Method::POST,
+                "/chat",
+                owner,
+                &[
+                    ("q", TEXT),
+                    ("request_id", CHAT),
+                    ("csrf", &csrf),
+                    ("selection", ticket),
+                ],
+            )
+            .await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+        assert!(
+            fixture
+                .app
+                .config
+                .chat_store
+                .load(owner, CHAT)
+                .await
+                .unwrap()
+                .is_none()
+        );
+    }
+    fixture.no_worker();
+}
+
+#[tokio::test]
+async fn unconfigured_native_selection_cannot_stage_or_dispatch_work() {
+    let fixture = Fixture::new();
+    let token = crate::composer::seal(&fixture.app, OWNER, &native());
+    let csrf = csrf(&fixture.app, OWNER);
+    let (status, body) = fixture
+        .request(
+            Method::POST,
+            "/chat",
+            OWNER,
+            &[
+                ("q", "Build this repository"),
+                ("request_id", CHAT),
+                ("csrf", &csrf),
+                ("selection", &token),
+            ],
+        )
+        .await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{body}");
+    assert!(
+        fixture
+            .app
+            .config
+            .chat_store
+            .load(OWNER, CHAT)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let default_token = crate::composer::seal(&fixture.app, OWNER, &Selection::default());
+    let (status, body) = fixture
+        .request(
+            Method::GET,
+            &format!(
+                "/composer/environment?{}",
+                form(&[("selection", &default_token)])
+            ),
+            OWNER,
+            &[],
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body.contains("No execution runtime is admitted"));
+    assert!(body.contains("href=\"/cloud/app\""));
+    fixture.no_worker();
+}
+
+#[tokio::test]
+async fn retained_native_source_requires_fresh_authority_without_a_cloud_request() {
+    let fixture = Fixture::new();
+    let mut selected = native();
+    selected.repository.as_mut().unwrap().repository = "fixture-owner/private-fixture".into();
+    let retained = fixture.record(Some(selected.clone())).await;
+    let token = crate::composer::seal(&fixture.app, OWNER, &selected);
+    let csrf = csrf(&fixture.app, OWNER);
+    for uri in [
+        format!("/chat/{CHAT}"),
+        format!("/chat/{CHAT}/transcript"),
+        format!("/composer/context?{}", form(&[("selection", &token)])),
+    ] {
+        let (status, body) = fixture.request(Method::GET, &uri, OWNER, &[]).await;
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{body}");
+        assert!(!body.contains("fixture-owner/private-fixture"), "{body}");
+    }
+    let (status, body) = fixture
+        .request(
+            Method::POST,
+            "/composer/environment",
+            OWNER,
+            &[
+                ("selection", &token),
+                ("csrf", &csrf),
+                ("chat", CHAT),
+                ("value", "none"),
+            ],
+        )
+        .await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{body}");
+    assert!(!body.contains("fixture-owner/private-fixture"), "{body}");
+    assert_eq!(fixture.read().await.generation, retained.generation);
+    fixture.no_worker();
+}
+
+#[tokio::test]
+async fn legacy_request_replay_does_not_dispatch_another_answer() {
+    let fixture = Fixture::new();
+    let retained = fixture.record(None).await;
+    assert_eq!(retained.conversation.requests[0].digest, digest(TEXT));
+    let csrf = csrf(&fixture.app, OWNER);
+    let (status, body) = fixture
+        .request(
+            Method::POST,
+            &format!("/chat/{CHAT}"),
+            OWNER,
+            &[("q", TEXT), ("request_id", CHAT), ("csrf", &csrf)],
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body.contains("id=\"chat-ticket\""));
+    assert_eq!(fixture.read().await.generation, retained.generation);
+    fixture.no_worker();
+}
+
+#[tokio::test]
+async fn chat_and_information_panels_render_semantic_controls() {
+    let fixture = Fixture::new();
+    fixture.record(Some(source())).await;
+    let token = crate::composer::seal(&fixture.app, OWNER, &source());
+    let (status, body) = fixture
+        .request(Method::GET, &format!("/chat/{CHAT}"), OWNER, &[])
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    for id in [
+        "chat-form",
+        "chat-input",
+        "composer-controls",
+        "composer-state",
+        "composer-panel",
+    ] {
+        assert_eq!(body.matches(&format!("id=\"{id}\"")).count(), 1, "{id}");
+    }
+    for kind in [
+        "repository",
+        "branch",
+        "environment",
+        "context",
+        "model",
+        "voice",
+    ] {
+        assert!(
+            body.contains(&format!("hx-get=\"/composer/{kind}\"")),
+            "{kind}"
+        );
+    }
+    assert!(body.contains("/static/chat-start.js"));
+    for retired in ["OriginalText", "/components/assets/", "coder_web.js"] {
+        assert!(!body.contains(retired), "{retired}");
+    }
+    for (kind, expected) in [
+        ("context", "OpenAgentsInc/openagents"),
+        ("model", "managed Web answer service"),
+        ("voice", "Voice input is not available"),
+    ] {
+        let (status, body) = fixture
+            .request(
+                Method::GET,
+                &format!(
+                    "/composer/{kind}?{}",
+                    form(&[("selection", &token), ("chat", CHAT)])
+                ),
+                OWNER,
+                &[],
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert!(body.contains(expected), "{body}");
+    }
+    fixture.no_worker();
+}

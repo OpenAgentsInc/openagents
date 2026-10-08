@@ -1010,7 +1010,7 @@ async fn stage_publication(
     staged(&context, &headers, &form.request, operation).await
 }
 
-async fn request(
+pub(super) async fn request(
     State(app): State<App>,
     headers: HeaderMap,
     Path((id, request)): Path<(String, String)>,
@@ -1040,7 +1040,7 @@ async fn request(
     receipt_page(&context, &headers, &snapshot)
 }
 
-async fn recover_request(
+pub(super) async fn recover_request(
     context: &Context<'_>,
     headers: &HeaderMap,
     snapshot: Snapshot,

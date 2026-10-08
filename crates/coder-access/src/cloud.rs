@@ -41,6 +41,17 @@ pub struct Profile {
     pub revision: String,
     pub source_revision: String,
     pub source_digest: String,
+    /// The admitted GitHub repository label, without a URL.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repository: Option<String>,
+    /// A display reference. Execution uses the pinned source revision.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub branch: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub template: Option<String>,
+    /// Empty when an earlier host did not report its configured size.
+    #[serde(default)]
+    pub size: String,
     pub placement: String,
     pub pool: String,
     pub mode: String,
@@ -282,6 +293,47 @@ pub fn alias(v: &str) -> Result<()> {
     }
     Ok(())
 }
+/// Validate a GitHub repository label in `owner/repository` form.
+pub fn repository(v: &str) -> Result<()> {
+    let Some((owner, name)) = v.split_once('/') else {
+        return fail(Code::Malformed, "The GitHub repository label is invalid.");
+    };
+    if owner.is_empty()
+        || owner.len() > 39
+        || owner.starts_with('-')
+        || owner.ends_with('-')
+        || owner.contains("--")
+        || !owner
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-')
+        || name.is_empty()
+        || name.len() > 100
+        || matches!(name, "." | "..")
+        || !name
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
+    {
+        return fail(Code::Malformed, "The GitHub repository label is invalid.");
+    }
+    Ok(())
+}
+/// Validate a bounded Git reference label without resolving it.
+pub fn branch(v: &str) -> Result<()> {
+    if v.is_empty()
+        || v.len() > 256
+        || v.starts_with('-')
+        || v.ends_with('.')
+        || v.contains("..")
+        || !v
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"._/-".contains(&b))
+        || v.split('/')
+            .any(|part| part.is_empty() || part.starts_with('.') || part.ends_with(".lock"))
+    {
+        return fail(Code::Malformed, "The Git reference label is invalid.");
+    }
+    Ok(())
+}
 pub fn digest(v: &str) -> Result<()> {
     if !v.strip_prefix("sha256:").is_some_and(|v| {
         v.len() == 64
@@ -310,6 +362,16 @@ impl Profile {
         digest(&self.revision)?;
         text(&self.source_revision, 128, false)?;
         digest(&self.source_digest)?;
+        if let Some(v) = &self.repository {
+            repository(v)?;
+        }
+        if let Some(v) = &self.branch {
+            branch(v)?;
+        }
+        if let Some(v) = &self.template {
+            text(v, 256, false)?;
+        }
+        text(&self.size, 128, true)?;
         for v in [
             &self.placement,
             &self.pool,

@@ -356,6 +356,29 @@ fn private(answer: &Answer) {
     assert!(!answer.body.contains(&credential("alice")));
 }
 
+fn migrated_cookie<'a>(answer: &'a Answer, name: &str) -> &'a str {
+    let values: Vec<&str> = answer
+        .headers
+        .get_all(header::SET_COOKIE)
+        .iter()
+        .map(|value| value.to_str().unwrap())
+        .filter(|value| value.starts_with(&format!("{name}=")))
+        .collect();
+    assert_eq!(values.len(), 2);
+    let legacy = values
+        .iter()
+        .find(|value| value.contains("; Path=/cloud;"))
+        .unwrap();
+    assert!(legacy.starts_with(&format!("{name}=;")));
+    assert!(legacy.contains("; Max-Age=0"));
+    let root = values
+        .into_iter()
+        .find(|value| value.contains("; Path=/;"))
+        .unwrap();
+    assert!(root.contains("HttpOnly; SameSite=Strict"));
+    root
+}
+
 async fn login(fixture: &Fixture, account: &str) -> Cookies {
     let mut cookies = Cookies::default();
     let page = request(
@@ -369,9 +392,9 @@ async fn login(fixture: &Fixture, account: &str) -> Cookies {
     .await;
     assert_eq!(page.status, StatusCode::OK);
     private(&page);
-    let nonce = page.headers[header::SET_COOKIE].to_str().unwrap();
+    let nonce = migrated_cookie(&page, "oa_cloud_login");
     assert!(nonce.contains("HttpOnly; SameSite=Strict"));
-    assert!(nonce.contains("Path=/cloud"));
+    assert!(nonce.contains("; Path=/;"));
     cookies.apply(&page);
     let csrf = field(&page.body, "csrf");
     let input = form(&[("credential", &credential(account)), ("csrf", &csrf)]);
@@ -387,10 +410,85 @@ async fn login(fixture: &Fixture, account: &str) -> Cookies {
     assert_eq!(answer.status, StatusCode::SEE_OTHER, "{}", answer.body);
     private(&answer);
     assert_eq!(answer.headers[header::LOCATION], "/cloud/app");
+    for name in ["oa_cloud_session", "oa_cloud_workspace", "oa_cloud_login"] {
+        migrated_cookie(&answer, name);
+    }
     cookies.apply(&answer);
     assert!(!cookies.0.contains_key("oa_cloud_login"));
     assert_eq!(cookies.0["oa_cloud_session"], token(account));
     cookies
+}
+
+#[tokio::test]
+async fn existing_cloud_session_migrates_to_root_without_another_sign_in() {
+    let fixture = fixture().await;
+    let mut cookies = Cookies::default();
+    cookies.0.insert("oa_cloud_session".into(), token("alice"));
+    cookies
+        .0
+        .insert("oa_cloud_workspace".into(), "alice-personal".into());
+    let response = request(
+        &fixture.site,
+        Method::GET,
+        "/cloud/sign-in",
+        &cookies,
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(response.status, StatusCode::SEE_OTHER);
+    private(&response);
+    assert!(
+        migrated_cookie(&response, "oa_cloud_session")
+            .starts_with(&format!("oa_cloud_session={};", token("alice")))
+    );
+    assert!(
+        migrated_cookie(&response, "oa_cloud_workspace")
+            .starts_with("oa_cloud_workspace=alice-personal;")
+    );
+    assert!(migrated_cookie(&response, "oa_cloud_login").contains("; Max-Age=0"));
+    cookies.apply(&response);
+    assert_eq!(cookies.0["oa_cloud_session"], token("alice"));
+    assert_eq!(cookies.0["oa_cloud_workspace"], "alice-personal");
+    assert_eq!(fixture.state.lock().unwrap().signins, 0);
+}
+
+#[tokio::test]
+async fn legacy_login_nonce_is_reissued_at_root_before_submission() {
+    let fixture = fixture().await;
+    let mut cookies = Cookies::default();
+    cookies.0.insert("oa_cloud_login".into(), "c".repeat(64));
+    let page = request(
+        &fixture.site,
+        Method::GET,
+        "/cloud/sign-in",
+        &cookies,
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(page.status, StatusCode::OK);
+    assert!(
+        migrated_cookie(&page, "oa_cloud_login")
+            .starts_with(&format!("oa_cloud_login={};", "c".repeat(64)))
+    );
+    cookies.apply(&page);
+    let csrf = field(&page.body, "csrf");
+    let input = form(&[("credential", &credential("alice")), ("csrf", &csrf)]);
+    let response = request(
+        &fixture.site,
+        Method::POST,
+        "/cloud/sign-in",
+        &cookies,
+        Some(&input),
+        Some(ORIGIN),
+    )
+    .await;
+    assert_eq!(response.status, StatusCode::SEE_OTHER);
+    migrated_cookie(&response, "oa_cloud_session");
+    cookies.apply(&response);
+    assert_eq!(cookies.0["oa_cloud_session"], token("alice"));
+    assert!(!cookies.0.contains_key("oa_cloud_login"));
 }
 
 struct Resident {
@@ -590,11 +688,30 @@ async fn resident_with_services(
     }
 }
 
+fn opening_tag<'a>(body: &'a str, id: &str) -> &'a str {
+    let position = body
+        .find(&format!("id=\"{id}\""))
+        .unwrap_or_else(|| panic!("The admitted page is missing {id}."));
+    let start = body[..position].rfind('<').unwrap();
+    let end = position + body[position..].find('>').unwrap() + 1;
+    &body[start..end]
+}
+
+fn private_mount(body: &str) {
+    let tag = opening_tag(body, "cloud-private");
+    assert!(tag.starts_with("<div "));
+    assert!(tag.contains(" hidden>") || tag.contains(" hidden "));
+    assert!(tag.contains(" hx-history=\"false\""));
+}
+
 fn resource_descriptor(body: &str) -> Value {
+    let tag = opening_tag(body, "cloud-resource-standing");
+    assert!(tag.starts_with("<pre "));
+    assert!(tag.contains(" hidden>") || tag.contains(" hidden "));
     let start = body
-        .split("<pre id=\"cloud-resource-standing\" hidden>")
-        .nth(1)
+        .split_once(tag)
         .unwrap()
+        .1
         .split("</pre>")
         .next()
         .unwrap();
@@ -625,7 +742,7 @@ async fn resident_reads_are_native_scoped_and_clear_after_native_revocation() {
     assert_eq!(list.status, StatusCode::OK, "{}", list.body);
     private(&list);
     assert!(list.body.contains("Synthetic resident task &lt;script&gt;"));
-    assert!(list.body.contains("id=\"cloud-private\" hidden"));
+    private_mount(&list.body);
     assert!(!fixture.local_store.exists());
     let route = format!("/cloud/app/hosts/resident/tasks/{}", native.task);
     let task = request(&fixture.site, Method::GET, &route, &cookies, None, None).await;
@@ -752,7 +869,7 @@ async fn login_shell_standing_switch_and_logout_use_the_native_session() {
     .await;
     assert_eq!(shell.status, StatusCode::OK);
     private(&shell);
-    assert!(shell.body.contains("<div id=\"cloud-private\" hidden>"));
+    private_mount(&shell.body);
     assert!(shell.body.contains("<pre id=\"cloud-standing\" hidden>"));
     assert!(shell.body.contains("alice &lt;account&gt;"));
     assert!(shell.body.contains("No connected work to report"));
@@ -786,6 +903,10 @@ async fn login_shell_standing_switch_and_logout_use_the_native_session() {
     .await;
     assert_eq!(switched.status, StatusCode::SEE_OTHER);
     private(&switched);
+    assert!(
+        migrated_cookie(&switched, "oa_cloud_workspace")
+            .starts_with("oa_cloud_workspace=alice-personal;")
+    );
     cookies.apply(&switched);
     assert_eq!(cookies.0["oa_cloud_workspace"], "alice-personal");
     let shell = request(
@@ -841,6 +962,9 @@ async fn login_shell_standing_switch_and_logout_use_the_native_session() {
     .await;
     assert_eq!(ended.status, StatusCode::SEE_OTHER);
     private(&ended);
+    for name in ["oa_cloud_session", "oa_cloud_workspace", "oa_cloud_login"] {
+        assert!(migrated_cookie(&ended, name).contains("; Max-Age=0"));
+    }
     cookies.apply(&ended);
     assert!(cookies.0.is_empty());
     assert_eq!(fixture.state.lock().unwrap().signouts, 1);
