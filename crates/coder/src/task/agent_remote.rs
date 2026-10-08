@@ -150,12 +150,16 @@ impl Cli {
         Self { binary }
     }
 
-    /// `openagents computer ...` `--json`; the answer's stdout as JSON.
+    /// `openagents computer ... --wait 60 --json`; the answer's stdout as
+    /// JSON. The wider wait rides out a linked computer's connecting
+    /// windows; the default 15 seconds refuses inside them.
     fn json(&self, words: &[&str]) -> Result<serde_json::Value, String> {
         let mut command = std::process::Command::new(&self.binary);
         command
             .arg("computer")
             .args(words)
+            .arg("--wait")
+            .arg("60")
             .arg("--json")
             .stdin(Stdio::null())
             .stderr(Stdio::piped())
