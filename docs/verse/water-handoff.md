@@ -135,6 +135,11 @@ they do not render a smaller viewport that could re-enable dropped optics.
 Pass timestamps isolate mirror, color and depth copies, and surface work.
 Shared opaque underwater shading and implicit queue texture uploads are
 covered only by the separate wet-minus-dry fence estimate.
+Residency admission and receipts share the same persistent-resource total,
+including the mirror uniform and timestamp query, resolve, and readback
+payloads. GPU memory reports declared owned resources; driver metadata
+and allocation padding remain opaque. A pure admission-boundary regression
+is pending in the next focused batch.
 The first GPU degradation skips optics absent from its tier: Medium drops
 its mirror because it has no SSR; Low's diagnostic probe lowers visual
 cadence because it has no optical targets. The reduction receipt compares
