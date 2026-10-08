@@ -16,10 +16,10 @@ mod email;
 mod meetings;
 #[path = "sales_models.rs"]
 mod models;
-#[path = "sales_paul.rs"]
-pub(crate) mod paul;
 #[path = "sales_outbox.rs"]
 mod outbox;
+#[path = "sales_paul.rs"]
+pub(crate) mod paul;
 #[path = "sales_privacy.rs"]
 mod privacy;
 #[path = "sales_qualification.rs"]

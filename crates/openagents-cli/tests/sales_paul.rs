@@ -1,6 +1,8 @@
 //! Installed Paul controls use a scratch owner, native file key, and private
 //! credentials. No provider, wallet, host service, or outbound call is made.
 #![cfg(unix)]
+#[path = "support/sales_binary.rs"]
+mod sales_binary;
 use coder::task::{
     agent,
     agent_key::FileKeys,
@@ -9,7 +11,7 @@ use coder::task::{
 use serde_json::{Value, json};
 use std::{fs, os::unix::fs::PermissionsExt, path::Path, process::Command};
 fn run(base: &Path, group: &str, args: &[&str]) -> std::process::Output {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_openagents"));
+    let mut command = Command::new(sales_binary::path());
     command.args(["--json", group]);
     if group == "agent" {
         command.arg("sales");
