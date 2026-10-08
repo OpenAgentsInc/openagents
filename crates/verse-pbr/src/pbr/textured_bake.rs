@@ -282,41 +282,67 @@ pub struct AmbientProbes {
     pub light: BakeLight,
 }
 
-impl AmbientProbes {
-    /// Baked irradiance at `p` on a surface facing `n`, lux per channel,
-    /// sampled as the lit shader samples a grid: half a cell along the
-    /// normal, with trilinear weights.
-    #[must_use]
-    pub fn irradiance(&self, p: Vec3, n: Vec3) -> Vec3 {
-        let g = &self.grid;
+struct ProbeSampler<'a> {
+    probes: &'a AmbientProbes,
+    max: Vec3,
+    base: Option<Vec3>,
+    corners: [Option<&'a [f32; 12]>; 8],
+}
+
+impl<'a> ProbeSampler<'a> {
+    fn new(probes: &'a AmbientProbes) -> Self {
+        let g = &probes.grid;
+        let max = if g.data.is_empty() || g.cell <= 0.0 {
+            Vec3::ZERO
+        } else {
+            Vec3::new(
+                (g.dims[0] - 1) as f32,
+                (g.dims[1] - 1) as f32,
+                (g.dims[2] - 1) as f32,
+            )
+        };
+        Self {
+            probes,
+            max,
+            base: None,
+            corners: [None; 8],
+        }
+    }
+
+    #[inline]
+    fn irradiance(&mut self, p: Vec3, n: Vec3) -> Vec3 {
+        let g = &self.probes.grid;
         if g.data.is_empty() || g.cell <= 0.0 {
-            return Vec3::splat(self.light.ambient(n));
+            return Vec3::splat(self.probes.light.ambient(n));
         }
         let q = (p + n * g.cell * 0.5 - g.origin) / g.cell;
-        let max = Vec3::new(
-            (g.dims[0] - 1) as f32,
-            (g.dims[1] - 1) as f32,
-            (g.dims[2] - 1) as f32,
-        );
-        let q = q.clamp(Vec3::ZERO, max);
-        let base = q.floor().min(max - 1.0).max(Vec3::ZERO);
+        let q = q.clamp(Vec3::ZERO, self.max);
+        let base = q.floor().min(self.max - 1.0).max(Vec3::ZERO);
         let t = q - base;
+        if self.base != Some(base) {
+            let x = [base.x as usize, (base.x + 1.0) as usize];
+            let y = [base.y as usize, (base.y + 1.0) as usize].map(|y| y * g.dims[0] as usize);
+            let z = [base.z as usize, (base.z + 1.0) as usize]
+                .map(|z| z * (g.dims[0] * g.dims[1]) as usize);
+            self.corners = std::array::from_fn(|corner| {
+                g.data
+                    .get(x[corner & 1] + y[(corner >> 1) & 1] + z[(corner >> 2) & 1])
+            });
+            self.base = Some(base);
+        }
+        // Keep the original component operations and x*y*z product order.
+        let low = Vec3::ONE + (-Vec3::ONE * t);
+        let high = Vec3::ZERO + Vec3::ONE * t;
+        let x = [low.x, high.x];
+        let y = [low.y, high.y];
+        let z = [low.z, high.z];
         let mut sum = Vec3::ZERO;
-        for corner in 0..8u32 {
-            let offset = Vec3::new(
-                (corner & 1) as f32,
-                ((corner >> 1) & 1) as f32,
-                ((corner >> 2) & 1) as f32,
-            );
-            let at = base + offset;
-            let weight = (Vec3::ONE - offset + (offset * 2.0 - 1.0) * t).element_product();
+        for (corner, probe) in self.corners.iter().enumerate() {
+            let weight = x[corner & 1] * y[(corner >> 1) & 1] * z[(corner >> 2) & 1];
             if weight <= 0.0 {
                 continue;
             }
-            let index = at.x as usize
-                + at.y as usize * g.dims[0] as usize
-                + at.z as usize * (g.dims[0] * g.dims[1]) as usize;
-            let Some(probe) = g.data.get(index) else {
+            let Some(probe) = probe else {
                 continue;
             };
             let channel = |c: usize| {
@@ -328,6 +354,16 @@ impl AmbientProbes {
             sum += Vec3::new(channel(0), channel(1), channel(2)) * weight;
         }
         sum.max(Vec3::ZERO)
+    }
+}
+
+impl AmbientProbes {
+    /// Baked irradiance at `p` on a surface facing `n`, lux per channel,
+    /// sampled as the lit shader samples a grid: half a cell along the
+    /// normal, with trilinear weights.
+    #[must_use]
+    pub fn irradiance(&self, p: Vec3, n: Vec3) -> Vec3 {
+        ProbeSampler::new(self).irradiance(p, n)
     }
 
     /// The diffuse multiplier at `p` facing `n`: baked irradiance over the
@@ -344,9 +380,21 @@ impl AmbientProbes {
     /// Fills the light channel of posed, world-space vertices, such as a
     /// figure's, from the grid.
     pub fn shade(&self, vertices: &mut [TexturedVertex]) {
+        // Consecutive character vertices often share a cell. Retain its eight
+        // borrowed probes for this call; a new grid needs no cache invalidation.
+        let mut sampler = None;
         for v in vertices {
             let n = Vec3::from(v.normal).normalize_or(Vec3::Y);
-            let m = self.multiplier(Vec3::from(v.pos), n);
+            let open = self.light.ambient(n);
+            let m = if open <= 0.0 {
+                Vec3::ONE
+            } else {
+                (sampler
+                    .get_or_insert_with(|| ProbeSampler::new(self))
+                    .irradiance(Vec3::from(v.pos), n)
+                    / open)
+                    .clamp(Vec3::ZERO, Vec3::splat(MAX_AMBIENT))
+            };
             // The grid holds no separate sky fraction; the mean multiplier
             // stands in for it as the reflection occlusion.
             let open = ((m.x + m.y + m.z) / 3.0).clamp(0.0, 1.0);
@@ -1253,6 +1301,172 @@ mod tests {
         );
         let (m, _) = baker(&scene).ambient_at(Vec3::new(0.0, 1.0, 0.0), Vec3::Z);
         assert!(m.y > m.x * 1.2 && m.y > m.z * 1.2, "{m}");
+    }
+
+    // Original per-corner sampler, retained as an independent arithmetic reference.
+    fn reference_irradiance(probes: &AmbientProbes, p: Vec3, n: Vec3) -> Vec3 {
+        let g = &probes.grid;
+        if g.data.is_empty() || g.cell <= 0.0 {
+            return Vec3::splat(probes.light.ambient(n));
+        }
+        let q = (p + n * g.cell * 0.5 - g.origin) / g.cell;
+        let max = Vec3::new(
+            (g.dims[0] - 1) as f32,
+            (g.dims[1] - 1) as f32,
+            (g.dims[2] - 1) as f32,
+        );
+        let q = q.clamp(Vec3::ZERO, max);
+        let base = q.floor().min(max - 1.0).max(Vec3::ZERO);
+        let t = q - base;
+        let mut sum = Vec3::ZERO;
+        for corner in 0..8u32 {
+            let offset = Vec3::new(
+                (corner & 1) as f32,
+                ((corner >> 1) & 1) as f32,
+                ((corner >> 2) & 1) as f32,
+            );
+            let at = base + offset;
+            let weight = (Vec3::ONE - offset + (offset * 2.0 - 1.0) * t).element_product();
+            if weight <= 0.0 {
+                continue;
+            }
+            let index = at.x as usize
+                + at.y as usize * g.dims[0] as usize
+                + at.z as usize * (g.dims[0] * g.dims[1]) as usize;
+            let Some(probe) = g.data.get(index) else {
+                continue;
+            };
+            let channel = |c: usize| {
+                probe[c * 4]
+                    + probe[c * 4 + 1] * n.x
+                    + probe[c * 4 + 2] * n.y
+                    + probe[c * 4 + 3] * n.z
+            };
+            sum += Vec3::new(channel(0), channel(1), channel(2)) * weight;
+        }
+        sum.max(Vec3::ZERO)
+    }
+
+    fn varied_probes(dims: [u32; 3], cell: f32) -> AmbientProbes {
+        let mut state = 0x9731_a25eu32;
+        let data = (0..dims.into_iter().product::<u32>())
+            .map(|_| {
+                std::array::from_fn(|_| {
+                    state = state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                    let value = f32::from_bits((state & 0x807f_ffff) | (132 << 23));
+                    value * 0.25
+                })
+            })
+            .collect();
+        AmbientProbes {
+            grid: ProbeGrid {
+                origin: Vec3::new(-3.25, 1.125, 7.75),
+                cell,
+                dims,
+                data,
+                version: 17,
+            },
+            light: LIGHT,
+        }
+    }
+
+    #[test]
+    fn probe_sampler_preserves_reference_bits_at_boundaries_truncated_grids_and_repeated_cells() {
+        let normals = [
+            Vec3::ZERO,
+            Vec3::Y,
+            -Vec3::Y,
+            Vec3::X,
+            Vec3::Z,
+            Vec3::new(0.31, -0.89, 0.17).normalize(),
+            Vec3::new(-2.5, 0.2, 1.3),
+            Vec3::splat(f32::NAN),
+        ];
+        for dims in [[5, 4, 3], [1, 3, 2], [3, 1, 1], [1; 3]] {
+            for cell in [0.125, 3.5, 0.0, -2.0, f32::INFINITY, f32::NAN] {
+                let full = varied_probes(dims, cell);
+                for len in [full.grid.data.len(), 5.min(full.grid.data.len()), 1, 0] {
+                    let mut probes = full.clone();
+                    probes.grid.data.truncate(len);
+                    let mut sampler = ProbeSampler::new(&probes);
+                    for i in 0..256 {
+                        let t = i as f32 / 255.0;
+                        let coordinates = [
+                            Vec3::splat(-100.0),
+                            Vec3::ZERO,
+                            Vec3::ONE,
+                            Vec3::new(1.0f32.next_down(), 1.0f32.next_up(), 0.5),
+                            Vec3::new(0.2 + t * 0.2, 0.3, 0.1),
+                            Vec3::new(t * 8.0 - 2.0, t * 6.0 - 1.0, t * 5.0),
+                            Vec3::splat(100.0),
+                            Vec3::splat(f32::NAN),
+                        ];
+                        let n = normals[i % normals.len()];
+                        let p = probes.grid.origin + coordinates[i % coordinates.len()] * 3.5;
+                        let expected = reference_irradiance(&probes, p, n)
+                            .to_array()
+                            .map(f32::to_bits);
+                        assert_eq!(
+                            sampler.irradiance(p, n).to_array().map(f32::to_bits),
+                            expected,
+                            "{dims:?} {cell} {len} {p} {n}"
+                        );
+                        assert_eq!(
+                            probes.irradiance(p, n).to_array().map(f32::to_bits),
+                            expected
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn batched_probe_shade_matches_reference_vertex_bytes_and_follows_new_grid_and_light() {
+        let mut probes = varied_probes([5, 4, 3], 3.5);
+        let vertices: Vec<_> = (0..4096)
+            .map(|i| {
+                let t = i as f32 * 0.0073;
+                TexturedVertex {
+                    pos: [t.sin() * 20.0, 1.0 + t.cos() * 3.0, t.cos() * 10.0],
+                    normal: if i % 11 == 0 {
+                        [0.0; 3]
+                    } else {
+                        [t.sin(), t.cos(), 0.31]
+                    },
+                    uv: [0.3, 0.7],
+                    color: [19, 39, 137, 211],
+                    light: [7, 11, 13, 29],
+                }
+            })
+            .collect();
+        for pass in 0..3 {
+            if pass == 1 {
+                probes.grid.data.iter_mut().for_each(|probe| {
+                    probe.iter_mut().for_each(|value| *value *= 0.37);
+                });
+                probes.grid.version += 1;
+                probes.light.sky *= 0.41;
+            } else if pass == 2 {
+                probes.light.sky = 0.0;
+                probes.light.ground = 0.0;
+            }
+            let mut expected = vertices.clone();
+            for vertex in &mut expected {
+                let n = Vec3::from(vertex.normal).normalize_or(Vec3::Y);
+                let open = probes.light.ambient(n);
+                let m = if open <= 0.0 {
+                    Vec3::ONE
+                } else {
+                    (reference_irradiance(&probes, vertex.pos.into(), n) / open)
+                        .clamp(Vec3::ZERO, Vec3::splat(MAX_AMBIENT))
+                };
+                vertex.light = encode(m, ((m.x + m.y + m.z) / 3.0).clamp(0.0, 1.0));
+            }
+            let mut actual = vertices.clone();
+            probes.shade(&mut actual);
+            assert_eq!(actual, expected, "grid/light pass {pass}");
+        }
     }
 
     #[test]
