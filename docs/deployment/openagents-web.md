@@ -593,3 +593,40 @@ pack and kit URLs retain their exact bytes and hashes.
 Evidence remains in the deployment session's scratch directory and
 `codex-01a11a7c-eb19-7780-b9e7-cd6e305db168/demo-production-proof/`.
 Rollback: `--to-revisions coder-web-p3-d2fb95d33d-20261008140843=100`.
+
+## 2026-10-08: Environment onboarding demo
+
+Revision `coder-web-onboarding-88cb5f7599-20261008172714` serves 100% of
+traffic since 17:32 UTC. [The demo](https://openagents.com/demo) now shows
+the complete synthetic onboarding conversation and six chats with independent
+drafts and history (#10985, #10988).
+
+Cloud Build `0b8ac09e-b592-498c-b69f-14b24961972b` builds main commit
+`88cb5f75996a05de9a8fe03a8c50a31e8b379a19` through
+`cloudbuild-components.yaml`. Image `openagents/openagents-web:demo-onboarding-88cb5f7599`
+has digest `sha256:e3b2add25e9d435a0a36108341726e7c193a65f678c54056aa84427c85fc03ed`.
+The Docker overlay retains the preceding production image's game files and
+replaces the native web binary and component and Cloud browser bundles.
+The live spec preserves the sidecar, secrets, VPC, and runtime settings.
+The separate `onboarding` tag and public host keep the existing `new` tag
+on its previously staged revision. Readiness and unchanged production traffic
+are checked before promotion.
+
+Staging and production each return `200` for the demo, its CSS, loader,
+generated JavaScript, Wasm module, homepage, and existing game loader. All
+seven response bodies match between staging and production. Browser inspection
+shows Wasm mounting on both, sidebar switching on staging, and **Latest**
+reaching the first task on the saved environment on both. The production
+revision has no error-level Cloud Run log entries at the post-deploy read.
+Evidence, configuration exports, and screenshots remain outside Git in
+`codex-01a11c18-367b-7793-b27f-8381cea14e2f/demo-production/` under operator scratch.
+
+The native Rust server supplies the initial HTML, sidebar, transcript preview,
+CSS, and assets. Rust/Wasm owns the local conversation state, input handling,
+navigation, transcript layout, and changed-row HTML updates. The browser paints
+ordinary HTML and CSS; the demo uses no canvas or SVG renderer. A 400-byte
+JavaScript loader initializes the generated `wasm-bindgen` bridge. The shared
+catalog and demo module is 5,689,644 bytes. The onboarding calls and outputs
+are fixtures; this demo performs no model or environment execution.
+
+Rollback: `gcloud run services update-traffic coder --region us-central1 --project openagentsgemini --to-revisions coder-web-demo-7bb5e9bccd-202610081448=100`.
