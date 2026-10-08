@@ -24,6 +24,9 @@ pub struct Opening {
     pub meta: Option<Value>,
     /// The mode to set after opening, by the agent's own id.
     pub mode: Option<String>,
+    /// The `authenticate` method to call after `initialize`, when the agent
+    /// advertises it, as Cursor's `cursor_login`.
+    pub authenticate: Option<String>,
 }
 
 /// Why a session could not be used.
@@ -55,6 +58,21 @@ impl std::fmt::Display for Failure {
                 Ok(())
             }
         }
+    }
+}
+
+impl Failure {
+    /// Whether the agent refused `authenticate`, which means it is not
+    /// signed in.
+    #[must_use]
+    pub fn unauthenticated(&self) -> bool {
+        matches!(
+            self,
+            Failure::Protocol {
+                error: ClientError::Refused { method, .. },
+                ..
+            } if method == crate::wire::method::AUTHENTICATE
+        )
     }
 }
 
@@ -90,6 +108,14 @@ impl Session {
         let cwd = opening.spec.cwd.to_string_lossy().into_owned();
         let result = async {
             let initialized = agent.client.initialize(wait, &mut Ignore).await?;
+            if let Some(method) = &opening.authenticate
+                && initialized
+                    .auth_methods
+                    .iter()
+                    .any(|offered| &offered.id == method)
+            {
+                agent.client.authenticate(method, wait, &mut Ignore).await?;
+            }
             let mut resume_refused = None;
             let mut reattached = None;
             if let Some(session) = &opening.resume {

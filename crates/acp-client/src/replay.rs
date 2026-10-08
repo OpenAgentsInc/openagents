@@ -115,6 +115,18 @@ pub const OPENCODE_TURN: &str = include_str!("../fixtures/opencode-1.18.26-turn.
 /// The same, on a model the provider refused with HTTP 403.
 pub const OPENCODE_REFUSED: &str = include_str!("../fixtures/opencode-1.18.26-refused.jsonl");
 
+/// The recorded `cursor-agent` 2026.06.24 turn: initialize, `cursor_login`,
+/// a new session, `agent` mode, and one prompt that runs `echo` after an
+/// `allow-once` permission and answers `done`.
+pub const CURSOR_TURN: &str = include_str!("../fixtures/cursor-2026.06.24-turn.jsonl");
+
+/// The same agent in `plan` mode, sending `cursor/create_plan` and waiting
+/// for the answer.
+pub const CURSOR_PLAN: &str = include_str!("../fixtures/cursor-2026.06.24-plan.jsonl");
+
+/// The same agent with no stored login: `authenticate` is refused.
+pub const CURSOR_SIGNED_OUT: &str = include_str!("../fixtures/cursor-2026.06.24-signed-out.jsonl");
+
 /// A synthetic Grok Build turn shaped like `grok agent stdio`: initialize,
 /// a new session reporting `grok-4.6`, one completed read, and `done`.
 /// This is a stand-in for tests, not a captured live session.

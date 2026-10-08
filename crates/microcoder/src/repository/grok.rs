@@ -320,6 +320,7 @@ pub(crate) async fn turn(
         resume: resume.clone(),
         meta: Some(acp_client::devin::engine_meta(coder_history::engine::MARK)),
         mode: None,
+        authenticate: None,
     };
     let sequence = match host.effect(
         "grok_session",

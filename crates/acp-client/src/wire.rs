@@ -18,6 +18,7 @@ pub const PROTOCOL_VERSION: u64 = 1;
 /// The method names this crate sends and answers.
 pub mod method {
     pub const INITIALIZE: &str = "initialize";
+    pub const AUTHENTICATE: &str = "authenticate";
     pub const SESSION_NEW: &str = "session/new";
     pub const SESSION_LOAD: &str = "session/load";
     pub const SESSION_LIST: &str = "session/list";
@@ -269,16 +270,29 @@ pub struct Opened {
     pub modes: Option<Modes>,
     #[serde(default)]
     pub config_options: Vec<ConfigOption>,
+    /// The session's models, as Cursor's `agent acp` reports them.
+    #[serde(default)]
+    pub models: Option<Models>,
+}
+
+/// The session's current model, from a `models` member.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Models {
+    #[serde(default)]
+    pub current_model_id: Option<String>,
 }
 
 impl Opened {
-    /// The model the session reports, from its `model` configuration option.
+    /// The model the session reports, from its `model` configuration
+    /// option, else its `models.currentModelId`.
     #[must_use]
     pub fn model(&self) -> Option<&str> {
         self.config_options
             .iter()
             .find(|option| option.id == "model" || option.category.as_deref() == Some("model"))
             .and_then(|option| option.current_value.as_deref())
+            .or_else(|| self.models.as_ref()?.current_model_id.as_deref())
     }
 }
 

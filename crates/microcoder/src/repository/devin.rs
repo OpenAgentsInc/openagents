@@ -639,6 +639,7 @@ pub(crate) async fn turn(
         resume: resume.clone(),
         meta: Some(acp_client::devin::engine_meta(coder_history_mark())),
         mode: Some(permission.mode_id().into()),
+        authenticate: None,
     };
     let mut ended = Ended {
         engine: ENGINE,
