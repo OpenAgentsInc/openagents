@@ -961,6 +961,7 @@ pub struct Town {
     relight_vertices: Vec<TexturedVertex>,
     relight_receivers: receivers::Index,
     relight_seen: (u64, u64),
+    relight_fallback: Mutex<Arc<Vec<(u32, [u8; 4])>>>,
     baked_repair: Option<Mutex<baked_repair::Repair>>,
     /// The solids without any building, the solids now, and whether they
     /// changed.
@@ -1260,6 +1261,7 @@ impl Town {
             relight_vertices: Vec::new(),
             relight_receivers: receivers::Index::default(),
             relight_seen: (u64::MAX, u64::MAX),
+            relight_fallback: Mutex::new(Arc::new(Vec::new())),
             baked_repair: None,
             current: base.clone(),
             base,
@@ -1982,7 +1984,7 @@ impl Town {
     /// estimate; current shadow passes account for it each frame.
     fn refresh_light(&self) {
         if self.relight_sun.is_none() {
-            self.world.baked.set_fallback(Vec::new());
+            self.set_relight_fallback(Vec::new());
             return;
         }
         let affected: BTreeSet<usize> = self
@@ -2001,7 +2003,7 @@ impl Town {
             let open = field.sample(point, Vec3::from(vertex.normal), None);
             fallback.push((index, encode(Vec3::splat(open), open)));
         }
-        self.world.baked.set_fallback(fallback);
+        self.set_relight_fallback(fallback);
     }
 
     /// How many spans the chunks `live` keeps of the site pieces `drawn`

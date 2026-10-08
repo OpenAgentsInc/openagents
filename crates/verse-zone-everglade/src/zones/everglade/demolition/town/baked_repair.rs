@@ -3,7 +3,7 @@
 use super::vertex_lights::VertexLights;
 use super::{Span, Town};
 use crate::pbr::textured::{
-    DynamicInstance, InstancedFigure, LightPatch, Primitive, TexturedMesh, TexturedScene,
+    DynamicInstance, InstancedFigure, LightPatch, Primitive, TexturedMesh, TexturedScene, UNBAKED,
 };
 use crate::pbr::textured_bake::{BakeLight, BakeSettings};
 use crate::zones::everglade::demolition::repair::{
@@ -134,6 +134,9 @@ pub(super) struct Repair {
     pub lights: VertexLights,
     sources: Sources,
     receivers: super::receivers::Index,
+    affected_buildings: Option<std::collections::BTreeSet<usize>>,
+    ground: Arc<Vec<u32>>,
+    published_fallback: Option<(Arc<Vec<u32>>, Arc<Vec<(u32, [u8; 4])>>)>,
     seen: Option<(u64, u64, u64)>,
     epoch: Option<Arc<()>>,
     minute: Option<u64>,
@@ -141,7 +144,7 @@ pub(super) struct Repair {
     geometry_epoch: u64,
     generation: u64,
     targets: Arc<[RepairTarget]>,
-    membership: Vec<(u64, SourceKey)>,
+    membership: Vec<(u64, SourceKey, bool)>,
     error: Option<String>,
 }
 
@@ -155,6 +158,9 @@ impl Repair {
                 &town.relight_vertices,
                 &town.wreck.buildings,
             ),
+            affected_buildings: None,
+            ground: Arc::new(Vec::new()),
+            published_fallback: None,
             seen: None,
             epoch: None,
             minute: None,
@@ -170,12 +176,65 @@ impl Repair {
     fn invalidate(&mut self) {
         self.queue.invalidate();
         self.lights.reset();
+        self.affected_buildings = None;
+        self.ground = Arc::new(Vec::new());
+        self.published_fallback = None;
         self.seen = None;
         self.epoch = None;
         self.minute = None;
         self.targets = Arc::from([]);
         self.membership.clear();
         self.error = None;
+    }
+
+    fn refresh_ground(&mut self, town: &Town) {
+        let affected: std::collections::BTreeSet<_> = town
+            .wreck
+            .refs
+            .iter()
+            .enumerate()
+            .filter(|(piece, _)| town.wreck.site.relight(*piece))
+            .map(|(_, &(building, _))| building)
+            .collect();
+        if self.affected_buildings.as_ref() == Some(&affected) {
+            return;
+        }
+        self.ground = Arc::new(self.receivers.affected(affected.iter().copied()));
+        self.affected_buildings = Some(affected);
+    }
+
+    fn publish_fallback(&mut self, town: &Town) {
+        let sampled = town
+            .relight_fallback
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        if self
+            .published_fallback
+            .as_ref()
+            .is_some_and(|(ground, old)| {
+                Arc::ptr_eq(ground, &self.ground) && Arc::ptr_eq(old, &sampled)
+            })
+        {
+            return;
+        }
+        // Both inputs are sorted. Sampled local openness wins overlaps;
+        // conservative receivers otherwise bypass pristine sun and lamps
+        // with neutral ambient until a selective worker patch arrives.
+        let mut fallback = Vec::with_capacity(self.ground.len() + sampled.len());
+        let mut ground = self.ground.iter().copied().peekable();
+        for &(index, light) in sampled.iter() {
+            while ground.peek().is_some_and(|&next| next < index) {
+                fallback.push((ground.next().unwrap(), UNBAKED));
+            }
+            if ground.peek() == Some(&index) {
+                ground.next();
+            }
+            fallback.push((index, light));
+        }
+        fallback.extend(ground.map(|index| (index, UNBAKED)));
+        town.world.baked.set_fallback(fallback);
+        self.published_fallback = Some((self.ground.clone(), sampled));
     }
 
     fn request(&mut self, town: &Town, light: BakeLight, minute: u64) {
@@ -192,8 +251,16 @@ impl Repair {
             .motion_epoch();
         let members = || {
             town.pool.spans.iter().filter_map(|span| {
-                instance_id(town, span)
-                    .map(|id| (id, (span.shape, span.chunk, span.part, span.material)))
+                instance_id(town, span).map(|id| {
+                    let piece = &town.wreck.site.pieces()[span.piece];
+                    let settled = piece.status == super::Status::Broken
+                        && piece.chunks[span.chunk].settled.is_some();
+                    (
+                        id,
+                        (span.shape, span.chunk, span.part, span.material),
+                        settled,
+                    )
+                })
             })
         };
         let geometry = self.seen != Some(seen)
@@ -213,18 +280,12 @@ impl Repair {
             // ground shadow while the immediate fallback remains visible.
             self.queue.invalidate();
             town.world.baked.clear_repairs();
-            let affected: std::collections::BTreeSet<_> = town
-                .wreck
-                .refs
-                .iter()
-                .enumerate()
-                .filter(|(piece, _)| town.wreck.site.relight(*piece))
-                .map(|(_, &(building, _))| building)
-                .collect();
+            self.refresh_ground(town);
+            self.publish_fallback(town);
             let mut targets: Vec<_> = self
-                .receivers
-                .affected(affected)
-                .into_iter()
+                .ground
+                .iter()
+                .copied()
                 .map(RepairTarget::Static)
                 .collect();
             let affected_ids: std::collections::BTreeSet<_> = town
@@ -315,7 +376,10 @@ impl Town {
         self.invalidate_baked_repair();
         self.set_destruction_relighting(Some(light.sun_dir))?;
         self.pose();
-        self.baked_repair = Some(Mutex::new(Repair::new(queue, self)));
+        let mut repair = Repair::new(queue, self);
+        repair.refresh_ground(self);
+        repair.publish_fallback(self);
+        self.baked_repair = Some(Mutex::new(repair));
         Ok(())
     }
 
@@ -348,6 +412,28 @@ impl Town {
                 .error
                 .clone()
         })
+    }
+
+    pub(super) fn set_relight_fallback(&self, fallback: Vec<(u32, [u8; 4])>) {
+        let sampled = {
+            let mut cached = self
+                .relight_fallback
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if cached.as_ref() != &fallback {
+                *cached = Arc::new(fallback);
+            }
+            cached.clone()
+        };
+        if let Some(repair) = &self.baked_repair {
+            let mut repair = repair
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            repair.refresh_ground(self);
+            repair.publish_fallback(self);
+        } else {
+            self.world.baked.set_fallback(sampled.as_ref().clone());
+        }
     }
 
     pub(super) fn invalidate_baked_repair(&self) {
@@ -394,6 +480,10 @@ mod tests {
     }
 
     fn fixture_chunks(count: usize) -> (Town, SyncSender<RepairBatch>) {
+        fixture_options(count, false)
+    }
+
+    fn fixture_options(count: usize, remote: bool) -> (Town, SyncSender<RepairBatch>) {
         let pack = ZonePack {
             textures: Vec::new(),
             materials: Vec::new(),
@@ -403,15 +493,23 @@ mod tests {
         };
         let mut world = TexturedScene::default();
         world.add_material(TexturedMaterial::default());
+        let mut vertices = triangle(Vec3::Y);
+        if remote {
+            vertices.extend(triangle(Vec3::Y).into_iter().map(|mut vertex| {
+                vertex.pos[0] += 30.0;
+                vertex
+            }));
+        }
+        let count_vertices = vertices.len();
         world.add_mesh(TexturedMesh {
             primitives: vec![Primitive {
                 material: 0,
-                vertices: triangle(Vec3::Y),
-                indices: vec![0, 1, 2],
+                vertices,
+                indices: (0..count_vertices as u32).collect(),
             }],
         });
         world.place(0, Mat4::IDENTITY);
-        world.baked.deliver_lights(vec![[100; 4]; 3]);
+        world.baked.deliver_lights(vec![[100; 4]; count_vertices]);
         let mut town = Town::standalone(&pack, &[], Arc::new(world)).unwrap();
         let cuboid = Cuboid::between(DVec3::splat(-0.5), DVec3::splat(0.5));
         let draft = Draft {
@@ -687,5 +785,123 @@ mod tests {
                 .any(|target| matches!(target, RepairTarget::Chunk { id, .. } if *id == removed))
         );
         assert!(repair.sources.vertices <= town.pool.limit);
+    }
+    #[test]
+    fn conservative_ground_is_neutral_immediately_and_survives_late_bakes_until_repair_or_restore()
+    {
+        let (mut town, send) = fixture_options(1, true);
+        // Sync has published the mask before any request or BVH build.
+        assert_eq!(town.relight_receivers.affected([0]), [0, 1, 2]);
+        assert_eq!(town.world.baked.take_mask().unwrap(), [0, 1, 2, 3, 4, 5]);
+        let sampled = town.relight_fallback.lock().unwrap().clone();
+        assert_eq!(
+            sampled.len(),
+            3,
+            "remote ground requires no extra local samples"
+        );
+        let first = town.world.baked.take().unwrap();
+        for &(index, light) in sampled.iter() {
+            assert_eq!(first[index as usize], light);
+        }
+        assert_eq!(&first[3..], &[UNBAKED; 3]);
+        town.world.baked.deliver_lights(vec![[24; 4]; 6]);
+        town.world.baked.deliver_lamps(vec![[31; 4]; 6]);
+        assert_eq!(&town.world.baked.take().unwrap()[3..], &[UNBAKED; 3]);
+        assert_eq!(town.world.baked.take_lamps().unwrap(), [[0; 4]; 6]);
+        town.poll_baked_repair(light(), 1);
+        let ground = town
+            .baked_repair
+            .as_ref()
+            .unwrap()
+            .lock()
+            .unwrap()
+            .ground
+            .clone();
+        let mut batch = response(&town, [17; 4]);
+        batch.patches = vec![RepairPatch::Static {
+            first: 3,
+            lights: vec![[17; 4]; 3],
+        }];
+        send.try_send(batch).unwrap();
+        town.poll_baked_repair(light(), 1);
+        assert!(town.world.baked.take_patches()[0].dynamic);
+        town.world.baked.deliver_lights(vec![[44; 4]; 6]);
+        let repaired = town.world.baked.take().unwrap();
+        for &(index, light) in sampled.iter() {
+            assert_eq!(repaired[index as usize], light);
+        }
+        assert_eq!(
+            &repaired[3..],
+            &[[17; 4]; 3],
+            "worker repair wins the neutral fallback"
+        );
+        let mut low_sun = light();
+        low_sun.sun_dir = Vec3::new(-1.0, 0.01, 0.0).normalize();
+        town.poll_baked_repair(low_sun, 2);
+        assert!(Arc::ptr_eq(
+            &ground,
+            &town.baked_repair.as_ref().unwrap().lock().unwrap().ground
+        ));
+        assert!(Arc::ptr_eq(
+            &sampled,
+            &town.relight_fallback.lock().unwrap()
+        ));
+        // Retain drops repaired light before compacted IDs can be reused.
+        town.wreck.site.retain(|_| true);
+        town.wreck.revision += 1;
+        town.sync();
+        town.pose();
+        assert_eq!(&town.world.baked.take().unwrap()[3..], &[UNBAKED; 3]);
+        town.restore();
+        assert!(town.world.baked.take_mask().unwrap().is_empty());
+        assert_eq!(town.world.baked.take().unwrap(), [[44; 4]; 6]);
+        assert_eq!(town.world.baked.take_lamps().unwrap(), [[31; 4]; 6]);
+    }
+    #[test]
+    fn final_settlement_refreshes_the_occluder_epoch_once_then_clock_reuses_it() {
+        let (mut town, _) = fixture();
+        town.wreck.site.set_debris_lifetime(60.0);
+        town.poll_baked_repair(light(), 1);
+        let initial_pose = town.pool.instances[0].current;
+        let site_revision = town.wreck.site.revision();
+        let (geometry_epoch, source, motion_epoch) = {
+            let repair = town.baked_repair.as_ref().unwrap().lock().unwrap();
+            (
+                repair.geometry_epoch,
+                repair.sources.meshes.clone(),
+                repair.epoch.clone().unwrap(),
+            )
+        };
+        for _ in 0..1200 {
+            town.wreck.site.tick(1.0 / 60.0);
+            if town.wreck.site.pieces()[0].chunks[0].settled.is_some() {
+                break;
+            }
+        }
+        let final_pose = town.wreck.site.pieces()[0].chunks[0]
+            .settled
+            .expect("the single grounded chunk must retire into static rubble");
+        assert_ne!(initial_pose, final_pose);
+        assert_eq!(town.wreck.site.revision(), site_revision);
+        town.sync();
+        town.pose();
+        town.poll_baked_repair(light(), 1);
+        let final_epoch = {
+            let mut repair = town.baked_repair.as_ref().unwrap().lock().unwrap();
+            assert!(
+                repair.geometry_epoch > geometry_epoch,
+                "settlement invalidates a flying-rubble hierarchy"
+            );
+            assert!(Arc::ptr_eq(&motion_epoch, repair.epoch.as_ref().unwrap()));
+            assert!(Arc::ptr_eq(&source, &repair.sources.meshes));
+            let snapshot = repair.sources.snapshot(&town);
+            assert_eq!(snapshot.instances[0].current, final_pose);
+            assert!(snapshot.instances[0].settled);
+            repair.geometry_epoch
+        };
+        town.poll_baked_repair(light(), 2);
+        let repair = town.baked_repair.as_ref().unwrap().lock().unwrap();
+        assert_eq!(repair.geometry_epoch, final_epoch);
+        assert!(Arc::ptr_eq(&source, &repair.sources.meshes));
     }
 }
