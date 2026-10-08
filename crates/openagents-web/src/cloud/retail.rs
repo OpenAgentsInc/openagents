@@ -38,6 +38,8 @@ use std::collections::BTreeMap;
 use std::path::{Path as FsPath, PathBuf};
 use std::sync::Arc;
 
+mod purchases;
+
 pub const SCHEMA: &str = "openagents.cloud.retail-delegations.v1";
 const JOURNAL_SCHEMA: &str = "openagents.cloud.retail-web-requests.v1";
 const UNAVAILABLE: &str = "The retail delegation configuration is unavailable or changed.";
@@ -234,6 +236,9 @@ pub(crate) enum Failure {
     Refused(&'static str),
     Service(String),
     Custody(CustodyError),
+    /// The native owner answered with a purchase part that differs from the
+    /// one this site first retained.
+    Changed(&'static str),
 }
 
 impl From<SessionError> for Failure {
@@ -310,6 +315,13 @@ fn answer(error: Failure) -> Response {
             };
             failure(status, "Key custody", &error.to_string())
         }
+        Failure::Changed(part) => failure(
+            StatusCode::CONFLICT,
+            "Purchase record changed",
+            &format!(
+                "The retail service answered with a different {part} than the one retained for this purchase. Nothing is shown as current; the original record stays retained for reconciliation."
+            ),
+        ),
     }
 }
 
@@ -525,6 +537,19 @@ impl Delegations {
             let params = effect.params();
             let exact = digest(&json!({"op":effect.op(),"params":params}));
             let mut journal = Journal::load(journals, delegation)?;
+            if let Effect::Confirm { review } = &effect
+                && !journal.records.values().any(|record| {
+                    record.op == "quote"
+                        && record
+                            .outcome
+                            .as_ref()
+                            .is_some_and(|o| o["digest"] == json!(review))
+                })
+            {
+                return Err(Failure::Refused(
+                    "Confirm only a quote reviewed on this page.",
+                ));
+            }
             match journal.records.get(&request) {
                 Some(record) if record.digest != exact => {
                     return Err(Failure::Refused(
@@ -562,7 +587,30 @@ impl Delegations {
                     journal.save(journals, delegation)?;
                 }
             }
-            let value = perform(delegation, client, vault, &journal, &request, effect)?;
+            let value = match perform(delegation, client, vault, &journal, &request, effect) {
+                Ok(value) => value,
+                Err(error) => {
+                    // A definitive refusal performed nothing, so it leaves no
+                    // unknown outcome behind; an unknown one stays journaled.
+                    // A client-side refusal may follow a native answer, so it
+                    // stays journaled too.
+                    let definitive = match &error {
+                        Failure::Custody(_) => true,
+                        Failure::Service(code) => !matches!(code.as_str(), "busy" | "unavailable"),
+                        _ => false,
+                    };
+                    if definitive
+                        && journal
+                            .records
+                            .get(&request)
+                            .is_some_and(|r| r.outcome.is_none())
+                    {
+                        journal.records.remove(&request);
+                        journal.save(journals, delegation)?;
+                    }
+                    return Err(error);
+                }
+            };
             if let Some(record) = journal.records.get_mut(&request) {
                 record.outcome = Some(value.clone());
             }
@@ -673,6 +721,7 @@ pub(super) fn routes() -> Router<App> {
         .route("/cloud/app/billing/retail/{id}/quote", post(quote))
         .route("/cloud/app/billing/retail/{id}/confirm", post(confirm))
         .route("/cloud/app/billing/retail/{id}/cancel", post(cancel))
+        .merge(purchases::routes())
 }
 
 pub(crate) fn available(app: &App, viewer: &Viewer) -> bool {
@@ -793,6 +842,9 @@ async fn section(
                 "<pre class=\"retail-account\">{}</pre>",
                 escape(&account.lines())
             ));
+            out.push_str(&format!(
+                "<p><a href=\"{base}/purchases\">Purchases: progress, artifacts, receipts, and recovery</a></p>"
+            ));
             Some(account.capabilities.clone())
         }
         Err(Failure::Session(error)) => return Err(refused(*error)),
@@ -894,6 +946,17 @@ async fn section(
                 ));
             }
         } else if let Some(value) = record["outcome"].as_object() {
+            if let Some(execution) = value
+                .get("execution")
+                .and_then(Value::as_str)
+                .filter(|e| valid_id(e))
+            {
+                out.push_str(&format!(
+                    "<a href=\"{}\">Open purchase {}</a>",
+                    purchases::href(delegation.id(), execution),
+                    escape(execution)
+                ));
+            }
             out.push_str(&format!(
                 "<pre>{}</pre>",
                 escape(&serde_json::to_string_pretty(value).unwrap_or_default())
@@ -1088,6 +1151,11 @@ async fn run_effect(
     request: String,
     effect: Result<Effect, SessionError>,
 ) -> Response {
+    // A stop returns to the purchase it concerns.
+    let next = match &effect {
+        Ok(Effect::Cancel { execution }) => Some(purchases::href(id, execution)),
+        _ => None,
+    };
     let context = match context(app, headers).await {
         Ok(value) => value,
         Err(response) => return response,
@@ -1108,7 +1176,10 @@ async fn run_effect(
         .effect(&context.viewer, id, request, effect)
         .await
     {
-        Ok(_) => done(id),
+        Ok(_) => match next {
+            Some(next) => protect(Redirect::to(&next).into_response()),
+            None => done(id),
+        },
         Err(error) => answer(error),
     }
 }

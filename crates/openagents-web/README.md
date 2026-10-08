@@ -428,6 +428,29 @@ digest, and **Remove key from custody** zeroes and deletes it. The vault
 customer's own provider API keys; it refuses Claude.ai OAuth and
 `claude setup-token` values for every material.
 
+### Purchases
+
+`/cloud/app/billing/retail/{delegation}/purchases` lists the delegation's
+funded executions from the retail service; each opens a canonical purchase
+page with its payer, the exact review confirmed on this page, the approval and
+funded request, the admitted work and sandbox, retained progress, the meter,
+hold and settlement, retained artifacts, the stop record, and cleanup
+evidence. Payment, completion, acceptance, and publication are reported as
+four separate lines: a checks verdict is not acceptance, and nothing here
+applies or publishes a patch.
+
+The first observation of each immutable part (payer, quote, approval,
+request, sandbox, settled charge, artifact source, acknowledged cleanup) is
+kept in `directory/requests/*.purchase.json` (`0600`) with the progress
+events read so far and their source cursor. A reload or a site restart shows
+the same purchase and reads progress on from that cursor; a later service
+answer that differs is refused as **Purchase record changed**. Unknown usage
+shows as held funds, unacknowledged deletion as **Cleanup unconfirmed**, and
+provider loss as an ending that needs a new offer. Artifacts are shown only
+when retention is complete and their SHA-256 matches the retained manifest.
+The stop control on a purchase returns to it; observation-only scopes see no
+control, and other accounts reach none of these pages.
+
 ## Task browser
 
 The browser reads the same durable task store and paged ATIF view as

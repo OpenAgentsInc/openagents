@@ -855,6 +855,16 @@ impl Client {
     pub fn progress(&mut self, execution: &str) -> Result<Page> {
         self.reconnect(execution)?;
         let after = self.state.cursors[execution];
+        let page = self.progress_after(execution, after)?;
+        self.state.cursors.insert(execution.into(), page.next);
+        self.files.save(&self.state)?;
+        Ok(page)
+    }
+    /// One validated progress page after a cursor the caller retains, for a
+    /// custody owner (such as the web adapter) that keeps its own durable
+    /// event log. The client's own cursor is unchanged.
+    pub fn progress_after(&mut self, execution: &str, after: u64) -> Result<Page> {
+        self.reconnect(execution)?;
         let page: Page = self.call(json!({"op":"progress","execution":execution,"after":after}))?;
         let mut previous = after;
         if page.events.len() > 128 {
@@ -869,8 +879,6 @@ impl Client {
         if page.next != previous {
             return Err(Error::Refused("invalid progress continuation"));
         }
-        self.state.cursors.insert(execution.into(), page.next);
-        self.files.save(&self.state)?;
         Ok(page)
     }
     pub fn cancel(&self, execution: &str) -> Result<Value> {

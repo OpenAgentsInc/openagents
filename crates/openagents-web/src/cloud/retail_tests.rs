@@ -15,6 +15,9 @@ use retail_service::Service;
 use retail_service::types::{Config as ServiceConfig, RetailGrant};
 use std::sync::atomic::{AtomicBool, Ordering};
 
+#[path = "retail_purchase_tests.rs"]
+mod purchases;
+
 const KEY: &str = "synthetic-web-openai-key-never-live";
 const PAGE: &str = "/cloud/app/billing/retail";
 
