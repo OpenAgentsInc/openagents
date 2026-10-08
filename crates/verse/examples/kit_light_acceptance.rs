@@ -95,6 +95,8 @@ fn capture() {
         zones::atmosphere(runtime.zone),
     )
     .unwrap();
+    assert_eq!(renderer.adapter_info().vendor, 0x10de, "Use the remote NVIDIA GPU");
+    let adapter = renderer.adapter_info().name.clone();
     let mut records = Vec::new();
     for (name, eye, target) in [
         (
@@ -152,6 +154,7 @@ fn capture() {
         "public_pack": everglade_pack::PACK_SHA256,
         "bake_key": layers.as_ref().map(|x| &x.bake_key),
         "lamp_receivers": layers.as_ref().map(|x| x.lamps.len()),
+        "adapter": adapter,
         "captures": records,
         "storage": "per-vertex layers; no second-UV lightmap charts",
         "measurement": "capture with exposure settling; no frame-rate claim",
@@ -179,5 +182,36 @@ mod private_light_tests {
             .unwrap()
             .join()
             .unwrap();
+    }
+
+    #[test]
+    #[ignore = "Published private layer URL and an empty scratch cache"]
+    fn download_pinned_layers() {
+        use std::sync::atomic::AtomicBool;
+        use verse::zones::everglade_pack::kit_bake;
+
+        assert!(kit_bake::KIT_BAKE_BYTES > 0);
+        let output = std::path::PathBuf::from(
+            std::env::var_os("VERSE_KIT_LIGHT_OUTPUT").unwrap(),
+        );
+        std::fs::create_dir_all(&output).unwrap();
+        super::private(&output);
+        let cache = output.join("download-cache");
+        assert!(!cache.exists(), "Verify a download, not a previous cache hit");
+        let layers = kit_bake::fetch(&cache, true, &AtomicBool::new(false)).unwrap();
+        let report = serde_json::json!({
+            "url": kit_bake::pinned().url,
+            "sha256": kit_bake::KIT_BAKE_SHA256,
+            "bytes": kit_bake::KIT_BAKE_BYTES,
+            "scene": layers.scene,
+            "bake_key": layers.bake_key,
+            "vertices": layers.vertex_count(),
+            "suns": layers.suns.len(),
+        });
+        std::fs::write(
+            output.join("download-report.json"),
+            serde_json::to_vec_pretty(&report).unwrap(),
+        ).unwrap();
+        println!("{report}");
     }
 }
