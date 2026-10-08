@@ -41,17 +41,21 @@ pub struct RelaySource {
 
 impl RelaySource {
     /// A field over `relay` for the [`POOL`] pool, reading jobs in flight
-    /// from the pylon home `home`. The reader's key is a fresh one: reading
+    /// from the pylon home `home` and verdicts from the checkers it trusts
+    /// (`pylon::check::trusted`). The reader's key is a fresh one: reading
     /// beacons needs no identity of the owner's.
     #[must_use]
     pub fn new(relay: &str, home: Option<PathBuf>) -> Self {
+        let checkers = home
+            .as_deref()
+            .map(pylon::check::trusted)
+            .unwrap_or_default();
         Self {
-            field: Some(RelayField::new(
-                relay,
-                Some(POOL),
-                pylon::identity::Identity::generate(),
-            )),
-            live: Arc::new(Mutex::new(Live::new(Some(POOL)))),
+            field: Some(
+                RelayField::new(relay, Some(POOL), pylon::identity::Identity::generate())
+                    .trusting(checkers.clone()),
+            ),
+            live: Arc::new(Mutex::new(Live::new(Some(POOL)).trusting(checkers))),
             stop: Arc::new(AtomicBool::new(false)),
             home,
         }
@@ -170,5 +174,6 @@ pub fn sample(pylon: pylon::field::Pylon) -> PylonSample {
         uptime: (status != PylonStatus::Unknown).then_some(state.uptime),
         observed_at: pylon.observed_at,
         owner: false,
+        sigil: pylon.standing == nostr::pylon::Standing::Passing,
     }
 }

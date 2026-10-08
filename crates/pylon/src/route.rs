@@ -113,6 +113,7 @@ pub fn ask_blocking(
         wait: Duration::from_secs(settings.wait_secs.clamp(1, 600)),
         publish_receipt: true,
         home: home.to_path_buf(),
+        checkers: crate::check::trusted(home),
     };
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()

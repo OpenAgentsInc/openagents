@@ -51,6 +51,8 @@ impl ComputeSource for Sim {
                     uptime: Some(3600 * (1 + k * k * 30)),
                     observed_at: if stale { now.saturating_sub(900) } else { now },
                     owner: false,
+                    // The busiest towers have passing checks.
+                    sigil: !stale && matches!(i, 1 | 3 | 6),
                 }
             })
             .collect();

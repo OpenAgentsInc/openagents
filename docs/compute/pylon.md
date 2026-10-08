@@ -159,6 +159,35 @@ publication: a beacon is addressable, so once the pylon republishes, the
 counted beacon is gone from the relay and the recomputation no longer
 matches.
 
+## Check pylons (Victor's checker)
+
+```sh
+openagents pylon check canary --pylon npub1... [--award]   # the class's pinned suite
+openagents pylon check redundant "Say hi." --pylon npub1... --pylon npub1... --pylon npub1...
+openagents pylon league                                     # per-class results
+openagents pylon pool --checked --publish                   # drop failed pylons from admission
+```
+
+`check canary` sends the pylon its hardware family's pinned Gym suite
+(`pylon::check::suites`: three known-answer jobs; the suite's digest pins
+it) through the normal job path with the buyer key, publishes each receipt,
+and signs a NIP-32 verdict (`1985`, `openagents.pylon`, `check-pass` or
+`check-fail`) on it with a separate checker key (`checker.key`), whose
+content names `suite:<digest>`. `check redundant` sends one prompt to two
+to five pylons: a pylon in the strict majority passes, one outside it
+fails, and no majority is inconclusive. `--award` publishes the suite's
+NIP-XP `pylon-check` quest, refereed by the checker, and one award to a
+pylon whose canary passed, once per suite version. XP never converts to
+sats.
+
+Readers trust this computer's own checker key, the keys in
+`OPENAGENTS_PYLON_CHECKERS` (comma-separated npubs), and `--checker NPUB`.
+One trusted `check-fail` in the last 24 hours keeps `ask` and `route` from
+choosing that pylon, and `pool --checked` drops it from the aggregate's
+admission. `league` shows, per family and tier, each pylon's pass rate on
+its class's pinned suite, accepted jobs, median job time, and cost per
+accepted job, with `*` for passing checks.
+
 ## The Pylon Field
 
 `pylon::field::RelayField::poll` returns each verified pylon as a NIP-PYLON
@@ -178,12 +207,17 @@ prompt, which Verse reads to draw the beam to Alice's station. Verse's
 desktop build shows this source beside the computer's own pylon
 (`VERSE_PYLON_RELAY` names another relay, or `off`); see the P1 notes in
 [verse-compute](verse-compute.md#p1-presence-and-free-jobs-over-nostr).
+With trusted checkers, the subscription also reads their verdicts, and a
+pylon with passing checks and no failure carries a sigil: four gold motes
+above its point.
 
-## Limits in P1
+## Limits in P1 and P2
 
 - Free jobs only; no invoices, payments, or provider shares.
 - The capability is a qualified ID, not a published NIP-CAP manifest.
-- No check verdicts (P2); aggregates count no labels.
+- Redundant runs compare normalized text exactly; there is no Jev
+  judgment for non-deterministic answers yet.
+- The league is a CLI and JSON view; Verse's Gym boards don't draw it yet.
 - The job runs in the Psionic process; it is inference only, with no tool or
   command execution, so there is nothing to put inside `coder-boundary` yet.
 - Only day plans route to the pool; reflections, share drafts, and

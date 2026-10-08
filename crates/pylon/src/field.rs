@@ -1,6 +1,8 @@
 //! The Pylon Field's relay source: verified beacons and receipts, projected
-//! into NIP-PYLON `pylon` world states. Verse polls a [`RelayField`] and
-//! draws what it returns; nothing else feeds a pylon's glow.
+//! into NIP-PYLON `pylon` world states, and the verdicts of trusted
+//! checkers, which give a pylon with passing checks its sigil. Verse polls
+//! a [`RelayField`] and draws what it returns; nothing else feeds a pylon's
+//! glow or sigil.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Mutex;
@@ -9,9 +11,10 @@ use std::time::Duration;
 
 use nostr::domain::Event;
 use nostr::pylon::{
-    self, AggregateInputs, BEACON_KIND, BEACON_MARKER, BeaconBook, Freshness, MAX_FUTURE_SKEW_SECS,
-    MAX_WINDOW_SECS, Outcome, POOL_KIND, POOL_MARKER, PoolAggregate, PoolPolicy, PylonState,
-    RECEIPT_KIND, RECEIPT_MARKER, freshness, parse_aggregate, parse_beacon, parse_receipt, project,
+    self, AggregateInputs, BEACON_KIND, BEACON_MARKER, BeaconBook, CHECK_KIND, CHECK_NAMESPACE,
+    Check, Freshness, MAX_FUTURE_SKEW_SECS, MAX_WINDOW_SECS, Outcome, POOL_KIND, POOL_MARKER,
+    PoolAggregate, PoolPolicy, PylonState, RECEIPT_KIND, RECEIPT_MARKER, Receipt, Standing,
+    freshness, parse_aggregate, parse_beacon, parse_check, parse_receipt, project,
     verify_aggregate,
 };
 use serde_json::json;
@@ -29,6 +32,8 @@ pub struct RelayField {
     pub relay: String,
     /// Only pylons whose beacon asks to join this pool; `None` keeps all.
     pub pool: Option<String>,
+    /// Checkers whose verdicts give sigils; empty reads no verdicts.
+    pub checkers: BTreeSet<String>,
     reader: Identity,
 }
 
@@ -40,8 +45,16 @@ impl RelayField {
         Self {
             relay: relay.into(),
             pool: pool.map(str::to_string),
+            checkers: BTreeSet::new(),
             reader,
         }
+    }
+
+    /// This field, reading verdicts from `checkers`.
+    #[must_use]
+    pub fn trusting(mut self, checkers: BTreeSet<String>) -> Self {
+        self.checkers = checkers;
+        self
     }
 
     /// Fetch, verify, and project. Stale beacons come back as `unknown`.
@@ -110,6 +123,8 @@ pub const MAX_LIVE_PYLONS: usize = 256;
 pub const MAX_LIVE_RECEIPTS: usize = 16_384;
 /// The most raw receipts it keeps to recompute an aggregate.
 pub const MAX_LIVE_RECENT: usize = 4_096;
+/// The most verdicts a live field holds.
+pub const MAX_LIVE_CHECKS: usize = 4_096;
 /// The window the pool's rate counts receipts in when no aggregate is
 /// valid, s.
 pub const RATE_SECS: u64 = 60;
@@ -125,6 +140,8 @@ pub struct Pylon {
     pub memory_gb: u32,
     /// When the pylon sampled itself, Unix seconds.
     pub observed_at: u64,
+    /// From trusted verdicts: `Passing` draws the sigil.
+    pub standing: Standing,
 }
 
 /// A receipt as a live field remembers it.
@@ -159,6 +176,12 @@ pub struct Live {
     aggregate: Option<Held>,
     /// The newest receipt's `created_at`, where a reconnect resumes.
     newest_receipt: u64,
+    /// Checkers whose verdicts count.
+    checkers: BTreeSet<String>,
+    /// Receipts of the last 24 hours by event ID, for binding verdicts.
+    by_id: BTreeMap<String, Receipt>,
+    /// Trusted verdicts of the last 24 hours, raw and parsed.
+    checks: Vec<(Event, Check)>,
     /// Whether the subscription has caught up with the relay.
     pub synced: bool,
     /// The last connection error, until the next catch-up.
@@ -173,6 +196,13 @@ impl Live {
             pool: pool.map(str::to_string),
             ..Self::default()
         }
+    }
+
+    /// This field, counting verdicts from `checkers`.
+    #[must_use]
+    pub fn trusting(mut self, checkers: BTreeSet<String>) -> Self {
+        self.checkers = checkers;
+        self
     }
 
     /// Offers one event the relay sent. Returns whether it counted: a
@@ -211,6 +241,7 @@ impl Live {
                     return false;
                 }
                 self.newest_receipt = self.newest_receipt.max(event.created_at);
+                self.by_id.insert(event.id.clone(), receipt.clone());
                 self.receipts.insert(
                     key,
                     Counted {
@@ -224,6 +255,21 @@ impl Live {
                 {
                     self.recent.push(event);
                 }
+                true
+            }
+            CHECK_KIND => {
+                let Ok(check) = parse_check(&event) else {
+                    return false;
+                };
+                if !self.checkers.contains(&check.checker)
+                    || check.created_at > now + MAX_FUTURE_SKEW_SECS
+                    || check.created_at + RECEIPT_WINDOW_SECS < now
+                    || self.checks.len() >= MAX_LIVE_CHECKS
+                    || self.checks.iter().any(|(e, _)| e.id == event.id)
+                {
+                    return false;
+                }
+                self.checks.push((event, check));
                 true
             }
             POOL_KIND => {
@@ -257,6 +303,10 @@ impl Live {
     pub fn settle(&mut self, now: u64) {
         self.receipts
             .retain(|_, r| r.finished_at + RECEIPT_WINDOW_SECS >= now);
+        self.by_id
+            .retain(|_, r| r.finished_at + RECEIPT_WINDOW_SECS >= now);
+        self.checks
+            .retain(|(_, c)| c.created_at + RECEIPT_WINDOW_SECS >= now);
         self.recent.retain(|event| {
             parse_receipt(event, None).is_ok_and(|r| r.finished_at + MAX_WINDOW_SECS >= now)
         });
@@ -265,12 +315,20 @@ impl Live {
         {
             let beacons: Vec<Event> = self.book.iter().map(|(event, _)| event.clone()).collect();
             let slices = u32::try_from(held.body.rate.len()).unwrap_or(u32::MAX);
-            let policy = PoolPolicy::open(&held.body.pool, slices);
+            let checks: Vec<Event> = self.checks.iter().map(|(e, _)| e.clone()).collect();
             let inputs = AggregateInputs {
                 beacons: &beacons,
                 receipts: &self.recent,
+                checks: &checks,
             };
-            held.verified = Some(verify_aggregate(&held.event, &policy, &inputs).is_ok());
+            // The open policy, or one that counts this reader's checkers.
+            let open = PoolPolicy::open(&held.body.pool, slices);
+            let checked = open.clone().checked(self.checkers.iter().cloned());
+            held.verified = Some(
+                verify_aggregate(&held.event, &open, &inputs).is_ok()
+                    || (!self.checkers.is_empty()
+                        && verify_aggregate(&held.event, &checked, &inputs).is_ok()),
+            );
         }
     }
 
@@ -286,6 +344,14 @@ impl Live {
                 *jobs.entry(counted.address.as_str()).or_default() += 1;
             }
         }
+        let standings = pylon::standings(
+            pylon::counted(
+                self.checks.iter().map(|(_, c)| c),
+                &self.by_id,
+                &self.checkers,
+            ),
+            &self.by_id,
+        );
         let mut out: Vec<Pylon> = self
             .book
             .iter()
@@ -296,6 +362,10 @@ impl Live {
                     state: project(b, now, jobs.get(address.as_str()).copied().unwrap_or(0)),
                     memory_gb: b.class.memory_gb,
                     observed_at: b.observed_at,
+                    standing: standings
+                        .get(&address)
+                        .map(|r| r.standing)
+                        .unwrap_or_default(),
                 }
             })
             .collect();
@@ -390,14 +460,25 @@ impl RelayField {
         if let Some(pool) = &self.pool {
             aggregates["#d"] = json!([pool]);
         }
-        conn.send(json!([
+        let mut request = json!([
             "REQ",
             "field",
             {"kinds": [BEACON_KIND], "#t": [BEACON_MARKER], "limit": 500},
             {"kinds": [RECEIPT_KIND], "#t": [RECEIPT_MARKER], "since": since, "limit": 2_000},
             aggregates,
-        ]))
-        .await?;
+        ]);
+        if !self.checkers.is_empty()
+            && let Some(filters) = request.as_array_mut()
+        {
+            filters.push(json!({
+                "kinds": [CHECK_KIND],
+                "authors": self.checkers,
+                "#L": [CHECK_NAMESPACE],
+                "since": now().saturating_sub(RECEIPT_WINDOW_SECS),
+                "limit": 2_000,
+            }));
+        }
+        conn.send(request).await?;
         let mut synced = false;
         loop {
             if stop.load(Ordering::Relaxed) {

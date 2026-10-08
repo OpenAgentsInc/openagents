@@ -4,7 +4,8 @@
 2026-09-28; the `playtest` rule added 2026-09-28; the `per-awardee`
 uniqueness policy, trainer profiles, key links, and trainer cards added
 2026-09-28; the `eval-check` and `eval-adopt` rules added 2026-09-28
-and implemented in `crates/nostr` 2026-09-29. The
+and implemented in `crates/nostr` 2026-09-29; the `pylon-check` rule
+added and implemented 2026-10-08. The
 [shared contracts](contracts.md) are normative.
 
 This NIP publishes quests, a referee's acceptance of a completed quest, and
@@ -505,6 +506,26 @@ author's suite's), and the key
 `eval-adopt:<subject release id>:<role>:<pubkey>`. Each role is paid once
 per subject release; a key holding two roles (an evaluator who is also an
 author) is paid once, in the larger role, as under `eval-check`.
+
+### `pylon-check`
+
+XP for compute work a trusted checker verified (NIP-PYLON, [Check
+verdicts](NIP-PYLON.md#check-verdicts)). The acceptance pins a Gym suite
+digest and the checker:
+
+```json
+{"rule": "pylon-check", "suite": "<64-hex suite digest>", "checker": "<64-hex key>", "max_awards": 10000}
+```
+
+The one role is `provider`. A completion is a `3201` receipt for an
+`accepted` job and the quest's checker's `check-pass` label on exactly that
+receipt and pylon, whose content names the suite as `suite:<digest>`. The
+checker is neither the receipt's buyer nor its provider, the label is not
+older than the receipt, and both fall inside the season. The award's
+`evidence` is the receipt, then the label; its key is
+`pylon-check:<season>:<suite>:provider:<pylon pubkey>`, so a season pays a
+pylon once per suite version. XP never converts to sats, and no NIP-PYLON
+record pays XP.
 
 Rules are closed: a reader refuses a quest whose rule it doesn't implement.
 A future rule, such as a coding quest with an integrator, needs its own

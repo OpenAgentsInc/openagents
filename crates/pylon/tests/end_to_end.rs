@@ -179,6 +179,7 @@ async fn a_free_job_runs_end_to_end_and_the_pool_counts_it() {
         wait: Duration::from_secs(10),
         publish_receipt: true,
         home: home.path().to_path_buf(),
+        checkers: BTreeSet::new(),
     };
     let answer = client::ask(&buyer, &ask("hello pylon")).await.unwrap();
     assert_eq!(answer.text.as_deref(), Some("echo: nolyp olleh"));
@@ -390,6 +391,7 @@ async fn an_owned_pylon_yields_to_the_owner_and_never_counts_their_receipts() {
         wait: Duration::from_secs(10),
         publish_receipt: true,
         home: home.path().to_path_buf(),
+        checkers: BTreeSet::new(),
     };
     // A buyer's job and the owner's own job both run; each took a lease
     // that is gone once the job ended.
@@ -512,4 +514,269 @@ async fn host_share_turns_the_pylon_on_and_off() {
     assert!(offline);
     stop_tx.send(()).unwrap();
     supervisor.await.unwrap();
+}
+
+/// An engine that knows every pinned canary's answer and says `hi` to
+/// anything else: the honest pylon in the check fixtures.
+struct Oracle;
+
+impl pylon::engine::Engine for Oracle {
+    fn model(&self) -> &str {
+        "oracle"
+    }
+
+    fn healthy(&self) -> pylon::engine::Pending<'_, bool> {
+        Box::pin(async { true })
+    }
+
+    fn generate<'a>(
+        &'a self,
+        turns: &'a [pylon::engine::Turn],
+        _max_tokens: u32,
+    ) -> pylon::engine::Pending<'a, Result<pylon::engine::Generation, String>> {
+        Box::pin(async move {
+            let last = turns.last().ok_or("no message")?;
+            let text = pylon::check::suites()
+                .into_iter()
+                .flat_map(|s| s.canaries)
+                .find(|c| c.prompt == last.content)
+                .map_or_else(|| "Hi.".to_string(), |c| format!("{}.", c.expect));
+            Ok(pylon::engine::Generation {
+                text,
+                input_tokens: Some(4),
+                output_tokens: Some(1),
+                model: "oracle".into(),
+            })
+        })
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_pylon_with_wrong_canary_answers_is_marked_check_fail_and_leaves_the_pool() {
+    use nostr::pylon::{Standing, Verdict, parse_check};
+    use pylon::check::Checker;
+
+    let (url, hub) = relay().await;
+    let home = tempfile::tempdir().unwrap();
+    let mut running = Vec::new();
+    let mut keys = Vec::new();
+    for (slug, engine) in [
+        (
+            "honest-a",
+            Arc::new(Oracle) as Arc<dyn pylon::engine::Engine>,
+        ),
+        ("honest-b", Arc::new(Oracle)),
+        ("liar", Arc::new(Echo)),
+    ] {
+        let key = Identity::generate();
+        let mut config = Config::new(&url, slug, home.path().to_path_buf());
+        config.allow = None;
+        let provider = Provider::new(config, key.clone(), engine).unwrap();
+        let (stop_tx, stop_rx) = tokio::sync::oneshot::channel::<()>();
+        running.push((
+            stop_tx,
+            tokio::spawn(Arc::clone(&provider).run(async {
+                let _ = stop_rx.await;
+            })),
+        ));
+        keys.push(key);
+    }
+    for _ in 0..100 {
+        if hub
+            .lock()
+            .await
+            .stored
+            .iter()
+            .filter(|e| e.kind == 30_200)
+            .count()
+            == 3
+        {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let (honest, liar) = (keys[0].pubkey().to_string(), keys[2].pubkey().to_string());
+    let checker = Checker {
+        relay: url.clone(),
+        checker: Identity::generate(),
+        buyer: Identity::generate(),
+        home: home.path().to_path_buf(),
+        wait: Duration::from_secs(10),
+    };
+    let trusted = BTreeSet::from([checker.checker.pubkey().to_string()]);
+
+    // Canaries through the normal job path: the honest pylon passes every
+    // one, the echoing pylon fails every one, and each verdict is a label
+    // on the receipt from a key that is neither its buyer nor its pylon.
+    let good = checker.canaries(&honest).await.unwrap();
+    let bad = checker.canaries(&liar).await.unwrap();
+    assert_eq!(good.len(), 3);
+    assert!(good.iter().all(|c| c.verdict == Verdict::Pass));
+    assert!(bad.iter().all(|c| c.verdict == Verdict::Fail));
+    let stored = hub.lock().await.stored.clone();
+    for c in good.iter().chain(&bad) {
+        let label = stored
+            .iter()
+            .find(|e| Some(&e.id) == c.label.as_ref())
+            .unwrap();
+        let parsed = parse_check(label).unwrap();
+        assert_eq!(Some(&parsed.receipt), c.receipt.as_ref());
+        assert_eq!(parsed.checker, checker.checker.pubkey());
+        assert!(parsed.suite().is_some());
+    }
+
+    // The pool's admission drops the failing pylon; the open policy still
+    // counts it.
+    let checked = PoolPolicy::open("everglade", pool::SLICES).checked(trusted.clone());
+    let (aggregate, _) = pool::aggregate(&Identity::generate(), &url, &checked, 60, false)
+        .await
+        .unwrap();
+    assert_eq!(aggregate.totals.pylons_online, 2);
+    assert_eq!(aggregate.totals.checks.pass, 3);
+    assert_eq!(aggregate.totals.checks.fail, 3);
+    assert_eq!(aggregate.totals.jobs.accepted, 3);
+    let open = PoolPolicy::open("everglade", pool::SLICES);
+    let (aggregate, _) = pool::aggregate(&Identity::generate(), &url, &open, 60, false)
+        .await
+        .unwrap();
+    assert_eq!(aggregate.totals.pylons_online, 3);
+    let aggregator = Identity::generate();
+    pool::aggregate(&aggregator, &url, &checked, 60, true)
+        .await
+        .unwrap();
+    pool::verify(&Identity::generate(), &url, aggregator.pubkey(), &checked)
+        .await
+        .unwrap();
+
+    // A buyer that trusts the checker never routes to the failing pylon.
+    let buyer = Identity::generate();
+    for _ in 0..3 {
+        let answer = client::ask(
+            &buyer,
+            &Ask {
+                relay: url.clone(),
+                pylon: None,
+                prompt: "hello".into(),
+                wait: Duration::from_secs(10),
+                publish_receipt: false,
+                home: home.path().to_path_buf(),
+                checkers: trusted.clone(),
+            },
+        )
+        .await
+        .unwrap();
+        assert!(!answer.pylon.contains(&liar));
+    }
+    let only_liar = client::ask(
+        &buyer,
+        &Ask {
+            relay: url.clone(),
+            pylon: Some(liar.clone()),
+            prompt: "hello".into(),
+            wait: Duration::from_secs(10),
+            publish_receipt: false,
+            home: home.path().to_path_buf(),
+            checkers: trusted.clone(),
+        },
+    )
+    .await;
+    assert!(only_liar.unwrap_err().contains("passes its checks"));
+
+    // Redundant execution: the two honest pylons agree, the liar doesn't.
+    let pylons: Vec<String> = keys.iter().map(|k| k.pubkey().to_string()).collect();
+    let runs = checker.redundant("Say hi.", &pylons).await.unwrap();
+    let verdicts: Vec<Verdict> = runs.iter().map(|c| c.verdict).collect();
+    assert_eq!(verdicts, [Verdict::Pass, Verdict::Pass, Verdict::Fail]);
+    assert!(runs.iter().all(|c| c.label.is_some()));
+
+    // NIP-XP: a passing canary earns the pylon one award per suite, never
+    // two, and a failing pylon earns none.
+    let award = checker.award(&good).await.unwrap().unwrap();
+    let stored = hub.lock().await.stored.clone();
+    let event = stored.iter().find(|e| e.id == award).unwrap();
+    let parsed = nostr::xp::parse_award(event).unwrap();
+    assert_eq!(parsed.awardees[0].pubkey, honest);
+    assert_eq!(parsed.total(), pylon::check::XP_PER_SUITE);
+    assert!(checker.award(&good).await.unwrap().is_none());
+    assert!(checker.award(&bad).await.unwrap().is_none());
+
+    // The league: one GPU class on its pinned suite, the honest pylon
+    // first with the sigil, the liar last at 0%.
+    let league = pylon::league::fetch(&Identity::generate(), &url, &trusted)
+        .await
+        .unwrap();
+    assert_eq!(league.classes.len(), 1);
+    let class = &league.classes[0];
+    assert_eq!(
+        class.suite,
+        pylon::check::suite_for(nostr::pylon::Family::Gpu).digest()
+    );
+    let first = &class.rows[0];
+    assert!(first.pylon.contains(&honest));
+    assert_eq!(first.pass_rate, Some(1.0));
+    assert!(first.sigil);
+    let row = |key: &str| class.rows.iter().find(|r| r.pylon.contains(key)).unwrap();
+    let failing = row(&liar);
+    assert_eq!(failing.pass_rate, Some(0.0));
+    assert_eq!(failing.standing, Standing::Failing);
+    assert!(!failing.sigil);
+    // A pylon checked only by redundant runs has no suite rate, ranks
+    // last, and still carries the sigil from its passing check.
+    let unranked = row(keys[1].pubkey());
+    assert_eq!(unranked.pass_rate, None);
+    assert!(unranked.sigil);
+    assert!(class.rows.last().unwrap().pylon.contains(keys[1].pubkey()));
+    assert!(pylon::league::render(&league).contains("100%"));
+
+    // The live field gives the honest pylons their sigils, and recomputes
+    // a checked aggregate published after the last verdict.
+    pool::aggregate(&aggregator, &url, &checked, 60, true)
+        .await
+        .unwrap();
+    let live = Arc::new(std::sync::Mutex::new(
+        Live::new(Some("everglade")).trusting(trusted.clone()),
+    ));
+    let stop = Arc::new(AtomicBool::new(false));
+    let watcher = {
+        let (live, stop, url, trusted) = (
+            Arc::clone(&live),
+            Arc::clone(&stop),
+            url.clone(),
+            trusted.clone(),
+        );
+        tokio::spawn(async move {
+            RelayField::new(&url, Some("everglade"), Identity::generate())
+                .trusting(trusted)
+                .watch(&live, &stop)
+                .await;
+        })
+    };
+    for _ in 0..100 {
+        if live.lock().unwrap().synced {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    {
+        let l = live.lock().unwrap();
+        let pylons = l.pylons(pylon::now());
+        let standing = |key: &str| {
+            pylons
+                .iter()
+                .find(|p| p.state.pylon.contains(key))
+                .unwrap()
+                .standing
+        };
+        assert_eq!(standing(&honest), Standing::Passing);
+        assert_eq!(standing(keys[1].pubkey()), Standing::Passing);
+        assert_eq!(standing(&liar), Standing::Failing);
+        // The checked aggregate recomputes from what the field holds.
+        assert!(l.aggregate(pylon::now()).unwrap().1);
+    }
+    stop.store(true, Ordering::Relaxed);
+    watcher.await.unwrap();
+    for (stop_tx, task) in running {
+        stop_tx.send(()).unwrap();
+        task.await.unwrap().unwrap();
+    }
 }

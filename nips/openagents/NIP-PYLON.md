@@ -244,7 +244,7 @@ the listed inputs before drawing it.
 | --- | --- |
 | `v` | `openagents.pylon-pool.v1`. |
 | `aggregator`, `pool` | The signer, and the slug equal to `d`. |
-| `policy` | SHA-256 of the pool's policy document: which pylons it admits, which buyers' receipts and which checkers' labels it counts, and its exclusions. The aggregator serves the document beside the pool. |
+| `policy` | SHA-256 of the pool's policy document: which pylons it admits, which buyers' receipts and which checkers' labels it counts, and its exclusions (such as dropping pylons a counted `check-fail` names). The aggregator serves the document beside the pool. |
 | `window` | `{from, to}`, whole minutes, `0 < to − from ≤ 3600`. |
 | `inputs` | For beacons, receipts, and check labels: `{count, digest}`. The digest is the SHA-256 of the sorted, newline-joined lowercase event IDs the aggregator counted, with no trailing newline. |
 | `totals.pylons_online`, `slots_total`, `slots_free`, `by_family` | From the newest fresh `online` or `draining` beacon of each counted pylon at `window.to`. |
@@ -347,8 +347,16 @@ for free work (2026-10-07):
   `ComputeSource` (`zones::everglade::compute`, P0, #10920): today this
   computer's lease table, with no events.
 
-Not implemented: check labels (the aggregate's `checks` set is always
-empty), paid receipts in practice, a `wellspring` projection from an
+Phase P2 (2026-10-08): `nostr::pylon::check` builds and verifies check
+labels, binds each to its receipt, and folds counted verdicts into a
+pylon's standing. A pool policy may name `checkers` (whose labels the
+aggregate counts in `inputs.checks` and `totals.checks`) and set
+`exclude_failed`, which drops a pylon with a counted `check-fail` from
+admission; both fields are omitted when empty, so an open policy's digest
+is unchanged. `crates/pylon` runs the checker (`openagents pylon check`),
+the per-class league, and `pylon-check` XP awards (NIP-XP).
+
+Not implemented: paid receipts in practice, a `wellspring` projection from an
 aggregate, and the `nip-pylon-v1` relay extension. A service's `capability` is a qualified ID
 (`<pylon key>:pylon/text-generation`) rather than a full DefinitionRef.
 

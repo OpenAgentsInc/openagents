@@ -284,10 +284,14 @@ pub fn draw(
                 continue;
             };
             let owner = sample.pylons.get(i).is_some_and(|p| p.owner);
+            let sigil = sample.pylons.get(i).is_some_and(|p| p.sigil);
             let base = ground(*site);
             draw_pylon(
                 mesh, &mut glows, base, &look, owner, time, i, eye, detail, soft,
             );
+            if sigil && !look.unknown {
+                draw_sigil(&mut glows, base, &look, time, eye, soft);
+            }
             if look.stream > 0.0 {
                 draw_stream(&mut glows.flow, base, center, look.stream, time, i, soft);
             }
@@ -491,6 +495,25 @@ fn crystal_mid(look: &PylonLook) -> f32 {
         Shape::Obelisk => look.height * 0.8 + 0.42,
         Shape::Spire => look.height * 0.78 + 0.35,
         Shape::Cairn => look.height + 0.3,
+    }
+}
+
+/// A pylon's sigil: four gold motes in a slowly turning diamond above its
+/// point, drawn only while a trusted checker's verdicts pass it.
+fn draw_sigil(glows: &mut Glows, base: Vec3, look: &PylonLook, time: f32, eye: Vec3, soft: f32) {
+    let center = base + Vec3::Y * (look.height + 0.8);
+    let turn = time * 0.6;
+    for k in 0..4 {
+        let a = turn + k as f32 * std::f32::consts::FRAC_PI_2;
+        let lift = if k % 2 == 0 { 0.22 } else { 0.0 };
+        let at = center + Vec3::new(a.cos() * 0.22, lift - 0.11, a.sin() * 0.22);
+        motes::blob(
+            &mut glows.key,
+            at,
+            0.08,
+            times(GOLD, TIP_LUMINANCE * 0.6 * soft),
+            eye,
+        );
     }
 }
 

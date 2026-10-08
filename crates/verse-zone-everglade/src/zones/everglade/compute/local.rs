@@ -168,6 +168,7 @@ impl ComputeSource for LocalSource {
                     uptime: None,
                     observed_at: now,
                     owner: true,
+                    sigil: false,
                 };
                 self.last = Some(pylon.clone());
                 pylon
@@ -191,6 +192,7 @@ impl ComputeSource for LocalSource {
                     uptime: None,
                     observed_at: now,
                     owner: true,
+                    sigil: false,
                 })
             },
         };

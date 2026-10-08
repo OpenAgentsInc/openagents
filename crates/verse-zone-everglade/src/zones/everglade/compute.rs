@@ -83,6 +83,9 @@ pub struct PylonSample {
     /// It serves only its owner's own work (the **OWNER** mark): true for
     /// this machine until P1.
     pub owner: bool,
+    /// A trusted checker's verdicts pass it and none fails it: it carries
+    /// the sigil (P2).
+    pub sigil: bool,
 }
 
 /// A model provider's well round the basin, from the capacity book.

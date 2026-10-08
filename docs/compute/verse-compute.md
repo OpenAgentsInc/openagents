@@ -688,6 +688,27 @@ Acceptance: a pylon that returns wrong canary answers in a fixture is marked
 `check-fail` and leaves the pool's admission; the Gym league shows per-class
 results from pinned suites; capture `pylon-league.png`.
 
+**Built (2026-10-08).** See [Check pylons](pylon.md#check-pylons-victors-checker).
+
+- `nostr::pylon::check` signs and verifies check labels, binds each to its
+  receipt (never from its buyer or provider), and folds trusted verdicts
+  into a pylon's standing. A pool policy with `checkers` counts their
+  labels in the aggregate, and `exclude_failed` drops a pylon with a
+  counted `check-fail` from admission.
+- `openagents pylon check canary|redundant` is Victor's checker: one
+  pinned suite per hardware family, run through the normal job path. In
+  the fixture (`crates/pylon/tests/end_to_end.rs`) an echoing pylon fails
+  every canary, leaves the checked pool's admission, and is never chosen
+  by a buyer that trusts the checker.
+- `openagents pylon league` ranks pylons per family and tier on the pinned
+  suites, with jobs, median time, and cost per accepted job.
+- NIP-XP gains the `pylon-check` rule: one award per pylon per suite
+  version for a passing canary, refereed by the checker.
+- Everglade draws a sigil over each pylon with passing checks.
+
+Not yet: the league on Verse's Gym boards and the `pylon-league.png`
+capture.
+
 ### P3: paid jobs
 
 Issue: #10923.

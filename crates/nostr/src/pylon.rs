@@ -8,8 +8,10 @@
 //! a receipt is a buyer's claim, and an aggregate is arithmetic over claims
 //! that any reader can repeat. See `nips/openagents/NIP-PYLON.md`.
 //!
-//! Check verdicts (NIP-32 labels) belong to phase P2; this version counts
-//! no labels, so every aggregate it builds or accepts has an empty check set.
+//! Check verdicts are NIP-32 labels ([`check`]); an aggregate counts them
+//! only from the checkers its policy trusts, and a policy with
+//! `exclude_failed` drops a pylon with a counted `check-fail` from
+//! admission.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -19,6 +21,12 @@ use sha2::{Digest, Sha256};
 
 use crate::contracts::jcs;
 use crate::domain::{Event, MintedOwnerAttestation, RelaySigner, Tag, verify_owner_attestation};
+
+pub mod check;
+pub use check::{
+    CHECK_KIND, CHECK_NAMESPACE, Check, Record, Standing, Verdict, bind_check, check_event,
+    counted, parse_check, standings,
+};
 
 /// The beacon kind (addressable).
 pub const BEACON_KIND: u16 = 30_200;
@@ -345,6 +353,13 @@ pub struct PoolPolicy {
     pub pylons: Option<BTreeSet<String>>,
     pub buyers: Option<BTreeSet<String>>,
     pub slices: u32,
+    /// The checkers whose verdicts count. Empty counts no verdicts.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub checkers: BTreeSet<String>,
+    /// Drop a pylon with a counted `check-fail` from admission: its
+    /// beacons and receipts no longer count.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub exclude_failed: bool,
 }
 
 impl PoolPolicy {
@@ -358,7 +373,18 @@ impl PoolPolicy {
             pylons: None,
             buyers: None,
             slices,
+            checkers: BTreeSet::new(),
+            exclude_failed: false,
         }
+    }
+
+    /// This policy, also counting verdicts from `checkers` and dropping
+    /// pylons they fail from admission.
+    #[must_use]
+    pub fn checked(mut self, checkers: impl IntoIterator<Item = String>) -> Self {
+        self.checkers.extend(checkers);
+        self.exclude_failed = true;
+        self
     }
 
     /// The policy's digest, as an aggregate names it.
@@ -377,6 +403,9 @@ impl PoolPolicy {
         slug(&self.pool, "pool")?;
         if self.slices == 0 || self.slices as usize > MAX_RATE_SLICES {
             return Err("a pool policy has 1 to 60 rate slices".into());
+        }
+        for checker in &self.checkers {
+            hex64(checker, "checker")?;
         }
         Ok(())
     }
@@ -845,10 +874,12 @@ fn window(window: Window) -> Result<(), String> {
     Ok(())
 }
 
-/// What an aggregator counts: verified beacons and receipts it fetched.
+/// What an aggregator counts: verified beacons, receipts, and check
+/// labels it fetched.
 pub struct AggregateInputs<'a> {
     pub beacons: &'a [Event],
     pub receipts: &'a [Event],
+    pub checks: &'a [Event],
 }
 
 /// Compute a pool's totals over `window` from raw events, under `policy`.
@@ -869,9 +900,35 @@ pub fn compute_aggregate(
     policy.validate()?;
     window(window_)?;
     hex64(aggregator, "aggregator")?;
-    if inputs.beacons.len() > MAX_BEACONS || inputs.receipts.len() > MAX_RECEIPTS {
+    if inputs.beacons.len() > MAX_BEACONS
+        || inputs.receipts.len() > MAX_RECEIPTS
+        || inputs.checks.len() > check::MAX_CHECKS
+    {
         return Err("too many inputs for one aggregate; split the pool".into());
     }
+
+    // Verdicts: from a trusted checker, made inside the window, on a
+    // receipt among the inputs that it binds to.
+    let mut by_id: BTreeMap<String, Receipt> = BTreeMap::new();
+    if !policy.checkers.is_empty() {
+        for event in inputs.receipts {
+            if let Ok(receipt) = parse_receipt(event, None) {
+                by_id.insert(event.id.clone(), receipt);
+            }
+        }
+    }
+    let parsed: Vec<Check> = inputs
+        .checks
+        .iter()
+        .filter(|e| e.created_at >= window_.from && e.created_at < window_.to)
+        .filter_map(|e| parse_check(e).ok())
+        .collect();
+    let counted_checks = counted(&parsed, &by_id, &policy.checkers);
+    let failing: BTreeSet<String> = standings(counted_checks.iter().copied(), &by_id)
+        .into_iter()
+        .filter(|(_, record)| record.standing == Standing::Failing)
+        .map(|(address, _)| address)
+        .collect();
 
     // Beacons: the newest valid one per pylon that names the pool and is
     // fresh (sampled at or before, and valid at) the window's end.
@@ -887,6 +944,7 @@ pub fn compute_aggregate(
                 .pylons
                 .as_ref()
                 .is_some_and(|admitted| !admitted.contains(&beacon.address()))
+            || (policy.exclude_failed && failing.contains(&beacon.address()))
         {
             continue;
         }
@@ -899,6 +957,13 @@ pub fn compute_aggregate(
         }
     }
     let mut totals = Totals::default();
+    for check in &counted_checks {
+        match check.verdict {
+            Verdict::Pass => totals.checks.pass += 1,
+            Verdict::Fail => totals.checks.fail += 1,
+            Verdict::Inconclusive => totals.checks.inconclusive += 1,
+        }
+    }
     let mut beacon_ids = Vec::new();
     let mut admitted = BTreeSet::new();
     for (event, beacon) in book.iter() {
@@ -995,8 +1060,8 @@ pub fn compute_aggregate(
                 digest: id_set_digest(receipt_ids),
             },
             checks: InputSet {
-                count: 0,
-                digest: id_set_digest([]),
+                count: counted_checks.len() as u64,
+                digest: id_set_digest(counted_checks.iter().map(|c| c.id.as_str())),
             },
         },
         totals,

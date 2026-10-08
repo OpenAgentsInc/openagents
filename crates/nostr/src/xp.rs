@@ -40,7 +40,14 @@ pub const LABEL_KIND: u16 = 1_985;
 pub const LABEL_NAMESPACE: &str = "openagents.xp";
 
 /// The acceptance rules this version implements.
-pub const RULES: &[&str] = &[KB_TRANSFER, REPRODUCE, PLAYTEST, EVAL_CHECK, EVAL_ADOPT];
+pub const RULES: &[&str] = &[
+    KB_TRANSFER,
+    REPRODUCE,
+    PLAYTEST,
+    EVAL_CHECK,
+    EVAL_ADOPT,
+    PYLON_CHECK,
+];
 /// The rule a knowledge entry that helped out of sample completes.
 pub const KB_TRANSFER: &str = "kb-transfer";
 /// The rule an independent reproduction of a published attempt completes.
@@ -54,6 +61,9 @@ pub const EVAL_CHECK: &str = "eval-check";
 /// The rule an adoption of an extension into a host's defaults completes
 /// ([`eval_adopt`]).
 pub const EVAL_ADOPT: &str = "eval-adopt";
+/// The rule a trusted checker's `check-pass` on a pylon's job completes
+/// ([`pylon_check`]).
+pub const PYLON_CHECK: &str = "pylon-check";
 /// The uniqueness policies this version implements. Under `first`, the
 /// first accepted completion per uniqueness key earns the award: the key is
 /// the quest version's coordinate, except under `playtest`, whose rule
@@ -79,6 +89,8 @@ pub const PLAYTEST_ROLES: &[&str] = &["tester", "triager"];
 pub const EVAL_CHECK_ROLES: &[&str] = &["checker", "evaluator", "suite-author"];
 /// The awardee roles of `eval-adopt`. Each award credits one of them.
 pub const EVAL_ADOPT_ROLES: &[&str] = &["extension-author", "suite-author", "evaluator"];
+/// The one `pylon-check` role: the pylon that did the verified work.
+pub const PYLON_CHECK_ROLES: &[&str] = &[pylon_check::ROLE];
 
 /// The role whose key a `per-awardee` quest pays once, under `rule`: the
 /// reproducer under `reproduce`. Only rules with a keyed role take the
@@ -102,6 +114,7 @@ pub fn roles(rule: &str) -> &'static [&'static str] {
         PLAYTEST => PLAYTEST_ROLES,
         EVAL_CHECK => EVAL_CHECK_ROLES,
         EVAL_ADOPT => EVAL_ADOPT_ROLES,
+        PYLON_CHECK => PYLON_CHECK_ROLES,
         _ => &[],
     }
 }
@@ -162,6 +175,8 @@ pub struct Acceptance {
     pub playtest: Option<playtest::PlaytestAcceptance>,
     /// `eval-check` and `eval-adopt`: the releases the quest pins.
     pub eval: Option<eval_check::EvalAcceptance>,
+    /// `pylon-check`: the suite and checker the quest pins.
+    pub pylon: Option<pylon_check::PylonAcceptance>,
 }
 
 /// The run a quest is measured against, for display and provenance.
@@ -220,6 +235,12 @@ impl Quest {
                     .eval
                     .as_ref()
                     .and_then(|accepted| accepted.max_awards)
+            })
+            .or_else(|| {
+                self.acceptance
+                    .pylon
+                    .as_ref()
+                    .map(|accepted| accepted.max_awards)
             })
     }
 
@@ -509,6 +530,21 @@ fn acceptance(value: &Value) -> Result<Acceptance, ContractError> {
             claim: None,
             playtest: Some(parsed),
             eval: None,
+            pylon: None,
+        });
+    }
+    if rule == PYLON_CHECK {
+        let parsed = pylon_check::acceptance(object)?;
+        return Ok(Acceptance {
+            task: parsed.suite.clone(),
+            rule,
+            min_pass_rate: 1.0,
+            max_usd_per_run: None,
+            recipe: None,
+            claim: None,
+            playtest: None,
+            eval: None,
+            pylon: Some(parsed),
         });
     }
     if rule == EVAL_CHECK || rule == EVAL_ADOPT {
@@ -522,6 +558,7 @@ fn acceptance(value: &Value) -> Result<Acceptance, ContractError> {
             claim: None,
             playtest: None,
             eval: Some(parsed),
+            pylon: None,
         });
     }
     if rule == REPRODUCE {
@@ -555,6 +592,7 @@ fn acceptance(value: &Value) -> Result<Acceptance, ContractError> {
             claim: Some(claim),
             playtest: None,
             eval: None,
+            pylon: None,
         });
     }
     let min_pass_rate = require(object, "min_pass_rate")?
@@ -579,6 +617,7 @@ fn acceptance(value: &Value) -> Result<Acceptance, ContractError> {
         claim: None,
         playtest: None,
         eval: None,
+        pylon: None,
     })
 }
 
@@ -966,7 +1005,7 @@ pub fn bind_quest(award: &Award, quest: &Event) -> Result<Quest, ContractError> 
     in_season(&parsed, award.accepted_at)?;
     if award.rule == PLAYTEST {
         playtest::bind_fields(award, &parsed)?;
-    } else if award.rule == EVAL_CHECK || award.rule == EVAL_ADOPT {
+    } else if award.rule == EVAL_CHECK || award.rule == EVAL_ADOPT || award.rule == PYLON_CHECK {
         eval_check::bind_fields(award, &parsed)?;
     } else {
         let keyed = keyed_role(&parsed.acceptance.rule)
@@ -1410,12 +1449,14 @@ pub use trainer::{
 };
 pub mod eval_adopt;
 pub mod eval_check;
+pub mod pylon_check;
 pub use eval_adopt::{
     AdoptCompletion, Adoption, bind_eval_adopt, check_eval_adopt, eval_adopt_awards,
 };
 pub use eval_check::{
     CheckCompletion, EvalAcceptance, Payee, bind_eval_check, check_eval_check, eval_check_awards,
 };
+pub use pylon_check::{PylonAcceptance, bind_pylon_check, check_pylon_check, pylon_check_award};
 pub mod reproduce;
 pub use reproduce::{
     RECIPE_SCHEMA, RUN_MARKER, Recipe, RunEvidence, RunRecord, bind_reproduction, check_reproduce,

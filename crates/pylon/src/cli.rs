@@ -56,20 +56,35 @@ Commands:
       --pylon NPUB          Only this pylon (default: the best fresh one).
       --wait SECS           How long a job waits (default 90).
   ask PROMPT                Find a pylon, run one job, and publish a receipt.
+                            Skips pylons a trusted checker failed.
       --pylon NPUB          Use this pylon instead of the best fresh one.
       --wait SECS           How long to wait for the answer (default 90).
       --no-receipt          Do not publish a receipt.
+  check canary --pylon NPUB Send the pylon its class's pinned Gym suite of
+                            known-answer jobs as the buyer key, and sign a
+                            check verdict on each receipt with the checker key.
+      --award               Also award NIP-XP (pylon-check) for a passing canary.
+  check redundant PROMPT --pylon NPUB --pylon NPUB [--pylon NPUB]
+                            Send one prompt to several pylons and sign verdicts
+                            from the majority answer.
+  league                    The pylon league: per class, pass rates on the
+                            pinned suites, jobs, median time, and cost.
   status                    The Pylon Field: every verified pylon's state.
       --pool SLUG           Only pylons asking to join this pool.
   pool                      Compute a pool aggregate over the last window.
       --pool SLUG           The pool (default everglade).
       --minutes N           Window length, 1 to 60 (default 60).
       --publish             Sign and publish it as the aggregator.
-  pool verify --aggregator NPUB
+      --checked             Count the trusted checkers' verdicts and drop
+                            pylons they failed from admission.
+  pool verify --aggregator NPUB [--checked]
                             Fetch that aggregator's newest aggregate and recompute it.
 
 Common options:
   --relay URL               The relay (default wss://relay.openagents.com).
+  --checker NPUB            Trust this checker's verdicts; repeat. This
+                            computer's own checker key and
+                            OPENAGENTS_PYLON_CHECKERS are always trusted.
   --json                    One JSON document on standard output.
 
 Keys live in ~/.openagents/compute (OPENAGENTS_PYLON_HOME overrides).";
@@ -148,6 +163,10 @@ pub fn run(json_out: bool, words: &[String]) -> u8 {
         let relay = args
             .value("--relay")?
             .unwrap_or_else(|| DEFAULT_RELAY.into());
+        let mut checkers = crate::check::trusted(&home());
+        for value in args.values("--checker")? {
+            checkers.insert(hex_pubkey(&value).ok_or_else(|| format!("`{value}` is not a key"))?);
+        }
         match command.as_str() {
             "whoami" => whoami(json_out),
             "link" => link(json_out, &mut args),
@@ -155,9 +174,11 @@ pub fn run(json_out: bool, words: &[String]) -> u8 {
                 emit(json_out, &value, &text);
             }),
             "serve" => serve(json_out, &mut args, &relay).await,
-            "ask" => ask(json_out, &mut args, &relay).await,
+            "ask" => ask(json_out, &mut args, &relay, checkers).await,
             "status" => status(json_out, &mut args, &relay).await,
-            "pool" => pool(json_out, &mut args, &relay).await,
+            "pool" => pool(json_out, &mut args, &relay, checkers).await,
+            "check" => check(json_out, &mut args, &relay).await,
+            "league" => league(json_out, &relay, checkers).await,
             other => Err(format!(
                 "unknown command `{other}`; see `openagents pylon --help`"
             )),
@@ -182,6 +203,7 @@ fn key(name: &str) -> Result<Identity, String> {
 
 fn whoami(json_out: bool) -> Result<(), String> {
     let (provider, buyer, aggregator) = (key("provider")?, key("buyer")?, key("aggregator")?);
+    let checker = key("checker")?;
     emit(
         json_out,
         &json!({
@@ -189,12 +211,14 @@ fn whoami(json_out: bool) -> Result<(), String> {
             "provider": provider.npub(),
             "buyer": buyer.npub(),
             "aggregator": aggregator.npub(),
+            "checker": checker.npub(),
         }),
         &format!(
-            "pylon (provider): {}\nbuyer:            {}\naggregator:       {}\nkeys in {}",
+            "pylon (provider): {}\nbuyer:            {}\naggregator:       {}\nchecker:          {}\nkeys in {}",
             provider.npub(),
             buyer.npub(),
             aggregator.npub(),
+            checker.npub(),
             home().display()
         ),
     );
@@ -350,7 +374,12 @@ owner {}",
     Ok(())
 }
 
-async fn ask(json_out: bool, args: &mut Args, relay: &str) -> Result<(), String> {
+async fn ask(
+    json_out: bool,
+    args: &mut Args,
+    relay: &str,
+    checkers: BTreeSet<String>,
+) -> Result<(), String> {
     let pylon = match args.value("--pylon")? {
         Some(p) => Some(hex_pubkey(&p).ok_or("--pylon is not a key")?),
         None => None,
@@ -371,6 +400,7 @@ async fn ask(json_out: bool, args: &mut Args, relay: &str) -> Result<(), String>
             wait,
             publish_receipt,
             home: home(),
+            checkers,
         },
     )
     .await?;
@@ -429,13 +459,24 @@ async fn status(json_out: bool, args: &mut Args, relay: &str) -> Result<(), Stri
     Ok(())
 }
 
-async fn pool(json_out: bool, args: &mut Args, relay: &str) -> Result<(), String> {
+async fn pool(
+    json_out: bool,
+    args: &mut Args,
+    relay: &str,
+    checkers: BTreeSet<String>,
+) -> Result<(), String> {
     let verify = args.words.first().is_some_and(|w| w == "verify");
     if verify {
         args.words.remove(0);
     }
     let slug = args.value("--pool")?.unwrap_or_else(|| "everglade".into());
-    let policy = PoolPolicy::open(&slug, pool::SLICES);
+    let mut policy = PoolPolicy::open(&slug, pool::SLICES);
+    if args.flag("--checked") {
+        if checkers.is_empty() {
+            return Err("--checked needs a trusted checker (--checker NPUB)".into());
+        }
+        policy = policy.checked(checkers);
+    }
     if verify {
         let aggregator = args
             .value("--aggregator")?
@@ -484,6 +525,82 @@ async fn pool(json_out: bool, args: &mut Args, relay: &str) -> Result<(), String
                 aggregator.npub()
             )),
         ),
+    );
+    Ok(())
+}
+
+async fn check(json_out: bool, args: &mut Args, relay: &str) -> Result<(), String> {
+    let mode = if args.words.is_empty() {
+        String::new()
+    } else {
+        args.words.remove(0)
+    };
+    let pylons = args
+        .values("--pylon")?
+        .iter()
+        .map(|p| hex_pubkey(p).ok_or_else(|| format!("`{p}` is not a key")))
+        .collect::<Result<Vec<_>, _>>()?;
+    let award = args.flag("--award");
+    let checker = crate::check::Checker {
+        relay: relay.into(),
+        checker: key("checker")?,
+        buyer: key("buyer")?,
+        home: home(),
+        wait: Duration::from_secs(args.number("--wait", 90)?.clamp(1, 600)),
+    };
+    let checked = match mode.as_str() {
+        "canary" => {
+            let [pylon] = pylons.as_slice() else {
+                return Err("check canary takes one --pylon NPUB".into());
+            };
+            checker.canaries(pylon).await?
+        }
+        "redundant" => {
+            let prompt = args.words.join(" ");
+            if prompt.trim().is_empty() || !(2..=5).contains(&pylons.len()) {
+                return Err("check redundant takes a prompt and 2 to 5 --pylon NPUB".into());
+            }
+            checker.redundant(&prompt, &pylons).await?
+        }
+        _ => return Err("check takes `canary` or `redundant`".into()),
+    };
+    let awarded = if award {
+        checker.award(&checked).await?
+    } else {
+        None
+    };
+    let mut text = String::new();
+    for c in &checked {
+        text.push_str(&format!(
+            "{:<18} {}  answer {:?}  label {}\n",
+            c.verdict.label(),
+            c.pylon,
+            c.answer.as_deref().unwrap_or("-"),
+            c.label.as_deref().unwrap_or("not published"),
+        ));
+    }
+    text.push_str(&format!(
+        "checker {}\n{}",
+        checker.checker.npub(),
+        awarded.as_ref().map_or_else(
+            || "no XP awarded".to_string(),
+            |id| format!("XP award {id}")
+        )
+    ));
+    emit(
+        json_out,
+        &json!({"checker": checker.checker.npub(), "checked": checked, "award": awarded}),
+        &text,
+    );
+    Ok(())
+}
+
+async fn league(json_out: bool, relay: &str, checkers: BTreeSet<String>) -> Result<(), String> {
+    let league = crate::league::fetch(&key("buyer")?, relay, &checkers).await?;
+    emit(
+        json_out,
+        &serde_json::to_value(&league).map_err(|e| e.to_string())?,
+        &crate::league::render(&league),
     );
     Ok(())
 }

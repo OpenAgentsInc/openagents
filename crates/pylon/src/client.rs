@@ -1,6 +1,7 @@
 //! The buyer side: find a pylon by its beacon, send it one encrypted job,
 //! wait for the answer, and publish a receipt.
 
+use std::collections::BTreeSet;
 use std::io::Write;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
@@ -43,13 +44,15 @@ pub async fn beacons(
 }
 
 /// The pylon a buyer should use: a fresh, online beacon with a free slot on
-/// the conversation lane, most free slots first.
+/// the conversation lane, most free slots first, never one in `failing`
+/// (addresses a trusted checker failed).
 #[must_use]
-pub fn choose(book: &BeaconBook, at: u64) -> Option<Beacon> {
+pub fn choose(book: &BeaconBook, at: u64, failing: &BTreeSet<String>) -> Option<Beacon> {
     book.iter()
         .map(|(_, beacon)| beacon)
         .filter(|b| {
-            pylon::freshness(b, at) == Freshness::Fresh
+            !failing.contains(&b.address())
+                && pylon::freshness(b, at) == Freshness::Fresh
                 && b.status == Status::Online
                 && b.slots.free > 0
                 && b.serves(Lane::CjConversation).is_some()
@@ -79,6 +82,9 @@ pub struct Answer {
     pub usage: Option<Value>,
     pub receipt: Option<String>,
     pub receipt_error: Option<String>,
+    /// The signed receipt, for a checker to label.
+    #[serde(skip)]
+    pub receipt_event: Option<Event>,
 }
 
 /// How to ask.
@@ -92,6 +98,9 @@ pub struct Ask {
     pub publish_receipt: bool,
     /// Where receipts are appended (`receipts.jsonl`).
     pub home: PathBuf,
+    /// Checkers whose `check-fail` keeps a pylon out of the choice; empty
+    /// chooses among every pylon.
+    pub checkers: BTreeSet<String>,
 }
 
 /// Find a pylon, run one job, and publish its receipt.
@@ -105,7 +114,20 @@ pub async fn ask(buyer: &Identity, ask: &Ask) -> Result<Answer, String> {
     let mut conn = relay::connect(&ask.relay, buyer, LIFETIME).await?;
     let authors = ask.pylon.as_ref().map(|p| vec![p.clone()]);
     let book = beacons(&mut conn, authors.as_deref()).await?;
-    let beacon = choose(&book, now()).ok_or("no fresh online pylon with a free slot")?;
+    let (labels, checked) = crate::check::fetch(
+        &mut conn,
+        &ask.checkers,
+        now().saturating_sub(crate::check::CHECK_WINDOW_SECS),
+    )
+    .await?;
+    let failing: BTreeSet<String> = crate::check::Verdicts::new(&labels, &checked, &ask.checkers)
+        .standings()
+        .into_iter()
+        .filter(|(_, r)| r.standing == pylon::Standing::Failing)
+        .map(|(address, _)| address)
+        .collect();
+    let beacon = choose(&book, now(), &failing)
+        .ok_or("no fresh online pylon with a free slot that passes its checks")?;
     let service = beacon
         .serves(Lane::CjConversation)
         .ok_or("pylon serves no conversation lane")?
@@ -241,6 +263,7 @@ pub async fn ask(buyer: &Identity, ask: &Ask) -> Result<Answer, String> {
     };
     let mut receipt_id = None;
     let mut receipt_error = None;
+    let mut signed = None;
     if ask.publish_receipt {
         match receipt_event(buyer.signer(), &receipt, now()) {
             Ok(event) => {
@@ -249,6 +272,7 @@ pub async fn ask(buyer: &Identity, ask: &Ask) -> Result<Answer, String> {
                     Err(e) => receipt_error = Some(e),
                 }
                 record(&ask.home, &event, &receipt, answer_ms);
+                signed = receipt_id.is_some().then_some(event);
             }
             Err(e) => receipt_error = Some(e),
         }
@@ -273,6 +297,7 @@ pub async fn ask(buyer: &Identity, ask: &Ask) -> Result<Answer, String> {
         usage,
         receipt: receipt_id,
         receipt_error,
+        receipt_event: signed,
     })
 }
 

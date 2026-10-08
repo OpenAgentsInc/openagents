@@ -251,7 +251,12 @@ pub fn describe_pylon(pylon: &PylonSample, state: &State) -> String {
     else {
         return pylon.label.clone();
     };
-    let owner = if pylon.owner { " · OWNER" } else { "" };
+    let owner = match (pylon.owner, pylon.sigil) {
+        (true, true) => " · OWNER · checks pass",
+        (true, false) => " · OWNER",
+        (false, true) => " · checks pass",
+        (false, false) => "",
+    };
     let class = format!(
         "{}, {}, {} GB",
         pylon.family.as_str(),

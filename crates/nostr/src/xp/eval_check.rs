@@ -125,6 +125,8 @@ pub fn rule_of_key(key: &str) -> Option<&'static str> {
         Some(EVAL_CHECK)
     } else if key.starts_with(super::eval_adopt::KEY_PREFIX) {
         Some(EVAL_ADOPT)
+    } else if key.starts_with(super::pylon_check::KEY_PREFIX) {
+        Some(super::PYLON_CHECK)
     } else {
         None
     }
@@ -132,6 +134,9 @@ pub fn rule_of_key(key: &str) -> Option<&'static str> {
 
 /// Checks a key's shape and returns its role and pubkey.
 pub(crate) fn check_key_shape(key: &str) -> Result<(&str, &str), ContractError> {
+    if key.starts_with(super::pylon_check::KEY_PREFIX) {
+        return super::pylon_check::check_key_shape(key);
+    }
     let parts: Vec<&str> = key.split(':').collect();
     let (role, pubkey) = match parts.as_slice() {
         ["eval-check", season, release, role, pubkey] if valid_slug(season) && is_hex(release) => {
@@ -163,6 +168,12 @@ fn eval_acceptance(quest: &Quest) -> Result<&EvalAcceptance, ContractError> {
 ///
 /// When the quest isn't an eval quest or `role` isn't one of its rule's.
 pub fn key(quest: &Quest, role: &str, pubkey: &str) -> Result<String, ContractError> {
+    if quest.acceptance.rule == super::PYLON_CHECK {
+        if role != super::pylon_check::ROLE {
+            return Err(malformed("role or pubkey"));
+        }
+        return super::pylon_check::key(quest, pubkey);
+    }
     let accepted = eval_acceptance(quest)?;
     let rule = quest.acceptance.rule.as_str();
     if !roles(rule).contains(&role) || !is_hex(pubkey) {
@@ -523,7 +534,9 @@ pub(crate) fn parse_award(
     let key = text(object, "key")?;
     let (key_role, key_pubkey) = check_key_shape(&key)?;
     let accepted_at = number(object, "accepted_at")?;
-    let kinds_expected: &[u16] = if rule == EVAL_CHECK {
+    let kinds_expected: &[u16] = if rule == super::PYLON_CHECK {
+        super::pylon_check::EVIDENCE_KINDS
+    } else if rule == EVAL_CHECK {
         &[kb::EVIDENCE_KIND, kb::EVIDENCE_KIND]
     } else {
         &[kinds::EXT_RELEASE, kb::EVIDENCE_KIND, kb::EVIDENCE_KIND]

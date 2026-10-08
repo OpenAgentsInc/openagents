@@ -253,6 +253,7 @@ fn an_aggregate_recomputes_and_refuses_tampering() {
     let inputs = AggregateInputs {
         beacons: &beacons,
         receipts: &receipts,
+        checks: &[],
     };
     let aggregate = compute_aggregate(aggregator.pubkey(), &policy, window, &inputs, to).unwrap();
     assert_eq!(aggregate.totals.pylons_online, 1);
@@ -297,6 +298,7 @@ fn an_aggregate_recomputes_and_refuses_tampering() {
     let inputs = AggregateInputs {
         beacons: &beacons,
         receipts: &tampered,
+        checks: &[],
     };
     assert!(verify_aggregate(&event, &policy, &inputs).is_err());
 
@@ -305,6 +307,7 @@ fn an_aggregate_recomputes_and_refuses_tampering() {
     let inputs = AggregateInputs {
         beacons: &beacons,
         receipts: &receipts,
+        checks: &[],
     };
     assert!(verify_aggregate(&event, &other, &inputs).is_err());
 }
@@ -318,6 +321,7 @@ fn an_aggregate_counts_only_trusted_buyers() {
     let inputs = AggregateInputs {
         beacons: &beacons,
         receipts: &receipts,
+        checks: &[],
     };
     let window = Window {
         from: to - 3_600,
@@ -390,6 +394,7 @@ fn an_aggregate_never_counts_the_owners_receipts() {
     let inputs = AggregateInputs {
         beacons: &beacons,
         receipts: &receipts,
+        checks: &[],
     };
     let window = Window {
         from: to - 3_600,
@@ -404,4 +409,162 @@ fn an_aggregate_never_counts_the_owners_receipts() {
         verify_aggregate(&event, &policy, &inputs).unwrap(),
         aggregate
     );
+}
+
+#[test]
+fn a_check_label_round_trips_and_refuses_each_rule() {
+    let (_, _, receipts) = pool_inputs();
+    let checker = signer(11);
+    let target = &receipts[0];
+    let suite = sha256_hex(b"suite");
+    let event = check_event(
+        &checker,
+        Verdict::Fail,
+        target,
+        &sha256_hex(b"42"),
+        &format!("canary exact-match suite:{suite}"),
+        NOW,
+    )
+    .unwrap();
+    let check = parse_check(&event).unwrap();
+    assert_eq!(check.verdict, Verdict::Fail);
+    assert_eq!(check.receipt, target.id);
+    assert_eq!(check.provider, signer(1).pubkey());
+    assert_eq!(check.suite(), Some(suite.as_str()));
+    let receipt = parse_receipt(target, None).unwrap();
+    bind_check(&check, &receipt).unwrap();
+
+    // The receipt's own buyer or provider can't check it.
+    for party in [signer(3), signer(1)] {
+        assert!(check_event(&party, Verdict::Pass, target, &sha256_hex(b"x"), "m", NOW).is_err());
+    }
+    // Wrong namespace, an unknown verdict, two verdicts, and long content.
+    let tags = |l: &str, mark: &str| {
+        vec![
+            Tag::new(vec!["L".into(), CHECK_NAMESPACE.into()]),
+            Tag::new(vec!["l".into(), l.into(), mark.into()]),
+            Tag::new(vec!["e".into(), target.id.clone()]),
+            Tag::new(vec!["p".into(), signer(1).pubkey().into()]),
+            Tag::new(vec!["x".into(), sha256_hex(b"42")]),
+        ]
+    };
+    let ok = resign(
+        &checker,
+        &event,
+        "m".into(),
+        tags("check-pass", CHECK_NAMESPACE),
+    );
+    assert_eq!(parse_check(&ok).unwrap().verdict, Verdict::Pass);
+    let bad = resign(&checker, &event, "m".into(), tags("check-pass", "other"));
+    assert!(parse_check(&bad).is_err());
+    let bad = resign(
+        &checker,
+        &event,
+        "m".into(),
+        tags("check-maybe", CHECK_NAMESPACE),
+    );
+    assert!(parse_check(&bad).is_err());
+    let mut two = tags("check-pass", CHECK_NAMESPACE);
+    two.push(Tag::new(vec![
+        "l".into(),
+        "check-fail".into(),
+        CHECK_NAMESPACE.into(),
+    ]));
+    assert!(parse_check(&resign(&checker, &event, "m".into(), two)).is_err());
+    let long = "m".repeat(513);
+    let bad = resign(&checker, &event, long, tags("check-pass", CHECK_NAMESPACE));
+    assert!(parse_check(&bad).is_err());
+    // A tampered label no longer verifies.
+    let mut tampered = event.clone();
+    tampered.content = "redundant-3".into();
+    assert!(parse_check(&tampered).is_err());
+}
+
+#[test]
+fn a_failed_check_from_a_trusted_checker_leaves_the_pools_admission() {
+    let (aggregator, beacons, receipts) = pool_inputs();
+    let to = 1_791_400_200;
+    let window = Window {
+        from: to - 3_600,
+        to,
+    };
+    let checker = signer(11);
+    let stranger = signer(12);
+    let digest = sha256_hex(b"42");
+    let fail = check_event(
+        &checker,
+        Verdict::Fail,
+        &receipts[2],
+        &digest,
+        "canary",
+        to - 5,
+    )
+    .unwrap();
+    let pass = check_event(
+        &checker,
+        Verdict::Pass,
+        &receipts[1],
+        &digest,
+        "canary",
+        to - 6,
+    )
+    .unwrap();
+    let untrusted = check_event(
+        &stranger,
+        Verdict::Pass,
+        &receipts[0],
+        &digest,
+        "canary",
+        to - 7,
+    )
+    .unwrap();
+
+    // Only the trusted checker's pass counts; the pylon stays admitted.
+    let policy = PoolPolicy::open("everglade", 12).checked([checker.pubkey().to_string()]);
+    let checks = vec![pass.clone(), untrusted.clone()];
+    let inputs = AggregateInputs {
+        beacons: &beacons,
+        receipts: &receipts,
+        checks: &checks,
+    };
+    let aggregate = compute_aggregate(aggregator.pubkey(), &policy, window, &inputs, to).unwrap();
+    assert_eq!(aggregate.totals.checks.pass, 1);
+    assert_eq!(aggregate.inputs.checks.count, 1);
+    assert_eq!(aggregate.totals.pylons_online, 1);
+    assert_eq!(aggregate.totals.jobs.accepted, 4);
+    let event = aggregate_event(&aggregator, &aggregate).unwrap();
+    assert_eq!(
+        verify_aggregate(&event, &policy, &inputs).unwrap(),
+        aggregate
+    );
+
+    // A counted fail marks the pylon failing: it leaves admission, so
+    // neither its beacon nor its receipts count.
+    let checks = vec![pass, fail, untrusted];
+    let inputs = AggregateInputs {
+        beacons: &beacons,
+        receipts: &receipts,
+        checks: &checks,
+    };
+    let aggregate = compute_aggregate(aggregator.pubkey(), &policy, window, &inputs, to).unwrap();
+    assert_eq!(aggregate.totals.checks.fail, 1);
+    assert_eq!(aggregate.totals.pylons_online, 0);
+    assert_eq!(aggregate.totals.jobs.accepted, 0);
+    let parsed: Vec<Check> = checks.iter().map(|e| parse_check(e).unwrap()).collect();
+    let by_id: BTreeMap<String, Receipt> = receipts
+        .iter()
+        .map(|e| (e.id.clone(), parse_receipt(e, None).unwrap()))
+        .collect();
+    let trusted = BTreeSet::from([checker.pubkey().to_string()]);
+    let records = standings(counted(&parsed, &by_id, &trusted), &by_id);
+    let record = records.values().next().unwrap();
+    assert_eq!(record.standing, Standing::Failing);
+    assert_eq!(record.totals.pass, 1);
+
+    // The open policy counts no verdicts and keeps the P1 digest.
+    let open = PoolPolicy::open("everglade", 12);
+    let aggregate = compute_aggregate(aggregator.pubkey(), &open, window, &inputs, to).unwrap();
+    assert_eq!(aggregate.totals.checks, CheckTotals::default());
+    assert_eq!(aggregate.totals.pylons_online, 1);
+    assert!(!serde_json::to_string(&open).unwrap().contains("checkers"));
 }

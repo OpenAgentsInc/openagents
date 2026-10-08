@@ -157,6 +157,7 @@ fn an_aggregate_drives_the_rate_and_lights_only_when_it_recomputes() {
         &AggregateInputs {
             beacons: std::slice::from_ref(&beacon),
             receipts: &receipts,
+            checks: &[],
         },
         NOW,
     )

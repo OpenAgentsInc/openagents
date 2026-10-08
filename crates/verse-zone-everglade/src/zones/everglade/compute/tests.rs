@@ -26,6 +26,7 @@ fn sample(status: PylonStatus, busy: u32, observed_at: u64) -> PylonSample {
         uptime: None,
         observed_at,
         owner: true,
+        sigil: false,
     }
 }
 
@@ -465,6 +466,7 @@ fn remote(busy: u32) -> PylonSample {
         uptime: Some(3_600),
         observed_at: NOW,
         owner: false,
+        sigil: false,
     }
 }
 
@@ -612,6 +614,33 @@ fn the_field_keeps_to_its_glow_budget_even_busy_at_night_with_the_beam() {
     let eye = Vec3::new(site.center[0] + 6.0, 4.0, site.center[1] - 6.0);
     let quads = two.mesh(eye, false, 1.0).glow.len() / 6;
     assert!(quads < 256, "{quads} quads");
+}
+
+#[test]
+fn a_pylon_with_passing_checks_carries_the_sigil_unless_it_is_unknown() {
+    let site = pylon_field::site().unwrap();
+    let eye = Vec3::new(site.center[0] + 6.0, 4.0, site.center[1] - 6.0);
+    let glows = |pylon: PylonSample| {
+        let mut field = Compute::with_source(Box::new(Fixed(Sample {
+            pylons: vec![pylon],
+            pool: "everglade".into(),
+            ..Sample::default()
+        })));
+        field.tick(0.0, NOW);
+        field.mesh(eye, true, 1.0).glow.len()
+    };
+    let mut checked = remote(0);
+    checked.sigil = true;
+    // An idle checked pylon still shows its sigil: four motes.
+    assert_eq!(glows(checked.clone()), glows(remote(0)) + 4 * 6);
+    let state = project(&checked, NOW);
+    assert!(look::describe_pylon(&checked, &state).contains("checks pass"));
+    // A stale pylon shows no sigil.
+    let mut stale = checked;
+    stale.observed_at = NOW - 900;
+    let mut plain = remote(0);
+    plain.observed_at = NOW - 900;
+    assert_eq!(glows(stale), glows(plain));
 }
 
 #[test]
