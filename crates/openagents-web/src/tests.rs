@@ -65,8 +65,9 @@ async fn get(router: Router, uri: &str) -> (StatusCode, String) {
 }
 
 /// Every public HTML page a development server serves.
-const PAGES: [&str; 44] = [
+const PAGES: [&str; 45] = [
     "/",
+    "/cloud",
     "/live",
     "/everglade",
     "/druid",
@@ -167,6 +168,39 @@ async fn every_public_page_answers_in_development() {
         }
         assert_eq!(headers[header::X_CONTENT_TYPE_OPTIONS], "nosniff");
     }
+}
+
+#[tokio::test]
+async fn cloud_is_public_but_browser_work_and_purchases_remain_unavailable() {
+    let root = tempfile::tempdir().unwrap();
+    let store = root.path().join("unopened-tasks");
+    let mut settings = config(store.clone());
+    settings.public_hosts.push("openagents.com".into());
+    let site = router(settings);
+    let (status, headers, html) = get_with(site.clone(), "/cloud", "openagents.com").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(!headers.contains_key(header::SET_COOKIE));
+    assert!(!html.contains("<script"));
+    assert!(html.contains("retail-2026-10-06.1"));
+    assert!(html.contains("244 sats / 244 credits"));
+    assert!(html.contains("Operator Boat · Unavailable in this browser"));
+    assert!(html.contains("Operator GCE · Unavailable in this browser"));
+    assert!(html.contains("Retail Cloud v1 · Proposed"));
+    assert!(html.contains("disabled aria-describedby=\"workspace-reason\""));
+    assert!(!html.contains("<form"));
+    for path in ["/download", "/pilot", "/grid", "/docs", "/components"] {
+        assert!(html.contains(&format!("href=\"{path}\"")), "{path}");
+        let (status, _, _) = get_with(site.clone(), path, "openagents.com").await;
+        assert_eq!(status, StatusCode::OK, "{path}");
+    }
+    assert!(
+        !store.exists(),
+        "public Cloud never opens the local task store"
+    );
+    assert_eq!(
+        get_with(site, "/app", "openagents.com").await.0,
+        StatusCode::FORBIDDEN,
+    );
 }
 
 #[tokio::test]
@@ -1058,6 +1092,9 @@ fn the_site_owns_its_pages_and_the_removed_sections() {
         "/favicon.ico",
         "/app",
         "/app/tasks/x",
+        "/cloud",
+        "/cloud/app",
+        "/cloud/app/tasks/x",
         "/forum",
         "/forum/x",
         "/gym",
@@ -1216,6 +1253,49 @@ async fn owned_pages_removed_sections_and_the_task_browser_never_go_upstream() {
         for uri in ["/app", "/app/tasks/x"] {
             let (status, _, _) = get_with(site.clone(), uri, host).await;
             assert_eq!(status, StatusCode::FORBIDDEN, "{host}{uri}");
+        }
+    }
+    assert_eq!(hits.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn cloud_credentials_and_proposed_paths_never_reach_the_legacy_proxy() {
+    use std::sync::atomic::Ordering;
+    let root = tempfile::tempdir().unwrap();
+    let (url, hits) = echo_upstream().await;
+    let site = router(proxying(root.path(), &url));
+    for host in ["openagents.com", "unknown.openagents.com"] {
+        for path in ["/cloud", "/cloud/app", "/cloud/app/tasks/private"] {
+            let response = site
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri(path)
+                        .header(header::HOST, host)
+                        .header(header::COOKIE, "oa_cloud=sess_synthetic_private")
+                        .header(header::AUTHORIZATION, "Bearer synthetic_private")
+                        .body(Body::from("synthetic private request"))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            let status = response.status();
+            assert_eq!(
+                status,
+                if host == "openagents.com" {
+                    if path == "/cloud" {
+                        StatusCode::METHOD_NOT_ALLOWED
+                    } else {
+                        StatusCode::NOT_FOUND
+                    }
+                } else {
+                    StatusCode::FORBIDDEN
+                },
+                "{host}{path}",
+            );
+            let body = to_bytes(response.into_body(), 1 << 20).await.unwrap();
+            assert!(!String::from_utf8_lossy(&body).contains("synthetic_private"));
         }
     }
     assert_eq!(hits.load(Ordering::SeqCst), 0);

@@ -1,5 +1,6 @@
 //! The public pages, one module per section.
 
+mod cloud;
 mod connect;
 mod content;
 mod download;
@@ -28,6 +29,7 @@ pub(crate) use stats::utc;
 pub(crate) fn routes() -> Router<App> {
     Router::new()
         .merge(home::routes())
+        .merge(cloud::routes())
         .merge(live::routes())
         .merge(stats::routes())
         .merge(efficiency::routes())

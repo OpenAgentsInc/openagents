@@ -60,7 +60,7 @@ Older sales gap tables and runbooks retain their dated context.
 | System | Existing foundation | New web work or remaining limit |
 | --- | --- | --- |
 | Public site | [`openagents-web`](../../crates/openagents-web/README.md) serves Rust pages, documentation, downloads, pilot intake, discovery, public payment views, and browser worlds. | Add the authenticated workspace and qualified commercial navigation. Some production routes still use the legacy sidecar; track their replacement explicitly. |
-| Shared UI | Rust Native v2 provides semantic conversation elements, editing/IME, selection, Markdown, styles, and layout; `coder-ui` owns theme values. | Extend `coder-ui` into the shared Coder component library, add the reusable web adapter, and deliver every `coder-new` presentation component at `/components`. Existing palette sharing does not complete component sharing. |
+| Shared UI | [#10943](https://github.com/OpenAgentsInc/openagents/issues/10943) implements the shared `coder-ui` library, reusable `rust-native-web` adapter, and Rust/Wasm catalog with 40 component families and 483 variants. Rust Native v3 adds semantic fields, choices, dialogs, and inline runs. | Compose the authenticated app from these components. Native v3 adapter adoption and live domain integration retain separate acceptance. |
 | Local task browser | `/app` reads private local tasks and ATIF, with a loopback-only guard. | Preserve that guard. It is not the authenticated cloud app. |
 | Cloud delegation | [#10910](https://github.com/OpenAgentsInc/openagents/issues/10910), including [#10912](https://github.com/OpenAgentsInc/openagents/issues/10912)–[#10917](https://github.com/OpenAgentsInc/openagents/issues/10917), landed durable jobs, Boat integrated agents, headless Coder on Boat/GCE, workspace transfer, usage, recovery, and the terminal agent rail. | Add scoped web observation and controls over [`coder-cloud`](../../crates/coder-cloud/src/lib.rs). Operator access and verified isolated smokes do not establish a retail service. |
 | Paid retail | [REV-13–REV-15](https://github.com/OpenAgentsInc/openagents/issues/10820) landed customer transport, resident execution, selected native controls, and deployment packaging. | The browser needs its own admitted adapter and acceptance. Commercial confirmation, funded qualification, and production activation remain required. |
@@ -69,7 +69,7 @@ Older sales gap tables and runbooks retain their dated context.
 | Alice and Devin | Local Devin ACP execution exists. Alice identity, memory, steering, and jobs use the workshop host. | Alice-on-Devin [#10929](https://github.com/OpenAgentsInc/openagents/issues/10929), placement on two computers [#10930](https://github.com/OpenAgentsInc/openagents/issues/10930), and parallel queue [#10931](https://github.com/OpenAgentsInc/openagents/issues/10931) remain open. |
 | Accounts and finance | Canonical attribution [#10826](https://github.com/OpenAgentsInc/openagents/issues/10826), native funding controls [#10830](https://github.com/OpenAgentsInc/openagents/issues/10830), and joined original statements [#10831](https://github.com/OpenAgentsInc/openagents/issues/10831) are code-complete. | Bind the web session to current native authority. Common BTC, native USD, retail credit, service invoices, and payouts retain their original policies. |
 | Teams | [#10847–#10850](https://github.com/OpenAgentsInc/openagents/issues/10850) provide scoped limits, policy, reports, and joined recovery. | Qualify each enabled browser route. Existing native qualification does not establish enforcement on every cloud, plugin, or customer host. |
-| Sales floor | Paul, measured drafts, exact level-0 approvals, durable outbox, reply review, meeting proposals, and private Agora boards landed; see the [handoff](../sales/revenue-handoff.md). | Hiring, reporting, exact batches, Bob's day plans, and earned-sale publication remain open [REV-64–REV-71](../sales/revenue-handoff.md#next-implementation-order). Browser controls are new integration. |
+| Sales floor | Paul, approvals, outbox, reply review, meetings, and private boards landed. REV-64, REV-65, and REV-70–REV-72 also landed hiring, reporting, day plans, earned aggregates, and partner/referral desks. | Browser controls are new integration. Exact reviewed batches [#10873](https://github.com/OpenAgentsInc/openagents/issues/10873) and conditional follow-up/channel/voice/jurisdiction work retain their existing issues and qualification. |
 
 Closed implementation issues remain closed while owner qualification is pending.
 Display each lane as **Unavailable**, **Proposed**, **Qualified**, or **Available**
@@ -509,9 +509,10 @@ Shared views omit live amounts, deal timing, and private bell audio, ticker, or
 applause. Publishing a reviewed aggregate does not authorize publishing the
 private events behind it.
 
-Remaining sales-floor issues stay explicit: hiring/retirement REV-64, reporting
-REV-65, reviewed batches REV-66, Bob/day plans REV-70, earned bell/aggregates
-REV-71, and qualified partner/referral integration REV-72. Standing follow-ups,
+Native hiring/retirement REV-64, reporting REV-65, Bob/day plans REV-70, earned
+bell/aggregates REV-71, and partner/referral integration REV-72 are code-complete.
+Their browser projections remain new work. Reviewed batches REV-66 remain open.
+Standing follow-ups,
 another public-reply channel, voice participation, and another jurisdiction
 (REV-73–REV-76) retain their conditional scope and owner gates. Browser support
 does not select a mailbox, campaign, customer SSO provider, voice medium, or
@@ -597,8 +598,9 @@ The request selects **web** as the new interface surface. [REV-44](https://githu
 still needs one concrete commercial lane for its own acceptance; qualify retail
 compute v1 first for the Coder Cloud purchase slice, without activating it through
 this document. Existing claimed Alice and sales issues retain their ownership.
-Open focused web integration issues when implementation starts; this spec does
-not claim or close them.
+The [web implementation roadmap](https://github.com/OpenAgentsInc/openagents/issues/10964) tracks the remaining
+slices below. Complete them in order, claim each issue before implementation,
+and retain each native owner and its separate activation gates.
 
 | Slice | Deliverable | Acceptance |
 | --- | --- | --- |
@@ -608,6 +610,34 @@ not claim or close them.
 | 4. Connected Verse and agents | Separate world/host/private-work states, stations linked to work, Alice/Studio views, exact decisions/reviews, and supported delegation settings. | Join/leave changes no task rights; app/station links resolve identical resources; stale review refuses; private content stays out of presence; connection loss disables input. Qualify new Devin/placement/queue capabilities only after their owners land. |
 | 5. Qualified Cloud purchase | Browser retail delegation, exact funding/quote/confirmation, progress, artifacts, cancellation, receipt, and recovery. | Fake-payment tests cover concurrent overspend, changed quote, revoked rights, lost dispatch, provider loss, unknown meter, cleanup, and duplicate credit/settlement; then O3/O4/O8 qualify the exact deployed browser lane before availability. |
 | 6. Commercial workspace | Proven plugin/gateway lane views, teams and reports, private sales/pilot/fulfillment controls, referrals/partners, Paul and Agora projection. | Every enabled route has its own policy/funding qualification; original statements reconcile; outbound actions need exact approvals; untrusted replies and revoked batches cannot dispatch; shared aggregates reveal no private records. |
+
+### Tracked web implementation
+
+The component catalog is complete under #10943. The remaining web work is:
+
+| Order | Issue | Deliverable |
+| --- | --- | --- |
+| WEB-01 | [#10948](https://github.com/OpenAgentsInc/openagents/issues/10948) | Public Cloud entry and honest availability. |
+| WEB-02 | [#10949](https://github.com/OpenAgentsInc/openagents/issues/10949) | Native sessions and the authenticated workspace shell. |
+| WEB-03 | [#10950](https://github.com/OpenAgentsInc/openagents/issues/10950) | Canonical resident task reads and browser observation. |
+| WEB-04 | [#10951](https://github.com/OpenAgentsInc/openagents/issues/10951) | Browser enrollment and durable granted task controls. |
+| WEB-05 | [#10952](https://github.com/OpenAgentsInc/openagents/issues/10952) | Projects and operator Cloud jobs through resident owners. |
+| WEB-06 | [#10953](https://github.com/OpenAgentsInc/openagents/issues/10953) | Granted browser terminals and canonical workbench navigation. |
+| WEB-07 | [#10954](https://github.com/OpenAgentsInc/openagents/issues/10954) | Visible Verse connections and associated work links. |
+| WEB-08 | [#10955](https://github.com/OpenAgentsInc/openagents/issues/10955) | Alice and Studio observation, exact decisions, and safe request recovery. |
+| WEB-09 | [#10956](https://github.com/OpenAgentsInc/openagents/issues/10956) | Scoped retail browser delegation and credential custody. |
+| WEB-10 | [#10851](https://github.com/OpenAgentsInc/openagents/issues/10851) | Retail purchase, progress, artifacts, and recovery. |
+| WEB-11 | [#10957](https://github.com/OpenAgentsInc/openagents/issues/10957) | Original billing statements and admitted plugin or gateway lanes. |
+| WEB-12 | [#10958](https://github.com/OpenAgentsInc/openagents/issues/10958) | Team membership, scoped policies, limits, and reports. |
+| WEB-13 | [#10959](https://github.com/OpenAgentsInc/openagents/issues/10959) | Separate private sales-owner remote adapter. |
+| WEB-14 | [#10960](https://github.com/OpenAgentsInc/openagents/issues/10960) | Canonical pipeline, pilot evidence, delivery, and fulfillment views. |
+| WEB-15 | [#10961](https://github.com/OpenAgentsInc/openagents/issues/10961) | Paul, sales floor, outbox, and private Agora supervision. |
+| WEB-16 | [#10962](https://github.com/OpenAgentsInc/openagents/issues/10962) | Partners, referrals, earnings, and payout views. |
+| WEB-17 | [#10963](https://github.com/OpenAgentsInc/openagents/issues/10963) | Browser packaging, reconnect acceptance, and activation record. |
+
+WEB-10 uses the existing additional-client issue REV-44 instead of duplicating
+its retail browser scope. Alice #10929–#10931 and conditional commercial issues
+keep their existing claims; this roadmap does not take over that work.
 
 All slices support empty, denied, unavailable, stale, failed, cancelled, and
 reconciliation states. Essential workflows work without a 3D renderer. Qualify

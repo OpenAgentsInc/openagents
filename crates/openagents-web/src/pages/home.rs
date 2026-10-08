@@ -1,8 +1,7 @@
-//! The homepage: what OpenAgents is, one link to `/download`, and a terminal
-//! to ask OpenAgents about itself. The Grid's screenshot is on
-//! `/docs/the-grid`.
+//! The homepage: the apps, Cloud, Verse, shared components, and a terminal
+//! that answers questions about OpenAgents.
 //!
-//! The terminal (#10106) is the one script on the site, `static/ask.js`.
+//! The terminal (#10106) loads `static/ask.js`.
 //! `help`, `download` (or `install`), `docs`, and `clear` are its commands,
 //! matched whole;
 //! any other line is a question for [`crate::ask`], which answers it from
@@ -47,7 +46,10 @@ your own machines, and Coder is the one that writes code.</p>",
         ));
     }
     out.push_str(
-        "<p><a class=\"button\" href=\"/download\">[ Download OpenAgents ]</a></p></section>",
+        "<p><a class=\"button\" href=\"/download\">[ Download OpenAgents ]</a></p>\
+<p><a href=\"/cloud\">Coder Cloud</a> brings the workspace to the browser; private work and \
+paid browser execution are proposed. Explore the <a href=\"/grid\">Verse</a> or the \
+<a href=\"/components\">shared Coder components</a>. A world connection grants no private work access.</p></section>",
     );
     out
 }

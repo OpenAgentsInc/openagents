@@ -15,8 +15,11 @@ pub const GITHUB: &str = "https://github.com/OpenAgentsInc/openagents";
 pub const X: &str = "https://x.com/OpenAgentsInc";
 
 /// The sections the header links to, in order.
-pub const SECTIONS: [(&str, &str); 3] = [
+pub const SECTIONS: [(&str, &str); 6] = [
     ("Download", "/download"),
+    ("Cloud", "/cloud"),
+    ("Verse", "/grid"),
+    ("Components", "/components"),
     ("Docs", "/docs"),
     ("Pilot", "/pilot"),
 ];

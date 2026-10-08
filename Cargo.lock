@@ -10225,6 +10225,7 @@ dependencies = [
  "openagents-chat",
  "paper-mono",
  "pulldown-cmark",
+ "route-contract",
  "rust-native",
  "rust-native-web",
  "secp256k1 0.31.1",

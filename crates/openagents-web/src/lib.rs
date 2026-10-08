@@ -185,10 +185,14 @@ async fn guard(hosts: Hosts, request: Request, next: Next) -> Response {
     // Intake requests can carry contact content. An unconfigured host must
     // refuse them locally rather than forwarding them to another service.
     let intake = path == "/pilot" || path.starts_with("/pilot/");
+    // Cloud credentials and private work must stay on this Rust surface,
+    // including when an unconfigured Host header would use the legacy proxy.
+    let cloud = path == "/cloud" || path.starts_with("/cloud/");
     let public = hosts.public.contains(&host);
     if let Some(upstream) = &hosts.upstream
         && !browser
         && !intake
+        && !cloud
         && (!(local || public) || !upstream::owned(path))
     {
         return upstream.forward(request).await;
