@@ -1,0 +1,15 @@
+# Rebuild the Rust server while retaining a digest-pinned image's browser assets.
+ARG LIVE_WEB_IMAGE
+
+FROM rust:1.97.1-slim-trixie AS builder
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y \
+        --no-install-recommends build-essential pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /build
+COPY . .
+RUN cargo build --locked --release -p openagents-web --bin openagents-web \
+    && strip target/release/openagents-web
+
+FROM ${LIVE_WEB_IMAGE} AS site
+COPY --from=builder /build/target/release/openagents-web /usr/local/bin/openagents-web

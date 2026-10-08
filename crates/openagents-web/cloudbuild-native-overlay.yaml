@@ -1,0 +1,21 @@
+# Use only when the retained browser modules and their contracts are unchanged.
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - crates/openagents-web/Dockerfile.native-overlay
+      - --build-arg
+      - LIVE_WEB_IMAGE=${_LIVE_WEB_IMAGE}
+      - -t
+      - us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-web:${_TAG}
+      - .
+images:
+  - us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-web:${_TAG}
+substitutions:
+  _TAG: native-overlay
+  _LIVE_WEB_IMAGE: ''
+options:
+  machineType: E2_HIGHCPU_32
+  logging: CLOUD_LOGGING_ONLY
+timeout: 3600s
