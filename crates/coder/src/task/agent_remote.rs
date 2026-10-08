@@ -335,7 +335,8 @@ impl Remote for Cli {
              test -d \"$checkout\" || {{ echo 'no such checkout' >&2; exit 4; }}; \
              base=\"$(git -C \"$checkout\" rev-parse HEAD)\" || exit 5; \
              git -C \"$checkout\" add -A && \
-             echo \"BASE=$base\"; git -C \"$checkout\" diff --cached --binary HEAD"
+             echo \"BASE=$base\"; \
+             git -C \"$checkout\" --no-pager -c color.ui=false diff --cached --binary HEAD"
         );
         let out = self.exec(name, &["sh", "-c", &script])?;
         let Some(base) = out
