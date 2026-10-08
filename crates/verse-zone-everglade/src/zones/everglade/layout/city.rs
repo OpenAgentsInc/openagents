@@ -18,9 +18,8 @@
 
 use super::generated::{
     BOARDWALK_CAFE, BOATHOUSE, BROWNSTONE, CHAPEL, CLOCK_TOWER, COTTAGE_THATCH, COTTAGE_TOWER,
-    DORMER_HOUSE, FARMHOUSE, FOUNTAIN, GAMBREL_BARN, GAMBREL_HOUSE, GAZEBO, GREENHOUSE, GUILD_HALL,
-    HIP_HOUSE, Instance, L_HOUSE, LANTERN_INN, LOG_CABIN, LOOKOUT, MEETING_HALL, MUSIC_HALL, Model,
-    NARROW_HOUSE, OBSERVATORY, SHOP_HOUSE, SMITHY, STONE_COTTAGE, TAVERN, TIMBER_HOUSE, WINDMILL,
+    FARMHOUSE, FOUNTAIN, GAMBREL_BARN, GAMBREL_HOUSE, GAZEBO, GREENHOUSE, Instance, LOG_CABIN,
+    LOOKOUT, MUSIC_HALL, Model, NARROW_HOUSE, OBSERVATORY, SMITHY, STONE_COTTAGE, WINDMILL,
 };
 use super::kit_house::{KitHouse, KitStyle};
 use super::{
@@ -386,23 +385,15 @@ const fn stand_in(
 /// and Stoop Lane, the open market hall on the Fountain Plaza, the tavern
 /// in the Lantern Quarter, terraces of row houses on Brownstone Row, the
 /// observatory on its hill, and the cottage with its tower in Walden Woods.
-pub const STAND_INS: [StandIn; 57] = [
+pub const STAND_INS: [StandIn; 28] = [
     // The Lantern Quarter: the round Music Hall, the meeting hall back from
     // Hearth Road behind its porch, the tavern on its corner, and the guild
     // hall, a little south so its turret clears the Music Hall.
     stand_in("music hall", "music hall", &MUSIC_HALL, 0.0),
-    StandIn {
-        setback: 2.0,
-        ..stand_in("meeting hall", "meeting hall", &MEETING_HALL, 0.0)
-    },
-    stand_in("the lantern", "the lantern", &TAVERN, 0.0),
-    stand_in("guild hall", "guild hall", &GUILD_HALL, -2.0),
-    stand_in("the snug", "the snug", &L_HOUSE, 0.0),
     stand_in("brownstone 3 west", "brownstone 3", &NARROW_HOUSE, -2.1),
     stand_in("brownstone 3 east", "brownstone 3", &NARROW_HOUSE, 2.1),
     stand_in("brownstone 4 west", "brownstone 4", &NARROW_HOUSE, -2.1),
     stand_in("brownstone 4 east", "brownstone 4", &NARROW_HOUSE, 2.1),
-    stand_in("seminar house", "seminar house", &L_HOUSE, 0.0),
     // The drum tower stands at the middle of the hill's flat top.
     StandIn {
         setback: 4.0,
@@ -410,7 +401,6 @@ pub const STAND_INS: [StandIn; 57] = [
         ..stand_in("observatory", "observatory", &OBSERVATORY, 0.0)
     },
     stand_in("quiet cabin", "quiet cabin", &COTTAGE_TOWER, 0.0),
-    stand_in("studio", "studio", &DORMER_HOUSE, 0.0),
     // The Boardwalk Cafés face each other across Studio Road, their decks
     // to the street.
     StandIn {
@@ -434,8 +424,6 @@ pub const STAND_INS: [StandIn; 57] = [
         0.0,
     ),
     stand_in("fern cabin", "fern cabin", &LOG_CABIN, 0.0),
-    stand_in("well house west", "well house west", &HIP_HOUSE, 0.0),
-    stand_in("well house south", "well house south", &HIP_HOUSE, 0.0),
     stand_in("barn", "barn", &GAMBREL_BARN, 0.0),
     // The sixth round's lighter houses (`scripts/blender/town_houses.py`)
     // in most of the kit-built houses' places: shops on Main Street and the
@@ -443,10 +431,6 @@ pub const STAND_INS: [StandIn; 57] = [
     // and stone cottages on Brownstone Row, and gambrel, stone, and
     // timber-framed houses through Stoop Lane, the Knowledge District, and
     // the Foundry. Each costs a quarter of a kit-built house's triangles.
-    stand_in("the fiddle", "the fiddle", &LANTERN_INN, 0.0),
-    stand_in("the hearth", "the hearth", &TIMBER_HOUSE, 0.0),
-    stand_in("choir house", "choir house", &GAMBREL_HOUSE, 0.0),
-    stand_in("the lamplighter", "the lamplighter", &LANTERN_INN, 0.0),
     brownstone("brownstone 1"),
     brownstone("brownstone 2"),
     brownstone("brownstone 5"),
@@ -457,28 +441,6 @@ pub const STAND_INS: [StandIn; 57] = [
     brownstone("row house 4"),
     stand_in("row house 5", "row house 5", &STONE_COTTAGE, 0.0),
     stand_in("row house 6", "row house 6", &GAMBREL_HOUSE, 0.0),
-    stand_in("archive", "archive", &STONE_COTTAGE, 0.0),
-    stand_in("map room", "map room", &TIMBER_HOUSE, 0.0),
-    stand_in("scriptorium", "scriptorium", &GAMBREL_HOUSE, 0.0),
-    stand_in("workshop", "workshop", &TIMBER_HOUSE, 0.0),
-    stand_in(
-        "server barn annex",
-        "server barn annex",
-        &STONE_COTTAGE,
-        0.0,
-    ),
-    row("market row east 1", &SHOP_HOUSE),
-    row("market row east 2", &GAMBREL_HOUSE),
-    row("market row east 3", &TIMBER_HOUSE),
-    row("market row east 4", &STONE_COTTAGE),
-    row("market row east 5", &SHOP_HOUSE),
-    row("market row east 6", &GAMBREL_HOUSE),
-    row("market row west 1", &TIMBER_HOUSE),
-    row("market row west 2", &SHOP_HOUSE),
-    row("market row west 3", &STONE_COTTAGE),
-    row("market row west 4", &GAMBREL_HOUSE),
-    row("market row west 5", &LANTERN_INN),
-    row("market row west 6", &TIMBER_HOUSE),
 ];
 
 /// A Market Row house in its own place.
@@ -534,7 +496,7 @@ fn replaced(b: &Building) -> bool {
 /// turns from its street, radians, its style, and the front bay that holds
 /// its door. Stoop Lane's lots turn a few degrees either way, after the
 /// kit's demo town, so the lane curves; the main streets stay straight.
-pub const KIT_LOTS: [(&str, f32, KitStyle, usize); 17] = [
+pub const KIT_LOTS: [(&str, f32, KitStyle, usize); 50] = [
     // Main Street's far blocks, square to the street.
     ("corner shop", 0.0, KitStyle::Plaster, 0),
     ("bakehouse", 0.0, KitStyle::Timber, 1),
@@ -556,6 +518,44 @@ pub const KIT_LOTS: [(&str, f32, KitStyle, usize); 17] = [
     ("townhouse 4", -0.08, KitStyle::Plaster, 1),
     ("townhouse 5", 0.06, KitStyle::Timber, 0),
     ("townhouse 6", -0.11, KitStyle::Timber, 1),
+    // Market Row behind Main Street, a little crooked.
+    ("market row east 1", 0.04, KitStyle::Plaster, 0),
+    ("market row east 2", -0.03, KitStyle::Timber, 1),
+    ("market row east 3", 0.02, KitStyle::Timber, 0),
+    ("market row east 4", -0.04, KitStyle::Plaster, 1),
+    ("market row east 5", 0.03, KitStyle::Plaster, 0),
+    ("market row east 6", -0.02, KitStyle::Timber, 1),
+    ("market row west 1", 0.03, KitStyle::Timber, 0),
+    ("market row west 2", -0.04, KitStyle::Plaster, 1),
+    ("market row west 3", 0.02, KitStyle::Plaster, 0),
+    ("market row west 4", -0.03, KitStyle::Timber, 1),
+    ("market row west 5", 0.04, KitStyle::Timber, 0),
+    ("market row west 6", -0.02, KitStyle::Plaster, 1),
+    // The Lantern Quarter's pubs and halls and Well Square's houses, turned a
+    // little off Hearth Road and Lantern Road.
+    ("meeting hall", 0.0, KitStyle::Plaster, 1),
+    ("the lantern", 0.05, KitStyle::Timber, 0),
+    ("the fiddle", -0.04, KitStyle::Timber, 1),
+    ("guild hall", 0.03, KitStyle::Plaster, 0),
+    ("the hearth", -0.05, KitStyle::Timber, 1),
+    ("choir house", 0.04, KitStyle::Timber, 0),
+    ("the lamplighter", -0.03, KitStyle::Plaster, 1),
+    ("the snug", 0.05, KitStyle::Plaster, 0),
+    ("well house west", 0.0, KitStyle::Plaster, 0),
+    ("well house south", 0.0, KitStyle::Plaster, 1),
+    // The Knowledge District's college, square to Library Way.
+    ("college hall", 0.0, KitStyle::Plaster, 1),
+    ("lecture hall", 0.0, KitStyle::Plaster, 2),
+    ("archive", 0.0, KitStyle::Plaster, 0),
+    ("seminar house", 0.0, KitStyle::Plaster, 1),
+    ("map room", 0.0, KitStyle::Timber, 0),
+    ("scriptorium", 0.0, KitStyle::Timber, 1),
+    // The Foundry's workshops and the Creative District's studios.
+    ("workshop", 0.0, KitStyle::Timber, 0),
+    ("fab hall", 0.0, KitStyle::Timber, 1),
+    ("server barn annex", 0.0, KitStyle::Timber, 1),
+    ("studio", 0.0, KitStyle::Plaster, 0),
+    ("atelier hall", 0.0, KitStyle::Plaster, 2),
 ];
 
 fn kit_lot(b: &Building) -> Option<&'static (&'static str, f32, KitStyle, usize)> {
@@ -1199,17 +1199,16 @@ fn lanterns(out: &mut Vec<Placement>) {
         prop(out, "props/Table_Large", [cx + 1.0, cz], FRAC_PI_2);
     }
     // Barrels by the tavern's door, and tables out front.
-    let tavern = place(
-        STAND_INS
-            .iter()
-            .find(|s| s.building == "the lantern")
-            .unwrap(),
-    );
-    for (k, local) in [[-4.8, 1.0], [-4.0, 1.3], [4.6, 1.1]]
+    let (_, tavern) = kit_houses()
+        .into_iter()
+        .find(|(b, _)| b.name == "the lantern")
+        .expect("the tavern is a kit house");
+    let front = tavern.depth / 2.0;
+    for (k, local) in [[-3.4, front + 1.0], [-2.6, front + 1.3], [3.6, front + 1.1]]
         .into_iter()
         .enumerate()
     {
-        prop(out, "generated/barrel", tavern.world(local), 0.7 * k as f32);
+        prop(out, "kit/barrel", tavern.world(local), 0.7 * k as f32);
     }
 }
 

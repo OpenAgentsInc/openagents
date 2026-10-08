@@ -467,11 +467,16 @@ fn the_towns_buildings_merge_and_repeated_models_draw_as_instances() {
     assert!(pieces > 1000, "{pieces}");
     // The trees, foliage, props, and street furniture the town repeats draw
     // as instances, which keeps most of the city's placements out of the
-    // merged cells.
+    // merged cells. The medieval kit houses' pieces merge, so each can
+    // break on its own; they don't count.
     let count = instanced.iter().filter(|&&i| i).count();
+    let kit_pieces = placements
+        .iter()
+        .filter(|p| p.model.starts_with("kit/"))
+        .count();
     assert!(
-        count * 2 > scene.placements.len(),
-        "{count} of {}",
+        count * 2 > scene.placements.len() - kit_pieces,
+        "{count} of {} ({kit_pieces} kit pieces)",
         scene.placements.len()
     );
 }

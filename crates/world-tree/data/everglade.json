@@ -1,7 +1,7 @@
 {
   "schema": "openagents.verse-world-tree.v1",
   "zone": "everglade",
-  "digest": "sha256:60afc5aa2570cabae9f3ce86be678c502b7df27443c60b82f587bcf731c41de5",
+  "digest": "sha256:49ae4a537ad92be89f559cc8b7b32f56f8ecb5f3e984842642525812f7758e1f",
   "nodes": [
     {
       "id": "everglade",
@@ -1102,10 +1102,20 @@
       "kind": "building",
       "district": "main-street",
       "stand": [
-        32.0,
-        72.0
+        31.3,
+        73.53
       ],
-      "source": "front:market row east 1"
+      "entry": [
+        [
+          31.3,
+          73.53
+        ],
+        [
+          31.1,
+          68.54
+        ]
+      ],
+      "source": "door:market row east 1"
     },
     {
       "id": "everglade/main-street/market-row-east-1/door",
@@ -1114,11 +1124,12 @@
       "object": "door",
       "district": "main-street",
       "stand": [
-        32.0,
-        72.0
+        31.3,
+        73.53
       ],
-      "open": false,
-      "source": "front:market row east 1:door"
+      "facing": -3.1,
+      "open": true,
+      "source": "door:market row east 1:door"
     },
     {
       "id": "everglade/main-street/market-row-east-2",
@@ -1126,10 +1137,20 @@
       "kind": "building",
       "district": "main-street",
       "stand": [
-        42.0,
-        73.4
+        42.77,
+        73.53
       ],
-      "source": "front:market row east 2"
+      "entry": [
+        [
+          42.77,
+          73.53
+        ],
+        [
+          42.92,
+          68.53
+        ]
+      ],
+      "source": "door:market row east 2"
     },
     {
       "id": "everglade/main-street/market-row-east-2/door",
@@ -1138,11 +1159,12 @@
       "object": "door",
       "district": "main-street",
       "stand": [
-        42.0,
-        73.4
+        42.77,
+        73.53
       ],
-      "open": false,
-      "source": "front:market row east 2:door"
+      "facing": 3.11,
+      "open": true,
+      "source": "door:market row east 2:door"
     },
     {
       "id": "everglade/main-street/market-row-east-3",
@@ -1150,10 +1172,20 @@
       "kind": "building",
       "district": "main-street",
       "stand": [
-        49.7,
-        72.0
+        51.15,
+        73.52
       ],
-      "source": "front:market row east 3"
+      "entry": [
+        [
+          51.15,
+          73.52
+        ],
+        [
+          51.05,
+          68.52
+        ]
+      ],
+      "source": "door:market row east 3"
     },
     {
       "id": "everglade/main-street/market-row-east-3/door",
@@ -1162,11 +1194,12 @@
       "object": "door",
       "district": "main-street",
       "stand": [
-        49.7,
-        72.0
+        51.15,
+        73.52
       ],
-      "open": false,
-      "source": "front:market row east 3:door"
+      "facing": -3.12,
+      "open": true,
+      "source": "door:market row east 3:door"
     },
     {
       "id": "everglade/main-street/market-row-east-4",
@@ -1174,10 +1207,20 @@
       "kind": "building",
       "district": "main-street",
       "stand": [
-        32.4,
-        77.1
+        30.3,
+        75.43
       ],
-      "source": "front:market row east 4"
+      "entry": [
+        [
+          30.3,
+          75.43
+        ],
+        [
+          30.1,
+          80.42
+        ]
+      ],
+      "source": "door:market row east 4"
     },
     {
       "id": "everglade/main-street/market-row-east-4/door",
@@ -1186,11 +1229,12 @@
       "object": "door",
       "district": "main-street",
       "stand": [
-        32.4,
-        77.1
+        30.3,
+        75.43
       ],
-      "open": false,
-      "source": "front:market row east 4:door"
+      "facing": -0.04,
+      "open": true,
+      "source": "door:market row east 4:door"
     },
     {
       "id": "everglade/main-street/market-row-east-5",
@@ -1198,10 +1242,20 @@
       "kind": "building",
       "district": "main-street",
       "stand": [
-        42.0,
-        77.0
+        42.77,
+        75.47
       ],
-      "source": "front:market row east 5"
+      "entry": [
+        [
+          42.77,
+          75.47
+        ],
+        [
+          42.92,
+          80.47
+        ]
+      ],
+      "source": "door:market row east 5"
     },
     {
       "id": "everglade/main-street/market-row-east-5/door",
@@ -1210,11 +1264,12 @@
       "object": "door",
       "district": "main-street",
       "stand": [
-        42.0,
-        77.0
+        42.77,
+        75.47
       ],
-      "open": false,
-      "source": "front:market row east 5:door"
+      "facing": 0.03,
+      "open": true,
+      "source": "door:market row east 5:door"
     },
     {
       "id": "everglade/main-street/market-row-east-6",
@@ -1222,10 +1277,20 @@
       "kind": "building",
       "district": "main-street",
       "stand": [
-        52.0,
-        75.6
+        50.15,
+        75.46
       ],
-      "source": "front:market row east 6"
+      "entry": [
+        [
+          50.15,
+          75.46
+        ],
+        [
+          50.05,
+          80.46
+        ]
+      ],
+      "source": "door:market row east 6"
     },
     {
       "id": "everglade/main-street/market-row-east-6/door",
@@ -1234,11 +1299,12 @@
       "object": "door",
       "district": "main-street",
       "stand": [
-        52.0,
-        75.6
+        50.15,
+        75.46
       ],
-      "open": false,
-      "source": "front:market row east 6:door"
+      "facing": -0.02,
+      "open": true,
+      "source": "door:market row east 6:door"
     },
     {
       "id": "everglade/main-street/market-row-west-1",
@@ -1246,10 +1312,20 @@
       "kind": "building",
       "district": "main-street",
       "stand": [
-        -34.3,
-        72.0
+        -33.77,
+        73.56
       ],
-      "source": "front:market row west 1"
+      "entry": [
+        [
+          -33.77,
+          73.56
+        ],
+        [
+          -33.92,
+          68.56
+        ]
+      ],
+      "source": "door:market row west 1"
     },
     {
       "id": "everglade/main-street/market-row-west-1/door",
@@ -1258,11 +1334,12 @@
       "object": "door",
       "district": "main-street",
       "stand": [
-        -34.3,
-        72.0
+        -33.77,
+        73.56
       ],
-      "open": false,
-      "source": "front:market row west 1:door"
+      "facing": -3.11,
+      "open": true,
+      "source": "door:market row west 1:door"
     },
     {
       "id": "everglade/main-street/market-row-west-2",
@@ -1270,10 +1347,20 @@
       "kind": "building",
       "district": "main-street",
       "stand": [
-        -42.0,
-        72.0
+        -40.3,
+        73.57
       ],
-      "source": "front:market row west 2"
+      "entry": [
+        [
+          -40.3,
+          73.57
+        ],
+        [
+          -40.1,
+          68.58
+        ]
+      ],
+      "source": "door:market row west 2"
     },
     {
       "id": "everglade/main-street/market-row-west-2/door",
@@ -1282,11 +1369,12 @@
       "object": "door",
       "district": "main-street",
       "stand": [
-        -42.0,
-        72.0
+        -40.3,
+        73.57
       ],
-      "open": false,
-      "source": "front:market row west 2:door"
+      "facing": 3.1,
+      "open": true,
+      "source": "door:market row west 2:door"
     },
     {
       "id": "everglade/main-street/market-row-west-3",
@@ -1294,10 +1382,20 @@
       "kind": "building",
       "district": "main-street",
       "stand": [
-        -52.4,
-        71.9
+        -52.85,
+        73.52
       ],
-      "source": "front:market row west 3"
+      "entry": [
+        [
+          -52.85,
+          73.52
+        ],
+        [
+          -52.95,
+          68.52
+        ]
+      ],
+      "source": "door:market row west 3"
     },
     {
       "id": "everglade/main-street/market-row-west-3/door",
@@ -1306,11 +1404,12 @@
       "object": "door",
       "district": "main-street",
       "stand": [
-        -52.4,
-        71.9
+        -52.85,
+        73.52
       ],
-      "open": false,
-      "source": "front:market row west 3:door"
+      "facing": -3.12,
+      "open": true,
+      "source": "door:market row west 3:door"
     },
     {
       "id": "everglade/main-street/market-row-west-4",
@@ -1318,10 +1417,20 @@
       "kind": "building",
       "district": "main-street",
       "stand": [
-        -32.0,
-        75.6
+        -33.77,
+        75.44
       ],
-      "source": "front:market row west 4"
+      "entry": [
+        [
+          -33.77,
+          75.44
+        ],
+        [
+          -33.92,
+          80.44
+        ]
+      ],
+      "source": "door:market row west 4"
     },
     {
       "id": "everglade/main-street/market-row-west-4/door",
@@ -1330,11 +1439,12 @@
       "object": "door",
       "district": "main-street",
       "stand": [
-        -32.0,
-        75.6
+        -33.77,
+        75.44
       ],
-      "open": false,
-      "source": "front:market row west 4:door"
+      "facing": -0.03,
+      "open": true,
+      "source": "door:market row west 4:door"
     },
     {
       "id": "everglade/main-street/market-row-west-5",
@@ -1342,10 +1452,20 @@
       "kind": "building",
       "district": "main-street",
       "stand": [
-        -42.0,
-        77.0
+        -40.3,
+        75.43
       ],
-      "source": "front:market row west 5"
+      "entry": [
+        [
+          -40.3,
+          75.43
+        ],
+        [
+          -40.1,
+          80.42
+        ]
+      ],
+      "source": "door:market row west 5"
     },
     {
       "id": "everglade/main-street/market-row-west-5/door",
@@ -1354,11 +1474,12 @@
       "object": "door",
       "district": "main-street",
       "stand": [
-        -42.0,
-        77.0
+        -40.3,
+        75.43
       ],
-      "open": false,
-      "source": "front:market row west 5:door"
+      "facing": 0.04,
+      "open": true,
+      "source": "door:market row west 5:door"
     },
     {
       "id": "everglade/main-street/market-row-west-6",
@@ -1366,10 +1487,20 @@
       "kind": "building",
       "district": "main-street",
       "stand": [
-        -51.7,
-        77.0
+        -55.85,
+        75.46
       ],
-      "source": "front:market row west 6"
+      "entry": [
+        [
+          -55.85,
+          75.46
+        ],
+        [
+          -55.95,
+          80.46
+        ]
+      ],
+      "source": "door:market row west 6"
     },
     {
       "id": "everglade/main-street/market-row-west-6/door",
@@ -1378,11 +1509,12 @@
       "object": "door",
       "district": "main-street",
       "stand": [
-        -51.7,
-        77.0
+        -55.85,
+        75.46
       ],
-      "open": false,
-      "source": "front:market row west 6:door"
+      "facing": -0.02,
+      "open": true,
+      "source": "door:market row west 6:door"
     },
     {
       "id": "everglade/main-street/music-shop",
@@ -2461,8 +2593,8 @@
       "kind": "district",
       "district": "creative-district",
       "stand": [
-        76.0,
-        31.8
+        78.0,
+        30.5
       ],
       "source": "district:creative-district"
     },
@@ -2472,17 +2604,17 @@
       "kind": "building",
       "district": "creative-district",
       "stand": [
-        95.0,
-        26.5
+        97.0,
+        27.5
       ],
       "entry": [
         [
-          95.0,
-          26.5
+          97.0,
+          27.5
         ],
         [
-          95.0,
-          23.0
+          97.0,
+          22.5
         ]
       ],
       "affordances": [
@@ -2497,8 +2629,8 @@
       "object": "door",
       "district": "creative-district",
       "stand": [
-        95.0,
-        26.5
+        97.0,
+        27.5
       ],
       "facing": 3.14,
       "open": true,
@@ -2604,13 +2736,23 @@
       "kind": "building",
       "district": "creative-district",
       "stand": [
-        76.0,
-        31.8
+        78.0,
+        30.5
+      ],
+      "entry": [
+        [
+          78.0,
+          30.5
+        ],
+        [
+          78.0,
+          35.5
+        ]
       ],
       "affordances": [
         "work"
       ],
-      "source": "front:studio"
+      "source": "door:studio"
     },
     {
       "id": "everglade/creative-district/studio/door",
@@ -2619,11 +2761,12 @@
       "object": "door",
       "district": "creative-district",
       "stand": [
-        76.0,
-        31.8
+        78.0,
+        30.5
       ],
-      "open": false,
-      "source": "front:studio:door"
+      "facing": 0.0,
+      "open": true,
+      "source": "door:studio:door"
     },
     {
       "id": "everglade/foundry",
@@ -2631,8 +2774,8 @@
       "kind": "district",
       "district": "foundry",
       "stand": [
-        78.3,
-        3.0
+        77.0,
+        -1.5
       ],
       "source": "district:foundry"
     },
@@ -2642,17 +2785,17 @@
       "kind": "building",
       "district": "foundry",
       "stand": [
-        95.0,
-        2.5
+        99.0,
+        1.5
       ],
       "entry": [
         [
-          95.0,
-          2.5
+          99.0,
+          1.5
         ],
         [
-          95.0,
-          6.0
+          99.0,
+          6.5
         ]
       ],
       "affordances": [
@@ -2667,8 +2810,8 @@
       "object": "door",
       "district": "foundry",
       "stand": [
-        95.0,
-        2.5
+        99.0,
+        1.5
       ],
       "facing": 0.0,
       "open": true,
@@ -2718,13 +2861,23 @@
       "kind": "building",
       "district": "foundry",
       "stand": [
-        75.6,
-        -3.1
+        77.0,
+        -1.5
+      ],
+      "entry": [
+        [
+          77.0,
+          -1.5
+        ],
+        [
+          77.0,
+          -6.5
+        ]
       ],
       "affordances": [
         "work"
       ],
-      "source": "front:server barn annex"
+      "source": "door:server barn annex"
     },
     {
       "id": "everglade/foundry/server-barn-annex/door",
@@ -2733,11 +2886,12 @@
       "object": "door",
       "district": "foundry",
       "stand": [
-        75.6,
-        -3.1
+        77.0,
+        -1.5
       ],
-      "open": false,
-      "source": "front:server barn annex:door"
+      "facing": 3.14,
+      "open": true,
+      "source": "door:server barn annex:door"
     },
     {
       "id": "everglade/foundry/smithy",
@@ -2772,13 +2926,23 @@
       "kind": "building",
       "district": "foundry",
       "stand": [
-        78.3,
-        3.0
+        78.0,
+        1.5
+      ],
+      "entry": [
+        [
+          78.0,
+          1.5
+        ],
+        [
+          78.0,
+          6.5
+        ]
       ],
       "affordances": [
         "work"
       ],
-      "source": "front:workshop"
+      "source": "door:workshop"
     },
     {
       "id": "everglade/foundry/workshop/door",
@@ -2787,11 +2951,12 @@
       "object": "door",
       "district": "foundry",
       "stand": [
-        78.3,
-        3.0
+        78.0,
+        1.5
       ],
-      "open": false,
-      "source": "front:workshop:door"
+      "facing": 0.0,
+      "open": true,
+      "source": "door:workshop:door"
     },
     {
       "id": "everglade/knowledge-district",
@@ -2799,8 +2964,8 @@
       "kind": "district",
       "district": "knowledge-district",
       "stand": [
-        57.0,
-        -36.1
+        55.0,
+        -30.5
       ],
       "source": "district:knowledge-district"
     },
@@ -2810,13 +2975,23 @@
       "kind": "building",
       "district": "knowledge-district",
       "stand": [
-        100.4,
-        -25.9
+        101.0,
+        -27.5
+      ],
+      "entry": [
+        [
+          101.0,
+          -27.5
+        ],
+        [
+          101.0,
+          -22.5
+        ]
       ],
       "affordances": [
         "read"
       ],
-      "source": "front:archive"
+      "source": "door:archive"
     },
     {
       "id": "everglade/knowledge-district/archive/door",
@@ -2825,11 +3000,12 @@
       "object": "door",
       "district": "knowledge-district",
       "stand": [
-        100.4,
-        -25.9
+        101.0,
+        -27.5
       ],
-      "open": false,
-      "source": "front:archive:door"
+      "facing": 0.0,
+      "open": true,
+      "source": "door:archive:door"
     },
     {
       "id": "everglade/knowledge-district/clock-tower",
@@ -2861,17 +3037,17 @@
       "kind": "building",
       "district": "knowledge-district",
       "stand": [
-        53.0,
-        -26.5
+        57.0,
+        -27.5
       ],
       "entry": [
         [
-          53.0,
-          -26.5
+          57.0,
+          -27.5
         ],
         [
-          53.0,
-          -23.0
+          57.0,
+          -22.5
         ]
       ],
       "affordances": [
@@ -2886,8 +3062,8 @@
       "object": "door",
       "district": "knowledge-district",
       "stand": [
-        53.0,
-        -26.5
+        57.0,
+        -27.5
       ],
       "facing": 0.0,
       "open": true,
@@ -2899,17 +3075,17 @@
       "kind": "building",
       "district": "knowledge-district",
       "stand": [
-        79.0,
-        -26.5
+        77.0,
+        -27.5
       ],
       "entry": [
         [
-          79.0,
-          -26.5
+          77.0,
+          -27.5
         ],
         [
-          79.0,
-          -23.0
+          77.0,
+          -22.5
         ]
       ],
       "affordances": [
@@ -2924,8 +3100,8 @@
       "object": "door",
       "district": "knowledge-district",
       "stand": [
-        79.0,
-        -26.5
+        77.0,
+        -27.5
       ],
       "facing": 0.0,
       "open": true,
@@ -2937,13 +3113,23 @@
       "kind": "building",
       "district": "knowledge-district",
       "stand": [
-        73.7,
-        -32.0
+        74.0,
+        -30.5
+      ],
+      "entry": [
+        [
+          74.0,
+          -30.5
+        ],
+        [
+          74.0,
+          -35.5
+        ]
       ],
       "affordances": [
         "read"
       ],
-      "source": "front:map room"
+      "source": "door:map room"
     },
     {
       "id": "everglade/knowledge-district/map-room/door",
@@ -2952,11 +3138,12 @@
       "object": "door",
       "district": "knowledge-district",
       "stand": [
-        73.7,
-        -32.0
+        74.0,
+        -30.5
       ],
-      "open": false,
-      "source": "front:map room:door"
+      "facing": 3.14,
+      "open": true,
+      "source": "door:map room:door"
     },
     {
       "id": "everglade/knowledge-district/observatory",
@@ -3416,13 +3603,23 @@
       "kind": "building",
       "district": "knowledge-district",
       "stand": [
-        96.0,
-        -30.6
+        97.0,
+        -30.5
+      ],
+      "entry": [
+        [
+          97.0,
+          -30.5
+        ],
+        [
+          97.0,
+          -35.5
+        ]
       ],
       "affordances": [
         "read"
       ],
-      "source": "front:scriptorium"
+      "source": "door:scriptorium"
     },
     {
       "id": "everglade/knowledge-district/scriptorium/door",
@@ -3431,11 +3628,12 @@
       "object": "door",
       "district": "knowledge-district",
       "stand": [
-        96.0,
-        -30.6
+        97.0,
+        -30.5
       ],
-      "open": false,
-      "source": "front:scriptorium:door"
+      "facing": 3.14,
+      "open": true,
+      "source": "door:scriptorium:door"
     },
     {
       "id": "everglade/knowledge-district/seminar-house",
@@ -3443,13 +3641,23 @@
       "kind": "building",
       "district": "knowledge-district",
       "stand": [
-        57.0,
-        -36.1
+        55.0,
+        -30.5
+      ],
+      "entry": [
+        [
+          55.0,
+          -30.5
+        ],
+        [
+          55.0,
+          -35.5
+        ]
       ],
       "affordances": [
         "read"
       ],
-      "source": "front:seminar house"
+      "source": "door:seminar house"
     },
     {
       "id": "everglade/knowledge-district/seminar-house/door",
@@ -3458,11 +3666,12 @@
       "object": "door",
       "district": "knowledge-district",
       "stand": [
-        57.0,
-        -36.1
+        55.0,
+        -30.5
       ],
-      "open": false,
-      "source": "front:seminar house:door"
+      "facing": 3.14,
+      "open": true,
+      "source": "door:seminar house:door"
     },
     {
       "id": "everglade/knowledge-district/sketch-cabin",
@@ -3953,8 +4162,8 @@
       "kind": "district",
       "district": "lantern-quarter",
       "stand": [
-        -112.0,
-        -5.9
+        -110.38,
+        -7.59
       ],
       "source": "district:lantern-quarter"
     },
@@ -4002,13 +4211,23 @@
       "kind": "building",
       "district": "lantern-quarter",
       "stand": [
-        -94.4,
-        21.0
+        -94.57,
+        19.26
+      ],
+      "entry": [
+        [
+          -94.57,
+          19.26
+        ],
+        [
+          -89.58,
+          19.06
+        ]
       ],
       "affordances": [
         "gather"
       ],
-      "source": "front:choir house"
+      "source": "door:choir house"
     },
     {
       "id": "everglade/lantern-quarter/choir-house/door",
@@ -4017,11 +4236,12 @@
       "object": "door",
       "district": "lantern-quarter",
       "stand": [
-        -94.4,
-        21.0
+        -94.57,
+        19.26
       ],
-      "open": false,
-      "source": "front:choir house:door"
+      "facing": 1.61,
+      "open": true,
+      "source": "door:choir house:door"
     },
     {
       "id": "everglade/lantern-quarter/guild-hall",
@@ -4029,13 +4249,23 @@
       "kind": "building",
       "district": "lantern-quarter",
       "stand": [
-        -92.9,
-        -31.0
+        -94.56,
+        -30.8
+      ],
+      "entry": [
+        [
+          -94.56,
+          -30.8
+        ],
+        [
+          -89.56,
+          -30.95
+        ]
       ],
       "affordances": [
         "gather"
       ],
-      "source": "front:guild hall"
+      "source": "door:guild hall"
     },
     {
       "id": "everglade/lantern-quarter/guild-hall/door",
@@ -4044,11 +4274,12 @@
       "object": "door",
       "district": "lantern-quarter",
       "stand": [
-        -92.9,
-        -31.0
+        -94.56,
+        -30.8
       ],
-      "open": false,
-      "source": "front:guild hall:door"
+      "facing": 1.6,
+      "open": true,
+      "source": "door:guild hall:door"
     },
     {
       "id": "everglade/lantern-quarter/meeting-hall",
@@ -4056,13 +4287,23 @@
       "kind": "building",
       "district": "lantern-quarter",
       "stand": [
-        -86.0,
-        -6.4
+        -83.0,
+        -7.5
+      ],
+      "entry": [
+        [
+          -83.0,
+          -7.5
+        ],
+        [
+          -83.0,
+          -2.5
+        ]
       ],
       "affordances": [
         "gather"
       ],
-      "source": "front:meeting hall"
+      "source": "door:meeting hall"
     },
     {
       "id": "everglade/lantern-quarter/meeting-hall/door",
@@ -4071,11 +4312,12 @@
       "object": "door",
       "district": "lantern-quarter",
       "stand": [
-        -86.0,
-        -6.4
+        -83.0,
+        -7.5
       ],
-      "open": false,
-      "source": "front:meeting hall:door"
+      "facing": 0.0,
+      "open": true,
+      "source": "door:meeting hall:door"
     },
     {
       "id": "everglade/lantern-quarter/music-hall",
@@ -4110,15 +4352,25 @@
       "kind": "building",
       "district": "lantern-quarter",
       "stand": [
-        -112.0,
-        -10.0
+        -111.3,
+        -8.47
+      ],
+      "entry": [
+        [
+          -111.3,
+          -8.47
+        ],
+        [
+          -111.1,
+          -13.46
+        ]
       ],
       "affordances": [
         "drink",
         "eat",
         "gather"
       ],
-      "source": "front:the fiddle"
+      "source": "door:the fiddle"
     },
     {
       "id": "everglade/lantern-quarter/the-fiddle/door",
@@ -4127,11 +4379,12 @@
       "object": "door",
       "district": "lantern-quarter",
       "stand": [
-        -112.0,
-        -10.0
+        -111.3,
+        -8.47
       ],
-      "open": false,
-      "source": "front:the fiddle:door"
+      "facing": 3.1,
+      "open": true,
+      "source": "door:the fiddle:door"
     },
     {
       "id": "everglade/lantern-quarter/the-hearth",
@@ -4139,15 +4392,25 @@
       "kind": "building",
       "district": "lantern-quarter",
       "stand": [
-        -107.0,
-        -26.7
+        -105.41,
+        -30.67
+      ],
+      "entry": [
+        [
+          -105.41,
+          -30.67
+        ],
+        [
+          -110.4,
+          -30.92
+        ]
       ],
       "affordances": [
         "drink",
         "eat",
         "gather"
       ],
-      "source": "front:the hearth"
+      "source": "door:the hearth"
     },
     {
       "id": "everglade/lantern-quarter/the-hearth/door",
@@ -4156,11 +4419,12 @@
       "object": "door",
       "district": "lantern-quarter",
       "stand": [
-        -107.0,
-        -26.7
+        -105.41,
+        -30.67
       ],
-      "open": false,
-      "source": "front:the hearth:door"
+      "facing": -1.62,
+      "open": true,
+      "source": "door:the hearth:door"
     },
     {
       "id": "everglade/lantern-quarter/the-lamplighter",
@@ -4168,15 +4432,25 @@
       "kind": "building",
       "district": "lantern-quarter",
       "stand": [
-        -107.0,
-        21.0
+        -105.44,
+        19.2
+      ],
+      "entry": [
+        [
+          -105.44,
+          19.2
+        ],
+        [
+          -110.44,
+          19.05
+        ]
       ],
       "affordances": [
         "drink",
         "eat",
         "gather"
       ],
-      "source": "front:the lamplighter"
+      "source": "door:the lamplighter"
     },
     {
       "id": "everglade/lantern-quarter/the-lamplighter/door",
@@ -4185,11 +4459,12 @@
       "object": "door",
       "district": "lantern-quarter",
       "stand": [
-        -107.0,
-        21.0
+        -105.44,
+        19.2
       ],
-      "open": false,
-      "source": "front:the lamplighter:door"
+      "facing": -1.6,
+      "open": true,
+      "source": "door:the lamplighter:door"
     },
     {
       "id": "everglade/lantern-quarter/the-lantern",
@@ -4197,15 +4472,25 @@
       "kind": "building",
       "district": "lantern-quarter",
       "stand": [
-        -112.0,
-        -5.9
+        -110.38,
+        -7.59
+      ],
+      "entry": [
+        [
+          -110.38,
+          -7.59
+        ],
+        [
+          -110.13,
+          -2.6
+        ]
       ],
       "affordances": [
         "drink",
         "eat",
         "gather"
       ],
-      "source": "front:the lantern"
+      "source": "door:the lantern"
     },
     {
       "id": "everglade/lantern-quarter/the-lantern/door",
@@ -4214,11 +4499,12 @@
       "object": "door",
       "district": "lantern-quarter",
       "stand": [
-        -112.0,
-        -5.9
+        -110.38,
+        -7.59
       ],
-      "open": false,
-      "source": "front:the lantern:door"
+      "facing": 0.05,
+      "open": true,
+      "source": "door:the lantern:door"
     },
     {
       "id": "everglade/lantern-quarter/the-snug",
@@ -4226,15 +4512,25 @@
       "kind": "building",
       "district": "lantern-quarter",
       "stand": [
-        -111.1,
-        32.0
+        -105.41,
+        36.67
+      ],
+      "entry": [
+        [
+          -105.41,
+          36.67
+        ],
+        [
+          -110.4,
+          36.92
+        ]
       ],
       "affordances": [
         "drink",
         "eat",
         "gather"
       ],
-      "source": "front:the snug"
+      "source": "door:the snug"
     },
     {
       "id": "everglade/lantern-quarter/the-snug/door",
@@ -4243,11 +4539,12 @@
       "object": "door",
       "district": "lantern-quarter",
       "stand": [
-        -111.1,
-        32.0
+        -105.41,
+        36.67
       ],
-      "open": false,
-      "source": "front:the snug:door"
+      "facing": -1.52,
+      "open": true,
+      "source": "door:the snug:door"
     },
     {
       "id": "everglade/lantern-quarter/well-house-south",
@@ -4255,13 +4552,23 @@
       "kind": "building",
       "district": "lantern-quarter",
       "stand": [
-        -60.5,
-        -36.1
+        -58.0,
+        -34.5
+      ],
+      "entry": [
+        [
+          -58.0,
+          -34.5
+        ],
+        [
+          -58.0,
+          -39.5
+        ]
       ],
       "affordances": [
         "rest"
       ],
-      "source": "front:well house south"
+      "source": "door:well house south"
     },
     {
       "id": "everglade/lantern-quarter/well-house-south/door",
@@ -4270,11 +4577,12 @@
       "object": "door",
       "district": "lantern-quarter",
       "stand": [
-        -60.5,
-        -36.1
+        -58.0,
+        -34.5
       ],
-      "open": false,
-      "source": "front:well house south:door"
+      "facing": 3.14,
+      "open": true,
+      "source": "door:well house south:door"
     },
     {
       "id": "everglade/lantern-quarter/well-house-west",
@@ -4282,13 +4590,23 @@
       "kind": "building",
       "district": "lantern-quarter",
       "stand": [
-        -70.1,
-        -27.5
+        -68.5,
+        -26.0
+      ],
+      "entry": [
+        [
+          -68.5,
+          -26.0
+        ],
+        [
+          -73.5,
+          -26.0
+        ]
       ],
       "affordances": [
         "rest"
       ],
-      "source": "front:well house west"
+      "source": "door:well house west"
     },
     {
       "id": "everglade/lantern-quarter/well-house-west/door",
@@ -4297,11 +4615,12 @@
       "object": "door",
       "district": "lantern-quarter",
       "stand": [
-        -70.1,
-        -27.5
+        -68.5,
+        -26.0
       ],
-      "open": false,
-      "source": "front:well house west:door"
+      "facing": -1.57,
+      "open": true,
+      "source": "door:well house west:door"
     },
     {
       "id": "everglade/brownstone-row",
