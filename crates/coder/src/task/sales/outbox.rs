@@ -70,6 +70,8 @@ pub struct Proposal {
     pub certification_reference: Option<String>,
     pub draft_reference: Option<String>,
     pub follow_up_reference: Option<agents::Artifact>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reply_reference: Option<agents::Artifact>,
     pub model_reservation_reference: Option<String>,
     pub maximum_cost_microusd: u64,
 }
@@ -90,6 +92,8 @@ pub struct Subject {
     pub reservation_id: String,
     pub created_at: u64,
     pub retain_until: u64,
+    #[serde(default, skip_serializing_if = "std::collections::BTreeSet::is_empty")]
+    pub contact_pins: std::collections::BTreeSet<String>,
 }
 impl Subject {
     pub fn sha256(&self) -> Result<String> {
@@ -155,6 +159,8 @@ pub struct Record {
     pub observation_at: Option<u64>,
     pub observation: Option<email::smtp::Observation>,
     pub minimized_at: Option<u64>,
+    #[serde(default, skip_serializing_if = "std::collections::BTreeSet::is_empty")]
+    pub contact_pins: std::collections::BTreeSet<String>,
 }
 /// An owner statement about an original uncertain attempt, never provider evidence.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -319,6 +325,12 @@ impl Book {
         }
         for (id, record) in &self.records {
             super::id(id)?;
+            if record.contact_pins.len() > 32 {
+                return Err("original outbox contact history exceeds its bound".into());
+            }
+            for pin in &record.contact_pins {
+                token(pin)?;
+            }
             token(&record.subject_sha256)?;
             token(&record.mime_sha256)?;
             token(
@@ -356,6 +368,8 @@ impl Book {
                     || subject.proposal.id != record.id
                     || subject.proposal.message.lead != record.lead
                     || subject.mode != record.mode
+                    || !subject.contact_pins.is_empty()
+                        && subject.contact_pins != record.contact_pins
                     || subject.proposal.kind != record.kind
                     || actor(&subject.proposal.message) != record.actor
                     || subject.mime_sha256 != record.mime_sha256
@@ -682,7 +696,86 @@ pub(super) fn mime(
     email::smtp::validate_mime(out.as_bytes())?;
     Ok(out.into_bytes())
 }
+/// Reconstruct legacy minimal history only from retained canonical original sources.
+pub(super) fn remember_contact_history(state: &mut State) -> Result<bool> {
+    let mut pins = Vec::new();
+    for (id, record) in &state.outbox.records {
+        if !record.contact_pins.is_empty() {
+            continue;
+        }
+        if let (Some(subject), Some(lead)) = (&record.subject, state.leads.get(&record.lead)) {
+            let original = if subject.contact_pins.is_empty() {
+                let address = format!("email:{}", subject.proposal.message.recipient);
+                privacy::contact_history_pins(state, &address, &lead.details.account)?
+            } else {
+                subject.contact_pins.clone()
+            };
+            pins.push((id.clone(), original));
+        }
+    }
+    let changed = !pins.is_empty();
+    for (id, pins) in pins {
+        state.outbox.records.get_mut(&id).unwrap().contact_pins = pins;
+    }
+    Ok(changed)
+}
 impl Store {
+    pub(super) fn outbox_contact_records(&self, lead: &str, mode: Mode) -> Result<Vec<&Record>> {
+        let lead = self
+            .state
+            .leads
+            .get(lead)
+            .ok_or("original contact history source unavailable")?;
+        let pins =
+            privacy::contact_history_pins(&self.state, &lead.contact, &lead.details.account)?;
+        let mut matches = Vec::new();
+        for record in self
+            .state
+            .outbox
+            .records
+            .values()
+            .filter(|r| r.mode == mode && r.count_consumed)
+        {
+            if record.contact_pins.is_empty() {
+                return Err("historical consumed contact identity is unavailable".into());
+            }
+            if !record.contact_pins.is_disjoint(&pins) {
+                matches.push(record);
+            }
+        }
+        Ok(matches)
+    }
+    fn outbox_message_kind(
+        &self,
+        owner: &Access,
+        proposal: &Proposal,
+        mode: Mode,
+        excluding: Option<&str>,
+    ) -> Result<()> {
+        if mode == Mode::Fixture {
+            return Ok(());
+        }
+        match proposal.kind {
+            MessageKind::OwnerPilot | MessageKind::FirstMessage => {
+                if proposal.kind == MessageKind::OwnerPilot
+                    && !matches!(proposal.message.sender, email::Sender::Human { .. })
+                {
+                    return Err("owner SMTP pilot requires the current human owner".into());
+                }
+                if self
+                    .outbox_contact_records(&proposal.message.lead, mode)?
+                    .iter()
+                    .any(|r| Some(r.id.as_str()) != excluding)
+                {
+                    return Err("original contact already has a consumed message; exact reply or follow-up authority required".into());
+                }
+                Ok(())
+            }
+            MessageKind::Reply => self.validate_sales_reply_response(owner, proposal),
+            MessageKind::FollowUp => self.validate_sales_follow_up(proposal, mode),
+            MessageKind::SalesPost => Err("public sales posting channel is unavailable".into()),
+        }
+    }
     fn outbox_qualification(
         &self,
         access: &Access,
@@ -813,9 +906,12 @@ impl Store {
                 "outbox controller is paused, changed, or outside the reserved business day".into(),
             );
         }
-        if subject.mode == Mode::Live && subject.proposal.kind == MessageKind::FollowUp {
-            return Err("canonical real-week follow-up permission is unavailable".into());
-        }
+        self.outbox_message_kind(
+            access,
+            &subject.proposal,
+            subject.mode,
+            Some(&subject.proposal.id),
+        )?;
         let prepared = self.prepare_email(access, subject.proposal.message.clone(), keys)?;
         let config = self.email_config(&subject.proposal.message.config_sha256, (self.clock)())?;
         let qualification = self.outbox_qualification(access, &subject.proposal, subject.mode)?;
@@ -861,6 +957,7 @@ impl Store {
                 "outbox live certification, reply handler, or owner grant is unavailable".into(),
             );
         }
+        self.current_sales_reply_qualification(&activation.reply_qualification_sha256)?;
         self.email_config(&activation.config_sha256, (self.clock)())?
             .smtp
             .as_ref()
@@ -905,9 +1002,7 @@ impl Store {
         let (qualification_sha256, draft_qualification_sha256) =
             self.outbox_qualification(access, &proposal, mode)?;
         let budget_sha256 = self.outbox_budget(&proposal, mode)?;
-        if mode == Mode::Live && proposal.kind == MessageKind::FollowUp {
-            return Err("canonical real-week follow-up permission is unavailable".into());
-        }
+        self.outbox_message_kind(access, &proposal, mode, None)?;
         let day = agents::business_day((self.clock)())?;
         let policy = self.email_policy(&proposal.message.policy_sha256, (self.clock)())?;
         let (total, actors) = self.state.outbox.counts(day, mode, (self.clock)());
@@ -932,6 +1027,17 @@ impl Store {
             .details
             .data
             .retain_until;
+        let contact_pins = privacy::contact_history_pins(
+            &self.state,
+            &format!("email:{}", proposal.message.recipient),
+            &self
+                .state
+                .leads
+                .get(&proposal.message.lead)
+                .ok_or("outbox contact unavailable")?
+                .details
+                .account,
+        )?;
         let subject = Subject {
             schema: SUBJECT_SCHEMA.into(),
             proposal: proposal.clone(),
@@ -947,6 +1053,7 @@ impl Store {
             reservation_id: random_token(),
             created_at,
             retain_until,
+            contact_pins: contact_pins.clone(),
         };
         if mode == Mode::Live {
             self.outbox_live_activation(&subject)?;
@@ -978,6 +1085,7 @@ impl Store {
                 observation_at: None,
                 observation: None,
                 minimized_at: None,
+                contact_pins,
             },
         );
         next.outbox.revision = next
@@ -1360,6 +1468,7 @@ impl Store {
                 {
                     return Err("native qualified reply handler is unavailable".into());
                 }
+                self.current_sales_reply_qualification(&activation.reply_qualification_sha256)?;
                 let config = self.email_config(&activation.config_sha256, now)?;
                 if config.provider != email::Provider::Smtp
                     || config.policy_sha256 != activation.policy_sha256

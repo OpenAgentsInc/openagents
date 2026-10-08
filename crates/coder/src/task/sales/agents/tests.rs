@@ -1756,6 +1756,7 @@ fn outbox_proposal(
         certification_reference: None,
         draft_reference: None,
         follow_up_reference: None,
+        reply_reference: None,
         model_reservation_reference: None,
         maximum_cost_microusd: 0,
     }

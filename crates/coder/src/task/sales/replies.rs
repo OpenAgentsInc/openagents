@@ -88,6 +88,8 @@ pub struct Record {
     pub review_sha256: Option<String>,
     pub reviewed_by: Option<String>,
     pub model_classification: Option<Classification>,
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub contact_pins: BTreeSet<String>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -152,6 +154,12 @@ impl Book {
             super::id(id)?;
             if id != &record.id {
                 return Err("reply identity changed".into());
+            }
+            if record.contact_pins.len() > 32 {
+                return Err("reply contact history exceeds its bound".into());
+            }
+            for pin in &record.contact_pins {
+                token(pin)?;
             }
             for sha in [
                 &record.input_sha256,
@@ -527,6 +535,16 @@ impl Store {
         let lead = thread_lead
             .clone()
             .or_else(|| (contacts.len() == 1).then(|| contacts[0].clone()));
+        let contact_pins =
+            if let Some(source) = lead.as_ref().and_then(|id| self.state.leads.get(id)) {
+                privacy::contact_history_pins(
+                    &self.state,
+                    &format!("email:{}", input.sender),
+                    &source.details.account,
+                )?
+            } else {
+                BTreeSet::new()
+            };
         let mut finding = safety(&input.quoted_text, !input.attachments.is_empty());
         if input.provider_state == ProviderState::HardBounce {
             finding = Safety::HardBounce;
@@ -637,6 +655,7 @@ impl Store {
             review_sha256: None,
             reviewed_by: None,
             model_classification: None,
+            contact_pins,
         };
         let mut next = self.state.clone();
         if finding != Safety::Ordinary {
@@ -977,26 +996,20 @@ impl Store {
             .leads
             .get(lead)
             .ok_or("follow-up lead unavailable")?;
+        let pins = privacy::contact_history_pins(&self.state, &row.contact, &row.details.account)?;
         if self.state.replies.blocked_leads.contains(lead)
-            || self
-                .state
-                .replies
-                .records
-                .values()
-                .any(|r| r.lead.as_deref() == Some(lead))
+            || self.state.replies.records.values().any(|r| {
+                r.lead.as_deref() == Some(lead)
+                    || !r.contact_pins.is_disjoint(&pins)
+                    || r.contact_pins.is_empty() && r.lead.is_some()
+            })
             || row.details.data.retain_until <= (self.clock)()
         {
             return Err(
                 "a reply, safety stop, or expired source prevents no-response follow-up".into(),
             );
         }
-        let rows = self
-            .state
-            .outbox
-            .records
-            .values()
-            .filter(|r| r.lead == lead && r.mode == mode && r.count_consumed)
-            .collect::<Vec<_>>();
+        let rows = self.outbox_contact_records(lead, mode)?;
         let original = rows
             .iter()
             .filter(|r| r.kind == outbox::MessageKind::FirstMessage)
@@ -1128,7 +1141,53 @@ impl Store {
                 "follow-up identity, timing, original attempt, or remaining count changed".into(),
             );
         }
+        let original = original
+            .subject
+            .as_ref()
+            .ok_or("original follow-up content unavailable")?;
+        if original.proposal.message.recipient != proposal.message.recipient
+            || original.proposal.message.config_sha256 != proposal.message.config_sha256
+        {
+            return Err("follow-up original recipient or mailbox changed".into());
+        }
         Ok(())
+    }
+    pub(super) fn validate_sales_reply_response(
+        &self,
+        owner: &Access,
+        proposal: &outbox::Proposal,
+    ) -> Result<()> {
+        let reference = proposal
+            .reply_reference
+            .as_ref()
+            .ok_or("exact reviewed reply reference required")?;
+        let row = self
+            .state
+            .replies
+            .records
+            .get(&reference.reference)
+            .ok_or("original reviewed reply unavailable")?;
+        let input = row
+            .payload
+            .as_ref()
+            .ok_or("original reviewed reply content unavailable")?;
+        if row.safety != Safety::Ordinary
+            || !matches!(row.owner_label, Some(Label::Interested | Label::Question))
+            || row.reviewed_by.as_deref() != Some(owner.principal())
+            || row.review_sha256.is_none()
+            || row.retain_until <= (self.clock)()
+            || row.lead.as_deref() != Some(proposal.message.lead.as_str())
+            || self.reply_thread(input)?.as_deref() != Some(proposal.message.lead.as_str())
+            || input.sender != proposal.message.recipient
+            || input.config_sha256 != proposal.message.config_sha256
+            || digest(&serde_json::to_vec(row).map_err(|_| "reviewed reply serialization failed")?)
+                != reference.sha256
+        {
+            return Err(
+                "reply response requires the exact current owner-reviewed original thread".into(),
+            );
+        }
+        self.screen_reply_output(row)
     }
 }
 

@@ -303,6 +303,28 @@ pub fn normalize(value: &str) -> Result<String> {
 fn alias(state: &State, address: &str) -> Result<String> {
     Ok(salted(state, "contact", &contact(address)?))
 }
+/// Retain only salted native contact equivalence for original attempt limits.
+pub(super) fn contact_history_pins(
+    state: &State,
+    address: &str,
+    account: &str,
+) -> Result<BTreeSet<String>> {
+    let a = alias(state, &normalize(address)?)?;
+    let c = customer(state, account)?;
+    let mut customers = state.privacy.aliases.get(&a).cloned().unwrap_or_default();
+    customers.insert(c);
+    let mut pins = customers.clone();
+    pins.insert(a);
+    for (address, owners) in &state.privacy.aliases {
+        if !owners.is_disjoint(&customers) {
+            pins.insert(address.clone());
+        }
+    }
+    if pins.len() > 32 {
+        return Err("original contact history equivalence exceeds its bound".into());
+    }
+    Ok(pins)
+}
 pub(super) fn check_identity(state: &State, address: &str, account: &str) -> Result<()> {
     if state.privacy.enabled {
         normalize(address)?;

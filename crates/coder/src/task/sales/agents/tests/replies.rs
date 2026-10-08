@@ -400,3 +400,107 @@ fn reply_qualification_refuses_newly_known_credential_metadata_without_mutation(
     assert_eq!(revision, f.store.state.replies.revision);
     assert!(f.store.state.replies.current_qualification.is_none());
 }
+
+#[test]
+fn original_contact_history_survives_new_lead_and_minimization_and_refuses_unknown_legacy() {
+    let mut f = Fixture::new();
+    let (_, subject) = original(&mut f);
+    let retained = f.store.state.outbox.records[&subject.proposal.id]
+        .contact_pins
+        .clone();
+    assert!(!retained.is_empty());
+    let mut second = f.store.state.leads[&f.lead].clone();
+    second.id = format!("lead_{}", digest(b"second original contact journey"));
+    let second_id = second.id.clone();
+    f.store.state.leads.insert(second_id.clone(), second);
+    assert_eq!(
+        f.store
+            .outbox_contact_records(&second_id, outbox::Mode::Fixture)
+            .unwrap()
+            .len(),
+        1
+    );
+    let row = f
+        .store
+        .state
+        .outbox
+        .records
+        .get_mut(&subject.proposal.id)
+        .unwrap();
+    row.subject = None;
+    row.minimized_at = Some(now());
+    assert_eq!(row.contact_pins, retained);
+    f.store.state.outbox.check().unwrap();
+    assert_eq!(
+        f.store
+            .outbox_contact_records(&second_id, outbox::Mode::Fixture)
+            .unwrap()
+            .len(),
+        1
+    );
+    f.store
+        .state
+        .outbox
+        .records
+        .get_mut(&subject.proposal.id)
+        .unwrap()
+        .contact_pins
+        .clear();
+    assert!(!outbox::remember_contact_history(&mut f.store.state).unwrap());
+    assert!(
+        f.store
+            .outbox_contact_records(&second_id, outbox::Mode::Fixture)
+            .is_err()
+    );
+}
+
+#[test]
+fn reply_response_requires_original_thread_and_exact_immutable_owner_review() {
+    let mut f = Fixture::new();
+    let (_, subject) = original(&mut f);
+    let input = inbound(
+        &f,
+        &subject,
+        "original-question",
+        "Can you explain the reviewed terms?",
+    );
+    let row = f.store.ingest_sales_reply(&f.owner, input).unwrap();
+    let mut proposal = subject.proposal.clone();
+    proposal.kind = outbox::MessageKind::Reply;
+    proposal.reply_reference = Some(Artifact {
+        reference: row.id.clone(),
+        sha256: digest(&serde_json::to_vec(&row).unwrap()),
+    });
+    assert!(
+        f.store
+            .validate_sales_reply_response(&f.owner, &proposal)
+            .is_err()
+    );
+    let reviewed = f
+        .store
+        .review_sales_reply(
+            &f.owner,
+            &row.id,
+            &row.input_sha256,
+            f.store.state.replies.revision,
+            replies::Label::Question,
+            &"f".repeat(64),
+        )
+        .unwrap();
+    assert!(
+        f.store
+            .validate_sales_reply_response(&f.owner, &proposal)
+            .is_err()
+    );
+    proposal.reply_reference.as_mut().unwrap().sha256 =
+        digest(&serde_json::to_vec(&reviewed).unwrap());
+    f.store
+        .validate_sales_reply_response(&f.owner, &proposal)
+        .unwrap();
+    proposal.message.recipient = "another@fixture.invalid".into();
+    assert!(
+        f.store
+            .validate_sales_reply_response(&f.owner, &proposal)
+            .is_err()
+    );
+}

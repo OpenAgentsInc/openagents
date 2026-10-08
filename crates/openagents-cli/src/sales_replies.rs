@@ -1,9 +1,10 @@
 //! Untrusted inbox imports and owner review through the canonical private sales book.
 use super::{Store, required};
 use crate::{Args, Output};
-use coder::task::sales::{meetings, outbox, replies};
+use coder::task::sales::{agents, meetings, outbox, replies};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use std::{io::Read, path::Path};
 pub(super) const USAGE: &str = "usage: openagents sales replies COMMAND --root DIR --credential FILE [--json]
   view                          Read bounded private reply records and explicit source provenance.
@@ -16,6 +17,7 @@ pub(super) const USAGE: &str = "usage: openagents sales replies COMMAND --root D
                                 Retain a native no-response plan with real-week spacing.
 FILE=- reads bounded JSON from stdin. Files must be private regular files.
 Imported quotes, links, and attachment metadata never select tools or permissions.
+Import and review results include the exact native artifact for reply_reference.
 Owner imports are untrusted statements and cannot prove provider delivery.
 Automatic mailbox polling and independent inbound provider receipts are unavailable.
 Handler qualification measures native safety, not model quality or mailbox health.
@@ -57,6 +59,19 @@ fn input(args: &Args) -> Result<Vec<u8>, String> {
 fn value<T: Serialize>(input: T) -> Result<Value, String> {
     serde_json::to_value(input).map_err(|_| "reply result serialization failed".into())
 }
+fn reply_value(record: replies::Record) -> Result<Value, String> {
+    let bytes = serde_json::to_vec(&record).map_err(|_| "reply artifact serialization failed")?;
+    let artifact = agents::Artifact {
+        reference: record.id.clone(),
+        sha256: format!("{:x}", Sha256::digest(bytes)),
+    };
+    let mut result = value(record)?;
+    result
+        .as_object_mut()
+        .ok_or("reply result shape changed")?
+        .insert("artifact".into(), value(artifact)?);
+    Ok(result)
+}
 pub(super) fn run(output: &Output, words: &[String]) -> u8 {
     if words
         .first()
@@ -93,14 +108,14 @@ pub(super) fn run(output: &Output, words: &[String]) -> u8 {
         )?))?)?;
         match command {
             "view" => store.sales_replies_view(&owner),
-            "ingest" => value(store.ingest_sales_reply(
+            "ingest" => reply_value(store.ingest_sales_reply(
                 &owner,
                 serde_json::from_slice(&input(&args)?).map_err(|_| "reply import is malformed")?,
             )?),
             "review" => {
                 let r: Review = serde_json::from_slice(&input(&args)?)
                     .map_err(|_| "reply review is malformed")?;
-                value(store.review_sales_reply(
+                reply_value(store.review_sales_reply(
                     &owner,
                     &r.reply,
                     &r.input_sha256,
