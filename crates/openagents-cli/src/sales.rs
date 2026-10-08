@@ -10,6 +10,8 @@ use std::path::Path;
 pub(crate) mod agents;
 #[path = "sales_claims.rs"]
 mod claims;
+#[path = "sales_earned.rs"]
+mod earned;
 #[path = "sales_email.rs"]
 mod email;
 #[path = "sales_floor.rs"]
@@ -111,6 +113,12 @@ pub const USAGE: &str = "usage: openagents sales COMMAND --root DIR [--credentia
   floor weekly-draft
   town table
   town bodies
+  earned ledger
+  earned ring
+  earned draft
+  earned approve
+  earned revoke
+  earned shared
   meetings slot --input FILE --expected-version N
         Publish explicit finite owner availability.
   meetings slots
@@ -277,6 +285,12 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("floor weekly-draft", Effect::ReadOnly),
     Declared::computer("town table", Effect::ReadOnly),
     Declared::computer("town bodies", Effect::ReadOnly),
+    Declared::computer("earned ledger", Effect::ReadOnly),
+    Declared::computer("earned ring", Effect::LocalWrite),
+    Declared::computer("earned draft", Effect::ReadOnly),
+    Declared::computer("earned approve", Effect::LocalWrite),
+    Declared::computer("earned revoke", Effect::LocalWrite),
+    Declared::computer("earned shared", Effect::ReadOnly),
     Declared::computer("meetings slot", Effect::Grants),
     Declared::computer("meetings slots", Effect::ReadOnly),
     Declared::computer("meetings queue", Effect::ReadOnly),
@@ -336,6 +350,9 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
     }
     if words.first().is_some_and(|w| w == "floor") {
         return floor::run(output, &words[1..]);
+    }
+    if words.first().is_some_and(|w| w == "earned") {
+        return earned::run(output, &words[1..]);
     }
     if words.first().is_some_and(|w| w == "town") {
         return town::run(output, &words[1..]);

@@ -35,7 +35,17 @@ impl Reader {
             outbox_unknown: 0,
             idle: pipeline.idle,
             model_available: pipeline.model_available,
+            rings: 0,
+            shared: None,
         };
+        store.ring_earned(&owner)?;
+        snapshot.rings = store.earned_ledger(&owner)?.totals.rung;
+        if let sales::earned::Shared::Available { aggregate, .. } = store.shared_aggregate()? {
+            snapshot.shared = Some([
+                aggregate.earned_sales,
+                aggregate.net_usd_millionths_floor / 1_000_000,
+            ]);
+        }
         for row in pipeline.rows {
             let stage = match row.recorded_stage {
                 sales::Stage::New => 0,

@@ -1086,3 +1086,33 @@ crew's own names and keys, and reads only.
 - The adapter holds no budget, cap, or sending count and mutates nothing; a
   compressed town clock changes placement only, never a limit or an effect.
 
+
+## Earned sales, the bell, and the shared aggregate (REV-71)
+
+An earned sale is a recorded service sale whose latest verified settlement
+is `paid` (or `reversed` after a payment), whose collection is nonzero, and
+whose delivery is reconciled (a fulfillment bill on file). Pending, unknown,
+and disputed settlements, unpaid invoices, undelivered work, top-ups,
+grants, meetings, and pipeline stages earn nothing.
+
+- `openagents sales earned ledger --root DIR --credential FILE` is the
+  owner's view: each sale's settlement, gross, refunded, net, delivery
+  state, and the reasons it is not earned, plus totals that separate
+  earned sales, unknown settlement, and reversals.
+- `openagents sales earned ring` rings the Agora bell once for each newly
+  earned sale and records the sale key durably in the sales state. Replays,
+  restarts, and later refunds ring nothing; a refund lowers net totals.
+  The Everglade sales board reads the rung count on the owner's computer
+  and swings the bell when it rises during the session, never on start.
+- `openagents sales earned draft --through UNIX` is Paul's shared aggregate
+  through a day boundary at least seven days old: earned-sale count, net
+  USD floored to USD 100, and its digest, with the weekly update text. It
+  publishes nothing.
+- `openagents sales earned approve --through UNIX --digest SHA256
+  --expires-at UNIX` records the owner's review of that exact digest, for
+  at most 90 days. `revoke --digest` withdraws it.
+- `openagents sales earned shared --root DIR` needs no credential and is
+  the only read a shared surface may use: the newest unexpired approval
+  whose aggregate still recomputes from the books, or an `unavailable`
+  state (none, expired, no longer matches). It carries no lead, sale,
+  amount, or timing beyond the day boundary and floor.
