@@ -1536,6 +1536,9 @@ mod w11 {
                 );
                 let worker = summary(steady.iter().map(|s| s.worker_ms).collect());
                 let last = steady.last().unwrap();
+                let jobs = steady.iter().map(|s| s.completed_jobs).sum::<u64>();
+                let synthesis_ms = steady.iter().map(|s| s.completed_synthesis_ms).sum::<f64>();
+                let worker_ms = steady.iter().map(|s| s.worker_ms).sum::<f64>();
                 let budget = verse_engine::quality::WaterBudget::of(tier);
                 let reduced = last.effects_reduced;
                 let fence_water_ms = (fence_ms - dry_fence_ms).max(0.0);
@@ -1555,10 +1558,11 @@ mod w11 {
                     "gpu_ms":gpu_ms,"gpu_passes_ms":["mirror","opaque (excluded)","color and depth copies","surface"],
                     "gpu_bytes":bytes,"main_ms":main,"worker_ms":worker,
                     "main_cpu_clock":last.main_cpu_ms.is_some(),"worker_cpu_clock":last.worker_cpu_supported,
-                    "completed_jobs":steady.iter().map(|s| s.completed_jobs).sum::<u64>(),
-                    "completed_synthesis_ms":steady.iter().map(|s| s.completed_synthesis_ms).sum::<f64>(),
-                    "per_job_elapsed_ms":summary(steady.iter().filter(|s| s.completed_jobs > 0).map(|s| s.synthesis_ms).collect()),
-                    "per_job_cpu_ms":summary(steady.iter().filter(|s| s.completed_jobs > 0).filter_map(|s| s.synthesis_cpu_ms).collect()),
+                    "completed_jobs":jobs,"completed_synthesis_ms":synthesis_ms,
+                    "mean_completed_job_elapsed_ms":(jobs > 0).then(|| synthesis_ms / jobs as f64),
+                    "mean_completed_job_cpu_ms":(jobs > 0 && last.worker_cpu_supported).then(|| worker_ms / jobs as f64),
+                    "observed_last_job_elapsed_ms":summary(steady.iter().filter(|s| s.completed_jobs > 0).map(|s| s.synthesis_ms).collect()),
+                    "observed_last_job_cpu_ms":summary(steady.iter().filter(|s| s.completed_jobs > 0).filter_map(|s| s.synthesis_cpu_ms).collect()),
                     "queue_fence_frame_ms_fastest":fence_ms,"queue_fence_water_ms_estimate":fence_water_ms,"last":last,
                     "within_budget":within,"effects_reduced":reduced,"water_changed_pixels":share,
                     "capture":filename,"capture_sha256":digest(&directory.join(&filename)).unwrap(),
