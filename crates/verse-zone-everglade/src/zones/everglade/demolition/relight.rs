@@ -79,26 +79,38 @@ impl LocalOcclusion {
         }
         let normal = normal.normalize_or(Vec3::Y);
         let at = cell(point);
-        let mut covered = 0.0;
+        let mut strongest = [0.0; MAX_BOXES];
         if let Some(boxes) = self.cells.get(&(at.x, at.y, at.z)) {
-            for &index in boxes
-                .iter()
-                .filter(|&&i| Some(self.boxes[i].piece) != skip)
-                .take(MAX_BOXES)
-            {
+            for &index in boxes.iter().filter(|&&i| Some(self.boxes[i].piece) != skip) {
                 let b = &self.boxes[index];
+                let delta = b.center - point;
+                let center_distance = delta.length_squared();
+                if center_distance >= (b.radius + REACH).powi(2) {
+                    continue;
+                }
+                let hemisphere = normal.dot(delta.normalize_or(normal)).max(0.0);
+                let solid = b.radius * b.radius / (center_distance + b.radius * b.radius).max(0.01);
+                let upper = hemisphere * solid * 0.65;
+                if upper <= strongest[MAX_BOXES - 1] {
+                    continue;
+                }
                 let local = b.inverse.transform_point3(point);
                 let distance = (local.abs() - b.half).max(Vec3::ZERO).length();
                 if distance >= REACH {
                     continue;
                 }
-                let toward = (b.center - point).normalize_or(normal);
-                let hemisphere = normal.dot(toward).max(0.0);
-                let solid = b.radius * b.radius
-                    / (point.distance_squared(b.center) + b.radius * b.radius).max(0.01);
-                covered += hemisphere * solid * (1.0 - distance / REACH) * 0.65;
+                let contribution = upper * (1.0 - distance / REACH);
+                if contribution <= strongest[MAX_BOXES - 1] {
+                    continue;
+                }
+                // Retain the strongest local cover in a fixed-size array.
+                // Sorted accumulation also makes piece order irrelevant.
+                let position = strongest.partition_point(|&v| v > contribution);
+                strongest.copy_within(position..MAX_BOXES - 1, position + 1);
+                strongest[position] = contribution;
             }
         }
+        let mut covered: f32 = strongest.iter().sum();
         // Downward faces near the actual ground receive less sky light.
         covered += (-normal.y).max(0.0) * (1.0 - point.y.max(0.0) / REACH).clamp(0.0, 1.0) * 0.35;
         (1.0 - covered).clamp(MIN_OPEN, 1.0)
@@ -287,5 +299,70 @@ mod tests {
             LocalOcclusion::new(&site).sample(point, Vec3::Y, None),
             covered
         );
+    }
+
+    #[test]
+    fn irrelevant_cell_boxes_cannot_hide_an_intact_roof_in_either_piece_order() {
+        let template = cottage::specs_without_meshes().remove(0);
+        let make = |center: DVec3, size: DVec3| {
+            let mut spec = template.clone();
+            spec.center = center;
+            spec.orientation = DQuat::IDENTITY;
+            spec.role = Role::Block { level: 0 };
+            spec.link = Link {
+                footing: true,
+                ..Link::default()
+            };
+            spec.size = size;
+            let shape = Cuboid::between(-size * 0.5, size * 0.5);
+            spec.colliders = vec![shape];
+            spec.chunks = vec![shape];
+            spec
+        };
+        let roof = make(DVec3::Y, DVec3::new(4.0, 0.2, 4.0));
+        let sample =
+            |specs| LocalOcclusion::new(&Site::new(specs, 1)).sample(Vec3::ZERO, Vec3::Y, None);
+        let expected = sample(vec![roof.clone()]);
+        assert!((MIN_OPEN..0.9).contains(&expected));
+        let mut specs = vec![make(DVec3::new(7.9, 1.0, 0.0), DVec3::splat(0.2)); MAX_BOXES];
+        specs.extend(vec![make(-DVec3::Y, DVec3::splat(0.2)); MAX_BOXES]);
+        specs.push(roof);
+        let field = LocalOcclusion::new(&Site::new(specs.clone(), 1));
+        assert!(field.cells[&(0, 0, 0)].len() > MAX_BOXES);
+        assert_eq!(field.sample(Vec3::ZERO, Vec3::Y, None), expected);
+        specs.reverse();
+        assert_eq!(sample(specs), expected);
+    }
+
+    #[test]
+    fn dense_cover_retains_the_strongest_boxes_independent_of_piece_order() {
+        let mut tiny = cottage::specs_without_meshes().remove(0);
+        tiny.center = DVec3::Y * 2.0;
+        tiny.orientation = DQuat::IDENTITY;
+        tiny.role = Role::Block { level: 0 };
+        tiny.link = Link {
+            footing: true,
+            ..Link::default()
+        };
+        tiny.size = DVec3::splat(0.04);
+        let shape = Cuboid::between(-tiny.size * 0.5, tiny.size * 0.5);
+        tiny.colliders = vec![shape];
+        tiny.chunks = vec![shape];
+        let mut roof = tiny.clone();
+        roof.center = DVec3::Y;
+        roof.size = DVec3::new(4.0, 0.2, 4.0);
+        let shape = Cuboid::between(-roof.size * 0.5, roof.size * 0.5);
+        roof.colliders = vec![shape];
+        roof.chunks = vec![shape];
+        let sample =
+            |specs| LocalOcclusion::new(&Site::new(specs, 1)).sample(Vec3::ZERO, Vec3::Y, None);
+        let mut expected = vec![tiny.clone(); MAX_BOXES - 1];
+        expected.push(roof.clone());
+        let expected = sample(expected);
+        let mut dense = vec![tiny; MAX_BOXES + 8];
+        dense.push(roof);
+        assert_eq!(sample(dense.clone()), expected);
+        dense.reverse();
+        assert_eq!(sample(dense), expected);
     }
 }
