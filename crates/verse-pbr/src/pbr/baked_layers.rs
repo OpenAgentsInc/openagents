@@ -86,7 +86,7 @@ pub struct SunLayer {
     pub probes: Vec<[f32; 12]>,
 }
 
-/// The two nearest baked suns, interpolated by angular distance.
+/// Neighboring baked suns that bracket a direction on their daily arc.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct SunBlend {
     pub first: Option<usize>,
@@ -295,30 +295,30 @@ fn read_floats(bytes: &[u8]) -> Vec<[f32; 12]> {
 }
 
 impl Layers {
-    /// Blends the two nearest directions without switching at their midpoint.
+    /// Interpolates the nearest directions on either side of the sun's arc.
+    /// Outside the baked arc, the nearest endpoint holds its light.
     #[must_use]
     pub fn sun_blend(&self, dir: Vec3) -> SunBlend {
         let dir = dir.normalize_or(Vec3::Y);
-        let mut nearest = [(f32::INFINITY, None); 2];
-        for (i, sun) in self.suns.iter().enumerate() {
-            let angle = Vec3::from(sun.dir).normalize_or(Vec3::Y).angle_between(dir);
-            let candidate = (angle, Some(i));
-            if angle < nearest[0].0 {
-                nearest[1] = nearest[0];
-                nearest[0] = candidate;
-            } else if angle < nearest[1].0 {
-                nearest[1] = candidate;
+        let mut blend = SunBlend { first: self.nearest_sun(dir), ..SunBlend::default() };
+        let mut shortest = f32::INFINITY;
+        for (i, a) in self.suns.iter().enumerate() {
+            let a = Vec3::from(a.dir).normalize_or(Vec3::Y);
+            for (j, b) in self.suns.iter().enumerate().skip(i + 1) {
+                let b = Vec3::from(b.dir).normalize_or(Vec3::Y);
+                let span = a.angle_between(b);
+                let before = a.angle_between(dir);
+                let after = b.angle_between(dir);
+                // Select the shortest containing arc, so unequal spacing
+                // never switches the other layer before an exact baked sun.
+                if span > 1e-5 && span < shortest && before + after <= span + 1e-4 {
+                    shortest = span;
+                    blend = SunBlend { first: Some(i), second: Some(j),
+                        weight: (before / span).clamp(0.0, 1.0) };
+                }
             }
         }
-        SunBlend {
-            first: nearest[0].1,
-            second: nearest[1].1,
-            weight: if nearest[1].1.is_some() {
-                nearest[0].0 / (nearest[0].0 + nearest[1].0).max(1e-6)
-            } else {
-                0.0
-            },
-        }
+        blend
     }
 
     /// Interpolated character probes under the reference sky.

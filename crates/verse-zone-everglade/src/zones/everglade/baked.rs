@@ -77,7 +77,7 @@ impl BakedLight {
     pub(super) fn damage_town(&mut self, town: &super::demolition::town::Town,
         light: &time_of_day::Light) {
         let revision = self.scene.edits.revision();
-        if self.active && revision != self.revision {
+        if self.active && (revision != self.revision || (!self.dynamic.is_empty() && self.hour != light.hours)) {
             self.damage(revision, town.lighting_vertices(), light);
         }
     }
@@ -115,7 +115,7 @@ impl BakedLight {
     /// Invalidates stale shadows immediately; a worker repairs only the changed
     /// pieces and support neighbors, in two-millisecond batches.
     pub(super) fn damage(&mut self, revision: u64, dynamic: BTreeSet<u32>, light: &time_of_day::Light) {
-        if !self.active || revision == self.revision { return; }
+        if !self.active || (revision == self.revision && self.hour == light.hours) { return; }
         self.revision = revision;
         #[cfg(not(target_arch = "wasm32"))]
         { self.repair = None; }
@@ -242,7 +242,7 @@ mod tests {
             }
             last = now;
         }
-        assert!(pairs.len() >= 6, "the clock crosses all adjacent layer pairs");
+        assert!(pairs.len() >= 5, "the clock crosses all adjacent layer pairs and both endpoints");
         assert_eq!(sun_ratio(&layers, &time_of_day::Light::at_hours(0.0)), 0.0);
     }
 }
