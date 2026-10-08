@@ -20,6 +20,16 @@ is running. These Linux measurements supplement the required Mac and
 browser calibration. Missing GPU samples no longer use queue-fence timing
 as a substitute or admit a budget. No new bake runs are needed.
 
+All 15 RTX 4080 cases subsequently pass, each with 96 valid steady GPU
+samples. Evidence is in
+[`query-fix-bc0e969e3a`](../../bench/verse/2026-10-08/water-w11/query-fix-bc0e969e3a/README.md).
+The High pond cases still spend about 3.4 ms of main-thread CPU after
+reducing cadence. Candidate `2cad22a561` skips the kernel for exactly empty
+ripple fields while retaining their clock phase, and caches spectrum
+integrals independently of time and swell gain. Its regression tests and
+new measurements are pending; the website build retains the single Cargo
+slot. No W11 changes have landed on main yet.
+
 The earlier checkpoint below remains historical evidence.
 
 W11 (#10783) remains open on the pushed branch
