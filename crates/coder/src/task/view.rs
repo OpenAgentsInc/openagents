@@ -114,7 +114,7 @@ pub fn read(
         artifact_error,
         artifact_faults,
         verification,
-        integration: "not_attempted".into(),
+        integration: "unknown".into(),
         cost_usd,
         cost_status,
     })

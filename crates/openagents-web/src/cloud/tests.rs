@@ -16,6 +16,9 @@ use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tower::ServiceExt;
 
+#[path = "../../../coder-control/src/tests/relay.rs"]
+mod task_relay;
+
 const HOST: &str = "127.0.0.1:4300";
 const ORIGIN: &str = "http://127.0.0.1:4300";
 const CANARY: &str = "synthetic-native-private-canary";
@@ -163,6 +166,7 @@ struct Fixture {
     state: Arc<Mutex<Native>>,
     server: tokio::task::JoinHandle<()>,
     local_store: PathBuf,
+    config: crate::Config,
 }
 
 impl Drop for Fixture {
@@ -213,10 +217,11 @@ async fn fixture() -> Fixture {
     config.cloud_build = Some(build);
     Fixture {
         _root: root,
-        site: crate::router(config),
+        site: crate::router(config.clone()),
         state,
         server,
         local_store,
+        config,
     }
 }
 
@@ -372,6 +377,302 @@ async fn login(fixture: &Fixture, account: &str) -> Cookies {
     assert!(!cookies.0.contains_key("oa_cloud_login"));
     assert_eq!(cookies.0["oa_cloud_session"], token(account));
     cookies
+}
+
+struct Resident {
+    running: Option<coder_host::Running>,
+    relay: tokio::task::JoinHandle<()>,
+    authority: coder_access::host::Host,
+    device: String,
+    task: String,
+    config: PathBuf,
+    secret: PathBuf,
+}
+
+async fn choose_personal(fixture: &Fixture, cookies: &mut Cookies) {
+    let page = request(
+        &fixture.site,
+        Method::GET,
+        "/cloud/app",
+        cookies,
+        None,
+        None,
+    )
+    .await;
+    let csrf = action_token(
+        &page.body,
+        "/cloud/select-workspace",
+        Some("alice-personal"),
+    );
+    let input = form(&[("workspace", "alice-personal"), ("csrf", &csrf)]);
+    let answer = request(
+        &fixture.site,
+        Method::POST,
+        "/cloud/select-workspace",
+        cookies,
+        Some(&input),
+        Some(ORIGIN),
+    )
+    .await;
+    assert_eq!(answer.status, StatusCode::SEE_OTHER);
+    cookies.apply(&answer);
+}
+
+impl Resident {
+    async fn stop(mut self) {
+        if let Some(running) = self.running.take() {
+            running.shutdown().await;
+        }
+        self.relay.abort();
+    }
+}
+
+fn private_file(path: &std::path::Path, bytes: &[u8]) {
+    std::fs::write(path, bytes).unwrap();
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).unwrap();
+}
+
+async fn resident(fixture: &mut Fixture) -> Resident {
+    use coder_host::Tasks;
+    let private = fixture
+        .config
+        .cloud_build
+        .as_ref()
+        .unwrap()
+        .parent()
+        .unwrap();
+    let root = private.join("resident-checkout");
+    std::fs::create_dir(&root).unwrap();
+    let workspaces = BTreeMap::from([("checkout".into(), root)]);
+    let inbox = Arc::new(
+        coder::task::remote::Inbox::new(private.join("resident-tasks"), workspaces.clone())
+            .with_settings(private.join("unused-resident-settings")),
+    );
+    let device = secp256k1::SecretKey::new(&mut secp256k1::rand::rng());
+    let device_id = coder_access::protocol::pubkey(&device);
+    let task = "c".repeat(64);
+    inbox
+        .create(
+            &task,
+            &device_id,
+            &coder_access::protocol::TaskCreate {
+                title: "Synthetic resident task <script>".into(),
+                prompt: "Original private request **retained**".into(),
+                workspace: "checkout".into(),
+                images: vec![],
+                engine: None,
+            },
+        )
+        .unwrap();
+    let (relay_url, relay, _) = task_relay::start().await;
+    let state = private.join("resident-access");
+    let authority = coder_access::host::Host::new(&state, coder_access::RelayPolicy::LoopbackTest);
+    let owner = secp256k1::SecretKey::new(&mut secp256k1::rand::rng());
+    authority
+        .init(&coder_access::protocol::pubkey(&owner))
+        .unwrap();
+    let invitation = authority
+        .invite(
+            &relay_url,
+            coder_access::Rights::new([coder_access::Right::Observe]).unwrap(),
+            now(),
+            now() + 3600,
+        )
+        .unwrap();
+    let parsed = coder_access::protocol::HostInvitation::parse(
+        &invitation.code,
+        now(),
+        coder_access::RelayPolicy::LoopbackTest,
+    )
+    .unwrap();
+    let pending = coder_access::client::prepare_redeem(
+        &parsed,
+        &device,
+        now(),
+        coder_access::RelayPolicy::LoopbackTest,
+    )
+    .unwrap();
+    let answer = authority
+        .handle_redemption(&pending.event, || Ok(now()))
+        .unwrap();
+    let access = coder_access::client::finish_redeem(
+        &parsed,
+        &pending,
+        &answer,
+        &device,
+        now(),
+        coder_access::RelayPolicy::LoopbackTest,
+    )
+    .unwrap();
+    let mut host = coder_host::config::Config::new(state, vec![relay_url], 7);
+    host.policy = coder_access::RelayPolicy::LoopbackTest;
+    host.workspaces = workspaces;
+    host.telemetry = false;
+    let running = coder_host::start(host, inbox).await.unwrap();
+    let secret = private.join("resident-device.key");
+    let access_path = private.join("resident-device.access");
+    private_file(&secret, &device.secret_bytes());
+    private_file(&access_path, &serde_json::to_vec(&access).unwrap());
+    let config = private.join("hosts.json");
+    private_file(&config,&serde_json::to_vec(&json!({"schema":"openagents.cloud.host-bindings.v1","bindings":[{"id":"resident","account":"alice","workspace":"alice-personal","members_epoch":3,"host_workspace":"checkout","host_generation":7,"route":format!("tcp://{}",running.local_addr()),"access_file":access_path,"device_secret":secret}]})).unwrap());
+    fixture.config.cloud_hosts = Some(Arc::new(super::hosts::Hosts::load(&config).unwrap()));
+    fixture.site = crate::router(fixture.config.clone());
+    Resident {
+        running: Some(running),
+        relay,
+        authority,
+        device: device_id,
+        task,
+        config,
+        secret,
+    }
+}
+
+fn resource_descriptor(body: &str) -> Value {
+    let start = body
+        .split("<pre id=\"cloud-resource-standing\" hidden>")
+        .nth(1)
+        .unwrap()
+        .split("</pre>")
+        .next()
+        .unwrap();
+    let decoded = start
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&amp;", "&");
+    serde_json::from_str(&decoded).unwrap()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn resident_reads_are_native_scoped_and_clear_after_native_revocation() {
+    let mut fixture = fixture().await;
+    let native = resident(&mut fixture).await;
+    let mut cookies = login(&fixture, "alice").await;
+    choose_personal(&fixture, &mut cookies).await;
+    let list = request(
+        &fixture.site,
+        Method::GET,
+        "/cloud/app/hosts/resident/tasks",
+        &cookies,
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(list.status, StatusCode::OK, "{}", list.body);
+    private(&list);
+    assert!(list.body.contains("Synthetic resident task &lt;script&gt;"));
+    assert!(list.body.contains("id=\"cloud-private\" hidden"));
+    assert!(!fixture.local_store.exists());
+    let route = format!("/cloud/app/hosts/resident/tasks/{}", native.task);
+    let task = request(&fixture.site, Method::GET, &route, &cookies, None, None).await;
+    assert_eq!(task.status, StatusCode::OK, "{}", task.body);
+    private(&task);
+    assert!(task.body.contains("Original private request"));
+    assert!(task.body.contains("Cost: Unknown"));
+    assert!(task.body.contains("Integration: unknown"));
+    let descriptor = resource_descriptor(&task.body);
+    let endpoint = descriptor["endpoint"].as_str().unwrap();
+    let standing = request(&fixture.site, Method::GET, endpoint, &cookies, None, None).await;
+    assert_eq!(standing.status, StatusCode::OK, "{}", standing.body);
+    assert_eq!(
+        serde_json::from_str::<Value>(&standing.body).unwrap()["identity"],
+        descriptor["identity"]
+    );
+    fixture.state.lock().unwrap().team_name = Some("Changed unselected membership".into());
+    let changed = request(&fixture.site, Method::GET, endpoint, &cookies, None, None).await;
+    assert_eq!(changed.status, StatusCode::OK);
+    assert_ne!(
+        serde_json::from_str::<Value>(&changed.body).unwrap()["identity"],
+        descriptor["identity"]
+    );
+    fixture.state.lock().unwrap().team_name = None;
+    let artifact = task
+        .body
+        .split("href=\"")
+        .filter_map(|s| s.split('"').next())
+        .find(|s| s.contains("/original?cursor="))
+        .unwrap()
+        .replace("&amp;", "&");
+    let chunk = request(&fixture.site, Method::GET, &artifact, &cookies, None, None).await;
+    assert_eq!(chunk.status, StatusCode::OK, "{}", chunk.body);
+    assert!(chunk.body.contains("Original chunk bytes (base64)"));
+    let bob = login(&fixture, "bob").await;
+    for route in [
+        &route,
+        "/cloud/app/hosts/resident/tasks",
+        endpoint,
+        &artifact,
+    ] {
+        let refused = request(&fixture.site, Method::GET, route, &bob, None, None).await;
+        assert_eq!(refused.status, StatusCode::FORBIDDEN);
+        assert!(!refused.body.contains("Original private request"));
+    }
+    let mutation = request(
+        &fixture.site,
+        Method::POST,
+        &route,
+        &cookies,
+        Some(""),
+        Some(ORIGIN),
+    )
+    .await;
+    assert_eq!(mutation.status, StatusCode::METHOD_NOT_ALLOWED);
+    native.authority.revoke(&native.device, now()).unwrap();
+    let still_account = request(
+        &fixture.site,
+        Method::GET,
+        "/cloud/app/session",
+        &cookies,
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(still_account.status, StatusCode::OK);
+    let lost = request(&fixture.site, Method::GET, endpoint, &cookies, None, None).await;
+    assert!(matches!(
+        lost.status,
+        StatusCode::FORBIDDEN | StatusCode::SERVICE_UNAVAILABLE
+    ));
+    assert!(!lost.body.contains("Original private request"));
+    assert!(!fixture.local_store.exists());
+    native.stop().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn resident_projection_rechecks_membership_and_pinned_configuration() {
+    let mut fixture = fixture().await;
+    let native = resident(&mut fixture).await;
+    let mut cookies = login(&fixture, "alice").await;
+    choose_personal(&fixture, &mut cookies).await;
+    fixture.state.lock().unwrap().epoch = 4;
+    let lost = request(
+        &fixture.site,
+        Method::GET,
+        "/cloud/app/hosts/resident/tasks",
+        &cookies,
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(lost.status, StatusCode::FORBIDDEN);
+    fixture.state.lock().unwrap().epoch = 3;
+    private_file(&native.secret, &[1; 32]);
+    let changed = request(
+        &fixture.site,
+        Method::GET,
+        "/cloud/app/hosts/resident/tasks",
+        &cookies,
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(changed.status, StatusCode::SERVICE_UNAVAILABLE);
+    assert!(!changed.body.contains("Synthetic resident task"));
+    assert!(native.config.exists());
+    assert!(!fixture.local_store.exists());
+    native.stop().await;
 }
 
 #[tokio::test]

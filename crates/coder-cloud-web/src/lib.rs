@@ -3,6 +3,8 @@
 
 use serde::Deserialize;
 
+pub mod resource;
+
 /// The largest session response or initial standing document.
 pub const MAX_STANDING_BYTES: usize = 16 * 1024;
 
@@ -32,15 +34,7 @@ impl Standing {
             && id(&self.account)
             && self.workspace.as_deref().is_none_or(id)
             && self.workspace.is_some() == self.members_epoch.is_some()
-            && self
-                .projection_digest
-                .strip_prefix("sha256:")
-                .is_some_and(|hex| {
-                    hex.len() == 64
-                        && hex
-                            .bytes()
-                            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-                })
+            && digest(&self.projection_digest)
     }
 
     fn same_authority(&self, other: &Self) -> bool {
@@ -50,6 +44,15 @@ impl Standing {
             && self.members_epoch == other.members_epoch
             && self.projection_digest == other.projection_digest
     }
+}
+
+fn digest(value: &str) -> bool {
+    value.strip_prefix("sha256:").is_some_and(|hex| {
+        hex.len() == 64
+            && hex
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    })
 }
 
 /// A visible mount's authority can retire but cannot resume in place.

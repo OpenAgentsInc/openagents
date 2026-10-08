@@ -1,7 +1,8 @@
 //! Task operations a resident host admitted for an enrolled device.
 //!
-//! `coder host serve` checks the device's grant and its `operate` right,
-//! then calls this inbox. A creation is an ordinary inert submission: it
+//! `coder host serve` checks the device's grant and its operation's right,
+//! then calls this inbox. Evidence reads need `observe`; commands need
+//! `operate`. A creation is an ordinary inert submission: it
 //! records intent and starts nothing, so an enrolled device never gains
 //! execution authority. The local owner still needs its own explicit grant.
 //! A steer is a correction and a cancel is a cancellation, with the
@@ -27,6 +28,9 @@ use super::{
     Action, COMMAND_SCHEMA, Command, Error, Receipt, RequestedConfiguration, Status, Store,
     TaskIntent, Workspace,
 };
+
+#[path = "remote_observe.rs"]
+mod observation;
 
 /// The durable inbox behind a resident host.
 #[derive(Clone, Debug)]
@@ -381,6 +385,27 @@ impl Inbox {
 }
 
 impl Tasks for Inbox {
+    fn task_list(
+        &self,
+        query: &coder_host::access::task_read::ListQuery,
+    ) -> Result<coder_host::access::task_read::List, Code> {
+        observation::list(self, query)
+    }
+
+    fn task_read(
+        &self,
+        query: &coder_host::access::task_read::PageQuery,
+    ) -> Result<coder_host::access::task_read::Page, Code> {
+        observation::page(self, query)
+    }
+
+    fn task_original(
+        &self,
+        query: &coder_host::access::task_read::OriginalQuery,
+    ) -> Result<coder_host::access::task_read::OriginalChunk, Code> {
+        observation::original(self, query)
+    }
+
     fn terminal_binding(&self, task: &str) -> Result<coder_host::tasks::TerminalBinding, Code> {
         if super::archive::archived(&self.store).contains(task) {
             return Err(Code::Forbidden);

@@ -748,15 +748,42 @@ pub struct Store {
 /// This replays the owning journal and requires an existing private v3 store.
 /// Missing or legacy stores remain unchanged; no execution or write lock is acquired.
 pub fn retained_task(dir: &Path, id: &str) -> Result<Task, Error> {
+    retained_snapshot(dir, id).map(|(task, _)| task)
+}
+
+/// Capture the validated journal and its exact bytes without creating or settling a store.
+pub(super) fn retained_snapshot(dir: &Path, id: &str) -> Result<(Task, Vec<u8>), Error> {
     if !identifier(id, false) {
         return Err(Error::NotFound);
     }
     verify_directory(dir)?;
     let _lock = private_open(&dir.join(LOCK_FILE), false, false)?;
     validate_initialized(dir)?;
-    read_task_file(&dir.join(TASK_DIR).join(format!("{id}.json")), id)?
-        .map(|file| file.task)
-        .ok_or(Error::NotFound)
+    let bytes =
+        task_file_bytes(&dir.join(TASK_DIR).join(format!("{id}.json")))?.ok_or(Error::NotFound)?;
+    let file = parse_task_file(&bytes, id)?;
+    Ok((file.task, bytes))
+}
+
+/// Existing task identities in stable order, without initializing or repairing their store.
+pub(super) fn retained_ids(dir: &Path) -> Result<Vec<String>, Error> {
+    verify_directory(dir)?;
+    let _lock = private_open(&dir.join(LOCK_FILE), false, false)?;
+    validate_initialized(dir)?;
+    let mut ids = Vec::new();
+    for entry in std::fs::read_dir(dir.join(TASK_DIR))? {
+        let name = entry?.file_name();
+        if let Some(id) = name.to_str().and_then(|name| name.strip_suffix(".json"))
+            && identifier(id, false)
+        {
+            ids.push(id.to_owned());
+            if ids.len() > MAX_TASKS {
+                return Err(Error::LimitExceeded);
+            }
+        }
+    }
+    ids.sort();
+    Ok(ids)
 }
 
 impl Store {
@@ -1419,6 +1446,12 @@ fn open_replaced_file(path: &Path) -> Result<File, Error> {
 /// commands and owner events in sequence order and compare the task and
 /// every receipt. `None` when the file does not exist.
 fn read_task_file(path: &Path, id: &str) -> Result<Option<TaskFile>, Error> {
+    task_file_bytes(path)?
+        .map(|bytes| parse_task_file(&bytes, id))
+        .transpose()
+}
+
+fn task_file_bytes(path: &Path) -> Result<Option<Vec<u8>>, Error> {
     let file = match open_replaced_file(path) {
         Ok(file) => file,
         Err(Error::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -1433,7 +1466,11 @@ fn read_task_file(path: &Path, id: &str) -> Result<Option<TaskFile>, Error> {
     if bytes.len() > MAX_STORE_BYTES {
         return Err(Error::LimitExceeded);
     }
-    let value = parse_strict_bounded(&bytes, MAX_STORE_BYTES)
+    Ok(Some(bytes))
+}
+
+fn parse_task_file(bytes: &[u8], id: &str) -> Result<TaskFile, Error> {
+    let value = parse_strict_bounded(bytes, MAX_STORE_BYTES)
         .map_err(|_| Error::Corrupt("the task file is not strict JSON"))?;
     let file: TaskFile = serde_json::from_value(value)
         .map_err(|_| Error::Corrupt("the task file does not match the closed store schema"))?;
@@ -1500,7 +1537,7 @@ fn read_task_file(path: &Path, id: &str) -> Result<Option<TaskFile>, Error> {
             "the task state does not match its command history",
         ));
     }
-    Ok(Some(file))
+    Ok(file)
 }
 
 fn transition(

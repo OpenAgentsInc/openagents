@@ -14,6 +14,18 @@ This metadata contains no credentials. `#cloud-resume` contains safe navigation
 to `/cloud/app` for fresh server admission and a local logout form whose signed
 ticket contains only a session digest, origin, scope, and expiry.
 
+A page showing host-owned private records also supplies
+`#cloud-resource-standing` inside the private mount. Its bounded JSON contains
+`endpoint` and `identity`: a pinned same-origin host-standing route and a
+`sha256:` identity digest. The server checks current observation authority, the
+rendered account projection, and the exact host, workspace, grant, task,
+attempt, and source binding before
+returning `{active:true,identity}`. The runtime checks account and resource
+standing serially before reveal and during the visible lifetime, with a 4 KiB
+resource-response bound. The descriptor is limited to 8 KiB and its endpoint
+to 4 KiB. An append-only head may advance while the original
+source remains valid; the displayed record stays pinned until navigation.
+
 `start()` validates initial standing, then reveals the mount only after a
 current server response. It polls the same-origin session endpoint serially,
 with an eight-second timeout and a

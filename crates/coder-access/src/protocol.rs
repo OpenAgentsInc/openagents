@@ -585,6 +585,17 @@ pub enum Operation {
     Revoke { device: String },
     #[serde(rename = "task.create")]
     CreateTask { task: TaskCreate },
+    /// Read canonical tasks under an explicitly admitted host workspace label.
+    #[serde(rename = "task.list")]
+    ListTasks { query: crate::task_read::ListQuery },
+    /// Read one pinned canonical task and intact original ATIF steps.
+    #[serde(rename = "task.read")]
+    ReadTask { query: crate::task_read::PageQuery },
+    /// Read a pinned original task, trace, manifest, or retained artifact chunk.
+    #[serde(rename = "task.original")]
+    ReadTaskOriginal {
+        query: crate::task_read::OriginalQuery,
+    },
     #[serde(rename = "terminal.open")]
     OpenTerminal { cols: u16, rows: u16 },
     #[serde(rename = "task.terminal.open")]
@@ -949,6 +960,9 @@ impl Operation {
         matches!(
             self,
             Self::ListThreads {}
+                | Self::ListTasks { .. }
+                | Self::ReadTask { .. }
+                | Self::ReadTaskOriginal { .. }
                 | Self::ReadThread { .. }
                 | Self::ReviewTask { .. }
                 | Self::VersePrivate { .. }
@@ -1051,6 +1065,9 @@ impl Operation {
         matches!(
             self,
             Self::CreateTask { .. }
+                | Self::ListTasks { .. }
+                | Self::ReadTask { .. }
+                | Self::ReadTaskOriginal { .. }
                 | Self::SteerTask { .. }
                 | Self::CancelTask { .. }
                 | Self::ArchiveTask { .. }
@@ -1100,6 +1117,9 @@ impl Operation {
             Self::ListDevices {} => "device.list",
             Self::Revoke { .. } => "device.revoke",
             Self::CreateTask { .. } => "task.create",
+            Self::ListTasks { .. } => "task.list",
+            Self::ReadTask { .. } => "task.read",
+            Self::ReadTaskOriginal { .. } => "task.original",
             Self::OpenTerminal { .. } => "terminal.open",
             Self::OpenTaskTerminal { .. } => "task.terminal.open",
             Self::SteerTask { .. } => "task.steer",
@@ -1179,6 +1199,9 @@ impl Operation {
             | Self::Revoke { .. } => Some(Right::AccessAdmin),
             Self::ListDevices {} => Some(Right::AccessRead),
             Self::InviteChats {}
+            | Self::ListTasks { .. }
+            | Self::ReadTask { .. }
+            | Self::ReadTaskOriginal { .. }
             | Self::VersePrivate { .. }
             | Self::ListThreads {}
             | Self::ReadThread { .. }
@@ -1247,6 +1270,9 @@ impl Operation {
     }
     pub fn validate(&self) -> Result<()> {
         match self {
+            Self::ListTasks { query } => query.validate()?,
+            Self::ReadTask { query } => query.validate()?,
+            Self::ReadTaskOriginal { query } => query.validate()?,
             Self::Redeem {
                 invitation,
                 capability,
@@ -1648,6 +1674,15 @@ pub enum Outcome {
     Workspaces {
         workspaces: Vec<String>,
     },
+    Tasks {
+        tasks: Box<crate::task_read::List>,
+    },
+    Task {
+        task: Box<crate::task_read::Page>,
+    },
+    TaskOriginal {
+        original: Box<crate::task_read::OriginalChunk>,
+    },
     /// A task's held messages after a `task.queue` operation.
     Queue {
         queue: TaskQueue,
@@ -1763,6 +1798,18 @@ impl Outcome {
     /// # Errors
     /// Refuses a list over its bounds, unsorted, or with a bad label.
     pub fn validate(&self) -> Result<()> {
+        match self {
+            Self::Tasks { tasks } => tasks.validate()?,
+            Self::Task { task } => task.validate()?,
+            Self::TaskOriginal { original } => original.validate()?,
+            _ => {}
+        }
+        if matches!(
+            self,
+            Self::Tasks { .. } | Self::Task { .. } | Self::TaskOriginal { .. }
+        ) {
+            crate::task_read::bounded(self, crate::task_read::MAX_REPLY_BYTES)?;
+        }
         if let Self::Queue { queue } = self {
             identity(&queue.task).map_err(Error::from)?;
             if queue.items.len() > MAX_QUEUE {
@@ -1888,6 +1935,11 @@ impl Outcome {
     /// Whether this outcome is the one the operation can produce.
     pub fn answers(&self, op: &Operation) -> bool {
         match (op, self) {
+            (Operation::ListTasks { query }, Self::Tasks { tasks }) => tasks.answers(query),
+            (Operation::ReadTask { query }, Self::Task { task }) => task.answers(query),
+            (Operation::ReadTaskOriginal { query }, Self::TaskOriginal { original }) => {
+                original.answers(query)
+            }
             (Operation::Redeem { .. } | Operation::Approve { .. }, Self::Granted { .. })
             | (Operation::Deny { .. }, Self::Denied {})
             | (Operation::Invite { .. }, Self::Invitation { .. })

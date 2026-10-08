@@ -200,6 +200,19 @@ pub fn manifest(directory: &Path, task: &Task) -> Result<Option<Manifest>, Error
     if manifest.schema != "openagents.coder.task-artifacts.v1" {
         return Err(Error::UnsupportedSchema);
     }
+    if manifest.source_snapshot
+        != task
+            .run
+            .as_ref()
+            .expect("result has a run")
+            .admission
+            .source_snapshot
+        || manifest.candidate_snapshot != result.candidate_snapshot
+    {
+        return Err(Error::Corrupt(
+            "artifact manifest names another source or candidate",
+        ));
+    }
     Ok(Some(manifest))
 }
 
@@ -217,7 +230,7 @@ pub fn read(directory: &Path, task_id: &str, path: &Path) -> Result<Vec<u8>, Err
     read_entry(&store.dir, entry)
 }
 
-fn read_entry(directory: &Path, entry: &Entry) -> Result<Vec<u8>, Error> {
+pub(super) fn read_entry(directory: &Path, entry: &Entry) -> Result<Vec<u8>, Error> {
     let digest = entry.digest.as_deref().ok_or(Error::NotFound)?;
     let mut bytes = Vec::new();
     private_open(&directory.join(blob_name(digest)?), false, false)?

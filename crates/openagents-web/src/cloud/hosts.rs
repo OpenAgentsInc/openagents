@@ -1,0 +1,368 @@
+//! Explicit tenant bindings to resident host grants. The site owns no task store.
+
+use super::private::ProtectedFile;
+use super::session::{SessionError, Viewer, now};
+use coder_access::protocol::{Operation, Outcome};
+use coder_access::{Access, RelayPolicy, Right};
+use coder_host::client::{Device, Link, WebSocketTls, connect_websocket};
+use secp256k1::SecretKey;
+use serde::Deserialize;
+use sha2::{Digest, Sha256};
+use std::net::SocketAddr;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::time::Duration;
+
+const UNAVAILABLE: &str = "The explicit resident host connection is unavailable.";
+const TIMEOUT: Duration = Duration::from_secs(5);
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Configuration {
+    schema: String,
+    bindings: Vec<Declared>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Declared {
+    id: String,
+    account: String,
+    workspace: String,
+    members_epoch: u64,
+    host_workspace: String,
+    host_generation: u64,
+    route: String,
+    access_file: PathBuf,
+    device_secret: PathBuf,
+}
+
+enum Route {
+    Local(SocketAddr),
+    WebSocket(String),
+}
+
+/// A provisioned device remains in its protected native adapter.
+pub struct Binding {
+    id: String,
+    account: String,
+    workspace: String,
+    members_epoch: u64,
+    host_workspace: String,
+    generation: u64,
+    identity: String,
+    route: Route,
+    device: Arc<Device>,
+    files: [ProtectedFile; 2],
+}
+
+/// Operator-provisioned read bindings; account sign-in never creates one.
+pub struct Hosts {
+    config: ProtectedFile,
+    bindings: Vec<Binding>,
+}
+
+impl Hosts {
+    pub fn load(path: &Path) -> Result<Self, String> {
+        let (config, bytes) = ProtectedFile::open(path, 64 * 1024)?;
+        let declared: Configuration = serde_json::from_slice(&bytes).map_err(|_| UNAVAILABLE)?;
+        if declared.schema != "openagents.cloud.host-bindings.v1" || declared.bindings.len() > 64 {
+            return Err(UNAVAILABLE.into());
+        }
+        let mut bindings = Vec::new();
+        for declared in declared.bindings {
+            if bindings.iter().any(|b: &Binding| b.id == declared.id) {
+                return Err(UNAVAILABLE.into());
+            }
+            bindings.push(Binding::load(declared)?);
+        }
+        Ok(Self { config, bindings })
+    }
+
+    /// Resolve only the current native account, workspace, and membership epoch.
+    pub(crate) fn get(&self, viewer: &Viewer, id: &str) -> Result<&Binding, SessionError> {
+        self.config.check().map_err(|_| SessionError::Unavailable)?;
+        let binding = self
+            .bindings
+            .iter()
+            .find(|b| b.id == id)
+            .ok_or(SessionError::Forbidden)?;
+        binding.admit(viewer)?;
+        Ok(binding)
+    }
+
+    pub(crate) fn current<'a>(&'a self, viewer: &Viewer) -> Vec<&'a Binding> {
+        if self.config.check().is_err() {
+            return Vec::new();
+        }
+        self.bindings
+            .iter()
+            .filter(|binding| binding.admit(viewer).is_ok())
+            .collect()
+    }
+}
+
+impl Binding {
+    fn load(declared: Declared) -> Result<Self, String> {
+        let query = coder_access::task_read::ListQuery {
+            workspace: declared.host_workspace.clone(),
+            cursor: None,
+            limit: 1,
+        };
+        if !valid_id(&declared.id)
+            || !scope_id(&declared.account)
+            || !scope_id(&declared.workspace)
+            || query.validate().is_err()
+        {
+            return Err(UNAVAILABLE.into());
+        }
+        if declared.members_epoch > 9_007_199_254_740_991
+            || declared.host_generation == 0
+            || declared.host_generation > 9_007_199_254_740_991
+        {
+            return Err(UNAVAILABLE.into());
+        }
+        let (route, policy) = route(&declared.route)?;
+        let (access_file, bytes) = ProtectedFile::open(&declared.access_file, 64 * 1024)?;
+        let access = Access::parse(&bytes).map_err(|_| UNAVAILABLE)?;
+        let (secret_file, mut bytes) = ProtectedFile::open(&declared.device_secret, 128)?;
+        let secret = parse_secret(&bytes);
+        bytes.fill(0);
+        let secret = secret?;
+        access
+            .verify(&secret, now(), policy)
+            .map_err(|_| UNAVAILABLE)?;
+        if !access.grant.rights.contains(Right::Observe) {
+            return Err(UNAVAILABLE.into());
+        }
+        let identity = digest(&serde_json::json!({
+            "binding":declared.id, "account":declared.account,
+            "workspace":declared.workspace,"members_epoch":declared.members_epoch,
+            "host":access.grant.host,"generation":declared.host_generation,
+            "host_workspace":declared.host_workspace,"device":access.grant.device,
+            "grant":access.grant.grant,"epoch":access.grant.epoch
+        }));
+        let device = Device::new(access, secret, policy).map_err(|_| UNAVAILABLE)?;
+        Ok(Self {
+            id: declared.id,
+            account: declared.account,
+            workspace: declared.workspace,
+            members_epoch: declared.members_epoch,
+            host_workspace: declared.host_workspace,
+            generation: declared.host_generation,
+            identity,
+            route,
+            device: Arc::new(device),
+            files: [access_file, secret_file],
+        })
+    }
+
+    fn admit(&self, viewer: &Viewer) -> Result<(), SessionError> {
+        let Some(workspace) = &viewer.workspace else {
+            return Err(SessionError::Forbidden);
+        };
+        if viewer.account_id != self.account
+            || workspace.id != self.workspace
+            || workspace.members_epoch != self.members_epoch
+            || viewer.expires_at <= now()
+            || self.device.access().grant.expires_at <= now()
+        {
+            return Err(SessionError::Forbidden);
+        }
+        for file in &self.files {
+            file.check().map_err(|_| SessionError::Unavailable)?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn id(&self) -> &str {
+        &self.id
+    }
+    pub(crate) fn workspace(&self) -> &str {
+        &self.host_workspace
+    }
+    pub(crate) fn host(&self) -> &str {
+        self.device.host()
+    }
+    pub(crate) fn generation(&self) -> u64 {
+        self.generation
+    }
+    pub(crate) fn identity(&self) -> &str {
+        &self.identity
+    }
+
+    /// One read opens a new authenticated channel and rechecks native authority.
+    pub(crate) async fn read(
+        &self,
+        viewer: &Viewer,
+        operation: Operation,
+    ) -> Result<Outcome, SessionError> {
+        self.admit(viewer)?;
+        if !operation.reads_only()
+            || operation.required() != Some(Right::Observe)
+            || !matches!(
+                operation,
+                Operation::ListTasks { .. }
+                    | Operation::ReadTask { .. }
+                    | Operation::ReadTaskOriginal { .. }
+            )
+        {
+            return Err(SessionError::Forbidden);
+        }
+        let link = match &self.route {
+            Route::Local(address) => {
+                let stream = tokio::time::timeout(TIMEOUT, tokio::net::TcpStream::connect(address))
+                    .await
+                    .map_err(|_| SessionError::Unavailable)?
+                    .map_err(|_| SessionError::Unavailable)?;
+                Link::direct(
+                    self.device.clone(),
+                    stream,
+                    address.to_string(),
+                    self.generation,
+                    TIMEOUT,
+                )
+                .await
+            }
+            Route::WebSocket(url) => {
+                let stream = connect_websocket(url, &WebSocketTls::webpki(), TIMEOUT)
+                    .await
+                    .map_err(|_| SessionError::Unavailable)?;
+                Link::direct(
+                    self.device.clone(),
+                    stream,
+                    url.clone(),
+                    self.generation,
+                    TIMEOUT,
+                )
+                .await
+            }
+        }
+        .map_err(native_error)?;
+        let answer = tokio::time::timeout(TIMEOUT, link.call(operation))
+            .await
+            .map_err(|_| SessionError::Unavailable)?
+            .map_err(native_error)?;
+        self.admit(viewer)?;
+        if serde_json::to_vec(&answer)
+            .map_err(|_| SessionError::Conflict)?
+            .len()
+            > 64 * 1024
+        {
+            return Err(SessionError::Conflict);
+        }
+        Ok(answer)
+    }
+}
+
+fn valid_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"_-".contains(&b))
+}
+
+fn scope_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && !matches!(value, "." | "..")
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"_.-".contains(&b))
+}
+
+fn route(value: &str) -> Result<(Route, RelayPolicy), String> {
+    if let Some(address) = value.strip_prefix("tcp://") {
+        let address: SocketAddr = address.parse().map_err(|_| UNAVAILABLE)?;
+        if address.ip().is_loopback() && address.port() != 0 {
+            return Ok((Route::Local(address), RelayPolicy::LoopbackTest));
+        }
+        return Err(UNAVAILABLE.into());
+    }
+    let url = url::Url::parse(value).map_err(|_| UNAVAILABLE)?;
+    if value.len() > 2048
+        || url.scheme() != "wss"
+        || url.host_str().is_none()
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+        || url.path() != "/"
+        || value
+            .bytes()
+            .any(|b| b.is_ascii_control() || b.is_ascii_whitespace())
+    {
+        return Err(UNAVAILABLE.into());
+    }
+    Ok((Route::WebSocket(value.into()), RelayPolicy::Production))
+}
+
+fn parse_secret(bytes: &[u8]) -> Result<SecretKey, String> {
+    if bytes.len() == 32 {
+        return SecretKey::from_byte_array(bytes.try_into().map_err(|_| UNAVAILABLE)?)
+            .map_err(|_| UNAVAILABLE.into());
+    }
+    let text = std::str::from_utf8(bytes).map_err(|_| UNAVAILABLE)?.trim();
+    if text.len() != 64 || !text.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err(UNAVAILABLE.into());
+    }
+    let mut key = [0; 32];
+    for (index, byte) in key.iter_mut().enumerate() {
+        *byte = u8::from_str_radix(&text[index * 2..index * 2 + 2], 16).map_err(|_| UNAVAILABLE)?;
+    }
+    let secret = SecretKey::from_byte_array(key).map_err(|_| UNAVAILABLE.into());
+    key.fill(0);
+    secret
+}
+
+fn native_error(error: coder_host::Error) -> SessionError {
+    match error {
+        coder_host::Error::Access(error) => match error.code {
+            coder_access::Code::Revoked
+            | coder_access::Code::Expired
+            | coder_access::Code::Forbidden
+            | coder_access::Code::MissingRight => SessionError::Forbidden,
+            coder_access::Code::Bounds | coder_access::Code::Malformed => {
+                SessionError::InvalidRequest
+            }
+            coder_access::Code::Conflict | coder_access::Code::Stale => SessionError::Conflict,
+            _ => SessionError::Unavailable,
+        },
+        _ => SessionError::Unavailable,
+    }
+}
+
+fn digest(value: &serde_json::Value) -> String {
+    format!(
+        "sha256:{}",
+        Sha256::digest(value.to_string().as_bytes())
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>()
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn routes_are_explicit_and_cannot_use_ambient_credentials() {
+        assert!(route("tcp://127.0.0.1:4567").is_ok());
+        assert!(route("tcp://[::1]:4567").is_ok());
+        assert!(route("wss://host.example/").is_ok());
+        for value in [
+            "tcp://192.168.1.10:4567",
+            "tcp://localhost:4567",
+            "tcp://127.0.0.1:0",
+            "ws://127.0.0.1:4567",
+            "https://host.example",
+            "wss://user:secret@host.example",
+            "wss://host.example/?token=x",
+            "wss://host.example/#x",
+            "wss://host.example/tasks",
+        ] {
+            assert!(route(value).is_err());
+        }
+    }
+}

@@ -37,9 +37,43 @@ const SKEW: u64 = MAX_REQUEST_LIFETIME;
 /// channel does not rewrite the store on every recheck.
 pub const SEEN_RESOLUTION: u64 = 60;
 
-/// Supplies the effects that other profiles own. `request` is the idempotency
-/// key: a retry after an uncertain save calls it again with the same key.
+fn task_answer(
+    answer: std::result::Result<Outcome, Code>,
+    operation: &Operation,
+) -> Result<Outcome> {
+    match answer {
+        Ok(outcome) if outcome.validate().is_ok() && outcome.answers(operation) => Ok(outcome),
+        Ok(_) => fail(Code::Unavailable, "the task owner's read answer is invalid"),
+        Err(code) => fail(code, "the task owner refused the canonical read"),
+    }
+}
+
+/// Supplies effects and disclosures from other profiles after admission.
+/// `request` is the idempotency key for every effect.
 pub trait Dispatch: Send {
+    /// Canonical task reads after current Observe admission; the owner also
+    /// checks its admitted workspace and evidence disclosure policy.
+    fn task_list(
+        &mut self,
+        _device: &str,
+        _query: &crate::task_read::ListQuery,
+    ) -> std::result::Result<crate::task_read::List, Code> {
+        Err(Code::Unsupported)
+    }
+    fn task_read(
+        &mut self,
+        _device: &str,
+        _query: &crate::task_read::PageQuery,
+    ) -> std::result::Result<crate::task_read::Page, Code> {
+        Err(Code::Unsupported)
+    }
+    fn task_original(
+        &mut self,
+        _device: &str,
+        _query: &crate::task_read::OriginalQuery,
+    ) -> std::result::Result<crate::task_read::OriginalChunk, Code> {
+        Err(Code::Unsupported)
+    }
     fn dispatch(
         &mut self,
         request: &str,
@@ -819,6 +853,18 @@ impl Host {
         // A slow operation must not extend the request's freshness window.
         let reply_time = clock()?;
         fresh(request.issued_at, request.expires_at, reply_time)?;
+        if matches!(
+            request.op,
+            Operation::ListTasks { .. }
+                | Operation::ReadTask { .. }
+                | Operation::ReadTaskOriginal { .. }
+        ) && matches!(result, ReplyResult::Ok { .. })
+        {
+            let current = principal(&book, &request, &signer, reply_time)?;
+            if !current.rights.contains(Right::Observe) {
+                return Err(Error::missing(Right::Observe));
+            }
+        }
         let reply = self.seal_reply(&secret, event, &request, result, reply_time)?;
         if retain {
             if book.replies.len() >= MAX_REPLIES && !book.replies.contains_key(&request.request) {
@@ -950,6 +996,28 @@ impl Host {
                 }
                 Err(code) => Err(Error::new(code, "the host lists no workspaces")),
             },
+            Operation::ListTasks { query } => task_answer(
+                dispatch
+                    .task_list(&p.key, query)
+                    .map(|tasks| Outcome::Tasks {
+                        tasks: Box::new(tasks),
+                    }),
+                &request.op,
+            ),
+            Operation::ReadTask { query } => task_answer(
+                dispatch.task_read(&p.key, query).map(|task| Outcome::Task {
+                    task: Box::new(task),
+                }),
+                &request.op,
+            ),
+            Operation::ReadTaskOriginal { query } => task_answer(
+                dispatch
+                    .task_original(&p.key, query)
+                    .map(|original| Outcome::TaskOriginal {
+                        original: Box::new(original),
+                    }),
+                &request.op,
+            ),
             // Queue edits are idempotent: an exact retry after an uncertain
             // save sets the same text, order, or lease again.
             Operation::QueueTask { task, edit } => {

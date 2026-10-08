@@ -789,6 +789,77 @@
         "cols": 120,
         "rows": 40
       }
+    },
+    "request_task_list": {
+      "v": "openagents.host-request.v1",
+      "requires": [],
+      "request": "f8f8f8f8f8f8f8f8f8f8f8f8f8f8f8f8f8f8f8f8f8f8f8f8f8f8f8f8f8f8f8f8",
+      "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+      "epoch": 0,
+      "relay": "wss://relay.example.com/",
+      "issued_at": 1790000000,
+      "expires_at": 1790000060,
+      "op": {
+        "kind": "task.list",
+        "query": {
+          "workspace": "example",
+          "cursor": null,
+          "limit": 4
+        }
+      }
+    },
+    "request_task_read": {
+      "v": "openagents.host-request.v1",
+      "requires": [],
+      "request": "f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9",
+      "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+      "epoch": 0,
+      "relay": "wss://relay.example.com/",
+      "issued_at": 1790000000,
+      "expires_at": 1790000060,
+      "op": {
+        "kind": "task.read",
+        "query": {
+          "workspace": "example",
+          "task": "fixture-task",
+          "revision": null,
+          "cursor": null,
+          "limit": 4
+        }
+      }
+    },
+    "request_task_original": {
+      "v": "openagents.host-request.v1",
+      "requires": [],
+      "request": "fafafafafafafafafafafafafafafafafafafafafafafafafafafafafafafafa",
+      "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+      "epoch": 0,
+      "relay": "wss://relay.example.com/",
+      "issued_at": 1790000000,
+      "expires_at": 1790000060,
+      "op": {
+        "kind": "task.original",
+        "query": {
+          "scope": {
+            "workspace": "example",
+            "task": "fixture-task",
+            "revision": 2,
+            "attempt": 1,
+            "intent_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "original": {
+            "source": "trace:1",
+            "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "bytes": 3,
+            "media_type": "application/x-ndjson"
+          },
+          "cursor": null,
+          "limit": 3
+        }
+      }
     }
   },
   "invalid": [
