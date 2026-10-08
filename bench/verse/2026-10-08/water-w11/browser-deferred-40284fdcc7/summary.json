@@ -1,0 +1,154 @@
+[
+  {
+    "case": "water-webgpu-dry",
+    "gpu_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "main_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "gpu_bytes": 0,
+    "capture_sha256": "fbfe522efb3da4f5b813c725f37667dd1f57b28d72551272319bd3a168fbd4c0",
+    "success": true,
+    "gpu_timestamps_supported": false
+  },
+  {
+    "case": "water-webgpu",
+    "gpu_ms": {
+      "count": 728,
+      "mean": 2.104083692307692,
+      "p95": 3.473408,
+      "max": 5.963776
+    },
+    "main_ms": {
+      "count": 728,
+      "mean": 0.13145604395604396,
+      "p95": 0.6,
+      "max": 1.3
+    },
+    "gpu_bytes": 4768708,
+    "capture_sha256": "5a7932da3e8f0b9efb4b10c9d1144df309b4fb6c161b1d3ba5e953a5e93b53e8",
+    "success": true,
+    "gpu_timestamps_supported": true
+  },
+  {
+    "case": "water-webgl2-dry",
+    "gpu_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "main_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "gpu_bytes": 0,
+    "capture_sha256": "0d90a7bdcc8b9e97456ce8b5200d89632835ebd87ad402a03df2a337611bd710",
+    "success": true,
+    "gpu_timestamps_supported": false
+  },
+  {
+    "case": "water-webgl2",
+    "gpu_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "main_ms": {
+      "count": 729,
+      "mean": 0.2017832647462277,
+      "p95": 0.6,
+      "max": 0.9
+    },
+    "gpu_bytes": 2465260,
+    "capture_sha256": "0c251474988b8c348f2d7e19e96eb43187e2c0df779e51cc0cc2cd2d734c8a26",
+    "success": true,
+    "gpu_timestamps_supported": false
+  },
+  {
+    "case": "everglade-webgpu-dry",
+    "gpu_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "main_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "gpu_bytes": 0,
+    "capture_sha256": "9b4384720532630e605c917bb08b7375f6d645ff70dc2295119492548bde59ab",
+    "success": true,
+    "gpu_timestamps_supported": false
+  },
+  {
+    "case": "everglade-webgpu",
+    "gpu_ms": {
+      "count": 613,
+      "mean": 0.33858484828711255,
+      "p95": 0.65536,
+      "max": 0.917504
+    },
+    "main_ms": {
+      "count": 667,
+      "mean": 0.06476761619190405,
+      "p95": 0.2,
+      "max": 0.30000000000000004
+    },
+    "gpu_bytes": 15272364,
+    "capture_sha256": "01396780291906ff11cf311f32f1f6665fe18ccdb9062b0c16228e87dd8a0b1c",
+    "success": true,
+    "gpu_timestamps_supported": true
+  },
+  {
+    "case": "everglade-webgl2-dry",
+    "gpu_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "main_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "gpu_bytes": 0,
+    "capture_sha256": "ffa8f5a40921a1bb9f41dbd476221060d3cda3fa81acb4687e1bfc87f0313f6b",
+    "success": true,
+    "gpu_timestamps_supported": false
+  },
+  {
+    "case": "everglade-webgl2",
+    "gpu_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "main_ms": {
+      "count": 725,
+      "mean": 0.052000000000000005,
+      "p95": 0.1,
+      "max": 0.30000000000000004
+    },
+    "gpu_bytes": 1953268,
+    "capture_sha256": "067888cd6b15d2938adc16305cf18e2db5c88df99ed93c2231735360ec990184",
+    "success": true,
+    "gpu_timestamps_supported": false
+  }
+]

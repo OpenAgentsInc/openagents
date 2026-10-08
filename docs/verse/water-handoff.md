@@ -7,32 +7,28 @@ specification is [Water](water.md), and the coastal zone's is
 
 ## October 8 coordination checkpoint
 
-The coordinator resumes W11 directly and holds #10783. The branch is
-rebased on `7afd440fe8`. Candidate `0383832589` resolves only timestamp
-pairs for passes the frame actually wrote; omitted mirror and copy
-queries previously entered the resolve. Bounded `diagnostics` output
-retains the first 16 frames' raw counters. Focused timing tests and scoped
-formatting pass. The release harness at `bc0e969e3a` passes Low pond-posts,
-Low waterline, and Medium pond-noon on the RTX 4080. Low pond-posts retains
-96 of 96 steady GPU samples, with a 1.997 ms mean and 3.596 ms p95; its
-old target is exceeded and effects are reduced. The remaining tier matrix
-is running. These Linux measurements supplement the required Mac and
-browser calibration. Missing GPU samples no longer use queue-fence timing
-as a substitute or admit a budget. No new bake runs are needed.
+The coordinator holds #10783 on `codex/water-w11-integrated`, rebased on
+main `24db60de9a`. Native query resolution waits for render submission
+completion without blocking the frame thread. All 15 Apple M5 Max and all
+15 RTX 4080 fixed views return 96/96 valid GPU samples. Empty ripple kernels
+are skipped without losing clock phase, and spectrum integrals are cached.
+The 59 focused water tests and explicit browser-target check pass.
 
-All 15 RTX 4080 cases subsequently pass, each with 96 valid steady GPU
-samples. Evidence is in
-[`query-fix-bc0e969e3a`](../../bench/verse/2026-10-08/water-w11/query-fix-bc0e969e3a/README.md).
-The High pond cases still spend about 3.4 ms of main-thread CPU after
-reducing cadence. Candidate `2cad22a561` skips the kernel for exactly empty
-ripple fields while retaining their clock phase, and caches spectrum
-integrals independently of time and swell gain. Its 57 focused tests and all 15 RTX 4080 cases pass, each with 96 valid
-GPU samples. The eight browser cases at `cba15c8423` also pass. Evidence is
-in [`cpu-fix-2cad22a561`](../../bench/verse/2026-10-08/water-w11/cpu-fix-2cad22a561/README.md).
-The Mac Low pond-posts case fails sample validity: surface end counters
-are stale. A distinct aligned resolve-region experiment is unverified in
-`water/timing.rs`; do not treat it as a fix yet. No W11 changes have landed
-on main. Budget calibration and a normal production WASM deploy remain.
+`docs/verse/water.md` now records the measured tier costs and admission
+caps: GPU 3.5/3.5/4 ms, memory 8/32/64 MiB, unchanged main-thread CPU caps,
+and worker CPU 0.5/1/2.5 ms. All 15 RTX views pass again under those caps,
+with 96/96 valid samples and mean costs within bounds. Storm views still
+reduce effects; pond views retain full effects. Original-cap failures and
+the failed Metal experiments remain in the evidence. This is not a claim
+that every scene runs all effects within budget on every device.
+
+Evidence is under `bench/verse/2026-10-08/water-w11/` in
+`metal-deferred-f176dfa0c8/`, `vulkan-deferred-f176dfa0c8/`, and
+`calibrated-965e57a09a/`. All eight refreshed browser cases pass on the frozen timer build
+`40284fdcc7`, retained in `browser-deferred-40284fdcc7/`; integration retains both B4's
+`offline_light` and W11's water telemetry. Physical phone steps are in
+`NEEDS_OWNER.md`. Final integration checks and production module delivery
+remain before closure. No new bake is needed.
 
 The earlier checkpoint below remains historical evidence.
 

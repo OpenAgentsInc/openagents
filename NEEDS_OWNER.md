@@ -2116,3 +2116,15 @@ The code freezes evicted buildings and turns timed regrowth off in
 3. Record the frame time before and after the 20 destroyed buildings
    (the raised caps are 24 buildings and 1500 pieces). If the frame time
    drops under 60 fps, open an issue with both numbers.
+
+## Water W11 physical devices (#10783)
+
+On the supported iPhone and Android devices, record the device, OS, build,
+quality tier, drawing-buffer size, and water residency. Use Water Lab and
+Everglade pond views above water, at the waterline, and underwater; include
+rain and the storm sea. Retain frame timing and thermal behavior after warmup.
+Verify that sustained overruns reduce optional optics or update frequency
+while water, swimming, buoyancy, and underwater visibility remain correct.
+Browser elapsed time is not thread CPU time; unavailable GPU timestamps
+remain unknown. Desktop and browser measurements do not qualify phone
+performance. Open a new issue for any device defect.

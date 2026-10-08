@@ -319,7 +319,7 @@ pub fn window(tier: Tier) -> u32 {
 /// A tier's residency budget for the field's pages: the window's pages on
 /// the GPU and on the CPU, two pages baked and two uploaded a frame. On
 /// Low this is 0.8 MB of each, on High 2.1 MB, against the water's
-/// 8 and 96 MiB budgets (`docs/verse/water.md`, budgets per tier).
+/// 8 and 64 MiB budgets (`docs/verse/water.md`, budgets per tier).
 #[must_use]
 pub fn budget(tier: Tier) -> Budget {
     let pages = u64::from(window(tier).pow(2));

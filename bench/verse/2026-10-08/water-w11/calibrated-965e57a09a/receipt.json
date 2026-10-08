@@ -1,0 +1,25 @@
+{
+  "source": "965e57a09a",
+  "files": {
+    "matrix-native.json.gz": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-rtx-calibrated/matrix/native.json",
+      "sha256": "7727a32e216d0d6c8625e6e92cfad43c05645dcbc8138ccc6c560d2f86df4266"
+    },
+    "matrix-run.log.gz": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-rtx-calibrated/matrix/run.log",
+      "sha256": "c2a8ff1870a50614d5b91175c2382d6e7b1769d292f668b3c2962da08d22f265"
+    },
+    "matrix-gpu.json.gz": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-rtx-calibrated/matrix/gpu.json",
+      "sha256": "2cd86e129518e51fb46208a37c3571be4ca71a29cea108072b2b07dcb984f18a"
+    },
+    "matrix-quiet.json.gz": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-rtx-calibrated/matrix/quiet.json",
+      "sha256": "bd3bafb3b97c28ad62e7609a8c66f2ef83be78702f34250ec513ec2964357e1a"
+    },
+    "executable.json.gz": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-rtx-calibrated/executable.json",
+      "sha256": "03c63daf3aa7127d47d7f9a1428cbf1fa28b72c6f4f3c080428033f1b3d445b7"
+    }
+  }
+}

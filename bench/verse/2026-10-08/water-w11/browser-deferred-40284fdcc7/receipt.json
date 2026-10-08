@@ -1,0 +1,43 @@
+{
+  "files": {
+    "browser-browser.json.gz": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-wasm-40284fdcc7/browser/browser.json",
+      "sha256": "86aaba5e0f74979e0317db72c8ab45bcda1b08ff40821ab5ce3adee4957726b5"
+    },
+    "browser-harness.json.gz": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-wasm-40284fdcc7/browser/harness.json",
+      "sha256": "0ddda2a68f375cab0ad889a2dd1e654c37a5963b45c710020b2a8b42263b2563"
+    },
+    "browser-receipt.json.gz": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-wasm-40284fdcc7/browser/receipt.json",
+      "sha256": "55ba93d211c604a79bdd41f6ca5e009c1be1e6f7e41e84013f002fe1639e31b4"
+    },
+    "browser-stdout.log.gz": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-wasm-40284fdcc7/browser/stdout.log",
+      "sha256": "088f1091dc128c49d33e36abf95dd8fe0de5bb8a64d708ba91257cf9df5acaff"
+    },
+    "browser-stderr.log.gz": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-wasm-40284fdcc7/browser/stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "remote-record.json.gz": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-wasm-40284fdcc7/remote-record.json",
+      "sha256": "d9fd2d17363de44850c482a3e1846d075c81db0267d13d8767ad20316dcaa5e1"
+    },
+    "gpu.json.gz": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-wasm-40284fdcc7/gpu.json",
+      "sha256": "827023695be081f218799e9345a533329c23f9d0d9e94f04af629ab298045fb8"
+    },
+    "quiet.json.gz": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-wasm-40284fdcc7/quiet.json",
+      "sha256": "a1774ee696490e99bb13eb4a3cabc67881ef0ebea438a86b26fa5b9255e83512"
+    }
+  },
+  "visual_review": [
+    "water-webgpu",
+    "water-webgl2",
+    "everglade-webgpu",
+    "everglade-webgl2"
+  ],
+  "production_artifact": false
+}
