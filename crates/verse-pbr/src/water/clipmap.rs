@@ -28,7 +28,7 @@
 
 use std::ops::Range;
 
-use glam::{DVec2, Vec2};
+use glam::{DVec2, Mat4, Vec2, Vec3};
 use verse_engine::quality::Tier;
 
 use super::frame::{Kind, WaterVertex};
@@ -185,6 +185,15 @@ pub fn rows(spec: &Spec, eye: Vec2, sea: bool) -> [[f32; 4]; ROWS] {
     out
 }
 
+/// A contiguous block's rest bounds in grid cells. The morph moves an odd
+/// vertex by at most one cell toward the negative axes.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Block {
+    pub range: Range<u32>,
+    pub min: Vec2,
+    pub max: Vec2,
+}
+
 /// A clipmap's vertices and triangles: every level's whole grid, each
 /// level's triangles with its hole in each of four places, and the apron.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -194,12 +203,43 @@ pub struct Mesh {
     /// Per level, its triangles for each [`variant`]; level 0 has no hole,
     /// so its four are the same.
     pub levels: Vec<[Range<u32>; 4]>,
+    /// Per-level blocks for each hole variant, in index order.
+    pub blocks: Vec<[Vec<Block>; 4]>,
     /// The apron's triangles, from the last level's rim out to
     /// [`Spec::far`].
     pub apron: Range<u32>,
 }
 
 impl Mesh {
+    /// Culls only bounded displaced blocks. The apron remains intact; an
+    /// unknown displacement envelope draws the original complete mesh.
+    #[must_use]
+    pub fn draw_culled(&self, spec: &Spec, eye: Vec2, view_proj: Mat4,
+        level: f32, displacement: Option<Vec3>) -> Vec<Range<u32>> {
+        let Some(pad) = displacement.filter(|p| p.is_finite() && p.min_element() >= 0.0) else {
+            return self.draw(spec, eye);
+        };
+        let centers = centers(spec, eye);
+        let mut out: Vec<Range<u32>> = Vec::new();
+        for (l, variants) in self.blocks.iter().enumerate() {
+            let center = centers[l].as_vec2();
+            let spacing = spec.level_spacing(l as u32);
+            for block in &variants[variant(spec, eye, l as u32)] {
+                let min = center + (block.min - Vec2::ONE) * spacing;
+                let max = center + block.max * spacing;
+                if crate::pbr::textured::in_frustum(
+                    Vec3::new(min.x, level, min.y) - pad,
+                    Vec3::new(max.x, level, max.y) + pad, view_proj) {
+                    if let Some(last) = out.last_mut().filter(|last| last.end == block.range.start) {
+                        last.end = block.range.end;
+                    } else { out.push(block.range.clone()); }
+                }
+            }
+        }
+        out.push(self.apron.clone());
+        out
+    }
+
     /// The index ranges a frame with its eye at `eye` draws.
     #[must_use]
     pub fn draw(&self, spec: &Spec, eye: Vec2) -> Vec<Range<u32>> {
@@ -242,29 +282,44 @@ pub fn mesh(spec: &Spec, body: usize) -> Mesh {
         let at = |i: i32, j: i32| base + (j + h) as u32 * side + (i + h) as u32;
         let variants = if level == 0 { 1 } else { 4 };
         let mut ranges: Vec<Range<u32>> = Vec::with_capacity(4);
+        let mut block_variants = Vec::new();
         for k in 0..variants {
             let (kx, kz) = ((k & 1) as i32, (k >> 1) as i32);
             let start = out.indices.len() as u32;
-            for j in -h..h {
-                for i in -h..h {
-                    let hole = level > 0
-                        && (-h / 2 + kx..h / 2 + kx).contains(&i)
-                        && (-h / 2 + kz..h / 2 + kz).contains(&j);
-                    if !hole {
-                        quad(
-                            &mut out.indices,
-                            [at(i, j), at(i + 1, j), at(i + 1, j + 1), at(i, j + 1)],
-                        );
+            let mut blocks = Vec::new();
+            // Coarse blocks bound CPU submission cost; adjacent visible
+            // blocks merge back into one draw.
+            for bz in (-h..h).step_by(16) {
+                for bx in (-h..h).step_by(16) {
+                    let first = out.indices.len() as u32;
+                    let (end_x, end_z) = ((bx + 16).min(h), (bz + 16).min(h));
+                    for j in bz..end_z {
+                        for i in bx..end_x {
+                            let hole = level > 0
+                                && (-h / 2 + kx..h / 2 + kx).contains(&i)
+                                && (-h / 2 + kz..h / 2 + kz).contains(&j);
+                            if !hole {
+                                quad(&mut out.indices, [at(i, j), at(i + 1, j), at(i + 1, j + 1), at(i, j + 1)]);
+                            }
+                        }
+                    }
+                    if first < out.indices.len() as u32 {
+                        blocks.push(Block { range: first..out.indices.len() as u32,
+                            min: Vec2::new(bx as f32, bz as f32),
+                            max: Vec2::new(end_x as f32, end_z as f32) });
                     }
                 }
             }
+            block_variants.push(blocks);
             ranges.push(start..out.indices.len() as u32);
         }
         while ranges.len() < 4 {
             ranges.push(ranges[0].clone());
+            block_variants.push(block_variants[0].clone());
         }
         let ranges: [Range<u32>; 4] = std::array::from_fn(|k| ranges[k].clone());
         out.levels.push(ranges);
+        out.blocks.push(std::array::from_fn(|k| block_variants[k].clone()));
     }
     // The apron: the last level's rim, counterclockwise from (-h, -h), and
     // the same points stretched out ring by ring to the far square.
@@ -333,6 +388,28 @@ mod tests {
     use std::collections::HashMap;
 
     use super::*;
+
+    #[test]
+    fn culling_keeps_unknown_bounds_and_rejects_only_offscreen_blocks() {
+        for tier in [Tier::Low, Tier::Medium, Tier::High] {
+            let spec = Spec::of(tier);
+            let mesh = mesh(&spec, 0);
+            let eye = Vec2::new(3.7, -1.3);
+            assert_eq!(mesh.draw(&spec, eye), mesh.draw_culled(&spec, eye, Mat4::IDENTITY, 0.0, None));
+            for (level, blocks) in mesh.blocks.iter().enumerate() {
+                for (variant, blocks) in blocks.iter().enumerate() {
+                    let range = &mesh.levels[level][variant];
+                    assert_eq!(blocks.first().unwrap().range.start, range.start);
+                    assert_eq!(blocks.last().unwrap().range.end, range.end);
+                    assert!(blocks.windows(2).all(|b| b[0].range.end == b[1].range.start));
+                }
+            }
+            let visible = mesh.draw_culled(&spec, eye, Mat4::IDENTITY, 0.0, Some(Vec3::ZERO));
+            assert!(visible.iter().map(|r| r.end-r.start).sum::<u32>()
+                < mesh.draw(&spec, eye).iter().map(|r| r.end-r.start).sum::<u32>());
+            assert_eq!(visible.last().unwrap(), &mesh.apron);
+        }
+    }
 
     fn key(p: Vec2) -> (i64, i64) {
         ((p.x * 256.0).round() as i64, (p.y * 256.0).round() as i64)

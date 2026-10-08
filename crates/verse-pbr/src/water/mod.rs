@@ -203,6 +203,7 @@ pub struct OceanMesh {
     /// The clipmap's index ranges, offset into [`SurfaceGpu::indices`].
     pub mesh: clipmap::Mesh,
     pub sea: bool,
+    pub body: usize,
     /// Kept behind a lock so a frame that only borrows the surface can
     /// still stream.
     pub stream: Option<std::sync::Mutex<field::Stream>>,
@@ -265,10 +266,16 @@ impl SurfaceGpu {
                 *level = std::array::from_fn(|k| shift(&level[k]));
             }
             mesh.apron = shift(&mesh.apron);
+            for variants in &mut mesh.blocks {
+                for blocks in variants {
+                    for block in blocks { block.range = shift(&block.range); }
+                }
+            }
             OceanMesh {
                 spec,
                 mesh,
                 sea: ocean.sea,
+                body: ocean.body,
                 stream: ocean.field.clone().and_then(|f| {
                     field::Stream::new(f, tier)
                         .inspect_err(|e| eprintln!("verse: the water field does not stream: {e}"))
@@ -337,7 +344,19 @@ impl SurfaceGpu {
         transmit: Option<&'a wgpu::RenderPipeline>,
         emit: &'a wgpu::RenderPipeline,
     ) {
-        let ranges = self.ocean_ranges(eye);
+        self.draw_ocean_culled(pass, eye, None, transmit, emit);
+    }
+
+    /// Draws bounded clipmap blocks that intersect the camera frustum.
+    pub fn draw_ocean_culled<'a>(
+        &'a self, pass: &mut wgpu::RenderPass<'a>, eye: glam::Vec3,
+        cull: Option<(glam::Mat4, f32, glam::Vec3)>,
+        transmit: Option<&'a wgpu::RenderPipeline>, emit: &'a wgpu::RenderPipeline,
+    ) {
+        let ranges = self.ocean.as_ref().map_or_else(Vec::new, |o| {
+            cull.map_or_else(|| self.ocean_ranges(eye), |(matrix, level, pad)|
+                o.mesh.draw_culled(&o.spec, glam::Vec2::new(eye.x, eye.z), matrix, level, Some(pad)))
+        });
         if ranges.is_empty() {
             return;
         }
@@ -417,3 +436,5 @@ pub fn body_bounds(vertices: &[WaterVertex]) -> [Option<screen::Bounds>; MAX_BOD
     }
     out
 }
+
+pub mod timing;
