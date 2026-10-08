@@ -182,6 +182,8 @@ pub fn detach<I>(root: &mut Node<I>, scope: &str) -> Result<usize, LayoutError> 
             Element::Stack { children, .. }
             | Element::List { children, .. }
             | Element::Message { children, .. }
+            | Element::Dialog { children, .. }
+            | Element::Choice { children, .. }
             | Element::Tool { children, .. } => pending.extend(children.iter_mut()),
             _ => {}
         }

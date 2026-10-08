@@ -1253,6 +1253,16 @@ impl Engine<'_> {
                     self.paragraph(placeholder, TextRole::Status, &node.style, Some(inner));
                 (paragraph.width, paragraph.height)
             }
+            Element::RichText { .. }
+            | Element::Field { .. }
+            | Element::Choice { .. }
+            | Element::Dialog { .. } => {
+                self.scene.unsupported.insert("view.v3");
+                let paragraph = self.paragraph(
+                    "Unsupported v3 component", TextRole::Status, &node.style, Some(inner),
+                );
+                (paragraph.width, paragraph.height)
+            }
         };
         (
             (w + start + end).min(available),
@@ -1675,6 +1685,16 @@ impl Engine<'_> {
                 {
                     self.place(child, ix + cx, iy + cy, w);
                 }
+            }
+            Element::RichText { .. }
+            | Element::Field { .. }
+            | Element::Choice { .. }
+            | Element::Dialog { .. } => {
+                self.scene.unsupported.insert("view.v3");
+                let paragraph = self.paragraph(
+                    "Unsupported v3 component", TextRole::Status, &node.style, Some(inner),
+                );
+                self.text(paragraph, ix, iy, inner, align, self.theme.muted);
             }
         }
         let _ = bottom;

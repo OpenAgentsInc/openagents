@@ -6,7 +6,10 @@ versions of **every presentation component in `crates/coder-new`**, including it
 imported presentation dependencies, visible variants, and composed screens. The
 library must let an application recreate the current Coder UI exactly on the web.
 This document extends the [Coder Cloud specification](../../cloud/coder-cloud.md).
-It does not claim the catalog or general web adapter is implemented.
+The initial catalog is implemented in `coder-ui`, `rust-native-web`,
+`coder-components-web`, and `openagents-web`. The browser examples simulate
+local presentation state; authenticated Coder Cloud adapters remain planned.
+See [development instructions](../../../crates/openagents-web/README.md#run-the-component-catalog).
 
 ## Shared library decision
 
@@ -19,25 +22,25 @@ backend, prompts, endpoints, authentication, and credentials remain outside this
 repository.
 
 Rust Native is the reusable framework. Coder's application component library
-extends `coder-ui`; a proposed `rust-native-web` adapter renders it on the web.
+extends `coder-ui`; the `rust-native-web` adapter renders it on the web.
 The catalog and Coder Cloud consume that library. Coder's terminal and other
 platforms adopt the same definitions incrementally. A page-specific copy of the
 terminal UI does not meet the shared-library requirement.
 
-The current [view contract](../../../crates/rust-native/docs/spec.md) is
-`rust-native.view.v2`. It includes Stack, List, Text, Button, Surface, Transcript,
-Message, Markdown, Tool, Working, and Composer, plus shared editing, selection,
-syntax, and transcript layout. `coder-ui` currently contains theme values;
-`coder-new` still contains its own Ratatui presentation. There is no general
-`rust-native-web` adapter. Older foundation-only inventories do not describe
-the complete current core, and sharing a palette does not constitute shared
-component delivery.
+The [view contract](../../../crates/rust-native/docs/spec.md) retains
+`rust-native.view.v2` and explicitly adds `rust-native.view.v3` for Field,
+RichText, Choice, and Dialog. Existing elements include Stack, List, Text,
+Button, Surface, Transcript, Message, Markdown, Tool, Working, and Composer.
+`coder-ui` owns the shared Coder compositions and source appearance profile;
+`coder-new` retains its Ratatui presentation. Desktop and phone adapters
+currently show an explicit unsupported fallback for new v3 elements; their
+adoption remains separate work.
 
 | Layer | Ownership and dependency direction |
 | --- | --- |
 | `rust-native` | Generic semantic elements, validated views, interaction identity, styles, editing/IME, selection, Markdown, and layout. No Coder palette, app state, transport, account, model, or execution dependency. |
 | `coder-ui` | Pure Coder presentation types, component constructors, named product tokens, presentation-state helpers, and deterministic fixture definitions. Depends on Rust Native, not `coder-new`, Ratatui, a provider, or a host runtime. |
-| `rust-native-web` (proposed) | Reusable escaped HTML/CSS mapping and Rust/Wasm DOM mounting, focus, input/IME, selection, scrolling, browser measurement, and capability reporting. No Coder-specific screens or domain effects. |
+| `rust-native-web` | Reusable escaped HTML/CSS mapping and Rust/Wasm DOM mounting, focus, input/IME, selection, scrolling, browser measurement, and capability reporting. No Coder-specific screens or domain effects. |
 | `coder-new` and other application projections | Convert existing state/events into shared presentation values; resolve product intents through existing controllers and authority. Backend/session/provider state stays with its existing owner. |
 | Terminal/native adapters | Render shared component meaning with existing terminal facilities or platform controls. Ratatui values stay on the terminal side of the boundary. |
 | `openagents-web` | Own `/components`, catalog navigation, fixture selection, assets, and the page shell. Compose the same library later in the authenticated app. |

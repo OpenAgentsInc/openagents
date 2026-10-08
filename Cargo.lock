@@ -2864,6 +2864,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "coder-components-web"
+version = "0.1.0"
+dependencies = [
+ "coder-ui",
+ "js-sys",
+ "rust-native",
+ "rust-native-web",
+ "serde",
+ "serde_json",
+ "wasm-bindgen",
+ "web-sys",
+]
+
+[[package]]
 name = "coder-compositor"
 version = "0.1.0"
 dependencies = [
@@ -3335,8 +3349,14 @@ dependencies = [
 name = "coder-ui"
 version = "0.1.0"
 dependencies = [
+ "pulldown-cmark",
  "rust-native",
  "serde",
+ "serde_json",
+ "syntect",
+ "two-face",
+ "unicode-segmentation",
+ "unicode-width",
 ]
 
 [[package]]
@@ -10195,6 +10215,7 @@ dependencies = [
  "axum 0.8.9",
  "base64 0.22.1",
  "coder",
+ "coder-ui",
  "discovery",
  "futures-util",
  "hmac 0.12.1",
@@ -10203,6 +10224,8 @@ dependencies = [
  "openagents-chat",
  "paper-mono",
  "pulldown-cmark",
+ "rust-native",
+ "rust-native-web",
  "secp256k1 0.31.1",
  "serde",
  "serde_json",
@@ -12461,6 +12484,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "rust-native-web"
+version = "0.1.0"
+dependencies = [
+ "rust-native",
+ "serde",
+ "wasm-bindgen",
+ "web-sys",
+]
+
+[[package]]
 name = "rustc-demangle"
 version = "0.1.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -13819,6 +13852,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "656b45c05d95a5704399aeef6bd0ddec7b2b3531b7c9e900abbf7c4d2190c925"
 dependencies = [
  "bincode",
+ "fancy-regex 0.16.2",
  "flate2",
  "fnv",
  "once_cell",

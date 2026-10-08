@@ -6,11 +6,12 @@ adapters render those views with native controls, terminal facilities, or web
 elements. Applications retain their state, effects, permissions, and palettes.
 The desktop adapter, which lays out and paints views in Rust in a `winit`
 window, is the separate crate [`rust-native-desktop`](../rust-native-desktop/).
+The separate [`rust-native-web`](../rust-native-web/) crate renders escaped
+HTML and supplies keyed browser mounting.
 
-The crate implements data contracts and validation. It does not yet include a
-native renderer, general mounting runtime, text editor, or stable API. It depends only
-on `serde` and `serde_json`; it has no application, network, or executor
-dependency. Its manifest and Apache-2.0 license are self-contained so the
+The crate implements data contracts, validation, editing, Markdown parsing,
+selection, and transcript layout. It does not mount native widgets or own an
+application runtime, network, or executor. Its manifest and Apache-2.0 license are self-contained so the
 library can be reused outside its containing workspace. No package release is
 implied, and publication is disabled while the API is experimental.
 
@@ -18,9 +19,9 @@ implied, and publication is disabled while the API is experimental.
 
 | Area | Implemented |
 | --- | --- |
-| Views | Serializable `View<I>` and keyed `Node<I>` trees with stacks, bounded lists, text, buttons, and locally registered native drawing surfaces. Validation checks schema, identities, labels, and resource limits. |
+| Views | Serializable `View<I>` and keyed `Node<I>` trees with stacks, bounded lists, text, buttons, transcripts, messages, Markdown, tools, working state, composers, and local drawing surfaces. Explicit v3 views add fields, styled runs, selected choices, and dialogs. V2 stays unchanged. Validation checks schema, identities, labels, and resource limits. |
 | Drawing surfaces | Opaque local renderer resource IDs, bounded physical viewports, explicit activation/disposal, and monotonic frame timing that excludes background time. GPU ownership, scenes, and input gestures belong to adapters and applications. |
-| Intents | An `Activation` names a surface instance, revision, and node. Only a current enabled button resolves to the application's stored typed intent. Resolving an intent neither authenticates a caller nor performs an effect. |
+| Intents | An `Activation` names a surface instance, revision, and node. Current enabled controls resolve to the application's stored typed intent. Field changes also validate local data bounds. Resolution neither authenticates a caller nor performs an effect. |
 | Input requests | `InputRequest<P>` asks the adapter for one value a view can't collect, with the application's purpose type. A `secret` request gets a masked native field whose value the adapter never echoes, logs, or keeps. Validation checks the token, label, text bounds, and value bound; `accept` checks an answer's token and length. See the [spec](docs/spec.md#input-requests). |
 | Styles | Named declarations with ordered leaf-property composition and explicit `Unset`, `Set`, and `Reset`. Colors are generic sRGB RGBA values; spacing and text properties use typed values. |
 | Examples | A product-neutral [settings view](examples/settings.rs) emits JSON only. |
@@ -43,6 +44,8 @@ let screen = View::new("settings:mount-1", 1, Node {
     element: Element::Button {
         label: "Open preferences".into(),
         enabled: true,
+        icon: None,
+        shortcut: None,
         intent: Intent::OpenPreferences,
     },
 }).validate()?;

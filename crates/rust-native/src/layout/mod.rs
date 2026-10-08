@@ -952,6 +952,53 @@ pub fn without_intents<I>(node: &Node<I>) -> Node<()> {
             value: value.clone(),
             role: *role,
         },
+        Element::RichText { runs, role } => Element::RichText {
+            runs: runs.clone(),
+            role: *role,
+        },
+        Element::Field {
+            label,
+            value,
+            placeholder,
+            secret,
+            multiline,
+            enabled,
+            max_bytes,
+            ..
+        } => Element::Field {
+            label: label.clone(),
+            value: value.clone(),
+            placeholder: placeholder.clone(),
+            secret: *secret,
+            multiline: *multiline,
+            enabled: *enabled,
+            max_bytes: *max_bytes,
+            on_change: (),
+        },
+        Element::Choice {
+            label,
+            selected,
+            enabled,
+            children: c,
+            ..
+        } => Element::Choice {
+            label: label.clone(),
+            selected: *selected,
+            enabled: *enabled,
+            intent: (),
+            children: children(c),
+        },
+        Element::Dialog {
+            label,
+            open,
+            children: c,
+            ..
+        } => Element::Dialog {
+            label: label.clone(),
+            open: *open,
+            on_close: (),
+            children: children(c),
+        },
         Element::Button {
             label,
             enabled,

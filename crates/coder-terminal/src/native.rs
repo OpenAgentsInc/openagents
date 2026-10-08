@@ -225,6 +225,16 @@ impl Draw<'_> {
                 let label = if *busy { "Stop" } else { "Message" };
                 vec![self.control(node, label, *busy, &pad)]
             }
+            Element::RichText { .. }
+            | Element::Field { .. }
+            | Element::Choice { .. }
+            | Element::Dialog { .. } => {
+                self.out.unsupported.insert("view.v3");
+                vec![Line::from(Span::styled(
+                    format!("{pad}[Unsupported v3 component]"),
+                    self.style(Intensity::Half),
+                ))]
+            }
         }
     }
 
@@ -306,7 +316,11 @@ fn controls<I>(node: &Node<I>, out: &mut Vec<(String, bool)>) {
         Element::Text { .. }
         | Element::Surface { .. }
         | Element::Markdown { .. }
-        | Element::Working { .. } => {}
+        | Element::Working { .. }
+        | Element::RichText { .. }
+        | Element::Field { .. }
+        | Element::Choice { .. }
+        | Element::Dialog { .. } => {}
     }
 }
 

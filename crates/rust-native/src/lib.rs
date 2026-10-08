@@ -22,8 +22,9 @@ pub mod view;
 pub use input::{InputError, InputRequest};
 pub use press::Press;
 pub use view::{
-    Activation, Axis, ComposerChoice, Earlier, Element, Glyph, Icon, MAX_COMPOSER_CHOICES,
-    MessageRole, Node, TextRole, ToolState, ValidatedView, View, ViewError,
+    Activation, Axis, ComposerChoice, Earlier, Element, FieldChange, Glyph, Icon,
+    MAX_COMPOSER_CHOICES, MessageRole, Node, RichRun, TextRole, ToolState, ValidatedView, View,
+    ViewError,
 };
 
 pub(crate) fn valid_id(value: &str) -> bool {

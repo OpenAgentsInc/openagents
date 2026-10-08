@@ -15,6 +15,7 @@
 
 pub mod ask;
 pub mod backend;
+mod components;
 mod layout;
 mod markdown;
 mod pages;
@@ -73,6 +74,8 @@ pub struct Config {
     /// under `/everglade/`. Without it, `/everglade` says Everglade is
     /// unavailable.
     pub everglade: Option<PathBuf>,
+    /// The independently built Rust/Wasm component catalog assets.
+    pub components_build: Option<PathBuf>,
     /// Optional create-only capability into the host-private sales pipeline.
     /// Without owner-accepted terms, the proposed offer has no intake form.
     pub pilot: Option<Arc<pilot::Intake>>,
@@ -93,6 +96,7 @@ impl Config {
             upstream: None,
             pay_upstream: None,
             everglade: None,
+            components_build: None,
             pilot: None,
         }
     }
@@ -138,6 +142,7 @@ pub fn router(config: Config) -> Router {
         .route("/favicon.svg", get(favicon))
         .route("/favicon.ico", get(favicon))
         .merge(pages::routes())
+        .merge(components::routes())
         .merge(pilot::routes())
         .merge(ask::routes())
         .merge(tasks::routes())

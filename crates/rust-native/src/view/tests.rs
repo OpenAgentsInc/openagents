@@ -1,6 +1,126 @@
 use super::*;
 
 #[test]
+fn v3_fields_require_explicit_schema_and_resolve_current_changes() {
+    let root = Node {
+        key: "search".into(),
+        style: Default::default(),
+        element: Element::Field {
+            label: "Search".into(),
+            value: "original".into(),
+            placeholder: "Filter".into(),
+            secret: false,
+            multiline: false,
+            enabled: true,
+            max_bytes: 12,
+            on_change: "change",
+        },
+    };
+    assert!(matches!(
+        View::new("catalog", 1, root.clone()).validate(),
+        Err(ViewError::Schema)
+    ));
+    let checked = View::new_v3("catalog", 1, root).validate().unwrap();
+    let mut event = FieldChange {
+        activation: Activation {
+            instance: "catalog".into(),
+            revision: 1,
+            node: "search".into(),
+        },
+        value: "new".into(),
+    };
+    assert_eq!(checked.change_field(&event), Ok(&"change"));
+    event.activation.revision = 2;
+    assert_eq!(
+        checked.change_field(&event),
+        Err(ViewError::StaleActivation)
+    );
+    event.activation.revision = 1;
+    event.value = "longer than the bound".into();
+    assert_eq!(checked.change_field(&event), Err(ViewError::TextLimit));
+    assert!(!format!("{event:?}").contains(&event.value));
+    let json = checked.to_json().unwrap();
+    assert_eq!(
+        View::<String>::from_json(&json).unwrap().view().schema,
+        SCHEMA_V3
+    );
+}
+
+#[test]
+fn v3_secret_defaults_and_nested_interactive_choices_refuse() {
+    let mut field = Node {
+        key: "key".into(),
+        style: Default::default(),
+        element: Element::Field {
+            label: "Key".into(),
+            value: "secret".into(),
+            placeholder: String::new(),
+            secret: true,
+            multiline: false,
+            enabled: true,
+            max_bytes: 100,
+            on_change: "change",
+        },
+    };
+    assert!(matches!(
+        View::new_v3("catalog", 1, field.clone()).validate(),
+        Err(ViewError::TextLimit)
+    ));
+    if let Element::Field { value, .. } = &mut field.element {
+        value.clear();
+    }
+    assert!(View::new_v3("catalog", 1, field.clone()).validate().is_ok());
+    let choice = Node {
+        key: "option".into(),
+        style: Default::default(),
+        element: Element::Choice {
+            label: "Option".into(),
+            selected: true,
+            enabled: true,
+            intent: "choose",
+            children: vec![field],
+        },
+    };
+    assert!(matches!(
+        View::new_v3("catalog", 1, choice).validate(),
+        Err(ViewError::NotInteractive)
+    ));
+}
+
+#[test]
+fn closed_dialog_refuses_descendant_events() {
+    let root = Node {
+        key: "dialog".into(),
+        style: Default::default(),
+        element: Element::Dialog {
+            label: "Review".into(),
+            open: false,
+            on_close: "close",
+            children: vec![Node {
+                key: "confirm".into(),
+                style: Default::default(),
+                element: Element::Button {
+                    label: "Confirm".into(),
+                    enabled: true,
+                    icon: None,
+                    shortcut: None,
+                    intent: "confirm",
+                },
+            }],
+        },
+    };
+    let checked = View::new_v3("catalog", 1, root).validate().unwrap();
+    assert_eq!(
+        checked.activate(&Activation {
+            instance: "catalog".into(),
+            revision: 1,
+            node: "confirm".into()
+        }),
+        Err(ViewError::NotInteractive)
+    );
+}
+
+#[test]
 fn native_surfaces_are_local_labeled_resources_not_actions() {
     let view: View<()> = View::new(
         "window",

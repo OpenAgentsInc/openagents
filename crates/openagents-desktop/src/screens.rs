@@ -705,6 +705,10 @@ fn write_outline<I: serde::Serialize>(node: &Node<I>, depth: usize, out: &mut St
         Element::Tool { name, .. } => format!("tool {name:?}"),
         Element::Working { label } => format!("working {label:?}"),
         Element::Composer { .. } => "composer".into(),
+        Element::RichText { .. }
+        | Element::Field { .. }
+        | Element::Choice { .. }
+        | Element::Dialog { .. } => "unsupported v3 component".into(),
     };
     out.push_str(&format!("{pad}{line}{notes}\n"));
     if let Element::Stack { children, .. } | Element::List { children, .. } = &node.element {

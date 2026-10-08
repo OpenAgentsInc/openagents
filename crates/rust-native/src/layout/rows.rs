@@ -943,7 +943,25 @@ impl Ctx<'_> {
                 )
                 .0
             }
-            Element::Composer { .. } => 0.0,
+            // v3 editing and focus scopes are mounted by their adapter,
+            // outside the read-only transcript display list.
+            Element::Composer { .. }
+            | Element::Field { .. }
+            | Element::Choice { .. }
+            | Element::Dialog { .. } => 0.0,
+            Element::RichText { runs, .. } => {
+                let text: String = runs.iter().map(|run| run.text.as_str()).collect();
+                let style = self.style(13.0, Weight::Regular, ink);
+                self.para(
+                    &Para::plain(&text, style),
+                    x,
+                    y,
+                    Wrap::At(w),
+                    2.0,
+                    AlignX::Start,
+                )
+                .0
+            }
         }
     }
 
@@ -1235,6 +1253,8 @@ fn fit_columns(natural: &[f32], available: f32) -> Vec<f32> {
 pub(crate) fn plain(node: &Node<()>) -> String {
     match &node.element {
         Element::Text { value, .. } => value.clone(),
+        Element::RichText { runs, .. } => runs.iter().map(|run| run.text.as_str()).collect(),
+        Element::Field { label, .. } | Element::Choice { label, .. } => label.clone(),
         Element::Markdown { blocks } => markdown::plain(blocks),
         Element::Button { label, .. }
         | Element::Working { label }
@@ -1255,6 +1275,7 @@ pub(crate) fn plain(node: &Node<()>) -> String {
         Element::Stack { children, .. }
         | Element::List { children, .. }
         | Element::Message { children, .. }
+        | Element::Dialog { children, .. }
         | Element::Transcript { children, .. } => children
             .iter()
             .map(plain)

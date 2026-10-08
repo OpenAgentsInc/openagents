@@ -6,14 +6,14 @@ download page, and the landing page for the pairing QR code. It also serves a
 local, read-only task browser at `/app`.
 
 The site is drawn in four intensities of white on
-near-black (`src/palette.rs`). Three pages run a script, each under a
+near-black (`src/palette.rs`). The interactive pages run scripts under a
 policy that allows its one same-site script and same-origin requests: the
 homepage's terminal (`static/ask.js`, requests to `/ask`), `/live`'s
 map (`static/flow.js`, requests to `/api/flow/*`, drawn on a canvas in the
 desktop map's colors), and `/everglade`'s loader (`static/everglade.js`),
 whose policy also allows `'wasm-unsafe-eval'` to compile the Everglade
-build; every other response carries a content security policy that allows
-none.
+build. The component catalog permits its same-origin Rust/Wasm loader when
+configured. Other responses carry a policy that allows no script.
 
 The pages follow the private Coder service's site (`bins/coder-serve` in
 the `coder` repository), reimplemented here. See
@@ -25,12 +25,34 @@ proposed authenticated web workspace, Verse connection, and commercial
 interfaces. Those interfaces require new admitted adapters; the local task
 browser keeps its current loopback-only scope.
 
-Its first proposed deliverable is the public
+Its first deliverable is the public
 [`/components` catalog](../../docs/coder/rust-native/coder-components.md): web
 versions of every `coder-new` presentation component and state, composed from
-the shared Rust Native Coder library. Synthetic interactive fixtures and full
-screen previews must support exact Coder UI recreation. This route and the
-general web adapter are specified, not implemented.
+the shared Rust Native Coder library. The catalog composes `coder-ui` views through the reusable `rust-native-web`
+adapter. Synthetic interactive fixtures and full screen previews run their
+local state controller in Rust/Wasm. These examples connect to no live host,
+provider, or account.
+
+## Run the component catalog
+
+From the monorepo root, use an external build directory and a scratch asset
+output directory:
+
+```sh
+export CARGO_TARGET_DIR="$HOME/work/openagents-target-agent0"
+scripts/build-coder-components-web.sh "$(openagents scratch)/components-build"
+openagents lease build --keep-target-dir -- cargo build -p openagents-web
+"$CARGO_TARGET_DIR/debug/openagents-web" --store "$(openagents scratch)/unused-tasks" \
+  --components-build "$(openagents scratch)/components-build"
+```
+
+Open `http://127.0.0.1:4300/components`. Select a component, its fixture, and
+viewport dimensions. The full screen link isolates its Coder presentation.
+Without the Wasm build, the same routes render readable HTML previews.
+`/components/manifest.json` lists the source references and named variants.
+
+The build script requires the pinned `wasm32-unknown-unknown` target and the
+`wasm-bindgen` CLI version in `Cargo.lock`; it emits no TypeScript.
 
 ## Run it
 
@@ -48,6 +70,7 @@ the `Host` headers `127.0.0.1:4300` and `localhost:4300`.
 | `--store DIRECTORY` | `~/.openagents/tasks` | The task store `/app` reads. It is never created. |
 | `--listen ADDRESS` | `127.0.0.1:4300` | The address to bind. |
 | `--public-host HOST` | none | Another `Host` header the public pages answer, such as `openagents.com`. Repeatable. The task browser still answers only the local hosts. |
+| `--components-build DIRECTORY` | none | The generated `coder_components_web.js` and `coder_components_web_bg.wasm` files for local catalog interaction. Only these names are served. |
 | `--everglade DIRECTORY` | none | The Everglade web build (`scripts/build-everglade-web.sh`'s output, `everglade_web.js` and `everglade_web_bg.wasm`) with the pinned pack under `pack/`, served at `/everglade`. Without it, `/everglade` says Everglade is unavailable. |
 | `--pilot-config PRIVATE_JSON` | none | Explicit task root and create-only intake credential for `/pilot`. The pipeline owner provisions the capability separately. Without accepted terms, the proposed offer renders with intake unavailable. |
 
@@ -71,6 +94,7 @@ everything it serves is compiled in or read from this repository.
 | `/connect` | Landing page for `https://openagents.com/connect#<code>` | Renders; no script, no referrer. |
 | `/.well-known/apple-app-site-association`, `/.well-known/assetlinks.json` | Universal link and App Link claims for `/connect` | Serves. |
 | `/u/{login}` | `Backend::profile` | Says the backend isn't connected. |
+| `/components`, `/components/{component}` | Shared Coder components, named synthetic variants, typed controls, source references, and full screen previews | Renders; Rust/Wasm interaction requires `--components-build`. |
 | `/app`, `/app/tasks/{id}` | The local task store | Reads the store; local hosts only. |
 
 The header links Download, Docs, and Pilot; the footer links the terms and the

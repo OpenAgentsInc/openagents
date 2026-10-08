@@ -601,6 +601,14 @@ impl Builder<'_, '_> {
                 }
                 out
             }
+            Element::RichText { .. }
+            | Element::Field { .. }
+            | Element::Choice { .. }
+            | Element::Dialog { .. } => {
+                let mut out = Ak::new(Role::Label);
+                out.set_value("Unsupported v3 component");
+                out
+            }
         };
         if let Some(rect) = rect {
             out.set_bounds(self.bounds(rect));

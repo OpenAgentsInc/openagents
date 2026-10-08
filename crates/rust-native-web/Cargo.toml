@@ -1,0 +1,21 @@
+[package]
+name = "rust-native-web"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Escaped semantic HTML and keyed browser mounting for Rust Native."
+license = "Apache-2.0"
+
+[features]
+default = []
+browser = ["dep:wasm-bindgen", "dep:web-sys"]
+
+[dependencies]
+rust-native = { path = "../rust-native" }
+serde = { version = "1", features = ["derive"] }
+wasm-bindgen = { version = "0.2.128", optional = true }
+web-sys = { version = "0.3", optional = true, features = ["Window", "Document", "Element", "Node", "NodeList", "NamedNodeMap", "Attr", "HtmlElement", "HtmlInputElement", "HtmlTextAreaElement", "HtmlDialogElement", "DomTokenList", "DomRect"] }
+
+[lints]
+workspace = true

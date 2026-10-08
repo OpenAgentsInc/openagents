@@ -1,0 +1,13 @@
+Coder UI source presentation
+
+The Coder source profile, conversation components, and fixtures reimplement
+public presentation from OpenAgents' coder-new and coder-terminal crates.
+They contain no sibling repository backend or runtime implementation.
+
+Markdown tables, links, quote bars, rules, and diff geometry retain the
+grok-build source attribution recorded in coder-terminal:
+Apache-2.0, Copyright 2023-2026 SpaceXAI.
+
+The Grok Night theme is the public asset retained by code-highlight at
+assets/grok-build/grok-night.tmTheme. Syntect and two-face retain their
+own licenses. The source role remapping is Coder's public USGC profile.

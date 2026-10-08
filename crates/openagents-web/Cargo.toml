@@ -13,6 +13,9 @@ paper-mono = { path = "../paper-mono" }
 axum = "0.8"
 base64 = "0.22"
 coder = { path = "../coder" }
+coder-ui = { path = "../coder-ui" }
+rust-native = { path = "../rust-native" }
+rust-native-web = { path = "../rust-native-web" }
 discovery = { path = "../discovery" }
 futures-util = "0.3"
 hmac = "0.12.1"

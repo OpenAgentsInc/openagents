@@ -1339,6 +1339,12 @@ impl<'a> Flow<'a> {
                 self.text(&node.key, &format!("{name} {detail}"), Intensity::Half);
             }
             Element::Working { label } => self.text(&node.key, label, Intensity::Half),
+            Element::RichText { .. }
+            | Element::Field { .. }
+            | Element::Choice { .. }
+            | Element::Dialog { .. } => {
+                self.text(&node.key, "Unsupported v3 component", Intensity::Half);
+            }
             Element::Surface { .. } | Element::Composer { .. } => {}
         }
     }

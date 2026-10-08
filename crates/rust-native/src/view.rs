@@ -11,6 +11,9 @@ use std::fmt;
 use std::io::{self, Write};
 
 pub const SCHEMA: &str = "rust-native.view.v2";
+/// Explicit opt-in for fields, styled text, choices, and dialogs. Existing
+/// constructors continue to emit v2, and v2 refuses these added elements.
+pub const SCHEMA_V3: &str = "rust-native.view.v3";
 pub const MAX_VIEW_BYTES: usize = 512 * 1024;
 pub const MAX_NODES: usize = 1_024;
 pub const MAX_DEPTH: usize = 16;
@@ -77,6 +80,41 @@ pub enum Element<I> {
     Text {
         value: String,
         role: TextRole,
+    },
+    /// Selectable text whose runs preserve application-supplied presentation.
+    /// Runs contain no markup, links, or executable payloads.
+    RichText {
+        runs: Vec<RichRun>,
+        role: TextRole,
+    },
+    /// An editable value. Changes carry this node's activation identity and
+    /// a bounded value; the current tree supplies `on_change`.
+    Field {
+        label: String,
+        value: String,
+        placeholder: String,
+        secret: bool,
+        multiline: bool,
+        enabled: bool,
+        max_bytes: usize,
+        on_change: I,
+    },
+    /// A selectable action. Its selected state is explicit, not inferred
+    /// from a color or label. Selection remains application state.
+    Choice {
+        label: String,
+        selected: bool,
+        enabled: bool,
+        intent: I,
+        children: Vec<Node<I>>,
+    },
+    /// A modal focus scope. Dismissal resolves `on_close`; the application
+    /// owns whether it remains open. The adapter restores originating focus.
+    Dialog {
+        label: String,
+        open: bool,
+        on_close: I,
+        children: Vec<Node<I>>,
     },
     /// A control that runs `intent`. `label` is its visible label, or,
     /// with a circular `icon`, its spoken name.
@@ -152,6 +190,20 @@ pub enum Element<I> {
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         focus: bool,
     },
+}
+
+/// A styled Unicode run. Colors use the same generic sRGB values as `Style`.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct RichRun {
+    pub text: String,
+    pub foreground: Option<crate::style::Color>,
+    pub background: Option<crate::style::Color>,
+    pub bold: bool,
+    pub italic: bool,
+    pub underline: bool,
+    pub strike: bool,
+    pub dim: bool,
 }
 
 /// The most choices a composer offers.
@@ -310,6 +362,24 @@ pub struct Activation {
     pub node: String,
 }
 
+/// A field change contains identity and data, never a replacement intent.
+/// It is local input data and must not be logged for secret fields.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FieldChange {
+    pub activation: Activation,
+    pub value: String,
+}
+
+impl fmt::Debug for FieldChange {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("FieldChange")
+            .field("activation", &self.activation)
+            .field("value", &"[redacted]")
+            .finish()
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ViewError {
     Schema,
@@ -342,11 +412,11 @@ impl fmt::Display for ViewError {
             Self::TextLimit => f.write_str("view text exceeds its byte bound"),
             Self::ViewLimit => f.write_str("view exceeds its encoded byte bound"),
             Self::StyleBounds => f.write_str("view style exceeds its geometry bound"),
-            Self::MissingLabel => f.write_str("button, list, or surface requires a nonempty label"),
+            Self::MissingLabel => f.write_str("control or surface requires a nonempty label"),
             Self::Encoding(error) => write!(f, "invalid Rust Native view encoding: {error}"),
             Self::StaleActivation => f.write_str("activation does not name the current view"),
-            Self::NotInteractive => f.write_str("activation does not name a button"),
-            Self::Disabled => f.write_str("button is disabled"),
+            Self::NotInteractive => f.write_str("event does not name an interactive control"),
+            Self::Disabled => f.write_str("control is disabled"),
         }
     }
 }
@@ -368,8 +438,17 @@ impl<I: Serialize> View<I> {
         }
     }
 
+    pub fn new_v3(instance: impl Into<String>, revision: u64, root: Node<I>) -> Self {
+        Self {
+            schema: SCHEMA_V3.into(),
+            instance: instance.into(),
+            revision,
+            root,
+        }
+    }
+
     pub fn validate(self) -> Result<ValidatedView<I>, ViewError> {
-        if self.schema != SCHEMA {
+        if self.schema != SCHEMA && self.schema != SCHEMA_V3 {
             return Err(ViewError::Schema);
         }
         if !crate::valid_id(&self.instance) || self.revision == 0 {
@@ -378,6 +457,17 @@ impl<I: Serialize> View<I> {
         let mut keys = HashSet::new();
         let mut pending = vec![(&self.root, 1)];
         while let Some((node, depth)) = pending.pop() {
+            if self.schema == SCHEMA
+                && matches!(
+                    node.element,
+                    Element::Field { .. }
+                        | Element::RichText { .. }
+                        | Element::Choice { .. }
+                        | Element::Dialog { .. }
+                )
+            {
+                return Err(ViewError::Schema);
+            }
             if depth > MAX_DEPTH {
                 return Err(ViewError::DepthLimit);
             }
@@ -456,6 +546,8 @@ impl<I: Serialize> View<I> {
                 | Element::List { children, .. }
                 | Element::Transcript { children, .. }
                 | Element::Message { children, .. }
+                | Element::Dialog { children, .. }
+                | Element::Choice { children, .. }
                 | Element::Tool { children, .. } => {
                     match &node.element {
                         Element::Transcript {
@@ -490,6 +582,38 @@ impl<I: Serialize> View<I> {
                                 return Err(ViewError::MissingLabel);
                             }
                         }
+                        Element::Dialog { label, .. } => {
+                            check_text(label)?;
+                            if label.trim().is_empty() {
+                                return Err(ViewError::MissingLabel);
+                            }
+                        }
+                        Element::Choice { label, .. } => {
+                            check_text(label)?;
+                            if label.trim().is_empty() {
+                                return Err(ViewError::MissingLabel);
+                            }
+                            let mut descendants: Vec<_> = children.iter().collect();
+                            while let Some(child) = descendants.pop() {
+                                match &child.element {
+                                    Element::Button { .. }
+                                    | Element::Choice { .. }
+                                    | Element::Field { .. }
+                                    | Element::Composer { .. }
+                                    | Element::Dialog { .. }
+                                    | Element::Tool { .. }
+                                    | Element::Transcript { .. } => {
+                                        return Err(ViewError::NotInteractive);
+                                    }
+                                    Element::Stack { children, .. }
+                                    | Element::List { children, .. }
+                                    | Element::Message { children, .. } => {
+                                        descendants.extend(children)
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
                         _ => {}
                     }
                     if let Element::List { label, .. } = &node.element {
@@ -504,6 +628,42 @@ impl<I: Serialize> View<I> {
                     pending.extend(children.iter().map(|node| (node, depth + 1)));
                 }
                 Element::Text { value, .. } => check_text(value)?,
+                Element::RichText { runs, .. } => {
+                    if runs.len() > MAX_NODES {
+                        return Err(ViewError::NodeLimit);
+                    }
+                    if runs.iter().map(|run| run.text.len()).sum::<usize>() > MAX_TEXT_BYTES {
+                        return Err(ViewError::TextLimit);
+                    }
+                }
+                Element::Field {
+                    label,
+                    value,
+                    placeholder,
+                    secret,
+                    multiline,
+                    max_bytes,
+                    ..
+                } => {
+                    check_text(label)?;
+                    check_text(placeholder)?;
+                    if label.trim().is_empty() {
+                        return Err(ViewError::MissingLabel);
+                    }
+                    if *max_bytes == 0
+                        || *max_bytes > crate::input::MAX_INPUT_VALUE_BYTES
+                        || value.len() > *max_bytes
+                    {
+                        return Err(ViewError::TextLimit);
+                    }
+                    // Secret values stay in the owning controller; a view
+                    // carries only the empty masked editing field.
+                    if (*secret && (!value.is_empty() || *multiline))
+                        || (!*multiline && value.contains(['\n', '\r']))
+                    {
+                        return Err(ViewError::TextLimit);
+                    }
+                }
                 Element::Surface { resource, label } => {
                     if !crate::valid_id(resource) {
                         return Err(ViewError::Identity);
@@ -612,6 +772,18 @@ impl<I> ValidatedView<I> {
                         ..
                     } => Ok(intent),
                     Element::Button { enabled: false, .. } => Err(ViewError::Disabled),
+                    Element::Choice {
+                        enabled: true,
+                        intent,
+                        ..
+                    } => Ok(intent),
+                    Element::Choice { enabled: false, .. } => Err(ViewError::Disabled),
+                    Element::Dialog {
+                        open: true,
+                        on_close,
+                        ..
+                    } => Ok(on_close),
+                    Element::Dialog { open: false, .. } => Err(ViewError::Disabled),
                     Element::Transcript {
                         earlier: Some(earlier),
                         ..
@@ -631,9 +803,61 @@ impl<I> ValidatedView<I> {
             | Element::List { children, .. }
             | Element::Transcript { children, .. }
             | Element::Message { children, .. }
+            | Element::Dialog { children, .. }
+            | Element::Choice { children, .. }
             | Element::Tool { children, .. } = &node.element
             {
-                pending.extend(children);
+                if !matches!(node.element, Element::Dialog { open: false, .. }) {
+                    pending.extend(children);
+                }
+            }
+        }
+        Err(ViewError::NotInteractive)
+    }
+}
+
+impl<I> ValidatedView<I> {
+    /// Resolve a local field change against the current tree. The caller
+    /// remains responsible for editing stamps and application validation.
+    pub fn change_field<'a>(&'a self, event: &FieldChange) -> Result<&'a I, ViewError> {
+        if event.activation.instance != self.0.instance
+            || event.activation.revision != self.0.revision
+        {
+            return Err(ViewError::StaleActivation);
+        }
+        let mut pending = vec![&self.0.root];
+        while let Some(node) = pending.pop() {
+            if node.key == event.activation.node {
+                return match &node.element {
+                    Element::Field { enabled: false, .. } => Err(ViewError::Disabled),
+                    Element::Field {
+                        max_bytes,
+                        multiline,
+                        on_change,
+                        ..
+                    } => {
+                        if event.value.len() > *max_bytes
+                            || (!multiline && event.value.contains(['\n', '\r']))
+                        {
+                            Err(ViewError::TextLimit)
+                        } else {
+                            Ok(on_change)
+                        }
+                    }
+                    _ => Err(ViewError::NotInteractive),
+                };
+            }
+            if let Element::Stack { children, .. }
+            | Element::List { children, .. }
+            | Element::Transcript { children, .. }
+            | Element::Message { children, .. }
+            | Element::Tool { children, .. }
+            | Element::Dialog { children, .. }
+            | Element::Choice { children, .. } = &node.element
+            {
+                if !matches!(node.element, Element::Dialog { open: false, .. }) {
+                    pending.extend(children);
+                }
             }
         }
         Err(ViewError::NotInteractive)
@@ -668,7 +892,13 @@ impl<I> ValidatedView<I> {
                 | Element::List { children, .. }
                 | Element::Transcript { children, .. }
                 | Element::Message { children, .. }
-                | Element::Tool { children, .. } => pending.extend(children),
+                | Element::Dialog { children, .. }
+                | Element::Choice { children, .. }
+                | Element::Tool { children, .. } => {
+                    if !matches!(node.element, Element::Dialog { open: false, .. }) {
+                        pending.extend(children);
+                    }
+                }
                 _ => {}
             }
         }

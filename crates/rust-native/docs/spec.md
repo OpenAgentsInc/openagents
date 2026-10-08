@@ -7,7 +7,8 @@ It does not mount views or provide an application runtime.
 
 ## View and interaction contract
 
-`View<I>` uses schema `rust-native.view.v2`, a surface `instance`, a positive
+`View::new` uses schema `rust-native.view.v2`; `View::new_v3` explicitly opts into
+`rust-native.view.v3`. Both carry a surface `instance`, a positive
 `revision`, and a root `Node<I>`. Each node contains a stable `key`, a resolved
 `Style`, and an element:
 
@@ -16,6 +17,10 @@ It does not mount views or provide an application runtime.
 | `Stack` | Ordered children on a horizontal or vertical axis, or `wrap`: left to right, continuing on the next line when the next child does not fit. An adapter without `wrap` lays the children out vertically. |
 | `List` | A labeled bounded window of stable rows. Paging and access to original data remain application responsibilities. |
 | `Text` | Unicode text with a body, heading, code, status, Markdown, or terminal role. A Markdown role conveys selectable document meaning; links and embedded content remain inert unless separately admitted by the application. It does not itself parse or render Markdown. A terminal role is one row, or one run of a row, of a fixed-cell character grid: adapters draw it monospaced on a single line, never wrap it, and keep every space. The application sizes the grid from the cell size its adapter reports. |
+| `RichText` (v3) | Selectable Unicode runs with generic foreground/background colors, bold, italic, underline, strikethrough, and dim state. Runs contain literal text, never HTML or links. Its TextRole distinguishes fixed-cell rows from wrapping text. |
+| `Field` (v3) | A labeled, bounded editable value with placeholder, enabled, multiline, and secret state. A `FieldChange` carries activation identity and a value; `change_field` resolves the current `on_change` intent after identity, enabled, line, and byte checks. Secret fields carry an empty initial value and cannot be multiline; the adapter and owning controller retain private input. Debug output redacts field changes. |
+| `Choice` (v3) | An enabled selectable action with an accessible label, explicit selected state, and optional presentation children. Children cannot contain interactive controls. Selection remains application state. |
+| `Dialog` (v3) | A labeled modal focus scope with explicit open state and children. Dismissal resolves its current `on_close` intent. A closed scope refuses descendant events. The adapter handles focus containment and restores originating focus. |
 | `Button` | A nonempty label, an enabled state, the application's typed intent, and an optional `icon`: a `glyph` from a closed set (`back`, `compose`, `edit`, `search`, `settings`, `pin`, `archive`, `restore`, `menu`, `history`, `folder`, `computer`, `cloud`, `add`, `arrow_up`, `stop`, `paperclip`, `clipboard`, `more`, `check`, `ask`, `flag`, `terminal`, `wallet`, `key`, `person`, `unchecked`, `checked`), `circular`, and `pill`. `unchecked` and `checked` make the button a checkbox: the box leads the label, which says what the setting allows, and activating it asks the application to flip the setting. A circular icon draws only the glyph in a circle, and the label becomes its spoken name; otherwise the glyph leads the visible label, and with `pill` both sit in a filled capsule, as a suggestion chip or a selector. An adapter that can't draw the glyph shows the label. An optional `shortcut` is a bounded display hint; it grants no activation or key binding. |
 | `Surface` | A nonempty accessibility label and an opaque local resource ID. An adapter explicitly registers the renderer; the tree cannot name a URL, library, executable, or shader to load. |
 | `Transcript` | A conversation, oldest row first, with a nonempty label and an optional `earlier` control (label, `loading`, intent). Adapters keep the newest row in view while the reader is at the bottom, stop following when the reader scrolls up, and then offer a jump to the bottom. Activating the transcript node runs `earlier` unless it is loading. An optional `source` names a transcript source that holds the rows instead of `children`, which must then be empty (see [Transcript layout](#transcript-layout)). |
@@ -43,8 +48,12 @@ code, not sandboxed plugin code.
 Input byte and nesting limits apply before decoding. Constructed trees also
 pass structural and encoded limits. These bounds apply to one view, not an
 application's backing data store. Use bounded windows for long content while
-retaining access to every original record. The v2 schema refuses earlier
-versions rather than silently converting them.
+retaining access to every original record. Both schemas refuse earlier versions
+rather than silently converting them. V2 also refuses the four added v3
+elements. Existing v2 constructors and serialized views retain their schema and
+meaning; adapters must explicitly declare v3 support before mounting the new
+elements. The transcript display list's row admission remains v2 and does not
+establish v3 native rendering.
 
 Buttons inside transcript rows produce a native `button` widget with the
 semantic node key and enabled state. Their labels and bounds come from the
