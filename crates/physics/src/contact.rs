@@ -145,6 +145,7 @@ impl Motion {
         }
     }
 
+    #[inline(always)]
     fn push_axis(&mut self, impulse: DVec3, angular: DVec3, delta: f64) {
         if self.inverse_mass == 0.0 {
             return;
@@ -155,6 +156,7 @@ impl Motion {
         self.record_change(old);
     }
 
+    #[inline(always)]
     fn push_tangents(&mut self, impulse: DVec3, angular: [DVec3; 2], delta: [f64; 2]) {
         if self.inverse_mass == 0.0 {
             return;
