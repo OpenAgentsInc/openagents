@@ -1697,6 +1697,19 @@ mod tests {
         scene.edits.set_group_fallbacks([0].into_iter().collect());
         assert_eq!(shown(&scene.edits.group_fallbacks()),1);
         assert!(near.level.drawn_with_fallback(false,&scene.edits.group_fallbacks()));
+        let first = ranges[0][0];
+        scene.edits.write(first.first, vec![first.base; first.count as usize]);
+        let seen = scene.edits.revision();
+        scene.edits.set_group_fallbacks([0].into_iter().collect());
+        assert_eq!(scene.edits.revision(),seen);
+        let second = ranges[1][0];
+        scene.edits.write(second.first, vec![second.base; second.count as usize]);
+        let (later,revision) = scene.edits.since(seen);
+        assert!(revision>seen);
+        assert_eq!(later,vec![(second.first,vec![second.base; second.count as usize])]);
+        for (i,range) in [(0,first),(1,second)] {
+            scene.edits.write(range.first,scene.range_indices(i,&range));
+        }
         scene.edits.set_group_fallbacks(Default::default());
         assert_eq!(shown(&scene.edits.group_fallbacks()),1);
         assert!(!near.level.drawn_with_fallback(false,&scene.edits.group_fallbacks()));
