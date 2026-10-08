@@ -879,6 +879,9 @@ enum Outcome {
 }
 
 enum JobState {
+    /// Validated offline layers waiting for the normal delivery poll.
+    #[cfg(any(test, target_arch = "wasm32"))]
+    Ready(Option<Layered>),
     /// A worker thread bakes and sends the result.
     #[cfg(not(target_arch = "wasm32"))]
     Thread(std::sync::mpsc::Receiver<Option<Outcome>>),
@@ -917,8 +920,8 @@ impl BakeJob {
         Self::start_layered(scene, light, settings, key, None)
     }
 
-    /// [`Self::start`], using `layers` instead when they fit the scene. A
-    /// target without threads always bakes.
+    /// [`Self::start`], using `layers` instead when they fit the scene.
+    /// Targets without threads prepare matching layers once at load.
     #[must_use]
     pub fn start_layered(
         scene: Arc<TexturedScene>,
@@ -979,14 +982,23 @@ impl BakeJob {
 
     #[cfg(target_arch = "wasm32")]
     fn spawn(
-        _: &Arc<TexturedScene>,
+        scene: &Arc<TexturedScene>,
         _: BakeLight,
         _: BakeSettings,
         _: u64,
-        _: Option<LayerChoice>,
+        layers: Option<LayerChoice>,
         _: &Arc<AtomicBool>,
     ) -> Option<JobState> {
-        None
+        Self::inline_layers(scene, layers)
+    }
+
+    #[cfg(any(test, target_arch = "wasm32"))]
+    fn inline_layers(scene: &TexturedScene, layers: Option<LayerChoice>) -> Option<JobState> {
+        let layered = layers?
+            .apply(scene)
+            .map_err(|error| eprintln!("verse: baking light at load: {error}"))
+            .ok()?;
+        Some(JobState::Ready(Some(layered)))
     }
 
     /// Whether the bake has finished or failed.
@@ -1005,6 +1017,8 @@ impl BakeJob {
     /// delivers the vertices to the scene's slot and returns the probes.
     pub fn poll(&mut self) -> Option<AmbientProbes> {
         let outcome = match &mut self.state {
+            #[cfg(any(test, target_arch = "wasm32"))]
+            JobState::Ready(layered) => Some(layered.take().map(Outcome::Layered)),
             #[cfg(not(target_arch = "wasm32"))]
             JobState::Thread(receive) => match receive.try_recv() {
                 Ok(outcome) => Some(outcome),
@@ -1394,6 +1408,41 @@ mod tests {
         let lamps = scene.baked.take_lamps().unwrap();
         assert_eq!(lamps[1], layers.lamps[0].1);
         assert_eq!(lamps[0], [0; 4]);
+    }
+
+    #[test]
+    fn threadless_jobs_deliver_matching_layers_once_without_stepping() {
+        let mut scene = TexturedScene::default();
+        ground(&mut scene, [0.3; 3]);
+        let layers = Arc::new(layers_for(&scene));
+        let choice = LayerChoice {
+            layers: layers.clone(),
+            sun: Some(0),
+            ratio: 1.0,
+        };
+        let state = BakeJob::inline_layers(&scene, Some(choice.clone())).unwrap();
+        assert!(matches!(state, JobState::Ready(_)));
+        let mut job = BakeJob {
+            slot: scene.baked.clone(),
+            light: LIGHT,
+            settings: settings(),
+            key: 1,
+            cancel: Arc::new(AtomicBool::new(false)),
+            state,
+            layered: false,
+        };
+        assert!(!job.finished());
+        assert!(scene.baked.take().is_none());
+        assert!(job.poll().is_some());
+        assert!(job.finished() && job.layered());
+        assert_eq!(scene.baked.take().unwrap(), layers.sky);
+        assert_eq!(scene.baked.take_lamps().unwrap()[1], layers.lamps[0].1);
+        assert!(job.poll().is_none());
+        assert!(scene.baked.take().is_none());
+        assert!(BakeJob::inline_layers(&scene, None).is_none());
+        let mut other = TexturedScene::default();
+        ground(&mut other, [0.8; 3]);
+        assert!(BakeJob::inline_layers(&other, Some(choice)).is_none());
     }
 
     #[test]

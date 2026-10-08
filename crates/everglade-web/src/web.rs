@@ -348,6 +348,9 @@ async fn run() -> Result<(), String> {
         runtime.install_grove_bytes(&bytes)?;
     } else {
         let kit = download_kit(&window).await;
+        if kit.is_some() {
+            download_bake(&window).await;
+        }
         status("Opening Everglade…");
         runtime.install_everglade_bytes_with_kit(&bytes, kit.as_deref())?;
     }
@@ -554,6 +557,25 @@ async fn download_kit(window: &Window) -> Option<Vec<u8>> {
             )));
             None
         }
+    }
+}
+
+/// Offers the verified offline layers before the town creates its light job.
+async fn download_bake(window: &Window) {
+    use everglade_pack::kit_bake;
+    let file = kit_bake::pinned();
+    if file.bytes == 0 {
+        return;
+    }
+    let url = format!("/everglade/kit/bake/{}.vlay", file.sha256);
+    match fetch_pinned(window, &url, file.bytes)
+        .await
+        .and_then(|bytes| kit_bake::decode_pinned(&bytes))
+    {
+        Ok(layers) => kit_bake::offer(layers),
+        Err(error) => web_sys::console::warn_1(&JsValue::from_str(&format!(
+            "Everglade uses load-time light: {error}"
+        ))),
     }
 }
 
