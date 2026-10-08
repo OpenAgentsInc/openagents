@@ -26,7 +26,7 @@
 //! that are damaged, loose, or broken leave the static cells: their
 //! placements' triangles are made degenerate in the uploaded indices
 //! ([`crate::pbr::textured::IndexEdits`]) and their chunks draw in the
-//! frame's figure, posed each frame from their bodies. At most
+//! frame's rigid instance stream, transformed on the GPU. At most
 //! [`MAX_LIVE`] buildings are raised at once and at most [`MAX_CHUNKS`]
 //! chunks live. A raised building that took no damage goes back to the
 //! static cells at once; a damaged one regrows whole after [`REGROW`]
@@ -42,11 +42,12 @@ use super::hammer::{self, Hammer};
 use super::kit::{self, CORNER_TRIM, Draft, SEAM, WALL_TOP};
 use super::meteor::{self, Strike, Swarm};
 use super::site::{Blow, Cuboid, Link, Matter, PieceSpec, Role, Side, Site, Status, Target};
-use super::{BREAK, HIT, join};
+use super::{BREAK, HIT};
 use crate::controller::{Footprint, PlayerController};
 use crate::mesh::Mesh;
 use crate::pbr::textured::{
-    Figure, IndexRange, Primitive, TexturedMesh, TexturedScene, TexturedVertex, UNBAKED,
+    DynamicInstance, Figure, IndexRange, InstancedFigure, Primitive, TexturedMesh, TexturedScene,
+    TexturedVertex, UNBAKED,
 };
 use crate::pbr::textured_bake::AmbientProbes;
 use crate::zones::everglade::floaters::{FLOAT, Floater, Painter};
@@ -85,9 +86,6 @@ pub const POOL_BYTES: usize = 40 * 1024 * 1024;
 /// The fraction of [`POOL_BYTES`] the town keeps its debris under, so a
 /// strike's new chunks fit without dropping any.
 const POOL_HEADROOM: f32 = 0.8;
-/// Vertices the pool may hold before it shrinks when three quarters sit
-/// empty.
-const SHRINK_FLOOR: usize = 1 << 16;
 /// Seconds a damaged building rests, with the player at least
 /// [`REGROW_DISTANCE`] m away, before it stands whole again.
 pub const REGROW: f32 = 60.0;
@@ -119,15 +117,6 @@ const WARM_BLOCKS: usize = 2;
 /// stand on it, m.
 const FOOTING: f32 = 0.5;
 /// Where a chunk that is gone, or a pool slot nobody uses, is drawn: a
-/// point under the ground.
-const COLLAPSED: TexturedVertex = TexturedVertex {
-    pos: [0.0, -50.0, 0.0],
-    normal: [0.0, 1.0, 0.0],
-    uv: [0.0, 0.0],
-    color: [0, 0, 0, 0],
-    light: UNBAKED,
-};
-
 /// One kit piece of a town building: its draft, the layout placements
 /// drawn with it (its host first), its chunks' shape, and, for a roof
 /// span, the surface the player stands on.
@@ -276,6 +265,12 @@ pub struct TownProfile {
     pub solids_ms: f32,
     pub posed_vertices: usize,
     pub chunks: usize,
+    pub rigid_instances: usize,
+    pub awake_bodies: usize,
+    pub sleeping_bodies: usize,
+    pub merged_chunks: usize,
+    pub contact_points: usize,
+    pub warm_candidates: usize,
 }
 
 /// Now, where the target has a clock; a browser's has none.
@@ -605,18 +600,14 @@ impl Target for Wreck {
     }
 }
 
-/// Where one chunk's triangles go in the figure's town vertices.
+/// One chunk part's source mesh and owning piece.
 #[derive(Clone, Copy, Debug)]
 struct Span {
     /// The site piece, its chunk, and the chunk's part.
     piece: usize,
     chunk: usize,
     part: usize,
-    shape: usize,
-    /// The pool material the part draws in.
-    material: usize,
-    start: usize,
-    len: usize,
+    mesh: usize,
 }
 
 /// How a site piece looks: its chunk shape and its house's paint.
@@ -626,80 +617,43 @@ struct Look {
     paint: usize,
 }
 
-/// The town's figure: its images and materials, one mesh with a primitive
-/// per material sized to hold the drawn chunks, and their posed vertices.
+/// Immutable chunk meshes and this frame's rigid transforms.
 struct Pool {
-    /// Images and materials, no meshes.
     kit: TexturedScene,
-    /// Vertices each material's primitive holds, and where each starts.
-    caps: Vec<usize>,
-    offsets: Vec<usize>,
-    /// Vertices each material used last frame.
-    used: Vec<usize>,
     scene: Arc<TexturedScene>,
-    posed: Vec<TexturedVertex>,
+    meshes: BTreeMap<(usize, usize, usize, usize), usize>,
     spans: Vec<Span>,
-    /// The site pieces drawn, in order.
     drawn: Vec<usize>,
-    /// The most vertices the pool holds: its geometry budget.
+    instances: Vec<DynamicInstance>,
+    previous: BTreeMap<u64, Mat4>,
     limit: usize,
 }
 
-/// Bytes the pool's geometry takes per vertex it holds: the vertex and its
-/// index.
 const VERTEX_BYTES: usize = std::mem::size_of::<TexturedVertex>() + 4;
 
 impl Pool {
     fn new(kit: TexturedScene) -> Self {
-        let materials = kit.materials.len();
-        let mut pool = Self {
+        Self {
+            scene: Arc::new(kit.clone()),
             kit,
-            caps: vec![0; materials],
-            offsets: vec![0; materials],
-            used: vec![0; materials],
-            scene: Arc::new(TexturedScene::default()),
-            posed: Vec::new(),
+            meshes: BTreeMap::new(),
             spans: Vec::new(),
             drawn: Vec::new(),
+            instances: Vec::new(),
+            previous: BTreeMap::new(),
             limit: POOL_BYTES / VERTEX_BYTES,
-        };
-        pool.build();
-        pool
-    }
-
-    /// The vertices the pool holds, drawn or not.
-    fn held(&self) -> usize {
-        self.caps.iter().sum()
-    }
-
-    /// Rebuilds the scene for the current capacities.
-    fn build(&mut self) {
-        let mut scene = self.kit.clone();
-        let mut primitives = Vec::new();
-        let mut offset = 0;
-        for (material, &cap) in self.caps.iter().enumerate() {
-            self.offsets[material] = offset;
-            offset += cap;
-            if cap > 0 {
-                primitives.push(Primitive {
-                    vertices: vec![COLLAPSED; cap],
-                    indices: (0..cap as u32).collect(),
-                    material,
-                });
-            }
         }
-        scene.add_mesh(TexturedMesh { primitives });
-        self.scene = Arc::new(scene);
-        self.posed = vec![COLLAPSED; offset];
-        self.used = vec![0; self.caps.len()];
     }
 
-    /// Lays out the chunks of the site pieces `drawn` (by their `looks`)
-    /// that `live` keeps, in the pool materials `materials` holds for each
-    /// pack material and paint. The capacities grow when the chunks don't
-    /// fit and shrink, freeing the old buffers, when most of them sit
-    /// empty; they never pass the pool's limit, and past it the last
-    /// chunks are left out.
+    fn held(&self) -> usize {
+        self.scene
+            .meshes
+            .iter()
+            .flat_map(|m| &m.primitives)
+            .map(|p| p.vertices.len())
+            .sum()
+    }
+
     fn pack(
         &mut self,
         drawn: Vec<usize>,
@@ -708,16 +662,36 @@ impl Pool {
         materials: &BTreeMap<(u16, usize), usize>,
         live: &dyn Fn(usize, usize) -> bool,
     ) {
-        let mut need = vec![0usize; self.caps.len()];
-        let mut total = 0;
-        let mut entries: Vec<(usize, Span)> = Vec::new();
+        // Keep cached source geometry within the same budget as live debris.
+        let mut missing = BTreeSet::new();
+        let mut added = 0;
         for &piece in &drawn {
             let Look { shape, paint } = looks[piece];
             for (chunk, mesh) in meshes[shape].iter().enumerate() {
                 if !live(piece, chunk) {
                     continue;
                 }
-                for (part, (source, vertices)) in mesh.parts.iter().enumerate() {
+                for (part, (_, vertices)) in mesh.parts.iter().enumerate() {
+                    let key = (shape, paint, chunk, part);
+                    if !self.meshes.contains_key(&key) && missing.insert(key) {
+                        added += vertices.len();
+                    }
+                }
+            }
+        }
+        if self.held() + added > self.limit {
+            self.scene = Arc::new(self.kit.clone());
+            self.meshes.clear();
+        }
+        let mut spans = Vec::new();
+        let mut total = 0;
+        for &piece in &drawn {
+            let Look { shape, paint } = looks[piece];
+            for (chunk, chunk_mesh) in meshes[shape].iter().enumerate() {
+                if !live(piece, chunk) {
+                    continue;
+                }
+                for (part, (source, vertices)) in chunk_mesh.parts.iter().enumerate() {
                     let Some(&material) = materials.get(&(*source, paint)) else {
                         continue;
                     };
@@ -725,54 +699,41 @@ impl Pool {
                         continue;
                     }
                     total += vertices.len();
-                    entries.push((
-                        material,
-                        Span {
-                            piece,
-                            chunk,
-                            part,
-                            shape,
-                            material,
-                            start: need[material],
-                            len: vertices.len(),
-                        },
-                    ));
-                    need[material] += vertices.len();
+                    let key = (shape, paint, chunk, part);
+                    let mesh = if let Some(&mesh) = self.meshes.get(&key) {
+                        mesh
+                    } else {
+                        let scene = Arc::make_mut(&mut self.scene);
+                        let mesh = scene.add_mesh(TexturedMesh {
+                            primitives: vec![Primitive {
+                                vertices: vertices.clone(),
+                                indices: (0..vertices.len() as u32).collect(),
+                                material,
+                            }],
+                        });
+                        self.meshes.insert(key, mesh);
+                        mesh
+                    };
+                    spans.push(Span {
+                        piece,
+                        chunk,
+                        part,
+                        mesh,
+                    });
                 }
             }
         }
-        let grow = need.iter().zip(&self.caps).any(|(n, c)| n > c);
-        let held = self.held();
-        let shrink = held > SHRINK_FLOOR && total * 4 < held;
-        if grow || shrink || held > self.limit {
-            for (cap, &n) in self.caps.iter_mut().zip(&need) {
-                // Half again for what comes next, in whole triangles: `n`
-                // is a multiple of three, and so is the largest multiple
-                // of three at or under a cap at or over it.
-                let room = if n == 0 { 0 } else { (n + n / 2).max(2048) };
-                *cap = n.max(room - room % 3);
-            }
-            if self.held() > self.limit {
-                self.caps.clone_from(&need);
-            }
-            self.build();
-        }
-        self.spans = entries
-            .into_iter()
-            .map(|(material, mut span)| {
-                span.start += self.offsets[material];
-                span
-            })
-            .collect();
+        self.spans = spans;
         self.drawn = drawn;
     }
 
-    /// Empties the pool back to no capacity.
     fn clear(&mut self) {
-        self.caps.iter_mut().for_each(|c| *c = 0);
+        self.scene = Arc::new(self.kit.clone());
+        self.meshes.clear();
         self.spans.clear();
         self.drawn.clear();
-        self.build();
+        self.instances.clear();
+        self.previous.clear();
     }
 }
 
@@ -822,7 +783,6 @@ pub struct Town {
     solids: Option<Solids>,
     seen: (u64, u64),
     /// The character's scene, and the scene of it and the pool together.
-    combined: Option<(Arc<TexturedScene>, Arc<TexturedScene>, Arc<TexturedScene>)>,
     hammer: Hammer,
     wield: f32,
     swarm: Swarm,
@@ -1114,7 +1074,6 @@ impl Town {
             base,
             solids: None,
             seen: (u64::MAX, u64::MAX),
-            combined: None,
             hammer: Hammer::default(),
             wield: 0.0,
             swarm: Swarm::default(),
@@ -1585,7 +1544,13 @@ impl Town {
             physics_ms: between(swarm_done, physics_done),
             sync_ms: between(physics_done, sync_done),
             pose_ms: between(sync_done, pose_done),
-            posed_vertices: self.pool.posed.len(),
+            posed_vertices: 0,
+            rigid_instances: self.pool.instances.len(),
+            awake_bodies: self.wreck.site.debris_stats().awake,
+            sleeping_bodies: self.wreck.site.debris_stats().sleeping,
+            merged_chunks: self.wreck.site.debris_stats().merged,
+            contact_points: self.wreck.site.step_stats().contact_points,
+            warm_candidates: self.wreck.site.step_stats().warm_candidates,
             chunks: self
                 .wreck
                 .site
@@ -1843,11 +1808,11 @@ impl Town {
     /// now on, retiring the oldest debris past it.
     pub fn set_geometry_budget(&mut self, bytes: usize) {
         self.pool.limit = bytes / VERTEX_BYTES;
-        self.pool.drawn.clear();
+        self.pool.clear();
         self.sync();
     }
 
-    /// The bytes of geometry the town's figure holds now: its loose pieces
+    /// The bytes of source geometry the town's rigid stream holds now: its loose pieces
     /// and debris, drawn or kept for the next.
     #[must_use]
     pub fn geometry_bytes(&self) -> usize {
@@ -1918,115 +1883,90 @@ impl Town {
         self.solids.take()
     }
 
-    /// Poses every drawn chunk's triangles for this frame.
+    /// Updates one transform per chunk part without touching its vertices.
     fn pose(&mut self) {
         let site = &self.wreck.site;
         let pool = &mut self.pool;
-        let mut used = vec![0usize; pool.caps.len()];
+        pool.instances.clear();
+        let mut previous = BTreeMap::new();
         for span in &pool.spans {
             let piece = &site.pieces()[span.piece];
             let spec = &site.specs()[span.piece];
-            let (transform, shade) = match piece.status {
-                Status::Broken => (site.chunk_pose(span.piece, span.chunk), 0.8),
+            let (transform, shade, body, settled) = match piece.status {
+                Status::Broken => {
+                    let chunk = &piece.chunks[span.chunk];
+                    (
+                        site.chunk_pose(span.piece, span.chunk),
+                        0.8,
+                        chunk.body,
+                        chunk.settled.is_some(),
+                    )
+                }
                 _ => {
                     let damage = 1.0 - piece.hit_points as f32 / spec.hit_points.max(1) as f32;
-                    let frame = spec.chunks.get(span.chunk).map(Cuboid::frame);
                     (
-                        frame.map(|f| site.piece_pose(span.piece) * f),
+                        spec.chunks
+                            .get(span.chunk)
+                            .map(|c| site.piece_pose(span.piece) * c.frame()),
                         1.0 - 0.45 * damage,
+                        piece.body,
+                        false,
                     )
                 }
             };
-            let (_, source) = &self.wreck.meshes[span.shape][span.chunk].parts[span.part];
-            let out = &mut pool.posed[span.start..span.start + span.len];
-            match transform {
-                Some(m) => {
-                    for (o, v) in out.iter_mut().zip(source) {
-                        *o = TexturedVertex {
-                            pos: m.transform_point3(Vec3::from(v.pos)).to_array(),
-                            normal: m.transform_vector3(Vec3::from(v.normal)).to_array(),
-                            color: [
-                                (f32::from(v.color[0]) * shade) as u8,
-                                (f32::from(v.color[1]) * shade) as u8,
-                                (f32::from(v.color[2]) * shade) as u8,
-                                v.color[3],
-                            ],
-                            ..*v
-                        };
-                    }
-                }
-                None => out.fill(COLLAPSED),
-            }
-            let material = span.material;
-            used[material] = used[material].max(span.start + span.len - pool.offsets[material]);
+            let Some(current) = transform else {
+                continue;
+            };
+            let id = (u64::from(body.0) << 32)
+                | ((span.piece as u64) << 16)
+                | ((span.chunk as u64) << 8)
+                | span.part as u64;
+            pool.instances.push(DynamicInstance {
+                id,
+                mesh: span.mesh,
+                current,
+                previous: pool.previous.get(&id).copied().unwrap_or(current),
+                color: [shade, shade, shade, 1.0],
+                light: UNBAKED,
+                settled,
+            });
+            previous.insert(id, current);
         }
-        // What the last frame used past this frame's spans collapses.
-        for material in 0..pool.caps.len() {
-            let from = pool.offsets[material] + used[material];
-            let to = pool.offsets[material] + pool.used[material].min(pool.caps[material]);
-            if to > from {
-                pool.posed[from..to].fill(COLLAPSED);
-            }
-        }
-        pool.used = used;
+        pool.previous = previous;
     }
 
-    /// Joins the town's chunks to the character's `scene` once per
-    /// distinct pair of scenes.
-    pub fn prepare(&mut self, scene: Option<&Arc<TexturedScene>>) {
-        let Some(scene) = scene else {
-            self.combined = None;
-            return;
-        };
-        if self.pool.spans.is_empty() {
-            return;
-        }
-        if self.combined.as_ref().is_some_and(|(cast, own, _)| {
-            Arc::ptr_eq(cast, scene) && Arc::ptr_eq(own, &self.pool.scene)
-        }) {
-            return;
-        }
-        let joined = join(scene, &self.pool.scene);
-        self.combined = Some((scene.clone(), self.pool.scene.clone(), Arc::new(joined)));
-    }
+    /// Character geometry stays separate from the rigid chunk stream.
+    pub fn prepare(&mut self, _scene: Option<&Arc<TexturedScene>>) {}
 
-    /// The frame's figure: the character's `cast` figure followed by the
-    /// town's drawn chunks, lit by `probes` when the bake has them.
     #[must_use]
-    pub fn figure(&self, cast: Figure, probes: Option<&AmbientProbes>) -> Figure {
-        if self.pool.spans.is_empty() {
-            return cast;
-        }
-        match &self.combined {
-            Some((scene, own, joined))
-                if Arc::ptr_eq(scene, &cast.scene) && Arc::ptr_eq(own, &self.pool.scene) =>
-            {
-                let mut vertices = Vec::with_capacity(cast.vertices.len() + self.pool.posed.len());
-                vertices.extend_from_slice(&cast.vertices);
-                let start = vertices.len();
-                vertices.extend_from_slice(&self.pool.posed);
-                if let Some(probes) = probes {
-                    for (material, &used) in self.pool.used.iter().enumerate() {
-                        let from = start + self.pool.offsets[material];
-                        probes.shade(&mut vertices[from..from + used]);
-                    }
-                }
-                Figure {
-                    scene: joined.clone(),
-                    vertices: Arc::new(vertices),
-                }
-            }
-            _ => cast,
-        }
+    pub fn figure(&self, cast: Figure, _probes: Option<&AmbientProbes>) -> Figure {
+        cast
     }
 
-    /// The town's chunks alone as a figure, for a zone without a
-    /// character.
+    /// Rigid debris meshes and transforms, with ambient sampled per chunk.
     #[must_use]
-    pub fn own_figure(&self) -> Option<Figure> {
-        (!self.pool.spans.is_empty()).then(|| Figure {
+    pub fn instances(&self, probes: Option<&AmbientProbes>) -> Option<InstancedFigure> {
+        if self.pool.instances.is_empty() {
+            return None;
+        }
+        let mut instances = self.pool.instances.clone();
+        if let Some(probes) = probes {
+            for instance in &mut instances {
+                let mut center = [TexturedVertex::new(
+                    instance.current.w_axis.truncate(),
+                    instance
+                        .current
+                        .transform_vector3(Vec3::Y)
+                        .normalize_or(Vec3::Y),
+                    [0.0; 2],
+                )];
+                probes.shade(&mut center);
+                instance.light = center[0].light;
+            }
+        }
+        Some(InstancedFigure {
             scene: self.pool.scene.clone(),
-            vertices: Arc::new(self.pool.posed.clone()),
+            instances: Arc::new(instances),
         })
     }
 

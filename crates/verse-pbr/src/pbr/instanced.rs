@@ -98,15 +98,18 @@ pub fn unoctahedral(e: [i16; 2]) -> Vec3 {
 
 /// One instance's record, read per instance by the vertex shader: the rows
 /// of its mesh-to-world transform and where its baked light starts in the
-/// light texture, less its mesh's first vertex. 52 bytes.
+/// light texture, plus previous transforms for temporal reprojection. 128 bytes.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Pod, Zeroable)]
 pub struct Instance {
     /// The top three rows of the transform; the fourth is `0 0 0 1`.
     pub rows: [[f32; 4]; 3],
-    /// The light texel of the mesh's vertex 0 for this instance, modulo
-    /// 2³²: the shader adds the vertex index and wraps.
+    /// The preceding frame's transform for the same stable instance ID.
+    pub previous: [[f32; 4]; 3],
+    pub color: [f32; 4],
     pub light: u32,
+    pub ambient: u32,
+    pub pad: [u32; 2],
 }
 
 impl Instance {
@@ -118,7 +121,15 @@ impl Instance {
             [0.0, 1.0, 0.0, 0.0],
             [0.0, 0.0, 1.0, 0.0],
         ],
+        previous: [
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+        ],
+        color: [1.0; 4],
         light: 0,
+        ambient: 0,
+        pad: [0; 2],
     };
 
     /// An instance at `transform` whose light starts at `light`.
@@ -132,8 +143,134 @@ impl Instance {
                 t.z_axis.to_array(),
             ],
             light,
+            previous: [
+                t.x_axis.to_array(),
+                t.y_axis.to_array(),
+                t.z_axis.to_array(),
+            ],
+            ..Self::MERGED
         }
     }
+}
+
+impl Instance {
+    /// A rigid body's current and previous transforms and ambient override.
+    pub fn dynamic(instance: &textured::DynamicInstance) -> Self {
+        let mut record = Self::new(instance.current, u32::MAX);
+        let p = instance.previous.transpose();
+        record.previous = [
+            p.x_axis.to_array(),
+            p.y_axis.to_array(),
+            p.z_axis.to_array(),
+        ];
+        record.color = instance.color;
+        record.ambient = u32::from_le_bytes(instance.light);
+        record.pad = [instance.id as u32, (instance.id >> 32) as u32];
+        record
+    }
+}
+
+/// Uploads each rigid mesh once and records each primitive's index range.
+#[must_use]
+pub fn rigid_meshes(scene: &TexturedScene) -> (Prepared, Vec<Vec<Batch>>) {
+    let mut prepared = Prepared::default();
+    let meshes = scene
+        .meshes
+        .iter()
+        .map(|mesh| {
+            mesh.primitives
+                .iter()
+                .map(|primitive| {
+                    let base = prepared.vertices.len() as u32;
+                    let first = prepared.indices.len() as u32;
+                    prepared
+                        .vertices
+                        .extend(primitive.vertices.iter().map(GpuVertex::pack));
+                    prepared
+                        .indices
+                        .extend(primitive.indices.iter().map(|i| i + base));
+                    Batch {
+                        material: primitive.material,
+                        first,
+                        count: primitive.indices.len() as u32,
+                        min: textured::bounds(&primitive.vertices).0,
+                        max: textured::bounds(&primitive.vertices).1,
+                        level: textured::Level::Always,
+                        run: None,
+                    }
+                })
+                .collect()
+        })
+        .collect();
+    // The dynamic instances supply ambient directly; keep a valid empty light map.
+    (prepared, meshes)
+}
+
+/// Groups records by shared mesh, so repeated pieces draw together.
+#[must_use]
+pub fn rigid_frame(
+    meshes: &[Vec<Batch>],
+    instances: &[textured::DynamicInstance],
+) -> (Vec<Instance>, Vec<Batch>) {
+    let mut order: Vec<usize> = (0..instances.len()).collect();
+    order.sort_by_key(|&i| (instances[i].mesh, instances[i].id));
+    let mut records = Vec::with_capacity(order.len());
+    let mut batches = Vec::new();
+    let mut from = 0;
+    while from < order.len() {
+        let mesh = instances[order[from]].mesh;
+        let mut to = from + 1;
+        while to < order.len() && instances[order[to]].mesh == mesh {
+            to += 1;
+        }
+        let first = records.len() as u32;
+        records.extend(
+            order[from..to]
+                .iter()
+                .map(|&i| Instance::dynamic(&instances[i])),
+        );
+        if let Some(parts) = meshes.get(mesh) {
+            batches.extend(parts.iter().map(|part| {
+                let mut min = Vec3::splat(f32::INFINITY);
+                let mut max = Vec3::splat(f32::NEG_INFINITY);
+                for &index in &order[from..to] {
+                    for corner in 0..8 {
+                        let point = Vec3::new(
+                            if corner & 1 == 0 {
+                                part.min.x
+                            } else {
+                                part.max.x
+                            },
+                            if corner & 2 == 0 {
+                                part.min.y
+                            } else {
+                                part.max.y
+                            },
+                            if corner & 4 == 0 {
+                                part.min.z
+                            } else {
+                                part.max.z
+                            },
+                        );
+                        let point = instances[index].current.transform_point3(point);
+                        min = min.min(point);
+                        max = max.max(point);
+                    }
+                }
+                Batch {
+                    min,
+                    max,
+                    run: Some(Run {
+                        first,
+                        count: (to - from) as u32,
+                    }),
+                    ..*part
+                }
+            }));
+        }
+        from = to;
+    }
+    (records, batches)
 }
 
 /// A run of instance records that draws one shared mesh's index range.
@@ -557,7 +694,7 @@ mod tests {
         }
         assert!(worst < 0.05, "{worst} degrees");
         assert_eq!(std::mem::size_of::<GpuVertex>(), 28);
-        assert_eq!(std::mem::size_of::<Instance>(), 52);
+        assert_eq!(std::mem::size_of::<Instance>(), 128);
     }
 
     fn tree() -> TexturedMesh {
@@ -569,6 +706,110 @@ mod tests {
                 material: 0,
             }],
         }
+    }
+
+    #[test]
+    fn seven_hundred_rigid_chunks_share_uploaded_vertices_and_one_draw() {
+        let mut scene = TexturedScene::default();
+        scene.add_mesh(tree());
+        let (prepared, meshes) = rigid_meshes(&scene);
+        let instances: Vec<_> = (0..700)
+            .map(|id| textured::DynamicInstance {
+                id,
+                mesh: 0,
+                current: Mat4::from_translation(Vec3::X * id as f32),
+                previous: Mat4::from_translation(Vec3::X * (id as f32 - 0.25)),
+                color: [0.8, 0.7, 0.6, 1.0],
+                light: [100, 110, 120, 200],
+                settled: false,
+            })
+            .collect();
+        let (records, batches) = rigid_frame(&meshes, &instances);
+        assert_eq!(prepared.vertices.len(), 3, "one local source mesh");
+        assert_eq!(prepared.indices, [0, 1, 2]);
+        assert_eq!(records.len(), 700);
+        assert_eq!(batches.len(), 1);
+        assert_eq!(
+            batches[0].run,
+            Some(Run {
+                first: 0,
+                count: 700
+            })
+        );
+        let calls = draws(&batches, &[0]);
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].instances.count, 700);
+        assert_eq!(records[17].rows[0][3], 17.0);
+        assert_eq!(records[17].previous[0][3], 16.75);
+        assert_eq!(records[17].color, instances[17].color);
+        assert_eq!(records[17].light, u32::MAX);
+        assert_eq!(records[17].ambient.to_le_bytes(), instances[17].light);
+        assert_eq!(batches[0].min.x, 0.0);
+        assert_eq!(batches[0].max.x, 700.0);
+        assert_eq!(std::mem::offset_of!(Instance, previous), 48);
+        assert_eq!(std::mem::offset_of!(Instance, color), 96);
+        assert_eq!(std::mem::offset_of!(Instance, light), 112);
+    }
+
+    #[test]
+    fn rigid_records_sort_by_mesh_and_stable_id_without_losing_previous_pose() {
+        let mut scene = TexturedScene::default();
+        scene.add_mesh(tree());
+        scene.add_mesh(tree());
+        let (_, meshes) = rigid_meshes(&scene);
+        let instance = |id, mesh| textured::DynamicInstance {
+            id,
+            mesh,
+            current: Mat4::IDENTITY,
+            previous: Mat4::from_translation(Vec3::X * id as f32),
+            color: [1.0; 4],
+            light: [0; 4],
+            settled: false,
+        };
+        let (records, batches) =
+            rigid_frame(&meshes, &[instance(9, 1), instance(5, 0), instance(3, 0)]);
+        assert_eq!(
+            records.iter().map(|r| r.previous[0][3]).collect::<Vec<_>>(),
+            [3.0, 5.0, 9.0]
+        );
+        assert_eq!(batches.len(), 2);
+        assert_eq!(batches[0].run.unwrap().count, 2);
+        assert_eq!(batches[1].run.unwrap().first, 2);
+    }
+
+    #[test]
+    fn rigid_validation_rejects_bad_frames_and_rechecks_mutated_sources() {
+        let mut scene = TexturedScene::default();
+        scene.add_material(TexturedMaterial::default());
+        scene.add_mesh(tree());
+        let mut figure = textured::InstancedFigure {
+            scene: std::sync::Arc::new(scene),
+            instances: std::sync::Arc::new(vec![textured::DynamicInstance {
+                id: 1,
+                mesh: 0,
+                current: Mat4::IDENTITY,
+                previous: Mat4::IDENTITY,
+                color: [1.0; 4],
+                light: [0; 4],
+                settled: false,
+            }]),
+        };
+        figure.validate().unwrap();
+        let valid = figure.instances[0];
+        std::sync::Arc::make_mut(&mut figure.instances).push(valid);
+        assert!(figure.validate().is_err(), "duplicate stable IDs");
+        std::sync::Arc::make_mut(&mut figure.instances).pop();
+        std::sync::Arc::make_mut(&mut figure.instances)[0].previous =
+            Mat4::from_translation(Vec3::splat(f32::NAN));
+        assert!(figure.validate().is_err(), "nonfinite prior transforms");
+        std::sync::Arc::make_mut(&mut figure.instances)[0] = valid;
+        let before = figure.scene.clone();
+        std::sync::Arc::make_mut(&mut figure.scene).meshes[0].primitives[0].indices[0] = 100;
+        assert!(!std::sync::Arc::ptr_eq(&before, &figure.scene));
+        assert!(
+            figure.validate().is_err(),
+            "changed immutable source receives validation"
+        );
     }
 
     /// Four placements of one mesh, two instanced in one cell, one

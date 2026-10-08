@@ -107,6 +107,7 @@ struct Scene {
     /// The dynamic mesh's figure on the GPU, with the scene it was uploaded
     /// from; a different scene uploads again.
     figure: Option<(std::sync::Arc<TexturedScene>, TexturedGpu)>,
+    instances: Option<(std::sync::Arc<TexturedScene>, TexturedGpu)>,
     /// The world's water surface, waiting for the physical path's first
     /// frame, which uploads it.
     water_pending: Option<std::sync::Arc<crate::pbr::water::WaterSurface>>,
@@ -1291,6 +1292,9 @@ fn validate_frame(view: View, dynamic: &Mesh, ui: &UiBatch) -> Result<(), String
     if let Some(figure) = &dynamic.figure {
         figure.validate()?;
     }
+    if let Some(frame) = &dynamic.instances {
+        frame.validate()?;
+    }
     Ok(())
 }
 
@@ -1320,8 +1324,17 @@ pub(crate) fn mesh_resources(mesh: &Mesh) -> Result<verse_engine::quality::Resou
         .textured
         .iter()
         .chain(mesh.figure.iter().map(|figure| &figure.scene))
+        .chain(mesh.instances.iter().map(|frame| &frame.scene))
     {
-        scene.validate()?;
+        if mesh
+            .instances
+            .as_ref()
+            .is_some_and(|frame| std::sync::Arc::ptr_eq(&frame.scene, scene))
+        {
+            crate::pbr::textured::validate_rigid_scene(scene)?;
+        } else {
+            scene.validate()?;
+        }
         if scene.placements.is_empty() {
             // A figure: its mesh drawn once, a light texel a vertex.
             let (vertices, indices) = scene
@@ -1343,6 +1356,10 @@ pub(crate) fn mesh_resources(mesh: &Mesh) -> Result<verse_engine::quality::Resou
             let image = &scene.images[variant.texture];
             result.texture_bytes += verse_engine::mips::bytes(image.width, image.height, u32::MAX)?;
         }
+    }
+    if let Some(frame) = &mesh.instances {
+        result.geometry_bytes +=
+            (frame.instances.len() * std::mem::size_of::<crate::pbr::instanced::Instance>()) as u64;
     }
     result.retained_source_bytes = result.geometry_bytes + result.texture_bytes;
     Ok(result)
@@ -1444,6 +1461,7 @@ pub fn fit_frame(
     fitted.glow.truncate(glow);
     if !budget.overrun(frame_with(quality, &fitted)?).fits() {
         fitted.figure = None;
+        fitted.instances = None;
     }
     if !budget.overrun(frame_with(quality, &fitted)?).fits() {
         fitted.textured = None;
@@ -2440,6 +2458,7 @@ impl Scene {
             textured_baked: None,
             textured_edits: None,
             figure: None,
+            instances: None,
             water_pending: world.water.clone(),
             water: None,
             photo: None,
@@ -2696,6 +2715,20 @@ impl Scene {
                 gpu.write_vertices(queue, &figure.vertices);
             }
         }
+        if let Some(frame) = &dynamic.instances {
+            if self
+                .instances
+                .as_ref()
+                .is_none_or(|(scene, _)| !std::sync::Arc::ptr_eq(scene, &frame.scene))
+            {
+                self.instances = Some((
+                    frame.scene.clone(),
+                    photo.upload_instances(device, queue, frame),
+                ));
+            } else if let Some((_, gpu)) = &mut self.instances {
+                gpu.write_instances(device, queue, frame);
+            }
+        }
         if matches!(stage, Stage::Space(_))
             && let Err(error) = photo.prepare_space(device, queue)
         {
@@ -2764,6 +2797,10 @@ impl Scene {
                 .figure
                 .as_ref()
                 .and(self.figure.as_ref().map(|(_, gpu)| gpu)),
+            instances: dynamic
+                .instances
+                .as_ref()
+                .and(self.instances.as_ref().map(|(_, gpu)| gpu)),
             water: self.water.as_ref(),
         };
         photo.headroom = self.headroom;

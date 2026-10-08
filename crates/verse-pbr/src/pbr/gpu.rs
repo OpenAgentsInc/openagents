@@ -527,6 +527,7 @@ pub struct TexturedGpu {
     texels: usize,
     /// Whether this is a figure, whose vertices are rewritten each frame.
     figure: bool,
+    rigid_meshes: Vec<Vec<textured::Batch>>,
     /// The scene's index edits applied so far
     /// ([`textured::IndexEdits::revision`]); part of the static casters'
     /// identity, so a cached shadow redraws after an edit.
@@ -581,6 +582,49 @@ impl TexturedGpu {
         batch.level.drawn_with_fallback(
             self.near.get(i).copied().unwrap_or(true),
             &self.fallback_groups,
+        )
+    }
+
+    /// Updates only the rigid instances; mesh vertices stay on the GPU.
+    pub fn write_instances(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        frame: &textured::InstancedFigure,
+    ) {
+        let (records, batches) = instanced::rigid_frame(&self.rigid_meshes, &frame.instances);
+        let bytes: &[u8] = bytemuck::cast_slice(&records);
+        if bytes.len() as u64 > self.instances.size() {
+            self.instances = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("verse rigid transforms"),
+                size: (bytes.len() as u64).next_power_of_two(),
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+        }
+        if !bytes.is_empty() {
+            queue.write_buffer(&self.instances, 0, bytes);
+        }
+        self.batches = batches;
+        self.near = vec![true; self.batches.len()];
+    }
+
+    /// Rigid motion streams for temporal reprojection. Records are 128 bytes,
+    /// with current rows at 0 and previous rows at 48.
+    pub fn motion_buffers(
+        &self,
+    ) -> (
+        &wgpu::Buffer,
+        &wgpu::Buffer,
+        &wgpu::Buffer,
+        Vec<instanced::Draw>,
+    ) {
+        let order: Vec<usize> = (0..self.batches.len()).collect();
+        (
+            &self.vertices,
+            &self.indices,
+            &self.instances,
+            instanced::draws(&self.batches, &order),
         )
     }
 
@@ -949,8 +993,37 @@ fn textured_layout() -> [wgpu::VertexBufferLayout<'static>; 2] {
     const VERTEX: [wgpu::VertexAttribute; 4] = wgpu::vertex_attr_array![
         0 => Float32x3, 1 => Snorm16x2, 2 => Float32x2, 3 => Unorm8x4
     ];
-    const INSTANCE: [wgpu::VertexAttribute; 4] = wgpu::vertex_attr_array![
-        4 => Float32x4, 5 => Float32x4, 6 => Float32x4, 7 => Uint32
+    const INSTANCE: [wgpu::VertexAttribute; 6] = [
+        wgpu::VertexAttribute {
+            format: wgpu::VertexFormat::Float32x4,
+            offset: 0,
+            shader_location: 4,
+        },
+        wgpu::VertexAttribute {
+            format: wgpu::VertexFormat::Float32x4,
+            offset: 16,
+            shader_location: 5,
+        },
+        wgpu::VertexAttribute {
+            format: wgpu::VertexFormat::Float32x4,
+            offset: 32,
+            shader_location: 6,
+        },
+        wgpu::VertexAttribute {
+            format: wgpu::VertexFormat::Uint32,
+            offset: 112,
+            shader_location: 7,
+        },
+        wgpu::VertexAttribute {
+            format: wgpu::VertexFormat::Float32x4,
+            offset: 96,
+            shader_location: 8,
+        },
+        wgpu::VertexAttribute {
+            format: wgpu::VertexFormat::Uint32,
+            offset: 116,
+            shader_location: 9,
+        },
     ];
     [
         wgpu::VertexBufferLayout {
@@ -2171,6 +2244,20 @@ impl Photo {
         )
     }
 
+    /// Uploads immutable local meshes for a rigid instance stream.
+    pub fn upload_instances(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        frame: &textured::InstancedFigure,
+    ) -> TexturedGpu {
+        let (prepared, meshes) = instanced::rigid_meshes(&frame.scene);
+        let mut gpu = self.upload_textured_with(device, queue, &frame.scene, &prepared, true);
+        gpu.rigid_meshes = meshes;
+        gpu.write_instances(device, queue, frame);
+        gpu
+    }
+
     /// Writes a static scene's baked lamp light ([`crate::pbr::baked_layers`]),
     /// one texel a vertex in [`TexturedScene::merge`]'s order. The first
     /// delivery makes the lamp texture, laid out as the light texture is;
@@ -2381,7 +2468,7 @@ impl Photo {
             instances: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("verse textured instances"),
                 contents: bytemuck::cast_slice(records),
-                usage: wgpu::BufferUsages::VERTEX,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             }),
             batches: prepared.items.clone(),
             materials: scene.materials.clone(),
@@ -2392,6 +2479,7 @@ impl Photo {
             light_rows,
             texels: prepared.lights.len(),
             figure,
+            rigid_meshes: Vec::new(),
             edits: 0,
             near: vec![true; prepared.items.len()],
             detail_groups: scene.detail_groups.clone(),
@@ -2830,6 +2918,7 @@ impl Photo {
         self.encode_screen(queue, encoder, targets, &frame, Some(sun), &world);
         let order = Self::textured_order(world.textured, view, f32::INFINITY);
         let figure_order = Self::figure_order(world.figure, view);
+        let instances_order = Self::figure_order(world.instances, view);
 
         // Scene pass.
         let direct = self.post.is_none();
@@ -2900,6 +2989,7 @@ impl Photo {
             for which in [Pass::Opaque, Pass::Masked] {
                 self.draw_textured(&mut pass, world.textured, &order, which);
                 self.draw_textured(&mut pass, world.figure, &figure_order, which);
+                self.draw_textured(&mut pass, world.instances, &instances_order, which);
             }
             #[cfg(not(target_arch = "wasm32"))]
             if let Some((source, globals)) = world.streamed {
@@ -2916,6 +3006,7 @@ impl Photo {
             }
             self.draw_textured(&mut pass, world.textured, &order, Pass::Blended);
             self.draw_textured(&mut pass, world.figure, &figure_order, Pass::Blended);
+            self.draw_textured(&mut pass, world.instances, &instances_order, Pass::Blended);
             pass.set_pipeline(&self.pipelines.wide);
             for (buffer, count) in world.lines {
                 if count >= 2 {
@@ -3050,7 +3141,17 @@ impl Photo {
             // A cell outside the cascade's sides casts nothing into its map.
             let matrix = cascade.matrix;
             let keep = |b: &textured::Batch| textured::in_slab(b.min, b.max, matrix);
-            self.draw_casters(&mut pass, casters, lit, [world.textured, figure], &keep);
+            self.draw_casters(
+                &mut pass,
+                casters,
+                lit,
+                [
+                    world.textured,
+                    figure,
+                    world.instances.filter(|_| !cascade.cached),
+                ],
+                &keep,
+            );
         }
     }
 
@@ -3062,7 +3163,7 @@ impl Photo {
         pass: &mut wgpu::RenderPass<'_>,
         pipelines: [&wgpu::RenderPipeline; 3],
         lit: [(&wgpu::Buffer, u32); 2],
-        textured: [Option<&TexturedGpu>; 2],
+        textured: [Option<&TexturedGpu>; 3],
         keep: &dyn Fn(&textured::Batch) -> bool,
     ) {
         let [lit_pipeline, opaque_pipeline, masked_pipeline] = pipelines;
@@ -3155,7 +3256,7 @@ impl Photo {
                 &mut pass,
                 [&prepass.lit, &prepass.textured, &prepass.masked],
                 [world.lit, dynamic],
-                [world.textured, world.figure],
+                [world.textured, world.figure, world.instances],
                 &|_| true,
             );
         }
@@ -3252,6 +3353,7 @@ impl Photo {
                 || self.dynamic_lit.count > 0
                 || world.textured.is_some()
                 || world.figure.is_some()
+                || world.instances.is_some()
         });
         let mut shadow = None;
         if let Some(key) = &lit {
@@ -3468,6 +3570,7 @@ impl Photo {
             world: &world,
             order: &order,
             figure_order: &figure_order,
+            instances_order: &Self::figure_order(world.instances, view),
             daylight: daylight.is_some(),
             lit: lit.is_some(),
         };
@@ -3643,6 +3746,7 @@ impl Photo {
             for which in [Pass::Opaque, Pass::Masked] {
                 self.draw_textured(pass, world.textured, opaque.order, which);
                 self.draw_textured(pass, world.figure, opaque.figure_order, which);
+                self.draw_textured(pass, world.instances, opaque.instances_order, which);
             }
         }
         #[cfg(not(target_arch = "wasm32"))]
@@ -3717,6 +3821,7 @@ impl Photo {
         pass.set_bind_group(1, &targets.guide_groups[0], &[]);
         self.draw_textured(pass, world.textured, opaque.order, Pass::Blended);
         self.draw_textured(pass, world.figure, opaque.figure_order, Pass::Blended);
+        self.draw_textured(pass, world.instances, opaque.instances_order, Pass::Blended);
         pass.set_pipeline(&self.pipelines.wide);
         for (buffer, count) in world.lines {
             if count >= 2 {
@@ -3795,6 +3900,13 @@ impl Photo {
                     which,
                     &pipelines.textured,
                 );
+                self.draw_textured_with(
+                    &mut pass,
+                    world.instances,
+                    opaque.instances_order,
+                    which,
+                    &pipelines.textured,
+                );
             }
         }
         pass.set_pipeline(&pipelines.legacy);
@@ -3841,6 +3953,7 @@ struct Opaque<'w, 'a> {
     world: &'w Batches<'a>,
     order: &'w [usize],
     figure_order: &'w [usize],
+    instances_order: &'w [usize],
     daylight: bool,
     lit: bool,
 }
@@ -3962,6 +4075,8 @@ pub struct Batches<'a> {
     pub textured: Option<&'a TexturedGpu>,
     /// The dynamic mesh's figure, its vertices written for this frame.
     pub figure: Option<&'a TexturedGpu>,
+    /// Rigid chunk meshes with this frame's transform stream.
+    pub instances: Option<&'a TexturedGpu>,
     /// The world's water surface ([`super::water`]), drawn on a lit neon
     /// stage that carries [`Neon::water`].
     pub water: Option<&'a WaterGpu>,

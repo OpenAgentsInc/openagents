@@ -421,6 +421,7 @@ fn render(
                 lines: [(&scene.lit, 0); 2],
                 textured: None,
                 figure: None,
+                instances: None,
                 water,
             },
             None,

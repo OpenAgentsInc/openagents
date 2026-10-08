@@ -139,6 +139,8 @@ pub struct StepStats {
     pub manifolds: usize,
     pub detection: crate::collision::DetectionStats,
     pub contact_points: usize,
+    /// Prior contact points tested for warm starting, after collider-pair indexing.
+    pub warm_candidates: usize,
     pub detect: std::time::Duration,
     pub solve: std::time::Duration,
     pub total: std::time::Duration,

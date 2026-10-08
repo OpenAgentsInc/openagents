@@ -1336,6 +1336,75 @@ impl TexturedScene {
     }
 }
 
+/// One rigid copy of an immutable mesh. IDs remain stable across frames.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct DynamicInstance {
+    pub id: u64,
+    pub mesh: usize,
+    pub current: Mat4,
+    pub previous: Mat4,
+    pub color: [f32; 4],
+    /// Baked ambient sampled at the instance, in the vertex light encoding.
+    pub light: [u8; 4],
+    /// Settled rubble has no motion and shares the static collision body.
+    pub settled: bool,
+}
+
+/// Rigid meshes uploaded once, with a compact transform stream each frame.
+#[derive(Clone, Debug)]
+pub struct InstancedFigure {
+    pub scene: std::sync::Arc<TexturedScene>,
+    pub instances: std::sync::Arc<Vec<DynamicInstance>>,
+}
+
+impl InstancedFigure {
+    /// Checks the mesh references and affine, finite transforms.
+    pub fn validate(&self) -> Result<(), String> {
+        validate_rigid_scene(&self.scene)?;
+        if !self.scene.placements.is_empty() || self.instances.len() > 1 << 16 {
+            return Err("rigid instances exceed their scene bounds".into());
+        }
+        let mut ids = std::collections::BTreeSet::new();
+        for instance in self.instances.iter() {
+            if instance.mesh >= self.scene.meshes.len()
+                || !ids.insert(instance.id)
+                || !instance.color.iter().all(|v| v.is_finite())
+                || [instance.current, instance.previous].iter().any(|m| {
+                    !m.is_finite()
+                        || m.transpose().w_axis != glam::Vec4::W
+                        || m.determinant() <= 0.0
+                })
+            {
+                return Err("rigid instance has an invalid mesh, ID, or transform".into());
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Validates immutable rigid sources once. Retained strong references force
+/// edits through Arc::make_mut to receive a new identity and validation.
+pub fn validate_rigid_scene(scene: &std::sync::Arc<TexturedScene>) -> Result<(), String> {
+    thread_local! {
+        static CHECKED: std::cell::RefCell<Vec<(std::sync::Arc<TexturedScene>, Result<(), String>)>> = const { std::cell::RefCell::new(Vec::new()) };
+    }
+    CHECKED.with(|checked| {
+        let mut checked = checked.borrow_mut();
+        if let Some((_, result)) = checked
+            .iter()
+            .find(|(prior, _)| std::sync::Arc::ptr_eq(prior, scene))
+        {
+            return result.clone();
+        }
+        let result = scene.validate();
+        if checked.len() == 4 {
+            checked.remove(0);
+        }
+        checked.push((scene.clone(), result.clone()));
+        result
+    })
+}
+
 /// One animated textured model in a frame's dynamic mesh, such as a skinned
 /// character posed on the CPU.
 ///

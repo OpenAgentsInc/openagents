@@ -489,6 +489,14 @@ impl Everglade {
         }
     }
 
+    /// GPU-transformed chunks, separate from animated character vertices.
+    #[must_use]
+    pub fn rigid_instances(&self) -> Option<crate::pbr::textured::InstancedFigure> {
+        self.town
+            .as_ref()
+            .and_then(|town| town.instances(self.probes.as_deref()))
+    }
+
     /// The town's destructible buildings to act on, once started.
     pub fn town_mut(&mut self) -> Option<&mut demolition::town::Town> {
         self.town.as_deref_mut()
@@ -1794,6 +1802,10 @@ impl Everglade {
                 }
                 Mesh {
                     figure: Some(figure),
+                    instances: self
+                        .town
+                        .as_ref()
+                        .and_then(|town| town.instances(self.probes.as_deref())),
                     ..Mesh::default()
                 }
             }
@@ -1807,7 +1819,7 @@ impl Everglade {
                     mesh.figure = Some(yard.figure(None));
                 }
                 if let Some(town) = &self.town {
-                    mesh.figure = town.own_figure();
+                    mesh.instances = town.instances(self.probes.as_deref());
                 }
                 mesh
             }

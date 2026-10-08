@@ -49,6 +49,8 @@ pub struct Mesh {
     /// An animated textured model, read from a frame's dynamic mesh only
     /// and drawn in physical frames (see [`crate::pbr::textured::Figure`]).
     pub figure: Option<crate::pbr::textured::Figure>,
+    /// Rigid dynamic meshes, transformed on the GPU.
+    pub instances: Option<crate::pbr::textured::InstancedFigure>,
     /// A zone's water at rest, read from its world mesh only: the renderer
     /// uploads it once and draws it when the frame's stage carries
     /// [`crate::pbr::Neon::water`] (see [`crate::pbr::water`]).
@@ -172,6 +174,9 @@ impl Mesh {
         }
         if other.figure.is_some() {
             self.figure.clone_from(&other.figure);
+        }
+        if other.instances.is_some() {
+            self.instances.clone_from(&other.instances);
         }
         if other.water.is_some() {
             self.water.clone_from(&other.water);

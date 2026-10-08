@@ -1148,6 +1148,8 @@ struct TexturedIn {
     @location(6) row2: vec4<f32>,
     // The light texel of this instance's vertex 0, modulo 2^32.
     @location(7) light: u32,
+    @location(8) tint: vec4<f32>,
+    @location(9) ambient: u32,
 };
 
 fn instance_world(v: TexturedIn) -> vec3<f32> {
@@ -1175,6 +1177,9 @@ fn instance_normal(v: TexturedIn) -> vec3<f32> {
 // The vertex's baked light: texel `light + index` of the light texture, read
 // across its 2048-texel rows (`instanced::LIGHT_WIDTH`) and its layers.
 fn instance_light(v: TexturedIn, index: u32) -> vec4<f32> {
+    if v.light == 0xffffffffu {
+        return unpack4x8unorm(v.ambient);
+    }
     let texel = v.light + index;
     let rows = textureDimensions(light_map, 0).y;
     let row = texel >> 11u;
@@ -1186,7 +1191,7 @@ fn instance_light(v: TexturedIn, index: u32) -> vec4<f32> {
 // the light texture; zero without a lamp layer.
 fn instance_lamp(v: TexturedIn, index: u32) -> vec3<f32> {
     let size = textureDimensions(lamp_map, 0);
-    if size.x < 2048u {
+    if size.x < 2048u || v.light == 0xffffffffu {
         return vec3<f32>(0.0);
     }
     let texel = v.light + index;
@@ -1228,7 +1233,7 @@ fn vs_textured(v: TexturedIn, @builtin(vertex_index) index: u32) -> TexturedOut 
     o.world = world;
     o.normal = instance_normal(v);
     o.uv = v.uv;
-    o.color = v.color;
+    o.color = v.color * v.tint;
     o.ambient = baked_ambient(instance_light(v, index));
     o.lamp = instance_lamp(v, index);
     return o;

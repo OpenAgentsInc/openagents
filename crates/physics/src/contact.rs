@@ -62,6 +62,27 @@ pub struct WarmContact {
     pub twist: f64,
 }
 
+fn warm_pairs(
+    warm: &[WarmContact],
+) -> std::collections::HashMap<(ColliderId, ColliderId), Vec<&WarmContact>> {
+    let mut pairs = std::collections::HashMap::<_, Vec<_>>::new();
+    for contact in warm {
+        pairs
+            .entry((contact.a, contact.b))
+            .or_default()
+            .push(contact);
+    }
+    pairs
+}
+
+fn nearest_warm(pair: &[&WarmContact], point: DVec3) -> Option<WarmContact> {
+    pair.iter()
+        .map(|w| (w.point.distance_squared(point), *w))
+        .filter(|(distance, _)| *distance <= WARM_RADIUS * WARM_RADIUS)
+        .min_by(|x, y| x.0.total_cmp(&y.0))
+        .map(|(_, contact)| *contact)
+}
+
 /// A cached contact matches a new one within this distance, m.
 const WARM_RADIUS: f64 = 0.02;
 
@@ -344,7 +365,12 @@ impl World {
             })
             .collect();
         let mut rows = Vec::new();
+        let warm_pairs = warm_pairs(&self.warm);
+        let mut warm_candidates = 0;
         for manifold in manifolds {
+            let warm_pair = warm_pairs
+                .get(&(manifold.a, manifold.b))
+                .map_or(&[][..], Vec::as_slice);
             let (ca, cb) = (
                 self.colliders()[manifold.a.0 as usize],
                 self.colliders()[manifold.b.0 as usize],
@@ -383,14 +409,8 @@ impl World {
                 let twist_k = c.normal.dot(ma.inverse_inertia * c.normal)
                     + c.normal.dot(mb.inverse_inertia * c.normal);
                 // Warm start from last step's nearest point on this pair.
-                let warm = self
-                    .warm
-                    .iter()
-                    .filter(|w| w.a == manifold.a && w.b == manifold.b)
-                    .map(|w| (w.point.distance_squared(c.point), w))
-                    .filter(|(d, _)| *d <= WARM_RADIUS * WARM_RADIUS)
-                    .min_by(|x, y| x.0.total_cmp(&y.0))
-                    .map(|(_, w)| *w);
+                warm_candidates += warm_pair.len();
+                let warm = nearest_warm(warm_pair, c.point);
                 rows.push(Row {
                     a,
                     b,
@@ -513,6 +533,8 @@ impl World {
                 body.omega = body.orientation.inverse() * motion.omega;
             }
         }
+        self.stats.warm_candidates = warm_candidates;
+        drop(warm_pairs);
         self.warm = rows
             .iter()
             .map(|row| WarmContact {
@@ -672,5 +694,55 @@ impl World {
             }
         }
         (tethers, blocks)
+    }
+}
+
+#[cfg(test)]
+mod warm_tests {
+    use super::*;
+
+    #[test]
+    fn pair_index_preserves_nearest_point_and_ties_without_scanning_other_pairs() {
+        let contact = |a, x, normal| WarmContact {
+            a: ColliderId(a),
+            b: ColliderId(a + 1),
+            point: DVec3::X * x,
+            normal,
+            tangent: DVec3::ZERO,
+            twist: 0.0,
+        };
+        let mut warm: Vec<_> = (10..1010).map(|a| contact(a, 0.0, a as f64)).collect();
+        warm.extend([
+            contact(1, -0.01, 11.0),
+            contact(1, 0.01, 12.0),
+            contact(1, 0.05, 13.0),
+        ]);
+        let index = warm_pairs(&warm);
+        let pair = &index[&(ColliderId(1), ColliderId(2))];
+        assert_eq!(
+            pair.len(),
+            3,
+            "unrelated contacts never enter the distance search"
+        );
+        for point in [
+            DVec3::ZERO,
+            DVec3::X * 0.015,
+            DVec3::X * 0.05,
+            DVec3::X * 0.09,
+        ] {
+            let reference = warm
+                .iter()
+                .filter(|w| w.a == ColliderId(1) && w.b == ColliderId(2))
+                .map(|w| (w.point.distance_squared(point), w))
+                .filter(|(d, _)| *d <= WARM_RADIUS * WARM_RADIUS)
+                .min_by(|x, y| x.0.total_cmp(&y.0))
+                .map(|(_, w)| *w);
+            assert_eq!(nearest_warm(pair, point), reference);
+        }
+        assert_eq!(
+            nearest_warm(pair, DVec3::ZERO).unwrap().normal,
+            11.0,
+            "ties retain insertion order"
+        );
     }
 }

@@ -870,6 +870,7 @@ fn physical(
         lines: [(&buffer, 0); 2],
         textured: None,
         figure: None,
+        instances: None,
         water: with_water.then_some(&water_gpu),
     };
     let mut frame = |photo: &mut Photo| {

@@ -170,7 +170,7 @@ fn untouched_buildings_stay_in_the_static_cells() {
     run(&mut town, &player, 0.5);
     assert!(town.raised().is_empty());
     assert_eq!(town.hidden(), 0);
-    assert!(town.own_figure().is_none(), "nothing draws on its own");
+    assert!(town.instances(None).is_none(), "nothing draws on its own");
     assert_eq!(scene.edits.revision(), 0, "no index was rewritten");
 }
 
@@ -203,10 +203,10 @@ fn a_meteor_strike_breaks_the_pieces_near_its_center() {
             .any(|(_, at)| ranges[*at].iter().any(|r| written.contains(&r.first))),
         "a far level hides with its piece"
     );
-    let figure = town.own_figure().expect("the chunks draw");
+    let figure = town.instances(None).expect("the chunks draw");
     figure.validate().expect("a valid figure");
     assert!(
-        figure.vertices.iter().any(|v| v.pos[1] > -10.0),
+        figure.instances.iter().any(|v| v.current.w_axis.y > -10.0),
         "some chunk is posed in the world"
     );
     // Only the buildings the blasts reached were raised, within the cap.
@@ -258,7 +258,7 @@ fn restoring_brings_every_building_back() {
     run(&mut town, &player, 0.1);
     assert!(town.raised().is_empty());
     assert_eq!(town.hidden(), 0);
-    assert!(town.own_figure().is_none());
+    assert!(town.instances(None).is_none());
     // Every index range the strike rewrote holds its placement's own
     // triangles again.
     let (edits, _) = scene.edits.since(0);
@@ -1074,4 +1074,30 @@ fn a_kit_house_breaks_piece_by_piece_and_its_upper_story_falls_with_its_walls() 
         standing_high, 0,
         "pieces above the ground floor still stand"
     );
+}
+
+#[test]
+fn rigid_debris_keeps_source_meshes_and_previous_transforms_between_frames() {
+    let mut town = town();
+    let hut = building(&town, HUT);
+    let at = south_front(&town.buildings()[hut]);
+    let player = caster(at, 16.0);
+    strike(&mut town, &player, at, 2.0);
+    let before = town.instances(None).unwrap();
+    let source = before.scene.clone();
+    let prior: std::collections::BTreeMap<_, _> =
+        before.instances.iter().map(|i| (i.id, i.current)).collect();
+    town.tick(1.0 / 60.0, &player);
+    let after = town.instances(None).unwrap();
+    assert_eq!(town.profile().posed_vertices, 0);
+    assert_eq!(town.profile().rigid_instances, after.instances.len());
+    for instance in after.instances.iter() {
+        if let Some(previous) = prior.get(&instance.id) {
+            assert_eq!(&instance.previous, previous);
+        }
+    }
+    // Membership may grow, but an existing shared local mesh is never posed.
+    for (old, new) in source.meshes.iter().zip(&after.scene.meshes) {
+        assert_eq!(old, new);
+    }
 }
