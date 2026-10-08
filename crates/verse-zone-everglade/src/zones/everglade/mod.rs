@@ -786,6 +786,9 @@ impl Everglade {
             let light =
                 baked::clock_light(self.light, self.now, self.clock.pinned_hour().is_some());
             neon.baked_sun = baked.sun(&light);
+            if baked.active {
+                neon.baked_sky = Some(light.sky_lux);
+            }
         }
         Mesh {
             neon: Some(neon),
@@ -1481,7 +1484,11 @@ impl Everglade {
     /// How brightly the baked lamp layer burns now: zero without one.
     fn baked_lamps(&self) -> f32 {
         if self.baked.as_ref().is_some_and(|b| b.active) {
-            baked::lamp_intensity(&self.light)
+            baked::lamp_intensity(&baked::clock_light(
+                self.light,
+                self.now,
+                self.clock.pinned_hour().is_some(),
+            ))
         } else {
             0.0
         }

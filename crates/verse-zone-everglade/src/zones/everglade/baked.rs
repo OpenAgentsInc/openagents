@@ -11,18 +11,18 @@ use verse_pbr::pbr::baked_layers::Layers;
 
 use super::time_of_day;
 
-/// Sun weights follow the exact clock between the sky's scheduled updates.
+/// Baked sun, sky brightness, and lamp fades follow the exact clock.
+/// The expensive sky's shape and character probes keep their existing cadence.
 pub(super) fn clock_light(
-    mut light: time_of_day::Light,
+    light: time_of_day::Light,
     time: town_clock::TownTime,
     pinned: bool,
 ) -> time_of_day::Light {
-    if !pinned {
-        let exact = time_of_day::Light::at_hours((time.second / 3600.0) as f32);
-        light.key_dir = exact.key_dir;
-        light.sun = exact.sun;
+    if pinned {
+        light
+    } else {
+        time_of_day::Light::at_hours((time.second / 3600.0) as f32)
     }
-    light
 }
 
 pub(super) fn choice(light: &time_of_day::Light) -> Option<LayerChoice> {
@@ -106,6 +106,14 @@ mod tests {
         assert_ne!(a.sun, b.sun);
         assert!(a.sun.angle_between(b.sun) < 0.02);
         assert_eq!(clock_light(stepped, after, true), stepped);
+        let before = town_clock::TownTime::at_hour(0, 17.0 + 28.0 / 60.0);
+        let after = town_clock::TownTime::at_hour(0, 17.0 + 31.0 / 60.0);
+        let stepped = time_of_day::Light::at(before);
+        assert_eq!(stepped, time_of_day::Light::at(after));
+        let a = clock_light(stepped, before, false);
+        let b = clock_light(stepped, after, false);
+        assert_ne!(a.sky_lux, b.sky_lux);
+        assert_ne!(lamp_intensity(&a), lamp_intensity(&b));
     }
 
     #[test]
@@ -117,6 +125,22 @@ mod tests {
             let intensity = lamp_intensity(&time_of_day::Light::at_hours(minute as f32 / 60.0));
             assert!((intensity - previous).abs() < 0.06, "minute {minute}");
             previous = intensity;
+        }
+    }
+
+    #[test]
+    fn exact_sky_keeps_the_running_stages_tenth_of_noon_floor() {
+        let noon = time_of_day::Light::at_hours(12.0);
+        let exposed = |key: &time_of_day::Light, sky: &time_of_day::Light| {
+            (key.key_lux * key.key_dir.y + sky.sky_lux) * crate::pbr::exposure(key.ev100)
+        };
+        let noon_level = exposed(&noon, &noon);
+        for minute in 0..1440 {
+            let time = town_clock::TownTime::at_hour(0, minute as f64 / 60.0);
+            let stepped = time_of_day::Light::at(time);
+            let exact = clock_light(stepped, time, false);
+            let ratio = exposed(&stepped, &exact) / noon_level;
+            assert!(ratio >= 0.1, "{ratio} at minute {minute}");
         }
     }
 

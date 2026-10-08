@@ -629,6 +629,16 @@ impl Layers {
     pub fn validate(&self) -> Result<(), String> {
         let n = self.sky.len();
         let probes = Self::probe_count(self.probe_dims);
+        if self.suns.len() > MAX_SUNS {
+            return Err("light layers: too many suns".into());
+        }
+        let bytes = n
+            .checked_mul(4 * (1 + self.suns.len()))
+            .and_then(|v| v.checked_add(self.lamps.len().checked_mul(8)?))
+            .and_then(|v| v.checked_add(probes.checked_mul(48 * (1 + self.suns.len()))?));
+        if bytes.is_none_or(|bytes| bytes > MAX_INFLATED) {
+            return Err("light layers: larger than the bounds allow".into());
+        }
         if self.sky_probes.len() != probes {
             return Err("light layers: the sky's probes are the wrong size".into());
         }
@@ -674,6 +684,15 @@ mod tests {
         assert_eq!(single.sun_blend(Vec3::X).weight, 0.0);
         single.suns.clear();
         assert_eq!(single.sun_blend(Vec3::Y).uniform(1.0), [0.0, 0.0, 0.0, 1.0]);
+    }
+
+    #[test]
+    fn in_memory_layers_share_the_decoders_sun_bound() {
+        let mut layers = sample();
+        layers.suns.resize(MAX_SUNS, layers.suns[0].clone());
+        assert!(layers.validate().is_ok());
+        layers.suns.push(layers.suns[0].clone());
+        assert!(layers.validate().unwrap_err().contains("too many suns"));
     }
 
     fn sample() -> Layers {

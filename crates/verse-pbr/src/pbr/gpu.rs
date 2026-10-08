@@ -812,6 +812,28 @@ impl TexturedGpu {
     }
 }
 
+// Scale a multiplier by the sky actually published, including its exposure.
+fn baked_sky_scale(target: Option<f32>, published: f32) -> f32 {
+    match target {
+        Some(target)
+            if target.is_finite() && target >= 0.0 && published.is_finite() && published > 1e-6 =>
+        {
+            let scale = target / published;
+            if scale.is_finite() { scale } else { 1.0 }
+        }
+        _ => 1.0,
+    }
+}
+
+fn sun_layer_depth(light_layers: u32, suns: usize, limit: u32) -> Option<u32> {
+    if suns > super::baked_layers::MAX_SUNS {
+        return None;
+    }
+    light_layers
+        .checked_mul(suns as u32 + 1)
+        .filter(|&depth| depth <= limit)
+}
+
 // The rigid upload concatenates primitive vertices in source mesh order.
 fn rigid_vertex_offsets(scene: &TexturedScene) -> Vec<u32> {
     let mut first = 0_u32;
@@ -2502,12 +2524,22 @@ impl Photo {
         }
         let size = gpu.light.size();
         let depth = size.depth_or_array_layers;
+        let Some(sun_depth) = sun_layer_depth(
+            depth,
+            layers.suns.len(),
+            device.limits().max_texture_array_layers,
+        ) else {
+            eprintln!("verse: baked sunlight exceeds the device's texture array limit");
+            gpu.suns = light_texture(device, "verse textured no suns", 1, 1, 2);
+            gpu.light_group = self.light_group(device, &gpu.light, &gpu.lamps, &gpu.suns);
+            return;
+        };
         gpu.suns = light_texture(
             device,
             "verse textured sun layers",
             size.width,
             size.height,
-            depth * (layers.suns.len() as u32 + 1),
+            sun_depth,
         );
         for (i, sun) in layers.suns.iter().enumerate() {
             TexturedGpu::write_texels_at(
@@ -3287,7 +3319,7 @@ impl Photo {
                 [p.dims[0] as f32, p.dims[1] as f32, p.dims[2] as f32, 1.0]
             }),
             params: [camera.star_gain, sky.time, pixel_angle, 1.0],
-            lamp_params: [0.0, 1.0, 0.0, 0.0],
+            lamp_params: [0.0, 1.0, 0.0, 1.0],
             baked_sun: [0.0; 4],
             metering: [
                 0.18,
@@ -3834,7 +3866,7 @@ impl Photo {
             } else {
                 0.0
             };
-            uniform.lamp_params = [0.0, exposure, baked_lamps, 0.0];
+            uniform.lamp_params = [0.0, exposure, baked_lamps, 1.0];
             let sun = neon
                 .baked_sun
                 .map(|value| if value.is_finite() { value } else { 0.0 });
@@ -3878,6 +3910,10 @@ impl Photo {
             };
             uniform.sky_light = [1.0, self.sky_light.max_lod, flash, 0.0];
             uniform.sky_sh = self.sky_light.sh;
+            uniform.lamp_params[3] = baked_sky_scale(
+                neon.baked_sky.map(|lux| lux * exposure),
+                self.sky_light.level,
+            );
         }
         if let Some(fog) = neon.height_fog.filter(|fog| fog.validate().is_ok()) {
             [uniform.fog_shape, uniform.fog_lobe] = fog.uniform();
@@ -5055,6 +5091,28 @@ fn load_sky(device: &wgpu::Device, queue: &wgpu::Queue) -> Result<[wgpu::Texture
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn baked_sky_follows_the_published_level_without_double_scaling() {
+        let scale = baked_sky_scale(Some(0.6), 0.8);
+        assert!((0.8 * scale - 0.6).abs() < 1e-6);
+        let scale = baked_sky_scale(Some(0.6), 0.6);
+        assert_eq!(scale, 1.0);
+        assert_eq!(baked_sky_scale(None, 0.8), 1.0);
+        assert_eq!(baked_sky_scale(Some(f32::NAN), 0.8), 1.0);
+        assert_eq!(baked_sky_scale(Some(0.6), 0.0), 1.0);
+        assert_eq!(baked_sky_scale(Some(0.6), f32::INFINITY), 1.0);
+    }
+
+    #[test]
+    fn sun_arrays_admit_the_town_and_reject_unsupported_layouts() {
+        let limit = wgpu::Limits::downlevel_webgl2_defaults().max_texture_array_layers;
+        assert_eq!(sun_layer_depth(2, 4, limit), Some(10));
+        assert_eq!(sun_layer_depth(2, 16, limit), Some(34));
+        assert_eq!(sun_layer_depth(128, 4, limit), None);
+        assert_eq!(sun_layer_depth(2, 17, limit), None);
+        assert_eq!(sun_layer_depth(u32::MAX, 16, limit), None);
+    }
 
     #[test]
     fn repaired_ranges_follow_uploaded_vertices_across_meshes_and_primitives() {

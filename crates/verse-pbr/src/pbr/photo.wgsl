@@ -1277,6 +1277,9 @@ fn vs_textured(v: TexturedIn, @builtin(vertex_index) index: u32) -> TexturedOut 
         o.ambient = vec4<f32>(o.ambient.rgb + mix(instance_sun(v, index, f.baked_sun.x),
             instance_sun(v, index, f.baked_sun.y), f.baked_sun.z) * f.baked_sun.w, o.ambient.w);
     }
+    // The sky SH and cube retain one coherent published level while a
+    // gradual sky bake runs; only this multiplier follows the exact clock.
+    o.ambient = vec4<f32>(o.ambient.rgb * f.lamp_params.w, o.ambient.w);
     return o;
 }
 

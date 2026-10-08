@@ -320,6 +320,9 @@ pub struct Neon {
     /// Baked sun interpolation: one-based layer indices, second weight, and
     /// sun/sky strength. Zero indices disable baked sunlight.
     pub baked_sun: [f32; 4],
+    /// Exact-clock sky irradiance in lux for baked textured ambient. Its
+    /// multiplier follows the published sky light while a gradual bake runs.
+    pub baked_sky: Option<f32>,
     /// The output pass's grade.
     pub grade: Grade,
     /// The key and rim lights' linear colors, multiplied with their lux:
@@ -546,6 +549,7 @@ impl Neon {
             temporal_aa: true,
             baked_lamps: 0.0,
             baked_sun: [0.0; 4],
+            baked_sky: None,
             grade: Grade::STAGE,
             key_color: [1.0; 3],
             rim_color: [1.0; 3],
