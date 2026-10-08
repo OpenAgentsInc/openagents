@@ -400,7 +400,7 @@ impl BakeGeometry {
         for batch in &merged.batches {
             let material = &scene.materials[batch.material];
             let masked = matches!(material.alpha, AlphaMode::Mask { .. });
-            let distant = matches!(batch.level, Level::Far { .. });
+            let distant = matches!(batch.level, Level::Far { .. } | Level::Group { level: 1..=3, .. });
             let range = batch.first as usize..(batch.first + batch.count) as usize;
             for triangle in merged.indices[range].chunks_exact(3) {
                 let corners =

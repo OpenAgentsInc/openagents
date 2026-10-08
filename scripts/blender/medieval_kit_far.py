@@ -55,6 +55,10 @@ def main():
             modifier.vertex_group = group.name
             modifier.vertex_group_factor = 1.0
             bpy.ops.object.modifier_apply(modifier=modifier.name)
+            # Collapse positions may stray past the original silhouette.
+            for vertex in obj.data.vertices:
+                for axis in range(3):
+                    vertex.co[axis] = min(high[axis], max(low[axis], vertex.co[axis]))
         after = triangles()
         if after > budget or after == 0:
             raise RuntimeError(f"{piece}: far level has {after} triangles, budget {budget}")
