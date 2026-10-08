@@ -69,6 +69,12 @@ pub fn installed(layout: &Layout) -> Vec<Installed> {
         for slug in sorted(&key) {
             let Some(dir) = sorted(&slug)
                 .into_iter()
+                .filter(|version| {
+                    name_of(version).is_some()
+                        && version
+                            .extension()
+                            .is_none_or(|extension| extension != "installing")
+                })
                 .filter(|version| version.join("package.json").is_file())
                 .next_back()
             else {
@@ -572,6 +578,47 @@ fn is_slug(text: &str) -> bool {
 mod exact_release_tests {
     use super::*;
     use sha2::{Digest as _, Sha256};
+
+    #[test]
+    fn installed_plugins_ignore_staging_and_hidden_versions_until_install_finishes() {
+        let home = tempfile::tempdir().unwrap();
+        let layout = Layout::new(home.path(), None).unwrap();
+        let root = layout.extensions().join(LOCAL_KEY).join("hello");
+        let record = |directory: &str, version: &str| {
+            let into = root.join(directory);
+            std::fs::create_dir_all(&into).unwrap();
+            std::fs::write(
+                into.join("package.json"),
+                serde_json::to_vec(&json!({
+                    "v": 1,
+                    "slug": "hello",
+                    "name": "Hello",
+                    "version": version,
+                }))
+                .unwrap(),
+            )
+            .unwrap();
+            into
+        };
+        let current = record("0.1.0", "0.1.0");
+        let staging = record("0.2.installing", "0.2.0");
+        record(".9.0.0", "9.0.0");
+        let plugins = installed(&layout);
+        assert_eq!(plugins.len(), 1);
+        assert_eq!(plugins[0].version, "0.1.0");
+        assert_eq!(plugins[0].dir, current);
+
+        let finished = root.join("0.2.0");
+        std::fs::rename(staging, &finished).unwrap();
+        let plugins = installed(&layout);
+        assert_eq!(plugins.len(), 1);
+        assert_eq!(plugins[0].version, "0.2.0");
+        assert_eq!(plugins[0].dir, finished);
+
+        std::fs::remove_dir_all(root.join("0.1.0")).unwrap();
+        std::fs::remove_dir_all(root.join("0.2.0")).unwrap();
+        assert!(installed(&layout).is_empty());
+    }
 
     #[test]
     fn exact_enabling_refuses_changed_version_bytes_and_concurrent_installs() {

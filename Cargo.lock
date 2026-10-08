@@ -3250,6 +3250,7 @@ version = "1.0.0-rc.5"
 dependencies = [
  "acp-client",
  "atif",
+ "background",
  "brainstorm-client",
  "code-highlight",
  "coder",

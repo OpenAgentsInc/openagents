@@ -45,6 +45,11 @@ plugin, Space turns it on or off, and Enter opens its settings. **Microcoder**,
 BYOK** defaults to off; a key imported at startup enables it when no saved
 preference exists. Saving the first key also enables it. A saved off preference stays off.
 
+On macOS and Linux, this picker also lists locally installed extensions from
+`openagents plugin install`. It refreshes on opening and once a second while
+visible, preserving the selected plugin and unsaved settings. Enter shows an
+installed extension's details and the CLI commands to enable or disable it.
+
 OpenRouter's settings screen has a masked **OpenRouter API key**, an optional model ID, and
 the fixed direct endpoint `https://openrouter.ai/api/v1`. Tab moves between
 fields and actions; Enter selects an action; Esc cancels or returns to chat.

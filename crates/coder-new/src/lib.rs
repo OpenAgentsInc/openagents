@@ -17,6 +17,8 @@ pub mod jev_plugin;
 pub mod live;
 pub mod model_catalog;
 pub mod models;
+#[cfg(unix)]
+pub mod plugin_catalog;
 pub mod plugin_definition;
 pub mod plugin_store;
 pub mod plugin_tools;
@@ -1025,6 +1027,7 @@ impl App {
     }
 
     pub fn open_plugins(&mut self) {
+        self.plugins.catalog_revision = self.plugins.catalog_revision.wrapping_add(1);
         self.resume_picker = None;
         if !matches!(self.screen, Screen::Plugins | Screen::PluginSettings) {
             self.return_screen = self.screen;
