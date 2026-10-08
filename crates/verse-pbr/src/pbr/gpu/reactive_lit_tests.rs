@@ -1293,7 +1293,13 @@ fn photo_sprite_mrt_matches_color_and_rejects_hidden_or_covered_emission() {
                 assert_eq!(
                     images[0][2 * n + p],
                     images[1][2 * n + p],
-                    "{samples}x {name} pixel {p}: MRT must preserve the original scene color on a fresh history"
+                    "{samples}x {name} pixel {p}: MRT must preserve the original scene color on a fresh history; original/MRT history {:?}/{:?}, marker {:?}/{:?}, independent emission {:?}/{:?}",
+                    images[0][n + p],
+                    images[1][n + p],
+                    images[0][p],
+                    images[1][p],
+                    images[0][3 * n + p],
+                    images[1][3 * n + p],
                 );
             }
         }
