@@ -134,6 +134,12 @@ PBR crates, then stopped on the unrelated default desktop audio dependency:
 `alsa.pc` is absent from coderos-4080's pkg-config path. Use Verse's
 `--no-default-features --features capture` consumer there; check native
 default features in the later Mac window. Do not change system packages.
+At source `97ab779f788948dc42ed1dca38ad58749a5ef6e0`, the remote
+`cargo check --locked -p verse --no-default-features --features capture -j4`
+and `cargo check --locked -p everglade-web --target wasm32-unknown-unknown -j4`
+passed. The latter uses `CC_wasm32_unknown_unknown=clang`. Pure water tests
+and shared shader validation remain pending; P3 currently holds the team
+Cargo token.
 The stable remote source is
 `/home/christopherdavid/.openagents/scratch/process-2198653/water-w11-agent12`,
 with its own `~/work/openagents-target-agent12`. Advance only that checkout
@@ -147,6 +153,20 @@ The fixed-view ignored raster test is `w11::water_w11_fixed_views` in
 Low on WebGL2 and Medium on WebGPU; the browser platform does not admit
 High. Measurements, captures, budget updates in [water.md](water.md), and
 phone steps in `NEEDS_OWNER.md` are still pending. No issue has closed.
+Compile the browser candidate with the existing `presence_ui::tests` filter,
+`--lib --target wasm32-unknown-unknown --release --no-run --message-format=json`.
+`stage.py` selects its exact executable from Cargo's output, checks that
+matched `wasm-bindgen` 0.2.128 retains the app's start export and removes
+the Rust test harness entry, and records source, WASM, glue, and input
+digests. It stages only in scratch. The browser check requires the
+physical renderer's admitted tier and successful pinned pack responses.
+The private kit input is
+`~/.openagents/verse/private/medieval-town/packs/dae1612d4c22438a933c27b406c1e18fe134b13eab8eb5240ddcf5506ffb0b93.vtp`
+(10,238,689 bytes). The public source pack is
+`a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f`
+(10,636,202 bytes). Recheck both pins if the source is rebased; keep all
+licensed input bytes outside Git. Actual artifact and page checks have
+not run yet.
 
 The coordinator holds the team build token. Request a window before
 Cargo or measurement, use at most four jobs for W11, and preserve the

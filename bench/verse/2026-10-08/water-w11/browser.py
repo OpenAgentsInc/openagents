@@ -17,6 +17,16 @@ from cdp import Cdp
 origin, destination = sys.argv[1], Path(sys.argv[2])
 destination.mkdir(parents=True, exist_ok=True)
 port = os.environ['OPENAGENTS_CHROME_PORT']
+inputs = json.load(urllib.request.urlopen(origin + '/water-w11-inputs.json'))
+assert inputs['app_start_verified'] and inputs['wasm_bindgen'] == '0.2.128', inputs
+for key in ['wasm', 'glue', 'pack', 'kit']:
+    expected = inputs[key]
+    with urllib.request.urlopen(origin + expected['url']) as response:
+        assert response.status == 200, (key, response.status)
+        payload = response.read()
+    assert len(payload) == expected['bytes'], key
+    assert hashlib.sha256(payload).hexdigest() == expected['sha256'], key
+del payload
 PROBE = r'''(() => {
   const probe = window.__waterFence = {api:null, samples:[], submitted:0, errors:[]};
   const context = HTMLCanvasElement.prototype.getContext;
@@ -99,6 +109,20 @@ def run(mode, zone, dry):
         if 'could not start' in value.get('status', '').lower():
             break
     assert ready, value
+    startup_logs = console(page)
+    admissions = [json.loads(row['text'][len('Everglade water renderer '):])
+                  for row in startup_logs if row['text'].startswith('Everglade water renderer ')]
+    assert len(admissions) == 1 and admissions[0]['physical'], startup_logs
+    admission = admissions[0]
+    assert admission['tier'] == ('low' if mode == 'webgl2' else 'medium'), admission
+    network = [{'url':event['params']['response']['url'],
+                'status':event['params']['response']['status']}
+               for event in page.events if event['method'] == 'Network.responseReceived']
+    for key in ['wasm', 'pack'] + (['kit'] if zone == 'everglade' else []):
+        assert any(row['url'] == origin + inputs[key]['url'] and row['status'] == 200
+                   for row in network), (key, network)
+    assert not any('proxies' in row['text'] for row in startup_logs), startup_logs
+    assert not [row for row in startup_logs if row['level'] in ['error', 'exception']], startup_logs
     warmed = time.monotonic()
     while time.monotonic() - warmed < 12:
         time.sleep(1)
@@ -116,7 +140,7 @@ def run(mode, zone, dry):
     logs = console(page)
     samples = []
     for row in logs:
-        if row['text'].startswith('Everglade water '):
+        if row['text'].startswith('Everglade water ['):
             samples += json.loads(row['text'][len('Everglade water '):])
     errors = [row for row in logs if row['level'] in ['error', 'exception']]
     assert not errors, errors
@@ -126,9 +150,11 @@ def run(mode, zone, dry):
     screenshot = page.call('Page.captureScreenshot', {'format':'png'})
     image = destination / f'{tag}.png'
     image.write_bytes(base64.b64decode(screenshot['data']))
-    result = {'case':tag, 'mode':mode, 'tier':'low' if mode == 'webgl2' else 'medium',
+    result = {'case':tag, 'mode':mode, 'tier':admission['tier'],
               'high_tier':'not admitted on the browser platform', 'size':probe['size'],
               'user_agent':probe['userAgent'], 'query':query, 'samples':samples,
+              'inputs':inputs, 'renderer_admission':admission, 'startup_responses':network,
+              'licensed_kit_loaded':zone == 'everglade',
               'gpu_timestamps_supported':any(s['gpu_timestamps'] for s in samples),
               'gpu_ms':summary([s['gpu']['water_ms'] for s in samples if s['gpu']]),
               'main_ms':summary([s['main_ms'] for s in samples]),
