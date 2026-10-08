@@ -303,6 +303,9 @@ pub struct Neon {
     /// stage's lit and textured geometry beside the key. They cast no
     /// shadows. Lamps with zero intensity are off.
     pub lamps: [Lamp; MAX_LAMPS],
+    /// Transient impact and spell lights, selected before permanent lamps
+    /// within the tier's shared lamp budget. They cast no shadows.
+    pub flash_lamps: [Lamp; MAX_FLASH_CANDIDATES],
     /// How brightly a textured scene's baked lamp layer burns, 0 for off to 1
     /// for as baked ([`baked_layers`]), such as from dusk to dawn.
     pub baked_lamps: f32,
@@ -327,8 +330,14 @@ pub struct Neon {
     pub water: Option<water::Water>,
 }
 
-/// The most lamps one neon stage carries.
+/// The most permanent lamps a stage carries and total lamps its shader shades.
 pub const MAX_LAMPS: usize = 32;
+
+/// The most transient flash lights the high tier shades.
+pub const MAX_FLASH_LIGHTS: usize = 8;
+
+/// The most transient candidates a stage carries before camera-view selection.
+pub const MAX_FLASH_CANDIDATES: usize = 32;
 
 /// A point light on a neon stage, unshadowed.
 ///
@@ -520,6 +529,7 @@ impl Neon {
             daylight: None,
             height_fog: None,
             lamps: [Lamp::OFF; MAX_LAMPS],
+            flash_lamps: [Lamp::OFF; MAX_FLASH_CANDIDATES],
             baked_lamps: 0.0,
             grade: Grade::STAGE,
             key_color: [1.0; 3],

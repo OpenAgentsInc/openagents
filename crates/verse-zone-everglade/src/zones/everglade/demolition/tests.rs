@@ -316,6 +316,62 @@ mod meteor_swarm {
         PlayerController::new(Vec3::new(-6.0, 0.0, -26.0), 0.0)
     }
 
+    #[test]
+    fn impacts_start_lights_at_the_particle_origin_and_reset_clears_them() {
+        let mut site = site();
+        let mut swarm = Swarm::default();
+        let player = caster();
+        swarm.target().unwrap();
+        swarm.aim_at(Vec3::new(-6.0, 0.0, -18.0), &player);
+        assert!(swarm.confirm(&player));
+        let mut landed = 0;
+        for _ in 0..360 {
+            swarm.tick(1.0 / 60.0, &player, &mut site);
+            let impacts = swarm.take_impacts();
+            for impact in impacts {
+                let lamps = swarm.flash_lamps(player.pos);
+                assert!(
+                    lamps
+                        .iter()
+                        .any(|lamp| lamp.lit() && lamp.position == impact.at)
+                );
+                landed += 1;
+            }
+            if landed == meteor::METEORS {
+                break;
+            }
+        }
+        assert_eq!(landed, meteor::METEORS);
+        assert!(swarm.flash_lamps(player.pos).iter().any(|lamp| lamp.lit()));
+        swarm.reset();
+        assert!(swarm.flash_lamps(player.pos).iter().all(|lamp| !lamp.lit()));
+    }
+
+    #[test]
+    fn thunderbolt_bursts_start_blue_direct_light() {
+        for strike in [meteor::Strike::Lightning, meteor::Strike::MegaLightning] {
+            let mut site = site();
+            let mut swarm = Swarm::default();
+            let player = caster();
+            swarm.target_with(strike).unwrap();
+            swarm.aim_at(Vec3::new(-6.0, 0.0, -18.0), &player);
+            assert!(swarm.confirm(&player));
+            let mut lit = false;
+            for _ in 0..360 {
+                swarm.tick(1.0 / 60.0, &player, &mut site);
+                if let Some(impact) = swarm.take_impacts().first() {
+                    let lamps = swarm.flash_lamps(player.pos);
+                    let lamp = lamps.iter().find(|lamp| lamp.lit()).unwrap();
+                    assert_eq!(lamp.position, impact.at);
+                    assert!(lamp.color[2] > lamp.color[0]);
+                    lit = true;
+                    break;
+                }
+            }
+            assert!(lit, "{} lights its impact", strike.name());
+        }
+    }
+
     /// Casts at `at` and runs the cast, the meteors, and `after` more
     /// seconds of the site.
     fn strike(site: &mut Site, swarm: &mut Swarm, at: Vec3, after: f64) {

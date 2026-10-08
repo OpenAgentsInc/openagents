@@ -1351,6 +1351,19 @@ impl Town {
         self.bombardiers.iter().map(|b| &b.swarm).collect()
     }
 
+    /// The player's and staged casters' impact lights, ranked together.
+    #[must_use]
+    pub fn flash_lamps(&self, eye: Vec3) -> [crate::pbr::Lamp; crate::pbr::MAX_FLASH_CANDIDATES] {
+        verse_core::flash_light::FlashLights::select(
+            self.swarm.flash_lamps(eye).into_iter().chain(
+                self.bombardiers
+                    .iter()
+                    .flat_map(|b| b.swarm.flash_lamps(eye)),
+            ),
+            eye,
+        )
+    }
+
     /// Where the camera is this frame, shaken by the meteors' blasts.
     #[must_use]
     pub fn shake(&self) -> Vec3 {

@@ -8,6 +8,7 @@
 pub mod agent;
 pub mod avatar;
 pub mod crowd;
+pub mod flash_light;
 pub mod fx;
 pub mod label;
 pub mod place;

@@ -150,15 +150,40 @@ fn eight_meteors_on_distinct_arcs_break_both_houses_and_the_debris_rests() {
     assert!(range > 0.15, "the arcs descend alike: {descents:?}");
     // They land, and both houses come apart.
     let mut flying = 0;
+    let mut remaining = 8;
+    let mut lit_impacts = 0;
     for _ in 0..(5.0 / DT) as usize {
         runtime.tick(&InputState::default(), DT);
         flying = flying.max(town(&runtime).bombardment()[1]);
         let eye = runtime.view(16.0 / 9.0).eye;
         assert!(eye.y >= everglade::land(eye.x, eye.z) + 0.25);
+        let left = town(&runtime).casters()[0].meteors_left();
+        if left < remaining {
+            lit_impacts += remaining - left;
+            let lamps = runtime.dynamic_mesh().neon.unwrap().flash_lamps;
+            assert_eq!(lamps.iter().filter(|lamp| lamp.lit()).count(), lit_impacts);
+            assert!(
+                lamps
+                    .iter()
+                    .filter(|lamp| lamp.lit())
+                    .all(|lamp| { lamp.color[0] > lamp.color[2] && lamp.range >= 28.0 })
+            );
+            remaining = left;
+        }
     }
     assert_eq!(flying, 8);
+    assert_eq!(lit_impacts, 8, "every staged meteor starts direct light");
     assert_eq!(town(&runtime).bombardment()[1], 0, "every meteor landed");
     run(&mut runtime, 10.0);
+    assert!(
+        runtime
+            .dynamic_mesh()
+            .neon
+            .unwrap()
+            .flash_lamps
+            .iter()
+            .all(|lamp| !lamp.lit())
+    );
     let town_now = town(&runtime);
     for (building, house) in houses.into_iter().zip(showcase::houses()) {
         let (up, all) = standing(town_now, building);

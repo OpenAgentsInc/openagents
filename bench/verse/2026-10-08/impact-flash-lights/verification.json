@@ -1,0 +1,78 @@
+{
+  "issue": 10933,
+  "captured_at_utc": "2026-10-08T05:08:19.231392+00:00",
+  "source_commit": "0a33f4ec377153c614be52a7666b61b9f6a70317",
+  "source_base": "6aedb788dbffa041b74213813a3076109af412a9",
+  "source_sha256": {
+    "crates/verse-core/src/flash_light.rs": "47ac07623bf81e7e916d9f2776951e1457a770f2471ee9c04e437db930802831",
+    "crates/verse-core/src/lib.rs": "62dd825ed2098f019f11ad3e5b6f32675e63bde23bf3d90a94df0d4595aadaf3",
+    "crates/verse-pbr/src/pbr/gpu.rs": "24fa4ddfbd3090d5a2855a2840ec6346383e6e25f9bffee2e9dfc0d6ebc2e0e7",
+    "crates/verse-pbr/src/pbr/mod.rs": "ed6cb037d483c459ad139281bebd7ec0230b128b682c40018ffd99b5e5a1985b",
+    "crates/verse-zone-everglade/src/zones/everglade/demolition/meteor.rs": "b5945984b9d5418f2f1f5c61adf64275bfef01a629c2525284a02b95a6a60226",
+    "crates/verse-zone-everglade/src/zones/everglade/demolition/tests.rs": "daad29d7456b00872a9c44daec64afb1314827a35ea2bcebd1555cd85719eade",
+    "crates/verse-zone-everglade/src/zones/everglade/demolition/town.rs": "f66d05b267cb4d5ff4405c5e473902bfbb075c6e2effacd2bca3fae379037698",
+    "crates/verse-zone-everglade/src/zones/everglade/mod.rs": "a1325b5d765059453b1ebef7184ccb5f4b292c545087d41f64e7c078c34875bc",
+    "crates/verse/examples/meteor_showcase_capture.rs": "0ac8d90882ff49020e047d1bd17ad690e66857c739e21c5b36ca8b05c87a4346",
+    "crates/verse/src/render.rs": "2d9fa5461f094584e23325ff52a1d917f281a04bf008f6c49e1aab06a7aa023e",
+    "crates/verse/src/zones/meteor_showcase_tests.rs": "9ffc78f6745c307046cc2bc40231855ab43a5ef94cdadb3e899cecfb0e347b1e",
+    "crates/verse/src/zones/runtime.rs": "23b7d9afe79919be5ad12a40cbb901d1e7edb400d09d27fd9c4a14faeb9ad931"
+  },
+  "toolchain": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
+  "build_profile": "dev; Verse, PBR, core, engine, physics, and zone packages use opt-level 3",
+  "capture_command": "VERSE_QUALITY=high VERSE_KIT_PACK=<cache>/dae1612d4c22438a933c27b406c1e18fe134b13eab8eb5240ddcf5506ffb0b93.vtp openagents lease quiet --priority owner --receipt <scratch>/final-high-lease.json -- openagents lease gpu -- meteor_showcase_capture <scratch>/final-high --live --settle-light --no-video --compare-flash-lights --flash-repeats 64 --flash-every 15 --seconds 14 --every 60",
+  "performance": {
+    "max_active_snapshot_mean_render_increment_ms": 0.36530518531799316,
+    "full_32_light_pool_tick_and_projection_mean_ms": 0.0005473225028254092,
+    "render_budget_ms": 0.5,
+    "tier_caps": {
+      "low": 2,
+      "medium": 4,
+      "high": 8
+    },
+    "impact_frame": 469,
+    "limits": "Steady-state repeated wall-clock measurements include encode, submit, and completion wait. Individual polling tails remain in capture.json. GPU timestamps returned no valid samples on this adapter. Pool timing excludes spawn and multi-source aggregation. Initial shader compilation and light baking are outside the incremental comparison."
+  },
+  "checks": [
+    {
+      "command": "cargo test -p verse-core -p verse-pbr -p verse-zone-everglade --lib",
+      "result": "55 core, 149 PBR, and 254 Everglade tests passed; 7 PBR tests ignored"
+    },
+    {
+      "command": "cargo test -p verse-pbr --lib",
+      "result": "150 passed, 7 ignored after the adapter quality regression test"
+    },
+    {
+      "command": "cargo test -p verse --lib meteor_showcase",
+      "result": "8 passed"
+    },
+    {
+      "command": "cargo test -p verse --lib render::tests",
+      "result": "11 passed"
+    },
+    {
+      "command": "cargo test -p verse --lib gles_tests",
+      "result": "10 passed; shared shaders translate to GLSL ES 3.00"
+    },
+    {
+      "command": "cargo run -p verse --example grid_pack",
+      "result": "Regenerated stale fingerprint"
+    },
+    {
+      "command": "cargo test -p verse --lib grid_pack::tests::the_pinned_pack_is_what_the_sources_compile_to",
+      "result": "1 passed"
+    },
+    {
+      "command": "cargo build -p verse --example meteor_showcase_capture",
+      "result": "Passed after the final capture changes"
+    },
+    {
+      "command": "cargo fmt -p verse-core -p verse-pbr -p verse-zone-everglade -p verse --check; git diff --check",
+      "result": "Passed"
+    }
+  ],
+  "broader_verse_run": {
+    "result": "403 passed, 5 failed, 8 ignored. Regeneration resolved the stale Grid fingerprint; the four remaining town layout failures are tracked separately.",
+    "issue": "https://github.com/OpenAgentsInc/openagents/issues/10940"
+  },
+  "webgl2": "Uses the existing bounded point-lamp uniform and shaders, without new bindings, storage buffers, or shadow maps. GLES shader translation checks passed; no interactive WebGL2 browser run."
+}

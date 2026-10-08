@@ -521,6 +521,18 @@ impl Everglade {
         }
     }
 
+    /// Direct impact light from the yard, town, and staged casters.
+    #[must_use]
+    pub fn flash_lamps(&self, eye: Vec3) -> [crate::pbr::Lamp; crate::pbr::MAX_FLASH_CANDIDATES] {
+        if let Some(yard) = &self.demolition {
+            yard.swarm().flash_lamps(eye)
+        } else if let Some(town) = &self.town {
+            town.flash_lamps(eye)
+        } else {
+            [crate::pbr::Lamp::OFF; crate::pbr::MAX_FLASH_CANDIDATES]
+        }
+    }
+
     /// Enters Meteor Swarm's targeting for `player`, or leaves it.
     ///
     /// # Errors

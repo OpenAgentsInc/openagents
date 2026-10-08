@@ -147,6 +147,54 @@ struct Frame {
 }
 
 impl Frame {
+    /// Packs flashes first, then fills the remaining slots with permanent
+    /// lamps. Diagnostic indices keep permanent lamps at 0..MAX_LAMPS and
+    /// place flashes after them.
+    fn set_lamps(
+        &mut self,
+        neon: &Neon,
+        view: verse_engine::presentation::View,
+        tier: Tier,
+        exposure: f32,
+    ) -> Vec<usize> {
+        let source = |lamp: super::Lamp| verse_engine::lighting::Light {
+            position: lamp.position,
+            color: Vec3::from_array(lamp.color),
+            intensity: if lamp.lit() { lamp.intensity } else { 0.0 },
+            range: lamp.range,
+        };
+        let mut selected = verse_engine::lighting::select_lights(
+            &neon.flash_lamps.map(source),
+            view,
+            flash_budget(tier),
+        );
+        for index in &mut selected {
+            *index += super::MAX_LAMPS;
+        }
+        selected.extend(verse_engine::lighting::select_lights(
+            &neon.lamps.map(source),
+            view,
+            lamp_budget(tier) - selected.len(),
+        ));
+        for (slot, &index) in selected.iter().enumerate() {
+            let lamp = if index < super::MAX_LAMPS {
+                &neon.lamps[index]
+            } else {
+                &neon.flash_lamps[index - super::MAX_LAMPS]
+            };
+            let gain = lamp.intensity * exposure;
+            self.lamps[slot * 2] = lamp.position.extend(lamp.range).to_array();
+            self.lamps[slot * 2 + 1] = [
+                lamp.color[0] * gain,
+                lamp.color[1] * gain,
+                lamp.color[2] * gain,
+                0.0,
+            ];
+        }
+        self.lamp_params[0] = selected.len() as f32;
+        selected
+    }
+
     /// Writes the sun's shadow maps into the uniform. The `light` matrix
     /// stays the first cascade's; each shadow pass gets its own copy.
     fn set_cascades(&mut self, cascades: &Cascades) {
@@ -240,6 +288,11 @@ pub struct Capability {
     /// The quality tier and everything it fixes. `VERSE_QUALITY` (`low`,
     /// `medium`, or `high`) lowers it; it never raises it past the device.
     pub quality: Quality,
+}
+
+fn adapter_has_compute(flags: wgpu::DownlevelFlags, limits: &wgpu::Limits) -> bool {
+    flags.contains(wgpu::DownlevelFlags::COMPUTE_SHADERS)
+        && limits.max_storage_buffers_per_shader_stage > 0
 }
 
 impl Capability {
@@ -346,11 +399,12 @@ impl Capability {
             platform: Platform::current(),
             gles,
             float_target: hdr.is_some(),
-            compute: adapter
-                .get_downlevel_capabilities()
-                .flags
-                .contains(wgpu::DownlevelFlags::COMPUTE_SHADERS)
-                && device.limits().max_storage_buffers_per_shader_stage > 0,
+            // The device requests the portable WebGL2 floor. Quality follows
+            // the adapter's hardware; these passes use render pipelines.
+            compute: adapter_has_compute(
+                adapter.get_downlevel_capabilities().flags,
+                &adapter.limits(),
+            ),
             samples,
         };
         let asked = std::env::var("VERSE_QUALITY")
@@ -416,6 +470,16 @@ pub fn lamp_budget(tier: Tier) -> usize {
         Tier::Low => 8,
         Tier::Medium => 16,
         Tier::High => super::MAX_LAMPS,
+    }
+}
+
+/// How many transient flashes a tier reserves within its total lamp budget.
+#[must_use]
+pub fn flash_budget(tier: Tier) -> usize {
+    match tier {
+        Tier::Low => 2,
+        Tier::Medium => 4,
+        Tier::High => super::MAX_FLASH_LIGHTS,
     }
 }
 
@@ -3143,33 +3207,8 @@ impl Photo {
                 0.0
             };
             uniform.lamp_params = [0.0, exposure, baked_lamps, 0.0];
-            let mut count = 0;
-            let budget = lamp_budget(self.capability.quality.tier);
-            let sources: Vec<_> = neon
-                .lamps
-                .iter()
-                .map(|lamp| verse_engine::lighting::Light {
-                    position: lamp.position,
-                    color: glam::Vec3::from_array(lamp.color),
-                    intensity: if lamp.lit() { lamp.intensity } else { 0.0 },
-                    range: lamp.range,
-                })
-                .collect();
             self.last_lighting.selected_points =
-                verse_engine::lighting::select_lights(&sources, view, budget);
-            for &index in &self.last_lighting.selected_points {
-                let lamp = &neon.lamps[index];
-                let gain = lamp.intensity * exposure;
-                uniform.lamps[count * 2] = lamp.position.extend(lamp.range).to_array();
-                uniform.lamps[count * 2 + 1] = [
-                    lamp.color[0] * gain,
-                    lamp.color[1] * gain,
-                    lamp.color[2] * gain,
-                    0.0,
-                ];
-                count += 1;
-            }
-            uniform.lamp_params[0] = count as f32;
+                uniform.set_lamps(neon, view, self.capability.quality.tier, exposure);
             uniform.probe_origin = probes.origin.extend(probes.cell).to_array();
             uniform.probe_dims = [
                 probes.dims[0] as f32,
@@ -4345,10 +4384,196 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_portable_device_floor_does_not_hide_the_adapters_quality_ceiling() {
+        let device_floor = wgpu::Limits::downlevel_webgl2_defaults();
+        assert_eq!(device_floor.max_storage_buffers_per_shader_stage, 0);
+        let adapter_limits = wgpu::Limits {
+            max_storage_buffers_per_shader_stage: 8,
+            ..device_floor.clone()
+        };
+        let compute = adapter_has_compute(wgpu::DownlevelFlags::COMPUTE_SHADERS, &adapter_limits);
+        assert!(compute);
+        assert!(!adapter_has_compute(
+            wgpu::DownlevelFlags::empty(),
+            &adapter_limits
+        ));
+        assert!(!adapter_has_compute(
+            wgpu::DownlevelFlags::COMPUTE_SHADERS,
+            &device_floor
+        ));
+        let probe = Probe {
+            platform: Platform::Desktop,
+            gles: false,
+            float_target: true,
+            compute,
+            samples: 4,
+        };
+        assert_eq!(probe.select(Some(Tier::High)), Tier::High);
+        for (probe, ceiling) in [
+            (
+                Probe {
+                    compute: false,
+                    ..probe
+                },
+                Tier::Medium,
+            ),
+            (
+                Probe {
+                    samples: 1,
+                    ..probe
+                },
+                Tier::Medium,
+            ),
+            (
+                Probe {
+                    gles: true,
+                    ..probe
+                },
+                Tier::Low,
+            ),
+            (
+                Probe {
+                    float_target: false,
+                    ..probe
+                },
+                Tier::Low,
+            ),
+            (
+                Probe {
+                    platform: Platform::Mobile,
+                    ..probe
+                },
+                Tier::Medium,
+            ),
+            (
+                Probe {
+                    platform: Platform::Web,
+                    ..probe
+                },
+                Tier::Medium,
+            ),
+        ] {
+            assert_eq!(probe.select(Some(Tier::High)), ceiling);
+        }
+    }
+
+    #[test]
     fn lower_tiers_shade_fewer_lamps() {
         assert!(lamp_budget(Tier::Low) < lamp_budget(Tier::Medium));
         assert!(lamp_budget(Tier::Medium) < lamp_budget(Tier::High));
         assert_eq!(lamp_budget(Tier::High), super::super::MAX_LAMPS);
+    }
+
+    fn lamp_view() -> verse_engine::presentation::View {
+        let eye = Vec3::new(0.0, 1.0, 5.0);
+        verse_engine::presentation::View {
+            eye,
+            view_proj: Mat4::perspective_rh(1.0, 1.0, 0.1, 100.0)
+                * Mat4::look_at_rh(eye, Vec3::ZERO, Vec3::Y),
+        }
+    }
+
+    fn test_lamp(intensity: f32) -> super::super::Lamp {
+        super::super::Lamp {
+            position: Vec3::ZERO,
+            color: [1.0, 0.5, 0.25],
+            intensity,
+            range: 2.0,
+        }
+    }
+
+    #[test]
+    fn flashes_reserve_tier_slots_in_the_existing_lamp_uniform() {
+        use super::super::{MAX_FLASH_CANDIDATES, MAX_LAMPS};
+        let mut neon = Neon::plaza(0.0);
+        neon.lamps.fill(test_lamp(1_000_000.0));
+        neon.flash_lamps.fill(test_lamp(10.0));
+        for (tier, flashes) in [(Tier::Low, 2), (Tier::Medium, 4), (Tier::High, 8)] {
+            assert_eq!(flash_budget(tier), flashes);
+            let mut frame = Frame::zeroed();
+            let selected = frame.set_lamps(&neon, lamp_view(), tier, 0.5);
+            assert_eq!(selected.len(), lamp_budget(tier));
+            assert_eq!(frame.lamp_params[0], lamp_budget(tier) as f32);
+            assert_eq!(
+                &selected[..flashes],
+                &(MAX_LAMPS..MAX_LAMPS + flashes).collect::<Vec<_>>()
+            );
+            assert!(selected[flashes..].iter().all(|&index| index < MAX_LAMPS));
+            assert_eq!(frame.lamps[0], [0.0, 0.0, 0.0, 2.0]);
+            assert_eq!(frame.lamps[1], [5.0, 2.5, 1.25, 0.0]);
+            assert_eq!(
+                frame.lamps[flashes * 2 + 1],
+                [500_000.0, 250_000.0, 125_000.0, 0.0]
+            );
+            assert_eq!(frame.lamps.len(), 2 * MAX_LAMPS);
+            assert_eq!(neon.flash_lamps.len(), MAX_FLASH_CANDIDATES);
+        }
+    }
+
+    #[test]
+    fn flash_priority_accounts_for_brightness_distance_and_visibility() {
+        use super::super::{Lamp, MAX_LAMPS};
+        let mut neon = Neon::plaza(0.0);
+        assert!(neon.flash_lamps.iter().all(|lamp| *lamp == Lamp::OFF));
+        neon.flash_lamps[0] = test_lamp(1.0);
+        neon.flash_lamps[1] = Lamp {
+            position: Vec3::new(0.0, 0.0, -20.0),
+            intensity: 100.0,
+            ..test_lamp(0.0)
+        };
+        neon.flash_lamps[2] = Lamp {
+            position: Vec3::new(0.0, 0.0, 500.0),
+            intensity: 1_000_000.0,
+            ..test_lamp(0.0)
+        };
+        neon.flash_lamps[3] = Lamp {
+            intensity: f32::NAN,
+            ..test_lamp(0.0)
+        };
+        neon.flash_lamps[4] = Lamp {
+            color: [f32::INFINITY, 0.0, 0.0],
+            ..test_lamp(100.0)
+        };
+        let mut frame = Frame::zeroed();
+        let selected = frame.set_lamps(&neon, lamp_view(), Tier::Low, 1.0);
+        assert_eq!(selected, [MAX_LAMPS + 1, MAX_LAMPS]);
+        assert_eq!(frame.lamp_params[0], 2.0);
+    }
+
+    #[test]
+    fn offscreen_flashes_do_not_hide_a_visible_candidate_beyond_the_render_cap() {
+        use super::super::{Lamp, MAX_FLASH_LIGHTS, MAX_LAMPS};
+        let mut neon = Neon::plaza(0.0);
+        for lamp in &mut neon.flash_lamps[..MAX_FLASH_LIGHTS] {
+            *lamp = Lamp {
+                position: Vec3::new(0.0, 1.0, 8.0),
+                intensity: 1_000_000.0,
+                range: 0.5,
+                ..test_lamp(0.0)
+            };
+        }
+        neon.flash_lamps[MAX_FLASH_LIGHTS] = test_lamp(10.0);
+        for tier in Tier::ALL {
+            let mut frame = Frame::zeroed();
+            let selected = frame.set_lamps(&neon, lamp_view(), tier, 1.0);
+            assert_eq!(selected, [MAX_LAMPS + MAX_FLASH_LIGHTS]);
+            assert_eq!(frame.lamp_params[0], 1.0);
+        }
+    }
+
+    #[test]
+    fn unused_flash_slots_return_to_permanent_lamps() {
+        let mut neon = Neon::plaza(0.0);
+        neon.lamps.fill(test_lamp(1.0));
+        neon.flash_lamps[7] = test_lamp(0.5);
+        let mut frame = Frame::zeroed();
+        let selected = frame.set_lamps(&neon, lamp_view(), Tier::Low, 1.0);
+        assert_eq!(selected[0], super::super::MAX_LAMPS + 7);
+        assert_eq!(selected.len(), lamp_budget(Tier::Low));
+        assert_eq!(selected[1..], (0..7).collect::<Vec<_>>());
+        neon.flash_lamps.fill(super::super::Lamp::OFF);
+        let selected = frame.set_lamps(&neon, lamp_view(), Tier::Low, 1.0);
+        assert_eq!(selected, (0..8).collect::<Vec<_>>());
     }
 
     #[test]

@@ -1642,10 +1642,25 @@ fn offscreen(
         .render_with_overlay(view, dynamic, ui, overlay)
 }
 
+/// Two timestamps and their resolved GPU and CPU buffers.
+#[cfg(feature = "capture")]
+struct GpuTimestamps {
+    queries: wgpu::QuerySet,
+    resolve: wgpu::Buffer,
+    readback: wgpu::Buffer,
+    marker: wgpu::Buffer,
+}
+
+#[cfg(feature = "capture")]
+fn timestamp_features() -> wgpu::Features {
+    wgpu::Features::TIMESTAMP_QUERY | wgpu::Features::TIMESTAMP_QUERY_INSIDE_ENCODERS
+}
+
 /// A renderer without a window that keeps its device and its uploaded world
 /// between frames, so a sequence of frames (a video) costs one upload.
 #[cfg(feature = "capture")]
 pub struct Offscreen {
+    adapter_info: wgpu::AdapterInfo,
     device: wgpu::Device,
     queue: wgpu::Queue,
     scene: Scene,
@@ -1658,8 +1673,10 @@ pub struct Offscreen {
     row: u32,
     texel: u32,
     settled: bool,
-    /// The last frame's CPU encode and submit, and its wait for the GPU, ms.
+    /// The last frame's CPU encode and submit, and its completion wait, ms.
     timing: (f32, f32),
+    gpu_timestamps: Option<GpuTimestamps>,
+    last_gpu_ms: Option<f32>,
 }
 
 #[cfg(feature = "capture")]
@@ -1723,7 +1740,37 @@ impl Offscreen {
             usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
             mapped_at_creation: false,
         });
+        let gpu_timestamps =
+            device
+                .features()
+                .contains(timestamp_features())
+                .then(|| GpuTimestamps {
+                    queries: device.create_query_set(&wgpu::QuerySetDescriptor {
+                        label: Some("verse capture timestamps"),
+                        ty: wgpu::QueryType::Timestamp,
+                        count: 2,
+                    }),
+                    resolve: device.create_buffer(&wgpu::BufferDescriptor {
+                        label: Some("verse capture timestamp resolve"),
+                        size: 16,
+                        usage: wgpu::BufferUsages::QUERY_RESOLVE | wgpu::BufferUsages::COPY_SRC,
+                        mapped_at_creation: false,
+                    }),
+                    readback: device.create_buffer(&wgpu::BufferDescriptor {
+                        label: Some("verse capture timestamp readback"),
+                        size: 16,
+                        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+                        mapped_at_creation: false,
+                    }),
+                    marker: device.create_buffer(&wgpu::BufferDescriptor {
+                        label: Some("verse capture timestamp marker"),
+                        size: 16,
+                        usage: wgpu::BufferUsages::COPY_DST,
+                        mapped_at_creation: false,
+                    }),
+                });
         Ok(Self {
+            adapter_info: adapter.get_info(),
             device,
             queue,
             scene,
@@ -1737,6 +1784,8 @@ impl Offscreen {
             texel,
             settled: false,
             timing: (0.0, 0.0),
+            gpu_timestamps,
+            last_gpu_ms: None,
         })
     }
 
@@ -1753,9 +1802,46 @@ impl Offscreen {
         self.scene.photo.as_ref().map(Photo::draw_stats)
     }
 
+    /// The adapter that renders these frames.
+    #[must_use]
+    pub fn adapter_info(&self) -> &wgpu::AdapterInfo {
+        &self.adapter_info
+    }
+
+    /// The effective quality after applying the adapter's limits.
+    #[must_use]
+    pub fn quality(&self) -> verse_engine::quality::Quality {
+        self.scene.capability.quality
+    }
+
+    /// Whether this adapter supports GPU timestamps for measured frames.
+    #[must_use]
+    pub fn gpu_timestamps_available(&self) -> bool {
+        self.gpu_timestamps.is_some()
+    }
+
+    /// The last frame's GPU timestamp duration, in ms, if it was measured.
+    #[must_use]
+    pub fn last_gpu_ms(&self) -> Option<f32> {
+        self.last_gpu_ms
+    }
+
+    /// The flash lights selected for the last physical frame.
+    #[must_use]
+    pub fn selected_flash_lights(&self) -> usize {
+        self.scene.photo.as_ref().map_or(0, |photo| {
+            photo
+                .last_lighting
+                .selected_points
+                .iter()
+                .filter(|&&index| index >= crate::pbr::MAX_LAMPS)
+                .count()
+        })
+    }
+
     /// The last frame's CPU time to fit, encode, and submit it, and its
-    /// wait for the GPU to finish and the pixels to come back, ms. The wait
-    /// is the GPU's time for the frame once the CPU has handed it over.
+    /// completion wait, in ms. Rendering pixels includes their readback;
+    /// [`Self::measure`] omits it. Both include submission and polling overhead.
     #[must_use]
     pub fn last_timing(&self) -> (f32, f32) {
         self.timing
@@ -1765,12 +1851,40 @@ impl Offscreen {
         self.render_with_overlay(view, dynamic, ui, None)
     }
 
+    /// Renders and waits for completion without copying or reading back pixels.
+    /// Returns the CPU encode and submit time and the completion wait, in ms.
+    /// The wait includes submission and polling overhead, not just GPU work.
+    ///
+    /// # Errors
+    ///
+    /// Returns a message when the frame is invalid or the GPU fails.
+    pub fn measure(
+        &mut self,
+        view: View,
+        dynamic: &Mesh,
+        ui: &UiBatch,
+    ) -> Result<(f32, f32), String> {
+        self.render_frame(view, dynamic, ui, None, false)?;
+        Ok(self.timing)
+    }
+
     fn render_with_overlay(
         &mut self,
         view: View,
         dynamic: &Mesh,
         ui: &UiBatch,
         overlay: Option<&crate::overlay::OverlayImage>,
+    ) -> Result<Vec<u8>, String> {
+        self.render_frame(view, dynamic, ui, overlay, true)
+    }
+
+    fn render_frame(
+        &mut self,
+        view: View,
+        dynamic: &Mesh,
+        ui: &UiBatch,
+        overlay: Option<&crate::overlay::OverlayImage>,
+        read_pixels: bool,
     ) -> Result<Vec<u8>, String> {
         let started = std::time::Instant::now();
         validate_frame(view, dynamic, ui)?;
@@ -1815,6 +1929,13 @@ impl Offscreen {
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("verse capture"),
         });
+        let timestamps = self.gpu_timestamps.as_ref().filter(|_| !read_pixels);
+        if let Some(timer) = timestamps {
+            encoder.write_timestamp(&timer.queries, 0);
+            // Metal can omit a timestamp when its blit encoder has no real
+            // copy. Keep each timestamp's encoder active with an 8-byte copy.
+            encoder.copy_buffer_to_buffer(&timer.resolve, 0, &timer.marker, 0, 8);
+        }
         self.scene.encode(
             device,
             queue,
@@ -1825,46 +1946,86 @@ impl Offscreen {
             dynamic,
             ui,
         );
+        if let Some(timer) = timestamps {
+            encoder.write_timestamp(&timer.queries, 1);
+            encoder.copy_buffer_to_buffer(&timer.resolve, 0, &timer.marker, 8, 8);
+            encoder.resolve_query_set(&timer.queries, 0..2, &timer.resolve, 0);
+            encoder.copy_buffer_to_buffer(&timer.resolve, 0, &timer.readback, 0, 16);
+        }
         if let Some(panel) = &panel {
             panel.encode(queue, &mut encoder, &self.output, self.targets.size);
         }
-        encoder.copy_texture_to_buffer(
-            wgpu::TexelCopyTextureInfo {
-                texture: &self.texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            wgpu::TexelCopyBufferInfo {
-                buffer: &self.readback,
-                layout: wgpu::TexelCopyBufferLayout {
-                    offset: 0,
-                    bytes_per_row: Some(self.row),
-                    rows_per_image: Some(self.height),
+        if read_pixels {
+            encoder.copy_texture_to_buffer(
+                wgpu::TexelCopyTextureInfo {
+                    texture: &self.texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
                 },
-            },
-            extent(self.width, self.height),
-        );
+                wgpu::TexelCopyBufferInfo {
+                    buffer: &self.readback,
+                    layout: wgpu::TexelCopyBufferLayout {
+                        offset: 0,
+                        bytes_per_row: Some(self.row),
+                        rows_per_image: Some(self.height),
+                    },
+                },
+                extent(self.width, self.height),
+            );
+        }
         queue.submit([encoder.finish()]);
         let submitted = std::time::Instant::now();
 
         let slice = self.readback.slice(..);
-        slice.map_async(wgpu::MapMode::Read, |_| {});
+        if read_pixels {
+            slice.map_async(wgpu::MapMode::Read, |_| {});
+        }
+        let timestamp_mapping = timestamps.map(|timer| {
+            let (tx, rx) = std::sync::mpsc::channel();
+            timer
+                .readback
+                .slice(..)
+                .map_async(wgpu::MapMode::Read, move |result| {
+                    let _ = tx.send(result);
+                });
+            rx
+        });
         device
             .poll(wgpu::PollType::Wait {
                 submission_index: None,
                 timeout: None,
             })
             .map_err(|e| format!("the GPU did not finish: {e}"))?;
-        let mapped = slice.get_mapped_range();
-        let line = self.width as usize * self.texel as usize;
-        let mut pixels = Vec::with_capacity(line * self.height as usize);
-        for y in 0..self.height as usize {
-            let start = y * self.row as usize;
-            pixels.extend_from_slice(&mapped[start..start + line]);
+        self.last_gpu_ms = None;
+        if let (Some(timer), Some(mapping)) = (timestamps, timestamp_mapping) {
+            mapping
+                .recv()
+                .map_err(|e| format!("GPU timestamps: {e}"))?
+                .map_err(|e| format!("GPU timestamps: {e}"))?;
+            let mapped = timer.readback.slice(..).get_mapped_range();
+            let first = u64::from_le_bytes(mapped[..8].try_into().expect("timestamp size"));
+            let last = u64::from_le_bytes(mapped[8..16].try_into().expect("timestamp size"));
+            self.last_gpu_ms = last
+                .checked_sub(first)
+                .filter(|&ticks| first > 0 && ticks > 0)
+                .map(|ticks| ticks as f32 * queue.get_timestamp_period() / 1e6)
+                .filter(|&ms| ms > 0.0 && ms.is_finite());
+            drop(mapped);
+            timer.readback.unmap();
         }
-        drop(mapped);
-        self.readback.unmap();
+        let mut pixels = Vec::new();
+        if read_pixels {
+            let mapped = slice.get_mapped_range();
+            let line = self.width as usize * self.texel as usize;
+            pixels.reserve(line * self.height as usize);
+            for y in 0..self.height as usize {
+                let start = y * self.row as usize;
+                pixels.extend_from_slice(&mapped[start..start + line]);
+            }
+            drop(mapped);
+            self.readback.unmap();
+        }
         let done = std::time::Instant::now();
         self.timing = (
             (submitted - started).as_secs_f32() * 1000.0,
@@ -1954,6 +2115,13 @@ async fn open_async(
     let required_limits = scene_limits(adapter.limits())?;
     // The physical path prefers a compact 32-bit floating-point scene target.
     let required_features = adapter.features() & wgpu::Features::RG11B10UFLOAT_RENDERABLE;
+    #[cfg(all(feature = "capture", not(target_arch = "wasm32")))]
+    let required_features = required_features
+        | if adapter.features().contains(timestamp_features()) {
+            timestamp_features()
+        } else {
+            wgpu::Features::empty()
+        };
     let (device, queue) = adapter
         .request_device(&wgpu::DeviceDescriptor {
             label: Some("verse"),

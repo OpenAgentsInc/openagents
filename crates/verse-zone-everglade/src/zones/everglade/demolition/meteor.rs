@@ -65,10 +65,11 @@ use super::site::{Blow, Target};
 use crate::controller::PlayerController;
 use crate::fx::{Handle, Particles, Spawn};
 use crate::mesh::{Mesh, Vertex};
-use crate::pbr::{GlowVertex, LitVertex};
+use crate::pbr::{GlowVertex, Lamp, LitVertex, MAX_FLASH_CANDIDATES};
 use crate::zones::everglade::height;
 use glam::Vec3;
 use std::f32::consts::TAU;
+use verse_core::flash_light::FlashLights;
 use verse_world::meteor_swarm::{self as srd, Damage};
 
 /// The mana pool the yard's caster has.
@@ -519,6 +520,8 @@ pub struct Swarm {
     damage: Damage,
     /// The fire, smoke, sparks, and shockwaves.
     fx: Particles,
+    /// Direct light from the same impacts that start the particles.
+    flashes: FlashLights,
     /// The embers around the caster while the cast runs.
     gathering: Option<Handle>,
     scorches: Vec<Scorch>,
@@ -553,6 +556,7 @@ impl Default for Swarm {
                 bludgeoning: 0,
             },
             fx: Particles::new(0x3E7E_0125),
+            flashes: FlashLights::default(),
             gathering: None,
             scorches: Vec::new(),
             shake: 0.0,
@@ -776,6 +780,29 @@ impl Swarm {
         std::mem::take(&mut self.impacts)
     }
 
+    /// The brightest nearby impact lights, independent of the combat log.
+    #[must_use]
+    pub fn flash_lamps(&self, eye: Vec3) -> [Lamp; MAX_FLASH_CANDIDATES] {
+        self.flashes.lamps(eye)
+    }
+
+    fn impact(&mut self, impact: Impact) {
+        let (color, peak, range) = match impact.strike {
+            Strike::Meteors => {
+                let size = impact.radius / BLAST;
+                (
+                    [1.0, 0.48, 0.12],
+                    1_600_000.0 * size * size,
+                    28.0 * size.sqrt(),
+                )
+            }
+            Strike::Lightning => ([0.65, 0.8, 1.0], 1_800_000.0, 30.0),
+            Strike::MegaLightning => ([0.65, 0.8, 1.0], 5_000_000.0, 45.0),
+        };
+        self.flashes.spawn(impact.at, color, peak, range);
+        self.impacts.push(impact);
+    }
+
     /// Adds a jolt of `size`, from 0 to 1, to the camera's shake, as a
     /// toppled tower striking the ground does.
     pub fn quake(&mut self, size: f32) {
@@ -828,6 +855,7 @@ impl Swarm {
     /// Advances the cast, the meteors, and their fire for `player`, and
     /// explodes what lands on `site`. Returns each explosion's blows.
     pub fn tick(&mut self, dt: f32, player: &PlayerController, site: &mut dyn Target) -> Vec<Blow> {
+        self.flashes.tick(dt);
         self.clock += dt;
         self.cooldown = (self.cooldown - dt).max(0.0);
         self.idle += dt;
@@ -1202,7 +1230,7 @@ impl Swarm {
                     seed: bolt.seed,
                 });
             }
-            self.impacts.push(Impact {
+            self.impact(Impact {
                 at: center,
                 normal,
                 strike,
@@ -1236,7 +1264,7 @@ impl Swarm {
         let seed = self.next();
         self.fx
             .start("meteor_explosion", Spawn::at(center).scaled(size));
-        self.impacts.push(Impact {
+        self.impact(Impact {
             at: center,
             normal: if face == Vec3::ZERO { Vec3::Y } else { face },
             strike: Strike::Meteors,

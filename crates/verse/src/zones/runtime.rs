@@ -2871,6 +2871,9 @@ impl WorldRuntime {
                 }
             }
         }
+        if let (Some(glade), Some(neon)) = (&self.zone_state.everglade, mesh.neon.as_mut()) {
+            neon.flash_lamps = glade.flash_lamps(self.view(1.0).eye);
+        }
         mesh
     }
 }
