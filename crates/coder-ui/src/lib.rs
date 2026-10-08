@@ -3,3 +3,4 @@ pub mod catalog;
 pub mod components;
 pub mod source_theme;
 pub mod theme;
+pub mod workspace;

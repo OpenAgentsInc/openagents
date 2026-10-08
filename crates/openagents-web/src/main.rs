@@ -3,7 +3,8 @@ use std::path::PathBuf;
 
 const USAGE: &str = "usage: openagents-web [--store DIRECTORY] [--listen ADDRESS] \
 [--pay-host http://HOST:PORT] [--public-host HOST]... [--upstream http://HOST:PORT] \
-[--everglade DIRECTORY] [--components-build DIRECTORY] [--pilot-config PRIVATE_JSON]";
+[--everglade DIRECTORY] [--components-build DIRECTORY] [--cloud-build DIRECTORY] \
+[--cloud-config PRIVATE_JSON] [--pilot-config PRIVATE_JSON]";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -23,6 +24,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "--upstream" => upstream = Some(value),
             "--everglade" => config.everglade = Some(PathBuf::from(value)),
             "--components-build" => config.components_build = Some(PathBuf::from(value)),
+            "--cloud-build" => config.cloud_build = Some(PathBuf::from(value)),
+            "--cloud-config" => {
+                config.cloud = Some(std::sync::Arc::new(
+                    openagents_web::cloud::session::CloudSession::load(std::path::Path::new(
+                        &value,
+                    ))?,
+                ));
+            }
             "--pilot-config" => {
                 config.pilot = Some(std::sync::Arc::new(openagents_web::pilot::Intake::load(
                     std::path::Path::new(&value),

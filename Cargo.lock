@@ -2864,6 +2864,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "coder-cloud-web"
+version = "0.1.0"
+dependencies = [
+ "futures-util",
+ "gloo-timers",
+ "js-sys",
+ "serde",
+ "serde_json",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+]
+
+[[package]]
 name = "coder-components-web"
 version = "0.1.0"
 dependencies = [
@@ -10222,9 +10236,12 @@ dependencies = [
  "hmac 0.12.1",
  "hyper",
  "hyper-util",
+ "jev",
+ "libc",
  "openagents-chat",
  "paper-mono",
  "pulldown-cmark",
+ "reqwest 0.12.28",
  "route-contract",
  "rust-native",
  "rust-native-web",
@@ -10235,6 +10252,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tower 0.5.3",
+ "url",
 ]
 
 [[package]]

@@ -1,0 +1,835 @@
+//! Isolated HTTP acceptance for the same-origin account adapter and shell.
+
+use super::session::CloudSession;
+use axum::body::{Body, to_bytes};
+use axum::extract::{Path, State};
+use axum::http::{HeaderMap, Method, Request, StatusCode, header};
+use axum::response::{IntoResponse, Response};
+use axum::routing::{get, post};
+use axum::{Json, Router};
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+use serde_json::{Value, json};
+use std::collections::{BTreeMap, BTreeSet};
+use std::os::unix::fs::PermissionsExt;
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
+use std::time::{SystemTime, UNIX_EPOCH};
+use tower::ServiceExt;
+
+const HOST: &str = "127.0.0.1:4300";
+const ORIGIN: &str = "http://127.0.0.1:4300";
+const CANARY: &str = "synthetic-native-private-canary";
+
+fn now() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+}
+
+fn credential(account: &str) -> String {
+    format!("oak_{account}.synthetic-credential")
+}
+
+fn token(account: &str) -> String {
+    format!(
+        "sess_{}",
+        if account == "alice" { "a" } else { "b" }.repeat(64)
+    )
+}
+
+#[derive(Default)]
+struct Native {
+    revoked: BTreeSet<String>,
+    epoch: u64,
+    removed: bool,
+    offline: bool,
+    team_removed: bool,
+    team_name: Option<String>,
+    team_role: Option<String>,
+    signins: usize,
+    signouts: usize,
+    expiry: u64,
+}
+
+fn acting(headers: &HeaderMap, state: &Native) -> Option<&'static str> {
+    let bearer = headers
+        .get(header::AUTHORIZATION)?
+        .to_str()
+        .ok()?
+        .strip_prefix("Bearer ")?;
+    ["alice", "bob"]
+        .into_iter()
+        .find(|account| bearer == token(account) && !state.revoked.contains(*account))
+}
+
+fn native_refusal(status: StatusCode) -> Response {
+    (
+        status,
+        Json(json!({"error":{"code":"unauthenticated","message":CANARY}})),
+    )
+        .into_response()
+}
+
+async fn native_sign_in(State(state): State<Arc<Mutex<Native>>>, headers: HeaderMap) -> Response {
+    let mut state = state.lock().unwrap();
+    state.signins += 1;
+    let bearer = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "));
+    let Some(account) = ["alice", "bob"]
+        .into_iter()
+        .find(|account| bearer == Some(credential(account).as_str()))
+    else {
+        return native_refusal(StatusCode::UNAUTHORIZED);
+    };
+    state.revoked.remove(account);
+    Json(json!({"session":{"id":format!("native-session-{account}"),"kind":"user","account":account,"created_at":now(),"expires_at":state.expiry},"token":token(account)})).into_response()
+}
+
+async fn native_session(State(state): State<Arc<Mutex<Native>>>, headers: HeaderMap) -> Response {
+    let state = state.lock().unwrap();
+    if state.offline {
+        return native_refusal(StatusCode::SERVICE_UNAVAILABLE);
+    }
+    let Some(account) = acting(&headers, &state) else {
+        return native_refusal(StatusCode::UNAUTHORIZED);
+    };
+    Json(json!({"session":{"id":format!("native-session-{account}"),"kind":"user","account":account,"created_at":now()-1,"expires_at":state.expiry,"state":"active"}})).into_response()
+}
+
+async fn native_details(State(state): State<Arc<Mutex<Native>>>, headers: HeaderMap) -> Response {
+    let state = state.lock().unwrap();
+    if state.offline {
+        return native_refusal(StatusCode::SERVICE_UNAVAILABLE);
+    }
+    let Some(account) = acting(&headers, &state) else {
+        return native_refusal(StatusCode::UNAUTHORIZED);
+    };
+    let workspaces = if state.removed {
+        vec![]
+    } else if account == "alice" {
+        let mut workspaces =
+            vec![json!({"id":"alice-personal","name":"Alice personal","role":"owner"})];
+        if !state.team_removed {
+            workspaces.push(json!({"id":"alice-team","name":state.team_name.as_deref().unwrap_or("Alice team"),"role":state.team_role.as_deref().unwrap_or("member")}));
+        }
+        workspaces
+    } else {
+        vec![json!({"id":"bob-personal","name":"Bob personal","role":"owner"})]
+    };
+    Json(json!({"account":{"id":account,"label":format!("{account} <account>"),"principals":[CANARY]},"workspaces":workspaces})).into_response()
+}
+
+async fn native_workspace(
+    State(state): State<Arc<Mutex<Native>>>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+) -> Response {
+    let state = state.lock().unwrap();
+    if state.offline {
+        return native_refusal(StatusCode::SERVICE_UNAVAILABLE);
+    }
+    let Some(account) = acting(&headers, &state) else {
+        return native_refusal(StatusCode::UNAUTHORIZED);
+    };
+    if state.removed
+        || (state.team_removed && id == "alice-team")
+        || !(account == "alice" && matches!(id.as_str(), "alice-personal" | "alice-team")
+            || account == "bob" && id == "bob-personal")
+    {
+        return native_refusal(StatusCode::FORBIDDEN);
+    }
+    Json(json!({"workspace":{"id":id,"tenant":"synthetic","members_epoch":state.epoch},"role":if id == "alice-team" {state.team_role.as_deref().unwrap_or("member")} else {"owner"}})).into_response()
+}
+
+async fn native_sign_out(State(state): State<Arc<Mutex<Native>>>, headers: HeaderMap) -> Response {
+    let mut state = state.lock().unwrap();
+    if state.offline {
+        return native_refusal(StatusCode::SERVICE_UNAVAILABLE);
+    }
+    let Some(account) = acting(&headers, &state) else {
+        return native_refusal(StatusCode::UNAUTHORIZED);
+    };
+    state.revoked.insert(account.into());
+    state.signouts += 1;
+    Json(json!({"session":{"state":"revoked"}})).into_response()
+}
+
+struct Fixture {
+    _root: tempfile::TempDir,
+    site: Router,
+    state: Arc<Mutex<Native>>,
+    server: tokio::task::JoinHandle<()>,
+    local_store: PathBuf,
+}
+
+impl Drop for Fixture {
+    fn drop(&mut self) {
+        self.server.abort();
+    }
+}
+
+async fn fixture() -> Fixture {
+    let state = Arc::new(Mutex::new(Native {
+        epoch: 3,
+        expiry: now() + 3600,
+        ..Default::default()
+    }));
+    let native = Router::new()
+        .route("/v1/sessions", post(native_sign_in))
+        .route("/v1/session", get(native_session).delete(native_sign_out))
+        .route("/v1/account", get(native_details))
+        .route("/v1/workspaces/{id}", get(native_workspace))
+        .with_state(state.clone());
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let endpoint = format!("http://{}", listener.local_addr().unwrap());
+    let server = tokio::spawn(async move {
+        axum::serve(listener, native).await.unwrap();
+    });
+    let root = tempfile::tempdir().unwrap();
+    let directory = root.path().canonicalize().unwrap().join("private");
+    std::fs::create_dir(&directory).unwrap();
+    std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let secret = directory.join("csrf.key");
+    std::fs::write(&secret, [13; 32]).unwrap();
+    std::fs::set_permissions(&secret, std::fs::Permissions::from_mode(0o600)).unwrap();
+    let path = directory.join("cloud.json");
+    std::fs::write(&path, serde_json::to_vec(&json!({"schema":"openagents.cloud.web-config.v1","public_origin":ORIGIN,"account_service":endpoint,"csrf_secret":secret})).unwrap()).unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+    let build = directory.join("build");
+    std::fs::create_dir(&build).unwrap();
+    // Route acceptance does not execute these assets; the parent verifies the real Wasm build in Chrome.
+    std::fs::write(build.join("coder_cloud_web.js"), "synthetic route asset").unwrap();
+    std::fs::write(
+        build.join("coder_cloud_web_bg.wasm"),
+        b"synthetic route asset",
+    )
+    .unwrap();
+    let local_store = directory.join("unopened-local-tasks");
+    let mut config = crate::Config::development(local_store.clone());
+    config.cloud = Some(Arc::new(CloudSession::load(&path).unwrap()));
+    config.cloud_build = Some(build);
+    Fixture {
+        _root: root,
+        site: crate::router(config),
+        state,
+        server,
+        local_store,
+    }
+}
+
+struct Answer {
+    status: StatusCode,
+    headers: HeaderMap,
+    body: String,
+}
+
+async fn request(
+    site: &Router,
+    method: Method,
+    path: &str,
+    cookies: &Cookies,
+    form: Option<&str>,
+    origin: Option<&str>,
+) -> Answer {
+    let mut request = Request::builder()
+        .method(method)
+        .uri(path)
+        .header(header::HOST, HOST);
+    if !cookies.0.is_empty() {
+        request = request.header(header::COOKIE, cookies.header());
+    }
+    if let Some(origin) = origin {
+        request = request
+            .header(header::ORIGIN, origin)
+            .header("sec-fetch-site", "same-origin");
+    }
+    if form.is_some() {
+        request = request.header(header::CONTENT_TYPE, "application/x-www-form-urlencoded");
+    }
+    let response = site
+        .clone()
+        .oneshot(
+            request
+                .body(Body::from(form.unwrap_or("").to_owned()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status();
+    let headers = response.headers().clone();
+    let body = String::from_utf8(
+        to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .unwrap()
+            .to_vec(),
+    )
+    .unwrap();
+    Answer {
+        status,
+        headers,
+        body,
+    }
+}
+
+#[derive(Default)]
+struct Cookies(BTreeMap<String, String>);
+
+impl Cookies {
+    fn apply(&mut self, answer: &Answer) {
+        for value in answer.headers.get_all(header::SET_COOKIE) {
+            let value = value.to_str().unwrap();
+            let (name, content) = value.split(';').next().unwrap().split_once('=').unwrap();
+            if content.is_empty() || value.contains("Max-Age=0") {
+                self.0.remove(name);
+            } else {
+                self.0.insert(name.into(), content.into());
+            }
+        }
+    }
+    fn header(&self) -> String {
+        self.0
+            .iter()
+            .map(|(name, value)| format!("{name}={value}"))
+            .collect::<Vec<_>>()
+            .join("; ")
+    }
+}
+
+fn field(html: &str, name: &str) -> String {
+    html.split_once(&format!("name=\"{name}\" value=\""))
+        .unwrap()
+        .1
+        .split('"')
+        .next()
+        .unwrap()
+        .into()
+}
+
+fn action_token(html: &str, action: &str, workspace: Option<&str>) -> String {
+    html.split("<form ")
+        .skip(1)
+        .find_map(|form| {
+            let form = form.split("</form>").next().unwrap();
+            (form.contains(&format!("action=\"{action}\""))
+                && workspace
+                    .is_none_or(|id| form.contains(&format!("name=\"workspace\" value=\"{id}\""))))
+            .then(|| field(form, "csrf"))
+        })
+        .unwrap()
+}
+
+fn form(fields: &[(&str, &str)]) -> String {
+    url::form_urlencoded::Serializer::new(String::new())
+        .extend_pairs(fields.iter().copied())
+        .finish()
+}
+
+fn private(answer: &Answer) {
+    assert_eq!(answer.headers[header::CACHE_CONTROL], "no-store, private");
+    assert_eq!(answer.headers[header::REFERRER_POLICY], "same-origin");
+    assert_eq!(answer.headers[header::VARY], "Cookie");
+    assert!(!answer.body.contains(CANARY));
+    assert!(!answer.body.contains(&token("alice")));
+    assert!(!answer.body.contains(&token("bob")));
+    assert!(!answer.body.contains(&credential("alice")));
+}
+
+async fn login(fixture: &Fixture, account: &str) -> Cookies {
+    let mut cookies = Cookies::default();
+    let page = request(
+        &fixture.site,
+        Method::GET,
+        "/cloud/sign-in",
+        &cookies,
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(page.status, StatusCode::OK);
+    private(&page);
+    let nonce = page.headers[header::SET_COOKIE].to_str().unwrap();
+    assert!(nonce.contains("HttpOnly; SameSite=Strict"));
+    assert!(nonce.contains("Path=/cloud"));
+    cookies.apply(&page);
+    let csrf = field(&page.body, "csrf");
+    let input = form(&[("credential", &credential(account)), ("csrf", &csrf)]);
+    let answer = request(
+        &fixture.site,
+        Method::POST,
+        "/cloud/sign-in",
+        &cookies,
+        Some(&input),
+        Some(ORIGIN),
+    )
+    .await;
+    assert_eq!(answer.status, StatusCode::SEE_OTHER, "{}", answer.body);
+    private(&answer);
+    assert_eq!(answer.headers[header::LOCATION], "/cloud/app");
+    cookies.apply(&answer);
+    assert!(!cookies.0.contains_key("oa_cloud_login"));
+    assert_eq!(cookies.0["oa_cloud_session"], token(account));
+    cookies
+}
+
+#[tokio::test]
+async fn login_shell_standing_switch_and_logout_use_the_native_session() {
+    let fixture = fixture().await;
+    let mut cookies = login(&fixture, "alice").await;
+    let shell = request(
+        &fixture.site,
+        Method::GET,
+        "/cloud/app",
+        &cookies,
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(shell.status, StatusCode::OK);
+    private(&shell);
+    assert!(shell.body.contains("<div id=\"cloud-private\" hidden>"));
+    assert!(shell.body.contains("<pre id=\"cloud-standing\" hidden>"));
+    assert!(shell.body.contains("alice &lt;account&gt;"));
+    assert!(shell.body.contains("No connected work to report"));
+    let standing = request(
+        &fixture.site,
+        Method::GET,
+        "/cloud/app/session",
+        &cookies,
+        None,
+        None,
+    )
+    .await;
+    private(&standing);
+    let value: Value = serde_json::from_str(&standing.body).unwrap();
+    assert_eq!(value["account"], "alice");
+    assert!(value["workspace"].is_null());
+    let csrf = action_token(
+        &shell.body,
+        "/cloud/select-workspace",
+        Some("alice-personal"),
+    );
+    let input = form(&[("workspace", "alice-personal"), ("csrf", &csrf)]);
+    let switched = request(
+        &fixture.site,
+        Method::POST,
+        "/cloud/select-workspace",
+        &cookies,
+        Some(&input),
+        Some(ORIGIN),
+    )
+    .await;
+    assert_eq!(switched.status, StatusCode::SEE_OTHER);
+    private(&switched);
+    cookies.apply(&switched);
+    assert_eq!(cookies.0["oa_cloud_workspace"], "alice-personal");
+    let shell = request(
+        &fixture.site,
+        Method::GET,
+        "/cloud/app",
+        &cookies,
+        None,
+        None,
+    )
+    .await;
+    let standing = request(
+        &fixture.site,
+        Method::GET,
+        "/cloud/app/session",
+        &cookies,
+        None,
+        None,
+    )
+    .await;
+    let value: Value = serde_json::from_str(&standing.body).unwrap();
+    assert_eq!(value["workspace"], "alice-personal");
+    assert_eq!(value["members_epoch"], 3);
+    let csrf = action_token(&shell.body, "/cloud/sign-out", None);
+    let payload = URL_SAFE_NO_PAD
+        .decode(csrf.split('.').next().unwrap())
+        .unwrap();
+    let payload = String::from_utf8(payload).unwrap();
+    assert!(!payload.contains("alice"));
+    assert!(!payload.contains("native-session-alice"));
+    let ticket: Value = serde_json::from_str(&payload).unwrap();
+    assert!(ticket["viewer"].is_null());
+    assert!(ticket["scope"].as_str() == Some("sign-out"));
+    let resume = shell
+        .body
+        .split("id=\"cloud-resume\"")
+        .nth(1)
+        .unwrap()
+        .split("</section>")
+        .next()
+        .unwrap();
+    assert!(resume.contains("action=\"/cloud/sign-out\""));
+    assert!(!resume.contains("alice &lt;account&gt;"));
+    let input = form(&[("csrf", &csrf)]);
+    let ended = request(
+        &fixture.site,
+        Method::POST,
+        "/cloud/sign-out",
+        &cookies,
+        Some(&input),
+        Some(ORIGIN),
+    )
+    .await;
+    assert_eq!(ended.status, StatusCode::SEE_OTHER);
+    private(&ended);
+    cookies.apply(&ended);
+    assert!(cookies.0.is_empty());
+    assert_eq!(fixture.state.lock().unwrap().signouts, 1);
+    let refused = request(
+        &fixture.site,
+        Method::GET,
+        "/cloud/app/session",
+        &cookies,
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(refused.status, StatusCode::UNAUTHORIZED);
+    private(&refused);
+    assert!(!fixture.local_store.exists());
+}
+
+#[tokio::test]
+async fn switch_tickets_bind_the_exact_workspace_session_and_displayed_membership() {
+    let fixture = fixture().await;
+    let mut alice = login(&fixture, "alice").await;
+    let bob = login(&fixture, "bob").await;
+    let shell = request(&fixture.site, Method::GET, "/cloud/app", &alice, None, None).await;
+    let csrf = action_token(
+        &shell.body,
+        "/cloud/select-workspace",
+        Some("alice-personal"),
+    );
+    for (cookies, target) in [(&alice, "alice-team"), (&bob, "alice-personal")] {
+        let input = form(&[("workspace", target), ("csrf", &csrf)]);
+        let refused = request(
+            &fixture.site,
+            Method::POST,
+            "/cloud/select-workspace",
+            cookies,
+            Some(&input),
+            Some(ORIGIN),
+        )
+        .await;
+        assert_eq!(refused.status, StatusCode::FORBIDDEN);
+        private(&refused);
+        assert!(!refused.headers.contains_key(header::SET_COOKIE));
+    }
+    let input = form(&[("workspace", "alice-personal"), ("csrf", &csrf)]);
+    let switched = request(
+        &fixture.site,
+        Method::POST,
+        "/cloud/select-workspace",
+        &alice,
+        Some(&input),
+        Some(ORIGIN),
+    )
+    .await;
+    alice.apply(&switched);
+    let shell = request(&fixture.site, Method::GET, "/cloud/app", &alice, None, None).await;
+    let csrf = action_token(&shell.body, "/cloud/select-workspace", Some("alice-team"));
+    fixture.state.lock().unwrap().epoch = 4;
+    let input = form(&[("workspace", "alice-team"), ("csrf", &csrf)]);
+    let stale = request(
+        &fixture.site,
+        Method::POST,
+        "/cloud/select-workspace",
+        &alice,
+        Some(&input),
+        Some(ORIGIN),
+    )
+    .await;
+    assert_eq!(stale.status, StatusCode::FORBIDDEN);
+    private(&stale);
+    assert!(!stale.headers.contains_key(header::SET_COOKIE));
+    let bob_shell = request(&fixture.site, Method::GET, "/cloud/app", &bob, None, None).await;
+    assert!(!bob_shell.body.contains("Alice personal"));
+    assert!(!bob_shell.body.contains("Alice team"));
+    alice
+        .0
+        .insert("oa_cloud_workspace".into(), "bob-personal".into());
+    let denied = request(&fixture.site, Method::GET, "/cloud/app", &alice, None, None).await;
+    assert_eq!(denied.status, StatusCode::FORBIDDEN);
+    private(&denied);
+    assert!(!denied.body.contains("Bob personal"));
+}
+
+#[tokio::test]
+async fn cross_origin_malformed_and_unauthenticated_forms_create_no_native_session() {
+    let fixture = fixture().await;
+    let mut cookies = Cookies::default();
+    let page = request(
+        &fixture.site,
+        Method::GET,
+        "/cloud/sign-in",
+        &cookies,
+        None,
+        None,
+    )
+    .await;
+    cookies.apply(&page);
+    let csrf = field(&page.body, "csrf");
+    let input = form(&[("credential", &credential("alice")), ("csrf", &csrf)]);
+    for origin in [None, Some("https://other.example.invalid")] {
+        let rejected = request(
+            &fixture.site,
+            Method::POST,
+            "/cloud/sign-in",
+            &cookies,
+            Some(&input),
+            origin,
+        )
+        .await;
+        assert_eq!(rejected.status, StatusCode::FORBIDDEN);
+        private(&rejected);
+    }
+    let tampered = form(&[("credential", &credential("alice")), ("csrf", "invalid")]);
+    let rejected = request(
+        &fixture.site,
+        Method::POST,
+        "/cloud/sign-in",
+        &cookies,
+        Some(&tampered),
+        Some(ORIGIN),
+    )
+    .await;
+    assert_eq!(rejected.status, StatusCode::FORBIDDEN);
+    private(&rejected);
+    let malformed = request(
+        &fixture.site,
+        Method::POST,
+        "/cloud/sign-in",
+        &cookies,
+        Some("credential=synthetic"),
+        Some(ORIGIN),
+    )
+    .await;
+    assert_eq!(malformed.status, StatusCode::BAD_REQUEST);
+    private(&malformed);
+    let oversize = "credential=".to_owned() + &"x".repeat(9000) + "&csrf=invalid";
+    let bounded = request(
+        &fixture.site,
+        Method::POST,
+        "/cloud/sign-in",
+        &cookies,
+        Some(&oversize),
+        Some(ORIGIN),
+    )
+    .await;
+    assert_eq!(bounded.status, StatusCode::BAD_REQUEST);
+    private(&bounded);
+    assert_eq!(fixture.state.lock().unwrap().signins, 0);
+    let absent = request(
+        &fixture.site,
+        Method::GET,
+        "/cloud/app",
+        &Cookies::default(),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(absent.status, StatusCode::SEE_OTHER);
+    private(&absent);
+    assert_eq!(absent.headers[header::LOCATION], "/cloud/sign-in");
+    for path in ["/cloud/select-workspace", "/cloud/sign-out"] {
+        let input = if path == "/cloud/select-workspace" {
+            form(&[("workspace", "alice-personal"), ("csrf", &csrf)])
+        } else {
+            form(&[("csrf", &csrf)])
+        };
+        let absent = request(
+            &fixture.site,
+            Method::POST,
+            path,
+            &Cookies::default(),
+            Some(&input),
+            Some(ORIGIN),
+        )
+        .await;
+        assert_eq!(
+            absent.status,
+            if path == "/cloud/sign-out" {
+                StatusCode::FORBIDDEN
+            } else {
+                StatusCode::UNAUTHORIZED
+            }
+        );
+        private(&absent);
+    }
+}
+
+#[tokio::test]
+async fn revocation_and_removed_selected_membership_clear_the_private_projection() {
+    let fixture = fixture().await;
+    let mut cookies = login(&fixture, "alice").await;
+    cookies
+        .0
+        .insert("oa_cloud_workspace".into(), "alice-personal".into());
+    fixture.state.lock().unwrap().removed = true;
+    let removed = request(
+        &fixture.site,
+        Method::GET,
+        "/cloud/app",
+        &cookies,
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(removed.status, StatusCode::FORBIDDEN);
+    private(&removed);
+    assert!(!removed.body.contains("alice &lt;account&gt;"));
+    fixture.state.lock().unwrap().removed = false;
+    fixture.state.lock().unwrap().revoked.insert("alice".into());
+    let revoked = request(
+        &fixture.site,
+        Method::GET,
+        "/cloud/app/session",
+        &cookies,
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(revoked.status, StatusCode::UNAUTHORIZED);
+    private(&revoked);
+    assert!(!revoked.body.contains("native-session-alice"));
+}
+
+#[tokio::test]
+async fn standing_digest_fences_changed_unselected_workspace_projection() {
+    let fixture = fixture().await;
+    let mut cookies = login(&fixture, "alice").await;
+    cookies
+        .0
+        .insert("oa_cloud_workspace".into(), "alice-personal".into());
+    let initial = request(
+        &fixture.site,
+        Method::GET,
+        "/cloud/app/session",
+        &cookies,
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(initial.status, StatusCode::OK);
+    private(&initial);
+    let initial: Value = serde_json::from_str(&initial.body).unwrap();
+    assert!(
+        initial["projection_digest"]
+            .as_str()
+            .unwrap()
+            .starts_with("sha256:")
+    );
+    for change in ["name", "role", "removal"] {
+        {
+            let mut state = fixture.state.lock().unwrap();
+            state.team_name = (change == "name").then(|| "Renamed team".into());
+            state.team_role = (change == "role").then(|| "admin".into());
+            state.team_removed = change == "removal";
+        }
+        let current = request(
+            &fixture.site,
+            Method::GET,
+            "/cloud/app/session",
+            &cookies,
+            None,
+            None,
+        )
+        .await;
+        assert_eq!(current.status, StatusCode::OK);
+        private(&current);
+        let current: Value = serde_json::from_str(&current.body).unwrap();
+        assert_eq!(current["workspace"], "alice-personal");
+        assert_eq!(current["members_epoch"], 3);
+        assert_ne!(
+            current["projection_digest"], initial["projection_digest"],
+            "{change}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn valid_logout_clears_browser_after_native_or_configuration_standing_changes() {
+    for change in ["membership", "offline", "configuration"] {
+        let fixture = fixture().await;
+        let mut cookies = login(&fixture, "alice").await;
+        cookies
+            .0
+            .insert("oa_cloud_workspace".into(), "alice-personal".into());
+        let shell = request(
+            &fixture.site,
+            Method::GET,
+            "/cloud/app",
+            &cookies,
+            None,
+            None,
+        )
+        .await;
+        assert_eq!(shell.status, StatusCode::OK);
+        let csrf = action_token(&shell.body, "/cloud/sign-out", None);
+        {
+            let mut state = fixture.state.lock().unwrap();
+            state.offline = change == "offline";
+            state.removed = change == "membership";
+        }
+        if change == "configuration" {
+            std::fs::write(
+                fixture
+                    ._root
+                    .path()
+                    .canonicalize()
+                    .unwrap()
+                    .join("private/cloud.json"),
+                b"changed synthetic configuration",
+            )
+            .unwrap();
+        }
+        for (ticket, origin) in [
+            (csrf.as_str(), "https://other.example.invalid"),
+            ("invalid", ORIGIN),
+        ] {
+            let input = form(&[("csrf", ticket)]);
+            let refused = request(
+                &fixture.site,
+                Method::POST,
+                "/cloud/sign-out",
+                &cookies,
+                Some(&input),
+                Some(origin),
+            )
+            .await;
+            assert_eq!(refused.status, StatusCode::FORBIDDEN);
+            private(&refused);
+            assert!(!refused.headers.contains_key(header::SET_COOKIE));
+            assert_eq!(fixture.state.lock().unwrap().signouts, 0);
+        }
+        let input = form(&[("csrf", &csrf)]);
+        let ended = request(
+            &fixture.site,
+            Method::POST,
+            "/cloud/sign-out",
+            &cookies,
+            Some(&input),
+            Some(ORIGIN),
+        )
+        .await;
+        private(&ended);
+        cookies.apply(&ended);
+        assert!(cookies.0.is_empty());
+        if change != "membership" {
+            assert_eq!(ended.status, StatusCode::SERVICE_UNAVAILABLE);
+            assert!(ended.body.contains("native logout outcome is unknown"));
+            assert_eq!(fixture.state.lock().unwrap().signouts, 0);
+        } else {
+            assert_eq!(ended.status, StatusCode::SEE_OTHER);
+            assert_eq!(ended.headers[header::LOCATION], "/cloud");
+            assert_eq!(fixture.state.lock().unwrap().signouts, 1);
+        }
+        assert!(!fixture.local_store.exists());
+    }
+}

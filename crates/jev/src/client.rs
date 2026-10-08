@@ -489,6 +489,30 @@ impl Client {
         body: Option<Vec<u8>>,
         headers: &HeaderMap,
     ) -> Result<RawResponse> {
+        self.request_private_headers_bounded(method, path, body, headers, None)
+            .await
+    }
+
+    /// Bound credential and current-account replies while they are read.
+    pub(crate) async fn request_private_bounded(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<Vec<u8>>,
+        maximum: usize,
+    ) -> Result<RawResponse> {
+        self.request_private_headers_bounded(method, path, body, &HeaderMap::new(), Some(maximum))
+            .await
+    }
+
+    async fn request_private_headers_bounded(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<Vec<u8>>,
+        headers: &HeaderMap,
+        maximum: Option<usize>,
+    ) -> Result<RawResponse> {
         let mut prepared = self.prepare(
             method,
             path,
@@ -501,6 +525,7 @@ impl Client {
             }),
         )?;
         prepared.private = true;
+        prepared.response_limit = maximum;
         self.send_read(&prepared).await
     }
 
@@ -543,6 +568,7 @@ impl Client {
             timeout,
             retry,
             private: false,
+            response_limit: None,
         })
     }
 
@@ -649,6 +675,19 @@ impl Client {
         let response = self.attempt(prepared, attempt, timeout).await?;
         let status = response.status().as_u16();
         let headers = response.headers().clone();
+        if let Some(maximum) = prepared.response_limit {
+            return bounded_response(response, maximum, timeout)
+                .await
+                .map(|bytes| RawResponse {
+                    status,
+                    headers: headers.clone(),
+                    bytes,
+                })
+                .map_err(|error| Failed {
+                    error,
+                    headers: Some(headers),
+                });
+        }
         match response.bytes().await {
             Ok(bytes) => Ok(RawResponse {
                 status,
@@ -845,11 +884,23 @@ impl Client {
         response: reqwest::Response,
     ) -> Failed {
         let headers = response.headers().clone();
-        let bytes = response
-            .bytes()
-            .await
-            .map(|bytes| bytes.to_vec())
-            .unwrap_or_default();
+        let bytes = if let Some(maximum) = prepared.response_limit {
+            match bounded_response(response, maximum, prepared.timeout).await {
+                Ok(bytes) => bytes,
+                Err(error) => {
+                    return Failed {
+                        error,
+                        headers: Some(headers),
+                    };
+                }
+            }
+        } else {
+            response
+                .bytes()
+                .await
+                .map(|bytes| bytes.to_vec())
+                .unwrap_or_default()
+        };
         let body = if prepared.private {
             // Preserve only known refusal codes. An arbitrary server message
             // may echo the recovery token or a newly issued credential.
@@ -930,6 +981,42 @@ struct Prepared {
     timeout: Duration,
     retry: RetryPolicy,
     private: bool,
+    response_limit: Option<usize>,
+}
+
+/// Refuse oversized declared or chunked private replies before accumulating them.
+async fn bounded_response(
+    mut response: reqwest::Response,
+    maximum: usize,
+    timeout: Duration,
+) -> Result<Vec<u8>> {
+    let status = response.status().as_u16();
+    let oversized = || Error::ResponseValidation {
+        status,
+        field_path: "private response exceeds bound".into(),
+        body: None,
+        request_id: None,
+    };
+    if response
+        .content_length()
+        .is_some_and(|length| length > maximum as u64)
+    {
+        return Err(oversized());
+    }
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response.chunk().await.map_err(|error| {
+        if error.is_timeout() {
+            Error::Timeout { timeout }
+        } else {
+            Error::connection(error)
+        }
+    })? {
+        if chunk.len() > maximum.saturating_sub(bytes.len()) {
+            return Err(oversized());
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    Ok(bytes)
 }
 
 impl Prepared {

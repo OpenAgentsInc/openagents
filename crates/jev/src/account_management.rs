@@ -128,7 +128,7 @@ impl Account<'_> {
         }
         let raw = self
             .client
-            .request_private(Method::POST, "/v1/sessions", None)
+            .request_private_bounded(Method::POST, "/v1/sessions", None, 64 * 1024)
             .await?;
         let wire: Wire = decode(&raw)?;
         Ok(SessionGrant {
@@ -142,13 +142,11 @@ impl Account<'_> {
         identifier(workspace)?;
         let raw = self
             .client
-            .request_read(
+            .request_private_bounded(
                 Method::GET,
                 &format!("/v1/workspaces/{workspace}"),
                 None,
-                &reqwest::header::HeaderMap::new(),
-                None,
-                None,
+                64 * 1024,
             )
             .await?;
         decode(&raw)
@@ -407,7 +405,7 @@ impl Account<'_> {
     /// End the current session once; uncertainty never causes a replay.
     pub async fn sign_out(&self) -> Result<()> {
         self.client
-            .request_private(Method::DELETE, "/v1/session", None)
+            .request_private_bounded(Method::DELETE, "/v1/session", None, 64 * 1024)
             .await?;
         Ok(())
     }

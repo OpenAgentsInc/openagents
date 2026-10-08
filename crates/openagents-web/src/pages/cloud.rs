@@ -2,6 +2,7 @@
 //! Reading terms creates no offer, reservation, enrollment, or execution.
 
 use axum::Router;
+use axum::extract::State;
 use axum::response::Response;
 use axum::routing::get;
 use route_contract::price_book::{Charge, ModelPayer, Placement, PriceBook};
@@ -103,23 +104,30 @@ An operator pool is separate from retail compute.</p></li>\
 The supported contract is one Boat repository task with its own frozen offer.</p></li></ul></section>"
 }
 
-async fn cloud() -> Response {
+async fn cloud(State(app): State<App>) -> Response {
     let pricing = published_book()
         .and_then(|book| prices(&book))
         .unwrap_or_else(|()| {
             "<p>Unavailable: this server cannot verify the published retail price book.</p>".into()
         });
+    let workspace = if crate::cloud::ready(&app)
+        && app
+            .config
+            .cloud
+            .as_ref()
+            .is_some_and(|service| service.health().is_ok())
+    {
+        "<section class=\"box quiet\" aria-labelledby=\"workspace-title\" data-availability=\"available\"><h2 class=\"box-title\" id=\"workspace-title\">Workspace</h2><p>Sign in through the configured native account service and choose your workspace. Computer, private work, and spending connections require their own grants.</p><p><a class=\"button\" href=\"/cloud/app\">[ Open workspace ]</a></p></section>"
+    } else {
+        "<section class=\"box quiet\" aria-labelledby=\"workspace-title\" data-availability=\"unavailable\"><h2 class=\"box-title\" id=\"workspace-title\">Workspace · Unavailable</h2><p>This server has no configured native account connection. Private tasks, files, controls, and balances are unavailable.</p><p><button type=\"button\" disabled aria-describedby=\"workspace-reason\">[ Open workspace ]</button></p><p class=\"hint\" id=\"workspace-reason\">The operator must configure the native account service and browser privacy runtime.</p></section>"
+    };
     let body = format!(
         "<section class=\"intro\"><p class=\"label\">Coder Cloud</p><h1>Your work, in the browser</h1>\
 <p class=\"lede\">Direct Coder, follow your agents, and review their results across your computers and qualified cloud capacity.</p>\
 <p>The shared web components are available now. Private work and paid browser execution are proposed.</p>\
 <p><a class=\"button\" href=\"/components\">[ Explore components ]</a> · \
 <a href=\"/download\">Download OpenAgents</a></p></section>\
-<section class=\"box quiet\" aria-labelledby=\"workspace-title\" data-availability=\"unavailable\">\
-<h2 class=\"box-title\" id=\"workspace-title\">Workspace · Unavailable</h2>\
-<p>This browser has no account or computer connection. Private tasks, files, controls, and balances are unavailable.</p>\
-<p><button type=\"button\" disabled aria-describedby=\"workspace-reason\">[ Open workspace ]</button></p>\
-<p class=\"hint\" id=\"workspace-reason\">Browser sign-in, workspace authorization, and scoped service connections are under development.</p></section>\
+{workspace}\
 {choices}\
 <section aria-labelledby=\"retail-title\"><h2 id=\"retail-title\">Retail v1 terms</h2>\
 <p><code>{COMPUTER}</code> runs one <code>{TASK}</code> task from a public HTTPS GitHub repository at an exact commit, \

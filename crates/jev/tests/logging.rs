@@ -199,6 +199,96 @@ async fn recovery_request_and_refusal_bodies_never_enter_debug_logs() -> Outcome
     Ok(())
 }
 
+#[tokio::test]
+async fn account_identity_and_standing_reads_hide_all_credential_bytes() -> Outcome {
+    let secret = "synthetic-browser-session-credential-ENDZ";
+    let private = "synthetic-private-account-body";
+    let session = serde_json::json!({"session":{"id":"fixture-session","kind":"user","account":"fixture-account","expires_at":100}}).to_string();
+    let account =
+        serde_json::json!({"account":{"id":"fixture-account","label":private},"workspaces":[]})
+            .to_string();
+    let workspace = serde_json::json!({"workspace":{"id":"fixture-workspace","tenant":"fixture","members_epoch":1},"role":"owner"}).to_string();
+    let refusal = serde_json::json!({"error":{"code":"forbidden","message":secret}}).to_string();
+    let base = serve(vec![
+        Reply::new(200, &session),
+        Reply::new(200, &account),
+        Reply::new(200, &workspace),
+        Reply::new(403, &refusal).header("x-private", secret),
+        Reply::new(200, &format!("{{\"invalid\":\"{secret}\"}}")),
+    ])
+    .await;
+    let capture = Capture::default();
+    let _guard = logged(Level::DEBUG, capture.clone());
+    let client = Client::new(Config::new().base_url(base).api_key(secret))?;
+    client.account().session().await?;
+    client.account().details().await?;
+    client.account().workspace("fixture-workspace").await?;
+    let denied = client.account().details().await.unwrap_err();
+    let invalid = client.account().session().await.unwrap_err();
+    let output = capture.read();
+    assert!(!output.contains(secret) && !output.contains("ENDZ") && !output.contains(private));
+    assert!(output.contains("[private]"));
+    assert!(!format!("{denied:?}").contains(secret));
+    assert!(!format!("{invalid:?}").contains(secret));
+    Ok(())
+}
+
+#[tokio::test]
+async fn oversized_chunked_account_replies_refuse_without_private_diagnostics() -> Outcome {
+    let canary = "oversized-private-account-canary";
+    let listener = TcpListener::bind("127.0.0.1:0").await?;
+    let base = format!("http://{}", listener.local_addr()?);
+    tokio::spawn(async move {
+        for status in [200, 401] {
+            let Ok((mut socket, _)) = listener.accept().await else {
+                return;
+            };
+            let mut request = Vec::new();
+            let mut buffer = [0; 4096];
+            while !request_complete(&request) {
+                let Ok(count) = socket.read(&mut buffer).await else {
+                    return;
+                };
+                if count == 0 {
+                    return;
+                }
+                request.extend_from_slice(&buffer[..count]);
+            }
+            let head = format!(
+                "HTTP/1.1 {status} Test\r\ntransfer-encoding: chunked\r\nconnection: close\r\n\r\n"
+            );
+            if socket.write_all(head.as_bytes()).await.is_err() {
+                continue;
+            }
+            let payload = format!("{canary}{}", "x".repeat(16 * 1024));
+            for _ in 0..5 {
+                let frame = format!("{:x}\r\n{payload}\r\n", payload.len());
+                if socket.write_all(frame.as_bytes()).await.is_err() {
+                    break;
+                }
+            }
+            let _ = socket.write_all(b"0\r\n\r\n").await;
+        }
+    });
+    let capture = Capture::default();
+    let _guard = logged(Level::DEBUG, capture.clone());
+    let client = Client::new(
+        Config::new()
+            .base_url(base)
+            .api_key("synthetic-browser-session-credential-ENDZ"),
+    )?;
+    for status in [200, 401] {
+        let error = client.account().session().await.unwrap_err();
+        assert!(
+            matches!(&error, Error::ResponseValidation { status:actual, field_path, body:None, .. } if *actual == status && field_path == "private response exceeds bound")
+        );
+        assert!(!format!("{error:?}").contains(canary));
+    }
+    assert!(!capture.read().contains(canary));
+    assert!(!capture.read().contains("ENDZ"));
+    Ok(())
+}
+
 /// Every credential a request or a response carries is masked before a line
 /// reaches the log: the API key, the caller's secret headers, and the
 /// server's.

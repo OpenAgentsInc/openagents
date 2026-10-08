@@ -22,13 +22,17 @@ futures-util = "0.3"
 hmac = "0.12.1"
 hyper = { version = "1", features = ["client", "http1"] }
 hyper-util = { version = "0.1", features = ["client-legacy", "http1", "tokio"] }
+jev = { path = "../jev" }
+libc = "0.2"
 openagents-chat = { path = "../openagents-chat" }
 pulldown-cmark = { version = "0.13.4", default-features = false, features = ["html"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 secp256k1 = { version = "0.31.1", features = ["rand"] }
 sha2 = "0.10"
 tokio = { version = "1", features = ["fs", "io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
+url = "2"
 
 [dev-dependencies]
 tempfile = "3"
