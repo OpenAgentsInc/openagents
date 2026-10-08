@@ -63,6 +63,7 @@ pub mod serve;
 mod shared_spend;
 #[allow(clippy::result_large_err)]
 pub mod skills;
+pub mod sso;
 #[allow(clippy::result_large_err)]
 pub mod updates;
 #[allow(clippy::result_large_err)]

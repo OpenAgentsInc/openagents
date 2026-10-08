@@ -32,6 +32,9 @@
 //! `docs/decision-models/service/workspace-membership.md`, not implemented here.
 
 pub mod commercial;
+pub mod sso;
+#[cfg(test)]
+mod sso_tests;
 pub mod team_capabilities;
 #[cfg(test)]
 mod team_capabilities_tests;
@@ -276,6 +279,8 @@ pub struct Store {
     /// Private checked task evidence references; empty books preserve old digests.
     #[serde(default, skip_serializing_if = "team_reports::Book::is_empty")]
     pub team_reports: team_reports::Book,
+    #[serde(default, skip_serializing_if = "sso::Book::is_empty")]
+    pub sso: sso::Book,
     /// The digest over every field above.
     pub digest: String,
 }
@@ -437,6 +442,7 @@ impl Store {
         self.team_policies.validate(self)?;
         self.team_capabilities.validate(self)?;
         self.team_reports.validate(self)?;
+        self.sso.validate(self)?;
         Ok(())
     }
 }
@@ -581,6 +587,8 @@ pub enum Refusal {
     InvitationExpired(String),
     /// A required field arrived empty; the field name says which.
     EmptyField(&'static str),
+    /// Enterprise sign-in refused; see [`sso::SsoRefusal`].
+    Sso(sso::SsoRefusal),
 }
 
 impl std::fmt::Display for Refusal {
@@ -589,6 +597,7 @@ impl std::fmt::Display for Refusal {
             Self::Authentication(cause) => write!(f, "{cause}"),
             Self::TenantMismatch => write!(f, "this API key doesn't belong to this workspace"),
             Self::Store(trouble) => write!(f, "{trouble}"),
+            Self::Sso(refusal) => write!(f, "{refusal}"),
             Self::UnknownAccount(account) => {
                 write!(f, "account `{account}` doesn't exist")
             }
@@ -835,6 +844,8 @@ fn valid_principal(value: &str) -> bool {
         (hex, 16)
     } else if let Some(hex) = value.strip_prefix("nostr:") {
         (hex, 64)
+    } else if let Some(hex) = value.strip_prefix("sso:") {
+        (hex, 64)
     } else {
         return false;
     };
@@ -944,6 +955,7 @@ impl Accounts {
             team_policies: team_policies::Book::default(),
             team_capabilities: team_capabilities::Book::default(),
             team_reports: team_reports::Book::default(),
+            sso: sso::Book::default(),
             digest: String::new(),
         };
         store.seal();
@@ -2482,6 +2494,7 @@ mod tests {
             team_policies: team_policies::Book::default(),
             team_capabilities: team_capabilities::Book::default(),
             team_reports: team_reports::Book::default(),
+            sso: sso::Book::default(),
             digest: String::new(),
         };
         store.seal();

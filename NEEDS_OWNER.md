@@ -2051,3 +2051,27 @@ before using real providers. Qualify HTTPS policy removal, source changes,
 revocation, duplicate confirmation, original-job recovery, cancellation, and
 cleanup on the deployed origin. Scratch provider fixtures establish no real
 capacity, retail authority, delivery, publication, or commercial activation.
+
+## REV-50 enterprise sign-in: Google Workspace OIDC (#10857)
+
+Code state: `tenancy::accounts::sso` admits one OpenID Connect provider per
+organization workspace (issuer, `hd` tenant, audience, reviewed RSA keys,
+linking rule, reviewed audit fields). The gateway's
+`/v1/workspaces/{ws}/sso*` routes record terms (owner), link subjects
+(admin), sign in with an ID token (RS256 against the reviewed keys only,
+no JWKS fetch), and export the workspace's audit rows. Forged, expired,
+replayed, cross-tenant, and unlinked tokens refuse; removed members and
+revoked sessions stay refused; a provider outage refuses sign-in and
+grants nothing. Break glass is the owner's existing `oak_` key sign-in.
+
+Owner steps before a real tenant uses it:
+
+1. Create the Google Cloud OAuth client for the tenant and record its
+   client id as `audience`, `https://accounts.google.com` as `issuer`, and
+   the Workspace domain as `tenant`.
+2. Copy the current Google signing keys from
+   `https://www.googleapis.com/oauth2/v3/certs` into `terms.keys` and
+   re-record the terms when Google rotates them (the book never fetches).
+3. Name the reviewer account and the audit fields the customer requires.
+4. Link each member's Google subject, or set `linking` to
+   `verified_email_domain` and label accounts with their work email.

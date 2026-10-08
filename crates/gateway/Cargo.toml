@@ -23,6 +23,7 @@ hmac = "0.12.1"
 nostr = { path = "../nostr" }
 pay-ledger = { path = "../pay-ledger" }
 receipts = { path = "../receipts" }
+ring = "0.17"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 secp256k1 = { version = "0.31", features = ["rand"] }
 serde = { version = "1", features = ["derive"] }
