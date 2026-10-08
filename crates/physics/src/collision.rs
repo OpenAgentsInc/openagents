@@ -876,6 +876,7 @@ impl World {
             }
         }
         let mut pairs = Vec::new();
+        let mut query_stack = Vec::new();
         for (i, bounds) in bounds.iter().enumerate() {
             let Some(bounds) = bounds else {
                 continue;
@@ -883,12 +884,16 @@ impl World {
             if !self[self.colliders()[i].body].responds() {
                 continue;
             }
-            for j in self.collision_index.query(*bounds, &mut stats.scene_nodes) {
-                if i == j || (j < i && self[self.colliders()[j].body].responds()) {
-                    continue;
-                }
-                pairs.push((i.min(j), i.max(j)));
-            }
+            self.collision_index.visit_intersections(
+                *bounds,
+                &mut query_stack,
+                &mut stats.scene_nodes,
+                |j| {
+                    if i != j && (j > i || !self[self.colliders()[j].body].responds()) {
+                        pairs.push((i.min(j), i.max(j)));
+                    }
+                },
+            );
         }
         // Keep fixed partners on either side of the responding collider.
         // Canonical order preserves the exhaustive detector's normals and

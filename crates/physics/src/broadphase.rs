@@ -210,6 +210,18 @@ impl<K: Copy + Ord> Tree<K> {
     pub fn query(&self, bounds: Bounds, visits: &mut usize) -> Vec<K> {
         let mut keys = Vec::new();
         let mut stack = Vec::new();
+        self.visit_intersections(bounds, &mut stack, visits, |key| keys.push(key));
+        keys.sort_unstable();
+        keys
+    }
+    pub fn visit_intersections(
+        &self,
+        bounds: Bounds,
+        stack: &mut Vec<usize>,
+        visits: &mut usize,
+        mut visit: impl FnMut(K),
+    ) {
+        stack.clear();
         if let Some(root) = self.root {
             stack.push(root);
         }
@@ -220,13 +232,13 @@ impl<K: Copy + Ord> Tree<K> {
                 continue;
             }
             if let Some(key) = node.key {
-                keys.push(key);
+                visit(key);
             } else {
-                stack.extend(node.children.unwrap());
+                let [a, b] = node.children.unwrap();
+                stack.push(a);
+                stack.push(b);
             }
         }
-        keys.sort_unstable();
-        keys
     }
     pub fn is_empty(&self) -> bool {
         self.leaves.is_empty()
@@ -319,5 +331,78 @@ mod tests {
             tree.remove(key);
         }
         check(&tree);
+    }
+    #[test]
+    fn visiting_intersections_reuses_scratch_and_keeps_original_traversal_and_candidates() {
+        fn reference(tree: &Tree<u32>, query: Bounds) -> (Vec<u32>, usize) {
+            let mut keys = Vec::new();
+            let mut stack = Vec::new();
+            let mut visits = 0;
+            if let Some(root) = tree.root {
+                stack.push(root);
+            }
+            while let Some(id) = stack.pop() {
+                visits += 1;
+                let node = tree.node(id);
+                if !node.bounds.intersects(query) {
+                    continue;
+                }
+                if let Some(key) = node.key {
+                    keys.push(key);
+                } else {
+                    stack.extend(node.children.unwrap());
+                }
+            }
+            (keys, visits)
+        }
+        let mut tree = Tree::default();
+        for key in 0..256 {
+            tree.set(key, bounds(f64::from(key % 16), f64::from(key / 16)));
+        }
+        let mut stack = Vec::with_capacity(64);
+        let scratch = stack.as_ptr();
+        for iteration in 0..512u32 {
+            let key = (iteration * 73) % 256;
+            if iteration % 3 == 0 {
+                tree.remove(key);
+            } else {
+                tree.set(
+                    key,
+                    bounds(f64::from(iteration % 24), f64::from((iteration * 13) % 24)),
+                );
+            }
+            let query = bounds(f64::from(iteration % 24), f64::from((iteration * 17) % 24))
+                .expanded(f64::from(iteration % 8));
+            let (expected, expected_visits) = reference(&tree, query);
+            // A caller can reuse scratch without clearing previous contents.
+            stack.push(usize::MAX);
+            let mut actual = Vec::new();
+            let mut visits = 7;
+            tree.visit_intersections(query, &mut stack, &mut visits, |key| actual.push(key));
+            assert_eq!(actual, expected);
+            assert_eq!(visits, 7 + expected_visits);
+            assert!(stack.is_empty());
+            assert_eq!(stack.as_ptr(), scratch);
+            actual.sort_unstable();
+            let leaf_reference: Vec<_> = tree
+                .leaves
+                .iter()
+                .filter(|(_, id)| tree.node(**id).bounds.intersects(query))
+                .map(|(&key, _)| key)
+                .collect();
+            assert_eq!(actual, leaf_reference);
+            assert_eq!(tree.query(query, &mut 0), actual);
+        }
+        for key in 0..256 {
+            tree.remove(key);
+        }
+        stack.push(usize::MAX);
+        let mut visits = 7;
+        tree.visit_intersections(bounds(0., 0.), &mut stack, &mut visits, |_| {
+            panic!("An empty tree cannot visit a leaf")
+        });
+        assert_eq!(visits, 7);
+        assert!(stack.is_empty());
+        assert_eq!(stack.as_ptr(), scratch);
     }
 }
