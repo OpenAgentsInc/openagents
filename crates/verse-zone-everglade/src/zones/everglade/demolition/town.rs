@@ -262,6 +262,42 @@ struct Lifted {
     hit: f32,
 }
 
+/// What the town's last tick cost, for a frame profile: milliseconds in
+/// the spells, the rigid bodies, bringing the drawn pieces up to the rules,
+/// and posing the debris, and how much debris there is.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct TownProfile {
+    pub swarm_ms: f32,
+    pub physics_ms: f32,
+    pub sync_ms: f32,
+    pub pose_ms: f32,
+    /// Rebuilding the walkable solids after the buildings changed, ms,
+    /// which the zone notes ([`Town::note_solids`]).
+    pub solids_ms: f32,
+    pub posed_vertices: usize,
+    pub chunks: usize,
+}
+
+/// Now, where the target has a clock; a browser's has none.
+fn stamp() -> Option<std::time::Instant> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        Some(std::time::Instant::now())
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        None
+    }
+}
+
+/// Milliseconds from `a` to `b`, or zero without a clock.
+fn between(a: Option<std::time::Instant>, b: Option<std::time::Instant>) -> f32 {
+    match (a, b) {
+        (Some(a), Some(b)) => b.saturating_duration_since(a).as_secs_f32() * 1000.0,
+        _ => 0.0,
+    }
+}
+
 /// How the town's debris lasts and how finely its kit pieces break.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Debris {
@@ -795,6 +831,8 @@ pub struct Town {
     /// s.
     rebuild_every: f32,
     rebuild: f32,
+    /// What the last tick cost.
+    profile: TownProfile,
     /// Whether blows float their damage numbers.
     numbers: bool,
     floaters: Vec<Floater>,
@@ -1084,6 +1122,7 @@ impl Town {
             rebuild_every: 180.0,
             rebuild: 180.0,
             numbers: true,
+            profile: TownProfile::default(),
             floaters: Vec::new(),
             clock: 0.0,
         };
@@ -1275,6 +1314,17 @@ impl Town {
         self.rebuild = rebuild;
     }
 
+    /// What the last tick cost.
+    #[must_use]
+    pub fn profile(&self) -> TownProfile {
+        self.profile
+    }
+
+    /// Notes how long rebuilding the solids took after this tick, ms.
+    pub fn note_solids(&mut self, ms: f32) {
+        self.profile.solids_ms = ms;
+    }
+
     /// Sets how the debris lasts and how finely kit pieces break, before
     /// anything breaks: the Meteor Showcase keeps every fragment of its
     /// two houses for minutes rather than the town's few seconds.
@@ -1424,6 +1474,7 @@ impl Town {
                 });
             }
         }
+        let started = stamp();
         let blows = self.swarm.tick(dt, player, &mut self.wreck);
         self.number(&blows);
         if !self.bombardiers.is_empty() {
@@ -1495,7 +1546,9 @@ impl Town {
         self.number(&npc_blows);
         let now = self.clock;
         self.floaters.retain(|f| now - f.start < FLOAT);
+        let swarm_done = stamp();
         self.wreck.site.tick(dt);
+        let physics_done = stamp();
         // A toppled top striking the ground: dust, a blast of debris, and
         // a jolt.
         for crash in self.wreck.site.take_crashes() {
@@ -1506,7 +1559,24 @@ impl Town {
         self.warm(player);
         self.settle(player);
         self.sync();
+        let sync_done = stamp();
         self.pose();
+        let pose_done = stamp();
+        self.profile = TownProfile {
+            swarm_ms: between(started, swarm_done),
+            physics_ms: between(swarm_done, physics_done),
+            sync_ms: between(physics_done, sync_done),
+            pose_ms: between(sync_done, pose_done),
+            posed_vertices: self.pool.posed.len(),
+            chunks: self
+                .wreck
+                .site
+                .pieces()
+                .iter()
+                .map(|p| p.chunks.iter().filter(|c| !c.gone).count())
+                .sum(),
+            solids_ms: self.profile.solids_ms,
+        };
     }
 
     /// Cuts a few blocks of the nearest carved building within [`WARM`] m

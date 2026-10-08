@@ -1392,11 +1392,20 @@ impl Everglade {
             town.tick(dt, at);
             town.take_solids()
         });
+        #[allow(unused_mut)]
+        let mut solids_ms = 0.0;
         if let Some(solids) = solids {
+            #[cfg(not(target_arch = "wasm32"))]
+            let started = std::time::Instant::now();
             self.solids = solids;
             self.refresh_blocks();
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                solids_ms = started.elapsed().as_secs_f32() * 1000.0;
+            }
         }
         if let Some(town) = &mut self.town {
+            town.note_solids(solids_ms);
             town.prepare(self.figure_scene.as_ref().or(cast_scene.as_ref()));
         }
         let blocks = self.demolition.as_mut().and_then(|yard| {

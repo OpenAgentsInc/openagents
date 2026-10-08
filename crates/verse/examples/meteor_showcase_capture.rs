@@ -3,7 +3,7 @@
 //! and the smoke settling over the ruins (issue #10926).
 //!
 //! Usage: meteor_showcase_capture OUT_DIR [--video PATH] [--seconds N]
-//! [--every K] [--no-video]
+//! [--every K] [--no-video] [--live]
 //!
 //! Installs the showcase from the committed, pinned Everglade pack as
 //! `verse --meteor-showcase` does, bakes its light, and renders it offscreen
@@ -14,6 +14,15 @@
 //! `aftermath.png` into `OUT_DIR`, every `K`th frame into `OUT_DIR/frames`
 //! when `--every` is given, and the film through `ffmpeg` (`libx264`,
 //! `yuv420p`, CRF 16) to `PATH`, `OUT_DIR/meteor-swarm-v2.mp4` by default.
+//!
+//! Every run writes `capture.json`: for the frames before the meteors set
+//! out, the six seconds of the swarm, and after, the 50th and 99th
+//! percentile and the longest of each frame's simulation step, dynamic
+//! mesh, encoding, and wait for the GPU, the town's share of the step by
+//! system, and the most chunks, posed vertices, sprites, draws, and
+//! triangles. `--live` plays as a player does instead, for the frame
+//! budget: 60 frames a second at one step each, the light still baking,
+//! no staged caster, and the player's own Meteor Swarm at three seconds.
 //!
 //! Run it with `VERSE_QUALITY=high` for the high tier, and with
 //! `VERSE_KIT_PACK` naming the licensed kit pack to draw it in place of its
@@ -35,12 +44,86 @@ const HEIGHT: u32 = 1080;
 const FPS: f32 = 30.0;
 /// Simulation steps per frame.
 const STEPS: usize = 2;
+/// When the live run's player casts, s.
+const LIVE_CAST: f32 = 3.0;
+/// How long after the meteors set out the swarm phase lasts, s.
+const SWARM: f32 = 6.0;
 
 struct Args {
     out: PathBuf,
     video: Option<PathBuf>,
     seconds: f32,
     every: Option<usize>,
+    /// Plays as the owner does: 60 frames a second, one step a frame, the
+    /// light baking while it plays, and the player's own cast.
+    live: bool,
+}
+
+/// One frame's costs, ms, and how much it drew.
+#[derive(Clone, Copy, Default)]
+struct Sample {
+    tick: f32,
+    mesh: f32,
+    encode: f32,
+    gpu: f32,
+    swarm: f32,
+    physics: f32,
+    sync: f32,
+    pose: f32,
+    solids: f32,
+    chunks: usize,
+    posed: usize,
+    sprites: usize,
+    draws: u64,
+    triangles: u64,
+}
+
+impl Sample {
+    /// The frame's time with the CPU and the GPU one after the other.
+    fn frame(&self) -> f32 {
+        self.tick + self.mesh + self.encode + self.gpu
+    }
+}
+
+/// The 50th and 99th percentiles and the largest of `values`.
+fn spread(mut values: Vec<f32>) -> serde_json::Value {
+    if values.is_empty() {
+        return serde_json::Value::Null;
+    }
+    values.sort_by(f32::total_cmp);
+    let at = |p: f32| values[((values.len() - 1) as f32 * p).round() as usize];
+    serde_json::json!({"p50": at(0.5), "p99": at(0.99), "max": values[values.len() - 1]})
+}
+
+/// Each phase's frame costs, as `capture.json` holds them.
+fn report(phases: &[(&str, Vec<Sample>)]) -> serde_json::Value {
+    let mut out = serde_json::Map::new();
+    for (name, samples) in phases {
+        let col = |f: fn(&Sample) -> f32| spread(samples.iter().map(f).collect());
+        let most = |f: fn(&Sample) -> u64| samples.iter().map(f).max().unwrap_or(0);
+        out.insert(
+            (*name).to_owned(),
+            serde_json::json!({
+                "frames": samples.len(),
+                "frame_ms": col(Sample::frame),
+                "tick_ms": col(|s| s.tick),
+                "dynamic_mesh_ms": col(|s| s.mesh),
+                "encode_ms": col(|s| s.encode),
+                "gpu_wait_ms": col(|s| s.gpu),
+                "town_swarm_ms": col(|s| s.swarm),
+                "town_physics_ms": col(|s| s.physics),
+                "town_sync_ms": col(|s| s.sync),
+                "town_pose_ms": col(|s| s.pose),
+                "town_solids_ms": col(|s| s.solids),
+                "chunks_max": most(|s| s.chunks as u64),
+                "posed_vertices_max": most(|s| s.posed as u64),
+                "sprites_max": most(|s| s.sprites as u64),
+                "draws_max": most(|s| s.draws),
+                "triangles_max": most(|s| s.triangles),
+            }),
+        );
+    }
+    serde_json::Value::Object(out)
 }
 
 fn args() -> Result<Args, String> {
@@ -51,12 +134,14 @@ fn args() -> Result<Args, String> {
         out,
         seconds: 12.5,
         every: None,
+        live: false,
     };
     while let Some(flag) = it.next() {
         let mut value = || it.next().ok_or(format!("{flag} takes a value"));
         match flag.as_str() {
             "--video" => args.video = Some(PathBuf::from(value()?)),
             "--no-video" => args.video = None,
+            "--live" => args.live = true,
             "--seconds" => {
                 args.seconds = value()?
                     .parse()
@@ -187,8 +272,27 @@ fn main() -> Result<(), String> {
     if runtime.zone != zones::ZoneId::MeteorShowcase {
         return Err("The Meteor Showcase did not install from the pinned pack".into());
     }
-    eprintln!("baking the light");
-    runtime.settle_zone_light();
+    // The film stands the player out of shot and stages the caster; a live
+    // run casts as the player, from the spawn, with the light still baking.
+    let fps = if args.live { 60.0 } else { FPS };
+    let steps = if args.live { 1 } else { STEPS };
+    let cast_at = if args.live {
+        LIVE_CAST
+    } else {
+        runtime.set_spawn(glam::Vec3::new(-46.0, 0.0, -80.0), 0.0)?;
+        if !runtime.stage_meteor_showcase(showcase::DELAY) {
+            return Err("The showcase's caster could not be staged".into());
+        }
+        eprintln!("baking the light");
+        runtime.settle_zone_light();
+        showcase::DELAY
+    };
+    let release = cast_at + zones::everglade::demolition::meteor::CAST;
+    let mut phases: Vec<(&str, Vec<Sample>)> = vec![
+        ("before", Vec::new()),
+        ("swarm", Vec::new()),
+        ("after", Vec::new()),
+    ];
     let atlas = verse::ui::Atlas::new(16.0);
     let ui = verse::ui::UiBatch::default();
     runtime.set_shot(Some(camera(0.0)));
@@ -224,40 +328,80 @@ fn main() -> Result<(), String> {
         ),
         None => None,
     };
-    let frames = (args.seconds * FPS).round() as usize;
-    let dt = 1.0 / (FPS * STEPS as f32);
+    let frames = (args.seconds * fps).round() as usize;
+    let dt = 1.0 / (fps * steps as f32);
     let idle = InputState::default();
     let mut first_impact: Option<usize> = None;
     let mut impact_shot = false;
     let mut slowest = 0.0_f64;
     let mut most_sprites = 0;
+    let aspect = WIDTH as f32 / HEIGHT as f32;
+    let mut cast = false;
     for k in 0..frames {
-        let t = k as f32 / FPS;
+        let t = k as f32 / fps;
+        let mut sample = Sample::default();
+        runtime.set_shot(Some(camera(t)));
+        if args.live && !cast && t >= cast_at {
+            // Key 1, the ring on the ground between the houses, a click.
+            cast = true;
+            runtime.zone_intent(zones::Intent::MeteorSwarm)?;
+            let clip = runtime.view(aspect).view_proj * showcase::aim().extend(1.0);
+            let (x, y) = (0.5 + 0.5 * clip.x / clip.w, 0.5 - 0.5 * clip.y / clip.w);
+            if !(runtime.demolition_aim(aspect, x, y) && runtime.demolition_confirm()) {
+                return Err("The player's Meteor Swarm did not start".into());
+            }
+        }
         if k > 0 {
-            for _ in 0..STEPS {
+            for _ in 0..steps {
+                let ticked = std::time::Instant::now();
                 runtime.tick(&idle, dt);
+                sample.tick += ticked.elapsed().as_secs_f32() * 1000.0;
+                if let Some(town) = runtime.everglade_town_profile() {
+                    sample.swarm += town.swarm_ms;
+                    sample.physics += town.physics_ms;
+                    sample.sync += town.sync_ms;
+                    sample.pose += town.pose_ms;
+                    sample.solids += town.solids_ms;
+                    sample.chunks = town.chunks;
+                    sample.posed = town.posed_vertices;
+                }
             }
         }
         runtime.set_shot(Some(camera(t)));
         let started = std::time::Instant::now();
         let dynamic = runtime.dynamic_mesh();
+        sample.mesh = started.elapsed().as_secs_f32() * 1000.0;
         let sprites = dynamic.sprites.len();
+        sample.sprites = sprites;
         most_sprites = most_sprites.max(sprites);
-        let pixels = renderer.render(runtime.view(WIDTH as f32 / HEIGHT as f32), &dynamic, &ui)?;
+        let pixels = renderer.render(runtime.view(aspect), &dynamic, &ui)?;
+        (sample.encode, sample.gpu) = renderer.last_timing();
+        if let Some(stats) = renderer.draw_stats() {
+            sample.draws = stats.draws;
+            sample.triangles = stats.triangles;
+        }
         slowest = slowest.max(started.elapsed().as_secs_f64());
+        let phase = if t < release {
+            0
+        } else if t < release + SWARM {
+            1
+        } else {
+            2
+        };
+        phases[phase].1.push(sample);
         let wreck = runtime.everglade_wreckage().unwrap_or_default();
         let landed = runtime.zone_snapshot(1.0).caption;
         if first_impact.is_none() && wreck[1] > 0 && wreck[2] > 0 {
             first_impact = Some(k);
         }
-        if k == (2.0 * FPS) as usize {
+        if k == (2.0 * fps) as usize {
             write_png(&args.out.join("establishing.png"), &pixels)?;
         }
-        if !impact_shot && first_impact.is_some_and(|f| k >= f + (1.1 * FPS) as usize) {
+        if !impact_shot && first_impact.is_some_and(|f| k >= f + (1.1 * fps) as usize) {
             write_png(&args.out.join("impact.png"), &pixels)?;
             impact_shot = true;
         }
-        if k + (1.0 * FPS) as usize == frames {
+        if k + fps as usize == frames {
             write_png(&args.out.join("aftermath.png"), &pixels)?;
         }
         if let Some(every) = args.every
@@ -277,9 +421,14 @@ fn main() -> Result<(), String> {
                 .write_all(&pixels)
                 .map_err(|e| format!("ffmpeg: {e}"))?;
         }
-        if k % 30 == 0 {
+        if k % (fps as usize) == 0 {
             eprintln!(
-                "t {t:.1} s · raised {} · pieces {} · chunks {} · sprites {sprites} · {}",
+                "t {t:.1} s · frame {:.1} ms (tick {:.1}, mesh {:.1}, encode {:.1}, gpu {:.1}) · raised {} · pieces {} · chunks {} · sprites {sprites} · {}",
+                sample.frame(),
+                sample.tick,
+                sample.mesh,
+                sample.encode,
+                sample.gpu,
                 wreck[0],
                 wreck[1],
                 wreck[2],
@@ -294,6 +443,18 @@ fn main() -> Result<(), String> {
             return Err(format!("ffmpeg failed: {status}"));
         }
     }
+    let summary = serde_json::json!({
+        "mode": if args.live { "live" } else { "film" },
+        "width": WIDTH,
+        "height": HEIGHT,
+        "fps": fps,
+        "steps_per_frame": steps,
+        "quality": std::env::var("VERSE_QUALITY").unwrap_or_default(),
+        "phases": report(&phases),
+    });
+    let json = serde_json::to_string_pretty(&summary).map_err(|e| e.to_string())?;
+    std::fs::write(args.out.join("capture.json"), &json).map_err(|e| e.to_string())?;
+    eprintln!("{json}");
     eprintln!(
         "slowest frame to render: {:.0} ms; most sprites in a frame: {most_sprites}",
         slowest * 1e3

@@ -2,7 +2,7 @@
 //! the caster's eight arcs breaking both houses, the debris at rest, the
 //! rebuild, and the walk up the path ([`super::meteor_showcase`]).
 
-use super::meteor_showcase::{self as showcase, DELAY, HOUR, RETURN_PORTAL, houses};
+use super::meteor_showcase::{self as showcase, DELAY, HOUR, RETURN_PORTAL, aim, houses};
 use super::{Everglade, ZoneId, everglade, everglade_pack};
 use crate::{controller::InputState, runtime::WorldRuntime, zones::Intent};
 use everglade::demolition::meteor::CAST;
@@ -116,8 +116,15 @@ fn eight_meteors_on_distinct_arcs_break_both_houses_and_the_debris_rests() {
     for building in houses {
         assert!(town(&runtime).buildings()[building].destructible());
     }
+    // Nothing casts on its own.
+    assert_eq!(town(&runtime).bombardment(), [0, 0]);
+    run(&mut runtime, DELAY + CAST + 1.0);
+    assert_eq!(town(&runtime).bombardment(), [0, 0]);
+    assert_eq!(town(&runtime).swarm().meteors_left(), 0);
+    // The film's staged caster: the cast gathers, then all eight set out
+    // on arcs of their own.
+    assert!(runtime.stage_meteor_showcase(DELAY));
     assert_eq!(town(&runtime).bombardment(), [1, 0]);
-    // The cast gathers, then all eight set out on arcs of their own.
     run(&mut runtime, DELAY + CAST + 0.05);
     let arcs = town(&runtime).casters()[0].arcs();
     assert_eq!(arcs.len(), 8, "{arcs:?}");
@@ -218,4 +225,26 @@ fn the_player_walks_up_the_path_to_a_door() {
         closest = closest.min((p.x - outside[0]).hypot(p.z - outside[1]));
     }
     assert!(closest < 1.0, "the walk stopped {closest} m from the door");
+}
+
+#[test]
+fn the_players_meteor_swarm_calls_down_eight_and_nothing_else_casts() {
+    let mut runtime = installed();
+    run(&mut runtime, 8.0);
+    assert_eq!(town(&runtime).bombardment(), [0, 0]);
+    runtime.zone_intent(Intent::Rebuild).unwrap();
+    run(&mut runtime, 8.0);
+    assert_eq!(town(&runtime).bombardment(), [0, 0], "R casts nothing");
+    // Key 1, the ring on the ground between the houses, and a click.
+    runtime.zone_intent(Intent::MeteorSwarm).unwrap();
+    let aspect = 16.0 / 9.0;
+    let clip = runtime.view(aspect).view_proj * aim().extend(1.0);
+    let (x, y) = (0.5 + 0.5 * clip.x / clip.w, 0.5 - 0.5 * clip.y / clip.w);
+    assert!(
+        runtime.demolition_aim(aspect, x, y),
+        "the ring finds the lot"
+    );
+    assert!(runtime.demolition_confirm());
+    run(&mut runtime, CAST + 0.05);
+    assert_eq!(town(&runtime).swarm().meteors_left(), 8);
 }

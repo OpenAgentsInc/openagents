@@ -368,6 +368,27 @@ impl WorldRuntime {
         self.camera.distance = 7.0;
     }
 
+    /// Stands the Meteor Showcase's caster and has them cast the eight
+    /// meteors `delay` seconds from now, as its film stages the cast
+    /// ([`super::meteor_showcase::stage`]). Returns whether it was staged.
+    pub fn stage_meteor_showcase(&mut self, delay: f32) -> bool {
+        if self.zone != ZoneId::MeteorShowcase {
+            return false;
+        }
+        self.zone_state
+            .everglade
+            .as_mut()
+            .is_some_and(|glade| super::meteor_showcase::stage(glade, delay).is_ok())
+    }
+
+    /// What Everglade's town's last tick cost, in a zone with one.
+    #[must_use]
+    pub fn everglade_town_profile(
+        &self,
+    ) -> Option<super::everglade::demolition::town::TownProfile> {
+        Some(self.zone_state.everglade.as_ref()?.town()?.profile())
+    }
+
     /// Loads the Meteor Showcase from the plaza.
     pub fn enter_meteor_showcase(&mut self) -> Result<(), String> {
         if !self.is_plaza() || self.zone_loading() {
@@ -2689,7 +2710,14 @@ impl WorldRuntime {
             }
         } else if self.zone == ZoneId::MeteorShowcase {
             if let Some(glade) = &mut state.everglade {
-                glade.tick(dt, &self.player, &super::meteor_showcase::figures());
+                // The caster stands only while a film stages the cast.
+                let staged = glade.town().is_some_and(|t| t.bombardment()[0] > 0);
+                let figures = if staged {
+                    super::meteor_showcase::figures()
+                } else {
+                    Vec::new()
+                };
+                glade.tick(dt, &self.player, &figures);
             }
         } else if let Some(everglade) = &mut state.everglade {
             // The seats move first, so the characters pose where they stand.

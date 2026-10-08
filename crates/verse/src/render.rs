@@ -1658,6 +1658,8 @@ pub struct Offscreen {
     row: u32,
     texel: u32,
     settled: bool,
+    /// The last frame's CPU encode and submit, and its wait for the GPU, ms.
+    timing: (f32, f32),
 }
 
 #[cfg(feature = "capture")]
@@ -1734,6 +1736,7 @@ impl Offscreen {
             row,
             texel,
             settled: false,
+            timing: (0.0, 0.0),
         })
     }
 
@@ -1750,6 +1753,14 @@ impl Offscreen {
         self.scene.photo.as_ref().map(Photo::draw_stats)
     }
 
+    /// The last frame's CPU time to fit, encode, and submit it, and its
+    /// wait for the GPU to finish and the pixels to come back, ms. The wait
+    /// is the GPU's time for the frame once the CPU has handed it over.
+    #[must_use]
+    pub fn last_timing(&self) -> (f32, f32) {
+        self.timing
+    }
+
     pub fn render(&mut self, view: View, dynamic: &Mesh, ui: &UiBatch) -> Result<Vec<u8>, String> {
         self.render_with_overlay(view, dynamic, ui, None)
     }
@@ -1761,6 +1772,7 @@ impl Offscreen {
         ui: &UiBatch,
         overlay: Option<&crate::overlay::OverlayImage>,
     ) -> Result<Vec<u8>, String> {
+        let started = std::time::Instant::now();
         validate_frame(view, dynamic, ui)?;
         let (fitted, fitted_ui) = fit_frame(
             verse_engine::quality::Resources::default(),
@@ -1834,6 +1846,7 @@ impl Offscreen {
             extent(self.width, self.height),
         );
         queue.submit([encoder.finish()]);
+        let submitted = std::time::Instant::now();
 
         let slice = self.readback.slice(..);
         slice.map_async(wgpu::MapMode::Read, |_| {});
@@ -1852,6 +1865,11 @@ impl Offscreen {
         }
         drop(mapped);
         self.readback.unmap();
+        let done = std::time::Instant::now();
+        self.timing = (
+            (submitted - started).as_secs_f32() * 1000.0,
+            (done - submitted).as_secs_f32() * 1000.0,
+        );
         Ok(pixels)
     }
 }

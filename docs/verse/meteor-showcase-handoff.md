@@ -1,0 +1,96 @@
+# Meteor Showcase handoff
+
+This note records the state of the Meteor Showcase (issue #10926) when work
+on it stopped on 2026-10-07.
+
+## What landed
+
+- `81c4443216` adds the zone (`verse --meteor-showcase`), Meteor Swarm's
+  `Volley` (count, arc spread, circle width, and size), the eight-meteor
+  `Volley::SHOWCASE` that the zone and Everglade's dev bar cast, the arcing
+  meteor and smolder effects, the director's camera (`WorldRuntime::set_shot`),
+  and the capture example `meteor_showcase_capture`.
+- The follow-up commit that adds this note removes the automatic casts,
+  caps the showcase's debris, adds per-system frame timing, and adds the
+  live frame-budget run that writes `capture.json`.
+
+Issue #10926 is closed.
+
+## How to run it
+
+- Play: `verse --meteor-showcase`, with `VERSE_QUALITY=high` for the high
+  tier. Nothing casts on its own. Press `1`, click the ground between the
+  houses, and wait out the 2.5-second cast; `R` rebuilds the houses. The
+  spawn is within the non-dev 36 m range of the lot.
+- Film: `cargo run --release -p verse --example meteor_showcase_capture --
+  OUT_DIR --video PATH`. It stages a caster west of the houses
+  (`WorldRuntime::stage_meteor_showcase`), renders 1920 by 1080 at 30 frames
+  a second, and writes `establishing.png`, `impact.png`, `aftermath.png`,
+  and `capture.json` to `OUT_DIR`.
+- Frame budget: add `--live --no-video --seconds 14`. The run plays at 60
+  frames a second, one simulation step a frame, with the light still baking,
+  and the player casts at 3 seconds.
+- Set `VERSE_KIT_PACK` to the cached licensed kit pack
+  (`~/.openagents/verse/zones-cache/<KIT_SHA256>.vtp`) to draw the licensed
+  kit in place of the committed proxies.
+
+## Measured frame times
+
+These are live runs at 1920 by 1080 on the high tier, on this Mac. Each
+frame time is the CPU's simulation step, dynamic mesh, and encoding, plus
+the wait for the GPU, taken one after another. In the app, the CPU and GPU
+overlap, so the app's real frame time is lower than this sum.
+
+| Phase | Before p50 / p99 (ms) | After p50 / p99 (ms) |
+| --- | --- | --- |
+| Before the cast | 9.7 / 31.1 | 8.7 / 10.4 |
+| Swarm (6 s) | 126.9 / 237.8 | 35.8 / 60.0 |
+| After | 44.7 / 90.6 | 25.3 / 39.6 |
+
+The cause was the rigid bodies. During the swarm, the town's physics step
+took 92 ms at p50 and 202 ms at p99 for up to 1,666 live chunks. The
+showcase kept every chunk for 10 minutes and broke each kit piece into up to
+27 chunks. The second cost was the dynamic mesh: about 15 ms a frame to
+pose 306,000 chunk vertices on the CPU and copy them into the frame's
+figure. The GPU wait stayed between 5 and 13 ms. Sprites, bloom, shadows,
+and draw calls (about 900) didn't dominate. The load-time light bake runs
+off the main thread and didn't show in the frames before the cast.
+
+The fix caps the showcase at 700 chunks and breaks kit pieces as the town
+does, into up to eight chunks. Physics during the swarm fell to 15.5 ms at
+p50 and 43.4 ms at p99, and the dynamic mesh to 7 to 9 ms.
+
+## What remains
+
+- The swarm still misses 60 frames a second. Physics is the top cost at
+  about 16 ms at p50 and 43 ms at p99. Next steps: merge settled rubble into
+  a static mesh and drop its bodies, and lower the chunk cap during the
+  swarm's first seconds.
+- The dynamic mesh poses every chunk vertex on the CPU every frame. Posing
+  chunks on the GPU, as instances, would remove most of its 7 to 9 ms.
+- After the swarm, frames stay at about 25 ms because the 700 resting
+  chunks are still simulated and posed every frame.
+
+## Known issues
+
+- When the cast ends, the fire gathering over the caster's hands disappears
+  in one frame, a small visible pop.
+- With the 700-chunk cap, the oldest chunks disappear when the cap is
+  reached, inside the fireballs.
+- The film on the owner's Desktop was rendered before the debris cap, with
+  finer chunks, so the live zone's rubble is coarser than in the film.
+- A blast high on a wall draws its shockwave ring flat in midair, which
+  reads as a streak.
+- No zone loads the products of `verse-bake` yet, so the showcase uses the
+  load-time CPU bake.
+
+## Capture paths
+
+- Film: `~/Desktop/meteor-swarm-v2.mp4` (12.5 s, 1920 by 1080, 30 frames a
+  second, `libx264`, `yuv420p`, CRF 16).
+- Stills: `~/Desktop/meteor-swarm-v2-establishing.png`,
+  `~/Desktop/meteor-swarm-v2-impact.png`, and
+  `~/Desktop/meteor-swarm-v2-aftermath.png`.
+- Frame budgets:
+  `~/.openagents/scratch/claude-code-d187dc74-0ea6-4000-9d57-3fe96d6cca18/live-before/capture.json`
+  and `.../live-after/capture.json`.

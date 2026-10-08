@@ -1,6 +1,6 @@
 //! The Meteor Showcase: two large houses from the medieval kit on an open
-//! lot at golden hour, and a caster who calls an eight-meteor swarm down on
-//! them (`verse --meteor-showcase`, issue #10926).
+//! lot at golden hour, for an eight-meteor swarm to bring down
+//! (`verse --meteor-showcase`, issue #10926).
 //!
 //! The houses are kit houses ([`everglade::layout::kit_house`]), built and
 //! broken as Stoop Lane's are: every kit piece is one block of the town's
@@ -9,13 +9,13 @@
 //! dirt path to both doors and a few trees, on the flat, uncarved land of
 //! Everglade's clearing, so debris rests on the ground it is drawn on.
 //!
-//! The caster stands to the west of the houses and casts once, a few
-//! seconds after the zone opens, with [`Volley::SHOWCASE`]: eight meteors
-//! fanned across the sky on arcs of their own, one at each of
-//! [`targets`]. The houses rebuild [`REBUILD`] seconds after they stood
-//! whole, and the caster casts again. The player casts the same volley with
-//! `1`, and `R` rebuilds at once. The town clock is pinned to golden hour,
-//! [`HOUR`], and the light is baked for it when the zone loads.
+//! The player casts Meteor Swarm with `1` and calls down
+//! [`Volley::SHOWCASE`]: eight meteors fanned across the sky on arcs of
+//! their own. Nothing casts on its own; `R` rebuilds the houses. The film
+//! (`meteor_showcase_capture`) stages a caster west of the houses who sends
+//! one meteor at each of [`targets`] ([`stage`]). The town clock is pinned
+//! to golden hour, [`HOUR`], and the light is baked for it when the zone
+//! loads.
 
 use super::{Everglade, everglade, everglade_pack::ZonePack};
 use crate::{controller::PlayerController, world::World};
@@ -32,7 +32,7 @@ use std::sync::Arc;
 pub const LOT: [f32; 2] = [-56.0, -5.0];
 /// Where the player stands when the zone opens: south of the lot, behind
 /// where the establishing view looks from.
-pub const SPAWN: Vec3 = Vec3::new(-46.0, 0.0, -80.0);
+pub const SPAWN: Vec3 = Vec3::new(-50.0, 0.0, -42.0);
 /// The way back to the plaza, behind the spawn.
 pub const RETURN_PORTAL: Vec3 = Vec3::new(-46.0, 0.0, -94.0);
 /// Where the caster stands, west of the houses, so the meteors come in
@@ -49,12 +49,14 @@ pub const BLOOM: f32 = 0.09;
 /// Where the haze starts and where it closes, m: clearer than the town's,
 /// so the houses stand sharp from across the lot.
 pub const FOG: (f32, f32) = (90.0, 360.0);
-/// The houses' debris: every fragment lasts for minutes, and a kit piece
-/// breaks into up to three chunks along each long side.
+/// The houses' debris: at most 700 chunks, each lasting for minutes, with
+/// kit pieces broken as the town breaks them. A finer break and more
+/// chunks cost 90 to 200 ms of rigid bodies a frame
+/// (`docs/verse/meteor-showcase-handoff.md`).
 pub const DEBRIS: Debris = Debris {
-    chunks: 2400,
+    chunks: 700,
     lifetime: 600.0,
-    shards: 3,
+    shards: 2,
 };
 
 /// Which way the houses' fronts face, as the controller's yaw: toward the
@@ -271,16 +273,27 @@ pub fn build(pack: &ZonePack, player: &PlayerController) -> Result<(World, Everg
     town.set_volley(Volley::SHOWCASE);
     town.set_debris(DEBRIS);
     town.set_numbers(false);
+    Ok((world, glade))
+}
+
+/// Stands the caster west of the houses and has them cast the showcase's
+/// volley at [`targets`] `delay` seconds from now, and again after each
+/// rebuild: the film's staged cast. The zone never casts on its own; the
+/// player casts with Meteor Swarm.
+pub fn stage(glade: &mut Everglade, delay: f32) -> Result<(), String> {
+    let town = glade
+        .town_mut()
+        .ok_or("The showcase has no destructible houses")?;
     let [x, z] = CASTER;
     town.start_showcase(
         Vec3::new(x, everglade::land(x, z), z),
         aim(),
         targets(),
         Volley::SHOWCASE,
-        DELAY,
+        delay,
         REBUILD,
     );
-    Ok((world, glade))
+    Ok(())
 }
 
 #[cfg(test)]
