@@ -139,7 +139,7 @@ pub struct AgentMeeting {
 #[serde(deny_unknown_fields)]
 pub(super) struct Book {
     slots: BTreeMap<String, Slot>,
-    meetings: BTreeMap<String, Meeting>,
+    pub(super) meetings: BTreeMap<String, Meeting>,
 }
 impl Book {
     pub(super) fn meetings(&self) -> impl Iterator<Item = &Meeting> {

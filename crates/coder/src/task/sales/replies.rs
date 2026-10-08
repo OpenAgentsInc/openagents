@@ -311,7 +311,7 @@ fn normalized_text(text: &str) -> String {
         .collect::<Vec<_>>()
         .join(" ")
 }
-fn safety(text: &str, attachments: bool) -> Safety {
+pub(super) fn safety(text: &str, attachments: bool) -> Safety {
     let folded = normalized_text(text);
     if [
         "unsubscribe",
