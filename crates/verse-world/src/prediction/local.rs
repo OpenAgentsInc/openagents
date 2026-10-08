@@ -29,6 +29,7 @@ pub struct Timing {
     embedding_deferrals: u64,
     horizon_pauses: u64,
     separating_steps: u64,
+    stale_crowd_steps: u64,
     last_embedding: Option<String>,
     render_floor: u64,
     deferred_steps: Vec<u64>,
@@ -78,6 +79,7 @@ pub struct Local {
     embedding_deferrals: u64,
     horizon_pauses: u64,
     separating_steps: u64,
+    stale_crowd_steps: u64,
     last_embedding: Option<String>,
     last_reconciliation: Option<Reconciliation>,
     collision: SceneCache,
@@ -116,6 +118,7 @@ impl Local {
             embedding_deferrals: 0,
             horizon_pauses: 0,
             separating_steps: 0,
+            stale_crowd_steps: 0,
             last_embedding: None,
             last_reconciliation: None,
             collision: SceneCache::new(instance),
@@ -165,6 +168,7 @@ impl Local {
             embedding_deferrals: self.embedding_deferrals,
             horizon_pauses: self.horizon_pauses,
             separating_steps: self.separating_steps,
+            stale_crowd_steps: self.stale_crowd_steps,
             last_embedding: self.last_embedding.clone(),
             render_floor: self.render_floor,
             deferred_steps: self.deferred_steps.iter().copied().collect(),
@@ -200,6 +204,11 @@ impl Local {
     }
     pub fn separating_steps(&self) -> u64 {
         self.separating_steps
+    }
+    /// Counts steps walked past actor capsules whose projected poses the
+    /// predicted character was already embedded in.
+    pub fn stale_crowd_steps(&self) -> u64 {
+        self.stale_crowd_steps
     }
     pub fn last_embedding(&self) -> Option<&str> {
         self.last_embedding.as_deref()
@@ -886,6 +895,41 @@ impl Local {
             .any(|hit| hit.collider == support && hit.surface_normal.y >= settings.slope_cos)
             .then_some(feet))
     }
+    /// A predicted character embedded only in other actors' capsules is ahead
+    /// of those projected poses: authority admitted this character's state
+    /// without that overlap at its own time, so the overlap is evidence that
+    /// the projection is stale. Walk the shared solver past exactly those
+    /// capsules. Every other collider still blocks, an actor support is never
+    /// discarded, and no depenetration push is invented.
+    fn stale_crowd_step(
+        &self,
+        character: &physics::character::Character,
+        filter: Filter,
+        overlap: &physics::queries::Results,
+        velocity: glam::DVec3,
+        jump: bool,
+    ) -> Result<Option<physics::character::Character>, String> {
+        let contacts: Vec<_> = overlap
+            .hits
+            .iter()
+            .filter(|hit| hit.penetration > 1e-5)
+            .collect();
+        if contacts.is_empty()
+            || contacts.iter().any(|hit| {
+                !self.collision.is_capsule(hit.collider) || character.support == Some(hit.collider)
+            })
+        {
+            return Ok(None);
+        }
+        let mut remaining = self.collision.scene().clone();
+        for hit in &contacts {
+            remaining.remove_capsule(hit.collider);
+        }
+        let mut next = *character;
+        let travel =
+            movement::advance(&mut next, &remaining, filter, velocity, jump, 1, 1. / 120.)?;
+        Ok((travel.recovery.blocks == 0).then_some(next))
+    }
     pub fn advance(&mut self, seconds: f64) -> Result<(), String> {
         if !seconds.is_finite() || !(0. ..=0.1).contains(&seconds) {
             return Err("Invalid local prediction frame interval".into());
@@ -983,8 +1027,10 @@ impl Local {
             let velocity = baseline.policy.velocity(held.axes(step), yaw)?;
             let mut separating = false;
             // A projected crowd can embed a newer confirmed character in an
-            // older collider pose. Authority chooses the recovery exit; a local
-            // estimate holds its pose instead of inventing that displacement.
+            // older collider pose. The estimate separates outward or walks
+            // past embedded actor capsules with the shared solver; any other
+            // embedding holds its pose, since authority chooses that recovery
+            // exit and a local estimate never invents the displacement.
             if baseline.profile == movement::Profile::Frames {
                 let overlap = self.collision.scene().overlap(
                     physics::character::Settings::default().capsule(character.feet),
@@ -1009,6 +1055,16 @@ impl Local {
                         character.feet = feet;
                         separating = true;
                         self.separating_steps = self.separating_steps.saturating_add(1);
+                    } else if let Some(next) = self.stale_crowd_step(
+                        &character,
+                        filter,
+                        &overlap,
+                        velocity,
+                        jump && baseline.policy.jump_allowed,
+                    )? {
+                        character = next;
+                        separating = true;
+                        self.stale_crowd_steps = self.stale_crowd_steps.saturating_add(1);
                     } else {
                         self.deferred_steps.extend(step..target);
                         self.embedding_deferrals = self.embedding_deferrals.saturating_add(1);
@@ -1467,10 +1523,11 @@ mod tests {
             layers: 1,
             usage: Usage::Blocking,
             pose: Pose::default(),
-            geometry: GeometrySnapshot::Capsule {
-                a: capsule.a,
-                b: capsule.b,
-                radius: capsule.radius,
+            // Static embedding: only actor capsules are treated as stale
+            // projections that a predicted character may walk past.
+            geometry: GeometrySnapshot::Box {
+                min: capsule.a - glam::DVec3::new(0.35, 0., 0.25),
+                max: capsule.a + glam::DVec3::new(-0.1, 1., 0.25),
             },
         };
         source.colliders.push(obstacle.clone());
@@ -1495,7 +1552,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(travel.recovery.blocks, 0);
-        assert!(authoritative.feet.distance(baseline.character.feet) > 0.5);
+        assert!(authoritative.feet.distance(baseline.character.feet) > 0.1);
         local.observe(baseline, &clean, 3, 3).unwrap();
         local.advance(0.).unwrap();
         assert_eq!(local.pose().unwrap().position, Vec3::ZERO);
@@ -1629,8 +1686,22 @@ mod tests {
                 assert!(depth(&after) < depth(&before));
                 assert_eq!(local.character.unwrap().support, baseline.character.support);
             } else {
-                assert_eq!(position, Vec3::ZERO, "Case {case} must retain obstruction");
-                assert_eq!(local.embedding_deferrals(), 1);
+                // Inward, walled, unsupported, shoved, jumping, and doubly
+                // embedded estimates walk past the stale actor projections
+                // with the shared solver instead of freezing pending time.
+                assert_ne!(position, Vec3::ZERO, "Case {case} froze stale crowd travel");
+                assert_eq!(local.embedding_deferrals(), 0, "Case {case}");
+                assert!(local.stale_crowd_steps() > 0, "Case {case}");
+                if case == 1 {
+                    assert!(
+                        position.z < -0.13 && position.x.abs() < 1e-5,
+                        "{position:?}"
+                    );
+                }
+                if case == 2 {
+                    // Static geometry still blocks the walk past the crowd.
+                    assert!(position.z <= 0.4 - 0.35 + 1e-4, "{position:?}");
+                }
             }
             assert_eq!(local.physics_step(), 4);
             assert_eq!(local.timing().simulated, 4);
@@ -1639,6 +1710,119 @@ mod tests {
                 local.collision.scene().capsule_keys().count(),
                 if case == 6 { 2 } else { 1 }
             );
+        }
+    }
+    #[test]
+    fn stale_actor_projection_does_not_freeze_confirmed_tangential_travel() {
+        use physics::queries::{ColliderKey, GeometrySnapshot, Pose, ShapeSnapshot, Usage};
+        // Retained 600-second battle trace (player 10, actor 236): walking
+        // +z while embedded 0.2783 m in actor 235's projected capsule with
+        // normal (0.999, 0, -0.0446). Authority walked seven free steps; the
+        // held estimate became a 0.3734 m confirmation correction.
+        for mixed in [false, true] {
+            let (mut local, mut baseline, mut source) = setup();
+            local.advance(1. / 120.).unwrap();
+            baseline.character = local.character.unwrap();
+            baseline.profile = movement::Profile::Frames;
+            baseline.epoch += 1;
+            let authority_scene = source.clone();
+            let normal = glam::DVec3::new(0.999002932290504, 0., -0.04464461081670551);
+            let settings = physics::character::Settings::default();
+            let capsule = settings.capsule(-normal * (0.7 - 0.2783030413576324));
+            source.colliders.push(ShapeSnapshot {
+                key: ColliderKey {
+                    life: Life {
+                        instance: 7,
+                        entity: 235,
+                        generation: 0,
+                    },
+                    shape: 0,
+                },
+                layers: 1,
+                usage: Usage::Blocking,
+                pose: Pose::default(),
+                geometry: GeometrySnapshot::Capsule {
+                    a: capsule.a,
+                    b: capsule.b,
+                    radius: capsule.radius,
+                },
+            });
+            if mixed {
+                // A simultaneous static embedding is not crowd staleness.
+                source.colliders.push(ShapeSnapshot {
+                    key: ColliderKey {
+                        life: Life {
+                            instance: 7,
+                            entity: 0,
+                            generation: 0,
+                        },
+                        shape: 1,
+                    },
+                    layers: 1,
+                    usage: Usage::Blocking,
+                    pose: Pose::default(),
+                    geometry: GeometrySnapshot::Box {
+                        min: glam::DVec3::new(0.3, 0.2, -0.2),
+                        max: glam::DVec3::new(0.6, 1.2, 0.2),
+                    },
+                });
+            }
+            local.observe(baseline, &source, 2, 2).unwrap();
+            let intent = Intent::Move {
+                axes: [0., 1.],
+                yaw: std::f32::consts::PI,
+            };
+            local.queue(1, intent).unwrap();
+            local.advance(7. / 120.).unwrap();
+            let predicted = local.pose().unwrap().position;
+            assert_eq!(local.physics_step(), 7);
+            if mixed {
+                assert_eq!(predicted, Vec3::ZERO);
+                assert_eq!(local.embedding_deferrals(), 1);
+                assert_eq!(local.stale_crowd_steps(), 0);
+                continue;
+            }
+            assert_eq!(local.embedding_deferrals(), 0);
+            // The first step leaves the inward-facing contact plane; later
+            // steps are ordinary outward separation.
+            assert_eq!(local.stale_crowd_steps(), 1);
+            assert!(local.separating_steps() > 0);
+            assert!(predicted.x.abs() < 1e-5, "Prediction invented a push");
+            // Authority applies the same seven steps with the shared solver
+            // against its own scene, where the actor is not at that pose.
+            let authority = authority_scene.compile(7).unwrap();
+            let mut authoritative = baseline.character;
+            let travel = movement::advance(
+                &mut authoritative,
+                &authority,
+                Filter::blocking(7),
+                baseline
+                    .policy
+                    .velocity([0., 1.], std::f32::consts::PI)
+                    .unwrap(),
+                false,
+                7,
+                1. / 120.,
+            )
+            .unwrap();
+            assert_eq!(travel.recovery.blocks, 0);
+            assert!((authoritative.feet.z - 0.37338).abs() < 1e-4);
+            assert!(
+                predicted.as_dvec3().distance(authoritative.feet) < 1e-5,
+                "{predicted:?} vs {:?}",
+                authoritative.feet
+            );
+            // The acknowledged baseline (still beside the stale projection)
+            // confirms the estimate instead of correcting it.
+            baseline.physics_step = 7;
+            baseline.world_step = 7;
+            baseline.character = authoritative;
+            baseline.held.refresh([0., 1.], 1).unwrap();
+            baseline.yaw = std::f32::consts::PI;
+            local.observe(baseline, &source, 3, 3).unwrap();
+            local.advance(0.).unwrap();
+            let confirmed = local.pose().unwrap().position;
+            assert!(confirmed.distance(predicted) < 1e-5, "{confirmed:?}");
         }
     }
     #[test]
@@ -2452,10 +2636,11 @@ mod tests {
             layers: 1,
             usage: Usage::Blocking,
             pose: Pose::default(),
-            geometry: GeometrySnapshot::Capsule {
-                a: capsule.a,
-                b: capsule.b,
-                radius: capsule.radius,
+            // Static embedding: only actor capsules are treated as stale
+            // projections that a predicted character may walk past.
+            geometry: GeometrySnapshot::Box {
+                min: capsule.a - glam::DVec3::new(0.35, 0., 0.25),
+                max: capsule.a + glam::DVec3::new(-0.1, 1., 0.25),
             },
         });
         local.observe(baseline, &source, 2, 2).unwrap();
