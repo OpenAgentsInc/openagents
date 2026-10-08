@@ -90,6 +90,9 @@ pub struct Options {
     /// Play Agent Studio's simulated team in Everglade, in a scratch
     /// repository under the system's temporary directory.
     pub studio_sim: bool,
+    /// Feed Everglade's Pylon Field from the labeled DEMO pool rather than
+    /// this computer's lease table (`everglade::compute::sim`).
+    pub pylon_sim: bool,
     /// The control socket of the host whose Agent Studio Everglade shows,
     /// in place of this computer's own host (`openagents_connect::control::socket_path`).
     pub studio_socket: Option<std::path::PathBuf>,
@@ -171,6 +174,7 @@ impl Default for Options {
             replay: None,
             gym_connection: None,
             studio_sim: false,
+            pylon_sim: false,
             studio_socket: None,
             terminal_host: None,
             terminal_task: None,
@@ -1121,6 +1125,16 @@ impl App {
             ));
         }
         runtime.set_studio_notice(options.studio_notice.clone());
+        // Everglade's Pylon Field: the labeled demo pool, or this computer
+        // from its lease table and capacity book, read without changing
+        // them. Tests never read the real home.
+        if options.pylon_sim {
+            runtime.set_compute_source(Some(Box::new(crate::zones::everglade::compute::sim::Sim)));
+        } else if cfg!(not(test))
+            && let Ok(local) = crate::zones::everglade::compute::local::LocalSource::from_env()
+        {
+            runtime.set_compute_source(Some(Box::new(local)));
+        }
         #[cfg(feature = "remote-chamber")]
         let hosted = match &options.chamber {
             Some(path) => {

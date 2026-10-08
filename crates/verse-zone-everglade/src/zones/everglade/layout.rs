@@ -34,6 +34,7 @@ pub mod generated;
 pub mod greens;
 pub mod kit_house;
 pub mod parks;
+pub mod pylon_field;
 pub mod streets;
 pub mod trails;
 
@@ -796,6 +797,7 @@ fn every() -> Vec<Placement> {
     glade(&mut out);
     trails::clear(&mut out);
     belvedere::clear(&mut out);
+    pylon_field::clear(&mut out);
     out.push(Placement::new(
         "generated/concrete_tower",
         TOWER,

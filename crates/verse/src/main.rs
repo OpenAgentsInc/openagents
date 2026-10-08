@@ -15,6 +15,8 @@
 //! is read only after entering the Gym; `G` opens its board while inside.
 //! A portal's zone loads only on explicit entry. Click the portal or press
 //! `F` nearby. Plaza subscriptions pause until you return.
+//! `--pylon-sim` feeds Everglade's Pylon Field from a labeled DEMO pool
+//! instead of this computer's lease table.
 //! `--studio-sim` plays Agent Studio's simulated team in Everglade: on first
 //! entry it records the scripted team against a scratch repository under the
 //! system's temporary directory, with no model or network. Inside, `F` at a
@@ -272,6 +274,7 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<(Option<Shot>, Option
             "--replay" => options.replay = Some(value()?),
             "--gym-connection" => options.gym_connection = Some(value()?.into()),
             "--studio-sim" => options.studio_sim = true,
+            "--pylon-sim" => options.pylon_sim = true,
             "--capability-flow" => options.capability_flow = Some(value()?.into()),
             "--onboarding-practice" => options.onboarding_practice = Some(value()?.into()),
             "--onboarding-workbench" => options.onboarding_workbench = Some(value()?.into()),

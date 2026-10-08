@@ -48,6 +48,14 @@
 //!   `(TX, TY, TZ)`, such as a close look at a placed character's face.
 //!   `VERSE_CAPTURE_STAND=X,Z` stands the player at `(X, Z)` instead of the
 //!   spawn, so the villagers near the camera draw.
+//! - `pylons` and `wellspring`: the Pylon Field in the north woods from
+//!   over its south edge, and the Wellspring's basin up close. `VERSE_CAPTURE_COMPUTE`
+//!   picks the field's source: `idle` (this example's own empty lease
+//!   table), `busy` (the same table with one build lease the example
+//!   holds), `unknown` (a lease root that doesn't exist), `demo` (the
+//!   labeled DEMO pool), or `dormant` (no source, as on the web). With
+//!   `VERSE_CAPTURE_ALICE_WORKING` set, Alice's seat is running at her
+//!   workstation, so the beam runs to it. No real lease table is read.
 //! - `studio-atrium`: inside the gate, at the goal board, with the goal
 //!   bar and its waiting badge over the view.
 //! - `studio-yard`, `studio-hall`, and `studio-atrium`: views of a running
@@ -145,6 +153,42 @@ fn main() -> Result<(), String> {
         }
         eprintln!("private guests: {}", runtime.private_guests());
     }
+    // The Pylon Field's views: a free camera over the field from the
+    // south, with the player standing on its south edge, so the field's
+    // glows turn toward a nearby eye.
+    let mut field_stand = None;
+    let view = match view.as_str() {
+        "pylons" | "wellspring" => {
+            let field = zones::everglade::layout::pylon_field::site()
+                .ok_or("the layout has no Pylon Field")?;
+            let [cx, cz] = field.center;
+            // From the southeast: the wayside chapel stands just south.
+            field_stand = Some(glam::Vec3::new(cx + 7.0, 0.0, cz - 9.0));
+            // The field stands on the woods' rising ground.
+            let y = zones::everglade::height(cx, cz);
+            if view == "pylons" {
+                format!(
+                    "look:{},{},{},{cx},{},{cz}",
+                    cx + 15.0,
+                    y + 8.0,
+                    cz - 15.0,
+                    y + 1.0
+                )
+            } else {
+                format!(
+                    "look:{},{},{},{cx},{},{cz}",
+                    cx + 4.5,
+                    y + 4.0,
+                    cz - 4.5,
+                    y + 0.2
+                )
+            }
+        }
+        _ => view,
+    };
+    // Kept until the shot is rendered: the field's scratch lease table and
+    // the build lease a busy field shows.
+    let _compute = compute(&mut runtime)?;
     let first_person = view.ends_with("eyes");
     let (at, yaw, tilt) = match view.as_str() {
         "eyes" => (glam::Vec3::new(0.0, 0.0, -29.0), 0.0, -60.0),
@@ -172,7 +216,9 @@ fn main() -> Result<(), String> {
         // or at VERSE_CAPTURE_STAND=X,Z, so the villagers near the camera
         // draw: they draw only within 90 m of the player.
         other if other.starts_with("look:") => (
-            stand()?.unwrap_or(glam::Vec3::new(0.0, 0.0, -29.0)),
+            field_stand
+                .or(stand()?)
+                .unwrap_or(glam::Vec3::new(0.0, 0.0, -29.0)),
             0.0,
             0.0,
         ),
@@ -237,7 +283,12 @@ fn main() -> Result<(), String> {
             paused: false,
             spend: Spend::default(),
         };
-        runtime.set_studio_resident(vec![seat(Activity::Idle, Station::Desk)]);
+        let first = if std::env::var_os("VERSE_CAPTURE_ALICE_WORKING").is_some() {
+            seat(Activity::Running, Station::Desk)
+        } else {
+            seat(Activity::Idle, Station::Desk)
+        };
+        runtime.set_studio_resident(vec![first]);
         runtime.update_studio(true, 0.0);
         if std::env::var_os("VERSE_CAPTURE_ALICE_WALK").is_some() {
             let idle = InputState::default();
@@ -380,6 +431,73 @@ fn main() -> Result<(), String> {
         &atlas,
         air,
     )
+}
+
+/// Feeds the Pylon Field as `VERSE_CAPTURE_COMPUTE` says, from a scratch
+/// lease table in a temporary directory, never the real one. Returns what
+/// must outlive the shot: the directory and any lease held.
+fn compute(
+    runtime: &mut WorldRuntime,
+) -> Result<Option<(tempfile::TempDir, Option<coder_lease::Lease>)>, String> {
+    use zones::everglade::compute::{local::LocalSource, sim::Sim};
+    let Ok(how) = std::env::var("VERSE_CAPTURE_COMPUTE") else {
+        return Ok(None);
+    };
+    let dir = tempfile::tempdir().map_err(|e| e.to_string())?;
+    let leases = dir.path().join("leases");
+    let class = zones::everglade::compute::local::class(
+        coder_lease::Machine::detect(),
+        zones::everglade::compute::local::unified_memory(),
+    );
+    let source: Option<Box<dyn zones::everglade::compute::ComputeSource>> = match how.as_str() {
+        "dormant" => None,
+        "demo" => Some(Box::new(Sim)),
+        "unknown" => Some(Box::new(LocalSource::new(
+            dir.path().join("absent"),
+            dir.path().to_path_buf(),
+            2,
+            class,
+        ))),
+        "idle" | "busy" => {
+            std::fs::create_dir_all(&leases).map_err(|e| e.to_string())?;
+            Some(Box::new(LocalSource::new(
+                leases.clone(),
+                dir.path().to_path_buf(),
+                2,
+                class,
+            )))
+        }
+        other => {
+            return Err(format!(
+                "VERSE_CAPTURE_COMPUTE is idle, busy, unknown, demo, or dormant, got {other}"
+            ));
+        }
+    };
+    let lease = if how == "busy" {
+        let limits = coder_lease::Limits {
+            build: 2,
+            memory_gib: 8,
+            disk_floor_gb: 0,
+            build_disk_gb: 0,
+        };
+        let holder = coder_lease::Holder {
+            session: "everglade-capture".into(),
+            agent: "none".into(),
+            pid: std::process::id(),
+            command: "everglade_capture".into(),
+        };
+        let request = coder_lease::Request::new(coder_lease::Resource::parse("build")?, holder)
+            .wait(coder_lease::Wait::No);
+        Some(
+            coder_lease::Broker::new(leases, limits)
+                .acquire(request)
+                .map_err(|e| e.to_string())?,
+        )
+    } else {
+        None
+    };
+    runtime.set_compute_source(source);
+    Ok(Some((dir, lease)))
 }
 
 /// The aerial camera's eye and target: `overhead`'s, or

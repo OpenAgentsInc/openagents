@@ -2,7 +2,8 @@
 //! with role `object` (`nips/openagents/NIP-MV.md`, "Object state"). Every
 //! device derives the same world tree from the pinned layout, so only
 //! what changes is shared: a hosted world authority publishes a lamp, a
-//! door, a workstation, or the Task Wall when its state changes. The
+//! door, a workstation, the Task Wall, a pylon, or the Wellspring when its
+//! state changes (`nips/openagents/NIP-PYLON.md`, World projection). The
 //! content is an ordinary entity state, which any NIP-MV client reads,
 //! plus the node's ID, the tree's digest, and the state.
 
@@ -164,5 +165,43 @@ mod tests {
             1_790_000_000,
         );
         assert!(decode_object(&other, "another-world").is_err());
+    }
+
+    #[test]
+    fn a_pylon_and_the_wellspring_round_trip_as_object_states() {
+        use world_tree::{Family, PylonStatus, Tier};
+        let field = "everglade/wilds/pylon-field";
+        for (node, state) in [
+            (
+                format!("{field}/pylon-1"),
+                ObjectState::Pylon {
+                    pylon: "local:this-computer".into(),
+                    status: PylonStatus::Unknown,
+                    family: Family::Cpu,
+                    tier: Tier::Small,
+                    busy: 0,
+                    total: 1,
+                    jobs: 0,
+                    paid_msat: std::collections::BTreeMap::new(),
+                    uptime: None,
+                },
+            ),
+            (
+                format!("{field}/wellspring"),
+                ObjectState::Wellspring {
+                    pool: "local".into(),
+                    online: 0,
+                    busy: 0,
+                    total: 0,
+                    rate: 0,
+                    verified: false,
+                },
+            ),
+        ] {
+            let object = Object::new(&node, "sha256:ab", state, [0.0, 1.0, 140.0], 9);
+            let event = object_event(&signer(), WORLD, &object, 1_790_000_000);
+            let (_, got) = decode_object(&event, WORLD).unwrap();
+            assert_eq!(got, object);
+        }
     }
 }

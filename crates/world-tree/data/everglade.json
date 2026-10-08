@@ -1,7 +1,7 @@
 {
   "schema": "openagents.verse-world-tree.v1",
   "zone": "everglade",
-  "digest": "sha256:abcce5a9d6a964b84bc4be100d6d5e2b65c852bf24c1dfb9e1528e6d8b9cae33",
+  "digest": "sha256:60afc5aa2570cabae9f3ce86be678c502b7df27443c60b82f587bcf731c41de5",
   "nodes": [
     {
       "id": "everglade",
@@ -5152,6 +5152,147 @@
       ],
       "open": false,
       "source": "front:chapel:door"
+    },
+    {
+      "id": "everglade/wilds/pylon-field",
+      "name": "pylon field",
+      "kind": "building",
+      "district": "wilds",
+      "stand": [
+        -26.98,
+        139.29
+      ],
+      "source": "pylon-field"
+    },
+    {
+      "id": "everglade/wilds/pylon-field/wellspring",
+      "name": "wellspring",
+      "kind": "object",
+      "object": "wellspring",
+      "district": "wilds",
+      "stand": [
+        -28.48,
+        140.49
+      ],
+      "facing": 0.0,
+      "source": "pylon-field:wellspring"
+    },
+    {
+      "id": "everglade/wilds/pylon-field/pylon-1",
+      "name": "pylon 1",
+      "kind": "object",
+      "object": "pylon",
+      "district": "wilds",
+      "stand": [
+        -25.06,
+        136.08
+      ],
+      "facing": 2.69,
+      "source": "pylon-field:site:0"
+    },
+    {
+      "id": "everglade/wilds/pylon-field/pylon-2",
+      "name": "pylon 2",
+      "kind": "object",
+      "object": "pylon",
+      "district": "wilds",
+      "stand": [
+        -22.31,
+        138.27
+      ],
+      "facing": 2.24,
+      "source": "pylon-field:site:1"
+    },
+    {
+      "id": "everglade/wilds/pylon-field/pylon-3",
+      "name": "pylon 3",
+      "kind": "object",
+      "object": "pylon",
+      "district": "wilds",
+      "stand": [
+        -20.78,
+        141.44
+      ],
+      "facing": 1.8,
+      "source": "pylon-field:site:2"
+    },
+    {
+      "id": "everglade/wilds/pylon-field/pylon-4",
+      "name": "pylon 4",
+      "kind": "object",
+      "object": "pylon",
+      "district": "wilds",
+      "stand": [
+        -20.78,
+        144.95
+      ],
+      "facing": 1.35,
+      "source": "pylon-field:site:3"
+    },
+    {
+      "id": "everglade/wilds/pylon-field/pylon-5",
+      "name": "pylon 5",
+      "kind": "object",
+      "object": "pylon",
+      "district": "wilds",
+      "stand": [
+        -34.66,
+        148.12
+      ],
+      "facing": -0.9,
+      "source": "pylon-field:site:4"
+    },
+    {
+      "id": "everglade/wilds/pylon-field/pylon-6",
+      "name": "pylon 6",
+      "kind": "object",
+      "object": "pylon",
+      "district": "wilds",
+      "stand": [
+        -36.19,
+        144.95
+      ],
+      "facing": -1.35,
+      "source": "pylon-field:site:5"
+    },
+    {
+      "id": "everglade/wilds/pylon-field/pylon-7",
+      "name": "pylon 7",
+      "kind": "object",
+      "object": "pylon",
+      "district": "wilds",
+      "stand": [
+        -36.19,
+        141.44
+      ],
+      "facing": -1.8,
+      "source": "pylon-field:site:6"
+    },
+    {
+      "id": "everglade/wilds/pylon-field/pylon-8",
+      "name": "pylon 8",
+      "kind": "object",
+      "object": "pylon",
+      "district": "wilds",
+      "stand": [
+        -34.66,
+        138.27
+      ],
+      "facing": -2.24,
+      "source": "pylon-field:site:7"
+    },
+    {
+      "id": "everglade/wilds/pylon-field/pylon-9",
+      "name": "pylon 9",
+      "kind": "object",
+      "object": "pylon",
+      "district": "wilds",
+      "stand": [
+        -31.91,
+        136.08
+      ],
+      "facing": -2.69,
+      "source": "pylon-field:site:8"
     }
   ]
 }

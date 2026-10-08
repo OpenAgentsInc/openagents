@@ -1786,6 +1786,14 @@ impl WorldRuntime {
             {
                 caption = format!("Everglade\nF talks to {name}, a character");
             }
+            if self.zone == ZoneId::Everglade
+                && let Some(text) = self
+                    .zone_state
+                    .compute
+                    .inspect([self.player.pos.x, self.player.pos.z])
+            {
+                caption = text;
+            }
             match &self.zone_state.studio_notice {
                 Some(notice) if caption.is_empty() => notice.clone(),
                 Some(notice) => format!("{notice} · {caption}"),
@@ -2347,6 +2355,20 @@ impl WorldRuntime {
         &self.zone_state.studio
     }
 
+    /// Feeds Everglade's Pylon Field from `source`, or from nothing, which
+    /// leaves it dormant (`everglade::compute`).
+    pub fn set_compute_source(
+        &mut self,
+        source: Option<Box<dyn crate::zones::everglade::compute::ComputeSource>>,
+    ) {
+        self.zone_state.compute.set_source(source);
+    }
+
+    /// Everglade's Pylon Field.
+    pub fn compute(&self) -> &crate::zones::everglade::compute::Compute {
+        &self.zone_state.compute
+    }
+
     /// The studio's signals since the last call: new decisions, finished
     /// tasks, and finished goals ([`Studio::take_events`]).
     pub fn take_studio_events(&mut self) -> Vec<crate::zones::everglade::signals::Event> {
@@ -2576,6 +2598,9 @@ impl WorldRuntime {
             // The seats move first, so the characters pose where they stand.
             state.studio.set_player(Some(self.player.pos));
             state.studio.tick(dt);
+            if self.zone == ZoneId::Everglade && !state.demolition {
+                state.compute.tick(dt, unix_seconds());
+            }
             let mut seats = if state.demolition {
                 Vec::new()
             } else {
@@ -2678,10 +2703,24 @@ impl WorldRuntime {
                 );
                 // The townsfolk's nameplates.
                 mesh.extend(&self.zone_state.townsfolk.draw(eye));
+                // The Pylon Field and the Wellspring, with the beam to
+                // Alice's workstation while her seat works.
+                let alice = crate::zones::everglade::compute::seat_working(
+                    self.zone_state.studio.view(),
+                    crate::zones::everglade::studio::WORKSHOP_AGENT,
+                );
+                mesh.extend(&self.zone_state.compute.mesh(eye, alice));
             }
         }
         mesh
     }
+}
+
+/// Now, in Unix seconds, for the Pylon Field's freshness rule.
+fn unix_seconds() -> u64 {
+    web_time::SystemTime::now()
+        .duration_since(web_time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs())
 }
 
 #[cfg(test)]

@@ -17,6 +17,7 @@
 
 pub mod boards;
 pub mod boats;
+pub mod compute;
 pub mod demolition;
 pub mod detail;
 pub mod draw;

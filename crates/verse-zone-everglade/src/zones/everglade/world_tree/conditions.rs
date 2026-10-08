@@ -66,6 +66,18 @@ pub fn at(tree: &Tree, time: TownTime, view: Option<&View>) -> Conditions {
     now
 }
 
+/// `now` with the Pylon Field's pylon and Wellspring states from
+/// `compute`'s newest sample.
+#[must_use]
+pub fn with_compute(
+    mut now: Conditions,
+    tree: &Tree,
+    compute: &super::super::compute::Compute,
+) -> Conditions {
+    now.compute = compute.conditions(tree);
+    now
+}
+
 /// Every stateful object's state at `time` with the studio `view`.
 #[must_use]
 pub fn states(tree: &Tree, time: TownTime, view: Option<&View>) -> States {

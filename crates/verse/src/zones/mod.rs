@@ -337,6 +337,10 @@ pub(crate) struct State {
     /// Everglade's admitted townsfolk, placed from the town clock
     /// (`everglade::townsfolk`).
     townsfolk: everglade::townsfolk::Townsfolk,
+    /// Everglade's Pylon Field and Wellspring, from the compute source the
+    /// application installs: this computer on the desktop, nothing on the
+    /// web and the phones (`everglade::compute`).
+    compute: everglade::compute::Compute,
     /// What Everglade's caption leads with, such as that no coding agent
     /// can sign in ([`crate::runtime::WorldRuntime::set_studio_notice`]).
     studio_notice: Option<String>,
@@ -388,6 +392,7 @@ impl Default for State {
             dev_destruction: false,
             studio: everglade::studio::Studio::default(),
             townsfolk: everglade::townsfolk::Townsfolk::default(),
+            compute: everglade::compute::Compute::default(),
             studio_notice: None,
             workshop_owner: false,
             destination: ZoneId::Everglade,

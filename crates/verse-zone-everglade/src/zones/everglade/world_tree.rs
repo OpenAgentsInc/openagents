@@ -12,7 +12,9 @@
 //! workstation, console, and lectern; the Civic Hall's council chamber;
 //! and the Agora's trading floor, Paul's office, and training room. The
 //! fixtures of `estate::LIGHTS`, `civic::LIGHTS`, and `agora::LIGHTS` are
-//! lamp objects. Every node's standing point is a point navigation reaches
+//! lamp objects. The Pylon Field in the wilds ([`layout::pylon_field`])
+//! holds the Wellspring and one pylon object per site; their states come
+//! from the zone's compute source (`zones::everglade::compute`). Every node's standing point is a point navigation reaches
 //! from the approach; the tests route to each one.
 //!
 //! The generated tree is checked in as `crates/world-tree/data/everglade.json`,
@@ -34,6 +36,7 @@ use world_tree::{Affordance, Kind, Node, Object, Tree, slug};
 use super::layout::districts::{self, District};
 use super::layout::estate::{Fixture, OWNERS_HOUSE};
 use super::layout::generated::Instance;
+use super::layout::pylon_field::Field;
 use super::layout::{self, agora, civic, estate};
 use super::{STATIONS, Station};
 
@@ -41,6 +44,8 @@ use super::{STATIONS, Station};
 pub const ZONE: &str = "everglade";
 /// The workshop hall's name, a building of the Commons.
 pub const WORKSHOP: &str = "workshop hall";
+/// The Pylon Field's name, a place in the wilds.
+pub const PYLON_FIELD: &str = "pylon field";
 
 /// The layout tables the tree is made from. [`Tables::everglade`] reads
 /// the zone's; a test changes one to see the digest follow.
@@ -55,6 +60,8 @@ pub struct Tables {
     pub fronts: Vec<(&'static str, [f32; 2])>,
     /// Each lit building's instance and its fixtures, in its frame.
     pub lights: Vec<(Instance, Vec<(Fixture, [f32; 3])>)>,
+    /// The Pylon Field, when the woods had room for it.
+    pub field: Option<Field>,
 }
 
 impl Tables {
@@ -71,6 +78,7 @@ impl Tables {
                 (civic::CIVIC, civic::LIGHTS.to_vec()),
                 (agora::AGORA, agora::LIGHTS.to_vec()),
             ],
+            field: layout::pylon_field::site().cloned(),
         }
     }
 }
@@ -317,6 +325,9 @@ struct Site {
     stand: [f32; 2],
     /// Its door: a point inside when it opens, and its source.
     inside: Option<[f32; 2]>,
+    /// Whether it has a door at all: an open place such as the Pylon
+    /// Field has none.
+    door: bool,
     source: String,
 }
 
@@ -340,6 +351,7 @@ pub fn generate(tables: &Tables) -> Result<Tree, String> {
         district: District::Commons,
         stand: [0.0, -14.5],
         inside: Some([0.0, 3.0]),
+        door: true,
         source: format!("building:{WORKSHOP}"),
     }];
     for &(name, outside, inside) in &tables.doors {
@@ -348,6 +360,7 @@ pub fn generate(tables: &Tables) -> Result<Tree, String> {
             district: district_of(name)?,
             stand: outside,
             inside: Some(inside),
+            door: true,
             source: format!("door:{name}"),
         });
     }
@@ -357,7 +370,18 @@ pub fn generate(tables: &Tables) -> Result<Tree, String> {
             district: district_of(name)?,
             stand: front,
             inside: None,
+            door: true,
             source: format!("front:{name}"),
+        });
+    }
+    if let Some(field) = &tables.field {
+        sites.push(Site {
+            name: PYLON_FIELD,
+            district: District::Wilds,
+            stand: field.stand(),
+            inside: None,
+            door: false,
+            source: "pylon-field".into(),
         });
     }
     let mut by_district: BTreeMap<District, Vec<Site>> = BTreeMap::new();
@@ -415,6 +439,12 @@ pub fn generate(tables: &Tables) -> Result<Tree, String> {
                     }
                 },
             );
+            if !site.door {
+                if let (PYLON_FIELD, Some(field)) = (site.name, &tables.field) {
+                    interiors::pylon_field(&mut out, field, &id, d);
+                }
+                continue;
+            }
             let door_source = format!("{}:door", site.source);
             let facing = site.inside.map(|inside| heading(site.stand, inside));
             let door_stand = if site.name == WORKSHOP {

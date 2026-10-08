@@ -341,11 +341,16 @@ for free work (2026-10-07):
   under a policy document; and projects the `pylon` world state.
 - `crates/pylon` publishes beacons, serves `cj-conversation` jobs, buys
   and publishes receipts, and publishes aggregates (`openagents pylon`).
+- `crates/world-tree` holds the `pylon` and `wellspring` object states,
+  which `crates/verse-net` carries in `33301` object states, and Verse's
+  Everglade draws the Pylon Field and the Wellspring from a
+  `ComputeSource` (`zones::everglade::compute`, P0, #10920): today this
+  computer's lease table, with no events.
 
 Not implemented: check labels (the aggregate's `checks` set is always
 empty), NIP-OA `auth` tags (a beacon that carries one is refused, not
-verified), paid receipts in practice, the `wellspring` projection, and the
-`nip-pylon-v1` relay extension. A service's `capability` is a qualified ID
+verified), paid receipts in practice, a `wellspring` projection from an
+aggregate, and the `nip-pylon-v1` relay extension. A service's `capability` is a qualified ID
 (`<pylon key>:pylon/text-generation`) rather than a full DefinitionRef.
 
 ## Conformance

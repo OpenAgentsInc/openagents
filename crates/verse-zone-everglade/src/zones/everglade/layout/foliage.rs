@@ -527,10 +527,13 @@ fn campfire(out: &mut Vec<Placement>, ground: &mut Ground) {
 }
 
 /// A small circle of standing stones in a clearing in the woods, with one
-/// fallen.
+/// fallen. The Pylon Field grows from it ([`super::pylon_field`]): the
+/// Wellspring's basin stands at its middle and the pylon sites on a ring
+/// outside it, so the woods that follow keep clear of the field.
 fn stone_circle(out: &mut Vec<Placement>, ground: &mut Ground) {
+    use super::pylon_field::{self, Field, SITE_CLEAR};
     const STONES: u32 = 9;
-    const RADIUS: f32 = 5.5;
+    const RADIUS: f32 = pylon_field::STONES;
     // The first clearing round the band, from the north, wide enough.
     let Some(center) = (0..96_u32)
         .flat_map(|k| {
@@ -539,6 +542,7 @@ fn stone_circle(out: &mut Vec<Placement>, ground: &mut Ground) {
         })
         .find(|&c| ground.open(c[0], c[1], RADIUS + 1.0) && !ground.crowded(c, RADIUS + 1.0))
     else {
+        pylon_field::record(None);
         return;
     };
     for i in 0..STONES {
@@ -563,7 +567,17 @@ fn stone_circle(out: &mut Vec<Placement>, ground: &mut Ground) {
         );
     }
     ground.take(center, RADIUS + 1.0);
-    out.push(Placement::new("foliage/mushroom_ring", center, 0.0, Collision::None).scale(1.4));
+    // The pylon sites: the ring's open ground, then the whole field kept
+    // clear of the woods.
+    let sites: Vec<[f32; 2]> = pylon_field::candidates(center)
+        .into_iter()
+        .filter(|s| ground.open(s[0], s[1], SITE_CLEAR) && !ground.crowded(*s, SITE_CLEAR))
+        .collect();
+    for s in &sites {
+        ground.take(*s, SITE_CLEAR);
+    }
+    ground.take(center, pylon_field::CLEAR);
+    pylon_field::record(Some(Field { center, sites }));
 }
 
 /// Ivy climbing the town's ground-floor walls, and climbing roses on a few,

@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use super::choose::{First, Scripted};
 use super::*;
@@ -215,6 +215,7 @@ fn states_follow_the_clock_the_seats_and_the_board() {
                 count: 5,
             },
         ],
+        ..Conditions::default()
     };
     let states = state::derive(&t, &now);
     assert_eq!(states.len(), 5);
@@ -386,4 +387,74 @@ fn the_everglade_snapshot_parses_and_names_its_places() {
     assert!(t.of_kind(Kind::District).count() >= 12);
     assert!(t.with_affordance(Affordance::BuyBread).count() >= 2);
     assert!(t.objects(Object::Door).count() >= 70);
+}
+
+#[test]
+fn pylons_and_the_wellspring_have_state_only_from_a_source() {
+    let mut all = nodes();
+    all.push(node("town/main-street/field", Kind::Building, [20.0, 0.0]));
+    all.push(object(
+        "town/main-street/field/wellspring",
+        Object::Wellspring,
+        &[],
+        false,
+    ));
+    all.push(object(
+        "town/main-street/field/pylon-1",
+        Object::Pylon,
+        &[],
+        false,
+    ));
+    all.push(object(
+        "town/main-street/field/pylon-2",
+        Object::Pylon,
+        &[],
+        false,
+    ));
+    let t = Tree::new("town", all).unwrap();
+    // No source: no pylon or Wellspring state at all.
+    let none = state::derive(&t, &Conditions::default());
+    assert!(!none.keys().any(|id| id.contains("/field/")));
+    let pylon = State::Pylon {
+        pylon: "local:this-computer".into(),
+        status: PylonStatus::Online,
+        family: Family::UnifiedMemory,
+        tier: Tier::Large,
+        busy: 1,
+        total: 2,
+        jobs: 1523,
+        paid_msat: BTreeMap::new(),
+        uptime: None,
+    };
+    let well = State::Wellspring {
+        pool: "local".into(),
+        online: 1,
+        busy: 1,
+        total: 2,
+        rate: 0,
+        verified: false,
+    };
+    let now = Conditions {
+        compute: [
+            ("town/main-street/field/pylon-1".to_owned(), pylon.clone()),
+            ("town/main-street/field/wellspring".to_owned(), well.clone()),
+        ]
+        .into(),
+        ..Conditions::default()
+    };
+    let states = state::derive(&t, &now);
+    assert_eq!(states["town/main-street/field/pylon-1"], pylon);
+    assert!(!states.contains_key("town/main-street/field/pylon-2"));
+    assert_eq!(pylon.describe(), "online, 1 of 2 slots busy, 1523 jobs");
+    assert_eq!(
+        well.describe(),
+        "1 pylons online, 1 of 2 slots busy, unverified"
+    );
+    let json = serde_json::to_string(&pylon).unwrap();
+    assert_eq!(
+        json,
+        r#"{"kind":"pylon","pylon":"local:this-computer","status":"online","family":"unified-memory","tier":"large","busy":1,"total":2,"jobs":1523}"#
+    );
+    let back: State = serde_json::from_str(&json).unwrap();
+    assert_eq!(back, pylon);
 }

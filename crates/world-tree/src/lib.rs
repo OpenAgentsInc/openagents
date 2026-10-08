@@ -40,7 +40,7 @@ use sha2::{Digest, Sha256};
 
 pub use choose::{Ask, Choose, Descent, descend, options};
 pub use known::Known;
-pub use state::{Column, Conditions, State, States};
+pub use state::{Column, Conditions, Family, PylonStatus, State, States, Tier};
 
 /// The tree's schema identifier.
 pub const SCHEMA: &str = "openagents.verse-world-tree.v1";
@@ -108,6 +108,11 @@ pub enum Object {
     Station,
     /// Benches or a spot where people gather.
     Seats,
+    /// A compute pylon's site in the Pylon Field: one machine that serves
+    /// work (`nips/openagents/NIP-PYLON.md`, World projection).
+    Pylon,
+    /// The Wellspring, the pooled capacity the pylons feed.
+    Wellspring,
 }
 
 impl Object {
@@ -123,6 +128,8 @@ impl Object {
             Self::TaskWall => "task-wall",
             Self::Station => "station",
             Self::Seats => "seats",
+            Self::Pylon => "pylon",
+            Self::Wellspring => "wellspring",
         }
     }
 }

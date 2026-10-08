@@ -59,6 +59,7 @@ pub mod claims;
 mod grant;
 mod holder;
 mod limits;
+pub mod observe;
 pub mod placement;
 mod resource;
 mod root;
@@ -81,6 +82,7 @@ pub use limits::{
     AGING_VAR, BUILD_DISK_VAR, BUILD_LEASES_VAR, DEFAULT_AGING, DEFAULT_BUILD_DISK_GB,
     DEFAULT_FLOOR_GB, Limits, MEMORY_GIB_VAR, Machine, SLOT_FREE_VAR, aging_from, free_disk,
 };
+pub use observe::{Observed, observe};
 pub use resource::{NAMED, Resource, Shape};
 pub use root::{ROOT_VAR, refuse_real_home, root_from, root_from_env};
 pub use screen::{

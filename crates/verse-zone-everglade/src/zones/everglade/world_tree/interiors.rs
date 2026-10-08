@@ -1,7 +1,8 @@
 //! The rooms and objects inside the places agents work: the workshop
 //! hall with the Agent Studio's stations and desks, the owner's great room,
 //! the Civic Hall's council chamber, and the Agora; and every lit
-//! building's fixtures as lamps.
+//! building's fixtures as lamps; and the Pylon Field's Wellspring and
+//! pylon sites.
 
 use std::collections::BTreeMap;
 
@@ -9,6 +10,7 @@ use world_tree::{Affordance, Object, slug};
 
 use super::super::layout::estate::{AliceSpot, Fixture, OWNERS_HOUSE};
 use super::super::layout::generated::Instance;
+use super::super::layout::pylon_field::Field;
 use super::super::layout::{self, agora, civic, estate};
 use super::super::{HALL, STRONGROOM, YARD};
 use super::{Out, Tables, area, cm, heading, rect};
@@ -400,6 +402,38 @@ pub(super) fn lamps(out: &mut Out, tables: &Tables, name: &str, id: &str, d: &st
             &[],
             false,
             format!("light:{source}:{i}"),
+        );
+    }
+}
+
+/// The Pylon Field's objects: the Wellspring, and one pylon per site,
+/// numbered from the southernmost. Their states come from the compute
+/// source; an empty site has none.
+pub(super) fn pylon_field(out: &mut Out, field: &Field, id: &str, d: &str) {
+    let (stand, facing) = field.basin_stand();
+    out.object(
+        id,
+        d,
+        "wellspring",
+        Object::Wellspring,
+        (stand, Some(facing)),
+        &[],
+        false,
+        super::super::compute::WELLSPRING_SOURCE.into(),
+    );
+    for i in 0..field.sites.len() {
+        let Some((stand, facing)) = field.site_stand(i) else {
+            continue;
+        };
+        out.object(
+            id,
+            d,
+            &format!("pylon {}", i + 1),
+            Object::Pylon,
+            (stand, Some(facing)),
+            &[],
+            false,
+            super::super::compute::site_source(i),
         );
     }
 }

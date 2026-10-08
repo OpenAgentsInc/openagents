@@ -567,7 +567,19 @@ example or `verse --capture`; no phase opens a visible window.
 
 ### P0: the Pylon Field from local data
 
-Issue: #10920.
+Issue: #10920. Implemented in `zones::everglade::compute`
+(`crates/verse-zone-everglade`). The source interface is
+`compute::ComputeSource`: one `sample(now)` call that returns `Sample`, a
+list of `PylonSample` records (ID, label, hardware class, status, busy and
+total slots, jobs, uptime, and when each was observed), the capacity book's
+wells, and the pool's job rate. `compute::local::LocalSource` reads this
+computer through `coder_lease::observe`, which never changes the lease
+table, and `compute::sim::Sim` is the DEMO pool (`verse --pylon-sim`). A
+P1 source that reads beacons and receipts implements the same trait and
+installs with `WorldRuntime::set_compute_source`; the drawing doesn't
+change. NIP-REACH presence for the owner's other computers needs the
+network, so P0 leaves it to P1. The field is drawn in generated geometry
+and changes no pack asset; pylons and the basin block no walking.
 
 Draw the field and the Wellspring in Everglade from this machine's real data,
 with no network and no spending.
