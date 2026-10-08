@@ -54,6 +54,7 @@ pub mod rain;
 pub mod ripple;
 pub mod screen;
 pub mod seas;
+pub mod shelter;
 pub mod terms;
 pub mod tile;
 pub mod under;

@@ -285,6 +285,7 @@ impl WorldRuntime {
                     | crate::zones::ZoneId::MeteorStressTest
                     | crate::zones::ZoneId::MeteorShowcase
                     | crate::zones::ZoneId::WaterLab
+                    | crate::zones::ZoneId::Coast
             )
     }
 
@@ -579,7 +580,11 @@ impl WorldRuntime {
                 _ => Vec3::ZERO,
             };
             let eye = eye + shake;
-            let ground = crate::zones::everglade::land(eye.x, eye.z) + 0.3;
+            let ground = if self.zone == crate::zones::ZoneId::Coast {
+                crate::zones::coast::ground(eye.x, eye.z)
+            } else {
+                crate::zones::everglade::land(eye.x, eye.z)
+            } + 0.3;
             let eye = Vec3::new(eye.x, eye.y.max(ground), eye.z);
             let look = target + shake * (1.0 + 0.04 * eye.distance(target));
             let view = glam::Mat4::look_at_rh(eye, look, Vec3::Y);
@@ -656,6 +661,7 @@ impl WorldRuntime {
                     | crate::zones::ZoneId::MeteorStressTest
                     | crate::zones::ZoneId::MeteorShowcase
                     | crate::zones::ZoneId::WaterLab
+                    | crate::zones::ZoneId::Coast
             )
     }
 

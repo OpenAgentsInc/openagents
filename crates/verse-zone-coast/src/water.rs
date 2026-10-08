@@ -14,6 +14,14 @@ pub const MARSH: WaterId = WaterId(2);
 pub const TIDE_PERIOD: u64 = 24 * 60 * physics::water::TICK_HZ;
 pub const TIDE_AMPLITUDE: f64 = 1.2;
 
+/// The shared harbor mask, uploaded in the renderer's existing water array.
+pub const HARBOR_SHELTER: verse_pbr::water::shelter::Shelter = verse_pbr::water::shelter::Shelter {
+    center: fixture::HARBOR,
+    inner: 55.0,
+    outer: 95.0,
+    gain: 0.1,
+};
+
 /// Tide height at a shared 120 Hz Unix tick. Fold before converting to
 /// floating point so a long-running clock retains submillimeter precision.
 #[must_use]
@@ -30,8 +38,7 @@ fn tide_velocity(tick: u64) -> f64 {
 /// Harbor swell amplitude: one tenth inside, smoothly joining the open sea.
 #[must_use]
 pub fn shelter(p: Vec2) -> f32 {
-    let radius = p.distance(Vec2::from(fixture::HARBOR));
-    0.1 + 0.9 * smoothstep(55.0, 95.0, radius)
+    HARBOR_SHELTER.sample(p)[0]
 }
 
 /// Estuary discharge and the inward current in the outer 40 m of the zone.

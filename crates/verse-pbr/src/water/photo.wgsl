@@ -599,7 +599,9 @@ fn vs_water(v_in: WaterIn) -> WaterOut {
         moved.crest = r;
         rest = moved.world.xz;
     } else if v.kind < 2.99 {
-        moved = water_move_spaced(v, water_kind_scale(v.kind), 0.0, spacing);
+        let rise = water.bodies[b].absorb.w - water.bodies[b].rest.x + dot(water.bodies[b].level_gradient.xy, v.pos.xz);
+        depth += rise;
+        moved = water_move_spaced(v, water_kind_scale(v.kind), rise, spacing);
     }
     return water_out(v, moved, rest, depth, f.view_proj * vec4<f32>(moved.world, 1.0));
 }

@@ -1,6 +1,6 @@
 # The coast
 
-Status: C1 implementation in progress, revised 2026-10-08. W1 through W11
+Status: C1 shell implemented and qualified, revised 2026-10-08. W1 through W11
 are closed. The coast remains split into C1 through C6; C1 reuses the
 shipped water renderer, spectrum, clipmap, shared clock, and spell code.
 
@@ -29,7 +29,7 @@ each water phase.
 
 ## What exists today
 
-Checked against main `17617d4ab2` and the C1 branch:
+Checked against the shipped W11 interfaces and the C1 implementation:
 
 - **Water Lab.** `verse-zone-water` retains its public paths while
   `verse-water-spells` owns the shared hotbar, Water Orb, Thunderbolt,
@@ -46,8 +46,10 @@ Checked against main `17617d4ab2` and the C1 branch:
 - **Fields.** `verse_pbr::water::field::Field` packs depth, shore distance,
   and two current channels into RGBA16F pages, 64 texels or 128 m per side
   at 2 m resolution. Ten pages cover 1,280 m, including a 40 m border around
-  the playable square. C1 adds shelter as a separate R8 plane; renderer
-  admission and upload must count it before C1 closes.
+  the playable square. C1 retains a CPU R8 shelter plane. Both renderers
+  bake the harbor mask and its gradient into one layer of the existing
+  water array: 64² on Low and Medium, 128² on High, over a bounded 198 m
+  footprint. The layer is counted in water memory without another sampler.
 - **Clock and physics.** `physics::water::tick_at` derives 120 Hz ticks from
   Unix milliseconds. `physics::water::Water` is the query boundary for
   buoyancy and currents. The tide folds the integer tick before converting
@@ -57,10 +59,10 @@ Checked against main `17617d4ab2` and the C1 branch:
   overrun behavior in [Water](water.md#budgets-per-tier). Those limits are
   admission budgets, not a guarantee that the coast keeps every effect.
   C6 still measures the complete coast and qualifies owner-only devices.
-- **Remaining C1 integration.** Register the zone, entry and return paths,
-  tide-aware rendering and shelter, and per-tier bay captures. C2 through
-  C6 still add the pack, boats, diving content, transitions, and multiplayer
-  behavior described below.
+- **Zone shell.** `verse --coast` and the plaza arch load procedural terrain,
+  the tidal ocean, estuary, marsh, and pools. Return restores the plaza pose.
+  The browser entry is `?zone=coast`. C2 through C6 still add the pack,
+  boats, diving content, transitions, and multiplayer behavior below.
 
 The coast doesn't replace the Water Lab. The Lab stays a small, fast-loading
 demo; the coast reuses its modules (see
@@ -78,9 +80,8 @@ demo; the coast reuses its modules (see
   gets a new tap-and-button arch, `COAST_ARCH`, at `(0, 0, 24)`: straight
   ahead of the spawn, between the Lagrange 1 arch at `(12, 0, 12)` and the
   Water Lab's at `(-12, 0, 12)`, and opposite the Physics Lab's at
-  `(0, 0, -22)`. C1 confirms the spot with
-  `plaza_portals_stand_clear_of_structures` and moves it if a structure
-  stands there. The HUD control is **Enter Coast**, and the map gets a
+  `(0, 0, -22)`. The spot passes
+  `plaza_portals_stand_clear_of_structures`. The HUD control is **Enter Coast**, and the map gets a
   **Coast portal** landmark.
 - **From the Grid.** The OpenAgents app's bare world gets a third walk-in
   gate ([`zones/gate.rs`](../../crates/verse/src/zones/gate.rs)),
@@ -159,7 +160,7 @@ on the clipmap, but isn't playable.
 
 The land and the sea bed are one generated heightfield, `coast::terrain::ground(x, z)`,
 a pure Rust function like the Water Lab's
-[`terrain::ground`](../../crates/verse-zone-water/src/terrain.rs) and
+[`terrain::ground`](../../crates/verse-water-spells/src/terrain.rs) and
 Everglade's height function. Everything reads it: the character's feet,
 buoyant bodies, the water's depth, the drawn terrain, and the baked textures
 below. Nothing is downloaded for the ground.
@@ -277,7 +278,7 @@ From [#10776](https://github.com/OpenAgentsInc/openagents/issues/10776):
   slow, steepen, and break along Driftwood Beach and the sandbar, with
   whitecaps from the Jacobian offshore and persistent foam on Medium and
   High. The shelter mask keeps the harbor nearly flat.
-- **Before W4.** No coast: C1 is blocked by W4.
+- **Shipped W4.** C1 uses the bundled calm sea state; C6 connects weather.
 
 ### W5 reflections and refraction
 
@@ -395,8 +396,9 @@ From [#10782](https://github.com/OpenAgentsInc/openagents/issues/10782):
 ### W11 measurement
 
 [#10783](https://github.com/OpenAgentsInc/openagents/issues/10783) measures
-the water system per tier. When it has landed, C6 replaces the coast's
-target budgets with measured ones.
+the water system per tier. Its measured costs and admission limits are in
+[Water](water.md#budgets-per-tier); C6 measures the complete coast against
+them before replacing this zone's target budgets.
 
 ## Life and light
 
@@ -524,6 +526,9 @@ or texture enters the pack without its license in `PROVENANCE.md`.
   not with it.
 - **Transitions** (C5): Everglade's gate to the estuary and back keeps the
   saved plaza pose; the Grid gate's clearance tests.
+- **C1 evidence.** [Bay captures and receipts](../../bench/verse/2026-10-08/coast-c1/README.md)
+  retain the same high-tide view on Low, Medium, and High. The shell is
+  procedural; the kits and atmosphere variants below belong to later phases.
 - **Captures.** A `coast_capture` example renders fixed views (the bay from
   the terrace at noon and dusk, the surf, the harbor's mirror, the reef from
   below, the lighthouse in fog, and a storm) for every tier through both
@@ -570,9 +575,8 @@ Each phase's acceptance:
 1. **Name.** "The coast" is a working name for the zone and its arch.
 2. **Combat.** Should the coast have sea creatures to fight, or stay a
    place to explore?
-3. **The plaza arch's spot.** `(0, 0, 24)` is unverified against the
-   plaza's structures; C1 decides, and the alternative is a ring of arches
-   farther out.
+3. **The plaza arch's spot.** Resolved in C1: `(0, 0, 24)` passes the
+   plaza structure-clearance test.
 4. **The Water Lab's future.** Once the coast ships, the Lab can stay a
    separate demo, or become a cove inside the coast reached on foot, which
    frees an arch.

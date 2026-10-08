@@ -360,7 +360,10 @@ async fn run() -> Result<(), String> {
     // `?zone=water` opens the Water Lab, the cove for Verse's water, built
     // on the same pack (`docs/verse/water.md`).
     let water = query_value(&window, "zone").as_deref() == Some("water");
-    if water {
+    if query_value(&window, "zone").as_deref() == Some("coast") {
+        status("Opening the coast…");
+        runtime.install_coast_bytes(&bytes)?;
+    } else if water {
         status("Opening the Water Lab…");
         runtime.install_water_lab_bytes(&bytes)?;
     } else if grove {

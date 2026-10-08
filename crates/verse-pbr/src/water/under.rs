@@ -342,7 +342,12 @@ pub fn list_rows(
             distance,
             [
                 [e.min.x, e.min.y, e.max.x, e.max.y],
-                [e.plane[0] + rise, e.plane[1], e.plane[2], e.residual],
+                [
+                    e.plane[0] + rise,
+                    e.plane[1] + body.level_gradient[0],
+                    e.plane[2] + body.level_gradient[1],
+                    e.residual,
+                ],
                 optics,
             ],
         ));

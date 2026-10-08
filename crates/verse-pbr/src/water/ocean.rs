@@ -623,6 +623,7 @@ pub struct OceanGpu {
     pub refresh_every: u32,
     frames: u32,
     envelope: glam::Vec3,
+    shelter: Option<super::shelter::Shelter>,
 }
 
 impl OceanGpu {
@@ -635,7 +636,7 @@ impl OceanGpu {
             size: wgpu::Extent3d {
                 width: plan.size as u32,
                 height: plan.size as u32,
-                depth_or_array_layers: plan.layers() + 1,
+                depth_or_array_layers: plan.layers() + 2,
             },
             mip_level_count: plan.mip_levels(),
             sample_count: 1,
@@ -668,6 +669,7 @@ impl OceanGpu {
             refresh_every: 1,
             frames: 0,
             envelope: glam::Vec3::ZERO,
+            shelter: None,
         }
     }
 
@@ -688,10 +690,53 @@ impl OceanGpu {
         matches!(self.worker, Worker::Inline(_))
     }
 
-    /// The texture's bytes on the GPU, the ripple layer's included.
+    /// The texture's bytes, including ripple and shelter layers.
     #[must_use]
     pub fn bytes(&self) -> u64 {
-        u64::from(self.plan.layers() + 1) * self.plan.layer_bytes()
+        u64::from(self.plan.layers() + 2) * self.plan.layer_bytes()
+    }
+
+    /// Upload a changed harbor mask once. Both renderers share the array
+    /// binding; an absent mask leaves existing seas unchanged.
+    pub fn prepare_shelter(
+        &mut self,
+        queue: &wgpu::Queue,
+        mask: Option<super::shelter::Shelter>,
+    ) -> [f32; 4] {
+        let Some(mask) = mask.filter(|mask| mask.valid()) else {
+            return [0.0; 4];
+        };
+        let layer = self.plan.layers() + 1;
+        if self.shelter != Some(mask) {
+            let texels = mask.bake(self.plan.size);
+            let n = self.plan.size as u32;
+            queue.write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture: &self.texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d {
+                        x: 0,
+                        y: 0,
+                        z: layer,
+                    },
+                    aspect: wgpu::TextureAspect::All,
+                },
+                bytemuck::cast_slice(&texels),
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(n * 8),
+                    rows_per_image: Some(n),
+                },
+                wgpu::Extent3d {
+                    width: n,
+                    height: n,
+                    depth_or_array_layers: 1,
+                },
+            );
+            self.shelter = Some(mask);
+        }
+        let (origin, side) = mask.bounds();
+        [origin[0], origin[1], side, layer as f32]
     }
 
     /// A conservative displacement bound for culling. Interactive ripples

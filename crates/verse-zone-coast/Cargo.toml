@@ -13,5 +13,8 @@ verse-pbr = { path = "../verse-pbr" }
 verse-water-spells = { path = "../verse-water-spells" }
 verse-zone-water = { path = "../verse-zone-water" }
 
+verse-core = { path = "../verse-core" }
+verse-world = { path = "../verse-world" }
+
 [lints]
 workspace = true

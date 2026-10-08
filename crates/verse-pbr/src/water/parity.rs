@@ -43,9 +43,14 @@ fn water_host_shadow(world: vec3<f32>, n: vec3<f32>, pixel: vec2<f32>) -> f32 { 
 }
 @fragment fn fs_ocean(@builtin(position) at: vec4<f32>) -> @location(0) vec4<f32> {
     let p0 = points[u32(at.x)].xy;
-    let wave = water_ocean_move(0u, p0, 1.0e6, 1.0);
+    let wave = water_ocean_move(0u, p0, 1.0e6, 1.0, 0.0);
     return vec4<f32>(wave.xyz, 1.0);
 }
+@fragment fn fs_shelter(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+    let p = points[min(u32(pos.x), 15u)].xy;
+    return vec4<f32>(water_shelter(0u, p), 1.0);
+}
+
 "
     )
 }
@@ -58,6 +63,7 @@ fn gpu_displacements(
     uniform: &WaterUniform,
     points: &[[f32; 4]; POINTS],
     ocean: Option<(&Spectrum, u64, Tier)>,
+    shelter: Option<(super::shelter::Shelter, Tier)>,
 ) -> Option<Vec<[f32; 4]>> {
     use wgpu::util::DeviceExt;
     let instance =
@@ -69,10 +75,11 @@ fn gpu_displacements(
         label: Some("water parity"),
         source: wgpu::ShaderSource::Wgsl(shader().into()),
     });
-    let tier = ocean.map_or(Tier::Medium, |o| o.2);
+    let tier = shelter.map_or_else(|| ocean.map_or(Tier::Medium, |o| o.2), |(_, tier)| tier);
     let mut cascades = super::OceanGpu::new(&device, tier);
     cascades.exact = true;
     let mut uniform = *uniform;
+    uniform.shelter = cascades.prepare_shelter(&queue, shelter.map(|(mask, _)| mask));
     if let Some((spectrum, tick, _)) = ocean {
         uniform.ocean = cascades.prepare(&queue, Some(spectrum), tick as f64 * spectrum.tick, 1.0);
         // Cascade 0 alone: the band `physics::water` samples.
@@ -140,7 +147,13 @@ fn gpu_displacements(
         multisample: Default::default(),
         fragment: Some(wgpu::FragmentState {
             module: &module,
-            entry_point: Some(if ocean.is_some() { "fs_ocean" } else { "fs" }),
+            entry_point: Some(if shelter.is_some() {
+                "fs_shelter"
+            } else if ocean.is_some() {
+                "fs_ocean"
+            } else {
+                "fs"
+            }),
             compilation_options: Default::default(),
             targets: &[Some(format.into())],
         }),
@@ -251,7 +264,7 @@ fn the_shader_displacement_matches_the_physics_surface() {
     let mut water = Water::calm(0.0);
     water.bodies[0] = Body::from_physics(&body, &Preset::default());
     for tick in [0u64, 1, 4_321, 120 * 600 - 1, 37_000_017] {
-        let Some(gpu) = gpu_displacements(&water.uniform_at_tick(tick), &points, None) else {
+        let Some(gpu) = gpu_displacements(&water.uniform_at_tick(tick), &points, None, None) else {
             eprintln!("No GPU adapter; the parity check did not run");
             return;
         };
@@ -309,6 +322,7 @@ fn the_shader_spectral_band_matches_the_physics_band() {
             &Water::calm(0.0).uniform(),
             &points,
             Some((&spectrum, tick, tier)),
+            None,
         ) else {
             eprintln!("No GPU adapter; the spectral parity check did not run");
             return;
@@ -328,4 +342,47 @@ fn the_shader_spectral_band_matches_the_physics_band() {
     );
     assert!(highest > 0.5, "the storm moves the surface");
     assert!(worst < 0.01, "{worst}");
+}
+
+/// The uploaded mask keeps the CPU's sheltered center, open-water border,
+/// and transition gradient. Run this GPU check on a remote GPU host.
+#[test]
+fn the_shader_shelter_mask_matches_the_cpu_field() {
+    let mask = super::shelter::Shelter {
+        center: [-130.0, -230.0],
+        inner: 55.0,
+        outer: 95.0,
+        gain: 0.1,
+    };
+    let points =
+        std::array::from_fn(|i| [mask.center[0] + i as f32 * 8.0, mask.center[1], 0.0, 0.0]);
+    for tier in [Tier::Low, Tier::Medium, Tier::High] {
+        let gpu = gpu_displacements(
+            &Water::calm(0.0).uniform(),
+            &points,
+            None,
+            Some((mask, tier)),
+        )
+        .expect("the shelter qualification requires a GPU adapter");
+        let mut worst = [0.0_f32; 3];
+        for (point, sampled) in points.iter().zip(gpu) {
+            let expected = mask.sample(glam::Vec2::new(point[0], point[1]));
+            for axis in 0..3 {
+                worst[axis] = worst[axis].max((sampled[axis] - expected[axis]).abs());
+            }
+        }
+        // A 64² mask spans 198 m: bilinear filtering across the cubic
+        // transition differs from the analytic curve, especially at its
+        // flat-to-curved boundary. These bounds include half-float rounding.
+        eprintln!(
+            "{tier:?} shelter error: gain {}, gradient {:?}",
+            worst[0],
+            &worst[1..]
+        );
+        assert!(worst[0] < 0.004, "{tier:?}: {worst:?}");
+        assert!(
+            worst[1] < 0.0012 && worst[2] < 0.0012,
+            "{tier:?}: {worst:?}"
+        );
+    }
 }

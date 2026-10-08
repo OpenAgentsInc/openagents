@@ -122,6 +122,8 @@ pub struct Options {
     /// Open straight into the Water Lab once the window shows (`verse
     /// --water-lab`).
     pub water_lab: bool,
+    /// Open the tidal coast at launch (`--coast`).
+    pub coast: bool,
     /// Open Everglade as the demolition yard (`--demolition`): two kit
     /// cottages to knock down with a sledgehammer.
     pub demolition: bool,
@@ -198,6 +200,7 @@ impl Default for Options {
             meteor_showcase: false,
             crypt: false,
             water_lab: false,
+            coast: false,
             demolition: false,
             dev_destruction: false,
             frame_times: false,
@@ -2328,6 +2331,8 @@ impl App {
             self.runtime.enter_grove()
         } else if zone == zones::ZoneId::Crypt {
             self.runtime.enter_crypt()
+        } else if zone == zones::ZoneId::Coast {
+            self.runtime.enter_coast()
         } else if zone == zones::ZoneId::WaterLab {
             self.runtime.enter_water_lab()
         } else {
@@ -5189,8 +5194,11 @@ impl ApplicationHandler for App {
             self.everglade_pending = Some(zones::ZoneId::Crypt);
             self.open_pending_everglade();
         }
-        // `--water-lab` likewise: the cove loads Everglade's pack for its
-        // character.
+        // The coast and cove load Everglade's pack for their character.
+        if std::mem::take(&mut self.connection_options.coast) {
+            self.everglade_pending = Some(zones::ZoneId::Coast);
+            self.open_pending_everglade();
+        }
         if std::mem::take(&mut self.connection_options.water_lab) {
             self.everglade_pending = Some(zones::ZoneId::WaterLab);
             self.open_pending_everglade();
