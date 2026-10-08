@@ -78,7 +78,7 @@ the original October 7 plan.
 | B1: offline baker | #10905 | `0360046732`, `983432c41f` | Closed |
 | B2: lightmap layers | #10906 | `0e0d8afd37`, verification on `codex/everglade-b2-verification` | Per-vertex implementation verified and deployed; UV storage and denser lamp probes remain deferred |
 | B3: time of day and destruction | #10907 | checkpoint `a2f4bbf7d3` on `codex/everglade-b3` | Claimed separately on October 8; check its issue before resuming |
-| B4: tiers and measurement | #10908 | none | Not started |
+| B4: tiers and measurement | #10908 | coordinator | Browser layer loading in progress |
 
 The town has 65 medieval kit houses: Stoop Lane, Main Street, the Fountain
 Plaza, Market Row, the Lantern Quarter, Well Square, the Knowledge,
@@ -125,7 +125,18 @@ unchanged.
   October 8; leave that claim alone. The checkpoint itself has no recorded
   B3 Cargo checks, captures, or measurements; consult the issue for newer
   verification evidence.
-- **B4 (#10908).** Not started. It needs B2 and P8. One 512 px kit pack
+- **B4 (#10908).** The coordinator holds the claim on
+  `codex/everglade-b4-tiers`. Commits `62e6b2fc52` and `bf25b60f6e` fetch
+  and verify the existing VLAY before browser town installation, deliver
+  matching layers without a stepped bake, and report the active state
+  under `?frames`. The focused delivery test and WASM check pass.
+  Browser validation correctly rejects the current scene after
+  `7afd440fe8` moved the fountain earlier in the placement order.
+  Candidate `6452beb0c9` restores its published vertex order while keeping
+  the updated instance and collision metadata; validation is running.
+  Do not rebake to chase main. Reuse the existing artifact and check the
+  scene identity. Spatial tier reduction and budgets remain open.
+  One 512 px kit pack
   serves every tier today (21,467,658 bytes to transfer, 60.5 MiB decoded),
   exceeding the web and phone soft budgets. Both tiers need B4.
 
