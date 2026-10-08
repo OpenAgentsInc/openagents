@@ -1,6 +1,7 @@
 //! Captures the production town clock and measures immutable sun blending.
 //! Usage: baked_light_capture OUTPUT_DIR [PAIRS] [TIMELAPSE_FRAMES]
-//! [--preflight-only] [--repair-hold-seconds SECONDS] [--blend-only | --skip-blend]
+//! [--preflight-only] [--repair-hold-seconds SECONDS]
+//! [--blend-only | --skip-blend | --destruction-only]
 //! Requires VERSE_KIT_PACK and VERSE_KIT_BAKE for exactly the current scene.
 
 use serde_json::json;
@@ -26,6 +27,7 @@ enum CaptureMode {
     Full,
     BlendOnly,
     SkipBlend,
+    DestructionOnly,
 }
 
 impl CaptureMode {
@@ -34,6 +36,7 @@ impl CaptureMode {
             Self::Full => "full",
             Self::BlendOnly => "blend-only",
             Self::SkipBlend => "skip-blend",
+            Self::DestructionOnly => "destruction-only",
         }
     }
 }
@@ -153,7 +156,7 @@ fn main() -> Result<(), String> {
     let phase_warmup = sky_warmup(on_renderer.quality());
     let mut captures = Vec::new();
     let mut timelapse = Vec::new();
-    if mode != CaptureMode::BlendOnly {
+    if matches!(mode, CaptureMode::Full | CaptureMode::SkipBlend) {
         for (name, hour) in [
             ("dawn", 6.0),
             ("noon", 12.0),
@@ -215,7 +218,7 @@ fn main() -> Result<(), String> {
     }
     let mut samples = Vec::new();
     let paired_warmup = phase_warmup.next_multiple_of(2);
-    if mode != CaptureMode::SkipBlend {
+    if matches!(mode, CaptureMode::Full | CaptureMode::BlendOnly) {
         runtime.set_town_clock(running_clock(9.0));
         runtime.tick(&idle, 1.0 / 60.0);
         let mut on = runtime.dynamic_mesh();
@@ -256,7 +259,7 @@ fn main() -> Result<(), String> {
             }
         }
     }
-    let measurement = if mode == CaptureMode::SkipBlend {
+    let measurement = if matches!(mode, CaptureMode::SkipBlend | CaptureMode::DestructionOnly) {
         None
     } else {
         let increments: Vec<_> = samples
@@ -281,16 +284,16 @@ fn main() -> Result<(), String> {
         "inputs":inputs,"run":run,"inputs_hashed_before_simulation":true,
         "clock":"Unpinned production wall-clock adapter; solar weights, sky brightness and lamp fade use exact town time; sky shape keeps its scheduled cadence",
         "phase_warmup_frames":phase_warmup,
-        "named_phases_status":if mode == CaptureMode::BlendOnly {"skipped"} else {"complete"},
-        "timelapse_status":if mode == CaptureMode::BlendOnly {"skipped"} else {"complete"},
-        "timelapse_method":if mode == CaptureMode::BlendOnly {serde_json::Value::Null} else {json!({"frames":frames,"hours":24.0,"pixels":"Selected frames; all other frames complete rendering without pixel extraction",
+        "named_phases_status":if matches!(mode, CaptureMode::BlendOnly | CaptureMode::DestructionOnly) {"skipped"} else {"complete"},
+        "timelapse_status":if matches!(mode, CaptureMode::BlendOnly | CaptureMode::DestructionOnly) {"skipped"} else {"complete"},
+        "timelapse_method":if matches!(mode, CaptureMode::BlendOnly | CaptureMode::DestructionOnly) {serde_json::Value::Null} else {json!({"frames":frames,"hours":24.0,"pixels":"Selected frames; all other frames complete rendering without pixel extraction",
             "scheduled_sky_frames_per_step":(frames-1) as f64/360.0,
             "scheduled_sky_warmup_frames":phase_warmup,
             "sky_bake_can_finish_between_steps":(frames-1) as f64/360.0 >= phase_warmup as f64,
             "limitation":"An accelerated timeline with too few frames per scheduled sky step can retain an older sky shape; exact brightness and sun weights still advance. Named phase images converge the sky bake."})},
         "temporal_aa":false,"captures":captures,"timelapse":timelapse,
         "destruction":null,"destruction_status":if mode == CaptureMode::BlendOnly {"skipped"} else {"pending"},
-        "measurement":measurement,"measurement_status":if mode == CaptureMode::SkipBlend {"skipped"} else {"complete"},
+        "measurement":measurement,"measurement_status":if matches!(mode, CaptureMode::SkipBlend | CaptureMode::DestructionOnly) {"skipped"} else {"complete"},
         "samples":samples});
     // Retain the completed clock and paired measurements if destruction fails.
     let report_path = dir.join("capture.json");
@@ -362,7 +365,9 @@ fn destruction_capture(
         .ok_or("The baked town has no destructible kit building")?;
     let ([x, z], [hx, hz]) = building.rect;
     let aim = Vec3::new(x, building.base, z);
-    let eye = Vec3::new(x - hx - 22.0, building.base + 8.0, z + hz + 24.0);
+    // Look down over the foliage while retaining the same ground origin,
+    // meteor targets, and simulation as the original diagnostic capture.
+    let eye = Vec3::new(x - hx - 22.0, building.base + 28.0, z + hz + 24.0);
     runtime.set_spawn(eye.with_y(building.base), 0.0)?;
     runtime.set_shot(Some((eye, aim + Vec3::Y * 4.0)));
     let idle = InputState::default();
@@ -545,6 +550,8 @@ fn destruction_capture(
     write_json(&dir.join("repair-verification.json"), &verification)?;
     Ok(
         json!({"building_center":[x,z],"building_is_kit":true,"frames":960,"fps":60,
+        "camera_eye":eye.to_array(),"camera_aim":(aim + Vec3::Y * 4.0).to_array(),
+        "player_ground_origin":eye.with_y(building.base).to_array(),
         "pristine":"destruction-pristine.png","restored":"destruction-restored.png",
         "relit_pieces_max":relit_max,"hidden_placements_max":hidden_max,"restore_fallback_reset":pristine,
         "selective_repair":verification,
@@ -672,14 +679,14 @@ fn capture_args(
     while let Some(argument) = args.next() {
         match argument.as_str() {
             "--preflight-only" => preflight_only = true,
-            "--blend-only" | "--skip-blend" => {
+            "--blend-only" | "--skip-blend" | "--destruction-only" => {
                 if mode != CaptureMode::Full {
-                    return Err("Choose only one of --blend-only and --skip-blend".into());
+                    return Err("Choose only one capture mode".into());
                 }
-                mode = if argument == "--blend-only" {
-                    CaptureMode::BlendOnly
-                } else {
-                    CaptureMode::SkipBlend
+                mode = match argument.as_str() {
+                    "--blend-only" => CaptureMode::BlendOnly,
+                    "--skip-blend" => CaptureMode::SkipBlend,
+                    _ => CaptureMode::DestructionOnly,
                 };
             }
             "--repair-hold-seconds" => {
@@ -927,7 +934,12 @@ mod tests {
         };
         assert_eq!(parse("--blend-only"), CaptureMode::BlendOnly);
         assert_eq!(parse("--skip-blend"), CaptureMode::SkipBlend);
+        assert_eq!(parse("--destruction-only"), CaptureMode::DestructionOnly);
         assert!(capture_args(["out", "--blend-only", "--skip-blend"].map(str::to_string)).is_err());
+        assert!(
+            capture_args(["out", "--destruction-only", "--skip-blend"].map(str::to_string))
+                .is_err()
+        );
     }
 
     #[test]
