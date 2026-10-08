@@ -1,0 +1,13 @@
+{
+  "source": "bc0e969e3acb0ea6683926095aad514705a97cf4",
+  "executable": "/home/christopherdavid/.openagents/scratch/process-2198653/w11-query-fix/water-capture",
+  "sha256": "bba2608541db6eff871d640dcd1bac725264317528a6aebe90ac8afcb7dd7a55",
+  "scope": "Supplemental RTX 4080 native raster measurements; Mac and browser calibration remain pending",
+  "cases": 15,
+  "capture_directory": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-query-fix",
+  "capture_review": [
+    "high-open-storm",
+    "low-waterline"
+  ],
+  "all_cases_passed": true
+}
