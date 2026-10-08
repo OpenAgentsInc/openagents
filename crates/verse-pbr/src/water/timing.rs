@@ -239,7 +239,10 @@ impl Timer {
         slot.pending = Some((self.frame, mask, receive));
     }
     pub fn bytes(&self) -> u64 {
-        3 * 128
+        // Eight 64-bit query results, plus equally sized resolve and
+        // readback buffers, for each bounded slot. Driver metadata is
+        // opaque and is outside declared-resource accounting.
+        3 * (64 + 64 + 64)
     }
 }
 
