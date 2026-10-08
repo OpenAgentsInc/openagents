@@ -7363,6 +7363,266 @@
           ]
         },
         {
+          "name": "replies",
+          "children": [
+            {
+              "name": "view",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "replies",
+                  "view"
+                ],
+                "usage": [
+                  "replies view"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "replies"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "view"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Read private reply provenance, safety findings, and owner classifications.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "ingest",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "replies",
+                  "ingest"
+                ],
+                "usage": [
+                  "replies ingest --input FILE"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "replies"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "ingest"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "input",
+                        "value": "FILE",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Import quoted inbox data with immediate native contact safety.",
+                "effect": "grants",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "review",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "replies",
+                  "review"
+                ],
+                "usage": [
+                  "replies review --input FILE"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "replies"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "review"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "input",
+                        "value": "FILE",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Record one exact owner classification; grants no outbound authority.",
+                "effect": "grants",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "qualify",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "replies",
+                  "qualify"
+                ],
+                "usage": [
+                  "replies qualify --expires-at UNIX"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "replies"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "qualify"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "expires-at",
+                        "value": "UNIX",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Retain measured native scratch-injection safety results.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "revoke",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "replies",
+                  "revoke"
+                ],
+                "usage": [
+                  "replies revoke --qualification SHA"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "replies"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "revoke"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "qualification",
+                        "value": "SHA",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Revoke current handler qualification and pause outbound work.",
+                "effect": "grants",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "booking",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "replies",
+                  "booking"
+                ],
+                "usage": [
+                  "replies booking --input FILE"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "replies"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "booking"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "input",
+                        "value": "FILE",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Prepare a human meeting from exact owner-reviewed interested reply.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "follow-up",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "replies",
+                  "follow-up"
+                ],
+                "usage": [
+                  "replies follow-up --lead LEAD --mode fixture|live"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "replies"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "follow-up"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "lead",
+                        "value": "LEAD",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "mode",
+                        "value": "fixture|live",
+                        "choices": [
+                          "fixture",
+                          "live"
+                        ]
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Retain a no-response plan with real-week spacing and two-attempt bound.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
+        },
+        {
           "name": "agents",
           "children": [
             {
@@ -9730,6 +9990,33 @@
           "name": "subject-sha256",
           "value": "SHA",
           "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "expires-at",
+          "value": "UNIX",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "qualification",
+          "value": "SHA",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "mode",
+          "value": "fixture|live",
+          "choices": [
+            "fixture",
+            "live"
+          ],
           "optional": true,
           "repeated": true
         },

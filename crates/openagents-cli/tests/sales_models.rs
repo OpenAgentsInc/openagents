@@ -1,5 +1,7 @@
 //! Actual expense controls over a scratch native host, without providers.
 #![cfg(unix)]
+#[path = "support/sales_binary.rs"]
+mod sales_binary;
 use coder::task::{
     agent,
     agent_key::FileKeys,
@@ -8,7 +10,7 @@ use coder::task::{
 use serde_json::{Value, json};
 use std::{fs, os::unix::fs::PermissionsExt, path::Path, process::Command};
 fn run(base: &Path, args: &[&str]) -> std::process::Output {
-    Command::new(env!("CARGO_BIN_EXE_openagents"))
+    Command::new(sales_binary::path())
         .args(["--json", "sales"])
         .args(args)
         .args([

@@ -24,6 +24,8 @@ mod outbox;
 mod privacy;
 #[path = "sales_qualification.rs"]
 mod qualification;
+#[path = "sales_replies.rs"]
+mod replies;
 #[path = "sales_training.rs"]
 mod training;
 pub const USAGE: &str = "usage: openagents sales COMMAND --root DIR [--credential FILE] [--json]
@@ -72,6 +74,20 @@ pub const USAGE: &str = "usage: openagents sales COMMAND --root DIR [--credentia
         Consume a fixture approval with isolated synthetic provider evidence.
   outbox dispatch --proposal ID --subject-sha256 SHA --mailbox-key FILE
         Consume one live approval through the qualified native SMTP adapter.
+  replies view
+        Read private reply provenance, safety findings, and owner classifications.
+  replies ingest --input FILE
+        Import quoted inbox data with immediate native contact safety.
+  replies review --input FILE
+        Record one exact owner classification; grants no outbound authority.
+  replies qualify --expires-at UNIX
+        Retain measured native scratch-injection safety results.
+  replies revoke --qualification SHA
+        Revoke current handler qualification and pause outbound work.
+  replies booking --input FILE
+        Prepare a human meeting from exact owner-reviewed interested reply.
+  replies follow-up --lead LEAD --mode fixture|live
+        Retain a no-response plan with real-week spacing and two-attempt bound.
   agents anchor --agent NAME
         Read the owner's exact native agent key and charter pins.
   agents owner
@@ -225,6 +241,13 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("outbox apply", Effect::Grants),
     Declared::computer("outbox fixture", Effect::LocalWrite),
     Declared::computer("outbox dispatch", Effect::Publishes),
+    Declared::computer("replies view", Effect::ReadOnly),
+    Declared::computer("replies ingest", Effect::Grants),
+    Declared::computer("replies review", Effect::Grants),
+    Declared::computer("replies qualify", Effect::LocalWrite),
+    Declared::computer("replies revoke", Effect::Grants),
+    Declared::computer("replies booking", Effect::LocalWrite),
+    Declared::computer("replies follow-up", Effect::LocalWrite),
     Declared::computer("agents anchor", Effect::ReadOnly),
     Declared::computer("agents owner", Effect::ReadOnly),
     Declared::computer("agents owner-apply", Effect::Grants),
@@ -288,14 +311,17 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
     if words.first().is_some_and(|w| w == "paul") {
         return paul::run(output, &words[1..]);
     }
+    if words.first().is_some_and(|w| w == "replies") {
+        return replies::run(output, &words[1..]);
+    }
+    if words.first().is_some_and(|w| w == "outbox") {
+        return outbox::run(output, &words[1..]);
+    }
     if words.first().is_some_and(|w| w == "training") {
         return training::run(output, &words[1..]);
     }
     if words.first().is_some_and(|w| w == "meetings") {
         return meetings::run(output, &words[1..]);
-    }
-    if words.first().is_some_and(|w| w == "outbox") {
-        return outbox::run(output, &words[1..]);
     }
     if words.first().is_some_and(|w| w == "email") {
         return email::run(output, &words[1..]);

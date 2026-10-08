@@ -1,5 +1,7 @@
 //! Installed owner-only email controls with private fixture credentials and no mailbox.
 #![cfg(unix)]
+#[path = "support/sales_binary.rs"]
+mod sales_binary;
 use coder::task::{agent, agent_key::FileKeys, sales};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -24,7 +26,7 @@ fn run(base: &Path, args: &[&str]) -> Output {
     run_group(base, "email", args)
 }
 fn run_group(base: &Path, group: &str, args: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_openagents"))
+    Command::new(sales_binary::path())
         .env_clear()
         .env("HOME", base)
         .env("PATH", "/usr/bin:/bin")

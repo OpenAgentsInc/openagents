@@ -1,5 +1,7 @@
 //! Actual private CLI consumers with native file keys, no engine or outreach.
 #![cfg(unix)]
+#[path = "support/sales_binary.rs"]
+mod sales_binary;
 use serde_json::{Value, json};
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
@@ -10,7 +12,7 @@ fn write(path: &Path, value: &Value) {
     fs::set_permissions(path, fs::Permissions::from_mode(0o600)).unwrap();
 }
 fn run(base: &Path, credential: &str, args: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_openagents"))
+    Command::new(sales_binary::path())
         .args(["--json", "sales"])
         .args(args)
         .args([

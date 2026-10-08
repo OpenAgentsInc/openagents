@@ -131,6 +131,20 @@ proposal metadata receive the same credential and customer screening as content.
 The transport follows [SMTP reply semantics](https://www.rfc-editor.org/info/rfc5321/)
 and [implicit TLS submission](https://www.rfc-editor.org/info/rfc8314/).
 
+`sales replies ingest` accepts private, bounded inbox imports with explicit untrusted
+provenance and exact original thread references. Contact safety runs before owner
+classification: opt-outs suppress contact, and hard bounces or material safety
+findings pause outbound work. Quotes, links, and attachment metadata grant no tools
+or permissions. `replies review` records one exact owner classification;
+`replies qualify` retains measured native scratch-injection results, and
+`replies revoke` removes the current qualification and pauses the channel.
+Automatic mailbox polling, independent inbound provider delivery receipts, and model
+quality qualification remain unavailable. Owner imports cannot prove delivery or
+managed deletion of the original import file. No-response `replies follow-up` plans
+use original native acceptance timestamps, at least 168 hours between attempts,
+and at most two follow-ups on that original thread. A plan still requires current permission,
+certification, suppression, and exact owner approval before dispatch.
+
 ## Commercial customer (`openagents customer`)
 
 `openagents customer` binds the installed client to the existing gateway account,

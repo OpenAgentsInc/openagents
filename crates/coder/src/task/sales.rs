@@ -21,6 +21,7 @@ pub mod paul;
 pub mod privacy;
 pub mod qualification;
 pub mod referrals;
+pub mod replies;
 pub mod training;
 
 pub const SCHEMA: &str = "openagents.sales.pipeline.v1";
@@ -300,6 +301,10 @@ struct State {
     #[serde(default)]
     expenses: expenses::Book,
     #[serde(default)]
+    outbox: outbox::Book,
+    #[serde(default)]
+    replies: replies::Book,
+    #[serde(default)]
     training: training::Book,
     #[serde(default)]
     meetings: meetings::Book,
@@ -307,8 +312,6 @@ struct State {
     qualification: qualification::Book,
     #[serde(default)]
     paul: paul::Book,
-    #[serde(default)]
-    outbox: outbox::Book,
 }
 impl Default for State {
     fn default() -> Self {
@@ -329,11 +332,12 @@ impl Default for State {
             privacy: privacy::Book::default(),
             email: email::Book::default(),
             expenses: expenses::Book::default(),
+            outbox: outbox::Book::default(),
+            replies: replies::Book::default(),
             training: training::Book::default(),
             meetings: meetings::Book::default(),
             qualification: qualification::Book::default(),
             paul: paul::Book::default(),
-            outbox: outbox::Book::default(),
         }
     }
 }
@@ -528,12 +532,13 @@ impl Store {
         state.privacy.check()?;
         state.email.check()?;
         state.expenses.check()?;
+        state.outbox.check()?;
+        state.replies.check()?;
         state.training.check()?;
         state.meetings.check()?;
         state.qualification.check()?;
         state.qualification.check_certificates(&state.agents)?;
         state.paul.check()?;
-        state.outbox.check()?;
         privacy::remember_retained(&mut state)?;
         if state.leads.values().any(|lead| lead.schema != LEAD_SCHEMA)
             || state
@@ -703,6 +708,7 @@ impl Store {
         let now = (self.clock)();
         let mut next = self.state.clone();
         let outbox_expired = next.outbox.expire(now);
+        let replies_expired = next.replies.expire(now);
         let expired = next
             .leads
             .values()
@@ -715,7 +721,7 @@ impl Store {
             }
         }
         // Revoked/expired permission stops qualification and cancels proposed handoffs.
-        let mut changed = !expired.is_empty() || outbox_expired;
+        let mut changed = !expired.is_empty() || outbox_expired || replies_expired;
         changed |= next.expenses.recover(&self.dir, now)?;
         changed |= next.training.recover(&self.dir)?;
         changed |= next.qualification.recover(&self.dir)?;

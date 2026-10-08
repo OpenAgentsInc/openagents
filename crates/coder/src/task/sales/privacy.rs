@@ -586,6 +586,7 @@ pub(super) fn remove(state: &mut State, lead: &str, now: u64, reference: &str) -
     }
     let mut obligations = state.outbox.obligations(lead);
     state.outbox.redact(lead, now);
+    state.replies.redact(lead, now);
     for sale in found.service_sales.values() {
         obligations.extend(service_obligations(sale)?);
     }

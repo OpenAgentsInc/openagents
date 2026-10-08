@@ -5,6 +5,7 @@ mod helpers;
 #[path = "../paul/tests.rs"]
 mod paul;
 mod qualification;
+mod replies;
 mod training;
 fn now() -> u64 {
     1_791_158_400

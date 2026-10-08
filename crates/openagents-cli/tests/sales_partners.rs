@@ -1,5 +1,7 @@
 //! Real CLI dispatch over isolated private partner records; no service or funds.
 #![cfg(unix)]
+#[path = "support/sales_binary.rs"]
+mod sales_binary;
 
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -9,7 +11,7 @@ use std::path::Path;
 use std::process::{Command, Output};
 
 fn run(work: &Path, args: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_openagents"))
+    Command::new(sales_binary::path())
         .args(["--json", "sales"])
         .args(args)
         .env("HOME", work)

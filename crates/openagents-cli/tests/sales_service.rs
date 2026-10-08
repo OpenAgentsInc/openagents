@@ -1,3 +1,5 @@
+#[path = "support/sales_binary.rs"]
+mod sales_binary;
 use gym::{sales_evidence as evidence, sales_finance as finance};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -20,7 +22,7 @@ fn reference(r: &receipts::service_sale::Reference) -> evidence::Reference {
     }
 }
 fn run(root: &Path, args: &[&str]) -> Value {
-    let result = Command::new(env!("CARGO_BIN_EXE_openagents"))
+    let result = Command::new(sales_binary::path())
         .current_dir(root)
         .env("HOME", root)
         .args(["sales"])
@@ -478,7 +480,7 @@ fn real_sales_cli_weekly_review_rechecks_canonical_consent_and_keeps_unpaid_work
     private_json(root, "weekly.json", &manifest);
     drop(store);
     let command = |name: &str, token: &Path, args: &[&str]| {
-        let output = Command::new(env!("CARGO_BIN_EXE_openagents"))
+        let output = Command::new(sales_binary::path())
             .current_dir(root)
             .env("HOME", root)
             .env("OPENAGENTS_TASKS", root.join("tasks"))

@@ -754,6 +754,14 @@ describes the commercial email requirements, including business recipients.
 Actual provider qualification, O6 grant, and reply-injection acceptance remain
 required before live sending; they do not block code completion.
 
+The native reply handler supports explicitly untrusted owner imports and measured
+scratch-injection safety results. Keep a human monitoring the dedicated inbox;
+SMTP configuration does not select or qualify an automatic receiving adapter.
+Imports and owner classifications do not prove provider delivery or model quality.
+Run the current handler qualification after source changes, review safety pauses,
+and approve each exact response. Original import files and unmanaged mailbox
+history need their own retention; native minimization cannot erase them.
+
 The [sales-floor decisions](docs/sales/agent-sales-floor.md#initial-operating-decisions)
 start with permissioned US business email and individual approvals. Before
 live outreach, configure the dedicated domain and monitored mailbox; verify

@@ -1,5 +1,7 @@
 //! Installed native privacy controls, with isolated files and no contact transport.
 #![cfg(unix)]
+#[path = "support/sales_binary.rs"]
+mod sales_binary;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::os::unix::fs::PermissionsExt;
@@ -19,7 +21,7 @@ fn write(path: &Path, value: &Value) {
     fs::set_permissions(path, fs::Permissions::from_mode(0o600)).unwrap();
 }
 fn run(base: &Path, credential: &str, args: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_openagents"))
+    Command::new(sales_binary::path())
         .args(["--json", "sales"])
         .args(args)
         .arg("--root")
@@ -99,7 +101,7 @@ fn installed_contact_admission_copies_restart_ambiguous_opt_out_and_reimport() {
         .unwrap();
     drop(memory);
     let agent = |args: &[&str]| {
-        Command::new(env!("CARGO_BIN_EXE_openagents"))
+        Command::new(sales_binary::path())
             .env_clear()
             .env("HOME", base)
             .env("PATH", "/usr/bin:/bin")

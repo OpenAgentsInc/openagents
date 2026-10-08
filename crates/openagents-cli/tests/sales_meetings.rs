@@ -1,9 +1,11 @@
 //! Installed private meeting controls over a scratch host.
 #![cfg(unix)]
+#[path = "support/sales_binary.rs"]
+mod sales_binary;
 use serde_json::{Value, json};
 use std::{fs, os::unix::fs::PermissionsExt, path::Path, process::Command};
 fn run(base: &Path, credential: &str, args: &[&str]) -> std::process::Output {
-    Command::new(env!("CARGO_BIN_EXE_openagents"))
+    Command::new(sales_binary::path())
         .args(["--json", "sales"])
         .args(args)
         .args([

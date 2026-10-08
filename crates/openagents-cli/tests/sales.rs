@@ -1,4 +1,6 @@
 //! Private sales operations through the shipped command, with scratch home/state.
+#[path = "support/sales_binary.rs"]
+mod sales_binary;
 use serde_json::{Value, json};
 use std::fs;
 #[cfg(unix)]
@@ -11,7 +13,7 @@ struct Fixture {
 }
 impl Fixture {
     fn run(&self, credential: &str, args: &[&str]) -> Output {
-        Command::new(env!("CARGO_BIN_EXE_openagents"))
+        Command::new(sales_binary::path())
             .args(["--json", "sales"])
             .args(args)
             .arg("--root")
