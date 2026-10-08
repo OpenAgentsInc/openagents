@@ -178,10 +178,14 @@ impl Cli {
     /// `openagents computer exec NAME -- WORDS`, as plain stdout.
     fn exec(&self, name: &str, words: &[&str]) -> Result<String, String> {
         let mut command = std::process::Command::new(&self.binary);
+        // The relay handshake takes most of the default 15-second attach
+        // wait, so every script on a linked computer needs a wider one.
         command
             .arg("computer")
             .arg("exec")
             .arg(name)
+            .arg("--wait")
+            .arg("60")
             .arg("--")
             .args(words)
             .stdin(Stdio::null())
