@@ -1,15 +1,18 @@
 # Everglade medieval refactor: handoff
 
-P9 resumes on October 7, 2026, from the saved
-`wip/everglade-medieval-p9` commit `423c18519a`. Its public-pack cleanup
-removes 13 replaced stand-ins and their far levels, updates the licensed-kit
-documentation, and clears lamps and plaza furniture from doorways and
-walks. The Verse Everglade tests pass (46 tests). The zone library passes
-251 tests; its only failure is the stale public-pack digest, which the
-queue regenerates. The world-tree snapshot and standing-point routes pass
-without a snapshot change. The public pack lands
-through `openagents artifact submit everglade-pack`; its verification is
-recorded below after the queue runs.
+P9 lands on October 7, 2026, from the saved
+`wip/everglade-medieval-p9` commit `423c18519a`. The cleanup lands as
+`f008baa090`, and the `everglade-pack` queue repins it in `4b9ad70748`.
+It removes 13 replaced stand-ins and their far levels, updates the
+licensed-kit documentation, and clears lamps and plaza furniture from
+walks and doorways. The public pack drops from 12,303,751 to 10,636,202
+bytes (13.55 percent), with digest
+`a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f`.
+The queue's regeneration and consistency check pass. Both final suites
+pass on the landed pack: 256 zone-library tests and 46 Verse Everglade
+tests. The scoped formatting check passes. The current world-tree snapshot
+and every standing-point route pass; P9 changes no world-tree IDs or
+places. No licensed asset files enter the repository.
 
 The saved `wip/everglade-b2-doc` commit `52ec66fe15` holds one documentation
 commit on top of B2, whose code landed as `0e0d8afd37`.
@@ -32,7 +35,7 @@ The umbrella issue is #10903.
 | P7: the rest of the vernacular | #10900 | `19cc9a02c1` | Closed |
 | P7b: the first town | #10927 | `c9c75765b5`, fix `7e77971050` | Closed |
 | P8: web and phone | #10901 | `df3f5fa15e` | Closed; pack uploaded, Cloud Build grant in place |
-| P9: cleanup | #10902 | recovered from `423c18519a` | Verse tests pass; public-pack queue pending |
+| P9: cleanup | #10902 | `f008baa090`, repin `4b9ad70748` | Closed; both suites and pack consistency pass |
 | B1: offline baker | #10905 | `0360046732`, `983432c41f` | Closed |
 | B2: lightmap layers | #10906 | by its subagent | See its issue |
 | B3: time of day and destruction | #10907 | none | Not started |
