@@ -693,12 +693,22 @@ impl Page {
             let ended = web_sys::window()
                 .and_then(|w| w.performance())
                 .map_or(started, |p| p.now());
-            let offline_light = self.runtime.everglade_zone_mut().map(|zone| zone.uses_baked_light());
+            let offline_light = self
+                .runtime
+                .everglade_zone_mut()
+                .map(|zone| zone.uses_baked_light());
             let water = match &self.renderer {
                 Draw::Legacy(renderer) => renderer.water_measurements(),
                 _ => None,
             };
-            frames.add(now, gap, ended - started, self.runtime.everglade_wreckage(), offline_light, water);
+            frames.add(
+                now,
+                gap,
+                ended - started,
+                self.runtime.everglade_wreckage(),
+                offline_light,
+                water,
+            );
         }
     }
 
