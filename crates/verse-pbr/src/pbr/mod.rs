@@ -24,6 +24,7 @@
 //! draw through [`textured`] in the same frames.
 
 pub mod bake;
+pub mod baked_layers;
 pub mod environment;
 pub mod gpu;
 pub mod instanced;
@@ -302,6 +303,9 @@ pub struct Neon {
     /// stage's lit and textured geometry beside the key. They cast no
     /// shadows. Lamps with zero intensity are off.
     pub lamps: [Lamp; MAX_LAMPS],
+    /// How brightly a textured scene's baked lamp layer burns, 0 for off to 1
+    /// for as baked ([`baked_layers`]), such as from dusk to dawn.
+    pub baked_lamps: f32,
     /// The output pass's grade.
     pub grade: Grade,
     /// The key and rim lights' linear colors, multiplied with their lux:
@@ -516,6 +520,7 @@ impl Neon {
             daylight: None,
             height_fog: None,
             lamps: [Lamp::OFF; MAX_LAMPS],
+            baked_lamps: 0.0,
             grade: Grade::STAGE,
             key_color: [1.0; 3],
             rim_color: [1.0; 3],

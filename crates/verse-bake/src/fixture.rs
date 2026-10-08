@@ -204,3 +204,19 @@ pub fn scene() -> TexturedScene {
     scene.switches = vec![60.0];
     scene
 }
+
+/// Where [`lamp_scene`]'s lamp hangs: 1.5 m in front of the white wall.
+pub const LAMP: Vec3 = Vec3::new(5.0, 1.5, 5.5);
+
+/// The fixture with a lamp: a warm emissive cube 0.3 m across at [`LAMP`].
+#[must_use]
+pub fn lamp_scene() -> TexturedScene {
+    let mut scene = scene();
+    let glow = scene.add_material(TexturedMaterial {
+        base_color: [1.0, 0.8, 0.5, 1.0],
+        emissive: 6_000.0,
+        ..TexturedMaterial::default()
+    });
+    add(&mut scene, cuboid(LAMP, Vec3::splat(0.15), glow));
+    scene
+}

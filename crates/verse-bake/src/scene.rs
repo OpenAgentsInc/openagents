@@ -4,7 +4,7 @@
 use glam::Vec3;
 use sha2::{Digest, Sha256};
 use verse_pbr::pbr::textured::{TexturedScene, TexturedVertex};
-use verse_pbr::pbr::textured_bake::BakeGeometry;
+use verse_pbr::pbr::textured_bake::{BakeGeometry, Emitter};
 
 /// A triangle that occludes and reflects light.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -59,6 +59,8 @@ pub struct Scene {
     /// The triangles that occlude. Degenerate ones are dropped here, so an
     /// index means the same triangle to every backend.
     pub triangles: Vec<Triangle>,
+    /// The triangles that give light, which the lamp layer gathers from.
+    pub emitters: Vec<Emitter>,
     /// SHA-256 of the vertices, flags, and triangles: everything about the
     /// scene that a bake reads.
     pub digest: [u8; 32],
@@ -104,6 +106,7 @@ impl Scene {
             foliage: geometry.foliage,
             far: geometry.far,
             triangles,
+            emitters: geometry.emitters,
             digest: [0; 32],
         };
         scene.digest = scene.digest();

@@ -503,29 +503,56 @@ impl std::fmt::Debug for IndexEdits {
     }
 }
 
-/// A one-shot delivery of baked vertices, shared between a bake and the
-/// renderer. The vertices are in [`TexturedScene::merge`]'s order.
+/// Deliveries of baked light, shared between a bake and the renderer: the
+/// light texture's texels and the lamp texture's, one a vertex in
+/// [`TexturedScene::merge`]'s order. A zone may deliver again, such as when
+/// the sun moves to another baked direction; the renderer takes each
+/// delivery once.
 ///
 /// Slots always compare equal: they carry a delivery, not scene content.
 #[derive(Clone, Default)]
-pub struct BakedVertices(std::sync::Arc<std::sync::Mutex<Option<Vec<TexturedVertex>>>>);
+pub struct BakedVertices(std::sync::Arc<std::sync::Mutex<Delivery>>);
+
+#[derive(Default)]
+struct Delivery {
+    lights: Option<Vec<[u8; 4]>>,
+    lamps: Option<Vec<[u8; 4]>>,
+}
 
 impl BakedVertices {
-    /// Hands over the merged vertices with their light channel filled.
-    pub fn deliver(&self, vertices: Vec<TexturedVertex>) {
-        *self
-            .0
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(vertices);
-    }
-
-    /// Takes the delivered vertices, if a bake has finished.
-    #[must_use]
-    pub fn take(&self) -> Option<Vec<TexturedVertex>> {
+    fn lock(&self) -> std::sync::MutexGuard<'_, Delivery> {
         self.0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .take()
+    }
+
+    /// Hands over the merged vertices with their light channel filled.
+    pub fn deliver(&self, vertices: Vec<TexturedVertex>) {
+        self.deliver_lights(vertices.into_iter().map(|v| v.light).collect());
+    }
+
+    /// Hands over the light channel of every merged vertex.
+    pub fn deliver_lights(&self, lights: Vec<[u8; 4]>) {
+        self.lock().lights = Some(lights);
+    }
+
+    /// Hands over the lamp light of every merged vertex
+    /// ([`crate::pbr::baked_layers::encode_lamp`]).
+    pub fn deliver_lamps(&self, lamps: Vec<[u8; 4]>) {
+        self.lock().lamps = Some(lamps);
+    }
+
+    /// Takes the delivered light channel, if a bake has delivered one since
+    /// the last take.
+    #[must_use]
+    pub fn take(&self) -> Option<Vec<[u8; 4]>> {
+        self.lock().lights.take()
+    }
+
+    /// Takes the delivered lamp light, if any arrived since the last take.
+    #[must_use]
+    pub fn take_lamps(&self) -> Option<Vec<[u8; 4]>> {
+        self.lock().lamps.take()
     }
 }
 

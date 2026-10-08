@@ -5,13 +5,27 @@
 //! verse-bake [--fixture | --scene FILE.glb | --everglade PACK.vtp]
 //!            [--backend cpu|gpu] [--compare] [--threads N] [--out DIR]
 //!            [--vertex-rays N] [--probe-rays N] [--bounces N]
-//!            [--sun-rays N] [--seed N] [--quick]
+//!            [--sun-rays N] [--seed N] [--quick] [--layers]
 //! ```
 //!
 //! It writes `DIR/<bake_key>.vbake` and `DIR/<bake_key>.<backend>.json`, the
 //! receipt: the commit, the scene digest, the key, the backend, the wall
 //! time, and the ray counts. `--compare` also bakes on the other backend and
 //! records how far the two lie apart.
+//!
+//! `--layers` bakes the light layers a zone mixes at run time instead
+//! (`verse_pbr::pbr::baked_layers`): the sky, each sun direction, and the
+//! lamps. Everglade's layers take four suns, at 8:00, 12:00, 15:30, and
+//! 17:30 by its town clock. It writes `DIR/<key>.vlay` and
+//! `DIR/<key>.layers.<backend>.json`, both with mode 0600, since layers
+//! baked from licensed geometry, such as the medieval kit's town, stay
+//! outside the repository. For Everglade it also writes the layers into the
+//! desktop's zone cache (`$VERSE_HOME/zones-cache`, or
+//! `~/.openagents/verse/zones-cache`) and prints the two pin lines of
+//! `everglade_pack::kit_bake`, which the artifact queue writes
+//! (`artifacts/everglade-kit-bake.json`). `--layers --check` bakes nothing:
+//! it fails unless a layer file in `DIR` is the pinned one and was baked
+//! for the scene the sources build now.
 //!
 //! The CPU backend uses four workers unless `--threads` asks for more.
 //! The GPU backend needs the `gpu` feature and a Vulkan adapter.
@@ -22,6 +36,7 @@ use std::time::Instant;
 
 use glam::{Mat4, Vec3};
 use serde_json::json;
+use sha2::Digest as _;
 use verse_bake::{
     Backend, CpuBackend, GPU_TOLERANCE, Light, Products, Scene, Settings, Stats, bake, fixture,
 };
@@ -29,7 +44,7 @@ use verse_pbr::pbr::textured::TexturedScene;
 
 const USAGE: &str = "usage: verse-bake [--fixture | --scene FILE.glb | --everglade PACK.vtp] \
 [--backend cpu|gpu] [--compare] [--threads N] [--out DIR] [--vertex-rays N] \
-[--probe-rays N] [--bounces N] [--sun-rays N] [--seed N] [--quick]";
+[--probe-rays N] [--bounces N] [--sun-rays N] [--seed N] [--quick] [--layers [--check]]";
 
 /// CPU workers unless `--threads` asks for more, so a bake leaves a shared
 /// machine room for builds and its window server.
@@ -62,6 +77,8 @@ struct Options {
     sun_rays: Option<u32>,
     seed: Option<u64>,
     quick: bool,
+    layers: bool,
+    check: bool,
 }
 
 enum Source {
@@ -83,6 +100,8 @@ fn parse(args: impl IntoIterator<Item = String>) -> Result<Options, String> {
         sun_rays: None,
         seed: None,
         quick: false,
+        layers: false,
+        check: false,
     };
     let mut args = args.into_iter();
     while let Some(arg) = args.next() {
@@ -115,11 +134,35 @@ fn parse(args: impl IntoIterator<Item = String>) -> Result<Options, String> {
             "--sun-rays" => options.sun_rays = Some(number(value(&arg)?, &arg)? as u32),
             "--seed" => options.seed = Some(number(value(&arg)?, &arg)?),
             "--quick" => options.quick = true,
+            "--layers" => options.layers = true,
+            "--check" => options.check = true,
             "-h" | "--help" => return Err(USAGE.into()),
             other => return Err(format!("unknown argument {other}\n{USAGE}")),
         }
     }
     Ok(options)
+}
+
+/// The sun directions a layered bake of `source` takes: Everglade's
+/// morning, noon, afternoon, and dusk, or the fixture's own.
+fn layer_suns(source: &Source, settings: &Settings) -> Vec<[f32; 3]> {
+    match source {
+        Source::Everglade(_) => everglade_suns(),
+        _ => settings.suns.clone(),
+    }
+}
+
+#[cfg(feature = "everglade")]
+fn everglade_suns() -> Vec<[f32; 3]> {
+    use verse_zone_everglade::zones::everglade::time_of_day::Light as Hour;
+    [8.0, 12.0, 15.5, 17.5]
+        .map(|h| Hour::at_hours(h).sun.normalize().to_array())
+        .to_vec()
+}
+
+#[cfg(not(feature = "everglade"))]
+fn everglade_suns() -> Vec<[f32; 3]> {
+    Vec::new()
 }
 
 /// The scene to bake, a name for it in the receipt, and its light and
@@ -320,6 +363,12 @@ fn execute(options: &Options) -> Result<(), String> {
     settings.bounces = options.bounces.unwrap_or(settings.bounces);
     settings.sun_rays = options.sun_rays.unwrap_or(settings.sun_rays);
     settings.seed = options.seed.unwrap_or(settings.seed);
+    if options.layers {
+        settings.suns = layer_suns(&options.source, &settings);
+        return layered(
+            options, &textured, &scene, &source, &light, &settings, load_ms,
+        );
+    }
     eprintln!(
         "verse-bake: {source}: {} vertices, {} triangles, key {}",
         scene.vertices.len(),
@@ -400,4 +449,157 @@ fn execute(options: &Options) -> Result<(), String> {
         products_path.display()
     );
     Ok(())
+}
+
+/// Bakes the light layers and writes them with a receipt.
+fn layered(
+    options: &Options,
+    textured: &TexturedScene,
+    scene: &Scene,
+    source: &str,
+    light: &Light,
+    settings: &Settings,
+    load_ms: u128,
+) -> Result<(), String> {
+    use verse_pbr::pbr::baked_layers::scene_digest;
+    let digest = scene_digest(textured, &textured.merge()?);
+    if options.check {
+        return check_layers(&options.out, &verse_bake::hex(&digest));
+    }
+    let key = verse_bake::hex(&verse_bake::layers_key(scene, light, settings));
+    eprintln!(
+        "verse-bake: {source}: {} vertices, {} triangles, {} emissive, {} suns, layers {}",
+        scene.vertices.len(),
+        scene.triangles.len(),
+        scene.emitters.len(),
+        settings.suns.len(),
+        &key[..16],
+    );
+    let start = Instant::now();
+    let mut backend = backend(options.backend, scene, options.threads)?;
+    let (layers, stats) = verse_bake::bake_layers(
+        scene,
+        digest,
+        light,
+        settings,
+        backend.as_mut(),
+        options.threads,
+    )?;
+    let wall_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
+    let bytes = layers.encode();
+    let file_digest = verse_bake::hex(&sha2::Sha256::digest(&bytes));
+    std::fs::create_dir_all(&options.out).map_err(|e| format!("{}: {e}", options.out.display()))?;
+    let path = options.out.join(format!("{key}.vlay"));
+    private_write(&path, &bytes)?;
+    let (commit, dirty) = commit();
+    let receipt = json!({
+        "schema": "openagents.verse-bake.layers-receipt.v1",
+        "commit": commit,
+        "dirty": dirty,
+        "source": source,
+        "scene": {
+            "digest": layers.scene,
+            "vertices": scene.vertices.len(),
+            "triangles": scene.triangles.len(),
+            "emissive_triangles": scene.emitters.len(),
+        },
+        "bake_key": key,
+        "layers": {
+            "file": path.file_name().map(|n| n.to_string_lossy().into_owned()),
+            "sha256": file_digest,
+            "bytes": bytes.len(),
+            "suns": settings.suns,
+        },
+        "backend": backend.name(),
+        "threads": options.threads,
+        "load_ms": load_ms,
+        "wall_ms": wall_ms,
+        "stats": stats,
+        "light": light,
+        "settings": settings,
+    });
+    let receipt_path = options
+        .out
+        .join(format!("{key}.layers.{}.json", options.backend.label()));
+    let text = serde_json::to_string_pretty(&receipt).map_err(|e| e.to_string())?;
+    private_write(&receipt_path, format!("{text}\n").as_bytes())?;
+    println!("{text}");
+    eprintln!(
+        "verse-bake: layers in {wall_ms} ms, {} bytes, {}",
+        bytes.len(),
+        path.display()
+    );
+    if matches!(options.source, Source::Everglade(_)) {
+        let cache = std::env::var_os("VERSE_HOME").map_or_else(
+            || {
+                PathBuf::from(std::env::var_os("HOME").unwrap_or_default())
+                    .join(".openagents/verse")
+            },
+            PathBuf::from,
+        );
+        private_write(
+            &cache
+                .join("zones-cache")
+                .join(format!("{file_digest}.vlay")),
+            &bytes,
+        )?;
+        println!("pub const KIT_BAKE_SHA256: &str = \"{file_digest}\";");
+        println!("pub const KIT_BAKE_BYTES: u64 = {};", bytes.len());
+    }
+    Ok(())
+}
+
+/// Writes `bytes` to `path` readable by its owner only.
+fn private_write(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+    }
+    std::fs::write(path, bytes).map_err(|e| format!("{}: {e}", path.display()))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+/// Fails unless a layer file in `dir` is the pinned one and was baked for
+/// the scene whose digest is `digest`.
+#[cfg(feature = "everglade")]
+fn check_layers(dir: &Path, digest: &str) -> Result<(), String> {
+    use verse_zone_everglade::zones::everglade_pack::kit_bake;
+    if kit_bake::KIT_BAKE_BYTES == 0 {
+        return Err("no kit light layers are pinned".into());
+    }
+    let entries = std::fs::read_dir(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().is_none_or(|e| e != "vlay") {
+            continue;
+        }
+        let Ok(bytes) = std::fs::read(&path) else {
+            continue;
+        };
+        let Ok(layers) = kit_bake::decode_pinned(&bytes) else {
+            continue;
+        };
+        if layers.scene != digest {
+            return Err(format!(
+                "the pinned layers were baked for scene {}, and the sources build {digest}",
+                layers.scene
+            ));
+        }
+        eprintln!(
+            "verse-bake: {} is pinned and fits the scene",
+            path.display()
+        );
+        return Ok(());
+    }
+    Err(format!("no pinned layer file in {}", dir.display()))
+}
+
+#[cfg(not(feature = "everglade"))]
+fn check_layers(_: &Path, _: &str) -> Result<(), String> {
+    Err("--check needs the everglade feature".into())
 }

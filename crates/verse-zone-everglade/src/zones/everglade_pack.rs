@@ -20,6 +20,7 @@
 pub mod compile;
 pub mod format;
 pub mod kit;
+pub mod kit_bake;
 pub mod pinned;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod private_assets;
@@ -165,7 +166,8 @@ impl ZonePack {
 
     /// Loads the same verified pack from a local file for offline captures.
     /// With [`kit::LOCAL_ENV`] naming a kit pack, the licensed kit draws in
-    /// place of its proxies.
+    /// place of its proxies, and with [`kit_bake::LOCAL_ENV`] naming a light
+    /// layer file too, the town offers its layers ([`kit_bake::offer`]).
     pub fn load_local(path: &Path) -> Result<Self, String> {
         let mut pack = Self::decode_pinned(&pinned().read_bounded(path)?)?;
         if let Some(local) = std::env::var_os(kit::LOCAL_ENV) {
@@ -176,6 +178,9 @@ impl ZonePack {
                     "verse: kit pieces outside their boxes: {:?}",
                     report.refused
                 );
+            }
+            if let Some(layers) = std::env::var_os(kit_bake::LOCAL_ENV) {
+                kit_bake::offer(kit_bake::load_local(Path::new(&layers))?);
             }
         }
         Ok(pack)
@@ -260,6 +265,13 @@ impl Loader {
                         // its committed proxies otherwise.
                         if let Ok(pieces) = kit::fetch(&cache, download_kit, &worker_cancel) {
                             kit::install(&mut pack, Some(&pieces));
+                            // The kit town's baked light, when published;
+                            // the town bakes at load otherwise.
+                            if let Ok(layers) =
+                                kit_bake::fetch(&cache, download_kit, &worker_cancel)
+                            {
+                                kit_bake::offer(layers);
+                            }
                         }
                         pack
                     });

@@ -370,6 +370,18 @@ pub struct BakeGeometry {
     pub occluders: Vec<Occluder>,
     /// The merged vertices at each occluder's corners.
     pub corners: Vec<[u32; 3]>,
+    /// Every triangle of a near or single level whose material emits.
+    pub emitters: Vec<Emitter>,
+}
+
+/// A triangle that gives light: a lamp's glass, a flame, or embers.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Emitter {
+    /// World-space corners, m.
+    pub corners: [Vec3; 3],
+    /// Emitted luminance per channel, cd/m²: the material's emission times
+    /// the triangle's sampled base color.
+    pub luminance: Vec3,
 }
 
 impl BakeGeometry {
@@ -384,6 +396,7 @@ impl BakeGeometry {
         let mut far = vec![false; merged.vertices.len()];
         let mut occluders = Vec::with_capacity(merged.indices.len() / 3);
         let mut corners_of = Vec::with_capacity(merged.indices.len() / 3);
+        let mut emitters = Vec::new();
         for batch in &merged.batches {
             let material = &scene.materials[batch.material];
             let masked = matches!(material.alpha, AlphaMode::Mask { .. });
@@ -404,6 +417,12 @@ impl BakeGeometry {
                     continue;
                 }
                 let (albedo, opacity) = surface(scene, material, corners);
+                if material.emissive > 0.0 {
+                    emitters.push(Emitter {
+                        corners: corners.map(|v| Vec3::from(v.pos)),
+                        luminance: albedo * material.emissive,
+                    });
+                }
                 occluders.push(Occluder {
                     corners: corners.map(|v| Vec3::from(v.pos)),
                     normal: corners.iter().map(|v| Vec3::from(v.normal)).sum::<Vec3>(),
@@ -419,6 +438,7 @@ impl BakeGeometry {
             far,
             occluders,
             corners: corners_of,
+            emitters,
         })
     }
 }
@@ -802,10 +822,63 @@ fn surface(
     (albedo.clamp(Vec3::ZERO, Vec3::splat(0.95)), opacity)
 }
 
+/// Offline-baked layers a [`BakeJob`] may use in place of baking, and how
+/// to combine them ([`super::baked_layers`]).
+#[derive(Clone, Debug)]
+pub struct LayerChoice {
+    pub layers: Arc<super::baked_layers::Layers>,
+    /// The sun direction whose bounce joins the sky's, if any.
+    pub sun: Option<usize>,
+    /// How strongly, as [`super::baked_layers::Layers::sun_ratio`] gives.
+    pub ratio: f32,
+}
+
+impl LayerChoice {
+    /// The light and lamp texels and the probes of `scene`, when the layers
+    /// were baked for exactly that scene.
+    ///
+    /// # Errors
+    ///
+    /// Returns why the layers do not fit: the scene fails to merge, or its
+    /// digest or vertex count differs from the layers'.
+    pub fn apply(&self, scene: &TexturedScene) -> Result<Layered, String> {
+        let merged = scene.merge()?;
+        let digest = super::baked_layers::hex(&super::baked_layers::scene_digest(scene, &merged));
+        if digest != self.layers.scene || merged.vertices.len() != self.layers.vertex_count() {
+            return Err(format!(
+                "the baked light layers are for scene {}, not {digest}",
+                self.layers.scene
+            ));
+        }
+        self.layers.validate()?;
+        Ok(Layered {
+            lights: self.layers.lights(self.sun, self.ratio),
+            lamps: self.layers.lamp_texels(),
+            probes: self.layers.probes(self.sun, self.ratio),
+        })
+    }
+}
+
+/// A scene's light from offline-baked layers.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Layered {
+    /// The light texture's texels, in [`TexturedScene::merge`]'s order.
+    pub lights: Vec<[u8; 4]>,
+    /// The lamp texture's texels, in the same order.
+    pub lamps: Vec<[u8; 4]>,
+    pub probes: AmbientProbes,
+}
+
+/// What a finished job produced.
+enum Outcome {
+    Baked(SceneBake),
+    Layered(Layered),
+}
+
 enum JobState {
     /// A worker thread bakes and sends the result.
     #[cfg(not(target_arch = "wasm32"))]
-    Thread(std::sync::mpsc::Receiver<Option<SceneBake>>),
+    Thread(std::sync::mpsc::Receiver<Option<Outcome>>),
     /// The caller's thread advances the bake each poll; the baker is built
     /// on the first.
     Stepped(Arc<TexturedScene>, Option<Box<SceneBaker>>),
@@ -814,7 +887,10 @@ enum JobState {
 
 /// A scene's light bake, running from zone load. It delivers the baked
 /// vertices to the scene's [`BakedVertices`] slot for the renderer, and the
-/// probes to the zone through [`Self::poll`]. Dropping it cancels the bake.
+/// probes to the zone through [`Self::poll`]. Given offline-baked layers
+/// that fit the scene, it delivers their light instead of baking; given
+/// layers for another scene, it bakes as before. Dropping it cancels the
+/// bake.
 pub struct BakeJob {
     slot: BakedVertices,
     light: BakeLight,
@@ -822,6 +898,7 @@ pub struct BakeJob {
     key: u64,
     cancel: Arc<AtomicBool>,
     state: JobState,
+    layered: bool,
 }
 
 impl BakeJob {
@@ -834,9 +911,22 @@ impl BakeJob {
         settings: BakeSettings,
         key: u64,
     ) -> Self {
+        Self::start_layered(scene, light, settings, key, None)
+    }
+
+    /// [`Self::start`], using `layers` instead when they fit the scene. A
+    /// target without threads always bakes.
+    #[must_use]
+    pub fn start_layered(
+        scene: Arc<TexturedScene>,
+        light: BakeLight,
+        settings: BakeSettings,
+        key: u64,
+        layers: Option<LayerChoice>,
+    ) -> Self {
         let cancel = Arc::new(AtomicBool::new(false));
         let slot = scene.baked.clone();
-        let state = Self::spawn(&scene, light, settings, key, &cancel)
+        let state = Self::spawn(&scene, light, settings, key, layers, &cancel)
             .unwrap_or(JobState::Stepped(scene, None));
         Self {
             slot,
@@ -845,6 +935,7 @@ impl BakeJob {
             key,
             cancel,
             state,
+            layered: false,
         }
     }
 
@@ -854,6 +945,7 @@ impl BakeJob {
         light: BakeLight,
         settings: BakeSettings,
         key: u64,
+        layers: Option<LayerChoice>,
         cancel: &Arc<AtomicBool>,
     ) -> Option<JobState> {
         let (send, receive) = std::sync::mpsc::channel();
@@ -862,11 +954,21 @@ impl BakeJob {
         std::thread::Builder::new()
             .name("verse-light-bake".into())
             .spawn(move || {
-                let bake = SceneBaker::new(&scene, light, settings, key)
-                    .map_err(|error| eprintln!("verse: light bake unavailable: {error}"))
-                    .ok()
-                    .and_then(|baker| baker.run(&cancel));
-                let _ = send.send(bake);
+                let layered = layers.and_then(|choice| {
+                    choice
+                        .apply(&scene)
+                        .map_err(|error| eprintln!("verse: baking light at load: {error}"))
+                        .ok()
+                });
+                let outcome = match layered {
+                    Some(layered) => Some(Outcome::Layered(layered)),
+                    None => SceneBaker::new(&scene, light, settings, key)
+                        .map_err(|error| eprintln!("verse: light bake unavailable: {error}"))
+                        .ok()
+                        .and_then(|baker| baker.run(&cancel))
+                        .map(Outcome::Baked),
+                };
+                let _ = send.send(outcome);
             })
             .ok()
             .map(|_| JobState::Thread(receive))
@@ -878,6 +980,7 @@ impl BakeJob {
         _: BakeLight,
         _: BakeSettings,
         _: u64,
+        _: Option<LayerChoice>,
         _: &Arc<AtomicBool>,
     ) -> Option<JobState> {
         None
@@ -889,13 +992,19 @@ impl BakeJob {
         matches!(self.state, JobState::Done)
     }
 
+    /// Whether the job delivered offline-baked layers rather than a bake.
+    #[must_use]
+    pub fn layered(&self) -> bool {
+        self.layered
+    }
+
     /// Advances or checks the bake. The first poll after it finishes
     /// delivers the vertices to the scene's slot and returns the probes.
     pub fn poll(&mut self) -> Option<AmbientProbes> {
-        let bake = match &mut self.state {
+        let outcome = match &mut self.state {
             #[cfg(not(target_arch = "wasm32"))]
             JobState::Thread(receive) => match receive.try_recv() {
-                Ok(bake) => Some(bake),
+                Ok(outcome) => Some(outcome),
                 Err(std::sync::mpsc::TryRecvError::Empty) => None,
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => Some(None),
             },
@@ -912,7 +1021,7 @@ impl BakeJob {
                     // Building the hierarchy is this frame's work.
                     None
                 } else if baker.as_mut().is_some_and(|b| b.step(Self::budget())) {
-                    baker.take().map(|b| Some((*b).finish()))
+                    baker.take().map(|b| Some(Outcome::Baked((*b).finish())))
                 } else {
                     None
                 }
@@ -920,9 +1029,18 @@ impl BakeJob {
             JobState::Done => None,
         }?;
         self.state = JobState::Done;
-        let bake = bake?;
-        self.slot.deliver(bake.vertices);
-        Some(bake.probes)
+        match outcome? {
+            Outcome::Baked(bake) => {
+                self.slot.deliver(bake.vertices);
+                Some(bake.probes)
+            }
+            Outcome::Layered(layered) => {
+                self.layered = true;
+                self.slot.deliver_lights(layered.lights);
+                self.slot.deliver_lamps(layered.lamps);
+                Some(layered.probes)
+            }
+        }
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -1207,10 +1325,98 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(1));
         }
         assert!(probes.is_some());
-        let vertices = scene.baked.take().unwrap();
-        assert_eq!(vertices.len(), scene.merge().unwrap().vertices.len());
-        assert!(vertices.iter().all(|v| v.light[3] > 0));
+        let lights = scene.baked.take().unwrap();
+        assert_eq!(lights.len(), scene.merge().unwrap().vertices.len());
+        assert!(lights.iter().all(|light| light[3] > 0));
         assert!(scene.baked.take().is_none());
+    }
+
+    fn finish(job: &mut BakeJob) -> Option<AmbientProbes> {
+        for _ in 0..10_000 {
+            if let Some(probes) = job.poll() {
+                return Some(probes);
+            }
+            if job.finished() {
+                return None;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        None
+    }
+
+    /// Layers for `scene` whose sky multiplier is 0.5 everywhere and whose
+    /// one lamp reaches vertex 1.
+    fn layers_for(scene: &TexturedScene) -> super::super::baked_layers::Layers {
+        use super::super::baked_layers::{Layers, Reference, SunLayer, encode_lamp, hex};
+        let merged = scene.merge().unwrap();
+        let n = merged.vertices.len();
+        Layers {
+            bake_key: "offline".into(),
+            scene: hex(&super::super::baked_layers::scene_digest(scene, &merged)),
+            reference: Reference {
+                sun: LIGHT.sun_illuminance,
+                sky: LIGHT.sky,
+                ground: LIGHT.ground,
+            },
+            sky: vec![encode(Vec3::splat(0.5), 0.8); n],
+            sky_probes: vec![[100.0; 12]; 8],
+            suns: vec![SunLayer {
+                dir: [0.0, 1.0, 0.0],
+                vertices: vec![[0, 0, 0, 255]; n],
+                probes: vec![[0.0; 12]; 8],
+            }],
+            lamps: vec![(1, encode_lamp(Vec3::splat(20.0)))],
+            probe_origin: [0.0; 3],
+            probe_cell: 4.0,
+            probe_dims: [2, 2, 2],
+        }
+    }
+
+    #[test]
+    fn a_job_delivers_layers_baked_for_its_scene_instead_of_baking() {
+        let mut scene = TexturedScene::default();
+        ground(&mut scene, [0.3; 3]);
+        let layers = Arc::new(layers_for(&scene));
+        let scene = Arc::new(scene);
+        let choice = LayerChoice {
+            layers: layers.clone(),
+            sun: Some(0),
+            ratio: 1.0,
+        };
+        let mut job = BakeJob::start_layered(scene.clone(), LIGHT, settings(), 1, Some(choice));
+        let probes = finish(&mut job).unwrap();
+        assert!(job.layered());
+        assert_eq!(probes.grid.data[0][0], 100.0);
+        assert_eq!(scene.baked.take().unwrap(), layers.sky);
+        let lamps = scene.baked.take_lamps().unwrap();
+        assert_eq!(lamps[1], layers.lamps[0].1);
+        assert_eq!(lamps[0], [0; 4]);
+    }
+
+    #[test]
+    fn a_scene_without_its_bake_data_renders_with_the_load_time_bake() {
+        let mut other = TexturedScene::default();
+        ground(&mut other, [0.8; 3]);
+        let stale = layers_for(&other);
+        let mut scene = TexturedScene::default();
+        ground(&mut scene, [0.3; 3]);
+        let scene = Arc::new(scene);
+        for layers in [None, Some(stale)] {
+            let choice = layers.map(|layers| LayerChoice {
+                layers: Arc::new(layers),
+                sun: Some(0),
+                ratio: 1.0,
+            });
+            let mut job = BakeJob::start_layered(scene.clone(), LIGHT, settings(), 2, choice);
+            assert!(finish(&mut job).is_some());
+            assert!(!job.layered());
+            let lights = scene.baked.take().unwrap();
+            assert_eq!(lights.len(), scene.merge().unwrap().vertices.len());
+            // Baked at load: every vertex lit, not the stale layers' 0.5.
+            assert!(lights.iter().all(|light| light[3] > 0));
+            assert_ne!(lights[0], encode(Vec3::splat(0.5), 0.8));
+            assert!(scene.baked.take_lamps().is_none());
+        }
     }
 
     #[test]

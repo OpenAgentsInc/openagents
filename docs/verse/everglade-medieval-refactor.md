@@ -563,6 +563,16 @@ reimplemented from published papers.
   positions, and lamps, as second-UV lightmaps and a probe grid, through
   the artifact queue, with today's load-time bake as the fallback. Needs
   B1; lands with or right after P5.
+  First landed as per-vertex layers (`verse-bake --layers`,
+  `pbr::baked_layers`): multi-bounce sky light, the bounce and visibility
+  of four suns (8:00, 12:00, 15:30, and 17:30), the probes of both, and
+  the shadowed, bounced light of every emissive triangle, clustered into
+  333 lamps. The town's 4.2 million vertices bake in 25 minutes on a Mac's
+  CPU with 4 threads, into a 45 MB layer file beside the kit pack, pinned
+  by `KIT_BAKE_SHA256` through the `everglade-kit-bake` artifact. The zone
+  uses the layers only when their scene digest matches the town it builds;
+  the shader adds the lamp layer, which fades in at dusk. Second-UV
+  lightmaps, a denser probe grid with lamps, and tiers are next.
 - **B3 (#10907): time of day and destruction.** The town clock blends the
   sun layers and fades the lamp layer in at dusk; a broken piece and its
   neighbors fall back to dynamic light. Needs B2.

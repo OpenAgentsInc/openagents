@@ -440,6 +440,9 @@ pub struct TexturedGpu {
     groups: Vec<wgpu::BindGroup>,
     /// The light texture, its rows a layer, and the texels it holds.
     light: wgpu::Texture,
+    /// The baked lamp light, in the light texture's layout once a lamp
+    /// layer arrives, and one texel wide before.
+    lamps: wgpu::Texture,
     light_group: wgpu::BindGroup,
     light_rows: u32,
     texels: usize,
@@ -509,26 +512,46 @@ impl TexturedGpu {
         }
     }
 
+    /// Writes a static scene's light texture from a delivery of `lights`,
+    /// one texel a vertex in [`TexturedScene::merge`]'s order; a delivery
+    /// of another length is ignored.
+    pub fn write_baked(&self, queue: &wgpu::Queue, lights: &[[u8; 4]]) {
+        if lights.len() == self.texels {
+            self.write_lights(queue, lights.iter().copied());
+        }
+    }
+
     /// Writes the light texture from `lights`, one texel a vertex in
     /// [`TexturedScene::merge`]'s order.
     fn write_lights(&self, queue: &wgpu::Queue, lights: impl Iterator<Item = [u8; 4]>) {
-        let size = self.light.size();
+        Self::write_texels(&self.light, self.texels, self.light_rows, queue, lights);
+    }
+
+    /// Writes `texture`, laid out as the light texture is, from `lights`.
+    fn write_texels(
+        texture: &wgpu::Texture,
+        count: usize,
+        layer_rows: u32,
+        queue: &wgpu::Queue,
+        lights: impl Iterator<Item = [u8; 4]>,
+    ) {
+        let size = texture.size();
         // Only the rows the lights fill change.
-        let rows = (self.texels as u64).div_ceil(u64::from(size.width)).max(1) as u32;
+        let rows = (count as u64).div_ceil(u64::from(size.width)).max(1) as u32;
         let mut texels = vec![0u8; (rows * size.width * 4) as usize];
         for (texel, light) in texels.chunks_exact_mut(4).zip(lights) {
             texel.copy_from_slice(&light);
         }
         for layer in 0..size.depth_or_array_layers {
-            let first = layer * self.light_rows;
+            let first = layer * layer_rows;
             if first >= rows {
                 break;
             }
-            let height = (rows - first).min(self.light_rows);
+            let height = (rows - first).min(layer_rows);
             let start = (first * size.width * 4) as usize;
             queue.write_texture(
                 wgpu::TexelCopyTextureInfo {
-                    texture: &self.light,
+                    texture,
                     mip_level: 0,
                     origin: wgpu::Origin3d {
                         x: 0,
@@ -551,6 +574,31 @@ impl TexturedGpu {
             );
         }
     }
+}
+
+/// An RGBA8 array texture laid out as the light texture is
+/// ([`instanced::light_extent`]), zeroed.
+fn light_texture(
+    device: &wgpu::Device,
+    label: &str,
+    width: u32,
+    rows: u32,
+    layers: u32,
+) -> wgpu::Texture {
+    device.create_texture(&wgpu::TextureDescriptor {
+        label: Some(label),
+        size: wgpu::Extent3d {
+            width,
+            height: rows,
+            depth_or_array_layers: layers,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8Unorm,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    })
 }
 
 /// Size-dependent targets for the physical path.
@@ -1218,18 +1266,20 @@ impl Photo {
         });
         // A scene's baked light, one texel a vertex, read by the vertex
         // shader. Group 3 binding 0 and 1 are the fx sheets' in this module.
+        // Binding 7 is the baked lamp light, in the same layout.
+        let light_entry = |binding| wgpu::BindGroupLayoutEntry {
+            binding,
+            visibility: wgpu::ShaderStages::VERTEX,
+            ty: wgpu::BindingType::Texture {
+                sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                view_dimension: wgpu::TextureViewDimension::D2Array,
+                multisampled: false,
+            },
+            count: None,
+        };
         let light_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("verse textured light"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 2,
-                visibility: wgpu::ShaderStages::VERTEX,
-                ty: wgpu::BindingType::Texture {
-                    sample_type: wgpu::TextureSampleType::Float { filterable: false },
-                    view_dimension: wgpu::TextureViewDimension::D2Array,
-                    multisampled: false,
-                },
-                count: None,
-            }],
+            entries: &[light_entry(2), light_entry(7)],
         });
         // Group 1 holds the guides' adapted luminance, which the pass binds
         // for the legacy faces anyway; textured shaders do not read it.
@@ -1971,7 +2021,7 @@ impl Photo {
     /// with its mip chain (coverage-preserving for masked materials,
     /// without levels above the device's texture limit), and each
     /// material's factors. A light bake that finishes later rewrites the
-    /// light texture ([`TexturedGpu::write_vertices`]).
+    /// light texture ([`TexturedGpu::write_baked`]).
     pub fn upload_textured(
         &self,
         device: &wgpu::Device,
@@ -1997,6 +2047,70 @@ impl Photo {
             &Prepared::of_merged(&figure.merged()),
             true,
         )
+    }
+
+    /// Writes a static scene's baked lamp light ([`crate::pbr::baked_layers`]),
+    /// one texel a vertex in [`TexturedScene::merge`]'s order. The first
+    /// delivery makes the lamp texture, laid out as the light texture is;
+    /// a delivery of another length is ignored.
+    pub fn write_textured_lamps(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        gpu: &mut TexturedGpu,
+        lamps: &[[u8; 4]],
+    ) {
+        if lamps.len() != gpu.texels || gpu.figure {
+            return;
+        }
+        let size = gpu.light.size();
+        if gpu.lamps.size() != size {
+            gpu.lamps = light_texture(
+                device,
+                "verse textured lamps",
+                size.width,
+                size.height,
+                size.depth_or_array_layers,
+            );
+            gpu.light_group = self.light_group(device, &gpu.light, &gpu.lamps);
+        }
+        TexturedGpu::write_texels(
+            &gpu.lamps,
+            gpu.texels,
+            gpu.light_rows,
+            queue,
+            lamps.iter().copied(),
+        );
+    }
+
+    /// The bind group of a light texture and a lamp texture.
+    fn light_group(
+        &self,
+        device: &wgpu::Device,
+        light: &wgpu::Texture,
+        lamps: &wgpu::Texture,
+    ) -> wgpu::BindGroup {
+        let view = |texture: &wgpu::Texture| {
+            texture.create_view(&wgpu::TextureViewDescriptor {
+                dimension: Some(wgpu::TextureViewDimension::D2Array),
+                ..Default::default()
+            })
+        };
+        let (light, lamps) = (view(light), view(lamps));
+        device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("verse textured light"),
+            layout: &self.light_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::TextureView(&light),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 7,
+                    resource: wgpu::BindingResource::TextureView(&lamps),
+                },
+            ],
+        })
     }
 
     /// Uploads a zone's water surface once. The low tier draws every other
@@ -2120,32 +2234,15 @@ impl Photo {
             &prepared.instances[..]
         };
         let (light_rows, layers) = instanced::light_extent(prepared.lights.len());
-        let light = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("verse textured light"),
-            size: wgpu::Extent3d {
-                width: instanced::LIGHT_WIDTH,
-                height: light_rows,
-                depth_or_array_layers: layers,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8Unorm,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
-        });
-        let light_view = light.create_view(&wgpu::TextureViewDescriptor {
-            dimension: Some(wgpu::TextureViewDimension::D2Array),
-            ..Default::default()
-        });
-        let light_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("verse textured light"),
-            layout: &self.light_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 2,
-                resource: wgpu::BindingResource::TextureView(&light_view),
-            }],
-        });
+        let light = light_texture(
+            device,
+            "verse textured light",
+            instanced::LIGHT_WIDTH,
+            light_rows,
+            layers,
+        );
+        let lamps = light_texture(device, "verse textured no lamps", 1, 1, 2);
+        let light_group = self.light_group(device, &light, &lamps);
         let gpu = TexturedGpu {
             vertices: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("verse textured vertices"),
@@ -2168,6 +2265,7 @@ impl Photo {
             materials: scene.materials.clone(),
             groups,
             light,
+            lamps,
             light_group,
             light_rows,
             texels: prepared.lights.len(),
@@ -3039,7 +3137,12 @@ impl Photo {
                 0.0,
             ];
             uniform.key_tint = [neon.key_color[0], neon.key_color[1], neon.key_color[2], 1.0];
-            uniform.lamp_params = [0.0, exposure, 0.0, 0.0];
+            let baked_lamps = if neon.baked_lamps.is_finite() {
+                neon.baked_lamps.clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+            uniform.lamp_params = [0.0, exposure, baked_lamps, 0.0];
             let mut count = 0;
             let budget = lamp_budget(self.capability.quality.tier);
             let sources: Vec<_> = neon

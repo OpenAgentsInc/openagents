@@ -15,6 +15,7 @@
 //! and the seats are the same character in their own colors and postures
 //! ([`player`], [`pose`]); no companion follows.
 
+pub mod baked;
 pub mod boards;
 pub mod boats;
 pub mod compute;
@@ -170,6 +171,9 @@ pub struct Everglade {
     bake: Option<BakeJob>,
     /// The bake's probes, which light the characters once it finishes.
     probes: Option<Arc<AmbientProbes>>,
+    /// The town's offline-baked light layers, when it has them
+    /// ([`baked`]).
+    baked: Option<baked::BakedLight>,
     /// Blocks another zone's rules add to the spells' own, such as the
     /// Grove's training dummies, each a footprint and its top, m.
     extra_blocks: Vec<(crate::controller::Footprint, f32)>,
@@ -348,6 +352,7 @@ impl Everglade {
             cast: player::Cast::new(pack, at)?,
             bake: None,
             probes: None,
+            baked: None,
             extra_blocks: Vec::new(),
             demolition: None,
             town: None,
@@ -716,7 +721,13 @@ impl Everglade {
             &light,
             &settings,
         );
-        self.bake = Some(BakeJob::start(scene, light, settings, key));
+        // The kit town's offline-baked layers, when they were baked for this
+        // scene; the job bakes at load otherwise.
+        let choice = baked::choice(&self.light);
+        self.baked = choice
+            .as_ref()
+            .map(|choice| baked::BakedLight::new(choice, scene.clone()));
+        self.bake = Some(BakeJob::start_layered(scene, light, settings, key, choice));
         self.probes = None;
     }
 
@@ -748,6 +759,7 @@ impl Everglade {
             neon.fog_end = air.fog_end;
             neon.height_fog = air.height_fog;
         }
+        neon.baked_lamps = self.baked_lamps();
         Mesh {
             neon: Some(neon),
             ..Mesh::default()
@@ -1397,13 +1409,39 @@ impl Everglade {
         if let Some(yard) = &mut self.demolition {
             yard.prepare(self.cast.as_ref().map(|cast| cast.figure().scene).as_ref());
         }
+        self.poll_bake();
+    }
+
+    /// Takes a finished light bake's probes, and follows the key light with
+    /// the baked layers once the town has them.
+    fn poll_bake(&mut self) {
         if let Some(job) = &mut self.bake {
             if let Some(probes) = job.poll() {
                 self.probes = Some(Arc::new(probes));
             }
             if job.finished() {
+                if let Some(baked) = &mut self.baked {
+                    baked.active = job.layered();
+                    if baked.active {
+                        eprintln!("verse: Everglade's light comes from its baked layers");
+                    }
+                }
                 self.bake = None;
             }
+        }
+        if self.bake.is_none()
+            && let Some(probes) = self.baked.as_mut().and_then(|b| b.update(&self.light))
+        {
+            self.probes = Some(Arc::new(probes));
+        }
+    }
+
+    /// How brightly the baked lamp layer burns now: zero without one.
+    fn baked_lamps(&self) -> f32 {
+        if self.baked.as_ref().is_some_and(|b| b.active) {
+            baked::lamp_intensity(&self.light)
+        } else {
+            0.0
         }
     }
 
@@ -1668,13 +1706,9 @@ impl Everglade {
     /// Waits for the light bake to finish and takes its result, for
     /// offline captures.
     pub fn settle_light(&mut self) {
-        while let Some(job) = &mut self.bake {
-            if let Some(probes) = job.poll() {
-                self.probes = Some(Arc::new(probes));
-            }
-            if job.finished() {
-                self.bake = None;
-            } else {
+        while self.bake.is_some() {
+            self.poll_bake();
+            if self.bake.is_some() {
                 std::thread::sleep(std::time::Duration::from_millis(20));
             }
         }

@@ -1,0 +1,14 @@
+{
+  "schema": "openagents.artifact.v1",
+  "name": "everglade-kit-bake",
+  "description": "The kit town's offline-baked light layers (sky, four suns, and lamps): baked by verse-bake --layers from the Everglade pack with the licensed kit pack installed, outside the repository. Only its digest and length are pinned, in everglade_pack/kit_bake.rs; it regenerates only on a machine with the pinned kit pack, and a CPU bake takes about half an hour.",
+  "regenerate": "VERSE_KIT_PACK=\"$HOME/.openagents/verse/private/medieval-town/packs/$(sed -n 's/^pub const KIT_SHA256: &str = \"\\(.*\\)\";/\\1/p' crates/verse-zone-everglade/src/zones/everglade_pack/kit.rs).vtp\" cargo run --release -p verse-bake --features everglade -- --everglade assets/verse/everglade/*.vtp --layers --out \"$HOME/.openagents/verse/private/medieval-town/bakes\"",
+  "check": "VERSE_KIT_PACK=\"$HOME/.openagents/verse/private/medieval-town/packs/$(sed -n 's/^pub const KIT_SHA256: &str = \"\\(.*\\)\";/\\1/p' crates/verse-zone-everglade/src/zones/everglade_pack/kit.rs).vtp\" cargo run --release -p verse-bake --features everglade -- --everglade assets/verse/everglade/*.vtp --layers --check --out \"$HOME/.openagents/verse/private/medieval-town/bakes\"",
+  "build_lease": true,
+  "pinned": [],
+  "pin": {
+    "file": "crates/verse-zone-everglade/src/zones/everglade_pack/kit_bake.rs",
+    "lines": ["pub const KIT_BAKE_SHA256: &str = ", "pub const KIT_BAKE_BYTES: u64 = "]
+  },
+  "message": "Repin the Everglade kit light layers with {changes}"
+}

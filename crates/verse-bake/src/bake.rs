@@ -38,16 +38,16 @@ use crate::scene::{Scene, Triangle, hex};
 pub const BAKER_VERSION: u32 = 1;
 /// Order-zero and order-one spherical-harmonic basis constants, and the
 /// cosine lobe's convolution weights (Ramamoorthi and Hanrahan 2001).
-const Y0: f32 = 0.282_095;
-const Y1: f32 = 0.488_603;
-const A0: f32 = PI;
-const A1: f32 = 2.0 * PI / 3.0;
+pub(crate) const Y0: f32 = 0.282_095;
+pub(crate) const Y1: f32 = 0.488_603;
+pub(crate) const A0: f32 = PI;
+pub(crate) const A1: f32 = 2.0 * PI / 3.0;
 /// The golden angle, which spreads a spiral's points evenly.
-const GOLDEN: f32 = 2.399_963_2;
+pub(crate) const GOLDEN: f32 = 2.399_963_2;
 /// The most rays one batch hands a backend.
-const BATCH_RAYS: usize = 1 << 20;
+pub(crate) const BATCH_RAYS: usize = 1 << 20;
 /// Items one accumulation worker takes at a time.
-const ACCUMULATE_CHUNK: usize = 256;
+pub(crate) const ACCUMULATE_CHUNK: usize = 256;
 
 /// The light a bake gathers: a sun and an open sky whose irradiance runs
 /// from `ground` on surfaces facing down to `sky` on surfaces facing up.
@@ -218,7 +218,7 @@ pub fn bake(
     Ok((products, baker.stats))
 }
 
-fn elapsed_ms(start: Instant) -> u64 {
+pub(crate) fn elapsed_ms(start: Instant) -> u64 {
     u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX)
 }
 
@@ -233,19 +233,19 @@ struct Gathered {
 
 /// The rays of one gathering item.
 #[derive(Clone, Copy, Debug)]
-struct Sample {
-    origin: Vec3,
+pub(crate) struct Sample {
+    pub(crate) origin: Vec3,
     /// The surface normal the rays are weighted against.
-    normal: Vec3,
+    pub(crate) normal: Vec3,
 }
 
-struct Baker<'a> {
-    scene: &'a Scene,
-    light: BakeLight,
-    settings: &'a Settings,
-    backend: &'a mut dyn Backend,
-    threads: usize,
-    stats: Stats,
+pub(crate) struct Baker<'a> {
+    pub(crate) scene: &'a Scene,
+    pub(crate) light: BakeLight,
+    pub(crate) settings: &'a Settings,
+    pub(crate) backend: &'a mut dyn Backend,
+    pub(crate) threads: usize,
+    pub(crate) stats: Stats,
 }
 
 /// splitmix64.
@@ -257,14 +257,14 @@ fn mix(mut x: u64) -> u64 {
 }
 
 /// An angle in `[0, 2π)` drawn from the seed, a stream, and an index.
-fn turn(seed: u64, stream: u64, index: u64) -> f32 {
+pub(crate) fn turn(seed: u64, stream: u64, index: u64) -> f32 {
     let bits = mix(seed ^ mix(stream.wrapping_mul(0x1000_0000_01b3) ^ index));
     (bits >> 40) as f32 / (1u64 << 24) as f32 * TAU
 }
 
 /// `count` directions over the hemisphere around `n`, evenly spread in
 /// solid angle and turned by `angle`, each with its cosine to `n`.
-fn hemisphere(n: Vec3, count: u32, angle: f32, out: &mut Vec<(Vec3, f32)>) {
+pub(crate) fn hemisphere(n: Vec3, count: u32, angle: f32, out: &mut Vec<(Vec3, f32)>) {
     let (t, b) = n.any_orthonormal_pair();
     for i in 0..count {
         let z = 1.0 - (i as f32 + 0.5) / count as f32;
@@ -276,7 +276,7 @@ fn hemisphere(n: Vec3, count: u32, angle: f32, out: &mut Vec<(Vec3, f32)>) {
 
 /// `count` directions over the whole sphere, turned about the vertical by
 /// `angle`.
-fn sphere(count: u32, angle: f32) -> impl Iterator<Item = Vec3> {
+pub(crate) fn sphere(count: u32, angle: f32) -> impl Iterator<Item = Vec3> {
     (0..count).map(move |i| {
         let y = 1.0 - 2.0 * (i as f32 + 0.5) / count as f32;
         let r = (1.0 - y * y).max(0.0).sqrt();
@@ -287,7 +287,7 @@ fn sphere(count: u32, angle: f32) -> impl Iterator<Item = Vec3> {
 
 /// `count` directions spread over a disk of angular radius `radius` around
 /// `s`, turned by `angle`.
-fn sun_disk(s: Vec3, radius: f32, count: u32, angle: f32) -> impl Iterator<Item = Vec3> {
+pub(crate) fn sun_disk(s: Vec3, radius: f32, count: u32, angle: f32) -> impl Iterator<Item = Vec3> {
     let (t, b) = s.any_orthonormal_pair();
     let spread = radius.tan();
     (0..count).map(move |i| {
@@ -301,12 +301,12 @@ fn sun_disk(s: Vec3, radius: f32, count: u32, angle: f32) -> impl Iterator<Item 
 }
 
 /// Streams that turn each kind of item's pattern differently.
-const VERTEX_STREAM: u64 = 1;
-const SUN_STREAM: u64 = 2;
-const PROBE_STREAM: u64 = 3;
+pub(crate) const VERTEX_STREAM: u64 = 1;
+pub(crate) const SUN_STREAM: u64 = 2;
+pub(crate) const PROBE_STREAM: u64 = 3;
 
 impl Baker<'_> {
-    fn trace(&mut self, rays: &[Ray]) -> Result<Vec<RayHit>, String> {
+    pub(crate) fn trace(&mut self, rays: &[Ray]) -> Result<Vec<RayHit>, String> {
         for ray in rays {
             if ray.kind == SHADOW {
                 self.stats.shadow_rays += 1;
@@ -328,7 +328,7 @@ impl Baker<'_> {
     }
 
     /// The samples of vertex `i`: one side, or both for a leaf card.
-    fn vertex_samples(&self, i: usize) -> ([Sample; 2], usize) {
+    pub(crate) fn vertex_samples(&self, i: usize) -> ([Sample; 2], usize) {
         let v = &self.scene.vertices[i];
         let p = Vec3::from(v.pos);
         let n = Vec3::from(v.normal).normalize_or(Vec3::Y);
@@ -452,7 +452,16 @@ impl Baker<'_> {
     /// ray from the hit point; zero where the surface faces away or the
     /// ray met nothing.
     fn sun_on_hits(&mut self, rays: &[Ray], hits: &[RayHit]) -> Result<Vec<f32>, String> {
-        let s = self.light.sun_dir;
+        self.sun_on_hits_toward(rays, hits, self.light.sun_dir)
+    }
+
+    /// [`Self::sun_on_hits`] for a sun toward `s`.
+    pub(crate) fn sun_on_hits_toward(
+        &mut self,
+        rays: &[Ray],
+        hits: &[RayHit],
+        s: Vec3,
+    ) -> Result<Vec<f32>, String> {
         let mut shadow = Vec::new();
         let mut owner = Vec::new();
         let mut cosines = Vec::new();
@@ -485,7 +494,7 @@ impl Baker<'_> {
     /// Per-vertex visibility of the sun toward `s`, 0 to 1: the share of the
     /// sun's disk that reaches the vertex. A face turned away reads zero; a
     /// leaf card is seen from whichever side faces the sun.
-    fn sun_layer(&mut self, s: Vec3) -> Result<Vec<f32>, String> {
+    pub(crate) fn sun_layer(&mut self, s: Vec3) -> Result<Vec<f32>, String> {
         let count = self.scene.vertices.len();
         let per = self.settings.sun_rays.max(1) as usize;
         let mut out = vec![0.0f32; count];
@@ -602,7 +611,7 @@ impl Baker<'_> {
 
 /// The face of `tri` a ray along `d` meets: thin panels reflect from
 /// whichever side the ray arrives on.
-fn facing(tri: &Triangle, d: Vec3) -> Vec3 {
+pub(crate) fn facing(tri: &Triangle, d: Vec3) -> Vec3 {
     if tri.normal.dot(d) > 0.0 {
         -tri.normal
     } else {

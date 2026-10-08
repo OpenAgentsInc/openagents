@@ -24,11 +24,13 @@ pub mod bake;
 pub mod fixture;
 #[cfg(feature = "gpu")]
 pub mod gpu;
+pub mod layers;
 pub mod products;
 pub mod scene;
 
 pub use backend::{Backend, CpuBackend, Ray, RayHit};
 pub use bake::{BAKER_VERSION, Light, Settings, Stats, bake, bake_key};
+pub use layers::{LayerStats, bake_layers, layers_key};
 pub use products::{Agreement, Products, Spread};
 pub use scene::{Scene, hex};
 

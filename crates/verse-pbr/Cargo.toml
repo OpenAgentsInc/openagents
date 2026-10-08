@@ -22,6 +22,8 @@ coder-ui = { path = "../coder-ui" }
 glam = "0.30.10"
 gltf = { version = "=1.4.1", default-features = false, features = ["import", "utils", "names", "KHR_materials_emissive_strength"] }
 half = "2.7"
+# Deflate for offline-baked light layers; already in the tree through `png`.
+miniz_oxide = "0.8.9"
 physics = { path = "../physics" }
 png = "0.18.1"
 pollster = "0.4"

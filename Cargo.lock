@@ -15740,6 +15740,7 @@ dependencies = [
  "glam",
  "gltf",
  "half",
+ "miniz_oxide 0.8.9",
  "naga",
  "physics",
  "png",

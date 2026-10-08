@@ -2469,15 +2469,18 @@ impl Scene {
             }
             gpu.edits = revision;
         }
-        // A finished bake replaces the vertices once; the merge order is the
-        // bake's own, so only the light channel changes.
-        let baked = match (&self.textured, &self.textured_baked) {
-            (Some(_), Some(slot)) => slot.take(),
-            _ => None,
+        // A finished bake replaces the light channel; the merge order is the
+        // bake's own. Baked layers may deliver again when the sun moves to
+        // another baked direction, and may bring lamp light.
+        let (baked, lamps) = match (&self.textured, &self.textured_baked) {
+            (Some(_), Some(slot)) => (slot.take(), slot.take_lamps()),
+            _ => (None, None),
         };
-        if let (Some(gpu), Some(vertices)) = (&self.textured, baked) {
-            gpu.write_vertices(queue, &vertices);
-            self.textured_baked = None;
+        if let (Some(gpu), Some(lights)) = (&self.textured, baked) {
+            gpu.write_baked(queue, &lights);
+        }
+        if let (Some(gpu), Some(lamps)) = (&mut self.textured, lamps) {
+            photo.write_textured_lamps(device, queue, gpu, &lamps);
         }
         if let Some(figure) = &dynamic.figure {
             if self

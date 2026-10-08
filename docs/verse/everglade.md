@@ -250,7 +250,11 @@ The zone renderer gains textured static meshes:
   as partial occluders, so the workshop interior and the ground under the
   tree ring darken. A coarse probe grid of the same light shades the
   characters. The bake runs on a worker thread; in a browser it advances a
-  little each frame at lower quality.
+  little each frame at lower quality. When the kit town's offline-baked
+  layers (`everglade_pack::kit_bake`) were baked for the scene the zone
+  builds, the zone uses them instead: multi-bounce sky light, the bounce of
+  the baked sun nearest the key, and lamp light that burns from dusk
+  (`zones/everglade/baked.rs`).
 - The sky lights the zone (`pbr::environment`, items A2 and B2): the daylight
   sky, with its clouds at their mean cover and the lit ground below the
   horizon, is projected on the CPU into order-two spherical harmonics for

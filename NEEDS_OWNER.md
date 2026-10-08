@@ -54,6 +54,19 @@ Everglade and confirm the town draws the kit and holds its frame rate.
 Each later repin of the kit pack needs the same upload before the next
 web deploy.
 
+## Upload the kit town's baked light layers (#10906)
+
+The kit town's light layers are pinned by `KIT_BAKE_SHA256` in
+`crates/verse-zone-everglade/src/zones/everglade_pack/kit_bake.rs` and live
+only in `~/.openagents/verse/private/medieval-town/bakes/` and the zone
+cache. Desktops that download the kit fetch them from
+`https://openagents.com/everglade/kit/bake/<KIT_BAKE_SHA256>.vlay`. Copy
+the pinned file to `gs://openagentsgemini-verse-private-assets/bakes/`
+and serve it at that path as the kit pack is served (the website image
+does not copy it yet).
+Until then, a desktop without the file in its cache bakes the town's light
+at load as before.
+
 ## Admit the villagers' fuller days (town clock)
 
 The town clock now runs by default. On it, a daylight town hour is 4.25

@@ -326,3 +326,65 @@ mod gpu {
         assert_eq!(again.digest(), on_gpu.digest());
     }
 }
+
+#[test]
+fn layers_light_the_wall_by_the_lamp_and_keep_the_sky_out_from_under_the_roof() {
+    use verse_pbr::pbr::baked_layers::{Layers, decode_lamp, decode_sun, scene_digest};
+    use verse_pbr::pbr::textured_bake::decode;
+    let textured = fixture::lamp_scene();
+    let scene = Scene::new(&textured).unwrap();
+    assert_eq!(scene.emitters.len(), 6 * 8);
+    let digest = scene_digest(&textured, &textured.merge().unwrap());
+    let settings = quick();
+    let run = |threads| {
+        let mut backend = CpuBackend::new(&scene.triangles, threads);
+        bake_layers(
+            &scene,
+            digest,
+            &fixture::light(),
+            &settings,
+            &mut backend,
+            threads,
+        )
+        .unwrap()
+    };
+    let (layers, stats) = run(4);
+    assert_eq!(stats.lamps, 1);
+    layers.validate().unwrap();
+    assert_eq!(layers.suns.len(), settings.suns.len());
+    assert_eq!(layers.vertex_count(), scene.vertices.len());
+    // The wall facing the lamp takes about I / d²: a cube 0.3 m across at
+    // 6,000 cd/m² emits π L A lumens, a quarter of them per π sr.
+    let lamps = layers.lamp_texels();
+    let wall = vertex_at(&scene, Vec3::new(5.0, 1.5, 4.0), Vec3::Z);
+    let lux = decode_lamp(lamps[wall]);
+    let expected = 0.95 * 6_000.0 * 0.54 / 4.0 / (1.5 * 1.5);
+    assert!(
+        (lux.x - expected).abs() < expected * 0.3,
+        "{lux} against {expected}"
+    );
+    assert!(lux.x > lux.y && lux.y > lux.z, "warm light: {lux}");
+    // The far corner of the yard is out of the lamp's reach, and the
+    // house's back wall is in its shadow.
+    let corner = vertex_at(&scene, Vec3::new(-12.0, 0.0, -12.0), Vec3::Y);
+    assert_eq!(lamps[corner], [0; 4]);
+    let back = vertex_at(&scene, Vec3::new(-4.0, 2.0, -5.5), -Vec3::Z);
+    assert!(decode_lamp(lamps[back]).x < 0.5);
+    // Open ground sees the sky and the first sun; ground under the eaves
+    // sees less sky.
+    let open = vertex_at(&scene, Vec3::new(10.0, 0.0, 10.0), Vec3::Y);
+    let under = vertex_at(&scene, Vec3::new(-4.0, 0.0, 0.0), Vec3::Y);
+    let (open_sky, open_fraction) = decode(layers.sky[open]);
+    let (under_sky, _) = decode(layers.sky[under]);
+    assert!(open_fraction > 0.9 && open_sky.x > 0.8, "{open_sky}");
+    assert!(under_sky.x < open_sky.x * 0.8, "{under_sky} {open_sky}");
+    let (_, seen) = decode_sun(layers.suns[0].vertices[open]);
+    assert!(seen > 0.9);
+    // The wall beside the sunlit grass takes bounced sun.
+    let (bounce, _) = decode_sun(layers.suns[0].vertices[wall]);
+    assert!(bounce.max_element() > 0.0);
+    // The thread count never changes the bytes, and they round-trip.
+    let bytes = layers.encode();
+    assert_eq!(run(1).0.encode(), bytes);
+    assert_eq!(Layers::decode(&bytes).unwrap(), layers);
+}
