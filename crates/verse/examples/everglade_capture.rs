@@ -109,6 +109,10 @@ fn main() -> Result<(), String> {
                 .map_err(|_| format!("FRAME is a number, got {v}"))
         })
         .transpose()?;
+    capture(output, view, frame)
+}
+
+fn capture(output: PathBuf, view: String, frame: Option<usize>) -> Result<(), String> {
     let pack = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
         .join(everglade_pack::PACK_DIRECTORY)
@@ -436,6 +440,38 @@ fn main() -> Result<(), String> {
         &atlas,
         air,
     )
+}
+
+#[cfg(test)]
+mod private_capture_tests {
+    use std::path::PathBuf;
+
+    #[test]
+    #[ignore = "Requires private inputs and an offscreen GPU lease on coderos-4080"]
+    fn capture_private_acceptance() {
+        let output = PathBuf::from(
+            std::env::var_os("VERSE_CAPTURE_OUTPUT").expect("VERSE_CAPTURE_OUTPUT is required"),
+        );
+        let parent = output.parent().expect("The output needs a private directory");
+        std::fs::create_dir_all(parent).unwrap();
+        let parent = parent.canonicalize().unwrap();
+        assert!(
+            !parent.ancestors().any(|p| p.join(".git").exists()),
+            "Private captures must stay outside Git"
+        );
+        let view = std::env::var("VERSE_CAPTURE_VIEW").unwrap_or_else(|_| "approach".into());
+        let frame = std::env::var("VERSE_CAPTURE_FRAME")
+            .ok()
+            .map(|v| v.parse::<usize>().unwrap());
+        std::thread::Builder::new()
+            .name("everglade-private-capture".into())
+            .stack_size(64 * 1024 * 1024)
+            .spawn(move || super::capture(output, view, frame))
+            .unwrap()
+            .join()
+            .unwrap()
+            .unwrap();
+    }
 }
 
 /// Feeds the Pylon Field as `VERSE_CAPTURE_COMPUTE` says, from a scratch

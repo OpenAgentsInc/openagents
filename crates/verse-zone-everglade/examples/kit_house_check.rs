@@ -5,6 +5,8 @@
 //! keeps its piece node names, so `scripts/blender/coplanar.py --names`
 //! identifies the recipe placements that need adjustment. The JSON report
 //! counts triangles and merged materials at 10, 50, and 120 meters.
+//! `VERSE_KIT_HOUSE_VERIFY=1` requires the private build, enforces those
+//! budgets, and writes its candidate pack and identity outside Git.
 
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
@@ -180,6 +182,10 @@ fn main() -> Result<(), String> {
 }
 
 fn run(output: PathBuf) -> Result<(), String> {
+    let verify = std::env::var("VERSE_KIT_HOUSE_VERIFY").is_ok_and(|v| v == "1");
+    if verify && std::env::var_os("VERSE_KIT_HOUSE_BUILD").is_none() {
+        return Err("House verification requires VERSE_KIT_HOUSE_BUILD".into());
+    }
     std::fs::create_dir_all(&output).map_err(|e| e.to_string())?;
     let repo = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
@@ -193,6 +199,7 @@ fn run(output: PathBuf) -> Result<(), String> {
         .join(everglade_pack::PACK_DIRECTORY)
         .join(format!("{}.vtp", everglade_pack::PACK_SHA256));
     let mut pack = everglade_pack::ZonePack::load_local(&path)?;
+    let mut candidate = None;
     if let Some(build) = std::env::var_os("VERSE_KIT_HOUSE_BUILD") {
         let build = PathBuf::from(build)
             .canonicalize()
@@ -207,6 +214,9 @@ fn run(output: PathBuf) -> Result<(), String> {
             return Err(format!(
                 "The private house source lacks admitted kit pieces: {report:?}"
             ));
+        }
+        if verify {
+            candidate = Some(compiled);
         }
     }
     if !kit::installed(&pack) {
@@ -231,6 +241,18 @@ fn run(output: PathBuf) -> Result<(), String> {
             json!({"distance":distance,"triangles":batches.iter().map(|b| u64::from(b.count/3)).sum::<u64>(),
                 "draws":batches.len(),"materials":batches.iter().map(|b| b.material).collect::<BTreeSet<_>>().len()})
         }).into_iter().collect();
+        if verify {
+            for (level, actual) in levels.iter().enumerate() {
+                if actual["triangles"].as_u64().unwrap() > house_lod::TRIANGLES[level]
+                    || actual["draws"].as_u64().unwrap() > house_lod::DRAWS[level] as u64
+                {
+                    return Err(format!(
+                        "House {} exceeds level {level} budgets: {actual}",
+                        house.name
+                    ));
+                }
+            }
+        }
         let name = format!("house-{index:02}");
         export(&dir, &name, &scene, &placements)?;
         let key = house_lod::key(house);
@@ -259,6 +281,18 @@ fn run(output: PathBuf) -> Result<(), String> {
         )
         .map_err(|e| e.to_string())?,
     )?;
+    if let Some(candidate) = candidate {
+        let filename = format!("{}.vtp", candidate.sha256);
+        write(&dir.join(&filename), &candidate.bytes)?;
+        let identity = json!({"sha256":candidate.sha256,"bytes":candidate.bytes.len(),
+            "models":candidate.models,"triangles":candidate.triangles,
+            "decoded_texture_bytes":candidate.decoded_texture_bytes,"file":filename});
+        write(
+            &dir.join("candidate.json"),
+            &serde_json::to_vec_pretty(&identity).map_err(|e| e.to_string())?,
+        )?;
+        eprintln!("{identity}");
+    }
     Ok(())
 }
 
