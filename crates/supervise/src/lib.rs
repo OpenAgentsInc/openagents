@@ -175,6 +175,7 @@ impl Limits {
     }
 }
 
+#[cfg(feature = "job")]
 async fn deadline(wall: Duration) {
     if wall == Duration::MAX {
         std::future::pending::<()>().await;
