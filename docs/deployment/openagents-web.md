@@ -559,3 +559,37 @@ the web and phone soft budgets; B4 (#10908) owns the tier work and physical
 device checks remain in `NEEDS_OWNER.md` (#10901). The later `/demo` source
 change is not part of this image.
 Rollback: `gcloud run services update-traffic coder --region us-central1 --project openagentsgemini --to-revisions coder-web-components-6daf112710-202610081303=100`.
+
+## 2026-10-08: Original Coder demo
+
+Revision `coder-web-demo-7bb5e9bccd-202610081448` serves 100% of traffic.
+`/demo` mounts the original `coder-new` terminal demo through Rust Native:
+five local conversations, retained drafts and cursors, native tools and
+panels, independent elapsed time, and a 125 ms animation. It creates no
+provider connection or real task and exports only a local synthetic ATIF
+artifact. The page has no site navigation. The public header remains
+Download, Docs, Pilot, with no Cloud, component, or demo promotion.
+
+Cloud Build `795226f7-2c40-4a5d-9c09-fd908f6285ab` builds commit
+`7bb5e9bccd796afee03396a79fa2b41a625cb18a`. The concurrent P3 deployment
+changes the live image before staging; the base-image guard refuses the
+stale candidate. Build `a5c1c97c-fd00-46df-b2b4-028693ccc284` then copies
+only the verified web binary and component and Cloud bundles over the new
+P3 image. The final image digest is
+`sha256:61a6867164f308323e24507ace303d6575d56eae678f940de2e918ced3264867`.
+The live spec preserves the sidecar, secrets, runtime settings, and VPC.
+No Cloud account or host binding is activated.
+
+The portable and native demo adapters each match all 93 independently
+captured original frames. Targeted ATIF, UI, native demo, browser adapter,
+and web checks pass. Staging and production each pass 69 demo browser
+checks and 34 catalog and game browser checks, with no browser errors.
+Both game graphics backends render the preserved P3 assets. Each environment
+also passes 33 regression HTTP checks and six demo HTTP checks; all 19
+checked public response bodies match the P3 production baseline byte for
+byte, including the existing game modules. Both new and preceding game
+pack and kit URLs retain their exact bytes and hashes.
+
+Evidence remains in the deployment session's scratch directory and
+`codex-01a11a7c-eb19-7780-b9e7-cd6e305db168/demo-production-proof/`.
+Rollback: `--to-revisions coder-web-p3-d2fb95d33d-20261008140843=100`.
