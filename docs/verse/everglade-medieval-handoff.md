@@ -146,8 +146,16 @@ unchanged.
   while the completed Mac artifact records scene
   `f55a1e76fca2e2b96af777e296549aa9b51776cadbcfff6eaf1c77a8ad83b2ab`
   and key `090f106f9c459f62f9cd67902a18531b7e00f9d15e292e0b60a0dd7b231b0b6b`.
-  Both input file digests and receipt settings/light agree. Diagnose scene
-  construction across platforms before publishing; do not bypass identity. Spatial tier reduction and budgets remain open.
+  Both input file digests and receipt settings/light agree. The release
+  Mac/Linux/browser comparison now proves identical topology, materials,
+  UVs, vertex colors, and licensed images; maximum position differences
+  are 0.031 mm, and at most nine procedural dirt pixels differ by one byte.
+  `bench/verse/2026-10-08/layer-scene-compatibility/` retains the audit
+  summary without licensed content. Checkpoint `20aa21e899` adds exact
+  reviewed scene alternatives bound to the immutable artifact SHA, source
+  recipe, and target recipe. Its checks and publication are pending; unknown
+  scenes and the different debug topology remain rejected. No new bake is
+  needed. Spatial tier reduction and budgets remain open.
   One 512 px kit pack
   serves every tier today (21,467,658 bytes to transfer, 60.5 MiB decoded),
   exceeding the web and phone soft budgets. Both tiers need B4.
