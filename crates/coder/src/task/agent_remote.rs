@@ -225,9 +225,11 @@ impl Remote for Cli {
         // Clone the checkout when the computer has none, fetch `base`
         // otherwise. A commit that is not pushed fails both fetches, so the
         // cat-file check below refuses it in words.
+        // `${checkout#'~/'}` quotes the pattern: an unquoted `~` tilde-
+        // expands inside `${x#p}` under bash and the strip misses.
         let script = format!(
             "checkout='{checkout}'; \
-             case \"$checkout\" in '~/'*) checkout=\"$HOME/${{checkout#~/}}\";; esac; \
+             case \"$checkout\" in '~/'*) checkout=\"$HOME/${{checkout#'~/'}}\";; esac; \
              if ! git -C \"$checkout\" rev-parse --git-dir >/dev/null 2>&1; then \
                mkdir -p \"$(dirname \"$checkout\")\" && \
                git clone -q '{origin}' \"$checkout\" || exit 2; \
