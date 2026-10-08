@@ -499,6 +499,14 @@ fn destruction_capture(
         &dir.join("destruction-repaired-night.png"),
         &renderer.render(view, &dynamic, ui)?,
     )?;
+    write_json(
+        &dir.join("repair-before-restore.json"),
+        &json!({"status":"noon-night-complete-restore-pending","verified":false,
+            "before":repair_before,"after_swarm":after_swarm,
+            "noon":noon_repair,"night":night_repair,
+            "noon_hold":noon_hold,"night_hold":night_hold,
+            "camera_eye":eye.to_array(),"camera_aim":(aim + Vec3::Y * 4.0).to_array()}),
+    )?;
 
     runtime.set_town_clock(town_clock::Clock::DAYTIME.pinned(Some(12.0)));
     runtime.zone_intent(verse::zones::Intent::Rebuild)?;
