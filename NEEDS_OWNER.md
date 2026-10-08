@@ -2103,3 +2103,16 @@ origin. Check physical IME, gesture clipboard denial, keyboard accessories,
 glyph coverage, and WebGPU/WebGL2 behavior on supported devices. Scratch hosts,
 synthetic grants, and retained fixture threads activate no owner's executor,
 retail shell, commercial lane, or wallet.
+
+## Everglade destruction: 20 destroyed buildings on desktop (#10941)
+
+The code freezes evicted buildings and turns timed regrowth off in
+`dev-destruction` builds (PR #10989); the desktop checks need a real GPU:
+
+1. Run the desktop Verse build with `--features dev-destruction` at High
+   quality and destroy 20 buildings in a row. All 20 stay destroyed.
+2. Walk 100 m away and wait 2 minutes. Nothing regrows. Press `R`; the
+   town is whole again.
+3. Record the frame time before and after the 20 destroyed buildings
+   (the raised caps are 24 buildings and 1500 pieces). If the frame time
+   drops under 60 fps, open an issue with both numbers.
