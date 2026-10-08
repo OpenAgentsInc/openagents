@@ -18,6 +18,7 @@ mod relay;
 mod renew;
 mod studio;
 mod supersede;
+mod task_reads;
 
 const POLICY: RelayPolicy = RelayPolicy::LoopbackTest;
 

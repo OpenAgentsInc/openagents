@@ -82,6 +82,8 @@ pub struct Config {
     pub components_build: Option<PathBuf>,
     /// Explicit native account adapter; absence leaves the Cloud workspace unavailable.
     pub cloud: Option<Arc<cloud::session::CloudSession>>,
+    /// Explicit account/workspace bindings to separately granted resident hosts.
+    pub cloud_hosts: Option<Arc<cloud::hosts::Hosts>>,
     /// Rust/Wasm private-view lifecycle assets.
     pub cloud_build: Option<PathBuf>,
     /// Optional create-only capability into the host-private sales pipeline.
@@ -107,6 +109,7 @@ impl Config {
             everglade: None,
             components_build: None,
             cloud: None,
+            cloud_hosts: None,
             cloud_build: None,
             pilot: None,
         }

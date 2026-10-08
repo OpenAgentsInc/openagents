@@ -22,6 +22,7 @@ pub mod rights;
 pub mod spend;
 pub mod studio;
 pub mod studio_intents;
+pub mod task_read;
 pub mod thread;
 pub mod wallet_link;
 

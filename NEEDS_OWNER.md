@@ -2025,3 +2025,17 @@ reply is posted:
 6. Keep the daily cap at or below five replies per grant, keep
    `public_reply_pause` available, and reconcile every `Unknown` attempt
    against the thread before any further reply there.
+||||||| 97bf77116a
+
+
+## Qualify resident Cloud observation (#10950)
+
+Before exposing resident task records on the deployed origin, provision an
+explicit account/workspace/membership-epoch mapping to a separately issued
+Observe grant and private device key. Pass `--cloud-hosts PRIVATE_JSON` with
+the protected binding schema in the web crate README and an exact authenticated
+host route and generation. Qualify current revocation, workspace removal, host
+restart, source changes, and HTTPS browser cleanup using the deployed native
+owners. The isolated account/host fixture supplies synthetic evidence only;
+it enrolls no owner's browser, starts no engine, and activates no retail,
+execution, terminal, sales, custody, or spending lane.

@@ -144,9 +144,24 @@ fn private_file(path: &FilePath, bytes: &[u8]) -> Result<(), String> {
 #[tokio::main]
 async fn main() -> Result<(), String> {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let [directory, build, listen] = args.as_slice() else {
-        return Err("usage: cloud_session_fixture NEW_SCRATCH_DIRECTORY CLOUD_WASM_DIRECTORY 127.0.0.1:PORT".into());
-    };
+    if !(3..=4).contains(&args.len()) {
+        return Err("usage: cloud_session_fixture NEW_SCRATCH_DIRECTORY CLOUD_WASM_DIRECTORY 127.0.0.1:PORT [PRIVATE_HOSTS_FILE]".into());
+    }
+    serve(
+        &args[0],
+        &args[1],
+        &args[2],
+        args.get(3).map(String::as_str),
+    )
+    .await
+}
+
+pub async fn serve(
+    directory: &str,
+    build: &str,
+    listen: &str,
+    hosts: Option<&str>,
+) -> Result<(), String> {
     let directory = PathBuf::from(directory);
     let build = PathBuf::from(build);
     let listen: SocketAddr = listen
@@ -193,6 +208,10 @@ async fn main() -> Result<(), String> {
     config.port = address.port();
     config.cloud = Some(Arc::new(CloudSession::load(&path)?));
     config.cloud_build = Some(build);
+    config.cloud_hosts = hosts
+        .map(|path| openagents_web::cloud::hosts::Hosts::load(FilePath::new(path)))
+        .transpose()?
+        .map(Arc::new);
     let state = Arc::new(Mutex::new(Native {
         revoked: BTreeSet::new(),
         expiry: now() + 3600,
@@ -215,7 +234,11 @@ async fn main() -> Result<(), String> {
         "{}",
         json!({"synthetic":true,"origin":origin,"account_service":native_origin,"config":path})
     );
-    let result = axum::serve(listener, openagents_web::router(config)).await;
+    let result = axum::serve(listener, openagents_web::router(config))
+        .with_graceful_shutdown(async {
+            let _ = tokio::signal::ctrl_c().await;
+        })
+        .await;
     native_server.abort();
     result.map_err(|_| "fixture web server stopped".into())
 }

@@ -13,6 +13,8 @@ paper-mono = { path = "../paper-mono" }
 axum = "0.8"
 base64 = "0.22"
 coder = { path = "../coder" }
+coder-access = { path = "../coder-access", default-features = false }
+coder-host = { path = "../coder-host", default-features = false }
 coder-ui = { path = "../coder-ui" }
 rust-native = { path = "../rust-native" }
 rust-native-web = { path = "../rust-native-web" }
@@ -35,8 +37,10 @@ tokio = { version = "1", features = ["fs", "io-util", "macros", "net", "rt-multi
 url = "2"
 
 [dev-dependencies]
+nostr = { path = "../nostr" }
 tempfile = "3"
 tower = { version = "0.5", features = ["util"] }
+tokio-tungstenite = { version = "0.30", features = ["rustls-tls-webpki-roots"] }
 
 [lints]
 workspace = true

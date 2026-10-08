@@ -663,6 +663,9 @@ A request is `openagents.host-request.v1`:
 | `device.list` | `access_read` | `devices` |
 | `device.revoke` | `access_admin` | `revoked` |
 | `task.create` | `operate` | `dispatched` |
+| `task.list` | `observe` | `tasks` |
+| `task.read` | `observe` | `task` |
+| `task.original` | `observe` | `task_original` |
 | `task.steer` | `operate` | `dispatched` |
 | `task.cancel` | `operate` | `dispatched` |
 | `task.archive` | `operate` | `dispatched` |
@@ -685,6 +688,41 @@ A request is `openagents.host-request.v1`:
 | `studio.review.open` | `observe` | `review` |
 | `studio.goal.submit`, `studio.seat.message`, `studio.seat.pause`, `studio.seat.resume`, `studio.seat.stop`, `studio.task.reassign`, `studio.task.cancel`, `studio.task.retry`, `studio.task.prioritize`, `studio.decision.answer`, `studio.decision.always` | `operate` | `dispatched` |
 | `studio.merge.decide` | `review` | `merged` |
+
+The observe-only task reads carry `{query}` and return the portable
+`coder-access::task_read` records. The host checks its current Observe grant
+and explicitly admitted workspace label before the task owner checks its
+own disclosure policy. These reads expose that owner's canonical task journal,
+ATIF evidence, artifact manifest, and retained artifact bytes. They do not open
+retained Codex or Claude history roots, which keep their separate SESS observer
+admission, and create no execution, enrollment, review, or spending authority.
+
+`task.list` names one admitted workspace label, a limit of 1–64, and an optional
+cursor binding that workspace, the complete list snapshot digest, and next row.
+`task.read` names a workspace, task ID, optional exact revision, limit of 1–64,
+and optional prefix cursor. A null revision is allowed only without a cursor
+and opens the current head. Returned scope always pins the exact revision,
+one-based task turn, and intent digest. A continuation also binds an opaque
+trace alias, previous raw snapshot digest and byte length, next logical step,
+and delivered step-prefix digest. Appends may continue only if both previous
+raw bytes and the delivered logical prefix still match. A changed revision,
+turn, workspace, intent, rewritten prefix, or shortened source refuses.
+
+Task outcomes contain at most 48 KiB of JSON. Original ATIF step objects remain intact;
+a step over 16 KiB becomes an explicit oversized gap with its original source
+pin. Execution, verification, termination, delivery, cleanup, and integration
+remain separate states. Child references come only from structured delegation
+records and confer no child-task or control authority. A summary that omits
+entries identifies the remaining original source instead of silently clipping.
+
+`task.original` pins the complete task scope, an opaque `task`, `trace:<turn>`,
+`manifest:<turn>`, or `artifact:<path-digest>` alias, SHA-256 digest, byte count,
+and optional byte-prefix cursor. Sources are at most 64 MiB; chunks are at most
+16 KiB before base64 encoding. Every read rechecks the source and full digest;
+appending to a pinned original requires reopening it. Aliases never admit a
+caller path, endpoint, or symlink. Missing, damaged, unavailable, stale, and
+oversized evidence stays explicit. The host rechecks expiry and current Observe
+standing before signing a successful read reply.
 
 `task.create` carries `{title, prompt, workspace}`. The title is at most 200
 bytes, the prompt at most 16 KiB, and the workspace a host-scoped label of at
@@ -1106,8 +1144,8 @@ and act. Every operation, including an exact retry, repeats these checks.
 
 The idempotency key is the request ID. The host retains the signed reply of
 an admitted principal with the exact request event ID until the request
-expires. The exception is a read with no effect, `thread.list`,
-`thread.read`, and the studio reads: its reply is not retained, so a device that polls a streaming
+expires. The exception is a read with no effect, `task.list`, `task.read`,
+`task.original`, `thread.list`, `thread.read`, and the studio reads: its reply is not retained, so a device that polls a streaming
 thread never fills the host's store, and an exact retry reads again and may
 answer newer content. An identical retry returns the retained bytes while the principal
 is still current. Different bytes under the same request ID refuse as

@@ -255,6 +255,31 @@ pub struct TerminalBinding {
 ///
 /// Implementations return promptly and never call back into the host.
 pub trait Tasks: Send + Sync {
+    /// Read the canonical task list under the owner's admitted workspace label.
+    /// Observe admission does not replace the task owner's disclosure checks.
+    fn task_list(
+        &self,
+        _query: &coder_access::task_read::ListQuery,
+    ) -> Result<coder_access::task_read::List, Code> {
+        Err(Code::Unsupported)
+    }
+
+    /// Read one exact task revision and its original evidence without effects.
+    fn task_read(
+        &self,
+        _query: &coder_access::task_read::PageQuery,
+    ) -> Result<coder_access::task_read::Page, Code> {
+        Err(Code::Unsupported)
+    }
+
+    /// Read original bytes only under the task, turn, source, and digest pin.
+    fn task_original(
+        &self,
+        _query: &coder_access::task_read::OriginalQuery,
+    ) -> Result<coder_access::task_read::OriginalChunk, Code> {
+        Err(Code::Unsupported)
+    }
+
     /// Resolve a non-archived studio task's current admitted worktree.
     /// The default grants no shell access.
     fn terminal_binding(&self, _task: &str) -> Result<TerminalBinding, Code> {

@@ -1,4 +1,5 @@
 //! The page's private lifetime and serial, bounded standing checks.
+use crate::resource::{MAX_RESOURCE_BYTES, Resource};
 use crate::{MAX_STANDING_BYTES, Privacy};
 use futures_util::future::{Either, select};
 use gloo_timers::future::TimeoutFuture;
@@ -31,6 +32,7 @@ struct Runtime {
     private: Element,
     resume: Element,
     privacy: RefCell<Privacy>,
+    resource: RefCell<Option<Resource>>,
     pending: RefCell<Option<AbortController>>,
     listeners: RefCell<Vec<Listener>>,
     revealed: Cell<bool>,
@@ -73,17 +75,25 @@ pub fn start() -> Result<(), JsValue> {
         .and_then(|standing| standing.text_content())
         .unwrap_or_default();
     let privacy = Privacy::admit(bytes.as_bytes(), now());
+    let resource_bytes = document
+        .get_element_by_id("cloud-resource-standing")
+        .map(|element| element.text_content().unwrap_or_default());
+    let resource = resource_bytes
+        .as_deref()
+        .and_then(|bytes| Resource::admit(bytes.as_bytes()));
+    let invalid_resource = resource_bytes.is_some() && resource.is_none();
     let runtime = Rc::new(Runtime {
         window,
         document,
         private,
         resume,
         privacy: RefCell::new(privacy.unwrap_or_default()),
+        resource: RefCell::new(resource),
         pending: RefCell::new(None),
         listeners: RefCell::new(Vec::new()),
         revealed: Cell::new(false),
     });
-    if !runtime.visible_and_admitted() {
+    if !runtime.visible_and_admitted() || invalid_resource {
         runtime.retire();
         return Err(failure());
     }
@@ -184,14 +194,17 @@ impl Runtime {
     /// Clear first, then present a safe navigation that rechecks server admission.
     fn retire(&self) {
         self.privacy.borrow_mut().retire();
+        self.resource.borrow_mut().take();
         if let Some(controller) = self.pending.borrow_mut().take() {
             controller.abort();
         }
         wipe_fields(&self.private, "input, textarea");
         self.private.set_text_content(None);
         let _ = self.private.set_attribute("hidden", "");
-        if let Some(standing) = self.document.get_element_by_id("cloud-standing") {
-            standing.set_text_content(None);
+        for id in ["cloud-standing", "cloud-resource-standing"] {
+            if let Some(standing) = self.document.get_element_by_id(id) {
+                standing.set_text_content(None);
+            }
         }
         self.document.set_title(TITLE);
         let _ = self.resume.remove_attribute("hidden");
@@ -214,27 +227,33 @@ impl Runtime {
                 self.retire();
                 return;
             }
-            let Ok(controller) = AbortController::new() else {
-                self.retire();
-                return;
-            };
-            *self.pending.borrow_mut() = Some(controller.clone());
-            let result = select(
-                Box::pin(fetch_standing(&self.window, &controller)),
-                Box::pin(TimeoutFuture::new(self.remaining_ms(FETCH_MS))),
-            )
-            .await;
-            self.pending.borrow_mut().take();
-            controller.abort();
-            let accepted = match result {
-                Either::Left((Ok(bytes), _)) if self.visible_and_admitted() => {
-                    self.privacy.borrow_mut().refresh(&bytes, now())
-                }
-                _ => false,
-            };
+            let accepted = self
+                .read("/cloud/app/session", MAX_STANDING_BYTES)
+                .await
+                .is_some_and(|bytes| self.privacy.borrow_mut().refresh(&bytes, now()));
             if !accepted {
                 self.retire();
                 return;
+            }
+            let endpoint = self
+                .resource
+                .borrow()
+                .as_ref()
+                .map(|resource| resource.endpoint().to_owned());
+            if let Some(endpoint) = endpoint {
+                let accepted =
+                    self.read(&endpoint, MAX_RESOURCE_BYTES)
+                        .await
+                        .is_some_and(|bytes| {
+                            self.resource
+                                .borrow()
+                                .as_ref()
+                                .is_some_and(|resource| resource.accepts(&bytes))
+                        });
+                if !accepted {
+                    self.retire();
+                    return;
+                }
             }
             if !self.revealed.replace(true) {
                 if self.private.remove_attribute("hidden").is_err()
@@ -245,6 +264,25 @@ impl Runtime {
                 }
             }
             TimeoutFuture::new(self.remaining_ms(POLL_MS)).await;
+        }
+    }
+
+    async fn read(&self, endpoint: &str, maximum: usize) -> Option<Vec<u8>> {
+        if !self.visible_and_admitted() {
+            return None;
+        }
+        let controller = AbortController::new().ok()?;
+        *self.pending.borrow_mut() = Some(controller.clone());
+        let result = select(
+            Box::pin(fetch_standing(&self.window, &controller, endpoint, maximum)),
+            Box::pin(TimeoutFuture::new(self.remaining_ms(FETCH_MS))),
+        )
+        .await;
+        self.pending.borrow_mut().take();
+        controller.abort();
+        match result {
+            Either::Left((Ok(bytes), _)) if self.visible_and_admitted() => Some(bytes),
+            _ => None,
         }
     }
 }
@@ -261,7 +299,12 @@ impl Drop for Runtime {
     }
 }
 
-async fn fetch_standing(window: &Window, controller: &AbortController) -> Result<Vec<u8>, JsValue> {
+async fn fetch_standing(
+    window: &Window,
+    controller: &AbortController,
+    endpoint: &str,
+    maximum: usize,
+) -> Result<Vec<u8>, JsValue> {
     let init = RequestInit::new();
     init.set_method("GET");
     init.set_credentials(RequestCredentials::SameOrigin);
@@ -270,7 +313,7 @@ async fn fetch_standing(window: &Window, controller: &AbortController) -> Result
     init.set_redirect(RequestRedirect::Error);
     init.set_referrer_policy(ReferrerPolicy::NoReferrer);
     init.set_signal(Some(&controller.signal()));
-    let request = Request::new_with_str_and_init("/cloud/app/session", &init)?;
+    let request = Request::new_with_str_and_init(endpoint, &init)?;
     request.headers().set("Accept", "application/json")?;
     let response: Response = JsFuture::from(window.fetch_with_request(&request))
         .await?
@@ -286,7 +329,7 @@ async fn fetch_standing(window: &Window, controller: &AbortController) -> Result
         && length
             .parse::<usize>()
             .ok()
-            .is_none_or(|length| length > MAX_STANDING_BYTES)
+            .is_none_or(|length| length > maximum)
     {
         return Err(failure());
     }
@@ -306,7 +349,7 @@ async fn fetch_standing(window: &Window, controller: &AbortController) -> Result
             return Ok(bytes);
         }
         let chunk: Uint8Array = Reflect::get(&part, &JsValue::from_str("value"))?.dyn_into()?;
-        if bytes.len().saturating_add(chunk.length() as usize) > MAX_STANDING_BYTES {
+        if bytes.len().saturating_add(chunk.length() as usize) > maximum {
             let _ = reader.cancel();
             reader.release_lock();
             return Err(failure());

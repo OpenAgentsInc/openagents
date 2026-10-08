@@ -1,10 +1,12 @@
 //! Same-origin Cloud pages over current native account authority. The public
 //! site, local task browser, and separately granted services remain distinct.
 
+pub mod hosts;
 mod private;
 pub mod session;
 #[cfg(test)]
 mod tests;
+mod work;
 
 use axum::Router;
 use axum::extract::rejection::FormRejection;
@@ -89,7 +91,8 @@ pub(crate) fn routes() -> Router<App> {
         .route("/cloud/app", get(overview))
         .route("/cloud/app/session", get(standing))
         .route("/cloud/assets/{file}", get(asset))
-        .route("/cloud/app/tasks/{id}", get(task_unavailable))
+        .route("/cloud/app/tasks/{id}", get(work::task_alias))
+        .merge(work::routes())
         .layer(DefaultBodyLimit::max(8192));
     for (_, slug, _) in SECTIONS {
         router = router.route(&format!("/cloud/app/{slug}"), get(section));
@@ -360,14 +363,6 @@ async fn section(
     .await
 }
 
-async fn task_unavailable(
-    State(app): State<App>,
-    headers: HeaderMap,
-    Path(_id): Path<String>,
-) -> Response {
-    workspace_page(&app, &headers, "tasks").await
-}
-
 async fn workspace_page(app: &App, headers: &HeaderMap, selected: &str) -> Response {
     let service = match service(app) {
         Ok(value) => value,
@@ -380,6 +375,18 @@ async fn workspace_page(app: &App, headers: &HeaderMap, selected: &str) -> Respo
         }
         Err(error) => return refused(error),
     };
+    workspace_shell(app, headers, service, &viewer, selected, None, None)
+}
+
+fn workspace_shell(
+    app: &App,
+    headers: &HeaderMap,
+    service: &CloudSession,
+    viewer: &Viewer,
+    selected: &str,
+    supplied_content: Option<&str>,
+    resource: Option<serde_json::Value>,
+) -> Response {
     let view = workspace::session(
         &workspace::Session {
             account: &viewer.account_label,
@@ -410,7 +417,15 @@ async fn workspace_page(app: &App, headers: &HeaderMap, selected: &str) -> Respo
     };
     let mut nav = String::from("<a href=\"/cloud/app\">Overview</a>");
     for (label, slug, reason) in SECTIONS {
-        if slug == "settings" {
+        if slug == "tasks"
+            && app
+                .config
+                .cloud_hosts
+                .as_ref()
+                .is_some_and(|hosts| !hosts.current(viewer).is_empty())
+        {
+            nav.push_str("<a href=\"/cloud/app/tasks\">Tasks</a>");
+        } else if slug == "settings" {
             nav.push_str("<a href=\"/cloud/app/settings\">Settings</a>");
         } else {
             nav.push_str(&format!(
@@ -447,19 +462,48 @@ async fn workspace_page(app: &App, headers: &HeaderMap, selected: &str) -> Respo
             }
         }
         content.push_str("<p>No connected work to report. Costs, waiting tasks, outcomes, and unread counts are unavailable until their canonical owners are connected.</p><p><a href=\"/grid\">Open the Grid</a> · <a href=\"/components\">Explore shared components</a></p>");
+    } else if selected == "tasks" {
+        content.push_str("<h2>Resident tasks</h2><p>Choose an explicitly bound resident host. Every task page checks current native Observe authority.</p><ul>");
+        let bindings = app
+            .config
+            .cloud_hosts
+            .as_ref()
+            .map_or_else(Vec::new, |hosts| hosts.current(viewer));
+        if bindings.is_empty() {
+            content.push_str(
+                "<li>No resident task connection is admitted for this account and workspace.</li>",
+            );
+        }
+        for binding in bindings {
+            content.push_str(&format!(
+                "<li><a href=\"/cloud/app/hosts/{}/tasks\">Open resident connection {}</a></li>",
+                escape(binding.id()),
+                escape(binding.id())
+            ));
+        }
+        content.push_str("</ul>");
     } else if selected == "settings" {
         content.push_str("<h2>Account and sessions</h2><p>This is your current native session. The selected native account API does not offer browser session enumeration or recovery-token issuance. Use the native account owner's recovery and credential controls; recovery, rotation, and revoked membership fence this browser on its next standing check.</p><h2>Integrations and sync</h2><p>Host enrollment, provider custody, notifications, private-memory sync, and disclosure are unavailable until separately admitted. Signing in enables none of them.</p>");
     } else if let Some((label, _, reason)) = SECTIONS.iter().find(|(_, slug, _)| *slug == selected)
     {
         content = format!("<h2>{label} · Unavailable</h2><p>{}</p>", escape(reason));
     }
+    if let Some(supplied) = supplied_content {
+        content = supplied.into();
+    }
     let initial = escape(&standing_value(&viewer).to_string());
+    let resource = resource.map_or_else(String::new, |value| {
+        format!(
+            "<pre id=\"cloud-resource-standing\" hidden>{}</pre>",
+            escape(&value.to_string())
+        )
+    });
     let local_logout = format!(
         "<form method=\"post\" action=\"/cloud/sign-out\">{}<button type=\"submit\">Sign out of this browser</button></form>",
         ticket(&csrf)
     );
     page(&format!(
-        "<section id=\"cloud-resume\" aria-live=\"polite\"><h1>Workspace</h1><p>Reopen this view to check current account standing.</p><p><a href=\"/cloud/app\">Reopen workspace</a></p>{local_logout}</section><div id=\"cloud-private\" hidden><pre id=\"cloud-standing\" hidden>{initial}</pre><div class=\"cloud-layout\"><aside class=\"cloud-sidebar\"><h1>Workspace</h1><nav aria-label=\"Workspace\">{nav}</nav><h2>Choose workspace</h2><div class=\"cloud-switcher\">{switcher}</div><form method=\"post\" action=\"/cloud/sign-out\">{}<button type=\"submit\">Sign out</button></form></aside><section class=\"cloud-main\">{summary}<hr>{content}</section></div></div>",
+        "<section id=\"cloud-resume\" aria-live=\"polite\"><h1>Workspace</h1><p>Reopen this view to check current account standing.</p><p><a href=\"/cloud/app\">Reopen workspace</a></p>{local_logout}</section><div id=\"cloud-private\" hidden><pre id=\"cloud-standing\" hidden>{initial}</pre>{resource}<div class=\"cloud-layout\"><aside class=\"cloud-sidebar\"><h1>Workspace</h1><nav aria-label=\"Workspace\">{nav}</nav><h2>Choose workspace</h2><div class=\"cloud-switcher\">{switcher}</div><form method=\"post\" action=\"/cloud/sign-out\">{}<button type=\"submit\">Sign out</button></form></aside><section class=\"cloud-main\">{summary}<hr>{content}</section></div></div>",
         ticket(&csrf)
     ))
 }

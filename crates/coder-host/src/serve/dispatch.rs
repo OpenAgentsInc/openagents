@@ -232,6 +232,41 @@ pub(crate) fn chat_invitation(config: &crate::config::Config) -> Result<(String,
 }
 
 impl Dispatch for Dispatcher {
+    fn task_list(
+        &mut self,
+        _device: &str,
+        query: &coder_access::task_read::ListQuery,
+    ) -> Result<coder_access::task_read::List, Code> {
+        if !self.shared.config.workspaces.contains_key(&query.workspace) {
+            return Err(Code::Forbidden);
+        }
+        self.shared.tasks.task_list(query)
+    }
+    fn task_read(
+        &mut self,
+        _device: &str,
+        query: &coder_access::task_read::PageQuery,
+    ) -> Result<coder_access::task_read::Page, Code> {
+        if !self.shared.config.workspaces.contains_key(&query.workspace) {
+            return Err(Code::Forbidden);
+        }
+        self.shared.tasks.task_read(query)
+    }
+    fn task_original(
+        &mut self,
+        _device: &str,
+        query: &coder_access::task_read::OriginalQuery,
+    ) -> Result<coder_access::task_read::OriginalChunk, Code> {
+        if !self
+            .shared
+            .config
+            .workspaces
+            .contains_key(&query.scope.workspace)
+        {
+            return Err(Code::Forbidden);
+        }
+        self.shared.tasks.task_original(query)
+    }
     /// A chat invitation for a device the access layer admitted with
     /// `observe`.
     fn chats(&mut self, _device: &str, _now: u64) -> Result<(String, u64), Code> {

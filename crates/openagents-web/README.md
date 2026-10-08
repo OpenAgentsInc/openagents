@@ -22,8 +22,8 @@ public site's Rust image and its remaining proxied services.
 
 The [Coder Cloud specification](../../docs/cloud/coder-cloud.md) defines the
 proposed authenticated web workspace, Verse connection, and commercial
-interfaces. Those interfaces require new admitted adapters; the local task
-browser keeps its current loopback-only scope.
+interfaces. `/cloud/app` uses explicit native account sessions and separately
+granted resident observation; the local task browser keeps its loopback-only scope.
 
 Its first deliverable is the public
 [`/components` catalog](../../docs/coder/rust-native/coder-components.md): web
@@ -71,6 +71,9 @@ the `Host` headers `127.0.0.1:4300` and `localhost:4300`.
 | `--listen ADDRESS` | `127.0.0.1:4300` | The address to bind. |
 | `--public-host HOST` | none | Another `Host` header the public pages answer, such as `openagents.com`. Repeatable. The task browser still answers only the local hosts. |
 | `--components-build DIRECTORY` | none | The generated `coder_components_web.js` and `coder_components_web_bg.wasm` files for local catalog interaction. Only these names are served. |
+| `--cloud-build DIRECTORY` | none | Rust/Wasm private-view lifecycle assets built by `scripts/build-coder-cloud-web.sh`. Private content waits for current account and resource standing before display. |
+| `--cloud-config PRIVATE_JSON` | none | Explicit account-service origin, public origin, and protected CSRF key. Native user sessions and current workspace membership scope each request. |
+| `--cloud-hosts PRIVATE_JSON` | none | Protected account/workspace/epoch bindings to host-signed Observe grants, device keys, and exact host routes and generations. No host enrollment or task effect comes from sign-in. |
 | `--everglade DIRECTORY` | none | The Everglade web build (`scripts/build-everglade-web.sh`'s output, `everglade_web.js` and `everglade_web_bg.wasm`) with the pinned pack under `pack/`, served at `/everglade`. Without it, `/everglade` says Everglade is unavailable. |
 | `--pilot-config PRIVATE_JSON` | none | Explicit task root and create-only intake credential for `/pilot`. The pipeline owner provisions the capability separately. Without accepted terms, the proposed offer renders with intake unavailable. |
 
@@ -95,9 +98,11 @@ everything it serves is compiled in or read from this repository.
 | `/.well-known/apple-app-site-association`, `/.well-known/assetlinks.json` | Universal link and App Link claims for `/connect` | Serves. |
 | `/u/{login}` | `Backend::profile` | Says the backend isn't connected. |
 | `/components`, `/components/{component}` | Shared Coder components, named synthetic variants, typed controls, source references, and full screen previews | Renders; Rust/Wasm interaction requires `--components-build`. |
+| `/cloud`, `/cloud/sign-in`, `/cloud/app` | Public availability and the native account/workspace shell | Public entry renders; private pages require explicit native account configuration and the Cloud Wasm build. |
+| `/cloud/app/hosts/{binding}/tasks`, `/cloud/app/hosts/{binding}/tasks/{task}` | Bounded, signed resident task reads under current Observe authority; original ATIF messages, tools, child references, checks, cost, and source pins | Requires a separately provisioned host binding. It reads no local `/app` records. |
 | `/app`, `/app/tasks/{id}` | The local task store | Reads the store; local hosts only. |
 
-The header links Download, Docs, and Pilot; the footer links the terms and the
+The header links Download, Cloud, Verse, Components, Docs, and Pilot; the footer links the terms and the
 privacy policy.
 
 The Forum, Gym, Traces, Earn, Weights, and QA sections of the old site are
@@ -114,6 +119,24 @@ Pages that read accounts go through the
 nothing: those pages render, say that their data needs the production
 backend, and show no records. A production backend answers `connected()`
 with `true`; then a missing profile answers `404`.
+
+## Resident Cloud observation
+
+Cloud host bindings use schema `openagents.cloud.host-bindings.v1` and a
+`bindings` array. Each binding names `id`, native account `account`, selected
+tenancy `workspace`, `members_epoch`, resident `host_workspace`,
+`host_generation`, `route`, `access_file`, and `device_secret`. The last two
+are absolute paths to a native saved Access record and a private device key.
+The route is verified `wss://HOST/`, or literal loopback `tcp://IP:PORT` for
+local adapters and isolated fixtures. Configuration and key files require
+private ownership and permissions; replacement fences reads until reload.
+Browser input chooses no path, key, endpoint, or execution configuration.
+
+Native `task.list`, `task.read`, and `task.original` scope every response to
+the admitted resident workspace. Prefix cursors preserve exact task, attempt,
+revision, and source identity. Oversized records leave explicit gaps and
+bounded original byte reads. Losing the grant, account, workspace, source pin,
+or active page clears the private mount; reconnect requires fresh navigation.
 
 ## Task browser
 
