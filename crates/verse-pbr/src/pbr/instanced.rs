@@ -933,7 +933,7 @@ mod tests {
 
     #[test]
     fn rigid_camera_order_only_removes_wholly_clipped_batches() {
-        let batch = |z, x, material, first| Batch {
+        let batch = |z: f32, x: f32, material, first| Batch {
             first,
             count: 3,
             material,
