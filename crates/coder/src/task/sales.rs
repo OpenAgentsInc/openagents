@@ -11,6 +11,7 @@ use std::time::{Duration, SystemTime};
 
 pub mod agents;
 pub mod claims;
+pub mod earned;
 pub mod email;
 pub mod expenses;
 pub mod floor;
@@ -314,6 +315,8 @@ struct State {
     qualification: qualification::Book,
     #[serde(default)]
     paul: paul::Book,
+    #[serde(default)]
+    earned: earned::Book,
 }
 impl Default for State {
     fn default() -> Self {
@@ -340,6 +343,7 @@ impl Default for State {
             meetings: meetings::Book::default(),
             qualification: qualification::Book::default(),
             paul: paul::Book::default(),
+            earned: earned::Book::default(),
         }
     }
 }
@@ -1609,7 +1613,7 @@ impl Store {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     mod referral_tests {
         include!(concat!(
             env!("CARGO_MANIFEST_DIR"),
@@ -1680,7 +1684,7 @@ mod tests {
         })
         .unwrap()
     }
-    fn create(id: &str) -> Vec<u8> {
+    pub(crate) fn create(id: &str) -> Vec<u8> {
         command(
             id,
             None,
@@ -1696,7 +1700,7 @@ mod tests {
             },
         )
     }
-    fn fixture() -> (TempDir, Store, Access, PathBuf) {
+    pub(crate) fn fixture() -> (TempDir, Store, Access, PathBuf) {
         let dir = TempDir::new().unwrap();
         #[cfg(unix)]
         {

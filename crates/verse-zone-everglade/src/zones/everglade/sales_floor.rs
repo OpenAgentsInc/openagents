@@ -20,10 +20,16 @@ pub struct Snapshot {
     pub outbox_unknown: usize,
     pub idle: bool,
     pub model_available: bool,
+    /// Earned sales whose bell has rung, all time. A rise rings the bell.
+    pub rings: u64,
+    /// The reviewed shared aggregate, `[earned sales, net USD floor]`,
+    /// when one is approved and still matches the books.
+    pub shared: Option<[u64; 2]>,
 }
 impl Snapshot {
     fn valid(&self) -> bool {
-        self.outbox_unknown <= 256
+        self.rings <= 4096
+            && self.outbox_unknown <= 256
             && self.outbox_live.len() <= 16
             && self.outbox_fixture.len() <= 16
             && self
@@ -64,6 +70,9 @@ pub struct Floor {
     snapshot: Option<Snapshot>,
     age: f32,
     due: f32,
+    /// Rings already seen this run; the first read sets it without ringing.
+    rings_seen: Option<u64>,
+    rings_due: u64,
 }
 impl Floor {
     pub fn set_source(&mut self, source: Option<Box<dyn Source>>) {
@@ -92,6 +101,13 @@ impl Floor {
             Some(Read::Ready(s, age))
                 if s.valid() && age.is_finite() && (0.0..=3.0).contains(&age) =>
             {
+                match self.rings_seen {
+                    Some(seen) if s.rings > seen => {
+                        self.rings_due = self.rings_due.saturating_add(s.rings - seen);
+                    }
+                    _ => {}
+                }
+                self.rings_seen = Some(s.rings);
                 self.snapshot = Some(s);
                 self.age = age;
             }
@@ -101,6 +117,11 @@ impl Floor {
     }
     pub fn snapshot(&self) -> Option<&Snapshot> {
         self.snapshot.as_ref()
+    }
+    /// Bells owed since the last call: one for each earned sale that rang
+    /// while this surface watched. A restart owes none.
+    pub fn take_rings(&mut self) -> u64 {
+        std::mem::take(&mut self.rings_due)
     }
     /// Board text is built from closed labels; no model or prospect text enters it.
     pub fn lines(&self) -> Vec<String> {
@@ -141,6 +162,11 @@ impl Floor {
                 "MODEL UNAVAILABLE"
             }
             .into(),
+            format!("EARNED SALES RUNG {}", s.rings),
+            match s.shared {
+                Some([n, usd]) => format!("REVIEWED SHARED: {n} EARNED, NET USD {usd}+"),
+                None => "SHARED AGGREGATE UNAVAILABLE".into(),
+            },
             "WRITTEN ONLY - PHONES ARE PROPS".into(),
             "READING GRANTS NO SEND OR PAYMENT AUTHORITY".into(),
         ]

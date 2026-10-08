@@ -2452,6 +2452,9 @@ impl WorldRuntime {
         studio.set_active(active);
         studio.poll(dt, &self.world.blockers);
         self.zone_state.sales_floor.poll(active, dt);
+        if self.zone_state.sales_floor.take_rings() > 0 {
+            self.everglade_ring_agora_bell();
+        }
     }
 
     /// Seats this computer draws in the studio beside the host's, such as

@@ -16,6 +16,8 @@ fn snapshot() -> Snapshot {
         outbox_live: Vec::new(),
         outbox_fixture: Vec::new(),
         outbox_unknown: 0,
+        rings: 0,
+        shared: None,
         idle: false,
         model_available: false,
     }

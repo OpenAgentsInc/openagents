@@ -1892,3 +1892,11 @@ steps:
   seat figures is owner-reviewed pack work; until then the projection is
   the CLI's JSON and the private Agora boards.
 
+
+## REV-71 earned sales (#10878)
+
+- The bell rings only from verified `paid` settlements with reconciled
+  delivery recorded through `sales service`; the owner records both.
+- Publishing a shared aggregate anywhere outside the owner's board (the
+  website, a weekly update) is an owner step after
+  `openagents sales earned approve`; nothing ships it automatically.
