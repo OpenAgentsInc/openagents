@@ -504,7 +504,7 @@ impl BakeGeometry {
                     }
                     continue;
                 }
-                let (albedo, opacity) = surface(scene, material, corners);
+                let (albedo, opacity) = surface(scene, material, corners, [1.0; 4]);
                 if material.emissive > 0.0 {
                     emitters.push(Emitter {
                         corners: corners.map(|v| Vec3::from(v.pos)),
@@ -557,7 +557,8 @@ impl BakeGeometry {
                             .to_array();
                         vertex
                     });
-                    let (albedo, opacity) = surface(&frame.scene, material, corners.each_ref());
+                    let (albedo, opacity) =
+                        surface(&frame.scene, material, corners.each_ref(), instance.color);
                     self.occluders.push(Occluder {
                         corners: corners.map(|v| Vec3::from(v.pos)),
                         normal: corners.iter().map(|v| Vec3::from(v.normal)).sum::<Vec3>(),
@@ -940,11 +941,12 @@ impl SceneBaker {
 }
 
 /// The albedo and opacity of a triangle, sampled from its material's image,
-/// factor, and vertex colors at [`SAMPLES`].
+/// factor, vertex colors, and instance tint at [`SAMPLES`].
 fn surface(
     scene: &TexturedScene,
     material: &TexturedMaterial,
     corners: [&TexturedVertex; 3],
+    instance_color: [f32; 4],
 ) -> (Vec3, f32) {
     let table = srgb_to_linear();
     let image = material.image.and_then(|i| scene.images.get(i));
@@ -952,7 +954,7 @@ fn surface(
         material.base_color[0],
         material.base_color[1],
         material.base_color[2],
-    );
+    ) * Vec3::from_slice(&instance_color[..3]);
     let (mut kept, mut kept_color, mut all_color, mut alpha_sum) =
         (0usize, Vec3::ZERO, Vec3::ZERO, 0.0f32);
     for w in SAMPLES {
@@ -987,7 +989,7 @@ fn surface(
             _ => (Vec3::ONE, 1.0),
         };
         let color = texel * factor * tint;
-        let alpha = texel_alpha * material.base_color[3] * tint_alpha;
+        let alpha = texel_alpha * material.base_color[3] * tint_alpha * instance_color[3];
         all_color += color;
         alpha_sum += alpha;
         if material.alpha.keeps(alpha) {
@@ -1425,6 +1427,125 @@ mod tests {
                 .all(|o| o.corners.iter().all(|p| p.y == 2.0))
         );
         assert!(!geometry.far.iter().any(|&far| far));
+    }
+
+    #[test]
+    fn rigid_repair_keeps_float_tint_and_world_space_masked_surfaces() {
+        use super::super::textured::{DynamicInstance, InstancedFigure};
+
+        let mut scene = TexturedScene::default();
+        let image = scene.add_image(BaseColorImage {
+            name: "tinted repair card".into(),
+            width: 1,
+            height: 1,
+            rgba: vec![255, 255, 255, 204],
+        });
+        let material = scene.add_material(TexturedMaterial {
+            image: Some(image),
+            base_color: [0.8, 0.6, 0.4, 0.9],
+            alpha: AlphaMode::Mask { cutoff: 0.45 },
+            double_sided: true,
+            emissive: 3.0,
+            ..TexturedMaterial::default()
+        });
+        let normal = Vec3::new(1.0, 1.0, 1.0).normalize();
+        let vertices: Vec<_> = [
+            Vec3::ZERO,
+            Vec3::new(1.0, -1.0, 0.0),
+            Vec3::new(1.0, 0.0, -1.0),
+        ]
+        .map(|point| {
+            let mut vertex = TexturedVertex::new(point, normal, [0.0; 2]);
+            vertex.color = [128, 192, 64, 170];
+            vertex
+        })
+        .into();
+        let mesh = scene.add_mesh(TexturedMesh {
+            primitives: vec![Primitive {
+                vertices: vertices.clone(),
+                indices: vec![0, 1, 2],
+                material,
+            }],
+        });
+        let transform = Mat4::from_translation(Vec3::new(7.0, 3.0, -2.0))
+            * Mat4::from_rotation_y(0.3)
+            * Mat4::from_scale(Vec3::new(2.0, 3.0, 0.5));
+        let color = [0.123_456_7, 0.432_198_7, 0.876_543_2, 0.987_65];
+        let mut frame = InstancedFigure {
+            scene: Arc::new(scene),
+            instances: Arc::new(vec![DynamicInstance {
+                id: 9,
+                mesh,
+                current: transform,
+                previous: transform,
+                color,
+                light: UNBAKED,
+                settled: false,
+            }]),
+            vertex_lights: None,
+            motion_epoch: Arc::new(()),
+        };
+        let mut geometry = BakeGeometry::new(&TexturedScene::default()).unwrap();
+        geometry.append_instances(&frame);
+        let triangle = &geometry.occluders[0];
+        assert_eq!(triangle.opacity, MASK_MAX_OPACITY);
+        let expected = Vec3::new(
+            0.8 * (128.0 / 255.0) * color[0],
+            0.6 * (192.0 / 255.0) * color[1],
+            0.4 * (64.0 / 255.0) * color[2],
+        );
+        assert!((triangle.albedo - expected).abs().max_element() < 1e-7);
+        assert!(
+            (geometry.emitters[0].luminance - expected * 3.0)
+                .abs()
+                .max_element()
+                < 1e-7
+        );
+        for (actual, vertex) in triangle.corners.iter().zip(&vertices) {
+            assert!((*actual - transform.transform_point3(vertex.pos.into())).length() < 1e-6);
+        }
+        let expected_normal = transform
+            .inverse()
+            .transpose()
+            .transform_vector3(normal)
+            .normalize()
+            * 3.0;
+        assert!((triangle.normal - expected_normal).length() < 1e-6);
+        assert_eq!(geometry.corners, [[u32::MAX; 3]]);
+
+        let mut neutral = frame.clone();
+        Arc::make_mut(&mut neutral.instances)[0].color = [1.0; 4];
+        let mut static_scene = (*frame.scene).clone();
+        static_scene.place(mesh, transform);
+        let static_geometry = BakeGeometry::new(&static_scene).unwrap();
+        let mut neutral_geometry = BakeGeometry::new(&TexturedScene::default()).unwrap();
+        neutral_geometry.append_instances(&neutral);
+        assert_eq!(
+            neutral_geometry.occluders[0].albedo,
+            static_geometry.occluders[0].albedo
+        );
+        assert_eq!(
+            neutral_geometry.occluders[0].opacity,
+            static_geometry.occluders[0].opacity
+        );
+
+        // Float alpha must reach the material cutoff before mask coverage.
+        Arc::make_mut(&mut frame.instances)[0].color[3] = 0.4;
+        let mut faded = BakeGeometry::new(&TexturedScene::default()).unwrap();
+        faded.append_instances(&frame);
+        assert_eq!(faded.occluders[0].opacity, 0.0);
+        assert_eq!(faded.occluders[0].albedo, triangle.albedo);
+
+        // Blended coverage uses the same tint; opaque coverage ignores alpha.
+        Arc::make_mut(&mut frame.scene).materials[material].alpha = AlphaMode::Blend;
+        let mut blended = BakeGeometry::new(&TexturedScene::default()).unwrap();
+        blended.append_instances(&frame);
+        let expected_alpha = (204.0 / 255.0) * 0.9 * (170.0 / 255.0) * 0.4;
+        assert!((blended.occluders[0].opacity - expected_alpha).abs() < 1e-7);
+        Arc::make_mut(&mut frame.scene).materials[material].alpha = AlphaMode::Opaque;
+        let mut opaque = BakeGeometry::new(&TexturedScene::default()).unwrap();
+        opaque.append_instances(&frame);
+        assert_eq!(opaque.occluders[0].opacity, 1.0);
     }
 
     #[test]
