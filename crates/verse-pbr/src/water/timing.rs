@@ -5,9 +5,17 @@ use std::sync::mpsc::{self, Receiver};
 /// CPU time of the current thread, when the platform supplies a clock.
 /// Browsers expose elapsed time only, so they keep this measurement absent.
 pub(crate) fn cpu_ms() -> Option<f64> {
-    #[cfg(any(target_os = "macos", target_os = "ios", target_os = "linux", target_os = "android"))]
+    #[cfg(any(
+        target_os = "macos",
+        target_os = "ios",
+        target_os = "linux",
+        target_os = "android"
+    ))]
     {
-        let mut time = libc::timespec { tv_sec: 0, tv_nsec: 0 };
+        let mut time = libc::timespec {
+            tv_sec: 0,
+            tv_nsec: 0,
+        };
         // SAFETY: clock_gettime writes one initialized, writable timespec.
         if unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, &mut time) } == 0 {
             return Some(time.tv_sec as f64 * 1000.0 + time.tv_nsec as f64 / 1e6);
@@ -21,9 +29,18 @@ pub(crate) struct CpuTimer {
     cpu: Option<f64>,
 }
 impl CpuTimer {
-    pub fn start() -> Self { Self { wall: web_time::Instant::now(), cpu: cpu_ms() } }
-    pub fn elapsed_ms(&self) -> f64 { self.wall.elapsed().as_secs_f64() * 1000.0 }
-    pub fn cpu_ms(&self) -> Option<f64> { Some((cpu_ms()? - self.cpu?).max(0.0)) }
+    pub fn start() -> Self {
+        Self {
+            wall: web_time::Instant::now(),
+            cpu: cpu_ms(),
+        }
+    }
+    pub fn elapsed_ms(&self) -> f64 {
+        self.wall.elapsed().as_secs_f64() * 1000.0
+    }
+    pub fn cpu_ms(&self) -> Option<f64> {
+        Some((cpu_ms()? - self.cpu?).max(0.0))
+    }
 }
 
 /// A completed fixed-view sample: mirror, opaque scene, copies, surface.
@@ -77,26 +94,43 @@ pub(crate) struct Timer {
 /// Charge dependent passes by their completion frontier on tile GPUs,
 /// without counting overlapping time twice or retaining stale pass values.
 fn sample(frame: u64, ticks: [u64; 8], mask: u8, period: f64) -> Option<GpuSample> {
-    if !period.is_finite() || period <= 0.0 || mask & 8 == 0 { return None; }
+    if !period.is_finite() || period <= 0.0 || mask & 8 == 0 {
+        return None;
+    }
     let mut order = Vec::new();
     for i in 0..4 {
-        if mask & (1 << i) == 0 { continue; }
-        let (start, end) = (ticks[2*i], ticks[2*i+1]);
-        if end <= start { return None; }
+        if mask & (1 << i) == 0 {
+            continue;
+        }
+        let (start, end) = (ticks[2 * i], ticks[2 * i + 1]);
+        if end <= start {
+            return None;
+        }
         order.push((end, start, i));
     }
     order.sort_unstable();
-    let mut result = GpuSample { frame, ..GpuSample::default() };
+    let mut result = GpuSample {
+        frame,
+        ..GpuSample::default()
+    };
     let mut previous = 0;
     for (end, start, i) in order {
         // Copy and surface time starts at the previous completion frontier.
         // This charges the color-copy command between opaque and depth-copy
         // passes, which cannot carry a render-pass timestamp itself.
-        let begin = if i >= 2 && previous > 0 { previous } else { start.max(previous) };
+        let begin = if i >= 2 && previous > 0 {
+            previous
+        } else {
+            start.max(previous)
+        };
         let ms = end.saturating_sub(begin) as f64 * period / 1e6;
-        if !ms.is_finite() || ms > 1000.0 { return None; }
+        if !ms.is_finite() || ms > 1000.0 {
+            return None;
+        }
         result.pass_ms[i] = Some(ms);
-        if i != 1 { result.water_ms += ms; }
+        if i != 1 {
+            result.water_ms += ms;
+        }
         previous = end;
     }
     Some(result)
@@ -104,54 +138,109 @@ fn sample(frame: u64, ticks: [u64; 8], mask: u8, period: f64) -> Option<GpuSampl
 
 impl Timer {
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Option<Self> {
-        if !device.features().contains(wgpu::Features::TIMESTAMP_QUERY) { return None; }
-        Some(Self { frame: 0, period: f64::from(queue.get_timestamp_period()),
-            slots: (0..3).map(|_| Slot {
-                query: device.create_query_set(&wgpu::QuerySetDescriptor { label: Some("Verse water pass timestamps"), ty: wgpu::QueryType::Timestamp, count: 8 }),
-                resolve: device.create_buffer(&wgpu::BufferDescriptor { label: Some("Verse water query resolve"), size: 64, usage: wgpu::BufferUsages::QUERY_RESOLVE | wgpu::BufferUsages::COPY_SRC, mapped_at_creation: false }),
-                readback: device.create_buffer(&wgpu::BufferDescriptor { label: Some("Verse water delayed timestamps"), size: 64, usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ, mapped_at_creation: false }),
-                pending: None,
-            }).collect() })
+        if !device.features().contains(wgpu::Features::TIMESTAMP_QUERY) {
+            return None;
+        }
+        Some(Self {
+            frame: 0,
+            period: f64::from(queue.get_timestamp_period()),
+            slots: (0..3)
+                .map(|_| Slot {
+                    query: device.create_query_set(&wgpu::QuerySetDescriptor {
+                        label: Some("Verse water pass timestamps"),
+                        ty: wgpu::QueryType::Timestamp,
+                        count: 8,
+                    }),
+                    resolve: device.create_buffer(&wgpu::BufferDescriptor {
+                        label: Some("Verse water query resolve"),
+                        size: 64,
+                        usage: wgpu::BufferUsages::QUERY_RESOLVE | wgpu::BufferUsages::COPY_SRC,
+                        mapped_at_creation: false,
+                    }),
+                    readback: device.create_buffer(&wgpu::BufferDescriptor {
+                        label: Some("Verse water delayed timestamps"),
+                        size: 64,
+                        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+                        mapped_at_creation: false,
+                    }),
+                    pending: None,
+                })
+                .collect(),
+        })
     }
     pub fn begin(&mut self, device: &wgpu::Device) -> (Option<usize>, Option<GpuSample>) {
         let _ = device.poll(wgpu::PollType::Poll);
         self.frame = self.frame.saturating_add(1);
         let mut latest = None;
         for slot in &mut self.slots {
-            let Some((frame, mask, receiver)) = &slot.pending else { continue; };
+            let Some((frame, mask, receiver)) = &slot.pending else {
+                continue;
+            };
             match receiver.try_recv() {
                 Ok(Ok(())) => {
                     let bytes = slot.readback.slice(..).get_mapped_range();
-                    let ticks = std::array::from_fn(|i| u64::from_ne_bytes(bytes[i*8..i*8+8].try_into().unwrap()));
+                    let ticks = std::array::from_fn(|i| {
+                        u64::from_ne_bytes(bytes[i * 8..i * 8 + 8].try_into().unwrap())
+                    });
                     let value = sample(*frame, ticks, *mask, self.period);
-                    if value.is_some_and(|v| latest.is_none_or(|old: GpuSample| v.frame > old.frame)) { latest = value; }
-                    drop(bytes); slot.readback.unmap(); slot.pending = None;
+                    if value
+                        .is_some_and(|v| latest.is_none_or(|old: GpuSample| v.frame > old.frame))
+                    {
+                        latest = value;
+                    }
+                    drop(bytes);
+                    slot.readback.unmap();
+                    slot.pending = None;
                 }
-                Ok(Err(_)) | Err(mpsc::TryRecvError::Disconnected) => { slot.readback.unmap(); slot.pending = None; }
+                Ok(Err(_)) | Err(mpsc::TryRecvError::Disconnected) => {
+                    slot.readback.unmap();
+                    slot.pending = None;
+                }
                 Err(mpsc::TryRecvError::Empty) => {}
             }
         }
         (self.slots.iter().position(|s| s.pending.is_none()), latest)
     }
-    pub fn boundary(&self, slot: Option<usize>, pass: u32) -> Option<wgpu::RenderPassTimestampWrites<'_>> {
+    pub fn boundary(
+        &self,
+        slot: Option<usize>,
+        pass: u32,
+    ) -> Option<wgpu::RenderPassTimestampWrites<'_>> {
         let slot = &self.slots[slot?];
-        Some(wgpu::RenderPassTimestampWrites { query_set: &slot.query,
-            beginning_of_pass_write_index: Some(pass*2), end_of_pass_write_index: Some(pass*2+1) })
+        Some(wgpu::RenderPassTimestampWrites {
+            query_set: &slot.query,
+            beginning_of_pass_write_index: Some(pass * 2),
+            end_of_pass_write_index: Some(pass * 2 + 1),
+        })
     }
     pub fn resolve(&self, encoder: &mut wgpu::CommandEncoder, slot: Option<usize>, mask: u8) {
-        if mask & 8 == 0 { return; }
-        let Some(slot) = slot.map(|i| &self.slots[i]) else { return; };
+        if mask & 8 == 0 {
+            return;
+        }
+        let Some(slot) = slot.map(|i| &self.slots[i]) else {
+            return;
+        };
         encoder.resolve_query_set(&slot.query, 0..8, &slot.resolve, 0);
         encoder.copy_buffer_to_buffer(&slot.resolve, 0, &slot.readback, 0, 64);
     }
     pub fn submitted(&mut self, slot: Option<usize>, mask: u8) {
-        if mask & 8 == 0 { return; }
-        let Some(slot) = slot.map(|i| &mut self.slots[i]) else { return; };
+        if mask & 8 == 0 {
+            return;
+        }
+        let Some(slot) = slot.map(|i| &mut self.slots[i]) else {
+            return;
+        };
         let (send, receive) = mpsc::channel();
-        slot.readback.slice(..).map_async(wgpu::MapMode::Read, move |result| { let _ = send.send(result); });
+        slot.readback
+            .slice(..)
+            .map_async(wgpu::MapMode::Read, move |result| {
+                let _ = send.send(result);
+            });
         slot.pending = Some((self.frame, mask, receive));
     }
-    pub fn bytes(&self) -> u64 { 3 * 128 }
+    pub fn bytes(&self) -> u64 {
+        3 * 128
+    }
 }
 
 #[cfg(test)]
@@ -159,17 +248,23 @@ mod tests {
     use super::*;
     #[test]
     fn timestamps_charge_overlapping_passes_once_and_exclude_opaque() {
-        let result = sample(7, [100,120,100,150,100,170,100,200], 15, 1e6).unwrap();
-        assert_eq!(result.pass_ms, [Some(20.0),Some(30.0),Some(20.0),Some(30.0)]);
+        let result = sample(7, [100, 120, 100, 150, 100, 170, 100, 200], 15, 1e6).unwrap();
+        assert_eq!(
+            result.pass_ms,
+            [Some(20.0), Some(30.0), Some(20.0), Some(30.0)]
+        );
         assert_eq!(result.water_ms, 70.0);
-        let no_mirror = sample(8, [0,0,100,150,150,170,170,200], 14, 1e6).unwrap();
+        let no_mirror = sample(8, [0, 0, 100, 150, 150, 170, 170, 200], 14, 1e6).unwrap();
         assert_eq!(no_mirror.pass_ms[0], None);
         assert_eq!(no_mirror.water_ms, 50.0);
-        let gaps = sample(9, [100,120,120,150,200,220,240,270], 15, 1e6).unwrap();
-        assert_eq!(gaps.pass_ms, [Some(20.0),Some(30.0),Some(70.0),Some(50.0)]);
+        let gaps = sample(9, [100, 120, 120, 150, 200, 220, 240, 270], 15, 1e6).unwrap();
+        assert_eq!(
+            gaps.pass_ms,
+            [Some(20.0), Some(30.0), Some(70.0), Some(50.0)]
+        );
         assert_eq!(gaps.water_ms, 140.0);
-        assert!(sample(9, [0;8], 8, 1.0).is_none());
-        assert!(sample(9, [100,120,0,0,0,0,200,100], 9, 1.0).is_none());
-        assert!(sample(9, [0;8], 0, 1.0).is_none());
+        assert!(sample(9, [0; 8], 8, 1.0).is_none());
+        assert!(sample(9, [100, 120, 0, 0, 0, 0, 200, 100], 9, 1.0).is_none());
+        assert!(sample(9, [0; 8], 0, 1.0).is_none());
     }
 }

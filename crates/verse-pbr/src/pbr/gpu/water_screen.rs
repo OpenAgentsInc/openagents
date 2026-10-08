@@ -301,8 +301,12 @@ impl WaterScreen {
     }
 
     /// Writes the depth copy from the scene's depth buffer.
-    pub fn encode_copy(&self, encoder: &mut wgpu::CommandEncoder, targets: &WaterTargets,
-        timestamp_writes: Option<wgpu::RenderPassTimestampWrites<'_>>) {
+    pub fn encode_copy(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        targets: &WaterTargets,
+        timestamp_writes: Option<wgpu::RenderPassTimestampWrites<'_>>,
+    ) {
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("verse water depth copy"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {

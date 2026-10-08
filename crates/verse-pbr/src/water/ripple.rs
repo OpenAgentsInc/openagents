@@ -286,9 +286,15 @@ impl Ripples {
     /// CPU grids, kernel, and retained wake records, bytes.
     #[must_use]
     pub fn heap_bytes(&self) -> u64 {
-        ((self.h.capacity() + self.prev.capacity() + self.next.capacity()
-            + self.foam.capacity() + self.scratch.capacity() + self.wet.capacity()
-            + self.kernel.capacity()) * 4 + self.flow.capacity() * 8
+        ((self.h.capacity()
+            + self.prev.capacity()
+            + self.next.capacity()
+            + self.foam.capacity()
+            + self.scratch.capacity()
+            + self.wet.capacity()
+            + self.kernel.capacity())
+            * 4
+            + self.flow.capacity() * 8
             + self.wakes.capacity() * std::mem::size_of::<Source>()) as u64
     }
 
