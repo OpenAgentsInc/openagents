@@ -79,6 +79,7 @@ struct Batch {
 
 pub(super) struct Cache {
     pub scene: Arc<TexturedScene>,
+    motion_epoch: Arc<()>,
     sources: usize,
     members: BTreeMap<u64, Member>,
     batches: Vec<Batch>,
@@ -91,6 +92,7 @@ impl Cache {
         let sources = scene.meshes.len();
         Self {
             scene: Arc::new(scene),
+            motion_epoch: Arc::new(()),
             sources,
             members: BTreeMap::new(),
             batches: Vec::new(),
@@ -121,10 +123,17 @@ impl Cache {
     }
 
     pub fn reset_motion(&mut self) {
+        self.motion_epoch = Arc::new(());
         let _ = Arc::make_mut(&mut self.scene);
         // Retain can reuse a former member's body and piece identity.
         self.members.clear();
         self.dirty = true;
+    }
+
+    pub fn reset_geometry(&mut self, scene: TexturedScene) {
+        let epoch = self.motion_epoch.clone();
+        *self = Self::new(scene);
+        self.motion_epoch = epoch;
     }
 
     pub fn frame(&mut self, moving: Vec<DynamicInstance>, parts: &[Part<'_>]) -> InstancedFigure {
@@ -167,6 +176,7 @@ impl Cache {
         InstancedFigure {
             scene: self.scene.clone(),
             instances: Arc::new(instances),
+            motion_epoch: self.motion_epoch.clone(),
         }
     }
 
@@ -303,6 +313,29 @@ mod tests {
             ..Default::default()
         });
         scene
+    }
+
+    #[test]
+    fn regroup_and_geometry_eviction_keep_motion_identity_but_structural_reset_replaces_it() {
+        let vertices = triangle();
+        let mut cache = Cache::new(scene());
+        let first = cache.frame(Vec::new(), &[]);
+        let mut parts = [part(instance(1, 1.0), 0, &vertices)];
+        let merged = cache.frame(Vec::new(), &parts);
+        assert!(!Arc::ptr_eq(&first.scene, &merged.scene));
+        assert!(Arc::ptr_eq(&first.motion_epoch, &merged.motion_epoch));
+        parts[0].instance.light = [7; 4];
+        let relit = cache.frame(Vec::new(), &parts);
+        assert!(!Arc::ptr_eq(&merged.scene, &relit.scene));
+        assert!(Arc::ptr_eq(&merged.motion_epoch, &relit.motion_epoch));
+        cache.reset_geometry(scene());
+        let evicted = cache.frame(Vec::new(), &parts);
+        assert!(Arc::ptr_eq(&relit.motion_epoch, &evicted.motion_epoch));
+        cache.reset_motion();
+        let retained = cache.frame(Vec::new(), &parts);
+        assert!(!Arc::ptr_eq(&evicted.motion_epoch, &retained.motion_epoch));
+        let new_town = Cache::new(scene()).frame(Vec::new(), &[]);
+        assert!(!Arc::ptr_eq(&new_town.motion_epoch, &retained.motion_epoch));
     }
 
     fn instance(id: u64, x: f32) -> DynamicInstance {
@@ -566,6 +599,12 @@ mod tests {
             .into_iter()
             .collect();
         let mut pool = Pool::new(scene());
+        let epoch = pool.scene.lock().unwrap().motion_epoch.clone();
+        let other = Pool::new(scene());
+        assert!(!Arc::ptr_eq(
+            &epoch,
+            &other.scene.lock().unwrap().motion_epoch
+        ));
         pool.limit = 18;
         pool.pack(
             vec![0, 1],
@@ -590,6 +629,10 @@ mod tests {
             4
         );
         assert_eq!(pool.held(), 3, "only the blended source is still needed");
+        assert!(Arc::ptr_eq(
+            &epoch,
+            &pool.scene.lock().unwrap().motion_epoch
+        ));
         let parts: Vec<_> = pool
             .spans
             .iter()
@@ -645,6 +688,10 @@ mod tests {
             2
         );
         pool.clear();
+        assert!(!Arc::ptr_eq(
+            &epoch,
+            &pool.scene.lock().unwrap().motion_epoch
+        ));
         assert_eq!(pool.held(), 0);
         assert!(pool.static_parts.is_empty() && pool.settled.is_empty());
     }

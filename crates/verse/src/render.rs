@@ -3121,10 +3121,9 @@ impl Scene {
                 .as_ref()
                 .is_none_or(|(scene, _)| !std::sync::Arc::ptr_eq(scene, &frame.scene))
             {
-                self.instances = Some((
-                    frame.scene.clone(),
-                    photo.upload_instances(device, queue, frame),
-                ));
+                let previous = self.instances.as_mut().map(|(_, gpu)| gpu);
+                let gpu = photo.upload_instances_with_previous(device, queue, frame, previous);
+                self.instances = Some((frame.scene.clone(), gpu));
             } else if let Some((_, gpu)) = &mut self.instances {
                 gpu.write_instances(device, queue, frame);
             }

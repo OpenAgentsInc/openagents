@@ -1397,6 +1397,8 @@ pub struct DynamicInstance {
 pub struct InstancedFigure {
     pub scene: std::sync::Arc<TexturedScene>,
     pub instances: std::sync::Arc<Vec<DynamicInstance>>,
+    /// Shared across geometry changes; replace when instance IDs can be reused.
+    pub motion_epoch: std::sync::Arc<()>,
 }
 
 impl InstancedFigure {

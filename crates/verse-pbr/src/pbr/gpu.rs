@@ -604,7 +604,8 @@ impl TexturedGpu {
         frame: &textured::InstancedFigure,
     ) {
         let (mut records, batches) = instanced::rigid_frame(&self.rigid_meshes, &frame.instances);
-        self.rendered_instances.update(&mut records);
+        self.rendered_instances
+            .update(&frame.motion_epoch, &mut records);
         let bytes: &[u8] = bytemuck::cast_slice(&records);
         if bytes.len() as u64 > self.instances.size() {
             self.instances = device.create_buffer(&wgpu::BufferDescriptor {
@@ -2322,9 +2323,24 @@ impl Photo {
         queue: &wgpu::Queue,
         frame: &textured::InstancedFigure,
     ) -> TexturedGpu {
+        self.upload_instances_with_previous(device, queue, frame, None)
+    }
+
+    /// Uploads changed geometry and retains motion when instance IDs remain valid.
+    pub fn upload_instances_with_previous(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        frame: &textured::InstancedFigure,
+        previous: Option<&mut TexturedGpu>,
+    ) -> TexturedGpu {
         let (prepared, meshes) = instanced::rigid_meshes(&frame.scene);
         let mut gpu = self.upload_textured_with(device, queue, &frame.scene, &prepared, true);
         gpu.rigid_meshes = meshes;
+        if let Some(previous) = previous {
+            gpu.rendered_instances
+                .adopt(&mut previous.rendered_instances, &frame.motion_epoch);
+        }
         if !self.capability.gles
             && device
                 .features()
