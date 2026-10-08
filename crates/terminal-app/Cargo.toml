@@ -26,5 +26,9 @@ bytemuck = "1.25"
 pollster = "0.4"
 serde_json = "1"
 
+[dev-dependencies]
+libc = "0.2"
+tempfile = "3"
+
 [lints]
 workspace = true

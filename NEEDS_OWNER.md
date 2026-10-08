@@ -1,3 +1,12 @@
+## Verify native terminal display idle (#10909)
+
+Run the updated native terminal with a screen lease, leave its default sheet
+idle, and confirm WindowServer stops presenting unchanged frames and idle
+CPU stays near zero. The automated one-hour soak uses the same native raster
+pipeline and isolated PTY offscreen; it cannot measure the physical display
+or reproduce the owner's lost pre-reboot 20 GB process. If the display check
+finds a defect, open a new issue with the process RSS and CPU sample.
+
 ## The RTX 4080 pylon is running (#10921)
 
 `coderos-4080` serves Qwen3.5 0.8B through Psionic on CUDA as the pylon

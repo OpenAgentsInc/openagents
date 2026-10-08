@@ -801,3 +801,36 @@ below are later design choices, not blockers for today's three issues.
     for the window in phase 2, or later?
 
 Verse can mount admitted studio references as a local floating screen with `--workbench-screen watch` or `--workbench-screen drive`. Set its position and size in logical points with `--workbench-screen-bounds x,y,width,height`. At a studio station, T or Shift+F selects the same workbench context; opening creates no shell or task. Watch blocks input and drive uses the current studio rights. Changes to observation rights or the source stream clear the screen; reopening requires a new selection. Screens draw at most 30 frames per second while visible and active. The native screen supports studio views; other resource kinds use the ordinary overlay. Placement and private view data stay on this client and never enter world presence.
+
+
+## Native idle and retention budgets
+
+Issue [#10909](https://github.com/OpenAgentsInc/openagents/issues/10909) removes
+the native window's redraw loop. `terminal-gfx` coalesces changes to output,
+input, layout, selection, copy mode, and open pages. The sheet's caret stays
+steady; pane typing and bell animations have finite deadlines. Idle polling
+observes PTY and control queues every 100 ms and submits no unchanged frames.
+
+The sheet keeps at most 2,048 transcript entries and 4 MiB of text. Answers
+and notes longer than 64 KiB show an explicit elision marker. Questions and
+proposal commands stay intact; eviction removes complete old entries. History
+keeps at most 512 complete commands and 2 MiB. Diagnostic frame and latency
+samples stop at 8,192, hidden key echoes do not accumulate, and pane byte
+counts use sparse IDs. Shell blocks, scrollback, glyphs, and GPU vertex storage
+keep their existing limits. The native painter retains at most two GPU
+submissions, polls completed work without waiting, and waits for the oldest
+submission before queuing a third. The offscreen soak uses that same policy.
+
+The ignored `native_idle_and_busy_retention_soak` test in `terminal-app` uses
+the native raster pipeline and an isolated shell PTY for 30 idle minutes and
+30 busy minutes. It records RSS, process CPU, frame submissions, parsed bytes,
+commands, transcript retention, and resize, selection, copy, and key-echo
+cycles. Its limits are 768 MiB peak RSS, 128 MiB growth after warm-up, 0.5% idle
+CPU, 80% busy CPU, and zero idle submissions. Each 30-second sample checks
+RSS and growth immediately; a guard closes the isolated PTY on failure. Precompile this filtered test
+under the build lease with `cargo test --release -p terminal-app --bin
+openagents-terminal native_idle_and_busy_retention_soak --no-run`, then run its test executable
+under `openagents lease quiet --class soak`. Set `TERMINAL_SOAK_OUT` to a JSON
+path under `openagents scratch`. `TERMINAL_SOAK_SECONDS` supports a shorter
+harness check; only the default 3,600-second run satisfies the soak acceptance.
+The test opens no window. Physical display verification is in `NEEDS_OWNER.md`.

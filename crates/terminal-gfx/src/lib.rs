@@ -10,6 +10,8 @@ mod integration;
 mod native;
 pub mod phone;
 #[cfg(feature = "native")]
+pub mod presentation;
+#[cfg(feature = "native")]
 pub mod pty;
 pub mod screen;
 #[cfg(feature = "native")]

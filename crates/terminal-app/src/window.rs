@@ -1,8 +1,4 @@
-use std::{
-    path::PathBuf,
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::{path::PathBuf, sync::Arc, time::Instant};
 use terminal_gfx::{KeyIn, Mount, Overlay, mouse::Button};
 use verse_gfx::ui::{Atlas, UiBatch, UiVertex};
 use winit::platform::modifier_supplement::KeyEventExtModifierSupplement;
@@ -266,6 +262,7 @@ struct State {
     atlas: Atlas,
     terminal: Overlay,
     stress: Option<terminal_gfx::stress::Driver>,
+    next_poll: Instant,
 }
 struct App {
     options: Options,
@@ -289,6 +286,9 @@ impl App {
             return Ok(());
         };
         let start = Instant::now();
+        if state.terminal.presentation_deferred(start) {
+            return Ok(());
+        }
         let size = state.window.inner_size();
         let mut batch = UiBatch::default();
         state.terminal.draw(
@@ -300,6 +300,11 @@ impl App {
         state.terminal.frame_done(start);
         if presented {
             state.terminal.core.paper.presented();
+            state.terminal.presented(Instant::now());
+        } else {
+            let retry = Instant::now() + terminal_gfx::presentation::IDLE_POLL;
+            state.terminal.defer_presentation(retry);
+            state.next_poll = retry;
         }
         if presented && !self.startup_recorded {
             self.startup_recorded = true;
@@ -694,6 +699,7 @@ impl ApplicationHandler for App {
                 atlas,
                 terminal,
                 stress,
+                next_poll: Instant::now(),
             })
         })();
         match result {
@@ -716,6 +722,7 @@ impl ApplicationHandler for App {
             }
             WindowEvent::Resized(size) => {
                 state.gpu.resize(size.width, size.height);
+                state.terminal.invalidate();
                 state
                     .terminal
                     .fit(&state.atlas, [size.width as f32, size.height as f32]);
@@ -728,14 +735,23 @@ impl ApplicationHandler for App {
                 }
                 state.atlas = atlas;
                 state.gpu.rebuild_atlas(&state.atlas);
+                state.terminal.invalidate();
                 // The cell size changed with the backing scale; refit the panes.
                 let size = state.window.inner_size();
                 state
                     .terminal
                     .fit(&state.atlas, [size.width as f32, size.height as f32]);
             }
-            WindowEvent::Focused(focused) => state.terminal.focused = focused,
-            WindowEvent::Occluded(hidden) => self.hidden = hidden && !self.options.background,
+            WindowEvent::Focused(focused) => {
+                state.terminal.focused = focused;
+                state.terminal.invalidate();
+            }
+            WindowEvent::Occluded(hidden) => {
+                self.hidden = hidden && !self.options.background;
+                if !self.hidden {
+                    state.terminal.invalidate();
+                }
+            }
             WindowEvent::ModifiersChanged(mods) => state.terminal.modifiers(mods.state()),
             WindowEvent::KeyboardInput {
                 event,
@@ -769,7 +785,9 @@ impl ApplicationHandler for App {
                     }
                 }
             }
-            WindowEvent::Ime(winit::event::Ime::Commit(text)) => state.terminal.paste(&text),
+            WindowEvent::Ime(winit::event::Ime::Commit(text)) => {
+                state.terminal.paste(&text);
+            }
             WindowEvent::CursorMoved { position, .. } => {
                 self.point = [position.x as f32, position.y as f32];
                 state.terminal.pointer(self.point);
@@ -807,12 +825,26 @@ impl ApplicationHandler for App {
             }
             _ => {}
         }
-        if let Some(state) = &self.state {
-            state.window.request_redraw();
+        if let Some(state) = &mut self.state {
+            if !self.hidden && state.terminal.redraw_needed(Instant::now()) {
+                state.window.request_redraw();
+            }
         }
     }
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        let now = Instant::now();
         if let Some(state) = &mut self.state {
+            if now < state.next_poll {
+                let next = state
+                    .terminal
+                    .animation_deadline(now)
+                    .map_or(state.next_poll, |at| at.min(state.next_poll));
+                if !self.hidden && state.terminal.redraw_needed(now) {
+                    state.window.request_redraw();
+                }
+                event_loop.set_control_flow(ControlFlow::WaitUntil(next));
+                return;
+            }
             if let Some(driver) = &mut state.stress {
                 let actions = driver.step(true);
                 if driver.recording() {
@@ -890,13 +922,24 @@ impl ApplicationHandler for App {
                 }
             }
             state.terminal.tick();
-            if !self.hidden {
+            let changed = !self.hidden && state.terminal.redraw_needed(now);
+            if changed {
                 state.window.request_redraw();
             }
+            let interval = if changed || state.stress.is_some() {
+                terminal_gfx::presentation::ACTIVE_POLL
+            } else {
+                terminal_gfx::presentation::IDLE_POLL
+            };
+            state.next_poll = now + interval;
+            let next = state
+                .terminal
+                .animation_deadline(now)
+                .map_or(state.next_poll, |at| at.min(state.next_poll));
+            event_loop.set_control_flow(ControlFlow::WaitUntil(next));
+        } else {
+            event_loop.set_control_flow(ControlFlow::Wait);
         }
-        event_loop.set_control_flow(ControlFlow::WaitUntil(
-            Instant::now() + Duration::from_millis(8),
-        ));
     }
 }
 
@@ -905,13 +948,7 @@ struct Gpu {
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
-    pipeline: wgpu::RenderPipeline,
-    group: wgpu::BindGroup,
-    screen: wgpu::Buffer,
-    atlas: wgpu::Texture,
-    atlas_revision: u64,
-    vertices: wgpu::Buffer,
-    capacity: u64,
+    painter: Painter,
     depth: wgpu::Texture,
 }
 impl Gpu {
@@ -951,32 +988,15 @@ impl Gpu {
             view_formats: vec![],
         };
         surface.configure(&device, &config);
-        let (pipeline, _, group, screen, texture) =
-            verse_gfx::ui_pipeline::ui_pipeline_with_texture(&device, &queue, format, 1, atlas);
-        let capacity = 1024 * 1024;
-        let vertices = Self::buffer(&device, capacity);
+        let painter = Painter::new(&device, &queue, format, atlas);
         let depth = Self::depth(&device, config.width, config.height);
         Ok(Self {
             surface,
             device,
             queue,
             config,
-            pipeline,
-            group,
-            screen,
-            atlas: texture,
-            atlas_revision: atlas.revision(),
-            vertices,
-            capacity,
+            painter,
             depth,
-        })
-    }
-    fn buffer(device: &wgpu::Device, size: u64) -> wgpu::Buffer {
-        device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("terminal vertices"),
-            size,
-            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
         })
     }
     fn depth(device: &wgpu::Device, width: u32, height: u32) -> wgpu::Texture {
@@ -1005,27 +1025,9 @@ impl Gpu {
         self.depth = Self::depth(&self.device, width, height);
     }
     fn rebuild_atlas(&mut self, atlas: &Atlas) {
-        let (pipeline, _, group, screen, texture) =
-            verse_gfx::ui_pipeline::ui_pipeline_with_texture(
-                &self.device,
-                &self.queue,
-                self.config.format,
-                1,
-                atlas,
-            );
-        self.pipeline = pipeline;
-        self.group = group;
-        self.screen = screen;
-        self.atlas = texture;
-        self.atlas_revision = atlas.revision();
+        self.painter.rebuild_atlas(&self.device, &self.queue, atlas);
     }
     fn draw(&mut self, batch: &UiBatch, atlas: &Atlas) -> Result<bool, String> {
-        if self.atlas_revision != atlas.revision() {
-            if !verse_gfx::ui_pipeline::write_atlas(&self.queue, &self.atlas, atlas) {
-                self.rebuild_atlas(atlas);
-            }
-            self.atlas_revision = atlas.revision();
-        }
         let frame = match self.surface.get_current_texture() {
             wgpu::CurrentSurfaceTexture::Success(frame)
             | wgpu::CurrentSurfaceTexture::Suboptimal(frame) => frame,
@@ -1038,35 +1040,126 @@ impl Gpu {
             }
             _ => return Err("the window surface was lost".into()),
         };
+        let view = frame.texture.create_view(&Default::default());
+        let depth = self.depth.create_view(&Default::default());
+        self.painter.draw(
+            &self.device,
+            &self.queue,
+            [self.config.width, self.config.height],
+            &view,
+            &depth,
+            batch,
+            atlas,
+        )?;
+        frame.present();
+        Ok(true)
+    }
+}
+
+/// The native renderer's resources and draw path, also used by offscreen verification.
+struct Painter {
+    pipeline: wgpu::RenderPipeline,
+    group: wgpu::BindGroup,
+    screen: wgpu::Buffer,
+    atlas: wgpu::Texture,
+    atlas_revision: u64,
+    vertices: wgpu::Buffer,
+    capacity: u64,
+    format: wgpu::TextureFormat,
+    in_flight: std::collections::VecDeque<wgpu::SubmissionIndex>,
+    peak_in_flight: usize,
+}
+/// Native and offscreen mounts retain no more than two GPU submissions.
+const MAX_IN_FLIGHT: usize = 2;
+impl Painter {
+    fn new(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        format: wgpu::TextureFormat,
+        atlas: &Atlas,
+    ) -> Self {
+        let (pipeline, _, group, screen, texture) =
+            verse_gfx::ui_pipeline::ui_pipeline_with_texture(device, queue, format, 1, atlas);
+        let capacity = 1024 * 1024;
+        Self {
+            pipeline,
+            group,
+            screen,
+            atlas: texture,
+            atlas_revision: atlas.revision(),
+            vertices: Self::buffer(device, capacity),
+            capacity,
+            format,
+            in_flight: std::collections::VecDeque::new(),
+            peak_in_flight: 0,
+        }
+    }
+    fn rebuild_atlas(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, atlas: &Atlas) {
+        let pending = std::mem::take(&mut self.in_flight);
+        let peak = self.peak_in_flight;
+        *self = Self::new(device, queue, self.format, atlas);
+        self.in_flight = pending;
+        self.peak_in_flight = peak;
+    }
+    fn buffer(device: &wgpu::Device, size: u64) -> wgpu::Buffer {
+        device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("terminal vertices"),
+            size,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        })
+    }
+    fn draw(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        size: [u32; 2],
+        view: &wgpu::TextureView,
+        depth: &wgpu::TextureView,
+        batch: &UiBatch,
+        atlas: &Atlas,
+    ) -> Result<(), String> {
+        // Retire completed work without waiting, then bound outstanding frames.
+        device
+            .poll(wgpu::PollType::Poll)
+            .map_err(|error| error.to_string())?;
+        if self.in_flight.len() >= MAX_IN_FLIGHT {
+            let oldest = self.in_flight.pop_front().expect("A full submission queue");
+            device
+                .poll(wgpu::PollType::Wait {
+                    submission_index: Some(oldest),
+                    timeout: Some(std::time::Duration::from_secs(5)),
+                })
+                .map_err(|error| error.to_string())?;
+        }
+        if self.atlas_revision != atlas.revision() {
+            if !verse_gfx::ui_pipeline::write_atlas(queue, &self.atlas, atlas) {
+                self.rebuild_atlas(device, queue, atlas);
+            }
+            self.atlas_revision = atlas.revision();
+        }
         let bytes = bytemuck::cast_slice::<UiVertex, u8>(&batch.vertices);
         if bytes.len() as u64 > 64 * 1024 * 1024 {
             return Err("the terminal drawing exceeds its vertex budget".into());
         }
         if bytes.len() as u64 > self.capacity {
             self.capacity = (bytes.len() as u64).next_power_of_two();
-            self.vertices = Self::buffer(&self.device, self.capacity);
+            self.vertices = Self::buffer(device, self.capacity);
         }
-        self.queue.write_buffer(
+        queue.write_buffer(
             &self.screen,
             0,
-            bytemuck::cast_slice(&[
-                self.config.width as f32,
-                self.config.height as f32,
-                0.0,
-                0.0,
-            ]),
+            bytemuck::cast_slice(&[size[0] as f32, size[1] as f32, 0.0, 0.0]),
         );
         if !bytes.is_empty() {
-            self.queue.write_buffer(&self.vertices, 0, bytes);
+            queue.write_buffer(&self.vertices, 0, bytes);
         }
-        let view = frame.texture.create_view(&Default::default());
-        let depth = self.depth.create_view(&Default::default());
-        let mut encoder = self.device.create_command_encoder(&Default::default());
+        let mut encoder = device.create_command_encoder(&Default::default());
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("terminal"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
+                    view,
                     depth_slice: None,
                     resolve_target: None,
                     ops: wgpu::Operations {
@@ -1080,7 +1173,7 @@ impl Gpu {
                     },
                 })],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &depth,
+                    view: depth,
                     depth_ops: Some(wgpu::Operations {
                         load: wgpu::LoadOp::Clear(1.0),
                         store: wgpu::StoreOp::Discard,
@@ -1098,8 +1191,11 @@ impl Gpu {
                 pass.draw(0..batch.vertices.len() as u32, 0..1);
             }
         }
-        self.queue.submit(Some(encoder.finish()));
-        frame.present();
-        Ok(true)
+        self.in_flight
+            .push_back(queue.submit(Some(encoder.finish())));
+        self.peak_in_flight = self.peak_in_flight.max(self.in_flight.len());
+        Ok(())
     }
 }
+#[cfg(all(test, unix))]
+mod soak;
