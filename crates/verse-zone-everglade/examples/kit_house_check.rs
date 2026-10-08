@@ -96,6 +96,10 @@ fn export(dir: &Path, name: &str, scene: &TexturedScene, placements: &[layout::P
 
 fn main() -> Result<(), String> {
     let output = PathBuf::from(std::env::args().nth(1).ok_or("Expected an output directory")?);
+    run(output)
+}
+
+fn run(output: PathBuf) -> Result<(), String> {
     std::fs::create_dir_all(&output).map_err(|e| e.to_string())?;
     let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").canonicalize().map_err(|e| e.to_string())?;
     let dir = output.canonicalize().map_err(|e| e.to_string())?;
@@ -129,4 +133,15 @@ fn main() -> Result<(), String> {
         println!("{}", json!({"house":house.name,"file":format!("{name}.gltf"),"width":house.width,"depth":house.depth,"stories":house.stories,"levels":levels}));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    #[ignore = "Requires the private kit and VERSE_KIT_HOUSE_OUTPUT outside the repository"]
+    fn export_private_house_acceptance() {
+        let output = std::env::var_os("VERSE_KIT_HOUSE_OUTPUT")
+            .expect("VERSE_KIT_HOUSE_OUTPUT names the private acceptance directory");
+        super::run(output.into()).unwrap();
+    }
 }
