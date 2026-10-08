@@ -67,13 +67,6 @@ async fn response(response: Response) -> (StatusCode, HeaderMap, String) {
     .unwrap();
     (status, headers, body)
 }
-fn field(html: &str, name: &str) -> String {
-    let after = html
-        .split(&format!("name=\"{name}\" value=\""))
-        .nth(1)
-        .unwrap();
-    after.split('"').next().unwrap().to_owned()
-}
 fn encoded(value: &str) -> String {
     value
         .bytes()
@@ -129,19 +122,11 @@ async fn post(
     )
     .await
 }
-async fn form(config: crate::Config, referral: &str) -> (String, String) {
-    let (status, headers, html) = get(config, &format!("/pilot?reference={referral}")).await;
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(headers[header::CACHE_CONTROL], "no-store");
-    assert_eq!(headers[header::REFERRER_POLICY], "strict-origin");
-    let cookie = headers[header::SET_COOKIE]
-        .to_str()
-        .unwrap()
-        .split(';')
-        .next()
-        .unwrap()
-        .to_owned();
-    (cookie, field(&html, "ticket"))
+fn form(config: crate::Config, referral: &str) -> (String, String) {
+    let intake = config.pilot.as_ref().unwrap();
+    let cookie = random();
+    let ticket = intake.ticket(&cookie, Some(referral.to_owned()));
+    (format!("{COOKIE}={cookie}"), ticket)
 }
 fn leads(config: &crate::Config, owner_file: &Path) -> Vec<coder::task::sales::Lead> {
     let mut store = Store::open(&config.store).unwrap();
@@ -151,28 +136,27 @@ fn leads(config: &crate::Config, owner_file: &Path) -> Vec<coder::task::sales::L
     store.list(&owner, None, 32).unwrap()
 }
 #[tokio::test]
-async fn proposed_offer_and_selected_installation_are_honest_without_activation() {
+async fn public_pilot_pages_are_not_found_and_the_copy_stays_archived() {
     let dir = tempfile::tempdir().unwrap();
     let config = crate::Config::development(dir.path().join("absent"));
-    let (status, headers, html) = get(config.clone(), "/pilot").await;
-    assert_eq!(status, StatusCode::OK);
-    assert!(html.contains("proposed service fee is USD 250"));
-    assert!(html.contains("zero promotional credits"));
-    assert!(html.contains("Pilot requests are unavailable"));
-    assert!(!html.contains("<form"));
-    assert!(!html.contains("<script"));
-    assert_eq!(headers[header::REFERRER_POLICY], "strict-origin");
-    let (_, _, install) = get(config.clone(), "/pilot/install").await;
-    assert!(install.contains("scripts/install-coder.sh"));
-    assert!(install.contains("CODER_CLOUD=off"));
-    assert!(install.contains("OPENAGENTS_JEV_HOSTED=off"));
-    assert!(install.contains("your own supported provider login"));
-    assert!(install.contains("TYPESAFE_*"));
-    assert!(install.contains("CODER_DECISION_*"));
-    assert!(install.contains("~/.openagents/jev.json"));
-    assert!(install.contains("without deleting your saved configuration"));
-    assert!(install.contains("each exact decision recipient and payer before work"));
-    assert!(install.contains("release download alone does not qualify"));
+    let (status, _, html) = get(config.clone(), "/pilot").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert!(html.contains("<h1>Not found</h1>"));
+    assert!(!html.contains("proposed service fee is USD 250"));
+    let (install_status, _, _) = get(config.clone(), "/pilot/install").await;
+    assert_eq!(install_status, StatusCode::NOT_FOUND);
+    assert!(ARCHIVED_OFFER.contains("proposed service fee is USD 250"));
+    assert!(ARCHIVED_OFFER.contains("zero promotional credits"));
+    assert!(ARCHIVED_INSTALL.contains("scripts/install-coder.sh"));
+    assert!(ARCHIVED_INSTALL.contains("CODER_CLOUD=off"));
+    assert!(ARCHIVED_INSTALL.contains("OPENAGENTS_JEV_HOSTED=off"));
+    assert!(ARCHIVED_INSTALL.contains("your own supported provider login"));
+    assert!(ARCHIVED_INSTALL.contains("TYPESAFE_*"));
+    assert!(ARCHIVED_INSTALL.contains("CODER_DECISION_*"));
+    assert!(ARCHIVED_INSTALL.contains("~/.openagents/jev.json"));
+    assert!(ARCHIVED_INSTALL.contains("without deleting your saved configuration"));
+    assert!(ARCHIVED_INSTALL.contains("each exact decision recipient and payer before work"));
+    assert!(ARCHIVED_INSTALL.contains("release download alone does not qualify"));
     assert!(!dir.path().join("absent").exists());
     assert_eq!(
         post(config, "", String::new(), &format!("http://{HOST}"))
@@ -209,7 +193,7 @@ async fn unconfigured_host_never_proxies_intake_contact_content() {
 #[tokio::test]
 async fn isolated_form_reaches_one_private_lead_and_preserves_email_consent_source_and_referral() {
     let (_dir, config, owner_file) = fixture();
-    let (cookie, ticket) = form(config.clone(), "opaque-referral").await;
+    let (cookie, ticket) = form(config.clone(), "opaque-referral");
     let (status, headers, html) = post(
         config.clone(),
         &cookie,
@@ -245,7 +229,7 @@ async fn isolated_form_reaches_one_private_lead_and_preserves_email_consent_sour
 #[tokio::test]
 async fn lost_response_restart_and_new_duplicate_form_create_no_competing_leads() {
     let (dir, config, owner_file) = fixture();
-    let (cookie, ticket) = form(config.clone(), "first-referral").await;
+    let (cookie, ticket) = form(config.clone(), "first-referral");
     let content = body(
         &ticket,
         "synthetic@example.invalid",
@@ -284,7 +268,7 @@ async fn lost_response_restart_and_new_duplicate_form_create_no_competing_leads(
         .0,
         StatusCode::SERVICE_UNAVAILABLE
     );
-    let (other_cookie, other_ticket) = form(restarted.clone(), "second-referral").await;
+    let (other_cookie, other_ticket) = form(restarted.clone(), "second-referral");
     assert_eq!(
         post(
             restarted.clone(),
@@ -313,7 +297,7 @@ async fn lost_response_restart_and_new_duplicate_form_create_no_competing_leads(
 async fn invalid_oversized_cross_origin_and_tampered_requests_are_redacted_and_inert() {
     let (_dir, config, owner_file) = fixture();
     for kind in 0..6 {
-        let (cookie, ticket) = form(config.clone(), "referral").await;
+        let (cookie, ticket) = form(config.clone(), "referral");
         let (payload, origin) = match kind {
             0 => (
                 body(
@@ -375,13 +359,13 @@ async fn invalid_oversized_cross_origin_and_tampered_requests_are_redacted_and_i
         get(config, "/pilot?reference=person%40example.invalid")
             .await
             .0,
-        StatusCode::BAD_REQUEST
+        StatusCode::NOT_FOUND
     );
 }
 #[tokio::test]
 async fn revoked_capability_reports_unavailable_without_contact_content_or_new_record() {
     let (_dir, config, owner_file) = fixture();
-    let (cookie, ticket) = form(config.clone(), "referral").await;
+    let (cookie, ticket) = form(config.clone(), "referral");
     let mut store = Store::open(&config.store).unwrap();
     let owner = store
         .authenticate(&Store::read_credential(&owner_file).unwrap())
@@ -404,10 +388,7 @@ async fn revoked_capability_reports_unavailable_without_contact_content_or_new_r
     assert!(html.contains("No confirmation is available"));
     assert!(!html.contains("synthetic@example.invalid"));
     assert!(leads(&config, &owner_file).is_empty());
-    assert_eq!(
-        get(config, "/pilot").await.0,
-        StatusCode::SERVICE_UNAVAILABLE
-    );
+    assert_eq!(get(config, "/pilot").await.0, StatusCode::NOT_FOUND);
 }
 #[tokio::test]
 async fn ticket_expiry_cookie_binding_signature_validation_and_abuse_bounds_are_enforced() {

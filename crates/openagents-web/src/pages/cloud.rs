@@ -141,10 +141,7 @@ Private repositories, publication, a customer terminal, fan-out, hosted inferenc
 <p>Explore <a href=\"/grid\">the Grid</a> or <a href=\"/everglade\">Everglade</a> when this server has its world build. \
 World, computer, and private work connections have separate identities and rights. Joining a world starts no task \
 and grants no access to private work. Connected Alice and Studio supervision are proposed for this workspace.</p>\
-<p><a href=\"/docs/verse\">Read the Verse guide</a></p></section>\
-<section aria-labelledby=\"pilot-title\"><h2 id=\"pilot-title\">Work with a human</h2>\
-<p>The <a href=\"/pilot\">assisted Coder pilot</a> is a separate proposed service, with its own scope, consent, \
-delivery review, and invoice. It does not fund product usage or activate retail compute.</p></section>",
+<p><a href=\"/docs/verse\">Read the Verse guide</a></p></section>",
         choices = execution_choices(),
     );
     page("Coder Cloud", Some("/cloud"), &body)

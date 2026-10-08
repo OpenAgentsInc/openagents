@@ -15,11 +15,7 @@ pub const GITHUB: &str = "https://github.com/OpenAgentsInc/openagents";
 pub const X: &str = "https://x.com/OpenAgentsInc";
 
 /// The sections the header links to, in order.
-pub const SECTIONS: [(&str, &str); 3] = [
-    ("Download", "/download"),
-    ("Docs", "/docs"),
-    ("Pilot", "/pilot"),
-];
+pub const SECTIONS: [(&str, &str); 2] = [("Download", "/download"), ("Docs", "/docs")];
 
 /// Escapes text for HTML content and attribute values.
 #[must_use]
@@ -75,7 +71,8 @@ pub fn document(title: &str, section: Option<&str>, body: &str) -> String {
 <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\
 <meta name=\"color-scheme\" content=\"dark\"><title>{title}</title>\
 <link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.svg\">\
-<link rel=\"stylesheet\" href=\"/static/site.css\"></head><body>\
+<link rel=\"stylesheet\" href=\"/static/site.css\">\
+<link rel=\"stylesheet\" href=\"/static/tailwind.css\"></head><body>\
 <a class=\"skip\" href=\"#content\">Skip to content</a>\
 <header class=\"site-header\"><nav aria-label=\"Main\"><a class=\"wordmark\" href=\"/\">OpenAgents</a>\
 <ul class=\"navlinks\">{nav}</ul></nav></header>\
@@ -145,6 +142,8 @@ mod tests {
         ));
         assert!(html.contains("<a href=\"https://x.com/OpenAgentsInc\" rel=\"noopener\">X</a>"));
         assert!(html.contains("<a href=\"/download\" aria-current=\"page\">Download</a>"));
+        assert!(html.contains("<a href=\"/docs\">Docs</a>"));
+        assert!(!html.contains("/pilot"));
         assert!(html.contains("width=device-width"));
         assert!(!html.to_ascii_lowercase().contains("<script"));
     }

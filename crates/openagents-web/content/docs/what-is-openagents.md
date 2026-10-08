@@ -24,7 +24,7 @@ best.
 
 | Where | What it is |
 | --- | --- |
-| [openagents.com](/docs/website) | Ask OpenAgents about itself, right on the homepage. |
+| [openagents.com](/docs/website) | Start a chat from the homepage. |
 | [OpenAgents for Mac](/docs/mac) | Chats, Coder on your Mac, the Verse, the Map, and decks. It also connects your phone to your Mac. |
 | [OpenAgents for iPhone](/docs/iphone) | Chats, Coder on your computers, the Verse, and a bitcoin wallet. |
 | [OpenAgents Terminal](/docs/terminal) | The same chat full screen in a terminal, with Coder in the folder you start from. |
