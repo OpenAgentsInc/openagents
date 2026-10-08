@@ -1,0 +1,580 @@
+//! A chat's working computer (CMP-01).
+//!
+//! A [`Computer`] joins one chat, its owner, a project and source pin, an
+//! optional verified environment version it started from, a provider
+//! resource, declared services, and idle/absolute bounds. After each
+//! completed turn the owner checkpoints the filesystem, fenced to exactly
+//! that turn's generation; the next prompt restores it, re-applies current
+//! credentials, and restarts declared services.
+//!
+//! Every lifecycle choice — wait, skip, create, restore, checkpoint, stop —
+//! comes from [`decide::decide`], a pure function over the retained record.
+//! Every change goes through [`transition::apply`], also pure. Provider
+//! effects sit behind [`provider::Provider`]; [`driver::Driver`] runs a
+//! decision, retains the observed outcome through [`store::Store`], and
+//! decides again. [`boat::BoatProvider`] wires the trait to Boat's
+//! stop/resume primitives; [`provider::fake::FakeProvider`] serves tests.
+//!
+//! A checkpoint is not a verified environment: it belongs to one user's one
+//! computer, may carry that user's own sign-ins (for example a Claude Code
+//! login), and is never admitted as a reusable image, an operator copy, a
+//! service read, or a restore into any other computer (see
+//! [`admit_checkpoint_use`]). Selected credentials are names only; their
+//! values are applied per boot and never captured.
+//!
+//! Checkpoint, process shutdown, resource stop, meter stop, and deletion are
+//! separate retained [`Fact`]s. An unknown provider outcome stays unknown
+//! until a definite observation reconciles it.
+
+use coder_environment::{ProjectLink, Provider as ProviderKind, SourcePin, valid_id};
+use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, BTreeSet};
+
+pub mod boat;
+pub mod decide;
+pub mod driver;
+pub mod provider;
+pub mod store;
+pub mod transition;
+
+pub use decide::{Decision, Trigger, WaitReason, decide};
+pub use transition::{Applied, Command, Refusal, apply};
+
+pub const SCHEMA: &str = "openagents.working_computer.v1";
+pub const MAX_BOOTS: usize = 1024;
+pub const MAX_CHECKPOINTS: usize = 4096;
+pub const MAX_CREATES: usize = 64;
+pub const MAX_SERVICES: usize = 16;
+pub const MAX_REASON_BYTES: usize = 1024;
+
+/// Credentials OpenAgents never accepts, stores, or injects: a user's
+/// Claude.ai sign-in lives only inside that user's computer
+/// (`docs/cloud/claude-code-byo.md`).
+pub const REFUSED_CREDENTIAL_NAMES: &[&str] = &["CLAUDE_CODE_OAUTH_TOKEN"];
+/// Files holding a user's own sign-ins inside their computer. They may
+/// persist in that computer's checkpoint; no OpenAgents service reads them.
+pub const USER_LOGIN_PATHS: &[&str] = &[".claude/.credentials.json"];
+
+/// A retained outcome of one provider effect. Unknown stays unknown until a
+/// definite observation replaces it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "status", rename_all = "snake_case", deny_unknown_fields)]
+pub enum Fact {
+    Requested {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        operation: Option<String>,
+        at_ms: u64,
+    },
+    Done {
+        evidence: String,
+        at_ms: u64,
+    },
+    Failed {
+        reason: String,
+        at_ms: u64,
+    },
+    Unknown {
+        reason: String,
+        at_ms: u64,
+    },
+}
+impl Fact {
+    pub fn is_done(&self) -> bool {
+        matches!(self, Self::Done { .. })
+    }
+    pub fn is_unknown(&self) -> bool {
+        matches!(self, Self::Unknown { .. })
+    }
+    pub fn is_settled(&self) -> bool {
+        matches!(self, Self::Done { .. } | Self::Failed { .. })
+    }
+    pub fn evidence(&self) -> Option<&str> {
+        match self {
+            Self::Done { evidence, .. } => Some(evidence),
+            _ => None,
+        }
+    }
+}
+pub(crate) fn done(fact: &Option<Fact>) -> bool {
+    fact.as_ref().is_some_and(Fact::is_done)
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Principal {
+    pub workspace: String,
+    pub principal: String,
+}
+
+/// The verified environment version a computer started from. A checkpoint
+/// never becomes one.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BaseLink {
+    pub environment: String,
+    pub version: String,
+}
+
+/// How a declared service proves readiness. A reachable port alone is not
+/// application readiness, so an HTTP rule names a path.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum Health {
+    Http { port: u16, path: String },
+    Command { command: String },
+}
+
+/// One process restarted on every boot (fresh or restored).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ServiceDecl {
+    pub name: String,
+    pub command: String,
+    /// Source-relative working directory.
+    pub cwd: String,
+    pub health: Health,
+    pub ready_within_seconds: u32,
+}
+
+/// Admitted idle and absolute bounds for one boot. Observation extends the
+/// idle deadline, never past the absolute one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Bounds {
+    pub idle_ms: u64,
+    pub observed_extension_ms: u64,
+    pub absolute_ms: u64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StopReason {
+    /// The provider quiesced a turn checkpoint by stopping (Boat).
+    Checkpoint,
+    Idle,
+    Absolute,
+    FailedBoot,
+    Owner,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum BootOrigin {
+    Created,
+    /// Resumed from the provider's retained stopped filesystem, optionally
+    /// naming the turn checkpoint it carries.
+    Restored {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        checkpoint: Option<String>,
+    },
+}
+
+/// One wake of the provider resource and its separate facts.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Boot {
+    pub number: u32,
+    pub resource: String,
+    pub origin: BootOrigin,
+    pub started_ms: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub restore: Option<Fact>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub credentials: Option<Fact>,
+    /// Declared service name to readiness.
+    #[serde(default)]
+    pub services: BTreeMap<String, Fact>,
+    pub idle_deadline_ms: u64,
+    pub absolute_deadline_ms: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stop_reason: Option<StopReason>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shutdown: Option<Fact>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resource_stop: Option<Fact>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub meter_stop: Option<Fact>,
+}
+
+/// One provider create attempt, identified before the call so a lost reply
+/// reconciles the same resource instead of creating another.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CreateAttempt {
+    pub operation: String,
+    pub fact: Fact,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resource: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deletion: Option<Fact>,
+}
+
+/// Who may ever use a checkpoint: only its own computer, for its owner.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum Custody {
+    UserPrivate {
+        principal: Principal,
+        computer: String,
+    },
+}
+
+/// A filesystem checkpoint of exactly one completed turn.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Checkpoint {
+    pub id: String,
+    pub turn_generation: u64,
+    pub boot: u32,
+    pub resource: String,
+    pub fact: Fact,
+    pub custody: Custody,
+    /// It may hold the user's own sign-ins; it is never a reusable image.
+    pub may_hold_user_logins: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TurnFence {
+    /// Last generation dispatched to the engine.
+    pub dispatched: u64,
+    /// Last generation whose turn completed.
+    pub completed: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "phase", rename_all = "snake_case", deny_unknown_fields)]
+pub enum Phase {
+    New,
+    Creating,
+    /// Restore, credentials, and services for the current boot.
+    Booting,
+    Awake,
+    Turn {
+        generation: u64,
+    },
+    /// Quiesced for one completed turn; no prompt dispatches until settled.
+    Checkpointing {
+        generation: u64,
+    },
+    Stopping {
+        reason: StopReason,
+    },
+    Stopped,
+    /// A provider outcome is unknown; reconcile before anything else.
+    Unknown {
+        reason: String,
+    },
+    /// A create or boot failed; cleanup runs before any new attempt.
+    Failed {
+        reason: String,
+    },
+    Deleting,
+    Deleted,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Computer {
+    pub schema: String,
+    pub id: String,
+    pub revision: u64,
+    pub created_ms: u64,
+    pub updated_ms: u64,
+    pub owner: Principal,
+    pub chat: String,
+    pub project: ProjectLink,
+    pub source: SourcePin,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base: Option<BaseLink>,
+    pub provider: ProviderKind,
+    pub size: String,
+    /// Names only. Values are applied per boot and never retained.
+    #[serde(default)]
+    pub credential_names: BTreeSet<String>,
+    #[serde(default)]
+    pub services: Vec<ServiceDecl>,
+    pub bounds: Bounds,
+    pub phase: Phase,
+    #[serde(default)]
+    pub turn: TurnFence,
+    #[serde(default)]
+    pub creates: Vec<CreateAttempt>,
+    #[serde(default)]
+    pub boots: Vec<Boot>,
+    #[serde(default)]
+    pub checkpoints: Vec<Checkpoint>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deletion: Option<Fact>,
+}
+
+/// What a new computer is asked to be.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Spec {
+    pub id: String,
+    pub owner: Principal,
+    pub chat: String,
+    pub project: ProjectLink,
+    pub source: SourcePin,
+    pub base: Option<BaseLink>,
+    pub size: String,
+    pub credential_names: BTreeSet<String>,
+    pub services: Vec<ServiceDecl>,
+    pub bounds: Bounds,
+}
+
+fn valid_text(value: &str, max: usize) -> bool {
+    !value.is_empty() && value.len() <= max && !value.chars().any(char::is_control)
+}
+fn valid_relative(value: &str) -> bool {
+    value == "."
+        || (valid_text(value, 1024)
+            && !value.starts_with('/')
+            && value
+                .split('/')
+                .all(|p| !p.is_empty() && p != "." && p != ".."))
+}
+
+/// Refuse a credential name OpenAgents may not carry.
+pub fn credential_name_allowed(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 128
+        && name
+            .bytes()
+            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == b'_')
+        && !REFUSED_CREDENTIAL_NAMES.contains(&name)
+}
+
+/// Whether an OpenAgents service may read `path` (home-relative or
+/// absolute) out of a user's computer or checkpoint. Sign-in files never.
+pub fn service_may_read(path: &str) -> bool {
+    let trimmed = path.trim_start_matches('/');
+    !USER_LOGIN_PATHS.iter().any(|login| {
+        trimmed == *login
+            || trimmed.ends_with(&format!("/{login}"))
+            || trimmed.split('/').any(|part| part == ".credentials.json")
+    })
+}
+
+/// A requested use of a retained checkpoint.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum CheckpointUse<'a> {
+    /// Restore into a computer for a principal.
+    Restore {
+        computer: &'a str,
+        principal: &'a Principal,
+    },
+    /// Seal as a reusable or shared environment image.
+    EnvironmentImage,
+    /// Copy for an operator or support tooling.
+    OperatorCopy,
+    /// Read its contents from an OpenAgents service.
+    ServiceRead,
+}
+
+/// Only the computer that made a checkpoint, for its own owner, may restore
+/// it. Everything else is refused, so a user's sign-ins never leave it.
+pub fn admit_checkpoint_use(
+    computer: &Computer,
+    checkpoint: &str,
+    use_: &CheckpointUse<'_>,
+) -> Result<(), Refusal> {
+    let found = computer
+        .checkpoints
+        .iter()
+        .find(|c| c.id == checkpoint)
+        .ok_or_else(|| Refusal::UnknownCheckpoint(checkpoint.into()))?;
+    let Custody::UserPrivate {
+        principal,
+        computer: owner_computer,
+    } = &found.custody;
+    match use_ {
+        CheckpointUse::Restore {
+            computer: target,
+            principal: who,
+        } if *target == owner_computer && *who == principal => {
+            if found.fact.is_done() {
+                Ok(())
+            } else {
+                Err(Refusal::CheckpointNotDone(checkpoint.into()))
+            }
+        }
+        CheckpointUse::Restore { .. } => Err(Refusal::CheckpointCustody),
+        CheckpointUse::EnvironmentImage
+        | CheckpointUse::OperatorCopy
+        | CheckpointUse::ServiceRead => Err(Refusal::CheckpointCustody),
+    }
+}
+
+impl Computer {
+    pub fn new(spec: Spec, now_ms: u64) -> Result<Self, &'static str> {
+        let c = Self {
+            schema: SCHEMA.into(),
+            id: spec.id,
+            revision: 0,
+            created_ms: now_ms,
+            updated_ms: now_ms,
+            owner: spec.owner,
+            chat: spec.chat,
+            project: spec.project,
+            source: spec.source,
+            base: spec.base,
+            provider: ProviderKind::Boat,
+            size: spec.size,
+            credential_names: spec.credential_names,
+            services: spec.services,
+            bounds: spec.bounds,
+            phase: Phase::New,
+            turn: TurnFence::default(),
+            creates: vec![],
+            boots: vec![],
+            checkpoints: vec![],
+            deletion: None,
+        };
+        c.validate()?;
+        Ok(c)
+    }
+
+    pub fn validate(&self) -> Result<(), &'static str> {
+        if self.schema != SCHEMA {
+            return Err("The working computer schema is not supported.");
+        }
+        if !valid_id(&self.id) || self.id.len() > 96 || !valid_id(&self.chat) {
+            return Err("The computer and chat need opaque identities.");
+        }
+        if !valid_id(&self.owner.workspace) || !valid_id(&self.owner.principal) {
+            return Err("The owner needs a workspace and principal.");
+        }
+        if !valid_id(&self.project.workspace) || !valid_id(&self.project.project) {
+            return Err("The project link is invalid.");
+        }
+        self.source.validate()?;
+        if self
+            .base
+            .as_ref()
+            .is_some_and(|b| !valid_id(&b.environment) || !valid_id(&b.version))
+        {
+            return Err("The base environment link is invalid.");
+        }
+        if !valid_id(&self.size) {
+            return Err("The computer size is invalid.");
+        }
+        if self.credential_names.len() > 32
+            || !self
+                .credential_names
+                .iter()
+                .all(|n| credential_name_allowed(n))
+        {
+            return Err(
+                "Credential names must be admitted uppercase names; a Claude sign-in is never one.",
+            );
+        }
+        if self.services.len() > MAX_SERVICES {
+            return Err("The computer declares too many services.");
+        }
+        let mut names = BTreeSet::new();
+        for s in &self.services {
+            let health_ok = match &s.health {
+                Health::Http { port, path } => {
+                    *port > 0 && path.starts_with('/') && valid_text(path, 512)
+                }
+                Health::Command { command } => valid_text(command, 4096),
+            };
+            if !valid_id(&s.name)
+                || !names.insert(&s.name)
+                || !valid_text(&s.command, 4096)
+                || !valid_relative(&s.cwd)
+                || !health_ok
+                || s.ready_within_seconds == 0
+                || s.ready_within_seconds > 900
+            {
+                return Err("A declared service is invalid.");
+            }
+        }
+        let b = &self.bounds;
+        if b.idle_ms == 0
+            || b.absolute_ms == 0
+            || b.idle_ms > b.absolute_ms
+            || b.observed_extension_ms > b.absolute_ms
+            || b.absolute_ms > 24 * 3600 * 1000
+        {
+            return Err("The idle and absolute bounds are invalid.");
+        }
+        if self.creates.len() > MAX_CREATES
+            || self.boots.len() > MAX_BOOTS
+            || self.checkpoints.len() > MAX_CHECKPOINTS
+        {
+            return Err("The computer retains too much history.");
+        }
+        if self.turn.completed > self.turn.dispatched {
+            return Err("A turn cannot complete before it is dispatched.");
+        }
+        for c in &self.checkpoints {
+            let Custody::UserPrivate {
+                principal,
+                computer,
+            } = &c.custody;
+            if principal != &self.owner || computer != &self.id {
+                return Err("A checkpoint belongs only to its own computer and owner.");
+            }
+        }
+        Ok(())
+    }
+
+    /// The live provider resource, if one was created and not deleted.
+    pub fn resource(&self) -> Option<&str> {
+        self.creates
+            .iter()
+            .rev()
+            .find(|c| c.resource.is_some() && !done(&c.deletion))
+            .and_then(|c| c.resource.as_deref())
+    }
+    pub fn boot(&self) -> Option<&Boot> {
+        self.boots.last()
+    }
+    pub(crate) fn boot_mut(&mut self) -> Option<&mut Boot> {
+        self.boots.last_mut()
+    }
+    /// The latest completed checkpoint of this computer's live resource.
+    pub fn latest_checkpoint(&self) -> Option<&Checkpoint> {
+        let resource = self.resource()?;
+        self.checkpoints
+            .iter()
+            .rev()
+            .find(|c| c.fact.is_done() && c.resource == resource)
+    }
+    /// Declared services and their readiness for the current boot.
+    pub fn service_readiness(&self) -> Vec<(&str, Option<&Fact>)> {
+        let boot = self.boot();
+        self.services
+            .iter()
+            .map(|s| (s.name.as_str(), boot.and_then(|b| b.services.get(&s.name))))
+            .collect()
+    }
+    /// Checkpoints, boots, and creates are append-only history.
+    pub fn preserves_history_of(&self, next: &Computer) -> bool {
+        next.id == self.id
+            && next.owner == self.owner
+            && next.created_ms == self.created_ms
+            && next.creates.len() >= self.creates.len()
+            && next.boots.len() >= self.boots.len()
+            && next.checkpoints.len() >= self.checkpoints.len()
+            && self
+                .checkpoints
+                .iter()
+                .zip(&next.checkpoints)
+                .all(|(a, b)| {
+                    a.id == b.id
+                        && a.turn_generation == b.turn_generation
+                        && (!a.fact.is_done() || a == b)
+                })
+            && self
+                .creates
+                .iter()
+                .zip(&next.creates)
+                .all(|(a, b)| a.operation == b.operation)
+    }
+}
+
+#[cfg(test)]
+mod tests;

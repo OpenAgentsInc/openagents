@@ -96,6 +96,23 @@ fits; do not silently reinterpret them as machine setup or resume hooks. Boat
 filesystem restoration requires process restart and readiness checks. Choose idle
 bounds from the admitted policy rather than copying Amp's timers.
 
+The working-computer owner is `crates/coder-working-computer` (CMP-01). Pure
+decisions (`decide`) and transitions (`apply`) choose wait, create, restore,
+dispatch, checkpoint, stop, meter check, deletion, or reconciliation from the
+retained record; a `Provider` trait performs one effect at a time, with a Boat
+implementation and a fake for tests. A checkpoint is fenced to one completed
+turn generation; until it settles, a queued prompt cannot dispatch. On Boat the
+checkpoint stops the sandbox and records Boat's snapshot; the next prompt
+resumes it, applies credentials as per-boot environment, verifies them by name,
+and restarts declared services with retained readiness. Checkpoint, process
+shutdown, resource stop, meter stop, and deletion are separate facts; unknown
+outcomes stay unknown until an inspection proves them; a failed fresh boot is
+stopped, metered, and deleted. A checkpoint belongs to one user's one computer:
+it may hold that user's own Claude Code login, and it is refused as an
+environment image, operator copy, service read, or restore elsewhere. It links
+to the environment version it started from but never becomes one. Chat and Coder
+surfaces do not use it yet, and real Boat qualification is an owner step.
+
 GCE's two-slot pool is suitable for qualified jobs. Root installation, persistent
 project services, and fresh environment verification require a dedicated isolated
 builder/computer adapter before GCE can provide this lifecycle.

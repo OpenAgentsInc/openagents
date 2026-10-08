@@ -409,7 +409,7 @@ OpenInspect behavior as delivered in our system.
 | Engine execution | Coder turn/permit, resident host, provider adapters. | Existing execution owner; add no parallel OpenCode-only loop or browser executor. |
 | Complete evidence | `atif`, retained original reads, ENV-02. | Existing formats and bounded reads; full source coverage, large outputs, nested work, and real web export require the remaining evidence slice. |
 | Prepared environment | ENV-01/03/04/05/06 in the onboarding contract. | Designed lifecycle: recipe records, isolated setup, clean build, fresh verification, reviewed Save, and immutable later selection. |
-| Working computer/checkpoint | Managed computer plan, `boat`, `coder-cloud`. | Provider primitives exist; general persistent custody and checkpoint fencing remain designed. |
+| Working computer/checkpoint | `coder-working-computer` over `boat` (CMP-01). | Owner implemented with per-turn fenced checkpoints, restore, credential re-application, declared services, bounds, and separate stop facts against a fake provider; real Boat qualification and chat wiring remain. |
 | Stop and metering | Native Boat cleanup and resource owners. | Retain independent stop/meter evidence and unknown costs; do not derive cleanup from disconnect or archive. |
 | Declared services/previews | Managed computer plan; Cloud web roadmap. | Designed service ownership/readiness/access; restart declared processes after filesystem restore. |
 | Attribution/publication | Native candidate, review, publication, and reconciliation. | Existing boundaries; a future GitHub broker should preserve actor/candidate/attempt identity and separate App/user custody. |

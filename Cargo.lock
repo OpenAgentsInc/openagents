@@ -3476,6 +3476,19 @@ name = "coder-wm"
 version = "0.1.0"
 
 [[package]]
+name = "coder-working-computer"
+version = "0.1.0"
+dependencies = [
+ "boat",
+ "coder-cloud",
+ "coder-environment",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "coderbench"
 version = "0.1.0"
 dependencies = [

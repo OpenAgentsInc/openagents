@@ -1,3 +1,16 @@
+## Qualify working-computer checkpoints on real Boat (#11007)
+
+`crates/coder-working-computer` keeps a chat's computer between turns: it
+checkpoints after each completed turn (on Boat, by stopping the sandbox and
+recording its snapshot), restores on the next prompt, re-applies credentials,
+and restarts declared services. Its tests use a fake provider only. Before
+admitting it, run one computer on an isolated, separately funded Boat key:
+two turns, an idle stop, and a deletion. Confirm that the snapshot recorded
+after each turn is the one restored, that the sandbox does not report
+`holdsCreatorLogins` (the provider refuses such a boot), that usage stops after
+each stop, and that the deletion completes. No web or Coder surface uses this
+owner yet; wiring it to chat prompts is a later, separately admitted step.
+
 ## Activate native Cloud runtimes on web staging (#10992)
 
 The web source/runtime controls use the existing native operator review and job
