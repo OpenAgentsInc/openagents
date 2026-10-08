@@ -2,6 +2,7 @@
 
 pub mod acp_discovery;
 pub mod agents;
+pub mod appearance;
 pub mod approval;
 pub mod brainstorm;
 pub mod bundled_runtime;
@@ -47,6 +48,7 @@ pub enum Screen {
     Conversation,
     Plugins,
     PluginSettings,
+    Appearance,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -77,6 +79,7 @@ pub struct App {
     pub cursor_blink_frame: u8,
     pub elapsed_seconds: u64,
     pub plugins: plugins::Plugins,
+    pub appearance: appearance::Appearance,
     pub live: live::Chat,
     pub delegations: Vec<live::Delegation>,
     pub cwd: Option<std::path::PathBuf>,
@@ -106,6 +109,8 @@ pub struct App {
     main_scroll: u16,
     other_draft: Draft,
     return_screen: Screen,
+    appearance_return_screen: Screen,
+    appearance_error: Option<String>,
     saved_chats: [Chat; 5],
 }
 
@@ -290,11 +295,13 @@ impl App {
     }
 
     pub fn load_plugin_settings(&mut self, store: plugin_store::Store) -> Result<(), String> {
+        let appearance = self.appearance.load(store.clone());
+        self.appearance_error = appearance.as_ref().err().cloned();
         let result = self.plugins.load_settings(store);
         if self.screen == Screen::PluginSettings {
             self.open_plugin_settings();
         }
-        result
+        result.and(appearance)
     }
 
     pub fn set_mode(&mut self, mode: Mode) {
@@ -661,6 +668,7 @@ impl App {
                 Mode::Demo
             }),
             slash::Command::Plugins => self.open_plugins(),
+            slash::Command::Appearance => self.open_appearance(),
             slash::Command::Models => self.open_models(),
             slash::Command::Export => self.export(None),
             slash::Command::Resume => unreachable!("Resume is handled before clearing the draft"),
@@ -1026,6 +1034,15 @@ impl App {
         });
     }
 
+    pub fn open_appearance(&mut self) {
+        self.resume_picker = None;
+        self.model_picker = None;
+        if self.screen != Screen::Appearance {
+            self.appearance_return_screen = self.screen;
+        }
+        self.screen = Screen::Appearance;
+    }
+
     pub fn open_plugins(&mut self) {
         self.plugins.catalog_revision = self.plugins.catalog_revision.wrapping_add(1);
         self.resume_picker = None;
@@ -1265,7 +1282,7 @@ impl App {
                         self.plugins.connection = plugins::Connection::Unchecked;
                     }
                     self.plugins.paste(&text);
-                } else if self.screen != Screen::Plugins {
+                } else if !matches!(self.screen, Screen::Plugins | Screen::Appearance) {
                     self.draft.insert(&text);
                     self.slash_selected = 0;
                     self.slash_hidden = false;
@@ -1306,6 +1323,17 @@ impl App {
                                 picker.error = self.plugins.storage_error.clone();
                             }
                         }
+                    }
+                    return true;
+                }
+                if self.screen == Screen::Appearance {
+                    match key.code {
+                        KeyCode::Char(' ') | KeyCode::Enter => {
+                            self.appearance_error =
+                                self.appearance.toggle_system_terminal_background().err();
+                        }
+                        KeyCode::Esc => self.screen = self.appearance_return_screen,
+                        _ => {}
                     }
                     return true;
                 }

@@ -1,5 +1,6 @@
 //! The same render function draws the terminal and exported previews.
 
+mod appearance;
 mod models;
 mod plugins;
 mod resume;
@@ -29,6 +30,19 @@ fn span(text: impl Into<String>, color: Color) -> Span<'static> {
 }
 
 pub fn render(frame: &mut Frame, app: &mut App) {
+    render_contents(frame, app);
+    if app.appearance.use_system_terminal_background {
+        for cell in &mut frame.buffer_mut().content {
+            cell.bg = Color::Reset;
+        }
+    }
+}
+
+fn render_contents(frame: &mut Frame, app: &mut App) {
+    if app.screen == Screen::Appearance {
+        appearance::render(frame, frame.area(), app);
+        return;
+    }
     if app.mode == Mode::Demo {
         let mut demo = app.demo_view();
         coder_demo_ui::render(frame, &mut demo);
@@ -104,7 +118,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     header_view(frame, header, app);
     match app.screen {
         Screen::Conversation => conversation(frame, body, app),
-        Screen::Plugins | Screen::PluginSettings => unreachable!(),
+        Screen::Plugins | Screen::PluginSettings | Screen::Appearance => unreachable!(),
     }
     let hints = app.slash_hints();
     let height = (hints.len() as u16).min(composer.y.saturating_sub(body.y));

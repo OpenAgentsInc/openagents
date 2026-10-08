@@ -21,13 +21,20 @@ pub fn svg(app: &mut App, width: u16, height: u16) -> String {
         .expect("the memory backend is infallible");
     let cursor_visible = terminal.backend().cursor_visible();
     let buffer = terminal.backend().buffer();
+    let background = if app.appearance.use_system_terminal_background {
+        String::new()
+    } else {
+        format!(
+            "<rect width=\"100%\" height=\"100%\" fill=\"{}\"/>\n",
+            hex(t::BG_BASE)
+        )
+    };
     let mut svg = format!(
-        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\" role=\"img\">\n<title>Coder terminal UI preview</title>\n<rect width=\"100%\" height=\"100%\" fill=\"{}\"/>\n<g font-family=\"Paper Mono, monospace\" font-size=\"15\">\n",
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\" role=\"img\">\n<title>Coder terminal UI preview</title>\n{background}<g font-family=\"Paper Mono, monospace\" font-size=\"15\">\n",
         u32::from(width) * 9,
         u32::from(height) * 20,
         u32::from(width) * 9,
         u32::from(height) * 20,
-        hex(t::BG_BASE)
     );
     for y in 0..height {
         for x in 0..width {
