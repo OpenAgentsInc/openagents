@@ -579,6 +579,15 @@ fn a_remote_tasks_change_lands_and_a_failed_one_closes() {
     assert_eq!(git(&worktree, &["show", "HEAD:notes.txt"]), "hello");
     let works = studio.remote_tasks("alice");
     assert_eq!(works[0].stage, Stage::Merge);
+    // The person rejecting the landed change closes its one-task goal.
+    studio
+        .reject(&mut tasks, &task, &"c".repeat(40), "A smoke test.")
+        .unwrap();
+    assert_eq!(studio.remote_tasks("alice")[0].stage, Stage::Rejected);
+    assert_eq!(
+        studio.view(&tasks).goals[0].status,
+        super::super::GoalStatus::Done
+    );
     // A second remote task that fails is closed with its reason, and its
     // note waits for the person.
     let (_goal, task) = studio
