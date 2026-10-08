@@ -387,6 +387,7 @@ fn button(document: &Document, panel: &HtmlElement, label: &str) -> Result<HtmlE
     element
         .set_attribute("aria-label", label)
         .map_err(|_| "Cannot label chamber button")?;
+    crate::theme::control(&element).map_err(|_| "Cannot style chamber button")?;
     let _ = element.style().set_property("min-height", "44px");
     let _ = element.style().set_property("min-width", "44px");
     panel
