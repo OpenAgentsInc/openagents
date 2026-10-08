@@ -161,8 +161,12 @@ fn demo() {
     };
     let dynamic = stage(center, extent);
     let before = capture(source.clone(), view, &dynamic);
-    assert!(before.chunks_exact(4).any(|p| p[..3].iter().any(|&c| c > 32)),
-        "The demo house must be visible");
+    assert!(
+        before
+            .chunks_exact(4)
+            .any(|p| p[..3].iter().any(|&c| c > 32)),
+        "The demo house must be visible"
+    );
     let after = capture(merged.clone(), view, &dynamic);
     write_png(&output.join("demo-source.png"), &before);
     write_png(&output.join("demo-merged.png"), &after);
@@ -291,11 +295,24 @@ fn damage() {
     )
     .unwrap();
     println!("{record}");
-    assert!(images[0].chunks_exact(4).any(|p| p[..3].iter().any(|&c| c > 32)),
-        "The far house must be visible");
-    assert!(images[0] != images[1], "First damage must change the far house");
-    assert!(images[1] != images[2], "Repeated damage must change the far house");
-    assert!(images[0] == images[3], "Restoring must redraw the original far house");
+    assert!(
+        images[0]
+            .chunks_exact(4)
+            .any(|p| p[..3].iter().any(|&c| c > 32)),
+        "The far house must be visible"
+    );
+    assert!(
+        images[0] != images[1],
+        "First damage must change the far house"
+    );
+    assert!(
+        images[1] != images[2],
+        "Repeated damage must change the far house"
+    );
+    assert!(
+        images[0] == images[3],
+        "Restoring must redraw the original far house"
+    );
 }
 
 fn main() {
