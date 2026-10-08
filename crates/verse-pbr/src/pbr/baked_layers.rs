@@ -86,6 +86,27 @@ pub struct SunLayer {
     pub probes: Vec<[f32; 12]>,
 }
 
+/// The two nearest baked suns, interpolated by angular distance.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct SunBlend {
+    pub first: Option<usize>,
+    pub second: Option<usize>,
+    pub weight: f32,
+}
+
+impl SunBlend {
+    /// Shader indices are one-based so zero means no baked sun.
+    #[must_use]
+    pub fn uniform(self, ratio: f32) -> [f32; 4] {
+        [
+            self.first.map_or(0.0, |i| (i + 1) as f32),
+            self.second.map_or(0.0, |i| (i + 1) as f32),
+            self.weight,
+            ratio,
+        ]
+    }
+}
+
 /// Every layer one offline bake produced for one scene.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Layers {
@@ -274,6 +295,57 @@ fn read_floats(bytes: &[u8]) -> Vec<[f32; 12]> {
 }
 
 impl Layers {
+    /// Blends the two nearest directions without switching at their midpoint.
+    #[must_use]
+    pub fn sun_blend(&self, dir: Vec3) -> SunBlend {
+        let dir = dir.normalize_or(Vec3::Y);
+        let mut nearest = [(f32::INFINITY, None); 2];
+        for (i, sun) in self.suns.iter().enumerate() {
+            let angle = Vec3::from(sun.dir).normalize_or(Vec3::Y).angle_between(dir);
+            let candidate = (angle, Some(i));
+            if angle < nearest[0].0 {
+                nearest[1] = nearest[0];
+                nearest[0] = candidate;
+            } else if angle < nearest[1].0 {
+                nearest[1] = candidate;
+            }
+        }
+        SunBlend {
+            first: nearest[0].1,
+            second: nearest[1].1,
+            weight: if nearest[1].1.is_some() {
+                nearest[0].0 / (nearest[0].0 + nearest[1].0).max(1e-6)
+            } else {
+                0.0
+            },
+        }
+    }
+
+    /// Interpolated character probes under the reference sky.
+    #[must_use]
+    pub fn blended_probes(&self, blend: SunBlend, ratio: f32) -> AmbientProbes {
+        let mut probes = self.probes(None, 0.0);
+        for (index, weight) in [(blend.first, 1.0 - blend.weight), (blend.second, blend.weight)] {
+            if let Some(sun) = index.and_then(|i| self.suns.get(i)) {
+                for (p, s) in probes.grid.data.iter_mut().zip(&sun.probes) {
+                    for (value, bounce) in p.iter_mut().zip(s) {
+                        *value += bounce * weight * ratio;
+                    }
+                }
+            }
+        }
+        let mut version = probes.grid.version;
+        for byte in blend.first.map_or(u64::MAX, |i| i as u64).to_le_bytes()
+            .into_iter()
+            .chain(blend.second.map_or(u64::MAX, |i| i as u64).to_le_bytes())
+            .chain(blend.weight.to_bits().to_le_bytes())
+            .chain(ratio.to_bits().to_le_bytes()) {
+            version ^= u64::from(byte);
+            version = version.wrapping_mul(0x0100_0000_01b3);
+        }
+        probes.grid.version = (version >> 1) | 1;
+        probes
+    }
     /// Vertices in each layer.
     #[must_use]
     pub fn vertex_count(&self) -> usize {
@@ -564,6 +636,32 @@ impl Layers {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sun_layers_interpolate_through_the_midpoint_and_exact_directions() {
+        let layers = sample();
+        let at = layers.sun_blend(Vec3::Y);
+        assert_eq!(at.first, Some(0));
+        assert_eq!(at.weight, 0.0);
+        let middle = layers.sun_blend((Vec3::X + Vec3::Y).normalize());
+        assert!((middle.weight - 0.5).abs() < 1e-5);
+        let probes = layers.blended_probes(middle, 1.0);
+        assert!((probes.grid.data[0][0] - 2.0).abs() < 1e-4);
+        let east = layers.blended_probes(layers.sun_blend(Vec3::X), 1.0);
+        let high = layers.blended_probes(layers.sun_blend(Vec3::Y), 1.0);
+        assert_ne!(east.grid.data, high.grid.data);
+        assert_ne!(east.grid.version, high.grid.version);
+        for angle in [0.784_f32, 0.786] {
+            let blend = layers.sun_blend(Vec3::new(angle.sin(), angle.cos(), 0.0));
+            let irradiance = layers.blended_probes(blend, 1.0).grid.data[0][0];
+            assert!((irradiance - 2.0).abs() < 0.01);
+        }
+        let mut single = layers.clone();
+        single.suns.truncate(1);
+        assert_eq!(single.sun_blend(Vec3::X).weight, 0.0);
+        single.suns.clear();
+        assert_eq!(single.sun_blend(Vec3::Y).uniform(1.0), [0.0, 0.0, 0.0, 1.0]);
+    }
 
     fn sample() -> Layers {
         let n = 50;

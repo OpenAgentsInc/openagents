@@ -105,6 +105,7 @@ struct Frame {
     /// x lamp count; y the scale from emitted luminance to the shaded
     /// signal (the key's exposure on a neon stage, 1 in space).
     lamp_params: [f32; 4],
+    baked_sun: [f32; 4],
     /// Per lamp: position and range (m), then pre-exposed color times
     /// candela.
     lamps: [[f32; 4]; 2 * super::MAX_LAMPS],
@@ -443,6 +444,7 @@ pub struct TexturedGpu {
     /// The baked lamp light, in the light texture's layout once a lamp
     /// layer arrives, and one texel wide before.
     lamps: wgpu::Texture,
+    suns: wgpu::Texture,
     light_group: wgpu::BindGroup,
     light_rows: u32,
     texels: usize,
@@ -535,6 +537,17 @@ impl TexturedGpu {
         queue: &wgpu::Queue,
         lights: impl Iterator<Item = [u8; 4]>,
     ) {
+        Self::write_texels_at(texture, count, layer_rows, queue, lights, 0);
+    }
+
+    fn write_texels_at(
+        texture: &wgpu::Texture,
+        count: usize,
+        layer_rows: u32,
+        queue: &wgpu::Queue,
+        lights: impl Iterator<Item = [u8; 4]>,
+        layer_offset: u32,
+    ) {
         let size = texture.size();
         // Only the rows the lights fill change.
         let rows = (count as u64).div_ceil(u64::from(size.width)).max(1) as u32;
@@ -542,7 +555,7 @@ impl TexturedGpu {
         for (texel, light) in texels.chunks_exact_mut(4).zip(lights) {
             texel.copy_from_slice(&light);
         }
-        for layer in 0..size.depth_or_array_layers {
+        for layer in 0..size.depth_or_array_layers - layer_offset {
             let first = layer * layer_rows;
             if first >= rows {
                 break;
@@ -556,7 +569,7 @@ impl TexturedGpu {
                     origin: wgpu::Origin3d {
                         x: 0,
                         y: 0,
-                        z: layer,
+                        z: layer + layer_offset,
                     },
                     aspect: wgpu::TextureAspect::All,
                 },
@@ -1279,7 +1292,7 @@ impl Photo {
         };
         let light_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("verse textured light"),
-            entries: &[light_entry(2), light_entry(7)],
+            entries: &[light_entry(2), light_entry(7), light_entry(8)],
         });
         // Group 1 holds the guides' adapted luminance, which the pass binds
         // for the legacy faces anyway; textured shaders do not read it.
@@ -2072,7 +2085,7 @@ impl Photo {
                 size.height,
                 size.depth_or_array_layers,
             );
-            gpu.light_group = self.light_group(device, &gpu.light, &gpu.lamps);
+            gpu.light_group = self.light_group(device, &gpu.light, &gpu.lamps, &gpu.suns);
         }
         TexturedGpu::write_texels(
             &gpu.lamps,
@@ -2083,12 +2096,77 @@ impl Photo {
         );
     }
 
-    /// The bind group of a light texture and a lamp texture.
+    /// Uploads immutable sunlight once, followed by a zeroed damage mask.
+    pub fn write_textured_layers(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        gpu: &mut TexturedGpu,
+        layers: &super::baked_layers::Layers,
+    ) {
+        if layers.vertex_count() != gpu.texels || gpu.figure {
+            return;
+        }
+        let size = gpu.light.size();
+        let depth = size.depth_or_array_layers;
+        gpu.suns = light_texture(device, "verse textured sun layers", size.width, size.height,
+            depth * (layers.suns.len() as u32 + 1));
+        for (i, sun) in layers.suns.iter().enumerate() {
+            TexturedGpu::write_texels_at(&gpu.suns, gpu.texels, gpu.light_rows, queue,
+                sun.vertices.iter().copied(), i as u32 * depth);
+        }
+        TexturedGpu::write_texels_at(&gpu.suns, gpu.texels, gpu.light_rows, queue,
+            std::iter::repeat([0; 4]), layers.suns.len() as u32 * depth);
+        gpu.light_group = self.light_group(device, &gpu.light, &gpu.lamps, &gpu.suns);
+    }
+
+    /// Updates damaged vertices and their mask without rewriting the town.
+    pub fn write_textured_patches(
+        &self,
+        queue: &wgpu::Queue,
+        gpu: &TexturedGpu,
+        patches: &[textured::LightPatch],
+    ) {
+        if gpu.suns.width() != instanced::LIGHT_WIDTH || gpu.figure {
+            return;
+        }
+        let depth = gpu.light.size().depth_or_array_layers;
+        let mask_offset = gpu.suns.size().depth_or_array_layers - depth;
+        for patch in patches {
+            let mut first = patch.first;
+            for lights in patch.lights.chunks(instanced::LIGHT_WIDTH as usize) {
+                // A row boundary may split a patch even when it fits a row.
+                let mut used = 0;
+                while used < lights.len() && (first as usize) < gpu.texels {
+                    let x = first % instanced::LIGHT_WIDTH;
+                    let count = (lights.len() - used)
+                        .min((instanced::LIGHT_WIDTH - x) as usize)
+                        .min(gpu.texels - first as usize);
+                    let row = first / instanced::LIGHT_WIDTH;
+                    let origin = wgpu::Origin3d { x, y: row % gpu.light_rows, z: row / gpu.light_rows };
+                    let extent = wgpu::Extent3d { width: count as u32, height: 1, depth_or_array_layers: 1 };
+                    let layout = wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: None, rows_per_image: None };
+                    queue.write_texture(wgpu::TexelCopyTextureInfo { texture: &gpu.light, mip_level: 0,
+                        origin, aspect: wgpu::TextureAspect::All },
+                        bytemuck::cast_slice(&lights[used..used + count]), layout, extent);
+                    let mask = vec![[0, 0, 0, if patch.dynamic { 255u8 } else { 0 }]; count];
+                    queue.write_texture(wgpu::TexelCopyTextureInfo { texture: &gpu.suns, mip_level: 0,
+                        origin: wgpu::Origin3d { z: origin.z + mask_offset, ..origin }, aspect: wgpu::TextureAspect::All },
+                        bytemuck::cast_slice(&mask), layout, extent);
+                    first += count as u32;
+                    used += count;
+                }
+            }
+        }
+    }
+
+    /// The bind group of sky, lamps, sunlight, and the damage mask.
     fn light_group(
         &self,
         device: &wgpu::Device,
         light: &wgpu::Texture,
         lamps: &wgpu::Texture,
+        suns: &wgpu::Texture,
     ) -> wgpu::BindGroup {
         let view = |texture: &wgpu::Texture| {
             texture.create_view(&wgpu::TextureViewDescriptor {
@@ -2096,7 +2174,7 @@ impl Photo {
                 ..Default::default()
             })
         };
-        let (light, lamps) = (view(light), view(lamps));
+        let (light, lamps, suns) = (view(light), view(lamps), view(suns));
         device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("verse textured light"),
             layout: &self.light_layout,
@@ -2108,6 +2186,10 @@ impl Photo {
                 wgpu::BindGroupEntry {
                     binding: 7,
                     resource: wgpu::BindingResource::TextureView(&lamps),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 8,
+                    resource: wgpu::BindingResource::TextureView(&suns),
                 },
             ],
         })
@@ -2242,7 +2324,8 @@ impl Photo {
             layers,
         );
         let lamps = light_texture(device, "verse textured no lamps", 1, 1, 2);
-        let light_group = self.light_group(device, &light, &lamps);
+        let suns = light_texture(device, "verse textured no suns", 1, 1, 2);
+        let light_group = self.light_group(device, &light, &lamps, &suns);
         let gpu = TexturedGpu {
             vertices: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("verse textured vertices"),
@@ -2266,6 +2349,7 @@ impl Photo {
             groups,
             light,
             lamps,
+            suns,
             light_group,
             light_rows,
             texels: prepared.lights.len(),
@@ -2667,6 +2751,7 @@ impl Photo {
             }),
             params: [camera.star_gain, sky.time, pixel_angle, 1.0],
             lamp_params: [0.0, 1.0, 0.0, 0.0],
+            baked_sun: [0.0; 4],
             metering: [
                 0.18,
                 2f32.powf(camera.ev100 - camera.ev_max),
@@ -3143,6 +3228,7 @@ impl Photo {
                 0.0
             };
             uniform.lamp_params = [0.0, exposure, baked_lamps, 0.0];
+            uniform.baked_sun = neon.baked_sun;
             let mut count = 0;
             let budget = lamp_budget(self.capability.quality.tier);
             let sources: Vec<_> = neon

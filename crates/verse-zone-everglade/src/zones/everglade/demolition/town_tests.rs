@@ -254,7 +254,9 @@ fn restoring_brings_every_building_back() {
     };
     strike(&mut town, &player, at, 1.0);
     assert!(town.hidden() > 0);
+    assert!(!town.lighting_vertices().is_empty());
     town.restore();
+    assert!(town.lighting_vertices().is_empty());
     run(&mut town, &player, 0.1);
     assert!(town.raised().is_empty());
     assert_eq!(town.hidden(), 0);

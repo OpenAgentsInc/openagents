@@ -2500,6 +2500,12 @@ impl Scene {
         if let (Some(gpu), Some(lamps)) = (&mut self.textured, lamps) {
             photo.write_textured_lamps(device, queue, gpu, &lamps);
         }
+        if let (Some(gpu), Some(slot)) = (&mut self.textured, &self.textured_baked) {
+            if let Some(layers) = slot.take_layers() {
+                photo.write_textured_layers(device, queue, gpu, &layers);
+            }
+            photo.write_textured_patches(queue, gpu, &slot.take_patches());
+        }
         if let Some(figure) = &dynamic.figure {
             if self
                 .figure

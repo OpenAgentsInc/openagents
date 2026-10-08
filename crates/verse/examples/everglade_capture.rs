@@ -268,6 +268,12 @@ fn main() -> Result<(), String> {
         }
     };
     runtime.settle_zone_light();
+    if std::env::var_os("VERSE_REQUIRE_BAKED").is_some() {
+        if !runtime.everglade_zone_mut().is_some_and(|zone| zone.uses_baked_light()) {
+            return Err("The capture requires offline layers matching the installed scene".into());
+        }
+        eprintln!("Capture uses verified offline layers for the installed scene");
+    }
     runtime.set_spawn(at, yaw)?;
     // With VERSE_CAPTURE_ALICE set, Alice stands at her desk as the workshop
     // agent's resident seat does in a desktop window, with no host. With

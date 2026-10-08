@@ -145,6 +145,15 @@ pub struct TownPiece {
     cut: bool,
 }
 
+fn lighting_neighbors(links: &[&Link], changed: usize) -> impl Iterator<Item = usize> + '_ {
+    links.iter().enumerate().filter_map(move |(k, link)| {
+        let linked = |link: &Link, other: usize| {
+            link.under.iter().chain(&link.beside).any(|&i| usize::from(i) == other)
+        };
+        (k == changed || linked(links[changed], k) || linked(link, changed)).then_some(k)
+    })
+}
+
 /// One building of the town.
 #[derive(Clone, Debug)]
 pub struct Building {
@@ -1164,6 +1173,39 @@ impl Town {
     #[must_use]
     pub fn hidden(&self) -> usize {
         self.hidden.len()
+    }
+
+    /// Static vertices whose offline lighting no longer fits the support graph.
+    /// The changed cells and both ends of each support edge use dynamic light.
+    #[must_use]
+    pub fn lighting_vertices(&self) -> BTreeSet<u32> {
+        let mut affected = self.hidden.clone();
+        for &(building, changed) in &self.hidden {
+            let pieces = &self.wreck.buildings[building].pieces;
+            let links: Vec<&Link> = pieces.iter().map(|p| &p.link).collect();
+            for k in lighting_neighbors(&links, changed) {
+                affected.insert((building, k));
+            }
+        }
+        let mut vertices = BTreeSet::new();
+        for (building, k) in affected {
+            let piece = &self.wreck.buildings[building].pieces[k];
+            for placement in &piece.placements {
+                for (drawn, range) in self.ranges.get(placement).into_iter().flatten() {
+                    let indices = self.world.range_indices(*drawn, range);
+                    let mesh = self.world.placements[*drawn].mesh;
+                    let cells = self.cells.get(&mesh).and_then(|c| c.get(range.primitive));
+                    for (triangle, indices) in indices.chunks_exact(3).enumerate() {
+                        if let Some((_, cell)) = piece.carve
+                            && cells.and_then(|c| c.get(triangle)) != Some(&cell) {
+                            continue;
+                        }
+                        vertices.extend(indices.iter().copied());
+                    }
+                }
+            }
+        }
+        vertices
     }
 
     /// Swings with the player's character's chop `track` from now on.
@@ -2673,4 +2715,21 @@ fn carved_building(
         blocks: Vec::new(),
         roofs: Vec::new(),
     })
+}
+
+#[cfg(test)]
+mod lighting_tests {
+    use super::*;
+
+    #[test]
+    fn damage_lighting_follows_both_directions_of_support_edges() {
+        let floor = Link::default();
+        let wall = Link { under: vec![0], beside: vec![2], ..Link::default() };
+        let neighbor = Link::default();
+        let roof = Link { under: vec![1], ..Link::default() };
+        let distant = Link::default();
+        let links = [&floor, &wall, &neighbor, &roof, &distant];
+        assert_eq!(lighting_neighbors(&links, 1).collect::<Vec<_>>(), vec![0, 1, 2, 3]);
+        assert_eq!(lighting_neighbors(&links, 0).collect::<Vec<_>>(), vec![0, 1]);
+    }
 }

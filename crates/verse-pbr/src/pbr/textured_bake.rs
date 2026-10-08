@@ -391,7 +391,12 @@ impl BakeGeometry {
     ///
     /// Returns the scene's validation error.
     pub fn new(scene: &TexturedScene) -> Result<Self, String> {
-        let merged = scene.merge()?;
+        let mut merged = scene.merge()?;
+        for (first, indices) in scene.edits.since(0).0 {
+            if let Some(range) = merged.indices.get_mut(first as usize..first as usize + indices.len()) {
+                range.copy_from_slice(&indices);
+            }
+        }
         let mut foliage = vec![false; merged.vertices.len()];
         let mut far = vec![false; merged.vertices.len()];
         let mut occluders = Vec::with_capacity(merged.indices.len() / 3);
@@ -403,6 +408,9 @@ impl BakeGeometry {
             let distant = matches!(batch.level, Level::Far { .. });
             let range = batch.first as usize..(batch.first + batch.count) as usize;
             for triangle in merged.indices[range].chunks_exact(3) {
+                if triangle[0] == triangle[1] || triangle[1] == triangle[2] || triangle[0] == triangle[2] {
+                    continue;
+                }
                 let corners =
                     [triangle[0], triangle[1], triangle[2]].map(|i| &merged.vertices[i as usize]);
                 if masked {
@@ -682,6 +690,12 @@ impl SceneBaker {
         }
     }
 
+    /// Lights one changed vertex against the current, edited scene.
+    #[must_use]
+    pub fn vertex_light(&self, index: usize) -> Option<[u8; 4]> {
+        (index < self.vertices.len()).then(|| self.bake_vertex(index))
+    }
+
     /// Probe `index` of the grid, in x-fastest order, and whether it lies
     /// in open air rather than inside geometry.
     fn bake_probe(&self, index: usize) -> ([f32; 12], bool) {
@@ -828,7 +842,7 @@ fn surface(
 pub struct LayerChoice {
     pub layers: Arc<super::baked_layers::Layers>,
     /// The sun direction whose bounce joins the sky's, if any.
-    pub sun: Option<usize>,
+    pub sun: super::baked_layers::SunBlend,
     /// How strongly, as [`super::baked_layers::Layers::sun_ratio`] gives.
     pub ratio: f32,
 }
@@ -852,9 +866,10 @@ impl LayerChoice {
         }
         self.layers.validate()?;
         Ok(Layered {
-            lights: self.layers.lights(self.sun, self.ratio),
+            lights: self.layers.sky.clone(),
             lamps: self.layers.lamp_texels(),
-            probes: self.layers.probes(self.sun, self.ratio),
+            probes: self.layers.blended_probes(self.sun, self.ratio),
+            layers: self.layers.clone(),
         })
     }
 }
@@ -867,6 +882,7 @@ pub struct Layered {
     /// The lamp texture's texels, in the same order.
     pub lamps: Vec<[u8; 4]>,
     pub probes: AmbientProbes,
+    pub layers: Arc<super::baked_layers::Layers>,
 }
 
 /// What a finished job produced.
@@ -1038,6 +1054,7 @@ impl BakeJob {
                 self.layered = true;
                 self.slot.deliver_lights(layered.lights);
                 self.slot.deliver_lamps(layered.lamps);
+                self.slot.deliver_layers(layered.layers);
                 Some(layered.probes)
             }
         }
@@ -1140,6 +1157,23 @@ mod tests {
         for c in m.to_array() {
             assert!((c - 1.0).abs() < 0.02, "{m}");
         }
+    }
+
+    #[test]
+    fn edited_geometry_relights_a_vertex_without_the_removed_roof() {
+        let mut scene = TexturedScene::default();
+        ground(&mut scene, [0.3; 3]);
+        let roof = material(&mut scene, [0.5; 3], AlphaMode::Opaque);
+        add(&mut scene, quad(Vec3::new(0.0, 2.0, 0.0), Vec3::X * 8.0, Vec3::Z * 8.0, Vec3::NEG_Y, roof));
+        let dark = baker(&scene).ambient_at(Vec3::ZERO, Vec3::Y).1;
+        for range in &scene.index_ranges()[1] {
+            scene.edits.write(range.first, vec![range.base; range.count as usize]);
+        }
+        let updated = baker(&scene);
+        let open = updated.ambient_at(Vec3::ZERO, Vec3::Y).1;
+        assert!(open > dark + 0.5, "removed roof: {dark} to {open}");
+        assert!(updated.vertex_light(0).is_some());
+        assert!(updated.vertex_light(usize::MAX).is_none());
     }
 
     #[test]
@@ -1380,7 +1414,7 @@ mod tests {
         let scene = Arc::new(scene);
         let choice = LayerChoice {
             layers: layers.clone(),
-            sun: Some(0),
+            sun: super::super::baked_layers::SunBlend { first: Some(0), ..Default::default() },
             ratio: 1.0,
         };
         let mut job = BakeJob::start_layered(scene.clone(), LIGHT, settings(), 1, Some(choice));
@@ -1404,7 +1438,7 @@ mod tests {
         for layers in [None, Some(stale)] {
             let choice = layers.map(|layers| LayerChoice {
                 layers: Arc::new(layers),
-                sun: Some(0),
+                sun: super::super::baked_layers::SunBlend { first: Some(0), ..Default::default() },
                 ratio: 1.0,
             });
             let mut job = BakeJob::start_layered(scene.clone(), LIGHT, settings(), 2, choice);

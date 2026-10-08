@@ -517,6 +517,16 @@ pub struct BakedVertices(std::sync::Arc<std::sync::Mutex<Delivery>>);
 struct Delivery {
     lights: Option<Vec<[u8; 4]>>,
     lamps: Option<Vec<[u8; 4]>>,
+    layers: Option<std::sync::Arc<super::baked_layers::Layers>>,
+    patches: Vec<LightPatch>,
+}
+
+/// A contiguous light edit; dynamic edits bypass the offline sun and lamps.
+#[derive(Clone, Debug)]
+pub struct LightPatch {
+    pub first: u32,
+    pub lights: Vec<[u8; 4]>,
+    pub dynamic: bool,
 }
 
 impl BakedVertices {
@@ -540,6 +550,26 @@ impl BakedVertices {
     /// ([`crate::pbr::baked_layers::encode_lamp`]).
     pub fn deliver_lamps(&self, lamps: Vec<[u8; 4]>) {
         self.lock().lamps = Some(lamps);
+    }
+
+    /// Hands over immutable sun layers for interpolation by the renderer.
+    pub fn deliver_layers(&self, layers: std::sync::Arc<super::baked_layers::Layers>) {
+        self.lock().layers = Some(layers);
+    }
+
+    /// Queues edits for damaged pieces or their restoration.
+    pub fn deliver_patches(&self, patches: impl IntoIterator<Item = LightPatch>) {
+        self.lock().patches.extend(patches);
+    }
+
+    #[must_use]
+    pub fn take_layers(&self) -> Option<std::sync::Arc<super::baked_layers::Layers>> {
+        self.lock().layers.take()
+    }
+
+    #[must_use]
+    pub fn take_patches(&self) -> Vec<LightPatch> {
+        std::mem::take(&mut self.lock().patches)
     }
 
     /// Takes the delivered light channel, if a bake has delivered one since

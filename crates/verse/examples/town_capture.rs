@@ -57,6 +57,12 @@ fn main() -> Result<(), String> {
         return Err("Everglade did not install from the pinned pack".into());
     }
     runtime.settle_zone_light();
+    if std::env::var_os("VERSE_REQUIRE_BAKED").is_some() {
+        if !runtime.everglade_zone_mut().is_some_and(|zone| zone.uses_baked_light()) {
+            return Err("The capture requires offline layers matching the installed scene".into());
+        }
+        eprintln!("Capture uses verified offline layers for the installed scene");
+    }
     runtime.set_dev_destruction(true)?;
     let mut atlas = verse::ui::Atlas::new(16.0);
     zones::everglade::hotbar::add_sprites(&mut atlas)?;

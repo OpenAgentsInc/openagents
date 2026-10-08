@@ -87,6 +87,8 @@ struct Frame {
     // x lamp count; y the scale from emitted luminance to the shaded signal;
     // z how brightly the baked lamp layer burns, 0 to 1.
     lamp_params: vec4<f32>,
+    // One-based sun indices, second weight, and sun/sky strength.
+    baked_sun: vec4<f32>,
     // Per lamp (`pbr::Lamp`): position and range (m), then pre-exposed color
     // times candela.
     lamps: array<vec4<f32>, 64>,
@@ -1129,6 +1131,9 @@ struct TexturedMaterial {
 // texture's layout: rgb times `2^((a − 1) / 16 − 6)` lux, zero alpha for
 // none. A scene without a lamp layer binds a one-texel-wide texture.
 @group(3) @binding(7) var lamp_map: texture_2d_array<f32>;
+// Each baked sun occupies the light map's layer count; the last span masks
+// vertices that use dynamic lighting after damage.
+@group(3) @binding(8) var sun_map: texture_2d_array<f32>;
 
 // A vertex (`pbr::instanced::GpuVertex`) and its instance
 // (`pbr::instanced::Instance`). A merged cell is one instance whose
@@ -1199,6 +1204,34 @@ fn instance_lamp(v: TexturedIn, index: u32) -> vec3<f32> {
     return t.rgb * exp2((a - 1.0) / 16.0 - 6.0);
 }
 
+fn dynamic_light(v: TexturedIn, index: u32) -> bool {
+    let size = textureDimensions(sun_map, 0);
+    if size.x < 2048u {
+        return false;
+    }
+    let texel = v.light + index;
+    let row = texel >> 11u;
+    let layer = row / size.y;
+    let mask = textureNumLayers(sun_map) - textureNumLayers(light_map);
+    return textureLoad(sun_map, vec2<i32>(i32(texel & 2047u), i32(row - layer * size.y)), i32(mask + layer), 0).a > 0.5;
+}
+
+fn instance_sun(v: TexturedIn, index: u32, sun: f32) -> vec3<f32> {
+    if sun < 0.5 || textureDimensions(sun_map, 0).x < 2048u {
+        return vec3<f32>(0.0);
+    }
+    let texel = v.light + index;
+    let rows = textureDimensions(sun_map, 0).y;
+    let row = texel >> 11u;
+    let layer = row / rows;
+    let offset = u32(sun - 1.0) * textureNumLayers(light_map);
+    if offset + layer >= textureNumLayers(sun_map) - textureNumLayers(light_map) {
+        return vec3<f32>(0.0);
+    }
+    let t = textureLoad(sun_map, vec2<i32>(i32(texel & 2047u), i32(row - layer * rows)), i32(offset + layer), 0);
+    return t.rgb * t.rgb * 4.0;
+}
+
 struct TexturedOut {
     @builtin(position) clip: vec4<f32>,
     @location(0) world: vec3<f32>,
@@ -1230,6 +1263,12 @@ fn vs_textured(v: TexturedIn, @builtin(vertex_index) index: u32) -> TexturedOut 
     o.color = v.color;
     o.ambient = baked_ambient(instance_light(v, index));
     o.lamp = instance_lamp(v, index);
+    if dynamic_light(v, index) {
+        o.lamp = vec3<f32>(0.0);
+    } else {
+        o.ambient = vec4<f32>(o.ambient.rgb + mix(instance_sun(v, index, f.baked_sun.x),
+            instance_sun(v, index, f.baked_sun.y), f.baked_sun.z) * f.baked_sun.w, o.ambient.w);
+    }
     return o;
 }
 
