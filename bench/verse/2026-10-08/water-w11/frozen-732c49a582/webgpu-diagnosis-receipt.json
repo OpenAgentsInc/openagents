@@ -1,0 +1,88 @@
+{
+  "command": [
+    "openagents",
+    "browser",
+    "run",
+    "--json",
+    "--",
+    "python3",
+    "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-08ea-73f2-9344-ec959f74a795/w11-webgpu-diagnose.py",
+    "child",
+    "http://127.0.0.1:55345"
+  ],
+  "exit": 0,
+  "script_sha256": "42f0823b5edeeba7f2c3c61c0e5e0b3394bb0128a4f6b45a9caa6cc6d8a7ff05",
+  "started_at_unix_ms": 1791446975465,
+  "ended_at_unix_ms": 1791446987491,
+  "render_source": "732c49a582474fa6e669716637d1e0b194d5e8ba",
+  "original_record_bytes": 1400210,
+  "original_record_sha256": "e4995b2dc58e3ce95a36ff588a01c14e600d4b88f5d0f902edabd002a7658109",
+  "gzip_sha256": "4341cf5e250110b06501cd4af14b8a0485b3f0030d2434cc1e980ac127b2e97f",
+  "diagnostic_only": true,
+  "fix_applied": false,
+  "leases": {
+    "w11-webgpu-diagnosis-browser.json": {
+      "schema": "openagents.lease.receipt.v1",
+      "id": "1791446975416-20729-0",
+      "resource": "browser",
+      "amount": 1,
+      "holder": {
+        "session": "codex:01a119ae-08ea-73f2-9344-ec959f74a795",
+        "agent": "codex",
+        "pid": 20729,
+        "command": "python3"
+      },
+      "priority": "normal",
+      "nested": false,
+      "requested_at_ms": 1791446975416,
+      "acquired_at_ms": 1791446975416,
+      "released_at_ms": 1791446987514,
+      "wait_ms": 0,
+      "held_ms": 12098,
+      "held_whole_run": true,
+      "exit": 0
+    },
+    "w11-webgpu-diagnosis-gpu.json": {
+      "schema": "openagents.lease.receipt.v1",
+      "id": "1791446975403-20709-0",
+      "resource": "gpu",
+      "amount": 1,
+      "holder": {
+        "session": "codex:01a119ae-08ea-73f2-9344-ec959f74a795",
+        "agent": "codex",
+        "pid": 20709,
+        "command": "openagents"
+      },
+      "priority": "normal",
+      "nested": false,
+      "requested_at_ms": 1791446975403,
+      "acquired_at_ms": 1791446975403,
+      "released_at_ms": 1791446987541,
+      "wait_ms": 0,
+      "held_ms": 12138,
+      "held_whole_run": true,
+      "exit": 0
+    },
+    "w11-webgpu-diagnosis-quiet.json": {
+      "schema": "openagents.lease.receipt.v1",
+      "id": "1791446975389-20682-0",
+      "resource": "quiet",
+      "amount": 1,
+      "holder": {
+        "session": "codex:01a119ae-08ea-73f2-9344-ec959f74a795",
+        "agent": "codex",
+        "pid": 20682,
+        "command": "openagents"
+      },
+      "priority": "normal",
+      "nested": false,
+      "requested_at_ms": 1791446975389,
+      "acquired_at_ms": 1791446975389,
+      "released_at_ms": 1791446987565,
+      "wait_ms": 0,
+      "held_ms": 12176,
+      "held_whole_run": true,
+      "exit": 0
+    }
+  }
+}

@@ -1,0 +1,52 @@
+[
+  {
+    "case": "dry",
+    "submissions": 287,
+    "device_error_count": 574,
+    "first_device_error": {
+      "type": "GPUValidationError",
+      "message": "No bind group set at group index 0.\n - While encoding [RenderPassEncoder \"verse neon blended\"].Draw(438, 1, 0, 0).\n - While finishing [CommandEncoder \"verse frame\"].\n"
+    },
+    "error_scope_errors": [],
+    "shader_messages": [],
+    "lost": [],
+    "maps": {
+      "started": 287,
+      "done": 287,
+      "failed": 0
+    },
+    "retained_readbacks": 64,
+    "nonzero_readbacks": 0,
+    "device_features": [
+      "core-features-and-limits",
+      "rg11b10ufloat-renderable",
+      "timestamp-query"
+    ],
+    "log_entry_count": 502
+  },
+  {
+    "case": "wet",
+    "submissions": 294,
+    "device_error_count": 588,
+    "first_device_error": {
+      "type": "GPUValidationError",
+      "message": "No bind group set at group index 0.\n - While encoding [RenderPassEncoder \"verse neon blended\"].Draw(438, 1, 0, 0).\n - While finishing [CommandEncoder \"verse frame\"].\n"
+    },
+    "error_scope_errors": [],
+    "shader_messages": [],
+    "lost": [],
+    "maps": {
+      "started": 294,
+      "done": 294,
+      "failed": 0
+    },
+    "retained_readbacks": 64,
+    "nonzero_readbacks": 0,
+    "device_features": [
+      "core-features-and-limits",
+      "rg11b10ufloat-renderable",
+      "timestamp-query"
+    ],
+    "log_entry_count": 501
+  }
+]
