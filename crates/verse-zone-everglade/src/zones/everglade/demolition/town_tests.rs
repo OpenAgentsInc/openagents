@@ -286,13 +286,20 @@ fn destruction_relights_standing_neighbors_and_ground_then_restores_the_exact_ba
     use crate::pbr::textured_bake::decode;
     use glam::{DVec3, Mat4};
     use std::collections::BTreeSet;
-    let placements: Vec<_> = super::cottage::drafts()
+    let ([x, z], [hx, hz]) = HUT;
+    let placements: Vec<_> = layout::placements()
         .into_iter()
-        .filter(|d| d.building == 0)
-        .map(|d| d.placement)
+        .filter(|p| {
+            p.model.starts_with("village/")
+                && (p.at[0] - x).abs() <= hx + 1.0
+                && (p.at[1] - z).abs() <= hz + 1.0
+        })
         .collect();
+    assert!(
+        !placements.is_empty(),
+        "the beekeeper's original kit pieces"
+    );
     let (mut world, _) = super::super::scene::build(pack(), &placements).unwrap();
-    let ([x, z], _) = super::cottage::COTTAGES[0];
     let floor = height(x, z);
     // Proxy levels share the intact fixture's mesh. Destruction must select
     // the original pieces instead, including standing support neighbors.
