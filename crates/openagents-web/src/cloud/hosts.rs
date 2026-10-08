@@ -466,6 +466,12 @@ impl Binding {
                     | Operation::CloudList { .. }
                     | Operation::CloudRead { .. }
                     | Operation::CloudOriginal { .. }
+                    | Operation::ListAgents {}
+                    | Operation::ListAgentJobs { .. }
+                    | Operation::ListAgentMemory { .. }
+                    | Operation::StudioSnapshot {}
+                    | Operation::StudioUpdate { .. }
+                    | Operation::OpenReview { .. }
             )
         {
             return Err(SessionError::Forbidden);

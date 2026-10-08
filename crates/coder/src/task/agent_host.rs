@@ -46,6 +46,7 @@ use coder_host::{AgentReport, Code, Principal};
 use nostr::activity_summary::{Attention, Phase};
 
 use super::agent::{self, Decision, Doing, Entry, Kind, Outcome, Record, Report, State, Store};
+use super::agent_asked::{Asked, Seen};
 use super::agent_crew_control::{self as crew_control, Guard as CrewGuard, Stamp as CrewStamp};
 use super::agent_jobs::{self, Facts, Jobs};
 use super::agent_memory::{self, Author, Memory, MemoryKind};
@@ -61,7 +62,7 @@ pub const DECISION_LIMIT: Duration = Duration::from_secs(60 * 60);
 pub const QUEUE_MAX: usize = 4;
 /// The most transcript lines a live agent keeps.
 const LINES: usize = 200;
-/// The most request IDs remembered for retries.
+/// The most request IDs each agent's durable ledger remembers for retries.
 const ASKED_MAX: usize = 512;
 /// The most checkouts `studio.agent.workspaces` offers.
 const PLACES_MAX: usize = 8;
@@ -101,6 +102,27 @@ struct Queued {
 struct Admitted {
     queued: Queued,
     crew: Option<CrewStamp>,
+}
+
+/// The exact admitted content of a request: who asked whom for what.
+fn request_digest(agent: &str, queued: &Queued) -> String {
+    super::agent_asked::digest(&serde_json::json!({
+        "agent": agent,
+        "text": queued.text,
+        "context": queued.context,
+        "mode": queued.mode,
+        "workspace": queued.workspace,
+        "typist": queued.typist,
+        "computer": queued.computer,
+        "from": queued.from,
+    }))
+}
+
+fn changed_request() -> Code {
+    coder_host::tasks::refuse(
+        Code::Conflict,
+        "This request ID was already admitted with different content; nothing was queued.",
+    )
 }
 
 /// A typed sales controller shares the host's original cancellation scope.
@@ -182,7 +204,6 @@ impl Live {
 #[derive(Default)]
 struct Shared {
     live: BTreeMap<String, Live>,
-    asked: VecDeque<String>,
     reports: Vec<AgentReport>,
     /// Moves with each report, for the host's stamp.
     reported: u64,
@@ -822,6 +843,32 @@ impl Agents {
                 computer,
             } => {
                 let (privacy_store, record) = self.store(agent)?;
+                // A retry of an admitted request changes nothing more: no
+                // resume, no plan event, and no second queue entry.
+                let asked = Asked::new(privacy_store.dir(), ASKED_MAX);
+                let digest = request_digest(
+                    &record.name,
+                    &Queued {
+                        text: text.clone(),
+                        context: context.clone(),
+                        mode: *mode,
+                        workspace: workspace.clone(),
+                        typist: *typist,
+                        from: principal.device.clone(),
+                        quiet: false,
+                        fix_on_failure: false,
+                        computer: computer.clone(),
+                        queue_id: None,
+                    },
+                );
+                match asked
+                    .seen(key, &digest)
+                    .map_err(|why| coder_host::tasks::refuse(Code::Unavailable, why))?
+                {
+                    Seen::Same => return Ok(dispatched(agent)),
+                    Seen::Changed => return Err(changed_request()),
+                    Seen::New => {}
+                }
                 super::sales::privacy::check_agent_copy(
                     &privacy_store,
                     &format!(
@@ -1873,8 +1920,17 @@ impl Agents {
                 .check_stamp(&current, &crew)
                 .map_err(|why| coder_host::tasks::refuse(Code::Conflict, why))?;
         }
-        if shared.asked.iter().any(|k| k == key) {
-            return Ok(());
+        // The durable ledger answers a retry of an admitted request, after a
+        // lost reply or a restart, without queueing it again (#10955).
+        let asked = Asked::new(store.dir(), ASKED_MAX);
+        let digest = request_digest(&record.name, &queued);
+        match asked
+            .seen(key, &digest)
+            .map_err(|why| coder_host::tasks::refuse(Code::Unavailable, why))?
+        {
+            Seen::Same => return Ok(()),
+            Seen::Changed => return Err(changed_request()),
+            Seen::New => {}
         }
         let live = shared.live.entry(record.name.clone()).or_default();
         if live.queue.len() >= QUEUE_MAX {
@@ -1883,15 +1939,15 @@ impl Agents {
                 format!("{name} has {QUEUE_MAX} requests waiting already."),
             ));
         }
+        asked
+            .record(key, &digest)
+            .map_err(|why| coder_host::tasks::refuse(Code::Unavailable, why))?;
+        let live = shared.live.entry(record.name.clone()).or_default();
         let busy = live.busy;
         if busy {
             live.say(&format!("queued: {}", one_line(&queued.text)));
         }
         live.queue.push_back(Admitted { queued, crew });
-        shared.asked.push_back(key.to_string());
-        while shared.asked.len() > ASKED_MAX {
-            shared.asked.pop_front();
-        }
         drop(shared);
         drop(guard);
         drop(store);

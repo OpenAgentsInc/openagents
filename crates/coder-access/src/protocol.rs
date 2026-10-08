@@ -1036,9 +1036,10 @@ impl Operation {
         )
     }
 
-    /// A `studio.agent.*` operation, answered by [`Outcome::Agent`]. None
-    /// of their replies is retained, as for `background.*`: the host keys
-    /// a request by its ID itself, so a retry asks once.
+    /// A `studio.agent.*` operation, answered by [`Outcome::Agent`]. Only
+    /// the replies of [`Self::agent_effect`] are retained; the agent host
+    /// also keys an ask by its ID and exact content in a durable ledger, so
+    /// a retry asks once even after a restart.
     #[must_use]
     pub fn agent(&self) -> bool {
         matches!(
@@ -1162,7 +1163,19 @@ impl Operation {
         !self.reads_only()
             && !matches!(self, Self::PutArtifact { .. })
             && !self.background()
-            && !self.agent()
+            && (!self.agent() || self.agent_effect())
+    }
+
+    /// A `studio.agent.*` request from a device that can start or end work:
+    /// ask, answer a proposal, or stop. Its signed reply is retained, so a
+    /// lost reply is recovered exactly and a reused request identity with
+    /// other bytes conflicts (#10955).
+    #[must_use]
+    pub fn agent_effect(&self) -> bool {
+        matches!(
+            self,
+            Self::AskAgent { .. } | Self::AnswerAgent { .. } | Self::StopAgent { .. }
+        )
     }
 
     /// A `background.*` operation. None of their replies is retained: the
@@ -2031,6 +2044,8 @@ impl Outcome {
                                 | Self::CloudAccepted { .. }
                                 | Self::QueueAtRevision { .. }
                                 | Self::Published { .. }
+                                | Self::Merged { .. }
+                                | Self::Agent { .. }
                         ) =>
                     {
                         outcome.validate()?

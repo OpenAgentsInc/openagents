@@ -317,3 +317,69 @@ fn exact_control_replies_cannot_substitute_a_task_or_earlier_revision() {
     };
     assert!(!reply.answers(&op));
 }
+
+fn ask(text: &str) -> Operation {
+    Operation::AskAgent {
+        agent: "alice".into(),
+        text: text.into(),
+        workspace: None,
+        context: String::new(),
+        mode: crate::agent::Mode::Task,
+        typist: false,
+        computer: None,
+    }
+}
+
+#[test]
+fn an_agent_ask_reply_is_retained_recovered_and_bound_to_its_bytes() {
+    let fixture = Fixture::local();
+    let mut recorder = Recorder::default();
+    let (_, operator) = enrolled(&fixture, "standard", &mut recorder);
+    let original = operator.prepare(ask("Fix the parser."), now()).unwrap();
+    let first = fixture
+        .host()
+        .handle(&original.event, &fixture.relay, now(), &mut recorder)
+        .unwrap();
+    let outcome = operator.verify_reply(&original, &first, now()).unwrap();
+    // A lost reply: the exact same packet is answered from retention.
+    let again = fixture
+        .host()
+        .handle(&original.event, &fixture.relay, now(), &mut recorder)
+        .unwrap();
+    assert_eq!(again.id, first.id);
+    assert_eq!(recorder.count(), 1, "the ask reached the agent once");
+    // Recovery reads the original result without dispatch.
+    let pending = operator.prepare(recovery(&original), now()).unwrap();
+    let reply = fixture
+        .host()
+        .handle(&pending.event, &fixture.relay, now(), &mut recorder)
+        .unwrap();
+    let Outcome::RequestOperation {
+        result: Some(result),
+        ..
+    } = operator.verify_reply(&pending, &reply, now()).unwrap()
+    else {
+        panic!("the original ask is known")
+    };
+    assert_eq!(*result, ReplyResult::Ok { outcome });
+    // Other bytes under the same request identity conflict.
+    let changed = operator
+        .prepare_with_id(
+            ask("Delete the parser."),
+            now(),
+            original.request.request.clone(),
+        )
+        .unwrap();
+    let reply = fixture
+        .host()
+        .handle(&changed.event, &fixture.relay, now(), &mut recorder)
+        .unwrap();
+    assert_eq!(
+        operator
+            .verify_reply(&changed, &reply, now())
+            .unwrap_err()
+            .code,
+        Code::Conflict
+    );
+    assert_eq!(recorder.count(), 1);
+}

@@ -165,6 +165,41 @@ fn coder_runs_a_read_only_request_and_she_reports_three_ways() {
 }
 
 #[test]
+fn a_restarted_host_answers_a_retried_request_once_and_refuses_changed_bytes() {
+    let dir = tempfile::tempdir().unwrap();
+    let agents = host(&dir, vec![turn(run("echo ok", 0, "ok"), "done.")]);
+    ask(&agents, "lost-reply", "run the atif tests", false).unwrap();
+    until(&agents, |v| !v.busy && v.service.requests == 1);
+    // The host starts again: a new process with the same root.
+    let restarted = Agents::new(
+        dir.path().join("host"),
+        dir.path().join("tasks"),
+        BTreeMap::new(),
+    )
+    .with_engine(engine(vec![turn(run("echo again", 0, "again"), "again.")]))
+    .with_coder_state(dir.path().join("coder"))
+    .with_clock(clock);
+    let replay = ask(&restarted, "lost-reply", "run the atif tests", false).unwrap();
+    assert_eq!(
+        replay,
+        ask(&agents, "lost-reply", "run the atif tests", false).unwrap()
+    );
+    assert_eq!(
+        ask(&restarted, "lost-reply", "run the other tests", false),
+        Err(Code::Conflict),
+        "changed bytes under one request ID conflict"
+    );
+    std::thread::sleep(Duration::from_millis(200));
+    let seen = view(&restarted);
+    assert!(!seen.busy);
+    assert!(
+        !seen.lines.iter().any(|l| l.contains("echo again")),
+        "the retry started no work: {:?}",
+        seen.lines
+    );
+}
+
+#[test]
 fn her_pane_follows_her_coder_session_and_a_key_takes_it_over() {
     let dir = tempfile::tempdir().unwrap();
     let mut working = turn(run("cargo test -p atif", 0, "ok"), "");

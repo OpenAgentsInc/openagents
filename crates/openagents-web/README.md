@@ -304,6 +304,35 @@ view and drafts. Even a prepared request rechecks its operator policy before
 revealing private action content. Original records are available in bounded
 chunks with downloads that preserve their exact bytes.
 
+## Alice and Agent Studio
+
+`/cloud/app/agents` links the current resident bindings. On
+`/cloud/app/hosts/{binding}/agents`, Observe reads the host's workshop agents
+and its Agent Studio snapshot. Each agent shows her key, attested, unattested,
+or expired owner attestation with the 14-day renewal warning, engine route,
+running step, waiting proposal, coding-task change, jobs, preferences, and day
+plan. The page states the current one-running, four-waiting host limit and that
+coding-task runs bypass her terminal-request budget meter. Configuration stays
+unavailable until a reviewed host operation exists.
+
+`/cloud/app/hosts/{binding}/agents/{agent}` adds standing jobs and memory. An
+enrolled browser with Operate chooses **Coding task** or **Terminal request**
+explicitly; the host's automatic mode is never sent. The request identity is
+fixed when the form renders. The control journal reuses the exact packet, and
+changed bytes under that identity conflict. The resident retains the signed
+reply, and the agent host keeps a durable ledger of request identity and exact
+content. A lost reply or restart therefore recovers the original result without
+queueing the work again.
+
+Studio controls carry the displayed stream and sequence. Before staging, the
+adapter reads `studio.update` from that point. A gap, restarted host stream, or
+changed decision or task refuses until a fresh snapshot. Decisions bind their
+native basis. Merge decisions bind the review's base, head commit, and tree.
+The adapter rereads the review and refuses a changed candidate. Merge is not
+offered for an unreadable change. The host refuses dirty, detached, or
+conflicting checkouts. Merge implies no deploy; any push appears only as the
+host's publication state.
+
 ## Granted native workbench
 
 Build `coder-browser-web` with `scripts/build-coder-browser-web.sh DIRECTORY`

@@ -1,6 +1,7 @@
 //! Same-origin Cloud pages over current native account authority. The public
 //! site, local task browser, and separately granted services remain distinct.
 
+mod agents;
 pub(crate) mod composer;
 mod controls;
 mod effects;
@@ -103,9 +104,13 @@ pub(crate) fn routes() -> Router<App> {
         .merge(operator::routes())
         .merge(workbench::routes())
         .merge(verse::routes())
+        .merge(agents::routes())
         .layer(DefaultBodyLimit::max(8192));
     for (_, slug, _) in SECTIONS {
-        if !matches!(slug, "computers" | "projects" | "workbench" | "verse") {
+        if !matches!(
+            slug,
+            "agents" | "computers" | "projects" | "workbench" | "verse"
+        ) {
             router = router.route(&format!("/cloud/app/{slug}"), get(section));
         }
     }
@@ -448,7 +453,7 @@ fn workspace_shell(
     };
     let mut nav = String::from("<a href=\"/cloud/app\">Overview</a>");
     for (label, slug, reason) in SECTIONS {
-        if matches!(slug, "tasks" | "computers" | "projects")
+        if matches!(slug, "tasks" | "computers" | "projects" | "agents")
             && app
                 .config
                 .cloud_hosts

@@ -422,11 +422,15 @@ impl Recovery {
                 | Operation::CloudContinue { .. }
                 | Operation::CloudCancel { .. }
                 | Operation::CloudFollow { .. }
-        ) || matches!(&request.op, Operation::QueueTaskAtRevision { edit, .. } if !matches!(edit, QueueEdit::List {}));
+        ) || matches!(&request.op, Operation::QueueTaskAtRevision { edit, .. } if !matches!(edit, QueueEdit::List {}))
+            || request.op.agent_effect()
+            || request.op.studio_intent()
+            || matches!(&request.op, Operation::DecideMerge { .. });
+        let required = request.op.required().unwrap_or(Right::Operate);
         supported.then(|| Self {
             grant: request.grant.clone(),
             epoch: request.epoch,
-            required: Right::Operate,
+            required,
             until: request.expires_at.saturating_add(48 * 60 * 60),
             cloud: crate::cloud::Admission::for_operation(&request.op),
         })
@@ -1798,7 +1802,7 @@ impl Host {
                 if let Some(admission) = &recovery.cloud {
                     admission.validate()?;
                 }
-                if recovery.required != Right::Operate
+                if !matches!(recovery.required, Right::Operate | Right::Review)
                     || recovery.until != retained.expires_at.saturating_add(48 * 60 * 60)
                     || recovery.grant.is_some() != recovery.epoch.is_some()
                 {
