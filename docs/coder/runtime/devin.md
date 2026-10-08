@@ -6,7 +6,8 @@ Code, Codex, Devin, OpenCode, and Grok Build. Devin runs on the host as `devin a
 CLI's Agent Client Protocol (ACP) server, with the CLI's own login. Coder does
 not use Devin's cloud API, and it needs no Devin API key.
 [Issue #9916](https://github.com/OpenAgentsInc/openagents/issues/9916)
-delivers it.
+delivers it. The [Devin runbook](../../verse/devin-runbook.md) is the
+step-by-step guide.
 
 The pieces:
 
