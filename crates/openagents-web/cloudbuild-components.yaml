@@ -1,0 +1,22 @@
+# Build the catalog update over a digest-pinned production web image.
+# Keep the game's existing Wasm and packs byte-for-byte.
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - crates/openagents-web/Dockerfile.components
+      - --build-arg
+      - LIVE_WEB_IMAGE=${_LIVE_WEB_IMAGE}
+      - -t
+      - us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-web:${_TAG}
+      - .
+images:
+  - us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-web:${_TAG}
+substitutions:
+  _TAG: components
+  _LIVE_WEB_IMAGE: ''
+options:
+  machineType: E2_HIGHCPU_32
+  logging: CLOUD_LOGGING_ONLY
+timeout: 3600s

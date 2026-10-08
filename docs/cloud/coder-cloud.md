@@ -87,7 +87,7 @@ private work, records, and controls.
 
 | Location | Purpose |
 | --- | --- |
-| `/` | OpenAgents introduction, Download, Coder Cloud, Verse, Docs, and the qualified pilot offer. The anonymous Ask OpenAgents terminal keeps its knowledge-only scope. |
+| `/` | OpenAgents introduction, Download, Docs, and the qualified pilot offer. The anonymous Ask OpenAgents terminal keeps its knowledge-only scope. Cloud and components remain direct-link pages, with no public header or homepage promotion until the owner authorizes it. |
 | `/cloud` | Coder Cloud explanation, supported execution choices, contract-based pricing, availability, and **Open workspace**. No historical price or unlimited-capacity claim. |
 | `/components`, `/components/{component}` | Public interactive component library, complete `coder-new` state inventory, source references, typed properties/intents, and full Coder screen previews. The first deliverable; all examples use synthetic data. |
 | `/cloud/app` | Authenticated workspace shell and overview. This separate route preserves local `/app`. |
