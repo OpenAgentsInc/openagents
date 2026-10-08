@@ -290,7 +290,7 @@ fn destruction_relights_standing_neighbors_and_ground_then_restores_the_exact_ba
     let placements: Vec<_> = layout::placements()
         .into_iter()
         .filter(|p| {
-            p.model.starts_with("village/")
+            (p.model.starts_with("village/") || p.model == layout::HOUSE_ROOF)
                 && (p.at[0] - x).abs() <= hx + 1.0
                 && (p.at[1] - z).abs() <= hz + 1.0
         })
@@ -361,11 +361,19 @@ fn destruction_relights_standing_neighbors_and_ground_then_restores_the_exact_ba
     assert_eq!(world.baked.take().unwrap(), pristine);
     assert_eq!(world.baked.take_lamps().unwrap(), lamps);
     let mut town = Town::standalone(pack(), &placements, world.clone()).unwrap();
+    let hut = building(&town, HUT);
+    assert!(town.buildings()[hut].destructible());
+    assert!(
+        !town.buildings()[hut].is_carved(),
+        "the generated roof completes the village kit's structural survey"
+    );
     assert!(!town.destruction_relighting());
     town.set_destruction_relighting(Some(Vec3::new(1.0, 1.0, 0.0)))
         .unwrap();
-    let player = caster(Vec3::new(x, floor, z), 16.0);
-    town.blast(Vec3::new(x, floor + 1.0, z), 20.0, 0, Vec3::Y);
+    let front = south_front(&town.buildings()[hut]);
+    let player = caster(front, 16.0);
+    town.blast(front + Vec3::Y, 2.0, 0, Vec3::NEG_Z);
+    assert!(town.raised().contains(&hut));
     let target = town
         .site()
         .specs()
