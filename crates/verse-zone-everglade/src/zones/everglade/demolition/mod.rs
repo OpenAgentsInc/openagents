@@ -30,6 +30,7 @@ pub mod hammer;
 pub mod hotbar;
 pub mod kit;
 pub mod meteor;
+pub mod relight;
 pub mod site;
 #[cfg(test)]
 mod tests;

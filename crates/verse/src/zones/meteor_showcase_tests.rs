@@ -224,6 +224,15 @@ fn eight_meteors_on_distinct_arcs_break_both_houses_and_the_debris_rests() {
     // What fell lies on the ground: nothing under it, nothing still
     // sliding.
     let site = town_now.site();
+    assert!(town_now.destruction_relighting());
+    assert!(site.pieces().iter().any(|p| p.relight));
+    assert!(
+        site.pieces()
+            .iter()
+            .filter(|p| p.status != Status::Standing)
+            .all(|p| p.relight),
+        "every moving or broken piece leaves the pristine bake"
+    );
     let mut resting = 0;
     for (body, _) in site.chunk_bodies() {
         let (at, velocity) = site.body_motion(body);
@@ -241,6 +250,10 @@ fn eight_meteors_on_distinct_arcs_break_both_houses_and_the_debris_rests() {
     assert!(resting > 0, "the houses left debris");
     // The caster waits for the rebuild, and casts again after it.
     runtime.zone_intent(Intent::Rebuild).unwrap();
+    assert!(
+        town(&runtime).site().pieces().iter().all(|p| !p.relight),
+        "R restores the pristine light state"
+    );
     for building in houses {
         let (up, all) = standing(town(&runtime), building);
         assert_eq!(up, all);

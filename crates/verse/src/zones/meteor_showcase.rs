@@ -273,6 +273,9 @@ pub fn build(pack: &ZonePack, player: &PlayerController) -> Result<(World, Everg
     town.set_volley(Volley::SHOWCASE);
     town.set_debris(DEBRIS);
     town.set_numbers(false);
+    town.set_destruction_relighting(Some(
+        everglade::time_of_day::Light::at_hours(HOUR as f32).key_dir,
+    ))?;
     Ok((world, glade))
 }
 

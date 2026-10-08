@@ -279,6 +279,138 @@ fn restoring_brings_every_building_back() {
 }
 
 #[test]
+fn destruction_relights_standing_neighbors_and_ground_then_restores_the_exact_bake() {
+    use crate::pbr::textured::{Primitive, TexturedMesh, TexturedVertex};
+    use crate::pbr::textured_bake::decode;
+    use glam::{DVec3, Mat4};
+    let placements: Vec<_> = super::cottage::drafts()
+        .into_iter()
+        .filter(|d| d.building == 0)
+        .map(|d| d.placement)
+        .collect();
+    let (mut world, _) = super::super::scene::build(pack(), &placements).unwrap();
+    let ([x, z], _) = super::cottage::COTTAGES[0];
+    let floor = height(x, z);
+    let mesh = world.add_mesh(TexturedMesh {
+        primitives: vec![Primitive {
+            vertices: [
+                Vec3::new(x - 0.5, floor, z),
+                Vec3::new(x + 0.5, floor, z),
+                Vec3::new(x, floor, z + 0.5),
+            ]
+            .map(|p| TexturedVertex::new(p, Vec3::Y, [0.0; 2]))
+            .to_vec(),
+            indices: vec![0, 1, 2],
+            material: 0,
+        }],
+    });
+    world.place(mesh, Mat4::IDENTITY);
+    let world = Arc::new(world);
+    let count = world.merge().unwrap().vertices.len();
+    let pristine = vec![[210, 180, 120, 255]; count];
+    let lamps = vec![[20, 30, 40, 100]; count];
+    world.baked.deliver_lights(pristine.clone());
+    world.baked.deliver_lamps(lamps.clone());
+    assert_eq!(world.baked.take().unwrap(), pristine);
+    assert_eq!(world.baked.take_lamps().unwrap(), lamps);
+    let mut town = Town::standalone(pack(), &placements, world.clone()).unwrap();
+    town.set_destruction_relighting(Some(Vec3::new(1.0, 1.0, 0.0)))
+        .unwrap();
+    let player = caster(Vec3::new(x, floor, z), 16.0);
+    town.blast(Vec3::new(x, floor + 1.0, z), 20.0, 0, Vec3::Y);
+    let target = town
+        .site()
+        .specs()
+        .iter()
+        .position(|s| {
+            matches!(
+                s.role,
+                Role::Wall {
+                    side: super::site::Side::South,
+                    index: 2,
+                    story: 0,
+                    ..
+                }
+            )
+        })
+        .unwrap();
+    let neighbors = town.site().support_neighbors(target);
+    let at = town.site().specs()[target].center;
+    assert!(town.site_mut().damage(target, 10000, at, DVec3::ZERO));
+    town.tick(0.0, &player);
+    assert!(
+        neighbors
+            .iter()
+            .any(|&i| town.site().pieces()[i].status == Status::Standing)
+    );
+    assert!(neighbors.iter().all(|&i| town.site().relight(i)));
+    let relit = town.site().pieces().iter().filter(|p| p.relight).count();
+    assert!(
+        town.hidden() >= relit,
+        "standing neighbors also leave the static draw"
+    );
+    let changed = world.baked.take().unwrap();
+    assert_ne!(
+        changed, pristine,
+        "ground receivers drop their stale ambient light"
+    );
+    assert!(
+        changed
+            .iter()
+            .zip(&pristine)
+            .filter(|(a, b)| a != b)
+            .all(|(&a, _)| decode(a).0.max_element() <= 1.02)
+    );
+    let changed_lamps = world.baked.take_lamps().unwrap();
+    assert!(
+        changed_lamps
+            .iter()
+            .zip(&lamps)
+            .any(|(a, b)| a != b && *a == [0; 4])
+    );
+    let figure = town.instances(None).unwrap();
+    assert!(
+        figure
+            .instances
+            .iter()
+            .all(|v| decode(v.light).0.max_element() <= 1.02)
+    );
+    // Even an overbright pristine probe cannot overwrite local light.
+    let probes = crate::pbr::textured_bake::AmbientProbes {
+        grid: crate::pbr::ProbeGrid {
+            origin: Vec3::splat(-100.0),
+            cell: 200.0,
+            dims: [2; 3],
+            data: vec![
+                [
+                    10.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0
+                ];
+                8
+            ],
+            version: 1,
+        },
+        light: crate::pbr::textured_bake::BakeLight {
+            sun_dir: Vec3::Y,
+            sun_illuminance: 10.0,
+            sky: 1.0,
+            ground: 1.0,
+        },
+    };
+    assert_eq!(
+        town.instances(Some(&probes)).unwrap().instances,
+        figure.instances
+    );
+    // A delayed pristine bake cannot put old light back into the hole.
+    world.baked.deliver_lights(pristine.clone());
+    assert_eq!(world.baked.take().unwrap(), changed);
+    town.restore();
+    assert_eq!(town.hidden(), 0);
+    assert!(town.instances(None).is_none());
+    assert_eq!(world.baked.take().unwrap(), pristine);
+    assert_eq!(world.baked.take_lamps().unwrap(), lamps);
+}
+
+#[test]
 fn the_solids_follow_the_collapse() {
     let mut town = town();
     let hut = building(&town, HUT);

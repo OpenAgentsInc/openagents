@@ -41,6 +41,7 @@ use super::chunks::{self, ChunkMesh};
 use super::hammer::{self, Hammer};
 use super::kit::{self, CORNER_TRIM, Draft, SEAM, WALL_TOP};
 use super::meteor::{self, Strike, Swarm};
+use super::relight::{LocalOcclusion, REACH};
 use super::site::{Blow, Cuboid, Link, Matter, PieceSpec, Role, Side, Site, Status, Target};
 use super::{BREAK, HIT};
 use crate::controller::{Footprint, PlayerController};
@@ -49,7 +50,7 @@ use crate::pbr::textured::{
     DynamicInstance, Figure, IndexRange, InstancedFigure, Primitive, TexturedMesh, TexturedScene,
     TexturedVertex, UNBAKED,
 };
-use crate::pbr::textured_bake::AmbientProbes;
+use crate::pbr::textured_bake::{AmbientProbes, encode};
 use crate::zones::everglade::floaters::{FLOAT, Floater, Painter};
 use crate::zones::everglade::height;
 use crate::zones::everglade::layout::{self, Placement};
@@ -777,6 +778,11 @@ pub struct Town {
     cells: BTreeMap<usize, Arc<Vec<Vec<u32>>>>,
     /// The pieces whose placements are hidden, by building and piece.
     hidden: BTreeSet<(usize, usize)>,
+    /// Showcase destruction invalidates the pristine bake. Ground
+    /// receivers use the same merged light texels as B2.
+    relight_sun: Option<Vec3>,
+    relight_vertices: Vec<TexturedVertex>,
+    relight_seen: (u64, u64),
     /// The solids without any building, the solids now, and whether they
     /// changed.
     base: Solids,
@@ -1071,6 +1077,9 @@ impl Town {
             ranges,
             cells,
             hidden: BTreeSet::new(),
+            relight_sun: None,
+            relight_vertices: Vec::new(),
+            relight_seen: (u64::MAX, u64::MAX),
             current: base.clone(),
             base,
             solids: None,
@@ -1106,6 +1115,29 @@ impl Town {
     /// test does.
     pub fn site_mut(&mut self) -> &mut Site {
         &mut self.wreck.site
+    }
+
+    /// Enables destruction's ambient fallback under `sun`, or disables it
+    /// with `None`. The showcase enables it; B3 can opt the town in later.
+    ///
+    /// # Errors
+    /// Returns the scene's validation error if its light layout cannot merge.
+    pub fn set_destruction_relighting(&mut self, sun: Option<Vec3>) -> Result<(), String> {
+        self.relight_vertices = if sun.is_some() {
+            self.world.merge()?.vertices
+        } else {
+            Vec::new()
+        };
+        self.relight_sun = sun.map(|v| v.normalize_or(Vec3::Y));
+        self.relight_seen = (u64::MAX, u64::MAX);
+        self.sync();
+        Ok(())
+    }
+
+    /// Whether changed pieces bypass the pristine ambient probes.
+    #[must_use]
+    pub fn destruction_relighting(&self) -> bool {
+        self.relight_sun.is_some()
     }
 
     /// The raised buildings, in the order they were raised.
@@ -1632,7 +1664,11 @@ impl Town {
             .iter()
             .zip(site.pieces())
             .enumerate()
-            .filter(|(_, (s, p))| p.status != Status::Standing || p.hit_points < s.hit_points)
+            .filter(|(_, (s, p))| {
+                p.status != Status::Standing
+                    || p.hit_points < s.hit_points
+                    || (self.destruction_relighting() && p.relight)
+            })
             .map(|(i, _)| i)
             .collect();
         let hidden: BTreeSet<(usize, usize)> =
@@ -1729,6 +1765,58 @@ impl Town {
             self.seen = seen;
             self.refresh_solids();
         }
+        if seen != self.relight_seen {
+            self.relight_seen = seen;
+            self.refresh_light();
+        }
+    }
+
+    /// Replaces only the ground receivers under the damaged buildings and
+    /// their former sun shadows. Moving debris never enters this persistent
+    /// estimate; current shadow passes account for it each frame.
+    fn refresh_light(&self) {
+        let Some(sun) = self.relight_sun else {
+            self.world.baked.set_fallback(Vec::new());
+            return;
+        };
+        let affected: BTreeSet<usize> = self
+            .wreck
+            .refs
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| self.wreck.site.relight(*i))
+            .map(|(_, &(building, _))| building)
+            .collect();
+        let field = LocalOcclusion::new(&self.wreck.site);
+        let mut fallback = Vec::new();
+        for (index, vertex) in self.relight_vertices.iter().enumerate() {
+            let point = Vec3::from(vertex.pos);
+            let receives = affected.iter().any(|&i| {
+                let building = &self.wreck.buildings[i];
+                let ([x, z], [hx, hz]) = building.rect;
+                let shadow = -sun * ((building.top - building.base).max(0.0) / sun.y.max(0.05));
+                let lo = Vec3::new(
+                    x - hx + shadow.x.min(0.0),
+                    building.base,
+                    z - hz + shadow.z.min(0.0),
+                );
+                let hi = Vec3::new(
+                    x + hx + shadow.x.max(0.0),
+                    building.base,
+                    z + hz + shadow.z.max(0.0),
+                );
+                point.y <= building.base + 0.25
+                    && point.x >= lo.x - REACH
+                    && point.x <= hi.x + REACH
+                    && point.z >= lo.z - REACH
+                    && point.z <= hi.z + REACH
+            });
+            if receives {
+                let open = field.sample(point, Vec3::from(vertex.normal), None);
+                fallback.push((index as u32, encode(Vec3::splat(open), open)));
+            }
+        }
+        self.world.baked.set_fallback(fallback);
     }
 
     /// How many spans the chunks `live` keeps of the site pieces `drawn`
@@ -1891,6 +1979,9 @@ impl Town {
     /// Updates one transform per chunk part without touching its vertices.
     fn pose(&mut self) {
         let site = &self.wreck.site;
+        let field = self
+            .destruction_relighting()
+            .then(|| LocalOcclusion::new(site));
         let pool = &mut self.pool;
         pool.instances.clear();
         let mut previous = BTreeMap::new();
@@ -1928,13 +2019,25 @@ impl Town {
                 | ((span.piece as u64) << 16)
                 | ((span.chunk as u64) << 8)
                 | span.part as u64;
+            let light = if site.relight(span.piece)
+                && let Some(field) = &field
+            {
+                let open = field.sample(
+                    current.w_axis.truncate(),
+                    current.transform_vector3(Vec3::Y).normalize_or(Vec3::Y),
+                    Some(span.piece),
+                );
+                encode(Vec3::splat(open), open)
+            } else {
+                UNBAKED
+            };
             pool.instances.push(DynamicInstance {
                 id,
                 mesh: span.mesh,
                 current,
                 previous: pool.previous.get(&id).copied().unwrap_or(current),
                 color: [shade, shade, shade, 1.0],
-                light: UNBAKED,
+                light,
                 settled,
             });
             previous.insert(id, current);
@@ -1959,6 +2062,10 @@ impl Town {
         let mut instances = self.pool.instances.clone();
         if let Some(probes) = probes {
             for instance in &mut instances {
+                // A local destruction estimate overrides pristine probes.
+                if instance.light != UNBAKED {
+                    continue;
+                }
                 let mut center = [TexturedVertex::new(
                     instance.current.w_axis.truncate(),
                     instance

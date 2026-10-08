@@ -338,6 +338,9 @@ pub struct Piece {
     /// Whether it fell as part of a top and lies loose where it crashed,
     /// at any tilt, rather than breaking past a tilt limit.
     pub rubble: bool,
+    /// The pristine bake no longer describes this piece or an immediate
+    /// support neighbor. Reset restores the original bake.
+    pub relight: bool,
 }
 
 impl Piece {
@@ -349,6 +352,7 @@ impl Piece {
             chunks: Vec::new(),
             local: None,
             rubble: false,
+            relight: false,
         }
     }
 }
@@ -943,6 +947,53 @@ impl Site {
         &self.pieces
     }
 
+    /// Whether `piece` uses destruction's local ambient fallback.
+    #[must_use]
+    pub fn relight(&self, piece: usize) -> bool {
+        self.pieces.get(piece).is_some_and(|p| p.relight)
+    }
+
+    /// Immediate support neighbors, including reverse dependencies.
+    #[must_use]
+    pub fn support_neighbors(&self, piece: usize) -> Vec<usize> {
+        let Some(spec) = self.specs.get(piece) else {
+            return Vec::new();
+        };
+        let members = self
+            .members
+            .get(&spec.building)
+            .map_or(&[][..], Vec::as_slice);
+        let local = members.iter().position(|&i| i == piece).unwrap_or(0) as u16;
+        members
+            .iter()
+            .enumerate()
+            .filter_map(|(k, &i)| {
+                if i == piece {
+                    return None;
+                }
+                let other = &self.specs[i];
+                let linked = if matches!(spec.role, Role::Block { .. }) {
+                    spec.link.under.contains(&(k as u16))
+                        || spec.link.beside.contains(&(k as u16))
+                        || other.link.under.contains(&local)
+                        || other.link.beside.contains(&local)
+                } else {
+                    let top = self.top(spec.building);
+                    super::relight::depends(spec.role, other.role, top)
+                        || super::relight::depends(other.role, spec.role, top)
+                };
+                linked.then_some(i)
+            })
+            .collect()
+    }
+
+    fn invalidate_light(&mut self, piece: usize) {
+        self.pieces[piece].relight = true;
+        for neighbor in self.support_neighbors(piece) {
+            self.pieces[neighbor].relight = true;
+        }
+    }
+
     #[must_use]
     pub fn puffs(&self) -> &[Puff] {
         &self.puffs
@@ -1051,6 +1102,7 @@ impl Site {
     /// Breaks `piece` into its chunks with its momentum, pushed as `push`
     /// says.
     fn shatter(&mut self, piece: usize, push: Push) {
+        self.invalidate_light(piece);
         let id = self.pieces[piece].body;
         let body = self.piece_state(piece);
         if self.pieces[piece].local.is_some() {
@@ -1583,6 +1635,7 @@ impl Site {
         // dozen colliders rather than a hundred.
         let mut levels: BTreeMap<u8, (DVec3, DVec3, Vec<usize>)> = BTreeMap::new();
         for &(i, offset, rotation, center, half) in &boxes {
+            self.invalidate_light(i);
             let old = self.pieces[i].body;
             self.world.remove_body(old);
             self.own(old, None);
@@ -2112,6 +2165,7 @@ impl Site {
     /// Makes a standing piece dynamic. Walls, posts, and gables tip outward
     /// from their building so they topple instead of balancing.
     fn loosen(&mut self, piece: usize) {
+        self.invalidate_light(piece);
         let spec = &self.specs[piece];
         let id = self.pieces[piece].body;
         self.pieces[piece].status = Status::Loose;

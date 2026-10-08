@@ -626,6 +626,11 @@ pub struct BakedVertices(std::sync::Arc<std::sync::Mutex<Delivery>>);
 struct Delivery {
     lights: Option<Vec<[u8; 4]>>,
     lamps: Option<Vec<[u8; 4]>>,
+    lights_pending: bool,
+    lamps_pending: bool,
+    /// Local ambient overrides in the existing merged light layout. The
+    /// pristine channels stay intact for restoration and later deliveries.
+    fallback: Vec<(u32, [u8; 4])>,
 }
 
 impl BakedVertices {
@@ -642,26 +647,63 @@ impl BakedVertices {
 
     /// Hands over the light channel of every merged vertex.
     pub fn deliver_lights(&self, lights: Vec<[u8; 4]>) {
-        self.lock().lights = Some(lights);
+        let mut slot = self.lock();
+        slot.lights = Some(lights);
+        slot.lights_pending = true;
     }
 
     /// Hands over the lamp light of every merged vertex
     /// ([`crate::pbr::baked_layers::encode_lamp`]).
     pub fn deliver_lamps(&self, lamps: Vec<[u8; 4]>) {
-        self.lock().lamps = Some(lamps);
+        let mut slot = self.lock();
+        slot.lamps = Some(lamps);
+        slot.lamps_pending = true;
+    }
+
+    /// Replaces destruction's local ambient overrides. The affected texels
+    /// bypass pristine ambient and baked lamp light, including when a bake
+    /// finishes after destruction. An empty list restores both channels.
+    pub fn set_fallback(&self, fallback: Vec<(u32, [u8; 4])>) {
+        let mut slot = self.lock();
+        if slot.fallback == fallback {
+            return;
+        }
+        slot.fallback = fallback;
+        slot.lights_pending = true;
+        slot.lamps_pending = true;
     }
 
     /// Takes the delivered light channel, if a bake has delivered one since
     /// the last take.
     #[must_use]
     pub fn take(&self) -> Option<Vec<[u8; 4]>> {
-        self.lock().lights.take()
+        let mut slot = self.lock();
+        if !std::mem::take(&mut slot.lights_pending) {
+            return None;
+        }
+        let mut lights = slot.lights.clone()?;
+        for &(index, light) in &slot.fallback {
+            if let Some(texel) = lights.get_mut(index as usize) {
+                *texel = light;
+            }
+        }
+        Some(lights)
     }
 
     /// Takes the delivered lamp light, if any arrived since the last take.
     #[must_use]
     pub fn take_lamps(&self) -> Option<Vec<[u8; 4]>> {
-        self.lock().lamps.take()
+        let mut slot = self.lock();
+        if !std::mem::take(&mut slot.lamps_pending) {
+            return None;
+        }
+        let mut lamps = slot.lamps.clone()?;
+        for &(index, _) in &slot.fallback {
+            if let Some(texel) = lamps.get_mut(index as usize) {
+                *texel = [0; 4];
+            }
+        }
+        Some(lamps)
     }
 }
 
@@ -1941,6 +1983,30 @@ mod tests {
                 .level
                 .drawn_with_fallback(false, &scene.edits.group_fallbacks())
         );
+    }
+
+    #[test]
+    fn destruction_fallback_survives_late_bakes_and_restores_both_pristine_channels() {
+        let slot = BakedVertices::default();
+        let pristine = vec![[180, 150, 120, 255]; 3];
+        let lamps = vec![[30, 40, 50, 80]; 3];
+        let fallback = [80, 80, 80, 100];
+        slot.set_fallback(vec![(1, fallback), (100, fallback)]);
+        slot.deliver_lights(pristine.clone());
+        slot.deliver_lamps(lamps.clone());
+        assert_eq!(
+            slot.take().unwrap(),
+            vec![pristine[0], fallback, pristine[2]]
+        );
+        assert_eq!(slot.take_lamps().unwrap(), vec![lamps[0], [0; 4], lamps[2]]);
+        assert!(slot.take().is_none() && slot.take_lamps().is_none());
+        let later = vec![[220, 190, 100, 240]; 3];
+        slot.deliver_lights(later.clone());
+        assert_eq!(slot.take().unwrap(), vec![later[0], fallback, later[2]]);
+        slot.set_fallback(Vec::new());
+        assert_eq!(slot.take().unwrap(), later);
+        assert_eq!(slot.take_lamps().unwrap(), lamps);
+        assert!(slot.take().is_none() && slot.take_lamps().is_none());
     }
 
     fn quad(material: usize) -> TexturedMesh {
