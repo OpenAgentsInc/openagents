@@ -28,6 +28,8 @@ mod privacy;
 mod qualification;
 #[path = "sales_replies.rs"]
 mod replies;
+#[path = "sales_town.rs"]
+mod town;
 #[path = "sales_training.rs"]
 mod training;
 pub const USAGE: &str = "usage: openagents sales COMMAND --root DIR [--credential FILE] [--json]
@@ -107,6 +109,8 @@ pub const USAGE: &str = "usage: openagents sales COMMAND --root DIR [--credentia
   floor report
   floor escalations
   floor weekly-draft
+  town table
+  town bodies
   meetings slot --input FILE --expected-version N
         Publish explicit finite owner availability.
   meetings slots
@@ -271,6 +275,8 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("floor report", Effect::ReadOnly),
     Declared::computer("floor escalations", Effect::ReadOnly),
     Declared::computer("floor weekly-draft", Effect::ReadOnly),
+    Declared::computer("town table", Effect::ReadOnly),
+    Declared::computer("town bodies", Effect::ReadOnly),
     Declared::computer("meetings slot", Effect::Grants),
     Declared::computer("meetings slots", Effect::ReadOnly),
     Declared::computer("meetings queue", Effect::ReadOnly),
@@ -330,6 +336,9 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
     }
     if words.first().is_some_and(|w| w == "floor") {
         return floor::run(output, &words[1..]);
+    }
+    if words.first().is_some_and(|w| w == "town") {
+        return town::run(output, &words[1..]);
     }
     if words.first().is_some_and(|w| w == "meetings") {
         return meetings::run(output, &words[1..]);

@@ -23,6 +23,7 @@ pub mod privacy;
 pub mod qualification;
 pub mod referrals;
 pub mod replies;
+pub mod town;
 pub mod training;
 
 pub const SCHEMA: &str = "openagents.sales.pipeline.v1";

@@ -1866,3 +1866,17 @@ listed under `gaps`. Owner steps:
   never publishes, and `sales review` remains the exact owner decision.
 - Name the pipeline owner (deferred decision 7) before relying on the report
   for the weekly review.
+
+## Sales bodies in the Agora (REV-70, #10877)
+
+`openagents sales town bodies` places Paul and confirmed hires from the
+hiring book and the canonical sales books on any host; it reads only. Owner
+steps:
+
+- Confirm a first hire (`openagents agent hire confirm`) before any body
+  other than Paul stands on the real floor; fixture bodies come from
+  `--member` and are not admitted members.
+- The Everglade client's rendering of these bodies through Bob's shared
+  seat figures is owner-reviewed pack work; until then the projection is
+  the CLI's JSON and the private Agora boards.
+

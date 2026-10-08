@@ -1048,3 +1048,41 @@ shared-world transitions. Unconfigured data stays unavailable. Model work
 remains unavailable under the default host, and phones and headsets remain
 written-only props. Sales bodies and reviewed shared aggregates remain
 REV-70 and REV-71 work.
+
+## Bodies on the floor (REV-70)
+
+`crates/coder/src/task/sales/town.rs` is the floor's town adapter: it puts
+Paul and the admitted hires in the Agora from the canonical books, on the
+crew's own names and keys, and reads only.
+
+- `openagents sales town table` prints the pinned station table
+  (`openagents.sales-town-table.v1`): Paul's workstation (`agora:paul`), the
+  eighteen desks (`agora:desk:N`), the owner's lectern (`agora:owner`), the
+  stand-up spot, the role-play booths, and the whiteboard, each with the
+  affordance it must offer, its digest, and every disagreement with the
+  world tree. An empty `problems` list is the table's validation.
+- `openagents sales town bodies --root DIR --credential FILE [--hires FILE]
+  [--member NAME:ROLE:STATE]...` is the owner's read
+  (`openagents.sales-town-bodies.v1`). `--hires` takes the hiring book
+  `openagents agent hire list` prints: a confirmed hire is active until a
+  confirmed retirement names it, and a pending proposal is work at the
+  lectern for Paul. `--member` admits a fixture body. Placement is
+  deterministic: Paul at his workstation, hires by name over the desks, the
+  rest `unplaced` while their host work continues. The output carries the
+  world tree's `layout_digest` and the table's `table_digest`.
+- Every activity cites one canonical source and a station: an active
+  assignment (`assignment:REF`, research, desk), a proposed draft
+  (`draft:REF`, draft, desk), a lead's due follow-up (`lead-next:ID`, desk),
+  a reply awaiting owner review (`reply:ID`, desk), a message awaiting the
+  owner (`message:ID`, lectern), a certification in training or suspended
+  (`certification:ID`, booths), and a pending hire (`hire:ID`, lectern). The
+  earliest is `current`; the rest are `queued`. Work that names no admitted
+  member is `unattributed` and stays in the host queue.
+- A member with no work is `idle` at its station. A paused or retired member
+  shows no current work however much the books attribute to it, and a
+  retired member takes no station. Completed, rejected, revoked, and
+  expired records produce no work, so a canceled task cannot leave a busy
+  routine.
+- The adapter holds no budget, cap, or sending count and mutates nothing; a
+  compressed town clock changes placement only, never a limit or an effect.
+
