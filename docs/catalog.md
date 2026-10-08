@@ -348,6 +348,12 @@ files are included below.
 | [game/README.md](game/README.md) | Index | Games, MMORPGs, and 3D worlds in OpenAgents |
 | [game/playtesting.md](game/playtesting.md) | Design / plan | Playtesting program: open launch 2026-09-29, sessions, feedback, triage, and playtest XP |
 
+## gateway
+
+| Document | Role | Topic |
+| --- | --- | --- |
+| [gateway/README.md](gateway/README.md) | Runtime guide | Pro inference door: routes, GPT-5.6 catalog, Stripe hop, and Cloud Run deployment |
+
 ## growth
 
 | Document | Role | Topic |
