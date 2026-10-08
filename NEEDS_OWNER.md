@@ -769,8 +769,9 @@ SPF, DKIM, DMARC alignment, TLS, commercial identification, and
 unsubscribe/suppression handling; confirm
 the recipient scope and footer with counsel; accept the certification sample;
 and grant the exact campaign, model budget, and five-message daily pilot cap.
-The host sending path still needs implementation and scratch qualification.
-These documentation decisions don't activate outreach. Keep qualified
+The native outbox and bounded SMTP transport have isolated scratch acceptance;
+live sending still requires the current native qualifications and exact owner
+activation. SMTP acceptance does not prove delivery. Keep qualified
 handoffs with the owner until a collaborator accepts a private agreement.
 
 ## Reviewed knowledge admission (#10667)

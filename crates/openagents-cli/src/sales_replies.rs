@@ -63,7 +63,10 @@ fn reply_value(record: replies::Record) -> Result<Value, String> {
     let bytes = serde_json::to_vec(&record).map_err(|_| "reply artifact serialization failed")?;
     let artifact = agents::Artifact {
         reference: record.id.clone(),
-        sha256: format!("{:x}", Sha256::digest(bytes)),
+        sha256: Sha256::digest(bytes)
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect(),
     };
     let mut result = value(record)?;
     result

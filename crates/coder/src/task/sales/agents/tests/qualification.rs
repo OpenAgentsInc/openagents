@@ -493,6 +493,95 @@ fn original_measurements_freeze_and_locked_partition_cannot_be_reused() {
                 helper.expense_reference
             );
             assert_eq!(snapshot.grade_sha256, grade.sha256().unwrap());
+            // Exercise only native qualification here; no mailbox or SMTP is opened.
+            let message = super::super::super::email::Message {
+                schema: super::super::super::email::MESSAGE_SCHEMA.into(),
+                lead: f.lead.clone(),
+                expected_lead_revision: f.store.state.leads[&f.lead].revision,
+                config_sha256: "a".repeat(64),
+                policy_sha256: f.policy.sha256().unwrap(),
+                template: artifact("reviewed-template"),
+                sender: super::super::super::email::Sender::Agent {
+                    anchor: f.anchor.clone(),
+                    assignment: access.assignment.clone(),
+                },
+                recipient: "private-buyer@fixture.invalid".into(),
+                subject: super::super::super::outbox::QUALIFIED_AGENT_SUBJECT.into(),
+                body: draft.body.clone(),
+                subject_review_sha256: "b".repeat(64),
+                expires_at: now() + 100,
+            };
+            let mut outbound = outbox_proposal(message, "qualified-native-response");
+            outbound.kind = super::super::super::outbox::MessageKind::FirstMessage;
+            outbound.certification_reference = Some("measured:1".into());
+            outbound.draft_reference = Some(draft.reference.clone());
+            outbound.model_reservation_reference = Some(helper.expense_reference.clone());
+            let pins = f
+                .store
+                .outbox_qualification(&f.owner, &outbound, super::super::super::outbox::Mode::Live)
+                .unwrap();
+            assert_eq!(
+                pins,
+                (
+                    snapshot.qualification.sha256().unwrap(),
+                    Some(snapshot.sha256().unwrap())
+                )
+            );
+            f.store
+                .outbox_budget(&outbound, super::super::super::outbox::Mode::Live)
+                .unwrap();
+            let original_body = outbound.message.body.clone();
+            outbound.message.body.push_str(" Added ungraded claim.");
+            assert!(
+                f.store
+                    .outbox_qualification(
+                        &f.owner,
+                        &outbound,
+                        super::super::super::outbox::Mode::Live
+                    )
+                    .is_err()
+            );
+            outbound.message.body = original_body;
+            outbound.message.subject = "An unsupported commercial claim".into();
+            assert!(
+                f.store
+                    .outbox_qualification(
+                        &f.owner,
+                        &outbound,
+                        super::super::super::outbox::Mode::Live
+                    )
+                    .is_err()
+            );
+            outbound.message.subject = super::super::super::outbox::QUALIFIED_AGENT_SUBJECT.into();
+            outbound
+                .attachments
+                .push(super::super::super::outbox::Attachment {
+                    filename: "ungraded.txt".into(),
+                    media_type: "text/plain".into(),
+                    path: f.dir.path().join("unopened.txt"),
+                    sha256: "c".repeat(64),
+                    bytes: 10,
+                });
+            assert!(
+                f.store
+                    .outbox_qualification(
+                        &f.owner,
+                        &outbound,
+                        super::super::super::outbox::Mode::Live
+                    )
+                    .is_err()
+            );
+            outbound.attachments.clear();
+            outbound.model_reservation_reference = Some("another-original-expense".into());
+            assert!(
+                f.store
+                    .outbox_qualification(
+                        &f.owner,
+                        &outbound,
+                        super::super::super::outbox::Mode::Live
+                    )
+                    .is_err()
+            );
         } else if index == 1 {
             assert!(f.store.check_sales_agent_qualification(&access).is_ok());
         }

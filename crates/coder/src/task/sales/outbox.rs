@@ -12,6 +12,7 @@ pub const PROJECTION_SCHEMA: &str = "openagents.sales.outbox-projection.v1";
 const MAX_RECORDS: usize = 1024;
 const MAX_ATTACHMENT: usize = 64 * 1024;
 const MAX_ATTACHMENTS: usize = 4;
+pub const QUALIFIED_AGENT_SUBJECT: &str = "Requested business information";
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum MessageKind {
@@ -776,14 +777,48 @@ impl Store {
             MessageKind::SalesPost => Err("public sales posting channel is unavailable".into()),
         }
     }
-    fn outbox_qualification(
-        &self,
+    pub(super) fn outbox_qualification(
+        &mut self,
         access: &Access,
         proposal: &Proposal,
         mode: Mode,
     ) -> Result<(String, Option<String>)> {
-        if mode == Mode::Live && matches!(proposal.message.sender, email::Sender::Agent { .. }) {
-            return Err("canonical measured sales certification is unavailable".into());
+        if let (Mode::Live, email::Sender::Agent { anchor, assignment }) =
+            (mode, &proposal.message.sender)
+        {
+            if proposal.message.subject != QUALIFIED_AGENT_SUBJECT
+                || !proposal.attachments.is_empty()
+            {
+                return Err(
+                    "qualified agent email requires the neutral native subject and no attachments"
+                        .into(),
+                );
+            }
+            let snapshot = self.qualified_sales_draft(
+                access,
+                &proposal.message.lead,
+                anchor,
+                assignment,
+                &proposal.message.policy_sha256,
+                proposal
+                    .certification_reference
+                    .as_deref()
+                    .ok_or("measured certification reference required")?,
+                proposal
+                    .draft_reference
+                    .as_deref()
+                    .ok_or("exact qualified draft reference required")?,
+            )?;
+            if snapshot.body_sha256 != digest(proposal.message.body.as_bytes())
+                || proposal.model_reservation_reference.as_deref()
+                    != Some(snapshot.original_expense_reference.as_str())
+                || snapshot.qualification.expires_at < proposal.message.expires_at
+            {
+                return Err(
+                    "qualified draft body, original content expense, or expiry changed".into(),
+                );
+            }
+            return Ok((snapshot.qualification.sha256()?, Some(snapshot.sha256()?)));
         }
         match &proposal.message.sender {
             email::Sender::Human { principal } if principal == access.principal() => Ok((
@@ -834,6 +869,65 @@ impl Store {
             }
             _ => Err("outbox human authority is unavailable".into()),
         }
+    }
+    fn outbox_activation_actors(&mut self, owner: &Access, activation: &Activation) -> Result<()> {
+        let human = format!("human:{}", owner.principal());
+        let human_sha = digest(format!("Live-human-owner:{}", owner.principal()).as_bytes());
+        for (actor, expected) in &activation.qualified_actors {
+            if actor == &human && expected == &human_sha {
+                continue;
+            }
+            let mut candidates = Vec::new();
+            for lead in self.state.leads.values() {
+                for (assignment, grant) in &lead.agent_records.assignments {
+                    if !grant.active || &grant.anchor.pubkey != actor {
+                        continue;
+                    }
+                    for (reference, cert) in &self.state.agents.certificates {
+                        if cert.certification.agent == grant.anchor
+                            && cert.certification.state == agents::CertState::Qualified
+                            && cert.certification.expires_at >= activation.expires_at
+                        {
+                            if candidates.len() >= MAX_RECORDS {
+                                return Err(
+                                    "activation qualification search exceeds its bound".into()
+                                );
+                            }
+                            candidates.push((
+                                lead.id.clone(),
+                                grant.anchor.clone(),
+                                assignment.clone(),
+                                reference.clone(),
+                            ));
+                        }
+                    }
+                }
+            }
+            let mut qualified = false;
+            for (lead, anchor, assignment, reference) in candidates {
+                if let Ok(snapshot) = self.qualified_sales_outbound(
+                    owner,
+                    &lead,
+                    &anchor,
+                    &assignment,
+                    &activation.policy_sha256,
+                    &reference,
+                ) {
+                    if snapshot.expires_at >= activation.expires_at
+                        && snapshot.sha256()? == *expected
+                    {
+                        qualified = true;
+                        break;
+                    }
+                }
+            }
+            if !qualified {
+                return Err(
+                    "activation actor has no exact current measured native qualification".into(),
+                );
+            }
+        }
+        Ok(())
     }
     pub(super) fn outbox_budget(&self, proposal: &Proposal, mode: Mode) -> Result<String> {
         if mode == Mode::Fixture {
@@ -913,9 +1007,11 @@ impl Store {
             Some(&subject.proposal.id),
         )?;
         let prepared = self.prepare_email(access, subject.proposal.message.clone(), keys)?;
-        let config = self.email_config(&subject.proposal.message.config_sha256, (self.clock)())?;
+        let config = self
+            .email_config(&subject.proposal.message.config_sha256, (self.clock)())?
+            .clone();
         let qualification = self.outbox_qualification(access, &subject.proposal, subject.mode)?;
-        if mode(config) != subject.mode
+        if mode(&config) != subject.mode
             || prepared.sha256 != subject.message_sha256
             || prepared.scope_sha256 != subject.scope_sha256
             || qualification
@@ -1475,6 +1571,8 @@ impl Store {
                 {
                     return Err("outbox activation requires the exact native SMTP mailbox".into());
                 }
+                self.outbox_activation_actors(access, &activation)?;
+                next = self.state.clone();
                 next.outbox.activation = Some(activation);
                 next.outbox.epoch = next
                     .outbox

@@ -122,7 +122,10 @@ phone or lectern surfaces whose Sales owner binding is unavailable. `outbox disp
 it releases the sales lock during network waits and reopens current authority
 before credentials, recipients, and body disclosure. Native certification, original
 cost attribution, reply handling, consent, suppression, and owner activation must
-all be available. An uncertain attempt consumes its reservation and cannot replay.
+all be available. Live agent messages pin an exact graded native draft and its
+original helper expense, use the subject `Requested business information`, and
+refuse attachments until an explicit graded attachment contract exists.
+An uncertain attempt consumes its reservation and cannot replay.
 `outbox fixture` uses isolated evidence, counts separately, and cannot qualify a
 live operating week or raise the outreach cap. SMTP acceptance does not prove delivery.
 Owner reconciliation preserves the original uncertain attempt and consumed count;
