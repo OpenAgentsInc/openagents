@@ -2558,8 +2558,12 @@ fn rigid_indirect_features(
     features: wgpu::Features,
     flags: wgpu::DownlevelFlags,
 ) -> wgpu::Features {
-    if flags.contains(wgpu::DownlevelFlags::INDIRECT_EXECUTION) {
-        features & wgpu::Features::INDIRECT_FIRST_INSTANCE
+    // This feature also guarantees that multi-draw is native. Metal otherwise
+    // loops over indirect calls and pays their validation and bridge overhead.
+    let native =
+        wgpu::Features::INDIRECT_FIRST_INSTANCE | wgpu::Features::MULTI_DRAW_INDIRECT_COUNT;
+    if flags.contains(wgpu::DownlevelFlags::INDIRECT_EXECUTION) && features.contains(native) {
+        native
     } else {
         wgpu::Features::empty()
     }
@@ -4019,10 +4023,15 @@ fn pipelined_frames_keep_exact_selected_pixels_and_complete_every_index() {
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 #[test]
-fn rigid_indirect_requires_execution_and_nonzero_first_instance_support() {
-    let feature = wgpu::Features::INDIRECT_FIRST_INSTANCE;
+fn rigid_indirect_requires_execution_first_instance_and_native_multi_draw() {
+    let feature =
+        wgpu::Features::INDIRECT_FIRST_INSTANCE | wgpu::Features::MULTI_DRAW_INDIRECT_COUNT;
     let execution = wgpu::DownlevelFlags::INDIRECT_EXECUTION;
     assert_eq!(rigid_indirect_features(feature, execution), feature);
     assert!(rigid_indirect_features(feature, wgpu::DownlevelFlags::empty()).is_empty());
     assert!(rigid_indirect_features(wgpu::Features::empty(), execution).is_empty());
+    assert!(rigid_indirect_features(wgpu::Features::INDIRECT_FIRST_INSTANCE, execution).is_empty());
+    assert!(
+        rigid_indirect_features(wgpu::Features::MULTI_DRAW_INDIRECT_COUNT, execution).is_empty()
+    );
 }

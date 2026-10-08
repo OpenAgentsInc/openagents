@@ -2351,9 +2351,9 @@ impl Photo {
                 .adopt(&mut previous.rendered_instances, &frame.motion_epoch);
         }
         if !self.capability.gles
-            && device
-                .features()
-                .contains(wgpu::Features::INDIRECT_FIRST_INSTANCE)
+            && device.features().contains(
+                wgpu::Features::INDIRECT_FIRST_INSTANCE | wgpu::Features::MULTI_DRAW_INDIRECT_COUNT,
+            )
         {
             gpu.rigid_indirect = Some(RigidIndirect {
                 buffer: device.create_buffer(&wgpu::BufferDescriptor {
@@ -2573,9 +2573,9 @@ impl Photo {
         let light_group = self.light_group(device, &light, &lamps);
         let static_indirect = (!figure
             && !self.capability.gles
-            && device
-                .features()
-                .contains(wgpu::Features::INDIRECT_FIRST_INSTANCE))
+            && device.features().contains(
+                wgpu::Features::INDIRECT_FIRST_INSTANCE | wgpu::Features::MULTI_DRAW_INDIRECT_COUNT,
+            ))
         .then(|| {
             // Preserve the stable main-pass order, including coplanar winners.
             let order: Vec<_> =
