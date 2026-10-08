@@ -267,6 +267,12 @@ async fn the_composer_card_is_styled_by_the_served_tailwind_utilities() {
     assert!(home.contains("chat-composer-card"));
     assert!(home.contains("tw:w-full tw:h-[155px]"));
     assert!(home.contains("tw:max-w-[640px]"));
+    assert!(home.contains("<div class=\"home-stage\"><section class=\"composer"));
+    let site_css = include_str!("../static/site.css");
+    assert!(
+        site_css
+            .contains(".home-stage{flex:1;display:flex;align-items:center;justify-content:center}")
+    );
     assert!(home.contains("placeholder=\"Ask OpenAgents to build, fix bugs, explore\""));
     assert!(home.contains("<button type=\"submit\" aria-label=\"Send\""));
     let (status, headers, css) = get_with(site, "/static/tailwind.css", LOCAL).await;
@@ -950,7 +956,7 @@ async fn a_connected_backend_fills_the_pages_and_escapes_what_it_returns() {
     let root = tempfile::tempdir().unwrap();
     let dir = root.path();
     let (_, home) = get(router(connected(dir)), "/").await;
-    assert!(home.contains("Every new account starts with $25 of credit."));
+    assert!(!home.contains("of credit"));
     let (_, profile) = get(router(connected(dir)), "/u/tester").await;
     assert!(profile.contains("Test Person") && profile.contains("https://github.com/tester"));
     for uri in ["/u/nobody"] {

@@ -67,6 +67,10 @@ main:focus{outline:none}
 .lede{color:var(--noir-content);font-size:1.1rem;max-width:60ch}
 /* The composer's card is styled by Tailwind utilities (static/tailwind.css). */
 .composer{margin:0 0 1.5rem}
+/* The homepage: the composer centered between the header and the footer. */
+main:has(>.home-stage){display:flex;flex-direction:column;padding:2rem 0}
+.home-stage{flex:1;display:flex;align-items:center;justify-content:center}
+.home-stage .composer{margin:0}
 .thread{margin:0 0 1.5rem}
 /* The chat page (layout::app): no footer; the thread scrolls between the
    header and the composer, which stays docked at the bottom. */
