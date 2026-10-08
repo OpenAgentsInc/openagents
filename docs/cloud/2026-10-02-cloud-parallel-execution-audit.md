@@ -513,6 +513,8 @@ owner's Mac / phone ── openagents chat work --issues --parallel N --on cloud
     `ANTHROPIC_API_KEY`), or Claude Code's long-lived token from `claude
     setup-token` (verify the current Claude Code flag before relying on it), or
     the built-in loop through the gateway.
+    Customer Cloud must never collect or inject a `claude setup-token` value;
+    see [Bring your own Claude](claude-code-byo.md).
   - The existing per-account capacity file decides which engine has headroom.
   - Nothing secret goes into the image. The boot script never echoes a
     secret: keep `set +x` around secrets and `pipefail` on credential reads.
