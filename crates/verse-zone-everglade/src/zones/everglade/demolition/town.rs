@@ -145,7 +145,7 @@ pub struct TownPiece {
     cut: bool,
 }
 
-fn lighting_neighbors(links: &[&Link], changed: usize) -> impl Iterator<Item = usize> + '_ {
+fn lighting_neighbors<'a>(links: &'a [&Link], changed: usize) -> impl Iterator<Item = usize> + 'a {
     links.iter().enumerate().filter_map(move |(k, link)| {
         let linked = |link: &Link, other: usize| {
             link.under.iter().chain(&link.beside).any(|&i| usize::from(i) == other)

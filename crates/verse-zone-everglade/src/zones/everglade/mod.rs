@@ -762,10 +762,7 @@ impl Everglade {
         }
         neon.baked_lamps = self.baked_lamps();
         if let Some(baked) = &self.baked {
-            let mut blend_light = self.light;
-            if self.clock.pinned_hour().is_none() {
-                blend_light.key_dir = time_of_day::Light::at_hours((self.now.second / 3600.0) as f32).key_dir;
-            }
+            let blend_light = baked::clock_light(self.light, self.now, self.clock.pinned_hour().is_some());
             neon.baked_sun = baked.sun(&blend_light);
         }
         Mesh {

@@ -11,6 +11,18 @@ use verse_pbr::pbr::baked_layers::Layers;
 
 use super::time_of_day;
 
+/// The sky and exposure keep their existing cadence; sun weights follow
+/// the exact clock between those updates.
+pub(super) fn clock_light(mut light: time_of_day::Light, time: town_clock::TownTime,
+    pinned: bool) -> time_of_day::Light {
+    if !pinned {
+        let exact = time_of_day::Light::at_hours((time.second / 3600.0) as f32);
+        light.key_dir = exact.key_dir;
+        light.sun = exact.sun;
+    }
+    light
+}
+
 pub(super) fn choice(light: &time_of_day::Light) -> Option<LayerChoice> {
     let layers = kit_bake::offered()?;
     Some(LayerChoice {
@@ -42,13 +54,14 @@ pub(super) struct BakedLight {
     revision: u64,
     dynamic: BTreeSet<u32>,
     #[cfg(not(target_arch = "wasm32"))]
-    repair: Option<Repair>,
+    repair: RepairQueue,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 struct Repair {
     cancel: Arc<std::sync::atomic::AtomicBool>,
     receive: std::sync::mpsc::Receiver<Vec<LightPatch>>,
+    worker: std::thread::JoinHandle<()>,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -56,6 +69,85 @@ impl Drop for Repair {
     fn drop(&mut self) {
         self.cancel.store(true, std::sync::atomic::Ordering::Relaxed);
     }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+struct RepairRequest {
+    revision: u64,
+    vertices: BTreeSet<u32>,
+    light: crate::pbr::textured_bake::BakeLight,
+}
+
+/// One worker owns the scene hierarchy; newer requests replace only the
+/// pending request until that worker exits. Polling never joins a thread.
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Default)]
+struct RepairQueue {
+    active: Option<Repair>,
+    pending: Option<RepairRequest>,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl RepairQueue {
+    fn request(&mut self, request: RepairRequest) {
+        if let Some(active) = &self.active {
+            active.cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+        self.pending = (!request.vertices.is_empty()).then_some(request);
+    }
+
+    fn poll(&mut self, mut start: impl FnMut(RepairRequest) -> Option<Repair>) -> Vec<LightPatch> {
+        let mut delivered = Vec::new();
+        if let Some(active) = &self.active {
+            if !active.cancel.load(std::sync::atomic::Ordering::Relaxed) {
+                delivered = active.receive.try_recv().unwrap_or_default();
+            }
+            if active.worker.is_finished() {
+                self.active = None;
+            }
+        }
+        if self.active.is_none() && let Some(request) = self.pending.take() {
+            self.active = start(request);
+        }
+        delivered
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn start_repair(scene: Arc<TexturedScene>, request: RepairRequest) -> Option<Repair> {
+    use crate::pbr::textured_bake::{BakeSettings, SceneBaker};
+    use std::sync::atomic::{AtomicBool, Ordering};
+    let cancel = Arc::new(AtomicBool::new(false));
+    let stopped = cancel.clone();
+    let (send, receive) = std::sync::mpsc::sync_channel(1);
+    let worker = std::thread::Builder::new().name("verse-damaged-light".into()).spawn(move || {
+        if stopped.load(Ordering::Relaxed) { return; }
+        let settings = BakeSettings::new(glam::Vec3::ZERO, glam::Vec3::ONE, 1.0);
+        let Ok(baker) = SceneBaker::new(&scene, request.light, settings, request.revision) else { return; };
+        let mut vertices = request.vertices.into_iter().peekable();
+        while vertices.peek().is_some() && !stopped.load(Ordering::Relaxed) {
+            let start = std::time::Instant::now();
+            let mut batch = Vec::new();
+            while let Some(index) = vertices.next() {
+                if let Some(light) = baker.vertex_light(index as usize) { batch.push((index, light)); }
+                if start.elapsed() >= std::time::Duration::from_millis(2) { break; }
+            }
+            let mut cursor = batch.iter();
+            let mut edits = patches(batch.iter().map(|(i, _)| *i), true,
+                |_| cursor.next().map_or([0; 4], |(_, light)| *light));
+            loop {
+                if stopped.load(Ordering::Relaxed) { return; }
+                match send.try_send(edits) {
+                    Ok(()) => break,
+                    Err(std::sync::mpsc::TrySendError::Disconnected(_)) => return,
+                    Err(std::sync::mpsc::TrySendError::Full(pending)) => edits = pending,
+                }
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+            std::thread::sleep(std::time::Duration::from_millis(16));
+        }
+    }).ok()?;
+    Some(Repair { cancel, receive, worker })
 }
 
 /// Coalesces adjacent vertices so damage uploads change only occupied rows.
@@ -86,7 +178,7 @@ impl BakedLight {
             layers: choice.layers.clone(), scene, active: false,
             hour: f32::NAN, revision: u64::MAX, dynamic: BTreeSet::new(),
             #[cfg(not(target_arch = "wasm32"))]
-            repair: None,
+            repair: RepairQueue::default(),
         }
     }
 
@@ -100,11 +192,11 @@ impl BakedLight {
     pub(super) fn update(&mut self, light: &time_of_day::Light) -> Option<AmbientProbes> {
         if !self.active { return None; }
         #[cfg(not(target_arch = "wasm32"))]
-        if let Some(repair) = &self.repair {
+        {
+            let scene = self.scene.clone();
             // At most one two-millisecond batch reaches the renderer per tick.
-            if let Ok(patches) = repair.receive.try_recv() {
-                self.scene.baked.deliver_patches(patches);
-            }
+            let patches = self.repair.poll(|request| start_repair(scene.clone(), request));
+            self.scene.baked.deliver_patches(patches);
         }
         if self.hour == light.hours { return None; }
         self.hour = light.hours;
@@ -117,45 +209,16 @@ impl BakedLight {
     pub(super) fn damage(&mut self, revision: u64, dynamic: BTreeSet<u32>, light: &time_of_day::Light) {
         if !self.active || (revision == self.revision && self.hour == light.hours) { return; }
         self.revision = revision;
-        #[cfg(not(target_arch = "wasm32"))]
-        { self.repair = None; }
         let restored = self.dynamic.difference(&dynamic).copied();
         self.scene.baked.deliver_patches(patches(restored, false,
             |i| self.layers.sky.get(i as usize).copied().unwrap_or([0; 4])));
-        self.scene.baked.deliver_patches(patches(dynamic.iter().copied(), true, |_| [0; 4]));
+        self.scene.baked.deliver_patches(patches(dynamic.difference(&self.dynamic).copied(), true, |_| [0; 4]));
         self.dynamic = dynamic;
         #[cfg(not(target_arch = "wasm32"))]
-        if !self.dynamic.is_empty() {
-            use crate::pbr::textured_bake::{BakeLight, BakeSettings, SceneBaker};
-            use std::sync::atomic::{AtomicBool, Ordering};
-            let scene = self.scene.clone();
-            let vertices = self.dynamic.clone();
-            let cancel = Arc::new(AtomicBool::new(false));
-            let stopped = cancel.clone();
-            let (send, receive) = std::sync::mpsc::sync_channel(1);
-            let bake_light = BakeLight::from_key(&light.key(super::Everglade::afternoon()));
-            let spawned = std::thread::Builder::new().name("verse-damaged-light".into()).spawn(move || {
-                let settings = BakeSettings::new(glam::Vec3::ZERO, glam::Vec3::ONE, 1.0);
-                let Ok(baker) = SceneBaker::new(&scene, bake_light, settings, revision) else { return; };
-                let mut vertices = vertices.into_iter().peekable();
-                while vertices.peek().is_some() && !stopped.load(Ordering::Relaxed) {
-                    let start = std::time::Instant::now();
-                    let mut batch = Vec::new();
-                    while let Some(index) = vertices.next() {
-                        if let Some(light) = baker.vertex_light(index as usize) {
-                            batch.push((index, light));
-                        }
-                        if start.elapsed() >= std::time::Duration::from_millis(2) { break; }
-                    }
-                    let mut cursor = batch.iter();
-                    let edits = patches(batch.iter().map(|(i, _)| *i), true,
-                        |_| cursor.next().map_or([0; 4], |(_, light)| *light));
-                    if stopped.load(Ordering::Relaxed) || send.send(edits).is_err() { return; }
-                    std::thread::sleep(std::time::Duration::from_millis(16));
-                }
-            });
-            if spawned.is_ok() { self.repair = Some(Repair { cancel, receive }); }
-        }
+        self.repair.request(RepairRequest {
+            revision, vertices: self.dynamic.clone(),
+            light: crate::pbr::textured_bake::BakeLight::from_key(&light.key(super::Everglade::afternoon())),
+        });
         #[cfg(target_arch = "wasm32")]
         let _ = light;
     }
@@ -164,6 +227,67 @@ impl BakedLight {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn rapid_damage_and_clock_changes_keep_one_worker_and_deliver_the_latest_request() {
+        use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+        let active = Arc::new(AtomicUsize::new(0));
+        let maximum = Arc::new(AtomicUsize::new(0));
+        let gate = Arc::new(AtomicBool::new(false));
+        let mut started = Vec::new();
+        let mut start = |request: RepairRequest| {
+            started.push((request.revision, request.light.sun_illuminance));
+            let cancel = Arc::new(AtomicBool::new(false));
+            let (send, receive) = std::sync::mpsc::channel();
+            let (active, maximum, gate) = (active.clone(), maximum.clone(), gate.clone());
+            let worker = std::thread::spawn(move || {
+                maximum.fetch_max(active.fetch_add(1, Ordering::SeqCst) + 1, Ordering::SeqCst);
+                // Simulate hierarchy construction that cannot stop mid-build.
+                while !gate.load(Ordering::SeqCst) { std::thread::yield_now(); }
+                let _ = send.send(vec![LightPatch { first: request.revision as u32,
+                    lights: vec![[request.light.sun_illuminance as u8, 0, 0, 255]], dynamic: true }]);
+                active.fetch_sub(1, Ordering::SeqCst);
+            });
+            Some(Repair { cancel, receive, worker })
+        };
+        let mut queue = RepairQueue::default();
+        let mut light = crate::pbr::textured_bake::BakeLight::from_key(&time_of_day::Light::at_hours(12.0).key(super::super::Everglade::afternoon()));
+        queue.request(RepairRequest { revision: 1, vertices: BTreeSet::from([1]), light });
+        assert!(queue.poll(&mut start).is_empty());
+        for revision in 2..=20 {
+            queue.request(RepairRequest { revision, vertices: BTreeSet::from([revision as u32]), light });
+            assert!(queue.poll(&mut start).is_empty());
+        }
+        light.sun_illuminance = 99.0;
+        queue.request(RepairRequest { revision: 20, vertices: BTreeSet::from([20]), light });
+        gate.store(true, Ordering::SeqCst);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        let delivered = loop {
+            let delivered = queue.poll(&mut start);
+            if !delivered.is_empty() { break delivered; }
+            assert!(std::time::Instant::now() < deadline, "latest repair finishes");
+            std::thread::yield_now();
+        };
+        assert_eq!(delivered[0].first, 20);
+        assert_eq!(delivered[0].lights[0][0], 99);
+        assert_eq!(maximum.load(Ordering::SeqCst), 1);
+        assert_eq!(started.len(), 2);
+        assert_eq!(started[1], (20, 99.0));
+    }
+
+    #[test]
+    fn production_clock_adapter_moves_sun_weights_between_sky_steps() {
+        let before = town_clock::TownTime::at_hour(0, 9.0);
+        let after = town_clock::TownTime::at_hour(0, 9.0 + 3.0 / 60.0);
+        let stepped = time_of_day::Light::at(before);
+        assert_eq!(stepped, time_of_day::Light::at(after));
+        let a = clock_light(stepped, before, false);
+        let b = clock_light(stepped, after, false);
+        assert_ne!(a.key_dir, b.key_dir);
+        assert!(a.key_dir.angle_between(b.key_dir) < 0.02);
+        assert_eq!(clock_light(stepped, after, true), stepped);
+    }
 
     #[test]
     fn baked_lamps_burn_at_night_and_rest_by_day() {
@@ -195,6 +319,8 @@ mod tests {
         let mut baked = BakedLight::new(&LayerChoice { layers, sun: Default::default(), ratio: 0.0 }, scene.clone());
         baked.active = true;
         baked.dynamic = BTreeSet::from([2, 3]);
+        baked.damage(1, BTreeSet::from([2, 3]), &time_of_day::Light::at_hours(12.0));
+        assert!(scene.baked.take_patches().is_empty(), "queued repairs retain their current lighting");
         baked.damage(1, BTreeSet::new(), &time_of_day::Light::at_hours(12.0));
         let edits = scene.baked.take_patches();
         assert_eq!(edits.len(), 1);
