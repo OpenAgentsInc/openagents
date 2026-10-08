@@ -1109,6 +1109,113 @@ impl Agents {
     /// # Errors
     /// `malformed` for a path that is not a Git checkout, `unavailable`
     /// when her files cannot be written.
+    fn owner_only(principal: &Principal, what: &str) -> Result<(), Code> {
+        if principal.grant.is_some() {
+            return Err(coder_host::tasks::refuse(
+                Code::Forbidden,
+                format!("Only the owner's own key {what}."),
+            ));
+        }
+        Ok(())
+    }
+
+    /// Record a hire or retire proposal (REV-64). Paul's typed read and the
+    /// owner may propose; nothing is created until the owner decides.
+    pub fn propose_hire(
+        &self,
+        principal: &Principal,
+        proposal: &coder_host::access::crew::HireProposal,
+    ) -> Result<serde_json::Value, Code> {
+        Self::owner_only(principal, "records hire proposals")?;
+        self.screen.check(&proposal.reason).map_err(|_| {
+            coder_host::tasks::refuse(Code::Malformed, "Keep credentials out of hire reasons.")
+        })?;
+        let guard = CrewGuard::open(&self.root)
+            .map_err(|why| coder_host::tasks::refuse(Code::Unavailable, why))?;
+        let entry = super::agent_hiring::propose(
+            &guard,
+            &self.root,
+            proposal,
+            &principal.device,
+            (self.clock)(),
+        )
+        .map_err(|why| coder_host::tasks::refuse(Code::Conflict, why))?;
+        serde_json::to_value(entry).map_err(|_| Code::Unavailable)
+    }
+
+    pub fn list_hires(&self, principal: &Principal) -> Result<serde_json::Value, Code> {
+        Self::owner_only(principal, "reads the hiring book")?;
+        let guard = CrewGuard::open(&self.root)
+            .map_err(|why| coder_host::tasks::refuse(Code::Unavailable, why))?;
+        let book = super::agent_hiring::list(&guard)
+            .map_err(|why| coder_host::tasks::refuse(Code::Unavailable, why))?;
+        serde_json::to_value(book).map_err(|_| Code::Unavailable)
+    }
+
+    /// Decide one exact proposal under crew custody: recheck the caps, then
+    /// create or retire through the shared lifecycle, then record the
+    /// outcome on the entry. A repeated decision replays the retained entry.
+    pub fn decide_hire(
+        &self,
+        principal: &Principal,
+        decision: &coder_host::access::crew::HireDecision,
+        workspace: Option<&str>,
+        owner: Option<&secp256k1::SecretKey>,
+    ) -> Result<serde_json::Value, Code> {
+        use super::agent_hiring::{self as hiring, Act};
+        use coder_host::access::crew::HireVerdict;
+        Self::owner_only(principal, "decides hires")?;
+        if owner.is_none() {
+            return Err(coder_host::tasks::refuse(
+                Code::Forbidden,
+                "A hire decision needs the owner key the host holds.",
+            ));
+        }
+        let mut guard = CrewGuard::open(&self.root)
+            .map_err(|why| coder_host::tasks::refuse(Code::Unavailable, why))?;
+        let now = (self.clock)();
+        let (entry, act) = hiring::decide(&guard, &self.root, decision, now)
+            .map_err(|why| coder_host::tasks::refuse(Code::Conflict, why))?;
+        if entry.decision.is_some() {
+            return serde_json::to_value(entry).map_err(|_| Code::Unavailable);
+        }
+        let outcome = match act {
+            Act::Nothing => serde_json::json!({"verdict": decision.verdict}),
+            Act::Create { name, role } => {
+                let workspace = workspace.ok_or_else(|| {
+                    coder_host::tasks::refuse(
+                        Code::Malformed,
+                        "Confirming a hire names the checkout she works in.",
+                    )
+                })?;
+                let made =
+                    self.create_crew_under(&guard, &name, Path::new(workspace), role, owner)?;
+                serde_json::json!({"created": made, "certification": "training"})
+            }
+            Act::Retire { name } => {
+                // Retirement takes crew custody itself; a retirement frees a
+                // slot, so the caps need no hold across it.
+                drop(guard);
+                let retired = self.retire(&name, owner, &principal.device)?;
+                guard = CrewGuard::open(&self.root)
+                    .map_err(|why| coder_host::tasks::refuse(Code::Unavailable, why))?;
+                // A host that never kept sales records has no leads to return.
+                let released = if self.root.join("sales/state.json").is_file() {
+                    super::sales::Store::open_with_clock(&self.root, self.clock)
+                        .and_then(|mut sales| sales.release_retired_agent(&name, now))
+                        .map_err(|why| coder_host::tasks::refuse(Code::Unavailable, why))?
+                } else {
+                    Vec::new()
+                };
+                serde_json::json!({"retired": retired, "leads_released_to_paul": released})
+            }
+        };
+        debug_assert!(decision.verdict == HireVerdict::Reject || !outcome.is_null());
+        let entry = hiring::record(&guard, decision, &principal.device, now, outcome)
+            .map_err(|why| coder_host::tasks::refuse(Code::Unavailable, why))?;
+        serde_json::to_value(entry).map_err(|_| Code::Unavailable)
+    }
+
     pub fn create_crew(
         &self,
         name: &str,
@@ -1118,6 +1225,18 @@ impl Agents {
     ) -> Result<serde_json::Value, Code> {
         let guard = CrewGuard::open(&self.root)
             .map_err(|why| coder_host::tasks::refuse(Code::Unavailable, why))?;
+        self.create_crew_under(&guard, name, workspace, role, owner)
+    }
+
+    /// Crew creation while the caller already holds crew custody.
+    fn create_crew_under(
+        &self,
+        guard: &CrewGuard,
+        name: &str,
+        workspace: &Path,
+        role: coder_host::access::crew::JobRole,
+        owner: Option<&secp256k1::SecretKey>,
+    ) -> Result<serde_json::Value, Code> {
         let _shared = self.lock();
         let store = Store::new(&self.root, name)
             .map_err(|why| coder_host::tasks::refuse(Code::Malformed, why))?;
@@ -1137,7 +1256,7 @@ impl Agents {
             workspace,
             owner,
             agent::preset(role.preset()),
-            Some(&guard),
+            Some(guard),
         )
     }
 
@@ -3278,6 +3397,9 @@ mod crew_tests;
 #[cfg(all(test, unix))]
 #[path = "agent_crew_stop_tests.rs"]
 mod crew_stop_tests;
+#[cfg(test)]
+#[path = "agent_hiring_tests.rs"]
+mod hiring_tests;
 
 /// The canonical queue path grants no Coder turns or command approvals.
 struct PaulPipelineHands<'a> {

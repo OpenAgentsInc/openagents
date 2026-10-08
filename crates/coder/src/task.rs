@@ -33,6 +33,7 @@ pub mod agent_crew;
 pub mod agent_crew_control;
 pub mod agent_engrams;
 pub mod agent_git_sign;
+pub mod agent_hiring;
 pub mod agent_host;
 pub mod agent_interview;
 pub mod agent_jobs;

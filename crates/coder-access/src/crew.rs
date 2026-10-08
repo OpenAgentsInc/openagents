@@ -284,3 +284,111 @@ fn text(value: &str, max: usize) -> Result<()> {
     }
     Ok(())
 }
+
+pub const HIRE_SCHEMA: &str = "openagents.crew-hire.v1";
+/// Paul plus this many active hires, until a separate owner grant.
+pub const MAX_ACTIVE_HIRES: usize = 3;
+/// The whole floor's daily model ceiling, in millionths of a US dollar.
+pub const FLOOR_USD_MILLIONTHS: u64 = 5_000_000;
+pub const MAX_HIRE_PROPOSALS: usize = 64;
+
+/// What a hire proposal asks for: a new member, or an existing one's end.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
+pub enum HireAction {
+    Hire { name: String, role: JobRole },
+    Retire { name: String },
+}
+
+/// A durable proposal to hire or retire. Only the owner's decision acts on it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HireProposal {
+    pub schema: String,
+    pub id: String,
+    pub action: HireAction,
+    /// The member's daily model budget, in millionths of a US dollar.
+    pub daily_usd_millionths: u64,
+    pub charter_revision: u64,
+    pub reason: String,
+    pub evidence: Vec<Evidence>,
+    pub expires_at: u64,
+}
+impl HireProposal {
+    pub fn validate(&self) -> Result<()> {
+        if self.schema != HIRE_SCHEMA {
+            return fail(Code::Malformed, "Use the openagents.crew-hire.v1 schema.");
+        }
+        crate::agent::name(&self.id)?;
+        text(&self.reason, 1024)?;
+        match &self.action {
+            HireAction::Hire { name, role } => {
+                crate::agent::name(name)?;
+                if *role == JobRole::SalesLead {
+                    return fail(Code::Forbidden, "Paul's own binding is not a hire.");
+                }
+                if self.daily_usd_millionths == 0
+                    || self.daily_usd_millionths > FLOOR_USD_MILLIONTHS
+                {
+                    return fail(
+                        Code::Bounds,
+                        "A hire's daily budget is between one millionth and the floor ceiling.",
+                    );
+                }
+                if self.charter_revision == 0 {
+                    return fail(
+                        Code::Malformed,
+                        "Name the charter revision the hire starts from.",
+                    );
+                }
+                if self.evidence.is_empty() {
+                    return fail(
+                        Code::Malformed,
+                        "A hire needs queue evidence, not an empty desk.",
+                    );
+                }
+            }
+            HireAction::Retire { name } => crate::agent::name(name)?,
+        }
+        if self.evidence.len() > 8 {
+            return fail(Code::Bounds, "Cite at most 8 evidence references.");
+        }
+        for e in &self.evidence {
+            reference(&e.reference)?;
+            digest(&e.sha256)?;
+        }
+        if self.expires_at == 0 {
+            return fail(Code::Malformed, "A proposal expires.");
+        }
+        Ok(())
+    }
+    pub fn sha256(&self) -> String {
+        use sha2::Digest;
+        let bytes = serde_json::to_vec(self).unwrap_or_default();
+        format!("{:x}", sha2::Sha256::digest(bytes))
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum HireVerdict {
+    Confirm,
+    Reject,
+}
+
+/// The owner's single-use answer, bound to one exact proposal digest.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HireDecision {
+    pub proposal: String,
+    pub expected_sha256: String,
+    pub verdict: HireVerdict,
+    pub reason: String,
+}
+impl HireDecision {
+    pub fn validate(&self) -> Result<()> {
+        crate::agent::name(&self.proposal)?;
+        digest(&self.expected_sha256)?;
+        text(&self.reason, 512)
+    }
+}

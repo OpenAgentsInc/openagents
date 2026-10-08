@@ -399,6 +399,10 @@ pub struct Guard {
     pub book: Book,
 }
 impl Guard {
+    /// The crew-control directory this guard holds.
+    pub fn dir(&self) -> &Path {
+        &self.dir
+    }
     /// Capture a pending subject's generation from the current native member.
     /// This grants no approval or delivery authority.
     pub fn pending_stamp(&self, member: &str) -> Result<Stamp, String> {

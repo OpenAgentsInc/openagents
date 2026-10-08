@@ -892,6 +892,20 @@ pub enum Operation {
     /// Owner-only cohort lifecycle and pending-subject revocation.
     #[serde(rename = "studio.agent.crew.control")]
     ControlCrew { control: crate::crew::Control },
+    /// A durable proposal to hire or retire a sales member. Recording it
+    /// creates nothing; only [`Self::DecideHire`] from the owner's key acts.
+    #[serde(rename = "studio.agent.crew.hire.propose")]
+    ProposeHire { proposal: crate::crew::HireProposal },
+    /// Owner-only, single-use decision on one exact proposal digest. A
+    /// confirmed hire is made in `workspace` through the shared crew path.
+    #[serde(rename = "studio.agent.crew.hire.decide")]
+    DecideHire {
+        decision: crate::crew::HireDecision,
+        workspace: Option<String>,
+    },
+    /// Owner-only read of every proposal and decision.
+    #[serde(rename = "studio.agent.crew.hire.list")]
+    ListHires {},
     /// Owner-only machine charter edit. It grants no tools or access rights.
     #[serde(rename = "studio.agent.charter.set")]
     SetAgentCharter {
@@ -941,6 +955,7 @@ impl Operation {
                 | Self::ListAgentJobs { .. }
                 | Self::ListAgentVerdicts { .. }
                 | Self::CrewStatus {}
+                | Self::ListHires {}
                 | Self::AgentLog { .. }
                 | Self::ListAgentWorkspaces {}
         )
@@ -969,6 +984,11 @@ impl Operation {
                 | Self::SetAgentCharter { .. }
                 | Self::CrewStatus {}
                 | Self::ControlCrew { .. }
+                | Self::ProposeHire { .. }
+                | Self::DecideHire { .. }
+                | Self::ProposeHire { .. }
+                | Self::DecideHire { .. }
+                | Self::ListHires {}
                 | Self::RecordAgentVerdict { .. }
                 | Self::NewAgent { .. }
                 | Self::RetireAgent { .. }
@@ -987,6 +1007,11 @@ impl Operation {
                 | Self::SetAgentCharter { .. }
                 | Self::CrewStatus {}
                 | Self::ControlCrew { .. }
+                | Self::ProposeHire { .. }
+                | Self::DecideHire { .. }
+                | Self::ProposeHire { .. }
+                | Self::DecideHire { .. }
+                | Self::ListHires {}
                 | Self::RecordAgentVerdict { .. }
                 | Self::RetireAgent { .. }
                 | Self::RotateAgent { .. }
@@ -1127,6 +1152,9 @@ impl Operation {
             Self::SetAgentCharter { .. } => "studio.agent.charter.set",
             Self::CrewStatus {} => "studio.agent.crew.status",
             Self::ControlCrew { .. } => "studio.agent.crew.control",
+            Self::ProposeHire { .. } => "studio.agent.crew.hire.propose",
+            Self::DecideHire { .. } => "studio.agent.crew.hire.decide",
+            Self::ListHires {} => "studio.agent.crew.hire.list",
             Self::RecordAgentVerdict { .. } => "studio.agent.verdict.record",
             Self::ListAgentVerdicts { .. } => "studio.agent.verdict.list",
             Self::NewAgent { .. } => "studio.agent.new",
@@ -1161,6 +1189,7 @@ impl Operation {
             | Self::ListAgentJobs { .. }
             | Self::ListAgentVerdicts { .. }
             | Self::CrewStatus {}
+            | Self::ListHires {}
             | Self::AgentLog { .. }
             | Self::ListAgentWorkspaces {} => Some(Right::Observe),
             Self::CreateTask { .. }
@@ -1201,6 +1230,8 @@ impl Operation {
             | Self::NewCrewAgent { .. }
             | Self::SetAgentCharter { .. }
             | Self::ControlCrew { .. }
+            | Self::ProposeHire { .. }
+            | Self::DecideHire { .. }
             | Self::RecordAgentVerdict { .. }
             | Self::NewAgent { .. }
             | Self::RetireAgent { .. }
@@ -1437,6 +1468,17 @@ impl Operation {
                 .validate()?;
             }
             Self::ControlCrew { control } => control.validate()?,
+            Self::ProposeHire { proposal } => proposal.validate()?,
+            Self::DecideHire {
+                decision,
+                workspace,
+            } => {
+                decision.validate()?;
+                if let Some(workspace) = workspace {
+                    crate::agent::workspace_path(workspace)?;
+                }
+            }
+            Self::ListHires {} => {}
             Self::CrewStatus {} => {}
             Self::RecordAgentVerdict { agent, verdict } => {
                 crate::agent::name(agent)?;

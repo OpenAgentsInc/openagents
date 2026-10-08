@@ -223,10 +223,18 @@ Each hire has:
 3. **The owner decides at the lectern.** The proposal waits at the lectern in
    Paul's office, on the phone, or in the terminal, and the owner answers
    CONFIRM or REJECT, reusing Alice's owner-only interaction
-   ([`agent_host.rs`](../../crates/coder/src/task/agent_host.rs)). The proposed
-   hire path still needs durable, single-use binding to the exact proposal,
-   using the studio action ledger as a design reference
-   ([`studio_approvals.rs`](../../crates/coder/src/task/studio_approvals.rs)).
+   ([`agent_host.rs`](../../crates/coder/src/task/agent_host.rs)). The
+   decision is durable and single-use: it names the proposal's exact SHA-256
+   ([`agent_hiring.rs`](../../crates/coder/src/task/agent_hiring.rs), book
+   `openagents.crew-hiring.v1` beside crew control), a stale digest or
+   expired proposal is refused, the caps are checked again under crew
+   custody at confirmation so two confirmations cannot share the last slot
+   or the budget, and repeating the same decision replays the retained
+   entry. From the terminal: `openagents agent hire propose ID --name NAME
+   --role ROLE --budget USD_MILLIONTHS --reason TEXT --evidence REF=SHA256`,
+   `agent hire confirm|reject ID --expected SHA256 [--workspace DIR]`, and
+   `agent hire list`. Only the owner's own key decides; a granted device,
+   Paul, or another hire is refused.
 4. **The host creates the agent.** On CONFIRM, the host uses the shared
    identity and name-generic creation path from #10807, applying the
    narrowing sales template through `openagents agent new NAME --role ROLE`.
@@ -237,6 +245,12 @@ Each hire has:
    that change merges, the hire works but has no body in the world.
 6. **The hire trains.** A new hire starts in training and may not draft a
    message for a real person until it is certified.
+7. **Retirement goes the same way.** A retire proposal, confirmed by the
+   owner, stops the member and removes her key through the shared lifecycle
+   (`agent_lifecycle::retire`), keeps her record and the hiring entry
+   readable, and revokes her active lead grants so each lead returns to
+   Paul's custody with its stage, suppression, and attribution untouched.
+   Paul's own binding is not a hire and cannot be retired here.
 
 **Owner stop and pause.** The selected Unix native host supports
 `openagents agent crew stop --cohort floor --all`, or an exact

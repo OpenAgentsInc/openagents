@@ -433,6 +433,12 @@ impl Tasks for Inbox {
             Operation::CrewStatus {} | Operation::ControlCrew { .. } => {
                 agents.control_crew(key, principal, op)
             }
+            Operation::ProposeHire { proposal } => agents.propose_hire(principal, proposal),
+            Operation::ListHires {} => agents.list_hires(principal),
+            Operation::DecideHire {
+                decision,
+                workspace,
+            } => agents.decide_hire(principal, decision, workspace.as_deref(), owner),
             Operation::NewCrewAgent {
                 agent,
                 workspace,
