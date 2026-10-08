@@ -54,9 +54,9 @@
 //! the usual captures and saved frames. Use `--camera pan --static-houses`
 //! or `--camera orbit --static-houses` to inspect intact house edges; the
 //! default destruction sequence exercises fast debris.
-//! Without video, frames that save no artifact render and wait for completion
-//! without reading pixels. Every frame advances scene history and exposure and
-//! enters the timing report. `--readback-every-frame` restores all-frame pixel
+//! Frames that save no artifact omit pixel transfers. Every frame advances
+//! scene history and exposure and enters the timing report.
+//! `--readback-every-frame` restores all-frame pixel
 //! readback; temporal comparison always retains it for both renderers.
 //! Ordinary captures omit timestamp diagnostic work. `--gpu-timestamps` and
 //! every comparison mode enable it. Combine `--readback-every-frame` and
@@ -1327,7 +1327,15 @@ fn main() -> Result<(), String> {
             if let Some(neon) = &mut dynamic.neon {
                 neon.temporal_aa = false;
             }
-            off_pixels = Some(baseline.render(view, &dynamic, &ui)?);
+            off_pixels = Some(baseline.render_tracked(
+                view,
+                &dynamic,
+                &ui,
+                k,
+                frame_started,
+                true,
+                false,
+            )?);
             temporal_pair.off = baseline.last_timing();
             temporal_pair.off_gpu = baseline.last_gpu_ms();
             temporal_pair.off_gpu_ticks = baseline.last_gpu_ticks();
@@ -1358,7 +1366,15 @@ fn main() -> Result<(), String> {
             if let Some(neon) = &mut dynamic.neon {
                 neon.temporal_aa = false;
             }
-            off_pixels = Some(baseline.render(view, &dynamic, &ui)?);
+            off_pixels = Some(baseline.render_tracked(
+                view,
+                &dynamic,
+                &ui,
+                k,
+                frame_started,
+                true,
+                false,
+            )?);
             temporal_pair.off = baseline.last_timing();
             temporal_pair.off_gpu = baseline.last_gpu_ms();
             temporal_pair.off_gpu_ticks = baseline.last_gpu_ticks();
@@ -1558,6 +1574,17 @@ fn main() -> Result<(), String> {
     if completed.submitted != frames || completed.frames.len() != frames {
         return Err("Every simulation frame must submit and complete exactly once".into());
     }
+    let baseline_completed = if let Some(baseline) = &mut temporal_baseline {
+        let completed = baseline.drain_tracked()?;
+        if completed.submitted != frames || completed.frames.len() != frames {
+            return Err(
+                "Every temporal baseline frame must submit and complete exactly once".into(),
+            );
+        }
+        Some(completed)
+    } else {
+        None
+    };
     let timed_end = std::time::Instant::now();
     let elapsed_ms = (timed_end - timed_start).as_secs_f64() * 1000.0;
     if let Some(phase) = previous_phase {
@@ -1637,6 +1664,8 @@ fn main() -> Result<(), String> {
         "maximum_pending_frames": completed.maximum_pending,
         "submitted_frames": completed.submitted,
         "completed_frames": completed.frames.len(),
+        "temporal_baseline_submitted_frames": baseline_completed.as_ref().map(|c| c.submitted),
+        "temporal_baseline_completed_frames": baseline_completed.as_ref().map(|c| c.frames.len()),
         "elapsed_through_final_drain_ms": elapsed_ms,
         "completed_frames_per_second": if frames > 0 { Some(frames as f64 * 1000.0 / elapsed_ms) } else { None },
         "final_drain_ms": completed.drain_ms,
