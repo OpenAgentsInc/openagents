@@ -185,7 +185,7 @@ class VerseStudio(
         if (!inEverglade || connecting || handle == 0L) return
         val target = computer()
         if (target == null) {
-            if (attempt == null) say("No computer is online for the studio. Check Account > Computers.", false)
+            // No computer online: show nothing until one connects.
             return
         }
         val key = "${target.first}@$handle"

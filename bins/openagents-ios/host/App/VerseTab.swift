@@ -241,10 +241,10 @@ final class VerseWorld: ObservableObject {
     /// grant's rights or why it could not connect.
     func syncStudio(_ computer: StudioComputer?, connect: @escaping VerseTab.StudioConnect) {
         guard inEverglade, !studioConnecting, let handle = surface?.nativeHandle else { return }
+        // No computer online: show nothing; the studio stays quiet until one
+        // connects.
         guard let computer else {
-            if studioAttempt == nil {
-                studioStatus = "No computer is online for the studio. Check Account > Computers."
-            }
+            if studioAttempt == nil { studioStatus = nil }
             return
         }
         let attempt = "\(computer.host)@\(UInt(bitPattern: handle))"

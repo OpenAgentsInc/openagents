@@ -36,6 +36,22 @@ pub struct Item {
 pub const CHANGELOG: &[Release] = &[
     Release {
         version: "1.0.0",
+        build: "53",
+        title: "The world opens again",
+        what_to_test: "Open the Verse tab and check that the world loads instead of an \"Invalid native Verse configuration\" error. Walk through the EVERGLADE arch and check there is no studio banner at the top when no computer is online. Everything from build 52 applies: the town clock, Mira, Tobin, and Wren, swimming and rain, and the Civic Hall and Agora.",
+        items: &[
+            Item {
+                title: "Verse starts",
+                detail: "Build 52's world refused a setting the app sent and showed an error; the world now opens.",
+            },
+            Item {
+                title: "Quieter studio",
+                detail: "No banner appears in Everglade when no computer is online for the studio.",
+            },
+        ],
+    },
+    Release {
+        version: "1.0.0",
         build: "52",
         title: "Everglade's day, water, and townsfolk",
         what_to_test: "Walk through the EVERGLADE arch. Watch the sky change as the town clock runs: a town day lasts one real hour, with dusk and lamp-lit night. Find Mira, Tobin, and Wren going about their day around the Market Hall. Walk into Lantern Pond and swim, then dive and look up at the surface from below. If it rains, check the ripples on the ponds and the wet ground. Visit the Civic Hall and the Agora. Check that all text uses the new monospace font. Leave through THE GRID arch.",
