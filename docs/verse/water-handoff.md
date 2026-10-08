@@ -299,11 +299,24 @@ and artifact identities, lease receipts, exact browser orchestration diff,
 and visual audit are retained in
 [`frozen-732c49a582`](../../bench/verse/2026-10-08/water-w11/frozen-732c49a582/receipt.json).
 Captures remain in the corresponding Mac scratch folders.
-Before budget or product changes, distinguish readback failures from
-rejected timestamp intervals: the current decoder rejects `end <= start`
-for every masked pass, including ancillary passes. Investigate the black
-WebGPU captures separately from successful initialization and WebGL2
-rendering. Rebase carefully on current main before landing or a normal
+The finite read-only WebGPU dry/wet observer identifies a concrete
+rendering defect: `verse neon blended` draws without bind group 0 after
+W11 creates a new render pass. WebGPU rejects each command buffer. Dry
+and wet produce 287 and 294 submissions, with 574 and 588 device errors.
+Every timestamp mapping succeeds, but all retained readback counters are
+zero because rejected submissions do not execute. There are no shader
+compilation errors, device loss, or error-scope failures. Removing the
+fence wrapper, bringing the tab forward, and using a viewport screenshot
+do not correct the black frame. The observer retains `Log.entryAdded`,
+which the original browser harness discarded, plus uncaptured device
+errors and exact pass/query metadata. Proposed fix: bind the scene at
+group 0 inside `draw_blended`, which previously inherited it from a fused
+pass. Browser acceptance must retain device and Log errors and reject
+black captures. These changes and fresh measurements are pending.
+Do not relax timestamp decoding from the browser's all-zero evidence.
+The current decoder rejects `end <= start` for every masked pass;
+inspect raw native counters before treating ancillary zero-duration
+intervals as valid. Rebase carefully on current main before landing or a normal
 release build; scene-lit particle changes share `pbr/gpu.rs`, `photo.wgsl`,
 `pbr/mod.rs`, and Verse's renderer. No policy constants are calibrated,
 no production build starts, and #10783 remains open.

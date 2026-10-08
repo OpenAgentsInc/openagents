@@ -20,3 +20,11 @@ fence differences are indeterminate, and the budgets are not calibrated.
 No missing GPU observation is replaced with zero. Browser main-thread
 intervals are elapsed time; its waves run inline, and it exposes no thread
 CPU clock. Native main-thread and worker values use thread CPU clocks.
+
+The read-only dry/wet WebGPU observer proves that fresh blended passes
+omit scene bind group 0, invalidating every submission. Timestamp maps
+succeed but return all-zero counters. `webgpu-diagnosis-summary.json`
+reports the errors; the compressed record retains complete device,
+Log, network, shader, canvas, and query observations. The executed observer
+and its exact hash are retained. No source fix or decoder relaxation is
+included in this frozen evidence.
