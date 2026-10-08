@@ -137,7 +137,17 @@ unchanged.
   51,684,139 bytes, from clean source `9967c94cef`. The temporary order
   restoration was reverted; retain main's ordering and publish these
   completed layers through the queue after validation. Do not rebake to
-  chase main. Queue regeneration is being changed to verified reuse only. Spatial tier reduction and budgets remain open.
+  chase main. Main `7857e78275` makes queue regeneration verified reuse
+  only. Its regression test rejects changed scenes, recipes, dirty
+  receipts, and corrupt bytes. Remote submission
+  `01791484173833860158-2604976-0` was rejected without baking: Linux builds
+  scene `5d33bd1f9115196944a8fc1a7ac3154c0d735f0d054426af0fb86a3f4caf635a`
+  and recipe key `cb19c4b9461edcc75a7d90e1a2da44a4cff967406ec333639a66a2785736a682`,
+  while the completed Mac artifact records scene
+  `f55a1e76fca2e2b96af777e296549aa9b51776cadbcfff6eaf1c77a8ad83b2ab`
+  and key `090f106f9c459f62f9cd67902a18531b7e00f9d15e292e0b60a0dd7b231b0b6b`.
+  Both input file digests and receipt settings/light agree. Diagnose scene
+  construction across platforms before publishing; do not bypass identity. Spatial tier reduction and budgets remain open.
   One 512 px kit pack
   serves every tier today (21,467,658 bytes to transfer, 60.5 MiB decoded),
   exceeding the web and phone soft budgets. Both tiers need B4.
