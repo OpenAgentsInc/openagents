@@ -36,10 +36,16 @@ adapter. Synthetic interactive fixtures and full screen previews run their
 local state controller in Rust/Wasm. These examples connect to no live host,
 provider, or account.
 
-The direct-link `/demo` page runs the original `coder-new` demo's five
-conversations, keyboard controls, plugin settings, and model picker. Its
+The direct-link `/demo` page opens a synthetic environment onboarding chat,
+from repository discovery and install repair through clean image build,
+fresh verification, Save, and a first task on the saved version. Its chat
+sidebar also keeps the original five demo conversations, with independent
+drafts, messages, and scroll positions. **Beginning** and **Latest** navigate
+the selected history. Keyboard controls, plugin settings, and the model picker
+remain available. The
 shared `coder-ui::demo` controller renders through the portable
-`coder-demo-ui` terminal adapter, mounted as a Rust Native surface. It uses
+`coder-demo-ui` HTML/CSS adapter, mounted as a Rust Native surface. Typing
+updates changed rows while preserving the rest of the page. It uses
 the same Wasm build as the catalog and has no site header or footer.
 
 ## Run the component catalog
@@ -107,7 +113,7 @@ everything it serves is compiled in or read from this repository.
 | `/.well-known/apple-app-site-association`, `/.well-known/assetlinks.json` | Universal link and App Link claims for `/connect` | Serves. |
 | `/u/{login}` | `Backend::profile` | Says the backend isn't connected. |
 | `/components`, `/components/{component}` | Shared Coder components, named synthetic variants, typed controls, source references, and full screen previews | Renders; Rust/Wasm interaction requires `--components-build`. |
-| `/demo` | The original Coder demo's shared terminal renderer and local Rust controller | Static original frame; Rust/Wasm interaction requires `--components-build`. |
+| `/demo` | Environment onboarding and original Coder demo conversations, with a chat sidebar, HTML/CSS renderer, and local Rust controller | Static onboarding frame; Rust/Wasm interaction requires `--components-build`. |
 | `/cloud`, `/cloud/sign-in`, `/cloud/app` | Public availability and the native account/workspace shell | Public entry renders; private pages require explicit native account configuration and the Cloud Wasm build. |
 | `/cloud/app/hosts/{binding}/tasks`, `/cloud/app/hosts/{binding}/tasks/{task}` | Bounded, signed resident task reads under current Observe authority; original ATIF messages, tools, child references, checks, cost, and source pins | Requires a separately provisioned host binding. It reads no local `/app` records. |
 | `/app`, `/app/tasks/{id}` | The local task store | Reads the store; local hosts only. |

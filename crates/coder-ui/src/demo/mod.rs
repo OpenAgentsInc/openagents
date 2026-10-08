@@ -1,7 +1,7 @@
 //! The original Coder demo as page-local presentation state.
 //!
 //! This controller has no filesystem, provider, host, or execution adapter.
-//! Demo inputs affect only the five synthetic conversations and settings.
+//! Demo inputs affect only the six synthetic conversations and settings.
 
 pub mod agents;
 pub mod brainstorm;
@@ -9,6 +9,7 @@ pub mod bundled_settings;
 pub mod cloud_settings;
 mod draft;
 pub mod models;
+pub mod onboarding;
 pub mod plugin_definition;
 pub mod plugins;
 pub mod slash;
@@ -101,6 +102,7 @@ pub struct DemoState {
     pub messages: Vec<String>,
     pub scroll: u16,
     pub selected_agent: Option<usize>,
+    pub onboarding: bool,
     pub animation_frame: u8,
     pub cursor_blink_frame: u8,
     pub elapsed_seconds: u64,
@@ -111,7 +113,7 @@ pub struct DemoState {
     pub slash_selected: usize,
     pub slash_hidden: bool,
     pub notice: Option<String>,
-    pub saved_chats: [Chat; 5],
+    pub saved_chats: [Chat; 6],
     pub other_draft: Draft,
     pub return_screen: Screen,
     #[serde(skip)]
@@ -128,6 +130,7 @@ impl Default for DemoState {
             messages: vec![],
             scroll: 0,
             selected_agent: None,
+            onboarding: false,
             animation_frame: 0,
             cursor_blink_frame: 0,
             elapsed_seconds: 0,
@@ -186,21 +189,41 @@ impl DemoState {
             .collect()
     }
     pub fn select_agent(&mut self, selected: Option<usize>) {
-        if self.selected_agent == selected || selected.is_some_and(|i| i >= agents::DEMOS.len()) {
+        self.select_conversation(selected, false);
+    }
+    pub fn select_onboarding(&mut self) {
+        self.select_conversation(None, true);
+    }
+    fn select_conversation(&mut self, selected: Option<usize>, onboarding: bool) {
+        if selected.is_some_and(|i| i >= agents::DEMOS.len()) {
             return;
         }
-        let previous = self.selected_agent.map_or(0, |i| i + 1);
+        self.screen = Screen::Conversation;
+        self.model_picker = None;
+        if self.selected_agent == selected && self.onboarding == onboarding {
+            return;
+        }
+        let previous = if self.onboarding {
+            5
+        } else {
+            self.selected_agent.map_or(0, |i| i + 1)
+        };
         self.saved_chats[previous] = Chat {
             draft: std::mem::take(&mut self.draft),
             messages: std::mem::take(&mut self.messages),
             scroll: self.scroll,
         };
-        let next = selected.map_or(0, |i| i + 1);
+        let next = if onboarding {
+            5
+        } else {
+            selected.map_or(0, |i| i + 1)
+        };
         let chat = std::mem::take(&mut self.saved_chats[next]);
         self.draft = chat.draft;
         self.messages = chat.messages;
         self.scroll = chat.scroll;
         self.selected_agent = selected;
+        self.onboarding = onboarding;
         self.screen = Screen::Conversation;
     }
     pub fn open_plugins(&mut self) {

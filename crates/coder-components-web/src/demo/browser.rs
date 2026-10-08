@@ -2,7 +2,7 @@
 
 use super::{Composition, view};
 use coder_demo_ui::{Hit, Snapshot};
-use coder_ui::demo::{DemoState, Key, KeyCode};
+use coder_ui::demo::{DemoState, Key, KeyCode, Screen};
 use serde::Deserialize;
 use std::{
     cell::{Cell, RefCell},
@@ -129,7 +129,11 @@ pub fn start_demo() -> Result<(), JsValue> {
         mount,
         surface,
         input,
-        state: RefCell::new(Some(DemoState::default())),
+        state: RefCell::new(Some({
+            let mut state = DemoState::default();
+            state.select_onboarding();
+            state
+        })),
         snapshot: RefCell::new(None),
         composition: RefCell::new(Composition::default()),
         listeners: RefCell::new(vec![]),
@@ -164,7 +168,7 @@ impl Runtime {
     }
 
     fn dimensions(&self) -> (u16, u16) {
-        let bounds = self.root.get_bounding_client_rect();
+        let bounds = self.mount.get_bounding_client_rect();
         (
             (bounds.width() / 9.0).floor().clamp(1.0, 240.0) as u16,
             (bounds.height() / 20.0).floor().clamp(1.0, 160.0) as u16,
@@ -187,6 +191,7 @@ impl Runtime {
         let Some(state) = state.as_mut() else {
             return Ok(());
         };
+        self.render_chats(state)?;
         let snapshot = coder_demo_ui::capture(state, width, height);
         // Preserve unchanged HTML rows while typing and animating the cursor.
         let previous = self.snapshot.borrow();
@@ -280,6 +285,59 @@ impl Runtime {
             status.set_attribute("hidden", "")?;
         }
         Ok(())
+    }
+
+    fn render_chats(&self, state: &DemoState) -> Result<(), JsValue> {
+        let selected = if state.onboarding {
+            5
+        } else {
+            state.selected_agent.map_or(0, |index| index + 1)
+        };
+        for index in 0_usize..6 {
+            if let Some(button) = self
+                .document
+                .get_element_by_id(&format!("demo-chat-{index}"))
+            {
+                if index == selected {
+                    if button.get_attribute("aria-current").as_deref() != Some("true") {
+                        button.set_attribute("aria-current", "true")?;
+                    }
+                } else if button.has_attribute("aria-current") {
+                    button.remove_attribute("aria-current")?;
+                }
+            }
+        }
+        let (title, description) = if state.onboarding {
+            (
+                "Set up OpenAgents",
+                "From repository discovery to the first task on a saved environment.",
+            )
+        } else if let Some(agent) = state
+            .selected_agent
+            .and_then(|i| coder_ui::demo::agents::DEMOS.get(i))
+        {
+            (agent.task, agent.name)
+        } else {
+            ("Coder workspace", "Four conversations in parallel.")
+        };
+        for (id, text) in [
+            ("demo-chat-heading", title),
+            ("demo-chat-description", description),
+        ] {
+            if let Some(element) = self.document.get_element_by_id(id) {
+                if element.text_content().as_deref() != Some(text) {
+                    element.set_text_content(Some(text));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn clear_selection(&self) {
+        self.selecting.set(false);
+        if let Ok(Some(selection)) = self.window.get_selection() {
+            let _ = selection.remove_all_ranges();
+        }
     }
 
     fn focus(&self) -> Result<(), JsValue> {
@@ -464,6 +522,41 @@ impl Runtime {
     }
 
     fn install(self: &Rc<Self>) -> Result<(), JsValue> {
+        for index in 0_usize..6 {
+            if let Some(button) = self
+                .document
+                .get_element_by_id(&format!("demo-chat-{index}"))
+            {
+                self.listen(button.into(), "click", move |runtime, _| {
+                    if !runtime.visible() {
+                        return;
+                    }
+                    runtime.clear_selection();
+                    if let Some(state) = runtime.state.borrow_mut().as_mut() {
+                        if index == 5 {
+                            state.select_onboarding();
+                        } else {
+                            state.select_agent(index.checked_sub(1));
+                        }
+                    }
+                    runtime.result(runtime.render());
+                })?;
+            }
+        }
+        for (id, scroll) in [("demo-history-start", 0), ("demo-history-end", u16::MAX)] {
+            if let Some(button) = self.document.get_element_by_id(id) {
+                self.listen(button.into(), "click", move |runtime, _| {
+                    if !runtime.visible() {
+                        return;
+                    }
+                    runtime.clear_selection();
+                    if let Some(state) = runtime.state.borrow_mut().as_mut() {
+                        state.scroll = scroll;
+                    }
+                    runtime.result(runtime.render());
+                })?;
+            }
+        }
         self.listen(self.input.clone().into(), "keydown", |runtime, event| {
             let Some(event) = event.dyn_ref::<KeyboardEvent>() else {
                 return;
@@ -472,6 +565,15 @@ impl Runtime {
                 return;
             }
             if event.get_modifier_state("AltGraph") {
+                return;
+            }
+            if event.key() == "Tab"
+                && runtime.state.borrow().as_ref().is_some_and(|state| {
+                    state.screen == Screen::Conversation
+                        && state.model_picker.is_none()
+                        && state.slash_hints().is_empty()
+                })
+            {
                 return;
             }
             // The terminal consumes OS command shortcuts before its editor.
@@ -650,7 +752,7 @@ impl Runtime {
                 }
             },
         )?;
-        self.listen(self.root.clone().into(), "wheel", |runtime, event| {
+        self.listen(self.mount.clone().into(), "wheel", |runtime, event| {
             let Some(event) = event.dyn_ref::<WheelEvent>() else {
                 return;
             };
@@ -733,6 +835,7 @@ pub fn demo_receipt() -> String {
             "phase":state.as_ref().map(|s|s.animation_frame),
             "elapsed_seconds":state.as_ref().map(|s|s.elapsed_seconds),
             "selected_agent":state.as_ref().and_then(|s|s.selected_agent),
+            "onboarding":state.as_ref().map(|s|s.onboarding),
             "draft_bytes":state.as_ref().map(|s|s.draft.text.len()),
             "draft_cursor":state.as_ref().map(|s|s.draft.cursor),
             "messages":state.as_ref().map(|s|s.messages.len()),

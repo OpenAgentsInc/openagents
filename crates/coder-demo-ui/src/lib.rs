@@ -6,7 +6,7 @@ mod tools;
 mod ui;
 
 pub use coder_ui::demo::{
-    DemoState as App, Draft, Mode, Screen, agents, brainstorm, cloud_settings, models,
+    DemoState as App, Draft, Mode, Screen, agents, brainstorm, cloud_settings, models, onboarding,
     plugin_definition, plugins,
 };
 pub use ratatui::style::{Color, Modifier};
@@ -95,7 +95,7 @@ pub fn hit(app: &App, width: u16, height: u16, x: u16, y: u16) -> Option<Hit> {
         return None;
     }
     let (draft, _) = app.draft.wrapped(width.saturating_sub(3));
-    let rail_height = if app.mode == Mode::Demo {
+    let rail_height = if app.mode == Mode::Demo && !app.onboarding {
         agents::DEMOS
             .len()
             .min(usize::from(area.height.saturating_sub(6))) as u16
