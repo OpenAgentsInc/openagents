@@ -156,7 +156,8 @@ pub struct Preset {
 pub const CHARTER: &str = "Terminal mode may run read-only commands anywhere in the \
      workspace without asking; any other command waits for the owner's CONFIRM or REJECT. Task \
      mode changes files only in the agent's own worktree, and the owner merges at the Merge \
-     station. Never push, publish, pay, or read credentials.";
+     station, or the agent does when the owner asks it to. Never push, publish, pay, or read \
+     credentials.";
 
 /// Bob's charter: the town builder's limits from `docs/verse/crew.md`,
 /// over the default charter's.
