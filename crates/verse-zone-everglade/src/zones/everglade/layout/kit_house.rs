@@ -331,7 +331,12 @@ impl KitHouse {
                 if story < top_story {
                     // The band over the walls, round the corners too.
                     let band = y + WALL;
-                    put("kit/band-1", point(side, 0.0, -THICK + SURFACE_GAP), band, side.yaw);
+                    put(
+                        "kit/band-1",
+                        point(side, 0.0, -THICK + SURFACE_GAP),
+                        band,
+                        side.yaw,
+                    );
                     put(
                         "kit/band-1",
                         point(side, side.length - 1.0, -THICK + SURFACE_GAP),
@@ -344,7 +349,12 @@ impl KitHouse {
                         } else {
                             "kit/band-2"
                         };
-                        put(model, point(side, offset, -THICK + SURFACE_GAP), band, side.yaw);
+                        put(
+                            model,
+                            point(side, offset, -THICK + SURFACE_GAP),
+                            band,
+                            side.yaw,
+                        );
                     }
                 }
             }

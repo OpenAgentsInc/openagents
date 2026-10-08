@@ -366,9 +366,21 @@ impl Detail {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Level {
     Always,
-    Near { anchor: [f32; 2], switch: f32 },
-    Far { anchor: [f32; 2], switch: f32 },
-    Group { group: u16, anchor: [f32; 2], switches: [f32; 2], level: u8, fallback: u8 },
+    Near {
+        anchor: [f32; 2],
+        switch: f32,
+    },
+    Far {
+        anchor: [f32; 2],
+        switch: f32,
+    },
+    Group {
+        group: u16,
+        anchor: [f32; 2],
+        switches: [f32; 2],
+        level: u8,
+        fallback: u8,
+    },
 }
 
 impl Level {
@@ -381,16 +393,25 @@ impl Level {
         let (anchor, switch) = match self {
             Self::Always => return true,
             Self::Near { anchor, switch } | Self::Far { anchor, switch } => (anchor, switch),
-            Self::Group { anchor, switches, level, .. } => {
-                let distance = (eye.x-anchor[0]).hypot(eye.z-anchor[1]);
+            Self::Group {
+                anchor,
+                switches,
+                level,
+                ..
+            } => {
+                let distance = (eye.x - anchor[0]).hypot(eye.z - anchor[1]);
                 let (low, high) = match level {
                     0 => (f32::NEG_INFINITY, switches[0]),
                     1 => (switches[0], switches[1]),
                     2 => (switches[1], f32::INFINITY),
                     _ => return false,
                 };
-                let margin = match was { None => 0.0, Some(true) => HYSTERESIS, Some(false) => -HYSTERESIS };
-                return distance >= low-margin && distance < high+margin;
+                let margin = match was {
+                    None => 0.0,
+                    Some(true) => HYSTERESIS,
+                    Some(false) => -HYSTERESIS,
+                };
+                return distance >= low - margin && distance < high + margin;
             }
         };
         let distance = (eye.x - anchor[0]).hypot(eye.z - anchor[1]);
@@ -420,9 +441,18 @@ impl Level {
 
     /// Uses the original pieces at every distance after the object changes.
     #[must_use]
-    pub fn drawn_with_fallback(self, selected: bool, groups: &std::collections::BTreeSet<u16>) -> bool {
+    pub fn drawn_with_fallback(
+        self,
+        selected: bool,
+        groups: &std::collections::BTreeSet<u16>,
+    ) -> bool {
         match self {
-            Self::Group { group, level, fallback, .. } if groups.contains(&group) => level == fallback,
+            Self::Group {
+                group,
+                level,
+                fallback,
+                ..
+            } if groups.contains(&group) => level == fallback,
             _ => self.drawn(selected),
         }
     }
@@ -492,7 +522,10 @@ struct IndexEditState {
 impl IndexEdits {
     /// Replaces the object groups that must draw their original pieces.
     pub fn set_group_fallbacks(&self, groups: std::collections::BTreeSet<u16>) {
-        let mut state = self.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut state = self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         if state.fallback_groups != groups {
             state.fallback_groups = groups;
             state.revision += 1;
@@ -501,7 +534,11 @@ impl IndexEdits {
 
     #[must_use]
     pub fn group_fallbacks(&self) -> std::collections::BTreeSet<u16> {
-        self.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner).fallback_groups.clone()
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .fallback_groups
+            .clone()
     }
     /// Sets the merged indices from `first` on to `indices`.
     pub fn write(&self, first: u32, indices: Vec<u32>) {
@@ -715,7 +752,13 @@ impl TexturedScene {
             },
             Detail::Group { group, level } => {
                 let g = self.detail_groups[usize::from(group)];
-                Level::Group { group, anchor: g.anchor, switches: g.switches, level, fallback: g.fallback }
+                Level::Group {
+                    group,
+                    anchor: g.anchor,
+                    switches: g.switches,
+                    level,
+                    fallback: g.fallback,
+                }
             }
         }
     }
@@ -725,7 +768,10 @@ impl TexturedScene {
         match placement.detail {
             Detail::Group { group, .. } => {
                 let anchor = self.detail_groups[usize::from(group)].anchor;
-                ((anchor[0]/CELL).floor() as i32, (anchor[1]/CELL).floor() as i32)
+                (
+                    (anchor[0] / CELL).floor() as i32,
+                    (anchor[1] / CELL).floor() as i32,
+                )
             }
             _ => cell_of(placement.transform),
         }
@@ -748,9 +794,12 @@ impl TexturedScene {
         if !self.switches.iter().all(|s| s.is_finite() && *s > 0.0) {
             return Err("textured scene has an invalid switch distance".into());
         }
-        if !self.detail_groups.iter().all(|g| g.anchor.iter().all(|a| a.is_finite())
-            && g.switches.iter().all(|s| s.is_finite() && *s > 0.0)
-            && g.switches[0] < g.switches[1] && matches!(g.fallback, 0 | 3)) {
+        if !self.detail_groups.iter().all(|g| {
+            g.anchor.iter().all(|a| a.is_finite())
+                && g.switches.iter().all(|s| s.is_finite() && *s > 0.0)
+                && g.switches[0] < g.switches[1]
+                && matches!(g.fallback, 0 | 3)
+        }) {
             return Err("textured scene has an invalid detail group".into());
         }
         for image in &self.images {
@@ -1650,11 +1699,20 @@ mod tests {
 
     #[test]
     fn detail_groups_select_one_level_across_both_switches() {
-        let levels: Vec<_> = (0..3).map(|level| Level::Group {
-            group: 0, anchor: [0.0; 2], switches: [40.0, 80.0], level, fallback: 0,
-        }).collect();
+        let levels: Vec<_> = (0..3)
+            .map(|level| Level::Group {
+                group: 0,
+                anchor: [0.0; 2],
+                switches: [40.0, 80.0],
+                level,
+                fallback: 0,
+            })
+            .collect();
         let mut was = [None; 3];
-        for distance in (0..1000).map(|n| n as f32/10.0).chain((0..1000).rev().map(|n| n as f32/10.0)) {
+        for distance in (0..1000)
+            .map(|n| n as f32 / 10.0)
+            .chain((0..1000).rev().map(|n| n as f32 / 10.0))
+        {
             let eye = Vec3::new(0.0, 2.0, distance);
             let mut selected = 0;
             for (i, level) in levels.iter().enumerate() {
@@ -1664,55 +1722,92 @@ mod tests {
             }
             assert_eq!(selected, 1, "distance {distance}");
         }
-        for (distance, selected) in [(10.0,0), (50.0,1), (120.0,2)] {
-            assert!(levels[selected].drawn_from(Vec3::new(0.0,2.0,distance)));
+        for (distance, selected) in [(10.0, 0), (50.0, 1), (120.0, 2)] {
+            assert!(levels[selected].drawn_from(Vec3::new(0.0, 2.0, distance)));
         }
     }
 
     #[test]
     fn detail_groups_merge_across_cells_keep_ranges_and_restore_after_far_damage() {
         let mut scene = scene(&[AlphaMode::Opaque]);
-        scene.detail_groups.push(DetailGroup { anchor: [0.0; 2], switches: [40.0,80.0], fallback: 0 });
+        scene.detail_groups.push(DetailGroup {
+            anchor: [0.0; 2],
+            switches: [40.0, 80.0],
+            fallback: 0,
+        });
         scene.placements.clear();
-        for x in [-12.0,12.0] {
-            scene.place_detail(0, Mat4::from_translation(Vec3::new(x,0.0,0.0)), Detail::Group { group: 0, level: 0 });
+        for x in [-12.0, 12.0] {
+            scene.place_detail(
+                0,
+                Mat4::from_translation(Vec3::new(x, 0.0, 0.0)),
+                Detail::Group { group: 0, level: 0 },
+            );
         }
-        for level in [1,2] {
+        for level in [1, 2] {
             scene.place_detail(0, Mat4::IDENTITY, Detail::Group { group: 0, level });
         }
         let merged = scene.merge().unwrap();
-        let near = merged.batches.iter().find(|b| matches!(b.level,Level::Group { level: 0,.. })).unwrap();
+        let near = merged
+            .batches
+            .iter()
+            .find(|b| matches!(b.level, Level::Group { level: 0, .. }))
+            .unwrap();
         assert_eq!(near.count, 12);
         assert!(near.min.x <= -12.0 && near.max.x >= 13.0);
         let ranges = scene.index_ranges();
-        assert_eq!(ranges.len(),4);
+        assert_eq!(ranges.len(), 4);
         for (i, ranges) in ranges.iter().enumerate() {
             for range in ranges {
-                assert_eq!(scene.range_indices(i,range), merged.indices[range.first as usize..(range.first+range.count) as usize]);
+                assert_eq!(
+                    scene.range_indices(i, range),
+                    merged.indices[range.first as usize..(range.first + range.count) as usize]
+                );
             }
         }
-        let eye = Vec3::new(0.0,2.0,120.0);
-        let shown = |groups: &std::collections::BTreeSet<u16>| merged.batches.iter().filter(|b| b.level.drawn_with_fallback(b.level.near(eye,None),groups)).count();
-        assert_eq!(shown(&scene.edits.group_fallbacks()),1);
+        let eye = Vec3::new(0.0, 2.0, 120.0);
+        let shown = |groups: &std::collections::BTreeSet<u16>| {
+            merged
+                .batches
+                .iter()
+                .filter(|b| b.level.drawn_with_fallback(b.level.near(eye, None), groups))
+                .count()
+        };
+        assert_eq!(shown(&scene.edits.group_fallbacks()), 1);
         scene.edits.set_group_fallbacks([0].into_iter().collect());
-        assert_eq!(shown(&scene.edits.group_fallbacks()),1);
-        assert!(near.level.drawn_with_fallback(false,&scene.edits.group_fallbacks()));
+        assert_eq!(shown(&scene.edits.group_fallbacks()), 1);
+        assert!(
+            near.level
+                .drawn_with_fallback(false, &scene.edits.group_fallbacks())
+        );
         let first = ranges[0][0];
-        scene.edits.write(first.first, vec![first.base; first.count as usize]);
+        scene
+            .edits
+            .write(first.first, vec![first.base; first.count as usize]);
         let seen = scene.edits.revision();
         scene.edits.set_group_fallbacks([0].into_iter().collect());
-        assert_eq!(scene.edits.revision(),seen);
+        assert_eq!(scene.edits.revision(), seen);
         let second = ranges[1][0];
-        scene.edits.write(second.first, vec![second.base; second.count as usize]);
-        let (later,revision) = scene.edits.since(seen);
-        assert!(revision>seen);
-        assert_eq!(later,vec![(second.first,vec![second.base; second.count as usize])]);
-        for (i,range) in [(0,first),(1,second)] {
-            scene.edits.write(range.first,scene.range_indices(i,&range));
+        scene
+            .edits
+            .write(second.first, vec![second.base; second.count as usize]);
+        let (later, revision) = scene.edits.since(seen);
+        assert!(revision > seen);
+        assert_eq!(
+            later,
+            vec![(second.first, vec![second.base; second.count as usize])]
+        );
+        for (i, range) in [(0, first), (1, second)] {
+            scene
+                .edits
+                .write(range.first, scene.range_indices(i, &range));
         }
         scene.edits.set_group_fallbacks(Default::default());
-        assert_eq!(shown(&scene.edits.group_fallbacks()),1);
-        assert!(!near.level.drawn_with_fallback(false,&scene.edits.group_fallbacks()));
+        assert_eq!(shown(&scene.edits.group_fallbacks()), 1);
+        assert!(
+            !near
+                .level
+                .drawn_with_fallback(false, &scene.edits.group_fallbacks())
+        );
     }
 
     fn quad(material: usize) -> TexturedMesh {

@@ -555,7 +555,10 @@ impl TexturedGpu {
     /// Whether cell `i` draws at its current level.
     fn shown(&self, i: usize) -> bool {
         let batch = &self.batches[i];
-        batch.level.drawn_with_fallback(self.near.get(i).copied().unwrap_or(true), &self.fallback_groups)
+        batch.level.drawn_with_fallback(
+            self.near.get(i).copied().unwrap_or(true),
+            &self.fallback_groups,
+        )
     }
 
     /// Rewrites the merged indices from `first` on, within the buffer.

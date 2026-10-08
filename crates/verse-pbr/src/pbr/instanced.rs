@@ -465,7 +465,8 @@ impl Prepared {
         let order: Vec<usize> = (0..self.items.len())
             .filter(|&i| {
                 let b = &self.items[i];
-                b.level.drawn_with_fallback(b.level.near(eye, None), &self.fallback_groups)
+                b.level
+                    .drawn_with_fallback(b.level.near(eye, None), &self.fallback_groups)
                     && textured::drawn(b.min, b.max, view_proj, eye, far)
             })
             .collect();
