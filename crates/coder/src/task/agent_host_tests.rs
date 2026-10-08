@@ -85,6 +85,7 @@ fn ask(agents: &Agents, key: &str, text: &str, typist: bool) -> Result<serde_jso
             context: String::new(),
             mode: Mode::Terminal,
             typist,
+            computer: None,
         },
     )
 }
@@ -683,6 +684,7 @@ fn her_replies_never_send_the_owner_through_hoops() {
                 context: String::new(),
                 mode: Mode::Terminal,
                 typist: false,
+                computer: None,
             },
         );
         let code = refused.expect_err("refused");
@@ -1006,4 +1008,262 @@ fn the_owner_accepts_her_core_proposal_as_memory_row_zero() {
         },
     );
     assert_eq!(again, Err(Code::Conflict));
+}
+
+/// Git in `dir`, as the remote-placement tests need a real checkout.
+fn git(dir: &Path, args: &[&str]) -> String {
+    let output = std::process::Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args(args)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "git {args:?}: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8_lossy(&output.stdout).trim().to_owned()
+}
+
+/// Alice's host with a real checkout workspace `app`, a seat route, her
+/// policy naming `computers`, and a scripted remote lane (#10930).
+fn remote_host(
+    dir: &tempfile::TempDir,
+    computers: Vec<crate::task::agent_steer::Computer>,
+    lane: Box<dyn crate::task::agent_remote::Remote>,
+) -> (Agents, PathBuf) {
+    let root = dir.path().join("host");
+    let app = dir.path().join("app");
+    let origin = dir.path().join("origin.git");
+    git(
+        dir.path(),
+        &["init", "-q", "--bare", &origin.to_string_lossy()],
+    );
+    git(
+        dir.path(),
+        &["init", "-q", "-b", "main", &app.to_string_lossy()],
+    );
+    git(&app, &["config", "user.name", "Owner Person"]);
+    git(&app, &["config", "user.email", "owner@example.invalid"]);
+    git(&app, &["config", "commit.gpgsign", "false"]);
+    std::fs::write(app.join("README.md"), "hello\n").unwrap();
+    git(&app, &["add", "-A"]);
+    git(&app, &["commit", "-q", "-m", "First"]);
+    git(
+        &app,
+        &["remote", "add", "origin", &origin.to_string_lossy()],
+    );
+    git(&app, &["push", "-q", "origin", "main"]);
+    let store = Store::new(&root, "alice").unwrap();
+    store.open(&app, clock()).unwrap();
+    let mut record = store.load().unwrap().unwrap();
+    record.route = "devin:default".into();
+    store.save(&record).unwrap();
+    let mut policy = agent_steer::Policy::defaults();
+    policy.computers = computers;
+    policy.save(&store).unwrap();
+    let workspaces = BTreeMap::from([("app".to_string(), app.clone())]);
+    let agents = Agents::new(&root, dir.path().join("tasks"), workspaces)
+        .with_engine(engine(vec![turn(vec![], "done")]))
+        .with_remote(lane)
+        .with_coder_state(dir.path().join("coder"))
+        .with_clock(clock);
+    (agents, app)
+}
+
+fn ask_task(agents: &Agents, key: &str, text: &str, computer: Option<&str>) {
+    agents
+        .answer(
+            key,
+            &owner(),
+            &Operation::AskAgent {
+                agent: "alice".into(),
+                text: text.into(),
+                workspace: Some("app".into()),
+                context: String::new(),
+                mode: Mode::Task,
+                typist: false,
+                computer: computer.map(str::to_owned),
+            },
+        )
+        .unwrap();
+}
+
+/// A task-mode request naming a connected computer runs there; its patch
+/// comes back and lands at this host's Merge station (#10930).
+#[test]
+fn a_task_mode_request_runs_on_her_connected_computer() {
+    use crate::task::agent_remote::tests::Fake;
+    let dir = tempfile::tempdir().unwrap();
+    let mut fake = Fake::new();
+    fake.issue("rt-7");
+    fake.phases
+        .lock()
+        .unwrap()
+        .insert("rt-7".into(), vec![RemotePhase::Completed]);
+    fake.reviews.lock().unwrap().insert(
+        "rt-7".into(),
+        crate::task::agent_remote::Review {
+            base: "ignored".into(),
+            diff: "diff --git a/notes.txt b/notes.txt\nnew file mode 100644\nindex \
+                   0000000..ce01362\n--- /dev/null\n+++ b/notes.txt\n@@ -0,0 +1 @@\n+hello\n"
+                .into(),
+        },
+    );
+    let calls = fake.calls.clone();
+    let created = fake.created.clone();
+    let (agents, app) = remote_host(
+        &dir,
+        vec![agent_steer::Computer {
+            name: "coderos-4080".into(),
+            max: 1,
+            path: None,
+            workspace: None,
+        }],
+        Box::new(fake),
+    );
+    let base = git(&app, &["rev-parse", "HEAD"]);
+    ask_task(
+        &agents,
+        "k1",
+        "add a notes file saying hello",
+        Some("coderos-4080"),
+    );
+    let seen = until(&agents, |v| {
+        !v.busy && v.headline == "change at the Merge station"
+    });
+    assert!(
+        seen.lines.iter().any(|line| line.contains("coderos-4080")),
+        "her lines name the computer: {:?}",
+        seen.lines
+    );
+    let calls = calls.lock().unwrap().clone();
+    assert_eq!(
+        calls,
+        vec![
+            "ready coderos-4080".to_string(),
+            format!("ensure coderos-4080 ~/work/app {base}"),
+            "phase coderos-4080 rt-7".to_string(),
+            "review coderos-4080 rt-7".to_string(),
+        ],
+        "the lane was driven in order"
+    );
+    let brief = &created.lock().unwrap()[0].1;
+    assert_eq!(brief.base, base);
+    assert!(brief.prompt.contains("add a notes file"));
+    // The change is in the task's local worktree on its branch.
+    let studio = crate::task::studio::Studio::open(&dir.path().join("tasks")).unwrap();
+    let tasks = studio.remote_tasks("alice");
+    assert_eq!(tasks.len(), 1);
+    assert_eq!(tasks[0].remote_task.as_deref(), Some("rt-7"));
+    assert_eq!(tasks[0].stage, crate::task::studio::Stage::Merge);
+    let record = crate::task::local::record(&dir.path().join("tasks"), &tasks[0].task).unwrap();
+    let worktree = Path::new(&record.worktree);
+    assert!(worktree.join("notes.txt").exists());
+    assert_eq!(git(worktree, &["show", "HEAD:notes.txt"]), "hello");
+}
+
+/// A computer her policy does not allow is refused before anything is
+/// made (#10930).
+#[test]
+fn a_computer_her_policy_omits_is_refused() {
+    use crate::task::agent_remote::tests::Fake;
+    let dir = tempfile::tempdir().unwrap();
+    let fake = Fake::new();
+    let calls = fake.calls.clone();
+    let (agents, _) = remote_host(&dir, vec![], Box::new(fake));
+    ask_task(&agents, "k1", "do the work", Some("laptop"));
+    let seen = until(&agents, |v| !v.busy);
+    assert!(
+        seen.lines.iter().any(|line| line.contains("laptop")),
+        "the refusal names it: {:?}",
+        seen.lines
+    );
+    assert!(calls.lock().unwrap().is_empty(), "no remote call ran");
+}
+
+/// Her durable queue runs the oldest entry next, back to back, each placed
+/// when it starts (#10931).
+#[test]
+fn her_durable_queue_runs_back_to_back_on_the_computer() {
+    use crate::task::agent_queue::{Entry, Queue, State};
+    use crate::task::agent_remote::tests::Fake;
+    let dir = tempfile::tempdir().unwrap();
+    let mut fake = Fake::new();
+    for task in ["rt-1", "rt-2"] {
+        fake.issue(task);
+        fake.phases
+            .lock()
+            .unwrap()
+            .insert(task.into(), vec![RemotePhase::Completed]);
+        fake.reviews.lock().unwrap().insert(
+            task.into(),
+            crate::task::agent_remote::Review {
+                base: "ignored".into(),
+                diff: "diff --git a/notes.txt b/notes.txt\nnew file mode 100644\nindex \
+                       0000000..ce01362\n--- /dev/null\n+++ b/notes.txt\n@@ -0,0 +1 @@\n+hello\n"
+                    .into(),
+            },
+        );
+    }
+    let created = fake.created.clone();
+    let (agents, _app) = remote_host(
+        &dir,
+        vec![agent_steer::Computer {
+            name: "coderos-4080".into(),
+            max: 2,
+            path: None,
+            workspace: None,
+        }],
+        Box::new(fake),
+    );
+    // Two entries wait in the durable file before anything runs.
+    let store = Store::new(&dir.path().join("host"), "alice").unwrap();
+    let mut queue = Queue::load(&store);
+    for text in ["the first change", "the second change"] {
+        queue
+            .add(
+                Entry {
+                    id: String::new(),
+                    text: text.into(),
+                    workspace: Some("app".into()),
+                    computer: Some("coderos-4080".into()),
+                    at: 0,
+                    state: State::Waiting,
+                },
+                100,
+                "alice",
+            )
+            .unwrap();
+    }
+    queue.save(&store).unwrap();
+    // A host sweep picks up the first one.
+    agents.tick();
+    until(&agents, |v| {
+        !v.busy && v.headline == "change at the Merge station"
+    });
+    // The second one follows it, again on the computer.
+    until(&agents, |v| {
+        !v.busy && v.headline == "change at the Merge station" && v.service.finished == 2
+    });
+    let created = created.lock().unwrap();
+    assert_eq!(created.len(), 2, "both entries ran remotely: {created:?}");
+    assert!(created[0].1.prompt.contains("the first change"));
+    assert!(created[1].1.prompt.contains("the second change"));
+    let studio = crate::task::studio::Studio::open(&dir.path().join("tasks")).unwrap();
+    let tasks = studio.remote_tasks("alice");
+    assert_eq!(tasks.len(), 2);
+    assert!(
+        tasks
+            .iter()
+            .all(|work| work.stage == crate::task::studio::Stage::Merge),
+        "{tasks:?}"
+    );
+    let queue = Queue::load(&store);
+    assert!(
+        queue.entries.iter().all(|entry| entry.state == State::Done),
+        "{:?}",
+        queue.entries
+    );
 }

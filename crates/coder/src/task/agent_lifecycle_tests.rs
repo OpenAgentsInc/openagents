@@ -428,6 +428,7 @@ fn ask(
             context: String::new(),
             mode: coder_host::access::agent::Mode::Terminal,
             typist: false,
+            computer: None,
         },
     )
 }

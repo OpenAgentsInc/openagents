@@ -394,6 +394,7 @@ fn narrowing_keeps_identity_and_disabled_drafting_refuses_requests() {
         context: String::new(),
         mode: coder_host::access::agent::Mode::Terminal,
         typist: false,
+        computer: None,
     };
     let owner = Principal {
         device: "d".repeat(64),

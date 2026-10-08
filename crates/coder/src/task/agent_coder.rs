@@ -65,15 +65,67 @@ struct HostHands<'a> {
     step: Option<u64>,
     /// Her spend records and budgets for this request.
     meter: Meter,
-    /// Coder delegates her coding to Codex: her engine is Codex, and the
-    /// capacity book gives Codex capacity.
-    codex: bool,
+    /// Who Coder delegates her coding to this request: her engine with
+    /// capacity, or Coder's own model.
+    coding: Coding,
 }
 
 pub(crate) use coder_v1::CODEX_DIRECTIVE;
 
-/// The signed-in Codex login a book entry is kept for; a unit test reads
-/// no login.
+/// Who Coder delegates her coding to under her engine: Codex, the Devin
+/// CLI, or neither (#10929). Devin's fallback order is Codex, then Coder's
+/// own model.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Coding {
+    /// Coder codes on its own model.
+    Own,
+    /// Coder delegates her coding to Codex and checks it.
+    Codex,
+    /// Coder delegates her coding to the Devin CLI and checks it.
+    Devin,
+}
+
+impl Coding {
+    /// The delegate's name in a sentence.
+    pub(super) fn agent(self) -> &'static str {
+        match self {
+            Self::Codex => "Codex",
+            Self::Devin => "Devin",
+            Self::Own => "Coder",
+        }
+    }
+
+    /// Her nameplate tail: `coding on Codex`, `coding on Devin`.
+    pub(super) fn nameplate(self) -> &'static str {
+        match self {
+            Self::Codex => "coding on Codex",
+            Self::Devin => "coding on Devin",
+            Self::Own => "",
+        }
+    }
+
+    /// The capacity-book provider the delegate is, when it is one.
+    fn provider(self) -> Option<capacity::Provider> {
+        match self {
+            Self::Codex => Some(capacity::Provider::Codex),
+            Self::Devin => Some(capacity::Provider::Devin),
+            Self::Own => None,
+        }
+    }
+
+    /// The task-prompt directive Coder reads, `devin:MODEL`'s model for
+    /// Devin's.
+    pub(super) fn directive(self, devin_model: Option<&str>) -> String {
+        match self {
+            Self::Codex => CODEX_DIRECTIVE.into(),
+            Self::Devin => coder_v1::devin_directive(devin_model),
+            Self::Own => String::new(),
+        }
+    }
+}
+
+/// The signed-in login a book entry is kept for; a unit test reads no
+/// login.
 fn login(provider: capacity::Provider) -> Option<String> {
     if cfg!(test) {
         None
@@ -91,6 +143,31 @@ fn codex_out(name: &str, until: Option<u64>) -> String {
             capacity::utc(at)
         ),
         None => format!("{name}: Codex is out of capacity, so Coder works on its own model."),
+    }
+}
+
+/// Her one sentence when Devin has no capacity, from the capacity book or
+/// a refusal now: Coder hands the work to Codex, then works on its own
+/// model.
+fn devin_out(name: &str, until: Option<u64>) -> String {
+    match until {
+        Some(at) => format!(
+            "{name}: Devin is out of capacity until {}, so Coder hands the work to Codex, or \
+             works on its own model.",
+            capacity::utc(at)
+        ),
+        None => format!(
+            "{name}: Devin is out of capacity, so Coder hands the work to Codex, or works on \
+             its own model."
+        ),
+    }
+}
+
+/// Her one sentence when `provider` has no capacity.
+fn delegate_out(name: &str, provider: capacity::Provider, until: Option<u64>) -> String {
+    match provider {
+        capacity::Provider::Codex => codex_out(name, until),
+        _ => devin_out(name, until),
     }
 }
 
@@ -260,7 +337,11 @@ impl Hands for HostHands<'_> {
             });
         }
         self.open_pane();
-        let codex = self.codex && self.record.job_role.is_none();
+        let coding = if self.record.job_role.is_some() {
+            Coding::Own
+        } else {
+            self.coding
+        };
         let turn = coder_v1::Turn {
             cwd: if self.record.job_role.is_some() {
                 self.store.dir().into()
@@ -271,8 +352,8 @@ impl Hands for HostHands<'_> {
             session: self.session.clone(),
             // Her words only: terminal mode answers questions and runs
             // commands, which Coder does itself with read-only commands
-            // her policy confirms. On Codex, her coding goes to Codex in
-            // task mode, in her own worktree.
+            // her policy confirms. On Codex or Devin, her coding goes to
+            // the delegate in task mode, in her own worktree.
             prompt: prompt.to_owned(),
             // Plain Coder: nothing in her Coder session says who she is.
             instructions: None,
@@ -281,9 +362,9 @@ impl Hands for HostHands<'_> {
             codex_writes: false,
             tool_free: self.record.job_role.is_some(),
         };
-        if codex {
+        if coding != Coding::Own {
             self.agents.with_live(&name, |live| {
-                live.model = "Coder V1, coding on Codex".into()
+                live.model = format!("Coder V1, {}", coding.nameplate());
             });
         }
         self.agents.set_doing(&name, Doing::Thinking);
@@ -294,7 +375,7 @@ impl Hands for HostHands<'_> {
         let mut turned = Turned::ended(TurnEnd::Stopped);
         let mut previous: Option<CoderEvent> = None;
         let mut ended_delegations: Vec<String> = Vec::new();
-        let mut codex_refused: Option<String> = None;
+        let mut delegate_refused: Option<(capacity::Provider, String)> = None;
         let agents = self.agents;
         let (policy, places, stop) = (&self.policy, &self.places, self.stop.clone());
         let cwd = PathBuf::from(&self.cwd);
@@ -305,8 +386,8 @@ impl Hands for HostHands<'_> {
                 match event {
                     CoderEvent::Model { model } if !model.is_empty() => {
                         agents.with_live(&name, |live| {
-                            live.model = if codex {
-                                format!("Coder V1 ({model}), coding on Codex")
+                            live.model = if coding != Coding::Own {
+                                format!("Coder V1 ({model}), {}", coding.nameplate())
                             } else {
                                 format!("Coder V1 ({model})")
                             };
@@ -351,8 +432,10 @@ impl Hands for HostHands<'_> {
                             .get("error")
                             .and_then(serde_json::Value::as_str)
                             .unwrap_or_default();
-                        if delegated.is_codex() && !error.is_empty() {
-                            codex_refused = Some(error.to_owned());
+                        if let Some(provider) = delegated.capacity_provider()
+                            && !error.is_empty()
+                        {
+                            delegate_refused = Some((provider, error.to_owned()));
                         }
                         let _ = journal(
                             Kind::Control,
@@ -392,8 +475,12 @@ impl Hands for HostHands<'_> {
                             );
                             return None;
                         }
-                        let by = if delegation.is_some() && codex {
-                            "Codex "
+                        let by = if delegation.is_some() && coding != Coding::Own {
+                            match coding {
+                                Coding::Codex => "Codex ",
+                                Coding::Devin => "Devin ",
+                                Coding::Own => "",
+                            }
                         } else {
                             ""
                         };
@@ -543,14 +630,16 @@ impl Hands for HostHands<'_> {
             ended
         };
         self.engine = Some(engine);
-        // A Codex limit goes in the capacity book, as Coder books it, and
-        // her later prompts in this request leave Codex out.
-        if !tool_free && let Some(error) = codex_refused {
+        // A delegate's limit goes in the capacity book, as Coder books it,
+        // and her later prompts in this request leave that delegate out.
+        if !tool_free && let Some((provider, error)) = delegate_refused {
             let now = (self.agents.clock)();
-            if let Some(refusal) = capacity::detect(capacity::Provider::Codex, &error, now) {
+            if let Some(refusal) = capacity::detect(provider, &error, now) {
                 let _ = capacity::record_with(&self.agents.tasks, refusal.clone(), login);
-                self.codex = false;
-                let line = codex_out(&name, Some(refusal.until));
+                if self.coding.provider() == Some(provider) {
+                    self.coding = Coding::Own;
+                }
+                let line = delegate_out(&name, provider, Some(refusal.until));
                 let _ = self.write(Kind::Control, &line, None);
                 self.agents.say(&name, &line);
             }
@@ -780,9 +869,7 @@ impl Agents {
             .or_else(coder_v1::default_state)
             .unwrap_or_else(|| self.root.join("coder-new"));
         self.set_doing(&name, Doing::Thinking);
-        let codex = record.job_role.is_none()
-            && record.codes_on_codex()
-            && self.codex_has_capacity(store, &name);
+        let coding = self.coding_for(record, store, &name);
         let mut hands = HostHands {
             agents: self,
             store,
@@ -803,7 +890,7 @@ impl Agents {
             watcher: None,
             step: None,
             meter,
-            codex,
+            coding,
         };
         let input = agent_steer::Input {
             record,
@@ -831,6 +918,30 @@ impl Agents {
         steered.report
     }
 
+    /// Who Coder delegates her coding to this request under `record`'s
+    /// engine: Devin when `devin` or `devin:MODEL` has capacity, Codex on
+    /// `codex` or as Devin's named fallback, else Coder's own model. A
+    /// delegate the book says is out is said once, in order.
+    pub(super) fn coding_for(&self, record: &Record, store: &Store, name: &str) -> Coding {
+        if record.job_role.is_some() {
+            return Coding::Own;
+        }
+        if record.codes_on_devin() {
+            if self.devin_has_capacity(store, name) {
+                return Coding::Devin;
+            }
+            return if self.codex_has_capacity(store, name) {
+                Coding::Codex
+            } else {
+                Coding::Own
+            };
+        }
+        if record.codes_on_codex() && self.codex_has_capacity(store, name) {
+            return Coding::Codex;
+        }
+        Coding::Own
+    }
+
     /// Whether Codex can take her coding now: the capacity book in the
     /// host's task store holds no Codex limit. When it does, she says so in
     /// one sentence and Coder works on its own model.
@@ -841,6 +952,21 @@ impl Agents {
             return true;
         };
         let line = codex_out(name, Some(refusal.until));
+        let _ = store.append(&Entry::new(now, Kind::Control, &line));
+        self.say(name, &line);
+        false
+    }
+
+    /// Whether Devin can take her coding now: the capacity book holds no
+    /// Devin limit. When it does, she says so once and Coder falls back to
+    /// Codex, then to its own model.
+    pub(super) fn devin_has_capacity(&self, store: &Store, name: &str) -> bool {
+        let now = (self.clock)();
+        let book = capacity::Book::load_with(&self.tasks, login);
+        let Some(refusal) = book.blocking(capacity::Provider::Devin, now) else {
+            return true;
+        };
+        let line = devin_out(name, Some(refusal.until));
         let _ = store.append(&Entry::new(now, Kind::Control, &line));
         self.say(name, &line);
         false

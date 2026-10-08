@@ -92,9 +92,21 @@ In every mode the host removes environment variables named `*_API_KEY`,
 `*_TOKEN`, and `*_SECRET` before it starts Devin. Devin still reaches its own
 service over the network with its sign-in.
 
-Note: Alice can't use Devin as her engine yet. `openagents agent engine`
-accepts `coder` or `codex` only. To have Alice's work done by Devin, ask
-Coder to delegate to Devin from her request.
+### As Alice's engine
+
+```sh
+openagents agent engine alice devin            # or devin:MODEL
+openagents agent show alice                    # prints "Devin connected"
+```
+
+With `engine` set to `devin`, Alice's task-mode work is delegated by Coder
+to the `devin-cli` subagent the same way `codex` delegates to Codex: Coder
+plans and checks, and Devin edits in her worktree. Questions and read-only
+lookups stay with Coder. The chat's access picks Devin's mode the same way
+the route's grant does: `bypass` under full access, `accept-edits` under
+`devin --sandbox` on the boundary. A Devin refusal is booked under `devin`
+in the capacity book and she falls back to Codex, then to Coder's own
+model. See [The Devin engine](alice-runbook.md#the-devin-engine).
 
 ## Supervise and review
 

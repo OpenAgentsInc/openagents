@@ -71,6 +71,7 @@ fn request(agents: &Agents, key: &str, text: &str) -> Result<Value, Code> {
             context: String::new(),
             mode: Mode::Terminal,
             typist: false,
+            computer: None,
         },
     )
 }

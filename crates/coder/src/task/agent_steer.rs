@@ -687,6 +687,41 @@ impl Rule {
     }
 }
 
+/// One computer her policy lets her code on, past this host (#10930): a
+/// connected computer the owner's `openagents computers` list names, a cap
+/// on the tasks she runs on it at once, and the checkout of her workspace
+/// on it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Computer {
+    /// The label `openagents computer list` gives the computer.
+    pub name: String,
+    /// The most of her tasks that may run on it at once; 1 when unnamed.
+    #[serde(default = "one")]
+    pub max: usize,
+    /// The checkout of her workspace on it; `~/work/<workspace>` when
+    /// unnamed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    /// The label the remote host admits for that checkout in
+    /// `task.create`; the local workspace label when unnamed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace: Option<String>,
+}
+
+fn one() -> usize {
+    1
+}
+
+/// Where a task-mode request may run: this host, the computer `name`, or
+/// the first with a free slot under the policy's caps.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Placement {
+    Auto,
+    Local,
+    Remote(String),
+}
+
 /// Her approval policy (`agents/NAME/policy.json`,
 /// `openagents.agent-policy.v1`). The owner edits it; she never does.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -694,6 +729,10 @@ impl Rule {
 pub struct Policy {
     pub schema: String,
     pub rules: Vec<Rule>,
+    /// The computers besides this host she may place task-mode work on
+    /// (#10930). Empty means only this host.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub computers: Vec<Computer>,
 }
 
 /// Where her policy's directories are on this host.
@@ -756,6 +795,7 @@ impl Policy {
                 rule("", "scratch"),
                 rule("cargo fmt", "workspace"),
             ],
+            computers: Vec::new(),
         }
     }
 
@@ -766,6 +806,34 @@ impl Policy {
         Self {
             schema: POLICY_SCHEMA.into(),
             rules: Vec::new(),
+            computers: Vec::new(),
+        }
+    }
+
+    /// The computer `name`, when her policy names it.
+    #[must_use]
+    pub fn computer(&self, name: &str) -> Option<&Computer> {
+        self.computers.iter().find(|computer| computer.name == name)
+    }
+
+    /// Read `--computer`'s word into a placement: `auto`, `local`, or the
+    /// name of a computer her policy allows.
+    ///
+    /// # Errors
+    /// A name the policy does not allow, or a computer asked for under a
+    /// policy that names none.
+    pub fn placement(&self, word: Option<&str>) -> Result<Placement, String> {
+        match word {
+            None | Some("auto") if self.computers.is_empty() => Ok(Placement::Local),
+            None | Some("auto") => Ok(Placement::Auto),
+            Some("local") => Ok(Placement::Local),
+            Some(name) => match self.computer(name) {
+                Some(_) => Ok(Placement::Remote(name.to_string())),
+                None => Err(format!(
+                    "her policy does not allow computer `{name}`; `openagents agent computers` \
+                     adds one"
+                )),
+            },
         }
     }
 
@@ -791,6 +859,16 @@ impl Policy {
             ));
         }
         Ok(policy)
+    }
+
+    /// Write `policy` beside `store`'s record, owner-only, such as for
+    /// `openagents agent computers` (#10930).
+    ///
+    /// # Errors
+    /// The file cannot be written.
+    pub fn save(&self, store: &Store) -> Result<(), String> {
+        let bytes = serde_json::to_vec_pretty(self).map_err(|error| error.to_string())?;
+        super::autostart::write_private(&store.dir().join(POLICY_FILE), &bytes)
     }
 
     /// Her policy in words, for her planning call; `their` is her
@@ -1100,6 +1178,24 @@ impl Delegated {
     pub fn is_codex(&self) -> bool {
         self.agent.eq_ignore_ascii_case("codex")
     }
+
+    /// Whether this was the Devin CLI (`devin-cli`, shown as Devin).
+    #[must_use]
+    pub fn is_devin(&self) -> bool {
+        self.agent.eq_ignore_ascii_case("devin") || self.agent.eq_ignore_ascii_case("devin-cli")
+    }
+
+    /// The capacity-book provider this delegate is, when it is one.
+    #[must_use]
+    pub fn capacity_provider(&self) -> Option<super::capacity::Provider> {
+        if self.is_codex() {
+            Some(super::capacity::Provider::Codex)
+        } else if self.is_devin() {
+            Some(super::capacity::Provider::Devin)
+        } else {
+            None
+        }
+    }
 }
 
 impl Turned {
@@ -1128,6 +1224,8 @@ impl Turned {
             .map(|(i, delegated)| Call {
                 harness: if delegated.is_codex() {
                     agent_spend::CODEX_HARNESS
+                } else if delegated.is_devin() {
+                    agent_spend::DEVIN_HARNESS
                 } else {
                     agent_spend::CODER_HARNESS
                 },

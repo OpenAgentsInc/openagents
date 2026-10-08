@@ -461,6 +461,7 @@ pub fn steer_pipeline(
     let policy = agent_steer::Policy {
         schema: agent_steer::POLICY_SCHEMA.into(),
         rules: vec![],
+        computers: Vec::new(),
     };
     let mut result = agent_steer::run(
         hands,

@@ -43,6 +43,41 @@ fn the_record_and_journal_survive_a_restart() {
 }
 
 #[test]
+fn engine_words_parse() {
+    assert_eq!(parse_engine("coder").unwrap(), "");
+    assert_eq!(parse_engine("").unwrap(), "");
+    assert_eq!(parse_engine("codex").unwrap(), ENGINE_CODEX);
+    assert_eq!(parse_engine("devin").unwrap(), ENGINE_DEVIN);
+    assert_eq!(
+        parse_engine("devin:swe-2-high").unwrap(),
+        "devin:swe-2-high"
+    );
+    for bad in [
+        "chatgpt",
+        "devin:",
+        "devin:swe 2",
+        "devin:../x",
+        "DEVIN",
+        "devins",
+    ] {
+        assert!(parse_engine(bad).is_err(), "{bad}");
+    }
+    let (_store, mut record) = {
+        let dir = tempfile::tempdir().unwrap();
+        store(&dir)
+    };
+    assert!(!record.codes_on_codex() && !record.codes_on_devin());
+    record.engine = ENGINE_CODEX.into();
+    assert!(record.codes_on_codex() && !record.codes_on_devin());
+    record.engine = "devin:swe-2-high".into();
+    assert!(record.codes_on_devin() && !record.codes_on_codex());
+    assert_eq!(record.devin_model(), Some("swe-2-high"));
+    record.engine = ENGINE_DEVIN.into();
+    assert!(record.codes_on_devin());
+    assert_eq!(record.devin_model(), None);
+}
+
+#[test]
 fn names_are_seat_names() {
     assert!(valid_name("ada"));
     assert!(valid_name("ada-2"));

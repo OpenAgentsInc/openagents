@@ -924,6 +924,7 @@ impl Workshop {
                 .view
                 .as_ref()
                 .is_none_or(|view| view.crew_charter.is_none()),
+            computer: None,
         });
     }
 

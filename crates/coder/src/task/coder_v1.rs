@@ -421,6 +421,29 @@ pub const CODEX_DIRECTIVE: &str = "Delegate the file edits in this task to the c
      and do read-only lookups yourself with read-only commands; never delegate them. If Codex \
      is unavailable or out of capacity, do the edits yourself and say so.";
 
+/// What a workshop agent on Devin adds to each prompt: Coder, on its own
+/// model, hands the coding to the Devin CLI through the `devin-cli`
+/// subagent and checks what it did, falling back to Codex, then to its own
+/// model (#10929).
+pub const DEVIN_DIRECTIVE: &str = "Delegate the file edits in this task to the devin-cli agent \
+     with acp_subagent: give it the task, the files involved, and how to check the result. \
+     Then read its changes and run the checks yourself before you answer. Answer questions \
+     and do read-only lookups yourself with read-only commands; never delegate them. If Devin \
+     is unavailable or out of capacity, delegate the edits to the codex agent instead; if Codex \
+     is also unavailable or out of capacity, do the edits yourself and say so.";
+
+/// The [`DEVIN_DIRECTIVE`] plus the sentence naming the model `devin:MODEL`
+/// asks for, so Coder passes `model` on its `acp_subagent` call.
+#[must_use]
+pub fn devin_directive(model: Option<&str>) -> String {
+    match model {
+        Some(model) => format!(
+            "{DEVIN_DIRECTIVE} Call acp_subagent with agent `devin-cli` and model `{model}`."
+        ),
+        None => DEVIN_DIRECTIVE.to_owned(),
+    }
+}
+
 /// One turn to run.
 #[derive(Clone, Debug)]
 pub struct Turn {

@@ -123,6 +123,7 @@ fn her_policy_file_is_read_and_a_bad_one_is_refused() {
             command: "cargo fmt".into(),
             directory: "workspace".into(),
         }],
+        computers: vec![],
     };
     std::fs::write(
         store.dir().join(POLICY_FILE),
@@ -137,6 +138,48 @@ fn her_policy_file_is_read_and_a_bad_one_is_refused() {
     )
     .unwrap();
     assert!(Policy::load(&store).is_err());
+}
+
+/// A policy's `computers` save and read back, and `placement` reads
+/// `--computer`'s word against them (#10930).
+#[test]
+fn a_policy_names_the_computers_she_may_place_work_on() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::new(dir.path(), "alice").unwrap();
+    store.open(dir.path(), 1).unwrap();
+    let mut policy = Policy::defaults();
+    assert!(policy.computers.is_empty());
+    assert_eq!(policy.placement(None).unwrap(), Placement::Local);
+    policy.computers.push(Computer {
+        name: "coderos-4080".into(),
+        max: 2,
+        path: Some("~/code/openagents".into()),
+        workspace: None,
+    });
+    policy.computers.push(Computer {
+        name: "macbook".into(),
+        max: 1,
+        path: None,
+        workspace: None,
+    });
+    policy.save(&store).unwrap();
+    let read = Policy::load(&store).unwrap();
+    assert_eq!(read.computers, policy.computers);
+    assert_eq!(read.placement(None).unwrap(), Placement::Auto);
+    assert_eq!(read.placement(Some("auto")).unwrap(), Placement::Auto);
+    assert_eq!(read.placement(Some("local")).unwrap(), Placement::Local);
+    assert_eq!(
+        read.placement(Some("coderos-4080")).unwrap(),
+        Placement::Remote("coderos-4080".into())
+    );
+    let refused = read.placement(Some("laptop")).unwrap_err();
+    assert!(refused.contains("laptop"), "{refused}");
+    assert_eq!(
+        Policy::defaults().computer("coderos-4080"),
+        None,
+        "a policy without computers names none"
+    );
+    assert_eq!(read.computer("coderos-4080").unwrap().max, 2, "its own cap");
 }
 
 #[test]

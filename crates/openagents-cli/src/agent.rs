@@ -87,8 +87,12 @@ pub const USAGE: &str = "usage: openagents agent COMMAND [--root DIR] [--control
                spend today and in all against her budget, from her NIP-AM
                records, decrypted with the owner key in FILE when given.
   ask NAME TEXT... [--mode MODE] [--workspace LABEL] [--from DIR] [--wait]
+               [--computer auto|local|NAME]
                Hand her a request; MODE is auto, task, or terminal, DIR is
                where you asked from, and --wait follows it to her report.
+               In task mode, --computer picks where its coding runs:
+               auto (her policy's choice, the default), local, or a
+               computer `agent computers` added.
   answer NAME confirm
                CONFIRM the command she proposed.
   answer NAME reject
@@ -131,11 +135,39 @@ pub const USAGE: &str = "usage: openagents agent COMMAND [--root DIR] [--control
                key in FILE, and print the key the owner's trainer profile
                (13193) must list. Nothing is published; the key counts
                toward the owner only once both sides are.
-  engine NAME coder|codex
+  engine NAME coder|codex|devin[:MODEL]
                What does her coding: coder, Coder's own model (the
-               default), or codex, where Coder delegates the coding to the
+               default); codex, where Coder delegates the coding to the
                Codex agent on your ChatGPT login and checks it, and works on
-               its own model while Codex is out of capacity.
+               its own model while Codex is out of capacity; or devin, where
+               Coder delegates the coding to the Devin CLI on this computer
+               and checks it, falling back to Codex, then to its own model
+               while Devin is out of capacity. devin:MODEL names one of the
+               models `devin models list` shows.
+  computers NAME list
+               The connected computers her task mode may place coding on.
+  computers NAME add REMOTE [--max N] [--path DIR]
+               [--remote-workspace LABEL]
+               Let her task-mode coding run on the connected computer
+               REMOTE (its `openagents computer` name): at most N of her
+               tasks there at once (default 1), in its checkout at DIR
+               (default ~/work/<workspace label>), whose workspace the
+               remote host admits as LABEL (default the local label).
+               `openagents computer enroll` gives the host the grant first.
+  computers NAME remove REMOTE
+               Her task mode stays on this computer again for tasks that
+               named REMOTE; ones under way finish.
+  queue NAME list
+               Her durable work queue: waiting, running, and recent
+               finished entries.
+  queue NAME add TEXT... [--workspace LABEL] [--computer auto|local|NAME]
+               Queue a task-mode request; she takes the oldest waiting one
+               whenever a request ends, on the computer the word names.
+  queue NAME remove ID
+               Take a waiting entry back off the queue.
+  queue NAME clear
+               Empty the queue; nothing under way is touched — `stop` for
+               that.
   log NAME [--after N]
                Her journal, newest last.
   memory NAME list
@@ -243,6 +275,7 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("xp-link", Effect::ReadOnly),
     Declared::computer("engine coder", Effect::LocalWrite),
     Declared::computer("engine codex", Effect::LocalWrite),
+    Declared::computer("engine devin", Effect::LocalWrite),
     Declared::computer("log", Effect::ReadOnly),
     Declared::computer("memory list", Effect::ReadOnly),
     Declared::computer("memory note", Effect::Publishes),
@@ -260,6 +293,13 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("jobs off", Effect::LocalWrite),
     Declared::computer("jobs delete", Effect::LocalWrite),
     Declared::computer("jobs renew", Effect::LocalWrite),
+    Declared::computer("computers list", Effect::ReadOnly),
+    Declared::computer("computers add", Effect::LocalWrite),
+    Declared::computer("computers remove", Effect::LocalWrite),
+    Declared::computer("queue list", Effect::ReadOnly),
+    Declared::computer("queue add", Effect::LocalWrite),
+    Declared::computer("queue remove", Effect::LocalWrite),
+    Declared::computer("queue clear", Effect::LocalWrite),
 ];
 
 const SWITCHES: &[&str] = &["wait", "from-relay", "orphans", "all"];
@@ -409,7 +449,9 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
             signing(output, &root, name, *word == "on", now)
         }
         ["xp-link", name] => xp_link(output, &root, name, &args, now),
-        ["engine", name, word @ ("coder" | "codex")] => engine(output, &root, name, word, now),
+        ["engine", name, word] => engine(output, &root, name, word, now),
+        ["computers", name, rest @ ..] => computers(output, &root, name, rest, &args),
+        ["queue", name, rest @ ..] => queue(output, &root, name, rest, &args, now),
         ["log", name] => log(output, &root, name, &args),
         ["memory", name, rest @ ..] => memory(output, &root, name, rest, &args),
         ["jobs", name, rest @ ..] => jobs(output, &root, name, rest, &args, now),
@@ -929,6 +971,11 @@ fn record_json(record: &Record, now: u64) -> Value {
         "look": record.look,
         "route": record.route,
         "engine": if record.engine.is_empty() { "coder" } else { record.engine.as_str() },
+        "devin": if record.codes_on_devin() {
+            json!({"connected": devin_connected()})
+        } else {
+            Value::Null
+        },
         "desk": record.desk,
         "pubkey": record.pubkey,
         "attestation": record.attestation,
@@ -1041,6 +1088,19 @@ fn show(output: &Output, root: &Path, name: &str, args: &Args, now: u64) -> Resu
             format!("works in: {}", record.workspace),
             format!("charter: {}", record.charter),
         ]);
+        if record.codes_on_devin() {
+            text.push(format!(
+                "engine: devin{} ({})",
+                record
+                    .devin_model()
+                    .map_or(String::new(), |m| format!(":{m}")),
+                if devin_connected() {
+                    "Devin connected"
+                } else {
+                    DEVIN_NOT_CONNECTED
+                }
+            ));
+        }
         if let Some(view) = &view {
             text.push(line(view));
             if let Some(pending) = &view.pending {
@@ -1155,6 +1215,7 @@ fn ask(output: &Output, name: &str, text: &str, args: &Args) -> Result<(), Fail>
             context,
             mode,
             typist: false,
+            computer: args.option("computer").map(str::to_owned),
         },
     )?;
     if !args.switch("wait") {
@@ -1529,14 +1590,20 @@ fn xp_link(output: &Output, root: &Path, name: &str, args: &Args, now: u64) -> R
     Ok(())
 }
 
-/// `engine NAME coder|codex`: what does her coding. The host reads her
-/// record at each request, so the next one uses it.
+/// `engine NAME coder|codex|devin[:MODEL]`: what does her coding. The
+/// host reads her record at each request, so the next one uses it.
 fn engine(output: &Output, root: &Path, name: &str, word: &str, now: u64) -> Result<(), Fail> {
     let (store, mut record) = store(root, name)?;
-    record.engine = agent::parse_engine(word).map_err(Fail::Failed)?;
+    let parsed = agent::parse_engine(word).map_err(Fail::Failed)?;
+    if let Some(model) = parsed.strip_prefix("devin:") {
+        devin_model_check(model)?;
+    }
+    record.engine = parsed;
     store.save(&record).map_err(Fail::Failed)?;
     let line = if record.codes_on_codex() {
         "the owner set her engine to codex: Coder delegates her coding to Codex"
+    } else if record.codes_on_devin() {
+        "the owner set her engine to devin: Coder delegates her coding to the Devin CLI"
     } else {
         "the owner set her engine to coder: Coder codes on its own model"
     };
@@ -1550,12 +1617,321 @@ fn engine(output: &Output, root: &Path, name: &str, word: &str, now: u64) -> Res
                      your ChatGPT login and checks it. When Codex is out of capacity, Coder \
                      works on its own model."
                 )
+            } else if record.codes_on_devin() {
+                let model = record
+                    .devin_model()
+                    .map_or(String::new(), |m| format!(" ({m})"));
+                let connected = if devin_connected() {
+                    String::new()
+                } else {
+                    format!(" {DEVIN_NOT_CONNECTED}")
+                };
+                format!(
+                    "{name} now codes on Devin{model}: Coder hands her coding to the Devin \
+                     CLI on this computer and checks it. When Devin is out of capacity, Coder \
+                     falls back to Codex, then to its own model.{connected}"
+                )
             } else {
                 format!("{name} now codes on Coder's own model.")
             }
         },
     );
     Ok(())
+}
+
+/// What `show` and `engine` say when Devin can't take her coding here.
+const DEVIN_NOT_CONNECTED: &str = "Devin isn't connected on this computer: it needs a `devin` binary \
+     (DEVIN_BIN, PATH, or ~/.local/bin/devin) signed in with `devin auth login`.";
+
+/// Whether the Devin CLI on this computer can take a delegation: a `devin`
+/// binary and its stored login.
+fn devin_connected() -> bool {
+    let variable = |name: &str| std::env::var_os(name);
+    acp_client::devin::binary(&variable).is_some() && acp_client::devin::signed_in(&variable)
+}
+
+/// The models `devin models list` names, or `None` when the CLI doesn't
+/// answer in time: every indented row's first word, less `aliases:` rows.
+fn devin_models(binary: &Path) -> Option<Vec<String>> {
+    use std::io::Read;
+    use std::process::{Command, Stdio};
+    let mut child = Command::new(binary)
+        .args(["models", "list"])
+        .env("PAGER", "cat")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+    let deadline = std::time::Instant::now() + Duration::from_secs(20);
+    loop {
+        match child.try_wait().ok()? {
+            Some(_) => {
+                let mut text = String::new();
+                child.stdout.take()?.read_to_string(&mut text).ok()?;
+                return Some(
+                    text.lines()
+                        .filter(|line| {
+                            line.starts_with("  ") && !line.trim_start().starts_with("aliases:")
+                        })
+                        .filter_map(|line| line.split_whitespace().next().map(str::to_owned))
+                        .collect(),
+                );
+            }
+            None if std::time::Instant::now() < deadline => {
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            None => {
+                let _ = child.kill();
+                return None;
+            }
+        }
+    }
+}
+
+/// Refuses `devin:MODEL` when the installed Devin CLI names no such model.
+/// A CLI that can't answer leaves the name to Devin to refuse later.
+fn devin_model_check(model: &str) -> Result<(), Fail> {
+    let variable = |name: &str| std::env::var_os(name);
+    let Some(binary) = acp_client::devin::binary(&variable) else {
+        return Err(Fail::Failed(format!(
+            "devin:{model} needs the Devin CLI, and no devin binary is in DEVIN_BIN, PATH, or \
+             ~/.local/bin"
+        )));
+    };
+    match devin_models(&binary) {
+        Some(models) if models.iter().any(|listed| listed == model) => Ok(()),
+        Some(_) => Err(Fail::Failed(format!(
+            "Devin lists no model `{model}`; `devin models list` names what this account can run"
+        ))),
+        None => Ok(()),
+    }
+}
+
+/// `computers`: the connected computers her task mode may place coding on
+/// (#10930), kept in her policy's `computers`.
+fn computers(
+    output: &Output,
+    root: &Path,
+    name: &str,
+    rest: &[&str],
+    args: &Args,
+) -> Result<(), Fail> {
+    use coder::task::agent_steer::{Computer, Policy};
+    let (store, record) = store(root, name)?;
+    let mut policy = Policy::load(&store).map_err(Fail::Failed)?;
+    match rest {
+        ["list"] | [] => {
+            let rows = serde_json::json!({
+                "agent": record.name,
+                "computers": policy.computers.iter().map(|computer| {
+                    serde_json::json!({
+                        "name": computer.name,
+                        "max": computer.max,
+                        "path": computer.path,
+                        "workspace": computer.workspace,
+                    })
+                }).collect::<Vec<_>>(),
+            });
+            output.emit(&rows, |rows| {
+                let computers = rows["computers"].as_array().cloned().unwrap_or_default();
+                if computers.is_empty() {
+                    format!("{name} places task-mode coding on this computer only.")
+                } else {
+                    let listed = computers
+                        .iter()
+                        .map(|computer| {
+                            format!(
+                                "  {} (at most {} task{}; checkout {})",
+                                computer["name"].as_str().unwrap_or(""),
+                                computer["max"],
+                                if computer["max"].as_u64() == Some(1) {
+                                    ""
+                                } else {
+                                    "s"
+                                },
+                                computer["path"]
+                                    .as_str()
+                                    .unwrap_or("~/work/<workspace label>"),
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    format!("{name}'s task mode may place coding on:\n{listed}")
+                }
+            });
+            Ok(())
+        }
+        ["add", remote] => {
+            let max = match args.option("max") {
+                Some(word) => word
+                    .parse::<usize>()
+                    .map_err(|_| Fail::Failed(format!("--max wants a count, not `{word}`")))?,
+                None => 1,
+            };
+            if max == 0 {
+                return Err(Fail::Failed("--max wants a count of at least 1".into()));
+            }
+            policy.computers.retain(|computer| computer.name != *remote);
+            policy.computers.push(Computer {
+                name: (*remote).to_string(),
+                max,
+                path: args.option("path").map(str::to_owned),
+                workspace: args.option("remote-workspace").map(str::to_owned),
+            });
+            policy.save(&store).map_err(Fail::Failed)?;
+            output.emit(
+                &json!({"agent": record.name, "computer": remote, "max": max}),
+                |_| {
+                    format!(
+                        "{name} may now place up to {max} task{} on {remote}.",
+                        if max == 1 { "" } else { "s" }
+                    )
+                },
+            );
+            Ok(())
+        }
+        ["remove", remote] => {
+            let before = policy.computers.len();
+            policy.computers.retain(|computer| computer.name != *remote);
+            if policy.computers.len() == before {
+                return Err(Fail::Failed(format!(
+                    "{name}'s policy names no computer `{remote}`"
+                )));
+            }
+            policy.save(&store).map_err(Fail::Failed)?;
+            output.emit(&json!({"agent": record.name, "removed": remote}), |_| {
+                format!("{name} no longer places task-mode coding on {remote}.")
+            });
+            Ok(())
+        }
+        _ => Err(Fail::Failed(
+            "`computers` is `list`, `add REMOTE [--max N] [--path DIR]`, or `remove REMOTE`".into(),
+        )),
+    }
+}
+
+/// `queue`: her durable work queue (#10931), beside her policy.
+fn queue(
+    output: &Output,
+    root: &Path,
+    name: &str,
+    rest: &[&str],
+    args: &Args,
+    now: u64,
+) -> Result<(), Fail> {
+    use coder::task::agent_queue::{Entry, Queue, State};
+    use coder::task::agent_steer;
+    let (store, record) = store(root, name)?;
+    let mut queue = Queue::load(&store);
+    match rest {
+        ["list"] | [] => {
+            let rows = serde_json::json!({
+                "agent": record.name,
+                "entries": queue.entries.iter().map(|entry| {
+                    serde_json::json!({
+                        "id": entry.id,
+                        "state": entry.state,
+                        "text": entry.text,
+                        "workspace": entry.workspace,
+                        "computer": entry.computer,
+                        "at": entry.at,
+                    })
+                }).collect::<Vec<_>>(),
+            });
+            output.emit(&rows, |rows| {
+                let entries = rows["entries"].as_array().cloned().unwrap_or_default();
+                if entries.is_empty() {
+                    format!("{name}'s work queue is empty.")
+                } else {
+                    let listed = entries
+                        .iter()
+                        .map(|entry| {
+                            format!(
+                                "  {} [{}] {}{}",
+                                entry["id"].as_str().unwrap_or(""),
+                                entry["state"].as_str().unwrap_or("waiting"),
+                                entry["text"].as_str().unwrap_or(""),
+                                entry["computer"]
+                                    .as_str()
+                                    .map(|c| format!(" ({c})"))
+                                    .unwrap_or_default(),
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    format!("{name}'s work queue:\n{listed}")
+                }
+            });
+            Ok(())
+        }
+        ["add", text @ ..] if !text.is_empty() => {
+            if let Some(computer) = args.option("computer")
+                && !matches!(computer, "auto" | "local")
+                && agent_steer::Policy::load(&store)
+                    .map_err(Fail::Failed)?
+                    .computer(computer)
+                    .is_none()
+            {
+                return Err(Fail::Failed(format!(
+                    "her policy allows no computer `{computer}`; `agent computers {name} add` \
+                     names it first"
+                )));
+            }
+            let text = text.join(" ");
+            queue
+                .add(
+                    Entry {
+                        id: String::new(),
+                        text: text.clone(),
+                        workspace: args.option("workspace").map(str::to_owned),
+                        computer: args.option("computer").map(str::to_owned),
+                        at: 0,
+                        state: State::Waiting,
+                    },
+                    now,
+                    name,
+                )
+                .map_err(Fail::Failed)?;
+            queue.save(&store).map_err(Fail::Failed)?;
+            let id = queue.entries.last().map(|entry| entry.id.clone());
+            let _ = store.append(&coder::task::agent::Entry::new(
+                now,
+                coder::task::agent::Kind::Control,
+                &format!("queued {}: {}", id.as_deref().unwrap_or(""), text),
+            ));
+            output.emit(&json!({"agent": record.name, "queued": id}), |_| {
+                format!(
+                    "Queued {id:?} for {name}; {} takes it next.",
+                    agent::Refer::for_name(name).they()
+                )
+            });
+            Ok(())
+        }
+        ["remove", id] => {
+            queue.remove(id).map_err(Fail::Failed)?;
+            queue.save(&store).map_err(Fail::Failed)?;
+            output.emit(&json!({"agent": record.name, "removed": id}), |_| {
+                format!("Removed {id} from {name}'s queue.")
+            });
+            Ok(())
+        }
+        ["clear"] => {
+            let count = queue.waiting().len();
+            queue.entries.clear();
+            queue.save(&store).map_err(Fail::Failed)?;
+            output.emit(&json!({"agent": record.name, "cleared": count}), |_| {
+                format!(
+                    "Cleared {count} entr{} off {name}'s queue.",
+                    if count == 1 { "y" } else { "ies" }
+                )
+            });
+            Ok(())
+        }
+        _ => Err(Fail::Failed(
+            "`queue` is `list`, `add TEXT...`, `remove ID`, or `clear`".into(),
+        )),
+    }
 }
 
 /// `import`: a new agent from a snapshot, with a new key.

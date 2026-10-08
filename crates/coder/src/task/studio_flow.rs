@@ -205,6 +205,16 @@ pub struct Flow {
     /// applied.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub command: Option<String>,
+    /// The computer the task runs on while it does, when it is not this
+    /// host (#10930). A remote task has no local inbox entry: the agent
+    /// that placed it moves the flow itself, and the coordinator leaves it
+    /// alone until the slot submits.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote: Option<String>,
+    /// The task's identity on `remote`'s host, kept so a restart resumes
+    /// watching it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote_task: Option<String>,
 }
 
 impl Flow {
@@ -224,6 +234,17 @@ impl Flow {
             review: None,
             conflict: None,
             command: None,
+            remote: None,
+            remote_task: None,
+        }
+    }
+
+    /// A new flow for a task `task_id` that runs on the computer `remote`.
+    #[must_use]
+    pub fn remote(task_id: &str, remote: &str) -> Self {
+        Self {
+            remote: Some(remote.to_owned()),
+            ..Self::new(task_id)
         }
     }
 }

@@ -388,6 +388,7 @@ impl Store {
         let policy = agent_steer::Policy {
             schema: agent_steer::POLICY_SCHEMA.into(),
             rules: vec![],
+            computers: Vec::new(),
         };
         let _steered = agent_steer::run(
             &mut hands,

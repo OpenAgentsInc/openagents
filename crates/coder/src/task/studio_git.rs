@@ -234,6 +234,71 @@ pub fn confine(variables: &mut Vec<(OsString, OsString)>, seat: &str, worktree: 
     }
 }
 
+/// The patch file a remote task's change is written to before `git apply`;
+/// removed in every case.
+fn patch_file(dir: &Path) -> PathBuf {
+    dir.join(format!("openagents-remote-{}.patch", std::process::id()))
+}
+
+/// Apply `patch` — a `git diff --binary` against the worktree's base — into
+/// `worktree` and commit it on its branch as `seat`, for a change a
+/// connected computer sent back (#10930). Returns the commit the worktree
+/// now heads.
+///
+/// # Errors
+/// The patch does not apply to the worktree, or Git cannot commit it.
+pub fn apply_remote(worktree: &Path, seat: &str, patch: &str) -> Result<String, String> {
+    let file = patch_file(worktree);
+    std::fs::write(&file, patch).map_err(|error| error.to_string())?;
+    let result = (|| {
+        let path = file.to_string_lossy().into_owned();
+        run(worktree, &["apply", "--index", &path], &[]).and_then(|applied| {
+            if applied.status.success() {
+                Ok(())
+            } else {
+                run(worktree, &["apply", "--index", "--3way", &path], &[]).and_then(|again| {
+                    if again.status.success() {
+                        Ok(())
+                    } else {
+                        Err(reason(&again))
+                    }
+                })
+            }
+        })?;
+        let (name, email) = identity(seat);
+        let env: [(String, String); 4] = [
+            ("GIT_AUTHOR_NAME".into(), name.clone()),
+            ("GIT_AUTHOR_EMAIL".into(), email.clone()),
+            ("GIT_COMMITTER_NAME".into(), name),
+            ("GIT_COMMITTER_EMAIL".into(), email),
+        ];
+        let envs: Vec<(&str, &str)> = env.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+        run(
+            worktree,
+            &[
+                "-c",
+                "commit.gpgsign=false",
+                "commit",
+                "--quiet",
+                "--no-verify",
+                "-m",
+                "the change the connected computer sent back",
+            ],
+            &envs,
+        )
+        .and_then(|commit| {
+            if commit.status.success() {
+                Ok(())
+            } else {
+                Err(reason(&commit))
+            }
+        })?;
+        out(worktree, &["rev-parse", "HEAD"])
+    })();
+    let _ = std::fs::remove_file(&file);
+    result
+}
+
 /// Git in `dir` with no inherited variable that points it elsewhere, and
 /// `with` added.
 fn run(dir: &Path, args: &[&str], with: &[(&str, &str)]) -> Result<std::process::Output, String> {

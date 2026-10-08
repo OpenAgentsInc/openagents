@@ -146,6 +146,7 @@ fn ask(agents: &Agents, key: &str, text: &str) {
                 context: String::new(),
                 mode: Mode::Terminal,
                 typist: false,
+                computer: None,
             },
         )
         .unwrap();
@@ -251,6 +252,7 @@ fn crew_sales_job_without_canonical_budget_refuses_before_the_shared_turn() {
                     context: String::new(),
                     mode: Mode::Terminal,
                     typist: false,
+                    computer: None,
                 }
             )
             .unwrap_err(),
@@ -836,4 +838,141 @@ fn a_codex_limit_is_booked_said_once_and_later_requests_leave_codex_out() {
     assert_eq!(given.len(), 2);
     assert!(given.iter().all(|turn| !turn.codex_writes));
     assert!(!given[1].prompt.contains(CODEX_DIRECTIVE));
+}
+
+/// Her record with engine `devin`.
+fn on_devin(dir: &tempfile::TempDir, engine: &str) -> Store {
+    let store = Store::new(&dir.path().join("host"), "alice").unwrap();
+    let mut record = store.load().unwrap().unwrap();
+    record.engine = engine.into();
+    store.save(&record).unwrap();
+    store
+}
+
+/// Coder handing the work to Devin, which runs `command`, and Devin's end.
+fn devin_delegation(command: &str, output: serde_json::Value) -> Vec<CoderEvent> {
+    let delegation = |running: bool, output: serde_json::Value| CoderEvent::Delegation {
+        id: "alice-coder-delegate-1".into(),
+        agent: "Devin".into(),
+        running,
+        output,
+    };
+    let mut events = vec![delegation(true, serde_json::Value::Null)];
+    for mut event in run(command, 0, "ok") {
+        if let CoderEvent::Tool { delegation, .. } = &mut event {
+            *delegation = Some("alice-coder-delegate-1".into());
+        }
+        events.push(event);
+    }
+    events.push(delegation(false, output));
+    events
+}
+
+#[test]
+fn on_devin_coder_hands_her_coding_to_devin_and_devin_usage_is_her_spend() {
+    use crate::task::agent_spend;
+    let dir = tempfile::tempdir().unwrap();
+    let (agents, seen) = host(
+        &dir,
+        steps(&[("Fix the typo in README.md.", "the typo is fixed")], None),
+        vec![turn(
+            devin_delegation(
+                "sed -i '' s/teh/the/ README.md",
+                json!({"reply":"Fixed.","model":"swe-2-high",
+                    "usage":{"input_tokens":11056,"output_tokens":95},
+                    "transport":"acp"}),
+            ),
+            "Devin fixed the typo, and I checked it.",
+        )],
+        vec![judged(0.95, 0.02, Move::Continue)],
+        Some("Devin fixed the typo."),
+    );
+    let store = on_devin(&dir, agent::ENGINE_DEVIN);
+    let owner = secp256k1::SecretKey::from_byte_array([7; 32]).unwrap();
+    let record = store.load().unwrap().unwrap();
+    let record = store.ensure_key(record, clock()).unwrap();
+    store
+        .attest(record, &owner, clock() + 30 * 86_400, clock())
+        .unwrap();
+    assert_eq!(view(&agents).route, "Coder V1, coding on Devin");
+
+    ask(&agents, "k1", "fix the typo in the readme");
+    let view = finished(&agents);
+    let given = seen.given.lock().unwrap().clone();
+    assert_eq!(given.len(), 1);
+    assert!(given[0].prompt.starts_with("Fix the typo in README.md."));
+    // Terminal mode: Coder answers and runs commands itself; a Devin it
+    // calls on its own stays under Devin's accept-edits mode and sandbox,
+    // and asks nobody.
+    assert!(!given[0].prompt.contains(coder_v1::DEVIN_DIRECTIVE));
+    for line in [
+        "alice: Coder handed the work to Devin",
+        "alice: Devin $ sed -i '' s/teh/the/ README.md",
+    ] {
+        assert!(
+            view.lines.iter().any(|l| l == line),
+            "{line} in {:?}",
+            view.lines
+        );
+    }
+    assert!(
+        journal(&dir)
+            .iter()
+            .any(|e| e.text == "Devin finished its delegation (11151 tokens)")
+    );
+    // Devin's usage is a record of its own, beside Coder's turn.
+    let spent = agent_spend::owner_read(&store, &owner).unwrap();
+    let devin = spent
+        .records
+        .iter()
+        .find(|r| r.metric.harness == agent_spend::DEVIN_HARNESS)
+        .expect("a Devin spend record");
+    assert_eq!(devin.metric.model.as_deref(), Some("swe-2-high"));
+    assert_eq!(devin.metric.turn.input_tokens, Some(11056));
+    assert_eq!(devin.metric.turn.output_tokens, Some(95));
+}
+
+#[test]
+fn a_devin_limit_is_booked_said_once_and_later_requests_leave_devin_out() {
+    let dir = tempfile::tempdir().unwrap();
+    let limited = json!({"error": "ACP task failed: Devin refused the prompt: you've hit your \
+        usage limit. Try again in 2 hours.; process group cleared: true."});
+    let (agents, _seen) = host(
+        &dir,
+        steps(&[("Fix the typo in README.md.", "the typo is fixed")], None),
+        vec![
+            turn(
+                devin_delegation("cat README.md", limited),
+                "Devin was out of capacity, so I fixed it myself.",
+            ),
+            turn(vec![], "Done."),
+        ],
+        vec![judged(0.95, 0.02, Move::Continue); 2],
+        Some("Fixed."),
+    );
+    on_devin(&dir, agent::ENGINE_DEVIN);
+    ask(&agents, "k1", "fix the typo in the readme");
+    let view = finished(&agents);
+    let said: Vec<&String> = view
+        .lines
+        .iter()
+        .filter(|l| l.starts_with("alice: Devin is out of capacity until "))
+        .collect();
+    assert_eq!(said.len(), 1, "{:?}", view.lines);
+    assert!(said[0].ends_with(", so Coder hands the work to Codex, or works on its own model."));
+    let book = capacity::Book::load_with(&dir.path().join("tasks"), |_| None);
+    assert!(!book.has_capacity(capacity::Provider::Devin, clock()));
+
+    // The next request reads the book: Devin's refusal is said once more
+    // from the book, and she falls back to Codex, then Coder's own model.
+    ask(&agents, "k2", "fix the next typo");
+    let view = finished(&agents);
+    assert!(
+        view.lines
+            .iter()
+            .any(|l| l.starts_with("alice: Devin is out of capacity until ")
+                || l == "alice: Devin is out of capacity, so Coder hands the work to Codex, or works on its own model."),
+        "{:?}",
+        view.lines
+    );
 }

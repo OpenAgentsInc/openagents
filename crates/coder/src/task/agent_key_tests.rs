@@ -209,6 +209,7 @@ fn her_loop_refuses_requests_without_her_key_and_journals_why() {
             context: String::new(),
             mode: Mode::Terminal,
             typist: false,
+            computer: None,
         },
     );
     assert!(asked.is_err());

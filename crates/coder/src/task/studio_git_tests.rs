@@ -527,3 +527,61 @@ fn a_direct_request_works_in_its_own_worktree_and_merges_locally() {
     assert_eq!(signed.pubkey, crate::task::agent::public_hex(&key));
     assert_eq!(git(&s.origin, &["rev-parse", "refs/heads/main"]), first);
 }
+
+/// A remote task's change lands at the merge decision, and a failed one
+/// closes with its reason (#10930).
+#[test]
+fn a_remote_tasks_change_lands_and_a_failed_one_closes() {
+    use super::super::direct::Direct;
+    use super::super::flow::Stage;
+    let s = scratch();
+    let mut tasks = Store::open(&s.store).unwrap();
+    let mut studio = Studio::open(&s.store)
+        .unwrap()
+        .with_host_root(&s.root)
+        .with_worktrees(worktrees_dir(&s.root));
+    studio
+        .set_seat(seat("alice", Role::Worker, "devin:default", 0))
+        .unwrap();
+    let direct = |text: &str| Direct {
+        text: text.into(),
+        title: "The work".into(),
+        repository: Repository {
+            label: "demo".into(),
+            path: s.repo.to_string_lossy().into_owned(),
+        },
+        seat: "alice".into(),
+    };
+    // One placed task lands its patch at the merge decision.
+    let (_goal, task) = studio
+        .submit_remote(direct("Add notes.txt"), "coderos-4080", 1_000)
+        .unwrap();
+    studio.attach_remote_task(&task, "rt-1").unwrap();
+    let works = studio.remote_tasks("alice");
+    assert_eq!(works.len(), 1);
+    assert_eq!(works[0].computer, "coderos-4080");
+    assert_eq!(works[0].remote_task.as_deref(), Some("rt-1"));
+    assert_eq!(works[0].stage, Stage::Work);
+    let patch = "diff --git a/notes.txt b/notes.txt\nnew file mode 100644\nindex \
+                 0000000..ce01362\n--- /dev/null\n+++ b/notes.txt\n@@ -0,0 +1 @@\n+hello\n";
+    let worktree = studio.land_remote(&task, patch).unwrap();
+    assert!(worktree.join("notes.txt").exists());
+    assert_eq!(git(&worktree, &["show", "HEAD:notes.txt"]), "hello");
+    let works = studio.remote_tasks("alice");
+    assert_eq!(works[0].stage, Stage::Merge);
+    // A second remote task that fails is closed with its reason, and its
+    // note waits for the person.
+    let (_goal, task) = studio
+        .submit_remote(direct("Add more"), "coderos-4080", 1_001)
+        .unwrap();
+    studio.attach_remote_task(&task, "rt-2").unwrap();
+    studio
+        .fail_remote(&task, "the task on coderos-4080 failed")
+        .unwrap();
+    let works = studio.remote_tasks("alice");
+    assert_eq!(works[1].stage, Stage::Rejected);
+    // A task that is not a remote one is refused.
+    assert!(studio.land_remote("d9-unknown.work", patch).is_err());
+    assert!(studio.fail_remote("d9-unknown.work", "x").is_err());
+    let _ = tasks;
+}

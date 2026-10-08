@@ -64,6 +64,8 @@ pub const HARNESS: &str = "openagents-agent";
 pub const CODER_HARNESS: &str = "coder-v1";
 /// The `harness` of Codex's work when Coder delegates her coding to it.
 pub const CODEX_HARNESS: &str = "codex-cli";
+/// The `harness` of Devin's work when Coder delegates her coding to it.
+pub const DEVIN_HARNESS: &str = "devin-cli";
 /// Dollars one request may spend when the owner set no budget.
 /// Provisional, as the loop's thresholds.
 pub const REQUEST_USD: f64 = 1.0;

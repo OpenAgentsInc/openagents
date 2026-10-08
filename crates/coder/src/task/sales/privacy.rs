@@ -2238,7 +2238,8 @@ mod tests {
                         workspace: None,
                         context: String::new(),
                         mode: coder_host::access::agent::Mode::Auto,
-                        typist: false
+                        typist: false,
+                        computer: None,
                     }
                 )
                 .is_err()

@@ -14,8 +14,21 @@ use std::path::Path;
 
 use super::{
     Error, Goal, Inbox, PlanEntry, Released, Repository, Slot, SlotState, Studio, digest_bytes,
-    slot_task_id,
+    git, slot_task_id,
 };
+
+/// One remote task's studio entry, as [`Studio::remote_tasks`] reads it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RemoteTask {
+    /// The local task identity.
+    pub task: String,
+    /// The computer it runs on.
+    pub computer: String,
+    /// Its identity on the computer's host, when attached.
+    pub remote_task: Option<String>,
+    /// Its change's stage.
+    pub stage: super::flow::Stage,
+}
 
 /// A direct request to submit.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -42,6 +55,184 @@ impl Studio {
         direct: Direct,
         now: u64,
     ) -> Result<(String, String, Vec<Released>), Error> {
+        let (goal_id, task_id, index) = self.record_direct(direct, now)?;
+        let released = self.release_ready(tasks, index, now)?;
+        Ok((goal_id, task_id, released))
+    }
+
+    /// Submit `direct` for a task that runs on the computer `computer`
+    /// (#10930): the same one-task goal, its worktree and run record made
+    /// here like a release's, but no command reaches the inbox, so no
+    /// local run starts. The seat that placed it moves its flow when the
+    /// remote task ends: [`Studio::land_remote`] applies the patch the
+    /// computer returns, and `openagents studio review`/`merge` work on it
+    /// like a local task's change.
+    ///
+    /// # Errors
+    /// As [`Studio::submit_direct`], plus a studio without a worktrees
+    /// directory, or a worktree the repository cannot make.
+    pub fn submit_remote(
+        &mut self,
+        direct: Direct,
+        computer: &str,
+        now: u64,
+    ) -> Result<(String, String), Error> {
+        let Some(worktrees) = self.worktrees.clone() else {
+            return Err(Error::State(
+                "remote placement needs the studio's worktrees directory".into(),
+            ));
+        };
+        let (goal_id, task_id, index) = self.record_direct(direct, now)?;
+        let (repository, seat, title) = {
+            let goal = &self.state.goals[index];
+            let entry = &goal.plan[0];
+            (
+                goal.repository.path.clone(),
+                entry.slot.seat.clone(),
+                entry.title.clone(),
+            )
+        };
+        git::prepare(
+            &worktrees,
+            &self.store,
+            Path::new(&repository),
+            &seat,
+            &task_id,
+            &title,
+            Some("devin"),
+        )
+        .map_err(|message| Error::Tasks(super::super::Error::Io(std::io::Error::other(message))))?;
+        let item = &mut self.state.goals[index].plan[0];
+        item.flow = Some(super::flow::Flow::remote(&task_id, computer));
+        self.save()?;
+        Ok((goal_id, task_id))
+    }
+
+    /// Where remote task `task`'s studio entry is: its goal and plan
+    /// indexes, when it is one `submit_remote` made.
+    fn remote_entry(&self, task: &str) -> Option<(usize, usize)> {
+        for (index, goal) in self.state.goals.iter().enumerate() {
+            for (entry, item) in goal.plan.iter().enumerate() {
+                if item.slot.task_id == task
+                    && item.flow.as_ref().is_some_and(|flow| flow.remote.is_some())
+                {
+                    return Some((index, entry));
+                }
+            }
+        }
+        None
+    }
+
+    /// Every remote task `seat` placed: the local task, the computer, the
+    /// remote task's identity when attached, and the stage (#10930).
+    #[must_use]
+    pub fn remote_tasks(&self, seat: &str) -> Vec<RemoteTask> {
+        self.state
+            .goals
+            .iter()
+            .flat_map(|goal| goal.plan.iter())
+            .filter(|entry| entry.slot.seat == seat)
+            .filter_map(|entry| {
+                let flow = entry.flow.as_ref()?;
+                Some(RemoteTask {
+                    task: entry.slot.task_id.clone(),
+                    computer: flow.remote.clone()?,
+                    remote_task: flow.remote_task.clone(),
+                    stage: flow.stage,
+                })
+            })
+            .collect()
+    }
+
+    /// Keep remote task `task`'s identity on its computer in the flow, so
+    /// a restart resumes watching it (#10930).
+    ///
+    /// # Errors
+    /// The task is not a remote one.
+    pub fn attach_remote_task(&mut self, task: &str, remote_task: &str) -> Result<(), Error> {
+        let Some((index, entry)) = self.remote_entry(task) else {
+            return Err(Error::State(format!("task `{task}` is not a remote one")));
+        };
+        self.state.goals[index].plan[entry]
+            .flow
+            .as_mut()
+            .expect("a remote entry has a flow")
+            .remote_task = Some(remote_task.to_owned());
+        self.save()
+    }
+
+    /// Apply the patch `computer`'s task `task` sent back into the task's
+    /// local worktree, commit it on the task's branch, and move its change
+    /// to the person's merge decision. Returns the worktree it landed in.
+    ///
+    /// # Errors
+    /// The task is not a remote one, it is not waiting on a remote
+    /// change, its worktree is unreadable, or Git cannot apply or commit
+    /// the patch.
+    pub fn land_remote(&mut self, task: &str, patch: &str) -> Result<std::path::PathBuf, Error> {
+        let Some((index, entry)) = self.remote_entry(task) else {
+            return Err(Error::State(format!("task `{task}` is not a remote one")));
+        };
+        // Two looks can race a landing; only the first applies the patch.
+        if self.state.goals[index].plan[entry]
+            .flow
+            .as_ref()
+            .is_some_and(|flow| flow.stage != super::flow::Stage::Work)
+        {
+            return Err(Error::State(format!(
+                "task `{task}` is not waiting on a remote change"
+            )));
+        }
+        let record = super::super::local::record(&self.store, task)
+            .ok_or_else(|| Error::Corrupt("the remote task lost its run record"))?;
+        let seat = self.state.goals[index].plan[entry].slot.seat.clone();
+        let worktree = Path::new(&record.worktree);
+        git::apply_remote(worktree, &seat, patch).map_err(|message| {
+            Error::Tasks(super::super::Error::Io(std::io::Error::other(message)))
+        })?;
+        let flow = self.state.goals[index].plan[entry]
+            .flow
+            .as_mut()
+            .expect("a remote entry has a flow");
+        flow.stage = super::flow::Stage::Merge;
+        self.save()?;
+        Ok(worktree.to_path_buf())
+    }
+
+    /// Mark remote task `task`'s change ended without a merge decision and
+    /// say why: the remote run failed or was cancelled, or its patch could
+    /// not land.
+    ///
+    /// # Errors
+    /// The task is not a remote one, or it already ended.
+    pub fn fail_remote(&mut self, task: &str, note: &str) -> Result<(), Error> {
+        let Some((index, entry)) = self.remote_entry(task) else {
+            return Err(Error::State(format!("task `{task}` is not a remote one")));
+        };
+        if self.state.goals[index].plan[entry]
+            .flow
+            .as_ref()
+            .is_some_and(|flow| flow.stage != super::flow::Stage::Work)
+        {
+            return Err(Error::State(format!("task `{task}` already ended")));
+        }
+        let flow = self.state.goals[index].plan[entry]
+            .flow
+            .as_mut()
+            .expect("a remote entry has a flow");
+        flow.notes.push(note.to_owned());
+        flow.stage = super::flow::Stage::Rejected;
+        self.save()
+    }
+
+    /// Record `direct`'s goal: the shared part of [`Studio::submit_direct`]
+    /// and [`Studio::submit_remote`]. Returns the goal, the task identity,
+    /// and the goal's index.
+    fn record_direct(
+        &mut self,
+        direct: Direct,
+        now: u64,
+    ) -> Result<(String, String, usize), Error> {
         let text = direct.text.trim();
         if !super::super::text(text, super::MAX_GOAL_BYTES, true) {
             return Err(Error::Invalid(format!(
@@ -102,9 +293,7 @@ impl Studio {
             submitted_at: now,
         });
         self.save()?;
-        let index = self.state.goals.len() - 1;
-        let released = self.release_ready(tasks, index, now)?;
-        Ok((goal_id, task_id, released))
+        Ok((goal_id, task_id, self.state.goals.len() - 1))
     }
 
     /// Where the direct goal `goal_id`'s one task is: its current task

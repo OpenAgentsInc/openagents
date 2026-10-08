@@ -187,6 +187,20 @@ model other than the admitted one refused before any prompt.
 an owner's session that ran a command, and an engine-marked session, which a
 delegate copy keeps and a whole-store mirror leaves out.
 
+## As a workshop agent's engine
+
+`openagents agent engine alice devin` (or `devin:MODEL`) makes Devin her
+engine ([issue #10929](https://github.com/OpenAgentsInc/openagents/issues/10929)).
+A task-mode request then asks Coder — not Devin itself — to delegate the
+file edits to the `devin-cli` ACP subagent and to check the result, the same
+shape `codex` uses. Questions and read-only lookups stay with Coder. The
+delegation's session mode maps the chat's access the same way the grant's
+does: `bypass` ungated, `accept-edits` under `devin --sandbox` when gated,
+and a `model` on the `acp_subagent` call becomes `devin acp --model MODEL`.
+A Devin refusal is booked under `devin` in the capacity book, her pane says
+it once, and Coder falls back to Codex, then to its own model. Devin's
+tokens land in her spend records under the `devin-cli` harness.
+
 ```sh
 cargo test -p acp-client
 cargo test -p microcoder --lib repository::devin

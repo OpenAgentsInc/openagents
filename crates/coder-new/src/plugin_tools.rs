@@ -73,6 +73,9 @@ struct TaskArguments {
 struct AcpArguments {
     agent: String,
     task: String,
+    /// The model the agent runs; only `devin-cli` takes one.
+    #[serde(default)]
+    model: Option<String>,
 }
 
 impl ExecutionSettings {
@@ -348,7 +351,15 @@ impl ExecutionSettings {
                     .find(|agent| agent.id == args.agent && agent.enabled)
                     .ok_or("The requested ACP agent is not configured or is turned off.")?;
                 let mut child = |event| emit(event);
-                bundled_runtime::acp(agent, &args.task, &self.cwd, cancel, &mut child).await
+                bundled_runtime::acp(
+                    agent,
+                    &args.task,
+                    &self.cwd,
+                    args.model.as_deref(),
+                    cancel,
+                    &mut child,
+                )
+                .await
             }
             "microcoder" if self.registered(ToolBinding::Microcoder) => {
                 let args: TaskArguments = serde_json::from_value(arguments)
@@ -592,6 +603,7 @@ mod tests {
     #[tokio::test]
     async fn crew_tool_free_scope_refuses_reads_commands_and_delegation_before_dispatch() {
         let dir = tempfile::tempdir().unwrap();
+        let _gate_lock = crate::approval::test_lock().lock().unwrap();
         crate::approval::install(Some(crate::approval::Gate {
             desk: crate::approval::Desk::tool_free(),
             cancel: Arc::new(AtomicBool::new(false)),

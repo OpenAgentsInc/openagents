@@ -167,6 +167,7 @@ fn actual_host_owner_conversation_uses_shared_loop_and_never_starts_plain_coder(
         context: context.into(),
         mode: Mode::Terminal,
         typist: false,
+        computer: None,
     };
     let answer = host
         .answer("native-pipeline", &owner, &op("sales pipeline", ""))
@@ -711,6 +712,7 @@ fn actual_host_owner_stop_reaches_priced_adapter_and_preserves_unknown_liability
                 workspace: None,
                 mode: Mode::Terminal,
                 typist: false,
+                computer: None,
             },
         )
     });

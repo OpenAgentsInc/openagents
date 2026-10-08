@@ -430,6 +430,7 @@ fn agent_operations() -> Vec<Operation> {
             context: String::new(),
             mode: Mode::Auto,
             typist: true,
+            computer: None,
         },
         Operation::AnswerAgent {
             agent: agent(),

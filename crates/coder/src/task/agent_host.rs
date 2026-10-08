@@ -49,6 +49,9 @@ use super::agent::{self, Decision, Doing, Entry, Kind, Outcome, Record, Report, 
 use super::agent_crew_control::{self as crew_control, Guard as CrewGuard, Stamp as CrewStamp};
 use super::agent_jobs::{self, Facts, Jobs};
 use super::agent_memory::{self, Author, Memory, MemoryKind};
+use super::agent_queue;
+use super::agent_remote::{self, Phase as RemotePhase};
+use super::agent_steer;
 use super::coder_v1::{self, Ended, Event as CoderEvent};
 use coder_host::access::crew::{ControlAction, Selection};
 
@@ -64,6 +67,9 @@ const ASKED_MAX: usize = 512;
 const PLACES_MAX: usize = 8;
 /// How often a task-mode run looks at its change.
 const TASK_POLL: Duration = Duration::from_secs(2);
+/// How often her remote tasks are polled: each look is a device-grant
+/// call to a computer, so it stays well under it (#10930).
+const REMOTE_POLL: u64 = 15;
 /// A recorded Coder turn in place of Coder V1, for an offline demo or a
 /// capture: a JSON list of Coder events ([`coder_v1::Event`]), which each
 /// request plays from the start.
@@ -84,6 +90,12 @@ struct Queued {
     from: String,
     quiet: bool,
     fix_on_failure: bool,
+    /// The computer a task-mode request must run on, `None` for the
+    /// policy's placement (#10930).
+    computer: Option<String>,
+    /// The durable-queue entry the request came from, when it did
+    /// (#10931); its end is marked there.
+    queue_id: Option<String>,
 }
 
 struct Admitted {
@@ -129,6 +141,8 @@ struct Live {
     sequence: u64,
     /// One plain line on what she does now, shown first in her pane.
     status: String,
+    /// When her remote tasks were last polled, for [`REMOTE_POLL`].
+    remote_last: u64,
 }
 
 impl Default for Live {
@@ -149,6 +163,7 @@ impl Default for Live {
             change: None,
             sequence: 0,
             status: String::new(),
+            remote_last: 0,
         }
     }
 }
@@ -290,6 +305,8 @@ pub struct Agents {
     planning: Arc<Mutex<BTreeSet<String>>>,
     /// The agents whose engram stores this host has reconciled.
     reconciled: Arc<Mutex<BTreeSet<String>>>,
+    /// The lane her task mode takes to a connected computer (#10930).
+    remote: Arc<Mutex<Box<dyn agent_remote::Remote>>>,
     /// What she plans, judges, and reports with in terminal mode.
     mind: super::agent_steer::MindFactory,
     /// Runs each agent's engram relay sync while the owner has it on.
@@ -372,6 +389,7 @@ impl Agents {
             planner: super::agent_plan::default_factory(),
             planning: Arc::default(),
             reconciled: Arc::default(),
+            remote: Arc::new(Mutex::new(Box::new(agent_remote::Cli::new(None)))),
             mind: super::agent_steer::default_mind(),
             relay_sync: super::agent_sync::Sweeper::new(Arc::new(super::agent_sync::Live)),
             relays: Arc::new(super::agent_sync::Live),
@@ -384,6 +402,14 @@ impl Agents {
     #[must_use]
     pub fn with_dispatch_revoker(mut self, revoker: crew_control::DispatchRevoker) -> Self {
         self.dispatch_revoker = revoker;
+        self
+    }
+
+    /// The remote lane her task mode takes; the default is `openagents
+    /// computer` (#10930), and a test puts a scripted one.
+    #[must_use]
+    pub fn with_remote(mut self, remote: Box<dyn agent_remote::Remote>) -> Self {
+        self.remote = Arc::new(Mutex::new(remote));
         self
     }
 
@@ -793,6 +819,7 @@ impl Agents {
                 context,
                 mode,
                 typist,
+                computer,
             } => {
                 let (privacy_store, record) = self.store(agent)?;
                 super::sales::privacy::check_agent_copy(
@@ -909,6 +936,8 @@ impl Agents {
                         from: principal.device.clone(),
                         quiet: false,
                         fix_on_failure: false,
+                        computer: None,
+                        queue_id: None,
                     };
                     self.finish(
                         &native,
@@ -976,6 +1005,8 @@ impl Agents {
                         from: principal.device.clone(),
                         quiet: false,
                         fix_on_failure: false,
+                        computer: None,
+                        queue_id: None,
                     };
                     self.finish(&native_store, &current, &queued, &steered.report, None);
                     return Ok(
@@ -1022,6 +1053,8 @@ impl Agents {
                         from: principal.device.clone(),
                         quiet: false,
                         fix_on_failure: false,
+                        computer: computer.clone(),
+                        queue_id: None,
                     },
                 )?;
                 Ok(dispatched(agent))
@@ -1704,6 +1737,8 @@ impl Agents {
                     } else if record.job_role == Some(coder_host::access::crew::JobRole::SalesLead)
                     {
                         "native sales controls; model work unavailable".into()
+                    } else if record.job_role.is_none() && record.codes_on_devin() {
+                        "Coder V1, coding on Devin".into()
                     } else if record.route.is_empty() {
                         "first with capacity".into()
                     } else {
@@ -1887,8 +1922,29 @@ impl Agents {
             if live.busy {
                 return;
             }
-            let Some(admitted) = live.queue.pop_front() else {
-                return;
+            let admitted = match live.queue.pop_front() {
+                Some(admitted) => admitted,
+                None => match agent_queue::take(&store) {
+                    Some(entry) => {
+                        let id = entry.id;
+                        Admitted {
+                            queued: Queued {
+                                text: entry.text,
+                                context: String::new(),
+                                mode: Mode::Task,
+                                workspace: entry.workspace,
+                                typist: false,
+                                from: format!("queue:{id}"),
+                                quiet: false,
+                                fix_on_failure: false,
+                                computer: entry.computer,
+                                queue_id: Some(id),
+                            },
+                            crew: None,
+                        }
+                    }
+                    None => return,
+                },
             };
             if record.state != State::Active
                 || guard.as_ref().is_some_and(|guard| {
@@ -2213,24 +2269,23 @@ impl Agents {
             }
         }
         let title = one_line(&queued.text);
-        // On Codex, the studio's Coder turn hands the coding to Codex in
-        // her worktree and checks it.
-        let codex = if record.job_role.is_none()
-            && record.codes_on_codex()
-            && self.codex_has_capacity(store, &record.name)
-        {
-            self.with_live(&record.name, |live| {
-                live.model = "Coder V1, coding on Codex".into();
-            });
-            format!("\n\n{}", coder_turn::CODEX_DIRECTIVE)
-        } else {
+        // On a delegate engine, the studio's Coder turn hands the coding
+        // to the delegate in her worktree and checks it. Devin falls back
+        // to Codex, then to Coder's own model.
+        let coding = self.coding_for(record, store, &record.name);
+        let delegate = if coding == coder_turn::Coding::Own {
             String::new()
+        } else {
+            self.with_live(&record.name, |live| {
+                live.model = format!("Coder V1, {}", coding.nameplate());
+            });
+            format!("\n\n{}", coding.directive(record.devin_model()))
         };
         let direct = Direct {
             text: format!(
                 "{}\n\nYou are {}, the owner's workshop agent. Work only in this worktree. Leave \
                  your change in the working tree; the owner reviews and merges it at the Merge \
-                 station.{codex}",
+                 station.{delegate}",
                 queued.text, record.name
             ),
             title: title.clone(),
@@ -2240,44 +2295,79 @@ impl Agents {
             },
             seat: record.name.clone(),
         };
-        let (goal, task) = match studio.submit_direct(&mut tasks, direct, now) {
-            Ok((goal, task, _)) => (goal, task),
-            Err(why) => return fail(format!("The studio refused the task: {why}"), "refused"),
+        // Where the task's coding happens: this host, or a computer her
+        // policy allows (#10930). A named computer that is not ready falls
+        // back to this host with a line she says once.
+        let (goal, task, on) = match self.placement(store, &record.name, queued, &studio) {
+            Ok(agent_steer::Placement::Remote(name)) => {
+                match self.dispatch_remote(
+                    store,
+                    record,
+                    queued,
+                    &direct,
+                    &label,
+                    &path,
+                    &name,
+                    &mut studio,
+                ) {
+                    Ok(pair) => pair,
+                    Err(RemoteRefusal::Local(why)) => {
+                        self.say(&record.name, &format!("{}: {why}", record.name));
+                        match self.submit_local(
+                            store,
+                            record,
+                            &mut tasks,
+                            &mut studio,
+                            direct,
+                            &label,
+                        ) {
+                            Ok(pair) => pair,
+                            Err(why) => return fail(why, "refused"),
+                        }
+                    }
+                    Err(RemoteRefusal::Fail(reply, headline)) => return fail(reply, &headline),
+                }
+            }
+            Ok(_) => {
+                match self.submit_local(store, record, &mut tasks, &mut studio, direct, &label) {
+                    Ok(pair) => pair,
+                    Err(why) => return fail(why, "refused"),
+                }
+            }
+            Err(why) => return fail(why, "no placement"),
         };
         drop(studio);
         drop(tasks);
-        let _ = store.append(&Entry::new(
-            now,
-            Kind::Task,
-            &format!(
-                "made task {task} for goal {goal} in {label}, in {} own worktree",
-                record.refer().their()
-            ),
-        ));
-        self.say(
-            &record.name,
-            &format!(
-                "{}: I'm working on it in my own worktree (task {task}).",
-                record.name
-            ),
-        );
         if let Some(sweep) = &self.sweep {
             sweep();
         }
         self.set_change(&record.name, &goal, &task, "working");
         self.set_doing(&record.name, Doing::Running);
+        if on.is_some() {
+            // A new remote task gets its first poll at once.
+            self.with_live(&record.name, |live| live.remote_last = 0);
+        }
         self.set_status(
             &record.name,
-            &if codex.is_empty() {
-                format!("Working in my own worktree on task {}", short_task(&task))
-            } else {
-                format!(
-                    "Waiting for Codex to edit files in my worktree (task {})",
+            &match (&on, coding) {
+                (Some(computer), _) => format!(
+                    "Waiting for Devin on {computer} (task {})",
                     short_task(&task)
-                )
+                ),
+                (None, coder_turn::Coding::Own) => {
+                    format!("Working in my own worktree on task {}", short_task(&task))
+                }
+                (None, coding) => format!(
+                    "Waiting for {} to edit files in my worktree (task {})",
+                    coding.agent(),
+                    short_task(&task)
+                ),
             },
         );
         loop {
+            if on.is_some() {
+                self.remote_tick(&record.name);
+            }
             if cancel.load(Ordering::SeqCst) {
                 return Report {
                     outcome: Outcome::Stopped,
@@ -2331,6 +2421,288 @@ impl Agents {
                 }
             }
             std::thread::sleep(TASK_POLL);
+        }
+    }
+
+    /// Release the direct task into the local inbox: the task-mode path as
+    /// it always was. Returns the goal, task, and a `None` computer.
+    fn submit_local(
+        &self,
+        store: &Store,
+        record: &Record,
+        tasks: &mut super::Store,
+        studio: &mut super::studio::Studio,
+        direct: super::studio::direct::Direct,
+        label: &str,
+    ) -> Result<(String, String, Option<String>), String> {
+        let now = (self.clock)();
+        match studio.submit_direct(tasks, direct, now) {
+            Ok((goal, task, _)) => {
+                let _ = store.append(&Entry::new(
+                    now,
+                    Kind::Task,
+                    &format!(
+                        "made task {task} for goal {goal} in {label}, in {} own worktree",
+                        record.refer().their()
+                    ),
+                ));
+                self.say(
+                    &record.name,
+                    &format!(
+                        "{}: I'm working on it in my own worktree (task {task}).",
+                        record.name
+                    ),
+                );
+                Ok((goal, task, None))
+            }
+            Err(why) => Err(format!("The studio refused the task: {why}")),
+        }
+    }
+
+    /// Read `queued`'s computer word against her policy: a remote
+    /// placement, this host, or the first policy computer with a free slot
+    /// that answers `ready` (#10930).
+    fn placement(
+        &self,
+        store: &Store,
+        name: &str,
+        queued: &Queued,
+        studio: &super::studio::Studio,
+    ) -> Result<agent_steer::Placement, String> {
+        let policy = agent_steer::Policy::load(store)
+            .map_err(|why| format!("I can't read the agent policy: {why}"))?;
+        match queued.computer.as_deref() {
+            Some("local") => return Ok(agent_steer::Placement::Local),
+            word => match policy.placement(word)? {
+                agent_steer::Placement::Auto => Ok(self
+                    .auto_place(studio, &policy, name)
+                    .unwrap_or(agent_steer::Placement::Local)),
+                other => Ok(other),
+            },
+        }
+    }
+
+    /// The first computer her policy allows with fewer running tasks than
+    /// its cap that answers `ready`; each that does not is said once.
+    fn auto_place(
+        &self,
+        studio: &super::studio::Studio,
+        policy: &agent_steer::Policy,
+        seat: &str,
+    ) -> Option<agent_steer::Placement> {
+        use super::studio::flow::Stage;
+        let running = studio.remote_tasks(seat);
+        for computer in &policy.computers {
+            let busy = running
+                .iter()
+                .filter(|task| task.computer == computer.name && task.stage == Stage::Work)
+                .count();
+            if busy >= computer.max {
+                continue;
+            }
+            match self
+                .remote
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .ready(&computer.name)
+            {
+                Ok(()) => return Some(agent_steer::Placement::Remote(computer.name.clone())),
+                Err(why) => self.say(seat, &format!("{seat}: {why}")),
+            }
+        }
+        None
+    }
+
+    /// Place the direct task's coding on `computer`: check the computer is
+    /// on, ensure its checkout holds the workspace's base commit, record
+    /// the studio task and worktree, and send the brief over the device
+    /// grant. The remote task asks Devin to do the coding under the
+    /// computer's own auto-start policy.
+    fn dispatch_remote(
+        &self,
+        store: &Store,
+        record: &Record,
+        queued: &Queued,
+        direct: &super::studio::direct::Direct,
+        label: &str,
+        path: &Path,
+        name: &str,
+        studio: &mut super::studio::Studio,
+    ) -> Result<(String, String, Option<String>), RemoteRefusal> {
+        let now = (self.clock)();
+        let mut remote = self.remote.lock().unwrap_or_else(|e| e.into_inner());
+        remote
+            .ready(name)
+            .map_err(|why| RemoteRefusal::Local(format!("{why}, so I'm doing it here")))?;
+        let base = git_line(path, &["rev-parse", "HEAD"]).map_err(|why| {
+            RemoteRefusal::Fail(
+                format!("I can't read the checkout's commit: {why}"),
+                "no base".into(),
+            )
+        })?;
+        let origin = git_line(path, &["remote", "get-url", "origin"]).map_err(|why| {
+            RemoteRefusal::Fail(
+                format!("I can't read the checkout's `origin`: {why}"),
+                "no origin".into(),
+            )
+        })?;
+        let computer = agent_steer::Policy::load(store)
+            .ok()
+            .and_then(|policy| policy.computer(name).cloned());
+        let checkout = computer
+            .as_ref()
+            .and_then(|computer| computer.path.clone())
+            .unwrap_or_else(|| format!("~/work/{label}"));
+        let workspace = computer
+            .and_then(|computer| computer.workspace)
+            .unwrap_or_else(|| label.to_string());
+        remote
+            .ensure(name, &checkout, &origin, &base)
+            .map_err(|why| RemoteRefusal::Fail(why, "not pushed".into()))?;
+        let (goal, task) = studio
+            .submit_remote(direct.clone(), name, now)
+            .map_err(|why| {
+                RemoteRefusal::Fail(
+                    format!("The studio refused the task: {why}"),
+                    "refused".into(),
+                )
+            })?;
+        let brief = agent_remote::Brief {
+            title: direct.title.clone(),
+            prompt: format!(
+                "{}\n\nYou are a remote worker for {}, the owner's workshop agent. Work only in \
+                 the task's worktree, which the host made at commit {base}. Leave the change in \
+                 the worktree — committed or not — and stage new files (`git add -A`) so the \
+                 worktree's diff against {base} is the whole change. Never push, merge, rebase, \
+                 or open a pull request; the owner reviews and merges it on {} computer.",
+                queued.text,
+                record.name,
+                record.refer().their()
+            ),
+            workspace,
+            base: base.clone(),
+        };
+        let remote_task = match remote.create(name, &brief) {
+            Ok(remote_task) => remote_task,
+            Err(why) => {
+                let _ = studio.fail_remote(&task, &why);
+                return Err(RemoteRefusal::Fail(why, "not created".into()));
+            }
+        };
+        let _ = studio.attach_remote_task(&task, &remote_task);
+        let _ = store.append(&Entry::new(
+            now,
+            Kind::Task,
+            &format!(
+                "made remote task {task} on {name} ({remote_task}) for goal {goal} in {label} \
+                 from {base:.10}"
+            ),
+        ));
+        self.say(
+            &record.name,
+            &format!(
+                "{}: I'm working on it on {name} (task {task}).",
+                record.name
+            ),
+        );
+        Ok((goal, task, Some(name.to_string())))
+    }
+
+    /// One look at each remote task `name` placed: a completed one's patch
+    /// lands at the Merge station; a failed or cancelled one's entry is
+    /// closed with the reason. Runs in her task-mode wait and once per
+    /// host sweep (#10930).
+    fn remote_tick(&self, name: &str) {
+        use super::studio::flow::Stage;
+        let now = (self.clock)();
+        let polled = self.with_live(name, |live| live.remote_last);
+        if now.saturating_sub(polled) < REMOTE_POLL {
+            return;
+        }
+        self.with_live(name, |live| live.remote_last = now);
+        let Ok(mut studio) = super::studio::Studio::open(&self.tasks) else {
+            return;
+        };
+        let works = studio
+            .remote_tasks(name)
+            .into_iter()
+            .filter(|work| work.stage == Stage::Work && work.remote_task.is_some())
+            .collect::<Vec<_>>();
+        if works.is_empty() {
+            return;
+        }
+        let Ok((store, _)) = self.store(name) else {
+            return;
+        };
+        let mut remote = self.remote.lock().unwrap_or_else(|e| e.into_inner());
+        for work in works {
+            let remote_task = work.remote_task.as_deref().unwrap_or_default();
+            let phase = remote.phase(&work.computer, remote_task);
+            match phase {
+                RemotePhase::Completed => {
+                    match remote
+                        .review(&work.computer, remote_task)
+                        .and_then(|review| {
+                            studio
+                                .land_remote(&work.task, &review.diff)
+                                .map(|_| ())
+                                .map_err(|why| why.to_string())
+                        }) {
+                        Ok(()) => {
+                            let _ = store.append(&Entry::new(
+                                (self.clock)(),
+                                Kind::Task,
+                                &format!(
+                                    "task {} landed from {} at the Merge station",
+                                    work.task, work.computer
+                                ),
+                            ));
+                            self.say(
+                                name,
+                                &format!(
+                                    "{name}: my change from {} is at the Merge station (task {}).",
+                                    work.computer, work.task
+                                ),
+                            );
+                        }
+                        Err(why) => {
+                            let note = format!(
+                                "the change on {} could not be brought back: {why}",
+                                work.computer
+                            );
+                            // A racing look may have landed or closed the
+                            // entry already; only the first says it.
+                            if studio.fail_remote(&work.task, &note).is_ok() {
+                                let _ = store.append(&Entry::new(
+                                    (self.clock)(),
+                                    Kind::Task,
+                                    &format!("task {} {note}", work.task),
+                                ));
+                                self.say(name, &format!("{name}: {note}."));
+                            }
+                        }
+                    }
+                }
+                RemotePhase::Failed | RemotePhase::Cancelled => {
+                    let note = format!(
+                        "the task on {} {}",
+                        work.computer,
+                        match phase {
+                            RemotePhase::Cancelled => "was cancelled",
+                            _ => "failed",
+                        }
+                    );
+                    if studio.fail_remote(&work.task, &note).is_ok() {
+                        let _ = store.append(&Entry::new(
+                            (self.clock)(),
+                            Kind::Task,
+                            &format!("task {} {note}", work.task),
+                        ));
+                        self.say(name, &format!("{name}: {note}."));
+                    }
+                }
+                _ => {}
+            }
         }
     }
 
@@ -2439,6 +2811,9 @@ impl Agents {
             live.sequence += 1;
             live.sequence
         });
+        if let Some(id) = &queued.queue_id {
+            agent_queue::finish(store, id, report.outcome == Outcome::Done);
+        }
         if queued.quiet && report.outcome == Outcome::Done {
             return;
         }
@@ -2677,10 +3052,11 @@ impl Agents {
             "stopped by the owner; {} command was interrupted",
             p.their()
         );
-        let (typing, change, active_loop) = self.with_live(name, |live| {
+        let (typing, change, active_loop, durable) = self.with_live(name, |live| {
             live.cancel.store(true, Ordering::SeqCst);
             live.release += 1;
             live.queue.clear();
+            let durable = agent_queue::clear(&store);
             let typing = live.run.take().map(|(step, reply)| {
                 let _ = reply.send(wire::Ran {
                     lost: Some(interrupted),
@@ -2694,9 +3070,15 @@ impl Agents {
             live.doing = Doing::Idle;
             live.headline = "stopped".into();
             live.say(&format!("{name}: stopped."));
-            (typing, live.change.clone(), live.busy)
+            (typing, live.change.clone(), live.busy, durable)
         });
         let interrupted_effect = typing.is_some();
+        if durable > 0 {
+            note(&format!(
+                "stop 2 of 4: cleared {durable} durable queue entr{}",
+                if durable == 1 { "y" } else { "ies" }
+            ));
+        }
         note(&match typing {
             Some(step) => format!(
                 "stop 2 of 4: released {} panes and interrupted step {}; its effect is unknown",
@@ -2757,6 +3139,18 @@ impl Agents {
         if studio.state().seat(name).is_none() {
             return Ok(format!("{} has no studio seat or tasks", p.they()));
         }
+        // Her remote tasks first: cancel them through the device grant so
+        // their Devin sessions stop too (#10930).
+        let mut remote = self.remote.lock().unwrap_or_else(|e| e.into_inner());
+        for work in studio.remote_tasks(name).into_iter().filter(|work| {
+            work.remote_task.is_some() && work.stage == super::studio::flow::Stage::Work
+        }) {
+            let remote_task = work.remote_task.as_deref().unwrap_or_default();
+            if remote.cancel(&work.computer, remote_task).is_ok() {
+                let _ = studio.fail_remote(&work.task, "cancelled by the owner");
+            }
+        }
+        drop(remote);
         match studio.stop_seat(&mut tasks, name) {
             Ok(returned) => Ok(format!(
                 "cancelled {} studio work{}; {} task(s) returned to the board as planned",
@@ -2914,6 +3308,12 @@ impl Agents {
                 continue;
             }
             self.watch_change(&store, &record);
+            self.remote_tick(&record.name);
+            if record.state == State::Active
+                && !agent_queue::Queue::load(&store).waiting().is_empty()
+            {
+                self.next(&record.name);
+            }
             let _ = self.relay_sync.sweep(&store, &self.screen, now);
             let path = self
                 .workspace_for(&record, None)
@@ -2951,6 +3351,8 @@ impl Agents {
                         from: format!("job:{}", occurrence.job),
                         quiet: occurrence.quiet,
                         fix_on_failure: occurrence.fix_on_failure,
+                        computer: None,
+                        queue_id: None,
                     },
                 );
                 self.hurry(&record.name, reacted.as_ref());
@@ -3115,6 +3517,8 @@ impl Agents {
                 from: "host".into(),
                 quiet: false,
                 fix_on_failure: false,
+                computer: None,
+                queue_id: None,
             };
             let report = Report {
                 outcome: Outcome::Done,
@@ -3130,6 +3534,31 @@ enum ChangeStage {
     Working(String),
     Merge,
     Ended(Outcome, String),
+}
+
+/// How a remote placement did not go (#10930): the computer is off or
+/// cannot take the task, so the work stays on this host; or a real refusal
+/// the request reports.
+enum RemoteRefusal {
+    Local(String),
+    Fail(String, String),
+}
+
+/// `git -C dir ARGS`'s trimmed standard output, for the workspace reads a
+/// remote dispatch makes (#10930).
+fn git_line(dir: &Path, args: &[&str]) -> Result<String, String> {
+    let output = std::process::Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args(args)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .output()
+        .map_err(|error| error.to_string())?;
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).trim().to_owned())
+    }
 }
 
 /// A trait-object helper so the answers serialize the same way.

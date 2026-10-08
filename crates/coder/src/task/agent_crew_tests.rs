@@ -163,6 +163,7 @@ fn ask(agents: &Agents, name: &str, text: &str) {
                 context: String::new(),
                 mode: Mode::Terminal,
                 typist: false,
+                computer: None,
             },
         )
         .unwrap();

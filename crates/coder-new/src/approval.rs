@@ -224,6 +224,15 @@ pub fn install(gate: Option<Gate>) {
         .unwrap_or_else(std::sync::PoisonError::into_inner) = gate;
 }
 
+/// A mutex every test that installs a gate, or asserts what only holds
+/// without one, holds for its whole body; the gate is process-global, so
+/// parallel tests race without it.
+#[cfg(test)]
+pub(crate) fn test_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
+
 fn current() -> Option<Gate> {
     slot()
         .lock()

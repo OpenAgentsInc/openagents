@@ -289,7 +289,7 @@ pub fn acp_tool_definition(agents: &[AcpAgent]) -> Option<Value> {
     Some(json!({"type":"function","function":{
         "name":"acp_subagent",
         "description":"Delegate a task to a registered local agent through ACP or the built-in native Codex bridge. Use exactly the agent the user names; never substitute another agent. If that agent is unavailable, report the reason and let the user choose. The host supplies the executable. Include the task, relevant context, and the result you need. This starts one child session, streams its work, and closes it when the task ends. Agents start with full permissions by default: native Codex has no sandbox or approval prompts, and ACP permission requests are approved. Explicit host approval policies still apply.",
-        "parameters":{"type":"object","properties":{"agent":{"type":"string","enum":ids},"task":{"type":"string","minLength":1,"maxLength":65536}},"required":["agent","task"],"additionalProperties":false}
+        "parameters":{"type":"object","properties":{"agent":{"type":"string","enum":ids},"task":{"type":"string","minLength":1,"maxLength":65536},"model":{"type":"string","description":"The model the agent runs; only devin-cli takes one."}},"required":["agent","task"],"additionalProperties":false}
     }}))
 }
 
@@ -445,10 +445,14 @@ fn prepare_cli_child(command: &mut std::process::Command) {
 }
 
 /// Keep this future alive after cancellation until process-group cleanup returns.
+///
+/// `model` names the model the agent runs, and only `devin-cli` takes one;
+/// any other agent refuses it.
 pub async fn acp(
     agent: &AcpAgent,
     task: &str,
     cwd: &Path,
+    model: Option<&str>,
     cancel: &Arc<AtomicBool>,
     emit: &mut dyn FnMut(RuntimeEvent),
 ) -> Result<Value, String> {
@@ -456,6 +460,12 @@ pub async fn acp(
         return Err(
             "The crew charter refuses ACP and Codex delegation, including read-only work.".into(),
         );
+    }
+    if model.is_some() && agent.id != "devin-cli" {
+        return Err(format!(
+            "A model names only the devin-cli agent, not {}.",
+            agent.id
+        ));
     }
     agent.validate()?;
     if !agent.enabled {
@@ -494,16 +504,42 @@ pub async fn acp(
                     || name.ends_with("_SECRET"))
         })
         .collect();
+    // Devin's session mode and sandbox come from the chat's gate, the same
+    // access a `devin:` route's grant names: an ungated chat is full access,
+    // so Devin runs `bypass`; a gated chat is the boundary, so it runs
+    // `accept-edits` under `devin --sandbox` and every ask is refused
+    // (#10929). An explicit mode on the agent still wins.
+    let mut arguments = match (agent.id.as_str(), model) {
+        ("devin-cli", Some(model)) => acp_client::devin::arguments(model),
+        _ => agent.arguments.clone(),
+    };
+    let mode = agent.mode.clone().or_else(|| {
+        (agent.id == "devin-cli").then(|| {
+            if crate::approval::gated() {
+                acp_client::devin::Permission::AcceptEdits
+            } else {
+                acp_client::devin::Permission::Bypass
+            }
+            .mode_id()
+            .to_owned()
+        })
+    });
+    if agent.id == "devin-cli"
+        && crate::approval::gated()
+        && !arguments.first().is_some_and(|arg| arg == "--sandbox")
+    {
+        arguments.insert(0, "--sandbox".into());
+    }
     let opening = Opening {
         spec: acp_client::process::Spec {
             program,
-            arguments: agent.arguments.clone(),
+            arguments,
             cwd: cwd.to_path_buf(),
             environment,
         },
         resume: None,
         meta: None,
-        mode: agent.mode.clone(),
+        mode,
     };
     let mut session = Session::open(&opening, &canceled)
         .await
@@ -1395,6 +1431,7 @@ mod tests {
 
     #[test]
     fn an_explicit_approval_gate_still_refuses_acp_permissions() {
+        let _gate_lock = crate::approval::test_lock().lock().unwrap();
         let desk = crate::approval::Desk::new();
         crate::approval::install(Some(crate::approval::Gate {
             desk: Arc::clone(&desk),
@@ -1437,6 +1474,7 @@ mod tests {
         let boundary = coder_boundary::Boundary::writing(&directory)
             .build()
             .unwrap();
+        let _gate_lock = crate::approval::test_lock().lock().unwrap();
         crate::approval::install(Some(crate::approval::Gate {
             desk: crate::approval::Desk::tool_free(),
             cancel: Arc::new(AtomicBool::new(false)),
@@ -1483,6 +1521,7 @@ mod tests {
         std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700)).unwrap();
         let desk = crate::approval::Desk::tool_free();
         let cancel = Arc::new(AtomicBool::new(false));
+        let _gate_lock = crate::approval::test_lock().lock().unwrap();
         crate::approval::install(Some(crate::approval::Gate {
             desk: Arc::clone(&desk),
             cancel: Arc::clone(&cancel),
@@ -1507,6 +1546,7 @@ mod tests {
                 &native,
                 "Draft supplied facts only.",
                 dir.path(),
+                None,
                 &cancel,
                 &mut |event| events.push(event),
             )
@@ -1594,6 +1634,7 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":11,"output_token
             &native,
             "Review this scratch task.",
             dir.path(),
+            None,
             &Arc::new(AtomicBool::new(false)),
             &mut |event| events.push(event),
         )
@@ -1710,6 +1751,7 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
             &native,
             "Review scratch.",
             dir.path(),
+            None,
             &Arc::new(AtomicBool::new(false)),
             &mut |_| {},
         )
@@ -1742,6 +1784,7 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
                 &native,
                 "Review scratch.",
                 dir.path(),
+                None,
                 &cancel,
                 &mut discard
             ),
@@ -1919,6 +1962,7 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
             &agent(program),
             "Review this scratch task.",
             dir.path(),
+            None,
             &Arc::new(AtomicBool::new(false)),
             &mut |event| events.push(event),
         )
@@ -1940,6 +1984,7 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
     #[tokio::test]
     #[cfg(unix)]
     async fn acp_permission_requests_are_approved_by_default() {
+        let _gate_lock = crate::approval::test_lock().lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         let mut blocks = acp_client::replay::blocks(acp_client::replay::GROK_TURN);
         let completed = std::mem::replace(
@@ -1959,6 +2004,7 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
             &agent(program),
             "Review this scratch task.",
             dir.path(),
+            None,
             &Arc::new(AtomicBool::new(false)),
             &mut |_| {},
         )
@@ -1970,6 +2016,116 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
             .find(|frame| frame["id"] == "permission-1")
             .unwrap();
         assert_eq!(answer["result"]["outcome"]["optionId"], "allow");
+    }
+
+    /// A devin-cli agent over the recorded Devin turn.
+    fn devin_agent(program: PathBuf) -> AcpAgent {
+        let mut agent = agent(program);
+        agent.id = "devin-cli".into();
+        agent.name = "Devin".into();
+        agent.arguments = acp_client::devin::arguments(acp_client::devin::DEFAULT_MODEL);
+        agent
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn a_devin_delegation_runs_bypass_ungated_and_names_its_model() {
+        let _gate_lock = crate::approval::test_lock().lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let program = acp_client::replay::script(
+            dir.path(),
+            &acp_client::replay::blocks(acp_client::replay::DEVIN_TURN),
+        );
+        let mut events = vec![];
+        let result = acp(
+            &devin_agent(program),
+            "Write result.txt.",
+            dir.path(),
+            Some("swe-2-high"),
+            &Arc::new(AtomicBool::new(false)),
+            &mut |event| events.push(event),
+        )
+        .await
+        .unwrap();
+        assert_eq!(result["stop_reason"], "end_turn");
+        assert_eq!(result["group_clear"], true);
+        // The model the call names becomes `devin acp --model MODEL`, and
+        // an ungated chat sets Devin's `bypass` mode.
+        assert_eq!(
+            acp_client::replay::arguments(dir.path()),
+            vec!["acp", "--model", "swe-2-high"]
+        );
+        let sent = acp_client::replay::received(dir.path());
+        let set_mode = sent
+            .iter()
+            .find(|frame| frame["method"] == "session/set_mode")
+            .expect("a set_mode");
+        assert_eq!(set_mode["params"]["modeId"], "bypass");
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn a_gated_devin_delegation_runs_accept_edits_under_its_sandbox() {
+        let _gate_lock = crate::approval::test_lock().lock().unwrap();
+        let desk = crate::approval::Desk::new();
+        crate::approval::install(Some(crate::approval::Gate {
+            desk: Arc::clone(&desk),
+            cancel: Arc::new(AtomicBool::new(false)),
+        }));
+        struct Reset;
+        impl Drop for Reset {
+            fn drop(&mut self) {
+                crate::approval::install(None);
+            }
+        }
+        let _reset = Reset;
+        let dir = tempfile::tempdir().unwrap();
+        let program = acp_client::replay::script(
+            dir.path(),
+            &acp_client::replay::blocks(acp_client::replay::DEVIN_TURN),
+        );
+        let _ = acp(
+            &devin_agent(program),
+            "Write result.txt.",
+            dir.path(),
+            None,
+            &Arc::new(AtomicBool::new(false)),
+            &mut |_| {},
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            acp_client::replay::arguments(dir.path()),
+            vec!["--sandbox", "acp"]
+        );
+        let sent = acp_client::replay::received(dir.path());
+        let set_mode = sent
+            .iter()
+            .find(|frame| frame["method"] == "session/set_mode")
+            .expect("a set_mode");
+        assert_eq!(set_mode["params"]["modeId"], "accept-edits");
+        desk.close();
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn a_model_names_only_the_devin_cli_agent() {
+        let dir = tempfile::tempdir().unwrap();
+        let program = acp_client::replay::script(
+            dir.path(),
+            &acp_client::replay::blocks(acp_client::replay::GROK_TURN),
+        );
+        let error = acp(
+            &agent(program),
+            "Write result.txt.",
+            dir.path(),
+            Some("swe-2-high"),
+            &Arc::new(AtomicBool::new(false)),
+            &mut |_| {},
+        )
+        .await
+        .unwrap_err();
+        assert!(error.contains("devin-cli"), "{error}");
     }
 
     #[tokio::test]

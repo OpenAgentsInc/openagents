@@ -64,17 +64,38 @@ const ENTRY_MAX: usize = 2048;
 /// The [`Record::engine`] where Coder delegates her coding to Codex.
 pub const ENGINE_CODEX: &str = "codex";
 
-/// The engine `word` names, as a record keeps it: `codex`, or empty for
-/// `coder`, Coder's own model.
+/// The [`Record::engine`] where Coder delegates her coding to the Devin
+/// CLI (`devin`), or `devin:MODEL` for one of the models `devin models
+/// list` names.
+pub const ENGINE_DEVIN: &str = "devin";
+
+/// The engine `word` names, as a record keeps it: `codex`, `devin` or
+/// `devin:MODEL`, or empty for `coder`, Coder's own model.
 ///
 /// # Errors
-/// Any other word.
+/// Any other word, or a `devin:` model with characters a Devin model name
+/// never carries.
 pub fn parse_engine(word: &str) -> Result<String, String> {
     match word {
         ENGINE_CODEX => Ok(ENGINE_CODEX.into()),
+        ENGINE_DEVIN => Ok(ENGINE_DEVIN.into()),
         "coder" | "" => Ok(String::new()),
+        other if other.starts_with("devin:") => {
+            let model = &other["devin:".len()..];
+            if !model.is_empty()
+                && model
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+            {
+                Ok(other.into())
+            } else {
+                Err(format!(
+                    "{other} isn't an engine; `devin:` takes a model name such as swe-2-high"
+                ))
+            }
+        }
         other => Err(format!(
-            "{other} isn't an engine; use coder (Coder's own model) or codex"
+            "{other} isn't an engine; use coder (Coder's own model), codex, or devin[:MODEL]"
         )),
     }
 }
@@ -264,6 +285,18 @@ impl Record {
     #[must_use]
     pub fn codes_on_codex(&self) -> bool {
         self.engine == ENGINE_CODEX
+    }
+
+    /// Whether Coder delegates its coding to the Devin CLI.
+    #[must_use]
+    pub fn codes_on_devin(&self) -> bool {
+        self.engine == ENGINE_DEVIN || self.devin_model().is_some()
+    }
+
+    /// The model `devin:MODEL` names, if the engine names one.
+    #[must_use]
+    pub fn devin_model(&self) -> Option<&str> {
+        self.engine.strip_prefix("devin:")
     }
 
     /// The name people see.

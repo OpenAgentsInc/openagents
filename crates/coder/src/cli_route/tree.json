@@ -1652,7 +1652,7 @@
               "task"
             ],
             "usage": [
-              "task HOST --workspace LABEL --title TITLE PROMPT..."
+              "task HOST --workspace LABEL --title TITLE [--engine ENGINE] PROMPT..."
             ],
             "forms": [
               {
@@ -1678,6 +1678,13 @@
                     "open": true
                   },
                   {
+                    "kind": "option",
+                    "name": "engine",
+                    "value": "ENGINE",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
                     "kind": "positional",
                     "name": "PROMPT",
                     "repeated": true
@@ -1685,7 +1692,7 @@
                 ]
               }
             ],
-            "summary": "Order work on the host; prints the task id.",
+            "summary": "Order work on the host; prints the task id. ENGINE is one of codex, claude_code, grok_build, opencode, devin — a preference the host's auto-start policy puts first when it admits it.",
             "effect": "publishes",
             "runs_on": "this_device"
           }
@@ -2125,6 +2132,14 @@
           "kind": "option",
           "name": "title",
           "value": "TITLE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "engine",
+          "value": "ENGINE",
           "open": true,
           "optional": true,
           "repeated": true
@@ -8017,6 +8032,191 @@
                       {
                         "kind": "literal",
                         "word": "bodies"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
+        },
+        {
+          "name": "earned",
+          "children": [
+            {
+              "name": "ledger",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "earned",
+                  "ledger"
+                ],
+                "usage": [
+                  "earned ledger"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "earned"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "ledger"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "ring",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "earned",
+                  "ring"
+                ],
+                "usage": [
+                  "earned ring"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "earned"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "ring"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "draft",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "earned",
+                  "draft"
+                ],
+                "usage": [
+                  "earned draft"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "earned"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "draft"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "approve",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "earned",
+                  "approve"
+                ],
+                "usage": [
+                  "earned approve"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "earned"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "approve"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "revoke",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "earned",
+                  "revoke"
+                ],
+                "usage": [
+                  "earned revoke"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "earned"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "revoke"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "shared",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "earned",
+                  "shared"
+                ],
+                "usage": [
+                  "earned shared"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "earned"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "shared"
                       }
                     ]
                   }
@@ -17241,7 +17441,7 @@
               "ask"
             ],
             "usage": [
-              "ask NAME TEXT... [--mode MODE] [--workspace LABEL] [--from DIR] [--wait]"
+              "ask NAME TEXT... [--mode MODE] [--workspace LABEL] [--from DIR] [--wait] [--computer auto|local|NAME]"
             ],
             "forms": [
               {
@@ -17284,11 +17484,22 @@
                     "kind": "option",
                     "name": "wait",
                     "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "computer",
+                    "value": "auto|local|NAME",
+                    "choices": [
+                      "auto",
+                      "local"
+                    ],
+                    "open": true,
+                    "optional": true
                   }
                 ]
               }
             ],
-            "summary": "Hand her a request; MODE is auto, task, or terminal, DIR is where you asked from, and --wait follows it to her report.",
+            "summary": "Hand her a request; MODE is auto, task, or terminal, DIR is where you asked from, and --wait follows it to her report. In task mode, --computer picks where its coding runs: auto (her policy's choice, the default), local, or a computer `agent computers` added.",
             "effect": "publishes",
             "runs_on": "connected_computer"
           }
@@ -17810,7 +18021,7 @@
                   "coder"
                 ],
                 "usage": [
-                  "engine NAME coder|codex"
+                  "engine NAME coder|codex|devin[:MODEL]"
                 ],
                 "forms": [
                   {
@@ -17826,11 +18037,16 @@
                       {
                         "kind": "literal",
                         "word": "coder"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": ":MODEL",
+                        "optional": true
                       }
                     ]
                   }
                 ],
-                "summary": "What does her coding: coder, Coder's own model (the default), or codex, where Coder delegates the coding to the Codex agent on your ChatGPT login and checks it, and works on its own model while Codex is out of capacity.",
+                "summary": "What does her coding: coder, Coder's own model (the default); codex, where Coder delegates the coding to the Codex agent on your ChatGPT login and checks it, and works on its own model while Codex is out of capacity; or devin, where Coder delegates the coding to the Devin CLI on this computer and checks it, falling back to Codex, then to its own model while Devin is out of capacity. devin:MODEL names one of the models `devin models list` shows.",
                 "effect": "local_write",
                 "runs_on": "connected_computer"
               }
@@ -17844,7 +18060,7 @@
                   "codex"
                 ],
                 "usage": [
-                  "engine NAME coder|codex"
+                  "engine NAME coder|codex|devin[:MODEL]"
                 ],
                 "forms": [
                   {
@@ -17860,11 +18076,359 @@
                       {
                         "kind": "literal",
                         "word": "codex"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": ":MODEL",
+                        "optional": true
                       }
                     ]
                   }
                 ],
-                "summary": "What does her coding: coder, Coder's own model (the default), or codex, where Coder delegates the coding to the Codex agent on your ChatGPT login and checks it, and works on its own model while Codex is out of capacity.",
+                "summary": "What does her coding: coder, Coder's own model (the default); codex, where Coder delegates the coding to the Codex agent on your ChatGPT login and checks it, and works on its own model while Codex is out of capacity; or devin, where Coder delegates the coding to the Devin CLI on this computer and checks it, falling back to Codex, then to its own model while Devin is out of capacity. devin:MODEL names one of the models `devin models list` shows.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "devin",
+              "leaf": {
+                "path": [
+                  "agent",
+                  "engine",
+                  "devin"
+                ],
+                "usage": [
+                  "engine NAME coder|codex|devin[:MODEL]"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "engine"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "NAME"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "devin"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": ":MODEL",
+                        "optional": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "What does her coding: coder, Coder's own model (the default); codex, where Coder delegates the coding to the Codex agent on your ChatGPT login and checks it, and works on its own model while Codex is out of capacity; or devin, where Coder delegates the coding to the Devin CLI on this computer and checks it, falling back to Codex, then to its own model while Devin is out of capacity. devin:MODEL names one of the models `devin models list` shows.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
+        },
+        {
+          "name": "computers",
+          "children": [
+            {
+              "name": "list",
+              "leaf": {
+                "path": [
+                  "agent",
+                  "computers",
+                  "list"
+                ],
+                "usage": [
+                  "computers NAME list"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "computers"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "NAME"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "list"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "The connected computers her task mode may place coding on.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "add",
+              "leaf": {
+                "path": [
+                  "agent",
+                  "computers",
+                  "add"
+                ],
+                "usage": [
+                  "computers NAME add REMOTE [--max N] [--path DIR] [--remote-workspace LABEL]"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "computers"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "NAME"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "add"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "REMOTE"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "max",
+                        "value": "N",
+                        "open": true,
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "path",
+                        "value": "DIR",
+                        "open": true,
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "remote-workspace",
+                        "value": "LABEL",
+                        "open": true,
+                        "optional": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Let her task-mode coding run on the connected computer REMOTE (its `openagents computer` name): at most N of her tasks there at once (default 1), in its checkout at DIR (default ~/work/<workspace label>), whose workspace the remote host admits as LABEL (default the local label). `openagents computer enroll` gives the host the grant first.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "remove",
+              "leaf": {
+                "path": [
+                  "agent",
+                  "computers",
+                  "remove"
+                ],
+                "usage": [
+                  "computers NAME remove REMOTE"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "computers"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "NAME"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "remove"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "REMOTE"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Her task mode stays on this computer again for tasks that named REMOTE; ones under way finish.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
+        },
+        {
+          "name": "queue",
+          "children": [
+            {
+              "name": "list",
+              "leaf": {
+                "path": [
+                  "agent",
+                  "queue",
+                  "list"
+                ],
+                "usage": [
+                  "queue NAME list"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "queue"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "NAME"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "list"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Her durable work queue: waiting, running, and recent finished entries.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "add",
+              "leaf": {
+                "path": [
+                  "agent",
+                  "queue",
+                  "add"
+                ],
+                "usage": [
+                  "queue NAME add TEXT... [--workspace LABEL] [--computer auto|local|NAME]"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "queue"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "NAME"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "add"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "TEXT",
+                        "repeated": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "workspace",
+                        "value": "LABEL",
+                        "open": true,
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "computer",
+                        "value": "auto|local|NAME",
+                        "choices": [
+                          "auto",
+                          "local"
+                        ],
+                        "open": true,
+                        "optional": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Queue a task-mode request; she takes the oldest waiting one whenever a request ends, on the computer the word names.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "remove",
+              "leaf": {
+                "path": [
+                  "agent",
+                  "queue",
+                  "remove"
+                ],
+                "usage": [
+                  "queue NAME remove ID"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "queue"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "NAME"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "remove"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "ID"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Take a waiting entry back off the queue.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "clear",
+              "leaf": {
+                "path": [
+                  "agent",
+                  "queue",
+                  "clear"
+                ],
+                "usage": [
+                  "queue NAME clear"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "queue"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "NAME"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "clear"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Empty the queue; nothing under way is touched — `stop` for that.",
                 "effect": "local_write",
                 "runs_on": "connected_computer"
               }
@@ -18821,6 +19385,18 @@
         },
         {
           "kind": "option",
+          "name": "computer",
+          "value": "auto|local|NAME",
+          "choices": [
+            "auto",
+            "local"
+          ],
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
           "name": "to",
           "value": "HOSTKEY",
           "open": true,
@@ -18844,6 +19420,30 @@
             "core",
             "all"
           ],
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "max",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "path",
+          "value": "DIR",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "remote-workspace",
+          "value": "LABEL",
+          "open": true,
           "optional": true,
           "repeated": true
         },

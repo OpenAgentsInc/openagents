@@ -829,6 +829,11 @@ pub enum Operation {
         context: String,
         mode: crate::agent::Mode,
         typist: bool,
+        /// The computer a task-mode request must run on: `local`, a
+        /// connected computer's name, or absent for the policy's
+        /// placement (#10930).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        computer: Option<String>,
     },
     /// CONFIRM or REJECT the agent's waiting proposal `step`.
     #[serde(rename = "studio.agent.answer")]
@@ -1496,12 +1501,16 @@ impl Operation {
                 text: request,
                 workspace,
                 context,
+                computer,
                 ..
             } => {
                 crate::agent::name(agent)?;
                 crate::agent::request_text(request)?;
                 if let Some(workspace) = workspace {
                     text(workspace, 128)?;
+                }
+                if let Some(computer) = computer {
+                    text(computer, 128)?;
                 }
                 crate::agent::context(context)?;
             }

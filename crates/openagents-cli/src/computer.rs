@@ -36,8 +36,11 @@ pub(crate) const USAGE: &str = "usage: openagents computer COMMAND [OPTIONS]
   forget HOST               Drop the host from this device (its grant stays).
   enable HOST | disable HOST | retry HOST
   workspaces HOST           Fetch the workspace labels the host accepts.
-  task HOST --workspace LABEL --title TITLE PROMPT...
+  task HOST --workspace LABEL --title TITLE [--engine ENGINE] PROMPT...
                             Order work on the host; prints the task id.
+                            ENGINE is one of codex, claude_code, grok_build,
+                            opencode, devin — a preference the host's
+                            auto-start policy puts first when it admits it.
   steer HOST TASK --revision N PROMPT...
   cancel HOST TASK --revision N [--reason TEXT]
   exec HOST [--timeout S] [--rows N --cols N] -- CMD [ARGS...]
@@ -681,6 +684,21 @@ fn dispatch(
             if prompt.trim().is_empty() {
                 return Err("PROMPT is required".into());
             }
+            let engine = match args.option("engine") {
+                Some(word) => {
+                    Some(nostr::cj_conversation::Engine::parse(word).ok_or_else(|| {
+                        format!(
+                            "--engine wants one of {}",
+                            nostr::cj_conversation::Engine::ALL
+                                .iter()
+                                .map(|engine| engine.word())
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        )
+                    })?)
+                }
+                None => None,
+            };
             let task = TaskCreate {
                 title: args
                     .option("title")
@@ -691,7 +709,7 @@ fn dispatch(
                     .ok_or("--workspace LABEL is required")?
                     .to_owned(),
                 images: Vec::new(),
-                engine: None,
+                engine,
             };
             connected(live, host, args)?;
             let id = live.create_task(host, &task).map_err(|e| e.to_string())?;
