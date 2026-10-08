@@ -2,6 +2,8 @@ use super::*;
 use crate::task::{agent, agent_key::FileKeys};
 use tempfile::TempDir;
 mod helpers;
+#[path = "../paul/tests.rs"]
+mod paul;
 mod qualification;
 mod training;
 fn now() -> u64 {

@@ -8711,6 +8711,323 @@
           ]
         },
         {
+          "name": "paul",
+          "children": [
+            {
+              "name": "owner-view",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "paul",
+                  "owner-view"
+                ],
+                "usage": [
+                  "paul owner-view"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "paul"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "owner-view"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "propose-draft",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "paul",
+                  "propose-draft"
+                ],
+                "usage": [
+                  "paul propose-draft --requester DEVICE --request ID --input FILE"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "paul"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "propose-draft"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "requester",
+                        "value": "DEVICE",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "request",
+                        "value": "ID",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "input",
+                        "value": "FILE",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "source",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "paul",
+                  "source"
+                ],
+                "usage": [
+                  "paul source"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "paul"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "source"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Read the bounded native verification source; no model availability is implied.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "binding-check",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "paul",
+                  "binding-check"
+                ],
+                "usage": [
+                  "paul binding-check --input FILE"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "paul"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "binding-check"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "input",
+                        "value": "FILE",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Read the digest of an explicit private controller binding.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "configure",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "paul",
+                  "configure"
+                ],
+                "usage": [
+                  "paul configure --input FILE --approve SHA256"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "paul"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "configure"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "input",
+                        "value": "FILE",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "approve",
+                        "value": "SHA256",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Approve the next controller, requester, and native assignment binding.",
+                "effect": "grants",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "pipeline",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "paul",
+                  "pipeline"
+                ],
+                "usage": [
+                  "paul pipeline --requester DEVICE --request ID"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "paul"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "pipeline"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "requester",
+                        "value": "DEVICE",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "request",
+                        "value": "ID",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Read the current admitted queue with its original expense receipt.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "research",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "paul",
+                  "research"
+                ],
+                "usage": [
+                  "paul research --requester DEVICE --request ID --input FILE"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "paul"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "research"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "requester",
+                        "value": "DEVICE",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "request",
+                        "value": "ID",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "input",
+                        "value": "FILE",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Retain exact reviewed research and its original expense reference.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "practice",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "paul",
+                  "practice"
+                ],
+                "usage": [
+                  "paul practice --requester DEVICE"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "paul"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "practice"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "requester",
+                        "value": "DEVICE",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Read original opaque synthetic run and expense references.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
+        },
+        {
           "name": "training",
           "children": [
             {
@@ -9322,6 +9639,14 @@
           "kind": "option",
           "name": "expense",
           "value": "ID",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "requester",
+          "value": "DEVICE",
           "open": true,
           "optional": true,
           "repeated": true
@@ -15039,6 +15364,389 @@
           }
         },
         {
+          "name": "sales",
+          "children": [
+            {
+              "name": "source",
+              "leaf": {
+                "path": [
+                  "agent",
+                  "sales",
+                  "source"
+                ],
+                "usage": [
+                  "sales source|owner-view|binding-check|configure|pipeline|research|practice|propose-draft"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "sales"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "source"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "owner-view",
+              "leaf": {
+                "path": [
+                  "agent",
+                  "sales",
+                  "owner-view"
+                ],
+                "usage": [
+                  "sales source|owner-view|binding-check|configure|pipeline|research|practice|propose-draft"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "sales"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "owner-view"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "binding-check",
+              "leaf": {
+                "path": [
+                  "agent",
+                  "sales",
+                  "binding-check"
+                ],
+                "usage": [
+                  "sales source|owner-view|binding-check|configure|pipeline|research|practice|propose-draft"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "sales"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "binding-check"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "configure",
+              "leaf": {
+                "path": [
+                  "agent",
+                  "sales",
+                  "configure"
+                ],
+                "usage": [
+                  "sales source|owner-view|binding-check|configure|pipeline|research|practice|propose-draft"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "sales"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "configure"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "",
+                "effect": "grants",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "pipeline",
+              "leaf": {
+                "path": [
+                  "agent",
+                  "sales",
+                  "pipeline"
+                ],
+                "usage": [
+                  "sales source|owner-view|binding-check|configure|pipeline|research|practice|propose-draft"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "sales"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "pipeline"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "research",
+              "leaf": {
+                "path": [
+                  "agent",
+                  "sales",
+                  "research"
+                ],
+                "usage": [
+                  "sales source|owner-view|binding-check|configure|pipeline|research|practice|propose-draft"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "sales"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "research"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "practice",
+              "leaf": {
+                "path": [
+                  "agent",
+                  "sales",
+                  "practice"
+                ],
+                "usage": [
+                  "sales source|owner-view|binding-check|configure|pipeline|research|practice|propose-draft"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "sales"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "practice"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "propose-draft",
+              "leaf": {
+                "path": [
+                  "agent",
+                  "sales",
+                  "propose-draft"
+                ],
+                "usage": [
+                  "sales source|owner-view|binding-check|configure|pipeline|research|practice|propose-draft"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "sales"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "propose-draft"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "lead",
+              "leaf": {
+                "path": [
+                  "agent",
+                  "sales",
+                  "lead"
+                ],
+                "usage": [
+                  "sales lead --lead ID"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "sales"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "lead"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "lead",
+                        "value": "ID",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "suppression",
+              "leaf": {
+                "path": [
+                  "agent",
+                  "sales",
+                  "suppression"
+                ],
+                "usage": [
+                  "sales suppression --contact CHANNEL:ADDRESS"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "sales"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "suppression"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "contact",
+                        "value": "CHANNEL:ADDRESS",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "certification",
+              "leaf": {
+                "path": [
+                  "agent",
+                  "sales",
+                  "certification"
+                ],
+                "usage": [
+                  "sales certification"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "sales"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "certification"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "draft-review",
+              "leaf": {
+                "path": [
+                  "agent",
+                  "sales",
+                  "draft-review"
+                ],
+                "usage": [
+                  "sales draft-review --input FILE"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "sales"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "draft-review"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "input",
+                        "value": "FILE",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Current private Paul controls; requires explicit --root and --credential. Use agent sales --help for exact bounded inputs.",
+                "effect": "grants",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
+        },
+        {
           "name": "charter",
           "leaf": {
             "path": [
@@ -17005,6 +17713,48 @@
         },
         {
           "kind": "option",
+          "name": "lead",
+          "value": "ID",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "contact",
+          "value": "CHANNEL:ADDRESS",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "input",
+          "value": "FILE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "root",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "credential",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "help",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
           "name": "expected",
           "value": "N",
           "open": true,
@@ -17159,12 +17909,6 @@
           "name": "label",
           "value": "L",
           "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "root",
           "optional": true,
           "repeated": true
         },

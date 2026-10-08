@@ -1,5 +1,5 @@
 use super::*;
-use crate::task::sales::{expenses, qualification as q, training};
+use crate::task::sales::{expenses, paul as controller, qualification as q, training};
 use gym::suite::Partition;
 struct Decisions {
     source: expenses::Source,
@@ -350,6 +350,17 @@ fn original_measurements_freeze_and_locked_partition_cannot_be_reused() {
         .run_sales_claim_helper(&f.owner, &access, &claims, "original-real-content")
         .unwrap();
     f.store = Store::open_with_clock(&f.dir.path().join("host"), now).unwrap();
+    let binding = controller::Binding {
+        schema: controller::SCHEMA.into(),
+        revision: 1,
+        anchor: f.anchor.clone(),
+        owner_credential: f.dir.path().join("owner"),
+        assignments: vec![f.credential.clone()],
+        permitted_requesters: vec!["owner".into()],
+    };
+    f.store
+        .configure_paul(&f.owner, &binding, &binding.sha256().unwrap())
+        .unwrap();
     let mut real_drafts = vec![];
     let mut original_draft_refs = vec![];
     for index in 0..5 {
@@ -364,8 +375,26 @@ fn original_measurements_freeze_and_locked_partition_cannot_be_reused() {
                 recommendation: Some(helper.artifact.clone()),
             },
         );
-        f.store.apply_sales_agent(&access, &bytes).unwrap();
-        f.store.apply_sales_agent(&access, &bytes).unwrap();
+        if index == 0 {
+            let request = controller::DraftRequest {
+                lead: f.lead.clone(),
+                expected_lead_revision: revision,
+                helper_reference: helper.artifact.reference.clone(),
+            };
+            let first = f
+                .store
+                .ask_paul_draft("owner", "measured-paul-draft", &request)
+                .unwrap();
+            let repeated = f
+                .store
+                .ask_paul_draft("owner", "measured-paul-draft", &request)
+                .unwrap();
+            assert_eq!(first.command_digest, repeated.command_digest);
+            assert_eq!(first.sequence, repeated.sequence);
+        } else {
+            f.store.apply_sales_agent(&access, &bytes).unwrap();
+            f.store.apply_sales_agent(&access, &bytes).unwrap();
+        }
         let draft = f
             .store
             .read_sales_agent(&access)

@@ -1822,3 +1822,7 @@ data recipients, policy narrowing, limits, and private exports with the team's
 owner. Confirm that recovery does not restore removed membership or old device
 access. Device, real payment, and external-team observations do not follow from
 the isolated native qualification; unsupported routes remain unavailable.
+
+## REV54 — activate Paul's sales controls
+
+Before using the controls with real assignments, approve the exact Paul binding digest, current private sales-owner credential, native identity and charter, requester IDs, assignment credentials, and local helper sources. Keep requester authority separate from Studio or phone observation grants. The default host leaves model work unavailable. A paid adapter requires actual current provider, served-model, list-price, full-context, output, retry, deadline, private-data, and billing custody; a subscription or source declaration does not establish capacity. Use current measured qualification before real prospect drafting, and retain unresolved expense receipts after interrupted calls. Scratch fixtures do not certify a real campaign or authorize customer messages.

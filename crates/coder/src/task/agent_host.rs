@@ -91,6 +91,24 @@ struct Admitted {
     crew: Option<CrewStamp>,
 }
 
+/// A typed sales controller shares the host's original cancellation scope.
+struct TypedSalesRun {
+    host: Agents,
+    name: String,
+    cancel: Arc<AtomicBool>,
+}
+impl Drop for TypedSalesRun {
+    fn drop(&mut self) {
+        self.host.with_live(&self.name, |live| {
+            if Arc::ptr_eq(&live.cancel, &self.cancel) {
+                live.busy = false;
+                live.doing = Doing::Idle;
+            }
+        });
+        self.host.next(&self.name);
+    }
+}
+
 /// One agent as the host holds it while it runs.
 struct Live {
     doing: Doing,
@@ -236,6 +254,13 @@ impl Facts for HostFacts {
 /// The workshop agents of one host.
 #[derive(Clone)]
 pub struct Agents {
+    sales_coder: Option<
+        Arc<
+            dyn Fn(&Record) -> Result<Box<dyn super::sales::paul::steering::Coder>, String>
+                + Send
+                + Sync,
+        >,
+    >,
     root: PathBuf,
     tasks: PathBuf,
     workspaces: BTreeMap<String, PathBuf>,
@@ -327,6 +352,7 @@ impl Agents {
         workspaces: BTreeMap<String, PathBuf>,
     ) -> Self {
         Self {
+            sales_coder: None,
             root: root.into(),
             tasks: tasks.into(),
             workspaces,
@@ -602,6 +628,20 @@ impl Agents {
 
     /// Run requests on `engine` instead, as a test does.
     #[must_use]
+    /// Install an actual native adapter with independently verified model and
+    /// price custody. The generic EngineFactory grants no sales availability.
+    pub fn with_sales_coder(
+        mut self,
+        factory: Arc<
+            dyn Fn(&Record) -> Result<Box<dyn super::sales::paul::steering::Coder>, String>
+                + Send
+                + Sync,
+        >,
+    ) -> Self {
+        self.sales_coder = Some(factory);
+        self
+    }
+
     pub fn with_engine(mut self, engine: EngineFactory) -> Self {
         self.engine = engine;
         self
@@ -781,6 +821,166 @@ impl Agents {
                             "The crew remains stopped or paused until its owner explicitly resumes it.",
                         ));
                     }
+                }
+                if agent == "paul"
+                    && matches!(
+                        text.as_str(),
+                        "sales research" | "sales practice" | "sales draft"
+                    )
+                {
+                    if workspace.is_some() || *typist || *mode == Mode::Task {
+                        return Err(coder_host::tasks::refuse(
+                            Code::Forbidden,
+                            "Paul's typed sales read grants no execution scope.",
+                        ));
+                    }
+                    let typed_run = self.typed_sales_run(agent)?;
+                    let mut sales = super::sales::Store::open_with_clock(&self.root, self.clock)
+                        .map_err(|why| coder_host::tasks::refuse(Code::Unavailable, why))?;
+                    let request = format!(
+                        "{:x}",
+                        <sha2::Sha256 as sha2::Digest>::digest(key.as_bytes())
+                    );
+                    let (value, reply, headline) = if text == "sales practice" {
+                        if !context.is_empty() {
+                            return Err(coder_host::tasks::refuse(
+                                Code::Forbidden,
+                                "Paul practice read accepts no supplied customer context.",
+                            ));
+                        }
+                        let runs = sales
+                            .ask_paul_practice(&principal.device)
+                            .map_err(|why| coder_host::tasks::refuse(Code::Unavailable, why))?;
+                        (serde_json::json!({"practice":runs}),"Original synthetic practice references read; no certification inferred.".to_string(),"synthetic evidence read".to_string())
+                    } else if text == "sales draft" {
+                        let input: super::sales::paul::DraftRequest = serde_json::from_str(context)
+                            .map_err(|_| coder_host::tasks::refuse(Code::Malformed,
+                                "Paul draft requires an exact opaque lead revision and original helper reference; supplied bodies are refused."))?;
+                        let receipt = sales
+                            .ask_paul_draft(&principal.device, &request, &input)
+                            .map_err(|why| coder_host::tasks::refuse(Code::Unavailable, why))?;
+                        (serde_json::json!({"proposal":receipt}),"The exact reviewed draft is proposed. Owner approval remains separate; no message was sent.".to_string(),"reviewed draft proposed; owner review required".to_string())
+                    } else {
+                        let input:super::sales::paul::ResearchRequest=serde_json::from_str(context)
+                            .map_err(|_|coder_host::tasks::refuse(Code::Malformed,"Paul research requires an exact typed request with current opaque lead and reviewed claim pins."))?;
+                        if let Some(factory) = &self.sales_coder {
+                            let mut coder = factory(&record)
+                                .map_err(|why| coder_host::tasks::refuse(Code::Unavailable, why))?;
+                            let result = sales
+                                .steer_paul_research(
+                                    &principal.device,
+                                    &request,
+                                    &input,
+                                    coder.as_mut(),
+                                    &typed_run.cancel,
+                                )
+                                .map_err(|why| coder_host::tasks::refuse(Code::Unavailable, why))?;
+                            let headline = result.headline.clone();
+                            (serde_json::json!({"recommendation":result}),"The original research and Coder expense references are retained. Model prose remains unverified and needs owner review.".to_string(),headline)
+                        } else {
+                            let result = sales
+                                .ask_paul_research(&principal.device, &request, &input)
+                                .map_err(|why| coder_host::tasks::refuse(Code::Unavailable, why))?;
+                            (serde_json::json!({"research":result}),"Reviewed research and its original expense reference are retained. Plain Coder model work remains unavailable.".to_string(),"reviewed research; models unavailable".to_string())
+                        }
+                    };
+                    if typed_run.cancel.load(Ordering::SeqCst) {
+                        return Err(coder_host::tasks::refuse(
+                            Code::Conflict,
+                            "The owner stopped this original typed sales control; no output is retained.",
+                        ));
+                    }
+                    let (native, current) = self.store(agent)?;
+                    if current.pubkey != record.pubkey
+                        || current.crew_charter != record.crew_charter
+                        || current.state != record.state
+                    {
+                        return Err(coder_host::tasks::refuse(
+                            Code::Conflict,
+                            "Paul native authority changed before retaining sales evidence.",
+                        ));
+                    }
+                    let queued = Queued {
+                        text: text.clone(),
+                        context: String::new(),
+                        mode: *mode,
+                        workspace: None,
+                        typist: false,
+                        from: principal.device.clone(),
+                        quiet: false,
+                        fix_on_failure: false,
+                    };
+                    self.finish(
+                        &native,
+                        &current,
+                        &queued,
+                        &Report {
+                            outcome: Outcome::Done,
+                            reply,
+                            headline: headline.clone(),
+                        },
+                        None,
+                    );
+                    return Ok(
+                        serde_json::json!({"agent":agent,"sales":value,"headline":headline,"thread":thread_id(agent),"completed_sales_work":false,"outbound_authority":false}),
+                    );
+                }
+                if agent == "paul" && text == "sales pipeline" {
+                    let typed_run = self.typed_sales_run(agent)?;
+                    if !context.is_empty() || workspace.is_some() || *typist || *mode == Mode::Task
+                    {
+                        return Err(coder_host::tasks::refuse(
+                            Code::Forbidden,
+                            "Paul's typed pipeline read accepts no supplied context or execution scope.",
+                        ));
+                    }
+                    let sales = super::sales::Store::open_with_clock(&self.root, self.clock)
+                        .map_err(|why| coder_host::tasks::refuse(Code::Unavailable, why))?;
+                    let request = format!(
+                        "{:x}",
+                        <sha2::Sha256 as sha2::Digest>::digest(key.as_bytes())
+                    );
+                    let answer = sales
+                        .ask_paul_pipeline(&principal.device, &request)
+                        .map_err(|why| coder_host::tasks::refuse(Code::Unavailable, why))?;
+                    if typed_run.cancel.load(Ordering::SeqCst) {
+                        return Err(coder_host::tasks::refuse(
+                            Code::Conflict,
+                            "The owner stopped this original typed sales control; no output is retained.",
+                        ));
+                    }
+                    let (native_store, current) = self.store(agent)?;
+                    super::sales::privacy::check_agent_copy(&native_store, &answer.reply)
+                        .map_err(|why| coder_host::tasks::refuse(Code::Forbidden, why))?;
+                    if current.pubkey != record.pubkey
+                        || current.crew_charter != record.crew_charter
+                        || current.state != record.state
+                    {
+                        return Err(coder_host::tasks::refuse(
+                            Code::Conflict,
+                            "Paul's native record changed before retaining the queue read.",
+                        ));
+                    }
+                    let mut hands = PaulPipelineHands {
+                        host: self,
+                        store: &native_store,
+                        name: agent,
+                    };
+                    let steered = super::sales::paul::steer_pipeline(&current, &answer, &mut hands);
+                    let queued = Queued {
+                        text: text.clone(),
+                        context: String::new(),
+                        mode: *mode,
+                        workspace: None,
+                        typist: false,
+                        from: principal.device.clone(),
+                        quiet: false,
+                        fix_on_failure: false,
+                    };
+                    self.finish(&native_store, &current, &queued, &steered.report, None);
+                    return Ok(
+                        serde_json::json!({"agent":agent,"sales":answer,"headline":steered.report.headline,"thread":thread_id(agent)}),
+                    );
                 }
                 if agent_memory::remembered(text).is_none() {
                     super::sales::privacy::model_available(&privacy_store)
@@ -1382,6 +1582,9 @@ impl Agents {
                 .unwrap_or_else(|| {
                     if record.job_role.is_none() && record.codes_on_codex() {
                         "Coder V1, coding on Codex".into()
+                    } else if record.job_role == Some(coder_host::access::crew::JobRole::SalesLead)
+                    {
+                        "native sales controls; model work unavailable".into()
                     } else if record.route.is_empty() {
                         "first with capacity".into()
                     } else {
@@ -2173,6 +2376,26 @@ impl Agents {
             shared.reports.remove(0);
         }
         shared.reported += 1;
+    }
+
+    fn typed_sales_run(&self, name: &str) -> Result<TypedSalesRun, Code> {
+        let cancel = self.with_live(name, |live| {
+            if live.busy || !live.queue.is_empty() {
+                return Err(coder_host::tasks::refuse(
+                    Code::Conflict,
+                    "The member has original running or queued work; retry the typed sales control later.",
+                ));
+            }
+            live.busy = true;
+            live.doing = Doing::Thinking;
+            live.cancel = Arc::new(AtomicBool::new(false));
+            Ok(live.cancel.clone())
+        })?;
+        Ok(TypedSalesRun {
+            host: self.clone(),
+            name: name.into(),
+            cancel,
+        })
     }
 
     fn with_live<T>(&self, name: &str, f: impl FnOnce(&mut Live) -> T) -> T {
@@ -3055,3 +3278,34 @@ mod crew_tests;
 #[cfg(all(test, unix))]
 #[path = "agent_crew_stop_tests.rs"]
 mod crew_stop_tests;
+
+/// The canonical queue path grants no Coder turns or command approvals.
+struct PaulPipelineHands<'a> {
+    host: &'a Agents,
+    store: &'a Store,
+    name: &'a str,
+}
+impl super::agent_steer::Hands for PaulPipelineHands<'_> {
+    fn say(&mut self, line: &str) {
+        self.host.say(self.name, line);
+    }
+    fn journal(&mut self, kind: Kind, text: &str, status: Option<i32>) {
+        let mut entry = Entry::new((self.host.clock)(), kind, text);
+        entry.status = status;
+        let _ = self.store.append(&entry);
+    }
+    fn coder(&mut self, _: &str) -> super::agent_steer::Turned {
+        super::agent_steer::Turned {
+            end: super::agent_steer::TurnEnd::NoCoder(
+                "Paul native controls grant no Coder execution".into(),
+            ),
+            ran: vec![],
+            refused: vec![],
+            rejected: vec![],
+            never: vec!["Paul's native queue read grants no Coder execution".into()],
+            model: None,
+            tokens: None,
+            delegated: vec![],
+        }
+    }
+}

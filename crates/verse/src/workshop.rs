@@ -920,7 +920,10 @@ impl Workshop {
             workspace: None,
             context: String::new(),
             mode: Mode::Auto,
-            typist: true,
+            typist: self
+                .view
+                .as_ref()
+                .is_none_or(|view| view.crew_charter.is_none()),
         });
     }
 
@@ -1266,6 +1269,13 @@ impl Workshop {
                 // Her setup's last words come first, so her reports stay
                 // the newest lines.
                 let mut lines: Vec<String> = self.greeting.clone();
+                if self
+                    .view
+                    .as_ref()
+                    .is_some_and(|view| view.name == "paul" && view.crew_charter.is_some())
+                {
+                    lines.push("Sales controls: ask 'sales pipeline' or 'sales practice'. Model work needs native price custody; drafts need measured qualification.".into());
+                }
                 lines.extend(
                     self.view
                         .as_ref()
@@ -1688,11 +1698,12 @@ mod tests {
     }
 
     fn connected(view: AgentView) -> (Workshop, Fake) {
+        let name = view.name.clone();
         let fake = Fake {
             view: Arc::new(Mutex::new(Some(view))),
             sent: Arc::new(Mutex::new(Vec::new())),
         };
-        let mut workshop = Workshop::with_transport(Box::new(fake.clone()));
+        let mut workshop = Workshop::with_transport(Box::new(fake.clone())).named(&name);
         workshop.load();
         let start = Instant::now();
         while workshop.view.is_none() {
@@ -1707,6 +1718,31 @@ mod tests {
             std::thread::sleep(Duration::from_millis(10));
         }
         (workshop, fake)
+    }
+
+    #[test]
+    fn paul_panel_uses_native_controls_without_typist_execution_or_model_capacity() {
+        let mut paul = view();
+        paul.name = "paul".into();
+        paul.crew_charter = Some(coder_access::crew::Charter {
+            schema: coder_access::crew::CHARTER_SCHEMA.into(),
+            revision: 1,
+            drafting: true,
+            purpose: "Read private sales records under the native charter".into(),
+        });
+        let (mut panel, fake) = connected(paul);
+        assert!(
+            panel
+                .transcript()
+                .iter()
+                .any(|line| line.contains("sales pipeline"))
+        );
+        let start = Instant::now();
+        panel.ask("sales pipeline");
+        let requests = sent(&fake, start);
+        assert!(
+            matches!(&requests[0],Operation::AskAgent {agent,text,typist:false,workspace:None,..} if agent=="paul" && text=="sales pipeline")
+        );
     }
 
     fn sent(fake: &Fake, start: Instant) -> Vec<Operation> {

@@ -7,7 +7,7 @@ use serde_json::{Value, json};
 use std::io::Read;
 use std::path::Path;
 #[path = "sales_agents.rs"]
-mod agents;
+pub(crate) mod agents;
 #[path = "sales_claims.rs"]
 mod claims;
 #[path = "sales_email.rs"]
@@ -16,6 +16,8 @@ mod email;
 mod meetings;
 #[path = "sales_models.rs"]
 mod models;
+#[path = "sales_paul.rs"]
+pub(crate) mod paul;
 #[path = "sales_privacy.rs"]
 mod privacy;
 #[path = "sales_qualification.rs"]
@@ -136,6 +138,20 @@ pub const USAGE: &str = "usage: openagents sales COMMAND --root DIR [--credentia
         Require original passing practices and owner-reviewed samples.
   qualification complaint --reference ID --expense ID --input FILE
         Attribute an original real-draft complaint and suspend its actor.
+  paul owner-view
+  paul propose-draft --requester DEVICE --request ID --input FILE
+  paul source
+        Read the bounded native verification source; no model availability is implied.
+  paul binding-check --input FILE
+        Read the digest of an explicit private controller binding.
+  paul configure --input FILE --approve SHA256
+        Approve the next controller, requester, and native assignment binding.
+  paul pipeline --requester DEVICE --request ID
+        Read the current admitted queue with its original expense receipt.
+  paul research --requester DEVICE --request ID --input FILE
+        Retain exact reviewed research and its original expense reference.
+  paul practice --requester DEVICE
+        Read original opaque synthetic run and expense references.
   training personas
         Read labeled fictional buyer situations.
   training script-source
@@ -198,6 +214,14 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("agents read", Effect::ReadOnly),
     Declared::computer("agents apply", Effect::LocalWrite),
     Declared::computer("agents memory", Effect::ReadOnly),
+    Declared::computer("paul source", Effect::ReadOnly),
+    Declared::computer("paul owner-view", Effect::ReadOnly),
+    Declared::computer("paul propose-draft", Effect::LocalWrite),
+    Declared::computer("paul binding-check", Effect::ReadOnly),
+    Declared::computer("paul configure", Effect::Grants),
+    Declared::computer("paul pipeline", Effect::LocalWrite),
+    Declared::computer("paul research", Effect::LocalWrite),
+    Declared::computer("paul practice", Effect::ReadOnly),
     Declared::computer("meetings slot", Effect::Grants),
     Declared::computer("meetings slots", Effect::ReadOnly),
     Declared::computer("meetings queue", Effect::ReadOnly),
@@ -242,6 +266,9 @@ pub(crate) const EFFECTS: &[Declared] = &[
 pub fn run(output: &Output, words: &[String]) -> u8 {
     if words.first().is_some_and(|w| w == "qualification") {
         return qualification::run(output, &words[1..]);
+    }
+    if words.first().is_some_and(|w| w == "paul") {
+        return paul::run(output, &words[1..]);
     }
     if words.first().is_some_and(|w| w == "training") {
         return training::run(output, &words[1..]);

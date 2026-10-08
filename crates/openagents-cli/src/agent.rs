@@ -33,6 +33,13 @@ pub const USAGE: &str = "usage: openagents agent COMMAND [--root DIR] [--control
                A crew member's name (alice, bob, paul, erin, frank, pat, arthur, vanna) starts from its preset:
                charter, look, and definition. --preset starts another name
                from one.
+  sales source|owner-view|binding-check|configure|pipeline|research|practice|propose-draft
+  sales lead --lead ID
+  sales suppression --contact CHANNEL:ADDRESS
+  sales certification
+  sales draft-review --input FILE
+               Current private Paul controls; requires explicit --root and
+               --credential. Use agent sales --help for exact bounded inputs.
   charter NAME --role ROLE --expected N --drafting on|off --purpose TEXT
                Owner-only host edit of a sales job charter. All model tools,
                task execution, sending, payments, and publication stay absent.
@@ -178,6 +185,18 @@ smart terminal's `@alice TEXT` sends the same request as `ask`. Defaults:
 /// What each command does and where the phone runs it.
 #[cfg(test)]
 pub(crate) const EFFECTS: &[Declared] = &[
+    Declared::computer("sales source", Effect::ReadOnly),
+    Declared::computer("sales owner-view", Effect::ReadOnly),
+    Declared::computer("sales propose-draft", Effect::LocalWrite),
+    Declared::computer("sales binding-check", Effect::ReadOnly),
+    Declared::computer("sales configure", Effect::Grants),
+    Declared::computer("sales pipeline", Effect::LocalWrite),
+    Declared::computer("sales research", Effect::LocalWrite),
+    Declared::computer("sales practice", Effect::ReadOnly),
+    Declared::computer("sales lead", Effect::ReadOnly),
+    Declared::computer("sales suppression", Effect::ReadOnly),
+    Declared::computer("sales certification", Effect::ReadOnly),
+    Declared::computer("sales draft-review", Effect::Grants),
     Declared::computer("new", Effect::LocalWrite),
     Declared::computer("charter", Effect::Publishes),
     Declared::computer("verdict record", Effect::Publishes),
@@ -228,6 +247,71 @@ pub(crate) const EFFECTS: &[Declared] = &[
 const SWITCHES: &[&str] = &["wait", "from-relay", "orphans", "all"];
 
 pub fn run(output: &Output, words: &[String]) -> u8 {
+    if words.first().is_some_and(|word| word == "sales") {
+        let rest = &words[1..];
+        let owner_path = match rest.first().map(String::as_str) {
+            Some("lead") => Some(vec!["show"]),
+            Some("suppression") => Some(vec!["suppressed"]),
+            Some("certification") => Some(vec!["agents", "view"]),
+            Some("draft-review") => Some(vec!["agents", "apply"]),
+            _ => None,
+        };
+        if let Some(path) = owner_path {
+            if rest[0] == "draft-review"
+                && !rest.iter().any(|word| word == "--help" || word == "help")
+            {
+                let args = match crate::Args::parse(&rest[1..], &[]) {
+                    Ok(a) => a,
+                    Err(e) => return output.fail("agent sales draft-review", &e),
+                };
+                let bytes = match crate::sales::agents::input(&args) {
+                    Ok(v) => v,
+                    Err(e) => return output.fail("agent sales draft-review", &e),
+                };
+                if !args.positional().is_empty()
+                    || args
+                        .option_names()
+                        .iter()
+                        .any(|name| !matches!(*name, "root" | "credential" | "input"))
+                {
+                    return output.fail(
+                        "agent sales draft-review",
+                        "requires only current private root, credential, and input files",
+                    );
+                }
+                let result = (|| -> Result<Value, String> {
+                    let root = args
+                        .option("root")
+                        .ok_or("draft review requires an explicit private host root")?;
+                    let credential = args
+                        .option("credential")
+                        .ok_or("draft review requires the current owner's private credential")?;
+                    let mut store = coder::task::sales::Store::open(Path::new(root))?;
+                    let owner = store.authenticate(&coder::task::sales::Store::read_credential(
+                        Path::new(credential),
+                    )?)?;
+                    serde_json::to_value(store.review_paul_draft(&owner, &bytes)?)
+                        .map_err(|e| e.to_string())
+                })();
+                return match result {
+                    Ok(value) => {
+                        output.emit(&value, |v| {
+                            serde_json::to_string_pretty(v).unwrap_or_default()
+                        });
+                        0
+                    }
+                    Err(error) => output.fail("agent sales draft-review", &error),
+                };
+            }
+            let mapped = path
+                .into_iter()
+                .map(str::to_string)
+                .chain(rest[1..].iter().cloned())
+                .collect::<Vec<_>>();
+            return crate::sales::run(output, &mapped);
+        }
+        return crate::sales::paul::run(output, rest);
+    }
     if words
         .first()
         .is_none_or(|w| matches!(w.as_str(), "--help" | "-h" | "help"))

@@ -69,7 +69,7 @@ fn parse(words: &[String]) -> Result<Args, String> {
     }
     Ok(args)
 }
-pub(super) fn input(args: &Args) -> Result<Vec<u8>, String> {
+pub(crate) fn input(args: &Args) -> Result<Vec<u8>, String> {
     input_bound(args, 32 * 1024)
 }
 pub(super) fn input_bound(args: &Args, limit: u64) -> Result<Vec<u8>, String> {
