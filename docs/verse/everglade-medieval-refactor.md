@@ -573,6 +573,8 @@ reimplemented from published papers.
   uses the layers only when their scene digest matches the town it builds;
   the shader adds the lamp layer, which fades in at dusk. Second-UV
   lightmaps, a denser probe grid with lamps, and tiers are next.
+  `verse-bake --layers --check` confirms the pinned layers still fit the
+  scene; a layout change makes the town bake at load until a repin.
 - **B3 (#10907): time of day and destruction.** The town clock blends the
   sun layers and fades the lamp layer in at dusk; a broken piece and its
   neighbors fall back to dynamic light. Needs B2.
