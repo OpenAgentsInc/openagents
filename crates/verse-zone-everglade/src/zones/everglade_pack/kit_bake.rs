@@ -133,3 +133,22 @@ pub fn compatibility() -> Arc<verse_pbr::pbr::baked_layers::SceneCompatibility> 
         })
         .clone()
 }
+
+#[cfg(test)]
+mod compatibility_tests {
+    use super::*;
+
+    #[test]
+    #[ignore = "requires the private completed layer artifact in VERSE_KIT_BAKE"]
+    fn completed_layers_match_reviewed_platform_identities() {
+        let path =
+            std::env::var_os(LOCAL_ENV).expect("set VERSE_KIT_BAKE to the completed artifact");
+        let bytes = std::fs::read(path).unwrap();
+        let layers = Layers::decode(&bytes).unwrap();
+        let record = compatibility();
+        for target in &record.targets {
+            assert!(record.accepts(&layers, &target.scene, target.bake_key.as_deref()));
+        }
+        assert!(!record.accepts(&layers, "unknown", None));
+    }
+}
