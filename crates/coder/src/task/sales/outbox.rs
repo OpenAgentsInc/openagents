@@ -6,6 +6,7 @@ use serde_json::Value;
 use std::sync::atomic::AtomicBool;
 
 pub mod batch;
+pub mod standing;
 
 pub const PROPOSAL_SCHEMA: &str = "openagents.sales.outbox-proposal.v1";
 pub const SUBJECT_SCHEMA: &str = "openagents.sales.outbox-subject.v1";
@@ -215,6 +216,8 @@ pub struct Projection {
     pub capabilities: Vec<Capability>,
     #[serde(default)]
     pub batches: batch::Book,
+    #[serde(default)]
+    pub standing: standing::Book,
 }
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -274,6 +277,8 @@ pub(super) struct Book {
     pub paused: bool,
     #[serde(default)]
     pub batches: batch::Book,
+    #[serde(default)]
+    pub standing: standing::Book,
     commands: BTreeMap<String, (String, String, u64)>,
 }
 impl Book {
@@ -288,6 +293,7 @@ impl Book {
             return Err("outbox history or cap exceeds its bound".into());
         }
         self.batches.check()?;
+        self.standing.check()?;
         for (id, entry) in &self.reconciliations {
             super::id(id)?;
             super::id(&entry.owner)?;
@@ -561,6 +567,13 @@ pub enum Operation {
     RaiseBatch {
         size: u32,
         owner_review_sha256: String,
+    },
+    GrantStanding {
+        policy: standing::Policy,
+    },
+    RevokeStanding {
+        policy: String,
+        reference_sha256: String,
     },
 }
 fn clean_week_elapsed(start: u64, now: u64) -> Result<bool> {
@@ -1256,6 +1269,7 @@ impl Store {
         }
         Ok(Projection {
             batches: self.state.outbox.batches.clone(),
+            standing: self.state.outbox.standing.clone(),
             schema: PROJECTION_SCHEMA.into(),
             revision: self.state.outbox.revision,
             controller_epoch: self.state.outbox.epoch,
@@ -1501,6 +1515,7 @@ impl Store {
                     );
                     next.outbox.paused = true;
                     next.outbox.batches.reset(now);
+                    next.outbox.standing.reset(now);
                     next.outbox.epoch = next
                         .outbox
                         .epoch
@@ -1525,6 +1540,7 @@ impl Store {
                 );
                 next.outbox.paused = true;
                 next.outbox.batches.reset(now);
+                next.outbox.standing.reset(now);
                 next.outbox.epoch = next
                     .outbox
                     .epoch
@@ -1612,6 +1628,13 @@ impl Store {
                 size,
                 owner_review_sha256,
             } => batch::raise(&mut next, size, &owner_review_sha256, now)?,
+            Operation::GrantStanding { policy } => {
+                next = self.outbox_grant_standing(access, policy, now)?;
+            }
+            Operation::RevokeStanding {
+                policy,
+                reference_sha256,
+            } => standing::revoke(&mut next, &policy, reference_sha256)?,
             Operation::RaiseCap {
                 cap,
                 operating_week_sha256,
@@ -1715,6 +1738,7 @@ impl Store {
             return Err("outbox dispatch requires one exact unconsumed owner decision".into());
         }
         self.outbox_batch_current(id, subject_sha256, (self.clock)())?;
+        self.outbox_standing_current(id, (self.clock)())?;
         let subject = row.subject.ok_or("outbox original subject was minimized")?;
         let (prepared, mime) = self.outbox_current(access, &subject, keys)?;
         let policy = self.email_policy(&subject.proposal.message.policy_sha256, (self.clock)())?;

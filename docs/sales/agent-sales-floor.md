@@ -1181,3 +1181,32 @@ only after a fully delivered batch, and never above the floor cap, which
 stays twenty messages a day.
 
 Tests: `cargo test -p coder --lib outbox_batch`.
+
+## Standing follow-ups on invited threads (REV-73)
+
+`task::sales::outbox::standing` is disabled by default: no policy exists
+until the owner grants one with `grant_standing`. A policy
+(`openagents.sales.outbox-standing.v1`) binds one thread (lead, recipient,
+mailbox configuration), one follow-up template version, the identifier of
+the owner-reviewed `interested` or `question` reply that invited further
+contact, wall-clock spacing of at least one week, one to three attempts, a
+cost ceiling, an expiry of at most 60 days, the digest of the current
+measured reviewed-batch qualification (`openagents sales outbox
+standing-qualification`), and an owner review digest. Qualification needs an
+eligible level-0 measurement plus at least one fully delivered reviewed
+batch; it reports `automatic_promotion: false` and grants nothing.
+
+`Store::outbox_standing_follow_up` proposes one follow-up under a policy and
+approves it as the policy's owner did. It refuses any other message kind, a
+different lead, recipient, mailbox, or template, attachments, a cost or
+expiry beyond the policy, an attempt before the spacing elapsed, an earlier
+attempt that is unconsumed or ended `unknown`, `failed`, or `hard_bounce`, an
+exhausted attempt count, a paused floor, and any reply on the thread other
+than the invitation, because a later reply needs a human. The follow-up then
+dispatches through the one single-use path with every recheck, and the
+canonical follow-up plan still has to match (`validate_sales_follow_up`).
+`revoke_standing` invalidates unconsumed attempts; a pause resets every
+active policy. Price and terms, interested replies, first partner messages,
+and public posts keep exact owner approval.
+
+Focused tests: `cargo test -p coder --lib outbox_standing`.
