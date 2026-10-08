@@ -440,6 +440,46 @@ async fn the_everglade_page_serves_the_web_build_and_its_pack() {
     }
 }
 
+#[tokio::test]
+async fn everglade_bake_layers_are_digest_named_immutable_downloads() {
+    let root = tempfile::tempdir().unwrap();
+    let (config, _) = with_everglade(root.path());
+    let directory = config.everglade.as_ref().unwrap().join("kit/bake");
+    std::fs::create_dir_all(&directory).unwrap();
+    let digest = "ab".repeat(32);
+    let name = format!("{digest}.vlay");
+    std::fs::write(directory.join(&name), b"synthetic light layer fixture").unwrap();
+    std::fs::write(directory.join("notes.txt"), b"not a layer").unwrap();
+    let (status, headers, bytes) = get_bytes(
+        router(config.clone()),
+        &format!("/everglade/kit/bake/{name}"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(bytes, b"synthetic light layer fixture");
+    assert_eq!(headers[header::CONTENT_TYPE], "application/octet-stream");
+    assert_eq!(
+        headers[header::CACHE_CONTROL],
+        "public, max-age=31536000, immutable"
+    );
+    for file in [
+        "notes.txt".to_owned(),
+        format!("{digest}.vtp"),
+        format!("{}.vlay", digest.to_uppercase()),
+        format!("{}.vlay", &digest[1..]),
+        format!("{}.vlay", "cd".repeat(32)),
+        "..%2Fnotes.txt".to_owned(),
+        "%2E%2E%2F..%2Fsecret.js".to_owned(),
+    ] {
+        let (status, _, _) = get_bytes(
+            router(config.clone()),
+            &format!("/everglade/kit/bake/{file}"),
+        )
+        .await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{file}");
+    }
+}
+
 /// `/druid` (#10611): the same full-screen page and build, which starts in
 /// the Grove on this path, under the same policy.
 #[tokio::test]
