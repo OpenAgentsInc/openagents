@@ -2377,3 +2377,298 @@ fn retiring_a_member_releases_her_grants_and_keeps_the_lead() {
             .is_empty()
     );
 }
+
+fn batch_history(f: &mut Fixture, delivered: usize) {
+    use super::super::outbox::*;
+    let lead = f.lead.clone();
+    let since = now() - 5 * 7 * 86_400;
+    let mut next = f.store.state.clone();
+    next.outbox.cap_started_at = since;
+    for i in 0..delivered {
+        next.outbox.records.insert(
+            format!("history-{i}"),
+            Record {
+                id: format!("history-{i}"),
+                lead: lead.clone(),
+                subject_sha256: "1".repeat(64),
+                mime_sha256: "2".repeat(64),
+                subject: None,
+                mode: Mode::Fixture,
+                kind: MessageKind::FirstMessage,
+                actor: "human:operator".into(),
+                business_day: 1,
+                expires_at: since + 100,
+                maximum_cost_microusd: 0,
+                model_reservation_reference: None,
+                created_at: since + 10,
+                retain_until: now() + 1000,
+                decision: None,
+                phase: Phase::Delivered,
+                count_consumed: true,
+                attempt: Some("3".repeat(64)),
+                attempt_started_at: Some(since + 20),
+                observation_at: Some(since + 30),
+                observation: None,
+                minimized_at: Some(since + 40),
+                contact_pins: [digest(format!("contact-{}", i % 30).as_bytes())].into(),
+            },
+        );
+    }
+    f.store.persist(next).unwrap();
+}
+fn batch_grant(
+    f: &mut Fixture,
+    keys: &dyn super::super::email::MailboxCredentials,
+    id: &str,
+    subjects: &[super::super::outbox::Subject],
+    read: bool,
+) -> Result<u64> {
+    use super::super::outbox::{batch::*, *};
+    let qualification = f
+        .store
+        .outbox_batch_qualification(&f.owner, Mode::Fixture)
+        .unwrap();
+    let grant = Grant {
+        schema: GRANT_SCHEMA.into(),
+        id: id.into(),
+        mode: Mode::Fixture,
+        template: subjects[0].proposal.message.template.clone(),
+        items: subjects
+            .iter()
+            .map(|s| Item {
+                proposal: s.proposal.id.clone(),
+                subject_sha256: s.sha256().unwrap(),
+                read_sha256: if read {
+                    digest(
+                        format!("{}\n{}", s.sha256().unwrap(), s.proposal.message.subject)
+                            .as_bytes(),
+                    )
+                } else {
+                    "9".repeat(64)
+                },
+            })
+            .collect(),
+        expires_at: now() + 500,
+        qualification_sha256: qualification.sha256().unwrap(),
+        owner_review_sha256: "8".repeat(64),
+    };
+    let command = Command {
+        schema: COMMAND_SCHEMA.into(),
+        id: format!("grant-{id}"),
+        expected_revision: f.store.state.outbox.revision,
+        operation: Operation::GrantBatch { grant },
+    };
+    f.store
+        .apply_sales_outbox(&f.owner, &serde_json::to_vec(&command).unwrap(), keys)
+}
+fn batch_apply(
+    f: &mut Fixture,
+    keys: &dyn super::super::email::MailboxCredentials,
+    id: &str,
+    operation: super::super::outbox::Operation,
+) -> Result<u64> {
+    use super::super::outbox::*;
+    let command = Command {
+        schema: COMMAND_SCHEMA.into(),
+        id: id.into(),
+        expected_revision: f.store.state.outbox.revision,
+        operation,
+    };
+    f.store
+        .apply_sales_outbox(&f.owner, &serde_json::to_vec(&command).unwrap(), keys)
+}
+#[test]
+fn outbox_batch_grant_needs_measured_level_zero_and_never_promotes_itself() {
+    use super::super::outbox::{batch::*, *};
+    let mut f = Fixture::new();
+    let (_, keys, message) = email_fixture(&mut f);
+    let mut proposal = outbox_proposal(message.clone(), "b-0");
+    proposal.kind = MessageKind::FirstMessage;
+    let subject = f
+        .store
+        .propose_sales_outbox(&f.owner, proposal, &keys)
+        .unwrap();
+    let q = f
+        .store
+        .outbox_batch_qualification(&f.owner, Mode::Fixture)
+        .unwrap();
+    assert!(!q.eligible && !q.automatic_promotion && q.clean_weeks == 0);
+    assert!(batch_grant(&mut f, &keys, "early", &[subject.clone()], true).is_err());
+    batch_history(&mut f, 99);
+    assert!(
+        batch_grant(&mut f, &keys, "short", &[subject.clone()], true).is_err(),
+        "99 delivered is not 100"
+    );
+    batch_history(&mut f, 100);
+    let q = f
+        .store
+        .outbox_batch_qualification(&f.owner, Mode::Fixture)
+        .unwrap();
+    assert!(
+        q.eligible && q.delivered == 100 && q.permissioned_contacts == 30 && q.clean_weeks == 4
+    );
+    assert_eq!(
+        f.store.state.outbox.records["b-0"].phase,
+        Phase::Proposed,
+        "qualification alone approves nothing"
+    );
+    assert!(
+        batch_grant(&mut f, &keys, "unread", &[subject.clone()], false).is_err(),
+        "first batches need every item read"
+    );
+    batch_grant(&mut f, &keys, "first", &[subject.clone()], true).unwrap();
+    assert_eq!(f.store.state.outbox.records["b-0"].phase, Phase::Approved);
+    assert_eq!(
+        f.store.state.outbox.batches.grants["first"].phase,
+        GrantPhase::Active
+    );
+    assert!(
+        batch_grant(&mut f, &keys, "again", &[subject.clone()], true).is_err(),
+        "an approved item cannot be granted twice"
+    );
+}
+#[test]
+fn outbox_batch_items_consume_once_and_revocation_pause_and_size_stay_bounded() {
+    use super::super::{
+        email::Delivery,
+        outbox::{batch::*, *},
+    };
+    let mut f = Fixture::new();
+    let (_, keys, message) = email_fixture(&mut f);
+    batch_history(&mut f, 100);
+    let mut subjects = Vec::new();
+    for i in 0..4 {
+        let mut proposal = outbox_proposal(message.clone(), &format!("b-{i}"));
+        proposal.kind = MessageKind::FirstMessage;
+        subjects.push(
+            f.store
+                .propose_sales_outbox(&f.owner, proposal, &keys)
+                .unwrap(),
+        );
+    }
+    let mut six = subjects.clone();
+    six.push(subjects[0].clone());
+    six.push(subjects[1].clone());
+    assert!(
+        batch_grant(&mut f, &keys, "six", &six, true).is_err(),
+        "a first batch holds at most five"
+    );
+    let mut reply = outbox_proposal(message.clone(), "reply");
+    reply.kind = MessageKind::Reply;
+    let reply = f
+        .store
+        .propose_sales_outbox(&f.owner, reply, &keys)
+        .unwrap();
+    assert!(
+        batch_grant(&mut f, &keys, "reply", &[reply], true).is_err(),
+        "replies stay at level 0"
+    );
+    batch_grant(&mut f, &keys, "five", &subjects, true).unwrap();
+    assert!(
+        batch_apply(
+            &mut f,
+            &keys,
+            "raise-early",
+            Operation::RaiseBatch {
+                size: 10,
+                owner_review_sha256: "8".repeat(64)
+            }
+        )
+        .is_err(),
+        "size rises only after a delivered batch"
+    );
+    let cancel = std::sync::atomic::AtomicBool::new(false);
+    let mut transport = outbox_transport(&subjects[0], Delivery::Accepted);
+    let seen = f
+        .store
+        .dispatch_sales_outbox_fixture(
+            &f.owner,
+            "b-0",
+            &subjects[0].sha256().unwrap(),
+            &keys,
+            &mut transport,
+            &cancel,
+        )
+        .unwrap();
+    assert!(seen.count_consumed);
+    assert!(
+        f.store
+            .dispatch_sales_outbox_fixture(
+                &f.owner,
+                "b-0",
+                &subjects[0].sha256().unwrap(),
+                &keys,
+                &mut transport,
+                &cancel
+            )
+            .is_err(),
+        "a consumed item never resends"
+    );
+    assert_eq!(transport.calls, 1);
+    batch_apply(
+        &mut f,
+        &keys,
+        "revoke",
+        Operation::RevokeBatch {
+            grant: "five".into(),
+            reference_sha256: "7".repeat(64),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        f.store.state.outbox.batches.grants["five"].phase,
+        GrantPhase::Revoked
+    );
+    assert_eq!(
+        f.store.state.outbox.records["b-1"].phase,
+        Phase::Invalidated
+    );
+    assert!(
+        f.store
+            .dispatch_sales_outbox_fixture(
+                &f.owner,
+                "b-1",
+                &subjects[1].sha256().unwrap(),
+                &keys,
+                &mut transport,
+                &cancel
+            )
+            .is_err()
+    );
+    assert_eq!(transport.calls, 1);
+    let root = f.dir.path().join("host");
+    drop(f.store);
+    let mut store = Store::open_with_clock(&root, now).unwrap();
+    assert_eq!(
+        store.state.outbox.batches.grants["five"].phase,
+        GrantPhase::Revoked
+    );
+    assert_eq!(store.state.outbox.batches.granted, 1);
+    f.store = store;
+    let mut late = outbox_proposal(message.clone(), "late");
+    late.kind = MessageKind::FollowUp;
+    let late = f.store.propose_sales_outbox(&f.owner, late, &keys).unwrap();
+    batch_grant(&mut f, &keys, "pause-me", &[late], true).unwrap();
+    batch_apply(
+        &mut f,
+        &keys,
+        "pause",
+        Operation::Pause {
+            incident: IncidentKind::Complaint,
+            reference_sha256: "6".repeat(64),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        f.store.state.outbox.batches.grants["pause-me"].phase,
+        GrantPhase::Reset
+    );
+    assert_eq!(f.store.state.outbox.batches.size(), INITIAL_SIZE);
+    assert!(
+        !f.store
+            .outbox_batch_qualification(&f.owner, Mode::Fixture)
+            .unwrap()
+            .eligible,
+        "a complaint resets trust until correction and restart"
+    );
+}

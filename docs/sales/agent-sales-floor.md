@@ -1148,3 +1148,36 @@ suppression paths, and headcount still comes from the hiring book.
   private store.
 
 Tests: `cargo test -p coder --lib sales::roles`.
+
+## Level-1 reviewed batches (REV-66)
+
+`task::sales::outbox::batch` is the level-1 gate over the same outbox. A
+grant (`openagents.sales.outbox-batch.v1`) names up to five exact proposed
+subjects from one template version, a bounded expiry of at most seven days,
+the digest of the current measured qualification, and an owner review
+digest. Applying it approves each item exactly as a single `decide` would,
+so dispatch still runs through the one single-use path with every recheck
+(permission, revocation, suppression, policy, certification, floor and
+actor caps) immediately before contact. A consumed item never resends; an
+unknown attempt keeps its reservation.
+
+`batch-qualification` measures live level-0 operation since the cap
+started: delivered messages (100), distinct permissioned contact pins (25),
+clean weeks (4), and open incidents (0). The result carries
+`automatic_promotion: false` and grants nothing; the grant must cite its
+exact digest, so changed history refuses the grant. Replies, sales posts,
+owner pilots, and uncertified live items stay at level 0. In the first five
+batches every item carries the owner's read receipt
+(`sha256(subject_sha256 "\n" subject line)`).
+
+A grant covers only the exact `subject_sha256` it lists; changed content or
+attachments produce a different subject and no authority. An expired,
+revoked, or reset grant refuses dispatch of its unconsumed items;
+`revoke_batch` also invalidates them. Any pause (complaint, unsupported
+sent claim, breach) resets every active grant and the batch size to five,
+and qualification stays false until the incidents are corrected and the
+owner restarts. `raise_batch` moves 5 → 10 → 20 one step per reviewed grant,
+only after a fully delivered batch, and never above the floor cap, which
+stays twenty messages a day.
+
+Tests: `cargo test -p coder --lib outbox_batch`.
