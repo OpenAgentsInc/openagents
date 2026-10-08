@@ -1,0 +1,211 @@
+   Compiling proc-macro2 v1.0.107
+   Compiling quote v1.0.47
+   Compiling unicode-ident v1.0.26
+   Compiling serde_core v1.0.229
+   Compiling zmij v1.0.23
+   Compiling libc v0.2.189
+   Compiling syn v3.0.6
+   Compiling cfg-if v1.0.5
+   Compiling serde v1.0.229
+   Compiling version_check v0.9.5
+   Compiling equivalent v1.0.2
+   Compiling serde_json v1.0.151
+   Compiling hashbrown v0.17.1
+   Compiling generic-array v0.14.7
+   Compiling serde_derive v1.0.229
+   Compiling indexmap v2.14.2
+   Compiling memchr v2.8.3
+   Compiling itoa v1.0.18
+   Compiling rustix v1.1.5
+   Compiling getrandom v0.4.3
+   Compiling bitflags v2.13.2
+   Compiling typenum v1.20.1
+   Compiling linux-raw-sys v0.12.1
+   Compiling once_cell v1.21.4
+   Compiling fastrand v2.5.0
+   Compiling crypto-common v0.1.7
+   Compiling block-buffer v0.10.4
+   Compiling tempfile v3.27.0
+   Compiling digest v0.10.7
+   Compiling cpufeatures v0.2.17
+   Compiling sha2 v0.10.9
+   Compiling coder-lease v0.1.0 (/workspace/crates/coder-lease)
+   Compiling atif v0.1.0 (/workspace/crates/atif)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 14.32s
+     Running unittests src/lib.rs (/home/ubuntu/work/openagents-target-agent1/debug/deps/atif-d0ee6befb2ee7e71)
+
+running 56 tests
+test activity::tests::check_commands_are_recognized_by_their_runner ... ok
+test activity::tests::edit_file_is_the_desk ... ok
+test activity::tests::a_refused_call_waits_in_the_lounge_and_a_question_at_the_podium ... ok
+test activity::tests::apply_patch_is_the_desk ... ok
+test activity::tests::a_decision_call_is_the_oracle ... ok
+test activity::tests::glob_is_the_library ... ok
+test activity::tests::exec_is_the_workbench_or_the_proving_ground_for_a_check ... ok
+test activity::tests::mcp_is_the_desk ... ok
+test activity::tests::read_file_is_the_library ... ok
+test activity::tests::search_is_the_library ... ok
+test activity::tests::the_finish_is_done_or_failed_at_the_task_wall ... ok
+test activity::tests::unknown_is_thinking_at_the_desk ... ok
+test activity::tests::web_fetch_is_the_library ... ok
+test activity::tests::todo_is_the_task_wall ... ok
+test activity::tests::web_search_is_the_library ... ok
+test activity::tests::write_file_is_the_desk ... ok
+test content::tests::a_v1_7_document_upgrades_on_read_by_relabel_alone ... ok
+test content::tests::a_source_whose_kind_disagrees_with_type_is_refused ... ok
+test content::tests::a_document_validates_messages_observations_and_subagents ... ok
+test content::tests::an_unknown_version_is_refused_and_left_alone ... ok
+test content::tests::an_audio_part_reads_and_round_trips ... ok
+test content::tests::audio_aliases_normalize_to_the_canonical_type ... ok
+test content::tests::each_part_carries_exactly_the_field_its_type_needs ... ok
+test content::tests::every_published_1x_version_reads_and_nothing_else_does ... ok
+test content::tests::image_types_are_not_normalized ... ok
+test content::tests::this_crate_writes_the_newest_version_it_reads ... ok
+test document::tests::a_digest_answers_what_was_asked_not_how_it_was_spelled ... ok
+test document::tests::a_decision_call_records_the_door_and_the_state_it_read ... ok
+test document::tests::a_call_and_its_result_are_one_step ... ok
+test document::tests::a_failed_decision_call_keeps_its_reason ... ok
+test document::tests::a_pipeline_is_what_its_first_program_does ... ok
+test document::tests::a_document_reports_the_session_it_came_from ... ok
+test document::tests::a_step_round_trips_through_json ... ok
+test document::tests::a_reviewed_decision_records_its_attempts ... ok
+test document::tests::timestamps_format_in_utc ... ok
+test document::tests::decisions_and_tool_calls_count_separately ... ok
+test document::tests::usage_totals_across_the_session ... ok
+test document::tests::repeated_shell_commands_report_as_waste ... ok
+test document::tests::explicit_export_time_preserves_original_records_without_reading_a_clock ... ok
+test log::tests::a_file_with_no_session_record_is_refused ... ok
+test log::tests::a_line_the_disk_cannot_hold_is_cut_back_off ... ok
+test log::tests::a_log_of_an_unsupported_version_is_a_fault ... ok
+test log::tests::a_half_written_line_does_not_cost_the_lines_before_it ... ok
+test log::tests::a_finished_log_refuses_another_step ... ok
+test log::tests::a_named_log_lands_where_it_was_told_to ... ok
+test log::tests::a_log_without_an_ending_reads_as_interrupted ... ok
+test log::tests::a_session_id_leads_with_its_start_time ... ok
+test log::tests::a_v1_7_log_reads_whole_and_renders_as_current ... ok
+test log::tests::a_log_round_trips_through_a_document ... ok
+test log::tests::a_final_record_torn_at_any_byte_keeps_the_prefix ... ok
+test log::tests::the_lifecycle_is_one_header_then_steps_then_one_end ... ok
+test log::tests::a_new_log_declares_the_current_version ... ok
+test log::tests::two_sessions_cannot_share_a_file ... ok
+test log::tests::logs_list_oldest_first ... ok
+test log::tests::the_whole_reader_refuses_an_interrupted_session ... ok
+test log::tests::an_interior_line_that_is_not_utf8_is_a_fault_on_its_own ... ok
+
+test result: ok. 56 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/nip_atif_fixture.rs (/home/ubuntu/work/openagents-target-agent1/debug/deps/nip_atif_fixture-5d05ef6fd66f0849)
+
+running 3 tests
+test a_steps_digest_survives_a_second_render ... ok
+test the_fixture_as_recorded_at_v1_7_renders_the_same_steps ... ok
+test the_nip_atif_fixture_names_what_the_logs_render ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (/home/ubuntu/work/openagents-target-agent1/debug/deps/coder_lease-2118483f23edad55)
+
+running 66 tests
+test artifact::tests::a_pin_takes_the_printed_lines_and_keeps_the_earlier_digest ... ok
+test artifact::tests::a_reset_pin_puts_back_the_base_lines_and_history ... ok
+test artifact::tests::pinned_patterns_match_within_one_segment ... ok
+test artifact::tests::submitting_refuses_unknown_artifacts_and_empty_branches ... ok
+test artifact::tests::a_held_lease_means_another_runner_applies_the_change ... ok
+test artifact::tests::the_repository_registry_admits_its_entries ... ok
+test artifact::tests::the_queue_lists_pending_changes_in_order ... ok
+test claims::tests::a_live_session_keeps_its_claim_from_another ... ok
+test claims::tests::a_veto_refuses_and_force_overrides ... ok
+test claims::tests::an_ended_or_expired_session_is_taken_over ... ok
+test claims::tests::repositories_are_kept_apart_and_checked ... ok
+test grant::tests::a_grant_admits_its_session_until_it_expires ... ok
+test grant::tests::durations_parse_with_units ... ok
+test holder::tests::a_grant_needs_a_terminal_and_no_agent ... ok
+test holder::tests::command_names_drop_arguments_and_directories ... ok
+test holder::tests::otherwise_the_nearest_agent_ancestor_names_the_session ... ok
+test holder::tests::the_session_variable_comes_first_then_the_agents_own ... ok
+test limits::tests::aging_defaults_to_twenty_minutes_and_zero_turns_it_off ... ok
+test limits::tests::defaults_are_fractions_of_the_machine ... ok
+test limits::tests::free_disk_reads_the_volume ... ok
+test limits::tests::variables_beat_settings_which_beat_defaults ... ok
+test observe::tests::a_held_build_lease_counts_while_held_and_leaves_a_receipt_after ... ok
+test observe::tests::a_missing_root_is_an_error_and_an_empty_root_holds_nothing ... ok
+test placement::tests::a_configured_remote_class_refuses_when_its_computer_is_down ... ok
+test placement::tests::a_policy_parses_classes_and_computers_and_drops_defaults ... ok
+test placement::tests::a_policy_round_trips_through_the_settings_file ... ok
+test placement::tests::an_explicit_remote_overrides_the_policy_and_never_falls_back ... ok
+test placement::tests::auto_falls_back_here_when_nothing_answers_or_nothing_is_configured ... ok
+test placement::tests::auto_goes_to_the_first_computer_that_answers ... ok
+test placement::tests::local_placement_never_probes ... ok
+test placement::tests::the_defaults_send_gates_and_benchmarks_out_and_keep_soaks_and_builds ... ok
+test resource::tests::names_round_trip_and_shapes_hold ... ok
+test root::tests::a_test_that_reaches_the_real_home_panics - should panic ... ok
+test root::tests::the_variable_wins_over_home ... ok
+test scratch::tests::ensure_makes_a_private_directory_that_names_its_session ... ok
+test scratch::tests::live_sessions_are_the_holders_still_running ... ok
+test scratch::tests::only_process_and_agent_sessions_name_a_process ... ok
+test scratch::tests::session_names_become_safe_directory_names ... ok
+test scratch::tests::the_root_is_the_variable_else_beside_the_leases ... ok
+test screen::tests::an_agent_without_the_screen_lease_gets_no_window ... ok
+test screen::tests::the_screen_lease_or_a_person_opens_a_window ... ok
+test shim::tests::delegates_get_the_shims_only_once_enabled ... ok
+test shim::tests::the_directory_is_the_variable_else_under_home ... ok
+test shim::tests::the_shims_go_first_once ... ok
+test tests::a_command_under_a_lease_passes_through_the_same_resource ... ok
+test tests::a_corrupt_table_is_an_error_not_a_reset ... ok
+test tests::a_dropped_holder_lock_frees_the_lease_for_the_next_reader ... ok
+test artifact::tests::a_change_that_fails_the_check_is_rejected_and_the_rest_land ... ok
+test artifact::tests::a_conflicting_submission_comes_back_with_its_reason ... ok
+test tests::a_queued_quiet_lease_holds_builds_at_every_priority ... ok
+test artifact::tests::two_submissions_that_both_repin_land_as_one_repin ... ok
+test tests::an_exclusive_resource_admits_one_holder ... ok
+test tests::a_waiter_that_times_out_leaves_the_queue ... ok
+test tests::counted_resources_admit_while_amounts_fit ... ok
+test tests::priorities_parse_and_the_variable_names_one ... ok
+test tests::quiet_waits_behind_held_builds_but_admits_on_an_idle_machine ... ok
+test tests::disk_leases_keep_the_floor_and_count_held_budgets ... ok
+test tests::the_screen_needs_a_grant_that_admits_the_session ... ok
+test tests::release_writes_a_receipt_with_the_wait_and_whole_run ... ok
+test tests::waiters_are_admitted_first_in_first_out ... ok
+test usage_tests::a_build_reclaims_before_it_refuses_for_want_of_disk ... ok
+test usage_tests::a_slot_records_its_last_lease_and_a_session_ends_with_its_process ... ok
+test tests::waiters_are_admitted_by_priority_then_first_in_first_out ... ok
+test usage_tests::receipts_carry_allocated_bytes_and_usage_sums_them_per_session ... ok
+test tests::a_waiter_ages_one_level_per_step_until_it_goes_first ... ok
+test tests::a_queued_quiet_lease_drains_builds_without_signaling_them ... ok
+
+test result: ok. 66 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.27s
+
+     Running tests/dead_holder.rs (/home/ubuntu/work/openagents-target-agent1/debug/deps/dead_holder-d879714175239d39)
+
+running 2 tests
+test child_holds_the_gpu ... ok
+test a_killed_holder_and_a_killed_waiter_free_the_lease ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running tests/shim.rs (/home/ubuntu/work/openagents-target-agent1/debug/deps/shim-369ed07b07230874)
+
+running 5 tests
+test screencapture_refuses_without_a_screen_lease ... ok
+test screencapture_runs_the_real_one_under_a_screen_lease ... ok
+test the_shim_passes_through_under_a_build_lease ... ok
+test the_shim_without_openagents_runs_cargo_and_says_so ... ok
+test the_shim_leases_heavy_subcommands_and_passes_the_rest_through ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+   Doc-tests atif
+
+running 1 test
+test crates/atif/src/lib.rs - (line 41) - compile ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+all doctests ran in 0.15s; merged doctests compilation took 0.15s
+   Doc-tests coder_lease
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+EXIT:0

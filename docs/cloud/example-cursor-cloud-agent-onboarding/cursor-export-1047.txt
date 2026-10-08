@@ -1,0 +1,306 @@
+ Set up openagents environment | Cursor
+
+New ChatAutomationsCodebaseEarly Beta
+
+Today
+
+Set up openagents environment
+
+now
+
+Try Grok Bot
+
+Christopher David
+
+Pro
+
+Set up openagents environment
+OpenAgentsInc/openagents
+
+/create-environment /env-setup Set up a new development environment for this codebase. Follow the “Set up a new environment” workflow in the env-setup skill. Run the relevant applications and demonstrate that the environment works end to end.
+
+Set environment to OpenAgentsInc/openagents
+
+Environment ready
+
+Worked for 24m 57s
+
+OpenAgents’s Cloud Agent environment is tested and ready to save.
+
+What was done
+
+Mapped the workspace to the pinned Rust 1.97.1 toolchain and the day-to-day cargo test -p plus cargo fmt flow.
+
+Installed the native build packages (protoc, OpenSSL, SQLite, libclang, bubblewrap) and fetched the root workspace crates.
+
+Ran trajectory, lease-broker, and Nostr signature tests on this machine.
+
+Snapshotted that disk, built it, and confirmed the same toolchain in a fresh Cloud Agent.
+
+Validation
+
+CheckResult
+ATIF trajectory documents56 library tests, 3 integration tests, and 1 doctest passed
+Lease broker66 library tests, holder recovery, and 5 cargo-shim tests passed
+Nostr signed agreementfree_agreement_requires_both_signatures_exact_terms_and_confirmation passed
+cargo fmt for those cratesClean
+Install idempotencePassed twice
+Fresh Cloud AgentBuild verification booted from bld-20261008-26522d23-d3aa-427c-b6f2-3fc6ffbabdb8: Rust 1.97.1, rustfmt, Clippy, Python 3.12.3, protoc 3.21.12, OpenSSL 3.0.13, SQLite 3.45.1, bubblewrap 0.9.0; cargo fetch --locked --offline exited 0; the corrupt lease-table test passed
+
+Action required
+
+Click Save in the Environment panel on the right.
+
+This makes the tested setup available to future Cloud Agents. Nothing else is required.
+
+AGENTS.md now records the Cloud Agent toolchain, the ~/work/openagents-target-agentN output directory, and CARGO_BUILD_JOBS=2 for large crates. Merging that change preserves the guidance for future agents. The phone workspace lock file still does not resolve with cargo fetch --locked, and relay release checks still need PostgreSQL.
+
+8m ago
+
+1 File Changed
+Review
+
+AGENTS.md+20
+
+ 
+
+This environment is saved. New agents start from the current snapshot.
+
+ReviewStart new agent
+
+ 
+
+Changes+20
+
+Add follow up for setup agent
+
+Drag to resize
+
+EnvironmentChangesDesktopTerminalFiles
+
+Draft
+
+cursor/cloud-agent-env-notes-58b0main
+
+Mark as ready
+
+Describe the Cloud Agent toolchain#10979
+
+DiffReviewCommits1
+
+AGENTS.md
+
+Preview
++20
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+831 unmodified lines
+
+Expand all
+
+832
+
+833
+
+834
+
+835
+
+836
+
+837
+
+838
+
+839
+
+840
+
+841
+
+842
+
+843
+
+844
+
+845
+
+846
+
+847
+
+848
+
+849
+
+850
+
+851
+
+852
+
+853
+
+854
+
+855
+
+  citations, how to call a Python implementation, executable property
+
+  checks derived from the definition, its provenance (the tasks it was
+
+  learned from, which never count as its evidence), and its admission
+
+  record. An entry cites a textbook or reference, never a benchmark task.
+
+## Cursor Cloud specific instructions
+
+Cloud Agents already have the pinned toolchain (Rust 1.97.1, rustfmt, and
+
+Clippy), `protoc`, OpenSSL, SQLite, libclang, and `bubblewrap`. The root
+
+workspace crates are fetched. Put each checkout's Cargo output in
+
+`~/work/openagents-target-agentN`, as the Velocity section describes. This
+
+machine has 4 cores and about 16 GB of memory. Set `CARGO_BUILD_JOBS=2`
+
+when you compile `openagents` or `verse`, so a cold build stays within
+
+that memory.
+
+Build `openagents` with `cargo build -p openagents-cli --bin openagents`
+
+before you use `openagents lease`. The day-to-day check is still
+
+`cargo test -p` for the crates you edit, plus `cargo fmt`.
+
+`cargo fetch --locked --manifest-path crates/openagents-mobile/Cargo.toml`
+
+stops because Cargo wants to update that lock file. Leave the phone
+
+workspace until the lock file resolves. Relay release checks need
+
+PostgreSQL (`initdb`, `pg_ctl`, `createdb`). Psionic stays its own
+
+workspace, and this setup does not fetch it.
+
+Terminal 1
+
+workspace $  
+
+1 Terminal
+
+Terminal 1
+
+Changes made here aren't saved automatically. Ask the agent to take a new snapshot to add them to your environment.
+
+OpenAgentsInc/openagents
+Personal
+
+bld-20261008-26522d23-d3aa-427c-b6f2-3fc6ffbabdb8
+
+UnsavedSave
+
+Install Script
+
+1
+
+2
+
+3
+
+4
+
+set -euo pipefail
+
+export DEBIAN_FRONTEND=noninteractive
+
+sudo apt-get update
+
+sudo apt-get install -y --no-install-recommends build-essential pkg-config clang cmake 
+
+protobuf-compiler libprotobuf-dev libssl-dev libsqlite3-dev libclang-dev ca-
+
+certificates curl git ripgrep jq xz-utils unzip zstd procps bubblewrap python3
+
+Start Script
+
+1
+
+Start commands for this environment (e.g. `pnpm dev`)
+
+SecretsManage
+
+New Secret
+
+Value
+
+Scope
+
+Type
+
+Actions
+
+No secrets yet
+
+Network Access Settings
+
+Inherit user settings
+
+Builds on user network access. Manage in user settings.
+
+Set up openagents environment | Cursor
+
