@@ -13,9 +13,9 @@ to running a pylon is [Run a Pylon, and use one](pylon.md).
 | `737f94a17c` | #10921 (P1) | Psionic's serving path imported into `crates/psionic`. |
 | `a6eb9acadc` | #10921 (P1) | `crates/pylon`: beacons, free NIP-CJ jobs on Psionic, receipts, pool aggregates, `RelayField`, and `openagents pylon`. |
 | `8b99221ed5` | #10921 (P1) | The owner's decision that pylon traffic uses the production relay. |
-| The commit that adds this page | #10921 (P1) | The relay source in Verse, the beam for this computer's pylon jobs, and the visual polish. |
+| `aece703aec` | #10921 (P1) | The relay source in Verse, the beam for this computer's pylon jobs, and the visual polish. |
 
-The last commit adds:
+`aece703aec` adds:
 
 - `pylon::field::Live` and `RelayField::watch`: one background
   subscription to a pool's beacons, receipts, and aggregates that verifies
