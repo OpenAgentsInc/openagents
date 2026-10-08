@@ -187,8 +187,9 @@ The default is `false` for existing tenant-key deployments. Enable the setting
 to require the new check; creating an account store alone does not change the
 serving policy. Membership authorizes workspace access, while the existing
 registry still controls reachable models and quota. This does not cancel work
-admitted before revocation. Receipts retain existing key attribution; a
-workspace-membership revision field remains future integration work.
+admitted before revocation. Receipts retain existing key attribution, and
+native member snapshots identify admitted work; legacy receipts without that
+attribution remain unavailable to member-scoped reports.
 
 ## The account surface
 
@@ -232,3 +233,30 @@ the bounded access log the session store keeps: actor, action,
 workspace, session digest, and safe detail — never a secret.
 
 [`Onboarding`]: ../../../crates/tenancy/src/sessions.rs
+
+## Joined team qualification
+
+The [retained report](../../sales/team-qualification.json) pins the tested source
+revision, enabled matrix, actual scoped checks, and exclusions.
+
+The selected native scope uses the installed CLI, Gateway HTTP, current Accounts
+membership, exact team policy, native monetary budgets, and private team reports.
+The [joined fixture](../../../crates/gateway/tests/accounts_team_qualification/mod.rs)
+checks invitation replay, credential recovery, policy narrowing, member-only
+exports, and revocation after reconnect. Recovery changes the credential; it
+preserves original execution actors, policy digests, and budget admissions.
+Audit rows include the original `team_policy_reference` and
+`budget_policy_reference` when those admissions exist. Missing references remain
+null, and neither field supplies new authority.
+
+| Scope | Qualification |
+| --- | --- |
+| Owner, admin, member, and narrowed account key | Current role and action checks; member exports include only original member tasks |
+| Installed team and policy commands | Exact reviewed membership and policy changes; recovery and reconnect retain current rights |
+| Native decision budgets | Concurrent reservations, unknown holds, restart, and lower limits retain original liabilities |
+| Shared local plugin | Exact admitted release and member input; read or evaluation rights grant no execution |
+| Shared financial export | Separately reviewed original bindings and payee reads under the joined statement contract |
+| Cloud, customer-host, arbitrary plugin network, phone, and general workflow routes | Excluded from this matrix; require their own supported admission and client qualification |
+
+External teams, real payments, and owner devices remain operating qualification
+in [NEEDS_OWNER.md](../../../NEEDS_OWNER.md).

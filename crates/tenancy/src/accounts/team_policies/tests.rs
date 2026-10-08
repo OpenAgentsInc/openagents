@@ -125,6 +125,7 @@ fn owner_and_admin_authority_only_narrow_and_historical_snapshot_stays_original(
                 terms: Terms {
                     version: 2,
                     rules: vec![],
+                    expires_unix: original.terms.expires_unix,
                     ..terms()
                 },
             },

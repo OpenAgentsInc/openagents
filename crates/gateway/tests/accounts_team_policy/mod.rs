@@ -1,4 +1,6 @@
 //! Actual native HTTP and installed-client policy gates use isolated books.
+#[path = "../accounts_team_qualification/mod.rs"]
+mod qualification;
 use super::*;
 use receipts::team_policy::{Change, PlacementKind, Rule, Terms, digest};
 use std::sync::atomic::{AtomicBool, Ordering};

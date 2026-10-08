@@ -286,6 +286,8 @@ pub struct Row {
     pub payer_workspace: String,
     pub original_member: Option<Member>,
     pub receipt: Option<String>,
+    pub team_policy_reference: Option<String>,
+    pub budget_policy_reference: Option<String>,
     pub state: String,
     pub service_outcome: Option<Outcome>,
     pub requested_artifact: Option<String>,
@@ -835,6 +837,10 @@ fn build(
             payer_workspace: member.workspace.clone(),
             original_member: original,
             receipt: receipt.map(|r| r.digest.clone()),
+            team_policy_reference: receipt
+                .and_then(|r| r.team_policy.as_ref())
+                .map(|s| s.policy.digest.clone()),
+            budget_policy_reference: hold.budget.as_ref().map(|a| a.policy.clone()),
             state: status.into(),
             service_outcome: receipt.map(|r| r.outcome),
             requested_artifact: receipt

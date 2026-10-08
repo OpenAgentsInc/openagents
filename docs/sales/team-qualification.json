@@ -1,0 +1,78 @@
+{
+  "schema": "openagents.team-qualification.v1",
+  "tested_revision": {
+    "git_base": "f8360031e984e544da2fa77d58040574097e7451",
+    "source_digest": "sha256:565d81ad5bb1ce94f76c1e78f4a9e06438dfa45cbba16349fea1b1ea28f6a640",
+    "source_hashes": {
+      "crates/gateway/src/team_reports.rs": "153ef8f7e7017d194780d3be7335ffa00c889f33bc0280cbf24256548b611ecc",
+      "crates/gateway/src/team_policy.rs": "a1af65831db3e4b740d824347c2d50bedd72b1365288b62b0a67d407be8ad660",
+      "crates/gateway/src/accounts.rs": "7636170422cfc1b697640cd4b35df4f0f6b57472f2ef3d98b03cb63a178e5fd2",
+      "crates/gateway/src/budgets.rs": "4216d0b873ad97028c80f750c63d7f95aa4156a699f55195d9b46f66d630f370",
+      "crates/gateway/src/usage.rs": "23534daef1210952918fdadb9ee97c1d41e652ab166ed1f194c22d05c431dc03",
+      "crates/gateway/tests/accounts.rs": "89b330ae2f6b02a736e5a45e09403926bc7f8f8813b060c33bc9118b05067b75",
+      "crates/gateway/tests/accounts_team/mod.rs": "394747cd2217dcf046f19735e019a85b44795ae8c45e34f2ea290c95e5339eb2",
+      "crates/gateway/tests/accounts_team_policy/mod.rs": "a176586013a245922d954d98f561af5afcfd3ee36e7bf8584ed5a4377632c584",
+      "crates/gateway/tests/accounts_team_qualification/mod.rs": "f2cd04edc641e835c5df2ac742643702129c85f4916798ea1f06daf90659aed6",
+      "crates/gateway/tests/decision_offer.rs": "c7810a523c7f050646fbae3460bd8df509ec8ff74560eeed1d2b544a35fbf360",
+      "crates/gateway/tests/decision_offer_reports.rs": "671c209e8534a3a13cdf7d766038391dd2faedb8da87bf2e0a19ad23c7f0def3",
+      "crates/gateway/tests/decision_offer_budgets.rs": "e6e5c77317f9fca7522e540d8fab645df180028334cb7108ca14d3f6230f5536",
+      "crates/openagents-cli/tests/plugin_team.rs": "e23286b13f41cd59a5be97a7f85213e6cef0eff016f06b8250c9c520cc8ab69f",
+      "crates/tenancy/src/accounts.rs": "83769f95a64383cbd3593899cc7cca1973c5015898b9f20f06d5d5f6ad4e405c",
+      "crates/tenancy/src/accounts/team_policies.rs": "08e1d9162a2f749036973478f24d245ab3b2cb32f4683fec9c398e8009be7eb4",
+      "crates/tenancy/src/accounts/team_policies/tests.rs": "9f6f9e7d7f7ec0e51a9eb0e861d14faac29b0bf922ca0ff14bafbe7a93c2ded0",
+      "crates/tenancy/src/accounts/team_capabilities.rs": "155cb1075ac8d1823d5dbe11abffb071f7b0dcdbf4c50a481ccb10bc3b3ee6f5",
+      "crates/tenancy/src/accounts/team_capabilities_tests.rs": "b7f8614571f0dcd27eb8298625ee252d8119a612771a0e86171e9d16b5ed48bc",
+      "crates/tenancy/src/accounts/team_reports.rs": "ec8cb0bc8932e9ec82ea6581f8c113e3f7e51ddef9a0035610c774491b30908f",
+      "crates/tenancy/src/money.rs": "d257c22642afada8a554f56ab028cde084a049623f8ea0cf38f1f108c2e22ec0",
+      "crates/tenancy/src/money/budgets.rs": "8c211f7aa12d80abcce66ce21db067f18f8d23c406ea9e86d739eff19f378323",
+      "crates/receipts/src/team_policy.rs": "bca800c62cf746dc8eff72d7fc1f0abfd9eddabec11ce9cacc1b480b061a2e2e"
+    }
+  },
+  "result": "passed",
+  "scoped_passes": 45,
+  "checks": {
+    "joined_native_policy_and_recovery": 7,
+    "invitation_binding_and_expiry": 1,
+    "installed_team_recovery": 1,
+    "installed_exact_policy": 1,
+    "native_reports": 5,
+    "concurrent_budget_and_unknown_restart": 5,
+    "installed_local_plugin_sharing": 4,
+    "native_team_authority": 21
+  },
+  "installed_cli_sha256": "15e92e763fc1ef4786a5357c1e92a1d913b0ccf7cd841cdb1e0ad795c575ec26",
+  "enabled_matrix": [
+    "Native Gateway HTTP: exact selected synthetic decision offer, current account roles, native monetary budgets and private reports",
+    "Installed CLI: exact team change, workspace selection, recovery, narrowed policy and original receipt reads",
+    "Installed local plugin: exact admitted release, individual member bytes and current authority",
+    "Conditional original shared financial read: separately reviewed native/canonical bindings and explicit original payee scope; REV24 qualified separately"
+  ],
+  "cases": [
+    "Invitation single use, expiry, workspace/account binding and current membership",
+    "Current readonly member can export own original work but cannot review policy or spend",
+    "Recovery replaces keys and sessions without changing original task, policy, budget or monetary pins",
+    "Recovery token issued before membership removal recovers the account without restoring team reads, including after server restart",
+    "Policy narrowing and credential/source changes deny new prohibited effects while retaining prior admission",
+    "Concurrent limits and process restart retain unknown liability without repeated dispatch",
+    "Actor, task, original policy/budget, receipt, price and hold references exported under current read rights",
+    "Protected labels, credentials, unrelated member data and raw request text excluded"
+  ],
+  "excluded": [
+    "Existing isolated Chrome report fixture remains ignored; browser interaction is outside this installed CLI/HTTP matrix",
+    "Phone/desktop devices, cloud/customer-host placements, arbitrary network plugins, general workflows and every future rail need separate qualification",
+    "Cross-currency or cross-registry money/commission authority is not enabled",
+    "No real partners, customer data, funds, models, owner HOME/hosts/devices, mail or deployment"
+  ],
+  "fixture_prerequisite_repair": "Initial joined fixture correctly refused reports without a selected offer. Final fixture pins exact native identity, metering, capacity, price and local synthetic backend; admission was not relaxed.",
+  "clock_fixture_repair": "Admin narrowing now uses the original owner expiry instead of recomputing a later clock value.",
+  "production_qualification": false,
+  "owner_steps": "NEEDS_OWNER.md: Joined team operating qualification (REV-43)",
+  "previous_installed_cli_sha256": "4cae98c02974a9a9f1777c8e49a9ade9988bcf2739f6a4ee47509013dcdb201d",
+  "current_cli_confirmation": {
+    "installed_team_recovery": 1,
+    "installed_exact_policy": 1,
+    "distinct_passes_added": 0,
+    "result": "passed",
+    "source_hashes_unchanged": true
+  }
+}

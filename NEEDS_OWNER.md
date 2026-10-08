@@ -1802,3 +1802,12 @@ Compare a private statement with the original receiver, native price and receipt
 journal, and actual payout reference. Qualify historical reads separately after
 linkage retirement. Real payment and device qualification remain owner steps;
 synthetic conservation and current authority checks do not attest those outcomes.
+
+## Joined team operating qualification (REV-43)
+
+Qualify one real team on its selected installed client and enabled native routes.
+Review invitations, recovery delivery, current roles, exact capability releases,
+data recipients, policy narrowing, limits, and private exports with the team's
+owner. Confirm that recovery does not restore removed membership or old device
+access. Device, real payment, and external-team observations do not follow from
+the isolated native qualification; unsupported routes remain unavailable.
