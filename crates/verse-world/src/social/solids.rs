@@ -303,6 +303,34 @@ impl Solids {
         self.spell.iter().map(|block| (block.footprint, block.top))
     }
 
+    /// The highest finite cover at `(x, z)`, excluding the ground and
+    /// navigation-only infinite blockers. Standing column parts follow
+    /// destruction, so a missing roof section opens only its own columns.
+    #[must_use]
+    pub fn rain_height(&self, x: f32, z: f32) -> Option<f32> {
+        self.blocks
+            .iter()
+            .chain(&self.spell)
+            .filter(|b| b.footprint.contains(x, z, 0.0))
+            .map(|b| b.top)
+            .chain(self.roofs.iter().filter_map(|r| r.surface(x, z)))
+            .chain(
+                self.columns
+                    .iter()
+                    .flat_map(|p| p.spans(x, z))
+                    .map(|s| s.hi),
+            )
+            .filter(|h| h.is_finite())
+            .max_by(f32::total_cmp)
+    }
+
+    /// Whether rain can reach `p`. The tolerance keeps exposed roof tops
+    /// wet without letting rain reach the rooms beneath them.
+    #[must_use]
+    pub fn rain_open(&self, p: Vec3) -> bool {
+        self.rain_height(p.x, p.z).is_none_or(|h| p.y + 0.08 >= h)
+    }
+
     /// The lowest roof at `(x, z)` at or above `head`, m: what a character
     /// rising there strikes.
     #[must_use]

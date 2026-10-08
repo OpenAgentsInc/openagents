@@ -45,6 +45,8 @@ use verse_engine::lighting::{
 use verse_engine::quality::{Platform, Probe, Quality, ShadowFilter, Tier};
 use verse_engine::render_graph::{PhotoPass, PhotoPlan};
 
+#[cfg(test)]
+mod rain_tests;
 mod water_screen;
 
 pub const DEPTH: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
@@ -144,6 +146,8 @@ struct Frame {
     /// A wet character ([`crate::water::rain::Rain::figure`]): its feet and
     /// how wet it is.
     weather_figure: [f32; 4],
+    rain_matrix: [[f32; 4]; 4],
+    rain_params: [f32; 4],
 }
 
 impl Frame {
@@ -349,6 +353,7 @@ impl Capability {
             + post
             + screen
             + water
+            + u64::from(crate::water::rain_occlusion::dimensions(self.quality.tier).0).pow(2) * 4
             + u64::from(SHADOW_SIZE).pow(2) * u64::from(self.quality.cascades) * 4
     }
     pub fn probe(
@@ -747,6 +752,8 @@ pub struct Photo {
     guide_layout: wgpu::BindGroupLayout,
     scene_layout: wgpu::BindGroupLayout,
     scene_group: wgpu::BindGroup,
+    sprite_scene_layout: wgpu::BindGroupLayout,
+    sprite_scene_group: wgpu::BindGroup,
     /// One copy of the frame uniform per cascade, at a dynamic offset, for
     /// the shadow passes that write the maps: each copy's `light` is its
     /// cascade's matrix.
@@ -760,6 +767,10 @@ pub struct Photo {
     shadow_layers: Vec<wgpu::TextureView>,
     /// What each cached layer holds; `None` when it holds no cached map.
     shadow_keys: Vec<Option<CascadeKey>>,
+    rain_depth: wgpu::TextureView,
+    rain_key: Option<CascadeKey>,
+    rain_frame: wgpu::Buffer,
+    rain_group: wgpu::BindGroup,
     shadow_compare: wgpu::Sampler,
     linear_clamp: wgpu::Sampler,
     linear_repeat: wgpu::Sampler,
@@ -1034,53 +1045,60 @@ impl Photo {
         };
         let float = wgpu::TextureSampleType::Float { filterable: true };
         let d2 = wgpu::TextureViewDimension::D2;
+        let scene_entries = [
+            wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            texture_entry(
+                1,
+                wgpu::TextureViewDimension::D2Array,
+                wgpu::TextureSampleType::Depth,
+            ),
+            wgpu::BindGroupLayoutEntry {
+                binding: 2,
+                visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Comparison),
+                count: None,
+            },
+            texture_entry(3, wgpu::TextureViewDimension::D3, float),
+            texture_entry(4, wgpu::TextureViewDimension::D3, float),
+            texture_entry(5, wgpu::TextureViewDimension::D3, float),
+            wgpu::BindGroupLayoutEntry {
+                binding: 6,
+                visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                count: None,
+            },
+            texture_entry(7, d2, float),
+            texture_entry(8, d2, float),
+            texture_entry(9, d2, float),
+            texture_entry(10, d2, float),
+            texture_entry(11, d2, float),
+            wgpu::BindGroupLayoutEntry {
+                binding: 12,
+                visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                count: None,
+            },
+            texture_entry(13, wgpu::TextureViewDimension::Cube, float),
+            texture_entry(14, d2, wgpu::TextureSampleType::Depth),
+        ];
         let scene_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("verse photo scene"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-                texture_entry(
-                    1,
-                    wgpu::TextureViewDimension::D2Array,
-                    wgpu::TextureSampleType::Depth,
-                ),
-                wgpu::BindGroupLayoutEntry {
-                    binding: 2,
-                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Comparison),
-                    count: None,
-                },
-                texture_entry(3, wgpu::TextureViewDimension::D3, float),
-                texture_entry(4, wgpu::TextureViewDimension::D3, float),
-                texture_entry(5, wgpu::TextureViewDimension::D3, float),
-                wgpu::BindGroupLayoutEntry {
-                    binding: 6,
-                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
-                texture_entry(7, d2, float),
-                texture_entry(8, d2, float),
-                texture_entry(9, d2, float),
-                texture_entry(10, d2, float),
-                texture_entry(11, d2, float),
-                wgpu::BindGroupLayoutEntry {
-                    binding: 12,
-                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
-                texture_entry(13, wgpu::TextureViewDimension::Cube, float),
-            ],
+            entries: &scene_entries,
         });
+        let sprite_scene_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("verse sprite scene"),
+                entries: &scene_entries[..scene_entries.len() - 1],
+            });
         let frame = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("verse photo frame"),
             size: std::mem::size_of::<Frame>() as u64,
@@ -1147,6 +1165,24 @@ impl Photo {
         // neon stage never needs them.
         let sky_textures = placeholder_sky(device, queue);
         let sky_light = SkyLightGpu::empty(device, queue);
+        let (rain_size, _) = crate::water::rain_occlusion::dimensions(capability.quality.tier);
+        let rain_depth = device
+            .create_texture(&wgpu::TextureDescriptor {
+                label: Some("verse rain occlusion"),
+                size: wgpu::Extent3d {
+                    width: rain_size,
+                    height: rain_size,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: DEPTH,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                    | wgpu::TextureUsages::TEXTURE_BINDING,
+                view_formats: &[],
+            })
+            .create_view(&Default::default());
         let scene_group = scene_group(
             device,
             &scene_layout,
@@ -1158,8 +1194,22 @@ impl Photo {
             &sky_textures,
             &linear_repeat,
             &sky_light.view,
+            Some(&rain_depth),
         );
 
+        let sprite_scene_group = self::scene_group(
+            device,
+            &sprite_scene_layout,
+            &frame,
+            &shadow,
+            &shadow_compare,
+            &probes,
+            &linear_clamp,
+            &sky_textures,
+            &linear_repeat,
+            &sky_light.view,
+            None,
+        );
         let frame_size = std::mem::size_of::<Frame>() as u64;
         let alignment = u64::from(device.limits().min_uniform_buffer_offset_alignment).max(1);
         let shadow_stride = frame_size.div_ceil(alignment) * alignment;
@@ -1192,6 +1242,24 @@ impl Photo {
                     buffer: &shadow_frames,
                     offset: 0,
                     size: std::num::NonZeroU64::new(frame_size),
+                }),
+            }],
+        });
+        let rain_frame = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("verse rain frame"),
+            size: shadow_stride,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let rain_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("verse rain frame"),
+            layout: &frame_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                    buffer: &rain_frame,
+                    offset: 0,
+                    size: wgpu::BufferSize::new(frame_size),
                 }),
             }],
         });
@@ -1560,7 +1628,7 @@ impl Photo {
         let sprite_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("verse photo sprites"),
             bind_group_layouts: &[
-                Some(&scene_layout),
+                Some(&sprite_scene_layout),
                 Some(&guide_layout),
                 Some(&empty_layout),
                 Some(&fx_layout),
@@ -1918,6 +1986,7 @@ impl Photo {
                 &sky_textures,
                 &linear_repeat,
                 &sky_light.view,
+                Some(&rain_depth),
             );
             // The mirror never traces screen-space terms.
             let mirror_constants = [
@@ -1990,12 +2059,18 @@ impl Photo {
             guide_layout,
             scene_layout,
             scene_group,
+            sprite_scene_layout,
+            sprite_scene_group,
             frame_group,
             shadow_frames,
             shadow_stride,
             shadow,
             shadow_keys: vec![None; shadow_layers.len()],
             shadow_layers,
+            rain_depth,
+            rain_key: None,
+            rain_frame,
+            rain_group,
             shadow_compare,
             linear_clamp,
             linear_repeat,
@@ -2082,6 +2157,20 @@ impl Photo {
     }
 
     fn rebuild_groups(&mut self, device: &wgpu::Device) {
+        self.sprite_scene_group = scene_group(
+            device,
+            &self.sprite_scene_layout,
+            &self.frame,
+            &self.shadow,
+            &self.shadow_compare,
+            &self.probes,
+            &self.linear_clamp,
+            &self.sky_textures,
+            &self.linear_repeat,
+            &self.sky_light.view,
+            None,
+        );
+
         self.scene_group = scene_group(
             device,
             &self.scene_layout,
@@ -2093,6 +2182,7 @@ impl Photo {
             &self.sky_textures,
             &self.linear_repeat,
             &self.sky_light.view,
+            Some(&self.rain_depth),
         );
         if let Some(water) = &mut self.water_screen {
             water.mirror_scene_group = scene_group(
@@ -2106,6 +2196,7 @@ impl Photo {
                 &self.sky_textures,
                 &self.linear_repeat,
                 &self.sky_light.view,
+                Some(&self.rain_depth),
             );
         }
     }
@@ -2677,6 +2768,10 @@ impl Photo {
             + self.water_field.bytes()
             + crate::water::tile::bytes()
             + self.water_buffer.size()
+            + self.rain_frame.size()
+            + u64::from(crate::water::rain_occlusion::dimensions(self.capability.quality.tier).0)
+                .pow(2)
+                * 4
             + self
                 .water_screen
                 .as_ref()
@@ -2976,12 +3071,14 @@ impl Photo {
             }
             if self.sprites.count > 0 {
                 pass.set_pipeline(&self.pipelines.sprites);
+                pass.set_bind_group(0, &self.sprite_scene_group, &[]);
                 pass.set_bind_group(2, &self.empty_group, &[]);
                 pass.set_bind_group(3, &self.fx_group, &[]);
                 pass.set_vertex_buffer(0, self.sprites.buffer.slice(..));
                 pass.draw(0..self.sprites.count, 0..1);
             }
             if sky.sun_visible > 0.0 {
+                pass.set_bind_group(0, &self.scene_group, &[]);
                 pass.set_pipeline(&self.pipelines.flare);
                 pass.draw(0..6, 0..1);
             }
@@ -3097,6 +3194,63 @@ impl Photo {
             let keep = |b: &textured::Batch| textured::in_slab(b.min, b.max, matrix);
             self.draw_casters(&mut pass, casters, lit, [world.textured, figure], &keep);
         }
+    }
+
+    /// Cache static cover by snapped camera cell and uploaded geometry edits.
+    /// Destruction index edits invalidate the map. Exclude figures: neither
+    /// avatars nor falling debris are permanent sky cover.
+    fn encode_rain(
+        &mut self,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        frame: &mut Frame,
+        world: &Batches<'_>,
+    ) {
+        let matrix = crate::water::rain_occlusion::matrix(
+            Vec3::from_array([frame.eye[0], frame.eye[1], frame.eye[2]]),
+            self.capability.quality.tier,
+        );
+        frame.rain_matrix = matrix.to_cols_array_2d();
+        frame.rain_params = [1.0, 0.08 / 512.0, 0.0, 0.0];
+        let key = (matrix.to_cols_array(), static_identity(world));
+        if self.rain_key == Some(key) {
+            return;
+        }
+        self.rain_key = Some(key);
+        self.water_mask |= 16;
+        let mut copy = *frame;
+        copy.light = matrix.to_cols_array_2d();
+        queue.write_buffer(&self.rain_frame, 0, bytemuck::bytes_of(&copy));
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("verse rain occlusion"),
+            color_attachments: &[],
+            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                view: &self.rain_depth,
+                depth_ops: Some(wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(1.0),
+                    store: wgpu::StoreOp::Store,
+                }),
+                stencil_ops: None,
+            }),
+            timestamp_writes: self
+                .water_timer
+                .as_ref()
+                .and_then(|t| t.boundary(self.water_slot, 4)),
+            ..Default::default()
+        });
+        pass.set_bind_group(0, &self.rain_group, &[0]);
+        let keep = |b: &textured::Batch| textured::in_slab(b.min, b.max, matrix);
+        self.draw_casters(
+            &mut pass,
+            [
+                &self.pipelines.shadow,
+                &self.pipelines.textured_shadow,
+                &self.pipelines.textured_shadow_masked,
+            ],
+            [world.lit, (&self.dynamic_lit.buffer, 0)],
+            [world.textured, None],
+            &keep,
+        );
     }
 
     /// Draws casters into a bound shadow or prepass pass: lit triangles,
@@ -3480,6 +3634,9 @@ impl Photo {
             && (zone_water.is_some()
                 || (water.is_some() && self.liquid.count > 0)
                 || self.sprites.count > 0);
+        if uniform.weather[0] > 0.0 || uniform.weather[2] > 0.0 {
+            self.encode_rain(queue, encoder, &mut uniform, &world);
+        }
         let mut mirror = None;
         if let (true, Some(screen), Some(gpu), Some(water), Some(water_targets)) = (
             split,
@@ -3955,6 +4112,7 @@ impl Photo {
         }
         if self.sprites.count > 0 {
             pass.set_pipeline(&self.pipelines.sprites);
+            pass.set_bind_group(0, &self.sprite_scene_group, &[]);
             pass.set_bind_group(2, &self.empty_group, &[]);
             pass.set_bind_group(3, &targets.fx_group, &[]);
             pass.set_vertex_buffer(0, self.sprites.buffer.slice(..));
@@ -4245,42 +4403,47 @@ fn scene_group(
     sky: &[wgpu::TextureView; 5],
     linear_repeat: &wgpu::Sampler,
     sky_light: &wgpu::TextureView,
+    rain_depth: Option<&wgpu::TextureView>,
 ) -> wgpu::BindGroup {
     let view = |binding, view| wgpu::BindGroupEntry {
         binding,
         resource: wgpu::BindingResource::TextureView(view),
     };
+    let mut entries = vec![
+        wgpu::BindGroupEntry {
+            binding: 0,
+            resource: frame.as_entire_binding(),
+        },
+        view(1, shadow),
+        wgpu::BindGroupEntry {
+            binding: 2,
+            resource: wgpu::BindingResource::Sampler(compare),
+        },
+        view(3, &probes[0]),
+        view(4, &probes[1]),
+        view(5, &probes[2]),
+        wgpu::BindGroupEntry {
+            binding: 6,
+            resource: wgpu::BindingResource::Sampler(linear_clamp),
+        },
+        view(7, &sky[0]),
+        view(8, &sky[1]),
+        view(9, &sky[2]),
+        view(10, &sky[3]),
+        view(11, &sky[4]),
+        wgpu::BindGroupEntry {
+            binding: 12,
+            resource: wgpu::BindingResource::Sampler(linear_repeat),
+        },
+        view(13, sky_light),
+    ];
+    if let Some(depth) = rain_depth {
+        entries.push(view(14, depth));
+    }
     device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("verse photo scene"),
         layout,
-        entries: &[
-            wgpu::BindGroupEntry {
-                binding: 0,
-                resource: frame.as_entire_binding(),
-            },
-            view(1, shadow),
-            wgpu::BindGroupEntry {
-                binding: 2,
-                resource: wgpu::BindingResource::Sampler(compare),
-            },
-            view(3, &probes[0]),
-            view(4, &probes[1]),
-            view(5, &probes[2]),
-            wgpu::BindGroupEntry {
-                binding: 6,
-                resource: wgpu::BindingResource::Sampler(linear_clamp),
-            },
-            view(7, &sky[0]),
-            view(8, &sky[1]),
-            view(9, &sky[2]),
-            view(10, &sky[3]),
-            view(11, &sky[4]),
-            wgpu::BindGroupEntry {
-                binding: 12,
-                resource: wgpu::BindingResource::Sampler(linear_repeat),
-            },
-            view(13, sky_light),
-        ],
+        entries: &entries,
     })
 }
 

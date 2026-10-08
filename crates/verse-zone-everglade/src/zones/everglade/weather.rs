@@ -300,6 +300,34 @@ impl Rainfall {
         water: impl Fn(f32, f32) -> Option<f32>,
         eaves: &[[f32; 3]],
     ) {
+        self.tick_covered(
+            dt,
+            eye,
+            forward,
+            weather,
+            ground,
+            land,
+            water,
+            eaves,
+            |_| true,
+        );
+    }
+
+    /// Advances rain with a live sky-exposure query for splash and ripple
+    /// impacts. The CPU sprite fallback uses the same query when drawing.
+    #[allow(clippy::too_many_arguments)]
+    pub fn tick_covered(
+        &mut self,
+        dt: f32,
+        eye: Vec3,
+        forward: Vec3,
+        weather: &Weather,
+        ground: &Ground,
+        land: impl Fn(f32, f32) -> Option<f32>,
+        water: impl Fn(f32, f32) -> Option<f32>,
+        eaves: &[[f32; 3]],
+        open: impl Fn(Vec3) -> bool,
+    ) {
         self.sources.clear();
         let rain = weather.rain as f32;
         // Streak emitters: as many as the rain and the budget allow, one
@@ -350,13 +378,19 @@ impl Rainfall {
             let a = self.random() * std::f32::consts::TAU;
             let r = NEAR * self.random().sqrt();
             let (x, z) = (eye.x + a.sin() * r, eye.z + a.cos() * r);
-            if water(x, z).is_some() {
+            if let Some(y) = water(x, z) {
+                if !open(Vec3::new(x, y, z)) {
+                    continue;
+                }
                 if sources < self.control.sources {
                     self.sources
                         .push(Source::impact(Vec2::new(x, z), 0.12, 0.004 * (0.5 + rain)));
                     sources += 1;
                 }
             } else if let Some(y) = land(x, z) {
+                if !open(Vec3::new(x, y, z)) {
+                    continue;
+                }
                 if self.particles.len() + 3 <= self.control.particles {
                     self.particles
                         .start("weather_splash", Spawn::at(Vec3::new(x, y + 0.01, z)));
@@ -391,6 +425,36 @@ impl Rainfall {
         }
         let floor = |x: f32, z: f32| land(x, z).or_else(|| water(x, z)).unwrap_or(-1e3);
         self.particles.tick(dt, floor);
+    }
+
+    /// Draws only sky-exposed rain. Test the streak's bottom as well as
+    /// its center so its elongated sprite cannot extend through a roof.
+    /// Near a sheltered eye, fade the remaining outdoor rain over 2 m.
+    pub fn draw_covered(
+        &self,
+        out: &mut Vec<crate::fx::Sprite>,
+        eye: Vec3,
+        open: impl Fn(Vec3) -> bool,
+    ) {
+        let first = out.len();
+        self.particles.draw(out);
+        let sheltered = !open(eye);
+        let mut kept = first;
+        for i in first..out.len() {
+            let mut sprite = out[i];
+            let p = sprite.at;
+            let end = p + sprite.tail;
+            let bottom = p.min(end) - Vec3::Y * sprite.half;
+            if !open(bottom) {
+                continue;
+            }
+            if sheltered {
+                sprite.alpha *= (eye.distance(p) / 2.0).clamp(0.0, 1.0);
+            }
+            out[kept] = sprite;
+            kept += 1;
+        }
+        out.truncate(kept);
     }
 
     /// Draws the particles.
@@ -435,6 +499,86 @@ mod tests {
         let mut clear = base;
         weather_stage(&mut clear, &Weather::CALM);
         assert_eq!(clear.key, base.key);
+    }
+
+    #[test]
+    fn known_roofs_cull_streaks_and_covered_impacts_on_every_tier() {
+        use verse_world::social::solids::{Roof, Solids};
+        let mut cover = Solids::over(|_, _| 0.0);
+        cover.add_roof(Roof {
+            center: [0.0; 2],
+            across: [1.0, 0.0],
+            half: [40.0; 2],
+            eave: 20.0,
+            ridge: 20.0,
+        });
+        let eye = Vec3::Y * 1.6;
+        let storm = Weather {
+            rain: 1.0,
+            ..Weather::CALM
+        };
+        for tier in [Tier::Low, Tier::Medium, Tier::High] {
+            let mut fall = Rainfall::new(tier);
+            for _ in 0..120 {
+                fall.tick_covered(
+                    1.0 / 60.0,
+                    eye,
+                    Vec3::NEG_Z,
+                    &storm,
+                    &Ground::default(),
+                    |_, _| Some(0.0),
+                    |_, _| None,
+                    &[],
+                    |p| cover.rain_open(p),
+                );
+            }
+            let mut outside = Vec::new();
+            fall.draw(&mut outside);
+            assert!(!outside.is_empty(), "outdoor rain is present on {tier:?}");
+            let mut inside = Vec::new();
+            fall.draw_covered(&mut inside, eye, |p| cover.rain_open(p));
+            assert!(inside.is_empty(), "streaks below the roof: {tier:?}");
+            let mut open_draw = Vec::new();
+            fall.draw_covered(&mut open_draw, eye, |_| true);
+            assert_eq!(open_draw, outside, "outdoors is unchanged");
+            for _ in 0..60 {
+                fall.tick_covered(
+                    1.0 / 60.0,
+                    eye,
+                    Vec3::NEG_Z,
+                    &storm,
+                    &Ground::default(),
+                    |_, _| None,
+                    |_, _| Some(0.0),
+                    &[],
+                    |p| cover.rain_open(p),
+                );
+                assert!(
+                    fall.sources.is_empty(),
+                    "covered water has no new rain impacts"
+                );
+            }
+        }
+        // With rain streaks disabled, all remaining particles would be splashes.
+        let mut fall = Rainfall::new(Tier::High);
+        fall.control.particles = 4;
+        for _ in 0..60 {
+            fall.tick_covered(
+                1.0 / 60.0,
+                eye,
+                Vec3::NEG_Z,
+                &storm,
+                &Ground::default(),
+                |_, _| Some(0.0),
+                |_, _| None,
+                &[],
+                |p| cover.rain_open(p),
+            );
+        }
+        assert!(
+            fall.particles.len() <= STREAK_PEAK,
+            "covered land adds no splash emitters"
+        );
     }
 
     #[test]

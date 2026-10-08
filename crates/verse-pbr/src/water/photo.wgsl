@@ -991,3 +991,5 @@ fn water_orb(i: WaterOut, v: vec3<f32>, pixel: vec2<f32>, t: f32) -> WaterShade 
     }
     return water_cover(rgb, alpha);
 }
+
+fn water_host_rain_open(world: vec3<f32>) -> f32 { return rain_open(world); }

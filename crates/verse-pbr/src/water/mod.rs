@@ -454,3 +454,5 @@ pub fn body_bounds(vertices: &[WaterVertex]) -> [Option<screen::Bounds>; MAX_BOD
 }
 
 pub mod timing;
+
+pub mod rain_occlusion;

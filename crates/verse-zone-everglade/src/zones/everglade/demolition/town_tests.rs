@@ -289,6 +289,10 @@ fn the_solids_follow_the_collapse() {
     let ground = height(cx, cz);
     let over = first.floor(cx + 1.0, cz, ground + 9.0);
     assert!(over > ground + 3.0, "the roof is underfoot at {over}");
+    assert!(
+        !first.rain_open(Vec3::new(cx + 1.0, ground + 1.6, cz)),
+        "the intact roof blocks rain"
+    );
     // Blast both eave walls: the roof comes down, and so does what
     // stood on it.
     let player = caster(Vec3::new(cx, 0.0, cz), 18.0);
@@ -313,6 +317,10 @@ fn the_solids_follow_the_collapse() {
     assert!(
         after.floor(cx + 1.0, cz, ground + 9.0) < ground + 3.0,
         "no roof is left to stand on"
+    );
+    assert!(
+        after.rain_open(Vec3::new(cx + 1.0, ground + 1.6, cz)),
+        "Meteor Swarm opened this rain column"
     );
     // The east wall's gap lets the player through (the hut's door is in
     // its west wall).
