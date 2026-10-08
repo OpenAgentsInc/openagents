@@ -1,7 +1,7 @@
 {
   "schema": "openagents.verse-world-tree.v1",
   "zone": "everglade",
-  "digest": "sha256:c51274841a37f76ee49963394730a18f16260e34b5c672d353ff380495dbb8d7",
+  "digest": "sha256:23435b364f00da61be789b5169297a312fb49ea3fc4aa5e48401ce9f838e6b90",
   "nodes": [
     {
       "id": "everglade",
