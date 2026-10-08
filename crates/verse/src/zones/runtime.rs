@@ -410,6 +410,12 @@ impl WorldRuntime {
         Some(self.zone_state.everglade.as_deref()?.town()?.profile())
     }
 
+    /// Static rubble retained by the most recently produced scene.
+    #[must_use]
+    pub fn everglade_rubble_stats(&self) -> Option<super::everglade::demolition::town::MergeStats> {
+        Some(self.zone_state.everglade.as_deref()?.town()?.merge_stats())
+    }
+
     /// Loads the Meteor Showcase from the plaza.
     pub fn enter_meteor_showcase(&mut self) -> Result<(), String> {
         if !self.is_plaza() || self.zone_loading() {

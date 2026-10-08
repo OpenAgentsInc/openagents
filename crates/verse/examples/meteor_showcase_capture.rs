@@ -303,6 +303,7 @@ struct Sample {
     awake_bodies: usize,
     sleeping_bodies: usize,
     merged_chunks: usize,
+    static_rubble: zones::everglade::demolition::town::MergeStats,
     contact_points: usize,
     warm_candidates: usize,
     physics_steps: u32,
@@ -555,6 +556,11 @@ fn report(phases: &[(&str, Vec<Sample>)]) -> serde_json::Value {
                 "awake_bodies_max": most(|s| s.awake_bodies as u64),
                 "sleeping_bodies_max": most(|s| s.sleeping_bodies as u64),
                 "merged_chunks_max": most(|s| s.merged_chunks as u64),
+                "static_parts_max": most(|s| s.static_rubble.parts as u64),
+                "static_groups_max": most(|s| s.static_rubble.groups as u64),
+                "static_vertices_max": most(|s| s.static_rubble.vertices as u64),
+                "static_transformed_vertices_cumulative": most(|s| s.static_rubble.transformed_vertices),
+                "static_rebuilds_cumulative": most(|s| s.static_rubble.rebuilds),
                 "contact_points_max": most(|s| s.contact_points as u64),
                 "warm_candidates_max": most(|s| s.warm_candidates as u64),
                 "debris_end": samples.last().map(|s| serde_json::json!({
@@ -562,6 +568,10 @@ fn report(phases: &[(&str, Vec<Sample>)]) -> serde_json::Value {
                     "awake_bodies": s.awake_bodies, "sleeping_bodies": s.sleeping_bodies,
                     "merged_chunks": s.merged_chunks, "contact_points": s.contact_points,
                     "warm_candidates": s.warm_candidates,
+                    "static_parts": s.static_rubble.parts, "static_groups": s.static_rubble.groups,
+                    "static_vertices": s.static_rubble.vertices,
+                    "static_transformed_vertices_cumulative": s.static_rubble.transformed_vertices,
+                    "static_rebuilds_cumulative": s.static_rubble.rebuilds,
                 })),
                 "sprites_max": most(|s| s.sprites as u64),
                 "ribbons_max": most(|s| s.ribbons as u64),
@@ -1263,6 +1273,8 @@ fn main() -> Result<(), String> {
         let started = std::time::Instant::now();
         let mut dynamic = runtime.dynamic_mesh();
         sample.mesh = started.elapsed().as_secs_f32() * 1000.0;
+        sample.rigid_instances = dynamic.instances.as_ref().map_or(0, |f| f.instances.len());
+        sample.static_rubble = runtime.everglade_rubble_stats().unwrap_or_default();
         let flash_lamps = dynamic.neon.as_ref().map(|neon| neon.flash_lamps);
         if args.no_flash_lights
             && let Some(neon) = &mut dynamic.neon
