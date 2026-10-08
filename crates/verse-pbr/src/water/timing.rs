@@ -26,7 +26,7 @@ impl CpuTimer {
     pub fn cpu_ms(&self) -> Option<f64> { Some((cpu_ms()? - self.cpu?).max(0.0)) }
 }
 
-/// A completed fixed-view sample: mirror, opaque scene, depth copy, surface.
+/// A completed fixed-view sample: mirror, opaque scene, copies, surface.
 #[derive(Clone, Copy, Debug, Default, serde::Serialize)]
 pub struct GpuSample {
     pub frame: u64,
@@ -89,7 +89,11 @@ fn sample(frame: u64, ticks: [u64; 8], mask: u8, period: f64) -> Option<GpuSampl
     let mut result = GpuSample { frame, ..GpuSample::default() };
     let mut previous = 0;
     for (end, start, i) in order {
-        let ms = end.saturating_sub(start.max(previous)) as f64 * period / 1e6;
+        // Copy and surface time starts at the previous completion frontier.
+        // This charges the color-copy command between opaque and depth-copy
+        // passes, which cannot carry a render-pass timestamp itself.
+        let begin = if i >= 2 && previous > 0 { previous } else { start.max(previous) };
+        let ms = end.saturating_sub(begin) as f64 * period / 1e6;
         if !ms.is_finite() || ms > 1000.0 { return None; }
         result.pass_ms[i] = Some(ms);
         if i != 1 { result.water_ms += ms; }
@@ -161,6 +165,9 @@ mod tests {
         let no_mirror = sample(8, [0,0,100,150,150,170,170,200], 14, 1e6).unwrap();
         assert_eq!(no_mirror.pass_ms[0], None);
         assert_eq!(no_mirror.water_ms, 50.0);
+        let gaps = sample(9, [100,120,120,150,200,220,240,270], 15, 1e6).unwrap();
+        assert_eq!(gaps.pass_ms, [Some(20.0),Some(30.0),Some(70.0),Some(50.0)]);
+        assert_eq!(gaps.water_ms, 140.0);
         assert!(sample(9, [0;8], 8, 1.0).is_none());
         assert!(sample(9, [100,120,0,0,0,0,200,100], 9, 1.0).is_none());
         assert!(sample(9, [0;8], 0, 1.0).is_none());
