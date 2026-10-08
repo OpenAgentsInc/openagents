@@ -743,6 +743,17 @@ pub fn draws(items: &[Batch], order: &[usize]) -> Vec<Draw> {
     out
 }
 
+/// Rigid color order under its rendered camera, without size or fog cutoffs.
+pub(crate) fn camera_order(
+    items: &[Batch],
+    materials: &[textured::TexturedMaterial],
+    view: verse_engine::presentation::View,
+) -> Vec<usize> {
+    textured::draw_order(items, materials, view.eye, |_, batch| {
+        textured::in_frustum_conservative(batch.min, batch.max, view.view_proj)
+    })
+}
+
 /// Coalesces admitted opaque caster ranges within one bound geometry buffer.
 /// These passes read no material. A single instance keeps the complete index
 /// and instance invocation order unchanged when adjacent ranges join.
@@ -918,6 +929,59 @@ mod tests {
                 )
             })
             .collect()
+    }
+
+    #[test]
+    fn rigid_camera_order_only_removes_wholly_clipped_batches() {
+        let batch = |z, x, material, first| Batch {
+            first,
+            count: 3,
+            material,
+            min: Vec3::new(x - 0.01, -0.01, z - 0.01),
+            max: Vec3::new(x + 0.01, 0.01, z + 0.01),
+            level: Level::Always,
+            run: Some(Run {
+                first: first + 7,
+                count: 2,
+            }),
+        };
+        let items = [
+            batch(-10.0, 0.0, 0, 0),
+            batch(10.0, 0.0, 0, 3),
+            batch(-10.0, 50.0, 1, 6),
+            batch(-10.0, 0.0, 1, 9),
+            batch(-20.0, 0.0, 2, 12),
+            batch(-5.0, 0.0, 2, 15),
+        ];
+        let materials = [
+            TexturedMaterial::default(),
+            TexturedMaterial {
+                alpha: AlphaMode::Mask { cutoff: 0.5 },
+                ..Default::default()
+            },
+            TexturedMaterial {
+                alpha: AlphaMode::Blend,
+                ..Default::default()
+            },
+        ];
+        let view = verse_engine::presentation::View {
+            eye: Vec3::ZERO,
+            view_proj: Mat4::perspective_rh(1.0, 1.0, 0.1, 100.0),
+        };
+        let original = textured::draw_order(&items, &materials, view.eye, |_, _| true);
+        let admitted = camera_order(&items, &materials, view);
+        assert_eq!(admitted, [0, 3, 4, 5]);
+        let expected: Vec<_> = original
+            .into_iter()
+            .filter(|i| ![1, 2].contains(i))
+            .collect();
+        assert_eq!(admitted, expected);
+        for draw in draws(&items, &admitted) {
+            assert_eq!(draw.instances, items[draw.item].run.unwrap());
+            assert_eq!(draw.first, items[draw.item].first);
+            assert_eq!(draw.count, items[draw.item].count);
+        }
+        assert_eq!(camera_order(&items, &materials, view), admitted);
     }
 
     #[test]

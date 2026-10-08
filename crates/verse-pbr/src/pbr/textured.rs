@@ -1630,6 +1630,38 @@ pub fn in_frustum(min: Vec3, max: Vec3, view_proj: Mat4) -> bool {
         .all(|p| p.truncate().dot(center) + p.w + p.truncate().abs().dot(half) >= 0.0)
 }
 
+/// Keeps uncertain or edge-touching boxes while rejecting only wholly clipped
+/// rigid geometry. The margin covers float error in bounds and clip transforms.
+pub(crate) fn in_frustum_conservative(min: Vec3, max: Vec3, view_proj: Mat4) -> bool {
+    if !min.is_finite() || !max.is_finite() || min.cmpgt(max).any() || !view_proj.is_finite() {
+        return true;
+    }
+    let rows = view_proj.transpose();
+    [
+        rows.w_axis + rows.x_axis,
+        rows.w_axis - rows.x_axis,
+        rows.w_axis + rows.y_axis,
+        rows.w_axis - rows.y_axis,
+        rows.z_axis,
+        rows.w_axis - rows.z_axis,
+    ]
+    .iter()
+    .all(|plane| {
+        let normal = plane.truncate();
+        let positive = Vec3::new(
+            if normal.x >= 0.0 { max.x } else { min.x },
+            if normal.y >= 0.0 { max.y } else { min.y },
+            if normal.z >= 0.0 { max.z } else { min.z },
+        );
+        let terms = normal * positive;
+        let distance = terms.element_sum() + plane.w;
+        let scale = terms.abs().element_sum() + plane.w.abs();
+        !distance.is_finite()
+            || !scale.is_finite()
+            || distance >= -32.0 * f32::EPSILON * scale.max(1.0)
+    })
+}
+
 /// Whether the box from `min` to `max` lies within the side planes of
 /// `view_proj`, ignoring its near and far planes: a shadow map's caster
 /// test, since a caster beyond the light's near plane still shades.
@@ -2299,6 +2331,72 @@ mod tests {
             Vec3::new(52.0, 1.0, -9.0),
             view_proj
         ));
+    }
+
+    #[test]
+    fn rigid_frustum_admission_keeps_corners_near_planes_and_uncertain_bounds() {
+        let projection = Mat4::perspective_rh(1.0, 1.0, 0.1, 100.0);
+        for clip in [projection, super::super::gpu::reversed_depth() * projection] {
+            assert!(in_frustum_conservative(
+                Vec3::new(-1.0, -1.0, -11.0),
+                Vec3::new(1.0, 1.0, -9.0),
+                clip
+            ));
+            assert!(in_frustum_conservative(
+                Vec3::new(-0.01, -0.01, -0.15),
+                Vec3::new(0.01, 0.01, -0.05),
+                clip
+            ));
+            assert!(!in_frustum_conservative(
+                Vec3::new(-1.0, -1.0, 9.0),
+                Vec3::new(1.0, 1.0, 11.0),
+                clip
+            ));
+            assert!(!in_frustum_conservative(
+                Vec3::new(50.0, -1.0, -11.0),
+                Vec3::new(52.0, 1.0, -9.0),
+                clip
+            ));
+            assert!(!in_frustum_conservative(
+                Vec3::new(-1.0, -1.0, -120.0),
+                Vec3::new(1.0, 1.0, -110.0),
+                clip
+            ));
+        }
+        for point in [
+            Vec3::new(1.0, 1.0, 0.0),
+            Vec3::new(-1.0, -1.0, 1.0),
+            Vec3::new(1.0 + f32::EPSILON, 0.0, 0.5),
+        ] {
+            assert!(in_frustum_conservative(point, point, Mat4::IDENTITY));
+        }
+        assert!(in_frustum_conservative(
+            Vec3::new(0.9, 0.9, 0.5),
+            Vec3::new(3.0, 3.0, 0.6),
+            Mat4::IDENTITY
+        ));
+        assert!(!in_frustum_conservative(
+            Vec3::new(1.01, 0.0, 0.5),
+            Vec3::new(2.0, 0.1, 0.6),
+            Mat4::IDENTITY
+        ));
+        for (min, max, clip) in [
+            (Vec3::NAN, Vec3::ONE, Mat4::IDENTITY),
+            (Vec3::ZERO, Vec3::INFINITY, Mat4::IDENTITY),
+            (Vec3::ONE, Vec3::ZERO, Mat4::IDENTITY),
+            (
+                Vec3::ZERO,
+                Vec3::ONE,
+                Mat4::from_cols_array(&[f32::NAN; 16]),
+            ),
+            (
+                Vec3::splat(f32::MAX),
+                Vec3::splat(f32::MAX),
+                Mat4::from_scale(Vec3::splat(2.0)),
+            ),
+        ] {
+            assert!(in_frustum_conservative(min, max, clip));
+        }
     }
 
     #[test]

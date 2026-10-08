@@ -702,6 +702,7 @@ impl TexturedGpu {
                 .copied()
                 .map(|draw| super::temporal::MotionCommand::Indexed {
                     double_sided: self.materials[self.batches[draw.item].material].double_sided,
+                    bounds: Some([self.batches[draw.item].min, self.batches[draw.item].max]),
                     draw,
                 })
                 .collect()
@@ -2657,6 +2658,16 @@ impl Photo {
         })
     }
 
+    /// Rigid batches carry world bounds; figures retain their local bounds.
+    fn rigid_order(
+        rigid: Option<&TexturedGpu>,
+        view: verse_engine::presentation::View,
+    ) -> Vec<usize> {
+        rigid.map_or_else(Vec::new, |gpu| {
+            instanced::camera_order(&gpu.batches, &gpu.materials, view)
+        })
+    }
+
     /// The textured cells this frame draws, in drawing order: those at their
     /// current level of detail and in view, and, when fog is total at `far`
     /// meters, those nearer than the fog and large enough to see
@@ -3162,7 +3173,7 @@ impl Photo {
         self.encode_screen(queue, encoder, targets, &frame, Some(sun), &world);
         let order = Self::textured_order(world.textured, view, f32::INFINITY);
         let figure_order = Self::figure_order(world.figure, view);
-        let instances_order = Self::figure_order(world.instances, view);
+        let instances_order = Self::rigid_order(world.instances, view);
 
         // Scene pass.
         let direct = self.post.is_none();
@@ -3883,7 +3894,7 @@ impl Photo {
             world: &world,
             order: &order,
             figure_order: &figure_order,
-            instances_order: &Self::figure_order(world.instances, view),
+            instances_order: &Self::rigid_order(world.instances, view),
             daylight: daylight.is_some(),
             lit: lit.is_some(),
         };
@@ -3899,6 +3910,13 @@ impl Photo {
             } else {
                 Vec::new()
             };
+            let mirror_instances = Self::rigid_order(
+                world.instances,
+                verse_engine::presentation::View {
+                    view_proj: m.view_proj,
+                    eye: m.eye,
+                },
+            );
             self.encode_mirror(
                 encoder,
                 screen,
@@ -3906,6 +3924,7 @@ impl Photo {
                 clear,
                 &opaque,
                 &mirror_order,
+                &mirror_instances,
             );
         }
         let direct = self.post.is_none();
@@ -4168,6 +4187,7 @@ impl Photo {
         clear: wgpu::Color,
         opaque: &Opaque<'_, '_>,
         order: &[usize],
+        instances_order: &[usize],
     ) {
         let mut pass = scene_pass(
             encoder,
@@ -4216,7 +4236,7 @@ impl Photo {
                 self.draw_textured_with(
                     &mut pass,
                     world.instances,
-                    opaque.instances_order,
+                    instances_order,
                     which,
                     &pipelines.textured,
                 );
