@@ -175,7 +175,7 @@ pub(crate) fn refused(
 }
 
 /// A success document under the surface's schema tag.
-fn answered(status: StatusCode, fields: Value) -> Response {
+pub(crate) fn answered(status: StatusCode, fields: Value) -> Response {
     let mut body = fields;
     body["v"] = json!(SCHEMA);
     (status, Json(body)).into_response()
@@ -227,7 +227,7 @@ pub(crate) fn accounts_store(state: &ServeState) -> Result<Accounts, Response> {
 }
 
 /// Open the sessions store.
-fn sessions_store(state: &ServeState) -> Result<sessions::Sessions, Response> {
+pub(crate) fn sessions_store(state: &ServeState) -> Result<sessions::Sessions, Response> {
     sessions::Sessions::open(&state.dir).map_err(|trouble| {
         unavailable(
             "sessions_unavailable",
@@ -371,7 +371,7 @@ pub(crate) fn member(
 }
 
 /// The accounts-store refusal as an HTTP answer.
-fn accounts_refusal(refusal: tenancy::accounts::Refusal) -> Response {
+pub(crate) fn accounts_refusal(refusal: tenancy::accounts::Refusal) -> Response {
     use tenancy::accounts::Refusal as R;
     let (status, code) = match &refusal {
         R::Store(_) => (StatusCode::SERVICE_UNAVAILABLE, "accounts_unavailable"),
@@ -397,6 +397,17 @@ fn accounts_refusal(refusal: tenancy::accounts::Refusal) -> Response {
         R::InvitationClosed { .. } => (StatusCode::CONFLICT, "invitation_closed"),
         R::InvitationExpired(_) => (StatusCode::FORBIDDEN, "invitation_expired"),
         R::TenantMismatch => (StatusCode::FORBIDDEN, "tenant_mismatch"),
+        R::Sso(sso) => {
+            use tenancy::accounts::sso::SsoRefusal as S;
+            match sso {
+                S::Malformed => (StatusCode::BAD_REQUEST, "malformed_token"),
+                S::NoProvider(_) => (StatusCode::NOT_FOUND, "no_sso_provider"),
+                S::Denied => (StatusCode::UNAUTHORIZED, "sso_denied"),
+                S::Unlinked => (StatusCode::FORBIDDEN, "sso_unlinked"),
+                S::NotMember { .. } => (StatusCode::FORBIDDEN, "not_member"),
+                S::Terms(_) => (StatusCode::BAD_REQUEST, "invalid_terms"),
+            }
+        }
         R::EmptyField(field) => {
             return refused(
                 StatusCode::BAD_REQUEST,
@@ -409,7 +420,7 @@ fn accounts_refusal(refusal: tenancy::accounts::Refusal) -> Response {
 }
 
 /// The session-store refusal as an HTTP answer.
-fn sessions_refusal(refusal: sessions::Refusal) -> Response {
+pub(crate) fn sessions_refusal(refusal: sessions::Refusal) -> Response {
     use sessions::Refusal as R;
     let (status, code) = match &refusal {
         R::Store(_) | R::Unavailable => (StatusCode::SERVICE_UNAVAILABLE, "sessions_unavailable"),
