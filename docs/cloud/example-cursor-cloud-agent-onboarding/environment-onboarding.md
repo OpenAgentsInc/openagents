@@ -557,6 +557,44 @@ or image by identity before acting. Usage and cleanup are separate retained
 facts, and unknown cleanup blocks new builders for the environment.
 Restore hydration of the output image is checked by the ENV-05 verifier.
 
+ENV-05 lives in [`crates/coder-environment-verify`](../../../crates/coder-environment-verify/src/lib.rs).
+A `VerifyJob` targets one ready, current build. Before any allocation the
+builder's retained `ImageManifest` must reproduce the `BuildAttempt`'s
+manifest digest and the provider must still hold that name as the same
+`Ready` immutable snapshot. The frozen `CheckPlan` is a protected JSON
+artifact addressed by `Recipe.qualification.plan_digest`, and every check
+script it names is a blob pinned by digest. The image boots on a fresh
+computer (`coder_working_computer::Purpose::EnvironmentVerify`, Boat:
+`create` with `from` = the named snapshot) with no credentials. That
+computer is never the setup or builder computer and is never restored from
+a checkpoint. Restore readiness is the provider's typed hydration fact
+(`Images::hydration`, Boat `hydrated`).
+
+On the untouched baseline, the verifier proves the checkout is the pinned
+commit with the shared source step in verify mode, fetching only if the
+plan says `materialize`. It checks lock files against the recipe's frozen
+digests and starts declared services under provider process ownership with
+their health rules. It then runs readiness/browser and behavior checks.
+With `offline`, package managers are offline and other clients get a dead
+proxy.
+
+Only after the baseline passes does a second fresh boot of the same image
+fingerprint the declared inventory, rerun the build's exact install script
+and startup, and fingerprint again. Any difference fails the run. A
+non-zero exit, a timeout, a lost process, or a missing or altered artifact
+fails the run. So does a plan without a behavior check or a check with no
+assertion result (`OA-CHECK passed=` markers or `cargo test` summaries). A
+recipe revision or an altered plan artifact cancels the run as invalid.
+
+Each machine's commands are a child evidence record archived into the
+run's ENV-02a record. The verdict reaches the `VerificationAttempt` with
+its evidence digest and `evidence_status`; Save requires `Passed` with
+complete evidence. Both machines are deleted and their usage retained
+before the verdict is recorded. Unknown cleanup holds the verdict and
+blocks new verifiers for the environment. An owner restart that loses the
+live evidence ends the run incomplete, and its machines are still cleaned
+up. Qualification on real Boat is part of ENV-08.
+
 Proposed blocker edges are ENV-02 → ENV-01; ENV-03 → ENV-01/02;
 ENV-04 → ENV-01/02/03; ENV-05 → ENV-04; ENV-06 → ENV-05;
 ENV-07 → ENV-01/02/06 and the completed web foundations; and

@@ -3136,6 +3136,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "coder-environment-verify"
+version = "0.1.0"
+dependencies = [
+ "coder-environment",
+ "coder-environment-build",
+ "coder-environment-setup",
+ "coder-working-computer",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "coder-hands"
 version = "0.1.0"
 dependencies = [

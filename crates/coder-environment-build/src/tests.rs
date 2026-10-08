@@ -345,6 +345,7 @@ async fn a_clean_build_captures_a_sanitized_immutable_image() {
         builder: resource.clone(),
     };
     assert_eq!(image.manifest_digest, manifest.digest());
+    assert_eq!(job.manifest(), Some(manifest.clone()));
 
     // Usage and cleanup are retained; the builder is deleted.
     assert_eq!(job.usage.evidence, vec![format!("usage:{resource}")]);

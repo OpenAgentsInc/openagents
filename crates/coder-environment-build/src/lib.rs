@@ -347,6 +347,31 @@ impl BuildJob {
             })
     }
 
+    /// The manifest of the sealed image, reconstructed from the retained
+    /// capture; its digest equals the `BuildAttempt` image's manifest
+    /// digest. A verifier uses it to agree on the exact image identity.
+    pub fn manifest(&self) -> Option<ImageManifest> {
+        let record = self.capture.as_ref()?.record.as_ref()?;
+        self.image.as_ref()?;
+        Some(ImageManifest {
+            schema: MANIFEST_SCHEMA.into(),
+            environment: self.inputs.environment.clone(),
+            build_id: self.inputs.build_id.clone(),
+            recipe_revision: self.inputs.recipe_revision,
+            recipe_digest: self.inputs.recipe_digest.clone(),
+            source: self.inputs.source.clone(),
+            base: self.inputs.base.clone(),
+            runtime: self.inputs.runtime.clone(),
+            platform: self.inputs.platform.clone(),
+            plan_digest: self.inputs.plan.digest(),
+            checkout: self.checkout.clone().unwrap_or_default(),
+            report: self.report.clone().unwrap_or_default(),
+            name: record.name.clone(),
+            snapshot: record.snapshot.clone()?,
+            builder: record.source.clone(),
+        })
+    }
+
     /// The `BuildAttempt` state this job projects to.
     pub fn build_state(&self) -> coder_environment::BuildState {
         if self.unresolved.is_some() && !self.phase.terminal() {

@@ -440,6 +440,11 @@ pub struct VerificationAttempt {
     pub unresolved: Option<Unresolved<VerificationState>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub evidence_digest: Option<String>,
+    /// The sealed status of the evidence `evidence_digest` names. A
+    /// version saves only from a passed attempt whose evidence is
+    /// complete.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence_status: Option<evidence::EvidenceStatus>,
     pub history: Vec<Step<VerificationState>>,
     pub created_ms: u64,
 }

@@ -138,6 +138,10 @@ pub trait Images: Provider {
     ) -> Outcome<ImageRecord>;
     /// Read an image by name; `None` when the provider has none.
     async fn read_image(&self, name: &str) -> Outcome<Option<ImageRecord>>;
+    /// Whether every file a machine restored from its image is on disk.
+    /// A machine booted from an image can be usable before that; this, not
+    /// a boot or command exit, is restore readiness (ENV-05).
+    async fn hydration(&self, computer: &Computer, resource: &str) -> Outcome<bool>;
 }
 
 /// The result of one provider effect.
@@ -271,6 +275,10 @@ pub mod fake {
         pub latest_snapshot: Option<String>,
         /// Identified commands by id.
         pub processes: BTreeMap<String, FakeProcess>,
+        /// The output image this machine booted from.
+        pub image: Option<String>,
+        /// Restored files are still copying in.
+        pub hydrating: bool,
     }
 
     /// One identified command on a fake machine.
@@ -329,6 +337,9 @@ pub mod fake {
         /// Newly captured images report `Pending` until
         /// [`FakeProvider::settle_images`].
         pub images_pending: bool,
+        /// Machines booted from an image report un-hydrated until
+        /// [`FakeProvider::settle_hydration`].
+        pub hydration_pending: bool,
         pub counter: u64,
     }
 
@@ -405,6 +416,12 @@ pub mod fake {
                 .get(name)
                 .map(|(_, f)| f.clone())
         }
+        /// Mark every machine's restored files hydrated.
+        pub fn settle_hydration(&self) {
+            for m in self.state.lock().unwrap().machines.values_mut() {
+                m.hydrating = false;
+            }
+        }
         /// Mark every pending image ready.
         pub fn settle_images(&self) {
             for (record, _) in self.state.lock().unwrap().images.values_mut() {
@@ -452,7 +469,7 @@ pub mod fake {
     }
 
     impl Provider for FakeProvider {
-        async fn create(&self, _c: &Computer, operation: &str) -> Outcome<String> {
+        async fn create(&self, c: &Computer, operation: &str) -> Outcome<String> {
             let inject = self.begin("create");
             if matches!(inject, Some(Inject::Failed | Inject::Unknown)) {
                 return Self::finish(inject, || unreachable_outcome());
@@ -461,13 +478,26 @@ pub mod fake {
             let resource = if let Some(r) = s.operations.get(operation) {
                 r.clone()
             } else {
+                // A verifier boots from exactly its sealed image.
+                let files = match c.purpose.verify_image() {
+                    None => BTreeMap::new(),
+                    Some(name) => match s.images.get(name) {
+                        Some((record, files)) if record.state == ImageState::Ready => files.clone(),
+                        _ => return Outcome::failed("no such ready image"),
+                    },
+                };
                 let r = Self::next_id(&mut s, "box");
                 s.operations.insert(operation.into(), r.clone());
+                let image = c.purpose.verify_image().map(str::to_owned);
+                let hydrating = image.is_some() && s.hydration_pending;
                 s.machines.insert(
                     r.clone(),
                     Machine {
                         running: true,
                         meter_running: true,
+                        files,
+                        image,
+                        hydrating,
                         ..Default::default()
                     },
                 );
@@ -834,6 +864,20 @@ pub mod fake {
                     .get(name)
                     .map(|(r, _)| r.clone()),
             );
+            Self::finish(inject, || out)
+        }
+        async fn hydration(&self, _c: &Computer, resource: &str) -> Outcome<bool> {
+            let inject = self.begin("hydration");
+            if matches!(inject, Some(Inject::Failed | Inject::Unknown)) {
+                return Self::finish(inject, || unreachable_outcome());
+            }
+            let out = self.with_machine(resource, |s, r| {
+                let m = &s.machines[r];
+                if !m.running {
+                    return Outcome::failed("not running");
+                }
+                Outcome::done(!m.hydrating)
+            });
             Self::finish(inject, || out)
         }
     }

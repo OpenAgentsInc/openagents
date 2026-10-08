@@ -90,11 +90,17 @@ pub enum VerificationObservation {
         evidence_digest: String,
         evidence: crate::evidence::EvidenceStatus,
     },
+    /// The checks failed. `evidence` cites the sealed record of the run
+    /// when one was sealed.
     Failed {
         reason: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        evidence: Option<crate::evidence::Sealed>,
     },
     Incomplete {
         reason: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        evidence: Option<crate::evidence::Sealed>,
     },
     Cancelled,
     Unknown {
@@ -622,6 +628,7 @@ fn start_verification(
         state: VerificationState::Requested,
         unresolved: None,
         evidence_digest: None,
+        evidence_status: None,
         history: vec![Step {
             state: VerificationState::Requested,
             at_ms: now_ms,
@@ -633,6 +640,24 @@ fn start_verification(
         verification_id,
         build_id: build_id.into(),
     }))
+}
+
+/// Retain the evidence a non-passing verdict cites, before it is final.
+fn cite(
+    v: &mut VerificationAttempt,
+    evidence: Option<&crate::evidence::Sealed>,
+) -> Result<(), Refusal> {
+    let Some(sealed) = evidence else {
+        return Ok(());
+    };
+    if !valid_digest(&sealed.digest) {
+        return Err(Refusal::Invalid("The cited evidence digest is invalid."));
+    }
+    if !v.state.terminal() {
+        v.evidence_digest = Some(sealed.digest.clone());
+        v.evidence_status = Some(sealed.status);
+    }
+    Ok(())
 }
 
 fn observe_verification(
@@ -681,6 +706,7 @@ fn observe_verification(
                 // incomplete result: it never passes, so it never saves.
                 if !v.state.terminal() {
                     v.evidence_digest = Some(evidence_digest.clone());
+                    v.evidence_status = Some(*evidence);
                 }
                 Next::To(
                     VerificationState::Incomplete,
@@ -697,14 +723,23 @@ fn observe_verification(
                 }
                 if !v.state.terminal() {
                     v.evidence_digest = Some(evidence_digest.clone());
+                    v.evidence_status = Some(*evidence);
                 }
                 Next::To(VerificationState::Passed, None)
             }
         }
-        VerificationObservation::Failed { reason: r } => {
+        VerificationObservation::Failed {
+            reason: r,
+            evidence,
+        } => {
+            cite(v, evidence.as_ref())?;
             Next::To(VerificationState::Failed, Some(reason(r)?))
         }
-        VerificationObservation::Incomplete { reason: r } => {
+        VerificationObservation::Incomplete {
+            reason: r,
+            evidence,
+        } => {
+            cite(v, evidence.as_ref())?;
             Next::To(VerificationState::Incomplete, Some(reason(r)?))
         }
         VerificationObservation::Cancelled => Next::To(VerificationState::Cancelled, None),
@@ -753,9 +788,14 @@ fn save_version(
     {
         return Err(Refusal::AlreadySaved(saved.id.clone()));
     }
-    let (VerificationState::Passed, Some(evidence_digest)) = (v.state, &v.evidence_digest) else {
+    let (VerificationState::Passed, Some(evidence_digest), Some(status)) =
+        (v.state, &v.evidence_digest, v.evidence_status)
+    else {
         return Err(Refusal::NotPassed(verification_id.into()));
     };
+    if !status.complete() {
+        return Err(Refusal::NotPassed(verification_id.into()));
+    }
     let verification_run = v
         .run
         .clone()

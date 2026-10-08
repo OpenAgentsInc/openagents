@@ -282,7 +282,12 @@ impl Provider for BoatProvider {
                     no_env: Some(true),
                     env: Some(self.credentials.environment()),
                     snapshots: Some(true),
-                    from_: self.template.clone(),
+                    // A verifier boots from exactly its sealed output image.
+                    from_: c
+                        .purpose
+                        .verify_image()
+                        .map(str::to_owned)
+                        .or_else(|| self.template.clone()),
                     setup_script: Some(format!(
                         "mkdir -p {} {SERVICE_DIR}",
                         shell_quote(&self.workdir)
@@ -673,6 +678,17 @@ impl Images for BoatProvider {
         {
             Ok(r) => Outcome::done(image_record(&r.snapshot)),
             Err(e) => mutation("save named snapshot", e),
+        }
+    }
+
+    async fn hydration(&self, _c: &Computer, resource: &str) -> Outcome<bool> {
+        match self.sandbox(resource).await {
+            Ok(s) if matches!(s.state.as_str(), "error" | "cancelled" | "archived") => {
+                Outcome::failed(format!("the sandbox is {}", s.state))
+            }
+            Ok(s) => Outcome::done(s.hydrated == Some(true)),
+            Err(e) if status(&e) == Some(404) => Outcome::failed("the sandbox is gone"),
+            Err(e) => Outcome::unknown(format!("read hydration: {e}")),
         }
     }
 

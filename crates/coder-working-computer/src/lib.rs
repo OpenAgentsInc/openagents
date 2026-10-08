@@ -129,10 +129,40 @@ pub enum Purpose {
     /// the recipe's pinned base, never a setup or chat computer, and never
     /// restored from any checkpoint. The `chat` field holds the build job.
     EnvironmentBuild { environment: String, build: String },
+    /// An independent verifier (ENV-05): created fresh from one sealed
+    /// output image (`image`, the provider name), never the setup or
+    /// builder computer and never restored from a checkpoint. It carries no
+    /// credentials; the verifier starts declared services itself once the
+    /// restored files are hydrated. The `chat` field holds the verify job.
+    EnvironmentVerify {
+        environment: String,
+        build: String,
+        verification: String,
+        image: String,
+        role: VerifyRole,
+    },
+}
+
+/// Which verifier machine this is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VerifyRole {
+    /// The untouched candidate the frozen checks run on first.
+    Baseline,
+    /// A disposable second boot of the same image where the recipe is
+    /// rerun to prove it changes nothing.
+    Fork,
 }
 impl Purpose {
     pub fn is_chat(&self) -> bool {
         matches!(self, Self::Chat)
+    }
+    /// The output image a verifier computer boots from.
+    pub fn verify_image(&self) -> Option<&str> {
+        match self {
+            Self::EnvironmentVerify { image, .. } => Some(image),
+            _ => None,
+        }
     }
 }
 
@@ -480,6 +510,24 @@ impl Computer {
         Ok(c)
     }
 
+    /// An independent verifier booted from one sealed output image
+    /// (`spec.chat` names the verify job). It starts from no saved version,
+    /// declares no services, and carries no credentials.
+    pub fn for_verify(spec: Spec, purpose: Purpose, now_ms: u64) -> Result<Self, &'static str> {
+        if !matches!(purpose, Purpose::EnvironmentVerify { .. }) {
+            return Err("A verifier needs a verify purpose.");
+        }
+        if spec.base.is_some() || !spec.services.is_empty() || !spec.credential_names.is_empty() {
+            return Err(
+                "A verifier boots its image with no saved version, services, or credentials.",
+            );
+        }
+        let mut c = Self::new(spec, now_ms)?;
+        c.purpose = purpose;
+        c.validate()?;
+        Ok(c)
+    }
+
     /// A computer dedicated to one environment setup session (`spec.chat`
     /// names the session). It starts from no saved environment version and
     /// runs no declared services.
@@ -531,6 +579,23 @@ impl Computer {
                 || !self.services.is_empty())
         {
             return Err("A builder computer is invalid.");
+        }
+        if let Purpose::EnvironmentVerify {
+            environment,
+            build,
+            verification,
+            image,
+            ..
+        } = &self.purpose
+            && (!valid_id(environment)
+                || !valid_id(build)
+                || !valid_id(verification)
+                || !valid_id(image)
+                || self.base.is_some()
+                || !self.services.is_empty()
+                || !self.credential_names.is_empty())
+        {
+            return Err("A verifier computer is invalid.");
         }
         if self.credential_names.len() > 32
             || !self
