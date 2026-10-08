@@ -480,6 +480,45 @@ async fn everglade_bake_layers_are_digest_named_immutable_downloads() {
     }
 }
 
+#[tokio::test]
+async fn everglade_bake_layers_stream_beyond_the_cloud_run_buffer_limit() {
+    use futures_util::StreamExt;
+    use hyper::body::Body as _;
+
+    let root = tempfile::tempdir().unwrap();
+    let (config, _) = with_everglade(root.path());
+    let directory = config.everglade.as_ref().unwrap().join("kit/bake");
+    std::fs::create_dir_all(&directory).unwrap();
+    let name = format!("{}.vlay", "ab".repeat(32));
+    let size = 33 * 1024 * 1024;
+    std::fs::File::create(directory.join(&name))
+        .unwrap()
+        .set_len(size)
+        .unwrap();
+    let response = router(config)
+        .oneshot(
+            Request::builder()
+                .uri(format!("/everglade/kit/bake/{name}"))
+                .header(header::HOST, LOCAL)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(!response.headers().contains_key(header::CONTENT_LENGTH));
+    assert_eq!(response.body().size_hint().exact(), None);
+    let mut stream = response.into_body().into_data_stream();
+    let mut received = 0;
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.unwrap();
+        assert!(chunk.len() <= 64 * 1024);
+        assert!(chunk.iter().all(|byte| *byte == 0));
+        received += chunk.len() as u64;
+    }
+    assert_eq!(received, size);
+}
+
 /// `/druid` (#10611): the same full-screen page and build, which starts in
 /// the Grove on this path, under the same policy.
 #[tokio::test]

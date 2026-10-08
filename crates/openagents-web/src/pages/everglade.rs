@@ -329,12 +329,38 @@ async fn bake_file(State(app): State<App>, UrlPath(file): UrlPath<String>) -> Re
     if !digest_name(&file, ".vlay") {
         return crate::not_found().await;
     }
-    serve(
-        directory.join(KIT_DIRECTORY).join("bake").join(&file),
-        "application/octet-stream",
-        PACK_CACHE,
+    use tokio::io::AsyncReadExt;
+
+    let path = directory.join(KIT_DIRECTORY).join("bake").join(&file);
+    if !tokio::fs::metadata(&path)
+        .await
+        .is_ok_and(|metadata| metadata.is_file())
+    {
+        return crate::not_found().await;
+    }
+    let file = match tokio::fs::File::open(path).await {
+        Ok(file) => file,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return crate::not_found().await;
+        }
+        Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    };
+    // Cloud Run caps buffered HTTP/1 responses at 32 MiB. Leave the
+    // length unknown so Hyper streams these larger files in chunks.
+    let stream = futures_util::stream::try_unfold(file, |mut file| async move {
+        let mut bytes = vec![0; 64 * 1024];
+        let count = file.read(&mut bytes).await?;
+        bytes.truncate(count);
+        Ok::<_, std::io::Error>((count != 0).then_some((bytes, file)))
+    });
+    (
+        [
+            (header::CONTENT_TYPE, "application/octet-stream"),
+            (header::CACHE_CONTROL, PACK_CACHE),
+        ],
+        axum::body::Body::from_stream(stream),
     )
-    .await
+        .into_response()
 }
 
 /// One regular file's bytes, or `404` when it isn't there.
