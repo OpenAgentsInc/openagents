@@ -790,3 +790,36 @@ gcloud run services update-traffic coder \
   --region us-central1 --project openagentsgemini \
   --update-tags onboarding=coder-web-chat-eb24898886-20261008210844
 ```
+
+## October 8, 2026: Geist on staging
+
+[Staging](https://onboarding---coder-ezxz4mgdsq-uc.a.run.app/) serves revision
+`coder-web-geist-route-ccd6bedf43-20261008224412` through the `onboarding`
+tag with zero production traffic. The native server comes from main
+`ccd6bedf43c92f7b54da882f8b8ee4393ec9d69e`, built by Cloud Build
+`5da34076-7930-40fe-a947-786f33057e62`. Its image digest is
+`sha256:38cc3905a4b5bc487f66ab93fe742e3e5ecec9460775de161a7b6a9732113210`.
+
+Regular text and composer input use the restored Geist variable font. Logos,
+code, and tool output retain Paper Mono. Live inspection caught a font request
+falling through to the legacy proxy; the fix registers `/fonts/Geist.ttf` as a
+native route. The existing proxy regression check now covers both font files.
+The scoped chat submit selector is also restored.
+
+All 174 web library tests and formatting pass. Ten live HTTP reads pass,
+including exact comparisons of both font files, the chat JavaScript and Wasm,
+and the retained game Wasm. Browser inspection confirms Geist on chat and demo
+text and inputs, Paper Mono on logos and tool output, and one matching submit
+button. No new chat browser errors appear after the final reload. The native
+overlay retains the browser and game assets documented in the preceding entry.
+Private checks and screenshots remain in the same operator scratch directory.
+
+At the final readiness check, production still serves 100% of traffic from
+`coder-web-w11-1d126aad2b-20261008202124`. To restore staging to the preceding
+chat release, run:
+
+```sh
+gcloud run services update-traffic coder \
+  --region us-central1 --project openagentsgemini \
+  --update-tags onboarding=coder-web-chat-985297571c-20261008213052
+```
