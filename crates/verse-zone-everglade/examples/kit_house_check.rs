@@ -193,13 +193,21 @@ fn run(output: PathBuf) -> Result<(), String> {
         .join(everglade_pack::PACK_DIRECTORY)
         .join(format!("{}.vtp", everglade_pack::PACK_SHA256));
     let mut pack = everglade_pack::ZonePack::load_local(&path)?;
-    if let Some(build)=std::env::var_os("VERSE_KIT_HOUSE_BUILD") {
-        let build=PathBuf::from(build).canonicalize().map_err(|e|e.to_string())?;
-        if build.starts_with(&repo) {return Err("The private kit build must stay outside Git".into())}
-        let compiled=everglade_pack::compile::kit::compile(&build,kit::grade)?;
-        let private=everglade_pack::compile::kit::decode(&compiled.bytes)?;
-        let report=kit::install(&mut pack,Some(&private));
-        if report.proxies!=0 || !report.refused.is_empty() {return Err(format!("The private house source lacks admitted kit pieces: {report:?}"))}
+    if let Some(build) = std::env::var_os("VERSE_KIT_HOUSE_BUILD") {
+        let build = PathBuf::from(build)
+            .canonicalize()
+            .map_err(|e| e.to_string())?;
+        if build.starts_with(&repo) {
+            return Err("The private kit build must stay outside Git".into());
+        }
+        let compiled = everglade_pack::compile::kit::compile(&build, kit::grade)?;
+        let private = everglade_pack::compile::kit::decode(&compiled.bytes)?;
+        let report = kit::install(&mut pack, Some(&private));
+        if report.proxies != 0 || !report.refused.is_empty() {
+            return Err(format!(
+                "The private house source lacks admitted kit pieces: {report:?}"
+            ));
+        }
     }
     if !kit::installed(&pack) {
         return Err("House acceptance requires the real private kit".into());
@@ -209,8 +217,8 @@ fn run(output: PathBuf) -> Result<(), String> {
         .map(|(_, h)| h)
         .collect();
     houses.extend(layout::first_town_houses());
-    let mut recipes=Vec::new();
-    let mut exported=BTreeSet::new();
+    let mut recipes = Vec::new();
+    let mut exported = BTreeSet::new();
     for (index, house) in houses.into_iter().enumerate() {
         let mut placements = Vec::new();
         house.raise(&mut placements);
@@ -225,22 +233,32 @@ fn run(output: PathBuf) -> Result<(), String> {
         }).into_iter().collect();
         let name = format!("house-{index:02}");
         export(&dir, &name, &scene, &placements)?;
-        let key=house_lod::key(house);
+        let key = house_lod::key(house);
         if exported.insert(key.clone()) {
-            let inverse=house_lod::transform(house).inverse();
-            for p in &mut scene.placements { p.transform=inverse*p.transform; }
-            export(&dir,&key,&scene,&placements)?;
+            let inverse = house_lod::transform(house).inverse();
+            for p in &mut scene.placements {
+                p.transform = inverse * p.transform;
+            }
+            export(&dir, &key, &scene, &placements)?;
             let members: Vec<_>=placements.iter().map(|p| json!({"model":p.model.trim_start_matches("kit/"),"matrix":(inverse*p.transform()).to_cols_array()})).collect();
-            recipes.push(json!({"key":key,"source":format!("{key}.gltf"),"pieces":members,
+            recipes.push(
+                json!({"key":key,"source":format!("{key}.gltf"),"pieces":members,
                 "near":levels[0]["triangles"].as_u64().unwrap()>house_lod::TRIANGLES[0],
-                "triangles":house_lod::TRIANGLES,"draws":house_lod::DRAWS}));
+                "triangles":house_lod::TRIANGLES,"draws":house_lod::DRAWS}),
+            );
         }
         println!(
             "{}",
             json!({"house":house.name,"file":format!("{name}.gltf"),"center":house.center,"facing":house.facing,"width":house.width,"depth":house.depth,"stories":house.stories,"levels":levels})
         );
     }
-    write(&dir.join("houses.json"),&serde_json::to_vec_pretty(&json!({"schema":"openagents.verse.private-house-build.v1","houses":recipes})).map_err(|e|e.to_string())?)?;
+    write(
+        &dir.join("houses.json"),
+        &serde_json::to_vec_pretty(
+            &json!({"schema":"openagents.verse.private-house-build.v1","houses":recipes}),
+        )
+        .map_err(|e| e.to_string())?,
+    )?;
     Ok(())
 }
 

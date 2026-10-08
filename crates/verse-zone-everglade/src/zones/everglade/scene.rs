@@ -156,12 +156,15 @@ pub fn build_painted(
         ..TexturedScene::default()
     };
     let mut copied = Copied::default();
-    let paints: Vec<_>=placements.iter().map(&paint).collect();
-    let houses=super::house_lod::configure(pack,placements,&paints,&mut scene);
-    let mut house_details=vec![None;placements.len()];
-    for (group,h) in houses.iter().enumerate() {
+    let paints: Vec<_> = placements.iter().map(&paint).collect();
+    let houses = super::house_lod::configure(pack, placements, &paints, &mut scene);
+    let mut house_details = vec![None; placements.len()];
+    for (group, h) in houses.iter().enumerate() {
         for &index in &h.members {
-            house_details[index]=Some(Detail::Group {group:group as u16,level:if h.near{3}else{0}});
+            house_details[index] = Some(Detail::Group {
+                group: group as u16,
+                level: if h.near { 3 } else { 0 },
+            });
         }
     }
     let mut blockers = Vec::new();
@@ -183,7 +186,8 @@ pub fn build_painted(
     // merged indices (`demolition::town`), so they merge into their cells;
     // everything else may draw as an instance of a shared mesh.
     let kit = super::demolition::town::kit_members(placements);
-    let editable = |index: usize| carved[index] || kit.contains(&index) || house_details[index].is_some();
+    let editable =
+        |index: usize| carved[index] || kit.contains(&index) || house_details[index].is_some();
     let place = |scene: &mut TexturedScene, index: usize, mesh, transform, level| {
         if editable(index) {
             scene.place_detail(mesh, transform, level);
@@ -196,7 +200,7 @@ pub fn build_painted(
         let cut = lattice(placement, carved)?;
         let (mesh, bounds) = mesh(pack, placement.model, colors, cut, &mut scene, &mut copied)?;
         let (level, _) = detail::plan(pack, placement.model);
-        let level=house_details[index].unwrap_or(level);
+        let level = house_details[index].unwrap_or(level);
         place(&mut scene, index, mesh, placement.transform(), level);
         blockers.extend(placement.footprints(bounds));
     }
@@ -219,7 +223,7 @@ pub fn build_painted(
             );
         }
     }
-    super::house_lod::append(pack,&houses,&mut scene,&mut copied)?;
+    super::house_lod::append(pack, &houses, &mut scene, &mut copied)?;
     scene.validate()?;
     Ok((scene, blockers))
 }

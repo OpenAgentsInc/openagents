@@ -390,23 +390,26 @@ pub fn install(pack: &mut ZonePack, kit: Option<&ZonePack>) -> Installed {
         pack.models.push(proxy(piece, coat, glass, glow));
         report.proxies += 1;
     }
-    if let Some(k)=kit {
+    if let Some(k) = kit {
         use crate::zones::everglade::house_lod;
         for house in house_lod::houses() {
-            let (low,high)=house_lod::bounds(house);
+            let (low, high) = house_lod::bounds(house);
             for level in 0..3 {
-                let name=house_lod::model(house,level);
-                let Some(model)=k.model(&name) else{continue};
-                let (min,max)=model.bounds();
-                let fits=(0..3).all(|axis|(min[axis]-low[axis]).abs()<=0.11 && (max[axis]-high[axis]).abs()<=0.11)
-                    && model.triangles()<=house_lod::TRIANGLES[level]
-                    && model.primitives.len()<=house_lod::DRAWS[level];
+                let name = house_lod::model(house, level);
+                let Some(model) = k.model(&name) else {
+                    continue;
+                };
+                let (min, max) = model.bounds();
+                let fits = (0..3).all(|axis| {
+                    (min[axis] - low[axis]).abs() <= 0.11 && (max[axis] - high[axis]).abs() <= 0.11
+                }) && model.triangles() <= house_lod::TRIANGLES[level]
+                    && model.primitives.len() <= house_lod::DRAWS[level];
                 if fits {
-                    if !pack.models.iter().any(|m|m.name==name) {
-                        let materials=*remap.get_or_insert_with(||append(pack,k));
-                        pack.models.push(shifted(model,materials));
+                    if !pack.models.iter().any(|m| m.name == name) {
+                        let materials = *remap.get_or_insert_with(|| append(pack, k));
+                        pack.models.push(shifted(model, materials));
                     }
-                }else{
+                } else {
                     report.refused.push(name);
                 }
             }

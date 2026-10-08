@@ -96,10 +96,12 @@ fn main() -> Result<(), String> {
         }
     }
     for house in verse_zone_everglade::zones::everglade::house_lod::houses() {
-        for level in [1,2] {
-            let name=verse_zone_everglade::zones::everglade::house_lod::model(house,level);
+        for level in [1, 2] {
+            let name = verse_zone_everglade::zones::everglade::house_lod::model(house, level);
             if pack.model(&name).is_none() || empty.model(&name).is_none() {
-                return Err(format!("The compiled house level is missing or refused: {name}"));
+                return Err(format!(
+                    "The compiled house level is missing or refused: {name}"
+                ));
             }
         }
     }
