@@ -329,9 +329,17 @@ async fn bake_file(State(app): State<App>, UrlPath(file): UrlPath<String>) -> Re
     if !digest_name(&file, ".vlay") {
         return crate::not_found().await;
     }
-    use tokio::io::AsyncReadExt;
+    serve_stream(
+        directory.join(KIT_DIRECTORY).join("bake").join(&file),
+        "application/octet-stream",
+        PACK_CACHE,
+    )
+    .await
+}
 
-    let path = directory.join(KIT_DIRECTORY).join("bake").join(&file);
+/// Streams large regular files without a buffered response length.
+async fn serve_stream(path: PathBuf, content_type: &'static str, cache: &'static str) -> Response {
+    use tokio::io::AsyncReadExt;
     if !tokio::fs::metadata(&path)
         .await
         .is_ok_and(|metadata| metadata.is_file())
@@ -355,8 +363,8 @@ async fn bake_file(State(app): State<App>, UrlPath(file): UrlPath<String>) -> Re
     });
     (
         [
-            (header::CONTENT_TYPE, "application/octet-stream"),
-            (header::CACHE_CONTROL, PACK_CACHE),
+            (header::CONTENT_TYPE, content_type),
+            (header::CACHE_CONTROL, cache),
         ],
         axum::body::Body::from_stream(stream),
     )
@@ -365,11 +373,14 @@ async fn bake_file(State(app): State<App>, UrlPath(file): UrlPath<String>) -> Re
 
 /// One regular file's bytes, or `404` when it isn't there.
 async fn serve(path: PathBuf, content_type: &'static str, cache: &'static str) -> Response {
-    let regular = tokio::fs::metadata(&path)
-        .await
-        .is_ok_and(|metadata| metadata.is_file());
-    if !regular {
+    let Ok(metadata) = tokio::fs::metadata(&path).await else {
         return crate::not_found().await;
+    };
+    if !metadata.is_file() {
+        return crate::not_found().await;
+    }
+    if metadata.len() >= 32 * 1024 * 1024 {
+        return serve_stream(path, content_type, cache).await;
     }
     match tokio::fs::read(&path).await {
         Ok(bytes) => (
