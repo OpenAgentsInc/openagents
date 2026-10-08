@@ -356,6 +356,15 @@ impl Ripples {
         chosen.sort_by(|a, b| b.weight(eye).total_cmp(&a.weight(eye)));
         chosen.truncate(self.plan.sources);
         self.stats.applied = chosen.len();
+        // Zero height, velocity/history, and foam stay zero without sources.
+        // Keep the fixed clock phase, but avoid convolving an empty field.
+        let empty = chosen.is_empty()
+            && self
+                .h
+                .iter()
+                .chain(&self.prev)
+                .chain(&self.foam)
+                .all(|v| *v == 0.0);
         let mut steps = 0;
         let mut now = clock;
         let mut pulsed = false;
@@ -367,7 +376,9 @@ impl Ripples {
                 self.inject(s, dt);
             }
             pulsed = true;
-            self.step(dt);
+            if !empty {
+                self.step(dt);
+            }
             now += dt;
             steps += 1;
         }
@@ -387,7 +398,7 @@ impl Ripples {
             .copied()
             .collect();
         self.stats.wakes = self.wakes.len();
-        self.stats.steps = steps;
+        self.stats.steps = if empty { 0 } else { steps };
     }
 
     /// Moves the window so `eye` lies at its middle, in whole cells.
