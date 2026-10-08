@@ -1975,7 +1975,10 @@ mod tests {
         let choice = LayerChoice {
             compatibility: Some(Arc::new(record)),
             layers: Arc::new(layers),
-            sun: Some(0),
+            sun: super::super::baked_layers::SunBlend {
+                first: Some(0),
+                ..Default::default()
+            },
             ratio: 1.0,
         };
         assert!(choice.apply(&scene).is_ok());
@@ -2021,7 +2024,10 @@ mod tests {
         let choice = LayerChoice {
             compatibility: None,
             layers: layers.clone(),
-            sun: Some(0),
+            sun: super::super::baked_layers::SunBlend {
+                first: Some(0),
+                ..Default::default()
+            },
             ratio: 1.0,
         };
         let state = BakeJob::inline_layers(&scene, Some(choice.clone())).unwrap();
