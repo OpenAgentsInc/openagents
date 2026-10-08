@@ -1857,6 +1857,89 @@ pub struct Offscreen {
     gpu_timestamps_enabled: bool,
     last_gpu_ms: Option<f32>,
     last_gpu_ticks: Option<[u64; 4]>,
+    frames: Option<TrackedFrames>,
+    warmup_submissions: usize,
+    warmup_drain_ms: f32,
+}
+
+/// Host observations of one submitted frame. Completion can precede the
+/// callback, so these times bound completion rather than measure GPU work.
+#[cfg(feature = "capture")]
+#[derive(Clone, Debug)]
+pub struct FrameCompletion {
+    pub index: usize,
+    pub started_ms: f64,
+    pub submitted_ms: f64,
+    pub observed_completed_ms: f64,
+}
+
+/// Every tracked frame, after all submissions have completed.
+#[cfg(feature = "capture")]
+pub struct CompletedFrames {
+    pub submitted: usize,
+    pub maximum_pending: usize,
+    pub drain_ms: f32,
+    pub warmup_submissions: usize,
+    pub warmup_drain_ms: f32,
+    pub frames: Vec<FrameCompletion>,
+}
+
+#[cfg(feature = "capture")]
+struct TrackedFrames {
+    origin: std::time::Instant,
+    submitted: usize,
+    maximum_pending: usize,
+    pending: std::collections::VecDeque<(wgpu::SubmissionIndex, usize)>,
+    completed: Vec<FrameCompletion>,
+    sender: std::sync::mpsc::Sender<FrameCompletion>,
+    receiver: std::sync::mpsc::Receiver<FrameCompletion>,
+}
+
+#[cfg(feature = "capture")]
+impl TrackedFrames {
+    fn new(origin: std::time::Instant) -> Self {
+        let (sender, receiver) = std::sync::mpsc::channel();
+        Self {
+            origin,
+            submitted: 0,
+            maximum_pending: 0,
+            pending: Default::default(),
+            completed: Vec::new(),
+            sender,
+            receiver,
+        }
+    }
+
+    fn collect(&mut self) {
+        for frame in self.receiver.try_iter() {
+            self.pending.retain(|(_, index)| *index != frame.index);
+            self.completed.push(frame);
+        }
+    }
+
+    fn finish(&mut self) -> Result<(), String> {
+        self.collect();
+        self.completed.sort_by_key(|frame| frame.index);
+        if !self.pending.is_empty()
+            || self.completed.len() != self.submitted
+            || self
+                .completed
+                .iter()
+                .enumerate()
+                .any(|(i, frame)| i != frame.index)
+        {
+            return Err("Tracked submissions did not each complete exactly once".into());
+        }
+        Ok(())
+    }
+}
+
+#[cfg(feature = "capture")]
+#[derive(Clone, Copy)]
+struct TrackedFrame {
+    index: usize,
+    started: std::time::Instant,
+    pipelined: bool,
 }
 
 #[cfg(feature = "capture")]
@@ -1945,6 +2028,9 @@ impl Offscreen {
             gpu_timestamps_enabled: true,
             last_gpu_ms: None,
             last_gpu_ticks: None,
+            frames: None,
+            warmup_submissions: 0,
+            warmup_drain_ms: 0.0,
         })
     }
 
@@ -2052,8 +2138,105 @@ impl Offscreen {
         dynamic: &Mesh,
         ui: &UiBatch,
     ) -> Result<(f32, f32), String> {
-        self.render_frame(view, dynamic, ui, None, false)?;
+        self.render_frame(view, dynamic, ui, None, false, None)?;
         Ok(self.timing)
+    }
+
+    /// Draws every tracked frame, admitting at most two pending submissions
+    /// when `pipelined`. Pixel frames always wait for their own submission.
+    /// `started` includes the caller's simulation and frame preparation.
+    ///
+    /// # Errors
+    ///
+    /// Returns a message for unordered frame indices, pipelined timestamps,
+    /// invalid frames, or GPU failures.
+    #[allow(clippy::too_many_arguments)]
+    pub fn render_tracked(
+        &mut self,
+        view: View,
+        dynamic: &Mesh,
+        ui: &UiBatch,
+        index: usize,
+        started: std::time::Instant,
+        read_pixels: bool,
+        pipelined: bool,
+    ) -> Result<Vec<u8>, String> {
+        if pipelined && self.gpu_timestamps_enabled() {
+            return Err("Pipelined frames require timestamp diagnostics disabled".into());
+        }
+        let admission = std::time::Instant::now();
+        let frames = self
+            .frames
+            .get_or_insert_with(|| TrackedFrames::new(started));
+        if index != frames.submitted {
+            return Err("Tracked frame indices must start at zero and remain consecutive".into());
+        }
+        if started < frames.origin {
+            return Err("Tracked frame start precedes the capture clock".into());
+        }
+        self.device
+            .poll(wgpu::PollType::Poll)
+            .map_err(|e| format!("The GPU could not be polled: {e}"))?;
+        frames.collect();
+        let limit = if pipelined { 2 } else { 1 };
+        if frames.pending.len() >= limit {
+            let submission = frames.pending.front().expect("pending frame").0.clone();
+            self.device
+                .poll(wgpu::PollType::Wait {
+                    submission_index: Some(submission),
+                    timeout: None,
+                })
+                .map_err(|e| format!("The oldest frame did not finish: {e}"))?;
+            frames.collect();
+            if frames.pending.len() >= limit {
+                return Err("The oldest frame's completion callback did not arrive".into());
+            }
+        }
+        let admission_ms = admission.elapsed().as_secs_f32() * 1000.0;
+        let pixels = self.render_frame(
+            view,
+            dynamic,
+            ui,
+            None,
+            read_pixels,
+            Some(TrackedFrame {
+                index,
+                started,
+                pipelined,
+            }),
+        )?;
+        self.timing.1 += admission_ms;
+        Ok(pixels)
+    }
+
+    /// Waits for every tracked submission and returns its host observations.
+    ///
+    /// # Errors
+    ///
+    /// Returns a message if the GPU fails or any submitted frame is missing.
+    pub fn drain_tracked(&mut self) -> Result<CompletedFrames, String> {
+        let started = std::time::Instant::now();
+        let mut frames = self
+            .frames
+            .take()
+            .unwrap_or_else(|| TrackedFrames::new(started));
+        if let Some((submission, _)) = frames.pending.back() {
+            self.device
+                .poll(wgpu::PollType::Wait {
+                    submission_index: Some(submission.clone()),
+                    timeout: None,
+                })
+                .map_err(|e| format!("The final frame did not finish: {e}"))?;
+        }
+        frames.finish()?;
+        Ok(CompletedFrames {
+            submitted: frames.submitted,
+            maximum_pending: frames.maximum_pending,
+            drain_ms: started.elapsed().as_secs_f32() * 1000.0,
+            warmup_submissions: self.warmup_submissions,
+            warmup_drain_ms: self.warmup_drain_ms,
+            frames: frames.completed,
+        })
     }
 
     fn render_with_overlay(
@@ -2063,7 +2246,7 @@ impl Offscreen {
         ui: &UiBatch,
         overlay: Option<&crate::overlay::OverlayImage>,
     ) -> Result<Vec<u8>, String> {
-        self.render_frame(view, dynamic, ui, overlay, true)
+        self.render_frame(view, dynamic, ui, overlay, true, None)
     }
 
     fn render_frame(
@@ -2073,6 +2256,7 @@ impl Offscreen {
         ui: &UiBatch,
         overlay: Option<&crate::overlay::OverlayImage>,
         read_pixels: bool,
+        tracked: Option<TrackedFrame>,
     ) -> Result<Vec<u8>, String> {
         let started = std::time::Instant::now();
         validate_frame(view, dynamic, ui)?;
@@ -2110,7 +2294,16 @@ impl Offscreen {
                     dynamic,
                     ui,
                 );
-                queue.submit([encoder.finish()]);
+                let submission = queue.submit([encoder.finish()]);
+                self.warmup_submissions += 1;
+                let drain = std::time::Instant::now();
+                device
+                    .poll(wgpu::PollType::Wait {
+                        submission_index: Some(submission),
+                        timeout: None,
+                    })
+                    .map_err(|e| format!("The exposure warm-up did not finish: {e}"))?;
+                self.warmup_drain_ms += drain.elapsed().as_secs_f32() * 1000.0;
             }
         }
         self.settled = true;
@@ -2161,13 +2354,33 @@ impl Offscreen {
                 extent(self.width, self.height),
             );
         }
-        queue.submit([encoder.finish()]);
+        let submission = queue.submit([encoder.finish()]);
         let submitted = std::time::Instant::now();
+        if let Some(frame) = tracked {
+            let frames = self.frames.as_mut().expect("tracked frame state");
+            frames.pending.push_back((submission.clone(), frame.index));
+            frames.submitted += 1;
+            frames.maximum_pending = frames.maximum_pending.max(frames.pending.len());
+            let origin = frames.origin;
+            let sender = frames.sender.clone();
+            queue.on_submitted_work_done(move || {
+                let _ = sender.send(FrameCompletion {
+                    index: frame.index,
+                    started_ms: (frame.started - origin).as_secs_f64() * 1000.0,
+                    submitted_ms: (submitted - origin).as_secs_f64() * 1000.0,
+                    observed_completed_ms: origin.elapsed().as_secs_f64() * 1000.0,
+                });
+            });
+        }
 
         let slice = self.readback.slice(..);
-        if read_pixels {
-            slice.map_async(wgpu::MapMode::Read, |_| {});
-        }
+        let pixel_mapping = read_pixels.then(|| {
+            let (tx, rx) = std::sync::mpsc::channel();
+            slice.map_async(wgpu::MapMode::Read, move |result| {
+                let _ = tx.send(result);
+            });
+            rx
+        });
         let timestamp_mapping = timestamps.map(|timer| {
             let (tx, rx) = std::sync::mpsc::channel();
             timer
@@ -2178,10 +2391,16 @@ impl Offscreen {
                 });
             rx
         });
+        let wait_current =
+            read_pixels || timestamps.is_some() || tracked.is_none_or(|f| !f.pipelined);
         device
-            .poll(wgpu::PollType::Wait {
-                submission_index: None,
-                timeout: None,
+            .poll(if wait_current {
+                wgpu::PollType::Wait {
+                    submission_index: Some(submission),
+                    timeout: None,
+                }
+            } else {
+                wgpu::PollType::Poll
             })
             .map_err(|e| format!("the GPU did not finish: {e}"))?;
         self.last_gpu_ms = None;
@@ -2202,6 +2421,11 @@ impl Offscreen {
         }
         let mut pixels = Vec::new();
         if read_pixels {
+            pixel_mapping
+                .expect("pixel mapping requested")
+                .recv()
+                .map_err(|e| format!("Capture pixels: {e}"))?
+                .map_err(|e| format!("Capture pixels: {e}"))?;
             let mapped = slice.get_mapped_range();
             let line = self.width as usize * self.texel as usize;
             pixels.reserve(line * self.height as usize);
@@ -2217,6 +2441,9 @@ impl Offscreen {
             (submitted - started).as_secs_f32() * 1000.0,
             (done - submitted).as_secs_f32() * 1000.0,
         );
+        if let Some(frames) = &mut self.frames {
+            frames.collect();
+        }
         Ok(pixels)
     }
 }
@@ -3695,6 +3922,100 @@ fn pass_timestamp_spans_reject_missing_errors_and_invalid_order() {
         assert!(timestamp_duration([100, 110, 280, 300], period).is_none());
     }
     assert_eq!(timestamp_features(), wgpu::Features::TIMESTAMP_QUERY);
+}
+
+#[cfg(all(test, feature = "capture"))]
+#[test]
+fn completed_frame_ledger_rejects_missing_duplicate_and_wrong_callbacks() {
+    let ledger = |indices: &[usize]| {
+        let mut frames = TrackedFrames::new(std::time::Instant::now());
+        frames.submitted = 2;
+        for &index in indices {
+            frames
+                .sender
+                .send(FrameCompletion {
+                    index,
+                    started_ms: 0.0,
+                    submitted_ms: 1.0,
+                    observed_completed_ms: 2.0,
+                })
+                .unwrap();
+        }
+        frames
+    };
+    let mut reordered = ledger(&[1, 0]);
+    assert!(reordered.finish().is_ok());
+    assert_eq!(
+        reordered
+            .completed
+            .iter()
+            .map(|f| f.index)
+            .collect::<Vec<_>>(),
+        [0, 1]
+    );
+    for indices in [&[0][..], &[0, 0][..], &[0, 2][..], &[0, 1, 1][..]] {
+        assert!(ledger(indices).finish().is_err(), "{indices:?}");
+    }
+}
+
+#[cfg(all(test, feature = "capture", not(target_arch = "wasm32")))]
+#[test]
+#[ignore = "requires an offscreen GPU under the quiet lease"]
+fn pipelined_frames_keep_exact_selected_pixels_and_complete_every_index() {
+    let mut renderer = Offscreen::new(
+        64,
+        64,
+        &Mesh::default(),
+        &Atlas::new(16.0),
+        crate::zones::atmosphere(crate::zones::ZoneId::Plaza),
+    )
+    .unwrap();
+    renderer.set_gpu_timestamps_enabled(false);
+    let view = View {
+        view_proj: Mat4::IDENTITY,
+        eye: Vec3::ZERO,
+    };
+    for index in 0..16 {
+        let channel = index % 3;
+        let dynamic = Mesh {
+            faces: [[-1.0, -1.0, 0.0], [1.0, -1.0, 0.0], [0.0, 1.0, 0.0]]
+                .map(|pos| Vertex {
+                    pos,
+                    color: std::array::from_fn(|i| f32::from(u8::from(i == channel))),
+                    fog: 0.0,
+                })
+                .to_vec(),
+            ..Default::default()
+        };
+        let read = index % 4 == 3;
+        let pixels = renderer
+            .render_tracked(
+                view,
+                &dynamic,
+                &UiBatch::default(),
+                index,
+                std::time::Instant::now(),
+                read,
+                true,
+            )
+            .unwrap();
+        if read {
+            let pixel = &pixels[(32 * 64 + 32) * 4..][..4];
+            assert!(pixel[channel] > 200, "frame {index}: {pixel:?}");
+            assert!((0..3).filter(|&i| i != channel).all(|i| pixel[i] < 20));
+        } else {
+            assert!(pixels.is_empty());
+        }
+    }
+    let completed = renderer.drain_tracked().unwrap();
+    assert_eq!(completed.submitted, 16);
+    assert_eq!(completed.frames.len(), 16);
+    assert!(completed.maximum_pending <= 2);
+    for (index, frame) in completed.frames.iter().enumerate() {
+        assert_eq!(index, frame.index);
+        assert!(frame.started_ms <= frame.submitted_ms);
+        assert!(frame.submitted_ms <= frame.observed_completed_ms);
+    }
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]

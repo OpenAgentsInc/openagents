@@ -13,6 +13,7 @@
 //! [--no-temporal-aa] [--compare-temporal-aa] [--camera director|pan|orbit]
 //! [--static-houses] [--sequence FIRST:LAST]
 //! [--no-destruction-relighting] [--capture-rebuild]
+//! [--serial-frames]
 //!
 //! Installs the showcase from the committed, pinned Everglade pack as
 //! `verse --meteor-showcase` does, bakes its light, and renders it offscreen
@@ -65,6 +66,12 @@
 //! then applies R after the final simulation frame and writes `restored.png`
 //! with the same camera and stage. Live rebuild capture requires
 //! `--settle-light`; temporal comparison cannot include a rebuild.
+//! Ordinary `--live --no-video` captures admit at most two GPU submissions.
+//! They measure continuous frame cadence through the final drain and report
+//! observed completion latency separately. `--serial-frames` restores the
+//! per-frame completion wait. Video, comparison, timestamp, and all-frame
+//! readback captures remain serial. Offscreen throughput excludes vsync and
+//! compositor work.
 //!
 //! Run it with `VERSE_QUALITY=high` for the high tier, and with
 //! `VERSE_KIT_PACK` naming the licensed kit pack to draw it in place of its
@@ -99,6 +106,7 @@ struct Args {
     video: Option<PathBuf>,
     readback_every_frame: bool,
     gpu_timestamps: bool,
+    serial_frames: bool,
     seconds: f32,
     every: Option<usize>,
     sequence: Option<[usize; 2]>,
@@ -159,6 +167,7 @@ impl Args {
             out,
             readback_every_frame: false,
             gpu_timestamps: false,
+            serial_frames: false,
             seconds: 12.5,
             every: None,
             sequence: None,
@@ -190,6 +199,40 @@ impl Args {
             || self.compare_temporal_aa
             || self.compare_particles
             || self.compare_flash_lights
+    }
+
+    fn submission_policy(&self, frames: usize) -> &'static str {
+        if self.serial_frames {
+            "serial_explicit"
+        } else if !self.live {
+            "serial_film"
+        } else if self.video.is_some() {
+            "serial_video"
+        } else if self.readback_every_frame {
+            "serial_legacy_readback"
+        } else if self.timestamps_requested() {
+            "serial_diagnostics"
+        } else {
+            // Bound retained raw pixels before deferring PNG work. Dense
+            // artifact runs keep their existing serial write path.
+            let numbered = (0..frames)
+                .filter(|&k| {
+                    self.every.is_some_and(|every| every > 0 && k % every == 0)
+                        || self
+                            .sequence
+                            .is_some_and(|[first, last]| (first..=last).contains(&k))
+                })
+                .count();
+            if numbered
+                .saturating_add(8)
+                .saturating_mul(WIDTH as usize * HEIGHT as usize * 4)
+                > 1024 * 1024 * 1024
+            {
+                "serial_artifact_memory_bound"
+            } else {
+                "bounded_two_frames"
+            }
+        }
     }
 
     fn select_frame(
@@ -279,11 +322,21 @@ struct Sample {
     density_max: f32,
     sprite_area: f32,
     lit_alpha_area: f32,
+    cadence: f32,
+    pipelined: bool,
 }
 
 impl Sample {
-    /// The frame's time with the CPU and the GPU one after the other.
+    /// Continuous cadence in a pipeline, or the historical serial work sum.
     fn frame(&self) -> f32 {
+        if self.pipelined {
+            self.cadence
+        } else {
+            self.component_sum()
+        }
+    }
+
+    fn component_sum(&self) -> f32 {
         self.tick + self.mesh + self.encode + self.gpu
     }
 }
@@ -478,6 +531,8 @@ fn report(phases: &[(&str, Vec<Sample>)]) -> serde_json::Value {
             serde_json::json!({
                 "frames": samples.len(),
                 "frame_ms": col(Sample::frame),
+                "continuous_iteration_ms": col(|s| s.cadence),
+                "component_sum_ms": col(Sample::component_sum),
                 "tick_ms": col(|s| s.tick),
                 "dynamic_mesh_ms": col(|s| s.mesh),
                 "encode_ms": col(|s| s.encode),
@@ -621,6 +676,7 @@ fn args() -> Result<Args, String> {
             "--no-video" => args.video = None,
             "--readback-every-frame" => args.readback_every_frame = true,
             "--gpu-timestamps" => args.gpu_timestamps = true,
+            "--serial-frames" => args.serial_frames = true,
             "--live" => args.live = true,
             "--settle-light" => args.settle_light = true,
             "--no-flash-lights" => args.no_flash_lights = true,
@@ -847,6 +903,19 @@ fn write_png(path: &Path, pixels: &[u8]) -> Result<(), String> {
         .map_err(|e| format!("{}: {e}", path.display()))
 }
 
+fn save_primary_png(
+    path: &Path,
+    pixels: &[u8],
+    deferred: &mut Option<Vec<(PathBuf, Vec<u8>)>>,
+) -> Result<(), String> {
+    if let Some(saved) = deferred {
+        saved.push((path.to_owned(), pixels.to_vec()));
+        Ok(())
+    } else {
+        write_png(path, pixels)
+    }
+}
+
 fn capture_particle_pair(
     renderer: &mut verse::render::Offscreen,
     view: verse::render::View,
@@ -1008,6 +1077,8 @@ fn main() -> Result<(), String> {
     if args.capture_rebuild && frames == 0 {
         return Err("--capture-rebuild requires at least one simulation frame".into());
     }
+    let submission_policy = args.submission_policy(frames);
+    let pipelined = submission_policy == "bounded_two_frames";
     if args.sequence.is_some_and(|[_, last]| last >= frames) {
         return Err("--sequence must be within the captured frame range".into());
     }
@@ -1130,10 +1201,22 @@ fn main() -> Result<(), String> {
     let aspect = WIDTH as f32 / HEIGHT as f32;
     let mut cast = false;
     let mut pristine_snapshot = None;
+    let mut deferred_pngs = pipelined.then(Vec::new);
+    let mut deferred_logs = Vec::new();
+    let timed_start = std::time::Instant::now();
+    let mut frame_started = timed_start;
+    let mut previous_phase: Option<usize> = None;
     for k in 0..frames {
+        if let Some(phase) = previous_phase {
+            let now = std::time::Instant::now();
+            phases[phase].1.last_mut().expect("previous frame").cadence =
+                (now - frame_started).as_secs_f32() * 1000.0;
+            frame_started = now;
+        }
         let t = k as f32 / fps;
         let mut sample = Sample {
             index: k,
+            pipelined,
             ..Default::default()
         };
         runtime.set_shot(Some(shot(args.camera, t)));
@@ -1252,14 +1335,20 @@ fn main() -> Result<(), String> {
                 neon.temporal_aa = true;
             }
         }
-        let pixels = if read_pixels {
+        if read_pixels {
             primary_readback_frames.push(k);
-            renderer.render(view, &dynamic, &ui)?
         } else {
             completion_only_frames.push(k);
-            renderer.measure(view, &dynamic, &ui)?;
-            Vec::new()
-        };
+        }
+        let pixels = renderer.render_tracked(
+            view,
+            &dynamic,
+            &ui,
+            k,
+            frame_started,
+            read_pixels,
+            pipelined,
+        )?;
         temporal_pair.on = renderer.last_timing();
         temporal_pair.on_gpu = renderer.last_gpu_ms();
         temporal_pair.on_gpu_ticks = renderer.last_gpu_ticks();
@@ -1297,6 +1386,7 @@ fn main() -> Result<(), String> {
             2
         };
         phases[phase].1.push(sample);
+        previous_phase = Some(phase);
         if args.compare_temporal_aa && k >= 8 {
             temporal_phases[phase].1.push(temporal_pair);
         }
@@ -1333,15 +1423,19 @@ fn main() -> Result<(), String> {
         }
         let landed = runtime.zone_snapshot(1.0).caption;
         if selection.pristine {
-            write_png(&args.out.join("pristine.png"), &pixels)?;
+            save_primary_png(&args.out.join("pristine.png"), &pixels, &mut deferred_pngs)?;
             pristine_snapshot = Some((view, dynamic.neon));
         }
         if selection.establishing {
-            write_png(&args.out.join("establishing.png"), &pixels)?;
+            save_primary_png(
+                &args.out.join("establishing.png"),
+                &pixels,
+                &mut deferred_pngs,
+            )?;
             write_temporal_pair(&args.out, "establishing", &pixels, off_pixels.as_deref())?;
         }
         if selection.impact {
-            write_png(&args.out.join("impact.png"), &pixels)?;
+            save_primary_png(&args.out.join("impact.png"), &pixels, &mut deferred_pngs)?;
             impact_shot = true;
             impact_frame = Some(k);
             write_temporal_pair(&args.out, "impact", &pixels, off_pixels.as_deref())?;
@@ -1375,7 +1469,11 @@ fn main() -> Result<(), String> {
         }
         if selection.smoke {
             smoke_frame = Some(k);
-            write_png(&args.out.join("ground-smoke.png"), &pixels)?;
+            save_primary_png(
+                &args.out.join("ground-smoke.png"),
+                &pixels,
+                &mut deferred_pngs,
+            )?;
             write_temporal_pair(&args.out, "ground-smoke", &pixels, off_pixels.as_deref())?;
             if args.compare_particles {
                 capture_particle_pair(
@@ -1401,7 +1499,7 @@ fn main() -> Result<(), String> {
             artifact_readback_frames.extend([k, k]);
         }
         if selection.aftermath {
-            write_png(&args.out.join("aftermath.png"), &pixels)?;
+            save_primary_png(&args.out.join("aftermath.png"), &pixels, &mut deferred_pngs)?;
             write_temporal_pair(&args.out, "aftermath", &pixels, off_pixels.as_deref())?;
             if args.compare_particles {
                 capture_particle_pair(
@@ -1416,9 +1514,10 @@ fn main() -> Result<(), String> {
             }
         }
         if selection.numbered {
-            write_png(
+            save_primary_png(
                 &args.out.join("frames").join(format!("{k:04}.png")),
                 &pixels,
+                &mut deferred_pngs,
             )?;
             write_temporal_pair(
                 &args.out.join("frames"),
@@ -1436,9 +1535,9 @@ fn main() -> Result<(), String> {
                 .map_err(|e| format!("ffmpeg: {e}"))?;
         }
         if k % (fps as usize) == 0 {
-            eprintln!(
-                "t {t:.1} s · frame {:.1} ms (tick {:.1}, mesh {:.1}, encode {:.1}, gpu {:.1}) · raised {} · pieces {} · chunks {} · sprites {sprites} · {}",
-                sample.frame(),
+            let line = format!(
+                "t {t:.1} s · summed work {:.1} ms (tick {:.1}, mesh {:.1}, encode {:.1}, wait {:.1}) · raised {} · pieces {} · chunks {} · sprites {sprites} · {}",
+                sample.component_sum(),
                 sample.tick,
                 sample.mesh,
                 sample.encode,
@@ -1448,7 +1547,29 @@ fn main() -> Result<(), String> {
                 wreck[2],
                 landed.lines().next().unwrap_or("")
             );
+            if pipelined {
+                deferred_logs.push(line);
+            } else {
+                eprintln!("{line}");
+            }
         }
+    }
+    let completed = renderer.drain_tracked()?;
+    if completed.submitted != frames || completed.frames.len() != frames {
+        return Err("Every simulation frame must submit and complete exactly once".into());
+    }
+    let timed_end = std::time::Instant::now();
+    let elapsed_ms = (timed_end - timed_start).as_secs_f64() * 1000.0;
+    if let Some(phase) = previous_phase {
+        let last = phases[phase].1.last_mut().expect("final frame");
+        last.cadence = (timed_end - frame_started).as_secs_f32() * 1000.0;
+        last.gpu += completed.drain_ms;
+    }
+    for (path, pixels) in deferred_pngs.unwrap_or_default() {
+        write_png(&path, &pixels)?;
+    }
+    for line in deferred_logs {
+        eprintln!("{line}");
     }
     if let Some(mut child) = encoder {
         drop(child.stdin.take());
@@ -1485,6 +1606,53 @@ fn main() -> Result<(), String> {
     let flash_pool_step_ms = args
         .compare_flash_lights
         .then(|| measure_flash_pool(runtime.view(aspect).eye));
+    let mut samples: Vec<_> = phases
+        .iter()
+        .flat_map(|(_, samples)| samples)
+        .copied()
+        .collect();
+    samples.sort_by_key(|sample| sample.index);
+    let frame_timings: Vec<_> = completed.frames.iter().map(|frame| {
+        let sample = &samples[frame.index];
+        serde_json::json!({
+            "index": frame.index,
+            "started_ms": frame.started_ms,
+            "submitted_ms": frame.submitted_ms,
+            "observed_completed_ms": frame.observed_completed_ms,
+            "start_to_observed_completion_ms": frame.observed_completed_ms - frame.started_ms,
+            "submit_to_observed_completion_ms": frame.observed_completed_ms - frame.submitted_ms,
+            "continuous_iteration_ms": sample.cadence,
+            "frame_ms": sample.frame(),
+            "component_sum_ms": sample.component_sum(),
+            "tick_ms": sample.tick,
+            "dynamic_mesh_ms": sample.mesh,
+            "encode_ms": sample.encode,
+            "admission_or_completion_ms": sample.gpu,
+        })
+    }).collect();
+    let submission_timing = serde_json::json!({
+        "policy": submission_policy,
+        "serial_frames_flag": args.serial_frames,
+        "pending_frame_limit": if pipelined { 2 } else { 1 },
+        "maximum_pending_frames": completed.maximum_pending,
+        "submitted_frames": completed.submitted,
+        "completed_frames": completed.frames.len(),
+        "elapsed_through_final_drain_ms": elapsed_ms,
+        "completed_frames_per_second": if frames > 0 { Some(frames as f64 * 1000.0 / elapsed_ms) } else { None },
+        "final_drain_ms": completed.drain_ms,
+        "final_drain_charged_to_frame": frames.checked_sub(1),
+        "warmup_submissions": completed.warmup_submissions,
+        "warmup_drain_ms": completed.warmup_drain_ms,
+        "warmup_method": "Three initial exposure renders each wait for their exact submission before the next one. They finish before primary submission 0 and remain inside its frame timing.",
+        "png_writes_and_progress_logs_deferred": pipelined,
+        "deferred_png_memory_bound_bytes": 1024 * 1024 * 1024u64,
+        "continuous_iteration_ms": spread(samples.iter().map(|s| s.cadence).collect()),
+        "start_to_observed_completion_ms": spread(completed.frames.iter().map(|f| (f.observed_completed_ms - f.started_ms) as f32).collect()),
+        "submit_to_observed_completion_ms": spread(completed.frames.iter().map(|f| (f.observed_completed_ms - f.submitted_ms) as f32).collect()),
+        "frames": frame_timings,
+        "frame_ms_method": if pipelined { "Continuous host iteration intervals, including simulation, camera and mesh preparation, encoding, submission, admission and artifact readback waits, retained-pixel copies, and bookkeeping. Adjacent starts bound each interval; the last ends after final drain. Every frame enters p99/max without filtering, retaining the 16.7 ms live budget. This is bounded throughput cadence; frame completion latency is reported separately." } else { "Historical serial tick plus dynamic mesh plus encode/submit plus current completion sum. Continuous iteration intervals additionally retain camera, telemetry, PNG/video/log work and diagnostic comparison renders; those appear separately. No frame is filtered." },
+        "completion_method": "One callback per primary submission records the host observation after GPU completion. Callbacks can be delayed until submit/poll; observed latency is an upper bound, not GPU duration. Submitted and completed frame indices must match exactly. All frames submit once; no presentation, vsync, compositor, or dropped-frame behavior is simulated. Native surface latency 2 is a backend hint; this offscreen run explicitly caps pending primary submissions at 2.",
+    });
     let pixel_readback = serde_json::json!({
         "policy": if args.compare_temporal_aa { "all_frames_temporal_comparison" } else if args.readback_every_frame { "all_frames_legacy_override" } else if args.video.is_some() { "all_frames_video" } else { "selected_artifact_frames" },
         "primary_readback_count": primary_readback_frames.len(),
@@ -1495,7 +1663,7 @@ fn main() -> Result<(), String> {
         "temporal_baseline_readback_frame_indices": if args.compare_temporal_aa { Some((0..frames).collect::<Vec<_>>()) } else { None },
         "additional_artifact_readback_count": artifact_readback_frames.len(),
         "additional_artifact_readback_frame_indices": artifact_readback_frames,
-        "timing_scope": "Every simulation frame calls the primary renderer once, advances history and exposure, waits for completion, and enters phase statistics without outlier filtering. Initial exposure warm-up renders are included in the first sample. Encode timing includes frame validation, fitting, buffer uploads, command encoding, submission, and timestamp instrumentation. Completion timing includes polling and optional timestamp readback. Selected primary frames also include pixel copy, mapping, and CPU pixel extraction; other primary frames use Offscreen::measure and omit those pixel operations. PNG/video writes, repeated comparison renders, and additional artifact readbacks occur after the primary timing sample and are excluded. Temporal comparisons retain pixel readback on every primary and baseline frame and preserve their existing warmed-frame paired intervals.",
+        "timing_scope": "Every simulation frame calls the primary renderer once, advances history and exposure, and enters phase statistics without outlier filtering. Three initial exposure warm-up renders drain before primary frame 0 and remain in its timing. Encode timing includes validation, fitting, uploads, encoding, submission, and optional diagnostics. The wait column includes oldest-submission admission in bounded mode, current completion in serial mode, and selected pixel copy/mapping/extraction. Unselected frames omit pixel operations. Pipelined PNG writes and progress logs occur after final drain; serial captures retain their historical writes. Repeated comparisons and extra readbacks are excluded from the historical component sum but retained in continuous iteration timing. Temporal comparisons remain serial and preserve all-frame pixel readback and warmed paired intervals.",
     });
     let summary = serde_json::json!({
         "mode": if args.live { "live" } else { "film" },
@@ -1503,6 +1671,7 @@ fn main() -> Result<(), String> {
         "static_houses": args.static_houses,
         "sequence_frames": args.sequence,
         "readback_every_frame": args.readback_every_frame,
+        "submission_timing": submission_timing,
         "pixel_readback": pixel_readback,
         "width": WIDTH,
         "height": HEIGHT,
@@ -1588,6 +1757,59 @@ fn main() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bounded_submission_keeps_diagnostics_and_dense_artifacts_serial() {
+        let mut args = Args::new(PathBuf::new());
+        args.live = true;
+        args.video = None;
+        assert_eq!(args.submission_policy(960), "bounded_two_frames");
+        args.serial_frames = true;
+        assert_eq!(args.submission_policy(960), "serial_explicit");
+        args.serial_frames = false;
+        args.compare_temporal_aa = true;
+        assert_eq!(args.submission_policy(960), "serial_diagnostics");
+        args.compare_temporal_aa = false;
+        args.gpu_timestamps = true;
+        assert_eq!(args.submission_policy(960), "serial_diagnostics");
+        args.gpu_timestamps = false;
+        args.every = Some(1);
+        assert_eq!(args.submission_policy(960), "serial_artifact_memory_bound");
+        args.every = None;
+        args.sequence = Some([120, 135]);
+        assert_eq!(args.submission_policy(960), "bounded_two_frames");
+        args.readback_every_frame = true;
+        assert_eq!(args.submission_policy(960), "serial_legacy_readback");
+        args.readback_every_frame = false;
+        args.video = Some(PathBuf::new());
+        assert_eq!(args.submission_policy(960), "serial_video");
+    }
+
+    #[test]
+    fn cadence_retains_admission_and_tail_cost_without_estimating_overlap() {
+        let sample = Sample {
+            tick: 8.0,
+            mesh: 1.0,
+            encode: 3.0,
+            gpu: 12.0,
+            cadence: 18.0,
+            pipelined: true,
+            ..Default::default()
+        };
+        assert_eq!(sample.frame(), 18.0);
+        assert_eq!(sample.component_sum(), 24.0);
+        assert_eq!(
+            Sample {
+                pipelined: false,
+                ..sample
+            }
+            .frame(),
+            24.0
+        );
+        let phase = report(&[("after", vec![sample])]);
+        assert_eq!(phase["after"]["frame_ms"]["max"], 18.0);
+        assert_eq!(phase["after"]["component_sum_ms"]["max"], 24.0);
+    }
 
     #[test]
     fn timestamp_diagnostics_are_explicit_or_required_by_comparisons() {
