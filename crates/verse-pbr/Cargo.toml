@@ -33,6 +33,9 @@ verse-engine = { path = "../verse-engine", features = ["asset-io"] }
 verse-gfx = { path = "../verse-gfx" }
 wgpu = "29.0.4"
 
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [dev-dependencies]
 verse-content = { path = "../verse-content", features = ["compiler"] }
 tempfile = "3"

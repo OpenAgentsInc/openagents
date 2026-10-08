@@ -102,6 +102,40 @@ impl Plan {
         }
     }
 
+    /// Drops optional optics without changing the surface's fallback.
+    #[must_use]
+    pub fn with_effects(mut self, effects: verse_engine::quality::WaterEffects) -> Self {
+        self.copies &= effects.copies();
+        if !effects.mirror() {
+            self.mirror_divisor = 0;
+        }
+        if !effects.ssr() {
+            self.ssr_steps = 0;
+        }
+        self
+    }
+
+    /// Admits optical targets after counting all persistent water resources.
+    #[must_use]
+    pub fn with_budget(
+        mut self,
+        width: u32,
+        height: u32,
+        scene_bytes: u64,
+        resident_bytes: u64,
+        budget_bytes: u64,
+    ) -> Self {
+        if self
+            .bytes(width, height, scene_bytes)
+            .saturating_add(resident_bytes)
+            > budget_bytes
+        {
+            self.copies = false;
+            self.mirror_divisor = 0;
+        }
+        self
+    }
+
     /// The mirror's size for a view `width` by `height`.
     #[must_use]
     pub fn mirror_size(&self, width: u32, height: u32) -> Option<[u32; 2]> {
@@ -289,6 +323,56 @@ mod tests {
         assert_eq!(low.bytes(1920, 1080, 8), 0);
         assert_eq!(low.mirror_size(1920, 1080), None);
         assert_eq!(low.uniform(true), [0.0; 4]);
+    }
+
+    #[test]
+    fn water_admission_counts_persistent_resources_at_the_budget_boundary() {
+        let plan = Plan::of(Tier::Medium);
+        let optical = plan.bytes(1920, 1080, 8);
+        let base = 2 * 1024 * 1024;
+        let budget = optical + base;
+        assert_eq!(plan.with_budget(1920, 1080, 8, base, budget), plan);
+        // Even a small persistent uniform or query allocation must be
+        // included before allocating the optical targets.
+        let admitted = plan.with_budget(1920, 1080, 8, base + 576, budget);
+        assert!(!admitted.copies);
+        assert_eq!(admitted.mirror_divisor, 0);
+        assert_eq!(admitted.bytes(1920, 1080, 8), 0);
+        assert_eq!(admitted.uniform(true), [0.0; 4]);
+    }
+
+    fn first_gpu_reduction(tier: Tier) -> verse_engine::quality::WaterEffects {
+        use verse_engine::quality::{WaterLoad, WaterPolicy};
+        let mut policy = WaterPolicy::new(tier);
+        let load = WaterLoad {
+            gpu_ms: Some(policy.budget().gpu_ms + 1.0),
+            ..WaterLoad::default()
+        };
+        for _ in 0..128 {
+            policy.observe(load);
+        }
+        policy.effects()
+    }
+
+    #[test]
+    fn medium_gpu_overrun_drops_its_mirror_instead_of_absent_ssr() {
+        let before = Plan::of(Tier::Medium);
+        assert_eq!(before.ssr_steps, 0);
+        let after = before.with_effects(first_gpu_reduction(Tier::Medium));
+        assert!(before.mirror_divisor > 0);
+        assert_eq!(after.mirror_divisor, 0);
+        assert!(after.copies);
+        assert_ne!(before, after);
+    }
+
+    #[test]
+    fn low_diagnostic_gpu_overrun_reduces_actual_visual_cadence() {
+        // Normal Low has no GPU timing signal. Its isolated diagnostic
+        // can reduce cadence, since this tier admits no optical targets.
+        let before = Plan::of(Tier::Low);
+        let effects = first_gpu_reduction(Tier::Low);
+        assert_eq!(before, before.with_effects(effects));
+        assert!(effects.refresh_every() > 1);
     }
 
     #[test]

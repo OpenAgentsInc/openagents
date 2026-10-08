@@ -263,3 +263,37 @@ fn a_mover_leaves_a_lasting_foam_trail() {
         assert!(maxs > 0.01, "{tier:?}: slope {maxs}");
     }
 }
+
+/// Skipping an empty kernel preserves its clock phase and later impulses.
+#[test]
+fn empty_fields_skip_work_and_resume_on_a_pulse() {
+    for tier in Tier::ALL {
+        let mut field = Ripples::for_tier(tier);
+        field.advance(0.0, Vec2::ZERO, &[], None);
+        field.advance(0.041, Vec2::ZERO, &[], None);
+        assert_eq!(field.stats().steps, 0);
+        assert!(field.is_quiet());
+        let dt = 1.0 / field.plan.rate;
+        let mut expected_clock = 0.0;
+        while expected_clock + dt <= 0.041 {
+            expected_clock += dt;
+        }
+        assert_eq!(field.clock, Some(expected_clock));
+        let mut reference = field.clone();
+        let source = Source::impact(Vec2::ZERO, 0.3, 0.05);
+        reference.inject(&source, dt);
+        reference.step(dt);
+        field.advance(expected_clock + dt, Vec2::ZERO, &[source], None);
+        assert_eq!(field.stats().steps, 1);
+        assert_eq!(field.h, reference.h);
+        assert_eq!(field.prev, reference.prev);
+        assert_eq!(field.foam, reference.foam);
+        assert!(field.energy() > 0.0);
+        // A zero crossing can retain velocity/history and must keep stepping.
+        field.h.fill(0.0);
+        field.foam.fill(0.0);
+        field.prev[field.plan.size * field.plan.size / 2] = 0.001;
+        field.advance(field.clock.unwrap() + dt, Vec2::ZERO, &[], None);
+        assert!(field.stats().steps > 0);
+    }
+}

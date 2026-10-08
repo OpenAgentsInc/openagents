@@ -46,6 +46,13 @@ impl Fft2 {
         }
     }
 
+    /// Heap storage retained by this transform, bytes.
+    #[must_use]
+    pub fn heap_bytes(&self) -> usize {
+        (self.cos.capacity() + self.sin.capacity()) * std::mem::size_of::<f32>()
+            + self.reverse.capacity() * std::mem::size_of::<usize>()
+    }
+
     /// The side of the grids this transforms.
     #[must_use]
     pub fn size(&self) -> usize {

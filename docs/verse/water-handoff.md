@@ -1,12 +1,36 @@
 # Water handoff
 
-Status: handoff, 2026-10-07. Work on the Verse water system stopped at the
-owner's instruction with phases W1 to W10 landed. This page records what
+Status: W11 active with the coordinator, 2026-10-08. Phases W1 to W10 are landed. This page records what
 landed, what remains open, and how to pick the work up again. The
 specification is [Water](water.md), and the coastal zone's is
 [The coast](coast.md).
 
 ## October 8 coordination checkpoint
+
+The coordinator holds #10783 on `codex/water-w11-integrated`, rebased on
+main `24db60de9a`. Native query resolution waits for render submission
+completion without blocking the frame thread. All 15 Apple M5 Max and all
+15 RTX 4080 fixed views return 96/96 valid GPU samples. Empty ripple kernels
+are skipped without losing clock phase, and spectrum integrals are cached.
+The 59 focused water tests and explicit browser-target check pass.
+
+`docs/verse/water.md` now records the measured tier costs and admission
+caps: GPU 3.5/3.5/4 ms, memory 8/32/64 MiB, unchanged main-thread CPU caps,
+and worker CPU 0.5/1/2.5 ms. All 15 RTX views pass again under those caps,
+with 96/96 valid samples and mean costs within bounds. Storm views still
+reduce effects; pond views retain full effects. Original-cap failures and
+the failed Metal experiments remain in the evidence. This is not a claim
+that every scene runs all effects within budget on every device.
+
+Evidence is under `bench/verse/2026-10-08/water-w11/` in
+`metal-deferred-f176dfa0c8/`, `vulkan-deferred-f176dfa0c8/`, and
+`calibrated-965e57a09a/`. All eight refreshed browser cases pass on the frozen timer build
+`40284fdcc7`, retained in `browser-deferred-40284fdcc7/`; integration retains both B4's
+`offline_light` and W11's water telemetry. Physical phone steps are in
+`NEEDS_OWNER.md`. Final integration checks and production module delivery
+remain before closure. No new bake is needed.
+
+The earlier checkpoint below remains historical evidence.
 
 W11 (#10783) remains open on the pushed branch
 [`codex/water-w11-measurement`](https://github.com/OpenAgentsInc/openagents/tree/codex/water-w11-measurement).
@@ -88,7 +112,7 @@ with `c8c9f7d02e`, which split the coast into C1 to C6.
 | Issue | Remaining work | Blocked by |
 | --- | --- | --- |
 | [#10919](https://github.com/OpenAgentsInc/openagents/issues/10919) Everglade pond reflections | Not started. Find why Everglade's ponds read as flat green from above (`everglade-water/lantern-above.png`) when the harness ponds (`water-screen/`) show reflection and refraction. Candidates: the preset, Fresnel at that angle, the bed color, the scene copy and mirror not running in Everglade, or Everglade's tier defaults. Fix it, commit before and after captures from the same viewpoints, and add a test that catches the cause. | Nothing |
-| [#10783](https://github.com/OpenAgentsInc/openagents/issues/10783) W11 measurement and budgets | Not started. Measure per-tier GPU time, GPU memory, and CPU for water on the development Mac and on `everglade-web` with WebGPU and WebGL2; put device runs in `NEEDS_OWNER.md`. Replace the target budgets in [water.md](water.md#budgets-per-tier) with measured ones and set the constants and overrun behavior in `verse_engine::quality`. Known overruns: W10's floating-bodies view at 4.29 ms against High's 4 ms. | Nothing (W7 to W10 are closed) |
+| [#10783](https://github.com/OpenAgentsInc/openagents/issues/10783) W11 measurement and budgets | Checkpointed on `codex/water-w11-measurement`; claim released and board Todo at the usage stop. The corrected WebGPU Water Lab pair renders and has 726 valid GPU samples. Three corrected native reruns retain two old-budget failures and zero/one valid GPU samples. Native timing validity, complete calibration, measured constants in [water.md](water.md#budgets-per-tier) and `verse_engine::quality`, and production verification remain pending. See the checkpoint below. Device runs belong in `NEEDS_OWNER.md`. | Nothing (W7 to W10 are closed) |
 | [#10784](https://github.com/OpenAgentsInc/openagents/issues/10784) umbrella | Close when W11 closes and [water.md](water.md) has the measured budgets. | #10783 |
 | [#10885](https://github.com/OpenAgentsInc/openagents/issues/10885) C1 zone shell | Not started. `ZoneId::Coast`, the plaza's west arch, generated terrain and bathymetry, the ocean with a tide, the harbor shelter mask, the estuary, spawn, and zone tests. Start from W10's coastal test scene, `verse_zone_water::coast`, and extend the bed to the horizon, as [coast.md](coast.md) says. | Nothing (W3, W4, and W10 are closed) |
 | [#10886](https://github.com/OpenAgentsInc/openagents/issues/10886) C2 kits and pack | Blender kits and the pinned coast pack, through `openagents artifact submit`. | C1 |
@@ -112,6 +136,157 @@ techniques to take from Tidewater (MIT). Each is assigned to an issue:
 | C4 #10888 | Splatted caustics (4), refracted-ray shadows (8). |
 | C6 #10890 | Breaker spray (11), surf sound driven by the drawn waves (15). |
 
+## W11 checkpoint
+
+Resume branch: `codex/water-w11-measurement`. The frozen measured source is
+`499b25d0839a01dbbbc524e1374b1ee5c3e52644`, rebased on main
+`90f90cd4f2ac8d6f175906f31ab1b3aa72709144`. The feature branch is pushed;
+#10783 remains open, with its claim released and board status Todo at the
+usage stop. Nothing from W11 has landed or deployed. No W11 commands,
+watchers, profiles, or loopback servers remain running. Preserve the
+unfinished checkout, scratch evidence, and warm agent12 targets.
+
+The source adds CPU-built cascade box mips, vertex sampling at
+`log2(spacing / texel) + 0.7`, slope-aware reflection darkening,
+conservative clipmap block culling, owned-resource accounting, and a
+sustained-overrun policy. These are original Rust and WGSL implementations
+from the public MIT Tidewater sources cited in the source commits. No
+licensed shaders, defaults, textures, or asset bytes are in Git.
+Worker cost counts actual completed synthesis jobs, including superseded
+results, and reports per-job cost separately. Native clocks measure thread
+CPU time. Browser intervals measure elapsed time; waves run inline there,
+so a separate worker CPU clock is unavailable.
+
+Supported Medium and High physical renderers collect bounded delayed GPU
+timestamps continuously. Missing results neither advance nor reset the
+completed-observation overrun streak. Normal Low keeps its fused pass and
+has no dedicated runtime water GPU controller; CPU and residency admission
+remain active, with whole-frame fallback where available. Low's isolated
+probe splits opaque, water, and blended passes with attachment load/store,
+so its GPU cost does not directly measure the normal fused path. Mirror,
+color/depth copies, and surface timestamps exclude shared opaque underwater
+work and implicit queue uploads. Wet-minus-dry fence wall time is a
+separate estimate. Memory is declared owned water GPU resources and CPU
+wave/mip/ripple storage; shared resources and driver padding are excluded.
+Requested cadence alone does not establish removed work for a pond with
+no spectral jobs or admitted optics.
+
+At the frozen source, scoped PBR formatting passes. Remote focused water
+library tests pass: engine 6 and PBR 55, with `water::parity` excluded.
+Shared shader validation passes both default and GLES variants. The
+explicit `everglade-web` wasm32 check passes. Both the Mac release filtered
+native example and remote release filtered WASM artifact compile with
+`--no-run --message-format=json`. The earlier no-default-features Verse
+capture consumer check passes; remote default desktop audio requires
+absent `alsa.pc`, so do not install system packages for this task.
+
+The previous full collection and its rendering diagnosis remain in
+[`frozen-732c49a582`](../../bench/verse/2026-10-08/water-w11/frozen-732c49a582/receipt.json).
+All four old WebGPU captures were black: the fresh `verse neon blended`
+pass lacked scene bind group 0, invalidating dry and wet command buffers.
+Timestamp mappings succeeded but returned zero counters from rejected
+submissions. The corrected source binds group 0 inside `draw_blended`.
+The browser harness now retains device errors and `Log.entryAdded`, rejects
+blank captures, saves failures, and closes every tab.
+
+The corrected 2026-10-08 evidence is
+[`corrected-499b25d083`](../../bench/verse/2026-10-08/water-w11/corrected-499b25d083/receipt.json).
+It includes original compressed reports, compiler JSON, source/artifact/input
+identities, command and lease receipts, and exact orchestration scripts.
+At 1920 × 1080 on Chrome WebGPU, the Water Lab dry/wet pair renders
+correctly with no device errors or loss. The wet interval has 726 valid GPU
+samples: mean 2.767768 ms, p95 3.407872 ms. Main-thread elapsed mean is
+1.112534 ms, p95 1.6 ms; this is not thread CPU time. It completes 90 inline
+synthesis jobs averaging 0.431111 ms elapsed per job. Steady declared GPU
+residency is 4,768,708 bytes and CPU wave/ripple storage is 1,329,792 bytes.
+Copies, mirror, and SSR are absent in the final plan, with refresh cadence
+8. The old Medium GPU and CPU targets still miss despite reduced optics.
+The separate signed fence estimate is +1.991598 ms. Browser High is not
+admitted. This establishes the WebGPU binding fix and query plumbing only.
+
+The corrected native reruns use Apple M5 Max Metal, 1920 × 1080, 60 Hz,
+and 96 steady samples. All three captures render the pond or waterline.
+All complete zero spectral jobs, use 131,072 bytes of CPU ripple storage,
+and retain their original plan and cadence.
+
+| Native case | Exit | Valid GPU samples; mean | Main-thread CPU mean / p95 | GPU bytes | Separate fence estimate |
+| --- | --- | --- | --- | --- | --- |
+| Low pond-posts | 101, old budget assertion | 0; unknown | 0.143280 / 0.182750 ms | 989,164 | 1.995709 ms |
+| Low waterline | 0 | 0; unknown | 0.133705 / 0.165875 ms | 989,164 | 0.617709 ms |
+| Medium pond-noon | 101, old budget assertion | 1; 2.687709 ms | 0.181507 / 0.244750 ms | 28,855,068 | 0.111208 ms |
+
+Low waterline's exit `0` is not a GPU-budget pass. Zero/one observations
+cannot calibrate native GPU budgets or prove sustained GPU degradation.
+The decoder currently rejects `end <= start` for every masked pass.
+Do not relax it from the old browser's rejected submissions or invent zero
+GPU costs. The next diagnosis must retain raw native slot intervals,
+submission/device errors, mapping completion, and rejection reasons, then
+distinguish legitimate zero-duration ancillary passes from invalid water
+intervals or rejected submissions. Add a focused decoder fixture only if
+those counters establish the required behavior.
+
+Mac scratch is
+`~/.openagents/scratch/codex-01a119ae-08ea-73f2-9344-ec959f74a795`.
+The unfinished checkout is its `water-w11` directory. Corrected raw reports
+and captures are under `w11-metrics-499b25d0839a01dbbbc524e1374b1ee5c3e52644/`:
+`browser/`, `native-low-pond-posts/`, `native-low-waterline/`, and
+`native-medium-pond-noon/`. The corrected browser wet capture is
+`browser/water-webgpu.png`. Original compiler artifacts are retained under
+`w11-native-499b25d0839a01dbbbc524e1374b1ee5c3e52644/` and
+`w11-wasm-499b25d0839a01dbbbc524e1374b1ee5c3e52644/`.
+The native executable SHA-256 is
+`431de7347c7f73cf93bb60562245abded436a7f12ec7af38fae077d27a3de9d3`
+(8,715,152 bytes). Original remote WASM SHA-256 is
+`1bd632682a1ad6faf4e7f7e8f0e36b5e4b7bc3eff02f930316dcb3446b06b763`
+(37,439,093 bytes); served WASM is
+`f348b3670781e6eb2d2a50957ea2751e867f267f4b9dbcd7874f63005b04b1ba`.
+Matched `wasm-bindgen` 0.2.128 staging removes only the `main` export from a
+derivative and verifies normal startup reaches the app once, with no test
+entry exports or implicit start. Original bytes and Cargo JSON remain
+unchanged. This test-compiled derivative is for measurement only;
+production requires the normal repository release image build.
+
+The public input is `a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f`
+(10,636,202 bytes). The private kit is
+`dae1612d4c22438a933c27b406c1e18fe134b13eab8eb5240ddcf5506ffb0b93`
+(10,238,689 bytes), in `~/.openagents/verse/private/medieval-town/packs/`.
+Keep private input bytes and captures outside Git. Recheck both pins on a
+fresh rebase; never alter a pin without its artifact submission queue.
+
+Resume after the coordinator grants a window:
+
+1. Read #10783 and its claim status before claiming it; set the board to
+   In progress. Diagnose native timing validity before calibration.
+2. Keep the remote checkout at
+   `/home/christopherdavid/.openagents/scratch/process-2198653/water-w11-agent12`
+   and its target at `~/work/openagents-target-agent12`. Advance only the
+   clean checkout between commands. On the Mac, use the same numbered
+   target. Run one Cargo command at a time, four jobs, through build leases,
+   with the 25 GB disk floor. Preserve other agents' quiet leases.
+3. For a justified source fix, rerun only affected water tests
+   (`cargo test --locked -p verse-engine -p verse-pbr --lib water -j4 -- --skip water::parity`),
+   shared shader validation, and the explicit wasm32 consumer check. Compile
+   native `water_capture water_w11_fixed_views` and WASM `presence_ui::tests`
+   release artifacts with filtered `--no-run --message-format=json`;
+   derive exact paths from Cargo JSON and verify their hashes before staging.
+4. Run the compiled native `w11::water_w11_fixed_views --ignored --exact
+   --test-threads=1 --nocapture` with `WATER_W11_CASE=tier/view` and
+   `WATER_W11_OUTPUT` in new scratch under quiet and GPU leases. Browser
+   checks use `openagents browser run`, the staged candidate, and
+   `WATER_W11_BROWSER_CASES=water-webgpu,everglade-webgpu,water-webgl2,everglade-webgl2`
+   as granted. Use fresh receipts and 1080p buffers, retain every failure,
+   and keep CPU elapsed and GPU estimates labeled. The retained scratch
+   wrapper is locked to clean HEAD `499b25d083`; a new invocation must
+   freeze its own source and output directory without overwriting evidence.
+5. Review adequate per-tier native and browser data before replacing the
+   old target constants or [water.md](water.md#budgets-per-tier). Prove an
+   actual removed effect or work reduction under an overrun. Add meaningful
+   policy regressions and put phone/device runs in `NEEDS_OWNER.md`.
+6. Rebase on current main without overwriting scene-lit particles or owner
+   steps. Review the remaining image/deployment scope with the coordinator,
+   use a normal release build, and verify the deployed candidate before
+   closing #10783. Do not start #10919, coast work, or close #10784 here.
+
 ## Build, test, and capture commands
 
 The machine is shared, so run every Cargo command through the build lease
@@ -129,7 +304,7 @@ The sweep to run on `main` before starting water work:
 
 ```sh
 cargo test -p physics water
-cargo test -p verse-pbr --lib water
+cargo test -p verse-pbr --lib water -- --skip water::parity
 cargo test -p verse-world water
 cargo test -p verse-zone-water
 cargo test -p verse-zone-everglade water
@@ -209,3 +384,11 @@ All under `bench/verse/2026-10-07/`:
 | `everglade-weather/` | W9: weather, rain, and wetness |
 | `water-w10/` | W10: the clipmap ocean and coastal scene |
 | `sea-states/` | #10918: the three sea states before and after (`sheet-high.png`, `sheet-low.png`) |
+
+The October 8 Metal timer diagnosis retains the two failed experiments in
+`bench/verse/2026-10-08/water-w11/metal-timer-diagnosis/`. Deferring query
+resolution until submission completion, without blocking the render thread,
+passes all 15 Mac and all 15 RTX 4080 fixed views with 96/96 valid samples
+per view. The records are in `metal-deferred-f176dfa0c8/` and
+`vulkan-deferred-f176dfa0c8/` under `bench/verse/2026-10-08/water-w11/`.
+Budget calibration and the refreshed browser check remain pending.

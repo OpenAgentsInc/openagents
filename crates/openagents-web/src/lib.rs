@@ -13,8 +13,11 @@
 
 pub mod ask;
 pub mod backend;
+mod chat_html;
+pub mod chat_store;
 pub mod cloud;
 mod components;
+mod demo;
 mod layout;
 mod markdown;
 mod pages;
@@ -60,6 +63,10 @@ pub struct Config {
     pub backend: Arc<dyn Backend>,
     /// Where the homepage terminal's questions are answered ([`ask`]).
     pub chat: Arc<dyn ask::Chat>,
+    /// Durable public conversations, independent of a browser connection.
+    pub chat_store: Arc<chat_store::Store>,
+    /// Small Rust/Wasm input and scroll adapter.
+    pub chat_build: Option<PathBuf>,
     /// The server's secret the visitors' signing keys are derived from.
     /// Random for each process unless set; a deployment with several
     /// instances sets one, so a visitor keeps one key.
@@ -96,6 +103,8 @@ impl Config {
     #[must_use]
     pub fn development(store: PathBuf) -> Self {
         Self {
+            chat_store: Arc::new(chat_store::Store::local(store.with_file_name("web-chats"))),
+            chat_build: None,
             store,
             customer: None,
             port: 4300,
@@ -122,8 +131,6 @@ pub(crate) struct App(Arc<Inner>);
 
 pub(crate) struct Inner {
     pub config: Config,
-    pub answering: Arc<ask::Answering>,
-    pub chats: Arc<pages::chat::Store>,
 }
 
 impl std::ops::Deref for App {
@@ -135,11 +142,7 @@ impl std::ops::Deref for App {
 
 /// The whole site.
 pub fn router(config: Config) -> Router {
-    let app = App(Arc::new(Inner {
-        config,
-        answering: Arc::default(),
-        chats: Arc::default(),
-    }));
+    let app = App(Arc::new(Inner { config }));
     let hosts = Hosts {
         port: app.config.port,
         public: app.config.public_hosts.clone(),
@@ -162,6 +165,8 @@ pub fn router(config: Config) -> Router {
         .merge(pages::routes())
         .merge(purchases::routes())
         .merge(components::routes())
+        .merge(chat_html::routes())
+        .merge(demo::routes())
         .merge(cloud::routes())
         .merge(pilot::routes())
         .merge(ask::routes())
@@ -208,6 +213,7 @@ async fn guard(hosts: Hosts, request: Request, next: Next) -> Response {
     // Cloud credentials and private work must stay on this Rust surface,
     // including when an unconfigured Host header would use the legacy proxy.
     let cloud = path == "/cloud" || path.starts_with("/cloud/");
+    let chat = path == "/chat" || path.starts_with("/chat/") || path == "/ask";
     let public = hosts.public.contains(&host);
     let cloud_cookie = request
         .headers()
@@ -244,6 +250,7 @@ async fn guard(hosts: Hosts, request: Request, next: Next) -> Response {
         && !browser
         && !intake
         && !cloud
+        && !chat
         && (!(local || public) || !upstream::owned(path))
     {
         return upstream.forward(request).await;

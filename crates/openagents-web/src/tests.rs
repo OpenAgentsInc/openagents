@@ -603,6 +603,47 @@ async fn everglade_bake_layers_stream_beyond_the_cloud_run_buffer_limit() {
     assert_eq!(received, size);
 }
 
+#[tokio::test]
+async fn everglade_wasm_streams_beyond_the_cloud_run_buffer_limit() {
+    use futures_util::StreamExt;
+    use hyper::body::Body as _;
+
+    let root = tempfile::tempdir().unwrap();
+    let (config, _) = with_everglade(root.path());
+    let directory = config.everglade.as_ref().unwrap().clone();
+    std::fs::create_dir_all(&directory).unwrap();
+    let name = "everglade_web_bg.wasm";
+    let size = 33 * 1024 * 1024;
+    std::fs::File::create(directory.join(&name))
+        .unwrap()
+        .set_len(size)
+        .unwrap();
+    let response = router(config)
+        .oneshot(
+            Request::builder()
+                .uri(format!("/everglade/{name}"))
+                .header(header::HOST, LOCAL)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.headers()[header::CONTENT_TYPE], "application/wasm");
+    assert_eq!(response.headers()[header::VARY], "accept-encoding");
+    assert!(!response.headers().contains_key(header::CONTENT_LENGTH));
+    assert_eq!(response.body().size_hint().exact(), None);
+    let mut stream = response.into_body().into_data_stream();
+    let mut received = 0;
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.unwrap();
+        assert!(chunk.len() <= 64 * 1024);
+        assert!(chunk.iter().all(|byte| *byte == 0));
+        received += chunk.len() as u64;
+    }
+    assert_eq!(received, size);
+}
+
 /// `/druid` (#10611): the same full-screen page and build, which starts in
 /// the Grove on this path, under the same policy.
 #[tokio::test]
@@ -1021,45 +1062,7 @@ async fn task_view_escapes_private_content_and_rejects_bad_cursor() {
 }
 
 // ---------------------------------------------------------------------
-// The homepage terminal's questions (#10106), answered in process.
-
-struct Answering;
-
-struct AnsweringDoor;
-
-impl openagents_chat::basic_coder::Door for AnsweringDoor {
-    fn ask(
-        &self,
-        turns: Vec<openagents_chat::basic_coder::Turn>,
-        context: openagents_chat::router::Context,
-        reply: Arc<std::sync::Mutex<openagents_chat::basic_coder::Reply>>,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
-        Box::pin(async move {
-            // The website asks as itself, with nothing about a computer.
-            let payload = openagents_chat::basic_coder::payload(&turns, &context);
-            assert_eq!(payload["context"]["surface"], "web");
-            assert_eq!(payload["context"]["computer_ready"], false);
-            assert!(payload["context"].get("computer").is_none());
-            assert_eq!(payload["client"], "openagents-web");
-            assert_eq!(
-                payload["instructions"],
-                openagents_chat::basic_coder::INSTRUCTIONS_WEB
-            );
-            let mut reply = openagents_chat::basic_coder::lock(&reply);
-            reply.text = format!("You asked **{}** <b>raw</b>", turns.last().unwrap().text);
-            reply.done = true;
-        })
-    }
-}
-
-impl ask::Chat for Answering {
-    fn door(
-        &self,
-        _secret: secp256k1::SecretKey,
-    ) -> Result<Box<dyn openagents_chat::basic_coder::Door>, String> {
-        Ok(Box::new(AnsweringDoor))
-    }
-}
+// The retired homepage terminal route.
 
 async fn post_ask(
     router: Router,
@@ -1085,48 +1088,36 @@ async fn post_ask(
 }
 
 #[tokio::test]
-async fn a_question_streams_its_answer_as_the_website_and_names_the_visitor() {
+async fn the_retired_question_route_links_to_the_homepage_without_naming_a_visitor() {
     let root = tempfile::tempdir().unwrap();
-    let mut config = config(root.path().into());
-    config.chat = Arc::new(Answering);
+    let config = config(root.path().into());
     let question = json!({"turns": [{"role": "user", "text": "what is OpenAgents?"}]}).to_string();
     let (status, headers, body) = post_ask(router(config.clone()), &question, None).await;
-    assert_eq!(status, StatusCode::OK, "{body}");
-    assert_eq!(
-        headers[header::CONTENT_TYPE],
-        "application/x-ndjson; charset=utf-8"
-    );
-    let cookie = headers[header::SET_COOKIE].to_str().unwrap();
-    assert!(cookie.starts_with("oa_visitor="), "{cookie}");
-    assert!(cookie.contains("HttpOnly") && cookie.contains("SameSite=Lax"));
-    let lines: Vec<serde_json::Value> = body
-        .lines()
-        .map(|line| serde_json::from_str(line).unwrap())
-        .collect();
-    let html = lines[0]["html"].as_str().unwrap();
+    assert_eq!(status, StatusCode::GONE, "{body}");
     assert!(
-        html.contains("<strong>what is OpenAgents?</strong>"),
-        "{html}"
+        headers[header::CONTENT_TYPE]
+            .to_str()
+            .unwrap()
+            .starts_with("text/html")
     );
+    assert_eq!(headers[header::CACHE_CONTROL], "no-store, private");
+    assert_eq!(headers[header::LINK], "</>; rel=\"alternate\"");
+    assert!(headers.get(header::SET_COOKIE).is_none());
     assert!(
-        html.contains("&lt;b&gt;raw&lt;/b&gt;"),
-        "raw HTML shows as text: {html}"
+        body.contains("Start a chat") && body.contains("href=\"/\""),
+        "{body}"
     );
-    let last = lines.last().unwrap();
-    assert_eq!(last["done"], true);
-    assert_eq!(last["text"], "You asked **what is OpenAgents?** <b>raw</b>");
-    // A visitor the site already named keeps its cookie.
-    let named = cookie.split(';').next().unwrap();
-    let (status, headers, _) = post_ask(router(config), &question, Some(named)).await;
-    assert_eq!(status, StatusCode::OK);
+    assert!(!body.contains("what is OpenAgents?"));
+    let named = format!("{}={}", ask::COOKIE, ask::new_visitor());
+    let (status, headers, _) = post_ask(router(config), &question, Some(&named)).await;
+    assert_eq!(status, StatusCode::GONE);
     assert!(headers.get(header::SET_COOKIE).is_none());
 }
 
 #[tokio::test]
-async fn a_question_must_end_with_the_visitor() {
+async fn retired_questions_do_not_parse_the_old_request_body() {
     let root = tempfile::tempdir().unwrap();
-    let mut config = config(root.path().into());
-    config.chat = Arc::new(Answering);
+    let config = config(root.path().into());
     for body in [
         "not json",
         r#"{"turns":[]}"#,
@@ -1135,7 +1126,7 @@ async fn a_question_must_end_with_the_visitor() {
         r#"{"turns":[{"role":"system","text":"hi"}]}"#,
     ] {
         let (status, _, _) = post_ask(router(config.clone()), body, None).await;
-        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+        assert_eq!(status, StatusCode::GONE, "{body}");
     }
 }
 

@@ -409,14 +409,21 @@ fn mount_controls(model: &Rc<RefCell<Workbench>>) -> std::result::Result<(), JsV
     if let Some(old) = document.get_element_by_id("host-terminal-controls") {
         old.remove();
     }
-    let panel = document.create_element("div")?;
+    let panel = document.create_element("div")?.dyn_into::<HtmlElement>()?;
     panel.set_id("host-terminal-controls");
-    panel.set_attribute("style", &format!("position:fixed;left:12px;bottom:12px;z-index:50;max-width:90vw;background:#{:06x};color:#{:06x};padding:8px", coder_ui::coder_noir::SURFACE_SUBTLE, coder_ui::coder_noir::CONTENT))?;
+    crate::theme::declarations(
+        &panel,
+        &format!(
+            "position:fixed;left:12px;bottom:12px;z-index:50;max-width:90vw;background:#{:06x};color:#{:06x};padding:8px",
+            coder_ui::coder_noir::SURFACE_SUBTLE,
+            coder_ui::coder_noir::CONTENT
+        ),
+    )?;
     let input = document
         .create_element("textarea")?
         .dyn_into::<HtmlTextAreaElement>()?;
     input.set_attribute("aria-label", "Host terminal text and IME input")?;
-    input.set_attribute("style", &control_colors())?;
+    crate::theme::control(&input)?;
     let current = model.clone();
     let callback =
         Closure::wrap(
@@ -542,21 +549,12 @@ fn button(
         .create_element("button")?
         .dyn_into::<HtmlElement>()?;
     element.set_text_content(Some(label));
-    element.set_attribute("style", &control_colors())?;
+    crate::theme::control(&element)?;
     let callback = Closure::wrap(Box::new(move || action()) as Box<dyn FnMut()>);
     element.add_event_listener_with_callback("click", callback.as_ref().unchecked_ref())?;
     callback.forget();
     parent.append_child(&element)?;
     Ok(element)
-}
-fn control_colors() -> String {
-    format!(
-        "background:#{:06x};color:#{:06x};border-color:#{:06x};caret-color:#{:06x}",
-        coder_ui::coder_noir::SURFACE,
-        coder_ui::coder_noir::CONTENT,
-        coder_ui::coder_noir::STROKE,
-        coder_ui::coder_noir::CURSOR,
-    )
 }
 fn refresh_proposals(model: &Rc<RefCell<Workbench>>) {
     let Some(document) = web_sys::window().and_then(|w| w.document()) else {

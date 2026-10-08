@@ -1,0 +1,211 @@
+[
+  {
+    "case": "water-webgpu-dry",
+    "mode": "webgpu",
+    "tier": "medium",
+    "measured_at_utc": "2026-10-08T08:28:34.095759+00:00",
+    "measurement_elapsed_seconds": 12.096677875000001,
+    "water_log_frames": 0,
+    "queue_fence_completions": 726,
+    "measurement_window": "one-second renderer log batches observed during the dated interval",
+    "high_tier": "not admitted on the browser platform",
+    "size": [
+      1920,
+      1080
+    ],
+    "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36",
+    "device_features": [
+      "core-features-and-limits",
+      "rg11b10ufloat-renderable",
+      "timestamp-query"
+    ],
+    "device_errors": [],
+    "device_lost": [],
+    "visual_capture_checked": true,
+    "query": "?frames&town-clock=off&zone=water&water-dry",
+    "renderer_admission": {
+      "tier": "medium",
+      "physical": true
+    },
+    "startup_responses": [
+      {
+        "url": "http://127.0.0.1:58120/index.html?frames&town-clock=off&zone=water&water-dry",
+        "status": 200
+      },
+      {
+        "url": "http://127.0.0.1:58120/everglade_web.js",
+        "status": 200
+      },
+      {
+        "url": "http://127.0.0.1:58120/everglade_web_bg.wasm",
+        "status": 200
+      },
+      {
+        "url": "http://127.0.0.1:58120/favicon.ico",
+        "status": 404
+      },
+      {
+        "url": "http://127.0.0.1:58120/everglade/pack/a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f.vtp",
+        "status": 200
+      }
+    ],
+    "licensed_kit_loaded": false,
+    "gpu_timestamps_supported": false,
+    "gpu_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "main_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "worker_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "main_cpu_ms": null,
+    "worker_cpu_supported": false,
+    "completed_jobs": 0,
+    "completed_synthesis_ms": 0,
+    "mean_completed_job_elapsed_ms": null,
+    "mean_completed_job_cpu_ms": null,
+    "observed_last_job_elapsed_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "worker_bytes": 0,
+    "ripple_cpu_bytes": 0,
+    "gpu_bytes": 0,
+    "queue_fence_frame_ms_estimate": {
+      "count": 726,
+      "mean": 5.0057851241044595,
+      "p95": 5.399999998509884,
+      "max": 6.5
+    },
+    "queue_fence_method": "WebGPU submit-to-onSubmittedWorkDone wall time; WebGL2 RAF work plus gl.finish wall time; neither is a GPU timestamp",
+    "inline_synthesis": true,
+    "capture": "water-webgpu-dry.png",
+    "capture_sha256": "16e7dec626fd75ccd66dbae66a8cf43fc27a2e6a074af1d26038e6cceb0c9863",
+    "success": true,
+    "gpu_bytes_peak": 0,
+    "cpu_storage_bytes_peak": 0,
+    "last_plan": null,
+    "visual_audit": "dry/wet 1920x1080 capture inspected; Water Lab scene and hotbar render correctly",
+    "cpu_scope": "main-thread elapsed only; CPU clock unavailable; waves synthesized inline, no separate worker CPU measurement",
+    "gpu_budget_acceptance": "dry reference"
+  },
+  {
+    "case": "water-webgpu",
+    "mode": "webgpu",
+    "tier": "medium",
+    "measured_at_utc": "2026-10-08T08:28:59.734250+00:00",
+    "measurement_elapsed_seconds": 12.099270209000004,
+    "water_log_frames": 726,
+    "queue_fence_completions": 726,
+    "measurement_window": "one-second renderer log batches observed during the dated interval",
+    "high_tier": "not admitted on the browser platform",
+    "size": [
+      1920,
+      1080
+    ],
+    "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36",
+    "device_features": [
+      "core-features-and-limits",
+      "rg11b10ufloat-renderable",
+      "timestamp-query"
+    ],
+    "device_errors": [],
+    "device_lost": [],
+    "visual_capture_checked": true,
+    "query": "?frames&town-clock=off&zone=water",
+    "renderer_admission": {
+      "tier": "medium",
+      "physical": true
+    },
+    "startup_responses": [
+      {
+        "url": "http://127.0.0.1:58120/index.html?frames&town-clock=off&zone=water",
+        "status": 200
+      },
+      {
+        "url": "http://127.0.0.1:58120/everglade_web.js",
+        "status": 200
+      },
+      {
+        "url": "http://127.0.0.1:58120/everglade_web_bg.wasm",
+        "status": 200
+      },
+      {
+        "url": "http://127.0.0.1:58120/everglade/pack/a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f.vtp",
+        "status": 200
+      }
+    ],
+    "licensed_kit_loaded": false,
+    "gpu_timestamps_supported": true,
+    "gpu_ms": {
+      "count": 726,
+      "mean": 2.767767625344353,
+      "p95": 3.407872,
+      "max": 3.93216
+    },
+    "main_ms": {
+      "count": 726,
+      "mean": 1.112534435261708,
+      "p95": 1.6,
+      "max": 2.3
+    },
+    "worker_ms": {
+      "count": 726,
+      "mean": 0.0,
+      "p95": 0.0,
+      "max": 0.0
+    },
+    "main_cpu_ms": null,
+    "worker_cpu_supported": false,
+    "completed_jobs": 90,
+    "completed_synthesis_ms": 38.79999999999995,
+    "mean_completed_job_elapsed_ms": 0.4311111111111105,
+    "mean_completed_job_cpu_ms": null,
+    "observed_last_job_elapsed_ms": {
+      "count": 90,
+      "mean": 0.4311111111111111,
+      "p95": 0.5,
+      "max": 0.9
+    },
+    "worker_bytes": 1198592,
+    "ripple_cpu_bytes": 131200,
+    "gpu_bytes": 4768708,
+    "queue_fence_frame_ms_estimate": {
+      "count": 726,
+      "mean": 6.99738292013277,
+      "p95": 7.899999998509884,
+      "max": 11.200000002980232
+    },
+    "queue_fence_method": "WebGPU submit-to-onSubmittedWorkDone wall time; WebGL2 RAF work plus gl.finish wall time; neither is a GPU timestamp",
+    "inline_synthesis": true,
+    "capture": "water-webgpu.png",
+    "capture_sha256": "6cd4da437a2cb8dc7075dbdbe4937a484020033d348bc40f6437bb14479b52cc",
+    "success": true,
+    "queue_fence_water_ms_estimate": 1.9915977960283104,
+    "gpu_bytes_peak": 4768708,
+    "cpu_storage_bytes_peak": 1329792,
+    "last_plan": {
+      "copies": false,
+      "mirror": false,
+      "ssr": false,
+      "refresh_every": 8,
+      "effects_reduced": true
+    },
+    "visual_audit": "dry/wet 1920x1080 capture inspected; Water Lab scene and hotbar render correctly",
+    "cpu_scope": "main-thread elapsed only; CPU clock unavailable; waves synthesized inline, no separate worker CPU measurement",
+    "gpu_budget_acceptance": "wet mean exceeds old Medium 2.5ms target despite removed optics; calibration pending"
+  }
+]

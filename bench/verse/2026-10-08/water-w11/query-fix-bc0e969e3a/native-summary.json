@@ -1,0 +1,1442 @@
+[
+  {
+    "tier": "high",
+    "view": "open-storm",
+    "adapter": "NVIDIA GeForce RTX 4080 (Vulkan)",
+    "measured_at_unix_ms": 1791480205132,
+    "size": [
+      1920,
+      1080
+    ],
+    "cadence_hz": 60,
+    "steady_frames": 96,
+    "timing": "paced native pass timestamps when valid; submit-to-fence wall time excludes cadence sleep",
+    "gpu_timestamp_scope": "mirror, color/depth copies, and surface passes; shared opaque underwater shading and implicit queue texture uploads are not isolated",
+    "gpu_ms": {
+      "count": 96,
+      "mean": 2.545653333333328,
+      "p95": 2.576384,
+      "max": 3.313664
+    },
+    "gpu_valid_samples": 96,
+    "gpu_sample_fraction": 1.0,
+    "gpu_passes_ms": [
+      "mirror",
+      "opaque (excluded)",
+      "color and depth copies",
+      "surface"
+    ],
+    "gpu_bytes": 8319348,
+    "main_ms": {
+      "count": 96,
+      "mean": 7.681747260416647,
+      "p95": 10.97876499999984,
+      "max": 17.17966699999988
+    },
+    "worker_ms": {
+      "count": 96,
+      "mean": 0.5331077916666679,
+      "p95": 3.4945450000000418,
+      "max": 7.454253999999957
+    },
+    "main_cpu_clock": true,
+    "worker_cpu_clock": true,
+    "completed_jobs": 12,
+    "completed_synthesis_ms": 51.40149500000011,
+    "mean_completed_job_elapsed_ms": 4.283457916666676,
+    "mean_completed_job_cpu_ms": 4.264862333333343,
+    "observed_last_job_elapsed_ms": {
+      "count": 12,
+      "mean": 4.283457916666666,
+      "p95": 7.4941249999999995,
+      "max": 7.50634
+    },
+    "observed_last_job_cpu_ms": {
+      "count": 12,
+      "mean": 4.264862333333345,
+      "p95": 7.435225999999943,
+      "max": 7.454253999999992
+    },
+    "queue_fence_frame_ms_fastest": 6.33893,
+    "queue_fence_water_ms_estimate": 4.709857,
+    "last": {
+      "gpu": {
+        "frame": 359,
+        "pass_ms": [
+          null,
+          1.713152,
+          null,
+          2.572288
+        ],
+        "water_ms": 2.572288
+      },
+      "gpu_timestamps": true,
+      "gpu_bytes": 8319348,
+      "main_ms": 6.930284,
+      "main_cpu_ms": 6.907412999999906,
+      "synthesis_ms": 5.205194,
+      "synthesis_cpu_ms": 5.187821999999983,
+      "completed_jobs": 1,
+      "completed_synthesis_ms": 5.205194000000017,
+      "worker_ms": 5.187821999999928,
+      "worker_cpu_supported": true,
+      "worker_bytes": 4864680,
+      "ripple_cpu_bytes": 524612,
+      "inline_synthesis": false,
+      "refresh_every": 8,
+      "copies": false,
+      "mirror": false,
+      "ssr": false,
+      "effects_reduced": true
+    },
+    "within_budget": false,
+    "effects_reduced": true,
+    "water_changed_pixels": 0.5559148341049382,
+    "capture": "native-high-open-storm.png",
+    "capture_sha256": "b7be6852eb9128c671811bcb6c1cd5fbf43977f0a8819b4084a3a4e5df12b9f0"
+  },
+  {
+    "tier": "high",
+    "view": "pond-noon",
+    "adapter": "NVIDIA GeForce RTX 4080 (Vulkan)",
+    "measured_at_unix_ms": 1791480177521,
+    "size": [
+      1920,
+      1080
+    ],
+    "cadence_hz": 60,
+    "steady_frames": 96,
+    "timing": "paced native pass timestamps when valid; submit-to-fence wall time excludes cadence sleep",
+    "gpu_timestamp_scope": "mirror, color/depth copies, and surface passes; shared opaque underwater shading and implicit queue texture uploads are not isolated",
+    "gpu_ms": {
+      "count": 96,
+      "mean": 1.613290666666666,
+      "p95": 1.84832,
+      "max": 3.416064
+    },
+    "gpu_valid_samples": 96,
+    "gpu_sample_fraction": 1.0,
+    "gpu_passes_ms": [
+      "mirror",
+      "opaque (excluded)",
+      "color and depth copies",
+      "surface"
+    ],
+    "gpu_bytes": 3544108,
+    "main_ms": {
+      "count": 96,
+      "mean": 3.4428774062500054,
+      "p95": 6.969585000000279,
+      "max": 8.13695800000005
+    },
+    "worker_ms": {
+      "count": 96,
+      "mean": 0.0,
+      "p95": 0.0,
+      "max": 0.0
+    },
+    "main_cpu_clock": true,
+    "worker_cpu_clock": true,
+    "completed_jobs": 0,
+    "completed_synthesis_ms": 0.0,
+    "mean_completed_job_elapsed_ms": null,
+    "mean_completed_job_cpu_ms": null,
+    "observed_last_job_elapsed_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "observed_last_job_cpu_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "queue_fence_frame_ms_fastest": 5.368813,
+    "queue_fence_water_ms_estimate": 4.146779,
+    "last": {
+      "gpu": {
+        "frame": 359,
+        "pass_ms": [
+          null,
+          1.59744,
+          null,
+          1.457152
+        ],
+        "water_ms": 1.457152
+      },
+      "gpu_timestamps": true,
+      "gpu_bytes": 3544108,
+      "main_ms": 0.06788599999999999,
+      "main_cpu_ms": 0.06735699999990175,
+      "synthesis_ms": 0.0,
+      "synthesis_cpu_ms": null,
+      "completed_jobs": 0,
+      "completed_synthesis_ms": 0.0,
+      "worker_ms": 0.0,
+      "worker_cpu_supported": true,
+      "worker_bytes": 0,
+      "ripple_cpu_bytes": 524612,
+      "inline_synthesis": false,
+      "refresh_every": 8,
+      "copies": false,
+      "mirror": false,
+      "ssr": false,
+      "effects_reduced": true
+    },
+    "within_budget": false,
+    "effects_reduced": true,
+    "water_changed_pixels": 0.4222193287037037,
+    "capture": "native-high-pond-noon.png",
+    "capture_sha256": "2b74d215011a888693a8a9ae0ca39765474f29ec2095a6a2c5052edfde8f440d"
+  },
+  {
+    "tier": "high",
+    "view": "pond-posts",
+    "adapter": "NVIDIA GeForce RTX 4080 (Vulkan)",
+    "measured_at_unix_ms": 1791480191131,
+    "size": [
+      1920,
+      1080
+    ],
+    "cadence_hz": 60,
+    "steady_frames": 96,
+    "timing": "paced native pass timestamps when valid; submit-to-fence wall time excludes cadence sleep",
+    "gpu_timestamp_scope": "mirror, color/depth copies, and surface passes; shared opaque underwater shading and implicit queue texture uploads are not isolated",
+    "gpu_ms": {
+      "count": 96,
+      "mean": 1.5765973333333336,
+      "p95": 1.750016,
+      "max": 3.288064
+    },
+    "gpu_valid_samples": 96,
+    "gpu_sample_fraction": 1.0,
+    "gpu_passes_ms": [
+      "mirror",
+      "opaque (excluded)",
+      "color and depth copies",
+      "surface"
+    ],
+    "gpu_bytes": 3544108,
+    "main_ms": {
+      "count": 96,
+      "mean": 3.4938303541666804,
+      "p95": 7.820899999999938,
+      "max": 10.14625100000012
+    },
+    "worker_ms": {
+      "count": 96,
+      "mean": 0.0,
+      "p95": 0.0,
+      "max": 0.0
+    },
+    "main_cpu_clock": true,
+    "worker_cpu_clock": true,
+    "completed_jobs": 0,
+    "completed_synthesis_ms": 0.0,
+    "mean_completed_job_elapsed_ms": null,
+    "mean_completed_job_cpu_ms": null,
+    "observed_last_job_elapsed_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "observed_last_job_cpu_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "queue_fence_frame_ms_fastest": 5.303919,
+    "queue_fence_water_ms_estimate": 4.278808,
+    "last": {
+      "gpu": {
+        "frame": 359,
+        "pass_ms": [
+          null,
+          1.670144,
+          null,
+          1.519616
+        ],
+        "water_ms": 1.519616
+      },
+      "gpu_timestamps": true,
+      "gpu_bytes": 3544108,
+      "main_ms": 0.081718,
+      "main_cpu_ms": 0.08059000000002925,
+      "synthesis_ms": 0.0,
+      "synthesis_cpu_ms": null,
+      "completed_jobs": 0,
+      "completed_synthesis_ms": 0.0,
+      "worker_ms": 0.0,
+      "worker_cpu_supported": true,
+      "worker_bytes": 0,
+      "ripple_cpu_bytes": 524612,
+      "inline_synthesis": false,
+      "refresh_every": 8,
+      "copies": false,
+      "mirror": false,
+      "ssr": false,
+      "effects_reduced": true
+    },
+    "within_budget": false,
+    "effects_reduced": true,
+    "water_changed_pixels": 0.41407359182098763,
+    "capture": "native-high-pond-posts.png",
+    "capture_sha256": "9254d8f2c5382817957610aa0aa436a3da8754d2d874158be4f0b55cee397ef7"
+  },
+  {
+    "tier": "high",
+    "view": "under",
+    "adapter": "NVIDIA GeForce RTX 4080 (Vulkan)",
+    "measured_at_unix_ms": 1791480231872,
+    "size": [
+      1920,
+      1080
+    ],
+    "cadence_hz": 60,
+    "steady_frames": 96,
+    "timing": "paced native pass timestamps when valid; submit-to-fence wall time excludes cadence sleep",
+    "gpu_timestamp_scope": "mirror, color/depth copies, and surface passes; shared opaque underwater shading and implicit queue texture uploads are not isolated",
+    "gpu_ms": {
+      "count": 96,
+      "mean": 1.4487466666666655,
+      "p95": 2.89792,
+      "max": 3.01056
+    },
+    "gpu_valid_samples": 96,
+    "gpu_sample_fraction": 1.0,
+    "gpu_passes_ms": [
+      "mirror",
+      "opaque (excluded)",
+      "color and depth copies",
+      "surface"
+    ],
+    "gpu_bytes": 3544108,
+    "main_ms": {
+      "count": 96,
+      "mean": 2.6249735312500113,
+      "p95": 6.744881000000078,
+      "max": 7.699877999999899
+    },
+    "worker_ms": {
+      "count": 96,
+      "mean": 0.0,
+      "p95": 0.0,
+      "max": 0.0
+    },
+    "main_cpu_clock": true,
+    "worker_cpu_clock": true,
+    "completed_jobs": 0,
+    "completed_synthesis_ms": 0.0,
+    "mean_completed_job_elapsed_ms": null,
+    "mean_completed_job_cpu_ms": null,
+    "observed_last_job_elapsed_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "observed_last_job_cpu_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "queue_fence_frame_ms_fastest": 4.878182,
+    "queue_fence_water_ms_estimate": 3.8445169999999997,
+    "last": {
+      "gpu": {
+        "frame": 359,
+        "pass_ms": [
+          null,
+          2.369536,
+          null,
+          1.318912
+        ],
+        "water_ms": 1.318912
+      },
+      "gpu_timestamps": true,
+      "gpu_bytes": 3544108,
+      "main_ms": 0.083637,
+      "main_cpu_ms": 0.07578200000034485,
+      "synthesis_ms": 0.0,
+      "synthesis_cpu_ms": null,
+      "completed_jobs": 0,
+      "completed_synthesis_ms": 0.0,
+      "worker_ms": 0.0,
+      "worker_cpu_supported": true,
+      "worker_bytes": 0,
+      "ripple_cpu_bytes": 524612,
+      "inline_synthesis": false,
+      "refresh_every": 8,
+      "copies": false,
+      "mirror": false,
+      "ssr": false,
+      "effects_reduced": true
+    },
+    "within_budget": false,
+    "effects_reduced": true,
+    "water_changed_pixels": 1.0,
+    "capture": "native-high-under.png",
+    "capture_sha256": "97373778681e3095939644f60fa40a1b37e8764ee898beb5e592785b3ae921b5"
+  },
+  {
+    "tier": "high",
+    "view": "waterline",
+    "adapter": "NVIDIA GeForce RTX 4080 (Vulkan)",
+    "measured_at_unix_ms": 1791480218750,
+    "size": [
+      1920,
+      1080
+    ],
+    "cadence_hz": 60,
+    "steady_frames": 96,
+    "timing": "paced native pass timestamps when valid; submit-to-fence wall time excludes cadence sleep",
+    "gpu_timestamp_scope": "mirror, color/depth copies, and surface passes; shared opaque underwater shading and implicit queue texture uploads are not isolated",
+    "gpu_ms": {
+      "count": 96,
+      "mean": 0.6898666666666666,
+      "p95": 0.76288,
+      "max": 2.126848
+    },
+    "gpu_valid_samples": 96,
+    "gpu_sample_fraction": 1.0,
+    "gpu_passes_ms": [
+      "mirror",
+      "opaque (excluded)",
+      "color and depth copies",
+      "surface"
+    ],
+    "gpu_bytes": 3544108,
+    "main_ms": {
+      "count": 96,
+      "mean": 3.4534034687499875,
+      "p95": 7.072777999999971,
+      "max": 7.445581000000402
+    },
+    "worker_ms": {
+      "count": 96,
+      "mean": 0.0,
+      "p95": 0.0,
+      "max": 0.0
+    },
+    "main_cpu_clock": true,
+    "worker_cpu_clock": true,
+    "completed_jobs": 0,
+    "completed_synthesis_ms": 0.0,
+    "mean_completed_job_elapsed_ms": null,
+    "mean_completed_job_cpu_ms": null,
+    "observed_last_job_elapsed_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "observed_last_job_cpu_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "queue_fence_frame_ms_fastest": 5.436405,
+    "queue_fence_water_ms_estimate": 4.387264999999999,
+    "last": {
+      "gpu": {
+        "frame": 359,
+        "pass_ms": [
+          null,
+          2.589696,
+          null,
+          0.612352
+        ],
+        "water_ms": 0.612352
+      },
+      "gpu_timestamps": true,
+      "gpu_bytes": 3544108,
+      "main_ms": 0.081883,
+      "main_cpu_ms": 0.0808670000001257,
+      "synthesis_ms": 0.0,
+      "synthesis_cpu_ms": null,
+      "completed_jobs": 0,
+      "completed_synthesis_ms": 0.0,
+      "worker_ms": 0.0,
+      "worker_cpu_supported": true,
+      "worker_bytes": 0,
+      "ripple_cpu_bytes": 524612,
+      "inline_synthesis": false,
+      "refresh_every": 8,
+      "copies": false,
+      "mirror": false,
+      "ssr": false,
+      "effects_reduced": true
+    },
+    "within_budget": false,
+    "effects_reduced": true,
+    "water_changed_pixels": 0.5171879822530864,
+    "capture": "native-high-waterline.png",
+    "capture_sha256": "5f19ecdab96e633601a75ec4e43007aa9a2ba1ea82c733019537e7bf15e3ac1a"
+  },
+  {
+    "tier": "low",
+    "view": "open-storm",
+    "adapter": "NVIDIA GeForce RTX 4080 (Vulkan)",
+    "measured_at_unix_ms": 1791480096355,
+    "size": [
+      1920,
+      1080
+    ],
+    "cadence_hz": 60,
+    "steady_frames": 96,
+    "timing": "paced native pass timestamps when valid; submit-to-fence wall time excludes cadence sleep",
+    "gpu_timestamp_scope": "mirror, color/depth copies, and surface passes; shared opaque underwater shading and implicit queue texture uploads are not isolated",
+    "gpu_ms": {
+      "count": 96,
+      "mean": 2.9725119999999996,
+      "p95": 2.963456,
+      "max": 4.048896
+    },
+    "gpu_valid_samples": 96,
+    "gpu_sample_fraction": 1.0,
+    "gpu_passes_ms": [
+      "mirror",
+      "opaque (excluded)",
+      "color and depth copies",
+      "surface"
+    ],
+    "gpu_bytes": 2313316,
+    "main_ms": {
+      "count": 96,
+      "mean": 1.122252604166647,
+      "p95": 1.3785319999997228,
+      "max": 1.794271000000208
+    },
+    "worker_ms": {
+      "count": 96,
+      "mean": 0.09140724999999898,
+      "p95": 0.738344999999972,
+      "max": 1.031887000000017
+    },
+    "main_cpu_clock": true,
+    "worker_cpu_clock": true,
+    "completed_jobs": 12,
+    "completed_synthesis_ms": 8.90612399999998,
+    "mean_completed_job_elapsed_ms": 0.7421769999999984,
+    "mean_completed_job_cpu_ms": 0.731257999999992,
+    "observed_last_job_elapsed_ms": {
+      "count": 12,
+      "mean": 0.7421769999999999,
+      "p95": 0.894038,
+      "max": 1.040762
+    },
+    "observed_last_job_cpu_ms": {
+      "count": 12,
+      "mean": 0.7312579999999945,
+      "p95": 0.8717379999999935,
+      "max": 1.0318870000000118
+    },
+    "queue_fence_frame_ms_fastest": 6.230841,
+    "queue_fence_water_ms_estimate": 5.500197,
+    "last": {
+      "gpu": {
+        "frame": 359,
+        "pass_ms": [
+          null,
+          2.276352,
+          null,
+          4.048896
+        ],
+        "water_ms": 4.048896
+      },
+      "gpu_timestamps": true,
+      "gpu_bytes": 2313316,
+      "main_ms": 1.43447,
+      "main_cpu_ms": 1.423970000000054,
+      "synthesis_ms": 1.040762,
+      "synthesis_cpu_ms": 1.0318870000000118,
+      "completed_jobs": 1,
+      "completed_synthesis_ms": 1.040761999999988,
+      "worker_ms": 1.031887000000017,
+      "worker_cpu_supported": true,
+      "worker_bytes": 827704,
+      "ripple_cpu_bytes": 131072,
+      "inline_synthesis": false,
+      "refresh_every": 8,
+      "copies": false,
+      "mirror": false,
+      "ssr": false,
+      "effects_reduced": true
+    },
+    "within_budget": false,
+    "effects_reduced": true,
+    "water_changed_pixels": 0.5440817901234568,
+    "capture": "native-low-open-storm.png",
+    "capture_sha256": "68cfee2d90e77696aa75ab0c86708a6aa3338e526bccab71ba7d383103fd9be7"
+  },
+  {
+    "tier": "low",
+    "view": "pond-noon",
+    "adapter": "NVIDIA GeForce RTX 4080 (Vulkan)",
+    "measured_at_unix_ms": 1791480082788,
+    "size": [
+      1920,
+      1080
+    ],
+    "cadence_hz": 60,
+    "steady_frames": 96,
+    "timing": "paced native pass timestamps when valid; submit-to-fence wall time excludes cadence sleep",
+    "gpu_timestamp_scope": "mirror, color/depth copies, and surface passes; shared opaque underwater shading and implicit queue texture uploads are not isolated",
+    "gpu_ms": {
+      "count": 96,
+      "mean": 2.0137599999999987,
+      "p95": 2.686976,
+      "max": 3.958784
+    },
+    "gpu_valid_samples": 96,
+    "gpu_sample_fraction": 1.0,
+    "gpu_passes_ms": [
+      "mirror",
+      "opaque (excluded)",
+      "color and depth copies",
+      "surface"
+    ],
+    "gpu_bytes": 989164,
+    "main_ms": {
+      "count": 96,
+      "mean": 0.13941337500000728,
+      "p95": 0.19921099999999115,
+      "max": 0.22277100000007977
+    },
+    "worker_ms": {
+      "count": 96,
+      "mean": 0.0,
+      "p95": 0.0,
+      "max": 0.0
+    },
+    "main_cpu_clock": true,
+    "worker_cpu_clock": true,
+    "completed_jobs": 0,
+    "completed_synthesis_ms": 0.0,
+    "mean_completed_job_elapsed_ms": null,
+    "mean_completed_job_cpu_ms": null,
+    "observed_last_job_elapsed_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "observed_last_job_cpu_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "queue_fence_frame_ms_fastest": 5.287967999999999,
+    "queue_fence_water_ms_estimate": 4.935613999999999,
+    "last": {
+      "gpu": {
+        "frame": 359,
+        "pass_ms": [
+          null,
+          2.551808,
+          null,
+          1.92
+        ],
+        "water_ms": 1.92
+      },
+      "gpu_timestamps": true,
+      "gpu_bytes": 989164,
+      "main_ms": 0.107926,
+      "main_cpu_ms": 0.10737699999992856,
+      "synthesis_ms": 0.0,
+      "synthesis_cpu_ms": null,
+      "completed_jobs": 0,
+      "completed_synthesis_ms": 0.0,
+      "worker_ms": 0.0,
+      "worker_cpu_supported": true,
+      "worker_bytes": 0,
+      "ripple_cpu_bytes": 131072,
+      "inline_synthesis": false,
+      "refresh_every": 8,
+      "copies": false,
+      "mirror": false,
+      "ssr": false,
+      "effects_reduced": true
+    },
+    "within_budget": false,
+    "effects_reduced": true,
+    "water_changed_pixels": 0.42081645447530863,
+    "capture": "native-low-pond-noon.png",
+    "capture_sha256": "1dcac349b29537c706d03455c9bd7218c2ac7798872f35e9adb879466b5e2284"
+  },
+  {
+    "tier": "low",
+    "view": "pond-posts",
+    "adapter": "NVIDIA GeForce RTX 4080 (Vulkan)",
+    "measured_at_unix_ms": 1791480000075,
+    "size": [
+      1920,
+      1080
+    ],
+    "cadence_hz": 60,
+    "steady_frames": 96,
+    "timing": "paced native pass timestamps when valid; submit-to-fence wall time excludes cadence sleep",
+    "gpu_timestamp_scope": "mirror, color/depth copies, and surface passes; shared opaque underwater shading and implicit queue texture uploads are not isolated",
+    "gpu_ms": {
+      "count": 96,
+      "mean": 1.997301333333333,
+      "p95": 3.596288,
+      "max": 3.853312
+    },
+    "gpu_valid_samples": 96,
+    "gpu_sample_fraction": 1.0,
+    "gpu_passes_ms": [
+      "mirror",
+      "opaque (excluded)",
+      "color and depth copies",
+      "surface"
+    ],
+    "gpu_bytes": 989164,
+    "main_ms": {
+      "count": 96,
+      "mean": 0.14678187500001152,
+      "p95": 0.20916699999997945,
+      "max": 0.2547689999996692
+    },
+    "worker_ms": {
+      "count": 96,
+      "mean": 0.0,
+      "p95": 0.0,
+      "max": 0.0
+    },
+    "main_cpu_clock": true,
+    "worker_cpu_clock": true,
+    "completed_jobs": 0,
+    "completed_synthesis_ms": 0.0,
+    "mean_completed_job_elapsed_ms": null,
+    "mean_completed_job_cpu_ms": null,
+    "observed_last_job_elapsed_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "observed_last_job_cpu_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "queue_fence_frame_ms_fastest": 5.228894,
+    "queue_fence_water_ms_estimate": 3.3422520000000002,
+    "last": {
+      "gpu": {
+        "frame": 359,
+        "pass_ms": [
+          null,
+          2.752512,
+          null,
+          1.903616
+        ],
+        "water_ms": 1.903616
+      },
+      "gpu_timestamps": true,
+      "gpu_bytes": 989164,
+      "main_ms": 0.135396,
+      "main_cpu_ms": 0.1346690000000308,
+      "synthesis_ms": 0.0,
+      "synthesis_cpu_ms": null,
+      "completed_jobs": 0,
+      "completed_synthesis_ms": 0.0,
+      "worker_ms": 0.0,
+      "worker_cpu_supported": true,
+      "worker_bytes": 0,
+      "ripple_cpu_bytes": 131072,
+      "inline_synthesis": false,
+      "refresh_every": 8,
+      "copies": false,
+      "mirror": false,
+      "ssr": false,
+      "effects_reduced": true
+    },
+    "within_budget": false,
+    "effects_reduced": true,
+    "water_changed_pixels": 0.41099729938271606,
+    "capture": "native-low-pond-posts.png",
+    "capture_sha256": "d77be97f5dd4d78509ba1c4d3b46c93c6d68ddb4a665fe86f98228cfe39ec59b"
+  },
+  {
+    "tier": "low",
+    "view": "under",
+    "adapter": "NVIDIA GeForce RTX 4080 (Vulkan)",
+    "measured_at_unix_ms": 1791480109242,
+    "size": [
+      1920,
+      1080
+    ],
+    "cadence_hz": 60,
+    "steady_frames": 96,
+    "timing": "paced native pass timestamps when valid; submit-to-fence wall time excludes cadence sleep",
+    "gpu_timestamp_scope": "mirror, color/depth copies, and surface passes; shared opaque underwater shading and implicit queue texture uploads are not isolated",
+    "gpu_ms": {
+      "count": 96,
+      "mean": 1.182400000000001,
+      "p95": 1.11616,
+      "max": 3.182592
+    },
+    "gpu_valid_samples": 96,
+    "gpu_sample_fraction": 1.0,
+    "gpu_passes_ms": [
+      "mirror",
+      "opaque (excluded)",
+      "color and depth copies",
+      "surface"
+    ],
+    "gpu_bytes": 989164,
+    "main_ms": {
+      "count": 96,
+      "mean": 0.14319320833332347,
+      "p95": 0.20797700000002806,
+      "max": 0.25046199999997043
+    },
+    "worker_ms": {
+      "count": 96,
+      "mean": 0.0,
+      "p95": 0.0,
+      "max": 0.0
+    },
+    "main_cpu_clock": true,
+    "worker_cpu_clock": true,
+    "completed_jobs": 0,
+    "completed_synthesis_ms": 0.0,
+    "mean_completed_job_elapsed_ms": null,
+    "mean_completed_job_cpu_ms": null,
+    "observed_last_job_elapsed_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "observed_last_job_cpu_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "queue_fence_frame_ms_fastest": 4.419402,
+    "queue_fence_water_ms_estimate": 4.077973,
+    "last": {
+      "gpu": {
+        "frame": 359,
+        "pass_ms": [
+          null,
+          2.33984,
+          null,
+          1.115136
+        ],
+        "water_ms": 1.115136
+      },
+      "gpu_timestamps": true,
+      "gpu_bytes": 989164,
+      "main_ms": 0.14065299999999997,
+      "main_cpu_ms": 0.1343219999998837,
+      "synthesis_ms": 0.0,
+      "synthesis_cpu_ms": null,
+      "completed_jobs": 0,
+      "completed_synthesis_ms": 0.0,
+      "worker_ms": 0.0,
+      "worker_cpu_supported": true,
+      "worker_bytes": 0,
+      "ripple_cpu_bytes": 131072,
+      "inline_synthesis": false,
+      "refresh_every": 1,
+      "copies": false,
+      "mirror": false,
+      "ssr": false,
+      "effects_reduced": false
+    },
+    "within_budget": true,
+    "effects_reduced": false,
+    "water_changed_pixels": 1.0,
+    "capture": "native-low-under.png",
+    "capture_sha256": "f282fd82fb56fa46244b29e6b6dcfff6b70721791f3342cf830e5c2163b4dd68"
+  },
+  {
+    "tier": "low",
+    "view": "waterline",
+    "adapter": "NVIDIA GeForce RTX 4080 (Vulkan)",
+    "measured_at_unix_ms": 1791480034398,
+    "size": [
+      1920,
+      1080
+    ],
+    "cadence_hz": 60,
+    "steady_frames": 96,
+    "timing": "paced native pass timestamps when valid; submit-to-fence wall time excludes cadence sleep",
+    "gpu_timestamp_scope": "mirror, color/depth copies, and surface passes; shared opaque underwater shading and implicit queue texture uploads are not isolated",
+    "gpu_ms": {
+      "count": 96,
+      "mean": 0.5612799999999999,
+      "p95": 0.768,
+      "max": 2.491392
+    },
+    "gpu_valid_samples": 96,
+    "gpu_sample_fraction": 1.0,
+    "gpu_passes_ms": [
+      "mirror",
+      "opaque (excluded)",
+      "color and depth copies",
+      "surface"
+    ],
+    "gpu_bytes": 989164,
+    "main_ms": {
+      "count": 96,
+      "mean": 0.14312527083333157,
+      "p95": 0.208039999999869,
+      "max": 0.24228100000004815
+    },
+    "worker_ms": {
+      "count": 96,
+      "mean": 0.0,
+      "p95": 0.0,
+      "max": 0.0
+    },
+    "main_cpu_clock": true,
+    "worker_cpu_clock": true,
+    "completed_jobs": 0,
+    "completed_synthesis_ms": 0.0,
+    "mean_completed_job_elapsed_ms": null,
+    "mean_completed_job_cpu_ms": null,
+    "observed_last_job_elapsed_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "observed_last_job_cpu_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "queue_fence_frame_ms_fastest": 4.301501999999999,
+    "queue_fence_water_ms_estimate": 3.9315069999999994,
+    "last": {
+      "gpu": {
+        "frame": 359,
+        "pass_ms": [
+          null,
+          2.888704,
+          null,
+          0.388096
+        ],
+        "water_ms": 0.388096
+      },
+      "gpu_timestamps": true,
+      "gpu_bytes": 989164,
+      "main_ms": 0.122925,
+      "main_cpu_ms": 0.12281900000004953,
+      "synthesis_ms": 0.0,
+      "synthesis_cpu_ms": null,
+      "completed_jobs": 0,
+      "completed_synthesis_ms": 0.0,
+      "worker_ms": 0.0,
+      "worker_cpu_supported": true,
+      "worker_bytes": 0,
+      "ripple_cpu_bytes": 131072,
+      "inline_synthesis": false,
+      "refresh_every": 1,
+      "copies": false,
+      "mirror": false,
+      "ssr": false,
+      "effects_reduced": false
+    },
+    "within_budget": true,
+    "effects_reduced": false,
+    "water_changed_pixels": 0.5102121913580246,
+    "capture": "native-low-waterline.png",
+    "capture_sha256": "8ada1f0128af42efc7fcfadec82c75329b3aac6c1a612adce4317661cc525d0a"
+  },
+  {
+    "tier": "medium",
+    "view": "open-storm",
+    "adapter": "NVIDIA GeForce RTX 4080 (Vulkan)",
+    "measured_at_unix_ms": 1791480136448,
+    "size": [
+      1920,
+      1080
+    ],
+    "cadence_hz": 60,
+    "steady_frames": 96,
+    "timing": "paced native pass timestamps when valid; submit-to-fence wall time excludes cadence sleep",
+    "gpu_timestamp_scope": "mirror, color/depth copies, and surface passes; shared opaque underwater shading and implicit queue texture uploads are not isolated",
+    "gpu_ms": {
+      "count": 96,
+      "mean": 2.8754346666666666,
+      "p95": 3.28704,
+      "max": 3.716096
+    },
+    "gpu_valid_samples": 96,
+    "gpu_sample_fraction": 1.0,
+    "gpu_passes_ms": [
+      "mirror",
+      "opaque (excluded)",
+      "color and depth copies",
+      "surface"
+    ],
+    "gpu_bytes": 4616188,
+    "main_ms": {
+      "count": 96,
+      "mean": 4.4211132291666315,
+      "p95": 5.957889999999679,
+      "max": 7.97084599999971
+    },
+    "worker_ms": {
+      "count": 96,
+      "mean": 0.2252320312499996,
+      "p95": 1.8106790000000037,
+      "max": 1.8871840000000084
+    },
+    "main_cpu_clock": true,
+    "worker_cpu_clock": true,
+    "completed_jobs": 12,
+    "completed_synthesis_ms": 21.828313000000026,
+    "mean_completed_job_elapsed_ms": 1.8190260833333356,
+    "mean_completed_job_cpu_ms": 1.8018562499999968,
+    "observed_last_job_elapsed_ms": {
+      "count": 12,
+      "mean": 1.8190260833333332,
+      "p95": 1.884358,
+      "max": 1.910821
+    },
+    "observed_last_job_cpu_ms": {
+      "count": 12,
+      "mean": 1.8018562499999955,
+      "p95": 1.865871000000027,
+      "max": 1.8871839999999906
+    },
+    "queue_fence_frame_ms_fastest": 6.535267,
+    "queue_fence_water_ms_estimate": 5.290326,
+    "last": {
+      "gpu": {
+        "frame": 359,
+        "pass_ms": [
+          null,
+          2.225152,
+          null,
+          2.838528
+        ],
+        "water_ms": 2.838528
+      },
+      "gpu_timestamps": true,
+      "gpu_bytes": 4616188,
+      "main_ms": 4.269801,
+      "main_cpu_ms": 4.243050999999923,
+      "synthesis_ms": 1.653748,
+      "synthesis_cpu_ms": 1.643511999999987,
+      "completed_jobs": 1,
+      "completed_synthesis_ms": 1.6537480000000213,
+      "worker_ms": 1.6435119999999879,
+      "worker_cpu_supported": true,
+      "worker_bytes": 1199216,
+      "ripple_cpu_bytes": 131072,
+      "inline_synthesis": false,
+      "refresh_every": 8,
+      "copies": false,
+      "mirror": false,
+      "ssr": false,
+      "effects_reduced": true
+    },
+    "within_budget": false,
+    "effects_reduced": true,
+    "water_changed_pixels": 0.5559153163580247,
+    "capture": "native-medium-open-storm.png",
+    "capture_sha256": "bcd2cf8762cd25465f5984c8b1be053f87bf912da8681d9395855f8c837a849b"
+  },
+  {
+    "tier": "medium",
+    "view": "pond-noon",
+    "adapter": "NVIDIA GeForce RTX 4080 (Vulkan)",
+    "measured_at_unix_ms": 1791480050063,
+    "size": [
+      1920,
+      1080
+    ],
+    "cadence_hz": 60,
+    "steady_frames": 96,
+    "timing": "paced native pass timestamps when valid; submit-to-fence wall time excludes cadence sleep",
+    "gpu_timestamp_scope": "mirror, color/depth copies, and surface passes; shared opaque underwater shading and implicit queue texture uploads are not isolated",
+    "gpu_ms": {
+      "count": 96,
+      "mean": 2.3480746666666676,
+      "p95": 3.158016,
+      "max": 4.363264
+    },
+    "gpu_valid_samples": 96,
+    "gpu_sample_fraction": 1.0,
+    "gpu_passes_ms": [
+      "mirror",
+      "opaque (excluded)",
+      "color and depth copies",
+      "surface"
+    ],
+    "gpu_bytes": 28855068,
+    "main_ms": {
+      "count": 96,
+      "mean": 0.18484713541663686,
+      "p95": 0.24452700000028926,
+      "max": 0.29621799999995346
+    },
+    "worker_ms": {
+      "count": 96,
+      "mean": 0.0,
+      "p95": 0.0,
+      "max": 0.0
+    },
+    "main_cpu_clock": true,
+    "worker_cpu_clock": true,
+    "completed_jobs": 0,
+    "completed_synthesis_ms": 0.0,
+    "mean_completed_job_elapsed_ms": null,
+    "mean_completed_job_cpu_ms": null,
+    "observed_last_job_elapsed_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "observed_last_job_cpu_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "queue_fence_frame_ms_fastest": 4.4586749999999995,
+    "queue_fence_water_ms_estimate": 1.3004189999999998,
+    "last": {
+      "gpu": {
+        "frame": 359,
+        "pass_ms": [
+          0.546816,
+          2.29888,
+          0.224256,
+          1.435648
+        ],
+        "water_ms": 2.20672
+      },
+      "gpu_timestamps": true,
+      "gpu_bytes": 28855068,
+      "main_ms": 0.049669,
+      "main_cpu_ms": 0.049600000000737055,
+      "synthesis_ms": 0.0,
+      "synthesis_cpu_ms": null,
+      "completed_jobs": 0,
+      "completed_synthesis_ms": 0.0,
+      "worker_ms": 0.0,
+      "worker_cpu_supported": true,
+      "worker_bytes": 0,
+      "ripple_cpu_bytes": 131072,
+      "inline_synthesis": false,
+      "refresh_every": 1,
+      "copies": true,
+      "mirror": true,
+      "ssr": false,
+      "effects_reduced": false
+    },
+    "within_budget": true,
+    "effects_reduced": false,
+    "water_changed_pixels": 0.4218557098765432,
+    "capture": "native-medium-pond-noon.png",
+    "capture_sha256": "9c205f35f913050f69ea8b489c2d2e9ff7074c270476fd4a935db71527707ec6"
+  },
+  {
+    "tier": "medium",
+    "view": "pond-posts",
+    "adapter": "NVIDIA GeForce RTX 4080 (Vulkan)",
+    "measured_at_unix_ms": 1791480122773,
+    "size": [
+      1920,
+      1080
+    ],
+    "cadence_hz": 60,
+    "steady_frames": 96,
+    "timing": "paced native pass timestamps when valid; submit-to-fence wall time excludes cadence sleep",
+    "gpu_timestamp_scope": "mirror, color/depth copies, and surface passes; shared opaque underwater shading and implicit queue texture uploads are not isolated",
+    "gpu_ms": {
+      "count": 96,
+      "mean": 2.252832,
+      "p95": 3.2092159999999996,
+      "max": 4.84352
+    },
+    "gpu_valid_samples": 96,
+    "gpu_sample_fraction": 1.0,
+    "gpu_passes_ms": [
+      "mirror",
+      "opaque (excluded)",
+      "color and depth copies",
+      "surface"
+    ],
+    "gpu_bytes": 22634280,
+    "main_ms": {
+      "count": 96,
+      "mean": 0.15703535416664613,
+      "p95": 0.24091300000009142,
+      "max": 0.3197619999999688
+    },
+    "worker_ms": {
+      "count": 96,
+      "mean": 0.0,
+      "p95": 0.0,
+      "max": 0.0
+    },
+    "main_cpu_clock": true,
+    "worker_cpu_clock": true,
+    "completed_jobs": 0,
+    "completed_synthesis_ms": 0.0,
+    "mean_completed_job_elapsed_ms": null,
+    "mean_completed_job_cpu_ms": null,
+    "observed_last_job_elapsed_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "observed_last_job_cpu_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "queue_fence_frame_ms_fastest": 5.715455,
+    "queue_fence_water_ms_estimate": 4.9944120000000005,
+    "last": {
+      "gpu": {
+        "frame": 359,
+        "pass_ms": [
+          null,
+          3.354624,
+          0.260096,
+          1.287168
+        ],
+        "water_ms": 1.5472640000000002
+      },
+      "gpu_timestamps": true,
+      "gpu_bytes": 22634280,
+      "main_ms": 0.148133,
+      "main_cpu_ms": 0.1415789999999788,
+      "synthesis_ms": 0.0,
+      "synthesis_cpu_ms": null,
+      "completed_jobs": 0,
+      "completed_synthesis_ms": 0.0,
+      "worker_ms": 0.0,
+      "worker_cpu_supported": true,
+      "worker_bytes": 0,
+      "ripple_cpu_bytes": 131072,
+      "inline_synthesis": false,
+      "refresh_every": 1,
+      "copies": true,
+      "mirror": false,
+      "ssr": false,
+      "effects_reduced": true
+    },
+    "within_budget": true,
+    "effects_reduced": true,
+    "water_changed_pixels": 0.41454716435185185,
+    "capture": "native-medium-pond-posts.png",
+    "capture_sha256": "ecdf42f6230008bae0052769393771600d3d5cdbd43825c141d9f3717bc9d451"
+  },
+  {
+    "tier": "medium",
+    "view": "under",
+    "adapter": "NVIDIA GeForce RTX 4080 (Vulkan)",
+    "measured_at_unix_ms": 1791480163152,
+    "size": [
+      1920,
+      1080
+    ],
+    "cadence_hz": 60,
+    "steady_frames": 96,
+    "timing": "paced native pass timestamps when valid; submit-to-fence wall time excludes cadence sleep",
+    "gpu_timestamp_scope": "mirror, color/depth copies, and surface passes; shared opaque underwater shading and implicit queue texture uploads are not isolated",
+    "gpu_ms": {
+      "count": 96,
+      "mean": 1.5530133333333318,
+      "p95": 1.795072,
+      "max": 3.657728
+    },
+    "gpu_valid_samples": 96,
+    "gpu_sample_fraction": 1.0,
+    "gpu_passes_ms": [
+      "mirror",
+      "opaque (excluded)",
+      "color and depth copies",
+      "surface"
+    ],
+    "gpu_bytes": 28855068,
+    "main_ms": {
+      "count": 96,
+      "mean": 0.14347832291667473,
+      "p95": 0.21850799999992887,
+      "max": 0.2835649999999532
+    },
+    "worker_ms": {
+      "count": 96,
+      "mean": 0.0,
+      "p95": 0.0,
+      "max": 0.0
+    },
+    "main_cpu_clock": true,
+    "worker_cpu_clock": true,
+    "completed_jobs": 0,
+    "completed_synthesis_ms": 0.0,
+    "mean_completed_job_elapsed_ms": null,
+    "mean_completed_job_cpu_ms": null,
+    "observed_last_job_elapsed_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "observed_last_job_cpu_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "queue_fence_frame_ms_fastest": 5.533549,
+    "queue_fence_water_ms_estimate": 4.867527,
+    "last": {
+      "gpu": {
+        "frame": 359,
+        "pass_ms": [
+          null,
+          2.615296,
+          0.180224,
+          1.56672
+        ],
+        "water_ms": 1.7469439999999998
+      },
+      "gpu_timestamps": true,
+      "gpu_bytes": 28855068,
+      "main_ms": 0.128943,
+      "main_cpu_ms": 0.1288409999999658,
+      "synthesis_ms": 0.0,
+      "synthesis_cpu_ms": null,
+      "completed_jobs": 0,
+      "completed_synthesis_ms": 0.0,
+      "worker_ms": 0.0,
+      "worker_cpu_supported": true,
+      "worker_bytes": 0,
+      "ripple_cpu_bytes": 131072,
+      "inline_synthesis": false,
+      "refresh_every": 1,
+      "copies": true,
+      "mirror": false,
+      "ssr": false,
+      "effects_reduced": false
+    },
+    "within_budget": true,
+    "effects_reduced": false,
+    "water_changed_pixels": 1.0,
+    "capture": "native-medium-under.png",
+    "capture_sha256": "bf146592a7c44f1379d2d69284fe4e1e8a9adfd531707c4f95c398b1b2720734"
+  },
+  {
+    "tier": "medium",
+    "view": "waterline",
+    "adapter": "NVIDIA GeForce RTX 4080 (Vulkan)",
+    "measured_at_unix_ms": 1791480149999,
+    "size": [
+      1920,
+      1080
+    ],
+    "cadence_hz": 60,
+    "steady_frames": 96,
+    "timing": "paced native pass timestamps when valid; submit-to-fence wall time excludes cadence sleep",
+    "gpu_timestamp_scope": "mirror, color/depth copies, and surface passes; shared opaque underwater shading and implicit queue texture uploads are not isolated",
+    "gpu_ms": {
+      "count": 96,
+      "mean": 0.9608640000000003,
+      "p95": 1.6476160000000002,
+      "max": 3.467264
+    },
+    "gpu_valid_samples": 96,
+    "gpu_sample_fraction": 1.0,
+    "gpu_passes_ms": [
+      "mirror",
+      "opaque (excluded)",
+      "color and depth copies",
+      "surface"
+    ],
+    "gpu_bytes": 28855068,
+    "main_ms": {
+      "count": 96,
+      "mean": 0.15875720833333537,
+      "p95": 0.22284700000000157,
+      "max": 0.27749500000004446
+    },
+    "worker_ms": {
+      "count": 96,
+      "mean": 0.0,
+      "p95": 0.0,
+      "max": 0.0
+    },
+    "main_cpu_clock": true,
+    "worker_cpu_clock": true,
+    "completed_jobs": 0,
+    "completed_synthesis_ms": 0.0,
+    "mean_completed_job_elapsed_ms": null,
+    "mean_completed_job_cpu_ms": null,
+    "observed_last_job_elapsed_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "observed_last_job_cpu_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "queue_fence_frame_ms_fastest": 5.481275,
+    "queue_fence_water_ms_estimate": 4.741135,
+    "last": {
+      "gpu": {
+        "frame": 359,
+        "pass_ms": [
+          null,
+          3.187712,
+          0.17408,
+          0.626688
+        ],
+        "water_ms": 0.800768
+      },
+      "gpu_timestamps": true,
+      "gpu_bytes": 28855068,
+      "main_ms": 0.16876300000000002,
+      "main_cpu_ms": 0.1675670000000764,
+      "synthesis_ms": 0.0,
+      "synthesis_cpu_ms": null,
+      "completed_jobs": 0,
+      "completed_synthesis_ms": 0.0,
+      "worker_ms": 0.0,
+      "worker_cpu_supported": true,
+      "worker_bytes": 0,
+      "ripple_cpu_bytes": 131072,
+      "inline_synthesis": false,
+      "refresh_every": 1,
+      "copies": true,
+      "mirror": false,
+      "ssr": false,
+      "effects_reduced": false
+    },
+    "within_budget": true,
+    "effects_reduced": false,
+    "water_changed_pixels": 0.5153023726851852,
+    "capture": "native-medium-waterline.png",
+    "capture_sha256": "7a5d58307c5b12769371f25e571b375906491493be9898bee850b7087fa22256"
+  }
+]

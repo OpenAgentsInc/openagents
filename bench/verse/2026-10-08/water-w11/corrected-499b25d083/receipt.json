@@ -1,0 +1,630 @@
+{
+  "source_sha": "499b25d0839a01dbbbc524e1374b1ee5c3e52644",
+  "main_base": "90f90cd4f2ac8d6f175906f31ab1b3aa72709144",
+  "date": "2026-10-08",
+  "native_artifact": {
+    "source_sha": "499b25d0839a01dbbbc524e1374b1ee5c3e52644",
+    "original_path": "/Users/christopherdavid/work/openagents-target-agent12/release/examples/water_capture-a10bb9beac78f3e6",
+    "sha256": "431de7347c7f73cf93bb60562245abded436a7f12ec7af38fae077d27a3de9d3",
+    "bytes": 8715152,
+    "cargo_json_sha256": "f71c4316e72aa1723b71717c10ba7eb8592c92f6fd5fcbb852d90a0e22047fab",
+    "profile": {
+      "opt_level": "3",
+      "debuginfo": 0,
+      "debug_assertions": false,
+      "overflow_checks": false,
+      "test": true
+    },
+    "compiler_exit": 0,
+    "metadata_validation_exit": 0
+  },
+  "wasm_artifact": {
+    "source_sha": "499b25d0839a01dbbbc524e1374b1ee5c3e52644",
+    "original_path": "/home/christopherdavid/work/openagents-target-agent12/wasm32-unknown-unknown/release/deps/everglade_web-0215e5c327c14f02.wasm",
+    "sha256": "1bd632682a1ad6faf4e7f7e8f0e36b5e4b7bc3eff02f930316dcb3446b06b763",
+    "bytes": 37439093,
+    "cargo_json_sha256": "fe320068f899412168d6d915cf6817a6e9c96a38c9e7b75b99ddac65d5eb9ff7",
+    "profile": {
+      "opt_level": "3",
+      "debuginfo": 0,
+      "debug_assertions": false,
+      "overflow_checks": false,
+      "test": true
+    },
+    "compiler_exit": 0,
+    "metadata_validation_exit": 0,
+    "raw_browser_start_export": "start_cbdb254c44ef1eb6",
+    "raw_implicit_start": false,
+    "artifact_kind": "test-compiled benchmark; derive export-only input during staging",
+    "metrics_status": "pending fresh staging proof and coordinator measurement grant"
+  },
+  "browser_inputs": {
+    "source_sha": "499b25d0839a01dbbbc524e1374b1ee5c3e52644",
+    "artifact_kind": "test-compiled benchmark; export-only derivative",
+    "compiler_exit": 0,
+    "staging_validation_exit": 0,
+    "cargo_json": {
+      "sha256": "fe320068f899412168d6d915cf6817a6e9c96a38c9e7b75b99ddac65d5eb9ff7",
+      "bytes": 343503
+    },
+    "compiler_profile": {
+      "opt_level": "3",
+      "debuginfo": 0,
+      "debug_assertions": false,
+      "overflow_checks": false,
+      "test": true
+    },
+    "compiler_artifact": {
+      "sha256": "1bd632682a1ad6faf4e7f7e8f0e36b5e4b7bc3eff02f930316dcb3446b06b763",
+      "bytes": 37439093,
+      "original_path": "/home/christopherdavid/work/openagents-target-agent12/wasm32-unknown-unknown/release/deps/everglade_web-0215e5c327c14f02.wasm",
+      "relocated_path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-08ea-73f2-9344-ec959f74a795/w11-wasm-499b25d0839a01dbbbc524e1374b1ee5c3e52644/original-executable.wasm"
+    },
+    "prepared_artifact": {
+      "sha256": "11c54dc6c477a75cedb2e13350619e79278523da5961d05253c870ad825d7d3a",
+      "bytes": 37439085,
+      "removed_test_exports": [
+        "main"
+      ]
+    },
+    "transformation": "Remove only named Rust test-entry exports before normal wasm-bindgen pruning",
+    "wasm_bindgen": "0.2.128",
+    "app_start_verified": true,
+    "wasm": {
+      "sha256": "f348b3670781e6eb2d2a50957ea2751e867f267f4b9dbcd7874f63005b04b1ba",
+      "bytes": 35724372,
+      "url": "/everglade_web_bg.wasm"
+    },
+    "glue": {
+      "sha256": "5912c499fc6401e85d26438d30003b1113aef9fbdfab364e669fd7ae396b287e",
+      "bytes": 151103,
+      "url": "/everglade_web.js"
+    },
+    "pack": {
+      "sha256": "a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f",
+      "bytes": 10636202,
+      "url": "/everglade/pack/a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f.vtp"
+    },
+    "kit": {
+      "sha256": "dae1612d4c22438a933c27b406c1e18fe134b13eab8eb5240ddcf5506ffb0b93",
+      "bytes": 10238689,
+      "url": "/everglade/kit/dae1612d4c22438a933c27b406c1e18fe134b13eab8eb5240ddcf5506ffb0b93.vtp"
+    },
+    "licensed_input_storage": "scratch only",
+    "raw_browser_start_export": "start_cbdb254c44ef1eb6",
+    "served_browser_start_exports": [
+      "start",
+      "__wbindgen_start"
+    ],
+    "startup": {
+      "app_function": 18216,
+      "startup_function": 25950,
+      "wrapper_calls": [
+        712,
+        18216
+      ],
+      "implicit_start": null,
+      "test_entry_exports": []
+    }
+  },
+  "compilation": {
+    "native": {
+      "source_sha": "499b25d0839a01dbbbc524e1374b1ee5c3e52644",
+      "compiler_exit": 0,
+      "command": [
+        "openagents",
+        "lease",
+        "build",
+        "--keep-target-dir",
+        "--receipt",
+        "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-08ea-73f2-9344-ec959f74a795/w11-native-499b25d0839a01dbbbc524e1374b1ee5c3e52644/build-receipt.json",
+        "--",
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "verse-pbr",
+        "--release",
+        "--example",
+        "water_capture",
+        "water_w11_fixed_views",
+        "--no-run",
+        "--message-format=json",
+        "-j4"
+      ]
+    },
+    "wasm": {
+      "source_sha": "499b25d0839a01dbbbc524e1374b1ee5c3e52644",
+      "compiler_exit": 0
+    }
+  },
+  "receipts": {
+    "w11-499-webgpu-pair-quiet.json": {
+      "schema": "openagents.lease.receipt.v1",
+      "id": "1791448067177-96414-0",
+      "resource": "quiet",
+      "amount": 1,
+      "holder": {
+        "session": "codex:01a119ae-08ea-73f2-9344-ec959f74a795",
+        "agent": "codex",
+        "pid": 96414,
+        "command": "openagents"
+      },
+      "priority": "normal",
+      "nested": false,
+      "requested_at_ms": 1791448067177,
+      "acquired_at_ms": 1791448098636,
+      "released_at_ms": 1791448152890,
+      "wait_ms": 31459,
+      "held_ms": 54254,
+      "held_whole_run": true,
+      "exit": 0
+    },
+    "w11-499-webgpu-pair-gpu.json": {
+      "schema": "openagents.lease.receipt.v1",
+      "id": "1791448098658-2907-0",
+      "resource": "gpu",
+      "amount": 1,
+      "holder": {
+        "session": "codex:01a119ae-08ea-73f2-9344-ec959f74a795",
+        "agent": "codex",
+        "pid": 2907,
+        "command": "openagents"
+      },
+      "priority": "normal",
+      "nested": false,
+      "requested_at_ms": 1791448098658,
+      "acquired_at_ms": 1791448098658,
+      "released_at_ms": 1791448152842,
+      "wait_ms": 0,
+      "held_ms": 54184,
+      "held_whole_run": true,
+      "exit": 0
+    },
+    "w11-499-webgpu-pair-browser.json": {
+      "schema": "openagents.lease.receipt.v1",
+      "id": "1791448098673-2947-0",
+      "resource": "browser",
+      "amount": 1,
+      "holder": {
+        "session": "codex:01a119ae-08ea-73f2-9344-ec959f74a795",
+        "agent": "codex",
+        "pid": 2947,
+        "command": "python3"
+      },
+      "priority": "normal",
+      "nested": false,
+      "requested_at_ms": 1791448098673,
+      "acquired_at_ms": 1791448098673,
+      "released_at_ms": 1791448152806,
+      "wait_ms": 0,
+      "held_ms": 54133,
+      "held_whole_run": true,
+      "exit": 0
+    },
+    "w11-499-native-failed-quiet.json": {
+      "schema": "openagents.lease.receipt.v1",
+      "id": "1791448336870-15092-0",
+      "resource": "quiet",
+      "amount": 1,
+      "holder": {
+        "session": "codex:01a119ae-08ea-73f2-9344-ec959f74a795",
+        "agent": "codex",
+        "pid": 15092,
+        "command": "openagents"
+      },
+      "priority": "normal",
+      "nested": false,
+      "requested_at_ms": 1791448336870,
+      "acquired_at_ms": 1791448336871,
+      "released_at_ms": 1791448385554,
+      "wait_ms": 1,
+      "held_ms": 48683,
+      "held_whole_run": true,
+      "exit": 1
+    },
+    "w11-499-native-failed-gpu.json": {
+      "schema": "openagents.lease.receipt.v1",
+      "id": "1791448336887-15122-0",
+      "resource": "gpu",
+      "amount": 1,
+      "holder": {
+        "session": "codex:01a119ae-08ea-73f2-9344-ec959f74a795",
+        "agent": "codex",
+        "pid": 15122,
+        "command": "python3"
+      },
+      "priority": "normal",
+      "nested": false,
+      "requested_at_ms": 1791448336887,
+      "acquired_at_ms": 1791448336887,
+      "released_at_ms": 1791448385537,
+      "wait_ms": 0,
+      "held_ms": 48650,
+      "held_whole_run": true,
+      "exit": 1
+    },
+    "w11-499b25d083-water-tests-placement.json": {
+      "schema": "openagents.lease.placement-receipt.v1",
+      "class": "build",
+      "asked": "remote:coderos-4080",
+      "place": "remote",
+      "computer": "coderos-4080",
+      "reason": "--place runs build on coderos-4080",
+      "commit": "499b25d0839a01dbbbc524e1374b1ee5c3e52644",
+      "remote_dir": "~/.openagents/remote-runs/openagents/499b25d0839a01dbbbc524e1374b1ee5c3e52644",
+      "command": [
+        "sh",
+        "-c",
+        "set -eu\nexport PATH=\"/home/christopherdavid/.openagents/bin:$PATH\"\nif pgrep -x cargo >/dev/null; then echo \"Cargo already running; refusing another command\"; exit 1; fi\ntask_transport=\"$PWD\"\ntask_revision=$(git rev-parse HEAD)\ncd /home/christopherdavid/.openagents/scratch/process-2198653/water-w11-agent12\ntest -z \"$(git status --porcelain)\"\ngit fetch \"$task_transport\" \"$task_revision\"\ngit reset --hard \"$task_revision\"\ntest \"$(git rev-parse HEAD)\" = 499b25d0839a01dbbbc524e1374b1ee5c3e52644\ntest \"$(df -Pk \"$HOME\" | awk 'NR==2 {print $4}')\" -ge 26214400\ndf -h \"$HOME\"\nexport CARGO_TARGET_DIR=/home/christopherdavid/work/openagents-target-agent12\nexport OPENAGENTS_BUILD_LEASES=1 OPENAGENTS_SLOT_FREE_GB=25\nopenagents lease build --keep-target-dir --receipt /home/christopherdavid/.openagents/scratch/process-2198653/w11-499b25d083-water-tests-build.json -- cargo test --locked -p verse-engine -p verse-pbr --lib water -j4 -- --skip water::parity\n"
+      ],
+      "started_at_ms": 1791447591272,
+      "ended_at_ms": 1791447629974,
+      "exit": 0,
+      "leases": []
+    },
+    "w11-499b25d083-shaders-placement.json": {
+      "schema": "openagents.lease.placement-receipt.v1",
+      "class": "build",
+      "asked": "remote:coderos-4080",
+      "place": "remote",
+      "computer": "coderos-4080",
+      "reason": "--place runs build on coderos-4080",
+      "commit": "499b25d0839a01dbbbc524e1374b1ee5c3e52644",
+      "remote_dir": "~/.openagents/remote-runs/openagents/499b25d0839a01dbbbc524e1374b1ee5c3e52644",
+      "command": [
+        "sh",
+        "-c",
+        "set -eu\nexport PATH=\"/home/christopherdavid/.openagents/bin:$PATH\"\nif pgrep -x cargo >/dev/null; then echo \"Cargo already running; refusing another command\"; exit 1; fi\ntask_transport=\"$PWD\"\ntask_revision=$(git rev-parse HEAD)\ncd /home/christopherdavid/.openagents/scratch/process-2198653/water-w11-agent12\ntest -z \"$(git status --porcelain)\"\ngit fetch \"$task_transport\" \"$task_revision\"\ngit reset --hard \"$task_revision\"\ntest \"$(git rev-parse HEAD)\" = 499b25d0839a01dbbbc524e1374b1ee5c3e52644\ntest \"$(df -Pk \"$HOME\" | awk 'NR==2 {print $4}')\" -ge 26214400\ndf -h \"$HOME\"\nexport CARGO_TARGET_DIR=/home/christopherdavid/work/openagents-target-agent12\nexport OPENAGENTS_BUILD_LEASES=1 OPENAGENTS_SLOT_FREE_GB=25\nopenagents lease build --keep-target-dir --receipt /home/christopherdavid/.openagents/scratch/process-2198653/w11-499b25d083-shaders-build.json -- cargo test --locked -p verse-pbr --lib shading::tests::shared_shaders_validate -j4\n"
+      ],
+      "started_at_ms": 1791447678714,
+      "ended_at_ms": 1791447679828,
+      "exit": 0,
+      "leases": []
+    },
+    "w11-499b25d083-wasm-check-placement.json": {
+      "schema": "openagents.lease.placement-receipt.v1",
+      "class": "build",
+      "asked": "remote:coderos-4080",
+      "place": "remote",
+      "computer": "coderos-4080",
+      "reason": "--place runs build on coderos-4080",
+      "commit": "499b25d0839a01dbbbc524e1374b1ee5c3e52644",
+      "remote_dir": "~/.openagents/remote-runs/openagents/499b25d0839a01dbbbc524e1374b1ee5c3e52644",
+      "command": [
+        "sh",
+        "-c",
+        "set -eu\nexport PATH=\"/home/christopherdavid/.openagents/bin:$PATH\"\nif pgrep -x cargo >/dev/null; then echo \"Cargo already running; refusing another command\"; exit 1; fi\ntask_transport=\"$PWD\"\ntask_revision=$(git rev-parse HEAD)\ncd /home/christopherdavid/.openagents/scratch/process-2198653/water-w11-agent12\ntest -z \"$(git status --porcelain)\"\ngit fetch \"$task_transport\" \"$task_revision\"\ngit reset --hard \"$task_revision\"\ntest \"$(git rev-parse HEAD)\" = 499b25d0839a01dbbbc524e1374b1ee5c3e52644\ntest \"$(df -Pk \"$HOME\" | awk 'NR==2 {print $4}')\" -ge 26214400\ndf -h \"$HOME\"\nexport CARGO_TARGET_DIR=/home/christopherdavid/work/openagents-target-agent12\nexport OPENAGENTS_BUILD_LEASES=1 OPENAGENTS_SLOT_FREE_GB=25 CC_wasm32_unknown_unknown=clang\nopenagents lease build --keep-target-dir --receipt /home/christopherdavid/.openagents/scratch/process-2198653/w11-499b25d083-wasm-check-build.json -- cargo check --locked -p everglade-web --target wasm32-unknown-unknown -j4\n"
+      ],
+      "started_at_ms": 1791447701605,
+      "ended_at_ms": 1791447727042,
+      "exit": 0,
+      "leases": []
+    },
+    "w11-499b25d083-wasm-no-run-placement.json": {
+      "schema": "openagents.lease.placement-receipt.v1",
+      "class": "build",
+      "asked": "remote:coderos-4080",
+      "place": "remote",
+      "computer": "coderos-4080",
+      "reason": "--place runs build on coderos-4080",
+      "commit": "499b25d0839a01dbbbc524e1374b1ee5c3e52644",
+      "remote_dir": "~/.openagents/remote-runs/openagents/499b25d0839a01dbbbc524e1374b1ee5c3e52644",
+      "command": [
+        "sh",
+        "-c",
+        "set -eu\nexport PATH=\"/home/christopherdavid/.openagents/bin:$PATH\"\nif pgrep -x cargo >/dev/null; then echo \"Cargo already running; refusing another command\"; exit 1; fi\ncd /home/christopherdavid/.openagents/scratch/process-2198653/water-w11-agent12\ntest -z \"$(git status --porcelain)\"\ntest \"$(git rev-parse HEAD)\" = 499b25d0839a01dbbbc524e1374b1ee5c3e52644\ntest \"$(df -Pk \"$HOME\" | awk 'NR==2 {print $4}')\" -ge 26214400\nexport CARGO_TARGET_DIR=/home/christopherdavid/work/openagents-target-agent12\nexport OPENAGENTS_BUILD_LEASES=1 OPENAGENTS_SLOT_FREE_GB=25 CC_wasm32_unknown_unknown=clang\npython3 - <<'INNER'\nfrom pathlib import Path\nimport hashlib,json,re,runpy,subprocess,sys\nsource=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()\nout=Path('/home/christopherdavid/.openagents/scratch/process-2198653')/('w11-wasm-'+source)\nout.mkdir(exist_ok=True)\nwith (out/'cargo.jsonl').open('w') as stdout,(out/'cargo.stderr').open('w') as stderr:\n result=subprocess.run(['openagents','lease','build','--keep-target-dir','--receipt',str(out/'build-receipt.json'),'--','cargo','test','--locked','-p','everglade-web','--lib','presence_ui::tests','--target','wasm32-unknown-unknown','--release','--no-run','--message-format=json','-j4'],stdout=stdout,stderr=stderr)\n(out/'compilation.json').write_text(json.dumps({'source_sha':source,'compiler_exit':result.returncode})+chr(10))\nprint(json.dumps({'source_sha':source,'compiler_exit':result.returncode,'compiler_stderr_tail':(out/'cargo.stderr').read_text().splitlines()[-3:]}),flush=True)\nif result.returncode:sys.exit(result.returncode)\nrows=[json.loads(line) for line in (out/'cargo.jsonl').read_text().splitlines() if line.startswith('{')]\nartifacts=[row for row in rows if row.get('reason')=='compiler-artifact' and row['target']['name']=='everglade_web' and row['profile']['test'] and row.get('executable') and row['executable'].endswith('.wasm')]\nassert len(artifacts)==1\nartifact=Path(artifacts[0]['executable'])\nexports,start=runpy.run_path('bench/verse/2026-10-08/water-w11/stage.py')['module'](artifact)\nstarts=[name for name in exports if re.fullmatch(r'start(?:_[a-f0-9]+)?',name) and '__wbindgen_describe_'+name in exports]\nassert len(starts)==1 and start is None\nrecord={'source_sha':source,'original_path':str(artifact),'sha256':hashlib.sha256(artifact.read_bytes()).hexdigest(),'bytes':artifact.stat().st_size,'cargo_json_sha256':hashlib.sha256((out/'cargo.jsonl').read_bytes()).hexdigest(),'profile':artifacts[0]['profile'],'compiler_exit':result.returncode,'metadata_validation_exit':0,'raw_browser_start_export':starts[0],'raw_implicit_start':False,'artifact_kind':'test-compiled benchmark; derive export-only input during staging','metrics_status':'pending fresh staging proof and coordinator measurement grant'}\n(out/'artifact.json').write_text(json.dumps(record,indent=2)+chr(10))\nprint(json.dumps(record),flush=True)\nINNER\n"
+      ],
+      "started_at_ms": 1791447754339,
+      "ended_at_ms": 1791447854042,
+      "exit": 0,
+      "leases": []
+    },
+    "w11-blended-fmt-build.json": {
+      "schema": "openagents.lease.receipt.v1",
+      "id": "1791447476140-44905-0",
+      "resource": "build",
+      "amount": 1,
+      "holder": {
+        "session": "codex:01a119ae-08ea-73f2-9344-ec959f74a795",
+        "agent": "codex",
+        "pid": 44905,
+        "command": "cargo"
+      },
+      "priority": "normal",
+      "nested": false,
+      "requested_at_ms": 1791447476140,
+      "acquired_at_ms": 1791447476140,
+      "released_at_ms": 1791447477417,
+      "wait_ms": 0,
+      "held_ms": 1277,
+      "held_whole_run": true,
+      "exit": 0,
+      "disk": {
+        "worktree": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-08ea-73f2-9344-ec959f74a795/water-w11",
+        "worktree_bytes": 4849979392,
+        "allocated_bytes": 4849979392
+      }
+    },
+    "native-build.json": {
+      "schema": "openagents.lease.receipt.v1",
+      "id": "1791447895059-75249-0",
+      "resource": "build",
+      "amount": 1,
+      "holder": {
+        "session": "codex:01a119ae-08ea-73f2-9344-ec959f74a795",
+        "agent": "codex",
+        "pid": 75249,
+        "command": "cargo"
+      },
+      "priority": "normal",
+      "nested": false,
+      "requested_at_ms": 1791447895059,
+      "acquired_at_ms": 1791447895059,
+      "released_at_ms": 1791447954844,
+      "wait_ms": 0,
+      "held_ms": 59785,
+      "held_whole_run": true,
+      "exit": 0,
+      "disk": {
+        "worktree": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-08ea-73f2-9344-ec959f74a795/water-w11",
+        "worktree_bytes": 4849979392,
+        "allocated_bytes": 4849979392
+      }
+    },
+    "wasm-build.json": {
+      "schema": "openagents.lease.receipt.v1",
+      "id": "1791447754941-2294964-0",
+      "resource": "build",
+      "amount": 1,
+      "holder": {
+        "session": "process:2294962",
+        "agent": "none",
+        "pid": 2294964,
+        "command": "cargo"
+      },
+      "priority": "normal",
+      "nested": false,
+      "requested_at_ms": 1791447754941,
+      "acquired_at_ms": 1791447754941,
+      "released_at_ms": 1791447854033,
+      "wait_ms": 0,
+      "held_ms": 99092,
+      "held_whole_run": true,
+      "exit": 0,
+      "disk": {
+        "worktree": "/home/christopherdavid/.openagents/scratch/process-2198653/water-w11-agent12",
+        "worktree_bytes": 4889411584,
+        "allocated_bytes": 4889411584
+      }
+    }
+  },
+  "native_runs": [
+    {
+      "source_sha": "499b25d0839a01dbbbc524e1374b1ee5c3e52644",
+      "worktree_sha": "499b25d0839a01dbbbc524e1374b1ee5c3e52644",
+      "worktree_documentation_only_delta": [],
+      "command": [
+        "/Users/christopherdavid/work/openagents-target-agent12/release/examples/water_capture-a10bb9beac78f3e6",
+        "w11::water_w11_fixed_views",
+        "--ignored",
+        "--exact",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit": 101,
+      "selected_case": "low/pond-posts",
+      "selected_browser_pairs": null,
+      "started_at_unix_ms": 1791448337341,
+      "ended_at_unix_ms": 1791448353817,
+      "wrapper_sha256": "dda179ec92b0a0fbfafa433a62739a4738aa88f8170201629c53081749e34c2c"
+    },
+    {
+      "source_sha": "499b25d0839a01dbbbc524e1374b1ee5c3e52644",
+      "worktree_sha": "499b25d0839a01dbbbc524e1374b1ee5c3e52644",
+      "worktree_documentation_only_delta": [],
+      "command": [
+        "/Users/christopherdavid/work/openagents-target-agent12/release/examples/water_capture-a10bb9beac78f3e6",
+        "w11::water_w11_fixed_views",
+        "--ignored",
+        "--exact",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit": 0,
+      "selected_case": "low/waterline",
+      "selected_browser_pairs": null,
+      "started_at_unix_ms": 1791448354140,
+      "ended_at_unix_ms": 1791448369838,
+      "wrapper_sha256": "dda179ec92b0a0fbfafa433a62739a4738aa88f8170201629c53081749e34c2c"
+    },
+    {
+      "source_sha": "499b25d0839a01dbbbc524e1374b1ee5c3e52644",
+      "worktree_sha": "499b25d0839a01dbbbc524e1374b1ee5c3e52644",
+      "worktree_documentation_only_delta": [],
+      "command": [
+        "/Users/christopherdavid/work/openagents-target-agent12/release/examples/water_capture-a10bb9beac78f3e6",
+        "w11::water_w11_fixed_views",
+        "--ignored",
+        "--exact",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit": 101,
+      "selected_case": "medium/pond-noon",
+      "selected_browser_pairs": null,
+      "started_at_unix_ms": 1791448370146,
+      "ended_at_unix_ms": 1791448385526,
+      "wrapper_sha256": "dda179ec92b0a0fbfafa433a62739a4738aa88f8170201629c53081749e34c2c"
+    }
+  ],
+  "browser_run": {
+    "source_sha": "499b25d0839a01dbbbc524e1374b1ee5c3e52644",
+    "worktree_sha": "499b25d0839a01dbbbc524e1374b1ee5c3e52644",
+    "worktree_documentation_only_delta": [],
+    "command": [
+      "openagents",
+      "browser",
+      "run",
+      "--json",
+      "--",
+      "python3",
+      "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-08ea-73f2-9344-ec959f74a795/water-w11/bench/verse/2026-10-08/water-w11/browser.py",
+      "http://127.0.0.1:58120",
+      "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-08ea-73f2-9344-ec959f74a795/w11-metrics-499b25d0839a01dbbbc524e1374b1ee5c3e52644/browser"
+    ],
+    "exit": 0,
+    "selected_case": null,
+    "started_at_unix_ms": 1791448099115,
+    "ended_at_unix_ms": 1791448152762,
+    "wrapper_sha256": "dda179ec92b0a0fbfafa433a62739a4738aa88f8170201629c53081749e34c2c"
+  },
+  "browser_selected_pairs": [
+    "water-webgpu"
+  ],
+  "browser_selection_note": "WATER_W11_BROWSER_CASES=water-webgpu was set in the outer measurement command; the original browser run.json omits this environment field. Raw records contain only this dry/wet pair.",
+  "browser_harness": {
+    "executed_harness_sha256": "1b5305903587a0af26ead30f55a979776d3e099af107a302db8ce8f7fc3c92d9",
+    "failure_retention": true,
+    "log_and_device_errors_checked": true,
+    "blank_frames_rejected": true
+  },
+  "wrapper": {
+    "file": "measure-executed.py",
+    "sha256": "dda179ec92b0a0fbfafa433a62739a4738aa88f8170201629c53081749e34c2c",
+    "identity": "Matches all saved run.json wrapper hashes; script file is frozen to clean source HEAD499b25d083."
+  },
+  "native_batch": {
+    "file": "native-batch-executed.py",
+    "sha256": "d08f7b77b7327da1f0930b7b1cfe3c9d133cd5586909ad5ef03672fe6934acee",
+    "results": [
+      {
+        "case": "low/pond-posts",
+        "exit": 101
+      },
+      {
+        "case": "low/waterline",
+        "exit": 0
+      },
+      {
+        "case": "medium/pond-noon",
+        "exit": 101
+      }
+    ]
+  },
+  "raw_records": [
+    {
+      "file": "native-low-pond-posts.json.gz",
+      "source_path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-08ea-73f2-9344-ec959f74a795/w11-metrics-499b25d0839a01dbbbc524e1374b1ee5c3e52644/native-low-pond-posts/native.json",
+      "original_bytes": 218673,
+      "original_sha256": "aca04b398667664465e7f0168f3da5e0741a0b49ed8dbe05c0afbf6cbac97efc",
+      "gzip_sha256": "113170d76c487102b54d135f79a6f42066820389fdb3f0f0a839c97a60e4e8e3"
+    },
+    {
+      "file": "native-low-pond-posts.stdout.gz",
+      "source_path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-08ea-73f2-9344-ec959f74a795/w11-metrics-499b25d0839a01dbbbc524e1374b1ee5c3e52644/native-low-pond-posts/run.stdout",
+      "original_bytes": 213,
+      "original_sha256": "aed9e76bc8c7d9c4a928470f9837d758280cbb7e2aa26b9f1b59b9eeb638ab9f",
+      "gzip_sha256": "962eb394913fb2e24b458f9e22c2d756f7c3394a16ee35a0ccddd911cbebeeea"
+    },
+    {
+      "file": "native-low-pond-posts.stderr.gz",
+      "source_path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-08ea-73f2-9344-ec959f74a795/w11-metrics-499b25d0839a01dbbbc524e1374b1ee5c3e52644/native-low-pond-posts/run.stderr",
+      "original_bytes": 235,
+      "original_sha256": "6e025ee935c49135247abffdd0eb2f416d1ec483303314e137024d26c1a11c03",
+      "gzip_sha256": "fdeacabbf9fefa7f38916ea57ec3b90003fbfedcbccbc6a24f46cb6d7b4d14e6"
+    },
+    {
+      "file": "native-low-waterline.json.gz",
+      "source_path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-08ea-73f2-9344-ec959f74a795/w11-metrics-499b25d0839a01dbbbc524e1374b1ee5c3e52644/native-low-waterline/native.json",
+      "original_bytes": 218734,
+      "original_sha256": "5138a9909bd21d2780941368d4e9ea48a5a487067b5ba69e1f526706d93bbe95",
+      "gzip_sha256": "ad9220fa590716ef5af2580017e872c2950e9b5fa5fe7ec6e6d969a79ff57e54"
+    },
+    {
+      "file": "native-low-waterline.stdout.gz",
+      "source_path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-08ea-73f2-9344-ec959f74a795/w11-metrics-499b25d0839a01dbbbc524e1374b1ee5c3e52644/native-low-waterline/run.stdout",
+      "original_bytes": 152,
+      "original_sha256": "57f6354f89437a9713230b33d66f4cfb3a7d32f399a4a4037d3931f0aad2a10a",
+      "gzip_sha256": "e6de10ab54f1664c0fb2d5b811ae24abb5b3ce44e24ec0f9493b3e9d33e4ab99"
+    },
+    {
+      "file": "native-low-waterline.stderr.gz",
+      "source_path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-08ea-73f2-9344-ec959f74a795/w11-metrics-499b25d0839a01dbbbc524e1374b1ee5c3e52644/native-low-waterline/run.stderr",
+      "original_bytes": 0,
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "gzip_sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    {
+      "file": "native-medium-pond-noon.json.gz",
+      "source_path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-08ea-73f2-9344-ec959f74a795/w11-metrics-499b25d0839a01dbbbc524e1374b1ee5c3e52644/native-medium-pond-noon/native.json",
+      "original_bytes": 219183,
+      "original_sha256": "308888d44eb0c00694d4c24c137b45c32dff88181cd659b5164c496097bcfdfb",
+      "gzip_sha256": "ccdd53d1985c56e7acafae0ee3c4f53f6c87f5292ed67ea631fc6fc82894a8c0"
+    },
+    {
+      "file": "native-medium-pond-noon.stdout.gz",
+      "source_path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-08ea-73f2-9344-ec959f74a795/w11-metrics-499b25d0839a01dbbbc524e1374b1ee5c3e52644/native-medium-pond-noon/run.stdout",
+      "original_bytes": 213,
+      "original_sha256": "eb9fa5d02a104719da7aef941d67d8bf274e36e202a3868c61751b49f5a86928",
+      "gzip_sha256": "9c1e0b0254acad88958a3ca8507aa3e0fc967ca680f44f7be296182a5cffee08"
+    },
+    {
+      "file": "native-medium-pond-noon.stderr.gz",
+      "source_path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-08ea-73f2-9344-ec959f74a795/w11-metrics-499b25d0839a01dbbbc524e1374b1ee5c3e52644/native-medium-pond-noon/run.stderr",
+      "original_bytes": 237,
+      "original_sha256": "004561c43b6311b37377dccfae3b3d7ae66b7c31d8038b67452afc26e6129cdb",
+      "gzip_sha256": "20f521b72154c861d415be8b50753564b6f788ad7e21d0f5e832268a54dfe6b9"
+    },
+    {
+      "file": "browser.json.gz",
+      "source_path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-08ea-73f2-9344-ec959f74a795/w11-metrics-499b25d0839a01dbbbc524e1374b1ee5c3e52644/browser/browser.json",
+      "original_bytes": 927621,
+      "original_sha256": "dca0e2bebb61ecd1bd54a127b646192c560c6abbe5a9873badf1db97ae9d2308",
+      "gzip_sha256": "a17eebfa061ae7c916e2d7e551559c529d4d3f4a69dda7b13b2256d3ec397266"
+    },
+    {
+      "file": "native-cargo.jsonl.gz",
+      "source_path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-08ea-73f2-9344-ec959f74a795/w11-native-499b25d0839a01dbbbc524e1374b1ee5c3e52644/cargo.jsonl",
+      "original_bytes": 278251,
+      "original_sha256": "f71c4316e72aa1723b71717c10ba7eb8592c92f6fd5fcbb852d90a0e22047fab",
+      "gzip_sha256": "f9d9922680f0e6a43e76491722cb1b020a935a233f84cb29f367c2ff09fb61a8"
+    },
+    {
+      "file": "native-cargo.stderr.gz",
+      "source_path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-08ea-73f2-9344-ec959f74a795/w11-native-499b25d0839a01dbbbc524e1374b1ee5c3e52644/cargo.stderr",
+      "original_bytes": 2434,
+      "original_sha256": "d058d05bc8097b484b75d0ca944624111d514d6aa72b3209e4dbb3b96917eafd",
+      "gzip_sha256": "133c864284f779210fa8159a7dff5ac25e2747f4a9161431ed0a46d09dc97003"
+    },
+    {
+      "file": "wasm-cargo.jsonl.gz",
+      "source_path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-08ea-73f2-9344-ec959f74a795/w11-wasm-499b25d0839a01dbbbc524e1374b1ee5c3e52644/cargo.jsonl",
+      "original_bytes": 343503,
+      "original_sha256": "fe320068f899412168d6d915cf6817a6e9c96a38c9e7b75b99ddac65d5eb9ff7",
+      "gzip_sha256": "a82104d6df32dc4d61f4fd539c3b25b294dec31c5a100b7b601ed4d1334d654a"
+    },
+    {
+      "file": "wasm-cargo.stderr.gz",
+      "source_path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-08ea-73f2-9344-ec959f74a795/w11-wasm-499b25d0839a01dbbbc524e1374b1ee5c3e52644/cargo.stderr",
+      "original_bytes": 5482,
+      "original_sha256": "be8eb1a2c3b4781419f89e0908650212e31873b5ec7fb555825a2293181a0121",
+      "gzip_sha256": "97a10bc77237b3294b72eab0c5a1209dfa554d81f41f624e2d562ee228a2a879"
+    }
+  ],
+  "scope": {
+    "native_cpu": "thread CPU clocks; 96 steady 60Hz samples after warm-up, separate completed synthesis jobs",
+    "browser_cpu": "elapsed only; CPU clock unavailable, synthesis inline, per-job duration and actual completed-job count retained",
+    "low_gpu_probe": "Splits normally fused opaque/water/blended passes with load/store. Isolated diagnostic timestamp scope differs from normal Low runtime, which has no dedicated water GPU controller.",
+    "gpu_scope": "mirror, color/depth copies, and surface. Shared opaque underwater work and implicit queue texture uploads excluded.",
+    "memory": "Declared owned GPU water resources, CPU wave/mip/ripple storage. Shared sky/opaque resources and driver padding excluded.",
+    "native_timing_validity": "Zero/one valid steady samples remain a failure of measurement sufficiency; Low waterline exit0 is not a GPU-budget pass. Inspect raw slot intervals, submission errors, mapping and decoder reasons before any zero-duration accommodation.",
+    "webgpu_fix": "726 valid wet GPU observations and correct dry/wet rendering establish the scene-group0 fix on WebGPU only; not native decoder validity.",
+    "budget": "Old targets remain unchanged; Medium wet exceeds GPU2.5/main elapsed0.5ms despite optics dropped. No calibrated acceptance claim.",
+    "artifact": "Test-compiled/export-only benchmark derivative. Production requires normal repository release image build.",
+    "asset_storage": "Private kit bytes and captures remain in scratch, outside Git."
+  },
+  "policy_constants_calibrated": false,
+  "acceptance_complete": false,
+  "issue_state": "OPEN; releasing claim and marking Todo at usage checkpoint; no main landing/deployment"
+}

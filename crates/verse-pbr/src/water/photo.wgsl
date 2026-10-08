@@ -553,10 +553,19 @@ fn water_field_at(p: vec2<f32>) -> vec4<f32> {
 @vertex
 fn vs_water(v_in: WaterIn) -> WaterOut {
     var v = v_in;
+    var spacing = 0.0;
     if v.kind > 5.5 {
         // A clipmap vertex: placed around the eye, given the field's depth,
         // shore distance, and current there, then moved as the sea or a
         // body at full swell.
+        let row = water.clip[min(u32(max(v.pos.y, 0.0) + 0.5), 4u)];
+        let distance = abs(row.xy + v.pos.xz * row.z - f.eye.xz);
+        let alpha = clamp((max(distance.x, distance.y) - row.w)
+            / (WATER_CLIP_MORPH * water.clip[5].y * row.z), 0.0, 1.0);
+        spacing = row.z * (1.0 + alpha);
+        if v.depth > 0.5 {
+            spacing *= pow(water.clip[5].z / (water.clip[5].y * row.z), v.depth / WATER_CLIP_APRON);
+        }
         let rest = water_clip_rest(v);
         let field = water_field_at(rest);
         let level = water.bodies[water_body_index(v.body)].rest.x;
@@ -578,7 +587,7 @@ fn vs_water(v_in: WaterIn) -> WaterOut {
         let rise = water.bodies[b].absorb.w - water.bodies[b].rest.x;
         depth += rise;
         let calm = 1.0 - water_ice(v.pos.xz);
-        moved = water_move(v, water_kind_scale(v.kind) * calm, rise);
+        moved = water_move_spaced(v, water_kind_scale(v.kind) * calm, rise, spacing);
         moved.world.y -= water_drop(v.pos.xz, depth);
     } else if v.kind > 3.5 {
         // An orb: its center rides in the depth and flow channels, and the
@@ -590,7 +599,7 @@ fn vs_water(v_in: WaterIn) -> WaterOut {
         moved.crest = r;
         rest = moved.world.xz;
     } else if v.kind < 2.99 {
-        moved = water_move(v, water_kind_scale(v.kind), 0.0);
+        moved = water_move_spaced(v, water_kind_scale(v.kind), 0.0, spacing);
     }
     return water_out(v, moved, rest, depth, f.view_proj * vec4<f32>(moved.world, 1.0));
 }

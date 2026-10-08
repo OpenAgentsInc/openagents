@@ -1,0 +1,19 @@
+[package]
+name = "coder-chat-web"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Local browser interaction for server-rendered OpenAgents chats."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+js-sys = "0.3"
+wasm-bindgen = "0.2.128"
+web-sys = { version = "0.3", features = ["Window", "Document", "Element", "Node", "HtmlElement", "HtmlFormElement", "HtmlInputElement", "HtmlTextAreaElement", "Event", "EventTarget", "KeyboardEvent", "CustomEvent", "FocusOptions", "XmlHttpRequest", "Selection", "Range"] }
+zeroize = "1"
+
+[lints]
+workspace = true

@@ -1,153 +1,828 @@
-//! In-memory chats started from the homepage composer.
-//!
-//! `POST /chat` allocates a UUID, stores the first message, and redirects
-//! to `/chat/{uuid}`. Later posts append to that chat. This process keeps
-//! the messages; a restart forgets them. Nothing here starts Coder or
-//! reaches a computer.
+//! Durable visitor-owned conversations over the existing web chat worker.
 
-use std::collections::HashMap;
-use std::sync::Mutex;
+use std::convert::Infallible;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use axum::Router;
-use axum::extract::{Form, Path, State};
-use axum::http::{HeaderValue, StatusCode, header};
-use axum::response::{IntoResponse, Redirect, Response};
+use axum::extract::{DefaultBodyLimit, Form, Path, Query, State};
+use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
+use axum::response::sse::{Event, KeepAlive};
+use axum::response::{Html, IntoResponse, Redirect, Response, Sse};
 use axum::routing::{get, post};
+use hmac::{Hmac, Mac};
+use maud::{Markup, PreEscaped, html};
+use openagents_chat::basic_coder::{self, Reply, Turn};
+use openagents_chat::router::{Context, Surface};
 use serde::Deserialize;
+use sha2::{Digest, Sha256};
 
 use crate::App;
-use crate::layout::{self, escape, problem};
-
-/// Pages that load `static/chat.js`.
-pub(crate) const COMPOSER_POLICY: &str = "default-src 'none'; style-src 'self'; font-src 'self'; img-src 'self'; \
-script-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
+use crate::chat_store::{Conversation, Error, Loaded, Message, Outcome, Pending, Request, Role};
+use crate::layout::{self, problem};
 
 const MAX_CHARS: usize = 4_000;
-const MAX_CHATS: usize = 256;
-const MAX_MESSAGES: usize = 64;
-
-pub(crate) struct Store {
-    chats: Mutex<HashMap<String, Vec<String>>>,
-}
-
-impl Default for Store {
-    fn default() -> Self {
-        Self {
-            chats: Mutex::new(HashMap::new()),
-        }
-    }
-}
-
-impl Store {
-    fn create(&self, message: String) -> Option<String> {
-        let mut chats = self.chats.lock().ok()?;
-        if chats.len() >= MAX_CHATS {
-            if let Some(oldest) = chats.keys().next().cloned() {
-                chats.remove(&oldest);
-            }
-        }
-        let id = new_id();
-        chats.insert(id.clone(), vec![message]);
-        Some(id)
-    }
-
-    fn get(&self, id: &str) -> Option<Vec<String>> {
-        self.chats.lock().ok()?.get(id).cloned()
-    }
-
-    fn append(&self, id: &str, message: String) -> bool {
-        let Ok(mut chats) = self.chats.lock() else {
-            return false;
-        };
-        let Some(messages) = chats.get_mut(id) else {
-            return false;
-        };
-        if messages.len() >= MAX_MESSAGES {
-            return false;
-        }
-        messages.push(message);
-        true
-    }
-}
+const MAX_MESSAGES: usize = 96;
+const WINDOW: usize = 24;
+const LEASE_SECONDS: u64 = 180;
 
 pub(crate) fn routes() -> Router<App> {
     Router::new()
         .route("/chat", post(start))
         .route("/chat/{id}", get(show).post(follow))
+        .route("/chat/{id}/workspace", get(workspace))
+        .route("/chat/{id}/transcript", get(transcript))
+        .route("/chat/{id}/events", get(events))
+        .route("/chat/{id}/messages/{index}/original", get(original))
+        .layer(DefaultBodyLimit::max(64 * 1024))
 }
 
 #[derive(Deserialize)]
 struct Prompt {
     q: String,
+    request_id: String,
+    csrf: String,
 }
 
-async fn start(State(app): State<App>, form: Form<Prompt>) -> Response {
-    let Some(message) = normalize(&form.q) else {
-        return Redirect::to("/").into_response();
-    };
-    let Some(id) = app.chats.create(message) else {
-        return problem(
-            StatusCode::SERVICE_UNAVAILABLE,
-            "Chat unavailable",
-            "The chat store is busy. Try sending the message again.",
-            ("/", "Home"),
-        );
-    };
-    Redirect::to(&format!("/chat/{id}")).into_response()
+#[derive(Default, Deserialize)]
+struct Window {
+    before: Option<usize>,
+    after: Option<u64>,
+    offset: Option<usize>,
 }
 
-async fn show(State(app): State<App>, Path(id): Path<String>) -> Response {
-    if !valid_id(&id) {
-        return missing();
+fn now() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
+pub(crate) fn visitor(headers: &HeaderMap) -> (String, Option<String>) {
+    match crate::ask::visitor(headers) {
+        Some(id) => (id, None),
+        None => (crate::ask::new_visitor(), Some(String::new())),
     }
-    let Some(messages) = app.chats.get(&id) else {
-        return missing();
+}
+
+pub(crate) fn cookie(app: &App, owner: &str, fresh: bool, response: &mut Response) {
+    if fresh {
+        let secure = if app.config.secure_cookies {
+            "; Secure"
+        } else {
+            ""
+        };
+        if let Ok(value) = HeaderValue::from_str(&format!(
+            "{}={owner}; Path=/; Max-Age=31536000; HttpOnly; SameSite=Lax{secure}",
+            crate::ask::COOKIE
+        )) {
+            response.headers_mut().append(header::SET_COOKIE, value);
+        }
+    }
+}
+
+pub(crate) fn csrf(app: &App, owner: &str) -> String {
+    let mut mac =
+        Hmac::<Sha256>::new_from_slice(&app.config.ask_salt).expect("HMAC accepts 32 bytes");
+    mac.update(b"openagents.web.chat.csrf.v1:");
+    mac.update(owner.as_bytes());
+    mac.finalize()
+        .into_bytes()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
+fn command(app: &App, headers: &HeaderMap, prompt: &Prompt) -> Result<(String, String), Response> {
+    let Some(owner) = crate::ask::visitor(headers) else {
+        return Err(refusal(
+            StatusCode::FORBIDDEN,
+            "Open the homepage before sending a message.",
+        ));
     };
-    let mut response = layout::app("Chat", None, &thread(&id, &messages));
+    let expected = csrf(app, &owner);
+    // Compare digests in constant time without exposing the visitor signing key.
+    let mut mac = Hmac::<Sha256>::new_from_slice(expected.as_bytes()).expect("HMAC accepts text");
+    mac.update(prompt.csrf.as_bytes());
+    let mut correct =
+        Hmac::<Sha256>::new_from_slice(expected.as_bytes()).expect("HMAC accepts text");
+    correct.update(expected.as_bytes());
+    if mac.verify_slice(&correct.finalize().into_bytes()).is_err() || !valid_id(&prompt.request_id)
+    {
+        return Err(refusal(
+            StatusCode::FORBIDDEN,
+            "The message ticket is invalid. Reload this page.",
+        ));
+    }
+    if headers
+        .get("sec-fetch-site")
+        .is_some_and(|v| v != "same-origin" && v != "none")
+    {
+        return Err(refusal(
+            StatusCode::FORBIDDEN,
+            "Send messages from this site.",
+        ));
+    }
+    if let Some(origin) = headers.get(header::ORIGIN).and_then(|v| v.to_str().ok()) {
+        let host = headers
+            .get(header::HOST)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or_default();
+        let scheme = if app.config.secure_cookies {
+            "https"
+        } else {
+            "http"
+        };
+        if origin != format!("{scheme}://{host}") {
+            return Err(refusal(
+                StatusCode::FORBIDDEN,
+                "Send messages from this site.",
+            ));
+        }
+    }
+    let Some(text) = normalize(&prompt.q) else {
+        return Err(refusal(
+            StatusCode::BAD_REQUEST,
+            "Enter a message of at most 4,000 characters.",
+        ));
+    };
+    Ok((owner, text))
+}
+
+async fn start(State(app): State<App>, headers: HeaderMap, Form(prompt): Form<Prompt>) -> Response {
+    let (owner, text) = match command(&app, &headers, &prompt) {
+        Ok(v) => v,
+        Err(r) => return r,
+    };
+    let id = prompt.request_id.clone();
+    let digest = digest(&text);
+    match app.config.chat_store.load(&owner, &id).await {
+        Ok(Some(record))
+            if record
+                .conversation
+                .requests
+                .first()
+                .is_some_and(|r| r.digest == digest) =>
+        {
+            return crate::chat_html::protect(Redirect::to(&format!("/chat/{id}")).into_response());
+        }
+        Ok(Some(_)) => {
+            return refusal(
+                StatusCode::CONFLICT,
+                "This message identity was already used for different text.",
+            );
+        }
+        Ok(None) => {}
+        Err(e) => return unavailable(e),
+    }
+    let admitted_at = now();
+    match app
+        .config
+        .chat_store
+        .claim(&owner, &id, admitted_at + LEASE_SECONDS)
+        .await
+    {
+        Ok(true) => {}
+        Ok(false) => {
+            return refusal(
+                StatusCode::CONFLICT,
+                "OpenAgents is still answering your previous message.",
+            );
+        }
+        Err(e) => return unavailable(e),
+    }
+    let record = Conversation {
+        id: id.clone(),
+        owner: owner.clone(),
+        revision: 1,
+        title: text.chars().take(64).collect(),
+        messages: vec![
+            Message {
+                role: Role::User,
+                text,
+                request_id: Some(id.clone()),
+            },
+            Message {
+                role: Role::Assistant,
+                text: String::new(),
+                request_id: Some(id.clone()),
+            },
+        ],
+        pending: Some(Pending {
+            request_id: id.clone(),
+            started_unix: now(),
+            job_id: None,
+        }),
+        requests: vec![Request {
+            id: id.clone(),
+            digest,
+            outcome: Outcome::Pending,
+        }],
+        updated_unix: now(),
+    };
+    let loaded = match app.config.chat_store.create(&record).await {
+        Ok(v) => v,
+        Err(Error::Conflict) => {
+            return crate::chat_html::protect(Redirect::to(&format!("/chat/{id}")).into_response());
+        }
+        Err(e) => {
+            let _ = app.config.chat_store.release(&owner, &id).await;
+            return unavailable(e);
+        }
+    };
+    spawn_answer(app.clone(), loaded, admitted_at);
+    crate::chat_html::protect(Redirect::to(&format!("/chat/{id}")).into_response())
+}
+
+async fn load(app: &App, headers: &HeaderMap, id: &str) -> Result<Loaded, Response> {
+    let Some(owner) = crate::ask::visitor(headers).filter(|_| valid_id(id)) else {
+        return Err(missing());
+    };
+    let mut loaded = app
+        .config
+        .chat_store
+        .load(&owner, id)
+        .await
+        .map_err(unavailable)?
+        .ok_or_else(missing)?;
+    if let Some(pending) = &loaded.conversation.pending
+        && now().saturating_sub(pending.started_unix) > LEASE_SECONDS
+    {
+        let request_id = pending.request_id.clone();
+        let mut next = loaded.conversation.clone();
+        next.pending = None;
+        next.revision += 1;
+        next.updated_unix = now();
+        if let Some(request) = next.requests.iter_mut().find(|r| r.id == request_id) {
+            request.outcome = Outcome::Unknown;
+        }
+        match app.config.chat_store.compare_and_swap(&loaded, &next).await {
+            Ok(v) => {
+                loaded = v;
+                let _ = app.config.chat_store.release(&owner, &request_id).await;
+            }
+            Err(Error::Conflict) => {
+                loaded = app
+                    .config
+                    .chat_store
+                    .load(&owner, id)
+                    .await
+                    .map_err(unavailable)?
+                    .ok_or_else(missing)?;
+            }
+            Err(e) => return Err(unavailable(e)),
+        }
+    }
+    Ok(loaded)
+}
+
+async fn show(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>) -> Response {
+    let record = match load(&app, &headers, &id).await {
+        Ok(v) => v,
+        Err(r) => return r,
+    };
+    let body = html! {
+        div.chat-shell hx-history="false" {
+            (sidebar(&app,&record.conversation).await)
+            section.chat-main aria-label="Conversation" {
+                div #chat-content { (content(&record.conversation, None)) }
+                div.chat-dock.chat-column {
+                    (PreEscaped(composer(&format!("/chat/{id}"),"Continue this chat")))
+                    (ticket(&app,&record.conversation,false))
+                    p #chat-feedback role="status" aria-live="polite" {}
+                }
+            }
+        }
+    };
+    let html = layout::app_document(&record.conversation.title, None, &body.into_string()).replace(
+        "</head>",
+        &format!("{}</head>", crate::chat_html::head().into_string()),
+    );
+    crate::chat_html::protect(Html(html).into_response())
+}
+
+async fn workspace(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>) -> Response {
+    let record = match load(&app, &headers, &id).await {
+        Ok(v) => v,
+        Err(r) => return r,
+    };
+    let body = html! { title {(record.conversation.title) " · OpenAgents"} (content(&record.conversation,None)) (ticket(&app,&record.conversation,true)) (sidebar(&app,&record.conversation).await) };
+    let mut response = crate::chat_html::protect(body.into_response());
     response.headers_mut().insert(
-        header::CONTENT_SECURITY_POLICY,
-        HeaderValue::from_static(COMPOSER_POLICY),
+        "HX-Push-Url",
+        HeaderValue::from_str(&format!("/chat/{id}")).expect("UUID URL"),
     );
     response
 }
 
-async fn follow(State(app): State<App>, Path(id): Path<String>, form: Form<Prompt>) -> Response {
-    if !valid_id(&id) || app.chats.get(&id).is_none() {
-        return missing();
-    }
-    let Some(message) = normalize(&form.q) else {
-        return Redirect::to(&format!("/chat/{id}")).into_response();
+async fn follow(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Form(prompt): Form<Prompt>,
+) -> Response {
+    let (owner, text) = match command(&app, &headers, &prompt) {
+        Ok(v) => v,
+        Err(r) => return r,
     };
-    if !app.chats.append(&id, message) {
-        let back = format!("/chat/{id}");
-        return problem(
-            StatusCode::BAD_REQUEST,
-            "Message not added",
-            "This chat cannot take another message.",
-            (&back, "Back to the chat"),
+    let loaded = match load(&app, &headers, &id).await {
+        Ok(v) => v,
+        Err(r) => return r,
+    };
+    let hash = digest(&text);
+    if let Some(request) = loaded
+        .conversation
+        .requests
+        .iter()
+        .find(|r| r.id == prompt.request_id)
+    {
+        if request.digest != hash {
+            return refusal(
+                StatusCode::CONFLICT,
+                "This message identity was already used for different text.",
+            );
+        }
+        return accepted(&app, &headers, &loaded.conversation).await;
+    }
+    if loaded.conversation.pending.is_some() {
+        return refusal(
+            StatusCode::CONFLICT,
+            "OpenAgents is still answering your previous message.",
         );
     }
-    Redirect::to(&format!("/chat/{id}")).into_response()
-}
-
-/// The messages scroll in the space under the header; the composer stays
-/// docked at the bottom of the window.
-fn thread(id: &str, messages: &[String]) -> String {
-    let mut body = String::from(
-        "<section id=\"chat-thread\" class=\"thread\" aria-label=\"Chat\"><div class=\"chat-column\">",
-    );
-    for message in messages {
-        body.push_str(&format!(
-            "<p class=\"thread-said\"><span class=\"term-mark\">You</span> {}</p>",
-            escape(message)
-        ));
+    if loaded.conversation.messages.len() + 2 > MAX_MESSAGES {
+        return refusal(
+            StatusCode::BAD_REQUEST,
+            "This chat is full. Start another chat; the original messages remain available.",
+        );
     }
-    body.push_str("</div></section><div class=\"chat-dock chat-column\">");
-    body.push_str(&composer(&format!("/chat/{id}"), "Continue this chat"));
-    body.push_str("</div>");
-    body
+    let admitted_at = now();
+    match app
+        .config
+        .chat_store
+        .claim(&owner, &prompt.request_id, admitted_at + LEASE_SECONDS)
+        .await
+    {
+        Ok(true) => {}
+        Ok(false) => {
+            return refusal(
+                StatusCode::CONFLICT,
+                "OpenAgents is still answering your previous message.",
+            );
+        }
+        Err(e) => return unavailable(e),
+    }
+    let mut next = loaded.conversation.clone();
+    next.revision += 1;
+    next.updated_unix = now();
+    next.messages.push(Message {
+        role: Role::User,
+        text,
+        request_id: Some(prompt.request_id.clone()),
+    });
+    next.messages.push(Message {
+        role: Role::Assistant,
+        text: String::new(),
+        request_id: Some(prompt.request_id.clone()),
+    });
+    next.pending = Some(Pending {
+        request_id: prompt.request_id.clone(),
+        started_unix: now(),
+        job_id: None,
+    });
+    next.requests.push(Request {
+        id: prompt.request_id.clone(),
+        digest: hash,
+        outcome: Outcome::Pending,
+    });
+    let loaded = match app.config.chat_store.compare_and_swap(&loaded, &next).await {
+        Ok(v) => v,
+        Err(e) => {
+            let _ = app
+                .config
+                .chat_store
+                .release(&owner, &prompt.request_id)
+                .await;
+            return unavailable(e);
+        }
+    };
+    spawn_answer(app.clone(), loaded.clone(), admitted_at);
+    accepted(&app, &headers, &loaded.conversation).await
 }
 
+async fn accepted(app: &App, headers: &HeaderMap, chat: &Conversation) -> Response {
+    if headers.get("HX-Request").is_some_and(|v| v == "true") {
+        crate::chat_html::protect(
+            html! { (ticket(app,chat,true)) (sidebar(app,chat).await) }.into_response(),
+        )
+    } else {
+        crate::chat_html::protect(Redirect::to(&format!("/chat/{}", chat.id)).into_response())
+    }
+}
+
+fn spawn_answer(app: App, loaded: Loaded, admitted_at: u64) {
+    tokio::spawn(async move {
+        answer(app, loaded, admitted_at).await;
+    });
+}
+
+async fn answer(app: App, mut loaded: Loaded, admitted_at: u64) {
+    let chat = &loaded.conversation;
+    let owner = chat.owner.clone();
+    let request_id = chat
+        .pending
+        .as_ref()
+        .expect("dispatch owns pending request")
+        .request_id
+        .clone();
+    let turns: Vec<Turn> = chat
+        .messages
+        .iter()
+        .filter(|m| m.role != Role::Tool && !m.text.is_empty())
+        .rev()
+        .take(crate::ask::MAX_TURNS)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .map(|m| {
+            if m.role == Role::User {
+                Turn::user(
+                    m.text
+                        .chars()
+                        .take(crate::ask::MAX_TURN_CHARS)
+                        .collect::<String>(),
+                )
+            } else {
+                Turn::assistant(
+                    m.text
+                        .chars()
+                        .take(crate::ask::MAX_TURN_CHARS)
+                        .collect::<String>(),
+                    None,
+                )
+            }
+        })
+        .collect();
+    let reply = Arc::new(Mutex::new(Reply::default()));
+    // Storage admission must leave time for the bounded worker lifetime.
+    // An expired admission never dispatches work, even if its write succeeded.
+    let door = if now().saturating_sub(admitted_at) <= 30 {
+        app.config
+            .chat
+            .door(crate::ask::key(&app.config.ask_salt, &owner))
+            .ok()
+    } else {
+        None
+    };
+    let mut job = match door {
+        Some(door) => Some(door.ask(
+            turns,
+            Context {
+                surface: Surface::Web,
+                ..Context::default()
+            },
+            reply.clone(),
+        )),
+        None => None,
+    };
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(130);
+    let door_unavailable = job.is_none();
+    let mut asked = door_unavailable;
+    let mut shown = String::new();
+    let mut settled = false;
+    loop {
+        if let Some(job) = &mut job {
+            tokio::select! { ()=job,if !asked=>asked=true, ()=tokio::time::sleep(Duration::from_millis(400))=>{} }
+        }
+        let (text, done, failure) = {
+            let r = basic_coder::lock(&reply);
+            (
+                r.text.clone(),
+                r.done,
+                r.failure.as_ref().map(|e| e.describe()),
+            )
+        };
+        let expired = tokio::time::Instant::now() >= deadline;
+        let ended = done || failure.is_some() || asked || expired;
+        if text != shown || ended {
+            let mut next = loaded.conversation.clone();
+            if next
+                .pending
+                .as_ref()
+                .is_none_or(|p| p.request_id != request_id)
+            {
+                break;
+            }
+            next.messages.last_mut().expect("assistant record").text = text.clone();
+            next.revision += 1;
+            next.updated_unix = now();
+            if ended {
+                next.pending = None;
+                if let Some(r) = next.requests.iter_mut().find(|r| r.id == request_id) {
+                    r.outcome = if done {
+                        Outcome::Answered
+                    } else if door_unavailable {
+                        Outcome::Failed
+                    } else {
+                        Outcome::Unknown
+                    };
+                }
+                if let Some(error) = failure {
+                    next.messages.push(Message {
+                        role: Role::Tool,
+                        text: error,
+                        request_id: Some(request_id.clone()),
+                    });
+                } else if !done {
+                    next.messages.push(Message {
+                        role: Role::Tool,
+                        text: if expired {
+                            "The answer's outcome is unknown. The request will not be submitted again automatically."
+                        } else {
+                            "We couldn't get an answer. Try asking again."
+                        }.into(),
+                        request_id: Some(request_id.clone()),
+                    });
+                }
+            }
+            match app.config.chat_store.compare_and_swap(&loaded, &next).await {
+                Ok(v) => {
+                    loaded = v;
+                    shown = text;
+                    settled = ended;
+                }
+                Err(_) => {
+                    // A write may have committed even if its response was lost.
+                    // Recover its generation without submitting another worker job.
+                    match app
+                        .config
+                        .chat_store
+                        .load(&owner, &loaded.conversation.id)
+                        .await
+                    {
+                        Ok(Some(current))
+                            if current
+                                .conversation
+                                .pending
+                                .as_ref()
+                                .is_some_and(|p| p.request_id == request_id) =>
+                        {
+                            loaded = current;
+                        }
+                        Ok(Some(current))
+                            if current
+                                .conversation
+                                .requests
+                                .iter()
+                                .any(|r| r.id == request_id && r.outcome != Outcome::Pending) =>
+                        {
+                            loaded = current;
+                            settled = true;
+                            break;
+                        }
+                        _ => {}
+                    }
+                    if expired {
+                        break;
+                    }
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                    continue;
+                }
+            }
+        }
+        if ended {
+            break;
+        }
+    }
+    if settled
+        && (loaded
+            .conversation
+            .requests
+            .iter()
+            .any(|r| r.id == request_id && r.outcome == Outcome::Answered)
+            || door_unavailable)
+    {
+        let _ = app.config.chat_store.release(&owner, &request_id).await;
+    }
+}
+
+async fn sidebar(app: &App, chat: &Conversation) -> Markup {
+    let chats = app.config.chat_store.list(&chat.owner).await;
+    html! {
+        aside #chat-sidebar.chat-sidebar hx-swap-oob="outerHTML" aria-label="Chats" {
+            a.new-chat href="/" { "+ New chat" }
+            h2 { "Chats" }
+            nav aria-label="Your conversations" {
+                @match chats {
+                    Ok(chats)=> { @for row in chats {
+                        a href=(format!("/chat/{}",row.id)) hx-get=(format!("/chat/{}/workspace",row.id)) hx-target="#chat-content" hx-swap="innerHTML" hx-sync="#chat-content:replace" aria-current=[(row.id==chat.id).then_some("page")] { (row.title) }
+                    } p.dim { "Showing up to 256 recent chats." } }
+                    Err(_)=> {p.error {"The chat list is unavailable. Your current conversation is retained."}}
+                }
+            }
+            a href="/demo" { "Onboarding demo" }
+        }
+    }
+}
+
+fn ticket(app: &App, chat: &Conversation, oob: bool) -> Markup {
+    html! { div #chat-ticket hx-swap-oob=[oob.then_some("outerHTML")] {
+        input type="hidden" id="chat-selected" name="chat" value=(chat.id) form="chat-form";
+        input type="hidden" name="request_id" value=(new_id()) form="chat-form";
+        input type="hidden" name="csrf" value=(csrf(app,&chat.owner)) form="chat-form";
+
+    } }
+}
+
+fn content(chat: &Conversation, before: Option<usize>) -> Markup {
+    html! {
+        header.chat-heading { h1 {(chat.title)} div {a href=(format!("/chat/{}/transcript?before=24",chat.id)) hx-get=(format!("/chat/{}/transcript?before=24",chat.id)) hx-target="#chat-transcript" data-chat-history="start" {"Beginning"} a href=(format!("/chat/{}/transcript",chat.id)) hx-get=(format!("/chat/{}/transcript",chat.id)) hx-target="#chat-transcript" data-chat-history="end" {"Latest"}} }
+        section #chat-thread.thread aria-label="Chat" {
+            div.chat-column hx-ext="sse" sse-connect=(format!("/chat/{}/events?after={}",chat.id,chat.revision)) sse-close="retired" {
+                div #chat-transcript sse-swap="transcript,retired" hx-swap="innerHTML" { (messages(chat,before)) }
+            }
+        }
+    }
+}
+
+fn messages(chat: &Conversation, before: Option<usize>) -> Markup {
+    let end = before
+        .unwrap_or(chat.messages.len())
+        .min(chat.messages.len());
+    let start = end.saturating_sub(WINDOW);
+    html! {
+        input type="hidden" id="chat-history-window" value=(if before.is_some() {"older"}else{"latest"});
+        @if start>0 {p.dim {"Showing messages " (start+1) "–" (end) " of " (chat.messages.len()) ". " a href=(format!("/chat/{}/transcript?before={start}",chat.id)) hx-get=(format!("/chat/{}/transcript?before={start}",chat.id)) hx-target="#chat-transcript" {"Read earlier messages"}}}
+        @if before.is_some() && end<chat.messages.len() {p {a href=(format!("/chat/{}/transcript?before={}",chat.id,(end+WINDOW).min(chat.messages.len()))) hx-get=(format!("/chat/{}/transcript?before={}",chat.id,(end+WINDOW).min(chat.messages.len()))) hx-target="#chat-transcript" {"Read newer messages"} " · " a href=(format!("/chat/{}/transcript",chat.id)) hx-get=(format!("/chat/{}/transcript",chat.id)) hx-target="#chat-transcript" data-chat-history="end" {"Latest"}}}
+        @for (index,message) in chat.messages[start..end].iter().enumerate() {
+            article.chat-message id=(format!("chat-message-{}",index+start)) {
+                h2 { (match message.role {Role::User=>"You",Role::Assistant=>"OpenAgents",Role::Tool=>"Status"}) }
+                @if message.role==Role::Assistant {div.md {(PreEscaped(crate::markdown::render(&message.text)))}}
+                @else {p.chat-plain {(message.text)}}
+            }
+        }
+        p #chat-status role="status" aria-live="polite" {
+            @if chat.pending.is_some() {"OpenAgents is answering…"}
+            @else if chat.requests.last().is_some_and(|r|r.outcome==Outcome::Unknown) {"The previous request's outcome is unknown. It will not be repeated automatically."}
+            @else {""}
+        }
+    }
+}
+
+async fn transcript(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Query(window): Query<Window>,
+) -> Response {
+    match load(&app, &headers, &id).await {
+        Ok(v) => {
+            crate::chat_html::protect(messages(&v.conversation, window.before).into_response())
+        }
+        Err(r) => r,
+    }
+}
+
+async fn original(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path((id, index)): Path<(String, usize)>,
+    Query(window): Query<Window>,
+) -> Response {
+    let loaded = match load(&app, &headers, &id).await {
+        Ok(v) => v,
+        Err(r) => return r,
+    };
+    let Some(message) = loaded.conversation.messages.get(index) else {
+        return missing();
+    };
+    let bytes = message.text.as_bytes();
+    let offset = window.offset.unwrap_or(0);
+    if offset > bytes.len() {
+        return refusal(
+            StatusCode::BAD_REQUEST,
+            "The original offset is outside this message.",
+        );
+    }
+    let mut end = (offset + 64 * 1024).min(bytes.len());
+    if !message.text.is_char_boundary(offset) {
+        return refusal(
+            StatusCode::BAD_REQUEST,
+            "Choose a UTF-8 character boundary for this offset.",
+        );
+    }
+    while !message.text.is_char_boundary(end) {
+        end -= 1;
+    }
+    let mut response = crate::chat_html::protect(
+        (
+            [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+            bytes[offset..end].to_vec(),
+        )
+            .into_response(),
+    );
+    response.headers_mut().insert(
+        "X-Original-Bytes",
+        HeaderValue::from_str(&bytes.len().to_string()).unwrap(),
+    );
+    if end < bytes.len() {
+        response.headers_mut().insert(
+            header::LINK,
+            HeaderValue::from_str(&format!(
+                "</chat/{id}/messages/{index}/original?offset={end}>; rel=next"
+            ))
+            .unwrap(),
+        );
+    }
+    response
+}
+
+async fn events(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Query(window): Query<Window>,
+) -> Response {
+    let loaded = match load(&app, &headers, &id).await {
+        Ok(v) => v,
+        Err(r) => return r,
+    };
+    let cursor = match headers.get("Last-Event-ID") {
+        None => window.after.unwrap_or(0),
+        Some(value) => match value
+            .to_str()
+            .ok()
+            .and_then(|v| v.strip_prefix(&format!("{id}:")))
+            .and_then(|v| v.parse::<u64>().ok())
+        {
+            Some(cursor) => cursor,
+            None => {
+                return refusal(
+                    StatusCode::CONFLICT,
+                    "This event cursor belongs to another conversation or is invalid.",
+                );
+            }
+        },
+    };
+    if cursor > loaded.conversation.revision {
+        return refusal(
+            StatusCode::CONFLICT,
+            "This event cursor is ahead of the retained conversation. Reload the chat.",
+        );
+    }
+    let stream = futures_util::stream::unfold(
+        (app, headers, id, cursor, 0u16),
+        |(app, headers, id, mut cursor, mut ticks)| async move {
+            if ticks >= 300 {
+                return None;
+            }
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            let event = match load(&app, &headers, &id).await {
+                Ok(v) if v.conversation.revision > cursor => {
+                    let revision = v.conversation.revision;
+                    let missed = revision.saturating_sub(cursor + 1);
+                    let body=html! { @if missed>0 {p.dim {"Resumed from the retained snapshot; " (missed) " intermediate projections were superseded. All original messages remain available."}} (messages(&v.conversation,None)) }.into_string();
+                    cursor = revision;
+                    Event::default()
+                        .id(format!("{id}:{revision}"))
+                        .event("transcript")
+                        .data(body)
+                }
+                Ok(_) => Event::default().comment("current"),
+                Err(_) => {
+                    ticks = 299;
+                    Event::default().id(format!("{id}:{cursor}")).event("retired").data("<p class=\"error\">The conversation is unavailable. Reopen it to check access.</p>")
+                }
+            };
+            Some((
+                Ok::<_, Infallible>(event),
+                (app, headers, id, cursor, ticks + 1),
+            ))
+        },
+    );
+    crate::chat_html::protect(
+        Sse::new(stream)
+            .keep_alive(KeepAlive::new().interval(Duration::from_secs(15)))
+            .into_response(),
+    )
+}
+
+fn digest(text: &str) -> String {
+    Sha256::digest(text.as_bytes())
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+fn refusal(status: StatusCode, text: &str) -> Response {
+    crate::chat_html::protect((status, html! {p.error role="alert" {(text)}}).into_response())
+}
+fn unavailable(error: Error) -> Response {
+    eprintln!("openagents-web: conversation storage: {error}");
+    refusal(
+        StatusCode::SERVICE_UNAVAILABLE,
+        "The conversation store is unavailable. Your message was not repeated; try again with the same ticket.",
+    )
+}
 /// A 24-pixel lucide icon path set, drawn at `size` with a 2-pixel stroke.
 fn icon(size: u8, paths: &str) -> String {
     format!(
@@ -180,6 +855,13 @@ tw:active:bg-noir-stroke-subtle\">{content}{}</button>",
 /// pickers, then a 640 by 155 pixel card holding the text box and its
 /// toolbar. Only the text box and the send button do anything yet.
 pub(crate) fn composer(action: &str, label: &str) -> String {
+    let transport = if action.starts_with("/chat/") {
+        format!(
+            " hx-post=\"{action}\" hx-swap=\"none\" hx-disabled-elt=\"find button[type=submit]\" hx-sync=\"this:drop\""
+        )
+    } else {
+        String::new()
+    };
     let pickers = format!(
         "{}{}{}",
         picker(
@@ -195,7 +877,7 @@ tw:rounded-full tw:p-0";
 tw:hover:bg-noir-stroke-subtle tw:hover:text-noir-content tw:active:bg-noir-stroke";
     format!(
         "<section class=\"composer tw:w-full tw:max-w-[640px]\" aria-label=\"{label}\">\
-<form id=\"chat-form\" action=\"{action}\" method=\"post\">\
+<form id=\"chat-form\" action=\"{action}\" method=\"post\"{transport}>\
 <div class=\"tw:flex tw:items-center tw:gap-2 tw:min-h-8 tw:px-1.5 tw:pb-1.5\">{pickers}</div>\
 <div id=\"chat-card\" class=\"chat-composer-card tw:relative tw:flex tw:flex-col tw:overflow-hidden \
 tw:w-full tw:h-[155px] tw:rounded-xl tw:cursor-text tw:border tw:border-noir-stroke-subtle \
@@ -220,8 +902,7 @@ title=\"Voice input (coming soon)\" class=\"{round} {quiet}\">{mic}</button>\
 <button type=\"submit\" aria-label=\"Send\" title=\"Send\" class=\"{round} \
 tw:bg-noir-accent-solid tw:text-noir-on-accent-solid tw:hover:bg-noir-content-secondary \
 tw:active:bg-noir-content-tertiary\">{arrow}</button>\
-</div></div></form></section>\
-<script src=\"/static/chat.js\" defer></script>",
+</div></div></form></section>",
         plus = icon(14, PLUS),
         chevron = icon(12, CHEVRON_DOWN),
         mic = icon(14, MIC),
@@ -269,7 +950,7 @@ fn hex(value: &str) -> bool {
     !value.is_empty() && value.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
-fn new_id() -> String {
+pub(crate) fn new_id() -> String {
     let mut bytes = secp256k1::rand::random::<[u8; 16]>();
     bytes[6] = (bytes[6] & 0x0f) | 0x40;
     bytes[8] = (bytes[8] & 0x3f) | 0x80;
