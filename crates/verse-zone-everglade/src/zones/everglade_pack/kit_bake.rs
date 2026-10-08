@@ -26,10 +26,10 @@ use super::pinned::PinnedFile;
 
 /// Exact content identity of the reviewed light layers, or empty while
 /// none is published.
-pub const KIT_BAKE_SHA256: &str = "";
+pub const KIT_BAKE_SHA256: &str = "14ae7f75e9ce4f81483f6f44369753545cb2cab892177607438b3077ebbbae23";
 /// Transfer size of the reviewed light layers; zero while none is
 /// published.
-pub const KIT_BAKE_BYTES: u64 = 0;
+pub const KIT_BAKE_BYTES: u64 = 51682623;
 // Retain previous reviewed digests here when changing KIT_BAKE_SHA256.
 const KIT_BAKE_HISTORY: &[&str] = &[KIT_BAKE_SHA256];
 /// Environment variable naming a local layer file for offline tools, such
