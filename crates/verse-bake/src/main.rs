@@ -488,8 +488,11 @@ fn layered(
         let digest = verse_bake::hex(&digest);
         verify_reuse_receipt(&receipt, &key, &digest, &bytes)?;
         let layers = verse_pbr::pbr::baked_layers::Layers::decode(&bytes)?;
-        if layers.scene != digest || layers.vertex_count() != scene.vertices.len() {
-            return Err("The completed layers do not match the current scene".into());
+        if layers.scene != digest
+            || layers.bake_key != key
+            || layers.vertex_count() != scene.vertices.len()
+        {
+            return Err("The completed layers do not match the current scene or recipe".into());
         }
         let file_digest = verse_bake::hex(&sha2::Sha256::digest(&bytes));
         println!("pub const KIT_BAKE_SHA256: &str = \"{file_digest}\";");
