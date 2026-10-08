@@ -26,9 +26,10 @@ use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
 
-/// OSC 12 paints the terminal's hardware cursor the ladder's full white;
+/// OSC 12 paints the terminal's hardware cursor with Coder Noir's cursor role;
 /// OSC 112 hands the terminal's own color back on exit.
-pub const CURSOR_COLOR_SET: &str = "\x1b]12;#FFFFFF\x07";
+pub static CURSOR_COLOR_SET: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| format!("\x1b]12;#{:06x}\x07", coder_ui::coder_noir::CURSOR));
 /// The sequence that resets the cursor color `CURSOR_COLOR_SET` painted.
 pub const CURSOR_COLOR_RESET: &str = "\x1b]112\x07";
 
@@ -43,7 +44,7 @@ pub enum Step {
     /// A blinking block cursor; undoing it restores the user's shape and
     /// makes the cursor visible again in case a frame hid it.
     CursorStyle,
-    /// The cursor painted full white; undoing it hands the color back.
+    /// The cursor painted with the shared cursor role; undoing it hands the color back.
     CursorColor,
     /// Mouse reports: clicks, drags, and the wheel come to the shell, which
     /// then does its own selection.
@@ -258,6 +259,15 @@ mod tests {
 
     fn entries(log: &Arc<Mutex<Vec<String>>>) -> Vec<String> {
         log.lock().unwrap().clone()
+    }
+
+    #[test]
+    fn the_hardware_cursor_uses_the_shared_neutral_role() {
+        assert_eq!(
+            CURSOR_COLOR_SET.as_str(),
+            format!("\x1b]12;#{:06x}\x07", coder_ui::coder_noir::CURSOR)
+        );
+        assert_eq!(coder_ui::coder_noir::CURSOR, coder_ui::coder_noir::CONTENT);
     }
 
     #[test]

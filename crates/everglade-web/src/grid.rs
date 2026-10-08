@@ -47,8 +47,6 @@ const TAG_LIFT: f32 = 2.2;
 /// How far from a tag's center a click still picks its player, in CSS
 /// pixels.
 const TAG_REACH: f32 = 28.0;
-const TAG_COLOR: [f32; 4] = [0.9, 0.9, 0.9, 1.0];
-const DIM: [f32; 4] = [0.6, 0.6, 0.6, 1.0];
 
 /// The browser Grid's session and what it draws over the world.
 pub struct Presence {
@@ -204,10 +202,22 @@ impl Presence {
             };
             let name = self.session.name_of(&pubkey);
             let width = atlas.measure(&name);
-            ui.text(atlas, x - width / 2.0, y - atlas.line, &name, TAG_COLOR);
+            ui.text(
+                atlas,
+                x - width / 2.0,
+                y - atlas.line,
+                &name,
+                crate::theme::linear(coder_ui::coder_noir::CONTENT, 1.0),
+            );
         }
         let line = self.status_line();
-        ui.text(atlas, CARD_PAD, CARD_PAD, &line, DIM);
+        ui.text(
+            atlas,
+            CARD_PAD,
+            CARD_PAD,
+            &line,
+            crate::theme::linear(coder_ui::coder_noir::CONTENT_SECONDARY, 1.0),
+        );
         self.draw_card(ui, atlas, size);
     }
 
@@ -300,13 +310,42 @@ impl Presence {
             return;
         };
         let [x, y, w, h] = card_rect(size);
-        ui.rect(atlas, x, y, w, h, [0.05, 0.05, 0.05, 0.92]);
-        ui.frame(atlas, x, y, w, h, 1.0, DIM);
+        ui.rect(
+            atlas,
+            x,
+            y,
+            w,
+            h,
+            crate::theme::linear(coder_ui::coder_noir::SURFACE, 0.92),
+        );
+        ui.frame(
+            atlas,
+            x,
+            y,
+            w,
+            h,
+            1.0,
+            crate::theme::linear(coder_ui::coder_noir::STROKE, 1.0),
+        );
         let name = self.session.name_of(pubkey);
-        ui.text(atlas, x + CARD_PAD, y + CARD_PAD, &name, TAG_COLOR);
+        ui.text(
+            atlas,
+            x + CARD_PAD,
+            y + CARD_PAD,
+            &name,
+            crate::theme::linear(coder_ui::coder_noir::CONTENT, 1.0),
+        );
         let muted = self.session.blocklist().is_muted(pubkey);
         for (button, [bx, by, bw, bh]) in card_buttons(size) {
-            ui.frame(atlas, bx, by, bw, bh, 1.0, DIM);
+            ui.frame(
+                atlas,
+                bx,
+                by,
+                bw,
+                bh,
+                1.0,
+                crate::theme::linear(coder_ui::coder_noir::STROKE, 1.0),
+            );
             let label = match button {
                 Button::Block => "BLOCK",
                 Button::Mute if muted => "UNMUTE",
@@ -319,7 +358,7 @@ impl Presence {
                 bx + (bw - width) / 2.0,
                 by + (bh - atlas.line) / 2.0,
                 label,
-                TAG_COLOR,
+                crate::theme::linear(coder_ui::coder_noir::CONTENT, 1.0),
             );
         }
     }

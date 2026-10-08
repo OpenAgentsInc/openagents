@@ -17,11 +17,27 @@ steps:
     args:
       - -c
       - |
+        set -e
         sha="$$(sed -n 's/^pub const KIT_SHA256: &str = "\([0-9a-f]*\)";$$/\1/p' crates/verse-zone-everglade/src/zones/everglade_pack/kit.rs)"
         mkdir -p crates/openagents-web/kit
         if [ -n "$$sha" ]; then
           gcloud storage cp "gs://openagentsgemini-verse-private-assets/packs/$$sha.vtp" crates/openagents-web/kit/ \
             || echo "the kit pack $$sha is not in the bucket; the web build draws proxies"
+        fi
+        # Reviewed layers are optional until pinned. A published pin must
+        # resolve to its exact private object before the image is built.
+        bake_pin=crates/verse-zone-everglade/src/zones/everglade_pack/kit_bake.rs
+        bake_sha="$$(sed -n 's/^pub const KIT_BAKE_SHA256: &str = "\([0-9a-f]*\)";$$/\1/p' "$$bake_pin")"
+        bake_bytes="$$(sed -n 's/^pub const KIT_BAKE_BYTES: u64 = \([0-9]*\);$$/\1/p' "$$bake_pin")"
+        mkdir -p crates/openagents-web/kit/bake
+        if [ -z "$$bake_sha" ]; then
+          test "$$bake_bytes" -eq 0
+        else
+          test "$$bake_bytes" -gt 0
+          bake_file="crates/openagents-web/kit/bake/$$bake_sha.vlay"
+          gcloud storage cp "gs://openagentsgemini-verse-private-assets/bakes/$$bake_sha.vlay" "$$bake_file"
+          printf '%s  %s\n' "$$bake_sha" "$$bake_file" | sha256sum -c -
+          test "$$(wc -c < "$$bake_file")" -eq "$$bake_bytes"
         fi
   - name: gcr.io/cloud-builders/docker
     args:

@@ -15,6 +15,7 @@ use crate::theme as t;
 pub enum Command {
     Demo,
     Plugins,
+    Appearance,
     Models,
     Export,
     Resume,
@@ -27,6 +28,7 @@ pub const ALL: &[Command] = if crate::DEMO_AVAILABLE {
     &[
         Command::Demo,
         Command::Plugins,
+        Command::Appearance,
         Command::Models,
         Command::Export,
         Command::Resume,
@@ -36,6 +38,7 @@ pub const ALL: &[Command] = if crate::DEMO_AVAILABLE {
 } else {
     &[
         Command::Plugins,
+        Command::Appearance,
         Command::Models,
         Command::Export,
         Command::Resume,
@@ -52,6 +55,7 @@ impl Command {
         match self {
             Self::Demo => "demo",
             Self::Plugins => "plugins",
+            Self::Appearance => "appearance",
             Self::Models => "models",
             Self::Export => "export",
             Self::Resume => "resume",
@@ -66,6 +70,7 @@ impl Command {
             Self::Demo if demo => "Turn demo off",
             Self::Demo => "Turn demo on",
             Self::Plugins => "Manage plugins",
+            Self::Appearance => "Configure terminal appearance",
             Self::Models => "Choose model and reasoning level",
             Self::Export => "Export this conversation as ATIF",
             Self::Resume => "Resume a saved conversation",
@@ -101,7 +106,7 @@ pub fn help() -> String {
     if crate::DEMO_AVAILABLE {
         text.push_str("/demo  Toggle demo/live\n");
     }
-    text.push_str("/plugins  Manage plugins\n/models  Choose a model for an enabled provider\n/export [path]  Export the selected conversation as ATIF\n/resume [number|id]  Resume a saved conversation\n/help  Show commands\nTab  Complete a command\nEsc  Close suggestions or stop a reply\nCtrl+C  Quit");
+    text.push_str("/plugins  Manage plugins\n/appearance  Configure terminal appearance\n/models  Choose a model for an enabled provider\n/export [path]  Export the selected conversation as ATIF\n/resume [number|id]  Resume a saved conversation\n/help  Show commands\nTab  Complete a command\nEsc  Close suggestions or stop a reply\nCtrl+C  Quit");
     text.push_str("\n/brainstorm search <public query>  Search public profiles\n/brainstorm rank <hex-or-npub>  Look up raw influence\nBrainstorm sends only explicit queries and public keys to its configured HTTPS origin.");
     text
 }

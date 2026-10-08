@@ -880,6 +880,12 @@ impl Everglade {
         &self.light
     }
 
+    /// Whether the installed scene matches and uses its offline light layers.
+    #[must_use]
+    pub fn uses_baked_light(&self) -> bool {
+        self.baked.as_ref().is_some_and(|b| b.active)
+    }
+
     /// Reads the real time into the town clock and its light.
     fn advance_clock(&mut self) {
         self.now = self.clock.at(unix_now());

@@ -1,4 +1,4 @@
-//! Bundled plugin management and local configuration screens.
+//! Bundled and installed plugin management and local configuration screens.
 
 use unicode_width::UnicodeWidthStr;
 
@@ -14,7 +14,6 @@ use super::{span, truncate};
 use crate::{
     App, Draft, Mode, Screen,
     models::OPENROUTER_PLUGIN,
-    plugin_definition::DEFINITIONS,
     plugins::{ENDPOINT, SettingsFocus},
     theme as t,
 };
@@ -28,7 +27,10 @@ pub(super) fn render(frame: &mut Frame, area: Rect, app: &App) {
     let context_width = if area.width >= 42 { 17 } else { 0 };
     frame.render_widget(
         Paragraph::new(Span::styled(
-            truncate(title, area.width.saturating_sub(context_width + 2)),
+            truncate(
+                &display_text(title),
+                area.width.saturating_sub(context_width + 2),
+            ),
             Style::default()
                 .fg(t::TEXT_PRIMARY)
                 .add_modifier(Modifier::BOLD),
@@ -71,6 +73,7 @@ pub(super) fn render(frame: &mut Frame, area: Rect, app: &App) {
 
 fn manager(frame: &mut Frame, area: Rect, app: &App) {
     let p = &app.plugins;
+    let definition_count = p.definitions().count();
     let wide = area.width >= 56;
     let mut rows = Vec::new();
     if wide {
@@ -79,8 +82,9 @@ fn manager(frame: &mut Frame, area: Rect, app: &App) {
             t::GRAY,
         )));
     }
-    for (index, definition) in DEFINITIONS.iter().enumerate() {
-        let selected = index == p.selected.min(DEFINITIONS.len() - 1);
+    for (index, definition) in p.definitions().enumerate() {
+        let name = display_text(definition.name);
+        let selected = index == p.selected.min(definition_count - 1);
         let enabled = p.enabled_for(definition.id);
         let state = if enabled { "[ on  ]" } else { "[ off ]" };
         let status = p.status_for(definition.id);
@@ -88,9 +92,9 @@ fn manager(frame: &mut Frame, area: Rect, app: &App) {
             span(if selected { "❯ " } else { "  " }, t::ACCENT_MODEL),
             Span::styled(
                 if wide {
-                    format!("{:<30}", definition.name)
+                    format!("{:<30}", truncate(&name, 29))
                 } else {
-                    truncate(definition.name, area.width.saturating_sub(2))
+                    truncate(&name, area.width.saturating_sub(2))
                 },
                 Style::default()
                     .fg(t::TEXT_PRIMARY)
@@ -127,7 +131,15 @@ fn manager(frame: &mut Frame, area: Rect, app: &App) {
             ]));
         }
     }
-    let hints = if area.width >= 64 {
+    let hints = if selected_is_installed(app) {
+        if area.width >= 44 {
+            vec!["Up/Down Select · Enter Details · Esc Back"]
+        } else if area.width >= 28 {
+            vec!["Up/Down Select", "Enter Details · Esc Back"]
+        } else {
+            vec!["Up/Down Select", "Enter Details", "Esc Back"]
+        }
+    } else if area.width >= 64 {
         vec!["Up/Down Select · Space Turn on/off · Enter Configure · Esc Back"]
     } else if area.width >= 28 {
         vec![
@@ -144,7 +156,7 @@ fn manager(frame: &mut Frame, area: Rect, app: &App) {
     };
     let list_height =
         (rows.len() as u16).min(area.height.saturating_sub(hints.len() as u16 + 1).max(1));
-    let selected = p.selected.min(DEFINITIONS.len() - 1) as u16;
+    let selected = p.selected.min(definition_count - 1) as u16;
     let selected_row = if wide { 1 + selected } else { selected * 2 };
     let selected_bottom = selected_row + u16::from(!wide);
     let scroll = selected_bottom.saturating_sub(list_height.saturating_sub(1));
@@ -173,6 +185,22 @@ fn manager(frame: &mut Frame, area: Rect, app: &App) {
     );
 }
 
+fn selected_is_installed(app: &App) -> bool {
+    #[cfg(unix)]
+    return app.plugins.selected_installed().is_some();
+    #[cfg(not(unix))]
+    {
+        let _ = app;
+        false
+    }
+}
+
+fn display_text(text: &str) -> String {
+    text.chars()
+        .filter(|character| !character.is_control())
+        .collect()
+}
+
 fn status_color(status: &str) -> ratatui::style::Color {
     match status {
         "Disabled" => t::GRAY,
@@ -187,15 +215,43 @@ fn plugin_details(app: &App, width: u16) -> Vec<Line<'static>> {
     let definition = p.selected_definition();
     let mut lines = vec![
         Line::from(span(
-            if definition.id == OPENROUTER_PLUGIN {
+            display_text(if definition.id == OPENROUTER_PLUGIN {
                 "Model provider"
             } else {
                 definition.name
-            },
+            }),
             t::ACCENT_MODEL,
         )),
-        Line::from(span(definition.description, t::TEXT_SECONDARY)),
+        Line::from(span(
+            display_text(definition.description),
+            t::TEXT_SECONDARY,
+        )),
     ];
+    #[cfg(unix)]
+    if let Some(plugin) = p.selected_installed() {
+        let id = display_text(&plugin.id);
+        lines.push(Line::default());
+        lines.extend([
+            detail("Version", &display_text(&plugin.version), width),
+            detail("Plugin ID", &id, width),
+            detail(
+                "Location",
+                &display_text(&plugin.dir.to_string_lossy()),
+                width,
+            ),
+            Line::default(),
+            Line::from(span("Manage this plugin with the CLI:", t::GRAY)),
+            Line::from(span(
+                format!("openagents plugin enable {id}"),
+                t::TEXT_SECONDARY,
+            )),
+            Line::from(span(
+                format!("openagents plugin disable {id}"),
+                t::TEXT_SECONDARY,
+            )),
+        ]);
+        return lines;
+    }
     match definition.id {
         OPENROUTER_PLUGIN => {
             lines.push(Line::from(span(
@@ -315,7 +371,11 @@ fn plugin_info(frame: &mut Frame, area: Rect, app: &App) {
     let mut lines = plugin_details(app, area.width);
     lines.push(Line::default());
     lines.push(Line::from(span(
-        "Esc Back · Turn on/off from the plugin list",
+        if selected_is_installed(app) {
+            "Esc Back"
+        } else {
+            "Esc Back · Turn on/off from the plugin list"
+        },
         t::GRAY_BRIGHT,
     )));
     frame.render_widget(
@@ -893,6 +953,7 @@ fn action(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::plugin_definition::DEFINITIONS;
     use ratatui::{Terminal, backend::TestBackend};
 
     struct Canvas {
@@ -922,10 +983,132 @@ mod tests {
     }
 
     fn select(app: &mut App, id: &str) {
-        app.plugins.selected = DEFINITIONS
-            .iter()
+        let selected = app
+            .plugins
+            .definitions()
             .position(|definition| definition.id == id)
             .unwrap();
+        app.plugins.selected = selected;
+    }
+
+    #[cfg(unix)]
+    fn installed(index: usize) -> background::plugins::Installed {
+        background::plugins::Installed {
+            id: format!("{}:fixture-{index}", background::plugins::LOCAL_KEY),
+            slug: format!("fixture-{index}"),
+            name: format!("Installed {index}"),
+            summary: format!("Installed fixture {index} summary."),
+            version: "1.2.3".into(),
+            dir: std::path::PathBuf::from(format!("/fixture/extensions/fixture-{index}/1.2.3")),
+            background: vec![],
+            classes: vec![],
+            enabled: index % 2 == 0,
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn installed_rows_and_statuses_appear_when_the_open_manager_refreshes() {
+        let mut app = App::default();
+        app.set_mode(Mode::Live);
+        app.screen = Screen::Plugins;
+        assert!(!draw(&app, 110, 36).rows.join("\n").contains("Installed 0"));
+
+        app.plugins
+            .replace_installed(vec![installed(0), installed(1)]);
+        let canvas = draw(&app, 110, 36);
+        let enabled = canvas
+            .rows
+            .iter()
+            .find(|row| row.contains("Installed 0"))
+            .unwrap();
+        assert!(enabled.contains("[ on  ]"));
+        assert!(enabled.contains("Enabled"));
+        let disabled = canvas
+            .rows
+            .iter()
+            .find(|row| row.contains("Installed 1"))
+            .unwrap();
+        assert!(disabled.contains("[ off ]"));
+        assert!(disabled.contains("Disabled"));
+
+        select(&mut app, &installed(1).id);
+        let text = draw(&app, 110, 36).rows.join("\n");
+        assert!(text.contains("❯ Installed 1"));
+        assert!(text.contains("Enter Details"));
+        assert!(!text.contains("Space Turn on/off"));
+        assert!(!text.contains("Enter Configure"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_long_installed_catalog_keeps_the_selected_row_visible_after_resize() {
+        let mut app = App::default();
+        app.set_mode(Mode::Live);
+        app.screen = Screen::Plugins;
+        app.plugins
+            .replace_installed((0..24).map(installed).collect());
+        select(&mut app, &installed(23).id);
+
+        for (width, height) in [(110, 16), (20, 10)] {
+            let canvas = draw(&app, width, height);
+            let text = canvas.rows.join("\n");
+            assert!(text.contains("❯ Installed 23"), "{text}");
+            assert!(text.contains("[ off ]"), "{text}");
+            assert!(text.contains("Enter Details"), "{text}");
+            assert!(!canvas.cursor_visible);
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn installed_details_show_package_identity_and_cli_enablement_commands() {
+        let plugin = installed(0);
+        let mut app = App::default();
+        app.set_mode(Mode::Live);
+        app.plugins.replace_installed(vec![plugin.clone()]);
+        select(&mut app, &plugin.id);
+        app.screen = Screen::PluginSettings;
+
+        let canvas = draw(&app, 160, 24);
+        let text = canvas.rows.join("\n");
+        assert!(canvas.rows[0].contains(&plugin.name));
+        assert!(text.contains(&plugin.summary));
+        assert!(text.contains(&plugin.version));
+        assert!(text.contains(&plugin.id));
+        assert!(text.contains(plugin.dir.to_str().unwrap()));
+        assert!(text.contains(&format!("openagents plugin enable {}", plugin.id)));
+        assert!(text.contains(&format!("openagents plugin disable {}", plugin.id)));
+        assert!(!text.contains("Turn on/off from the plugin list"));
+        assert!(!canvas.cursor_visible);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn installed_metadata_does_not_emit_terminal_control_characters() {
+        let mut plugin = installed(0);
+        plugin.name = "Installed\u{1b}[31m 0".into();
+        plugin.summary = "Description\n\u{1b}]52;c;probe\u{7}".into();
+        plugin.version = "1.2.3\u{1b}[0m".into();
+        let mut app = App::default();
+        app.set_mode(Mode::Live);
+        app.plugins.replace_installed(vec![plugin]);
+        app.plugins.selected = DEFINITIONS.len();
+        assert!(
+            plugin_details(&app, 160)
+                .iter()
+                .flat_map(|line| &line.spans)
+                .all(|span| { !span.content.chars().any(char::is_control) })
+        );
+        for screen in [Screen::Plugins, Screen::PluginSettings] {
+            app.screen = screen;
+            assert!(
+                draw(&app, 160, 24)
+                    .rows
+                    .iter()
+                    .all(|row| !row.chars().any(char::is_control))
+            );
+        }
     }
 
     #[test]

@@ -13,10 +13,16 @@
 //!
 //! Everything else the town places that isn't ground, water, or a plant is
 //! carved ([`super::carve`]): the generated buildings and landmarks, the
-//! open pavilion and bandshell, the stalls, the studio's furniture, and
-//! fences and props. Carved placements whose bounds touch make one
-//! building, each of its blocks a piece that rests on the blocks under it
-//! or is carried a short way by the blocks beside it. The Agent Studio is
+//! medieval kit houses, the open pavilion and bandshell, the stalls, the
+//! studio's furniture, and fences and props. A medieval kit house is one
+//! building of the pieces on its lot, even when the proxies' boxes do not
+//! touch; its center is the lot's, where the layout reserved it, and a
+//! blast reaches it at the wall line rather than at the eaves. A generated
+//! landmark that stands on a lot, such as the lookout tower, stays its own
+//! building. The other carved placements whose bounds touch make one
+//! building. Each of a carved
+//! building's blocks is a piece that rests on the blocks under it or is
+//! carried a short way by the blocks beside it. The Agent Studio is
 //! no exception: its hall, strongroom, and stations break like the rest
 //! and come back with the town.
 //!
@@ -145,6 +151,9 @@ pub struct TownPiece {
 pub struct Building {
     /// Center and half extents, m.
     pub rect: ([f32; 2], [f32; 2]),
+    /// A medieval kit house's wall line, half extents, m. The piece box in
+    /// [`Self::rect`] reaches the eaves; reach is measured to the walls.
+    walls: Option<[f32; 2]>,
     pub stories: u8,
     /// Whether its pieces map onto the rules; a building that doesn't
     /// stays as placed.
@@ -176,9 +185,13 @@ impl Building {
         !self.carved.is_empty()
     }
 
-    /// The distance from `point` to the building's box, m.
+    /// The distance from `point` to the building's box, m. A medieval kit
+    /// house is measured to its wall line ([`Self::walls`]): eaves, a
+    /// chimney, and steps stick out of the lot, and a blast on the ground
+    /// beside them is not a blast on the house.
     fn distance(&self, point: Vec3) -> f32 {
-        let ([cx, cz], [hx, hz]) = self.rect;
+        let ([cx, cz], _) = self.rect;
+        let [hx, hz] = self.walls.unwrap_or(self.rect.1);
         let dx = ((point.x - cx).abs() - hx - 0.35).max(0.0);
         let dz = ((point.z - cz).abs() - hz - 0.35).max(0.0);
         let dy = (self.base - point.y).max(point.y - self.top).max(0.0);
@@ -1125,10 +1138,79 @@ impl Town {
             }
             buildings.push(building);
         }
-        // The carved buildings: carved placements whose bounds touch.
-        for group in groups(pack, placements, &carved_set)? {
+        // A medieval kit house is one building even when its proxies' boxes
+        // do not touch. Its pieces are claimed by the lot before the rest
+        // of the carved placements group by bounds.
+        let houses: Vec<layout::kit_house::KitHouse> = layout::first_town_houses()
+            .into_iter()
+            .chain(
+                layout::city::kit_houses()
+                    .into_iter()
+                    .map(|(_, house)| house),
+            )
+            .collect();
+        let mut claimed = vec![false; placements.len()];
+        // A kit house's center is the lot's, and its reach is its wall
+        // line. A generated landmark that stands on a lot keeps the center
+        // of its own pieces.
+        let mut house_groups: Vec<(Vec<usize>, Option<([f32; 2], [f32; 2])>)> = Vec::new();
+        for house in &houses {
+            let group: Vec<usize> = (0..placements.len())
+                .filter(|&i| carved_set[i] && !claimed[i] && house.holds(&placements[i]))
+                .collect();
+            for &i in &group {
+                claimed[i] = true;
+            }
+            if !group.is_empty() {
+                // The lot's center, so a shop is found where the layout
+                // reserved it. Eaves and steps shift the pieces' box.
+                // Reach is the wall line in the world: width along the
+                // front, depth out of it.
+                let (s, c) = house.facing.sin_cos();
+                let (hw, hd) = (house.width / 2.0, house.depth / 2.0);
+                let walls = [hw * c.abs() + hd * s.abs(), hw * s.abs() + hd * c.abs()];
+                house_groups.push((group, Some((house.center, walls))));
+            }
+        }
+        // A generated landmark that stands on a lot is its own building.
+        // The lookout tower stands in the Market Row lots; joining it to a
+        // house leaves its upper blocks in the air when the house's walls
+        // come down.
+        for i in 0..placements.len() {
+            if carved_set[i]
+                && !claimed[i]
+                && placements[i].model.starts_with("generated/")
+                && houses.iter().any(|house| house.on_lot(placements[i].at))
+            {
+                claimed[i] = true;
+                house_groups.push((vec![i], None));
+            }
+        }
+        let mut carved_rest = carved_set.clone();
+        for (i, taken) in claimed.iter().enumerate() {
+            if *taken {
+                carved_rest[i] = false;
+            }
+        }
+        // The carved buildings: each kit house, then the placements whose
+        // bounds touch.
+        let mut carved_groups = house_groups;
+        carved_groups.extend(
+            groups(pack, placements, &carved_rest)?
+                .into_iter()
+                .map(|group| (group, None)),
+        );
+        for (group, lot) in carved_groups {
             let index = buildings.len();
-            let building = carved_building(pack, placements, index, &group)?;
+            let mut building = carved_building(pack, placements, index, &group)?;
+            // The lot's center, before wall runs are claimed: eaves and
+            // steps shift the pieces' box off the reserved footprint.
+            // Reach is the wall line, so a blast beside the eaves is not
+            // a blast on the house.
+            if let Some((center, walls)) = lot {
+                building.rect.0 = center;
+                building.walls = Some(walls);
+            }
             // City wall runs inside it stand in for its own walls.
             for slot in &mut city {
                 if let Some((f, top)) = *slot {
@@ -1153,7 +1235,6 @@ impl Town {
                     }
                 }
             }
-            let mut building = building;
             for piece in &mut building.pieces {
                 if let Some((placement, _)) = piece.carve {
                     piece.look.paint = paint_of(layout::paint(&placements[placement]), &mut paints);
@@ -2497,6 +2578,7 @@ impl Surveyed {
         let base = height(cx, cz);
         let mut building = Building {
             rect: self.rect,
+            walls: None,
             stories: self.stories,
             valid: false,
             carved: Vec::new(),
@@ -2946,6 +3028,7 @@ fn carved_building(
     let levels = blocks.iter().map(|b| b.level).max().unwrap_or(0);
     Ok(Building {
         rect: (center, [(hi.x - lo.x) * 0.5, (hi.z - lo.z) * 0.5]),
+        walls: None,
         stories: levels.saturating_add(1),
         valid: !pieces.is_empty(),
         carved,

@@ -90,7 +90,7 @@ pub fn svg(snapshot: &Snapshot) -> String {
             "<g style=\"user-select:none;pointer-events:none\"><rect x=\"{}\" y=\"{}\" width=\"9\" height=\"20\" fill=\"{}\"/>",
             u32::from(cursor_x) * 9,
             u32::from(cursor_y) * 20,
-            hex(t::TEXT_SECONDARY)
+            hex(t::CURSOR)
         )
         .expect("writing to a String succeeds");
         let cell =
@@ -101,7 +101,7 @@ pub fn svg(snapshot: &Snapshot) -> String {
                 "<text x=\"{}\" y=\"{}\" fill=\"{}\">{}</text>",
                 u32::from(cursor_x) * 9,
                 u32::from(cursor_y) * 20 + 15,
-                hex(t::BG_BASE),
+                hex(t::CURSOR_TEXT),
                 escape(cell.symbol.as_str())
             )
             .expect("writing to a String succeeds");
@@ -112,16 +112,51 @@ pub fn svg(snapshot: &Snapshot) -> String {
     svg
 }
 
-fn hex(color: Color) -> String {
+pub(crate) fn hex(color: Color) -> String {
     match color {
         Color::Rgb(r, g, b) => format!("#{r:02x}{g:02x}{b:02x}"),
-        _ => "#c8c8c8".into(),
+        Color::Reset => hex(t::TEXT_SECONDARY),
+        color => hex(ansi(color)),
     }
 }
 
-fn escape(text: &str) -> String {
+pub(crate) fn escape(text: &str) -> String {
     text.replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")
         .replace('"', "&quot;")
+}
+
+fn ansi(color: Color) -> Color {
+    let index = match color {
+        Color::Black => 0,
+        Color::Red => 1,
+        Color::Green => 2,
+        Color::Yellow => 3,
+        Color::Blue => 4,
+        Color::Magenta => 5,
+        Color::Cyan => 6,
+        Color::Gray => 7,
+        Color::DarkGray => 8,
+        Color::LightRed => 9,
+        Color::LightGreen => 10,
+        Color::LightYellow => 11,
+        Color::LightBlue => 12,
+        Color::LightMagenta => 13,
+        Color::LightCyan => 14,
+        Color::White => 15,
+        Color::Indexed(index) if index < 16 => usize::from(index),
+        Color::Indexed(index) if index < 232 => {
+            let cube = index - 16;
+            let channel = |level: u8| if level == 0 { 0 } else { 55 + level * 40 };
+            return Color::Rgb(channel(cube / 36), channel(cube / 6 % 6), channel(cube % 6));
+        }
+        Color::Indexed(index) => {
+            let level = 8 + (index - 232) * 10;
+            return Color::Rgb(level, level, level);
+        }
+        color => return color,
+    };
+    let color = coder_ui::coder_noir::rgb(coder_ui::coder_noir::ANSI[index]);
+    Color::Rgb(color.red, color.green, color.blue)
 }

@@ -23,41 +23,38 @@ The umbrella issue is #10903.
 
 ## October 8 coordination checkpoint
 
-P9 (#10902) is closed. The web deploy record is `26bb7ef2ab`; production
-serves `openagents-web:d3f3ad546c` and the pinned private kit with HTTP
-`200`. That image predates P9's smaller public pack. The terminal retention
+P9 (#10902) is closed. Deploy record `26bb7ef2ab` completes the requested
+`openagents-web:d3f3ad546c` deployment. The later component catalog deploy
+preserves its game assets; the P3 deployment below now serves P9's smaller
+public pack and the reviewed private kit. The terminal retention
 fix (#10909) is closed at `98df2423e3`, with its full-hour release soak
 and consumer check passing.
 
-P3 (#10896) remains open on the pushed branch
-[`codex/everglade-p3`](https://github.com/OpenAgentsInc/openagents/tree/codex/everglade-p3).
-Checkpoint `7d27c2b761` updates its handoff with the source, commands,
-and private evidence paths. Capture source `1d38e17a75` passes the scoped checks.
-All 65 houses pass the unsuppressed coplanar detector and the compiled
-budgets: near levels have at most 10,000 triangles and 12 draws, middle
-levels at most 3,000 triangles and one draw, and far levels at most 800
-triangles and one draw. Six remote raster captures cover a cabin at
-horizontal selector distances of 10, 50, and 120 m and the market's
-exterior, roof, and interior. Their exact eye distances and hashes are in
-the capture receipts. The near cabin view favors the roof; the interior
-is dark and shows the existing rain-through-ceiling limitation.
+P3 (#10896) lands as `682435a6c1`; the `everglade-kit` artifact queue
+repins the reviewed pack in `5415c483de`. Registry prerequisite
+`14437ac3c2` includes whole-house level generation in the queue's
+regeneration and consistency check. All 65 houses pass the unsuppressed
+coplanar detector and the compiled budgets: near levels have at most
+10,000 triangles and 12 draws, middle levels at most 3,000 triangles and
+one draw, and far levels at most 800 triangles and one draw.
 
-The private candidate pack has digest
-`c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e`,
-21,467,658 bytes, and 63,438,848 decoded texture bytes. It is unpublished;
-the larger decoded footprint also needs B4's tier review. Capture source
-`b903f52e2b` completes the matching demo/grade and far damage/restore
-acceptance below. Fresh scoped checks and the web consumer check pass.
-Publication still requires `openagents artifact submit everglade-kit`,
-the private upload, and a dependent web deploy. Do not repin directly or
-commit licensed files.
+Capture source `b903f52e2b` completes the matching exported-demo and grade
+views, plus first and repeated far damage and exact restoration. The six
+geometry views and fresh scoped checks are recorded below. The reviewed
+pack is `c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e`,
+21,467,658 bytes, with 63,438,848 decoded texture bytes (60.5 MiB).
+P3 is code-complete and deployed on
+`coder-web-p3-d2fb95d33d-20261008140843`. Staging with no traffic and
+production each pass 33 HTTP checks, both hardware browser render paths,
+and 30 catalog assertions. This footprint needs B4's web and phone tier work.
+No licensed geometry or captures enter Git.
 
 B2 (#10906) has code in `0e0d8afd37` but remains open for verification
 and publication. B3 (#10907) has an unverified source checkpoint on
 [`codex/everglade-b3`](https://github.com/OpenAgentsInc/openagents/tree/codex/everglade-b3),
 commit `a2f4bbf7d3`; no bake, check, or capture ran for that checkpoint.
 B4 (#10908) and umbrella #10903 remain open. New delegation remains
-stopped; the coordinator resumes P3 directly after a fresh claim audit.
+stopped; the coordinator continues B2 directly after a fresh claim audit.
 Recheck each issue and claim before starting its work. The sections below retain
 the original October 7 plan.
 
@@ -68,7 +65,7 @@ the original October 7 plan.
 | Decisions recorded | #10903 | `46a89d3587` | Done |
 | P1: export and archive | #10894 | `89328cdd2a` | Closed; vendor archive uploaded October 7 |
 | P2: kit pack, loader, proxies | #10895 | `8f6136a533`, first repin `ea39fa5cf2` | Closed |
-| P3: materials and levels | #10896 | grade in `0a44257462`, tooling `50dca3b658` | CPU acceptance passes; visual acceptance and publication remain open |
+| P3: materials and levels | #10896 | `682435a6c1`, repin `5415c483de` | Closed; source, artifact, capture, and website checks pass |
 | P4: kit houses and breaking | #10897 | `0a44257462` | Closed |
 | P5: Stoop Lane | #10898 | `0a44257462`, `ea39fa5cf2` | Closed |
 | P6: Main Street, the plaza, Market Row | #10899 | `611df73ca7`, repin `6b37d8ee57` | Closed |
@@ -77,8 +74,8 @@ the original October 7 plan.
 | P8: web and phone | #10901 | `df3f5fa15e` | Closed; pack uploaded, Cloud Build grant in place |
 | P9: cleanup | #10902 | `f008baa090`, repin `4b9ad70748` | Closed; both suites and pack consistency pass |
 | B1: offline baker | #10905 | `0360046732`, `983432c41f` | Closed |
-| B2: lightmap layers | #10906 | by its subagent | See its issue |
-| B3: time of day and destruction | #10907 | checkpoint `a2f4bbf7d3` on `codex/everglade-b3` | Unverified; claim released while P3 takes priority |
+| B2: lightmap layers | #10906 | `0e0d8afd37`, verification on `codex/everglade-b2-verification` | Five focused tests pass; publication and capture acceptance remain |
+| B3: time of day and destruction | #10907 | checkpoint `a2f4bbf7d3` on `codex/everglade-b3` | Claimed separately on October 8; check its issue before resuming |
 | B4: tiers and measurement | #10908 | none | Not started |
 
 The town has 65 medieval kit houses: Stoop Lane, Main Street, the Fountain
@@ -91,34 +88,58 @@ unchanged.
 
 ## What's open
 
-- **P3 (#10896).** Checkpointed on October 8 on `codex/everglade-p3`;
-  the coordinator holds its claim and the board is In progress.
-  All 65 actual houses pass strict selected budgets: near 3,156–10,000
-  triangles/10–12 draws, middle 2,999–3,000/one, and far 799–800/one.
-  The real candidate pack admits all 53 pieces, five prop far models, and
-  131 house models. Every house and the reduced market-hall near model
-  pass the unchanged coplanar detector without exemptions. Focused
-  transform/paint, compiler/admission, selector/damage/restore, and walking
-  checks pass; the rebased headless consumer check also passes. Six
-  source-bound geometry/LOD captures are accepted: cabin at horizontal
-  10/50/120 m and market exterior/gable/interior. Near favors the roof;
-  interior lighting and rain remain limitations. The matching exported-demo
-  and grade views and first/repeated far damage plus restoration pass at
-  `b903f52e2b`. Rebase on current main before artifact-queue publication,
-  private upload, and dependent deployment.
-  No P3 artifact or main commit has landed. Exact source/input/candidate
-  identities, captures, limitations, and resume commands follow below.
-- **B2 (#10906).** Its issue holds what its subagent landed and what
-  remains.
+- **B2 (#10906).** The coordinator holds the claim. The completed queue
+  artifact landed in `d138fad18276ec7942c6116bbf992c3062ae5841` after
+  rebasing its generated commit and rerunning `--layers --check`.
+  Compilation took 24.27 seconds; no rebake ran. For unrelated main
+  updates, preserve the completed queue commit, compare the baker,
+  renderer, scene, assets, and recipe, then rebase and check under the
+  artifact lease. Do not regenerate. The recovery script is retained in
+  the coordinator's private `b2-verification/recover-queue.sh`. The landed per-vertex
+  layers pass the lamp/bounce fixture, three format and combination tests,
+  the missing/stale-layer fallback test, and scoped formatting on
+  `coderos-4080`. Artifact submission `01791470792224747042-2390831-0`
+  published the current P3 scene through `everglade-kit-bake`. Its first
+  bake was stopped when the Mac fell below the owner's 25 GB floor; idle
+  local target-agent12 was removed after preserving its two water capture
+  executables, restoring 110.8 GB free. The resumed bake completes in
+  1,639,555 ms on four CPU workers: 4,326,184 vertices, 2,173,638 occluding
+  triangles, 330 lamps, and 806,114 lamp receivers. Its 51,682,623-byte
+  output has SHA-256
+  `14ae7f75e9ce4f81483f6f44369753545cb2cab892177607438b3077ebbbae23`,
+  bake key `5f9adbe288bb182e946991e934b169163e2dabfff2adeb9bcdd37f6b9627d207`,
+  and scene `a673374a9399f0f564e558bf50cc608a23227d39893bada078093fac021379df`.
+  The pin is on main. The first
+  output and receipt are preserved in the coordinator's private
+  `b2-verification/` scratch directory. The private bucket copy has the
+  matching length and MD5; captures and public delivery are not accepted yet.
+  Both digest-route tests pass, including a streamed 33 MiB file.
+  The first staged revision, `coder-web-b2-ca7de5879e-20261008165703`,
+  has zero traffic: its buffered 51.7 MB download returns HTTP 500 at
+  Cloud Run's 32 MiB limit. The streaming correction passes locally on
+  `coderos-4080`; publish a replacement image before moving traffic.
+  Four noon/night layered/fallback captures pass at source
+  `7d84e4e19d2d7fa6cc06961d363bdb338ef6d1c2`; the frozen executable is
+  `8fe1ad2584bea6c3719efb6a2ac1f6e51174cb40fe1cb128aa87c9abdf42a0b3`.
+  Reports prove the NVIDIA adapter, matching scene, active layers, and
+  night lamp intensity 1.0. Fifteen PNGs and reports remain under the
+  coordinator's private `b2-verification/captures/`. Night lamp differences
+  are subtle at the townhouse doorway; these are not chart-seam evidence.
+  Earlier captures with a stale staged frame remain separately under
+  `captures-before-frame-refresh/`. Public delivery and cold-cache native
+  download verification remain pending.
+  The original second-UV lightmaps and denser lamp probes are still
+  deferred in the plan; per-vertex results do not establish those checks.
 - **B3 (#10907).** Checkpoint `a2f4bbf7d3` on `codex/everglade-b3` holds
   unverified blending, damage repair, private-layer preflight, and acceptance
   tools. Its handoff lists the exact remaining checks, private scene identity,
-  captures, and timing plan. The claim is released while P3 takes priority;
-  no B3 Cargo command, bake, capture, or measurement has run.
+  captures, and timing plan. Another session claimed B3 at 14:57 UTC on
+  October 8; leave that claim alone. The checkpoint itself has no recorded
+  B3 Cargo checks, captures, or measurements; consult the issue for newer
+  verification evidence.
 - **B4 (#10908).** Not started. It needs B2 and P8. One 512 px kit pack
-  serves every tier today (10.2 MB to transfer, about 28 MiB decoded),
-  which is over the phone's 8 MiB transfer budget. A phone tier is part of
-  B4.
+  serves every tier today (21,467,658 bytes to transfer, 60.5 MiB decoded),
+  exceeding the web and phone soft budgets. Both tiers need B4.
 
 ## P3 checkpoint inputs
 
@@ -297,9 +318,9 @@ The remote directory is
 `/home/christopherdavid/.openagents/scratch/process-2159833/medieval-p3-tools/p3-raster/`.
 The Mac copy, including receipts, is
 `/Users/christopherdavid/.openagents/scratch/codex-01a119ad-8a81-7882-9d04-97d83523f0c8/p3-tools/p3-raster/`.
-No P3 artifact submission, repin, upload, deployment, or main landing has run.
-The remaining work is current-main integration, `everglade-kit` submission,
-private upload, and dependent deployment. The coordinator holds the claim.
+These captures precede the final P3 landing. The source and artifact pin
+are now on main, and the reviewed pack is uploaded and deployed. The
+completed checks and deployment records follow.
 
 ### Completed demo, grade, and far damage acceptance
 
@@ -341,9 +362,8 @@ Logs remain in `p3-final-checks-64c25fecb1/`; the formatting-only successor
 matches the checked source. The web consumer reports existing unused-import
 and dead-field warnings. No broad gate or unrelated test suite ran.
 
-Resume only after a fresh claim/status audit and coordinator resource window.
-The retained private helper checks the immutable executable and candidate
-hashes and takes quiet/GPU leases. To repeat one approved capture, replace
+P3 is complete. The retained private helper checks the immutable
+executable and candidate hashes and takes quiet/GPU leases. To repeat one approved capture, replace
 `cabin-h50` with another name from the table:
 
 ```sh
@@ -458,7 +478,7 @@ for example to compare grades.
 - **Stories.** A story is 4.5 m floor to floor (a 4 m wall and the kit's
   0.5 m band), on a plinth sunk 1.25 m, so the floor is 0.75 m up the
   steps.
-- **Breaking.** Kit pieces are carved one block each. The P3 checkpoint
+- **Breaking.** Kit pieces are carved one block each. P3
   groups intact house submissions and retains editable per-piece ranges
   for damage fallback and restore; those pieces do not draw as instances.
 - **Test edits.** The tall-ruin test lets a chunk lodge up to 4.5 m high
@@ -474,8 +494,9 @@ for example to compare grades.
 
 ## Owner steps left
 
-Only the 60 frames per second checks on the reference laptop and a phone,
-after the openagents.com deploy that serves the kit (`NEEDS_OWNER.md`).
+Only the physical reference laptop and phone checks remain
+(`NEEDS_OWNER.md`, #10901). Repeat the tier measurements after B4; the
+current P3 footprint exceeds the web and phone soft budgets.
 
 ## Captures
 
@@ -485,7 +506,15 @@ session's scratch directory. The P5 to P7 captures are `p5-stoop-*.png`,
 `p6-*.png`, `p7-*.png`, `p7b-approach.png`, `p4-house/*.png` (a kit house
 breaking), and `p3-grade-before.png` and `p3-grade-after.png`.
 
-The requested web image `openagents-web:d3f3ad546c` serves the kit on
-revision `coder-web-d3f3ad546c-20261008043217` at 100 percent traffic. The
-deployment record is `26bb7ef2ab`. That image predates P9 and retains the
-older public pack until a later image deploys the cleanup.
+The requested web image `openagents-web:d3f3ad546c` was deployed in
+`26bb7ef2ab`. Production now serves P3 revision
+`coder-web-p3-d2fb95d33d-20261008140843`, with both current pack hashes and
+older immutable URLs verified. See the October 8 P3 entry in
+[Website deployment](../deployment/openagents-web.md).
+Private browser receipts and inspected WebGPU framebuffer and WebGL2 views
+are in
+`/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/p3-web/production-browser/`.
+The WebGPU view uses framebuffer readback because Linux headless
+compositor screenshots are black on both preceding and new images; those
+black screenshots are retained as rejected evidence. This check establishes
+rendering and asset delivery, not the physical-device frame rate.

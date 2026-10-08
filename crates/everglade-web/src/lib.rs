@@ -25,3 +25,5 @@ mod web;
 
 #[cfg(target_arch = "wasm32")]
 mod terminal;
+#[cfg(target_arch = "wasm32")]
+mod theme;

@@ -12,6 +12,7 @@ crate-type = ["cdylib", "rlib"]
 # Everything is browser-only; a native build of this crate is empty.
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 coder-browser = { path = "../coder-browser" }
+coder-ui = { path = "../coder-ui" }
 coder-host-wire = { path = "../coder-host-wire" }
 coder-pty = { path = "../coder-pty", default-features = false }
 coder-access = { path = "../coder-access", default-features = false }

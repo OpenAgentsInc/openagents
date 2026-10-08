@@ -1,0 +1,51 @@
+   Compiling typenum v1.20.1
+   Compiling getrandom v0.3.4
+   Compiling zerocopy v0.8.57
+   Compiling find-msvc-tools v0.1.13
+   Compiling hybrid-array v0.4.15
+   Compiling cmov v0.5.4
+   Compiling shlex v2.0.1
+   Compiling cc v1.4.7
+   Compiling block-buffer v0.12.1
+   Compiling crypto-common v0.2.2
+   Compiling ctutils v0.4.2
+   Compiling rand_core v0.9.5
+   Compiling autocfg v1.5.1
+   Compiling const-oid v0.10.2
+   Compiling digest v0.11.3
+   Compiling num-traits v0.2.19
+   Compiling secp256k1-sys v0.11.0
+   Compiling inout v0.2.2
+   Compiling wait-timeout v0.2.1
+   Compiling ppv-lite86 v0.2.21
+   Compiling bit-vec v0.8.0
+   Compiling quick-error v1.2.3
+   Compiling cpufeatures v0.3.1
+   Compiling fnv v1.0.7
+   Compiling serde_json v1.0.151
+   Compiling rusty-fork v0.3.1
+   Compiling rand_chacha v0.9.0
+   Compiling bit-set v0.8.0
+   Compiling cipher v0.5.2
+   Compiling hmac v0.13.0
+   Compiling rand v0.9.5
+   Compiling rand_xorshift v0.4.0
+   Compiling unarray v0.1.4
+   Compiling regex-syntax v0.8.11
+   Compiling proptest v1.11.0
+   Compiling hkdf v0.13.0
+   Compiling secp256k1 v0.31.1
+   Compiling chacha20 v0.10.2
+   Compiling sha2 v0.11.0
+   Compiling ryu-js v1.0.3
+   Compiling subtle v2.6.1
+   Compiling nostr v0.1.0 (/workspace/crates/nostr)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 27.71s
+     Running unittests src/lib.rs (/home/ubuntu/work/openagents-target-agent1/debug/deps/nostr-b2fac49eef9c467e)
+
+running 1 test
+test market_contracts::tests::free_agreement_requires_both_signatures_exact_terms_and_confirmation ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 449 filtered out; finished in 0.02s
+
+EXIT:0

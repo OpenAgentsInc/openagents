@@ -1064,20 +1064,9 @@ pub fn build(out: &mut Vec<Placement>) {
     for (_, house) in kit_houses() {
         house.raise(out);
     }
-    // The plaza's fountain draws as the kit's; its instance keeps its
-    // blockers and its place in the world tree.
-    out.extend(
-        instances()
-            .iter()
-            .filter(|i| i.name != PLAZA_FOUNTAIN.name)
-            .map(Instance::placement),
-    );
-    out.push(Placement::new(
-        "kit/fountain",
-        PLAZA_FOUNTAIN.at,
-        PLAZA_FOUNTAIN.yaw,
-        Collision::None,
-    ));
+    // The plaza's fountain is the kit's (`generated::FOUNTAIN`); its
+    // instance places it, keeps its blockers, and names its world-tree node.
+    out.extend(instances().iter().map(Instance::placement));
     market(out);
     stoops(out);
     lanterns(out);

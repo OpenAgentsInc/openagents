@@ -179,10 +179,10 @@ fn colors() -> workspace::Palette {
         rust_native::style::Color::rgb((value >> 16) as u8, (value >> 8) as u8, value as u8)
     };
     workspace::Palette {
-        text: color(crate::palette::Intensity::ThreeQuarters.color()),
-        heading: color(crate::palette::Intensity::Full.color()),
-        secondary: color(crate::palette::Intensity::Half.color()),
-        border: color(crate::palette::Intensity::Quarter.color()),
+        text: color(coder_ui::coder_noir::CONTENT),
+        heading: color(coder_ui::coder_noir::CONTENT),
+        secondary: color(coder_ui::coder_noir::CONTENT_SECONDARY),
+        border: color(coder_ui::coder_noir::STROKE_SUBTLE),
     }
 }
 
@@ -567,7 +567,7 @@ async fn asset(State(app): State<App>, Path(file): Path<String>) -> Response {
     let (mime, bytes) = match file.as_str() {
         "cloud.css" => (
             "text/css; charset=utf-8",
-            include_bytes!("../../static/cloud.css").to_vec(),
+            crate::palette::stylesheet(include_str!("../../static/cloud.css")).into_bytes(),
         ),
         "native.css" => (
             "text/css; charset=utf-8",

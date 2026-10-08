@@ -102,13 +102,10 @@ fn the_survey_maps_the_kit_buildings_and_carves_everything_else() {
     // The workshop hall is the studio's, and breaks like the rest.
     let hall = building(&town, HALL);
     assert!(buildings[hall].destructible());
-    // Every generated building and landmark is carved into blocks.
+    // Every generated building and landmark is carved into blocks, the
+    // plaza's fountain among them: it draws as the medieval kit's.
     let placements = layout::placements();
-    // The plaza's fountain draws as the medieval kit's.
-    for instance in layout::generated()
-        .into_iter()
-        .filter(|i| i.name != layout::city::PLAZA_FOUNTAIN.name)
-    {
+    for instance in layout::generated() {
         let carved = buildings.iter().find(|b| {
             b.carved.iter().any(|c| {
                 placements[c.placement].model == instance.model.name

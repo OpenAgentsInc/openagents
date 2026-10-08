@@ -3250,6 +3250,7 @@ version = "1.0.0-rc.5"
 dependencies = [
  "acp-client",
  "atif",
+ "background",
  "brainstorm-client",
  "code-highlight",
  "coder",
@@ -5134,6 +5135,7 @@ dependencies = [
  "coder-host-wire",
  "coder-pty",
  "coder-reach",
+ "coder-ui",
  "console_error_panic_hook",
  "futures-util",
  "glam",

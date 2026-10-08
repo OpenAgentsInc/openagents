@@ -180,7 +180,7 @@ fn main() -> io::Result<()> {
             EnableMouseCapture,
             SetCursorStyle::BlinkingBlock
         )?;
-        let ratatui::style::Color::Rgb(r, g, b) = coder_new::theme::TEXT_SECONDARY else {
+        let ratatui::style::Color::Rgb(r, g, b) = coder_new::theme::CURSOR else {
             unreachable!("Coder uses RGB colors");
         };
         write!(io::stdout(), "\x1b]12;#{r:02x}{g:02x}{b:02x}\x07")?;
@@ -190,12 +190,20 @@ fn main() -> io::Result<()> {
         let mut next_tick = started + interval;
         let mut background = Background::default();
         let mut catalog = coder_new::model_catalog::Loader::default();
+        #[cfg(unix)]
+        let mut plugins = background::Layout::from_env()
+            .ok()
+            .map(coder_new::plugin_catalog::Loader::new);
         loop {
             app.elapsed_seconds = started.elapsed().as_secs();
             app.follow_tick();
             background.sync(&mut app);
             app.persist_session(false);
             catalog.sync(&mut app);
+            #[cfg(unix)]
+            if let Some(loader) = &mut plugins {
+                loader.sync(&mut app);
+            }
             execute!(io::stdout(), BeginSynchronizedUpdate)?;
             terminal.draw(|frame| ui::render(frame, &mut app))?;
             // Keep the block blinking while progress updates move the terminal cursor.

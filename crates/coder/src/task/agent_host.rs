@@ -2564,7 +2564,7 @@ impl Agents {
             .ensure(name, &checkout, &origin, &base)
             .map_err(|why| unreachable(name, &why))?;
         let (goal, task) = studio
-            .submit_remote(direct.clone(), name, &base, now)
+            .submit_remote(direct.clone(), name, &checkout, &base, now)
             .map_err(|why| {
                 RemoteRefusal::Fail(
                     format!("The studio refused the task: {why}"),
@@ -2575,9 +2575,9 @@ impl Agents {
             title: direct.title.clone(),
             prompt: format!(
                 "{}\n\nYou are a remote worker for {}, the owner's workshop agent. Work only in \
-                 the task's worktree, which the host made at commit {base}. Leave the change in \
-                 the worktree — committed or not — and stage new files (`git add -A`) so the \
-                 worktree's diff against {base} is the whole change. Never push, merge, rebase, \
+                 the task's checkout, which the host pinned at commit {base}. Leave the change in \
+                 the checkout — committed or not — and stage new files (`git add -A`) so the \
+                 checkout's diff against {base} is the whole change. Never push, merge, rebase, \
                  or open a pull request; the owner reviews and merges it on {} computer.",
                 queued.text,
                 record.name,
@@ -2647,7 +2647,11 @@ impl Agents {
                     // A patch that cannot be read yet — the computer is in
                     // a connecting window — is a look for the next tick,
                     // not the task's end.
-                    let got = match remote.review(&work.computer, remote_task) {
+                    let got = match work.remote_checkout.as_deref() {
+                        None => Err("its checkout is not recorded".into()),
+                        Some(checkout) => remote.review(&work.computer, remote_task, checkout),
+                    };
+                    let got = match got {
                         Ok(review) => Ok(review),
                         Err(why) if away(&why) => continue,
                         Err(why) => Err(why),
@@ -3559,9 +3563,14 @@ enum RemoteRefusal {
 /// "unreachable", or "timed out" then.
 fn away(why: &str) -> bool {
     let lower = why.to_lowercase();
-    ["did not connect", "not connected", "unreachable", "timed out"]
-        .iter()
-        .any(|mark| lower.contains(mark))
+    [
+        "did not connect",
+        "not connected",
+        "unreachable",
+        "timed out",
+    ]
+    .iter()
+    .any(|mark| lower.contains(mark))
 }
 
 /// The refusal a remote lane step (`ensure`, `create`) answers with: a
@@ -3569,7 +3578,9 @@ fn away(why: &str) -> bool {
 /// request's words allow it); everything else is the step's own failure.
 fn unreachable(name: &str, why: &str) -> RemoteRefusal {
     if away(why) {
-        RemoteRefusal::Local(format!("{name} is not connected ({why}), so I'm doing it here"))
+        RemoteRefusal::Local(format!(
+            "{name} is not connected ({why}), so I'm doing it here"
+        ))
     } else {
         RemoteRefusal::Fail(why.to_owned(), "remote".into())
     }

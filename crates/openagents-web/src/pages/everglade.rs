@@ -12,6 +12,7 @@
 //! DIR/pack/<PACK_SHA256>.vtp    the pinned pack from assets/verse/everglade/
 //! DIR/kit/<KIT_SHA256>.vtp      the medieval kit pack, from the private
 //!                               bucket at build time, when it's there
+//! DIR/kit/bake/<SHA256>.vlay    the reviewed offline light layers
 //! ```
 //!
 //! `/everglade/{file}` serves any `.js` or `.wasm` file directly in `DIR`,
@@ -92,6 +93,7 @@ pub(crate) fn routes() -> Router<App> {
         .route("/everglade/{file}", get(build_file))
         .route("/everglade/pack/{file}", get(pack_file))
         .route("/everglade/kit/{file}", get(kit_file))
+        .route("/everglade/kit/bake/{file}", get(bake_file))
 }
 
 /// The build directory, when it holds the glue module and the wasm.
@@ -221,7 +223,11 @@ pub(crate) fn build_type(name: &str) -> Option<&'static str> {
 /// Whether `name` is a digest-named pack: 64 lowercase hex digits and
 /// `.vtp`.
 pub(crate) fn pack_name(name: &str) -> bool {
-    name.strip_suffix(".vtp").is_some_and(|digest| {
+    digest_name(name, ".vtp")
+}
+
+fn digest_name(name: &str, extension: &str) -> bool {
+    name.strip_suffix(extension).is_some_and(|digest| {
         digest.len() == 64
             && digest
                 .bytes()
@@ -313,6 +319,48 @@ async fn kit_file(State(app): State<App>, UrlPath(file): UrlPath<String>) -> Res
         PACK_CACHE,
     )
     .await
+}
+
+/// Offline light layers for desktop clients, beside the licensed kit pack.
+async fn bake_file(State(app): State<App>, UrlPath(file): UrlPath<String>) -> Response {
+    let Some(directory) = app.config.everglade.as_deref() else {
+        return crate::not_found().await;
+    };
+    if !digest_name(&file, ".vlay") {
+        return crate::not_found().await;
+    }
+    use tokio::io::AsyncReadExt;
+
+    let path = directory.join(KIT_DIRECTORY).join("bake").join(&file);
+    if !tokio::fs::metadata(&path)
+        .await
+        .is_ok_and(|metadata| metadata.is_file())
+    {
+        return crate::not_found().await;
+    }
+    let file = match tokio::fs::File::open(path).await {
+        Ok(file) => file,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return crate::not_found().await;
+        }
+        Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    };
+    // Cloud Run caps buffered HTTP/1 responses at 32 MiB. Leave the
+    // length unknown so Hyper streams these larger files in chunks.
+    let stream = futures_util::stream::try_unfold(file, |mut file| async move {
+        let mut bytes = vec![0; 64 * 1024];
+        let count = file.read(&mut bytes).await?;
+        bytes.truncate(count);
+        Ok::<_, std::io::Error>((count != 0).then_some((bytes, file)))
+    });
+    (
+        [
+            (header::CONTENT_TYPE, "application/octet-stream"),
+            (header::CACHE_CONTROL, PACK_CACHE),
+        ],
+        axum::body::Body::from_stream(stream),
+    )
+        .into_response()
 }
 
 /// One regular file's bytes, or `404` when it isn't there.

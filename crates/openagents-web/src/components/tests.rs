@@ -127,7 +127,8 @@ async fn demo_is_owned_public_and_standalone_without_a_task_store() {
     assert!(crate::upstream::owned("/demo"));
     let (status, headers, html) = request(config, "/demo", "openagents.com").await;
     assert_eq!(status, StatusCode::OK);
-    assert!(html.contains("<svg"));
+    assert!(html.contains("class=\"demo-grid\""));
+    assert!(!html.contains("<svg"));
     assert!(html.contains("id=\"demo-root\""));
     assert!(html.contains("openagents.coder.demo.v1"));
     assert!(!html.contains("<header"));

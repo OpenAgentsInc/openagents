@@ -18222,7 +18222,7 @@
                     ]
                   }
                 ],
-                "summary": "Let her task-mode coding run on the connected computer REMOTE (its `openagents computer` name): at most N of her tasks there at once (default 1), in its checkout at DIR (default ~/work/<workspace label>), whose workspace the remote host admits as LABEL (default the local label). `openagents computer enroll` gives the host the grant first.",
+                "summary": "Let her task-mode coding run on the connected computer REMOTE (its `openagents computer` name): at most N of her tasks there at once (default 1), in its checkout at DIR (default ~/work/<workspace label>), whose workspace the remote host admits as LABEL (default the local label). Each task resets DIR to its base and removes untracked files there, so give her a checkout nobody edits. `openagents computer enroll` gives the host the grant first.",
                 "effect": "local_write",
                 "runs_on": "connected_computer"
               }
@@ -29494,7 +29494,7 @@
                   "quote"
                 ],
                 "usage": [
-                  "purchase quote --root DIR --purchase ID --plugin PUBKEY:SLUG --input FILE --wallet-home DIR --max-msat N --max-fee-msat N [--relay URL] [--blossom URL]"
+                  "purchase quote --root DIR --purchase ID --plugin PUBKEY:SLUG --input FILE --wallet-home DIR --max-msat N --max-fee-msat N [--relay URL] [--blossom URL] [--file NAME=PATH]..."
                 ],
                 "forms": [
                   {
@@ -29562,11 +29562,19 @@
                         "value": "URL",
                         "open": true,
                         "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "file",
+                        "value": "NAME=PATH",
+                        "open": true,
+                        "optional": true,
+                        "repeated": true
                       }
                     ]
                   }
                 ],
-                "summary": "Resolve a supported signed release, disclose the supplied private text to the selected customer origin, and retain its exact unpaid invoice.",
+                "summary": "Resolve a supported signed release, disclose the supplied private text and exactly the files the release names to the selected customer origin, and retain its exact unpaid invoice.",
                 "effect": "publishes",
                 "runs_on": "connected_computer"
               }
@@ -31916,6 +31924,14 @@
           "kind": "option",
           "name": "blossom",
           "value": "URL",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "file",
+          "value": "NAME=PATH",
           "open": true,
           "optional": true,
           "repeated": true

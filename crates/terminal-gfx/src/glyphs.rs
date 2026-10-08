@@ -33,7 +33,7 @@ const FONTS: &[(&str, u32)] = &[
     ("/System/Library/Fonts/Apple Braille.ttf", 0),
     ("/System/Library/Fonts/Apple Color Emoji.ttc", 0),
     ("/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf", 0), // check-fonts: allow
-    ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 0), // check-fonts: allow
+    ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 0),     // check-fonts: allow
     ("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", 0),
     ("/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc", 0),
     (

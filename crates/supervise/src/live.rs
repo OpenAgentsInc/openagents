@@ -224,7 +224,7 @@ impl Job {
                     Ok(status) => Ending::Exited(status.code()),
                     Err(error) => Ending::Failed(error.to_string()),
                 },
-                () = tokio::time::sleep(limits.wall) => Ending::TimedOut,
+                () = crate::deadline(limits.wall) => Ending::TimedOut,
                 asked = stopped => {
                     // A sent stop is the caller's request; a closed channel
                     // is a dropped handle, which ends the job the same way.

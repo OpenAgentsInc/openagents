@@ -490,16 +490,20 @@ impl Studio {
         head: &str,
         reason: &str,
     ) -> Result<u64, Error> {
-        let (index, entry) = self.locate(task_id)?;
+        let (index, _) = self.locate(task_id)?;
         if matches!(
             progress(tasks, task_id),
             Progress::Queued | Progress::Running
         ) {
             cancel(tasks, task_id, "Rejected in the studio")?;
         }
-        if let Some(entry) = entry
-            && let Some(flow) = self.state.goals[index].plan[entry].flow.as_mut()
-            && flow.task_id == task_id
+        // A direct goal's lead slot names its one plan entry's task, so
+        // `locate` answers the lead; the change is the entry's either way.
+        if let Some(flow) = self.state.goals[index]
+            .plan
+            .iter_mut()
+            .filter_map(|entry| entry.flow.as_mut())
+            .find(|flow| flow.task_id == task_id)
         {
             flow.stage = super::Stage::Rejected;
             flow.review = None;

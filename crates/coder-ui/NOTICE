@@ -10,4 +10,7 @@ Apache-2.0, Copyright 2023-2026 SpaceXAI.
 
 The Grok Night theme is the public asset retained by code-highlight at
 assets/grok-build/grok-night.tmTheme. Syntect and two-face retain their
-own licenses. The source role remapping is Coder's public USGC profile.
+own licenses. The source role remapping uses Coder Noir.
+
+Coder Noir adapts Superlogical’s “Static Noir” theme. It retains Coder’s
+neutral accent and cursor over Static Noir’s surfaces and semantic colors.

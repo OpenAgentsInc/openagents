@@ -147,7 +147,7 @@ fn block(item: &Block, lead: &str, width: usize, out: &mut Lines) {
                 t::ACCENT_DELEGATE,
                 t::GRAY_BRIGHT,
                 t::GRAY,
-                Color::rgb(90, 90, 90),
+                t::GRAY_DIM,
             ][usize::from((*level).clamp(1, 6) - 1)];
             paragraph(spans(value, color, true), lead, width, out);
         }

@@ -512,3 +512,84 @@ production response bodies byte for byte. Evidence remains in the deployment
 session's scratch directory and
 `codex-01a11a7c-eb19-7780-b9e7-cd6e305db168/components-production-proof/`.
 Rollback: `--to-revisions coder-web-d3f3ad546c-20261008043217=100`.
+
+
+## 2026-10-08: P3 kit and P9 public pack
+
+Revision `coder-web-p3-d2fb95d33d-20261008140843` serves 100% of traffic.
+It carries P3's reviewed private kit and P9's smaller public pack while
+preserving the direct component catalog, Cloud assets, and public navigation.
+Cloud Build `016b8bd2-94a3-4815-ad70-4fd46da3ab19` builds main commit
+`d2fb95d33d1d5c668be3d85c53c9bedaaab174af`. The image
+`openagents/openagents-web:p3-d2fb95d33d` has digest
+`sha256:0db42f8c43471fa3763f786fffae00b901c0320fc4bb6cd9cc0aca926a919d55`.
+The build runs every Cargo invocation through the build lease with an
+external target directory, four build jobs, and a 25 GB disk floor. The
+private build configuration's SHA-256 is
+`3683dfa1638185d2e70581585591d0d7539aacc04597a9f880f34a620396e4a8`.
+
+The revision starts under `new` with no traffic. Before promotion, its
+readiness, unchanged live configuration, and prior 100% traffic are checked.
+The live export preserves the sidecar, secrets, pay host settings, VPC,
+service account, volumes, asset arguments, concurrency, and timeout.
+
+Staging and production each pass 33 HTTP checks. The private kit URL
+`/everglade/kit/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp`
+returns `200`, exactly 21,467,658 bytes, and its matching SHA-256. The public
+pack `a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f`
+returns 10,636,202 bytes with its matching digest. The preceding private
+kit and public pack URLs also return their exact bytes and hashes.
+
+Offscreen Chrome on `coderos-4080` renders Everglade through hardware
+WebGPU and forced WebGL2 with both current packs, no proxy warnings, and no
+browser exceptions or failed HTTP requests. Both views are inspected.
+Linux headless WebGPU compositor screenshots are black on the preceding
+and new images. The accepted WebGPU capture instead reads the application's
+GPU framebuffer, adding only `COPY_SRC` texture usage for the inspection;
+the black compositor images are retained as rejected evidence. This check
+does not measure frame rate. Each environment also passes 30 component
+catalog assertions with synthetic local fixtures; the browser profile is
+removed and the quiet and GPU leases are released.
+
+Receipts, capture hashes, the build configuration, and private images remain
+outside Git in
+`/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/p3-web/`.
+`verification-manifest.json` binds the accepted evidence. The kit exceeds
+the web and phone soft budgets; B4 (#10908) owns the tier work and physical
+device checks remain in `NEEDS_OWNER.md` (#10901). The later `/demo` source
+change is not part of this image.
+Rollback: `gcloud run services update-traffic coder --region us-central1 --project openagentsgemini --to-revisions coder-web-components-6daf112710-202610081303=100`.
+
+## 2026-10-08: Original Coder demo
+
+Revision `coder-web-demo-7bb5e9bccd-202610081448` serves 100% of traffic.
+`/demo` mounts the original `coder-new` terminal demo through Rust Native:
+five local conversations, retained drafts and cursors, native tools and
+panels, independent elapsed time, and a 125 ms animation. It creates no
+provider connection or real task and exports only a local synthetic ATIF
+artifact. The page has no site navigation. The public header remains
+Download, Docs, Pilot, with no Cloud, component, or demo promotion.
+
+Cloud Build `795226f7-2c40-4a5d-9c09-fd908f6285ab` builds commit
+`7bb5e9bccd796afee03396a79fa2b41a625cb18a`. The concurrent P3 deployment
+changes the live image before staging; the base-image guard refuses the
+stale candidate. Build `a5c1c97c-fd00-46df-b2b4-028693ccc284` then copies
+only the verified web binary and component and Cloud bundles over the new
+P3 image. The final image digest is
+`sha256:61a6867164f308323e24507ace303d6575d56eae678f940de2e918ced3264867`.
+The live spec preserves the sidecar, secrets, runtime settings, and VPC.
+No Cloud account or host binding is activated.
+
+The portable and native demo adapters each match all 93 independently
+captured original frames. Targeted ATIF, UI, native demo, browser adapter,
+and web checks pass. Staging and production each pass 69 demo browser
+checks and 34 catalog and game browser checks, with no browser errors.
+Both game graphics backends render the preserved P3 assets. Each environment
+also passes 33 regression HTTP checks and six demo HTTP checks; all 19
+checked public response bodies match the P3 production baseline byte for
+byte, including the existing game modules. Both new and preceding game
+pack and kit URLs retain their exact bytes and hashes.
+
+Evidence remains in the deployment session's scratch directory and
+`codex-01a11a7c-eb19-7780-b9e7-cd6e305db168/demo-production-proof/`.
+Rollback: `--to-revisions coder-web-p3-d2fb95d33d-20261008140843=100`.

@@ -1586,6 +1586,12 @@ impl Studio {
                 }
                 SlotState::Held => {}
             }
+            // A slot a computer holds runs there, not here: its flow's
+            // `remote` names the computer, and the seat's own tick lands
+            // or closes it.
+            if item.flow.as_ref().is_some_and(|flow| flow.remote.is_some()) {
+                continue;
+            }
             let mut ready = true;
             for dependency in &item.depends_on {
                 let Some(other) = goal.plan.iter().find(|other| &other.id == dependency) else {

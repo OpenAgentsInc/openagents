@@ -126,7 +126,20 @@ pub fn lines(
 ) -> Vec<Line<'static>> {
     let hunks = hunks(patch);
     let syntect = palette.syntect();
-    let theme = palette.diff(level);
+    use coder_ui::source_theme as t;
+    let apply = |color: rust_native::style::Color| {
+        grok::color::quantize_color(Color::Rgb(color.red, color.green, color.blue), level)
+    };
+    let theme = DiffColors {
+        delete_bg: apply(t::DIFF_DELETE_BG),
+        delete_fg: apply(t::DIFF_DELETE_FG),
+        insert_bg: apply(t::DIFF_INSERT_BG),
+        insert_fg: apply(t::DIFF_INSERT_FG),
+        equal_fg: apply(t::GRAY),
+        gutter_fg: apply(t::GRAY),
+        text_primary: apply(t::TEXT_PRIMARY),
+        muted: apply(t::GRAY),
+    };
     let room = width.saturating_sub(lead);
     let mut out = Vec::new();
     for (i, hunk) in hunks.iter().enumerate() {
@@ -377,10 +390,13 @@ fn render_content_spans(
             if text.is_empty() {
                 continue;
             }
-            spans.push(Span::styled(
-                text,
-                grok::color::syntect_to_ratatui_fg(style, level),
-            ));
+            spans.push(Span::styled(text, {
+                let mut style = grok::color::syntect_to_ratatui_fg(style, ColorLevel::TrueColor);
+                style.fg = style
+                    .fg
+                    .map(|color| crate::ladder::appearance(color, level));
+                style
+            }));
             wrote = true;
         }
         if wrote {
@@ -516,7 +532,9 @@ mod tests {
     #[test]
     fn a_diff_draws_numbered_highlighted_lines_on_bands() {
         let palette = Palette::Night;
-        let theme = palette.diff(ColorLevel::TrueColor);
+        let delete_fg = crate::ladder::rgb(coder_ui::coder_noir::DANGER);
+        let delete_bg = crate::ladder::rgb(coder_ui::coder_noir::DANGER_CONTAINER);
+        let insert_bg = crate::ladder::rgb(coder_ui::coder_noir::SUCCESS_CONTAINER);
         let lines = lines(PATCH, "src/main.rs", 4, 60, palette, ColorLevel::TrueColor);
         assert_eq!(
             text(&lines),
@@ -537,20 +555,20 @@ mod tests {
         // keyword in its Grok Night color on that band.
         let removed = &lines[1];
         assert_eq!(removed.width(), 60);
-        assert_eq!(removed.spans[2].style.fg, Some(theme.delete_fg));
+        assert_eq!(removed.spans[2].style.fg, Some(delete_fg));
         let keyword = removed
             .spans
             .iter()
             .find(|span| span.content.as_ref() == "let")
             .expect("keyword span");
-        assert_eq!(keyword.style.bg, Some(theme.delete_bg));
+        assert_eq!(keyword.style.bg, Some(delete_bg));
         let Some(Color::Rgb(r, g, b)) = keyword.style.fg else {
             panic!("keyword fg {:?}", keyword.style.fg);
         };
         assert_ne!((r, g, b), (0xb2, 0xb2, 0xb2), "keyword drew as plain text");
         assert_eq!(
             removed.spans.last().map(|span| span.style.bg),
-            Some(Some(theme.delete_bg))
+            Some(Some(delete_bg))
         );
         // The added line on green; the context line on no band.
         assert!(
@@ -558,7 +576,7 @@ mod tests {
                 .spans
                 .iter()
                 .skip(4)
-                .all(|s| s.style.bg == Some(theme.insert_bg))
+                .all(|s| s.style.bg == Some(insert_bg))
         );
         assert!(lines[0].spans.iter().all(|s| s.style.bg.is_none()));
     }
