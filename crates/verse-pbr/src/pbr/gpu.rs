@@ -2743,9 +2743,6 @@ impl Photo {
                 self.encode_neon(device, queue, encoder, output, targets, view, neon, world)
             }
         }
-        if let Some(timer) = &self.water_timer {
-            timer.resolve(encoder, self.water_slot, self.water_mask);
-        }
         if let Some((pipeline, group, buffer, count)) = ui
             && count > 0
         {
