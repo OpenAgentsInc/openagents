@@ -21,6 +21,45 @@ Status as of October 7, 2026. The plan, its decisions, and the "As built"
 notes are in [Everglade medieval refactor](everglade-medieval-refactor.md).
 The umbrella issue is #10903.
 
+## October 8 coordination checkpoint
+
+P9 (#10902) is closed. The web deploy record is `26bb7ef2ab`; production
+serves `openagents-web:d3f3ad546c` and the pinned private kit with HTTP
+`200`. That image predates P9's smaller public pack. The terminal retention
+fix (#10909) is closed at `98df2423e3`, with its full-hour release soak
+and consumer check passing.
+
+P3 (#10896) remains open on the pushed branch
+[`codex/everglade-p3`](https://github.com/OpenAgentsInc/openagents/tree/codex/everglade-p3).
+Checkpoint `7d27c2b761` updates its handoff with the source, commands,
+and private evidence paths. Capture source `1d38e17a75` passes the scoped checks.
+All 65 houses pass the unsuppressed coplanar detector and the compiled
+budgets: near levels have at most 10,000 triangles and 12 draws, middle
+levels at most 3,000 triangles and one draw, and far levels at most 800
+triangles and one draw. Six remote raster captures cover a cabin at
+horizontal selector distances of 10, 50, and 120 m and the market's
+exterior, roof, and interior. Their exact eye distances and hashes are in
+the capture receipts. The near cabin view favors the roof; the interior
+is dark and shows the existing rain-through-ceiling limitation.
+
+The private candidate pack has digest
+`c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e`,
+21,467,658 bytes, and 63,438,848 decoded texture bytes. It is unpublished;
+the larger decoded footprint also needs B4's phone-tier review. P3 still
+needs matching exported-demo and grade comparisons, first and repeated
+damage plus `R` restoration checks, fresh-main integration, and
+`openagents artifact submit everglade-kit`, followed by the private upload
+and web deploy. Do not repin directly or commit licensed files.
+
+B2 (#10906) has code in `0e0d8afd37` but remains open for verification
+and publication. B3 (#10907) has an unverified source checkpoint on
+[`codex/everglade-b3`](https://github.com/OpenAgentsInc/openagents/tree/codex/everglade-b3),
+commit `a2f4bbf7d3`; no bake, check, or capture ran for that checkpoint.
+B4 (#10908) and umbrella #10903 remain open. This run stops new assignments
+at 89 percent shared usage; active work saves resumable checkpoints.
+Recheck each issue and claim before resuming. The sections below retain
+the original October 7 plan.
+
 ## What landed
 
 | Phase | Issue | Commits | State |

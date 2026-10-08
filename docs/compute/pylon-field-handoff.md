@@ -5,6 +5,14 @@ owner's instruction. This page says what landed, what remains, and how to
 pick it up. The plan is [Compute in the Verse](verse-compute.md); the guide
 to running a pylon is [Run a Pylon, and use one](pylon.md).
 
+October 8 coordination checkpoint: P1 remainder #10921, P2 #10922,
+P3 #10923, P4 #10924, and umbrella #10925 remain open. The issue and claim
+audit prepares their briefs, but this run stops new assignments at
+89 percent shared usage. Recheck `gh issue view N` and
+`openagents issue status N` before claiming. The existing 4080 provider
+and Psionic services are retained. P1's acceptance gaps below still apply;
+an existing `pylon ask` receipt does not establish Alice's pool routing.
+
 ## What landed
 
 | Commit | Issue | What |

@@ -3,6 +3,17 @@
 This note records the state of the Meteor Showcase (issue #10926) when work
 on it stopped on 2026-10-07.
 
+October 8 coordination checkpoint: the remaining work is tracked in
+[#10937](https://github.com/OpenAgentsInc/openagents/issues/10937)
+(GPU-instanced debris, sleeping bodies, and merged rubble) and
+[#10938](https://github.com/OpenAgentsInc/openagents/issues/10938)
+(relighting destruction). Both remain open and unassigned after the
+shared-usage checkpoint. For #10937, retain matching impact captures and
+measure High-tier live p99 below 16.7 ms. Coordinate #10938 with bake B3
+(#10907): destruction must remove floating baked shadows and `R` must
+restore lighting. Recheck issue state and claims before resuming either
+issue. Keep GPU compute and ray-tracing tests on `coderos-4080`.
+
 ## What landed
 
 - `81c4443216` adds the zone (`verse --meteor-showcase`), Meteor Swarm's

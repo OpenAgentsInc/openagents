@@ -6,6 +6,51 @@ landed, what remains open, and how to pick the work up again. The
 specification is [Water](water.md), and the coastal zone's is
 [The coast](coast.md).
 
+## October 8 coordination checkpoint
+
+W11 (#10783) remains open on the pushed branch
+[`codex/water-w11-measurement`](https://github.com/OpenAgentsInc/openagents/tree/codex/water-w11-measurement).
+Checkpoint `df50707aac` records the exact sources, measured cases,
+artifact hashes, and resume commands. Its claim is released and the board
+returns to Todo. Source `499b25d083` is rebased on main
+`90f90cd4f2`; 61 focused water tests, shared shader validation, the WASM
+check, and the release native and WASM precompiles pass. GPU-compute
+parity tests are excluded from the Mac checks.
+
+The measurements expose a missing scene bind group in the newly split
+blended render pass. The branch fixes it with an explicit group-zero
+binding. A corrected WebGPU Water Lab dry/wet pair renders without
+device or unexpected log errors and retains 726 completed GPU timing
+samples. Water GPU time averages 2.768 ms, with a 3.408 ms p95; main
+elapsed time averages 1.113 ms. Browser elapsed time is not thread CPU
+time. The old Medium targets are still exceeded after mirror, scene
+copies, and screen-space reflection drop and the cadence reaches eight.
+Do not treat this result as calibrated budgets or zero GPU cost.
+
+The earlier frozen collection retains 15 native pairs and eight browser
+cases. Four WebGPU cases render black because their command buffers are
+rejected; four WebGL2 cases render correctly. Those failed images and
+raw errors remain evidence, not passing browser checks. Corrected native
+reruns retain zero valid GPU samples for Low pond-posts and waterline and
+one for Medium pond-noon; two old-budget assertions still fail. A passing
+waterline process with zero samples does not establish its GPU budget.
+W11 still needs adequate timing samples, measured constants and the budget table
+in [water.md](water.md#budgets-per-tier), the remaining corrected browser
+matrix, and deployment from a normal production release image. The
+benchmark's derived WASM is for measurement only.
+
+This run stops new assignments at 89 percent shared usage. W11 saves a
+resumable checkpoint; #10919 and coast C1 through C6 are unassigned.
+Recheck each issue and claim before resuming. The sections below retain
+the original October 7 plan.
+
+For resumption, use one Cargo command at a time through
+`openagents lease build --keep-target-dir -- cargo ...`, with the agent's
+target under `~/work/openagents-target-agentN`. Run checks and filtered
+tests only, exclude GPU parity on the Mac, and use remote placement for
+GPU compute and ray tracing. The original sweep and capture command list
+below is historical; it does not override those limits.
+
 ## What landed
 
 Each phase closed its issue with the commit listed. The phase's status
