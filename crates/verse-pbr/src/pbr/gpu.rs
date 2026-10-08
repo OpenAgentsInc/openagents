@@ -528,6 +528,7 @@ pub struct TexturedGpu {
     /// Whether this is a figure, whose vertices are rewritten each frame.
     figure: bool,
     rigid_meshes: Vec<Vec<textured::Batch>>,
+    rendered_instances: instanced::RenderedInstances,
     /// The scene's index edits applied so far
     /// ([`textured::IndexEdits::revision`]); part of the static casters'
     /// identity, so a cached shadow redraws after an edit.
@@ -592,7 +593,8 @@ impl TexturedGpu {
         queue: &wgpu::Queue,
         frame: &textured::InstancedFigure,
     ) {
-        let (records, batches) = instanced::rigid_frame(&self.rigid_meshes, &frame.instances);
+        let (mut records, batches) = instanced::rigid_frame(&self.rigid_meshes, &frame.instances);
+        self.rendered_instances.update(&mut records);
         let bytes: &[u8] = bytemuck::cast_slice(&records);
         if bytes.len() as u64 > self.instances.size() {
             self.instances = device.create_buffer(&wgpu::BufferDescriptor {
@@ -607,6 +609,11 @@ impl TexturedGpu {
         }
         self.batches = batches;
         self.near = vec![true; self.batches.len()];
+    }
+
+    /// Resets motion after a rendered frame omits the rigid instance stream.
+    pub fn clear_instance_history(&mut self) {
+        self.rendered_instances.clear();
     }
 
     /// Rigid motion streams for temporal reprojection. Records are 128 bytes,
@@ -2480,6 +2487,7 @@ impl Photo {
             texels: prepared.lights.len(),
             figure,
             rigid_meshes: Vec::new(),
+            rendered_instances: instanced::RenderedInstances::default(),
             edits: 0,
             near: vec![true; prepared.items.len()],
             detail_groups: scene.detail_groups.clone(),

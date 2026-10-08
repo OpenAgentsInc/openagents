@@ -2193,58 +2193,67 @@ impl Site {
         }
     }
 
-    /// Whether body `id` holds up debris frozen on it: the ground, a
-    /// standing piece, or frozen debris that is itself held.
-    fn holds(&self, id: u32) -> bool {
-        if id == 0 {
-            return true;
-        }
-        if self
+    /// Bodies connected through resting debris to the ground, or also to
+    /// standing pieces when `ground_only` is false.
+    fn supported_resting(&self, ground_only: bool) -> BTreeSet<u32> {
+        let merged: BTreeSet<u32> = self
             .pieces
             .iter()
             .flat_map(|p| &p.chunks)
-            .any(|c| c.body.0 == id && !c.gone && c.settled.is_some())
-        {
-            return true;
+            .filter(|c| !c.gone && c.settled.is_some())
+            .map(|c| c.body.0)
+            .collect();
+        let bodies = self.world.bodies();
+        let mut held = BTreeSet::from([0]);
+        if !ground_only {
+            held.extend(self.pieces.iter().filter_map(|p| {
+                let body = &bodies[p.body.0 as usize];
+                (p.status == Status::Standing && !body.removed && body.kind == BodyKind::Static)
+                    .then_some(p.body.0)
+            }));
         }
-        let Some(body) = self.world.bodies().get(id as usize) else {
-            return false;
-        };
-        if body.removed || body.kind != BodyKind::Static {
-            return false;
+        let mut above: BTreeMap<u32, Vec<u32>> = BTreeMap::new();
+        for (&id, under) in &self.rests {
+            let resting = merged.contains(&id)
+                || bodies
+                    .get(id as usize)
+                    .is_some_and(|b| !b.removed && (b.kind == BodyKind::Static || b.sleeping));
+            if resting {
+                for &support in under {
+                    above.entry(support).or_default().push(id);
+                }
+            }
         }
-        if self.frozen.contains(&id) {
-            return self.rests.contains_key(&id);
+        let mut pending: Vec<u32> = held.iter().copied().collect();
+        while let Some(support) = pending.pop() {
+            for &id in above.get(&support).into_iter().flatten() {
+                if held.insert(id) {
+                    pending.push(id);
+                }
+            }
         }
-        // A static body that isn't frozen is a standing piece.
-        self.owner_of(BodyId(id))
-            .is_some_and(|piece| self.pieces[piece].status == Status::Standing)
+        held
     }
 
     /// Moves again every frozen body with no chain of frozen debris down to
     /// the ground or a standing piece, and wakes what sleeps on it, so
     /// nothing is left frozen in the air when what it rested on goes. It
-    /// runs only after something debris may rest on has gone, and costs
-    /// one pass over the frozen debris for each layer that thaws.
+    /// runs only after something debris may rest on has gone. Cyclic
+    /// contact references count only when they connect to a fixed support.
     fn hold_frozen(&mut self) {
         if !self.unsettled {
             return;
         }
-        loop {
-            let thaw: Vec<u32> = self
-                .rests
-                .iter()
-                .filter(|(_, under)| !under.iter().any(|&u| self.holds(u)))
-                .map(|(&id, _)| id)
-                .collect();
-            if thaw.is_empty() {
-                break;
-            }
-            for id in thaw {
-                self.rests.remove(&id);
-                self.rouse(BodyId(id));
-                wake_near(&mut self.world, BodyId(id));
-            }
+        let held = self.supported_resting(false);
+        let thaw: Vec<u32> = self
+            .rests
+            .keys()
+            .copied()
+            .filter(|id| !held.contains(id))
+            .collect();
+        for id in thaw {
+            self.rouse(BodyId(id));
+            wake_near(&mut self.world, BodyId(id));
         }
         self.unsettled = false;
     }
@@ -2256,18 +2265,7 @@ impl Site {
         }
         // Only merge islands rooted in the ground. Rubble resting on an
         // intact column stays separate so removing that column releases it.
-        let mut grounded = BTreeSet::from([0]);
-        loop {
-            let before = grounded.len();
-            for (&id, under) in &self.rests {
-                if under.iter().any(|u| grounded.contains(u)) {
-                    grounded.insert(id);
-                }
-            }
-            if grounded.len() == before {
-                break;
-            }
-        }
+        let grounded = self.supported_resting(true);
         let mut merge = Vec::new();
         for (piece, state) in self.pieces.iter_mut().enumerate() {
             for (index, chunk) in state.chunks.iter_mut().enumerate() {
@@ -3110,6 +3108,85 @@ mod rubble_tests {
         );
         assert!(site.world[bottom].removed && site.world[top].removed);
         assert_eq!(site.step_stats().awake, 0);
+    }
+
+    #[test]
+    fn a_resting_contact_cycle_wakes_when_its_last_fixed_support_goes() {
+        for sleeping in [false, true] {
+            let (mut site, bottom) = resting_chunk();
+            let top = site.world.add(Body::new(10.0, DVec3::ONE, DVec3::Y));
+            let mut chunk = site.pieces[0].chunks[0].clone();
+            chunk.body = top;
+            site.pieces[0].chunks.push(chunk);
+            for id in [bottom, top] {
+                site.world[id].kind = if sleeping {
+                    BodyKind::Dynamic
+                } else {
+                    BodyKind::Static
+                };
+                site.world[id].sleeping = sleeping;
+                if !sleeping {
+                    site.frozen.insert(id.0);
+                }
+            }
+            site.rests.insert(bottom.0, vec![0, top.0]);
+            site.rests.insert(top.0, vec![bottom.0]);
+            site.unsettled = true;
+            site.hold_frozen();
+            assert_eq!(site.rests.len(), 2, "the grounded cycle stays at rest");
+
+            site.rests.insert(bottom.0, vec![top.0]);
+            site.unsettled = true;
+            site.hold_frozen();
+            for id in [bottom, top] {
+                assert_eq!(site.world[id].kind, BodyKind::Dynamic);
+                assert!(!site.world[id].sleeping);
+                assert!(!site.frozen.contains(&id.0));
+                assert!(!site.rests.contains_key(&id.0));
+            }
+        }
+    }
+
+    #[test]
+    fn merged_rubble_wakes_when_the_merged_chunk_under_it_expires() {
+        let (mut site, bottom) = resting_chunk();
+        let cuboid = Cuboid {
+            center: DVec3::ZERO,
+            rotation: DQuat::IDENTITY,
+            half: DVec3::splat(0.3),
+        };
+        let top = site.add_chunk(
+            Body::new(10.0, DVec3::ONE, DVec3::new(0.0, 0.9, 0.0)),
+            &cuboid,
+        );
+        let mut chunk = site.pieces[0].chunks[0].clone();
+        chunk.body = top;
+        site.pieces[0].chunks.push(chunk);
+        site.world[top].kind = BodyKind::Static;
+        site.frozen.insert(top.0);
+        site.rests.insert(top.0, vec![bottom.0]);
+        site.merge_rubble(0.0);
+        site.merge_rubble(MERGE_AFTER);
+        assert!(site.world[bottom].removed && site.world[top].removed);
+
+        site.retire_chunks(&[(0, 0)]);
+        site.hold_frozen();
+        assert!(!site.world[top].removed);
+        assert_eq!(site.world[top].kind, BodyKind::Dynamic);
+        assert!(site.pieces[0].chunks[1].settled.is_none());
+        assert!(!site.rests.contains_key(&top.0));
+    }
+
+    #[test]
+    fn an_awake_support_does_not_connect_frozen_rubble_to_the_ground() {
+        let (mut site, id) = resting_chunk();
+        let moving = site.world.add(Body::new(1.0, DVec3::ONE, DVec3::Y));
+        site.rests.insert(id.0, vec![moving.0]);
+        site.rests.insert(moving.0, vec![0]);
+        site.merge_rubble(0.0);
+        site.merge_rubble(10.0);
+        assert!(!site.world[id].removed);
+        assert!(site.pieces[0].chunks[0].settled.is_none());
     }
 
     #[test]

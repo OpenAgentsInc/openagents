@@ -446,6 +446,7 @@ impl World {
                 });
             }
         }
+        drop(warm_pairs);
         // Apply the warm-start impulses before iterating; the iterations can
         // take them back, since each row's accumulated impulse starts there.
         for row in &rows {
@@ -534,7 +535,6 @@ impl World {
             }
         }
         self.stats.warm_candidates = warm_candidates;
-        drop(warm_pairs);
         self.warm = rows
             .iter()
             .map(|row| WarmContact {

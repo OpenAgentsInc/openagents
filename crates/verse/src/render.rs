@@ -1665,18 +1665,173 @@ fn offscreen(
         .render_with_overlay(view, dynamic, ui, overlay)
 }
 
-/// Two timestamps and their resolved GPU and CPU buffers.
+/// Pass-boundary timestamps around two real one-pixel marker draws.
 #[cfg(feature = "capture")]
 struct GpuTimestamps {
     queries: wgpu::QuerySet,
     resolve: wgpu::Buffer,
     readback: wgpu::Buffer,
-    marker: wgpu::Buffer,
+    markers: [wgpu::TextureView; 2],
+    pipeline: wgpu::RenderPipeline,
+    group: wgpu::BindGroup,
 }
 
 #[cfg(feature = "capture")]
 fn timestamp_features() -> wgpu::Features {
-    wgpu::Features::TIMESTAMP_QUERY | wgpu::Features::TIMESTAMP_QUERY_INSIDE_ENCODERS
+    wgpu::Features::TIMESTAMP_QUERY
+}
+
+#[cfg(feature = "capture")]
+impl GpuTimestamps {
+    fn new(device: &wgpu::Device, output: &wgpu::TextureView) -> Self {
+        let queries = device.create_query_set(&wgpu::QuerySetDescriptor {
+            label: Some("verse capture pass timestamps"),
+            ty: wgpu::QueryType::Timestamp,
+            count: 4,
+        });
+        let resolve = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("verse capture timestamp resolve"),
+            size: 32,
+            usage: wgpu::BufferUsages::QUERY_RESOLVE | wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: false,
+        });
+        let readback = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("verse capture timestamp readback"),
+            size: 32,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        let markers = [0, 1].map(|_| {
+            device
+                .create_texture(&wgpu::TextureDescriptor {
+                    label: Some("verse capture timestamp pixel"),
+                    size: extent(1, 1),
+                    mip_level_count: 1,
+                    sample_count: 1,
+                    dimension: wgpu::TextureDimension::D2,
+                    format: wgpu::TextureFormat::Rgba8Unorm,
+                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                    view_formats: &[],
+                })
+                .create_view(&Default::default())
+        });
+        let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("verse capture timestamp source"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            }],
+        });
+        let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("verse capture timestamp source"),
+            layout: &layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(output),
+            }],
+        });
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("verse capture timestamp marker"),
+            source: wgpu::ShaderSource::Wgsl(
+                r#"
+@group(0) @binding(0) var source: texture_2d<f32>;
+@vertex fn vs(@builtin(vertex_index) index: u32) -> @builtin(position) vec4<f32> {
+    let x = f32((index << 1u) & 2u);
+    let y = f32(index & 2u);
+    return vec4<f32>(x * 2.0 - 1.0, y * 2.0 - 1.0, 0.0, 1.0);
+}
+@fragment fn fs() -> @location(0) vec4<f32> {
+    return textureLoad(source, vec2<i32>(0), 0);
+}
+"#
+                .into(),
+            ),
+        });
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("verse capture timestamp marker"),
+            bind_group_layouts: &[Some(&layout)],
+            immediate_size: 0,
+        });
+        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("verse capture timestamp marker"),
+            layout: Some(&pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vs"),
+                compilation_options: Default::default(),
+                buffers: &[],
+            },
+            primitive: Default::default(),
+            depth_stencil: None,
+            multisample: Default::default(),
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: Some("fs"),
+                compilation_options: Default::default(),
+                targets: &[Some(wgpu::TextureFormat::Rgba8Unorm.into())],
+            }),
+            multiview_mask: None,
+            cache: None,
+        });
+        Self {
+            queries,
+            resolve,
+            readback,
+            markers,
+            pipeline,
+            group,
+        }
+    }
+
+    fn marker(&self, encoder: &mut wgpu::CommandEncoder, after_scene: bool) {
+        // wgpu-hal 29's Metal encoder timestamps use pending blit queries,
+        // whose source documents unreliable empty/start blit encoders. Pass
+        // timestamp writes bind Metal's vertex/fragment stage boundaries.
+        // Both markers contain a real draw; the final texture read also
+        // depends on the scene's output before its ending fragment sample.
+        let marker = usize::from(after_scene);
+        let base = marker as u32 * 2;
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("verse capture timestamp marker"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &self.markers[marker],
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            timestamp_writes: Some(wgpu::RenderPassTimestampWrites {
+                query_set: &self.queries,
+                beginning_of_pass_write_index: Some(base),
+                end_of_pass_write_index: Some(base + 1),
+            }),
+            ..Default::default()
+        });
+        pass.set_pipeline(&self.pipeline);
+        pass.set_bind_group(0, &self.group, &[]);
+        pass.draw(0..3, 0..1);
+    }
+}
+
+#[cfg(feature = "capture")]
+fn timestamp_duration(ticks: [u64; 4], period: f32) -> Option<f32> {
+    if ticks.iter().any(|&tick| tick == 0 || tick == u64::MAX)
+        || ticks.windows(2).any(|pair| pair[1] < pair[0])
+        || !period.is_finite()
+        || period <= 0.0
+    {
+        return None;
+    }
+    let ms = ticks[3].checked_sub(ticks[0])? as f32 * period / 1e6;
+    (ms > 0.0 && ms.is_finite()).then_some(ms)
 }
 
 /// A renderer without a window that keeps its device and its uploaded world
@@ -1700,6 +1855,7 @@ pub struct Offscreen {
     timing: (f32, f32),
     gpu_timestamps: Option<GpuTimestamps>,
     last_gpu_ms: Option<f32>,
+    last_gpu_ticks: Option<[u64; 4]>,
 }
 
 #[cfg(feature = "capture")]
@@ -1751,7 +1907,9 @@ impl Offscreen {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::COPY_SRC
+                | wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         });
         let output = texture.create_view(&wgpu::TextureViewDescriptor::default());
@@ -1763,35 +1921,10 @@ impl Offscreen {
             usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
             mapped_at_creation: false,
         });
-        let gpu_timestamps =
-            device
-                .features()
-                .contains(timestamp_features())
-                .then(|| GpuTimestamps {
-                    queries: device.create_query_set(&wgpu::QuerySetDescriptor {
-                        label: Some("verse capture timestamps"),
-                        ty: wgpu::QueryType::Timestamp,
-                        count: 2,
-                    }),
-                    resolve: device.create_buffer(&wgpu::BufferDescriptor {
-                        label: Some("verse capture timestamp resolve"),
-                        size: 16,
-                        usage: wgpu::BufferUsages::QUERY_RESOLVE | wgpu::BufferUsages::COPY_SRC,
-                        mapped_at_creation: false,
-                    }),
-                    readback: device.create_buffer(&wgpu::BufferDescriptor {
-                        label: Some("verse capture timestamp readback"),
-                        size: 16,
-                        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-                        mapped_at_creation: false,
-                    }),
-                    marker: device.create_buffer(&wgpu::BufferDescriptor {
-                        label: Some("verse capture timestamp marker"),
-                        size: 16,
-                        usage: wgpu::BufferUsages::COPY_DST,
-                        mapped_at_creation: false,
-                    }),
-                });
+        let gpu_timestamps = device
+            .features()
+            .contains(timestamp_features())
+            .then(|| GpuTimestamps::new(&device, &output));
         Ok(Self {
             adapter_info: adapter.get_info(),
             device,
@@ -1809,6 +1942,7 @@ impl Offscreen {
             timing: (0.0, 0.0),
             gpu_timestamps,
             last_gpu_ms: None,
+            last_gpu_ticks: None,
         })
     }
 
@@ -1856,6 +1990,13 @@ impl Offscreen {
     #[must_use]
     pub fn last_gpu_ms(&self) -> Option<f32> {
         self.last_gpu_ms
+    }
+
+    /// Raw marker-pass ticks: beginning and end before the scene, then
+    /// beginning and end after it. Invalid ticks remain available for diagnosis.
+    #[must_use]
+    pub fn last_gpu_ticks(&self) -> Option<[u64; 4]> {
+        self.last_gpu_ticks
     }
 
     /// The flash lights selected for the last physical frame.
@@ -1963,10 +2104,7 @@ impl Offscreen {
         });
         let timestamps = self.gpu_timestamps.as_ref();
         if let Some(timer) = timestamps {
-            encoder.write_timestamp(&timer.queries, 0);
-            // Metal can omit a timestamp when its blit encoder has no real
-            // copy. Keep each timestamp's encoder active with an 8-byte copy.
-            encoder.copy_buffer_to_buffer(&timer.resolve, 0, &timer.marker, 0, 8);
+            timer.marker(&mut encoder, false);
         }
         self.scene.encode(
             device,
@@ -1979,10 +2117,9 @@ impl Offscreen {
             ui,
         );
         if let Some(timer) = timestamps {
-            encoder.write_timestamp(&timer.queries, 1);
-            encoder.copy_buffer_to_buffer(&timer.resolve, 0, &timer.marker, 8, 8);
-            encoder.resolve_query_set(&timer.queries, 0..2, &timer.resolve, 0);
-            encoder.copy_buffer_to_buffer(&timer.resolve, 0, &timer.readback, 0, 16);
+            timer.marker(&mut encoder, true);
+            encoder.resolve_query_set(&timer.queries, 0..4, &timer.resolve, 0);
+            encoder.copy_buffer_to_buffer(&timer.resolve, 0, &timer.readback, 0, 32);
         }
         if let Some(panel) = &panel {
             panel.encode(queue, &mut encoder, &self.output, self.targets.size);
@@ -2030,19 +2167,18 @@ impl Offscreen {
             })
             .map_err(|e| format!("the GPU did not finish: {e}"))?;
         self.last_gpu_ms = None;
+        self.last_gpu_ticks = None;
         if let (Some(timer), Some(mapping)) = (timestamps, timestamp_mapping) {
             mapping
                 .recv()
                 .map_err(|e| format!("GPU timestamps: {e}"))?
                 .map_err(|e| format!("GPU timestamps: {e}"))?;
             let mapped = timer.readback.slice(..).get_mapped_range();
-            let first = u64::from_le_bytes(mapped[..8].try_into().expect("timestamp size"));
-            let last = u64::from_le_bytes(mapped[8..16].try_into().expect("timestamp size"));
-            self.last_gpu_ms = last
-                .checked_sub(first)
-                .filter(|&ticks| first > 0 && ticks > 0)
-                .map(|ticks| ticks as f32 * queue.get_timestamp_period() / 1e6)
-                .filter(|&ms| ms > 0.0 && ms.is_finite());
+            let ticks = std::array::from_fn(|i| {
+                u64::from_le_bytes(mapped[i * 8..i * 8 + 8].try_into().expect("timestamp size"))
+            });
+            self.last_gpu_ms = timestamp_duration(ticks, queue.get_timestamp_period());
+            self.last_gpu_ticks = Some(ticks);
             drop(mapped);
             timer.readback.unmap();
         }
@@ -2729,6 +2865,8 @@ impl Scene {
             } else if let Some((_, gpu)) = &mut self.instances {
                 gpu.write_instances(device, queue, frame);
             }
+        } else if let Some((_, gpu)) = &mut self.instances {
+            gpu.clear_instance_history();
         }
         if matches!(stage, Stage::Space(_))
             && let Err(error) = photo.prepare_space(device, queue)
@@ -3502,4 +3640,23 @@ mod tests {
             assert!(red > 0, "the far glass shows through the near glass");
         }
     }
+}
+#[cfg(feature = "capture")]
+#[test]
+fn pass_timestamp_spans_reject_missing_errors_and_invalid_order() {
+    assert!((timestamp_duration([100, 110, 280, 300], 1.0).unwrap() - 0.0002).abs() < 1e-8);
+    // Marker work can fit within a coarser counter's single tick.
+    assert!(timestamp_duration([100, 100, 300, 300], 1.0).is_some());
+    for ticks in [
+        [0, 100, 200, 300],
+        [100, 120, 110, 300],
+        [100, 100, 100, 100],
+        [100, 110, 120, u64::MAX],
+    ] {
+        assert!(timestamp_duration(ticks, 1.0).is_none(), "{ticks:?}");
+    }
+    for period in [0.0, -1.0, f32::NAN, f32::INFINITY] {
+        assert!(timestamp_duration([100, 110, 280, 300], period).is_none());
+    }
+    assert_eq!(timestamp_features(), wgpu::Features::TIMESTAMP_QUERY);
 }

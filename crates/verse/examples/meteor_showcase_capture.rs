@@ -170,6 +170,8 @@ struct RenderPair {
     on: (f32, f32),
     off_gpu: Option<f32>,
     on_gpu: Option<f32>,
+    off_gpu_ticks: Option<[u64; 4]>,
+    on_gpu_ticks: Option<[u64; 4]>,
     selected: usize,
     individual_render_overhead: Vec<f32>,
 }
@@ -286,6 +288,47 @@ fn spread(mut values: Vec<f32>) -> serde_json::Value {
     values.sort_by(f32::total_cmp);
     let at = |p: f32| values[((values.len() - 1) as f32 * p).round() as usize];
     serde_json::json!({"p50": at(0.5), "p99": at(0.99), "max": values[values.len() - 1]})
+}
+
+/// A paired mean and approximate 95% interval from contiguous batch means.
+/// Batches retain nearby-frame noise together instead of assuming independent frames.
+fn paired_mean_interval(values: &[f32], block_frames: usize) -> Option<(f64, f64, f64, usize)> {
+    let blocks = values.len().div_ceil(block_frames.max(1));
+    if blocks < 2 || values.iter().any(|value| !value.is_finite()) {
+        return None;
+    }
+    let mean = values.iter().map(|&v| f64::from(v)).sum::<f64>() / values.len() as f64;
+    let mut weighted_variance = 0.0;
+    let mut squared_weights = 0.0;
+    for block in 0..blocks {
+        // Balance lengths so the final partial second does not become a tiny batch.
+        let from = block * values.len() / blocks;
+        let to = (block + 1) * values.len() / blocks;
+        let weight = (to - from) as f64 / values.len() as f64;
+        let batch =
+            values[from..to].iter().map(|&v| f64::from(v)).sum::<f64>() / (to - from) as f64;
+        weighted_variance += weight * (batch - mean).powi(2);
+        squared_weights += weight * weight;
+    }
+    let standard_error = (weighted_variance / (1.0 - squared_weights) * squared_weights).sqrt();
+    let half = student_t_975(blocks - 1) * standard_error;
+    Some((mean, mean - half, mean + half, blocks))
+}
+
+fn student_t_975(degrees: usize) -> f64 {
+    const SMALL: [f64; 30] = [
+        12.706, 4.303, 3.182, 2.776, 2.571, 2.447, 2.365, 2.306, 2.262, 2.228, 2.201, 2.179, 2.160,
+        2.145, 2.131, 2.120, 2.110, 2.101, 2.093, 2.086, 2.080, 2.074, 2.069, 2.064, 2.060, 2.056,
+        2.052, 2.048, 2.045, 2.042,
+    ];
+    if degrees <= SMALL.len() {
+        return SMALL[degrees.saturating_sub(1)];
+    }
+    let z: f64 = 1.959963984540054;
+    let n = degrees as f64;
+    z + (z * z * z + z) / (4.0 * n)
+        + (5.0 * z.powi(5) + 16.0 * z.powi(3) + 3.0 * z) / (96.0 * n * n)
+        + (3.0 * z.powi(7) + 19.0 * z.powi(5) + 17.0 * z.powi(3) - 15.0 * z) / (384.0 * n * n * n)
 }
 
 fn snapshot(sample: Option<&Sample>) -> serde_json::Value {
@@ -612,15 +655,38 @@ fn forward_bake(
     }
 }
 
-fn temporal_report(phases: &[(&str, Vec<RenderPair>)], gpu_supported: bool) -> serde_json::Value {
+fn temporal_report(
+    phases: &[(&str, Vec<RenderPair>)],
+    gpu_supported: bool,
+    fps: f32,
+) -> serde_json::Value {
     let mut out = serde_json::Map::new();
     for (name, pairs) in phases {
+        let costs: Vec<_> = pairs.iter().map(RenderPair::overhead).collect();
+        let block_frames = fps.round().max(1.0) as usize;
+        let interval = paired_mean_interval(&costs, block_frames);
+        let order_mean = |off_first: bool| {
+            let values: Vec<_> = pairs
+                .iter()
+                .filter(|p| (p.index % 2 == 0) == off_first)
+                .map(RenderPair::overhead)
+                .collect();
+            (!values.is_empty()).then(|| values.iter().sum::<f32>() / values.len() as f32)
+        };
         out.insert((*name).to_owned(), serde_json::json!({
             "frames": pairs.len(),
             "valid_gpu_frames": pairs.iter().filter(|p| p.gpu_overhead().is_some()).count(),
             "invalid_gpu_frames": if gpu_supported { pairs.iter().filter(|p| p.gpu_overhead().is_none()).count() } else { 0 },
             "gpu_increment_ms": spread(pairs.iter().filter_map(RenderPair::gpu_overhead).collect()),
             "mean_gpu_increment_ms": if !pairs.is_empty() && pairs.iter().all(|p| p.gpu_overhead().is_some()) { Some(pairs.iter().filter_map(RenderPair::gpu_overhead).sum::<f32>() / pairs.len() as f32) } else { None },
+            "wall_render_completion_increment_ms": spread(pairs.iter().map(RenderPair::overhead).collect()),
+            "mean_wall_render_completion_increment_ms": if pairs.is_empty() { None } else { Some(pairs.iter().map(RenderPair::overhead).sum::<f32>() / pairs.len() as f32) },
+            "wall_render_completion_mean_95pct_ci_ms": interval.map(|(mean, lower, upper, blocks)| serde_json::json!({"mean": mean, "lower": lower, "upper": upper, "samples": costs.len(), "blocks": blocks, "nominal_block_frames": block_frames})),
+            "wall_mean_upper_95pct_under_1ms": interval.map(|(_, _, upper, _)| upper < 1.0),
+            "off_first_frames": pairs.iter().filter(|p| p.index % 2 == 0).count(),
+            "on_first_frames": pairs.iter().filter(|p| p.index % 2 != 0).count(),
+            "off_first_mean_wall_increment_ms": order_mean(true),
+            "on_first_mean_wall_increment_ms": order_mean(false),
             "encode_increment_ms": spread(pairs.iter().map(|p| p.on.0 - p.off.0).collect()),
             "cpu_gpu_increment_ms": spread(pairs.iter().filter_map(RenderPair::cpu_gpu_overhead).collect()),
             "gpu_increment_under_1ms_p99": if pairs.iter().all(|p| p.gpu_overhead().is_some()) && !pairs.is_empty() {
@@ -629,7 +695,7 @@ fn temporal_report(phases: &[(&str, Vec<RenderPair>)], gpu_supported: bool) -> s
                 Some(costs[((costs.len() - 1) as f32 * 0.99).round() as usize] < 1.0)
             } else { None },
             "all_gpu_increments_under_1ms": if !pairs.is_empty() && pairs.iter().all(|p| p.gpu_overhead().is_some()) { Some(pairs.iter().filter_map(RenderPair::gpu_overhead).all(|ms| ms < 1.0)) } else { None },
-            "frame_results": pairs.iter().map(|p| serde_json::json!({"frame": p.index, "off_gpu_ms": p.off_gpu, "on_gpu_ms": p.on_gpu, "gpu_increment_ms": p.gpu_overhead()})).collect::<Vec<_>>(),
+            "frame_results": pairs.iter().map(|p| serde_json::json!({"frame": p.index, "off_gpu_ms": p.off_gpu, "on_gpu_ms": p.on_gpu, "gpu_increment_ms": p.gpu_overhead(), "off_gpu_ticks": p.off_gpu_ticks, "on_gpu_ticks": p.on_gpu_ticks, "wall_render_completion_increment_ms": p.overhead()})).collect::<Vec<_>>(),
         }));
     }
     serde_json::Value::Object(out)
@@ -1011,6 +1077,7 @@ fn main() -> Result<(), String> {
             off_pixels = Some(baseline.render(view, &dynamic, &ui)?);
             temporal_pair.off = baseline.last_timing();
             temporal_pair.off_gpu = baseline.last_gpu_ms();
+            temporal_pair.off_gpu_ticks = baseline.last_gpu_ticks();
             if let Some(neon) = &mut dynamic.neon {
                 neon.temporal_aa = true;
             }
@@ -1018,6 +1085,7 @@ fn main() -> Result<(), String> {
         let pixels = renderer.render(view, &dynamic, &ui)?;
         temporal_pair.on = renderer.last_timing();
         temporal_pair.on_gpu = renderer.last_gpu_ms();
+        temporal_pair.on_gpu_ticks = renderer.last_gpu_ticks();
         if let Some(baseline) = &mut temporal_baseline
             && k % 2 != 0
         {
@@ -1027,6 +1095,7 @@ fn main() -> Result<(), String> {
             off_pixels = Some(baseline.render(view, &dynamic, &ui)?);
             temporal_pair.off = baseline.last_timing();
             temporal_pair.off_gpu = baseline.last_gpu_ms();
+            temporal_pair.off_gpu_ticks = baseline.last_gpu_ticks();
             if let Some(neon) = &mut dynamic.neon {
                 neon.temporal_aa = true;
             }
@@ -1254,9 +1323,10 @@ fn main() -> Result<(), String> {
         "temporal_comparison": if args.compare_temporal_aa { serde_json::json!({
             "warmup_frames": 8,
             "history_method": "Separate on/off renderers retain their own history and exposure, advance once per identical simulation frame, and alternate order. Each has its own baked-light delivery slot; runtime light and lamp deliveries are forwarded identically before either render. Deliveries arriving mid-pair wait until the next frame. No repeated snapshot renders or temporal toggle resets enter the sample.",
-            "gpu_method": "GPU encoder timestamps cover scene commands, including the temporal passes, before pixel readback. Nonpositive or unsupported timestamps remain null. Wall-clock waits include readback and polling; the budget uses the paired GPU increment.",
-            "acceptance_gpu_increment_ms": 1.0,
-            "phases": temporal_report(&temporal_phases, renderer.gpu_timestamps_available()),
+            "gpu_method": "Render-pass boundary timestamps bracket scene commands with two real one-pixel marker draws. The ending marker reads scene output, so it depends on completed output work. Both variants include the same marker work; query resolve, overlay, and pixel readback follow the measured span. Four raw ticks retain before/after marker boundaries. Zero, error-sentinel, decreasing, nonpositive, or unsupported results remain null.",
+            "wall_method": "Signed paired wall render-completion increments include CPU encode, submission, mapping, pixel readback, and polling. Every warmed frame enters the mean and spread. The approximate 95% mean interval uses contiguous, balanced batches of about one capture second and Student t bounds, retaining nearby-frame noise together; fewer than two batches yield no interval. Separate order counts and means expose order bias. The upper mean bound tests the 1 ms frame-time budget. These completion measurements do not measure GPU time.",
+            "acceptance_frame_time_increment_ms": 1.0,
+            "phases": temporal_report(&temporal_phases, renderer.gpu_timestamps_available(), fps),
         }) } else { serde_json::Value::Null },
         "sprite_area_method": "Sum of half-width times (half-width plus half-tail) over squared camera distance, before GPU clipping; an angular overdraw proxy, not pixel coverage.",
         "particle_comparison": if args.compare_particles { serde_json::json!({
@@ -1277,7 +1347,7 @@ fn main() -> Result<(), String> {
                 "flash_pool_method": "Mean tick plus camera-ranked projection for a full pool, with ascending input brightness to shift every candidate. Excludes impact spawn and aggregation across sources; no lights expire during the sample.",
                 "method": "Each selected simulation snapshot averages repeated interleaved off/on render pairs, alternating order after three warm-up frames. Encode, submit, and completion wait omit pixel readback; individual render overhead spreads retain tail noise. Excludes simulation and first-frame warm-up costs. GPU averages require every repeat to have valid off/on timestamps.",
                 "timing_limit": "Wall-clock render completion includes submission and polling overhead; it is not a GPU timestamp measurement.",
-                "gpu_method": "Optional encoder timestamps around scene commands, excluding buffer uploads, query resolve, and readback. Includes one 8-byte marker copy in each variant. Timestamp command ordering depends on the backend and driver; nonpositive durations are invalid.",
+                "gpu_method": "Optional render-pass boundary timestamps around scene commands, including identical one-pixel marker draws in each variant. The final marker samples scene output. Excludes buffer uploads, query resolve, and readback. Zero, error-sentinel, decreasing, and nonpositive durations are invalid.",
                 "phases": flash_report(&flash_phases, renderer.gpu_timestamps_available()),
             })
         } else {
@@ -1301,6 +1371,50 @@ fn main() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn paired_mean_interval_retains_correlated_noise_and_every_frame() {
+        let mut values = vec![0.2; 60];
+        values.extend([0.4; 60]);
+        values.extend([0.6; 60]);
+        let (mean, lower, upper, blocks) = paired_mean_interval(&values, 60).unwrap();
+        assert!((mean - 0.4).abs() < 1e-6);
+        assert_eq!(blocks, 3);
+        assert!(
+            upper > 0.8 && lower < 0.0,
+            "batch correlation retains uncertainty"
+        );
+        values.push(2.0);
+        let expected = values.iter().map(|&v| f64::from(v)).sum::<f64>() / 181.0;
+        assert_eq!(paired_mean_interval(&values, 60).unwrap().0, expected);
+        assert!(paired_mean_interval(&values[..60], 60).is_none());
+        assert!(paired_mean_interval(&[f32::NAN, 1.0], 1).is_none());
+    }
+
+    #[test]
+    fn completion_budget_does_not_turn_invalid_gpu_queries_into_gpu_costs() {
+        let pairs = (8..128)
+            .map(|index| RenderPair {
+                index,
+                off: (1.0, 3.0),
+                on: (1.1, 3.2),
+                ..Default::default()
+            })
+            .collect();
+        let report = temporal_report(&[("swarm", pairs)], true, 60.0);
+        let phase = &report["swarm"];
+        assert_eq!(phase["valid_gpu_frames"], 0);
+        assert_eq!(phase["invalid_gpu_frames"], 120);
+        assert!(phase["mean_gpu_increment_ms"].is_null());
+        assert!(phase["gpu_increment_under_1ms_p99"].is_null());
+        assert_eq!(phase["wall_mean_upper_95pct_under_1ms"], true);
+        assert_eq!(
+            phase["wall_render_completion_mean_95pct_ci_ms"]["samples"],
+            120
+        );
+        assert_eq!(phase["off_first_frames"], 60);
+        assert_eq!(phase["on_first_frames"], 60);
+    }
 
     #[test]
     fn paired_bake_deliveries_are_independent_and_match_each_revision() {

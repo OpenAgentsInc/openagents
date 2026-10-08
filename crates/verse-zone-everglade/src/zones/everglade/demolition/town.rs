@@ -1706,7 +1706,11 @@ impl Town {
                 state.status != Status::Broken || state.chunks.iter().any(|c| !c.gone)
             })
             .collect();
-        if drawn != self.pool.drawn || self.pool.spans.len() != self.count_spans(&drawn, &live) {
+        let seen = (self.wreck.revision, self.wreck.site.revision());
+        if seen != self.seen
+            || drawn != self.pool.drawn
+            || self.pool.spans.len() != self.count_spans(&drawn, &live)
+        {
             if drawn.is_empty() {
                 self.pool.clear();
             } else {
@@ -1719,7 +1723,6 @@ impl Town {
                 );
             }
         }
-        let seen = (self.wreck.revision, self.wreck.site.revision());
         if seen != self.seen {
             self.seen = seen;
             self.refresh_solids();
@@ -1894,7 +1897,9 @@ impl Town {
             let spec = &site.specs()[span.piece];
             let (transform, shade, body, settled) = match piece.status {
                 Status::Broken => {
-                    let chunk = &piece.chunks[span.chunk];
+                    let Some(chunk) = piece.chunks.get(span.chunk) else {
+                        continue;
+                    };
                     (
                         site.chunk_pose(span.piece, span.chunk),
                         0.8,

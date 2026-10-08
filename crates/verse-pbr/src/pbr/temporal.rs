@@ -628,7 +628,7 @@ impl Temporal {
         let make = |label,
                     source: String,
                     layout,
-                    format,
+                    format: wgpu::TextureFormat,
                     vs,
                     fs,
                     buffers: &[wgpu::VertexBufferLayout<'_>]| {

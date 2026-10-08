@@ -36,7 +36,7 @@
 //! texels wide with at most [`LIGHT_ROWS`] rows a layer, within OpenGL ES
 //! 3.0's 2048-texel guarantee, so phones and WebGL2 read it the same way.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3};
@@ -167,6 +167,30 @@ impl Instance {
         record.ambient = u32::from_le_bytes(instance.light);
         record.pad = [instance.id as u32, (instance.id >> 32) as u32];
         record
+    }
+}
+
+/// Retains each renderer's preceding transform, independently of simulation ticks.
+#[derive(Default)]
+pub(crate) struct RenderedInstances {
+    previous: HashMap<u64, [[f32; 4]; 3]>,
+    current: HashMap<u64, [[f32; 4]; 3]>,
+}
+
+impl RenderedInstances {
+    pub(crate) fn update(&mut self, records: &mut [Instance]) {
+        self.current.clear();
+        for record in records {
+            let id = u64::from(record.pad[0]) | (u64::from(record.pad[1]) << 32);
+            record.previous = self.previous.get(&id).copied().unwrap_or(record.rows);
+            self.current.insert(id, record.rows);
+        }
+        std::mem::swap(&mut self.current, &mut self.previous);
+    }
+
+    pub(crate) fn clear(&mut self) {
+        self.previous.clear();
+        self.current.clear();
     }
 }
 
@@ -775,6 +799,53 @@ mod tests {
         assert_eq!(batches.len(), 2);
         assert_eq!(batches[0].run.unwrap().count, 2);
         assert_eq!(batches[1].run.unwrap().first, 2);
+    }
+
+    #[test]
+    fn rigid_motion_uses_last_rendered_pose_across_multiple_or_no_ticks() {
+        let record = |id: u64, x: f32, tick_previous: f32| {
+            Instance::dynamic(&textured::DynamicInstance {
+                id,
+                mesh: 0,
+                current: Mat4::from_translation(Vec3::X * x),
+                previous: Mat4::from_translation(Vec3::X * tick_previous),
+                color: [1.0; 4],
+                light: [0; 4],
+                settled: false,
+            })
+        };
+        let mut history = RenderedInstances::default();
+        let mut first = [record(9, 1.0, 0.0), record(u64::MAX, 20.0, 19.0)];
+        history.update(&mut first);
+        assert_eq!(
+            first[0].previous, first[0].rows,
+            "new object has no history"
+        );
+
+        // Three simulation ticks pass before the next render. Record order changes.
+        let mut next = [record(u64::MAX, 23.0, 22.0), record(9, 4.0, 3.0)];
+        history.update(&mut next);
+        assert_eq!(next[0].previous[0][3], 20.0);
+        assert_eq!(next[1].previous[0][3], 1.0);
+
+        let mut repeated = [record(9, 4.0, 3.0)];
+        history.update(&mut repeated);
+        assert_eq!(repeated[0].previous[0][3], 4.0, "no tick means no motion");
+        let mut returned = [record(u64::MAX, 30.0, 29.0)];
+        history.update(&mut returned);
+        assert_eq!(returned[0].previous, returned[0].rows, "absent IDs retire");
+        history.clear();
+        returned[0].rows[0][3] = 31.0;
+        history.update(&mut returned);
+        assert_eq!(
+            returned[0].previous, returned[0].rows,
+            "world reset retires history"
+        );
+
+        let mut other_renderer = RenderedInstances::default();
+        let mut independent = [record(9, 100.0, 99.0)];
+        other_renderer.update(&mut independent);
+        assert_eq!(independent[0].previous, independent[0].rows);
     }
 
     #[test]
