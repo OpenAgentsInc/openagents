@@ -6,6 +6,7 @@ use serde_json::Value;
 use std::sync::atomic::AtomicBool;
 
 pub mod batch;
+pub mod public_reply;
 pub mod standing;
 
 pub const PROPOSAL_SCHEMA: &str = "openagents.sales.outbox-proposal.v1";
@@ -279,6 +280,8 @@ pub(super) struct Book {
     pub batches: batch::Book,
     #[serde(default)]
     pub standing: standing::Book,
+    #[serde(default)]
+    pub public_replies: public_reply::Book,
     commands: BTreeMap<String, (String, String, u64)>,
 }
 impl Book {
@@ -294,6 +297,7 @@ impl Book {
         }
         self.batches.check()?;
         self.standing.check()?;
+        self.public_replies.check()?;
         for (id, entry) in &self.reconciliations {
             super::id(id)?;
             super::id(&entry.owner)?;
