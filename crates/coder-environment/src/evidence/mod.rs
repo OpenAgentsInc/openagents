@@ -6,7 +6,7 @@
 //!
 //! - `events.jsonl`: append-only [`Entry`] lines, each with a stable,
 //!   strictly increasing `seq`. Readers trust events, never raw file sizes;
-//!   paging and replay (ENV-02b) read this log by sequence.
+//!   paging and replay ([`read`], ENV-02b) read this log by sequence.
 //! - `streams/<call>.stdout|stderr`: the retained (post-redaction) bytes of
 //!   each stream. Every [`Event::Output`] names its offset, length, and
 //!   SHA-256 in that file.
@@ -25,8 +25,13 @@
 //! let pass verification or save a version. Nothing here caps output for
 //! display; model-visible excerpts are separate ([`Recorder::atif_call`]).
 
+pub mod read;
 pub mod redact;
 
+pub use read::{
+    EventCursor, EventPage, EventWindow, EvidenceReader, EvidenceSummary, ExportManifest, Gap,
+    StreamCursor, StreamPage, StreamWindow,
+};
 pub use redact::{REDACTION_MARKER, Redactor, Scrubbed};
 
 use crate::{RunLink, digest, valid_digest, valid_id};
@@ -55,13 +60,17 @@ pub enum EvidenceError {
     Finalized,
     Corrupt(&'static str),
     Io(&'static str),
+    /// A read cursor is not bound to this record, stream, or position.
+    Cursor(&'static str),
 }
 impl std::fmt::Display for EvidenceError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Invalid(m) | Self::Credential(m) | Self::Corrupt(m) | Self::Io(m) => {
-                f.write_str(m)
-            }
+            Self::Invalid(m)
+            | Self::Credential(m)
+            | Self::Corrupt(m)
+            | Self::Io(m)
+            | Self::Cursor(m) => f.write_str(m),
             Self::UnknownCall(id) => write!(f, "No call {id} was started."),
             Self::DuplicateCall(id) => write!(f, "Call {id} was already started."),
             Self::Closed(id) => write!(f, "Call {id} received output after its stream closed."),
