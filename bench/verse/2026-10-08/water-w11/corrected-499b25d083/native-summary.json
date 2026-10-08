@@ -1,0 +1,362 @@
+[
+  {
+    "tier": "low",
+    "view": "pond-posts",
+    "adapter": "Apple M5 Max (Metal)",
+    "measured_at_unix_ms": 1791448353798,
+    "size": [
+      1920,
+      1080
+    ],
+    "cadence_hz": 60,
+    "steady_frames": 96,
+    "timing": "paced native pass timestamps when valid; submit-to-fence wall time excludes cadence sleep",
+    "gpu_timestamp_scope": "mirror, color/depth copies, and surface passes; shared opaque underwater shading and implicit queue texture uploads are not isolated",
+    "gpu_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "gpu_passes_ms": [
+      "mirror",
+      "opaque (excluded)",
+      "color and depth copies",
+      "surface"
+    ],
+    "gpu_bytes": 989164,
+    "main_ms": {
+      "count": 96,
+      "mean": 0.1432798854166671,
+      "p95": 0.1827499999999418,
+      "max": 0.19787500000001046
+    },
+    "worker_ms": {
+      "count": 96,
+      "mean": 0.0,
+      "p95": 0.0,
+      "max": 0.0
+    },
+    "main_cpu_clock": true,
+    "worker_cpu_clock": true,
+    "completed_jobs": 0,
+    "completed_synthesis_ms": 0.0,
+    "mean_completed_job_elapsed_ms": null,
+    "mean_completed_job_cpu_ms": null,
+    "observed_last_job_elapsed_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "observed_last_job_cpu_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "queue_fence_frame_ms_fastest": 4.798042,
+    "queue_fence_water_ms_estimate": 1.9957089999999997,
+    "last": {
+      "gpu": null,
+      "gpu_timestamps": true,
+      "gpu_bytes": 989164,
+      "main_ms": 0.056709,
+      "main_cpu_ms": 0.056290999999987434,
+      "synthesis_ms": 0.0,
+      "synthesis_cpu_ms": null,
+      "completed_jobs": 0,
+      "completed_synthesis_ms": 0.0,
+      "worker_ms": 0.0,
+      "worker_cpu_supported": true,
+      "worker_bytes": 0,
+      "ripple_cpu_bytes": 131072,
+      "inline_synthesis": false,
+      "refresh_every": 1,
+      "copies": false,
+      "mirror": false,
+      "ssr": false,
+      "effects_reduced": false
+    },
+    "within_budget": false,
+    "effects_reduced": false,
+    "water_changed_pixels": 0.4109963348765432,
+    "capture": "native-low-pond-posts.png",
+    "capture_sha256": "404f262c8cb19a924c29780283c0b93aa28e78f807fb1c59c313a9708269eeeb",
+    "plan_transitions": [
+      {
+        "sample": 0,
+        "plan": {
+          "copies": false,
+          "mirror": false,
+          "ssr": false,
+          "refresh_every": 1,
+          "effects_reduced": false
+        }
+      }
+    ],
+    "gpu_bytes_peak": 989164,
+    "cpu_storage_bytes_peak": 131072,
+    "run": {
+      "source_sha": "499b25d0839a01dbbbc524e1374b1ee5c3e52644",
+      "worktree_sha": "499b25d0839a01dbbbc524e1374b1ee5c3e52644",
+      "worktree_documentation_only_delta": [],
+      "command": [
+        "/Users/christopherdavid/work/openagents-target-agent12/release/examples/water_capture-a10bb9beac78f3e6",
+        "w11::water_w11_fixed_views",
+        "--ignored",
+        "--exact",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit": 101,
+      "selected_case": "low/pond-posts",
+      "selected_browser_pairs": null,
+      "started_at_unix_ms": 1791448337341,
+      "ended_at_unix_ms": 1791448353817,
+      "wrapper_sha256": "dda179ec92b0a0fbfafa433a62739a4738aa88f8170201629c53081749e34c2c"
+    },
+    "visual_audit": "1920x1080 capture inspected; pond/posts or waterline and sky render; no blank frame",
+    "gpu_budget_acceptance": "pending; zero/one valid samples cannot establish a GPU-budget pass"
+  },
+  {
+    "tier": "low",
+    "view": "waterline",
+    "adapter": "Apple M5 Max (Metal)",
+    "measured_at_unix_ms": 1791448369783,
+    "size": [
+      1920,
+      1080
+    ],
+    "cadence_hz": 60,
+    "steady_frames": 96,
+    "timing": "paced native pass timestamps when valid; submit-to-fence wall time excludes cadence sleep",
+    "gpu_timestamp_scope": "mirror, color/depth copies, and surface passes; shared opaque underwater shading and implicit queue texture uploads are not isolated",
+    "gpu_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "gpu_passes_ms": [
+      "mirror",
+      "opaque (excluded)",
+      "color and depth copies",
+      "surface"
+    ],
+    "gpu_bytes": 989164,
+    "main_ms": {
+      "count": 96,
+      "mean": 0.13370488541666306,
+      "p95": 0.16587499999997135,
+      "max": 0.19887500000004366
+    },
+    "worker_ms": {
+      "count": 96,
+      "mean": 0.0,
+      "p95": 0.0,
+      "max": 0.0
+    },
+    "main_cpu_clock": true,
+    "worker_cpu_clock": true,
+    "completed_jobs": 0,
+    "completed_synthesis_ms": 0.0,
+    "mean_completed_job_elapsed_ms": null,
+    "mean_completed_job_cpu_ms": null,
+    "observed_last_job_elapsed_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "observed_last_job_cpu_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "queue_fence_frame_ms_fastest": 3.301917,
+    "queue_fence_water_ms_estimate": 0.6177090000000001,
+    "last": {
+      "gpu": null,
+      "gpu_timestamps": true,
+      "gpu_bytes": 989164,
+      "main_ms": 0.127083,
+      "main_cpu_ms": 0.12654199999997218,
+      "synthesis_ms": 0.0,
+      "synthesis_cpu_ms": null,
+      "completed_jobs": 0,
+      "completed_synthesis_ms": 0.0,
+      "worker_ms": 0.0,
+      "worker_cpu_supported": true,
+      "worker_bytes": 0,
+      "ripple_cpu_bytes": 131072,
+      "inline_synthesis": false,
+      "refresh_every": 1,
+      "copies": false,
+      "mirror": false,
+      "ssr": false,
+      "effects_reduced": false
+    },
+    "within_budget": true,
+    "effects_reduced": false,
+    "water_changed_pixels": 0.5102121913580246,
+    "capture": "native-low-waterline.png",
+    "capture_sha256": "860b8efb9c57be6f68927944b13ed8c53fbe1bf9137aaa60f62b313b87eb82da",
+    "plan_transitions": [
+      {
+        "sample": 0,
+        "plan": {
+          "copies": false,
+          "mirror": false,
+          "ssr": false,
+          "refresh_every": 1,
+          "effects_reduced": false
+        }
+      }
+    ],
+    "gpu_bytes_peak": 989164,
+    "cpu_storage_bytes_peak": 131072,
+    "run": {
+      "source_sha": "499b25d0839a01dbbbc524e1374b1ee5c3e52644",
+      "worktree_sha": "499b25d0839a01dbbbc524e1374b1ee5c3e52644",
+      "worktree_documentation_only_delta": [],
+      "command": [
+        "/Users/christopherdavid/work/openagents-target-agent12/release/examples/water_capture-a10bb9beac78f3e6",
+        "w11::water_w11_fixed_views",
+        "--ignored",
+        "--exact",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit": 0,
+      "selected_case": "low/waterline",
+      "selected_browser_pairs": null,
+      "started_at_unix_ms": 1791448354140,
+      "ended_at_unix_ms": 1791448369838,
+      "wrapper_sha256": "dda179ec92b0a0fbfafa433a62739a4738aa88f8170201629c53081749e34c2c"
+    },
+    "visual_audit": "1920x1080 capture inspected; pond/posts or waterline and sky render; no blank frame",
+    "gpu_budget_acceptance": "pending; zero/one valid samples cannot establish a GPU-budget pass"
+  },
+  {
+    "tier": "medium",
+    "view": "pond-noon",
+    "adapter": "Apple M5 Max (Metal)",
+    "measured_at_unix_ms": 1791448385471,
+    "size": [
+      1920,
+      1080
+    ],
+    "cadence_hz": 60,
+    "steady_frames": 96,
+    "timing": "paced native pass timestamps when valid; submit-to-fence wall time excludes cadence sleep",
+    "gpu_timestamp_scope": "mirror, color/depth copies, and surface passes; shared opaque underwater shading and implicit queue texture uploads are not isolated",
+    "gpu_ms": {
+      "count": 1,
+      "mean": 2.687709,
+      "p95": 2.687709,
+      "max": 2.687709
+    },
+    "gpu_passes_ms": [
+      "mirror",
+      "opaque (excluded)",
+      "color and depth copies",
+      "surface"
+    ],
+    "gpu_bytes": 28855068,
+    "main_ms": {
+      "count": 96,
+      "mean": 0.18150726041666587,
+      "p95": 0.244750000000181,
+      "max": 0.2890419999999949
+    },
+    "worker_ms": {
+      "count": 96,
+      "mean": 0.0,
+      "p95": 0.0,
+      "max": 0.0
+    },
+    "main_cpu_clock": true,
+    "worker_cpu_clock": true,
+    "completed_jobs": 0,
+    "completed_synthesis_ms": 0.0,
+    "mean_completed_job_elapsed_ms": null,
+    "mean_completed_job_cpu_ms": null,
+    "observed_last_job_elapsed_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "observed_last_job_cpu_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "queue_fence_frame_ms_fastest": 5.143708,
+    "queue_fence_water_ms_estimate": 0.11120800000000042,
+    "last": {
+      "gpu": null,
+      "gpu_timestamps": true,
+      "gpu_bytes": 28855068,
+      "main_ms": 0.2385,
+      "main_cpu_ms": 0.23833400000000893,
+      "synthesis_ms": 0.0,
+      "synthesis_cpu_ms": null,
+      "completed_jobs": 0,
+      "completed_synthesis_ms": 0.0,
+      "worker_ms": 0.0,
+      "worker_cpu_supported": true,
+      "worker_bytes": 0,
+      "ripple_cpu_bytes": 131072,
+      "inline_synthesis": false,
+      "refresh_every": 1,
+      "copies": true,
+      "mirror": true,
+      "ssr": false,
+      "effects_reduced": false
+    },
+    "within_budget": false,
+    "effects_reduced": false,
+    "water_changed_pixels": 0.4218648726851852,
+    "capture": "native-medium-pond-noon.png",
+    "capture_sha256": "253fe0dc553581a52e0dae404559766ba124867b38f56243cf34ccf3e7f0e9e3",
+    "plan_transitions": [
+      {
+        "sample": 0,
+        "plan": {
+          "copies": true,
+          "mirror": true,
+          "ssr": false,
+          "refresh_every": 1,
+          "effects_reduced": false
+        }
+      }
+    ],
+    "gpu_bytes_peak": 28855068,
+    "cpu_storage_bytes_peak": 131072,
+    "run": {
+      "source_sha": "499b25d0839a01dbbbc524e1374b1ee5c3e52644",
+      "worktree_sha": "499b25d0839a01dbbbc524e1374b1ee5c3e52644",
+      "worktree_documentation_only_delta": [],
+      "command": [
+        "/Users/christopherdavid/work/openagents-target-agent12/release/examples/water_capture-a10bb9beac78f3e6",
+        "w11::water_w11_fixed_views",
+        "--ignored",
+        "--exact",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit": 101,
+      "selected_case": "medium/pond-noon",
+      "selected_browser_pairs": null,
+      "started_at_unix_ms": 1791448370146,
+      "ended_at_unix_ms": 1791448385526,
+      "wrapper_sha256": "dda179ec92b0a0fbfafa433a62739a4738aa88f8170201629c53081749e34c2c"
+    },
+    "visual_audit": "1920x1080 capture inspected; pond/posts or waterline and sky render; no blank frame",
+    "gpu_budget_acceptance": "pending; zero/one valid samples cannot establish a GPU-budget pass"
+  }
+]
