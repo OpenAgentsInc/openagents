@@ -543,6 +543,12 @@ fn private_layer_scene_proof() {
         vertices.write_all(&vertex.color).unwrap();
     }
     vertices.flush().unwrap();
+    let dirt = scene
+        .images
+        .iter()
+        .find(|image| image.name == "everglade/ground/dirt")
+        .unwrap();
+    std::fs::write(output.join("dirt.rgba"), &dirt.rgba).unwrap();
     let mut indices = Sha256::new();
     for index in &merged.indices {
         indices.update(index.to_le_bytes());
@@ -552,6 +558,8 @@ fn private_layer_scene_proof() {
         "scene": hex(&verse_pbr::pbr::baked_layers::scene_digest(&scene, &merged)),
         "vertices": merged.vertices.len(),
         "vertex_stride": 36,
+        "architecture": std::env::consts::ARCH,
+        "debug_assertions": cfg!(debug_assertions),
         "indices": merged.indices.len(),
         "indices_sha256": hex(&indices.finalize()),
         "batches": merged.batches.iter().map(|b| serde_json::json!({
