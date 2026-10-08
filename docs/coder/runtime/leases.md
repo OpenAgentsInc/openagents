@@ -233,6 +233,7 @@ reads it.
 | `quiet` | Exclusive | One holder | Waits for builds; holds new builds. |
 | `screen` | Exclusive | One holder, with an owner grant | Offscreen capture is the default. |
 | `browser`, `gpu`, `unreal`, `blender` | Exclusive | One holder | Headless Chrome with its own profile needs no lease. |
+| `pylon` | Counted, jobs | 64 | Each shared-compute pool job takes one at `background` priority; the pylon drains while a `quiet` lease or any `owner` priority lease is held or queued ([shared compute](../../compute/pylon.md#share-this-computer-from-the-host)). |
 | `artifact/NAME`, `issue/N` | Exclusive | One holder | For [the single-digest artifact queue](artifact-queue.md) and issue claims. |
 
 A counted lease is admitted while the amounts held plus its own fit the

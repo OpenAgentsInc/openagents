@@ -75,6 +75,58 @@ and is valid for 240 seconds.
 Keys live in `~/.openagents/compute/` (`provider.key`, `buyer.key`,
 `aggregator.key`, mode `0600`), or under `OPENAGENTS_PYLON_HOME`.
 
+Each job takes a `pylon` lease at `background` priority from this
+computer's lease broker, and the pylon drains (its beacon says `draining`
+with no free slots, admitted jobs finish, new ones are refused
+`rate_limited`) while a `quiet` lease or any `owner` priority lease is held
+or queued. `--dedicated` skips the lease table on a box that runs no owner
+work.
+
+### Share this computer from the host
+
+The Coder host is the pylon. Sharing is off by default:
+
+```sh
+openagents host share on --allow npub1...   # or --allow-any
+openagents host share status
+openagents host share off                   # publishes an offline beacon
+```
+
+`on` takes the same options as `serve` and keeps earlier choices in
+`~/.openagents/compute/share.json`. The running host (this user's own,
+under the default root) looks at that file every 5 seconds and starts or
+stops the pylon; it needs a Psionic server at `--engine` (default
+`http://127.0.0.1:18080`), and shows `draining` until the server answers.
+
+### Send Alice's and the crew's text jobs to the pool
+
+```sh
+openagents pylon route on                  # the best fresh pylon
+openagents pylon route on --pylon npub1... # only this pylon, such as your own
+openagents pylon route status
+openagents pylon route off
+```
+
+Off by default. While it is on, an agent's day plan (Alice's and the
+crew's) is written by a free pool job, NIP-44 encrypted to the pylon that
+runs it, as this computer's buyer key, with a receipt the next aggregate
+counts. When no pylon answers, the agent's own model writes it. The
+setting lives in `~/.openagents/compute/route.json`.
+
+### Link the pylon to its owner (NIP-OA)
+
+```sh
+openagents pylon link --owner-secret ~/owner.key   # mint with the owner's key
+openagents pylon link --credential '["auth","<owner>","kind=30200","<sig>"]'
+openagents pylon link --remove
+```
+
+Every beacon then carries the owner's `auth` tag (conditions `kind=30200`).
+Readers verify it and refuse a beacon whose tag does not verify; a receipt
+from the pylon's provider key or its verified owner never counts toward the
+pool's totals or the field's job counts. The owner key is read once to mint
+the tag and never stored.
+
 ## Use a pylon
 
 ```sh
@@ -131,9 +183,8 @@ desktop build shows this source beside the computer's own pylon
 
 - Free jobs only; no invoices, payments, or provider shares.
 - The capability is a qualified ID, not a published NIP-CAP manifest.
-- NIP-OA owner tags on beacons are refused rather than verified.
 - No check verdicts (P2); aggregates count no labels.
 - The job runs in the Psionic process; it is inference only, with no tool or
   command execution, so there is nothing to put inside `coder-boundary` yet.
-- The provider does not take a `background` lease from the lease broker, so
-  the owner's work does not preempt it yet.
+- Only day plans route to the pool; reflections, share drafts, and
+  consolidations still use the agent's own model.

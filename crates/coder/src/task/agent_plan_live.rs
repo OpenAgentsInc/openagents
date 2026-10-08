@@ -6,6 +6,7 @@
 use jev::Answer;
 
 use super::super::agent::{LiveModel, Store};
+use super::super::agent_reflect::{PoolWriter, Reply, Writer};
 use super::{Judge, Reaction, SET, Services, react_request};
 
 /// The agent's model through the capacity book, and Jev from the decision
@@ -19,10 +20,29 @@ pub fn services(store: &Store) -> Result<Services, String> {
         Ok(Some(client)) => Box::new(JevJudge::new(client)?),
         _ => Box::new(Unanswered),
     };
-    Ok(Services {
-        writer: Box::new(LiveModel::new()?),
-        judge,
-    })
+    let home = pylon::home();
+    let route = pylon::route::load(&home);
+    let writer: Box<dyn Writer + Send> = if route.on {
+        // Free pool jobs first (#10921); the agent's own model answers
+        // when no pylon does.
+        let fallback = LiveModel::new()
+            .ok()
+            .map(|model| Box::new(model) as Box<dyn Writer + Send>);
+        Box::new(PoolWriter {
+            pool: Box::new(move |system, prompt| {
+                let answer = pylon::route::ask_blocking(&home, &route, system, prompt)?;
+                Ok(Reply {
+                    text: answer.text.unwrap_or_default(),
+                    model: format!("pylon:{}", answer.model),
+                    usd: Some(0.0),
+                })
+            }),
+            fallback,
+        })
+    } else {
+        Box::new(LiveModel::new()?)
+    };
+    Ok(Services { writer, judge })
 }
 
 /// No judge: every observed event continues, and the journal says why.

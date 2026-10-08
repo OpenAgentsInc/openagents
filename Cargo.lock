@@ -2768,6 +2768,7 @@ dependencies = [
  "openrouter",
  "plugin",
  "private-fs",
+ "pylon",
  "ratatui",
  "rcgen",
  "receipts",
@@ -3157,6 +3158,7 @@ dependencies = [
  "openagents-chat",
  "openagents-connect",
  "private-fs",
+ "pylon",
  "rustls",
  "secp256k1 0.31.1",
  "security-framework",
@@ -11683,6 +11685,7 @@ checksum = "d55d956fa96f5ec02be2e13af0e20391a5aa83d6a074e3ad368959d0fab299ea"
 name = "pylon"
 version = "0.1.0"
 dependencies = [
+ "coder-lease",
  "futures-util",
  "nostr",
  "nostr-transport",

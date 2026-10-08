@@ -15,8 +15,10 @@ use pylon::client::{self, Ask};
 use pylon::engine::Echo;
 use pylon::field::{Live, RelayField};
 use pylon::identity::Identity;
+use pylon::lease::Leases;
 use pylon::pool;
 use pylon::provider::{Config, Provider};
+use pylon::share;
 use serde_json::{Value, json};
 use tokio::net::TcpListener;
 use tokio::sync::{Mutex, mpsc};
@@ -290,4 +292,224 @@ async fn a_free_job_runs_end_to_end_and_the_pool_counts_it() {
     seen(|l| l.pylons(pylon::now())[0].state.status == "offline").await;
     stop.store(true, Ordering::Relaxed);
     watcher.await.unwrap();
+}
+
+fn lease_broker(dir: &tempfile::TempDir) -> coder_lease::Broker {
+    let limits = coder_lease::Limits {
+        build: 2,
+        memory_gib: 16,
+        disk_floor_gb: 0,
+        build_disk_gb: 0,
+    };
+    coder_lease::Broker::new(dir.path().join("leases"), limits).with_poll(Duration::from_millis(10))
+}
+
+fn owner_build(broker: &coder_lease::Broker) -> coder_lease::Lease {
+    let holder = coder_lease::Holder {
+        session: "owner:1".into(),
+        agent: "none".into(),
+        pid: std::process::id(),
+        command: "cargo".into(),
+    };
+    broker
+        .acquire(
+            coder_lease::Request::new(coder_lease::Resource::Build, holder)
+                .priority(coder_lease::Priority::Owner)
+                .wait(coder_lease::Wait::No),
+        )
+        .unwrap()
+}
+
+/// A pylon linked to its owner over NIP-OA, sharing this computer through
+/// the lease broker: each job holds a background `pylon` lease, the owner's
+/// own work refuses new jobs and drains the beacon, and the owner's own
+/// receipts never count.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn an_owned_pylon_yields_to_the_owner_and_never_counts_their_receipts() {
+    let (url, hub) = relay().await;
+    let home = tempfile::tempdir().unwrap();
+    let leases = tempfile::tempdir().unwrap();
+    let broker = lease_broker(&leases);
+    let provider_key = Identity::generate();
+    let owner = Identity::generate();
+    let buyer = Identity::generate();
+
+    let credential =
+        nostr::domain::mint_owner_attestation(owner.secret(), provider_key.pubkey(), "kind=30200")
+            .unwrap();
+    let mut config = Config::new(&url, "studio-mac", home.path().to_path_buf());
+    config.allow = Some(BTreeSet::from([
+        buyer.pubkey().to_string(),
+        owner.pubkey().to_string(),
+    ]));
+    config.owner = Some(credential.clone());
+    // A credential for another key is refused before the pylon starts.
+    let mut wrong = config.clone();
+    wrong.owner = Some(
+        nostr::domain::mint_owner_attestation(owner.secret(), buyer.pubkey(), "kind=30200")
+            .unwrap(),
+    );
+    assert!(
+        Provider::on(
+            wrong,
+            provider_key.clone(),
+            Arc::new(Echo),
+            Arc::new(Leases::new(broker.clone())),
+        )
+        .is_err()
+    );
+    let provider = Provider::on(
+        config,
+        provider_key.clone(),
+        Arc::new(Echo),
+        Arc::new(Leases::new(broker.clone())),
+    )
+    .unwrap();
+    let (stop_tx, stop_rx) = tokio::sync::oneshot::channel::<()>();
+    let running = tokio::spawn(Arc::clone(&provider).run(async {
+        let _ = stop_rx.await;
+    }));
+    wait_for_beacon(&hub).await;
+
+    // The beacon names its verified owner.
+    let beacon = hub
+        .lock()
+        .await
+        .stored
+        .iter()
+        .find(|e| e.kind == 30_200)
+        .cloned()
+        .unwrap();
+    let (_, found) = nostr::pylon::parse_owned_beacon(&beacon).unwrap();
+    assert_eq!(found.as_deref(), Some(owner.pubkey()));
+
+    let ask = |prompt: &str| Ask {
+        relay: url.clone(),
+        pylon: None,
+        prompt: prompt.into(),
+        wait: Duration::from_secs(10),
+        publish_receipt: true,
+        home: home.path().to_path_buf(),
+    };
+    // A buyer's job and the owner's own job both run; each took a lease
+    // that is gone once the job ended.
+    assert!(
+        client::ask(&buyer, &ask("from a buyer"))
+            .await
+            .unwrap()
+            .text
+            .is_some()
+    );
+    assert!(
+        client::ask(&owner, &ask("from the owner"))
+            .await
+            .unwrap()
+            .text
+            .is_some()
+    );
+    assert!(broker.list().unwrap().is_empty());
+
+    // The field and the pool count the buyer's job, not the owner's.
+    let field = RelayField::new(&url, Some("everglade"), Identity::generate());
+    assert_eq!(field.poll().await.unwrap()[0].jobs, 1);
+    let policy = PoolPolicy::open("everglade", pool::SLICES);
+    let aggregator = Identity::generate();
+    let (aggregate, _) = pool::aggregate(&aggregator, &url, &policy, 60, true)
+        .await
+        .unwrap();
+    assert_eq!(aggregate.totals.jobs.accepted, 1);
+    let verified = pool::verify(&Identity::generate(), &url, aggregator.pubkey(), &policy)
+        .await
+        .unwrap();
+    assert_eq!(verified, aggregate);
+
+    // While the owner's build holds the machine, a new job is refused and
+    // the pylon drains.
+    let build = owner_build(&broker);
+    let refused = client::ask(&buyer, &ask("while you build")).await.unwrap();
+    assert!(refused.text.is_none());
+    assert!(refused.error.unwrap().starts_with("rate_limited"));
+    assert_eq!(
+        provider.beacon(None).await.status,
+        nostr::pylon::Status::Draining
+    );
+    assert_eq!(provider.beacon(None).await.slots.free, 0);
+    drop(build);
+
+    stop_tx.send(()).unwrap();
+    running.await.unwrap().unwrap();
+}
+
+/// `openagents host share on|off`: the host's supervisor starts the pylon
+/// when the setting turns on and stops it, with an offline beacon, when it
+/// turns off.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn host_share_turns_the_pylon_on_and_off() {
+    let (url, hub) = relay().await;
+    let home = tempfile::tempdir().unwrap();
+    let leases = tempfile::tempdir().unwrap();
+    let buyer = Identity::generate();
+    let words = |w: &[&str]| w.iter().map(|s| (*s).to_string()).collect::<Vec<_>>();
+
+    // Off by default; `on` needs to know who may send jobs.
+    assert_eq!(
+        share::load(home.path()).unwrap(),
+        None,
+        "sharing starts off"
+    );
+    assert_eq!(
+        share::command(&words(&["on", "--relay", &url]), home.path(), "box"),
+        1
+    );
+    assert_eq!(
+        share::command(
+            &words(&[
+                "on",
+                "--relay",
+                &url,
+                "--allow",
+                &buyer.npub(),
+                "--engine",
+                "http://127.0.0.1:9",
+            ]),
+            home.path(),
+            "box",
+        ),
+        0
+    );
+    let settings = share::load(home.path()).unwrap().unwrap();
+    assert!(settings.on);
+    assert_eq!(settings.pylon, "box");
+
+    let (stop_tx, stop_rx) = tokio::sync::oneshot::channel::<()>();
+    let supervisor = tokio::spawn(share::supervise(
+        home.path().to_path_buf(),
+        Arc::new(Leases::new(lease_broker(&leases))),
+        Duration::from_millis(100),
+        |_| {},
+        async {
+            let _ = stop_rx.await;
+        },
+    ));
+    wait_for_beacon(&hub).await;
+    let field = RelayField::new(&url, Some("everglade"), Identity::generate());
+    let states = field.poll().await.unwrap();
+    assert_eq!(states.len(), 1);
+    // No model answers on that port, so the pylon shows draining.
+    assert_eq!(states[0].status, "draining");
+
+    // Turning it off stops the pylon with an offline beacon.
+    tokio::time::sleep(Duration::from_millis(1_100)).await;
+    assert_eq!(share::command(&words(&["off"]), home.path(), "box"), 0);
+    let mut offline = false;
+    for _ in 0..100 {
+        if field.poll().await.unwrap()[0].status == "offline" {
+            offline = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(offline);
+    stop_tx.send(()).unwrap();
+    supervisor.await.unwrap();
 }

@@ -27,6 +27,10 @@ pub const DEFAULT_AGING: Duration = Duration::from_secs(20 * 60);
 /// Names another settings file than `~/.openagents/settings.json`.
 const SETTINGS_VAR: &str = "OPENAGENTS_SETTINGS";
 
+/// The most pool jobs a pylon runs at once; its own slot count bounds it
+/// further.
+pub const PYLON_JOBS: u64 = 64;
+
 /// The capacities counted leases share.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub struct Limits {
@@ -118,6 +122,7 @@ impl Limits {
         match resource {
             crate::Resource::Build => Some(self.build),
             crate::Resource::Memory => Some(self.memory_gib),
+            crate::Resource::Pylon => Some(PYLON_JOBS),
             _ => None,
         }
     }

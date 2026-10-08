@@ -348,8 +348,7 @@ for free work (2026-10-07):
   computer's lease table, with no events.
 
 Not implemented: check labels (the aggregate's `checks` set is always
-empty), NIP-OA `auth` tags (a beacon that carries one is refused, not
-verified), paid receipts in practice, a `wellspring` projection from an
+empty), paid receipts in practice, a `wellspring` projection from an
 aggregate, and the `nip-pylon-v1` relay extension. A service's `capability` is a qualified ID
 (`<pylon key>:pylon/text-generation`) rather than a full DefinitionRef.
 

@@ -12,7 +12,10 @@ use serde_json::{Value, json};
 use crate::client::{self, Ask};
 use crate::engine::Psionic;
 use crate::field::RelayField;
-use crate::identity::{Identity, hex_pubkey, npub};
+use crate::identity::{
+    Identity, check_owner, hex_pubkey, load_owner, mint_owner, npub, parse_owner, save_owner,
+};
+use crate::lease::{Dedicated, Leases, Machine};
 use crate::pool;
 use crate::provider::{Config, Provider};
 use crate::{DEFAULT_RELAY, home};
@@ -38,6 +41,20 @@ Commands:
       --max-tokens N        Output bound per job (default 512).
       --vram-gb N           GPU memory for the beacon's class (default 16).
       --pool SLUG           Pool to ask to join (default everglade).
+      --dedicated           Ignore this computer's lease table (a box that
+                            runs no owner work); otherwise each job takes a
+                            background `pylon` lease and the pylon drains
+                            while the owner's work needs the computer.
+  link                      Show the owner's NIP-OA link on this pylon's beacons.
+      --owner-secret FILE   Mint the link with the owner key in FILE (hex or
+                            nsec); the key is read once, never stored.
+      --credential JSON     Store a link minted elsewhere: the auth tag
+                            [\"auth\", owner, \"kind=30200\", signature].
+      --remove              Remove the link.
+  route on|off|status       Send Alice's and the crew's low-risk text jobs (day
+                            plans) to the pool, falling back to their own model.
+      --pylon NPUB          Only this pylon (default: the best fresh one).
+      --wait SECS           How long a job waits (default 90).
   ask PROMPT                Find a pylon, run one job, and publish a receipt.
       --pylon NPUB          Use this pylon instead of the best fresh one.
       --wait SECS           How long to wait for the answer (default 90).
@@ -133,6 +150,10 @@ pub fn run(json_out: bool, words: &[String]) -> u8 {
             .unwrap_or_else(|| DEFAULT_RELAY.into());
         match command.as_str() {
             "whoami" => whoami(json_out),
+            "link" => link(json_out, &mut args),
+            "route" => crate::route::command(&args.words, &home()).map(|(value, text)| {
+                emit(json_out, &value, &text);
+            }),
             "serve" => serve(json_out, &mut args, &relay).await,
             "ask" => ask(json_out, &mut args, &relay).await,
             "status" => status(json_out, &mut args, &relay).await,
@@ -180,7 +201,9 @@ fn whoami(json_out: bool) -> Result<(), String> {
     Ok(())
 }
 
-fn host_slug() -> String {
+/// This computer's name as a beacon slug.
+#[must_use]
+pub fn host_slug() -> String {
     let raw = std::env::var("HOSTNAME")
         .ok()
         .or_else(|| std::fs::read_to_string("/etc/hostname").ok())
@@ -244,12 +267,18 @@ async fn serve(json_out: bool, args: &mut Args, relay: &str) -> Result<(), Strin
         }
         config.allow = Some(allow);
     }
+    let machine: Arc<dyn Machine> = if args.flag("--dedicated") {
+        Arc::new(Dedicated)
+    } else {
+        Arc::new(Leases::from_env()?)
+    };
     if let Some(extra) = args.words.first() {
         return Err(format!("unexpected argument `{extra}`"));
     }
+    config.owner = load_owner(&home())?;
     let engine = Arc::new(Psionic::new(&engine_url, &model)?);
     let identity = key("provider")?;
-    let provider = Provider::new(config.clone(), identity.clone(), engine)?;
+    let provider = Provider::on(config.clone(), identity.clone(), engine, machine)?;
     emit(
         json_out,
         &json!({
@@ -288,6 +317,35 @@ async fn serve(json_out: bool, args: &mut Args, relay: &str) -> Result<(), Strin
     eprintln!(
         "pylon: stopped after {} served, {} refused, {} failed",
         counters.served, counters.refused, counters.failed
+    );
+    Ok(())
+}
+
+fn link(json_out: bool, args: &mut Args) -> Result<(), String> {
+    let provider = key("provider")?;
+    if args.flag("--remove") {
+        save_owner(&home(), None)?;
+    } else if let Some(file) = args.value("--owner-secret")? {
+        let credential = mint_owner(std::path::Path::new(&file), provider.pubkey())?;
+        save_owner(&home(), Some(&credential))?;
+    } else if let Some(text) = args.value("--credential")? {
+        let credential = parse_owner(&text)?;
+        check_owner(&provider, &credential)?;
+        save_owner(&home(), Some(&credential))?;
+    }
+    if let Some(extra) = args.words.first() {
+        return Err(format!("unexpected argument `{extra}`"));
+    }
+    let owner = load_owner(&home())?.map(|o| npub(&o.owner_pubkey));
+    emit(
+        json_out,
+        &json!({"pylon": provider.npub(), "owner": owner}),
+        &format!(
+            "pylon {}
+owner {}",
+            provider.npub(),
+            owner.as_deref().unwrap_or("not linked")
+        ),
     );
     Ok(())
 }

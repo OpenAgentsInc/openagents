@@ -18,9 +18,12 @@ pub mod field;
 pub mod identity;
 pub mod inflight;
 pub mod job;
+pub mod lease;
 pub mod pool;
 pub mod provider;
 pub mod relay;
+pub mod route;
+pub mod share;
 
 /// The production relay.
 pub const DEFAULT_RELAY: &str = "wss://relay.openagents.com";
