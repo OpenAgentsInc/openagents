@@ -3109,11 +3109,11 @@ impl Scene {
         if let (Some(gpu), Some(layers)) = (&mut self.textured, layers) {
             photo.write_textured_layers(device, queue, gpu, &layers);
         }
-        if let (Some(gpu), Some(mask)) = (&self.textured, mask) {
-            photo.write_textured_mask(queue, gpu, &mask);
-        }
         if let Some(gpu) = &self.textured {
             photo.write_textured_patches(queue, gpu, &patches);
+        }
+        if let (Some(gpu), Some(mask)) = (&self.textured, mask) {
+            photo.write_textured_mask(queue, gpu, &mask);
         }
         if let Some(figure) = &dynamic.figure {
             if self
