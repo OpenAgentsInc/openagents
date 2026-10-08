@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 publish = false
 license = "OFL-1.1"
-description = "Paper Mono, the one typeface every OpenAgents surface uses, and its CSS rules."
+description = "Paper Mono for native surfaces and monospace web text, with CSS rules."
 
 [dependencies]
 

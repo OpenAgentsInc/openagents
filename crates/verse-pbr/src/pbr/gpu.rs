@@ -3582,6 +3582,7 @@ impl Photo {
             uniform.weather = water.rain.row(self.capability.quality.tier);
             uniform.weather_figure = water.rain.figure;
             let mut packed = water.uniform();
+            packed.shelter = self.ocean.prepare_shelter(queue, water.shelter);
             packed.look[1] = crate::water::pixel_angle(view.view_proj, view.eye, height);
             if effects >= verse_engine::quality::WaterEffects::NoCopies {
                 packed.params[1] = packed.params[1].min(4.0);

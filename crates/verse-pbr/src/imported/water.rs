@@ -166,6 +166,7 @@ impl WaterPass {
             return false;
         }
         let mut uniform = water.uniform();
+        uniform.shelter = self.ocean.prepare_shelter(queue, water.shelter);
         uniform.look[1] = crate::water::pixel_angle(view.view_proj, view.eye, height);
         let sea = water.sea_body();
         uniform.ocean = self.ocean.prepare(

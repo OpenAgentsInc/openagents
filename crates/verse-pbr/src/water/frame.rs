@@ -108,6 +108,8 @@ pub struct Body {
     /// The level its vertices were built at, m; a flood raises
     /// [`Self::level`] above it.
     pub rest: f32,
+    /// Additional height change per meter along x and z, over the rest mesh.
+    pub level_gradient: [f32; 2],
     /// The Gerstner terms ([`Swell::from_set`]).
     pub swell: Swell,
     /// The sea's wave spectrum, synthesized into cascades on body 0 only
@@ -148,6 +150,7 @@ impl Body {
         Self {
             level,
             rest: level,
+            level_gradient: [0.0; 2],
             swell: Swell::default(),
             spectrum: None,
             swell_gain: 1.0,
@@ -211,6 +214,7 @@ impl Body {
         let finite = |v: f32| v.is_finite();
         finite(self.level)
             && finite(self.rest)
+            && self.level_gradient.iter().all(|v| v.is_finite())
             && finite(self.swell_gain)
             && self.swell.count <= MAX_WAVES
             && self.swell.terms.iter().all(|t| {
@@ -283,6 +287,8 @@ pub struct Water {
     pub eye: Option<super::under::EyeSurface>,
     /// The weather's rain on the water and the ground ([`super::rain`]).
     pub rain: super::rain::Rain,
+    /// A baked harbor mask for the sea's swell.
+    pub shelter: Option<super::shelter::Shelter>,
 }
 
 impl Default for Water {
@@ -313,6 +319,7 @@ impl Water {
             hull_count: 0,
             eye: None,
             rain: super::rain::Rain::default(),
+            shelter: None,
         };
         water.set_detail(0.3, 0.12, 2.4, 0.016);
         water
@@ -422,6 +429,7 @@ impl Water {
                     .spectral(p, depth, self.time)
                     .map_or(Vec3::ZERO, |s| s.0))
                 * calm
+                * self.shelter.map_or(1.0, |mask| mask.sample(p)[0])
         };
         let mut rest = target;
         for _ in 0..4 {
@@ -528,6 +536,7 @@ impl Water {
                 if body.eye_inside { 1.0 } else { 0.0 },
             ];
             slot.rest = [body.rest, body.shore_band, body.crest_scatter, 0.0];
+            slot.level_gradient = [body.level_gradient[0], body.level_gradient[1], 0.0, 0.0];
         }
         for (i, wave) in self.detail[..self.detail_count].iter().enumerate() {
             u.detail[i * 2] = [wave.dir[0], wave.dir[1], wave.k(), wave.amplitude];
@@ -583,6 +592,7 @@ impl Water {
             && self.eye.is_none_or(|e| e.valid(self.count))
             && self.controls.valid()
             && self.rain.valid()
+            && self.shelter.is_none_or(super::shelter::Shelter::valid)
             && self.source_count <= MAX_SOURCES
             && self.hull_count <= MAX_HULLS
             && self.hulls.iter().all(|h| {
@@ -827,6 +837,8 @@ pub struct BodyUniform {
     pub params: [f32; 4],
     /// Rest level, shore band, crest scattering, and 0.
     pub rest: [f32; 4],
+    /// Height change per meter along x and z; two unused components.
+    pub level_gradient: [f32; 4],
 }
 
 /// What [`Water::uniform`] writes, in the layout `water.wgsl` reads.
@@ -862,6 +874,8 @@ pub struct WaterUniform {
     /// its corner (x, z), side (m), and layer in `water_waves`; side 0
     /// draws none.
     pub ripple: [f32; 4],
+    /// Shelter mask origin, side (0 when absent), and array layer.
+    pub shelter: [f32; 4],
     /// Per hull ([`Hull`]): its middle and heading; then its half beam,
     /// half length, and gunwale. A half beam of 0 masks nothing.
     pub hulls: [[f32; 4]; 2 * MAX_HULLS],

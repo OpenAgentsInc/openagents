@@ -1,9 +1,10 @@
 # Paper Mono
 
-Paper Mono v1.000 is the one typeface every OpenAgents surface uses: Rust
-Native, the Verse atlas, the web pages, the phone and desktop hosts, and
-CoderOS. `scripts/check-fonts.sh` fails when a surface names another family
-or tracks another font file.
+Paper Mono v1.000 is the typeface for Rust Native, the Verse atlas, the
+phone and desktop hosts, and CoderOS. OpenAgents web pages use a bundled
+sans face for normal text and retain Paper Mono for monospace content and
+the logo. `scripts/check-fonts.sh` rejects font files and family names
+outside these scopes.
 
 - Source: the Paper Mono v1.000 release from
   <https://github.com/paper-design/paper-mono>.

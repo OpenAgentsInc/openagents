@@ -82,6 +82,7 @@ struct WaterBody {
     // The level the vertices were built at (m), the shore foam band (m),
     // crest scattering's strength, and 0.
     rest: vec4<f32>,
+    level_gradient: vec4<f32>,
 };
 
 struct WaterUniform {
@@ -127,6 +128,8 @@ struct WaterUniform {
     // The ripple field's window: its corner (x, z), side (m; 0 for none),
     // and its layer in `water_waves`.
     ripple: vec4<f32>,
+    // Baked shelter mask origin, side (0 when absent), and array layer.
+    shelter: vec4<f32>,
     // Per boat hull the water is masked out of: its middle (x, z) and its
     // heading; then its half beam (0 for none), half length, and gunwale.
     hulls: array<vec4<f32>, 8>,
@@ -235,6 +238,15 @@ fn water_ocean_gain(c: i32, depth: f32) -> f32 {
     let shoal = min(1.0 / sqrt(tanh(x) * (1.0 + 2.0 * x / sinh(2.0 * x))), 2.0);
     let cap = clamp(0.78 * d / max(water.ocean[3].w * shoal, 1e-3), 0.0, 1.0);
     return water.ocean[c].w * shoal * cap;
+}
+
+// Gain and its gradient from the harbor's baked mask. Outside the bounded
+// mask the swell is unchanged; tides and local ripples are not sheltered.
+fn water_shelter(b: u32, p: vec2<f32>) -> vec3<f32> {
+    if b != 0u || water.shelter.z <= 0.0 { return vec3<f32>(1.0, 0.0, 0.0); }
+    let uv = (p - water.shelter.xy) / water.shelter.z;
+    if any(uv < vec2<f32>(0.0)) || any(uv > vec2<f32>(1.0)) { return vec3<f32>(1.0, 0.0, 0.0); }
+    return textureSampleLevel(water_waves, water_tile_sampler, uv, i32(water.shelter.w), 0.0).xyz;
 }
 
 // The cascades' displacement of rest point `p0` over water `depth` deep
@@ -363,6 +375,9 @@ fn water_move_spaced(v: WaterIn, scale: f32, rise: f32, spacing: f32) -> WaterMo
         world += sea.xyz;
         o.crest = max(o.crest, sea.w);
     }
+    let shelter = water_shelter(b, v.pos.xz).x;
+    world = vec3<f32>(v.pos.x, v.pos.y + rise, v.pos.z) + (world - vec3<f32>(v.pos.x, v.pos.y + rise, v.pos.z)) * shelter;
+    o.crest *= shelter;
     world.y += water_ripple_field(v.pos.xz).x;
     o.world = world;
     return o;
@@ -378,6 +393,7 @@ fn water_out(v: WaterIn, moved: WaterMoved, rest: vec2<f32>, depth: f32, clip: v
     var o: WaterOut;
     let b = water_body_index(v.body);
     o.clip = clip;
+    if v.body >= water.params.w { o.clip = vec4<f32>(2.0, 2.0, 2.0, 1.0); }
     o.world_depth = vec4<f32>(moved.world, depth);
     o.rest_flow = vec4<f32>(rest, v.flow);
     o.look = vec4<f32>(v.foam, v.kind, moved.crest, v.shore);
@@ -821,6 +837,11 @@ fn water_normal(s: WaterFragment) -> WaterNormal {
         lost = sea.z;
         o.whitecap = sea.w * (1.0 - s.calm);
     }
+    let shelter = water_shelter(s.body, s.rest);
+    slope = slope * shelter.x + shelter.yz * (s.height / max(shelter.x, 0.001));
+    squeeze_y *= shelter.x;
+    lost *= shelter.x * shelter.x;
+    o.whitecap *= shelter.x;
     var detail = water_flow_detail(s.rest, s.flow, s.footprint, s.dpx, s.dpy);
     if water_ocean_count(s.body) > 0 {
         // The sea's ripples follow its wind (`water::ocean::slope_gains`).
@@ -829,6 +850,7 @@ fn water_normal(s: WaterFragment) -> WaterNormal {
     }
     let field = water_ripple_field(s.rest);
     let rain = water_rain_slope(s.rest, water.params.x, water.look.z * water_host_rain_open(s.world), s.footprint);
+    slope += water.bodies[s.body].level_gradient.xy;
     slope = (slope + detail.xy + water_ripples(s.rest) + field.yz + rain + s.slope) * (1.0 - s.calm);
     o.n = normalize(vec3<f32>(-slope.x, 1.0 - squeeze_y * (1.0 - s.calm), -slope.y));
     let base = water.bodies[s.body].params.y;

@@ -245,7 +245,10 @@ async fn asset(State(app): State<App>, Path(file): Path<String>) -> Response {
     let (content_type, body): (&str, Vec<u8>) = match file.as_str() {
         "components.css" => (
             "text/css; charset=utf-8",
-            crate::palette::stylesheet(include_str!("../static/components.css")).into_bytes(),
+            crate::with_fonts(&crate::palette::stylesheet(include_str!(
+                "../static/components.css"
+            )))
+            .into_bytes(),
         ),
         "native.css" => (
             "text/css; charset=utf-8",
@@ -266,7 +269,10 @@ async fn asset(State(app): State<App>, Path(file): Path<String>) -> Response {
         ),
         "demo.css" => (
             "text/css; charset=utf-8",
-            crate::palette::stylesheet(include_str!("../static/demo.css")).into_bytes(),
+            crate::with_fonts(&crate::palette::stylesheet(include_str!(
+                "../static/demo.css"
+            )))
+            .into_bytes(),
         ),
         GLUE | WASM => {
             let Some(directory) = &app.config.components_build else {

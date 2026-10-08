@@ -9,6 +9,10 @@ pins, and explicitly selected provider credentials described in
 [`docs/cloud/README.md`](docs/cloud/README.md). Qualify the real provider lifecycle
 on an isolated computer before admitting it. The integrated fixture uses a
 synthetic backend and does not establish funded or persistent computer operation.
+Native reviewed requests also require durable control-journal custody. The
+current journal uses native files; the public chat's GCS adapter does not provide
+shared native journal storage. Qualify a single persistent custodian or a shared
+admitted journal before enabling native controls across Cloud Run replicas.
 Production promotion requires a later request; this task publishes staging only.
 
 ## Verify native terminal display idle (#10909)
@@ -205,6 +209,14 @@ the shallows along the beach stay put as you walk the length of the beach.
 Note the frame rate. The two-client check of the shared sea ran as a test;
 a two-device run waits for the coast zone (C1, #10885), whose clock is the
 shared world tick. The Lab's clock still starts when you enter.
+
+## Coast on physical devices (#10885, C6 #10890)
+
+After a phone build includes C1, enter the COAST arch and return to the
+saved plaza pose. Walk down to the bay, swim, look down to dive, and use
+Jump to rise. Compare the tide on two devices at the same time. Record
+seams, rendering faults, and frame rate for C6; C1's native captures and
+shared-clock tests do not establish physical device performance.
 
 ## Live Gym interview round and judge marks (#10794)
 

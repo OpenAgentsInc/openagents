@@ -24,7 +24,14 @@ impl WorldRuntime {
         if self.is_hosted() {
             return;
         }
-        if let Some(lagrange) = &mut self.zone_state.lagrange {
+        if let Some(coast) = &mut self.zone_state.coast {
+            let mut input = *input;
+            if let Some(glade) = &mut self.zone_state.everglade {
+                input.jump |= std::mem::take(&mut glade.jump);
+                input.sprint |= glade.sprinting;
+            }
+            coast.move_player(&mut self.player, &input, self.camera.pitch, dt);
+        } else if let Some(lagrange) = &mut self.zone_state.lagrange {
             lagrange.move_player(&mut self.player, input, self.camera.pitch, dt);
         } else if let Some(everglade) = &mut self.zone_state.everglade {
             // As the Grove's Giant Eagle, Jump climbs.
@@ -130,6 +137,8 @@ impl WorldRuntime {
                     self.install_grove(&pack);
                 } else if self.zone_state.destination == ZoneId::Crypt {
                     self.install_crypt(&pack);
+                } else if self.zone_state.destination == ZoneId::Coast {
+                    self.install_coast(&pack);
                 } else if self.zone_state.destination == ZoneId::WaterLab {
                     self.install_water_lab(&pack);
                 } else {
@@ -543,6 +552,70 @@ impl WorldRuntime {
         self.camera = crate::camera::FollowCamera::default();
     }
 
+    /// Enter the coastal shell using the verified pack's character.
+    pub fn install_coast(&mut self, pack: &everglade_pack::ZonePack) {
+        use super::coast;
+        if self.is_hosted() || !self.is_plaza() {
+            return;
+        }
+        let mut spawn = self.player;
+        spawn.pos = coast::SPAWN;
+        spawn.yaw = coast::SPAWN_YAW;
+        let built = (|| {
+            let glade = Everglade::with_solids(
+                pack,
+                &spawn,
+                super::everglade::solids::Solids::over(coast::ground),
+            )?;
+            let world = coast::world()?;
+            let live = coast::Coast::new(unix_water_tick())?;
+            Ok::<_, String>((glade, world, live))
+        })();
+        let (glade, world, live) = match built {
+            Ok(built) => built,
+            Err(error) => {
+                self.zone_load_failed(&error);
+                return;
+            }
+        };
+        self.zone_state.plaza_pose = Some((self.player.pos, self.player.yaw));
+        self.world = world;
+        self.zone_state.everglade = Some(Box::new(glade));
+        self.zone_state.coast = Some(Box::new(live));
+        self.zone = ZoneId::Coast;
+        self.zone_state.loading = LoadState::Idle;
+        self.zone_state.error = None;
+        self.zone_state.progress = 1.0;
+        self.zone_revision = self.zone_revision.saturating_add(1);
+        let _ = self.set_spawn(coast::SPAWN, coast::SPAWN_YAW);
+        self.player.set_surface_height(coast::SPAWN.y);
+        self.camera = crate::camera::FollowCamera::default();
+    }
+
+    /// Enter the coast from an already downloaded, pinned character pack.
+    pub fn install_coast_bytes(&mut self, bytes: &[u8]) -> Result<(), String> {
+        let pack = everglade_pack::ZonePack::decode_pinned(bytes)?;
+        self.install_coast(&pack);
+        if self.zone == ZoneId::Coast {
+            Ok(())
+        } else {
+            Err(self
+                .zone_state
+                .error
+                .clone()
+                .unwrap_or_else(|| "The coast enters only from the plaza".into()))
+        }
+    }
+
+    /// Start loading the coast from the plaza.
+    pub fn enter_coast(&mut self) -> Result<(), String> {
+        if !self.is_plaza() || self.zone_loading() {
+            return Err("The coast enters only from the plaza".into());
+        }
+        self.zone_state.destination = ZoneId::Coast;
+        self.start_zone_load(ZoneId::Coast)
+    }
+
     /// Enter the Water Lab: the cove built on Everglade's verified pack,
     /// walked with its character and movement ([`super::water`]).
     pub fn install_water_lab(&mut self, pack: &everglade_pack::ZonePack) {
@@ -874,6 +947,7 @@ impl WorldRuntime {
                 self.zone_state.grove = None;
                 self.zone_state.crypt = None;
                 self.zone_state.water = None;
+                self.zone_state.coast = None;
                 // A Wild Shape's pace ends with the Grove.
                 self.player.set_pace(1.0);
                 self.zone = ZoneId::Plaza;
@@ -1821,6 +1895,14 @@ impl WorldRuntime {
             format!(
                 "Meteor Showcase · {flying} meteors in flight · 1: cast eight · R: rebuild · the caster casts again after each rebuild"
             )
+        } else if let Some(coast) = &self.zone_state.coast {
+            add("jump", "Jump", Intent::Jump, !self.player.airborne());
+            add("return", self.return_label(), Intent::Return, true);
+            format!(
+                "Coast · {} · tide {:+.2} m",
+                coast.medium.name(),
+                super::coast::water::tide(coast.tick)
+            )
         } else if let Some(lab) = &self.zone_state.water {
             add("jump", "Jump", Intent::Jump, !self.player.airborne());
             add("return", self.return_label(), Intent::Return, true);
@@ -1921,6 +2003,14 @@ impl WorldRuntime {
             } else if nearest == Some(ZoneId::PhysicsLab) {
                 add("enter", "Enter Lab", Intent::Enter, true);
                 "Physics Lab · live rigid-body sandbox".into()
+            } else if nearest == Some(ZoneId::Coast) {
+                add(
+                    "enter",
+                    "Enter Coast",
+                    Intent::Enter,
+                    self.zone_state.everglade_loader.is_some(),
+                );
+                "Coast · a tidal bay and open sea".into()
             } else if nearest == Some(ZoneId::WaterLab) {
                 add(
                     "enter",
@@ -2157,6 +2247,7 @@ impl WorldRuntime {
                 | ZoneId::MeteorStressTest
                 | ZoneId::MeteorShowcase
                 | ZoneId::WaterLab
+                | ZoneId::Coast
         ) {
             return Err("This zone has no pack to load".into());
         }
@@ -2688,7 +2779,10 @@ impl WorldRuntime {
             lab.tick(dt);
         }
         let state = &mut self.zone_state;
-        if let (Some(glade), Some(lab)) = (&mut state.everglade, &mut state.water) {
+        if let (Some(glade), Some(coast)) = (&mut state.everglade, &mut state.coast) {
+            coast.tick = unix_water_tick();
+            glade.tick(dt, &self.player, &[]);
+        } else if let (Some(glade), Some(lab)) = (&mut state.everglade, &mut state.water) {
             glade.tick(dt, &self.player, &[]);
             // A Fireball's ember gathers in the character's hand.
             lab.hand = glade.hand();
@@ -2783,7 +2877,12 @@ impl WorldRuntime {
             // The lab has no suit of its own; the plaza character walks it.
             mesh.extend(&crate::avatar::mesh(&self.player, &self.gait));
         }
-        if let (Some(glade), Some(lab)) = (&self.zone_state.everglade, &self.zone_state.water) {
+        if let (Some(glade), Some(coast)) = (&self.zone_state.everglade, &self.zone_state.coast) {
+            mesh.extend(&coast.mesh(self.view(1.0).eye));
+            mesh.extend(&glade.player_mesh(&self.player, &self.gait, self.hides_avatar()));
+        } else if let (Some(glade), Some(lab)) =
+            (&self.zone_state.everglade, &self.zone_state.water)
+        {
             // The cove's stage and water, the floating bodies and the
             // particles, the character (not in first person), and its spells.
             let eye = self.view(1.0).eye;
@@ -2986,4 +3085,15 @@ mod tests {
             "refused commands leave the station intact (started at {before})"
         );
     }
+}
+
+/// Shared 120 Hz Unix clock, retaining subsecond precision on native and web.
+fn unix_water_tick() -> u64 {
+    let elapsed = web_time::SystemTime::now()
+        .duration_since(web_time::UNIX_EPOCH)
+        .unwrap_or_default();
+    elapsed
+        .as_secs()
+        .saturating_mul(physics::water::TICK_HZ)
+        .saturating_add(u64::from(elapsed.subsec_nanos()) * physics::water::TICK_HZ / 1_000_000_000)
 }

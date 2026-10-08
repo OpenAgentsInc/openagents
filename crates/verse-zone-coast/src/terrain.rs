@@ -7,7 +7,7 @@ use verse_zone_water::coast as fixture;
 
 pub const ESTUARY_MOUTH: Vec2 = Vec2::new(100.0, -10.0);
 pub const ESTUARY_GATE: Vec2 = Vec2::new(300.0, -280.0);
-pub const MARSH: Vec2 = Vec2::new(170.0, -104.5);
+pub const MARSH: Vec2 = Vec2::new(185.0, -94.5);
 pub const POOL_SHELF: Vec2 = Vec2::new(-230.0, -120.0);
 pub const POOLS: [Vec2; 3] = [
     Vec2::new(-238.0, -125.0),
@@ -51,6 +51,10 @@ pub fn ground(x: f32, z: f32) -> f32 {
     h = patch(h, p, Vec2::new(-100.0, 120.0), Vec2::new(24.0, 45.0), -18.0);
     let (channel, along) = segment(p, Vec2::from(fixture::HARBOR), Vec2::new(-100.0, -150.0));
     h += (-5.0 - h) * (1.0 - smoothstep(5.0, 10.0, channel)) * smoothstep(0.0, 0.3, along);
+    // Expose the shelf to the sea at high tide without draining its pools
+    // below their rims at low tide.
+    let (shelf_channel, _) = segment(p, POOL_SHELF, Vec2::new(-340.0, -120.0));
+    h += (POOL_RIM.min(h) - h) * (1.0 - smoothstep(18.0, 32.0, shelf_channel));
     h = patch(h, p, POOL_SHELF, Vec2::splat(28.0), POOL_RIM);
     for (center, depth) in POOLS.into_iter().zip(POOL_DEPTHS) {
         let weight = 1.0 - smoothstep(2.0, 4.0, p.distance(center));
@@ -105,6 +109,9 @@ mod tests {
         for (distance, depth) in [(30.0, 1.0), (150.0, 5.0), (400.0, 20.0)] {
             let p = center + outward * (fixture::BEACH_RADIUS + distance);
             assert!((-ground(p.x, p.y) - depth).abs() < 0.5);
+        }
+        for step in 0..=110 {
+            assert!(ground(-230.0 - step as f32, -120.0) <= POOL_RIM + 0.001);
         }
         assert_eq!(ground(120.0, -120.0), 14.0);
         assert!(ground(-330.0, -260.0) > 35.0);

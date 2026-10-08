@@ -1,0 +1,84 @@
+{
+  "adapter": "AdapterInfo { name: \"Apple M5 Max\", vendor: 0, device: 0, device_type: IntegratedGpu, device_pci_bus_id: \"\", driver: \"\", driver_info: \"\", backend: Metal, subgroup_min_size: 4, subgroup_max_size: 64, transient_saves_memory: true }",
+  "tier": "High",
+  "licensed_assets": false,
+  "lighting_bake": false,
+  "captures": [
+    {
+      "name": "bay",
+      "tick": 43200,
+      "eye": [
+        100.0,
+        45.0,
+        -100.0
+      ],
+      "target": [
+        -40.0,
+        -2.0,
+        120.0
+      ],
+      "tide_m": 1.2,
+      "sha256": "f058266123bc7281ab947cb44439baaaa475d748a885aa360771a96d4e8c9098",
+      "bytes": 288269,
+      "gpu_frame_ms": null,
+      "file": "bay-high.png"
+    },
+    {
+      "name": "estuary",
+      "tick": 43200,
+      "eye": [
+        205.0,
+        90.0,
+        -120.0
+      ],
+      "target": [
+        175.0,
+        1.0,
+        -110.0
+      ],
+      "tide_m": 1.2,
+      "sha256": "42dba3ffdc2346c4b8b658c8a62caa18812165b81ceb9f08125ddcc394b9c318",
+      "bytes": 218237,
+      "gpu_frame_ms": null,
+      "file": "estuary-high.png"
+    },
+    {
+      "name": "pools-low",
+      "tick": 129600,
+      "eye": [
+        -230.0,
+        90.0,
+        -145.0
+      ],
+      "target": [
+        -230.0,
+        -0.30000001192092896,
+        -120.0
+      ],
+      "tide_m": -1.2,
+      "sha256": "89323610015435da1212c2275eb2f984e077d86b86bae78d0fdd1deef388b244",
+      "bytes": 188038,
+      "gpu_frame_ms": null,
+      "file": "pools-low-high.png"
+    },
+    {
+      "name": "pools-high",
+      "tick": 43200,
+      "eye": [
+        -230.0,
+        90.0,
+        -145.0
+      ],
+      "target": [
+        -230.0,
+        -0.30000001192092896,
+        -120.0
+      ],
+      "tide_m": 1.2,
+      "sha256": "e22fd0e125e0e68bf51181248f5ec93826d2da342d60260be7de79e57b2257f9",
+      "bytes": 199781,
+      "gpu_frame_ms": null,
+      "file": "pools-high-high.png"
+    }
+  ]
+}

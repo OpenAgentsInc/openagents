@@ -207,6 +207,12 @@ impl MapHud {
     ) -> Snapshot {
         let landmarks = match zone {
             crate::zones::ZoneId::Plaza => LANDMARKS.to_vec(),
+            crate::zones::ZoneId::Coast => vec![Landmark {
+                id: "return",
+                label: "Terrace",
+                x: crate::zones::coast::RETURN_PORTAL.x,
+                z: crate::zones::coast::RETURN_PORTAL.z,
+            }],
             crate::zones::ZoneId::WaterLab => vec![
                 Landmark {
                     id: "return",

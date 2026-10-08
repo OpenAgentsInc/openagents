@@ -717,3 +717,76 @@ remain in `bench/verse/2026-10-08/water-w11/`. Deployment receipts and private
 capture hashes are in its `production-1d126aad2b/` directory.
 
 Rollback: `gcloud run services update-traffic coder --region us-central1 --project openagentsgemini --to-revisions coder-web-b4-dbd84fdb3d-20261008195645=100`.
+
+## October 8, 2026: chat and Cloud composer on staging
+
+[Staging](https://onboarding---coder-ezxz4mgdsq-uc.a.run.app/) and its
+[onboarding demo](https://onboarding---coder-ezxz4mgdsq-uc.a.run.app/demo) serve
+revision `coder-web-chat-985297571c-20261008213052` through the `onboarding`
+tag with zero production traffic (#10991, #10992). Production remains at
+100% on `coder-web-w11-1d126aad2b-20261008202124` when readiness is verified.
+
+Cloud Build `28068c1d-b271-471a-878c-8f389d20e5f8` builds the native server
+from main `985297571cd0cb221f3df2aabee027a3c59d933a`. The final image is
+`us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-web@sha256:4c9d336ed8047ffa64843ff153819a838f0d56f0c8df8f3f674f7140db73a721`.
+The browser bundles come from main `eb248988865fa4409431bd7ffe76bd57bf90bb8f`
+and successful build `e4146335-d852-49b3-93dd-ef5fbea5b585`. Their contracts
+are unchanged between these commits; the native overlay retains those exact
+bytes and the preceding W11 game assets. The spec retains the sidecar, VPC,
+secrets, and production traffic.
+
+Axum and Maud render chat lists, transcripts, tools, and composer selections.
+HTTP commands and SSE carry updates; a small Rust/Wasm adapter retains local
+drafts and reading positions. The ordinary chat Wasm is 130,576 bytes
+(40,930 bytes gzipped), 97.71% smaller than the preceding 5,689,644-byte
+catalog/demo module. Generated chat JavaScript is 26,994 bytes. HTMX and
+its SSE extension are separate pinned assets. These byte measurements make
+no latency or frame-rate claim.
+
+Public chats use the private, versioned `openagentsgemini-web-chats-stage`
+GCS bucket with generation-fenced writes. A shared secret supplies the
+visitor/CSRF salt. CPU remains available outside HTTP requests so answer
+observation can continue after a browser disconnects. No native Cloud account,
+resident binding, or provider execution is activated on staging. Its public
+GitHub choices supply question context and no execution authority.
+
+All seven live HTTP check groups and three retained SSE reconnect groups pass.
+They cover ownership and CSRF refusals, exact and changed retries, answers,
+refresh, cursor isolation, replay, and assets. The demo retains 32 records and
+19 calls; all 7,652 retained original argument/output bytes match its ATIF
+export. Browser checks cover source/runtime/model controls, draft preservation,
+replay, chat switching, and transcript navigation. A local scratch conversation
+also verifies retirement from an older transcript window: its content and draft
+clear, commands and SSE sources disappear, and input disables. The final picker
+check reports no new browser errors.
+
+Targeted Rust checks pass: 167 `openagents-web` tests, 102 `coder-access` tests,
+and 16 `coder-cloud` operator tests, plus formatting. The broader Cloud suite
+has an unrelated macOS fixture failure because `mv -T` requires GNU `mv`.
+Native reviewed submission and canonical job integration use synthetic fixtures;
+these checks do not qualify a real provider lifecycle or native journal recovery
+across hosted replicas. Retained originals disclose upstream output bounds; this
+record does not claim retention of every byte ever generated. Native activation,
+durable journal custody, and provider qualification remain in
+[`NEEDS_OWNER.md`](../../NEEDS_OWNER.md). Prepared environment versions and
+persistent computers remain separate work in the [Cloud plan](../cloud/managed-computers.md).
+
+The [scrubbed check record](openagents-web-staging-2026-10-08.json) retains
+build identities, asset hashes, and test scope. Private cookies, conversation
+identities, configuration exports, screenshots, and raw checks remain in operator
+scratch under `codex-01a11c18-367b-7793-b27f-8381cea14e2f/`.
+
+For another build, use `cloudbuild-components.yaml` to rebuild browser assets.
+Use `cloudbuild-native-overlay.yaml` only when the retained browser modules and
+their Rust contracts are unchanged. Pin both the source commit and base-image
+digest, fetch the current service spec before deployment, preserve its traffic,
+and verify the running image and tag before checking staging.
+
+To restore the preceding chat staging revision without changing production
+traffic, run:
+
+```sh
+gcloud run services update-traffic coder \
+  --region us-central1 --project openagentsgemini \
+  --update-tags onboarding=coder-web-chat-eb24898886-20261008210844
+```
