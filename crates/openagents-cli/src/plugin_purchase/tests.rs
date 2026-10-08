@@ -369,6 +369,7 @@ impl Harness {
                 operation: String::new(),
                 profile: String::new(),
                 limits: Value::Null,
+                snapshot: String::new(),
             },
             payer: Payer {
                 home: root.path().join("wallet"),
@@ -384,7 +385,13 @@ impl Harness {
             commercial: None,
             shared: None,
         };
-        offer.packet = resolved(source.as_ref(), &offer, request).unwrap();
+        offer.packet = resolved(
+            source.as_ref(),
+            &offer,
+            request,
+            &std::collections::BTreeMap::new(),
+        )
+        .unwrap();
         let body = offer.body(request);
         offer.request_hash =
             binding_hash(&http_binding("POST", &offer.url, &body, &[]).unwrap()).unwrap();

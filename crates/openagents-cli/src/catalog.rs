@@ -62,8 +62,10 @@ pub(crate) const PRG_EFFECTS: &[Declared] = &[
 pub(crate) const EXT_USAGE: &str = "usage: openagents plugin COMMAND [OPTIONS]
   purchase quote --root DIR --purchase ID --plugin PUBKEY:SLUG --input FILE
         --wallet-home DIR --max-msat N --max-fee-msat N [--relay URL] [--blossom URL]
+        [--file NAME=PATH]...
         Resolve a supported signed release, disclose the supplied private text
-        to the selected customer origin, and retain its exact unpaid invoice.
+        and exactly the files the release names to the selected customer
+        origin, and retain its exact unpaid invoice.
   purchase approve --root DIR --purchase ID --digest DIGEST
         Approve the reviewed customer, release, input, invoice, total, fee,
         resident payer, and expiry after checking current authority and terms.

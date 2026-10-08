@@ -1978,4 +1978,20 @@ same customer store the installed client writes. Owner steps:
   browser. Today they stay on the installed client, which holds the resident
   wallet and the private purchase authorization; moving them is a separate
   issue with its own authority design.
-||||||| a9353683b3
+
+## REV-47 supplied-snapshot plugin step (#10854)
+
+The owner left the richer operation to the agent on 2026-10-04. Code lands
+one bounded profile: a paid `snapshot-read` step whose release names the
+files it reads, and whose buyer supplies exactly those files as UTF-8 text
+with the request (`openagents plugin purchase quote --file NAME=PATH`). The
+guest reads nothing else; the packet, quote, approval, and receipt bind the
+supplied snapshot's digest. Owner steps:
+
+- Qualify one paid supplied-snapshot purchase against a real provider and
+  wallet (`plugins/meeting-followup` with its `examples/meeting.md`), and
+  retain the receipt under `docs/payments/`.
+- Decide whether any paying buyer needs an effectful operation (a patch, a
+  fetch, a delivery). None is admitted; a release that declares one is
+  refused by the paid route and needs its own authority design.
+
