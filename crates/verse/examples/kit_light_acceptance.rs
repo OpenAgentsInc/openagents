@@ -38,6 +38,9 @@ fn capture() {
     private(&output);
     private(Path::new(&std::env::var_os("VERSE_KIT_PACK").unwrap()));
     assert_eq!(std::env::var_os("VERSE_KIT_BAKE").is_some(), expected);
+    if let Some(path) = std::env::var_os("VERSE_KIT_BAKE") {
+        private(Path::new(&path));
+    }
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
         .join(everglade_pack::PACK_DIRECTORY)

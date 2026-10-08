@@ -75,7 +75,7 @@ the original October 7 plan.
 | P9: cleanup | #10902 | `f008baa090`, repin `4b9ad70748` | Closed; both suites and pack consistency pass |
 | B1: offline baker | #10905 | `0360046732`, `983432c41f` | Closed |
 | B2: lightmap layers | #10906 | `0e0d8afd37`, verification on `codex/everglade-b2-verification` | Five focused tests pass; publication and capture acceptance remain |
-| B3: time of day and destruction | #10907 | checkpoint `a2f4bbf7d3` on `codex/everglade-b3` | Unverified; claim released while P3 takes priority |
+| B3: time of day and destruction | #10907 | checkpoint `a2f4bbf7d3` on `codex/everglade-b3` | Claimed separately on October 8; check its issue before resuming |
 | B4: tiers and measurement | #10908 | none | Not started |
 
 The town has 65 medieval kit houses: Stoop Lane, Main Street, the Fountain
@@ -106,8 +106,10 @@ unchanged.
 - **B3 (#10907).** Checkpoint `a2f4bbf7d3` on `codex/everglade-b3` holds
   unverified blending, damage repair, private-layer preflight, and acceptance
   tools. Its handoff lists the exact remaining checks, private scene identity,
-  captures, and timing plan. The claim is released pending direct B3 verification;
-  no B3 Cargo command, bake, capture, or measurement has run.
+  captures, and timing plan. Another session claimed B3 at 14:57 UTC on
+  October 8; leave that claim alone. The checkpoint itself has no recorded
+  B3 Cargo checks, captures, or measurements; consult the issue for newer
+  verification evidence.
 - **B4 (#10908).** Not started. It needs B2 and P8. One 512 px kit pack
   serves every tier today (21,467,658 bytes to transfer, 60.5 MiB decoded),
   exceeding the web and phone soft budgets. Both tiers need B4.
