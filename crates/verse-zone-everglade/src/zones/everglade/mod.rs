@@ -782,6 +782,11 @@ impl Everglade {
             neon.height_fog = air.height_fog;
         }
         neon.baked_lamps = self.baked_lamps();
+        if let Some(baked) = &self.baked {
+            let light =
+                baked::clock_light(self.light, self.now, self.clock.pinned_hour().is_some());
+            neon.baked_sun = baked.sun(&light);
+        }
         Mesh {
             neon: Some(neon),
             ..Mesh::default()
@@ -878,6 +883,12 @@ impl Everglade {
     #[must_use]
     pub fn light(&self) -> &time_of_day::Light {
         &self.light
+    }
+
+    /// Whether the installed scene matches and uses its offline light layers.
+    #[must_use]
+    pub fn uses_baked_light(&self) -> bool {
+        self.baked.as_ref().is_some_and(|b| b.active)
     }
 
     /// Reads the real time into the town clock and its light.
