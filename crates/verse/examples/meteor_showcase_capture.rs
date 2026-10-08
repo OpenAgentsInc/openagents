@@ -3,7 +3,7 @@
 //! and the smoke settling over the ruins (issue #10926).
 //!
 //! Usage: meteor_showcase_capture OUT_DIR [--video PATH] [--seconds N]
-//! [--every K] [--no-video] [--live] [--no-flash-lights]
+//! [--every K] [--no-video] [--readback-every-frame] [--live] [--no-flash-lights]
 //! [--compare-flash-lights] [--impact-frame N] [--settle-light]
 //! [--flash-repeats N] [--flash-every N]
 //! [--compare-particles] [--no-particle-lighting] [--no-soft-particles]
@@ -51,6 +51,10 @@
 //! the usual captures and saved frames. Use `--camera pan --static-houses`
 //! or `--camera orbit --static-houses` to inspect intact house edges; the
 //! default destruction sequence exercises fast debris.
+//! Without video, frames that save no artifact render and wait for completion
+//! without reading pixels. Every frame advances scene history and exposure and
+//! enters the timing report. `--readback-every-frame` restores all-frame pixel
+//! readback; temporal comparison always retains it for both renderers.
 //!
 //! Run it with `VERSE_QUALITY=high` for the high tier, and with
 //! `VERSE_KIT_PACK` naming the licensed kit pack to draw it in place of its
@@ -81,6 +85,7 @@ const FLASH_POOL_ITERATIONS: usize = 4096;
 struct Args {
     out: PathBuf,
     video: Option<PathBuf>,
+    readback_every_frame: bool,
     seconds: f32,
     every: Option<usize>,
     sequence: Option<[usize; 2]>,
@@ -104,6 +109,91 @@ struct Args {
     compare_temporal_aa: bool,
     camera: CameraPath,
     static_houses: bool,
+}
+
+#[derive(Default)]
+struct FrameSelection {
+    establishing: bool,
+    impact: bool,
+    smoke: bool,
+    aftermath: bool,
+    numbered: bool,
+    particle: bool,
+}
+
+impl FrameSelection {
+    fn read_pixels(&self, args: &Args) -> bool {
+        args.video.is_some()
+            || args.readback_every_frame
+            || args.compare_temporal_aa
+            || self.establishing
+            || self.impact
+            || self.smoke
+            || self.aftermath
+            || self.numbered
+            || self.particle
+    }
+}
+
+impl Args {
+    fn new(out: PathBuf) -> Self {
+        Self {
+            video: Some(out.join("meteor-swarm-v2.mp4")),
+            out,
+            readback_every_frame: false,
+            seconds: 12.5,
+            every: None,
+            sequence: None,
+            live: false,
+            settle_light: false,
+            no_flash_lights: false,
+            compare_flash_lights: false,
+            flash_repeats: 1,
+            flash_every: 1,
+            impact_frame: None,
+            smoke_frame: None,
+            no_particle_lighting: false,
+            no_soft_particles: false,
+            compare_particles: false,
+            particle_frame: None,
+            particle_repeats: 1,
+            particle_every: 1,
+            no_temporal_aa: false,
+            compare_temporal_aa: false,
+            camera: CameraPath::Director,
+            static_houses: false,
+        }
+    }
+
+    fn select_frame(
+        &self,
+        k: usize,
+        frames: usize,
+        fps: f32,
+        first_impact: Option<usize>,
+        impact_saved: bool,
+        smoke_saved: bool,
+    ) -> FrameSelection {
+        FrameSelection {
+            establishing: k == (2.0 * fps) as usize,
+            impact: !impact_saved
+                && self.impact_frame.map_or_else(
+                    || first_impact.is_some_and(|f| k >= f + (1.1 * fps) as usize),
+                    |frame| k == frame,
+                ),
+            smoke: !smoke_saved
+                && self.smoke_frame.map_or_else(
+                    || first_impact.is_some_and(|f| k >= f + (0.65 * fps) as usize),
+                    |frame| k == frame,
+                ),
+            aftermath: k + fps as usize == frames,
+            numbered: self.every.is_some_and(|every| every > 0 && k % every == 0)
+                || self
+                    .sequence
+                    .is_some_and(|[first, last]| (first..=last).contains(&k)),
+            particle: self.compare_particles && self.particle_frame == Some(k),
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -495,36 +585,13 @@ fn measure_flash_pool(eye: Vec3) -> f32 {
 fn args() -> Result<Args, String> {
     let mut it = std::env::args().skip(1);
     let out = PathBuf::from(it.next().ok_or("Expected an output directory")?);
-    let mut args = Args {
-        video: Some(out.join("meteor-swarm-v2.mp4")),
-        out,
-        seconds: 12.5,
-        every: None,
-        sequence: None,
-        live: false,
-        settle_light: false,
-        no_flash_lights: false,
-        compare_flash_lights: false,
-        flash_repeats: 1,
-        flash_every: 1,
-        impact_frame: None,
-        smoke_frame: None,
-        no_particle_lighting: false,
-        no_soft_particles: false,
-        compare_particles: false,
-        particle_frame: None,
-        particle_repeats: 1,
-        particle_every: 1,
-        no_temporal_aa: false,
-        compare_temporal_aa: false,
-        camera: CameraPath::Director,
-        static_houses: false,
-    };
+    let mut args = Args::new(out);
     while let Some(flag) = it.next() {
         let mut value = || it.next().ok_or(format!("{flag} takes a value"));
         match flag.as_str() {
             "--video" => args.video = Some(PathBuf::from(value()?)),
             "--no-video" => args.video = None,
+            "--readback-every-frame" => args.readback_every_frame = true,
             "--live" => args.live = true,
             "--settle-light" => args.settle_light = true,
             "--no-flash-lights" => args.no_flash_lights = true,
@@ -1009,6 +1076,9 @@ fn main() -> Result<(), String> {
     let mut smoke_frame = None;
     let mut slowest = 0.0_f64;
     let mut most_sprites = 0;
+    let mut primary_readback_frames = Vec::new();
+    let mut completion_only_frames = Vec::new();
+    let mut artifact_readback_frames = Vec::new();
     let aspect = WIDTH as f32 / HEIGHT as f32;
     let mut cast = false;
     for k in 0..frames {
@@ -1096,6 +1166,19 @@ fn main() -> Result<(), String> {
             .map(|r| r.points.len().saturating_sub(1))
             .sum();
         most_sprites = most_sprites.max(sprites);
+        let wreck = runtime.everglade_wreckage().unwrap_or_default();
+        if first_impact.is_none() && wreck[1] > 0 && wreck[2] > 0 {
+            first_impact = Some(k);
+        }
+        let selection = args.select_frame(
+            k,
+            frames,
+            fps,
+            first_impact,
+            impact_shot,
+            smoke_frame.is_some(),
+        );
+        let read_pixels = selection.read_pixels(&args);
         if args.compare_temporal_aa
             && let Some(scene) = &runtime.world.mesh.textured
         {
@@ -1120,7 +1203,14 @@ fn main() -> Result<(), String> {
                 neon.temporal_aa = true;
             }
         }
-        let pixels = renderer.render(view, &dynamic, &ui)?;
+        let pixels = if read_pixels {
+            primary_readback_frames.push(k);
+            renderer.render(view, &dynamic, &ui)?
+        } else {
+            completion_only_frames.push(k);
+            renderer.measure(view, &dynamic, &ui)?;
+            Vec::new()
+        };
         temporal_pair.on = renderer.last_timing();
         temporal_pair.on_gpu = renderer.last_gpu_ms();
         temporal_pair.on_gpu_ticks = renderer.last_gpu_ticks();
@@ -1192,20 +1282,12 @@ fn main() -> Result<(), String> {
                 Comparison::Particles,
             )?);
         }
-        let wreck = runtime.everglade_wreckage().unwrap_or_default();
         let landed = runtime.zone_snapshot(1.0).caption;
-        if first_impact.is_none() && wreck[1] > 0 && wreck[2] > 0 {
-            first_impact = Some(k);
-        }
-        if k == (2.0 * fps) as usize {
+        if selection.establishing {
             write_png(&args.out.join("establishing.png"), &pixels)?;
             write_temporal_pair(&args.out, "establishing", &pixels, off_pixels.as_deref())?;
         }
-        let capture_impact = args.impact_frame.map_or_else(
-            || first_impact.is_some_and(|f| k >= f + (1.1 * fps) as usize),
-            |frame| k == frame,
-        );
-        if !impact_shot && capture_impact {
+        if selection.impact {
             write_png(&args.out.join("impact.png"), &pixels)?;
             impact_shot = true;
             impact_frame = Some(k);
@@ -1224,6 +1306,7 @@ fn main() -> Result<(), String> {
                     }
                 }
                 let other_pixels = renderer.render(runtime.view(aspect), &dynamic, &ui)?;
+                artifact_readback_frames.push(k);
                 write_png(&args.out.join(other), &other_pixels)?;
                 if let (Some(neon), Some(lamps)) = (&mut dynamic.neon, flash_lamps) {
                     neon.flash_lamps = lamps;
@@ -1234,13 +1317,10 @@ fn main() -> Result<(), String> {
             }
             if args.compare_particles {
                 capture_particle_pair(&mut renderer, view, &mut dynamic, &ui, &args.out, "impact")?;
+                artifact_readback_frames.extend([k, k]);
             }
         }
-        let capture_smoke = args.smoke_frame.map_or_else(
-            || first_impact.is_some_and(|frame| k >= frame + (0.65 * fps) as usize),
-            |frame| k == frame,
-        );
-        if smoke_frame.is_none() && capture_smoke {
+        if selection.smoke {
             smoke_frame = Some(k);
             write_png(&args.out.join("ground-smoke.png"), &pixels)?;
             write_temporal_pair(&args.out, "ground-smoke", &pixels, off_pixels.as_deref())?;
@@ -1253,9 +1333,10 @@ fn main() -> Result<(), String> {
                     &args.out,
                     "ground-smoke",
                 )?;
+                artifact_readback_frames.extend([k, k]);
             }
         }
-        if args.compare_particles && args.particle_frame == Some(k) {
+        if selection.particle {
             capture_particle_pair(
                 &mut renderer,
                 view,
@@ -1264,8 +1345,9 @@ fn main() -> Result<(), String> {
                 &args.out,
                 "selected-frame",
             )?;
+            artifact_readback_frames.extend([k, k]);
         }
-        if k + fps as usize == frames {
+        if selection.aftermath {
             write_png(&args.out.join("aftermath.png"), &pixels)?;
             write_temporal_pair(&args.out, "aftermath", &pixels, off_pixels.as_deref())?;
             if args.compare_particles {
@@ -1277,13 +1359,10 @@ fn main() -> Result<(), String> {
                     &args.out,
                     "aftermath",
                 )?;
+                artifact_readback_frames.extend([k, k]);
             }
         }
-        if args.every.is_some_and(|every| every > 0 && k % every == 0)
-            || args
-                .sequence
-                .is_some_and(|[first, last]| (first..=last).contains(&k))
-        {
+        if selection.numbered {
             write_png(
                 &args.out.join("frames").join(format!("{k:04}.png")),
                 &pixels,
@@ -1333,6 +1412,19 @@ fn main() -> Result<(), String> {
         "camera_path": args.camera.name(),
         "static_houses": args.static_houses,
         "sequence_frames": args.sequence,
+        "readback_every_frame": args.readback_every_frame,
+        "pixel_readback": {
+            "policy": if args.compare_temporal_aa { "all_frames_temporal_comparison" } else if args.readback_every_frame { "all_frames_legacy_override" } else if args.video.is_some() { "all_frames_video" } else { "selected_artifact_frames" },
+            "primary_readback_count": primary_readback_frames.len(),
+            "primary_readback_frame_indices": primary_readback_frames,
+            "completion_only_count": completion_only_frames.len(),
+            "completion_only_frame_indices": completion_only_frames,
+            "temporal_baseline_readback_count": if args.compare_temporal_aa { frames } else { 0 },
+            "temporal_baseline_readback_frame_indices": if args.compare_temporal_aa { Some((0..frames).collect::<Vec<_>>()) } else { None },
+            "additional_artifact_readback_count": artifact_readback_frames.len(),
+            "additional_artifact_readback_frame_indices": artifact_readback_frames,
+            "timing_scope": "Every simulation frame renders the full scene once through the primary renderer, advances history and exposure, waits for completion, and enters phase statistics without outlier filtering. Encode timing includes frame validation, fitting, buffer uploads, command encoding, submission, and timestamp instrumentation. Completion timing includes polling and optional timestamp readback. Selected primary frames also include pixel copy, mapping, and CPU pixel extraction; other primary frames use Offscreen::measure and omit those pixel operations. PNG/video writes, repeated comparison renders, and additional artifact readbacks occur after the primary timing sample and are excluded. Temporal comparisons retain pixel readback on every primary and baseline frame and preserve their existing warmed-frame paired intervals.",
+        },
         "width": WIDTH,
         "height": HEIGHT,
         "fps": fps,
@@ -1411,6 +1503,61 @@ fn main() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn selective_readback_covers_every_saved_frame_and_retires_automatic_shots() {
+        let mut args = Args::new(PathBuf::new());
+        args.video = None;
+        args.every = Some(100);
+        args.sequence = Some([17, 19]);
+        args.compare_particles = true;
+        args.particle_frame = Some(23);
+        let mut impact_saved = false;
+        let mut smoke_saved = false;
+        let mut readback = Vec::new();
+        for k in 0..240 {
+            let selection = args.select_frame(k, 240, 60.0, Some(100), impact_saved, smoke_saved);
+            if selection.read_pixels(&args) {
+                readback.push(k);
+            }
+            impact_saved |= selection.impact;
+            smoke_saved |= selection.smoke;
+        }
+        assert_eq!(readback, [0, 17, 18, 19, 23, 100, 120, 139, 166, 180, 200]);
+        assert!(impact_saved && smoke_saved);
+
+        args.every = Some(0);
+        args.sequence = None;
+        args.impact_frame = Some(5);
+        args.smoke_frame = Some(3);
+        assert!(args.select_frame(5, 240, 60.0, None, false, false).impact);
+        assert!(args.select_frame(3, 240, 60.0, None, false, false).smoke);
+        assert!(
+            !args
+                .select_frame(6, 240, 60.0, Some(0), true, true)
+                .read_pixels(&args)
+        );
+    }
+
+    #[test]
+    fn video_legacy_and_temporal_policies_read_every_frame() {
+        let mut args = Args::new(PathBuf::new());
+        let no_artifact = args.select_frame(7, 240, 60.0, None, false, false);
+        assert!(no_artifact.read_pixels(&args), "video needs every frame");
+        args.video = None;
+        assert!(!no_artifact.read_pixels(&args));
+        args.readback_every_frame = true;
+        assert!(
+            no_artifact.read_pixels(&args),
+            "legacy policy restores readback"
+        );
+        args.readback_every_frame = false;
+        args.compare_temporal_aa = true;
+        assert!(
+            no_artifact.read_pixels(&args),
+            "paired temporal timing keeps its readback scope"
+        );
+    }
 
     #[test]
     fn paired_mean_interval_retains_correlated_noise_and_every_frame() {
