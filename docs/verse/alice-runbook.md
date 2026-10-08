@@ -339,6 +339,11 @@ own `workspace-write` sandbox, with no network, and asks nobody. Questions and
 terminal-mode work never go to Codex. Codex's tokens become a spend record of
 their own (harness `codex-cli`).
 
+**Risks.** Codex usage counts against your ChatGPT plan's limits. When Codex
+hits a usage or rate limit, the limit goes in the capacity book
+(`~/.openagents/tasks/capacity.json`), she says once that Codex is out of
+capacity until its reset, and Coder codes on its own model until then.
+
 ### The Devin engine
 
 **What it changes.** The Devin CLI on this computer, on its own stored
@@ -377,30 +382,40 @@ login expires; `devin auth login` restores it.
 **What it changes.** Her task-mode coding can run on another computer you
 own — a second Mac or a Linux box — through the device grant `openagents
 computer enroll` gives the host. The remote host's own auto-start policy
-runs the task on the Devin route, in a worktree of its checkout at the
-commit yours had. When the remote task ends, its whole diff comes back and
-lands in her task worktree at the Merge station, where you review and merge
-it like a local task.
+runs the task on the Devin route, directly in the checkout at `--path`,
+which the host first resets to the commit yours had. When the remote task
+ends, the checkout's whole diff comes back and lands in her task worktree
+at the Merge station, where you review and merge it like a local task.
 
 **Command.** `openagents agent computers alice add coderos-4080 --max 1
---path ~/work/openagents` lets her place work on the computer your
+--path ~/work/openagents-alice` lets her place work on the computer your
 `openagents computer list` calls `coderos-4080`, at most that many tasks at
 once, in its checkout at `--path` (default `~/work/<workspace label>`).
+Give her a checkout of her own there; see the risks below. The remote
+host must admit that checkout as a workspace, and its auto-start policy
+must admit a `devin:` route.
 `openagents agent computers alice list` shows the set; `remove` takes one
 back. One request names its computer with `openagents agent ask alice
 --mode task --computer coderos-4080 TEXT`, `local` pins it here, and `auto`
 (the default when her policy names computers) picks the first with a free
 slot, falling back to this host when none answers.
 
-**How it runs.** The brief asks the remote worker to leave the change in
-the worktree — committed or not — and to stage new files so the diff is
+**How it runs.** Before each task, the host runs `git reset --hard BASE`
+and `git clean -fd` in the remote checkout, cloning it first when it's
+absent. The brief asks the remote worker to leave the change in the
+checkout — committed or not — and to stage new files so the diff is
 whole; it never pushes, merges, or opens a pull request. A commit that is
 not pushed to the checkout's `origin` is refused before anything starts.
 `agent stop` cancels the remote task through the same grant, so its Devin
 session stops too. A task that fails, or whose patch cannot land, closes
 with its reason in the studio note instead of a merge decision.
 
-**Risks.** The computer sees her request text and its checkout; its own
+**Risks.** Every task discards uncommitted changes and untracked files
+in the remote checkout, so never point `--path` at a checkout anyone
+edits by hand, including the default `~/work/openagents`. Keep build
+output outside it: a target directory inside the checkout counts against
+the remote host's [workspace snapshot bound](#the-workspace-snapshot-bound).
+The computer sees her request text and its checkout; its own
 policy still decides what its tasks may do. The grant is the owner's, held
 by the host — she holds no credential on the computer. An offline computer
 is reported once and the work falls back to this host or stays with `auto`
@@ -434,11 +449,6 @@ stalls the queue on one bad task.
 has — her policy, her worktree, your merge decision. The queue holds at
 most 32 waiting entries; its file is `agents/NAME/queue.json` and nothing
 else reads it, so never edit it by hand while she runs.
-
-**Risks.** Codex usage counts against your ChatGPT plan's limits. When Codex
-hits a usage or rate limit, the limit goes in the capacity book
-(`~/.openagents/tasks/capacity.json`), she says once that Codex is out of
-capacity until its reset, and Coder codes on its own model until then.
 
 ### Standing jobs
 
