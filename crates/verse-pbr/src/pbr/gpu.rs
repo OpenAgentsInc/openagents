@@ -3506,7 +3506,12 @@ impl Photo {
                     })
                     .collect();
                 let mut bound = None;
-                for draw in instanced::draws(&gpu.batches, &order) {
+                let draws = if k == 0 && !masked {
+                    instanced::opaque_caster_draws(&gpu.batches, &order)
+                } else {
+                    instanced::draws(&gpu.batches, &order)
+                };
+                for draw in draws {
                     let material = gpu.batches[draw.item].material;
                     if masked && bound != Some(material) {
                         pass.set_bind_group(2, &gpu.groups[material], &[]);
