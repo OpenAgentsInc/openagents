@@ -8,6 +8,8 @@ use route_contract::price_book::{Placement, PriceBook, Quote};
 use std::collections::BTreeSet;
 use std::path::Component;
 
+pub mod helpers;
+
 pub const SOURCE_SCHEMA: &str = "openagents.sales.claim-source.v1";
 pub const CLAIM_SCHEMA: &str = "openagents.sales.claim.v1";
 pub const DRAFT_SCHEMA: &str = "openagents.sales.claim-draft.v1";
@@ -254,6 +256,8 @@ pub(super) struct State {
     withdrawn: BTreeSet<String>,
     drafts: BTreeMap<String, Draft>,
     decisions: Vec<Decision>,
+    #[serde(default)]
+    helpers: BTreeMap<String, helpers::Record>,
 }
 impl State {
     pub(super) fn check(&self) -> Result<()> {
@@ -264,6 +268,7 @@ impl State {
             || self.withdrawn.len() > 2 * MAX_REVISIONS
             || self.source_heads.len() > MAX_REVISIONS
             || self.claim_heads.len() > MAX_REVISIONS
+            || self.helpers.len() > MAX_REVISIONS
         {
             return Err("claims register exceeds bound".into());
         }
@@ -283,6 +288,9 @@ impl State {
             {
                 return Err("claim revision is inconsistent".into());
             }
+        }
+        for (key, record) in &self.helpers {
+            record.check(key)?;
         }
         Ok(())
     }
@@ -916,14 +924,7 @@ impl Store {
         })();
         result.unwrap_or_else(|reason| Verdict::Rejected { reason })
     }
-    pub fn current_claims(
-        &mut self,
-        access: &Access,
-        pins: &[Pin],
-        release: &str,
-    ) -> Result<Vec<ClaimView>> {
-        self.refresh()?;
-        self.check(access)?;
+    fn current_claim_views(&self, pins: &[Pin], release: &str) -> Result<Vec<ClaimView>> {
         hash(release, 40)?;
         if pins.is_empty() || pins.len() > 8 {
             return Err("claim consumer needs 1 to 8 distinct pins".into());
@@ -980,6 +981,17 @@ impl Store {
                 verdict,
             });
         }
+        Ok(views)
+    }
+    pub fn current_claims(
+        &mut self,
+        access: &Access,
+        pins: &[Pin],
+        release: &str,
+    ) -> Result<Vec<ClaimView>> {
+        self.refresh()?;
+        self.check(access)?;
+        let views = self.current_claim_views(pins, release)?;
         let mut next = self.state.clone();
         let mut changed = false;
         for view in &views {

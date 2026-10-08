@@ -17,6 +17,7 @@ pub mod intake;
 pub mod partners;
 pub mod privacy;
 pub mod referrals;
+pub mod training;
 
 pub const SCHEMA: &str = "openagents.sales.pipeline.v1";
 pub const COMMAND_SCHEMA: &str = "openagents.sales.pipeline-command.v1";
@@ -294,6 +295,8 @@ struct State {
     email: email::Book,
     #[serde(default)]
     expenses: expenses::Book,
+    #[serde(default)]
+    training: training::Book,
 }
 impl Default for State {
     fn default() -> Self {
@@ -314,6 +317,7 @@ impl Default for State {
             privacy: privacy::Book::default(),
             email: email::Book::default(),
             expenses: expenses::Book::default(),
+            training: training::Book::default(),
         }
     }
 }
@@ -508,6 +512,7 @@ impl Store {
         state.privacy.check()?;
         state.email.check()?;
         state.expenses.check()?;
+        state.training.check()?;
         privacy::remember_retained(&mut state)?;
         if state.leads.values().any(|lead| lead.schema != LEAD_SCHEMA)
             || state
@@ -625,6 +630,7 @@ impl Store {
     }
     fn remove(state: &mut State, lead: &str, now: u64, reference: &str) -> Result<()> {
         privacy::remove(state, lead, now, reference)?;
+        claims::helpers::retire_lead(state, lead);
         let found = state.leads.get(lead).ok_or("lead is unavailable")?;
         let key = Self::suppression(state, &found.contact)?;
         if !state.suppressions.contains_key(&key) && state.suppressions.len() >= MAX_RECEIPTS {
@@ -684,6 +690,7 @@ impl Store {
         // Revoked/expired permission stops qualification and cancels proposed handoffs.
         let mut changed = !expired.is_empty();
         changed |= next.expenses.recover(&self.dir, now)?;
+        changed |= next.training.recover(&self.dir)?;
         let retired_sales = next
             .leads
             .values()

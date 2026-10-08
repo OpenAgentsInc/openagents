@@ -15,6 +15,10 @@ const USAGE: &str = "usage: openagents sales claims COMMAND --root DIR --credent
   validate --draft ID --release COMMIT Revalidate the entire retained draft.
   withdraw --input FILE               Record an irreversible revision withdrawal.
   history [--after N] [--limit N]      Read at most 100 private decisions.
+  helper-source --input FILE          Read the exact local helper source for a query.
+  helper --input FILE --request ID --agent-credential FILE
+                                      Run an admitted reviewed claim helper.
+  helper-show --reference ID          Read its original private result and expense reference.
 FILE=- reads bounded JSON from stdin. This command grants no sending,
 execution, purchase, publication, or customer-data disclosure authority.";
 #[derive(Deserialize)]
@@ -57,6 +61,9 @@ fn parse(words: &[String]) -> Result<Args, String> {
         "draft" => &["input", "draft", "release"],
         "validate" => &["draft", "release"],
         "history" => &["after", "limit"],
+        "helper-source" => &["input"],
+        "helper" => &["input", "request", "agent-credential"],
+        "helper-show" => &["reference"],
         _ => return Err(USAGE.into()),
     };
     if args
@@ -115,6 +122,33 @@ fn execute(args: &Args) -> Result<Value, String> {
         "credential",
     )?))?)?;
     let value = match args.positional()[0].as_str() {
+        "helper-source" => {
+            store.sales_agent_owner_view(&access)?;
+            let query: coder::task::sales::claims::helpers::Query =
+                serde_json::from_slice(&super::agents::input(args)?)
+                    .map_err(|_| "invalid sales helper query")?;
+            serde_json::to_value(coder::task::sales::claims::helpers::source(
+                query,
+                &format!("human:{}", access.principal()),
+            ))
+        }
+        "helper" => {
+            let agent = store.authenticate_sales_agent(&Store::read_credential(Path::new(
+                required(args, "agent-credential")?,
+            ))?)?;
+            let request: coder::task::sales::claims::helpers::Request =
+                serde_json::from_slice(&super::agents::input(args)?)
+                    .map_err(|_| "invalid sales helper request")?;
+            serde_json::to_value(store.run_sales_claim_helper(
+                &access,
+                &agent,
+                &request,
+                required(args, "request")?,
+            )?)
+        }
+        "helper-show" => {
+            serde_json::to_value(store.sales_claim_helper(&access, required(args, "reference")?)?)
+        }
         "source" => {
             serde_json::to_value(store.review_claim_source(&access, input::<SourceInput>(args)?)?)
         }

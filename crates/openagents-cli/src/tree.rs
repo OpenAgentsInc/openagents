@@ -79,6 +79,27 @@ const DOCTOR: &[Declared] = &[Declared::computer("", Effect::ReadOnly)];
 const VERSION: &[Declared] = &[Declared::computer("", Effect::ReadOnly)];
 const MCP: &[Declared] = &[Declared::computer("serve", Effect::LongRunning)];
 const COMPLETIONS: &[Declared] = &[Declared::computer("", Effect::ReadOnly)];
+const PYLON: &[Declared] = &[
+    Declared::computer("whoami", Effect::LocalWrite),
+    Declared::computer("serve", Effect::LongRunning),
+    Declared::computer("ask", Effect::Publishes),
+    Declared::computer("status", Effect::LocalWrite),
+    Declared::computer("pool", Effect::Publishes),
+    Declared::computer("pool verify", Effect::LocalWrite),
+];
+
+/// Keep Pylon's command rows ahead of its introductory prose for the shared
+/// help parser. The command syntax still comes from Pylon's own help.
+fn pylon_usage() -> &'static str {
+    static USAGE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    USAGE.get_or_init(|| {
+        let header = pylon::cli::USAGE.lines().next().unwrap_or_default();
+        let commands = pylon::cli::USAGE
+            .split_once("Commands:\n")
+            .map_or("", |(_, commands)| commands);
+        format!("{header}\n{commands}")
+    })
+}
 
 /// The `completions` syntax line; the prose under it is not syntax.
 fn completions_usage() -> &'static str {
@@ -145,6 +166,7 @@ pub fn help() -> Vec<GroupHelp<'static>> {
         alias: false,
     };
     vec![
+        group("pylon", Some(pylon_usage()), PYLON),
         group("host", Some(coder_host::cli::USAGE), HOST),
         group(
             "connect",

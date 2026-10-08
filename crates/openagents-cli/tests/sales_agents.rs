@@ -223,6 +223,7 @@ fn installed_private_agents_share_canonical_fields_without_cross_lead_or_memory_
     let other = ok(base, "agent-1", &["agents", "read"]);
     assert_eq!(other["lead"], leads[1]);
     assert!(other["drafts"].as_array().unwrap().is_empty());
+    check_claim_helper_cli(base);
     let native = agent::Store::with_keys(&host, "paul", std::sync::Arc::new(FileKeys)).unwrap();
     native
         .crew_charter(
@@ -237,4 +238,98 @@ fn installed_private_agents_share_canonical_fields_without_cross_lead_or_memory_
     assert!(!run(base, "agent-0", &["agents", "read"]).status.success());
     assert!(!run(base, "agent-0", &["agents", "memory"]).status.success());
     assert!(run(base, "agent-1", &["agents", "read"]).status.success());
+}
+
+fn check_claim_helper_cli(base: &Path) {
+    let command = base.join("helper.json");
+    write(&command, &json!("cited_answer"));
+    let source = ok(
+        base,
+        "owner",
+        &[
+            "claims",
+            "helper-source",
+            "--input",
+            command.to_str().unwrap(),
+        ],
+    );
+    assert_eq!(source["basis"], "local_deterministic");
+    assert_eq!(source["recipient"], "human:operator");
+    write(
+        &command,
+        &json!({"schema":"openagents.sales-model-policy.v1","revision":1,
+        "floor_daily_usd_millionths":5000000,"agent_daily_usd_millionths":1000000,
+        "request_usd_millionths":100000,"sources":[source]}),
+    );
+    let policy = ok(
+        base,
+        "owner",
+        &[
+            "models",
+            "policy-check",
+            "--input",
+            command.to_str().unwrap(),
+        ],
+    );
+    ok(
+        base,
+        "owner",
+        &[
+            "models",
+            "policy",
+            "--input",
+            command.to_str().unwrap(),
+            "--approve",
+            policy["sha256"].as_str().unwrap(),
+        ],
+    );
+    write(
+        &command,
+        &json!({"query":"cited_answer","release":"a".repeat(40),
+        "claims":[{"id":"unknown-current-claim","revision":1}]}),
+    );
+    let result = ok(
+        base,
+        "owner",
+        &[
+            "claims",
+            "helper",
+            "--input",
+            command.to_str().unwrap(),
+            "--request",
+            "installed-helper",
+            "--agent-credential",
+            base.join("agent-0").to_str().unwrap(),
+        ],
+    );
+    assert_eq!(result["answer"]["recommendation"], "return_for_review");
+    assert_eq!(result["answer"]["outbound_authority"], false);
+    assert!(result["answer"]["draft_body"].is_null());
+    assert_eq!(
+        ok(
+            base,
+            "owner",
+            &[
+                "claims",
+                "helper-show",
+                "--reference",
+                result["artifact"]["reference"].as_str().unwrap()
+            ]
+        ),
+        result
+    );
+    let expense = ok(
+        base,
+        "owner",
+        &[
+            "models",
+            "show",
+            "--reservation",
+            result["expense_reference"].as_str().unwrap(),
+        ],
+    );
+    assert_eq!(expense["status"], "known");
+    assert_eq!(expense["execution_unknown"], false);
+    assert_eq!(expense["settlements"][0]["estimated_usd_millionths"], 0);
+    assert!(expense["settlements"][0]["billed_usd_millionths"].is_null());
 }

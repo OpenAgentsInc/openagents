@@ -426,6 +426,14 @@ such as a named customer's terms, never enters it.
   [simulated team](../verse/agent-studio.md#simulated-team) or material the
   prospect provides, never unrequested work on the prospect's code.
 
+The native `sales claims helper-source`, `helper`, and `helper-show` commands
+read the reviewed register through the same admitted expense book as model
+work. Claims, current prices, cited answers, and recommendations retain exact
+source and review digests. Missing, unreviewed, or stale evidence returns the
+draft for review. The exact helper body and original expense remain bound to
+its native author, assignment, policy, and playbook; a source document cannot
+select a tool or recipient.
+
 ### Role-play
 
 In the training room, an agent practices against Carole personas: simulated
@@ -434,6 +442,14 @@ situation, budget, objections, and a few misleading answers. A role-play is a
 written conversation, run on a small model, with the transcript graded
 afterward. Carole personas are synthetic and describe no real person or
 company.
+
+The native `sales training` commands publish a bounded practice schedule,
+retain partial written turns, and expose owner reads. Six versioned situations
+cover unsupported features, unknown jurisdiction, full cost, opt-out,
+pressure, and ambiguous consent. Training can start in an empty pipeline;
+every turn uses the same real-day expense floor without creating a customer
+or contact grant. `run-scripted` checks the harness with a deterministic local
+adapter. Its completion is not a passing grade or measured certification.
 
 ### Grading in the Gym
 

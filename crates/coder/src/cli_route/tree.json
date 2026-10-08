@@ -7877,6 +7877,349 @@
                 "effect": "read_only",
                 "runs_on": "connected_computer"
               }
+            },
+            {
+              "name": "helper-source",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "claims",
+                  "helper-source"
+                ],
+                "usage": [
+                  "claims helper-source --input FILE"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "claims"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "helper-source"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "input",
+                        "value": "FILE",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Read a reviewed local helper source for the shared model policy.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "helper",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "claims",
+                  "helper"
+                ],
+                "usage": [
+                  "claims helper --input FILE --request ID --agent-credential FILE"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "claims"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "helper"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "input",
+                        "value": "FILE",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "request",
+                        "value": "ID",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "agent-credential",
+                        "value": "FILE",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Retain bounded cited claims, prices, and recommendation with admitted cost.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "helper-show",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "claims",
+                  "helper-show"
+                ],
+                "usage": [
+                  "claims helper-show --reference ID"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "claims"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "helper-show"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "reference",
+                        "value": "ID",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Read the original private helper result and expense reference.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
+        },
+        {
+          "name": "training",
+          "children": [
+            {
+              "name": "personas",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "training",
+                  "personas"
+                ],
+                "usage": [
+                  "training personas"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "training"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "personas"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Read labeled fictional buyer situations.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "script-source",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "training",
+                  "script-source"
+                ],
+                "usage": [
+                  "training script-source"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "training"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "script-source"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Read the exact zero-cost fixture model source.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "schedule",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "training",
+                  "schedule"
+                ],
+                "usage": [
+                  "training schedule --input FILE"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "training"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "schedule"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "input",
+                        "value": "FILE",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Retain a bounded practice with exact native identity and reviewed evidence.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "run-scripted",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "training",
+                  "run-scripted"
+                ],
+                "usage": [
+                  "training run-scripted --run ID"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "training"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "run-scripted"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "run",
+                        "value": "ID",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Run an original synthetic fixture once; completion grants no certification.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "show",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "training",
+                  "show"
+                ],
+                "usage": [
+                  "training show --run ID"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "training"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "show"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "run",
+                        "value": "ID",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Read partial practice evidence and original expense references.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "list",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "training",
+                  "list"
+                ],
+                "usage": [
+                  "training list --agent NAME [--after ID] [--limit N]"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "training"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "list"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "agent",
+                        "value": "NAME",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "after",
+                        "value": "ID",
+                        "open": true,
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "limit",
+                        "value": "N",
+                        "open": true,
+                        "optional": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Read a bounded synthetic schedule through current Paul authority.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
             }
           ]
         },
@@ -8168,6 +8511,38 @@
         {
           "kind": "option",
           "name": "draft",
+          "value": "ID",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "request",
+          "value": "ID",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "agent-credential",
+          "value": "FILE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "reference",
+          "value": "ID",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "run",
           "value": "ID",
           "open": true,
           "optional": true,
@@ -24757,6 +25132,317 @@
           "name": "tag",
           "value": "NAME=VALUE",
           "open": true,
+          "optional": true,
+          "repeated": true
+        }
+      ]
+    },
+    {
+      "name": "pylon",
+      "summary": "Share this computer's model as a NIP-PYLON pylon, or use one.",
+      "children": [
+        {
+          "name": "whoami",
+          "leaf": {
+            "path": [
+              "pylon",
+              "whoami"
+            ],
+            "usage": [
+              "whoami"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "whoami"
+                  }
+                ]
+              }
+            ],
+            "summary": "Print this computer's pylon, buyer, and aggregator keys.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "serve",
+          "leaf": {
+            "path": [
+              "pylon",
+              "serve"
+            ],
+            "usage": [
+              "serve"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "serve"
+                  }
+                ]
+              }
+            ],
+            "summary": "Publish beacons and answer jobs from a local Psionic server. --engine URL          The Psionic server (default http://127.0.0.1:18080). --model NAME          The served model (default qwen3.5-0.8b-q8_0). --pylon SLUG          The beacon's name (default: the host name). --label TEXT          Display label (default: the slug). --slots N             Concurrent jobs (default 2). --allow NPUB          A key that may send jobs; repeat or comma-separate. --allow-any           Admit any key (rate limits still apply). --rate N              Jobs per buyer per minute (default 10). --max-tokens N        Output bound per job (default 512). --vram-gb N           GPU memory for the beacon's class (default 16). --pool SLUG           Pool to ask to join (default everglade).",
+            "effect": "long_running",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "ask",
+          "leaf": {
+            "path": [
+              "pylon",
+              "ask"
+            ],
+            "usage": [
+              "ask PROMPT"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "ask"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "PROMPT"
+                  }
+                ]
+              }
+            ],
+            "summary": "Find a pylon, run one job, and publish a receipt. --pylon NPUB          Use this pylon instead of the best fresh one. --wait SECS           How long to wait for the answer (default 90). --no-receipt          Do not publish a receipt.",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "status",
+          "leaf": {
+            "path": [
+              "pylon",
+              "status"
+            ],
+            "usage": [
+              "status"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "status"
+                  }
+                ]
+              }
+            ],
+            "summary": "The Pylon Field: every verified pylon's state. --pool SLUG           Only pylons asking to join this pool.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "pool",
+          "leaf": {
+            "path": [
+              "pylon",
+              "pool"
+            ],
+            "usage": [
+              "pool"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "pool"
+                  }
+                ]
+              }
+            ],
+            "summary": "Compute a pool aggregate over the last window. --pool SLUG           The pool (default everglade). --minutes N           Window length, 1 to 60 (default 60). --publish             Sign and publish it as the aggregator.",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          },
+          "children": [
+            {
+              "name": "verify",
+              "leaf": {
+                "path": [
+                  "pylon",
+                  "pool",
+                  "verify"
+                ],
+                "usage": [
+                  "pool verify --aggregator NPUB"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "pool"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "verify"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "aggregator",
+                        "value": "NPUB",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Fetch that aggregator's newest aggregate and recompute it.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
+        }
+      ],
+      "options": [
+        {
+          "kind": "option",
+          "name": "engine",
+          "value": "URL",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "model",
+          "value": "NAME",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "pylon",
+          "value": "SLUG",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "label",
+          "value": "TEXT",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "slots",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "allow",
+          "value": "NPUB",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "allow-any",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "rate",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "max-tokens",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "vram-gb",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "pool",
+          "value": "SLUG",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "wait",
+          "value": "SECS",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "no-receipt",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "minutes",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "publish",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "aggregator",
+          "value": "NPUB",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "relay",
+          "value": "URL",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "json",
           "optional": true,
           "repeated": true
         }

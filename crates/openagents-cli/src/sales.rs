@@ -16,6 +16,8 @@ mod email;
 mod models;
 #[path = "sales_privacy.rs"]
 mod privacy;
+#[path = "sales_training.rs"]
+mod training;
 pub const USAGE: &str = "usage: openagents sales COMMAND --root DIR [--credential FILE] [--json]
   init --owner HUMAN --credential FILE
         Initialize the private pipeline and write its owner's credential.
@@ -90,6 +92,24 @@ pub const USAGE: &str = "usage: openagents sales COMMAND --root DIR [--credentia
         Withdraw a source or claim revision with a retained reason reference.
   claims history [--after N] [--limit N]
         Read the owner's bounded claim decision history.
+  claims helper-source --input FILE
+        Read a reviewed local helper source for the shared model policy.
+  claims helper --input FILE --request ID --agent-credential FILE
+        Retain bounded cited claims, prices, and recommendation with admitted cost.
+  claims helper-show --reference ID
+        Read the original private helper result and expense reference.
+  training personas
+        Read labeled fictional buyer situations.
+  training script-source
+        Read the exact zero-cost fixture model source.
+  training schedule --input FILE
+        Retain a bounded practice with exact native identity and reviewed evidence.
+  training run-scripted --run ID
+        Run an original synthetic fixture once; completion grants no certification.
+  training show --run ID
+        Read partial practice evidence and original expense references.
+  training list --agent NAME [--after ID] [--limit N]
+        Read a bounded synthetic schedule through current Paul authority.
   weekly --input MANIFEST --evidence-root DIR --output FILE
         Recheck consented journeys and economics into a private weekly report.
   review --input MANIFEST --evidence-root DIR --report FILE --review FILE --output FILE
@@ -152,10 +172,22 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("claims validate", Effect::LocalWrite),
     Declared::computer("claims withdraw", Effect::Grants),
     Declared::computer("claims history", Effect::ReadOnly),
+    Declared::computer("claims helper-source", Effect::ReadOnly),
+    Declared::computer("claims helper", Effect::LocalWrite),
+    Declared::computer("claims helper-show", Effect::ReadOnly),
+    Declared::computer("training personas", Effect::ReadOnly),
+    Declared::computer("training script-source", Effect::ReadOnly),
+    Declared::computer("training schedule", Effect::LocalWrite),
+    Declared::computer("training run-scripted", Effect::LocalWrite),
+    Declared::computer("training show", Effect::ReadOnly),
+    Declared::computer("training list", Effect::ReadOnly),
     Declared::computer("weekly", Effect::LocalWrite),
     Declared::computer("review", Effect::LocalWrite),
 ];
 pub fn run(output: &Output, words: &[String]) -> u8 {
+    if words.first().is_some_and(|w| w == "training") {
+        return training::run(output, &words[1..]);
+    }
     if words.first().is_some_and(|w| w == "email") {
         return email::run(output, &words[1..]);
     }

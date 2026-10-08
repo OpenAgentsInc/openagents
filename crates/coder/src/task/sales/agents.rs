@@ -611,6 +611,48 @@ impl Store {
         if command.schema != OWNER_COMMAND_SCHEMA {
             return Err("unsupported sales agent owner command".into());
         }
+        let mut helper_native = None;
+        if let OwnerOperation::ReviewDraft {
+            lead,
+            draft,
+            state: DraftState::OwnerReviewed,
+            ..
+        } = &command.operation
+        {
+            let lead_record = self.state.leads.get(lead).ok_or("lead is unavailable")?;
+            let value = lead_record
+                .agent_records
+                .drafts
+                .get(draft)
+                .ok_or("sales draft is unavailable")?;
+            if value
+                .check_refs
+                .iter()
+                .chain(value.recommendation.as_ref())
+                .any(|r| r.reference.starts_with("sales-helper-"))
+            {
+                let grant = lead_record
+                    .agent_records
+                    .assignments
+                    .get(&value.assignment)
+                    .ok_or("sales helper assignment is unavailable")?;
+                let native = native::Native::read(
+                    self.dir.parent().ok_or("sales host root is unavailable")?,
+                    &grant.anchor.name,
+                    (self.clock)(),
+                    self.native_keys.clone(),
+                )?;
+                self.validate_sales_helper_artifacts_with_native(
+                    lead,
+                    &value.assignment,
+                    &value.check_refs,
+                    value.recommendation.as_ref(),
+                    &value.body,
+                    &native,
+                )?;
+                helper_native = Some(native);
+            }
+        }
         id(&command.id)?;
         let key = digest(format!("sales-agent-owner:{}", command.id).as_bytes());
         let input = digest(bytes);
@@ -632,7 +674,7 @@ impl Store {
         let mut lead_ref = String::new();
         let mut revision = 0;
         let outcome;
-        let mut held_native = None;
+        let mut held_native = helper_native;
         let mut admitted_until = None;
         match command.operation {
             OwnerOperation::PublishPolicy { policy } => {
@@ -1157,6 +1199,22 @@ impl Store {
         let command: AgentCommand = parse(bytes)?;
         if command.schema != AGENT_COMMAND_SCHEMA {
             return Err("unsupported sales agent command".into());
+        }
+        if let AgentOperation::ProposeDraft {
+            body,
+            check_refs,
+            recommendation,
+            ..
+        } = &command.operation
+        {
+            self.validate_sales_helper_artifacts_with_native(
+                &access.lead,
+                &access.assignment,
+                check_refs,
+                recommendation.as_ref(),
+                body,
+                &native,
+            )?;
         }
         id(&command.id)?;
         let key = digest(format!("sales-agent:{}:{}", access.assignment, command.id).as_bytes());

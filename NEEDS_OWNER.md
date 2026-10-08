@@ -1741,3 +1741,17 @@ uses the same expense floor and owner-approved persona/run/source pins without
 customer records or outbound authority. Customer material requires a separate
 typed field-scoped disclosure adapter; arbitrary expense input refuses retained
 protected identifiers and credentials.
+
+## Sales evidence and written practice activation (REV-55/REV-56)
+
+Review the exact playbook, maintained claim sources, full price terms, and
+source/review digests before publishing helper inputs. Approve the helper or
+training source in the canonical `sales models` policy, with its input,
+output, retry, and deadline bounds. Local deterministic helpers and
+`training run-scripted` have zero model cost and establish no provider
+availability, customer proof, passing grade, certification, or contact grant.
+Select and qualify a bounded real model adapter before using practice quality
+as commercial evidence. Retain the original partial transcript and expense
+when execution fails or is interrupted; a new controller or schedule cannot
+reset unknown liability. Supply owner-marked examples and original reviews
+for REV-57 calibration and locked evaluation before enabling prospect drafts.

@@ -1,6 +1,8 @@
 use super::*;
 use crate::task::{agent, agent_key::FileKeys};
 use tempfile::TempDir;
+mod helpers;
+mod training;
 fn now() -> u64 {
     1_791_158_400
 }
@@ -25,6 +27,58 @@ struct Fixture {
 impl Fixture {
     fn new() -> Self {
         Self::with_execution_budget(0)
+    }
+    fn without_customers() -> Self {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("host");
+        let mut store = Store::open_with_clock(&root, now).unwrap();
+        let owner_file = dir.path().join("owner");
+        store.initialize("operator", &owner_file).unwrap();
+        let owner = store
+            .authenticate(&Store::read_credential(&owner_file).unwrap())
+            .unwrap();
+        let native = agent::Store::with_keys(&root, "paul", std::sync::Arc::new(FileKeys)).unwrap();
+        let record = native
+            .open_as(dir.path(), now(), agent::preset("paul"))
+            .unwrap();
+        let record = native.ensure_key(record, now()).unwrap();
+        native
+            .attest(
+                record,
+                &secp256k1::SecretKey::from_byte_array([17; 32]).unwrap(),
+                now() + 5000,
+                now(),
+            )
+            .unwrap();
+        let anchor = store.sales_agent_anchor(&owner, "paul").unwrap();
+        let policy = Policy {
+            schema: POLICY_SCHEMA.into(),
+            id: "sales-floor".into(),
+            version: 1,
+            channels: vec!["email".into()],
+            jurisdictions: vec!["US".into()],
+            allowed_agents: vec![anchor.pubkey.clone()],
+            data_recipients: vec!["human:operator".into()],
+            timezone: "America/Chicago".into(),
+            daily_floor_cap: 5,
+            daily_agent_cap: 5,
+            execution_budget_usd_millionths: 0,
+            trust: Trust::IndividualReview,
+            read_fields: [ReadField::Stage].into(),
+            write_fields: [WriteField::Draft].into(),
+            playbook: artifact("playbook-v1"),
+            permission_evidence_required: true,
+            expires_at: now() + 1500,
+        };
+        Self {
+            dir,
+            store,
+            owner,
+            lead: String::new(),
+            anchor,
+            credential: PathBuf::new(),
+            policy,
+        }
     }
     fn with_execution_budget(execution_budget_usd_millionths: u64) -> Self {
         let dir = tempfile::tempdir().unwrap();
