@@ -73,6 +73,9 @@ fn flatten(scene: &TexturedScene) -> TexturedScene {
 
 fn stage(center: Vec3, extent: f32) -> Mesh {
     let mut neon = Neon::neutral(0.0);
+    // Keep the 120 m inspection beyond the bare world's 110 m fog end visible.
+    neon.fog_start = 1_000.0;
+    neon.fog_end = 2_000.0;
     neon.key = Some(Key {
         dir: Vec3::new(0.55, 0.7, 0.45).normalize(),
         illuminance: 4200.0,
@@ -158,6 +161,8 @@ fn demo() {
     };
     let dynamic = stage(center, extent);
     let before = capture(source.clone(), view, &dynamic);
+    assert!(before.chunks_exact(4).any(|p| p[..3].iter().any(|&c| c > 32)),
+        "The demo house must be visible");
     let after = capture(merged.clone(), view, &dynamic);
     write_png(&output.join("demo-source.png"), &before);
     write_png(&output.join("demo-merged.png"), &after);
@@ -286,12 +291,11 @@ fn damage() {
     )
     .unwrap();
     println!("{record}");
-    assert_ne!(images[0], images[1]);
-    assert_ne!(images[1], images[2]);
-    assert_eq!(
-        images[0], images[3],
-        "Restoring must redraw the original far house"
-    );
+    assert!(images[0].chunks_exact(4).any(|p| p[..3].iter().any(|&c| c > 32)),
+        "The far house must be visible");
+    assert!(images[0] != images[1], "First damage must change the far house");
+    assert!(images[1] != images[2], "Repeated damage must change the far house");
+    assert!(images[0] == images[3], "Restoring must redraw the original far house");
 }
 
 fn main() {
