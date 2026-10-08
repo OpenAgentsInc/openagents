@@ -88,12 +88,13 @@ fn capture() {
         .unwrap();
     let atlas = Atlas::new(16.0);
     let ui = UiBatch::default();
+    let atmosphere = runtime.everglade_zone_mut().unwrap().atmosphere();
     let mut renderer = Offscreen::new(
         1280,
         800,
         &runtime.world.mesh,
         &atlas,
-        runtime.everglade_zone_mut().unwrap().atmosphere(),
+        atmosphere,
     )
     .unwrap();
     assert_eq!(
