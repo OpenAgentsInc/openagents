@@ -106,7 +106,7 @@ mod tests {
         assert_ne!(a.sun, b.sun);
         assert!(a.sun.angle_between(b.sun) < 0.02);
         assert_eq!(clock_light(stepped, after, true), stepped);
-        let before = town_clock::TownTime::at_hour(0, 17.0 + 28.0 / 60.0);
+        let before = town_clock::TownTime::at_hour(0, 17.0 + 29.0 / 60.0);
         let after = town_clock::TownTime::at_hour(0, 17.0 + 31.0 / 60.0);
         let stepped = time_of_day::Light::at(before);
         assert_eq!(stepped, time_of_day::Light::at(after));
