@@ -88,11 +88,18 @@ unchanged.
 
 ## What's open
 
-- **B2 (#10906).** The coordinator holds the claim. After the owner stopped repeat baking, recover the already generated queue commit `e7410b0015ceac5460369d93cbe8c395ae7f3258` under the artifact lease. Rebase its existing pin, rerun `--layers --check`, and push; do not regenerate because unrelated commits moved `main`. Compare the baker, renderer, scene, assets, and artifact recipe against the completed bake before rebasing. The recovery script is in the coordinator's private `b2-verification/recover-queue.sh` evidence directory. Publication is pending until that check and push succeed. The landed per-vertex
+- **B2 (#10906).** The coordinator holds the claim. The completed queue
+  artifact landed in `d138fad18276ec7942c6116bbf992c3062ae5841` after
+  rebasing its generated commit and rerunning `--layers --check`.
+  Compilation took 24.27 seconds; no rebake ran. For unrelated main
+  updates, preserve the completed queue commit, compare the baker,
+  renderer, scene, assets, and recipe, then rebase and check under the
+  artifact lease. Do not regenerate. The recovery script is retained in
+  the coordinator's private `b2-verification/recover-queue.sh`. The landed per-vertex
   layers pass the lamp/bounce fixture, three format and combination tests,
   the missing/stale-layer fallback test, and scoped formatting on
   `coderos-4080`. Artifact submission `01791470792224747042-2390831-0`
-  regenerates the current P3 scene through `everglade-kit-bake`. Its first
+  published the current P3 scene through `everglade-kit-bake`. Its first
   bake was stopped when the Mac fell below the owner's 25 GB floor; idle
   local target-agent12 was removed after preserving its two water capture
   executables, restoring 110.8 GB free. The resumed bake completes in
@@ -102,7 +109,7 @@ unchanged.
   `14ae7f75e9ce4f81483f6f44369753545cb2cab892177607438b3077ebbbae23`,
   bake key `5f9adbe288bb182e946991e934b169163e2dabfff2adeb9bcdd37f6b9627d207`,
   and scene `a673374a9399f0f564e558bf50cc608a23227d39893bada078093fac021379df`.
-  The queue replays because main moves; no pin is published yet. The first
+  The pin is on main. The first
   output and receipt are preserved in the coordinator's private
   `b2-verification/` scratch directory. The private bucket copy has the
   matching length and MD5; captures and public delivery are not accepted yet.
