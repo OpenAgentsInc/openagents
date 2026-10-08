@@ -1230,6 +1230,12 @@ impl Layer {
         );
         Ok(())
     }
+
+    /// Arms delayed water queries after the host submits the encoded frame.
+    /// Hosts that request timestamp support call this after `queue.submit`.
+    pub fn submitted(&mut self) {
+        if let Some(photo) = &mut self.scene.photo { photo.submitted(); }
+    }
 }
 
 /// Which graphics APIs an Android surface tries, in order.

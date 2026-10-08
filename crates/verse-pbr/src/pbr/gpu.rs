@@ -3418,8 +3418,6 @@ impl Photo {
             packed.ripple = self.ripple_row;
             queue.write_buffer(&self.water_buffer, 0, bytemuck::bytes_of(&packed));
         }
-        let water_main_ms = water_started.elapsed_ms();
-        let water_main_cpu_ms = water_started.cpu_ms();
         self.water_surface_bytes = world.water.map_or(0, |gpu| gpu.bytes());
         let cull = world.water.and_then(|gpu| gpu.0.ocean.as_ref()).and_then(|ocean| {
             let water = water.as_ref()?;
@@ -3469,6 +3467,8 @@ impl Photo {
         if self.water_screen.is_some() {
             uniform.water_screen = targets.water_plan.uniform(split);
         }
+        let water_main_ms = water_started.elapsed_ms();
+        let water_main_cpu_ms = water_started.cpu_ms();
         queue.write_buffer(&self.frame, 0, bytemuck::bytes_of(&uniform));
         if let Some(shadow) = &shadow {
             self.encode_shadow(queue, encoder, &uniform, shadow, &world);
@@ -3507,9 +3507,12 @@ impl Photo {
             daylight: daylight.is_some(),
             lit: lit.is_some(),
         };
+        let mut water_draw_ms = 0.0;
+        let mut water_draw_cpu_ms = Some(0.0);
         if let (Some(m), Some(screen), Some(water_targets)) =
             (&mirror, &self.water_screen, &targets.water)
         {
+            let mirror_started = crate::water::timing::CpuTimer::start();
             let cull = verse_engine::presentation::View {
                 view_proj: m.cull,
                 eye: m.eye,
@@ -3528,10 +3531,10 @@ impl Photo {
                 &mirror_order,
             );
             self.water_mask |= 1;
+            water_draw_ms += mirror_started.elapsed_ms();
+            water_draw_cpu_ms = water_draw_cpu_ms.zip(mirror_started.cpu_ms()).map(|(sum, cost)| sum + cost);
         }
         let direct = self.post.is_none();
-        let mut water_draw_ms = 0.0;
-        let mut water_draw_cpu_ms = Some(0.0);
         if split && let (Some(screen), Some(water_targets)) = (&self.water_screen, &targets.water) {
             // The opaque scene, kept for the second pass and resolved into
             // the color copy.
@@ -3553,6 +3556,7 @@ impl Photo {
                 );
                 self.draw_opaque(&mut pass, targets, &opaque);
             }
+            let copies_started = crate::water::timing::CpuTimer::start();
             if targets.msaa.is_none() {
                 encoder.copy_texture_to_texture(
                     targets.scene_texture.as_image_copy(),
@@ -3568,6 +3572,8 @@ impl Photo {
             screen.encode_copy(encoder, water_targets,
                 self.water_timer.as_ref().and_then(|t| t.boundary(self.water_slot, 2)));
             self.water_mask |= 4;
+            water_draw_ms += copies_started.elapsed_ms();
+            water_draw_cpu_ms = water_draw_cpu_ms.zip(copies_started.cpu_ms()).map(|(sum, cost)| sum + cost);
             // The water and everything blended over the kept scene.
             let resolve = targets.msaa.as_ref().map(|_| &targets.scene);
             let mut pass = scene_pass_timed(

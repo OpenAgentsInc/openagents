@@ -124,8 +124,9 @@ where available; water residency and CPU admission remain active.
 Queue-fence estimates remain separate. Native CPU clocks measure
 thread CPU time. Worker cost counts completed synthesis jobs over the
 measurement interval, including superseded results; per-job duration is
-reported separately. Missing GPU results neither advance nor reset the
-GPU overrun streak.
+reported separately. The native bench paces actual display intervals at
+60 Hz, so back-to-back frame bursts cannot hide worker cost. Missing GPU
+results neither advance nor reset the GPU overrun streak.
 
 Resume from `codex/water-w11-measurement`; the checkpoint is unverified.
 The fixed-view ignored raster test is `w11::water_w11_fixed_views` in
