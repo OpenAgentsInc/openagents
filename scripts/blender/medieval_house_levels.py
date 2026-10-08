@@ -115,6 +115,10 @@ def texture(material):
         pixels = np.empty(image.size[0] * image.size[1] * 4, dtype=np.float32)
         image.pixels.foreach_get(pixels)
         pixels = pixels.reshape(image.size[1], image.size[0], 4)
+        # Image.pixels exposes sRGB channel values for loaded byte PNGs.
+        # The runtime sampler decodes them before multiplying linear tints.
+        rgb=pixels[:, :, :3]
+        pixels[:, :, :3]=np.where(rgb<=0.04045,rgb/12.92,((rgb+0.055)/1.055)**2.4)
         # The glTF material factor is one when the texture/color nodes link
         # to the socket. Vertex colors are sampled separately below.
         factor = np.ones(4)
@@ -140,11 +144,30 @@ def corners(obj):
     return result
 
 
-def png(path, linear):
+def rgba_bytes(linear):
     rgb = np.maximum(0.0, linear[:, :, :3])
     srgb = np.where(rgb <= 0.0031308, rgb * 12.92, 1.055 * rgb ** (1 / 2.4) - 0.055)
     rgba = np.concatenate([srgb, np.ones((*rgb.shape[:2], 1))], axis=2)
-    rgba = np.rint(np.clip(rgba, 0, 1) * 255).astype(np.uint8)
+    return np.rint(np.clip(rgba, 0, 1) * 255).astype(np.uint8)
+
+
+def verify_palette():
+    image=bpy.data.images.new("Synthetic palette",width=1,height=1)
+    image.colorspace_settings.name="sRGB"
+    image.pixels=[200/255,100/255,50/255,1]
+    material=bpy.data.materials.new("Synthetic palette")
+    material.use_nodes=True
+    node=material.node_tree.nodes.new("ShaderNodeTexImage")
+    node.image=image
+    pixels,factor=texture(material)
+    np.testing.assert_allclose(pixels[0,0,:3],[0.57758044,0.12743768,0.03189603],atol=1e-6)
+    assert rgba_bytes(pixels).reshape(-1).tolist()==[200,100,50,255]
+    assert rgba_bytes(pixels*np.array([0.5,0.5,0.5,1])).reshape(-1).tolist()==[146,71,34,255]
+    assert np.array_equal(factor,np.ones(4))
+
+
+def png(path, linear):
+    rgba = rgba_bytes(linear)
     def chunk(kind, data):
         return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
     rows = b"".join(b"\0" + row.tobytes() for row in rgba[::-1])
@@ -250,6 +273,10 @@ def near_model(build, house):
 
 
 def main():
+    verify_palette()
+    if sys.argv[sys.argv.index("--")+1:]==["--self-test"]:
+        print("The synthetic atlas palette fixture passes")
+        return
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("export", type=Path)
     parser.add_argument("build", type=Path)
