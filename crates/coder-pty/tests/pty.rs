@@ -74,7 +74,9 @@ struct Fixture {
 }
 
 fn fixture_with(adjust: impl FnOnce(&mut Config)) -> Fixture {
-    let root = tempfile::tempdir().unwrap();
+    // The canonical temp root, so paths the host canonicalizes compare
+    // equal on macOS, where the temp dir sits behind /var -> /private/var.
+    let root = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
     let mut config = Config::new().workspace(WORKSPACE, root.path());
     adjust(&mut config);
     let grants = Grants::standard();
