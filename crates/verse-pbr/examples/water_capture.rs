@@ -951,6 +951,13 @@ fn physical_sampled(
             }
             std::thread::sleep(interval.saturating_sub(frame_started.elapsed()));
         }
+        // Read the frame that supplied the final measurement. A smaller
+        // viewport could admit optics that the measured viewport dropped.
+        pixels = read(
+            gpu,
+            &texture,
+            gpu.device.create_command_encoder(&Default::default()),
+        )?;
     } else {
         // The retained capture bench measures throughput, separately from
         // W11's paced completed-job measurements.
@@ -993,10 +1000,11 @@ fn read(
     texture: &wgpu::Texture,
     mut encoder: wgpu::CommandEncoder,
 ) -> Result<Vec<u8>, String> {
-    let row = (WIDTH * 4).div_ceil(256) * 256;
+    let (width, height) = (texture.width(), texture.height());
+    let row = (width * 4).div_ceil(256) * 256;
     let readback = gpu.device.create_buffer(&wgpu::BufferDescriptor {
         label: None,
-        size: u64::from(row * HEIGHT),
+        size: u64::from(row * height),
         usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
         mapped_at_creation: false,
     });
@@ -1012,10 +1020,14 @@ fn read(
             layout: wgpu::TexelCopyBufferLayout {
                 offset: 0,
                 bytes_per_row: Some(row),
-                rows_per_image: Some(HEIGHT),
+                rows_per_image: Some(height),
             },
         },
-        extent(),
+        wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
     );
     gpu.queue.submit([encoder.finish()]);
     let (tx, rx) = std::sync::mpsc::channel();
@@ -1034,7 +1046,7 @@ fn read(
     let bytes = readback.slice(..).get_mapped_range();
     Ok(bytes
         .chunks(row as usize)
-        .flat_map(|row| row[..WIDTH as usize * 4].iter().copied())
+        .flat_map(|row| row[..width as usize * 4].iter().copied())
         .collect())
 }
 
@@ -1153,10 +1165,14 @@ fn imported(directory: &Path, tier: Tier) -> Result<Vec<Value>, String> {
 // ---- Output.
 
 fn png(path: &Path, pixels: &[u8]) -> Result<(), String> {
+    png_at(path, pixels, [WIDTH, HEIGHT])
+}
+
+fn png_at(path: &Path, pixels: &[u8], [width, height]: [u32; 2]) -> Result<(), String> {
     let mut encoder = png::Encoder::new(
         std::fs::File::create(path).map_err(|e| e.to_string())?,
-        WIDTH,
-        HEIGHT,
+        width,
+        height,
     );
     encoder.set_color(png::ColorType::Rgba);
     encoder.set_depth(png::BitDepth::Eight);
@@ -1489,7 +1505,7 @@ mod w11 {
                 )
                 .unwrap();
                 let mut dry_samples = Vec::new();
-                let (_, dry_fence_ms, _, _) = physical_sampled(
+                let (dry, dry_fence_ms, _, _) = physical_sampled(
                     &gpu,
                     &mut dry_photo,
                     tier,
@@ -1500,7 +1516,7 @@ mod w11 {
                 )
                 .unwrap();
                 let mut samples = Vec::new();
-                let (_, fence_ms, _, bytes) = physical_sampled(
+                let (wet, fence_ms, _, bytes) = physical_sampled(
                     &gpu,
                     &mut photo,
                     tier,
@@ -1536,33 +1552,14 @@ mod w11 {
                     && main["mean"].as_f64().unwrap_or(0.0) <= budget.main_ms
                     && worker["mean"].as_f64().unwrap_or(0.0) <= budget.worker_ms
                     && gpu_cost <= budget.gpu_ms;
-                // Capture the final policy and the dry comparison at 540p.
-                let mut capture_samples = Vec::new();
-                let (wet, _, _, _) = physical_sampled(
-                    &gpu,
-                    &mut photo,
-                    tier,
-                    &spec,
-                    Wet::Tier,
-                    [WIDTH, HEIGHT],
-                    Some(&mut capture_samples),
-                )
-                .unwrap();
-                let mut dry_photo = Photo::new(
-                    &gpu.device,
-                    &gpu.queue,
-                    capability(tier),
-                    wgpu::TextureFormat::Rgba8UnormSrgb,
-                )
-                .unwrap();
-                let (dry, _, _, _) =
-                    physical(&gpu, &mut dry_photo, tier, &spec, Wet::Dry, [WIDTH, HEIGHT]).unwrap();
                 let share = changed(&wet, &dry);
                 let filename = format!("native-{}-{}.png", tier_name(tier), spec.name);
-                png(&directory.join(&filename), &wet).unwrap();
+                png_at(&directory.join(&filename), &wet, BUDGET_SIZE).unwrap();
                 records.push(json!({"tier":tier_name(tier),"view":spec.name,"adapter":gpu.adapter,
+                    "measured_at_unix_ms":std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64,
                     "size":BUDGET_SIZE,"cadence_hz":60,"steady_frames":steady.len(),
                     "timing":"paced native pass timestamps when valid; submit-to-fence wall time excludes cadence sleep",
+                    "gpu_timestamp_scope":"mirror, color/depth copies, and surface passes; shared opaque underwater shading and implicit queue texture uploads are not isolated",
                     "gpu_ms":gpu_ms,"gpu_passes_ms":["mirror","opaque (excluded)","color and depth copies","surface"],
                     "gpu_bytes":bytes,"main_ms":main,"worker_ms":worker,
                     "main_cpu_clock":last.main_cpu_ms.is_some(),"worker_cpu_clock":last.worker_cpu_supported,
