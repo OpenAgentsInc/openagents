@@ -263,3 +263,212 @@ async fn shared_native_http_lost_response_restarts_without_releasing_unknown_or_
     );
     stop(&mut host).await;
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn joined_statement_http_exports_original_prices_and_refuses_foreign_or_stale_scope() {
+    let (mut host, mut shared) = fixture().await;
+    stop(&mut host).await;
+    shared.stop_controller();
+    let native = tenancy::Accounts::open(&shared.native.directory).unwrap();
+    let canonical = tenancy::Accounts::open(&shared.canonical).unwrap();
+    let mut config: commercial_spend::Config =
+        serde_json::from_slice(&std::fs::read(&shared.config).unwrap()).unwrap();
+    config.statements = vec![commercial_spend::StatementGrant {
+        native_binding: shared.gateway_binding.id.clone(),
+        native_member: native
+            .authorize(&shared.native.workspace, &shared.native.account)
+            .unwrap(),
+        canonical_member: canonical
+            .authorize(
+                &shared.gateway_binding.commercial.workspace,
+                &shared.gateway_binding.commercial.customer,
+            )
+            .unwrap(),
+        sources: vec![
+            shared.gateway_binding.id.clone(),
+            shared.retail_binding.id.clone(),
+            shared.plugin_binding.id.clone(),
+        ],
+        full_customer: true,
+        include_retired: false,
+        payee: None,
+        reviewed_at: commercial_spend::now(),
+        valid_until: commercial_spend::now() + 3600,
+    }];
+    support::write(&shared.config, &serde_json::to_vec(&config).unwrap());
+    shared.restart_controller();
+    start(&mut host).await;
+    let response = host.call("joined-original-price").await;
+    assert_eq!(response.status(), 200, "{}", response.text().await.unwrap());
+    let client = reqwest::Client::new();
+    let path = format!("{}/v1/workspaces/{}/usage", host.address, host.workspace);
+    let response = client
+        .get(format!("{path}?joined=true"))
+        .bearer_auth(&host.token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    assert_eq!(response.headers()["cache-control"], "no-store");
+    let view: Value = response.json().await.unwrap();
+    assert_eq!(view["statement"]["balance"]["credited_msat"], 2000);
+    assert_eq!(view["statement"]["balance"]["settled_msat"], 11);
+    assert_eq!(view["native_projection"].as_array().unwrap().len(), 1);
+    let encoded = serde_json::to_string(&view).unwrap();
+    assert!(!encoded.contains(&host.token));
+    assert!(!encoded.contains("bolt11"));
+    let exported = client
+        .get(format!("{path}/export?joined=true"))
+        .bearer_auth(&host.token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(exported.status(), 200);
+    assert_eq!(exported.headers()["content-type"], "application/x-ndjson");
+    let export: Value = serde_json::from_str(&exported.text().await.unwrap()).unwrap();
+    assert_eq!(view, export);
+    let sdk = jev::Client::new(
+        jev::Config::new()
+            .api_key(host.token.as_str())
+            .base_url(&host.address),
+    )
+    .unwrap();
+    let typed = sdk
+        .account()
+        .joined_statement(
+            &host.workspace,
+            &jev::JoinedStatementQuery::default(),
+            false,
+        )
+        .await
+        .unwrap();
+    assert_eq!(typed.native_projection.len(), 1);
+    assert_eq!(typed.statement.rows.len(), 2);
+    if let Some(binary) = std::env::var_os("OPENAGENTS_STATEMENT_CLI") {
+        let root = shared.root.path().join("joined-cli");
+        let home = shared.root.path().join("joined-cli-home");
+        support::mkdir(&root);
+        support::mkdir(&home);
+        let input = root.join("original.key");
+        support::write(&input, host.token.as_bytes());
+        let run = |words: Vec<String>| {
+            let binary = binary.clone();
+            let root = root.clone();
+            let home = home.clone();
+            async move {
+                let output = tokio::process::Command::new(binary)
+                    .env_clear()
+                    .env("HOME", &home)
+                    .env("OPENAGENTS_SCRATCH", &home)
+                    .env("PATH", "/usr/bin:/bin")
+                    .args(["--json", "customer"])
+                    .args(words)
+                    .arg("--root")
+                    .arg(root)
+                    .output()
+                    .await
+                    .unwrap();
+                assert!(
+                    output.status.success(),
+                    "Installed statement CLI refused: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                );
+                let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+                value
+            }
+        };
+        run(vec![
+            "import".into(),
+            "--alias".into(),
+            "original".into(),
+            "--input".into(),
+            input.display().to_string(),
+        ])
+        .await;
+        run(vec![
+            "select".into(),
+            "--origin".into(),
+            host.address.clone(),
+            "--alias".into(),
+            "original".into(),
+            "--account".into(),
+            shared.native.account.clone(),
+            "--workspace".into(),
+            host.workspace.clone(),
+            "--door".into(),
+            DOOR.into(),
+        ])
+        .await;
+        let selected = run(vec!["statement".into()]).await;
+        let selected_export = run(vec!["statement-export".into()]).await;
+        assert_eq!(selected, selected_export);
+        assert_eq!(selected["statement"], view["statement"]);
+        assert_eq!(selected["native_projection"], view["native_projection"]);
+        assert_eq!(selected["source_attribution"], view["source_attribution"]);
+        assert_eq!(
+            selected["attribution_disclosure"],
+            view["attribution_disclosure"]
+        );
+        assert_eq!(host.backend.forwards.load(Ordering::SeqCst), 1);
+        eprintln!(
+            "Installed CLI imported the synthetic original credential, selected the current native account/workspace, and read/exported the same original statement without another inference."
+        );
+    }
+    for suffix in [
+        "?joined=true&cursor=00",
+        "?joined=true&limit=101",
+        "?joined=true&after_payout=0",
+        "?joined=true&model=foreign",
+    ] {
+        assert_eq!(
+            client
+                .get(format!("{path}{suffix}"))
+                .bearer_auth(&host.token)
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            403
+        );
+    }
+    assert_eq!(
+        client
+            .get(format!(
+                "{}/v1/workspaces/foreign/usage?joined=true",
+                host.address
+            ))
+            .bearer_auth(&host.token)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        404
+    );
+    canonical
+        .retire_commercial(
+            &shared.gateway_binding.commercial.binding,
+            &shared.gateway_binding.commercial.customer,
+            &shared.gateway_binding.commercial.digest,
+        )
+        .unwrap();
+    assert_eq!(
+        client
+            .get(format!("{path}?joined=true"))
+            .bearer_auth(&host.token)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        403
+    );
+    stop(&mut host).await;
+    let native = Ledger::open(&host.config.money.as_ref().unwrap().ledger).unwrap();
+    let hold = native
+        .hold(&host.workspace, "joined-original-price#1")
+        .unwrap();
+    assert_eq!(
+        view["native_projection"][0]["price"]["version"],
+        hold.price.version
+    );
+    assert_eq!(view["native_projection"][0]["receipt"], json!(hold.receipt));
+}

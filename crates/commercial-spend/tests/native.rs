@@ -480,3 +480,184 @@ fn reviewed_native_source_reversal_preserves_unknown_liability_and_blocks_fresh_
         (0, 1000, 800, 400)
     );
 }
+
+#[test]
+fn joined_private_statement_requires_explicit_current_native_and_canonical_read_grants() {
+    use pay_ledger::shared::{StatementActor, statement::StatementQuery};
+    let mut f = Fixture::new(None);
+    assert_eq!(f.fund("joined-paid", 10)["state"], "paid");
+    let actor = StatementActor {
+        credential: f.native.token.clone(),
+    };
+    let read = || Operation::JoinedStatement {
+        actor: actor.clone(),
+        query: StatementQuery::default(),
+    };
+    assert!(f.gateway.call(read()).is_err());
+    f.stop_controller();
+    let native = tenancy::Accounts::open(&f.native.directory).unwrap();
+    let native_member = native
+        .authorize(&f.native.workspace, &f.native.account)
+        .unwrap();
+    let canonical = tenancy::Accounts::open(&f.canonical).unwrap();
+    let canonical_member = canonical
+        .authorize(
+            &f.gateway_binding.commercial.workspace,
+            &f.gateway_binding.commercial.customer,
+        )
+        .unwrap();
+    let mut config: commercial_spend::Config =
+        serde_json::from_slice(&std::fs::read(&f.config).unwrap()).unwrap();
+    config.statements = vec![commercial_spend::StatementGrant {
+        native_binding: f.gateway_binding.id.clone(),
+        native_member,
+        canonical_member,
+        sources: vec![
+            f.gateway_binding.id.clone(),
+            f.retail_binding.id.clone(),
+            f.plugin_binding.id.clone(),
+        ],
+        full_customer: true,
+        include_retired: false,
+        payee: None,
+        reviewed_at: commercial_spend::now(),
+        valid_until: commercial_spend::now() + 3600,
+    }];
+    write(&f.config, &serde_json::to_vec(&config).unwrap());
+    f.restart_controller();
+    let admitted = gateway_intent(&f, "joined-original-gateway", 7000);
+    f.gateway
+        .call(Operation::Reserve {
+            intent: admitted.clone(),
+            projection_head: 0,
+            actor: pay_ledger::shared::GatewayActor {
+                credential: f.native.token.clone(),
+                door: "decision-a".into(),
+            },
+        })
+        .unwrap();
+    f.gateway
+        .call(Operation::Settle {
+            id: admitted.id.clone(),
+            units: 2000,
+            evidence: "original-native-charge".into(),
+        })
+        .unwrap();
+    f.retail
+        .call(Operation::RetailReserve {
+            request: HoldRequest {
+                id: "joined-original-compute".into(),
+                account: "retail".into(),
+                quote: "original-compute-price".into(),
+                execution: "joined-compute-execution".into(),
+                terms: "original-compute-terms".into(),
+                amount_msat: 4000,
+                at: commercial_spend::now() as i64,
+            },
+        })
+        .unwrap();
+    f.retail
+        .call(Operation::RetailUnknown {
+            id: "joined-original-compute".into(),
+        })
+        .unwrap();
+    let view = f.gateway.call(read()).unwrap();
+    assert_eq!(
+        view["statement"]["schema"],
+        "openagents.joined-statement.v1"
+    );
+    assert_eq!(view["statement"]["balance"]["credited_msat"], 10000);
+    assert_eq!(view["statement"]["balance"]["settled_msat"], 2000);
+    assert_eq!(view["statement"]["balance"]["held_msat"], 4000);
+    assert_eq!(view["statement"]["balance"]["available_msat"], 4000);
+    assert!(view["payee"].is_null());
+    assert!(
+        view["source_attribution"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|s| s["current_original_mapping"] == true)
+    );
+    assert_eq!(view["statement"]["rows"].as_array().unwrap().len(), 3);
+    assert_eq!(view, f.gateway.call(read()).unwrap());
+    let encoded = serde_json::to_string(&view).unwrap();
+    assert!(!encoded.contains(&f.native.token));
+    assert!(!encoded.contains("bolt11"));
+    assert!(!encoded.contains("authorization"));
+    assert!(f.plugin.call(read()).is_err());
+    assert!(
+        f.gateway
+            .call(Operation::JoinedStatement {
+                actor: StatementActor {
+                    credential: "oak_foreign.invalid".into()
+                },
+                query: StatementQuery::default()
+            })
+            .is_err()
+    );
+    assert!(
+        f.gateway
+            .call(Operation::JoinedStatement {
+                actor: actor.clone(),
+                query: StatementQuery {
+                    cursor: Some("00".into()),
+                    ..Default::default()
+                }
+            })
+            .is_err()
+    );
+    assert!(
+        f.gateway
+            .call(Operation::JoinedStatement {
+                actor: actor.clone(),
+                query: StatementQuery {
+                    after_payout: Some(0),
+                    ..Default::default()
+                }
+            })
+            .is_err()
+    );
+    canonical
+        .retire_commercial(
+            &f.gateway_binding.commercial.binding,
+            &f.gateway_binding.commercial.customer,
+            &f.gateway_binding.commercial.digest,
+        )
+        .unwrap();
+    assert!(f.gateway.call(read()).is_err());
+    let original = Ledger::open_read_only(&f.ledger)
+        .unwrap()
+        .compute_balance("retail")
+        .unwrap();
+    assert_eq!(
+        (
+            original.available_msat,
+            original.held_msat,
+            original.settled_msat
+        ),
+        (4000, 4000, 2000)
+    );
+    f.stop_controller();
+    config.statements[0].include_retired = true;
+    config.statements[0].payee = Some(pay_ledger::OPENAGENTS.into());
+    write(&f.config, &serde_json::to_vec(&config).unwrap());
+    f.restart_controller();
+    let historical = f.gateway.call(read()).unwrap();
+    assert_eq!(historical["statement"]["rows"], view["statement"]["rows"]);
+    assert_eq!(historical["payee"]["party"], pay_ledger::OPENAGENTS);
+    assert!(historical["source_attribution"].as_array().unwrap().iter().any(|s|s["binding"]==f.gateway_binding.id && s["current_original_mapping"]==false));
+    assert!(
+        f.gateway
+            .call(Operation::Reserve {
+                intent: gateway_intent(&f, "retired-no-new-spend", 100),
+                projection_head: 0,
+                actor: pay_ledger::shared::GatewayActor {
+                    credential: f.native.token.clone(),
+                    door: "decision-a".into()
+                },
+            })
+            .is_err()
+    );
+    native.update_principals(&f.native.account, &[]).unwrap();
+    assert!(f.gateway.call(read()).is_err());
+}

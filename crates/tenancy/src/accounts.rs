@@ -443,7 +443,8 @@ impl Store {
 
 /// What a successful authorization names — the snapshot a session or key
 /// authorization keeps.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MemberRef {
     /// The workspace the member was authorized in.
     pub workspace: String,

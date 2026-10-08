@@ -9545,6 +9545,112 @@
           }
         },
         {
+          "name": "statement",
+          "leaf": {
+            "path": [
+              "customer",
+              "statement"
+            ],
+            "usage": [
+              "statement [--cursor CURSOR] [--limit N] [--after-earning N] [--after-payout N]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "statement"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "cursor",
+                    "value": "CURSOR",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "limit",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "after-earning",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "after-payout",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Read one bounded joined statement under current source and payee rights.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "statement-export",
+          "leaf": {
+            "path": [
+              "customer",
+              "statement-export"
+            ],
+            "usage": [
+              "statement-export [--cursor CURSOR] [--limit N] [--after-earning N] [--after-payout N]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "statement-export"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "cursor",
+                    "value": "CURSOR",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "limit",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "after-earning",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "after-payout",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Export the same private statement page through the existing usage export.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
           "name": "history",
           "leaf": {
             "path": [
@@ -10853,6 +10959,38 @@
             "gateway",
             "plugin"
           ],
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "cursor",
+          "value": "CURSOR",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "limit",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "after-earning",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "after-payout",
+          "value": "N",
+          "open": true,
           "optional": true,
           "repeated": true
         },

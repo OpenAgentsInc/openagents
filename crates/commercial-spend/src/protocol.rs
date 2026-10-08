@@ -110,6 +110,11 @@ impl Controller {
         }
         let product = g.binding.source.product;
         let value = match envelope.operation {
+            Operation::JoinedStatement { actor, query }
+                if product == CommercialProduct::Gateway =>
+            {
+                self.joined_statement(g, &actor, &query)?
+            }
             Operation::Binding {} => {
                 let _ledger = self.ledger.lock().map_err(|_| Error::Denied)?;
                 self.current(g, true)?;

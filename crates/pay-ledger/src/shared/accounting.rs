@@ -201,7 +201,7 @@ fn prepare_in(c: &rusqlite::Transaction<'_>, review: &RefundReview, at: u64) -> 
     c.execute("INSERT INTO shared_refund_plan(id,intent,pool,units,evidence,digest,bytes) VALUES(?,?,?,?,?,?,?)",params![review.id,intent.id,intent.binding.pool,i64::try_from(review.units).map_err(invalid)?,review.evidence,plan.digest(),json(&plan)?])?;
     Ok(plan)
 }
-fn refund_in(c: &Connection, id: &str) -> Result<Option<Refund>> {
+pub(crate) fn refund_in(c: &Connection, id: &str) -> Result<Option<Refund>> {
     c.query_row("SELECT bytes FROM shared_refund WHERE id=?", [id], |r| {
         r.get::<_, String>(0)
     })

@@ -1793,3 +1793,12 @@ source and recipient boundaries, baseline unknowns, pilot scope, acceptance
 criteria, next action, and review date current. Changed lead or proposal scope
 requires a fresh confirmation; missing briefs, stale slots, declines, and absent
 acceptance remain pending. Human-led R0/R1 remains independent of this activation.
+## Joined original financial statement qualification (REV-24)
+
+Before enabling joined statements for an owner account, review its exact native
+and canonical member snapshots, original source bindings, expiry, and separate
+payee read scope in the protected shared-custody controller configuration.
+Compare a private statement with the original receiver, native price and receipt
+journal, and actual payout reference. Qualify historical reads separately after
+linkage retirement. Real payment and device qualification remain owner steps;
+synthetic conservation and current authority checks do not attest those outcomes.

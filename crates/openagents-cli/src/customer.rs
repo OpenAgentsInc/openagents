@@ -57,6 +57,10 @@ pub const USAGE: &str = "usage: openagents customer COMMAND --root DIR [OPTIONS]
         Read stored selection and current server rights, or explicit unavailable state.
   commercial --product gateway|plugin
         Read the selected product's current native commercial attribution.
+  statement [--cursor CURSOR] [--limit N] [--after-earning N] [--after-payout N]
+        Read one bounded joined statement under current source and payee rights.
+  statement-export [--cursor CURSOR] [--limit N] [--after-earning N] [--after-payout N]
+        Export the same private statement page through the existing usage export.
   history
         Read only the selected customer's historical purchase references.
   show --purchase ID
@@ -114,6 +118,8 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("current", Effect::ReadOnly),
     Declared::computer("commercial", Effect::ReadOnly),
     Declared::computer("history", Effect::ReadOnly),
+    Declared::computer("statement", Effect::ReadOnly),
+    Declared::computer("statement-export", Effect::ReadOnly),
     Declared::computer("show", Effect::ReadOnly),
     Declared::computer("quote", Effect::LocalWrite),
     Declared::computer("approve", Effect::Grants),
@@ -148,6 +154,9 @@ fn parse(words: &[String]) -> Result<Args, String> {
         "select" => &["root", "origin", "alias", "account", "workspace", "door"],
         "current" | "history" | "credentials" | "funding-history" => &["root"],
         "commercial" => &["root", "product"],
+        "statement" | "statement-export" => {
+            &["root", "cursor", "limit", "after-earning", "after-payout"]
+        }
         "show" | "invoke" => &["root", "purchase"],
         "quote" => &["root", "purchase", "input"],
         "approve" => &["root", "purchase", "digest"],
@@ -160,10 +169,12 @@ fn parse(words: &[String]) -> Result<Args, String> {
     if args.option_names().iter().any(|n| !allowed.contains(n)) {
         return Err("Unknown customer option; secret values must come from private files.".into());
     }
-    for name in allowed
-        .iter()
-        .filter(|v| !matches!(**v, "receipt" | "recovery-token"))
-    {
+    for name in allowed.iter().filter(|v| {
+        !matches!(
+            **v,
+            "receipt" | "recovery-token" | "cursor" | "limit" | "after-earning" | "after-payout"
+        )
+    }) {
         required(&args, name)?;
     }
     if !Path::new(required(&args, "root")?).is_absolute() {
@@ -214,6 +225,32 @@ async fn execute(args: &Args) -> Result<(Value, bool), String> {
     let mut store = Store::open(Path::new(required(args, "root")?))?;
     let command = args.positional()[0].as_str();
     let value = match command {
+        "statement" | "statement-export" => {
+            let selected = store.current_selection().await?;
+            let numeric = |name: &str| -> Result<Option<i64>, String> {
+                args.option(name)
+                    .map(|v| {
+                        v.parse::<i64>()
+                            .map_err(|_| "Invalid statement page number.".into())
+                    })
+                    .transpose()
+            };
+            let limit = numeric("limit")?
+                .map(|n| usize::try_from(n).map_err(|_| "Invalid statement page size."))
+                .transpose()?;
+            let query = jev::JoinedStatementQuery {
+                cursor: args.option("cursor").map(str::to_owned),
+                limit,
+                after_earning: numeric("after-earning")?,
+                after_payout: numeric("after-payout")?,
+            };
+            let client = store.client(&selected.origin, &selected.credential_alias)?;
+            let view=client.account().joined_statement(&selected.context.workspace,&query,command=="statement-export").await.map_err(|_|"Current joined source authority or original statement records are unavailable.")?;
+            if store.current_selection().await? != selected {
+                return Err("Selected native customer changed during the statement read.".into());
+            }
+            serde_json::to_value(view).map_err(|_| "Invalid joined statement response.")?
+        }
         "commercial" => {
             let product = match required(args, "product")? {
                 "gateway" => receipts::purchase::CommercialProduct::Gateway,
@@ -338,6 +375,44 @@ fn now() -> Result<u64, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn private_statements_cannot_override_the_selected_customer_or_payee() {
+        let args = |v: &[&str]| v.iter().map(|v| v.to_string()).collect::<Vec<_>>();
+        for command in ["statement", "statement-export"] {
+            assert!(
+                parse(&args(&[
+                    command,
+                    "--root",
+                    "/private-fixture",
+                    "--limit",
+                    "7",
+                    "--cursor",
+                    "abcd"
+                ]))
+                .is_ok()
+            );
+            for flag in [
+                "workspace",
+                "origin",
+                "alias",
+                "account",
+                "party",
+                "payee",
+                "token",
+            ] {
+                assert!(
+                    parse(&args(&[
+                        command,
+                        "--root",
+                        "/private-fixture",
+                        &format!("--{flag}"),
+                        "foreign"
+                    ]))
+                    .is_err()
+                );
+            }
+        }
+    }
     #[test]
     fn secrets_and_implicit_subjects_cannot_enter_command_flags() {
         let args = |v: &[&str]| v.iter().map(|v| v.to_string()).collect::<Vec<_>>();

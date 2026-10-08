@@ -104,6 +104,10 @@ pub(crate) struct Filter {
     pub(crate) limit: Option<usize>,
     /// A keyset cursor from an earlier page.
     pub(crate) cursor: Option<String>,
+    /// Joined original financial records through separately reviewed read grants.
+    pub(crate) joined: Option<bool>,
+    pub(crate) after_earning: Option<i64>,
+    pub(crate) after_payout: Option<i64>,
 }
 
 /// What a scan carried out of the receipt log.
@@ -498,6 +502,9 @@ async fn summary(
     };
     if let Err(response) = scope(&state, &headers, &workspace, &mut filter) {
         return response;
+    }
+    if filter.joined.unwrap_or(false) {
+        return joined(&state, &headers, &workspace, &mut filter, false).await;
     }
     let holds = holds(&state, &workspace).await;
     let scan = match scan(&state, &workspace, &filter, &holds) {
@@ -963,6 +970,9 @@ async fn export(
     if let Err(response) = scope(&state, &headers, &workspace, &mut filter) {
         return response;
     }
+    if filter.joined.unwrap_or(false) {
+        return joined(&state, &headers, &workspace, &mut filter, true).await;
+    }
     let holds = holds(&state, &workspace).await;
     let scan = match scan(&state, &workspace, &filter, &holds) {
         Ok(scan) => scan,
@@ -997,4 +1007,147 @@ async fn export(
         .body(Body::from(body))
         .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response());
     finish(&state, &headers, &workspace, &filter, response)
+}
+
+/// Reuse private usage/export admission. A joined read requires its own current
+/// native and canonical source grants at the protected controller.
+async fn joined(
+    state: &ServeState,
+    headers: &HeaderMap,
+    workspace: &str,
+    filter: &mut Filter,
+    export: bool,
+) -> Response {
+    let read_scope = || -> Result<MemberRef, String> {
+        let accounts = Accounts::open(&state.dir)
+            .map_err(|_| "Native statement membership is unavailable.")?;
+        accounts.report_read(
+            |store| crate::team_reports::actor(state, headers, workspace, store),
+            |_, member| Ok(member.clone()),
+        )
+    };
+    let admitted = match read_scope() {
+        Ok(m) => m,
+        Err(e) => return scope_denied(e),
+    };
+    filter.admission = Some(admitted);
+    if [
+        &filter.from,
+        &filter.to,
+        &filter.key,
+        &filter.model,
+        &filter.outcome,
+        &filter.lane,
+        &filter.transport,
+        &filter.job,
+        &filter.policy,
+        &filter.capacity,
+    ]
+    .into_iter()
+    .any(Option::is_some)
+    {
+        return scope_denied(
+            "Joined statements accept bounded cursors, not receipt-only filters.".into(),
+        );
+    }
+    let token = match headers
+        .get("authorization")
+        .and_then(|h| h.to_str().ok())
+        .and_then(|h| h.strip_prefix("Bearer "))
+    {
+        Some(t) if !t.is_empty() && t.len() <= 8192 => t.to_owned(),
+        _ => return scope_denied("A current native reporting bearer is required.".into()),
+    };
+    let client = match state
+        .money_lock()
+        .await
+        .and_then(|ledger| ledger.shared_client(workspace).cloned())
+    {
+        Some(c) => c,
+        None => {
+            return scope_denied(
+                "Joined original statements are not enabled for this native workspace.".into(),
+            );
+        }
+    };
+    let query = pay_ledger::shared::statement::StatementQuery {
+        cursor: filter.cursor.clone(),
+        limit: filter.limit,
+        after_earning: filter.after_earning,
+        after_payout: filter.after_payout,
+    };
+    let value = tokio::task::spawn_blocking(move || {
+        client.call(pay_ledger::shared::Operation::JoinedStatement {
+            actor: pay_ledger::shared::StatementActor { credential: token },
+            query,
+        })
+    })
+    .await;
+    let mut value = match value {
+        Ok(Ok(v)) => v,
+        _ => {
+            return scope_denied(
+                "Current joined authority, source records, or bounded cursor are unavailable."
+                    .into(),
+            );
+        }
+    };
+    value["native_workspace"] = json!(workspace);
+    // Join only the original held native journal. A current price list cannot
+    // reconstruct the terms or receipt of an earlier shared charge.
+    let mut projections = Vec::new();
+    if let Some(ledger) = state.money_lock().await {
+        let Some(config) = &state.config.money else {
+            return scope_denied("Native statement source is unavailable.".into());
+        };
+        if ledger.check_source(&config.ledger).is_err() {
+            return scope_denied("Original native statement source changed.".into());
+        }
+        for row in value["statement"]["rows"].as_array().into_iter().flatten() {
+            let Some(attempt) = row["native_attempt"].as_str() else {
+                continue;
+            };
+            let Some(hold) = ledger.hold(workspace, attempt) else {
+                continue;
+            };
+            let Some(reference) = &hold.shared else {
+                continue;
+            };
+            if row["key"] != json!(format!("charge:{}", reference.intent))
+                || row["intent_digest"] != reference.digest
+                || row["binding"] != reference.mode.binding
+                || row["source"] != json!(reference.mode.source)
+                || row["commercial"] != json!(reference.mode.commercial)
+                || row["conversion"] != json!(reference.mode.conversion)
+                || value["statement"]["origin"] != reference.mode.origin
+            {
+                continue;
+            }
+            projections.push(json!({"key":row["key"],"source_head":ledger.head(),
+                "price":hold.price,"cost":cost_of(Some(hold)),"receipt":hold.receipt,
+                "disclosure":"This original native projection is read at its own journal head. Canonical settlement and pagination remain separate."}));
+        }
+    }
+    value["native_projection"] = json!(projections);
+    value["native_projection_disclosure"] = json!(
+        "Missing rows have no verified original native projection in this Gateway journal. Other product prices remain their retained quote and terms references; missing costs and receipts remain unknown."
+    );
+    let response = if export {
+        let body = match serde_json::to_string(&value) {
+            Ok(s) => s + "\n",
+            Err(_) => return scope_denied("Joined statement export is unavailable.".into()),
+        };
+        Response::builder()
+            .status(StatusCode::OK)
+            .header("content-type", "application/x-ndjson")
+            .header(
+                "content-disposition",
+                "attachment; filename=\"joined-statement.ndjson\"",
+            )
+            .body(Body::from(body))
+            .unwrap()
+    } else {
+        (StatusCode::OK, Json(value)).into_response()
+    };
+    finish(state, headers, workspace, filter, response)
 }

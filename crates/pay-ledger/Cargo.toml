@@ -8,6 +8,7 @@ description = "Local SQLite settlement and revenue-share ledger"
 
 [dependencies]
 libc = "0.2"
+hex = "0.4"
 chrono = { version = "0.4", default-features = false, features = ["std"] }
 # NIP-A3 payment targets, kind-0 profiles, and EXT release payouts for the
 # payout destination resolver (`src/payee.rs`).

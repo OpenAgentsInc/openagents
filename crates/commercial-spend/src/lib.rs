@@ -3,7 +3,9 @@ pub mod authority;
 mod private;
 mod protocol;
 mod refunds;
+mod statements;
 pub use refunds::FundingReversalReview;
+pub use statements::StatementGrant;
 pub mod wallet;
 use commercial_accounts::NativeSources;
 use openagents_wallet::{custody::Manifest, resident::RemoteWallet};
@@ -68,6 +70,8 @@ pub struct Config {
     pub refunds: Vec<pay_ledger::shared::RefundReview>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub funding_reversals: Vec<FundingReversalReview>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub statements: Vec<StatementGrant>,
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -124,6 +128,7 @@ impl Controller {
             || !config.socket.is_absolute()
             || config.refunds.len() > 128
             || config.funding_reversals.len() > 128
+            || config.statements.len() > 128
         {
             return Err(Error::Denied);
         }

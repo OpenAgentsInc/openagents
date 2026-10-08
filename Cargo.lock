@@ -10469,6 +10469,7 @@ name = "pay-ledger"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "hex",
  "libc",
  "nostr",
  "proptest",

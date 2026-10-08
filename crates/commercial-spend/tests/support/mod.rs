@@ -607,6 +607,7 @@ impl Fixture {
                 grants,
                 refunds: vec![],
                 funding_reversals: vec![],
+                statements: vec![],
             })
             .unwrap(),
         );

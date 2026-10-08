@@ -27,6 +27,10 @@ const BALANCE_PATH: &str = "/v1/balance";
 /// The workspaces route family.
 const WORKSPACES_PATH: &str = "/v1/workspaces";
 
+#[path = "account_statement.rs"]
+mod statement;
+pub use statement::{JoinedCustomerStatement, JoinedStatementQuery, JoinedStatementView};
+
 #[path = "account_card.rs"]
 mod card;
 pub use card::{

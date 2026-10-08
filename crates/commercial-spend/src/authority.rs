@@ -47,6 +47,35 @@ impl Controller {
             Ok(json!({"credential":digest(actor.credential.as_bytes()),"principal":principal,"account":member.account,"workspace":member.workspace,"epoch":member.epoch,"members_epoch":member.members_epoch,"revision":store.digest,"door":actor.door}))
         })
     }
+    pub(crate) fn source_mapping_current(&self, grant: &Grant) -> Result<bool> {
+        let s = &grant.binding.source;
+        let source = Source {
+            product: match s.product {
+                CommercialProduct::Gateway => Product::Gateway,
+                CommercialProduct::Plugin => Product::Plugin,
+                CommercialProduct::Retail => Product::Retail,
+            },
+            issuer: s.issuer.clone(),
+            account: s.account.clone(),
+            workspace: s.workspace.clone(),
+        };
+        let Some(r) = self
+            .commercial
+            .selection(&source)
+            .map_err(|_| Error::Denied)?
+        else {
+            return Ok(false);
+        };
+        let reference = CommercialRef {
+            binding: r.binding,
+            revision: r.revision,
+            digest: r.digest,
+            customer: r.customer,
+            workspace: r.workspace,
+            source: s.clone(),
+        };
+        Ok(reference == grant.binding.commercial)
+    }
     pub(crate) fn current(&self, grant: &Grant, spend: bool) -> Result<Value> {
         self.current_authority(grant, spend, spend)
     }

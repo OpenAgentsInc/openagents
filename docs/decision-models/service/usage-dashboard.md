@@ -13,6 +13,31 @@ document, because every read binds a workspace membership; the billing
 block is optional — without it the entitlement field is `null` and the
 billing page says so.
 
+## Joined original financial statements
+
+With a reviewed shared-custody statement grant, add `joined=true` to the
+workspace usage or private export route. `openagents customer statement` and
+`statement-export` use the selected native workspace and credential. The
+`openagents.joined-statement.v1` document preserves original units, conversion
+remainders, funding, holds, charges, refund and reversal records, allocation
+references, and payout references. Gateway prices and receipts join only
+through verified original native holds. Missing projections and costs remain
+explicitly unknown. Unused hold releases are not refunds.
+
+The protected controller configuration separately reviews the current native
+member, canonical member, original source bindings, expiry, and optional payee
+read scope. Full customer totals require current owner or admin rights in both
+workspaces; member reads omit pool totals and retain only exactly attributed
+original member charges. Payee earnings remain separate from customer spending.
+Historical reads after linkage retirement require an explicit `include_retired`
+review and current membership; they grant no new spending authority.
+
+Pages accept `limit` from 1 to 100 and an opaque `cursor`. Financial changes or
+authority changes invalidate a cursor, requiring a fresh read. Optional
+`after_earning` and `after_payout` advance the independently authorized payee
+statement. Receipt-only filters refuse in joined mode. Private export returns
+one bounded NDJSON statement document with `Cache-Control: no-store`.
+
 ## Authorization
 
 Every usage read is member-scoped: the caller authenticates as a

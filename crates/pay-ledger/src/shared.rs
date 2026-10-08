@@ -3,6 +3,7 @@
 // Outside Unix only the refusing stand-ins remain, so some imports go unused.
 #![cfg_attr(not(unix), allow(unused_imports))]
 pub(crate) mod accounting;
+pub mod statement;
 use crate::compute::{ComputeBalance, Hold, HoldRequest};
 use crate::{Error, Ledger, Rail, Result, SettlementInput, Split, record_settlement_in};
 pub use accounting::{FundingReversal, Refund, RefundPlan, RefundReview, SourceSettlement};
@@ -328,6 +329,16 @@ impl std::fmt::Debug for GatewayActor {
             .finish_non_exhaustive()
     }
 }
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StatementActor {
+    pub credential: String,
+}
+impl std::fmt::Debug for StatementActor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("StatementActor").finish_non_exhaustive()
+    }
+}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "kebab-case", deny_unknown_fields)]
 pub enum Operation {
@@ -363,6 +374,10 @@ pub enum Operation {
     },
     Unknown {
         id: String,
+    },
+    JoinedStatement {
+        actor: StatementActor,
+        query: statement::StatementQuery,
     },
     Balance {},
     SourceOutcomes {
@@ -1594,6 +1609,334 @@ mod tests {
         );
     }
 
+    #[test]
+    fn joined_statement_conserves_mixed_original_units_refunds_payouts_and_pages() {
+        use statement::{StatementQuery, StatementScope};
+        let mut ledger = Ledger::in_memory().unwrap();
+        let b = setup(&mut ledger);
+        let terms = serde_json::json!({"binding":b,"amount_msat":1000});
+        ledger
+            .shared_begin_funding("fixture-funding", &b, &terms)
+            .unwrap();
+        ledger
+            .shared_funding_invoice(
+                "fixture-funding",
+                &serde_json::json!({"payment_hash":"b".repeat(64)}),
+            )
+            .unwrap();
+        fund(&mut ledger, &b);
+        let terms = serde_json::json!({"binding":b,"amount_msat":9000});
+        ledger
+            .shared_begin_funding("joined-original-funding", &b, &terms)
+            .unwrap();
+        ledger
+            .shared_funding_invoice(
+                "joined-original-funding",
+                &serde_json::json!({"payment_hash":"e".repeat(64)}),
+            )
+            .unwrap();
+        ledger
+            .shared_freeze_funding("joined-original-funding", &b.pool, &terms)
+            .unwrap();
+        ledger
+            .open_top_up(&TopUp {
+                id: "joined-original-funding".into(),
+                account: b.pool.clone(),
+                amount_msat: 9000,
+                payment_hash: "e".repeat(64),
+                invoice: "private-original-invoice".into(),
+                created_at: 0,
+                expires_at: 900,
+            })
+            .unwrap();
+        ledger
+            .observe_top_up(
+                &"e".repeat(64),
+                &Receipt::Paid {
+                    received_msat: 9000,
+                    at: 1,
+                },
+            )
+            .unwrap();
+        let mut gateway = b.clone();
+        gateway.id = "joined-gateway".into();
+        gateway.source.product = CommercialProduct::Gateway;
+        gateway.source.account = "native-gateway".into();
+        gateway.source.workspace = Some("native-workspace".into());
+        gateway.commercial.source = gateway.source.clone();
+        gateway.conversion.source = Unit::CurrencyMillionths {
+            currency: "USD".into(),
+        };
+        gateway.conversion.denominator = 3;
+        gateway.conversion.rounding = Rounding::Down;
+        ledger.activate_shared(&gateway).unwrap();
+        let mut plugin = b.clone();
+        plugin.id = "joined-plugin".into();
+        plugin.source.product = CommercialProduct::Plugin;
+        plugin.source.account = "plugin-buyer".into();
+        plugin.source.workspace = Some("plugin-workspace".into());
+        plugin.commercial.source = plugin.source.clone();
+        plugin.native_origin = "e".repeat(64);
+        ledger.activate_shared(&plugin).unwrap();
+        let retail = intent(&b, "retail-useful", 2200);
+        ledger.shared_reserve(&retail).unwrap();
+        ledger
+            .shared_settle(&retail.id, 1200, 0, "retained-worker-cost", None, 6)
+            .unwrap();
+        let decision = intent(&gateway, "gateway-useful", 6000);
+        ledger
+            .shared_seal_native_actor(
+                &decision.id,
+                &serde_json::json!({"account":"native-member"}),
+            )
+            .unwrap();
+        ledger.shared_reserve(&decision).unwrap();
+        ledger
+            .shared_settle(&decision.id, 900, 0, "retained-decision-cost", None, 6)
+            .unwrap();
+        let mut purchase = intent(&plugin, "plugin-useful", 1000);
+        purchase.fee_cap_msat = 10;
+        purchase.invoice = Some(Invoice {
+            bolt11: "private-original-plugin-invoice".into(),
+            payment_hash: "f".repeat(64),
+            request_hash: "a".repeat(64),
+            receiver: "03".repeat(33),
+            network: "testnet".into(),
+            amount_msat: 1000,
+            valid_until: 900,
+        });
+        purchase.liability = Liability::ExternalInvoice {
+            merchant: "03".repeat(33),
+            plugin: "plugin".into(),
+            release: "original-release".into(),
+            author: "author".into(),
+            author_fee_msat: 40,
+        };
+        ledger.shared_reserve(&purchase).unwrap();
+        ledger
+            .shared_settle(
+                &purchase.id,
+                1000,
+                10,
+                "wallet-proof",
+                Some(&serde_json::json!({"provider_private":"oak_must_not_export"})),
+                6,
+            )
+            .unwrap();
+        let unknown = intent(&b, "retail-unknown", 2000);
+        ledger.shared_reserve(&unknown).unwrap();
+        ledger.shared_handoff(&unknown.id).unwrap();
+        ledger.shared_unknown(&unknown.id).unwrap();
+        let review = RefundReview {
+            id: "joined-refund".into(),
+            intent: retail.id.clone(),
+            intent_digest: retail.digest(),
+            units: 200,
+            evidence: "retained-native-refund".into(),
+            reviewed_at: 0,
+            valid_until: 1000,
+        };
+        ledger.shared_return_expense(&review, None, 7).unwrap();
+        ledger
+            .register_payee(crate::Payee {
+                party: crate::OPENAGENTS.into(),
+                destination_kind: "spark".into(),
+                destination_value: "isolated".into(),
+                source: "original-review".into(),
+                verified_at: 8,
+            })
+            .unwrap();
+        let shares = ledger.available_shares(crate::OPENAGENTS).unwrap();
+        ledger
+            .reserve_payout("joined-original-payout", crate::OPENAGENTS, &shares, 8)
+            .unwrap();
+        let scope = StatementScope {
+            bindings: vec![b.id.clone(), gateway.id.clone(), plugin.id.clone()],
+            authority: "a".repeat(64),
+            full_customer: true,
+            native_account: "native-member".into(),
+            native_source: gateway.source.clone(),
+            native_origin: gateway.native_origin.clone(),
+        };
+        let first = ledger
+            .joined_statement(
+                &scope,
+                &StatementQuery {
+                    limit: Some(2),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let balance = first.balance.as_ref().unwrap();
+        assert_eq!(
+            (
+                balance.credited_msat,
+                balance.refunded_msat,
+                balance.available_msat,
+                balance.held_msat,
+                balance.settled_msat
+            ),
+            (10000, 200, 5690, 2000, 2510)
+        );
+        assert_eq!(
+            balance.credited_msat + balance.refunded_msat - balance.recovered_msat,
+            balance.available_msat
+                + balance.restricted_msat
+                + balance.held_msat
+                + balance.settled_msat
+        );
+        let mut all = first.rows.clone();
+        let mut cursor = first.next.clone();
+        while let Some(next) = cursor {
+            let page = ledger
+                .joined_statement(
+                    &scope,
+                    &StatementQuery {
+                        cursor: Some(next),
+                        limit: Some(2),
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+            assert_eq!(page.snapshot, first.snapshot);
+            all.extend(page.rows);
+            cursor = page.next;
+        }
+        assert_eq!(all.len(), 7);
+        let keys = all
+            .iter()
+            .map(|r| r.key.clone())
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(keys.len(), all.len());
+        let row = all
+            .iter()
+            .find(|r| {
+                r.native_attempt.as_deref() == Some("gateway-useful") && r.kind == "liability"
+            })
+            .unwrap();
+        assert_eq!(
+            (row.units, row.charged_msat, row.denominator),
+            (Some(900), Some(300), Some(3))
+        );
+        assert!(row.allocations.iter().any(|a| {
+            a["payouts"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|p| p["reference"] == "joined-original-payout")
+        }));
+        let serialized = serde_json::to_string(&all).unwrap();
+        assert!(!serialized.contains("private-original"));
+        assert!(!serialized.contains("oak_must_not_export"));
+        assert!(serialized.contains("original_declared_external_author_fee"));
+        let replay = ledger
+            .joined_statement(&scope, &StatementQuery::default())
+            .unwrap();
+        assert_eq!(replay.snapshot, first.snapshot);
+        let mut member = scope.clone();
+        member.full_customer = false;
+        member.authority = "b".repeat(64);
+        let view = ledger
+            .joined_statement(&member, &StatementQuery::default())
+            .unwrap();
+        assert!(view.balance.is_none());
+        assert_eq!(view.rows.len(), 1);
+        assert_eq!(
+            view.rows[0].native_attempt.as_deref(),
+            Some("gateway-useful")
+        );
+        assert!(
+            ledger
+                .joined_statement(
+                    &member,
+                    &StatementQuery {
+                        cursor: first.next.clone(),
+                        ..Default::default()
+                    }
+                )
+                .is_err()
+        );
+        assert!(
+            ledger
+                .joined_statement(
+                    &scope,
+                    &StatementQuery {
+                        cursor: Some("00".into()),
+                        ..Default::default()
+                    }
+                )
+                .is_err()
+        );
+        assert!(
+            ledger
+                .joined_statement(
+                    &scope,
+                    &StatementQuery {
+                        limit: Some(101),
+                        ..Default::default()
+                    }
+                )
+                .is_err()
+        );
+        ledger
+            .shared_reverse_funding(
+                "joined-reversal",
+                "joined-original-funding",
+                1000,
+                "original-reviewed-loss",
+            )
+            .unwrap();
+        assert!(
+            ledger
+                .joined_statement(
+                    &scope,
+                    &StatementQuery {
+                        cursor: first.next,
+                        ..Default::default()
+                    }
+                )
+                .is_err()
+        );
+        let changed = ledger
+            .joined_statement(&scope, &StatementQuery::default())
+            .unwrap();
+        assert!(changed.rows.iter().any(|r| r.kind == "funding-reversal"));
+        // A retained import with the same native identity cannot make another
+        // canonical customer's records visible through this read scope.
+        let mut imported = decision.clone();
+        imported.id = "foreign-retained-intent".into();
+        imported.binding.commercial.customer = "private-other-customer".into();
+        imported.binding.commercial.workspace = "private-other-workspace".into();
+        ledger.connection.execute(
+            "INSERT INTO shared_intent(id,binding,native_attempt,digest,bytes) VALUES(?,?,?,?,?)",
+            params![imported.id,gateway.id,"foreign-retained-attempt",imported.digest(),json(&imported).unwrap()],
+        ).unwrap();
+        let isolated = ledger
+            .joined_statement(&scope, &StatementQuery::default())
+            .unwrap();
+        assert_eq!(isolated.snapshot, changed.snapshot);
+        assert!(
+            !serde_json::to_string(&isolated)
+                .unwrap()
+                .contains("private-other")
+        );
+        let mut foreign = gateway.clone();
+        foreign.id = "foreign-customer".into();
+        foreign.source.account = "foreign-account".into();
+        foreign.source.workspace = Some("foreign-workspace".into());
+        foreign.commercial.source = foreign.source.clone();
+        foreign.pool = "foreign-pool".into();
+        foreign.commercial.customer = "foreign-customer".into();
+        foreign.commercial.workspace = "foreign-canonical-workspace".into();
+        ledger.activate_shared(&foreign).unwrap();
+        let mut foreign_scope = scope;
+        foreign_scope.bindings.push(foreign.id);
+        assert!(
+            ledger
+                .joined_statement(&foreign_scope, &StatementQuery::default())
+                .is_err()
+        );
+    }
     fn setup(ledger: &mut Ledger) -> Binding {
         let rule = crate::V1
             .replace("version = 1", "version = 2")
