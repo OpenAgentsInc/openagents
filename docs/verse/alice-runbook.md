@@ -98,22 +98,22 @@ Work through this list once, and again after a host reinstall.
 1. **Task mode has a workspace and a route.** Task mode runs in a host
    workspace, a label in `~/.openagents/host/serve.json`. The host picks the
    workspace whose path matches her record's workspace, else the first one.
-   Today that's `openagents`, which is `~/work/openagents-phone`. Her studio
+   Today that's `openagents`, which is `~/code/openagents`. Her studio
    seat takes its route from the auto-start policy's first route, so the
    policy must be on: `coder host autostart show` prints it.
 1. **The workspace checkout is on a branch near `main`.** Studio worktrees
    start from the checkout's `HEAD`, and a merge needs a branch to land on.
-   It's on `alice-landing` now. Before you hand her coding work, bring it up
-   to date:
+   It's on `main` now. Before you hand her coding work, check it against
+   `origin/main`:
 
     ```sh
-    git -C ~/work/openagents-phone fetch origin
-    git -C ~/work/openagents-phone status -sb
+    git -C ~/code/openagents fetch origin
+    git -C ~/code/openagents status -sb
     ```
 
-    When the branch has nothing of yours that isn't on `main`, reset it with
-    `git -C ~/work/openagents-phone switch -C alice-landing origin/main`.
-    That command discards commits on `alice-landing` that `main` lacks.
+   When the checkout is clean and has no local commits, update it with
+   `git -C ~/code/openagents merge --ff-only origin/main`. Preserve any
+   work in progress before updating the checkout.
 1. **Her policy and budget are what you want.** Without
    `agents/alice/policy.json` and `agents/alice/budget.json`, the defaults
    hold. See [The approval policy](#the-approval-policy) and
@@ -196,9 +196,9 @@ about 6 minutes; the rest was the studio's checks waiting for a build lease.
 1. Push the merged commit from your identity, then close the issue:
 
     ```sh
-    git -C ~/work/openagents-phone fetch origin
-    git -C ~/work/openagents-phone rebase origin/main
-    git -C ~/work/openagents-phone push origin HEAD:main
+    git -C ~/code/openagents fetch origin
+    git -C ~/code/openagents rebase origin/main
+    git -C ~/code/openagents push origin HEAD:main
     ```
 
 Keep the word "merge" out of a work request. A request that names merging
@@ -511,14 +511,15 @@ These problems all happened during the week of 2026-10-05.
 **Symptom.** A task fails because a file the request names doesn't exist, or
 the change is built on old code. **Cause.** Studio worktrees start from the
 workspace checkout's `HEAD`, not from `origin/main`. **Fix.** Bring
-`~/work/openagents-phone` up to date as the [setup
+Alice's workspace up to date as the [setup
 checklist](#setup-checklist) shows, then ask again.
 
 ### A detached `HEAD` refuses the merge
 
 **Symptom.** "The checkout at /Users/christopherdavid/work/openagents-phone is
 not on a branch. Check out the branch to merge into, then merge again."
-**Fix.** Put the checkout on a branch, then merge again:
+**Fix.** Put the affected checkout on a branch, then merge again. For the
+older phone checkout:
 
 ```sh
 git -C ~/work/openagents-phone switch -c alice-landing

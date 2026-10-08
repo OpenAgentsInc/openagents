@@ -18,8 +18,9 @@ reference.
 ## Issue #10893
 
 Issue #10893 asks to drop the command hint from the agent's `PROPOSED` line.
-Alice did the work on Codex, and her change waits at the Merge station as
-task `b2fa59bd6e0b`. It isn't merged yet.
+Alice did the work on Codex as task `b2fa59bd6e0b` and merged it at the
+Merge station when asked. Commit `d3f3ad546c` landed on `main` and closed
+#10893 on October 7, 2026.
 
 - **The change.** She changed one file, `crates/openagents-cli/src/agent.rs`
   (19 lines added, 8 removed). It adds a `proposed_line` function that both
@@ -35,10 +36,11 @@ task `b2fa59bd6e0b`. It isn't merged yet.
   cached) and 8,799 output tokens on the ChatGPT login, which reports no
   dollar price. Coder, on its own model through OpenRouter, used 34,641
   tokens.
-- **Her merge.** When asked, she ran her own merge, which refused with: "The
-  checkout at /Users/christopherdavid/work/openagents-phone is not on a
-  branch." The host workspace checkout is detached, so the merge has no
-  branch to land on.
+- **Her first merge.** When asked, she ran her own merge, which refused
+  with: "The checkout at /Users/christopherdavid/work/openagents-phone is
+  not on a branch." The host workspace checkout was detached, so the merge had no
+  branch to land on. The checkout was then put on `alice-landing`, and the
+  change was merged and pushed to `main`.
 - **Transcripts.** Run `openagents agent log alice` for her journal. The Coder
   session, with the Codex child chats, is
   `~/.openagents/coder-new/sessions/task-b2fa59bd6e0b5db9117eff1d45500391e30dd42629e4fbb0e295895b2fb1a91e.atif.json`.
@@ -75,19 +77,18 @@ to Coder's model, run `openagents agent engine alice coder`.
 
 ## Known issues
 
-- **No spend record.** She has no owner attestation, so the host writes no
-  NIP-AM spend record for her. Task-mode runs don't pass through her spend
-  meter in any case.
+- **Spend records.** Her owner attestation now expires on October 7, 2027.
+  Task-mode runs still don't pass through her spend meter.
 - **Dev host install and follow job.** The follow job installs `main` only
   while the host is idle, and a build can wait a long time for a lease. After
   the crash at 14:50 the host's launchd plist was missing and a stale
   `~/.openagents/dev-host/follow.lock` stopped every follow pass. Restoring
   the plist from its latest backup in `~/.openagents/dev-host/` and removing
   the lock fixed both.
-- **Workspace checkout.** The host workspace `openagents` is
-  `~/work/openagents-phone`, a detached worktree of `~/work/openagents`. Studio
-  worktrees start from its `HEAD`, so it must stay near `main`, and a merge
-  needs it on a branch.
+- **Workspace checkout.** Alice now works in `~/code/openagents`, on `main`.
+  Studio worktrees start from the workspace's `HEAD`, so it must stay near
+  `origin/main`. The older `~/work/openagents-phone` checkout is on
+  `alice-landing`; it is no longer her workspace.
 - **Snapshot bound.** Admission hashes the whole workspace, up to 16 GiB. The
   repository's tracked files are 4.28 GiB. Build output inside the workspace
   counts toward the bound, so keep target directories outside it.
@@ -97,11 +98,6 @@ to Coder's model, run `openagents agent engine alice coder`.
 
 ## Owner steps
 
-1. Put the workspace checkout on a branch, for example
-   `git -C ~/work/openagents-phone switch -c alice-landing`. Then ask Alice to
-   merge again, or run `openagents studio merge b2fa59bd6e0b`. Push the
-   merged commit to `main` and close #10893.
-2. Attest Alice's key so her spend is recorded:
-   `openagents agent attest alice --owner-key FILE`.
-3. Optionally, update her stored charter to the new default, which lets her
-   merge when you ask. Her record still holds the old wording.
+No steps remain for #10893. Her checkout is on a branch, her key is
+attested, and her charter permits a merge when you ask. The
+[runbook](alice-runbook.md) covers subsequent work and attestation renewal.
