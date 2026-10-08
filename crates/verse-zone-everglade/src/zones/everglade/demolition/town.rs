@@ -712,7 +712,7 @@ impl Pool {
             .get_mut()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         if cache.source_vertices() + added + reserved.max(cache.stats.vertices) > self.limit {
-            *cache = rubble::Cache::new(self.kit.clone());
+            cache.reset_geometry(self.kit.clone());
             self.meshes.clear();
         }
         let mut spans = Vec::new();
@@ -871,6 +871,7 @@ mod motion_tests {
             !Arc::ptr_eq(&before.scene, &after.scene),
             "a retained renderer must discard its old ID history"
         );
+        assert!(!Arc::ptr_eq(&before.motion_epoch, &after.motion_epoch));
         assert_eq!(
             before.scene.meshes, after.scene.meshes,
             "cached local meshes survive structural retain"
@@ -892,6 +893,23 @@ mod motion_tests {
             Arc::ptr_eq(&after.scene, &ordinary.scene),
             "ordinary physics changes keep renderer history"
         );
+        assert!(Arc::ptr_eq(&after.motion_epoch, &ordinary.motion_epoch));
+        town.restore();
+        assert!(town.wreck.lift(hut, &[]));
+        let centers: Vec<_> = town
+            .wreck
+            .site
+            .specs()
+            .iter()
+            .map(|spec| spec.center)
+            .collect();
+        for (piece, center) in centers.into_iter().enumerate() {
+            town.wreck.site.damage(piece, 1, center, DVec3::ZERO);
+        }
+        town.sync();
+        town.pose();
+        let restored = town.instances(None).unwrap();
+        assert!(!Arc::ptr_eq(&ordinary.motion_epoch, &restored.motion_epoch));
     }
 }
 

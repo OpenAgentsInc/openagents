@@ -37,6 +37,7 @@
 //! 3.0's 2048-texel guarantee, so phones and WebGL2 read it the same way.
 
 use std::collections::{BTreeMap, HashMap};
+use std::sync::Arc;
 
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3};
@@ -175,10 +176,30 @@ impl Instance {
 pub(crate) struct RenderedInstances {
     previous: HashMap<u64, [[f32; 4]; 3]>,
     current: HashMap<u64, [[f32; 4]; 3]>,
+    epoch: Option<Arc<()>>,
 }
 
 impl RenderedInstances {
-    pub(crate) fn update(&mut self, records: &mut [Instance]) {
+    /// Moves history to replacement geometry before its first instance update.
+    pub(crate) fn adopt(&mut self, previous: &mut Self, epoch: &Arc<()>) {
+        if previous
+            .epoch
+            .as_ref()
+            .is_some_and(|old| Arc::ptr_eq(old, epoch))
+        {
+            *self = std::mem::take(previous);
+        }
+    }
+
+    pub(crate) fn update(&mut self, epoch: &Arc<()>, records: &mut [Instance]) {
+        if self
+            .epoch
+            .as_ref()
+            .is_none_or(|old| !Arc::ptr_eq(old, epoch))
+        {
+            self.clear();
+            self.epoch = Some(epoch.clone());
+        }
         self.current.clear();
         for record in records {
             let id = u64::from(record.pad[0]) | (u64::from(record.pad[1]) << 32);
@@ -191,6 +212,7 @@ impl RenderedInstances {
     pub(crate) fn clear(&mut self) {
         self.previous.clear();
         self.current.clear();
+        self.epoch = None;
     }
 }
 
@@ -1099,9 +1121,10 @@ mod tests {
                 settled: false,
             })
         };
+        let epoch = Arc::new(());
         let mut history = RenderedInstances::default();
         let mut first = [record(9, 1.0, 0.0), record(u64::MAX, 20.0, 19.0)];
-        history.update(&mut first);
+        history.update(&epoch, &mut first);
         assert_eq!(
             first[0].previous, first[0].rows,
             "new object has no history"
@@ -1109,19 +1132,19 @@ mod tests {
 
         // Three simulation ticks pass before the next render. Record order changes.
         let mut next = [record(u64::MAX, 23.0, 22.0), record(9, 4.0, 3.0)];
-        history.update(&mut next);
+        history.update(&epoch, &mut next);
         assert_eq!(next[0].previous[0][3], 20.0);
         assert_eq!(next[1].previous[0][3], 1.0);
 
         let mut repeated = [record(9, 4.0, 3.0)];
-        history.update(&mut repeated);
+        history.update(&epoch, &mut repeated);
         assert_eq!(repeated[0].previous[0][3], 4.0, "no tick means no motion");
         let mut returned = [record(u64::MAX, 30.0, 29.0)];
-        history.update(&mut returned);
+        history.update(&epoch, &mut returned);
         assert_eq!(returned[0].previous, returned[0].rows, "absent IDs retire");
         history.clear();
         returned[0].rows[0][3] = 31.0;
-        history.update(&mut returned);
+        history.update(&epoch, &mut returned);
         assert_eq!(
             returned[0].previous, returned[0].rows,
             "world reset retires history"
@@ -1129,8 +1152,65 @@ mod tests {
 
         let mut other_renderer = RenderedInstances::default();
         let mut independent = [record(9, 100.0, 99.0)];
-        other_renderer.update(&mut independent);
+        other_renderer.update(&epoch, &mut independent);
         assert_eq!(independent[0].previous, independent[0].rows);
+    }
+
+    #[test]
+    fn geometry_reuploads_preserve_motion_exactly_and_epoch_changes_retire_reused_ids() {
+        let record = |id: u64, x: f32| {
+            Instance::dynamic(&textured::DynamicInstance {
+                id,
+                mesh: 0,
+                current: Mat4::from_translation(Vec3::X * x),
+                previous: Mat4::IDENTITY,
+                color: [1.0; 4],
+                light: [0; 4],
+                settled: false,
+            })
+        };
+        let epoch = Arc::new(());
+        let mut reference = RenderedInstances::default();
+        let mut uploaded = RenderedInstances::default();
+        // Geometry regrouping changes batch order, adds settled geometry, and
+        // removes an expired ID while a fast-moving body keeps its identity.
+        for frame in [
+            vec![record(7, 1.0), record(8, 30.0)],
+            vec![record(u64::MAX, 0.0), record(8, 32.0), record(7, 9.0)],
+            vec![record(7, 21.0), record(u64::MAX, 0.0)],
+            vec![record(8, 50.0), record(7, 21.0)],
+        ] {
+            let mut expected = frame.clone();
+            reference.update(&epoch, &mut expected);
+            let mut replacement = RenderedInstances::default();
+            replacement.adopt(&mut uploaded, &epoch);
+            assert!(
+                uploaded.previous.is_empty(),
+                "history moves before the first write"
+            );
+            let mut actual = frame;
+            replacement.update(&epoch, &mut actual);
+            assert_eq!(
+                bytemuck::cast_slice::<_, u8>(&actual),
+                bytemuck::cast_slice::<_, u8>(&expected)
+            );
+            uploaded = replacement;
+        }
+
+        let reset = Arc::new(());
+        let mut replacement = RenderedInstances::default();
+        replacement.adopt(&mut uploaded, &reset);
+        assert!(
+            !uploaded.previous.is_empty(),
+            "a new identity cannot adopt old body IDs"
+        );
+        let mut reused = [record(7, 100.0)];
+        replacement.update(&reset, &mut reused);
+        assert_eq!(reused[0].previous, reused[0].rows);
+        // A reset must also work when the geometry Arc is unchanged.
+        let mut same_geometry = [record(7, 200.0)];
+        uploaded.update(&reset, &mut same_geometry);
+        assert_eq!(same_geometry[0].previous, same_geometry[0].rows);
     }
 
     #[test]
@@ -1139,6 +1219,7 @@ mod tests {
         scene.add_material(TexturedMaterial::default());
         scene.add_mesh(tree());
         let mut figure = textured::InstancedFigure {
+            motion_epoch: Arc::new(()),
             scene: std::sync::Arc::new(scene),
             instances: std::sync::Arc::new(vec![textured::DynamicInstance {
                 id: 1,
