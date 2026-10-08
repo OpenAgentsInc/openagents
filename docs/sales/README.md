@@ -12,6 +12,10 @@ customer records, compensation agreements, and negotiations stay private.
 The [implementation handoff](revenue-handoff.md) records the completed seven-issue
 scope, retained verification, owner activation, and the remaining build order.
 
+The [Coder Cloud web specification](../cloud/coder-cloud.md) maps these offers,
+customer and team controls, private sales operations, and the Agora into the
+proposed openagents.com application over the existing Rust owners.
+
 ## Contents
 
 - [Summary](#summary)

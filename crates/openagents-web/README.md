@@ -20,6 +20,11 @@ the `coder` repository), reimplemented here. See
 [the deployment record](../../docs/deployment/openagents-web.md) for the
 public site's Rust image and its remaining proxied services.
 
+The [Coder Cloud specification](../../docs/cloud/coder-cloud.md) defines the
+proposed authenticated web workspace, Verse connection, and commercial
+interfaces. Those interfaces require new admitted adapters; the local task
+browser keeps its current loopback-only scope.
+
 ## Run it
 
 From the monorepo root:

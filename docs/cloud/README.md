@@ -4,6 +4,10 @@ Running Coder and agent work on Google Cloud machines (project
 `openagentsgemini`) in parallel with, and in place of, the owner's own
 computers.
 
+The [Coder Cloud and openagents.com specification](coder-cloud.md) defines the
+proposed Rust web workspace, connected Verse and delegation views, and customer,
+team, billing, and sales interfaces over the existing domain owners.
+
 The [terminal workbench roadmap](../terminal/workbench-roadmap.md#paid-openagents-cloud-computers-and-credits)
 adds a proposed paid OpenAgents cloud-computer option inside Verse and the
 other clients. Purchased credits require shared funding, quotes,
