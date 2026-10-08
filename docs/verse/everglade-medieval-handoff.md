@@ -91,6 +91,14 @@ unchanged.
 ## What's open
 
 - **P3 (#10896).** Claimed on October 8 on `codex/everglade-p3`.
+  CPU acceptance at `c17428fc30` passes for all 65 actual canonical houses:
+  near has 3,156–10,000 triangles and 10–12 selected draws, middle has
+  2,999–3,000 triangles and one draw, and far has 799–800 triangles and
+  one draw. The real private pack compiles and admits every piece and
+  required house level. The regenerated 65-house coplanar scan and the
+  reduced market-hall near model have zero failures without exemptions.
+  Visual acceptance, composed current-main checks, artifact publication,
+  upload, and deployment remain open.
   The initial canonical report covers all 65 houses: 3,156–11,988 triangles,
   26–70 selected draws, and 10–12 materials at each of 10, 50, and 120 m.
   The current-source export reduces actual near submissions to 10–12 draws
@@ -121,15 +129,14 @@ unchanged.
   triangles, and 800 far triangles. Both pilots preserve bounds within
   0.3 mm. These are generator checks; normalized pack admission and visual
   acceptance remain pending.
-  Remaining acceptance: compile and verify private middle/far house shells and shared atlases,
-  market-hall near reduction without removing visible interiors, actual
-  selected batches within 10,000/3,000/800 triangles and 12/5/1 draws,
-  post-gap coplanar checks, demo comparison, grade captures, and one house
-  at 10/50/120 m. The initial coplanar scan finds genuine floor/band recipe
+  Remaining visual acceptance: market-hall interiors and reduced roof
+  silhouettes, the same exported demo actor comparison, grade captures,
+  and one canonical house at 10/50/120 m, including far damage and restore.
+  The initial coplanar scan finds genuine floor/band recipe
   overlaps and two tiny roof-end wood-trim material seams inside licensed meshes.
   The bounded derived finish prototype passes the unmodified detector for
-  both roof-end pieces; the regenerated 65-house scan and real captures
-  remain required before claiming no failures.
+  both roof-end pieces; the regenerated 65-house scan also passes.
+  Real captures remain required.
 - **B2 (#10906).** Its issue holds what its subagent landed and what
   remains.
 - **B3 (#10907).** Checkpoint `a2f4bbf7d3` on `codex/everglade-b3` holds
@@ -227,9 +234,32 @@ The original roof GLB remains
 (Rust source `3314ae5773`). The raw rebuild passes with 53 pieces, zero
 skips, and 28 textures. `kit-build-p3-before-roof/` retains the preceding
 private build. The current 65-house source export writes
-`house-check-p3-roof/`; the corrected atlas batches and all-house coplanar
-checks follow it. Actual all-house distance budgets,
-private pack admission, and captures remain open.
+`house-check-p3-roof/` and passes in 242 seconds. All 33 corrected CPU
+atlas batches pass; `house-level-inventory-roof.json` verifies 131 models,
+61 textures, 33 atlases, and indexed bounds within 5.95 mm of the source.
+`coplanar-p3-roof-*.jsonl` covers all 65 houses with zero recipe or intrinsic
+overlap pairs; `coplanar-market-near-roof.log` confirms the reduced near
+model also passes the unchanged detector.
+
+`house-check-p3-integrated.log` compiles and admits the real private pack,
+then verifies actual distance-selected batches for every canonical house;
+the compiled test passes in 266 seconds. The extracted
+`house-check-p3-integrated-report.json` has SHA-256
+`db97503fbff90dc7157aa641b5021dfa26ef37b662d4849322b9c448c05e53be`.
+All 65 houses meet the plan: near 3,156–10,000 triangles/10–12 draws,
+middle 2,999–3,000/one, and far 799–800/one. Use the raw-source manifest in
+`house-check-p3-roof/` for regeneration; the integrated report already
+selects the reduced near model and is not a generator input.
+
+The source checkout and private data remain frozen at `c17428fc30` through
+this CPU acceptance. Before further Cargo or GPU work, rebase the public
+feature branch on current `origin/main`, preserve the scene-lit particle
+changes and `NEEDS_OWNER.md`, and obtain the coordinator's next build
+window. Remaining jobs are protected candidate-pack output and capture
+precompiles, a composed headless Verse consumer check, actual roof/interior,
+grade, same-demo-actor, and 10/50/120 m raster captures, then acceptance
+review and the artifact queue, private upload, and dependent deploy. No
+P3 GPU capture, artifact submission, repin, upload, or main landing has run.
 
 The portable headless CPU runtime is Blender 4.5.14 LTS. Its official archive
 SHA-256 is `9ba871ff2ecd36526b77432745980b7e6664ecd0c7ca11c48849073dcfe06da3`.
