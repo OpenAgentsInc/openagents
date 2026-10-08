@@ -70,7 +70,9 @@ After the openagents.com deploy that serves the kit pack, open
 `https://openagents.com/everglade?frames` on the reference laptop and
 confirm about 60 frames per second on Stoop Lane and Main Street. On a
 phone, open Everglade and confirm the town draws the kit, not its grey
-proxies, and holds its frame rate.
+proxies, and holds its frame rate. P3 now serves a 21,467,658-byte kit with
+60.5 MiB of decoded textures; B4 (#10908) still needs web and phone tiers.
+Repeat the physical-device measurements after that tier work.
 
 ## Upload the kit town's baked light layers (#10906)
 
