@@ -20,7 +20,7 @@ use super::demolition::carve::{Lattice, split};
 use super::{detail, layout::Placement};
 use crate::controller::Footprint;
 use crate::pbr::textured::{
-    AlphaMode, BaseColorImage, Primitive, TexturedMaterial, TexturedMesh, TexturedScene,
+    AlphaMode, BaseColorImage, Detail, Primitive, TexturedMaterial, TexturedMesh, TexturedScene,
     TexturedVertex, UNBAKED,
 };
 use crate::zones::everglade_pack::{self, ZonePack};
@@ -156,6 +156,17 @@ pub fn build_painted(
         ..TexturedScene::default()
     };
     let mut copied = Copied::default();
+    let paints: Vec<_> = placements.iter().map(&paint).collect();
+    let houses = super::house_lod::configure(pack, placements, &paints, &mut scene);
+    let mut house_details = vec![None; placements.len()];
+    for (group, h) in houses.iter().enumerate() {
+        for &index in &h.members {
+            house_details[index] = Some(Detail::Group {
+                group: group as u16,
+                level: if h.near { 3 } else { 0 },
+            });
+        }
+    }
     let mut blockers = Vec::new();
     let carved = super::demolition::carve::carved(placements);
     let lattice = |placement: &Placement, carved: bool| -> Result<Option<Lattice>, String> {
@@ -175,7 +186,8 @@ pub fn build_painted(
     // merged indices (`demolition::town`), so they merge into their cells;
     // everything else may draw as an instance of a shared mesh.
     let kit = super::demolition::town::kit_members(placements);
-    let editable = |index: usize| carved[index] || kit.contains(&index);
+    let editable =
+        |index: usize| carved[index] || kit.contains(&index) || house_details[index].is_some();
     let place = |scene: &mut TexturedScene, index: usize, mesh, transform, level| {
         if editable(index) {
             scene.place_detail(mesh, transform, level);
@@ -184,10 +196,11 @@ pub fn build_painted(
         }
     };
     for (index, (placement, &carved)) in placements.iter().zip(&carved).enumerate() {
-        let colors = paint(placement);
+        let colors = paints[index];
         let cut = lattice(placement, carved)?;
         let (mesh, bounds) = mesh(pack, placement.model, colors, cut, &mut scene, &mut copied)?;
         let (level, _) = detail::plan(pack, placement.model);
+        let level = house_details[index].unwrap_or(level);
         place(&mut scene, index, mesh, placement.transform(), level);
         blockers.extend(placement.footprints(bounds));
     }
@@ -210,13 +223,14 @@ pub fn build_painted(
             );
         }
     }
+    super::house_lod::append(pack, &houses, &mut scene, &mut copied)?;
     scene.validate()?;
     Ok((scene, blockers))
 }
 
 /// The scene mesh of pack model `name` in `colors`, split on `lattice`
 /// when it is carved, copied once, and the model's bounds.
-fn mesh<'a>(
+pub(crate) fn mesh<'a>(
     pack: &'a ZonePack,
     name: &'a str,
     colors: Paint,

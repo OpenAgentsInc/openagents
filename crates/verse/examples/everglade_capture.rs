@@ -109,6 +109,10 @@ fn main() -> Result<(), String> {
                 .map_err(|_| format!("FRAME is a number, got {v}"))
         })
         .transpose()?;
+    capture(output, view, frame)
+}
+
+fn capture(output: PathBuf, view: String, frame: Option<usize>) -> Result<(), String> {
     let pack = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
         .join(everglade_pack::PACK_DIRECTORY)
@@ -313,12 +317,20 @@ fn main() -> Result<(), String> {
         None
     };
     let idle = InputState::default();
+    #[cfg(feature = "desktop")]
     let workshop = match view.split_once(':') {
         Some((how @ ("alice" | "alice-door" | "alice-walk" | "alice-board"), files)) => {
             Some(alice(&mut runtime, how, files, &idle)?)
         }
         _ => None,
     };
+    #[cfg(not(feature = "desktop"))]
+    if matches!(
+        view.split_once(':'),
+        Some(("alice" | "alice-door" | "alice-walk" | "alice-board", _))
+    ) {
+        return Err("Alice's workshop views require the desktop feature".into());
+    }
     if view.starts_with("reverse") {
         reverse(&mut runtime, &view, &idle)?;
     }
@@ -392,6 +404,7 @@ fn main() -> Result<(), String> {
             );
         }
     }
+    #[cfg(feature = "desktop")]
     if let Some(workshop) = &workshop {
         // Her desk panel, anchored over the hotbar as the app draws it.
         let size = [1280.0, 800.0];
@@ -436,6 +449,40 @@ fn main() -> Result<(), String> {
         &atlas,
         air,
     )
+}
+
+#[cfg(test)]
+mod private_capture_tests {
+    use std::path::PathBuf;
+
+    #[test]
+    #[ignore = "Requires private inputs and an offscreen GPU lease on coderos-4080"]
+    fn capture_private_acceptance() {
+        let output = PathBuf::from(
+            std::env::var_os("VERSE_CAPTURE_OUTPUT").expect("VERSE_CAPTURE_OUTPUT is required"),
+        );
+        let parent = output
+            .parent()
+            .expect("The output needs a private directory");
+        std::fs::create_dir_all(parent).unwrap();
+        let parent = parent.canonicalize().unwrap();
+        assert!(
+            !parent.ancestors().any(|p| p.join(".git").exists()),
+            "Private captures must stay outside Git"
+        );
+        let view = std::env::var("VERSE_CAPTURE_VIEW").unwrap_or_else(|_| "approach".into());
+        let frame = std::env::var("VERSE_CAPTURE_FRAME")
+            .ok()
+            .map(|v| v.parse::<usize>().unwrap());
+        std::thread::Builder::new()
+            .name("everglade-private-capture".into())
+            .stack_size(64 * 1024 * 1024)
+            .spawn(move || super::capture(output, view, frame))
+            .unwrap()
+            .join()
+            .unwrap()
+            .unwrap();
+    }
 }
 
 /// Feeds the Pylon Field as `VERSE_CAPTURE_COMPUTE` says, from a scratch
@@ -692,6 +739,7 @@ fn studio(_: &mut WorldRuntime, _: &str, _: Option<usize>) -> Result<(), String>
 ///   the west wall, from a view whose `plan` the board shows.
 /// - `alice-walk:FROM,TO`: from the door, a moment after the answer in TO
 ///   sends her from where FROM put her, so she is on her way.
+#[cfg(feature = "desktop")]
 fn alice(
     runtime: &mut WorldRuntime,
     how: &str,

@@ -72,7 +72,7 @@ fn main() -> Result<(), String> {
         forms: Vec::new(),
     };
     let report = kit::install(&mut empty, Some(&pack));
-    if report.proxies != 0 {
+    if report.proxies != 0 || !report.refused.is_empty() {
         let missing: Vec<&str> = kit::PIECES
             .iter()
             .map(|p| p.model)
@@ -82,6 +82,28 @@ fn main() -> Result<(), String> {
             "the kit lacks or misfits pieces: missing {missing:?}, outside their boxes {:?}",
             report.refused
         ));
+    }
+    for far in pack
+        .models
+        .iter()
+        .filter(|m| m.name.starts_with(compiled::FAR_PREFIX))
+    {
+        if empty.model(&far.name).is_none() {
+            return Err(format!(
+                "The compiled far level was not admitted: {}",
+                far.name
+            ));
+        }
+    }
+    for house in verse_zone_everglade::zones::everglade::house_lod::houses() {
+        for level in [1, 2] {
+            let name = verse_zone_everglade::zones::everglade::house_lod::model(house, level);
+            if pack.model(&name).is_none() || empty.model(&name).is_none() {
+                return Err(format!(
+                    "The compiled house level is missing or refused: {name}"
+                ));
+            }
+        }
     }
     if check {
         if compiled.sha256 != kit::KIT_SHA256 || compiled.bytes.len() as u64 != kit::KIT_BYTES {

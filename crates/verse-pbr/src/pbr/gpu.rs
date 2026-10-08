@@ -523,6 +523,10 @@ pub struct TexturedGpu {
     pub edits: u64,
     /// Whether each cell counted as near last frame ([`textured::Level`]).
     near: Vec<bool>,
+    detail_groups: Vec<super::textured::DetailGroup>,
+    group_levels: Vec<u8>,
+    detail_edits: super::textured::IndexEdits,
+    fallback_groups: std::collections::BTreeSet<u16>,
     /// Whether `near` has been set from an eye yet.
     placed: bool,
     /// How many times a cell has changed level; part of the static casters'
@@ -536,9 +540,22 @@ impl TexturedGpu {
     /// its switch distance.
     pub fn update_levels(&mut self, eye: Vec3) {
         let placed = self.placed;
-        let mut changed = false;
+        let fallback_groups = self.detail_edits.group_fallbacks();
+        let mut changed = fallback_groups != self.fallback_groups;
+        self.fallback_groups = fallback_groups;
+        for (group, previous) in self.detail_groups.iter().zip(&mut self.group_levels) {
+            let now = group.selected(eye, placed.then_some(*previous));
+            changed |= now != *previous;
+            *previous = now;
+        }
         for (batch, near) in self.batches.iter().zip(&mut self.near) {
-            let now = batch.level.near(eye, placed.then_some(*near));
+            let now = match batch.level {
+                super::textured::Level::Group { group, level, .. } => self
+                    .group_levels
+                    .get(usize::from(group))
+                    .is_some_and(|selected| *selected == level),
+                _ => batch.level.near(eye, placed.then_some(*near)),
+            };
             changed |= now != *near;
             *near = now;
         }
@@ -551,7 +568,10 @@ impl TexturedGpu {
     /// Whether cell `i` draws at its current level.
     fn shown(&self, i: usize) -> bool {
         let batch = &self.batches[i];
-        batch.level.drawn(self.near.get(i).copied().unwrap_or(true))
+        batch.level.drawn_with_fallback(
+            self.near.get(i).copied().unwrap_or(true),
+            &self.fallback_groups,
+        )
     }
 
     /// Rewrites the merged indices from `first` on, within the buffer.
@@ -2341,6 +2361,10 @@ impl Photo {
             figure,
             edits: 0,
             near: vec![true; prepared.items.len()],
+            detail_groups: scene.detail_groups.clone(),
+            group_levels: vec![0; scene.detail_groups.len()],
+            detail_edits: scene.edits.clone(),
+            fallback_groups: std::collections::BTreeSet::new(),
             placed: false,
             levels: 0,
         };
