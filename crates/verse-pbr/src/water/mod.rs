@@ -268,7 +268,9 @@ impl SurfaceGpu {
             mesh.apron = shift(&mesh.apron);
             for variants in &mut mesh.blocks {
                 for blocks in variants {
-                    for block in blocks { block.range = shift(&block.range); }
+                    for block in blocks {
+                        block.range = shift(&block.range);
+                    }
                 }
             }
             OceanMesh {
@@ -349,13 +351,26 @@ impl SurfaceGpu {
 
     /// Draws bounded clipmap blocks that intersect the camera frustum.
     pub fn draw_ocean_culled<'a>(
-        &'a self, pass: &mut wgpu::RenderPass<'a>, eye: glam::Vec3,
+        &'a self,
+        pass: &mut wgpu::RenderPass<'a>,
+        eye: glam::Vec3,
         cull: Option<(glam::Mat4, f32, glam::Vec3)>,
-        transmit: Option<&'a wgpu::RenderPipeline>, emit: &'a wgpu::RenderPipeline,
+        transmit: Option<&'a wgpu::RenderPipeline>,
+        emit: &'a wgpu::RenderPipeline,
     ) {
         let ranges = self.ocean.as_ref().map_or_else(Vec::new, |o| {
-            cull.map_or_else(|| self.ocean_ranges(eye), |(matrix, level, pad)|
-                o.mesh.draw_culled(&o.spec, glam::Vec2::new(eye.x, eye.z), matrix, level, Some(pad)))
+            cull.map_or_else(
+                || self.ocean_ranges(eye),
+                |(matrix, level, pad)| {
+                    o.mesh.draw_culled(
+                        &o.spec,
+                        glam::Vec2::new(eye.x, eye.z),
+                        matrix,
+                        level,
+                        Some(pad),
+                    )
+                },
+            )
         });
         if ranges.is_empty() {
             return;

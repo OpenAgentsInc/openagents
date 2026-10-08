@@ -766,13 +766,18 @@ impl Renderer {
 
     /// Enable supported per-pass water timing for fixed-view diagnostics.
     pub fn enable_water_timing(&mut self) {
-        if let Some(photo) = &mut self.scene.photo { photo.enable_water_timing(&self.device, &self.queue); }
+        if let Some(photo) = &mut self.scene.photo {
+            photo.enable_water_timing(&self.device, &self.queue);
+        }
     }
 
     /// Water measurements from the physical renderer's most recent frame.
     #[must_use]
     pub fn water_measurements(&self) -> Option<WaterMeasurements> {
-        self.scene.photo.as_ref().map(|photo| photo.water_measurements())
+        self.scene
+            .photo
+            .as_ref()
+            .map(|photo| photo.water_measurements())
     }
 
     pub fn sample_count(&self) -> u32 {
@@ -1040,7 +1045,9 @@ impl Renderer {
             present.encode(&mut encoder, &output);
         }
         self.queue.submit([encoder.finish()]);
-        if let Some(photo) = &mut self.scene.photo { photo.submitted(); }
+        if let Some(photo) = &mut self.scene.photo {
+            photo.submitted();
+        }
         frame.present();
         DrawStatus::Presented
     }
@@ -1234,7 +1241,9 @@ impl Layer {
     /// Arms delayed water queries after the host submits the encoded frame.
     /// Hosts that request timestamp support call this after `queue.submit`.
     pub fn submitted(&mut self) {
-        if let Some(photo) = &mut self.scene.photo { photo.submitted(); }
+        if let Some(photo) = &mut self.scene.photo {
+            photo.submitted();
+        }
     }
 }
 
@@ -1944,7 +1953,9 @@ impl Offscreen {
                     ui,
                 );
                 queue.submit([encoder.finish()]);
-                if let Some(photo) = &mut self.scene.photo { photo.submitted(); }
+                if let Some(photo) = &mut self.scene.photo {
+                    photo.submitted();
+                }
             }
         }
         self.settled = true;
@@ -1997,7 +2008,9 @@ impl Offscreen {
             );
         }
         queue.submit([encoder.finish()]);
-        if let Some(photo) = &mut self.scene.photo { photo.submitted(); }
+        if let Some(photo) = &mut self.scene.photo {
+            photo.submitted();
+        }
         let submitted = std::time::Instant::now();
 
         let slice = self.readback.slice(..);

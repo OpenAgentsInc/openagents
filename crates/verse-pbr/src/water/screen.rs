@@ -106,8 +106,12 @@ impl Plan {
     #[must_use]
     pub fn with_effects(mut self, effects: verse_engine::quality::WaterEffects) -> Self {
         self.copies &= effects.copies();
-        if !effects.mirror() { self.mirror_divisor = 0; }
-        if !effects.ssr() { self.ssr_steps = 0; }
+        if !effects.mirror() {
+            self.mirror_divisor = 0;
+        }
+        if !effects.ssr() {
+            self.ssr_steps = 0;
+        }
         self
     }
 

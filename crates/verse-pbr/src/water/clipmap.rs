@@ -214,8 +214,14 @@ impl Mesh {
     /// Culls only bounded displaced blocks. The apron remains intact; an
     /// unknown displacement envelope draws the original complete mesh.
     #[must_use]
-    pub fn draw_culled(&self, spec: &Spec, eye: Vec2, view_proj: Mat4,
-        level: f32, displacement: Option<Vec3>) -> Vec<Range<u32>> {
+    pub fn draw_culled(
+        &self,
+        spec: &Spec,
+        eye: Vec2,
+        view_proj: Mat4,
+        level: f32,
+        displacement: Option<Vec3>,
+    ) -> Vec<Range<u32>> {
         let Some(pad) = displacement.filter(|p| p.is_finite() && p.min_element() >= 0.0) else {
             return self.draw(spec, eye);
         };
@@ -229,10 +235,15 @@ impl Mesh {
                 let max = center + block.max * spacing;
                 if crate::pbr::textured::in_frustum(
                     Vec3::new(min.x, level, min.y) - pad,
-                    Vec3::new(max.x, level, max.y) + pad, view_proj) {
-                    if let Some(last) = out.last_mut().filter(|last| last.end == block.range.start) {
+                    Vec3::new(max.x, level, max.y) + pad,
+                    view_proj,
+                ) {
+                    if let Some(last) = out.last_mut().filter(|last| last.end == block.range.start)
+                    {
                         last.end = block.range.end;
-                    } else { out.push(block.range.clone()); }
+                    } else {
+                        out.push(block.range.clone());
+                    }
                 }
             }
         }
@@ -299,14 +310,19 @@ pub fn mesh(spec: &Spec, body: usize) -> Mesh {
                                 && (-h / 2 + kx..h / 2 + kx).contains(&i)
                                 && (-h / 2 + kz..h / 2 + kz).contains(&j);
                             if !hole {
-                                quad(&mut out.indices, [at(i, j), at(i + 1, j), at(i + 1, j + 1), at(i, j + 1)]);
+                                quad(
+                                    &mut out.indices,
+                                    [at(i, j), at(i + 1, j), at(i + 1, j + 1), at(i, j + 1)],
+                                );
                             }
                         }
                     }
                     if first < out.indices.len() as u32 {
-                        blocks.push(Block { range: first..out.indices.len() as u32,
+                        blocks.push(Block {
+                            range: first..out.indices.len() as u32,
                             min: Vec2::new(bx as f32, bz as f32),
-                            max: Vec2::new(end_x as f32, end_z as f32) });
+                            max: Vec2::new(end_x as f32, end_z as f32),
+                        });
                     }
                 }
             }
@@ -319,7 +335,8 @@ pub fn mesh(spec: &Spec, body: usize) -> Mesh {
         }
         let ranges: [Range<u32>; 4] = std::array::from_fn(|k| ranges[k].clone());
         out.levels.push(ranges);
-        out.blocks.push(std::array::from_fn(|k| block_variants[k].clone()));
+        out.blocks
+            .push(std::array::from_fn(|k| block_variants[k].clone()));
     }
     // The apron: the last level's rim, counterclockwise from (-h, -h), and
     // the same points stretched out ring by ring to the far square.
@@ -395,18 +412,31 @@ mod tests {
             let spec = Spec::of(tier);
             let mesh = mesh(&spec, 0);
             let eye = Vec2::new(3.7, -1.3);
-            assert_eq!(mesh.draw(&spec, eye), mesh.draw_culled(&spec, eye, Mat4::IDENTITY, 0.0, None));
+            assert_eq!(
+                mesh.draw(&spec, eye),
+                mesh.draw_culled(&spec, eye, Mat4::IDENTITY, 0.0, None)
+            );
             for (level, blocks) in mesh.blocks.iter().enumerate() {
                 for (variant, blocks) in blocks.iter().enumerate() {
                     let range = &mesh.levels[level][variant];
                     assert_eq!(blocks.first().unwrap().range.start, range.start);
                     assert_eq!(blocks.last().unwrap().range.end, range.end);
-                    assert!(blocks.windows(2).all(|b| b[0].range.end == b[1].range.start));
+                    assert!(
+                        blocks
+                            .windows(2)
+                            .all(|b| b[0].range.end == b[1].range.start)
+                    );
                 }
             }
             let visible = mesh.draw_culled(&spec, eye, Mat4::IDENTITY, 0.0, Some(Vec3::ZERO));
-            assert!(visible.iter().map(|r| r.end-r.start).sum::<u32>()
-                < mesh.draw(&spec, eye).iter().map(|r| r.end-r.start).sum::<u32>());
+            assert!(
+                visible.iter().map(|r| r.end - r.start).sum::<u32>()
+                    < mesh
+                        .draw(&spec, eye)
+                        .iter()
+                        .map(|r| r.end - r.start)
+                        .sum::<u32>()
+            );
             assert_eq!(visible.last().unwrap(), &mesh.apron);
         }
     }
