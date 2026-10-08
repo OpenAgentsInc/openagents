@@ -25,6 +25,7 @@ fn shader() -> String {
 @group(0) @binding(2) var water_tile: texture_2d<f32>;
 @group(0) @binding(3) var water_tile_sampler: sampler;
 @group(0) @binding(4) var water_waves: texture_2d_array<f32>;
+fn water_host_rain_open(world: vec3<f32>) -> f32 { return 1.0; }
 fn water_host_control() -> vec4<f32> { return vec4<f32>(0.0, 1.0, 1.0, 1.0); }
 fn water_host_sky(dir: vec3<f32>, level: f32) -> vec3<f32> { return vec3<f32>(0.0); }
 fn water_host_sun() -> vec4<f32> { return vec4<f32>(0.0); }
@@ -43,7 +44,7 @@ fn water_host_shadow(world: vec3<f32>, n: vec3<f32>, pixel: vec2<f32>) -> f32 { 
 }
 @fragment fn fs_ocean(@builtin(position) at: vec4<f32>) -> @location(0) vec4<f32> {
     let p0 = points[u32(at.x)].xy;
-    let wave = water_ocean_move(0u, p0, 1.0e6, 1.0);
+    let wave = water_ocean_move(0u, p0, 1.0e6, 1.0, 0.0);
     return vec4<f32>(wave.xyz, 1.0);
 }
 "

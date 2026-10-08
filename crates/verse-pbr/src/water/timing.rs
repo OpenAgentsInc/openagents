@@ -47,7 +47,7 @@ impl CpuTimer {
 #[derive(Clone, Copy, Debug, Default, serde::Serialize)]
 pub struct GpuSample {
     pub frame: u64,
-    pub pass_ms: [Option<f64>; 4],
+    pub pass_ms: [Option<f64>; 5],
     pub water_ms: f64,
 }
 
@@ -95,12 +95,12 @@ pub(crate) struct Timer {
 
 /// Charge dependent passes by their completion frontier on tile GPUs,
 /// without counting overlapping time twice or retaining stale pass values.
-fn sample(frame: u64, ticks: [u64; 8], mask: u8, period: f64) -> Option<GpuSample> {
+fn sample(frame: u64, ticks: [u64; 10], mask: u8, period: f64) -> Option<GpuSample> {
     if !period.is_finite() || period <= 0.0 || mask & 8 == 0 {
         return None;
     }
     let mut order = Vec::new();
-    for i in 0..4 {
+    for i in 0..5 {
         if mask & (1 << i) == 0 {
             continue;
         }
@@ -120,7 +120,7 @@ fn sample(frame: u64, ticks: [u64; 8], mask: u8, period: f64) -> Option<GpuSampl
         // Copy and surface time starts at the previous completion frontier.
         // This charges the color-copy command between opaque and depth-copy
         // passes, which cannot carry a render-pass timestamp itself.
-        let begin = if i >= 2 && previous > 0 {
+        let begin = if (2..4).contains(&i) && previous > 0 {
             previous
         } else {
             start.max(previous)
@@ -152,17 +152,17 @@ impl Timer {
                     query: device.create_query_set(&wgpu::QuerySetDescriptor {
                         label: Some("Verse water pass timestamps"),
                         ty: wgpu::QueryType::Timestamp,
-                        count: 8,
+                        count: 10,
                     }),
                     resolve: device.create_buffer(&wgpu::BufferDescriptor {
                         label: Some("Verse water query resolve"),
-                        size: 64,
+                        size: 80,
                         usage: wgpu::BufferUsages::QUERY_RESOLVE | wgpu::BufferUsages::COPY_SRC,
                         mapped_at_creation: false,
                     }),
                     readback: device.create_buffer(&wgpu::BufferDescriptor {
                         label: Some("Verse water delayed timestamps"),
-                        size: 64,
+                        size: 80,
                         usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
                         mapped_at_creation: false,
                     }),
@@ -257,7 +257,7 @@ impl Timer {
         // An unwritten query can stall Vulkan or invalidate Metal readback.
         // Every resolve starts at the required 256-byte alignment; copy each
         // written pair to its own position before reusing the resolve buffer.
-        for pass in 0..4 {
+        for pass in 0..5 {
             if mask & (1 << pass) == 0 {
                 continue;
             }
@@ -288,10 +288,10 @@ impl Timer {
         slot.awaiting = Some((self.frame, mask, receive));
     }
     pub fn bytes(&self) -> u64 {
-        // Eight 64-bit query results, plus equally sized resolve and
+        // Ten 64-bit query results, plus equally sized resolve and
         // readback buffers, for each bounded slot. Driver metadata is
         // opaque and is outside declared-resource accounting.
-        3 * (64 + 64 + 64)
+        3 * (80 + 80 + 80)
     }
 }
 
@@ -300,23 +300,23 @@ mod tests {
     use super::*;
     #[test]
     fn timestamps_charge_overlapping_passes_once_and_exclude_opaque() {
-        let result = sample(7, [100, 120, 100, 150, 100, 170, 100, 200], 15, 1e6).unwrap();
+        let result = sample(7, [100, 120, 100, 150, 100, 170, 100, 200, 0, 0], 15, 1e6).unwrap();
         assert_eq!(
             result.pass_ms,
-            [Some(20.0), Some(30.0), Some(20.0), Some(30.0)]
+            [Some(20.0), Some(30.0), Some(20.0), Some(30.0), None]
         );
         assert_eq!(result.water_ms, 70.0);
-        let no_mirror = sample(8, [0, 0, 100, 150, 150, 170, 170, 200], 14, 1e6).unwrap();
+        let no_mirror = sample(8, [0, 0, 100, 150, 150, 170, 170, 200, 0, 0], 14, 1e6).unwrap();
         assert_eq!(no_mirror.pass_ms[0], None);
         assert_eq!(no_mirror.water_ms, 50.0);
-        let gaps = sample(9, [100, 120, 120, 150, 200, 220, 240, 270], 15, 1e6).unwrap();
+        let gaps = sample(9, [100, 120, 120, 150, 200, 220, 240, 270, 0, 0], 15, 1e6).unwrap();
         assert_eq!(
             gaps.pass_ms,
-            [Some(20.0), Some(30.0), Some(70.0), Some(50.0)]
+            [Some(20.0), Some(30.0), Some(70.0), Some(50.0), None]
         );
         assert_eq!(gaps.water_ms, 140.0);
-        assert!(sample(9, [0; 8], 8, 1.0).is_none());
-        assert!(sample(9, [100, 120, 0, 0, 0, 0, 200, 100], 9, 1.0).is_none());
-        assert!(sample(9, [0; 8], 0, 1.0).is_none());
+        assert!(sample(9, [0; 10], 8, 1.0).is_none());
+        assert!(sample(9, [100, 120, 0, 0, 0, 0, 200, 100, 0, 0], 9, 1.0).is_none());
+        assert!(sample(9, [0; 10], 0, 1.0).is_none());
     }
 }

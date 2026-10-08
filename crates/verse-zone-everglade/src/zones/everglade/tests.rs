@@ -577,3 +577,24 @@ fn private_layer_scene_proof() {
     .unwrap();
     eprintln!("private scene proof: {}", report["scene"]);
 }
+
+#[test]
+fn rain_cover_protects_rooms_porches_arcades_and_bridges() {
+    let cover = solids::build(pack(), &layout::placements()).unwrap();
+    use layout::{agora, estate, civic};
+    let rooms = [
+        ("workshop hall", [0.0, 6.0], 0.1),
+        ("owner's great room", estate::OWNERS_HOUSE.world([0.0, -18.4]), estate::FLOOR),
+        ("owner's porch", estate::OWNERS_HOUSE.world([0.0, -10.0]), estate::FLOOR),
+        ("Agora", agora::AGORA.world([0.0, -15.0]), agora::FLOOR),
+        ("Agora arcade", agora::AGORA.world([12.0, -15.0]), agora::FLOOR),
+        ("Civic Hall", civic::CIVIC.world([0.0, -19.6]), civic::FLOOR),
+    ];
+    for (name, [x,z], floor) in rooms {
+        let p = Vec3::new(x, height(x,z) + floor + 1.6, z);
+        assert!(!cover.rain_open(p), "{name} must have rain cover: {p:?}");
+        let top = cover.rain_height(x,z).unwrap();
+        assert!(cover.rain_open(Vec3::new(x, top + 0.1, z)), "exposed roof stays wet");
+    }
+    assert!(cover.rain_open(Vec3::new(-40.0, height(-40.0,0.0)+1.6, 0.0)), "outdoors stays open");
+}

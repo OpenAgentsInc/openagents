@@ -162,3 +162,5 @@ fn fs_water_transmit(i: WaterOut) -> @location(0) vec4<f32> {
     let shade = water_fragment(i);
     return vec4<f32>(clamp(shade.transmit, vec3<f32>(0.0), vec3<f32>(1.0)), 1.0);
 }
+
+fn water_host_rain_open(world: vec3<f32>) -> f32 { return 1.0; }

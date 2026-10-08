@@ -102,13 +102,30 @@ fn main() -> Result<(), String> {
             sky.set_schedule(schedule);
             sky.fix(Some(TICK));
         }
-        for place in ["pond", "street"] {
+        for place in ["pond", "street", "workshop", "house", "porch", "agora", "arcade", "civic"] {
             match place {
                 "pond" => {
                     let ([cx, cz], r) = PONDS[0];
                     let at = Vec3::new(cx - r - 4.5, 0.0, cz + 3.0);
                     stand(&mut runtime, at, Vec3::new(cx + 2.0, 0.0, cz - 1.0))?;
                     camera(&mut runtime, 4.5, 0.32);
+                }
+                "workshop" => {
+                    runtime.set_spawn(Vec3::new(0.0, 0.1, 6.0), 0.0)?;
+                    camera(&mut runtime, 1.0, 0.15);
+                }
+                "house" | "porch" | "agora" | "arcade" | "civic" => {
+                    use zones::everglade::layout::{estate, agora, civic};
+                    let (building, local, floor) = match place {
+                        "house" => (estate::OWNERS_HOUSE, [0.0,-18.4], estate::FLOOR),
+                        "porch" => (estate::OWNERS_HOUSE, [0.0,-10.0], estate::FLOOR),
+                        "agora" => (agora::AGORA, [0.0,-15.0], agora::FLOOR),
+                        "arcade" => (agora::AGORA, [12.0,-15.0], agora::FLOOR),
+                        _ => (civic::CIVIC, [0.0,-19.6], civic::FLOOR),
+                    };
+                    let [x,z] = building.world(local);
+                    runtime.set_spawn(Vec3::new(x, zones::everglade::height(x,z)+floor, z), building.yaw)?;
+                    camera(&mut runtime, 1.0, 0.15);
                 }
                 _ => {
                     let at = zones::everglade::Everglade::spawn();
@@ -140,11 +157,16 @@ fn main() -> Result<(), String> {
                 .collect();
             let water = dynamic.neon.as_ref().and_then(|n| n.water);
             let sources = water.map_or(0, |w| w.sources().len());
+            let runtime_eye = runtime.view(1.6).eye;
             let glade = runtime
                 .everglade_zone_mut()
                 .ok_or("Everglade is not installed")?;
             let sky = glade.sky().ok_or("Everglade has no weather")?.clone();
             let rain_particles = glade.rainfall().map_or(0, |r| r.particles.len());
+            let mut visible_rain = Vec::new();
+            if let Some(rain) = glade.rainfall() {
+                rain.draw_covered(&mut visible_rain, runtime_eye, |p| glade.solids().rain_open(p));
+            }
             let rain_budget = glade.rainfall().map_or(0, |r| r.budget());
             let water_particles = glade.water_fx().map_or(0, |fx| fx.len());
             let wet_character = glade.character_wetness();
@@ -173,6 +195,8 @@ fn main() -> Result<(), String> {
                 "pond_rest_m": ew::pond_level(0),
                 "rain_particles": rain_particles,
                 "rain_particle_budget": rain_budget,
+                "visible_rain_particles": visible_rain.len(),
+                "camera_under_cover": !glade.solids().rain_open(runtime_eye),
                 "water_particles": water_particles,
                 "ripple_sources": sources,
                 "character_wetness": wet_character,
