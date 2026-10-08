@@ -1505,7 +1505,12 @@ async fn follow(
             }
             CommandFrame::Stderr(text) => {
                 for row in text.lines().filter(|row| !row.trim().is_empty()) {
-                    if !output.json() && row.starts_with("boat:") {
+                    if output.json() {
+                        event(
+                            &output,
+                            json!({"event": "stderr", "issue": issue, "sandbox": id, "line": row}),
+                        );
+                    } else if row.starts_with("boat:") {
                         eprintln!("#{issue} {row}");
                     }
                     errors.push_back(row.to_owned());
