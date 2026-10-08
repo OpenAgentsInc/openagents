@@ -25,8 +25,105 @@ pub mod system;
 
 pub use def::Effect;
 pub use library::Library;
-pub use sprite::{Facing, Sprite, SpriteVertex, budget, vertices};
+pub use sprite::{
+    Facing, Ribbon, RibbonPoint, Sprite, SpriteVertex, budget, vertices, vertices_with_ribbons,
+};
 pub use system::{Handle, Particles, Spawn, Style};
+
+use std::sync::atomic::{AtomicU8, Ordering};
+use verse_engine::quality::{Platform, Tier};
+
+// Zero means that no renderer has published its adapter-selected tier yet.
+static RENDER_TIER: AtomicU8 = AtomicU8::new(0);
+
+/// Publishes the active renderer's selected tier for effect density.
+pub fn set_render_tier(tier: Tier) {
+    RENDER_TIER.store(tier_code(tier), Ordering::Release);
+}
+
+/// The adapter-selected tier, or the platform and operator's choice before
+/// a renderer opens.
+#[must_use]
+pub fn render_tier() -> Tier {
+    let published = RENDER_TIER.load(Ordering::Acquire);
+    if (1..=3).contains(&published) {
+        return selected_tier(published, None, Platform::current());
+    }
+    let requested = std::env::var("VERSE_QUALITY")
+        .ok()
+        .and_then(|v| Tier::parse(&v));
+    selected_tier(published, requested, Platform::current())
+}
+
+fn tier_code(tier: Tier) -> u8 {
+    match tier {
+        Tier::Low => 1,
+        Tier::Medium => 2,
+        Tier::High => 3,
+    }
+}
+
+fn selected_tier(published: u8, requested: Option<Tier>, platform: Platform) -> Tier {
+    match published {
+        1 => Tier::Low,
+        2 => Tier::Medium,
+        3 => Tier::High,
+        _ => requested.unwrap_or(match platform {
+            Platform::Desktop => Tier::High,
+            Platform::Mobile | Platform::Web => Tier::Medium,
+        }),
+    }
+}
+
+#[cfg(test)]
+mod render_tier_tests {
+    use super::*;
+    use verse_engine::quality::Probe;
+
+    #[test]
+    fn an_adapter_downgrade_overrides_the_requested_particle_density() {
+        let requested = Some(Tier::High);
+        let probe = Probe {
+            platform: Platform::Desktop,
+            gles: true,
+            float_target: false,
+            compute: false,
+            samples: 1,
+        };
+        let effective = probe.select(requested);
+        assert_eq!(
+            selected_tier(tier_code(effective), requested, Platform::Desktop),
+            Tier::Low
+        );
+        assert_eq!(
+            selected_tier(tier_code(Tier::Medium), requested, Platform::Desktop),
+            Tier::Medium
+        );
+        assert_eq!(
+            selected_tier(0, Some(Tier::Low), Platform::Desktop),
+            Tier::Low
+        );
+        assert_eq!(selected_tier(0, None, Platform::Web), Tier::Medium);
+        assert_eq!(selected_tier(0, None, Platform::Desktop), Tier::High);
+    }
+}
 
 #[cfg(test)]
 mod tests;
+
+/// Surface reached by a shared impact event.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ImpactSurface {
+    Ground,
+    Masonry,
+}
+
+/// A gameplay strike published once for its coordinated visual layers.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ImpactEvent {
+    pub at: glam::Vec3,
+    pub normal: glam::Vec3,
+    pub surface: ImpactSurface,
+    pub intensity: f32,
+    pub seed: u32,
+}

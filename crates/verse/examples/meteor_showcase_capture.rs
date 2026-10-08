@@ -109,6 +109,8 @@ struct Sample {
     chunks: usize,
     posed: usize,
     sprites: usize,
+    ribbons: usize,
+    ribbon_segments: usize,
     draws: u64,
     triangles: u64,
     flash_lights: usize,
@@ -284,6 +286,8 @@ fn report(phases: &[(&str, Vec<Sample>)]) -> serde_json::Value {
                 "chunks_max": most(|s| s.chunks as u64),
                 "posed_vertices_max": most(|s| s.posed as u64),
                 "sprites_max": most(|s| s.sprites as u64),
+                "ribbons_max": most(|s| s.ribbons as u64),
+                "ribbon_segments_max": most(|s| s.ribbon_segments as u64),
                 "draws_max": most(|s| s.draws),
                 "triangles_max": most(|s| s.triangles),
                 "flash_lights_selected_max": most(|s| s.flash_lights as u64),
@@ -790,6 +794,12 @@ fn main() -> Result<(), String> {
                 sample.density_max = sample.density_max.max(sprite.density);
             }
         }
+        sample.ribbons = dynamic.ribbons.len();
+        sample.ribbon_segments = dynamic
+            .ribbons
+            .iter()
+            .map(|r| r.points.len().saturating_sub(1))
+            .sum();
         most_sprites = most_sprites.max(sprites);
         let pixels = renderer.render(runtime.view(aspect), &dynamic, &ui)?;
         (sample.encode, sample.gpu) = renderer.last_timing();
@@ -971,6 +981,10 @@ fn main() -> Result<(), String> {
         "steps_per_frame": steps,
         "quality": std::env::var("VERSE_QUALITY").unwrap_or_default(),
         "effective_quality": renderer.quality().tier.name(),
+        "particle_budget": verse::fx::budget(renderer.quality().tier),
+        "frame_budget_ms": 1000.0/fps,
+        "impact_layers": ["flash", "stretched_sparks_one_bounce", "cooling_fireball", "ground_dust_ring", "projected_scorch", "smolder", "distance_shake"],
+        "trail": "Connected camera-facing ribbon widening and cooling behind the rock, with retained smoke and embers.",
         "adapter": {
             "name": renderer.adapter_info().name,
             "vendor": renderer.adapter_info().vendor,

@@ -478,3 +478,36 @@ fn swirl_turns_particles_about_the_axis_and_pull_draws_them_in() {
         assert!((1.45..1.6).contains(&r), "{r}");
     }
 }
+
+#[test]
+fn seeded_impacts_keep_the_flash_across_tiers_and_other_effects() {
+    let run = |tier, extra| {
+        let mut fx = system(1);
+        fx.set_tier(tier);
+        if extra {
+            fx.start("meteor_head", Spawn::at(Vec3::Y * 50.0));
+        }
+        fx.start_seeded(
+            "meteor_explosion",
+            Spawn::at(Vec3::Y * 8.0).along(Vec3::X),
+            42,
+        );
+        fx.tick(0.05, flat);
+        let mut sprites = Vec::new();
+        fx.draw(&mut sprites);
+        let flash = *sprites.iter().find(|s| s.priority == 10).unwrap();
+        let ground = sprites
+            .iter()
+            .filter(|s| s.facing == Facing::Ground)
+            .collect::<Vec<_>>();
+        assert!(ground.iter().all(|s| (s.at.y - 0.08).abs() < 0.01));
+        (flash, sprites.len())
+    };
+    let high = run(Tier::High, false);
+    let medium = run(Tier::Medium, false);
+    let low = run(Tier::Low, true);
+    assert_eq!(high.0, medium.0);
+    assert_eq!(high.0, low.0);
+    assert!(medium.1 < high.1);
+    assert!(low.1 < medium.1);
+}

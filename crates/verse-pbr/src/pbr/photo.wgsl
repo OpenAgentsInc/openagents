@@ -1736,7 +1736,7 @@ fn vs_sprite(v: SpriteIn) -> SpriteOut {
 // side facing away from the source; ambient light keeps that side visible.
 fn sprite_surface(i: SpriteOut, texel: vec4<f32>) -> vec3<f32> {
     let toward = normalize(f.eye.xyz - i.center_half.xyz);
-    let radial = (i.world - i.center_half.xyz) / max(i.center_half.w, 1e-4);
+    let radial = (i.world - i.center_half.xyz) / max(abs(i.center_half.w), 1e-4);
     let n = normalize(radial + toward * 0.65);
     let wrap = clamp((dot(n, f.sun.xyz) + 0.5) / 1.5, 0.0, 1.0);
     let density = clamp(i.params.w - 2.0, 0.0, 8.0);
@@ -1788,7 +1788,7 @@ fn fs_sprite(i: SpriteOut) -> @location(0) vec4<f32> {
             lit = sprite_surface(i, texel);
         }
     }
-    let soft = soft_particle(i.world, i.clip.xy);
+    let soft = select(soft_particle(i.world, i.clip.xy), 1.0, i.center_half.w < 0.0);
     let rgb = mix(emitted, lit, lit_share) * alpha * soft;
     let cover = texel.a * alpha * (1.0 - clamp(i.params.z, 0.0, 1.0)) * soft;
     return vec4<f32>(rgb, cover);

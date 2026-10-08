@@ -314,6 +314,12 @@ pub struct Emitter {
     /// speed; 0 lets them pass through.
     #[serde(default)]
     pub bounce: f32,
+    /// Maximum ground bounces; 0 preserves unlimited bounces.
+    #[serde(default)]
+    pub bounce_limit: u8,
+    /// Projects this emitter to the ground under the impact.
+    #[serde(default)]
+    pub ground: bool,
     /// Higher priorities are drawn first when a frame's budget runs out.
     #[serde(default)]
     pub priority: u8,

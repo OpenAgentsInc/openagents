@@ -1,32 +1,6 @@
-# What an arcing meteor leaves in the air: a short tongue of fire that
-# cools into a long column of dark smoke, and embers streaming off. Moved
-# with the meteor (`Particles::place`), its axis back along the flight;
-# stopped when it lands, so the smoke hangs where it flew.
-description = "An arcing meteor's fire, its long trail of dark smoke, and streaming embers."
+# Smoke and embers retained behind the connected flame ribbon.
+description = "Smoke and ember sparks hanging behind a meteor's flame ribbon."
 
-# Fire shed where the meteor passes, cooling fast.
-[[emitter]]
-name = "fire"
-sheet = "fireball"
-frames = [2, 14]
-animate = "life"
-luminance = 12.0
-rate = 190.0
-life = [0.22, 0.4]
-inherit = 0.15
-spread = 180.0
-speed = [0.2, 0.8]
-gravity = 1.0
-drag = 2.0
-size = [0.45, 0.65]
-scale = [[0.0, 0.9], [0.4, 1.4], [1.0, 1.8]]
-color = [[1.0, 0.78, 0.45], [1.0, 0.42, 0.1], [0.45, 0.2, 0.12]]
-alpha = [[0.0, 0.95], [0.5, 0.6], [1.0, 0.0]]
-additive = [1.0, 0.7, 0.2]
-spin = [-1.5, 1.5]
-priority = 6
-
-# Dark smoke that hangs along the arc, swells, and drifts up.
 [[emitter]]
 name = "smoke"
 sheet = "smoke"

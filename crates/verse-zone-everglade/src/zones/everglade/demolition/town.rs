@@ -1552,7 +1552,12 @@ impl Town {
                 }
                 caster.due = 5.0;
             }
-            npc_blows.extend(caster.swarm.tick(dt, &caster.player, &mut self.wreck));
+            npc_blows.extend(caster.swarm.tick_from_viewer(
+                dt,
+                &caster.player,
+                player.pos,
+                &mut self.wreck,
+            ));
             // NPC impacts have no separate combat log; drain them every frame.
             caster.swarm.take_impacts();
         }

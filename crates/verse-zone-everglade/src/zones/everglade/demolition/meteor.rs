@@ -63,8 +63,8 @@
 
 use super::site::{Blow, Target};
 use crate::controller::PlayerController;
-use crate::fx::{Handle, Particles, Spawn};
-use crate::mesh::{Mesh, Vertex};
+use crate::fx::{Handle, ImpactEvent, ImpactSurface, Particles, Ribbon, RibbonPoint, Spawn};
+use crate::mesh::Mesh;
 use crate::pbr::{GlowVertex, Lamp, LitVertex, MAX_FLASH_CANDIDATES};
 use crate::zones::everglade::height;
 use glam::Vec3;
@@ -517,6 +517,8 @@ pub struct Swarm {
     bolts: Vec<Bolt>,
     /// Where strikes landed since the last [`Swarm::take_impacts`].
     impacts: Vec<Impact>,
+    impact_fx: Vec<ImpactEvent>,
+    trailing: Vec<(Meteor, f32)>,
     damage: Damage,
     /// The fire, smoke, sparks, and shockwaves.
     fx: Particles,
@@ -551,6 +553,8 @@ impl Default for Swarm {
             meteors: Vec::new(),
             bolts: Vec::new(),
             impacts: Vec::new(),
+            impact_fx: Vec::new(),
+            trailing: Vec::new(),
             damage: Damage {
                 fire: 0,
                 bludgeoning: 0,
@@ -855,6 +859,18 @@ impl Swarm {
     /// Advances the cast, the meteors, and their fire for `player`, and
     /// explodes what lands on `site`. Returns each explosion's blows.
     pub fn tick(&mut self, dt: f32, player: &PlayerController, site: &mut dyn Target) -> Vec<Blow> {
+        self.tick_from_viewer(dt, player, player.pos, site)
+    }
+
+    /// Advances `caster`'s strike, attenuating impact shake by the actual
+    /// viewer's distance, including when an NPC casts the strike.
+    pub fn tick_from_viewer(
+        &mut self,
+        dt: f32,
+        caster: &PlayerController,
+        viewer_pos: Vec3,
+        site: &mut dyn Target,
+    ) -> Vec<Blow> {
         self.flashes.tick(dt);
         self.clock += dt;
         self.cooldown = (self.cooldown - dt).max(0.0);
@@ -878,8 +894,13 @@ impl Swarm {
             }
         }
         let mut blows = self.tick_bolts(dt, site);
+        self.fx.set_tier(crate::fx::render_tier());
+        for (_, age) in &mut self.trailing {
+            *age += dt;
+        }
+        self.trailing.retain(|(_, age)| *age < 0.4);
         // Embers swirl up around the caster while the cast runs.
-        let hands = player.pos + Vec3::Y;
+        let hands = caster.pos + Vec3::Y;
         match (self.casting.is_some(), self.gathering) {
             (true, None) => self.gathering = self.fx.start("cast_embers", Spawn::at(hands)),
             (true, Some(embers)) => self.fx.place(embers, hands, Vec3::ZERO),
@@ -924,8 +945,8 @@ impl Swarm {
                     };
                     meteor.fire = self
                         .fx
-                        .start(head, spawn.scaled(meteor.size))
-                        .zip(self.fx.start(trail, spawn))
+                        .start_seeded(head, spawn.scaled(meteor.size), meteor.seed)
+                        .zip(self.fx.start_seeded(trail, spawn, meteor.seed))
                         .map(|(head, trail)| [head, trail]);
                 }
                 Some(fire) => {
@@ -942,7 +963,15 @@ impl Swarm {
         }
         for &(index, at) in &landed {
             let meteor = self.meteors[index];
-            blows.extend(self.explode(at, meteor.face, meteor.size, meteor.arcs(), site));
+            self.trailing.push((meteor, 0.0));
+            blows.extend(self.explode(
+                at,
+                meteor.face,
+                meteor.size,
+                meteor.arcs(),
+                meteor.seed,
+                site,
+            ));
         }
         let gone: Vec<usize> = landed.iter().map(|&(i, _)| i).collect();
         let mut index = 0;
@@ -954,6 +983,7 @@ impl Swarm {
             scorch.age += dt;
         }
         self.scorches.retain(|s| s.age < SCORCH_LIFE);
+        self.consume_impact_fx(viewer_pos);
         self.fx.tick(dt, height);
         blows
     }
@@ -1250,6 +1280,7 @@ impl Swarm {
         face: Vec3,
         size: f32,
         arc: bool,
+        seed: u32,
         site: &mut dyn Target,
     ) -> Vec<Blow> {
         let ground = height(at.x, at.z);
@@ -1261,45 +1292,19 @@ impl Swarm {
         // throwing what the last one loosened, so each throws softer.
         let throw = if arc { THROW * ARC_THROW } else { THROW };
         let blows = site.explode_facing(center, blast, self.damage.total(), throw, face);
-        let seed = self.next();
-        self.fx
-            .start("meteor_explosion", Spawn::at(center).scaled(size));
-        self.impact(Impact {
+        self.impact_fx.push(ImpactEvent {
             at: center,
-            normal: if face == Vec3::ZERO { Vec3::Y } else { face },
-            strike: Strike::Meteors,
-            radius: blast,
-        });
-        self.shake = (self.shake + 0.55 * size).min(1.0);
-        if arc {
-            // Smoke keeps climbing from the ruin under it.
-            let under = Vec3::new(center.x, ground + 0.3, center.z);
-            self.fx
-                .start("meteor_smolder", Spawn::at(under).scaled(size));
-        }
-        if center.y - ground > 1.5 {
-            // High on a wall: embers where it burst, no mark on the ground.
-            // An arc's ruin smolders from the ground instead, since the
-            // wall it burst on soon falls.
-            if !arc {
-                self.fx
-                    .start("scorch_embers", Spawn::at(center).scaled(size));
-            }
-            return blows;
-        }
-        let floor = Vec3::new(center.x, ground, center.z);
-        self.fx.start(
-            "scorch_embers",
-            Spawn::at(floor + Vec3::Y * 0.08).scaled(size),
-        );
-        if self.scorches.len() >= MAX_SCORCHES {
-            self.scorches.remove(0);
-        }
-        let radius = blast * (0.75 + 0.15 * self.unit());
-        self.scorches.push(Scorch {
-            at: Vec3::new(center.x, ground, center.z),
-            radius,
-            age: 0.0,
+            normal: if face.length_squared() < 0.01 {
+                Vec3::Y
+            } else {
+                face.normalize()
+            },
+            surface: if center.y - ground > 1.5 {
+                ImpactSurface::Masonry
+            } else {
+                ImpactSurface::Ground
+            },
+            intensity: size,
             seed,
         });
         blows
@@ -1309,6 +1314,45 @@ impl Swarm {
     /// explosions, sparks, and scorch marks, seen from `eye`.
     pub fn draw(&self, mesh: &mut Mesh, eye: Vec3) {
         self.draw_over(mesh, eye, &height);
+    }
+
+    /// One consumer starts every layer from the gameplay event's parameters.
+    fn consume_impact_fx(&mut self, viewer: Vec3) {
+        for event in std::mem::take(&mut self.impact_fx) {
+            let size = event.intensity;
+            self.fx.start_seeded(
+                "meteor_explosion",
+                Spawn::at(event.at).along(event.normal).scaled(size),
+                event.seed,
+            );
+            let floor = Vec3::new(
+                event.at.x,
+                height(event.at.x, event.at.z) + 0.08,
+                event.at.z,
+            );
+            self.fx
+                .start_seeded("meteor_smolder", Spawn::at(floor).scaled(size), event.seed);
+            self.fx
+                .start_seeded("scorch_embers", Spawn::at(floor).scaled(size), event.seed);
+            self.impact(Impact {
+                at: event.at,
+                normal: event.normal,
+                strike: Strike::Meteors,
+                radius: BLAST * size,
+            });
+            let attenuation = (1.0 - viewer.distance(event.at) / 65.0).clamp(0.0, 1.0);
+            self.shake = (self.shake + 0.55 * size * attenuation).min(1.0);
+            if self.scorches.len() >= MAX_SCORCHES {
+                self.scorches.remove(0);
+            }
+            let radius = BLAST * size * (0.75 + 0.15 * noise(event.seed, 100));
+            self.scorches.push(Scorch {
+                at: floor,
+                radius,
+                age: 0.0,
+                seed: event.seed,
+            });
+        }
     }
 
     /// [`Self::draw`], with the circle laid over `surface`, the height of
@@ -1340,6 +1384,12 @@ impl Swarm {
             scorch_mark(mesh, scorch);
         }
         self.fx.draw(&mut mesh.sprites);
+        for meteor in self.meteors.iter().filter(|m| m.flying()) {
+            mesh.ribbons.push(meteor_ribbon(meteor, 1.0));
+        }
+        for (meteor, age) in &self.trailing {
+            mesh.ribbons.push(meteor_ribbon(meteor, 1.0 - age / 0.4));
+        }
         for meteor in self.meteors.iter().filter(|m| m.t > 0.0) {
             rock(mesh, meteor, self.clock);
         }
@@ -1846,32 +1896,51 @@ fn circle(
 /// A dark ragged scorch on the ground, shrinking away at the end of its
 /// life.
 fn scorch_mark(mesh: &mut Mesh, scorch: &Scorch) {
-    let left = SCORCH_LIFE - scorch.age;
-    let k = (left / 4.0).clamp(0.0, 1.0);
-    let radius = scorch.radius * k.sqrt();
-    if radius <= 0.01 {
+    let k = ((SCORCH_LIFE - scorch.age) / 4.0).clamp(0.0, 1.0);
+    if k <= 0.0 {
         return;
     }
-    let ground = |x: f32, z: f32| Vec3::new(x, height(x, z) + 0.03, z);
-    let center = ground(scorch.at.x, scorch.at.z);
-    let sides = 18;
-    let edge: Vec<Vec3> = (0..sides)
+    let rect = crate::fx::sheet::find("sparks").unwrap().rect(3);
+    mesh.sprites.push(crate::fx::Sprite {
+        at: scorch.at + Vec3::Y * 0.01,
+        half: scorch.radius * k.sqrt(),
+        angle: noise(scorch.seed, 100) * TAU,
+        tail: Vec3::ZERO,
+        facing: crate::fx::Facing::Ground,
+        color: CHAR,
+        alpha: 0.9 * k,
+        additive: 0.0,
+        lit: true,
+        scene_lit: false,
+        density: 1.0,
+        layer: crate::fx::sheet::layer("sparks").unwrap(),
+        rect_a: rect,
+        rect_b: rect,
+        mix: 0.0,
+        priority: 8,
+    });
+}
+
+fn meteor_ribbon(meteor: &Meteor, fade: f32) -> Ribbon {
+    let length = meteor.t.min(0.48).max(0.0);
+    let points = (0..13)
         .map(|i| {
-            let angle = TAU * i as f32 / sides as f32;
-            let r = radius * (0.7 + 0.3 * noise(scorch.seed, 100 + i));
-            ground(scorch.at.x + angle.cos() * r, scorch.at.z + angle.sin() * r)
+            let age = i as f32 / 12.0;
+            let at = meteor.at((meteor.t - length * age).max(0.0));
+            let heat = (1.0 - age).powi(2);
+            RibbonPoint {
+                at,
+                half: meteor.size * (0.24 + age * 0.8),
+                color: mix([1.2, 0.06, 0.01], [12.0, 5.0, 0.8], heat),
+                alpha: fade * (1.0 - age).powf(0.7),
+            }
         })
         .collect();
-    let color = mix(CHAR, [0.11, 0.08, 0.05], 1.0 - k);
-    for i in 0..sides as usize {
-        let (a, b) = (edge[i], edge[(i + 1) % edge.len()]);
-        for p in [center, b, a] {
-            mesh.faces.push(Vertex {
-                pos: p.to_array(),
-                color,
-                fog: 1.0,
-            });
-        }
+    Ribbon {
+        points,
+        layer: crate::fx::sheet::layer("fireball").unwrap(),
+        rect: crate::fx::sheet::find("fireball").unwrap().rect(6),
+        priority: 8,
     }
 }
 
@@ -2123,5 +2192,75 @@ impl Swarm {
     /// Seconds of cooldown left.
     pub fn cooldown_left(&self) -> f32 {
         self.cooldown
+    }
+}
+
+#[cfg(test)]
+mod impact_fx_tests {
+    use super::*;
+
+    #[test]
+    fn npc_impact_shake_uses_the_viewer_instead_of_the_caster() {
+        let caster = PlayerController::new(Vec3::ZERO, 0.0);
+        let run = |viewer| {
+            let mut swarm = Swarm::default();
+            swarm.impact_fx.push(ImpactEvent {
+                at: Vec3::Y * 6.0,
+                normal: Vec3::Y,
+                surface: ImpactSurface::Masonry,
+                intensity: 1.0,
+                seed: 42,
+            });
+            let mut site = super::super::site::Site::new(Vec::new(), 1);
+            swarm.tick_from_viewer(0.0, &caster, viewer, &mut site);
+            swarm
+        };
+        let near = run(Vec3::Y * 6.0);
+        let far = run(Vec3::X * 1000.0);
+        assert!(near.shake > 0.0);
+        assert_eq!(far.shake, 0.0);
+        assert_eq!(
+            near.impacts, far.impacts,
+            "viewer distance changes only shake"
+        );
+        assert_eq!(near.fx.effects(), far.fx.effects());
+        assert!(near.impact_fx.is_empty() && far.impact_fx.is_empty());
+    }
+
+    #[test]
+    fn eight_events_start_once_and_reset_clears_every_layer() {
+        let mut swarm = Swarm::default();
+        for seed in 1..=8 {
+            swarm.impact_fx.push(ImpactEvent {
+                at: Vec3::new(seed as f32, 6.0, 0.0),
+                normal: Vec3::X,
+                surface: ImpactSurface::Masonry,
+                intensity: 1.0,
+                seed,
+            });
+        }
+        swarm.consume_impact_fx(Vec3::ZERO);
+        assert_eq!(swarm.impacts.len(), 8);
+        assert_eq!(swarm.scorches.len(), 8);
+        assert_eq!(swarm.fx.effects(), 24);
+        assert!(swarm.impact_fx.is_empty());
+        swarm.consume_impact_fx(Vec3::ZERO);
+        assert_eq!(swarm.fx.effects(), 24);
+        let nearby = swarm.shake;
+        swarm.shake = 0.0;
+        swarm.impact_fx.push(ImpactEvent {
+            at: Vec3::X * 1000.0,
+            normal: Vec3::Y,
+            surface: ImpactSurface::Ground,
+            intensity: 1.0,
+            seed: 42,
+        });
+        swarm.consume_impact_fx(Vec3::ZERO);
+        assert!(nearby > 0.0);
+        assert_eq!(swarm.shake, 0.0);
+        swarm.reset();
+        assert!(swarm.fx.is_empty());
+        assert!(swarm.scorches.is_empty());
+        assert!(swarm.impacts.is_empty());
     }
 }

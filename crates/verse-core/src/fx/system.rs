@@ -7,13 +7,14 @@
 use std::sync::Arc;
 
 use glam::{Quat, Vec3};
+use verse_engine::quality::Tier;
 
 use super::def::{Animate, Effect, Emitter, Light, Orient, Shape};
 use super::library::Library;
 use super::sprite::{Facing, Sprite};
 
-/// Most particles one [`Particles`] keeps alive; past it, new particles
-/// replace the oldest.
+/// Most particles one [`Particles`] keeps alive; at the cap, higher-priority
+/// particles replace lower-priority ones.
 pub const MAX_PARTICLES: usize = 4096;
 /// Most effects running at once.
 pub const MAX_EFFECTS: usize = 256;
@@ -76,6 +77,8 @@ struct Running {
     /// Whether each emitter's burst has fired.
     burst: Vec<bool>,
     stopped: bool,
+    /// Independent streams keep a shared impact seed stable across tiers.
+    streams: Option<Vec<u32>>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -98,6 +101,8 @@ struct Particle {
     /// `pull` turn it about.
     center: Vec3,
     axis: Vec3,
+    bounces: u8,
+    rng: u32,
 }
 
 /// The particles of every running effect.
@@ -108,6 +113,7 @@ pub struct Particles {
     particles: Vec<Particle>,
     next_handle: u64,
     rng: u32,
+    tier: Tier,
 }
 
 impl Particles {
@@ -129,6 +135,7 @@ impl Particles {
             particles: Vec::new(),
             next_handle: 1,
             rng: seed.max(1),
+            tier: Tier::High,
         }
     }
 
@@ -177,7 +184,31 @@ impl Particles {
             owed: vec![0.0; count],
             burst: vec![false; count],
             stopped: false,
+            streams: None,
         });
+        Some(handle)
+    }
+
+    /// Sets emission density; mandatory flash cards survive every tier.
+    pub fn set_tier(&mut self, tier: Tier) {
+        self.tier = tier;
+    }
+
+    /// Starts a coordinated effect with independent streams per emitter.
+    pub fn start_seeded(&mut self, name: &str, spawn: Spawn, seed: u32) -> Option<Handle> {
+        let handle = self.start(name, spawn)?;
+        let r = self.running.last_mut()?;
+        r.streams = Some(
+            (0..r.burst.len())
+                .map(|i| {
+                    let mut x = seed ^ (i as u32).wrapping_add(1).wrapping_mul(0x9e3779b9);
+                    x ^= x >> 16;
+                    x = x.wrapping_mul(0x85ebca6b);
+                    x ^= x >> 13;
+                    x.max(1)
+                })
+                .collect(),
+        );
         Some(handle)
     }
 
@@ -233,10 +264,38 @@ impl Particles {
                 if r.age < emitter.delay {
                     continue;
                 }
+                let scale = if r.streams.is_some() {
+                    match (self.tier, emitter.priority) {
+                        (_, 10..) | (Tier::High, _) => 1.0,
+                        (Tier::Medium, 6..=9) => 0.65,
+                        (Tier::Medium, _) => 0.4,
+                        (Tier::Low, 6..=9) => 0.25,
+                        (Tier::Low, _) => 0.08,
+                    }
+                } else {
+                    1.0
+                };
+                let spawn = if emitter.ground {
+                    Spawn {
+                        at: Vec3::new(
+                            r.spawn.at.x,
+                            ground(r.spawn.at.x, r.spawn.at.z) + 0.08,
+                            r.spawn.at.z,
+                        ),
+                        axis: Vec3::Y,
+                        ..r.spawn
+                    }
+                } else {
+                    r.spawn
+                };
+                let saved_rng = self.rng;
+                if let Some(streams) = &r.streams {
+                    self.rng = streams[i];
+                }
                 if !r.burst[i] {
                     r.burst[i] = true;
-                    for _ in 0..emitter.burst {
-                        self.emit(r.handle, r.effect, i, emitter, &r.spawn);
+                    for _ in 0..((emitter.burst as f32 * scale).ceil() as u32) {
+                        self.emit(r.handle, r.effect, i, emitter, &spawn);
                     }
                 }
                 if emitter.rate > 0.0 {
@@ -247,7 +306,7 @@ impl Particles {
                         r.age
                     };
                     if end > start {
-                        r.owed[i] += emitter.rate * (end - start);
+                        r.owed[i] += emitter.rate * scale * (end - start);
                         let n = r.owed[i].floor();
                         r.owed[i] -= n;
                         // Spread along the step so a fast trail stays
@@ -256,12 +315,16 @@ impl Particles {
                         for k in 0..total {
                             let back = r.spawn.velocity * dt * (k as f32 / total.max(1) as f32);
                             let spawn = Spawn {
-                                at: r.spawn.at - back,
-                                ..r.spawn
+                                at: spawn.at - back,
+                                ..spawn
                             };
                             self.emit(r.handle, r.effect, i, emitter, &spawn);
                         }
                     }
+                }
+                if let Some(streams) = &mut r.streams {
+                    streams[i] = self.rng;
+                    self.rng = saved_rng;
                 }
             }
             // Emitters done: the effect stops by itself.
@@ -275,16 +338,15 @@ impl Particles {
             }
         }
         // Step.
-        let mut rng = self.rng;
         for p in &mut self.particles {
             let e = &library.effects[p.effect as usize].emitters[p.emitter as usize];
             p.age += dt;
             if e.wander > 0.0 {
                 let mut unit = || {
-                    rng ^= rng << 13;
-                    rng ^= rng >> 17;
-                    rng ^= rng << 5;
-                    (rng >> 8) as f32 / (1u32 << 24) as f32 * 2.0 - 1.0
+                    p.rng ^= p.rng << 13;
+                    p.rng ^= p.rng >> 17;
+                    p.rng ^= p.rng << 5;
+                    (p.rng >> 8) as f32 / (1u32 << 24) as f32 * 2.0 - 1.0
                 };
                 let push = Vec3::new(unit(), unit(), unit());
                 p.vel += push * e.wander * dt;
@@ -305,15 +367,19 @@ impl Particles {
                 let floor = ground(p.at.x, p.at.z) + 0.03;
                 if p.at.y < floor {
                     p.at.y = floor;
-                    p.vel = Vec3::new(
-                        p.vel.x * e.bounce,
-                        -p.vel.y * e.bounce * 0.5,
-                        p.vel.z * e.bounce,
-                    );
+                    if e.bounce_limit > 0 && p.bounces >= e.bounce_limit {
+                        p.vel = Vec3::ZERO;
+                    } else {
+                        p.bounces = p.bounces.saturating_add(1);
+                        p.vel = Vec3::new(
+                            p.vel.x * e.bounce,
+                            -p.vel.y * e.bounce * 0.5,
+                            p.vel.z * e.bounce,
+                        );
+                    }
                 }
             }
         }
-        self.rng = rng;
         self.particles.retain(|p| p.age < p.life);
         // A stopped effect is gone once its last particle is.
         let mut live: Vec<u64> = self.particles.iter().map(|p| p.owner).collect();
@@ -325,7 +391,22 @@ impl Particles {
 
     fn emit(&mut self, owner: Handle, effect: usize, index: usize, e: &Emitter, spawn: &Spawn) {
         if self.particles.len() >= MAX_PARTICLES {
-            self.particles.remove(0);
+            let lowest = self
+                .particles
+                .iter()
+                .enumerate()
+                .min_by_key(|(_, p)| {
+                    self.library.effects[p.effect as usize].emitters[p.emitter as usize].priority
+                })
+                .map(|(i, _)| i)
+                .unwrap();
+            let p = &self.particles[lowest];
+            if self.library.effects[p.effect as usize].emitters[p.emitter as usize].priority
+                > e.priority
+            {
+                return;
+            }
+            self.particles.remove(lowest);
         }
         let s = spawn.scale;
         let turn = Quat::from_rotation_arc(Vec3::Y, spawn.axis);
@@ -374,6 +455,8 @@ impl Particles {
             scale: s,
             center: spawn.at,
             axis: spawn.axis,
+            bounces: 0,
+            rng: self.rng.max(1),
         });
     }
 
@@ -537,11 +620,51 @@ impl Style {
             scale: 1.0,
             center: at,
             axis: Vec3::Y,
+            bounces: 0,
+            rng: seed.max(1),
         };
         let mut s = sprite(e, &p);
         for (c, k) in s.color.iter_mut().zip(tint) {
             *c *= k;
         }
         Some(s)
+    }
+}
+
+#[cfg(test)]
+mod collision_tests {
+    use super::*;
+    #[test]
+    fn a_limited_spark_bounces_once_then_rests_above_ground() {
+        let source = r#"description = "A falling spark."
+[[emitter]]
+name = "spark"
+sheet = "sparks"
+burst = 1
+life = [5.0, 5.0]
+size = [0.1, 0.1]
+direction = [0.0, -1.0, 0.0]
+speed = [4.0, 4.0]
+gravity = -9.8
+bounce = 0.8
+bounce_limit = 1
+"#;
+        let library = Arc::new(Library::parse([("spark", source)]).unwrap());
+        let mut fx = Particles::with_library(library, u64::MAX, 5);
+        fx.start_seeded("spark", Spawn::at(Vec3::Y), 42);
+        let mut upward_contacts = 0;
+        let mut before = -4.0;
+        for _ in 0..240 {
+            fx.tick(1.0 / 60.0, |_, _| 0.0);
+            let p = fx.particles[0];
+            assert!(p.at.y >= 0.03);
+            if p.vel.y > 0.0 && before <= 0.0 {
+                upward_contacts += 1;
+            }
+            before = p.vel.y;
+        }
+        assert_eq!(upward_contacts, 1);
+        assert_eq!(fx.particles[0].bounces, 1);
+        assert_eq!(fx.particles[0].vel, Vec3::ZERO);
     }
 }

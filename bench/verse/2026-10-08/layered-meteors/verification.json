@@ -1,0 +1,59 @@
+{
+  "schema": "openagents.verse.layered-meteors.v1",
+  "issue": 10935,
+  "base_commit": "c2192677e64b940099e11efe2fc0dd17b4713bf6",
+  "baseline_binary_sha256": "d57162fbc569049c5ae3d84a4376a6a2a06c286fbb6ae4da7e5d9ccedda15eab",
+  "sources": {
+    "assets/verse/fx/effects/meteor_arc_trail.toml": "1358d228ba18c8283b18d007840f29f8bf5c8dc9c0f92127d51c92b2750d70f4",
+    "assets/verse/fx/effects/meteor_explosion.toml": "02ea252f9376d38aa9c5ad87dfc7bbe6af3933c55384e8afbf6917f08494d9c3",
+    "assets/verse/fx/effects/meteor_trail.toml": "0cfa304c66c89e9bd26c6af9d848fea4cd8e737f723f4d4693a576c5caaf0b59",
+    "crates/verse-core/src/fx/def.rs": "43fdce5bd4f17007ad4abdc634a80bd409f9bd5bad17ebf5b6d273ad6167a762",
+    "crates/verse-core/src/fx/mod.rs": "156fe80c9f0b53bb6ac2df9024f8d801cba3341e27ecd81d51970e4081be4ba2",
+    "crates/verse-core/src/fx/system.rs": "ad0db13324b4c61a8b09329bd244953c876d1f8180623ad6b4b1472022394e12",
+    "crates/verse-core/src/fx/tests.rs": "3836b3c349737c4a014534fba180fe3540f64353b7e6492d71fbf04beb365a69",
+    "crates/verse-pbr/src/fx/mod.rs": "9391b36b4bf01718d192858e59f4587544addc30d752adb33c1f77f605f3c58a",
+    "crates/verse-pbr/src/fx/sprite.rs": "85bc2a59cc7021fceea2a5c92a218d6e22fafb45171986665fe4784f9e49b7e3",
+    "crates/verse-pbr/src/mesh.rs": "54bb7212c0bb420cda2f3c248ba2f2a6b6aecfaac622932290b3efeaa747a689",
+    "crates/verse-pbr/src/pbr/photo.wgsl": "ea38edea4bb54356333b00e3d2e137704bcb47b0a47272ae684dc0bee3a847bf",
+    "crates/verse-zone-everglade/src/zones/everglade/demolition/meteor.rs": "3222bece2d0cd4db924dd107e22213ee15f71fe4d957c9c1a94e5d973c2086e5",
+    "crates/verse-zone-everglade/src/zones/everglade/demolition/town.rs": "b3cec84e72b1888f3a9306cf551030f5f504aa4f061ccf813d1717feaf523466",
+    "crates/verse/examples/meteor_showcase_capture.rs": "d109fbf23f3bfdeb7512e2c1fd4ff7792ce52a8d5108121fe869646fe09080a4",
+    "crates/verse/src/render.rs": "c3ce9e6a4bb69895fe6660c4afc6524960cbb8c8db1c0d5e7ae4f9930a09339e"
+  },
+  "checks": {
+    "verse-core": 62,
+    "verse-pbr": 156,
+    "verse-pbr-ignored": 7,
+    "verse-zone-everglade": 260,
+    "verse-render": 11,
+    "verse-gles": 11,
+    "verse-meteor-showcase": 8,
+    "formatting": "passed",
+    "diff": "passed"
+  },
+  "capture": {
+    "mode": "live",
+    "seconds": 14,
+    "frames": 840,
+    "width": 1920,
+    "height": 1080,
+    "impact_frame": 469,
+    "flight_frame": 420,
+    "smoke_frame": 600,
+    "light_settled": true,
+    "tiers": [
+      "high",
+      "medium",
+      "low"
+    ],
+    "lease_receipt": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10935-tiers-atlas-lease.json"
+  },
+  "review": [
+    "Eight distinct meteor ribbons and layered impact events.",
+    "Ground dust and smolder projected below wall hits.",
+    "Scorch quads use the soot atlas and bypass soft depth fade.",
+    "Seeded flash retained at all tiers; optional smoke reduced first.",
+    "NPC shake attenuated from the actual viewer."
+  ],
+  "timing_limit": "The recorded 16.67 ms target is not yet met during the swarm; physics and debris remain for #10937. Frame timing is the harness sum of simulation, dynamic mesh, encoding, and GPU completion; the visible window can overlap CPU and GPU work."
+}

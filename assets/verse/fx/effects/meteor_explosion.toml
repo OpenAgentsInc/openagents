@@ -70,6 +70,7 @@ sheet = "sparks"
 frames = [2, 2]
 animate = "random"
 orient = "ground"
+ground = true
 luminance = 14.0
 burst = 1
 life = [0.65, 0.65]
@@ -92,6 +93,7 @@ speed = [6.0, 18.0]
 gravity = -9.0
 drag = 0.6
 bounce = 0.4
+bounce_limit = 1
 size = [0.07, 0.13]
 stretch = 0.06
 stretch_max = 2.0
@@ -103,6 +105,7 @@ priority = 7
 # Dust shoved out along the ground by the shockwave.
 [[emitter]]
 name = "dust ring"
+ground = true
 sheet = "sparks"
 frames = [3, 3]
 animate = "random"
@@ -147,11 +150,12 @@ scale = [[0.0, 0.6], [0.4, 1.5], [1.0, 2.4]]
 color = [[0.0, [0.32, 0.22, 0.16]], [0.3, [0.2, 0.19, 0.18]], [1.0, [0.34, 0.34, 0.34]]]
 alpha = [[0.0, 0.0], [0.08, 0.9], [0.6, 0.65], [1.0, 0.0]]
 spin = [-0.4, 0.4]
-priority = 6
+priority = 3
 
 # Fire that keeps licking the ground for a moment.
 [[emitter]]
 name = "ground fire"
+ground = true
 sheet = "fireball"
 frames = [2, 10]
 animate = "life"

@@ -36,6 +36,8 @@ pub struct Mesh {
     pub glow: Vec<crate::pbr::GlowVertex>,
     /// Textured particle sprites in physical frames (see [`crate::fx`]).
     pub sprites: Vec<crate::fx::Sprite>,
+    /// Connected camera-facing particle trails.
+    pub ribbons: Vec<crate::fx::Ribbon>,
     /// Present when this frame renders in physical units.
     pub sky: Option<crate::pbr::Sky>,
     /// Present when this frame renders the amber world as a neon stage.
@@ -157,6 +159,7 @@ impl Mesh {
         self.lit.extend_from_slice(&other.lit);
         self.glow.extend_from_slice(&other.glow);
         self.sprites.extend_from_slice(&other.sprites);
+        self.ribbons.extend_from_slice(&other.ribbons);
         self.liquid.extend_from_slice(&other.liquid);
         if other.sky.is_some() {
             self.sky.clone_from(&other.sky);

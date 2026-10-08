@@ -2403,6 +2403,7 @@ impl Scene {
         let (ui_pipeline, ui_photo, ui_bind_group, ui_screen, ui_texture) =
             verse_gfx::ui_pipeline::ui_pipeline_with_texture(device, queue, format, samples, atlas);
         let capability = Capability::probe(adapter, device, format, requested_samples);
+        crate::fx::set_render_tier(capability.quality.tier);
         let ui = Batch {
             buffer: device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("verse ui"),
@@ -2718,8 +2719,9 @@ impl Scene {
             &dynamic.glow[..dynamic.glow.len().min(glow_limit)],
         );
         let mut sprites = Vec::new();
-        crate::fx::vertices(
+        crate::fx::vertices_with_ribbons(
             &dynamic.sprites,
+            &dynamic.ribbons,
             view.eye,
             crate::fx::budget(self.capability.quality.tier),
             &mut sprites,

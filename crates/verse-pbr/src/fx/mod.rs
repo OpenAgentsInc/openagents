@@ -6,4 +6,6 @@ pub mod fire;
 pub mod sheet;
 pub mod sprite;
 
-pub use sprite::{Facing, Sprite, SpriteVertex, budget, vertices};
+pub use sprite::{
+    Facing, Ribbon, RibbonPoint, Sprite, SpriteVertex, budget, vertices, vertices_with_ribbons,
+};
