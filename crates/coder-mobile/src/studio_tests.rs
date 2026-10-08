@@ -900,6 +900,7 @@ mod scratch_host {
             &greet,
             "Change the greeting",
             None,
+            None,
         )
         .expect("the task's worktree");
         std::fs::write(worktree.join("greeting.txt"), GREETING).expect("a change");
