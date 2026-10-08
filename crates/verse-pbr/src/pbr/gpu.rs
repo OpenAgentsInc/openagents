@@ -3795,9 +3795,9 @@ impl Photo {
             self.water_measurements.copies = split;
             self.water_measurements.mirror = mirror.is_some();
             self.water_measurements.ssr = split && targets.water_plan.ssr_steps > 0;
-            self.water_measurements.effects_reduced = effects
-                != verse_engine::quality::WaterEffects::Full
-                || (self.water_screen.is_some() && !targets.water_plan.copies);
+            self.water_measurements.effects_reduced = effects.refresh_every() > 1
+                || targets.water_plan
+                    != crate::water::screen::Plan::of(self.capability.quality.tier);
             self.water_policy.observe(verse_engine::quality::WaterLoad {
                 gpu_ms: self.water_measurements.gpu.map(|s| s.water_ms),
                 gpu_bytes: self.water_measurements.gpu_bytes,
