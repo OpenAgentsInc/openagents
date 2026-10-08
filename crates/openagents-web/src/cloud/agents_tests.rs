@@ -74,6 +74,11 @@ async fn resident_with_alice(rights: Rights) -> (Fixture, Resident, Cookies, Arc
                 BTreeMap::new(),
             )
             .with_engine(engine)
+            // Relay the request as one step instead of planning with her
+            // live model, whose unreachable endpoint costs seconds per turn.
+            .with_mind(Arc::new(|_record| {
+                Ok(coder::task::agent_steer::Mind::relay())
+            }))
             .with_coder_state(private.join("agent-coder-state"));
             inbox.with_agents(agents)
         },
