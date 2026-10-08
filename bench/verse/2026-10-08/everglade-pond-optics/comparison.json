@@ -1,0 +1,415 @@
+{
+  "issue": 10919,
+  "finding": "The cited W3 captures precede W5 scene-copy refraction and planar reflection. The issue does not reproduce on current Medium or High.",
+  "w3_capture_commit": "fa5320828a",
+  "w5_implementation_commit": "a6f138a248",
+  "capture_hour": 12,
+  "bake": "fc5414a1bfef9e730f3d7d779e4447f12cc86d4e571042eec42518abb30ef7c2",
+  "no_rebake": true,
+  "limitations": [
+    "View and player positions match exactly. Scene assets and lighting have advanced since W3; these are not pixel-isolated optical benchmarks.",
+    "Current captures include licensed kit assets and remain outside Git. Metadata and hashes are retained here."
+  ],
+  "captures": [
+    {
+      "tier": "high",
+      "view": "lantern-above",
+      "eye": [
+        -3.543635845184326,
+        8.056204795837402,
+        15.157907485961914
+      ],
+      "player": [
+        -2.4259684085845947,
+        0.0,
+        21.32785415649414
+      ],
+      "before": {
+        "path": "bench/verse/2026-10-07/everglade-water/lantern-above.png",
+        "sha256": "0ed5011ce7b88fba7717766cb5225546b01033e54e9417557faa6e44d8be3431",
+        "source": "fa5320828a"
+      },
+      "current": {
+        "private_path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/pond-optics/high/lantern-above.png",
+        "sha256": "d04be9a4ab2ed02504052306a432450a0a2555b3e8ca4a74c19a4ef6611a9221",
+        "source": "32bb3e469a",
+        "scene": "f55a1e76fca2e2b96af777e296549aa9b51776cadbcfff6eaf1c77a8ad83b2ab"
+      }
+    },
+    {
+      "tier": "high",
+      "view": "lantern-eye",
+      "eye": [
+        -2.4259684085845947,
+        1.6999999284744263,
+        21.32785415649414
+      ],
+      "player": [
+        -2.4259684085845947,
+        0.0,
+        21.32785415649414
+      ],
+      "before": {
+        "path": "bench/verse/2026-10-07/everglade-water/lantern-eye.png",
+        "sha256": "4ea9fca446c71b04eabce19d440a1ce5e99960bc0aa22d159397a37ff9dae2d8",
+        "source": "fa5320828a"
+      },
+      "current": {
+        "private_path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/pond-optics/high/lantern-eye.png",
+        "sha256": "25d5ac0ecd01c2d08f7dba21f2824e5bee6dc00fcd671b70284a228de6b25f7a",
+        "source": "32bb3e469a",
+        "scene": "f55a1e76fca2e2b96af777e296549aa9b51776cadbcfff6eaf1c77a8ad83b2ab"
+      }
+    },
+    {
+      "tier": "high",
+      "view": "reed-above",
+      "eye": [
+        3.212149143218994,
+        8.056204795837402,
+        -30.050537109375
+      ],
+      "player": [
+        4.6367878913879395,
+        0.0,
+        -36.15691375732422
+      ],
+      "before": {
+        "path": "bench/verse/2026-10-07/everglade-water/reed-above.png",
+        "sha256": "3a7462916b739a700bf8f45cbc6f59937ce7deba2f95c1dca5c8b4d6129cc9b0",
+        "source": "fa5320828a"
+      },
+      "current": {
+        "private_path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/pond-optics/high/reed-above.png",
+        "sha256": "606d602aa35458587056f1eb45f3f54cc932679be460d224f99370caa3d1a39d",
+        "source": "32bb3e469a",
+        "scene": "f55a1e76fca2e2b96af777e296549aa9b51776cadbcfff6eaf1c77a8ad83b2ab"
+      }
+    },
+    {
+      "tier": "high",
+      "view": "reed-eye",
+      "eye": [
+        4.6367878913879395,
+        1.6999999284744263,
+        -36.15691375732422
+      ],
+      "player": [
+        4.6367878913879395,
+        0.0,
+        -36.15691375732422
+      ],
+      "before": {
+        "path": "bench/verse/2026-10-07/everglade-water/reed-eye.png",
+        "sha256": "3f9ffc01f9882700b12b9c6cb3bd523504ffbc7d053149cccff3d924db0ec7a4",
+        "source": "fa5320828a"
+      },
+      "current": {
+        "private_path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/pond-optics/high/reed-eye.png",
+        "sha256": "ca0d3b543e45e3301eb7bd3710a2c8502081553b016625ece69adac3e4e04d08",
+        "source": "32bb3e469a",
+        "scene": "f55a1e76fca2e2b96af777e296549aa9b51776cadbcfff6eaf1c77a8ad83b2ab"
+      }
+    },
+    {
+      "tier": "high",
+      "view": "thinking-above",
+      "eye": [
+        -105.18598175048828,
+        5.512333869934082,
+        -70.02999877929688
+      ],
+      "player": [
+        -108.22264862060547,
+        0.0,
+        -67.95249938964844
+      ],
+      "before": {
+        "path": "bench/verse/2026-10-07/everglade-water/thinking-above.png",
+        "sha256": "0c5296d59f91e071bdc9f803020446e977503b885df552591023938eb5c97a05",
+        "source": "fa5320828a"
+      },
+      "current": {
+        "private_path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/pond-optics/high/thinking-above.png",
+        "sha256": "3c81a2812e73f7a90711338279cda178518b916231bb77ecb7c5482519e4c3cc",
+        "source": "32bb3e469a",
+        "scene": "f55a1e76fca2e2b96af777e296549aa9b51776cadbcfff6eaf1c77a8ad83b2ab"
+      }
+    },
+    {
+      "tier": "high",
+      "view": "thinking-eye",
+      "eye": [
+        -108.22264862060547,
+        1.6999999284744263,
+        -67.95249938964844
+      ],
+      "player": [
+        -108.22264862060547,
+        0.0,
+        -67.95249938964844
+      ],
+      "before": {
+        "path": "bench/verse/2026-10-07/everglade-water/thinking-eye.png",
+        "sha256": "d049b97281910c3b1234f34028c2142fecc92b030d37925e3724433bfe5758ca",
+        "source": "fa5320828a"
+      },
+      "current": {
+        "private_path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/pond-optics/high/thinking-eye.png",
+        "sha256": "3cf528dd6b01577df851fbd29047397cedfa44288ba4adb91faaf325f5e34624",
+        "source": "32bb3e469a",
+        "scene": "f55a1e76fca2e2b96af777e296549aa9b51776cadbcfff6eaf1c77a8ad83b2ab"
+      }
+    },
+    {
+      "tier": "high",
+      "view": "fern-above",
+      "eye": [
+        81.49141693115234,
+        8.056204795837402,
+        66.4770736694336
+      ],
+      "player": [
+        85.66920471191406,
+        0.0,
+        71.15291595458984
+      ],
+      "before": {
+        "path": "bench/verse/2026-10-07/everglade-water/fern-above.png",
+        "sha256": "a5150c75f3d9c415582127cf7725db21ba4b8cdd0503ede8003f20b14f876ee3",
+        "source": "fa5320828a"
+      },
+      "current": {
+        "private_path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/pond-optics/high/fern-above.png",
+        "sha256": "543886329ee1d4de1e892e2fe74f7b155a1a0dfd67f8d8568db9f71cec7d7953",
+        "source": "32bb3e469a",
+        "scene": "f55a1e76fca2e2b96af777e296549aa9b51776cadbcfff6eaf1c77a8ad83b2ab"
+      }
+    },
+    {
+      "tier": "high",
+      "view": "fern-eye",
+      "eye": [
+        85.66920471191406,
+        1.6999999284744263,
+        71.15291595458984
+      ],
+      "player": [
+        85.66920471191406,
+        0.0,
+        71.15291595458984
+      ],
+      "before": {
+        "path": "bench/verse/2026-10-07/everglade-water/fern-eye.png",
+        "sha256": "008ee4354389fe93c27af608cf84c86ddc56982bf0579e50e1c1810f3a824e4e",
+        "source": "fa5320828a"
+      },
+      "current": {
+        "private_path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/pond-optics/high/fern-eye.png",
+        "sha256": "7319d6910399b3d804342226c3037adf84e61626ec2cfa275c6b579f97966857",
+        "source": "32bb3e469a",
+        "scene": "f55a1e76fca2e2b96af777e296549aa9b51776cadbcfff6eaf1c77a8ad83b2ab"
+      }
+    },
+    {
+      "tier": "medium",
+      "view": "lantern-above",
+      "eye": [
+        -3.543635845184326,
+        8.056204795837402,
+        15.157907485961914
+      ],
+      "player": [
+        -2.4259684085845947,
+        0.0,
+        21.32785415649414
+      ],
+      "before": {
+        "path": "bench/verse/2026-10-07/everglade-water/lantern-above.png",
+        "sha256": "0ed5011ce7b88fba7717766cb5225546b01033e54e9417557faa6e44d8be3431",
+        "source": "fa5320828a"
+      },
+      "current": {
+        "private_path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/pond-optics/medium/lantern-above.png",
+        "sha256": "0284bcc0c0ed5a9b700e23740a4025ebfe652d2eca4e985cba856d3165cb83b2",
+        "source": "32bb3e469a",
+        "scene": "f55a1e76fca2e2b96af777e296549aa9b51776cadbcfff6eaf1c77a8ad83b2ab"
+      }
+    },
+    {
+      "tier": "medium",
+      "view": "lantern-eye",
+      "eye": [
+        -2.4259684085845947,
+        1.6999999284744263,
+        21.32785415649414
+      ],
+      "player": [
+        -2.4259684085845947,
+        0.0,
+        21.32785415649414
+      ],
+      "before": {
+        "path": "bench/verse/2026-10-07/everglade-water/lantern-eye.png",
+        "sha256": "4ea9fca446c71b04eabce19d440a1ce5e99960bc0aa22d159397a37ff9dae2d8",
+        "source": "fa5320828a"
+      },
+      "current": {
+        "private_path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/pond-optics/medium/lantern-eye.png",
+        "sha256": "b8fc0466a310847a0f33922b1d726cf17036902ea9074120baa4d1cbfd10f4d8",
+        "source": "32bb3e469a",
+        "scene": "f55a1e76fca2e2b96af777e296549aa9b51776cadbcfff6eaf1c77a8ad83b2ab"
+      }
+    },
+    {
+      "tier": "medium",
+      "view": "reed-above",
+      "eye": [
+        3.212149143218994,
+        8.056204795837402,
+        -30.050537109375
+      ],
+      "player": [
+        4.6367878913879395,
+        0.0,
+        -36.15691375732422
+      ],
+      "before": {
+        "path": "bench/verse/2026-10-07/everglade-water/reed-above.png",
+        "sha256": "3a7462916b739a700bf8f45cbc6f59937ce7deba2f95c1dca5c8b4d6129cc9b0",
+        "source": "fa5320828a"
+      },
+      "current": {
+        "private_path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/pond-optics/medium/reed-above.png",
+        "sha256": "2edbe479da87b7f2500270536db6427dd2624c2bb3b8add0d85311b0ff0e851a",
+        "source": "32bb3e469a",
+        "scene": "f55a1e76fca2e2b96af777e296549aa9b51776cadbcfff6eaf1c77a8ad83b2ab"
+      }
+    },
+    {
+      "tier": "medium",
+      "view": "reed-eye",
+      "eye": [
+        4.6367878913879395,
+        1.6999999284744263,
+        -36.15691375732422
+      ],
+      "player": [
+        4.6367878913879395,
+        0.0,
+        -36.15691375732422
+      ],
+      "before": {
+        "path": "bench/verse/2026-10-07/everglade-water/reed-eye.png",
+        "sha256": "3f9ffc01f9882700b12b9c6cb3bd523504ffbc7d053149cccff3d924db0ec7a4",
+        "source": "fa5320828a"
+      },
+      "current": {
+        "private_path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/pond-optics/medium/reed-eye.png",
+        "sha256": "a04fc38e9bb5eb269877327b78e183d5b9712fd864e466b528b3f8f9b60920ba",
+        "source": "32bb3e469a",
+        "scene": "f55a1e76fca2e2b96af777e296549aa9b51776cadbcfff6eaf1c77a8ad83b2ab"
+      }
+    },
+    {
+      "tier": "medium",
+      "view": "thinking-above",
+      "eye": [
+        -105.18598175048828,
+        5.512333869934082,
+        -70.02999877929688
+      ],
+      "player": [
+        -108.22264862060547,
+        0.0,
+        -67.95249938964844
+      ],
+      "before": {
+        "path": "bench/verse/2026-10-07/everglade-water/thinking-above.png",
+        "sha256": "0c5296d59f91e071bdc9f803020446e977503b885df552591023938eb5c97a05",
+        "source": "fa5320828a"
+      },
+      "current": {
+        "private_path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/pond-optics/medium/thinking-above.png",
+        "sha256": "c9e8b1c9dc198c8832c6beb4073b1f33951ba47dafb7bd8195b7a7036bf6123e",
+        "source": "32bb3e469a",
+        "scene": "f55a1e76fca2e2b96af777e296549aa9b51776cadbcfff6eaf1c77a8ad83b2ab"
+      }
+    },
+    {
+      "tier": "medium",
+      "view": "thinking-eye",
+      "eye": [
+        -108.22264862060547,
+        1.6999999284744263,
+        -67.95249938964844
+      ],
+      "player": [
+        -108.22264862060547,
+        0.0,
+        -67.95249938964844
+      ],
+      "before": {
+        "path": "bench/verse/2026-10-07/everglade-water/thinking-eye.png",
+        "sha256": "d049b97281910c3b1234f34028c2142fecc92b030d37925e3724433bfe5758ca",
+        "source": "fa5320828a"
+      },
+      "current": {
+        "private_path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/pond-optics/medium/thinking-eye.png",
+        "sha256": "9d9da5f6356a2d9a637569abbbc35429a5ca41f79af7cb1c6a25e8fa3c8d471d",
+        "source": "32bb3e469a",
+        "scene": "f55a1e76fca2e2b96af777e296549aa9b51776cadbcfff6eaf1c77a8ad83b2ab"
+      }
+    },
+    {
+      "tier": "medium",
+      "view": "fern-above",
+      "eye": [
+        81.49141693115234,
+        8.056204795837402,
+        66.4770736694336
+      ],
+      "player": [
+        85.66920471191406,
+        0.0,
+        71.15291595458984
+      ],
+      "before": {
+        "path": "bench/verse/2026-10-07/everglade-water/fern-above.png",
+        "sha256": "a5150c75f3d9c415582127cf7725db21ba4b8cdd0503ede8003f20b14f876ee3",
+        "source": "fa5320828a"
+      },
+      "current": {
+        "private_path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/pond-optics/medium/fern-above.png",
+        "sha256": "faa3e4355f5676a6f8b170028d917d652a33b0a8f568e422cecff9ff9bb13ef2",
+        "source": "32bb3e469a",
+        "scene": "f55a1e76fca2e2b96af777e296549aa9b51776cadbcfff6eaf1c77a8ad83b2ab"
+      }
+    },
+    {
+      "tier": "medium",
+      "view": "fern-eye",
+      "eye": [
+        85.66920471191406,
+        1.6999999284744263,
+        71.15291595458984
+      ],
+      "player": [
+        85.66920471191406,
+        0.0,
+        71.15291595458984
+      ],
+      "before": {
+        "path": "bench/verse/2026-10-07/everglade-water/fern-eye.png",
+        "sha256": "008ee4354389fe93c27af608cf84c86ddc56982bf0579e50e1c1810f3a824e4e",
+        "source": "fa5320828a"
+      },
+      "current": {
+        "private_path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/pond-optics/medium/fern-eye.png",
+        "sha256": "7419ab6c2eebc7a7c89a9bbfb231e267364fd230fddd4fe2c52caf27bd77c3f4",
+        "source": "32bb3e469a",
+        "scene": "f55a1e76fca2e2b96af777e296549aa9b51776cadbcfff6eaf1c77a8ad83b2ab"
+      }
+    }
+  ]
+}

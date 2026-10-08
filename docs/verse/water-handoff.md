@@ -36,10 +36,17 @@ Receipts and private capture hashes are in `production-1d126aad2b/` beside
 the measurement records. No new bake runs. #10783 and umbrella #10784 are
 code-complete; phone qualification remains owner-only.
 
-The coordinator now holds #10919 on `codex/water-pond-optics`. Its initial
-CPU regression confirms mirror admission for all four ponds on Medium and
-High from above and at eye level; visual diagnosis remains open. Coast
-C1 through C6 remain separate work.
+#10919 is verified against current Medium and High without changing the
+water shader. The cited W3 image was committed in `fa5320828a`, before
+W5 added refraction and planar reflection in `a6f138a248`. All eight pond
+viewpoints retain exactly the original eye and player positions; current
+captures show reflected sky and scene, visible beds, and depth tint. The
+capture tool now pins noon and rejects a mismatched existing bake before
+installation can start a fallback bake. The CPU regression checks scene
+copies and mirror admission for every pond on Medium and High. Comparison
+metadata is in `bench/verse/2026-10-08/everglade-pond-optics/`; current images
+contain licensed kit content and stay in private scratch. Coast C1 through
+C6 remain separate work.
 
 The earlier checkpoint below remains historical evidence.
 

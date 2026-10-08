@@ -402,3 +402,39 @@ fn splashes_stay_within_each_tier_s_particle_budget() {
     assert!(splash_scale(8.0, 80.0) > splash_scale(2.0, 80.0));
     assert!(splash_scale(4.0, 300.0) > splash_scale(4.0, 20.0));
 }
+
+#[test]
+fn every_pond_admits_reflection_and_refraction_above_and_at_eye_level() {
+    use verse_pbr::water::{body_bounds, screen};
+    let surface = surface().unwrap();
+    let vertices: Vec<_> = surface
+        .patches
+        .iter()
+        .flat_map(|p| p.vertices.iter().copied())
+        .collect();
+    let bounds = body_bounds(&vertices);
+    let water = frame(0.0);
+    for tier in [
+        verse_engine::quality::Tier::Medium,
+        verse_engine::quality::Tier::High,
+    ] {
+        let plan = screen::Plan::of(tier);
+        assert!(plan.copies && plan.mirror_divisor > 0);
+        for (k, &([x, z], radius)) in PONDS.iter().enumerate() {
+            for height in [0.5, 8.0] {
+                let level = pond_level(k);
+                let eye = Vec3::new(x, level + height, z + radius + 1.0);
+                let target = Vec3::new(x, level, z);
+                let view = glam::Mat4::perspective_rh(60.0_f32.to_radians(), 1.6, 0.1, 200.0)
+                    * glam::Mat4::look_at_rh(eye, target, Vec3::Y);
+                assert_eq!(
+                    screen::pick(&water.bodies[..water.count], &bounds, view, eye),
+                    Some(k),
+                    "{tier:?}, {}, eye height {height}, bounds {:?}",
+                    ew::POND_NAMES[k],
+                    bounds[k]
+                );
+            }
+        }
+    }
+}
