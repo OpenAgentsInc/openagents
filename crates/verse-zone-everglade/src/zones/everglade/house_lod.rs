@@ -125,6 +125,35 @@ mod tests {
     use super::*;
 
     #[test]
+    fn custom_paint_retains_the_original_house_at_every_distance() {
+        let house=houses()[0];
+        let mut pieces=Vec::new();
+        house.raise(&mut pieces);
+        let mut pack=crate::zones::everglade_pack::compile::kit::decode(
+            &crate::zones::everglade_pack::compile::kit::sample(&["bucket"])).unwrap();
+        let fixture=pack.models[0].clone();
+        pack.models=(0..3).map(|level|crate::zones::everglade_pack::Model {
+            name:model(house,level),..fixture.clone()
+        }).collect();
+        pack.models.sort_by(|a,b|a.name.cmp(&b.name));
+        let mut world=TexturedScene::default();
+        let canonical=vec![scene::Paint::default();pieces.len()];
+        let groups=configure(&pack,&pieces,&canonical,&mut world);
+        assert_eq!(groups.len(),1);
+        assert!(groups[0].near && groups[0].reduced);
+        let custom=vec![scene::Paint {plaster:Some([0.8,0.2,0.1]),roof:Some([0.1,0.3,0.7])};pieces.len()];
+        let mut world=TexturedScene::default();
+        let groups=configure(&pack,&pieces,&custom,&mut world);
+        assert_eq!(groups.len(),1);
+        assert!(!groups[0].near && !groups[0].reduced);
+        assert_eq!(world.detail_groups[0].fallback,0);
+        for distance in [10.0,50.0,120.0] {
+            let eye=Vec3::new(house.center[0]+distance,house.floor(),house.center[1]);
+            assert_eq!(world.detail_groups[0].selected(eye,None),0);
+        }
+    }
+
+    #[test]
     fn local_exports_preserve_facing_and_the_terrain_floor_baseline() {
         for house in houses() {
             let mut original=Vec::new();

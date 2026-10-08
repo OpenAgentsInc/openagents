@@ -102,14 +102,17 @@ unchanged.
   separate floor/plinth and band/wall finish faces. The headless Verse
   consumer check passes; the default check stops on the remote runtime's
   missing ALSA development metadata.
-  Public integration checkpoint `d5f04dc475` adds optional canonical house
-  levels and damage fallback; it is unformatted and unverified. No P3
+  Public integration checkpoint `b14b0e5100` adds optional canonical house
+  levels, damage fallback, inverse-transform exports, and a private CPU
+  atlas builder; it is unformatted and unverified. Atlases retain the
+  renderer's grade and tints once. Custom caller paint keeps original
+  pieces at every distance. No P3
   artifact or main commit has landed. Private CPU decimation produces
   awning/cart/fountain/lamp/stall far levels of 127/255/800/192/256
   triangles, within budgets and with exact original bounds. Seven focused
   kit-admission tests pass. Those private models still need compilation
   and admission in the real pack.
-  Remaining acceptance: private middle/far house shells and shared atlases,
+  Remaining acceptance: compile and verify private middle/far house shells and shared atlases,
   market-hall near reduction without removing visible interiors, actual
   selected batches within 10,000/3,000/800 triangles and 12/5/1 draws,
   post-gap coplanar checks, demo comparison, grade captures, and one house
@@ -137,7 +140,12 @@ Keep licensed inputs and captures outside Git. The verified private kit is
 Cargo target is `~/work/openagents-target-agent11`. The same toolbox keeps
 `house-check-actual.log`, the 65 canonical exports in `house-check-actual/`,
 `coplanar-house-00.log`, `coplanar-houses-01-04.log`, `far-clamped.log`, and
-`far-inspection-clamped.jsonl`. Private `export/`, `kit-build/`, and `packs/`
+`far-inspection-clamped.jsonl`. The supplied demo reference is
+`export/maps/Maps__medieval_town.json`, with its actor/component transforms,
+GLBs, material tables, and textures; no matching retained screenshot is
+available. Render that original input offscreen on the remote machine and
+label it "exported Unreal demo input," not an Unreal-engine screenshot.
+Record differences from the canonical town recipe. Private `export/`, `kit-build/`, and `packs/`
 remain under `~/.openagents/verse/private/medieval-town/`.
 
 The portable headless CPU runtime is Blender 4.5.14 LTS. Its official archive
