@@ -1407,24 +1407,25 @@ fn main() -> Result<(), String> {
     let flash_pool_step_ms = args
         .compare_flash_lights
         .then(|| measure_flash_pool(runtime.view(aspect).eye));
+    let pixel_readback = serde_json::json!({
+        "policy": if args.compare_temporal_aa { "all_frames_temporal_comparison" } else if args.readback_every_frame { "all_frames_legacy_override" } else if args.video.is_some() { "all_frames_video" } else { "selected_artifact_frames" },
+        "primary_readback_count": primary_readback_frames.len(),
+        "primary_readback_frame_indices": primary_readback_frames,
+        "completion_only_count": completion_only_frames.len(),
+        "completion_only_frame_indices": completion_only_frames,
+        "temporal_baseline_readback_count": if args.compare_temporal_aa { frames } else { 0 },
+        "temporal_baseline_readback_frame_indices": if args.compare_temporal_aa { Some((0..frames).collect::<Vec<_>>()) } else { None },
+        "additional_artifact_readback_count": artifact_readback_frames.len(),
+        "additional_artifact_readback_frame_indices": artifact_readback_frames,
+        "timing_scope": "Every simulation frame calls the primary renderer once, advances history and exposure, waits for completion, and enters phase statistics without outlier filtering. Initial exposure warm-up renders are included in the first sample. Encode timing includes frame validation, fitting, buffer uploads, command encoding, submission, and timestamp instrumentation. Completion timing includes polling and optional timestamp readback. Selected primary frames also include pixel copy, mapping, and CPU pixel extraction; other primary frames use Offscreen::measure and omit those pixel operations. PNG/video writes, repeated comparison renders, and additional artifact readbacks occur after the primary timing sample and are excluded. Temporal comparisons retain pixel readback on every primary and baseline frame and preserve their existing warmed-frame paired intervals.",
+    });
     let summary = serde_json::json!({
         "mode": if args.live { "live" } else { "film" },
         "camera_path": args.camera.name(),
         "static_houses": args.static_houses,
         "sequence_frames": args.sequence,
         "readback_every_frame": args.readback_every_frame,
-        "pixel_readback": {
-            "policy": if args.compare_temporal_aa { "all_frames_temporal_comparison" } else if args.readback_every_frame { "all_frames_legacy_override" } else if args.video.is_some() { "all_frames_video" } else { "selected_artifact_frames" },
-            "primary_readback_count": primary_readback_frames.len(),
-            "primary_readback_frame_indices": primary_readback_frames,
-            "completion_only_count": completion_only_frames.len(),
-            "completion_only_frame_indices": completion_only_frames,
-            "temporal_baseline_readback_count": if args.compare_temporal_aa { frames } else { 0 },
-            "temporal_baseline_readback_frame_indices": if args.compare_temporal_aa { Some((0..frames).collect::<Vec<_>>()) } else { None },
-            "additional_artifact_readback_count": artifact_readback_frames.len(),
-            "additional_artifact_readback_frame_indices": artifact_readback_frames,
-            "timing_scope": "Every simulation frame calls the primary renderer once, advances history and exposure, waits for completion, and enters phase statistics without outlier filtering. Initial exposure warm-up renders are included in the first sample. Encode timing includes frame validation, fitting, buffer uploads, command encoding, submission, and timestamp instrumentation. Completion timing includes polling and optional timestamp readback. Selected primary frames also include pixel copy, mapping, and CPU pixel extraction; other primary frames use Offscreen::measure and omit those pixel operations. PNG/video writes, repeated comparison renders, and additional artifact readbacks occur after the primary timing sample and are excluded. Temporal comparisons retain pixel readback on every primary and baseline frame and preserve their existing warmed-frame paired intervals.",
-        },
+        "pixel_readback": pixel_readback,
         "width": WIDTH,
         "height": HEIGHT,
         "fps": fps,
