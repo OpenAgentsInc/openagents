@@ -127,6 +127,11 @@ measurement interval, including superseded results; per-job duration is
 reported separately. The native bench paces actual display intervals at
 60 Hz, so back-to-back frame bursts cannot hide worker cost. Missing GPU
 results neither advance nor reset the GPU overrun streak.
+Native correctness captures read the final measured 1920 × 1080 texture;
+they do not render a smaller viewport that could re-enable dropped optics.
+Pass timestamps isolate mirror, color and depth copies, and surface work.
+Shared opaque underwater shading and implicit queue texture uploads are
+covered only by the separate wet-minus-dry fence estimate.
 
 Resume from `codex/water-w11-measurement`; acceptance is still pending.
 The first remote native check compiled the edited physics, engine, and
