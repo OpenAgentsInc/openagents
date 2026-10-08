@@ -352,7 +352,7 @@ files are included below.
 
 | Document | Role | Topic |
 | --- | --- | --- |
-| [gateway/README.md](gateway/README.md) | Runtime guide | Pro inference door: routes, GPT-5.6 catalog, Stripe hop, and Cloud Run deployment |
+| [gateway/README.md](gateway/README.md) | Runtime guide | Pro inference door: routes, GPT-5.6 allowlist, Stripe LLM proxy catalog, and Cloud Run deployment |
 
 ## growth
 
