@@ -15729,6 +15729,7 @@ dependencies = [
  "verse-pbr",
  "verse-private",
  "verse-world",
+ "verse-zone-coast",
  "verse-zone-crypt",
  "verse-zone-everglade",
  "verse-zone-grove",
@@ -16023,8 +16024,10 @@ version = "0.1.0"
 dependencies = [
  "glam",
  "physics",
+ "verse-core",
  "verse-pbr",
  "verse-water-spells",
+ "verse-world",
  "verse-zone-water",
 ]
 

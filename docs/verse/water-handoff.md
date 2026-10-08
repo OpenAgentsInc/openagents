@@ -48,15 +48,21 @@ metadata is in `bench/verse/2026-10-08/everglade-pond-optics/`; current images
 contain licensed kit content and stay in private scratch. Coast C1 through
 C6 remain separate work.
 
-C1 (#10885) is in progress. Its first checkpoint extracts the Water Lab's
-existing simulation, projectiles, and hotbar into `verse-water-spells`, with
-the old `verse-zone-water` paths re-exported. `verse-zone-coast` adds the
-named bathymetry, shared-tick tide, estuary, marsh, isolated tide pools,
-harbor shelter, boundary current, and deterministic optical and shelter
-fields. Focused release tests pass: 27 shared-water tests, 3 retained W10
-fixture tests, and 5 coast terrain and water tests. Zone entry, rendering,
-GPU shelter admission, and the bay captures are still pending; this
-checkpoint does not complete C1. No lighting bake runs.
+C1 (#10885) adds the coast shell on top of foundation `83d8edbfc2`.
+`verse --coast`, the plaza arch, and the browser's `?zone=coast` entry use
+the verified character pack and procedural terrain. Return preserves the
+plaza pose. The shared Unix tick drives the ocean tide and estuary slope;
+marsh and low-tide pools retain their own levels. Swimming uses the coast's
+600 m bounds, breath rules, and inward edge current.
+
+The harbor shelter mask and its gradient occupy an existing water-array
+binding, with one counted layer at 64² on Low and Medium and 128² on High.
+Both renderers apply it without adding a sampler. Eight coast tests,
+entry/return and plaza-clearance tests, 58 CPU water tests, shared shader
+validation, and all three RTX 4080 water parity tests pass. The explicit
+WASM and native CLI checks pass. Procedural bay captures per tier and their hashes are in
+`bench/verse/2026-10-08/coast-c1/`. C2 through C6 remain separate work;
+physical device qualification belongs to C6. No lighting bake runs.
 
 The earlier checkpoint below remains historical evidence.
 

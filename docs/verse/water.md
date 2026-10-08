@@ -583,7 +583,7 @@ local. Half damage on a failed save keeps a conducted hit below a direct
 one.
 
 The Water Lab applies this rule to its Thunderbolt (W8 note,
-[`bolt.rs`](../../crates/verse-zone-water/src/bolt.rs)): the sea and the
+[`bolt.rs`](../../crates/verse-water-spells/src/bolt.rs)): the sea and the
 river with the pool are separate bodies, a dummy counts as in the water when
 its feet are under the surface, the strike's own 3.4 m blast takes the place
 of rule 3's direct damage, and floating bodies in the same water within 6 m
@@ -616,7 +616,7 @@ from its casts.
 The Water Lab's Water Orb is our own spell (homebrew), after Create or
 Destroy Water and Control Water; the SRD has no spell that shapes a sphere of
 water and throws it, so every number is ours
-([`orb.rs`](../../crates/verse-zone-water/src/orb.rs), W8 note):
+([`orb.rs`](../../crates/verse-water-spells/src/orb.rs), W8 note):
 
 - **Grow.** While the key is held, the orb grows from 0.35 m to at most 6 m
   in radius (12 m across), by 1.6 m a second while open water lies within
@@ -1349,7 +1349,7 @@ phases above are written so the demos are not duplicated:
   7.5 m deep over 15 m square from about 50 m offshore, so the whirlpool
   meets the SRD's minimum there and refuses nearer the beach.
 - **W8 differences (2026-10-07).** The Lab runs its spells on the shared
-  rules ([`rules.rs`](../../crates/verse-zone-water/src/rules.rs)): Sleet
+  rules ([`rules.rs`](../../crates/verse-water-spells/src/rules.rs)): Sleet
   Storm is the 20-foot slush of the freezing table, Create Water's rain
   falls for 6 s, Redirect Flow runs at 1 m/s on the still sea, the trench
   is 3 m wide, the whirlpool checks the SRD's minimum, Water Walk lifts a

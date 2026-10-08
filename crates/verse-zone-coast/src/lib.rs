@@ -1,6 +1,9 @@
 //! The coast's deterministic terrain and water (`docs/verse/coast.md`).
 
+mod scene;
+mod surface;
 pub mod terrain;
+pub use scene::{Coast, world};
 pub mod water;
 
 pub use terrain::ground;

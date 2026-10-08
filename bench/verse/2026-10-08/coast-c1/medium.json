@@ -1,0 +1,27 @@
+{
+  "adapter": "AdapterInfo { name: \"Apple M5 Max\", vendor: 0, device: 0, device_type: IntegratedGpu, device_pci_bus_id: \"\", driver: \"\", driver_info: \"\", backend: Metal, subgroup_min_size: 4, subgroup_max_size: 64, transient_saves_memory: true }",
+  "tier": "Medium",
+  "licensed_assets": false,
+  "lighting_bake": false,
+  "captures": [
+    {
+      "name": "bay",
+      "tick": 43200,
+      "eye": [
+        100.0,
+        45.0,
+        -100.0
+      ],
+      "target": [
+        -40.0,
+        -2.0,
+        120.0
+      ],
+      "tide_m": 1.2,
+      "sha256": "dac83f61bc78f747818af6a51a43e29f7cb5a9a984e4bfaabbbc42d26e8291c6",
+      "bytes": 283164,
+      "gpu_frame_ms": null,
+      "file": "bay-medium.png"
+    }
+  ]
+}

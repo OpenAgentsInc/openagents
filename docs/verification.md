@@ -238,8 +238,10 @@ and continues; that result is a partial gate, not a pass.
 reason, and review date, the `paste` dependency paths, and the license
 review.
 
-`./scripts/check-fonts.sh` fails when a surface names a typeface other than
-Paper Mono or the tree tracks another font file.
+`./scripts/check-fonts.sh` admits Paper Mono on native surfaces and the
+restored variable sans face in `crates/openagents-web/`. Web pages retain
+Paper Mono for monospace content and the OpenAgents logo. The script rejects
+other font files and family names outside their admitted scope.
 
 ## Current verification record
 

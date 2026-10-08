@@ -1,7 +1,7 @@
 /* Coder Noir semantic tokens come from src/palette.rs. */
 
 *{box-sizing:border-box}
-html{background:var(--noir-canvas);color:var(--noir-content);font-family:"Paper Mono",monospace;font-size:14px;line-height:1.5;-webkit-text-size-adjust:100%}
+html{background:var(--noir-canvas);color:var(--noir-content);font-family:var(--font-body);font-size:14px;line-height:1.5;-webkit-text-size-adjust:100%}
 html,body{height:100%;overflow:hidden}
 /* The page is the window's height: the header stays at the top and only
    the region under it scrolls. */
@@ -16,7 +16,8 @@ h1{font-size:1.4rem;margin:0 0 1rem}
 h2{font-size:1.15rem;margin:2rem 0 .75rem}
 h3{font-size:1rem;margin:1.5rem 0 .5rem}
 p,ul,ol,table,pre,blockquote{margin:0 0 1rem}
-code{color:var(--noir-content);font-family:inherit}
+pre,code,kbd,samp,.mono,.term-out{font-family:var(--font-mono)}
+code{color:var(--noir-content)}
 pre{border:1px solid var(--noir-stroke-subtle);padding:.75rem 1ch;overflow-x:auto;white-space:pre;color:var(--noir-content)}
 pre code{color:inherit}
 hr{border:0;border-top:1px solid var(--noir-stroke-subtle);margin:1.5rem 0}
@@ -34,7 +35,7 @@ img{max-width:100%}
 .site-header{flex:none;border-bottom:1px solid var(--noir-stroke-subtle);background:var(--noir-canvas)}
 .site-header nav,.site-footer,main{width:min(96ch,100% - 32px);margin-inline:auto}
 .site-header nav{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.5rem 2ch;padding:.75rem 0}
-.wordmark{color:var(--noir-content);font-weight:700;text-decoration:none;letter-spacing:.02em}
+.wordmark{color:var(--noir-content);font-family:var(--font-mono);font-weight:700;text-decoration:none;letter-spacing:.02em}
 .navlinks{display:flex;flex-wrap:wrap;gap:.25rem 2ch;margin:0;padding:0;list-style:none}
 .navlinks a{color:var(--noir-content);text-decoration:none}
 .navlinks a:hover,.navlinks a[aria-current=page]{color:var(--noir-accent);text-decoration:underline}
@@ -203,6 +204,7 @@ html.stage body{display:block}
 }
 
 button:active,.button:active{background:var(--noir-control-pressed)}
+input,textarea,select{font:inherit}
 input,textarea{caret-color:var(--noir-cursor);accent-color:var(--noir-accent)}
 input::placeholder,textarea::placeholder{color:var(--noir-content-secondary)}
 .term{background:var(--noir-terminal-background)}

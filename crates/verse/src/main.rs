@@ -39,6 +39,7 @@
 //! `F` at its door returns to the plaza. `--crypt-fight` opens the cultist
 //! fight in the great crypt in a window of its own, played alone with the
 //! ritual chamber's controls; the crypt's models are built into the binary.
+//! `--coast` opens the tidal coast; its terrace arch returns to the plaza.
 //! `--water-lab` opens straight into the Water Lab, a cove with a sea, a
 //! river, and a waterfall: `1` to `5` cast its water spells, holding `6`
 //! grows a Water Orb that flies where the pointer aims when let go, `7`
@@ -325,6 +326,7 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<(Option<Shot>, Option
             }
             "--crypt" => options.crypt = true,
             "--water-lab" => options.water_lab = true,
+            "--coast" => options.coast = true,
             #[cfg(feature = "remote-chamber")]
             "--join" => options.chamber = Some(value()?.into()),
             "--demolition" => {

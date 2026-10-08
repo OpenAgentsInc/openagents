@@ -27,6 +27,7 @@
   --color-noir-accent-solid: var(--noir-accent-solid);
   --color-noir-on-accent-solid: var(--noir-accent-on-solid);
   --font-mono: "Paper Mono", monospace;
+  --font-sans: var(--font-body);
   /* site.css sets the root size to 14px; keep utilities in exact pixels. */
   --spacing: 4px;
   --text-xs: 12px;

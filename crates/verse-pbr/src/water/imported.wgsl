@@ -71,10 +71,14 @@ fn vs_water(v: WaterIn) -> WaterOut {
     } else if v.kind < 2.99 {
         scale = clamp((v.kind - 2.0) / 0.98, 0.0, 1.0);
     }
+    var depth = v.depth;
     if v.kind < 2.99 {
-        moved = water_move(v, scale, 0.0);
+        let b = water_body_index(v.body);
+        let rise = water.bodies[b].absorb.w - water.bodies[b].rest.x + dot(water.bodies[b].level_gradient.xy, v.pos.xz);
+        depth += rise;
+        moved = water_move(v, scale, rise);
     }
-    return water_out(v, moved, v.pos.xz, v.depth, frame.view * vec4<f32>(moved.world, 1.0));
+    return water_out(v, moved, v.pos.xz, depth, frame.view * vec4<f32>(moved.world, 1.0));
 }
 
 fn water_fragment(i: WaterOut) -> WaterShade {

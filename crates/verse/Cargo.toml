@@ -118,6 +118,7 @@ verse-zone-lab = { path = "../verse-zone-lab" }
 verse-zone-crypt = { path = "../verse-zone-crypt" }
 # The Water Lab zone; `verse` re-exports it as `zones::water`.
 verse-zone-water = { path = "../verse-zone-water" }
+verse-zone-coast = { path = "../verse-zone-coast" }
 # Everglade with its pack, and the Grove on that pack; `verse` re-exports
 # them as `zones::everglade`, `zones::everglade_pack`, and `zones::grove`.
 verse-zone-everglade = { path = "../verse-zone-everglade" }
@@ -360,3 +361,7 @@ required-features = ["desktop"]
 [[example]]
 name = "battle_scale"
 required-features = ["remote-chamber"]
+
+[[example]]
+name = "coast_capture"
+required-features = ["capture"]

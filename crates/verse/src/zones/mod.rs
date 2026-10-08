@@ -3,6 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 
+pub use verse_zone_coast as coast;
 pub use verse_zone_crypt as crypt;
 pub use verse_zone_everglade::zones::everglade;
 pub use verse_zone_everglade::zones::everglade_pack;
@@ -18,6 +19,8 @@ mod private_assets_tests;
 pub use verse_zone_lagrange as lagrange;
 #[cfg(test)]
 mod budget_tests;
+#[cfg(test)]
+mod coast_tests;
 #[cfg(test)]
 mod crypt_tests;
 #[cfg(test)]
@@ -85,13 +88,15 @@ pub enum ZoneId {
     MeteorStressTest,
     /// The Water Lab's cove ([`water`]), walked as Everglade's character.
     WaterLab,
+    /// The tidal coast and its 600 m playable bounds.
+    Coast,
     /// Two kit houses under an eight-meteor swarm at golden hour
     /// ([`meteor_showcase`], `verse --meteor-showcase`). No arch leads
     /// here.
     MeteorShowcase,
 }
 impl ZoneId {
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 10] = [
         Self::Plaza,
         Self::Lagrange1,
         Self::PhysicsLab,
@@ -100,6 +105,7 @@ impl ZoneId {
         Self::Crypt,
         Self::MeteorStressTest,
         Self::WaterLab,
+        Self::Coast,
         Self::MeteorShowcase,
     ];
 
@@ -133,6 +139,7 @@ impl ZoneId {
             Self::Crypt => "verse-crypt",
             Self::MeteorStressTest => "verse-meteor-stress-test",
             Self::WaterLab => "verse-water-lab",
+            Self::Coast => "verse-coast",
             Self::MeteorShowcase => "verse-meteor-showcase",
         }
     }
@@ -146,6 +153,7 @@ impl ZoneId {
             Self::Crypt => "Crypt",
             Self::MeteorStressTest => "Meteor Stress Test",
             Self::WaterLab => "Water Lab",
+            Self::Coast => "Coast",
             Self::MeteorShowcase => "Meteor Showcase",
         }
     }
@@ -159,6 +167,7 @@ impl ZoneId {
             }
             Self::Crypt => crypt::HALF_EXTENT,
             Self::WaterLab => water::HALF_EXTENT,
+            Self::Coast => coast::HALF_EXTENT,
         }
     }
     /// The zone's primary portal: the plaza's Lagrange 1 arch, or a zone's
@@ -175,6 +184,7 @@ impl ZoneId {
                     (Self::PhysicsLab, glam::Vec3::new(0.0, 0.0, -22.0)),
                     (Self::Everglade, glam::Vec3::new(-24.0, 0.0, -24.0)),
                     (Self::WaterLab, WATER_ARCH),
+                    (Self::Coast, COAST_ARCH),
                 ];
                 // The crypt's arch, opposite Everglade's, in a build that
                 // carries its models.
@@ -196,6 +206,7 @@ impl ZoneId {
             // The lantern at the head of the beach is the way out; it
             // draws no arch.
             Self::WaterLab => vec![(Self::Plaza, water::EXIT)],
+            Self::Coast => vec![(Self::Plaza, coast::RETURN_PORTAL)],
         }
     }
     /// Short arch lettering for a destination.
@@ -209,10 +220,14 @@ impl ZoneId {
             Self::Crypt => "CRYPT",
             Self::MeteorStressTest => "METEOR STRESS TEST",
             Self::WaterLab => "WATER LAB",
+            Self::Coast => "COAST",
             Self::MeteorShowcase => "METEOR SHOWCASE",
         }
     }
 }
+
+/// The plaza's arch to the coast.
+pub const COAST_ARCH: glam::Vec3 = glam::Vec3::new(0.0, 0.0, 24.0);
 
 /// The plaza's arch to the Water Lab, opposite Lagrange 1's.
 pub const WATER_ARCH: glam::Vec3 = glam::Vec3::new(-12.0, 0.0, 12.0);
@@ -249,6 +264,12 @@ pub fn atmosphere(zone: ZoneId) -> Atmosphere {
         // Everglade's haze in the low Sun's color.
         ZoneId::MeteorShowcase => meteor_showcase::atmosphere(),
         // The cove's warm sea haze.
+        ZoneId::Coast => Atmosphere {
+            color: water::sea::NOON_HAZE,
+            fog_start: 600.0,
+            fog_end: 2000.0,
+            height_fog: None,
+        },
         ZoneId::WaterLab => Atmosphere {
             color: water::sea::HAZE,
             fog_start: water::sea::FOG_START,
@@ -348,6 +369,7 @@ pub(crate) struct State {
     /// The Water Lab's sea, floats, and spells. The lab also fills
     /// `everglade`, whose movement and character it walks with.
     water: Option<Box<water::WaterLab>>,
+    coast: Option<Box<coast::Coast>>,
     /// Open Everglade as the demolition yard (`verse --demolition`).
     demolition: bool,
     /// The town clock Everglade's sky follows (`verse --town-hour`,
@@ -415,6 +437,7 @@ impl Default for State {
             grove: None,
             crypt: None,
             water: None,
+            coast: None,
             demolition: false,
             town_clock: town_clock::Clock::DAYTIME,
             dev_destruction: false,
@@ -491,7 +514,7 @@ pub(crate) fn arch(
             [0.95, 0.85, 0.4]
         }
         ZoneId::Crypt => [1.0, 0.56, 0.24],
-        ZoneId::WaterLab => [0.35, 0.8, 1.0],
+        ZoneId::WaterLab | ZoneId::Coast => [0.35, 0.8, 1.0],
     };
     // Broken concentric arcs leave the destination visible through the opening.
     for ring in 0..3 {
