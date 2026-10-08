@@ -65,6 +65,13 @@ fn recipe(script: &str, credentials: &[&str]) -> Recipe {
         capture: capture_policy(),
     }
 }
+fn pin() -> SourcePin {
+    SourcePin {
+        repository: Some("example/repo".into()),
+        revision: "a".repeat(40),
+        digest: "b".repeat(64),
+    }
+}
 fn environment(recipe: Recipe) -> Environment {
     Environment::new(
         "env-1",
@@ -72,11 +79,7 @@ fn environment(recipe: Recipe) -> Environment {
             workspace: "ws-1".into(),
             project: "proj-1".into(),
         },
-        SourcePin {
-            repository: Some("example/repo".into()),
-            revision: "a".repeat(40),
-            digest: "b".repeat(64),
-        },
+        pin(),
         recipe,
         0,
     )
@@ -140,6 +143,8 @@ struct Harness {
     faulty: Arc<AtomicBool>,
     /// The install keeps running until the test finishes it.
     slow: Arc<AtomicBool>,
+    /// The source step finds a different commit.
+    wrong: Arc<AtomicBool>,
 }
 
 fn harness_with(recipe: Recipe) -> Harness {
@@ -157,7 +162,8 @@ fn harness_with(recipe: Recipe) -> Harness {
     let plan = Plan::new(&recipe.capture, "/tmp/oa-commands/sanitize");
     let faulty = Arc::new(AtomicBool::new(false));
     let slow = Arc::new(AtomicBool::new(false));
-    let (f, s) = (faulty.clone(), slow.clone());
+    let wrong = Arc::new(AtomicBool::new(false));
+    let (f, s, w) = (faulty.clone(), slow.clone(), wrong.clone());
     provider.on_command(Box::new(move |spec, env, files| match spec.id.as_str() {
         "install" => {
             // The base carries an engine login; the install leaves tokens,
@@ -188,6 +194,19 @@ fn harness_with(recipe: Recipe) -> Harness {
             run
         }
         "sanitize" => emulate(&plan, files, f.load(Ordering::SeqCst)),
+        // The real script runs under `sh` in coder-environment-setup.
+        "source" => {
+            let pin = pin();
+            let report = coder_environment_setup::source::Report::verified_for(&pin, true);
+            if w.load(Ordering::SeqCst) {
+                let mut bad = report;
+                bad.head = "c".repeat(40);
+                bad.error = Some("head".into());
+                return FakeRun::exit(3, &bad.render(), "source: head\n");
+            }
+            files.insert("file.txt".into(), "pinned".into());
+            FakeRun::exit(0, &report.render(), "")
+        }
         _ => FakeRun::exit(0, "", ""),
     }));
     let computers = coder_working_computer::store::Store::under(root.join("computers"));
@@ -210,6 +229,7 @@ fn harness_with(recipe: Recipe) -> Harness {
         builder,
         faulty,
         slow,
+        wrong,
     }
 }
 fn harness() -> Harness {
@@ -270,7 +290,7 @@ async fn a_clean_build_captures_a_sanitized_immutable_image() {
     assert_eq!(install.spec.env["GIT_CONFIG_KEY_1"], "credential.helper");
     assert_eq!(job.inputs.recipe_revision, 1);
     let resource = c.creates[0].resource.clone().unwrap();
-    assert_eq!(count(&h, "command_start"), 2);
+    assert_eq!(count(&h, "command_start"), 3);
     // Sanitization sees no credential at all.
     let sanitize = &job.sanitize.as_ref().unwrap().spec;
     assert!(sanitize.credential_names.is_empty() && sanitize.env.is_empty());
@@ -318,6 +338,7 @@ async fn a_clean_build_captures_a_sanitized_immutable_image() {
         runtime: job.inputs.runtime.clone(),
         platform: job.inputs.platform.clone(),
         plan_digest: job.inputs.plan.digest(),
+        checkout: job.checkout.clone().unwrap(),
         report: job.report.clone().unwrap(),
         name: image.image_id.clone(),
         snapshot,
@@ -548,11 +569,12 @@ async fn a_missing_required_path_fails_the_build() {
 }
 
 #[tokio::test]
-async fn a_lost_start_reply_never_runs_the_install_twice() {
+async fn a_lost_start_reply_never_runs_a_command_twice() {
     let h = harness();
+    // The first identified command (the source step) loses its reply.
     provider(&h).inject("command_start", Inject::LostReply);
     let job = h.builder.start(&request("req-1", 1), 1_000).await.unwrap();
-    assert_eq!(job.phase, Phase::Installing);
+    assert_eq!(job.phase, Phase::Materializing);
     assert!(job.unresolved.is_some());
     assert_eq!(
         env_build(&h, "build-1").state,
@@ -565,7 +587,8 @@ async fn a_lost_start_reply_never_runs_the_install_twice() {
     // The fake retains processes after deletion only until the machine is
     // gone; count starts instead.
     let _ = resource;
-    assert_eq!(count(&h, "command_start"), 2);
+    assert_eq!(count(&h, "command_start"), 3);
+    assert!(matches!(job.source.unwrap().run, Run::Exited { code: 0 }));
     let install = job.install.unwrap();
     assert!(matches!(install.run, Run::Exited { code: 0 }));
 }
@@ -675,4 +698,23 @@ async fn a_job_record_rejects_a_drifted_image_name() {
         j.image.as_mut().unwrap().snapshot_id = Some("snap-other".into());
     });
     assert!(drift.is_err());
+}
+
+#[tokio::test]
+async fn a_checkout_that_is_not_the_pin_fails_before_the_install() {
+    let h = harness();
+    h.wrong.store(true, Ordering::SeqCst);
+    let job = h.builder.start(&request("req-1", 1), 1_000).await.unwrap();
+    assert_eq!(job.phase, Phase::Failed, "{job:?}");
+    assert!(job.reason.as_deref().unwrap().contains("pinned source"));
+    let checkout = job.checkout.clone().unwrap();
+    assert_eq!(checkout.error.as_deref(), Some("head"));
+    assert!(job.install.is_none());
+    assert_eq!(count(&h, "command_start"), 1);
+    assert_eq!(count(&h, "capture_image"), 0);
+    // The fetch used ephemeral auth only.
+    let source = job.source.unwrap();
+    assert_eq!(source.spec.env["GIT_CONFIG_KEY_1"], "credential.helper");
+    assert!(source.spec.command.contains(&pin().revision));
+    assert_eq!(env_build(&h, "build-1").state, BuildState::Failed);
 }

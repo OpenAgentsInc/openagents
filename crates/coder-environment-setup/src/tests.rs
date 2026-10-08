@@ -117,7 +117,12 @@ fn request() -> SetupRequest {
 fn handler() -> coder_working_computer::provider::fake::Handler {
     Box::new(|spec, env, files| {
         let c = spec.command.as_str();
-        if c == "ls" {
+        if c.contains("oa-source head=") {
+            // The real script runs under `sh` in `tests/source_script.rs`.
+            let pin = environment().source;
+            let ok = crate::source::Report::verified_for(&pin, true);
+            FakeRun::exit(0, &ok.render(), "")
+        } else if c == "ls" {
             FakeRun::exit(0, "Cargo.toml\n", "")
         } else if c.contains("install-v1") {
             FakeRun::exit(1, "resolving\n", "error: libfoo is missing\n")
@@ -259,6 +264,33 @@ async fn install_failure_repair_and_rerun_are_recipe_revisions_with_evidence() {
             current: 2
         }
     );
+    // An install needs the pinned source on the machine first.
+    assert_eq!(
+        refused(
+            setup
+                .run_install(SESSION, "q3", 2, 600, 3_110)
+                .await
+                .unwrap_err()
+        ),
+        Refusal::SourceNotReady
+    );
+    let src = started(
+        setup
+            .materialize_source(SESSION, "qs", 600, 3_120)
+            .await
+            .unwrap(),
+    );
+    let v = setup.poll(SESSION, &src, 3_130).await.unwrap();
+    assert_eq!(v.command.run, Run::Exited { code: 0 });
+    let spec = &v.command.spec;
+    // The exact pin, with ephemeral Git auth for the fetch only.
+    assert!(spec.command.contains(&"a".repeat(40)));
+    assert!(spec.command.contains("https://github.com/example/repo.git"));
+    assert_eq!(spec.env, git_auth_env("GH_TOKEN"));
+    assert!(!spec.command.contains(GH_SECRET));
+    let report = crate::source::Report::parse(&v.stdout).unwrap();
+    assert!(report.verified(&environment().source));
+    assert!(setup.sessions.read(SESSION).unwrap().source_ready());
     let first = started(
         setup
             .run_install(SESSION, "q3", 2, 600, 3_200)
@@ -339,6 +371,14 @@ async fn install_failure_repair_and_rerun_are_recipe_revisions_with_evidence() {
         .find(|c| c.identity.id == first)
         .unwrap();
     assert_eq!(failed.identity.tool, "environment.install");
+    // The source step and its report are in the evidence.
+    let source = manifest
+        .calls
+        .iter()
+        .find(|c| c.identity.id == src)
+        .unwrap();
+    assert_eq!(source.identity.tool, "environment.source.materialize");
+    assert_eq!(source.stdout.state, StreamState::Complete);
     assert_eq!(
         failed.stderr.length,
         "error: libfoo is missing\n".len() as u64

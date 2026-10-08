@@ -30,6 +30,9 @@
 //! - **Evidence**: every tool call, argument, and output byte goes through
 //!   the ENV-02a [`coder_environment::evidence::Recorder`], redacted of the
 //!   selected credential values before anything is persisted.
+//! - **Source** ([`source`]): before any install, the session puts the
+//!   exact pinned commit on its computer and proves `HEAD` and a clean
+//!   tree; the builder runs the same step.
 //! - **Ephemeral Git auth** ([`git_auth_env`]): Git reads a credential
 //!   helper from per-process `GIT_CONFIG_*` variables that name the
 //!   credential variable, so no token reaches `.git/config` or any file.
@@ -43,6 +46,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub mod service;
+pub mod source;
 pub mod store;
 pub mod transition;
 

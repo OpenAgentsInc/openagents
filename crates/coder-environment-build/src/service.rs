@@ -152,30 +152,35 @@ fn run_link(job: &BuildJob) -> RunLink {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Kind2 {
+    Source,
     Install,
     Sanitize,
 }
 impl Kind2 {
     fn id(self) -> &'static str {
         match self {
+            Self::Source => "source",
             Self::Install => "install",
             Self::Sanitize => "sanitize",
         }
     }
     fn tool(self) -> &'static str {
         match self {
+            Self::Source => "environment.build.source",
             Self::Install => "environment.build.install",
             Self::Sanitize => "environment.build.sanitize",
         }
     }
     fn get(self, job: &BuildJob) -> Option<&Step> {
         match self {
+            Self::Source => job.source.as_ref(),
             Self::Install => job.install.as_ref(),
             Self::Sanitize => job.sanitize.as_ref(),
         }
     }
     fn get_mut(self, job: &mut BuildJob) -> &mut Option<Step> {
         match self {
+            Self::Source => &mut job.source,
             Self::Install => &mut job.install,
             Self::Sanitize => &mut job.sanitize,
         }
@@ -377,6 +382,8 @@ impl<P: Commands + Images> Builder<P> {
             phase: Phase::Provisioning,
             unresolved: None,
             generation: None,
+            source: None,
+            checkout: None,
             install: None,
             sanitize: None,
             report: None,
@@ -459,6 +466,7 @@ impl<P: Commands + Images> Builder<P> {
             }
             let moved = match job.phase {
                 Phase::Provisioning => self.provision(lease, &job, now_ms).await?,
+                Phase::Materializing => self.step(lease, &job, Kind2::Source, now_ms).await?,
                 Phase::Installing => self.step(lease, &job, Kind2::Install, now_ms).await?,
                 Phase::Sanitizing => self.step(lease, &job, Kind2::Sanitize, now_ms).await?,
                 Phase::Quiescing => self.quiesce(lease, &job, now_ms).await?,
@@ -541,7 +549,7 @@ impl<P: Commands + Images> Builder<P> {
             job.inputs.evidence_budget,
         )?;
         let mut continued = vec![];
-        for kind in [Kind2::Install, Kind2::Sanitize] {
+        for kind in [Kind2::Source, Kind2::Install, Kind2::Sanitize] {
             if let Some(step) = kind.get(&job)
                 && matches!(step.run, Run::Requested | Run::Started { .. })
             {
@@ -594,7 +602,7 @@ impl<P: Commands + Images> Builder<P> {
             lease.update(now_ms, |j| {
                 j.generation = Some(generation);
                 j.unresolved = None;
-                j.phase = Phase::Installing;
+                j.phase = Phase::Materializing;
             })?;
             return Ok(true);
         }
@@ -631,6 +639,24 @@ impl<P: Commands + Images> Builder<P> {
     fn command_spec(&self, job: &BuildJob, kind: Kind2, now_ms: u64) -> Result<CommandSpec> {
         let timeout_seconds = (job.deadline_ms.saturating_sub(now_ms) / 1000).max(1);
         let mut spec = match kind {
+            // The exact pinned commit, fetched with ephemeral Git auth.
+            Kind2::Source => {
+                let (command, credential_names, env) = coder_environment_setup::source::command(
+                    &job.inputs.source,
+                    coder_environment_setup::source::Mode::Materialize,
+                    job.inputs.git_credential.as_deref(),
+                )
+                .map_err(BuildError::Refused)?;
+                CommandSpec {
+                    id: kind.id().into(),
+                    command,
+                    cwd: ".".into(),
+                    credential_names,
+                    env,
+                    timeout_seconds: timeout_seconds.min(3600),
+                    digest: String::new(),
+                }
+            }
             Kind2::Install => {
                 let command = self.read_script(&job.inputs.install_digest)?;
                 let env = job
@@ -802,7 +828,7 @@ impl<P: Commands + Images> Builder<P> {
             let s = kind.get_mut(j).as_mut().expect("step");
             s.cursor.stdout += read.stdout.len() as u64;
             s.cursor.stderr += read.stderr.len() as u64;
-            if kind == Kind2::Sanitize {
+            if matches!(kind, Kind2::Sanitize | Kind2::Source) {
                 if s.report.len() + read.stdout.len() > MAX_REPORT_BYTES {
                     report_overflow = true;
                 } else {
@@ -814,6 +840,24 @@ impl<P: Commands + Images> Builder<P> {
                     s.run = Run::Exited { code };
                     let text = s.report.clone();
                     match (kind, code) {
+                        (Kind2::Source, code) => {
+                            let report =
+                                coder_environment_setup::source::Report::parse(&text)
+                                    .unwrap_or_default();
+                            let ok = code == 0
+                                && !report_overflow
+                                && report.verified(&j.inputs.source);
+                            let detail = format!(
+                                "The pinned source was not materialized (exit {code}; head {:?}; error {:?}).",
+                                report.head, report.error
+                            );
+                            j.checkout = Some(report);
+                            if ok {
+                                j.phase = Phase::Installing;
+                            } else {
+                                fail(j, detail);
+                            }
+                        }
                         (Kind2::Install, 0) => j.phase = Phase::Sanitizing,
                         (Kind2::Install, code) => fail(j, format!("The install exited {code}.")),
                         (Kind2::Sanitize, _) => {
@@ -964,6 +1008,7 @@ impl<P: Commands + Images> Builder<P> {
                     runtime: job.inputs.runtime.clone(),
                     platform: job.inputs.platform.clone(),
                     plan_digest: job.inputs.plan.digest(),
+                    checkout: job.checkout.clone().unwrap_or_default(),
                     report: job.report.clone().unwrap_or_default(),
                     name: record.name.clone(),
                     snapshot: snapshot.clone(),
@@ -1036,7 +1081,7 @@ impl<P: Commands + Images> Builder<P> {
         let Some(resource) = computer.resource() else {
             return;
         };
-        for kind in [Kind2::Install, Kind2::Sanitize] {
+        for kind in [Kind2::Source, Kind2::Install, Kind2::Sanitize] {
             if let Some(step) = kind.get(job)
                 && matches!(step.run, Run::Requested | Run::Started { .. })
             {

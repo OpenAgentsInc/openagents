@@ -16,6 +16,10 @@
 //!   (`coder_environment::Environment::is_stale`). A build that becomes
 //!   stale before capture is cancelled instead of spending a snapshot; a
 //!   stale build can never be verified or saved.
+//! - **Source**: before the install, the builder materializes the exact
+//!   pinned commit with ephemeral auth and proves `HEAD` and a clean tree
+//!   (`coder_environment_setup::source`); the typed report is retained on
+//!   the job and in the image manifest.
 //! - **Sanitization** runs before capture and gates it on a typed
 //!   [`sanitize::Report`]: sign-ins (`~/.claude/.credentials.json`,
 //!   `~/.codex/auth.json`, `gh`/npm/Cargo tokens, …), token-bearing Git
@@ -91,6 +95,8 @@ pub struct Inputs {
 #[serde(rename_all = "snake_case")]
 pub enum Phase {
     Provisioning,
+    /// Putting the pinned source commit on the builder and proving it.
+    Materializing,
     Installing,
     Sanitizing,
     /// Stopping the builder so the capture sees a quiet filesystem.
@@ -108,7 +114,7 @@ impl Phase {
     pub fn build_state(self) -> coder_environment::BuildState {
         use coder_environment::BuildState as B;
         match self {
-            Self::Provisioning => B::Provisioning,
+            Self::Provisioning | Self::Materializing => B::Provisioning,
             Self::Installing => B::Installing,
             Self::Sanitizing | Self::Quiescing => B::PreparingImage,
             Self::Capturing => B::SnapshotPending,
@@ -173,6 +179,8 @@ pub struct ImageManifest {
     pub runtime: ArtifactPin,
     pub platform: Platform,
     pub plan_digest: String,
+    /// The proven checkout the install ran in.
+    pub checkout: coder_environment_setup::source::Report,
     pub report: sanitize::Report,
     pub name: String,
     pub snapshot: String,
@@ -253,6 +261,11 @@ pub struct BuildJob {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub generation: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<Step>,
+    /// What the source step proved about the checkout.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checkout: Option<coder_environment_setup::source::Report>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub install: Option<Step>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sanitize: Option<Step>,
@@ -323,6 +336,8 @@ impl BuildJob {
             && (self.image.is_none() || next.image == self.image)
             && next.history.starts_with(&self.history)
             && next.segments.len() >= self.segments.len()
+            && (self.source.is_none() || next.source.is_some())
+            && (self.checkout.is_none() || next.checkout == self.checkout)
             && (self.install.is_none() || next.install.is_some())
             && (self.sanitize.is_none() || next.sanitize.is_some())
             && self.capture.as_ref().is_none_or(|c| {

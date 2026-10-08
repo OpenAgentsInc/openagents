@@ -24,6 +24,9 @@ pub enum CommandPurpose {
     /// A read-only check the setup owner runs (for example that no
     /// credential reached `.git/config`).
     Audit,
+    /// Materialize the session's pinned source commit
+    /// ([`crate::source`]).
+    Source { revision: String },
 }
 
 /// One command's lifecycle. `Unknown` blocks every new command until a
@@ -241,6 +244,20 @@ impl SetupSession {
             .iter()
             .filter(|c| matches!(c.purpose, CommandPurpose::Install { .. }))
     }
+    /// Whether the pinned source was materialized and proven on the setup
+    /// computer: the latest source command exited 0, which the source
+    /// script does only for the exact, clean commit.
+    pub fn source_ready(&self) -> bool {
+        self.commands
+            .iter()
+            .rev()
+            .find(|c| matches!(c.purpose, CommandPurpose::Source { .. }))
+            .is_some_and(|c| {
+                c.run.succeeded()
+                    && matches!(&c.purpose, CommandPurpose::Source { revision }
+                        if *revision == self.admission.source.revision)
+            })
+    }
     pub fn next_command_id(&self) -> String {
         format!("cmd-{}", self.commands.len() + 1)
     }
@@ -438,6 +455,8 @@ pub enum Refusal {
         current: u64,
     },
     Limit(&'static str),
+    /// An install needs the pinned source materialized first.
+    SourceNotReady,
 }
 impl fmt::Display for Refusal {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -468,6 +487,9 @@ impl fmt::Display for Refusal {
             Self::StaleDraft { expected, current } => write!(
                 f,
                 "The draft is at revision {current}, not the expected {expected}."
+            ),
+            Self::SourceNotReady => f.write_str(
+                "Materialize the pinned source on the setup computer before installing.",
             ),
         }
     }

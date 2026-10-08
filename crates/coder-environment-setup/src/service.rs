@@ -609,6 +609,9 @@ impl<P: Commands> Setup<P> {
         if !s.admission.pins(&draft.recipe) {
             return Err(Refusal::PinChanged.into());
         }
+        if !s.source_ready() {
+            return Err(Refusal::SourceNotReady.into());
+        }
         let script = self.read_blob(&draft.recipe.install.digest)?;
         let names = draft.recipe.credential_names.clone();
         let git = s
@@ -634,6 +637,55 @@ impl<P: Commands> Setup<P> {
                 cwd: draft.recipe.install.cwd.clone(),
                 credential_names: names,
                 env: env_vars,
+                timeout_seconds,
+                digest: String::new(),
+            },
+            now_ms,
+        )
+        .await
+    }
+
+    /// `environment.source.materialize`: fetch the session's exact pinned
+    /// commit into the setup computer's checkout and prove `HEAD` and a
+    /// clean tree ([`crate::source`]). The session's Git credential, when
+    /// admitted, is used only as ephemeral auth for the fetch.
+    pub async fn materialize_source(
+        &self,
+        id: &str,
+        request_id: &str,
+        timeout_seconds: u64,
+        now_ms: u64,
+    ) -> Result<ToolResult> {
+        let lease = self.sessions.lease(id)?;
+        let fp = fingerprint(&json!({
+            "tool": "source",
+            "timeout_seconds": timeout_seconds,
+        }));
+        if let Some(r) = lease.read()?.replay(request_id, &fp) {
+            return Ok(r?);
+        }
+        let s = self.live_session(&lease, now_ms)?;
+        let pin = s.admission.source.clone();
+        let (command, credential_names, env) = crate::source::command(
+            &pin,
+            crate::source::Mode::Materialize,
+            s.admission.git_credential.as_deref(),
+        )
+        .map_err(|m| SetupError::Refused(Refusal::Invalid(m)))?;
+        self.start(
+            &lease,
+            s,
+            request_id,
+            fp,
+            CommandPurpose::Source {
+                revision: pin.revision.clone(),
+            },
+            CommandSpec {
+                id: String::new(),
+                command,
+                cwd: ".".into(),
+                credential_names,
+                env,
                 timeout_seconds,
                 digest: String::new(),
             },
@@ -1129,6 +1181,7 @@ fn tool_name(purpose: &CommandPurpose) -> &'static str {
         CommandPurpose::Discover => "environment.command",
         CommandPurpose::Install { .. } => "environment.install",
         CommandPurpose::Audit => "environment.audit",
+        CommandPurpose::Source { .. } => "environment.source.materialize",
     }
 }
 fn describe(settled: &Settled) -> String {

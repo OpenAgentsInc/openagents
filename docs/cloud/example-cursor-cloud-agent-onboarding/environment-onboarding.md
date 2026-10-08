@@ -527,13 +527,20 @@ ENV-01 draft fence), command start/poll/reconcile/stop, install run (bound to
 one recipe revision and digest), steer, await input, end, cancel, and
 cleanup. Git auth is per-process `GIT_CONFIG_*` naming the credential
 variable; no token reaches `.git/config`. Every tool call goes through the
-ENV-02a recorder. Qualification against real Boat is part of ENV-08.
+ENV-02a recorder. Before any install, the session materializes the exact
+pinned commit with the shared source step
+([`source`](../../../crates/coder-environment-setup/src/source.rs)): it
+fetches the pinned revision by URL (no remote recorded) with ephemeral Git
+auth, proves `HEAD` equals the pin and the tree is clean, checks that the
+checkout's Git configuration holds no credential, and prints a typed report
+into the evidence. Qualification against real Boat is part of ENV-08.
 
 ENV-04 lives in [`crates/coder-environment-build`](../../../crates/coder-environment-build/src/lib.rs).
 A `BuildJob` rebuilds the pinned recipe revision on a fresh builder computer
 (`coder_working_computer::Purpose::EnvironmentBuild`), never the setup or a
-chat computer and never restored from a checkpoint. It runs the exact install
-script once by identity, then a sanitization command with no credentials that
+chat computer and never restored from a checkpoint. It first runs the same
+source step (its typed report is retained on the job and in the image
+manifest), then runs the exact install script once by identity, then a sanitization command with no credentials that
 removes sign-ins (`~/.claude/.credentials.json`, `~/.codex/auth.json`, `gh`,
 npm, Cargo, Git, Docker, SSH), private mounts, declared exclusions, and
 explored state the recipe does not keep (`Recipe.capture.keep_explored`);
