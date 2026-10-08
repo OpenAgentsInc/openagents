@@ -16,7 +16,6 @@ use verse::{
 const WIDTH: u32 = 1920;
 const HEIGHT: u32 = 1080;
 const WARMUP: usize = 16;
-const REPAIR_HOLD_FRAMES: usize = 3600;
 const REPAIR_HOLD_SECONDS: u64 = 180;
 
 type RepairDiagnostics = verse::zones::everglade::demolition::town::BakedRepairDiagnostics;
@@ -232,8 +231,7 @@ fn main() -> Result<(), String> {
         .map(|x| x["frame_completion_increment_ms"].as_f64().unwrap())
         .collect();
     let (mean, lower, upper) = mean_interval(&increments);
-    let destruction = destruction_capture(&mut runtime, &mut on_renderer, &ui, &dir)?;
-    let report = json!({"schema":"openagents.verse-baked-light-capture.v1",
+    let mut report = json!({"schema":"openagents.verse-baked-light-capture.v1",
         "resolution":[WIDTH,HEIGHT],"adapter":format!("{:?}",adapter),"quality":format!("{:?}",on_renderer.quality().tier),
         "scene":digest,"vertices":layers.vertex_count(),"bake_key":layers.bake_key,
         "inputs":inputs,"inputs_hashed_before_simulation":true,
@@ -245,7 +243,7 @@ fn main() -> Result<(), String> {
             "sky_bake_can_finish_between_steps":(frames-1) as f64/360.0 >= phase_warmup as f64,
             "limitation":"An accelerated timeline with too few frames per scheduled sky step can retain an older sky shape; exact brightness and sun weights still advance. Named phase images converge the sky bake."},
         "temporal_aa":false,"captures":captures,"timelapse":timelapse,
-        "destruction":destruction,
+        "destruction":null,"destruction_status":"pending",
         "measurement":{"pairs":pairs,"warmup_pairs":paired_warmup,"independent_renderers":true,"identical_bake_replayed":true,"fresh_same_state_renderers":true,
             "initial_seed_frames_per_variant":1,
             "off_first":pairs/2,"on_first":pairs/2,"readback":"Both variants read back every measured frame",
@@ -255,11 +253,22 @@ fn main() -> Result<(), String> {
             "frame_completion_mean_increment_ms":mean,"approximate_95pct_block_interval_ms":[lower,upper],
             "interval_method":"Eight contiguous equal-sized batches with balanced render order; Student t df7; all measured samples retained"},
         "samples":samples});
-    std::fs::write(
-        dir.join("capture.json"),
-        serde_json::to_vec_pretty(&report).map_err(|e| e.to_string())?,
-    )
-    .map_err(|e| e.to_string())?;
+    // Retain the completed clock and paired measurements if destruction fails.
+    let report_path = dir.join("capture.json");
+    write_json(&report_path, &report)?;
+    match destruction_capture(&mut runtime, &mut on_renderer, &ui, &dir) {
+        Ok(destruction) => {
+            report["destruction"] = destruction;
+            report["destruction_status"] = json!("complete");
+        }
+        Err(error) => {
+            report["destruction_status"] = json!("failed");
+            report["destruction_error"] = json!(error);
+            write_json(&report_path, &report)?;
+            return Err(error);
+        }
+    }
+    write_json(&report_path, &report)?;
     println!(
         "Baked blend frame-completion mean {mean:.3} ms; approximate 95% interval {lower:.3} to {upper:.3} ms"
     );
@@ -535,10 +544,7 @@ fn drain_repair(
     let mut progress = Vec::new();
     let mut repair = repair_diagnostics(runtime)?;
     verify_repair_health(dir, &repair)?;
-    while !repair_ready(before, &repair)
-        && frames < REPAIR_HOLD_FRAMES
-        && started.elapsed().as_secs() < REPAIR_HOLD_SECONDS
-    {
+    while !repair_ready(before, &repair) && started.elapsed().as_secs() < REPAIR_HOLD_SECONDS {
         poll_held_zone(runtime)?;
         let mut dynamic = runtime.dynamic_mesh();
         dynamic.neon.as_mut().unwrap().temporal_aa = false;
@@ -551,7 +557,7 @@ fn drain_repair(
         }
     }
     let hold = json!({"frames":frames,"wall_seconds":started.elapsed().as_secs_f64(),
-        "frame_limit":REPAIR_HOLD_FRAMES,"wall_seconds_limit":REPAIR_HOLD_SECONDS,
+        "frame_limit":null,"wall_seconds_limit":REPAIR_HOLD_SECONDS,
         "simulation_dt":0.0,"clock":"Pinned; no physics time advances",
         "method":"Production zone tick polls at most one selective batch per hold frame; each frame completes rendering without pixel extraction",
         "progress":progress});
