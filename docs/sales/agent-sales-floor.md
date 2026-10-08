@@ -979,3 +979,32 @@ following applications are planning inferences:
 - [Buzz](https://github.com/OpenAgentsInc/openagents/blob/8f84d05896ef14edee491621bf977ee5315cc8ed/docs/teardowns/2026-07-21-buzz-teardown.md)
   separates participation, execution, acceptance, and settlement. Bind the
   bell to earned delivery and payment rather than activity or funding.
+
+
+## Private Agora observations (REV-69)
+
+The existing Agora stations have stable world-tree nodes, including each desk,
+role-play booth, wing door, bell, board, and owner lectern. Booth destinations
+use the clear side aisles; route segments retain ordinary walking clearance.
+A changed layout changes the tree digest, so old grounded references need a
+new observation.
+
+On a local native desktop with the `model-host` feature, explicitly set
+`OPENAGENTS_SALES_BOARD_ROOT` to the canonical private sales host directory and
+`OPENAGENTS_SALES_BOARD_CREDENTIAL` to its private owner credential file.
+Both paths must be absolute. The reader authenticates the current owner and
+Paul's original approved binding and native identity. Studio observation and
+paired-device rights do not supply sales authority. Native key custody must
+match the host's original records; otherwise the boards remain unavailable.
+
+The boards show bounded recorded stages, draft counts, certificate records,
+practice counts, unknown attempts, and separate live and demo proposal counts.
+The lectern shows original pending meeting and outbox proposal hashes for
+review in the existing sales controls. It grants no approval or dispatch rights.
+Names, companies, messages, terms, credentials, and payment records never enter
+these text surfaces. Background reads stay off the frame thread; observations
+expire after three seconds and clear on failed reads, inactive surfaces, and
+shared-world transitions. Unconfigured data stays unavailable. Model work
+remains unavailable under the default host, and phones and headsets remain
+written-only props. Sales bodies and reviewed shared aggregates remain
+REV-70 and REV-71 work.

@@ -2435,11 +2435,13 @@ impl WorldRuntime {
     #[cfg(feature = "hosted-social")]
     pub(crate) fn stop_local_studio(&mut self) {
         self.zone_state.studio.set_active(false);
+        self.zone_state.sales_floor.poll(false, 0.0);
     }
 
     /// Polls the Studio source only while the local Everglade surface is active.
     pub fn update_studio(&mut self, surface_active: bool, dt: f32) {
         if self.is_hosted() {
+            self.zone_state.sales_floor.poll(false, 0.0);
             return;
         }
         let active = surface_active
@@ -2449,6 +2451,7 @@ impl WorldRuntime {
         let studio = &mut self.zone_state.studio;
         studio.set_active(active);
         studio.poll(dt, &self.world.blockers);
+        self.zone_state.sales_floor.poll(active, dt);
     }
 
     /// Seats this computer draws in the studio beside the host's, such as
@@ -2476,6 +2479,24 @@ impl WorldRuntime {
         source: Option<Box<dyn crate::zones::everglade::compute::ComputeSource>>,
     ) {
         self.zone_state.compute.set_source(source);
+    }
+
+    /// Configures a private sales reader independently of Studio observation.
+    pub fn set_sales_source(
+        &mut self,
+        source: Option<Box<dyn crate::zones::everglade::sales_floor::Source>>,
+    ) {
+        self.zone_state.sales_floor.set_source(source);
+    }
+
+    /// Current observations exist only on the active local Everglade surface.
+    pub fn private_sales_snapshot(
+        &self,
+    ) -> Option<&crate::zones::everglade::sales_floor::Snapshot> {
+        if self.is_hosted() || self.zone != ZoneId::Everglade || self.zone_state.demolition {
+            return None;
+        }
+        self.zone_state.sales_floor.snapshot()
     }
 
     /// Everglade's Pylon Field.
@@ -2844,6 +2865,9 @@ impl WorldRuntime {
                 // field: they light the stones and the ground at night.
                 if let Some(neon) = mesh.neon.as_mut() {
                     self.zone_state.compute.light(neon, self.player.pos);
+                }
+                if !self.is_hosted() {
+                    mesh.extend(&self.zone_state.sales_floor.mesh());
                 }
             }
         }

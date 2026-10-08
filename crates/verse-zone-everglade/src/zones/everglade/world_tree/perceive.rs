@@ -151,7 +151,9 @@ pub fn route(
 
 /// How far behind a standing point [`plan_to`] looks for a point the grid
 /// reaches, m.
-const BEHIND: [f32; 5] = [0.6, 1.0, 1.5, 2.0, 3.0];
+// A rear booth's clear side aisle can join the coarse grid only at its
+// front. Every longer approach still needs exact segment clearance.
+const BEHIND: [f32; 7] = [0.6, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0];
 
 /// The waypoints from `at` to `stand`. A point tucked behind furniture can
 /// sit where navigation's grid doesn't reach; then the route ends with a

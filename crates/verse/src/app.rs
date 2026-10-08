@@ -1154,6 +1154,10 @@ impl App {
                 sources,
             ))));
         }
+        #[cfg(all(feature = "model-host", not(test), not(target_arch = "wasm32")))]
+        if let Ok(source) = crate::zones::everglade::sales_floor::local::LocalOwner::from_env() {
+            runtime.set_sales_source(Some(Box::new(source)));
+        }
         #[cfg(feature = "remote-chamber")]
         let hosted = match &options.chamber {
             Some(path) => {

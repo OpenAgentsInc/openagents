@@ -88,6 +88,44 @@ fn every_doorway_front_station_and_desk_maps_to_a_node() {
 }
 
 #[test]
+fn agora_stations_keep_individual_destinations_and_no_execution_affordance() {
+    let tree = everglade();
+    let blockers = &world().blockers;
+    let approach = tree.root().stand;
+    let mut sources = vec![
+        "agora:paul".to_owned(),
+        "agora:owner".to_owned(),
+        "agora:teacher".to_owned(),
+        "agora:standup".to_owned(),
+        "agora:leaderboard".to_owned(),
+        "agora:bell".to_owned(),
+        "agora:wing-door:1".to_owned(),
+        "agora:wing-door:2".to_owned(),
+    ];
+    sources.extend((0..agora::DESKS.len()).map(|i| format!("agora:desk:{i}")));
+    sources.extend((0..agora::BOOTHS.len()).map(|i| format!("agora:booth:{i}")));
+    let mut ids = BTreeSet::new();
+    let mut booth_stands = BTreeSet::new();
+    for source in sources {
+        let node = tree.by_source(&source).unwrap();
+        assert!(ids.insert(node.id.clone()));
+        assert!(!node.offers(Affordance::RunCommands));
+        perceive::route(&tree, blockers, approach, &node.id)
+            .unwrap_or_else(|e| panic!("{source}: {e:?}"));
+        if source.starts_with("agora:booth:") {
+            assert!(node.offers(Affordance::Practice));
+            assert!(booth_stands.insert(node.stand.map(f32::to_bits)));
+        }
+        if source.starts_with("agora:wing-door:") {
+            assert_eq!(node.object, Some(Object::Door));
+            assert_eq!(node.open, Some(true));
+        }
+    }
+    // The existing group source remains available in the new layout.
+    assert!(tree.by_source("agora:booths").is_some());
+}
+
+#[test]
 fn every_standing_point_routes_from_the_approach() {
     let tree = everglade();
     let blockers = &world().blockers;

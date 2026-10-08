@@ -1804,6 +1804,34 @@
       "source": "room:training room"
     },
     {
+      "id": "everglade/fountain-plaza/agora/pauls-office/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "fountain-plaza",
+      "stand": [
+        -14.6,
+        110.5
+      ],
+      "facing": -1.57,
+      "open": true,
+      "source": "agora:wing-door:1"
+    },
+    {
+      "id": "everglade/fountain-plaza/agora/training-room/door",
+      "name": "door",
+      "kind": "object",
+      "object": "door",
+      "district": "fountain-plaza",
+      "stand": [
+        -33.4,
+        110.5
+      ],
+      "facing": 1.57,
+      "open": true,
+      "source": "agora:wing-door:2"
+    },
+    {
       "id": "everglade/fountain-plaza/agora/trading-floor/desk-1",
       "name": "desk 1",
       "kind": "object",
@@ -2145,6 +2173,22 @@
       "source": "agora:standup"
     },
     {
+      "id": "everglade/fountain-plaza/agora/trading-floor/bell",
+      "name": "bell",
+      "kind": "object",
+      "object": "station",
+      "district": "fountain-plaza",
+      "stand": [
+        -26.6,
+        121.4
+      ],
+      "facing": 1.02,
+      "affordances": [
+        "read"
+      ],
+      "source": "agora:bell"
+    },
+    {
       "id": "everglade/fountain-plaza/agora/trading-floor/leaderboard",
       "name": "leaderboard",
       "kind": "object",
@@ -2227,6 +2271,70 @@
         "practice"
       ],
       "source": "agora:booths"
+    },
+    {
+      "id": "everglade/fountain-plaza/agora/training-room/role-play-booth-1",
+      "name": "role-play booth 1",
+      "kind": "object",
+      "object": "seats",
+      "district": "fountain-plaza",
+      "stand": [
+        -33.0,
+        114.05
+      ],
+      "facing": -1.57,
+      "affordances": [
+        "practice"
+      ],
+      "source": "agora:booth:0"
+    },
+    {
+      "id": "everglade/fountain-plaza/agora/training-room/role-play-booth-2",
+      "name": "role-play booth 2",
+      "kind": "object",
+      "object": "seats",
+      "district": "fountain-plaza",
+      "stand": [
+        -38.2,
+        114.05
+      ],
+      "facing": 1.57,
+      "affordances": [
+        "practice"
+      ],
+      "source": "agora:booth:1"
+    },
+    {
+      "id": "everglade/fountain-plaza/agora/training-room/role-play-booth-3",
+      "name": "role-play booth 3",
+      "kind": "object",
+      "object": "seats",
+      "district": "fountain-plaza",
+      "stand": [
+        -33.0,
+        117.83
+      ],
+      "facing": -1.57,
+      "affordances": [
+        "practice"
+      ],
+      "source": "agora:booth:2"
+    },
+    {
+      "id": "everglade/fountain-plaza/agora/training-room/role-play-booth-4",
+      "name": "role-play booth 4",
+      "kind": "object",
+      "object": "seats",
+      "district": "fountain-plaza",
+      "stand": [
+        -38.2,
+        117.83
+      ],
+      "facing": 1.57,
+      "affordances": [
+        "practice"
+      ],
+      "source": "agora:booth:3"
     },
     {
       "id": "everglade/fountain-plaza/agora/lantern-1",

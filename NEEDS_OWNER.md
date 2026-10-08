@@ -1835,3 +1835,8 @@ the isolated native qualification; unsupported routes remain unavailable.
 ## REV54 — activate Paul's sales controls
 
 Before using the controls with real assignments, approve the exact Paul binding digest, current private sales-owner credential, native identity and charter, requester IDs, assignment credentials, and local helper sources. Keep requester authority separate from Studio or phone observation grants. The default host leaves model work unavailable. A paid adapter requires actual current provider, served-model, list-price, full-context, output, retry, deadline, private-data, and billing custody; a subscription or source declaration does not establish capacity. Use current measured qualification before real prospect drafting, and retain unresolved expense receipts after interrupted calls. Scratch fixtures do not certify a real campaign or authorize customer messages.
+
+
+## Private Agora board activation (REV-69)
+
+Configure the two explicit private paths in the [Agora observation guide](docs/sales/agent-sales-floor.md#private-agora-observations-rev-69) only for the sales owner. Qualify the original Paul binding, assignment credentials, native key custody, current certificates, and pending proposal references on that computer. Missing or changed custody keeps the boards unavailable. These reads authorize no mailbox, approval, booking, payment, campaign, or shared publication; real model and outreach qualification remains in the existing owner steps.

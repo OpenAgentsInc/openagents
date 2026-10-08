@@ -29,6 +29,7 @@ pub mod layout;
 pub mod npcs;
 pub mod player;
 pub mod pose;
+pub mod sales_floor;
 pub mod scene;
 pub mod signals;
 pub mod solids;

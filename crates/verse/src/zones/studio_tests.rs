@@ -381,3 +381,105 @@ fn a_viewer_with_only_the_world_right_opens_no_studio_panel() {
     runtime.set_studio_grant(Some(vec![Right::World, Right::Observe, Right::Operate]));
     assert_eq!(runtime.studio_send(pause()), Ok(1));
 }
+
+#[test]
+fn private_sales_boards_clear_on_inactive_surface_and_rebuild_after_reconnect() {
+    use crate::zones::everglade::sales_floor::{Read, Snapshot, Source};
+    struct PrivateOwner;
+    impl Source for PrivateOwner {
+        fn read(&mut self) -> Read {
+            Read::Ready(
+                Snapshot {
+                    pipeline: [1, 0, 0, 0, 0],
+                    pending_drafts: 1,
+                    certificate_records: [0; 3],
+                    practice_records: 0,
+                    proposals: vec!["a".repeat(64)],
+                    outbox_live: vec![],
+                    outbox_fixture: vec![],
+                    outbox_unknown: 0,
+                    idle: false,
+                    model_available: false,
+                },
+                0.0,
+            )
+        }
+    }
+    let mut runtime = crate::zones::everglade_tests::entered();
+    runtime.update_studio(true, 0.1);
+    assert!(runtime.private_sales_snapshot().is_none());
+    let missing_faces = runtime.zone_dynamic_mesh().faces.len();
+    runtime.set_sales_source(Some(Box::new(PrivateOwner)));
+    runtime.update_studio(true, 0.1);
+    assert_eq!(runtime.private_sales_snapshot().unwrap().pending_drafts, 1);
+    assert!(runtime.zone_dynamic_mesh().faces.len() > missing_faces);
+    runtime.update_studio(false, 0.1);
+    assert!(runtime.private_sales_snapshot().is_none());
+    runtime.update_studio(true, 0.1);
+    assert_eq!(runtime.private_sales_snapshot().unwrap().pipeline[0], 1);
+    runtime.set_sales_source(None);
+    assert!(runtime.private_sales_snapshot().is_none());
+}
+
+#[cfg(feature = "hosted-social")]
+#[test]
+fn shared_world_transition_removes_private_sales_observations_and_reader() {
+    use crate::zones::everglade::sales_floor::{Read, Snapshot, Source};
+    use physics::queries::{ColliderKey, Life, Mesh, MeshCollider, Scene, Usage};
+    use verse_world::play::social::{Profile, Zone};
+    struct PrivateOwner;
+    impl Source for PrivateOwner {
+        fn read(&mut self) -> Read {
+            Read::Ready(
+                Snapshot {
+                    pipeline: [1, 0, 0, 0, 0],
+                    pending_drafts: 1,
+                    certificate_records: [0; 3],
+                    practice_records: 0,
+                    proposals: vec!["a".repeat(64)],
+                    outbox_live: vec![],
+                    outbox_fixture: vec![],
+                    outbox_unknown: 0,
+                    idle: false,
+                    model_available: false,
+                },
+                0.0,
+            )
+        }
+    }
+    let mut runtime = crate::zones::everglade_tests::entered();
+    runtime.set_sales_source(Some(Box::new(PrivateOwner)));
+    runtime.update_studio(true, 0.1);
+    assert!(runtime.private_sales_snapshot().is_some());
+    let mut geometry = Scene::default();
+    geometry
+        .insert(MeshCollider {
+            key: ColliderKey {
+                life: Life {
+                    instance: 0,
+                    entity: 0,
+                    generation: 0,
+                },
+                shape: 0,
+            },
+            layers: 1,
+            usage: Usage::Blocking,
+            mesh: Mesh::from_box(
+                glam::DVec3::new(-12., -1., -12.),
+                glam::DVec3::new(12., 0., 12.),
+            )
+            .unwrap(),
+        })
+        .unwrap();
+    let profile = Profile {
+        revision: 1,
+        zone: Zone::Everglade,
+        geometry: geometry.snapshot(0).unwrap(),
+        objects: vec![],
+    };
+    runtime.enter_hosted_social(7, &profile).unwrap();
+    assert!(runtime.private_sales_snapshot().is_none());
+    runtime.update_studio(true, 0.1);
+    assert!(runtime.private_sales_snapshot().is_none());
+    assert!(runtime.zone_state.sales_floor.snapshot().is_none());
+}

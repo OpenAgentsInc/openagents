@@ -364,6 +364,8 @@ pub(crate) struct State {
     /// application installs: this computer on the desktop, nothing on the
     /// web and the phones (`everglade::compute`).
     compute: everglade::compute::Compute,
+    /// Private sales observations from an explicitly configured owner.
+    sales_floor: everglade::sales_floor::Floor,
     /// What Everglade's caption leads with, such as that no coding agent
     /// can sign in ([`crate::runtime::WorldRuntime::set_studio_notice`]).
     studio_notice: Option<String>,
@@ -416,6 +418,7 @@ impl Default for State {
             studio: everglade::studio::Studio::default(),
             townsfolk: everglade::townsfolk::Townsfolk::default(),
             compute: everglade::compute::Compute::default(),
+            sales_floor: everglade::sales_floor::Floor::default(),
             studio_notice: None,
             workshop_owner: false,
             destination: ZoneId::Everglade,

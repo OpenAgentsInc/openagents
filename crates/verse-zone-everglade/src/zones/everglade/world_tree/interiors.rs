@@ -248,10 +248,8 @@ const WING_DOORS: [[[f32; 2]; 2]; 2] =
     [[[-7.0, -11.5], [-9.4, -11.5]], [[7.0, -11.5], [9.4, -11.5]]];
 
 /// The Agora's trading floor, Paul's office, and training room, with the
-/// places [`agora`] keeps for an agent. The four role-play booths are one
-/// object, at the training room's door: their lecterns stand closer to the
-/// screens than navigation's clearance, so code places the two agents in
-/// a booth ([`agora::BOOTHS`]) once they are there.
+/// places [`agora`] keeps for an agent. Each booth has its own node in
+/// the clear side aisle; its two lecterns remain written-practice props.
 pub(super) fn agora_hall(out: &mut Out, id: &str, d: &str) {
     use Affordance::*;
     let hall = &agora::AGORA;
@@ -279,6 +277,22 @@ pub(super) fn agora_hall(out: &mut Out, id: &str, d: &str) {
         })
         .collect();
     let place = |s: agora::Station| spot(hall, s);
+    for (index, room) in ids.iter().enumerate().skip(1) {
+        let [outside, inside] = WING_DOORS[index - 1];
+        out.object(
+            room,
+            d,
+            "door",
+            Object::Door,
+            place((inside, outside)),
+            &[],
+            false,
+            format!("agora:wing-door:{index}"),
+        );
+        if let Some(door) = out.nodes.last_mut() {
+            door.open = Some(true);
+        }
+    }
     for (i, desk) in agora::DESKS.into_iter().enumerate() {
         out.object(
             &ids[0],
@@ -300,6 +314,16 @@ pub(super) fn agora_hall(out: &mut Out, id: &str, d: &str) {
         &[Gather, Plan],
         false,
         "agora:standup".into(),
+    );
+    out.object(
+        &ids[0],
+        d,
+        "bell",
+        Object::Station,
+        place((agora::STANDUP.0, agora::BELL_PIVOT.0)),
+        &[Read],
+        false,
+        "agora:bell".into(),
     );
     out.object(
         &ids[0],
@@ -351,6 +375,22 @@ pub(super) fn agora_hall(out: &mut Out, id: &str, d: &str) {
         false,
         "agora:booths".into(),
     );
+    // Preserve the group's existing ID for retained plans. Individual
+    // destinations stand beside the lecterns, outside their collision boxes.
+    for (index, booth) in agora::BOOTHS.iter().enumerate() {
+        let x = if index % 2 == 0 { 9.0 } else { 14.2 };
+        let z = (booth[0].0[1] + booth[1].0[1]) * 0.5;
+        out.object(
+            &ids[2],
+            d,
+            &format!("role-play booth {}", index + 1),
+            Object::Seats,
+            place(([x, z], [booth[0].0[0], z])),
+            &[Practice],
+            false,
+            format!("agora:booth:{index}"),
+        );
+    }
 }
 
 /// The building's light fixtures as lamps: those indoors in the room that
