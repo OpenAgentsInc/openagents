@@ -120,11 +120,14 @@ fn a_roof_blocks_rain_wetness_and_a_removed_roof_opens_the_same_column() {
             let mut frame = Frame::zeroed();
             let world = Batches {
                 streamed: None,
+                motion: &[],
+                reactive_lit: None,
                 lit: (&buffer, count),
                 faces: [(&buffer, 0); 2],
                 lines: [(&buffer, 0); 2],
                 textured: None,
                 figure: None,
+                instances: None,
                 water: None,
             };
             let mut encoder = device.create_command_encoder(&Default::default());
