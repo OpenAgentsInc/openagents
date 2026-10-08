@@ -1,0 +1,249 @@
+{
+  "schema": "openagents.web.staging-checks.v1",
+  "scope": "October 8, 2026 chat and Cloud composer staging delivery; issues 10991 and 10992",
+  "deployment": {
+    "revision": "coder-web-chat-985297571c-20261008213052",
+    "image": "us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-web@sha256:4c9d336ed8047ffa64843ff153819a838f0d56f0c8df8f3f674f7140db73a721",
+    "ready": true,
+    "production_preserved": true,
+    "source": "985297571cd0cb221f3df2aabee027a3c59d933a",
+    "traffic": [
+      {
+        "revisionName": "coder-web-chat-985297571c-20261008213052",
+        "tag": "onboarding",
+        "url": "https://onboarding---coder-ezxz4mgdsq-uc.a.run.app"
+      },
+      {
+        "percent": 100,
+        "revisionName": "coder-web-w11-1d126aad2b-20261008202124",
+        "tag": "new",
+        "url": "https://new---coder-ezxz4mgdsq-uc.a.run.app"
+      }
+    ]
+  },
+  "builds": {
+    "native": {
+      "id": "28068c1d-b271-471a-878c-8f389d20e5f8",
+      "source": "985297571cd0cb221f3df2aabee027a3c59d933a",
+      "status": "SUCCESS"
+    },
+    "browser": {
+      "id": "e4146335-d852-49b3-93dd-ef5fbea5b585",
+      "source": "eb248988865fa4409431bd7ffe76bd57bf90bb8f",
+      "status": "SUCCESS",
+      "contracts_unchanged_in_native_overlay": true
+    }
+  },
+  "http": {
+    "checked_at_utc": "2026-10-08T21:31:50.882903+00:00",
+    "checks": {
+      "bundle_metadata": {
+        "bundle_comparison": "exact",
+        "catalog_entries": 40,
+        "catalog_source_revision": "36d59f3806",
+        "files": [
+          {
+            "bytes": 159,
+            "gzip_bytes": 149,
+            "media_type": "text/javascript",
+            "path": "/static/chat-start.js",
+            "sha256": "d6d4f5b81cd44968045b5203fb68cc19501e9220a7bf0662f3f2a12ed3ff3e56"
+          },
+          {
+            "bytes": 52182,
+            "gzip_bytes": 16873,
+            "media_type": "text/javascript",
+            "path": "/static/htmx.min.js",
+            "sha256": "d6fdc75f204e6bdefa99b69bf1e6d4ac69b8a364f77929f45c13476b4000f717"
+          },
+          {
+            "bytes": 8921,
+            "gzip_bytes": 2530,
+            "media_type": "text/javascript",
+            "path": "/static/htmx-sse.js",
+            "sha256": "3b5992a541619babefc4c169505af474df5c3039da51e59b96ccf9241ecd61d2"
+          },
+          {
+            "bytes": 2015,
+            "gzip_bytes": 743,
+            "media_type": "text/css",
+            "path": "/static/chat-html.css",
+            "sha256": "46e5daced8bea7fb55dccf3dcf46ad6d3209579e7923e9cdc8f0ef4d6519d0c6"
+          },
+          {
+            "bytes": 3244,
+            "gzip_bytes": 1060,
+            "media_type": "text/css",
+            "path": "/static/composer.css",
+            "sha256": "364fa95a8de331032deaa2305a9f7c13dc80d72d1f2526caff8df15701ed06d7"
+          },
+          {
+            "bytes": 9401,
+            "gzip_bytes": 2478,
+            "media_type": "text/css",
+            "path": "/static/demo-html.css",
+            "sha256": "fc942bba80e92d53757b16da2805620e819d2ab4bba8c9214999e6d3af3c068b"
+          },
+          {
+            "bytes": 26994,
+            "gzip_bytes": 5232,
+            "media_type": "text/javascript",
+            "path": "/chat/assets/coder_chat_web.js",
+            "sha256": "d95fbb674e8b83fdf723b8080af244d18b9fc2d29028ce0d9044f7297a019e52"
+          },
+          {
+            "bytes": 130576,
+            "gzip_bytes": 40930,
+            "media_type": "application/wasm",
+            "path": "/chat/assets/coder_chat_web_bg.wasm",
+            "sha256": "7c6c76fd643d7030d6d17482d73c81f5dc71d57d49e9de7081a6661984dd3970"
+          }
+        ],
+        "passed": true
+      },
+      "demo_export_and_originals": {
+        "calls": 19,
+        "compared_raw_bytes": 7652,
+        "export_sha256": "8ff25829c5066b637827626f7af00a1257c2c5c9c82532acc8177647c533af68",
+        "passed": true,
+        "records": 32
+      },
+      "follow_and_idempotency": {
+        "answer_bytes": 17,
+        "answer_sha256": "02d4ede7538f54d2697a23ff612778c9a760e22266293d57d2593cbbb23cc9a2",
+        "passed": true,
+        "polls": 2
+      },
+      "homepage": {
+        "passed": true
+      },
+      "sse_cursor_isolation": {
+        "passed": true
+      },
+      "start_and_idempotency": {
+        "passed": true
+      },
+      "worker_answer_and_refresh": {
+        "answer_bytes": 15,
+        "answer_sha256": "6bc46886587ef82a5d2537840719ac20c7b9e1adc4bcdf8f0639485cfc8ec2f4",
+        "passed": true,
+        "polls": 1
+      }
+    },
+    "complete": true,
+    "elapsed_seconds": 42.63,
+    "expected_source_commit": "985297571cd0cb221f3df2aabee027a3c59d933a",
+    "failed": 0,
+    "native_execution": "not_attempted_anonymous",
+    "observed_source_commit": null,
+    "origin": "https://onboarding---coder-ezxz4mgdsq-uc.a.run.app",
+    "passed": 7
+  },
+  "sse": {
+    "checked_at_utc": "2026-10-08T21:33:25.571314+00:00",
+    "checks": {
+      "current_cursor_reconnect": {
+        "current_comments": 2,
+        "observation_seconds": 2.74,
+        "passed": true,
+        "received_bytes": 22,
+        "transcript_events": 0
+      },
+      "older_cursor_reconnect": {
+        "identity_preserved": true,
+        "messages": 4,
+        "passed": true,
+        "projection_sha256": "ae03ca0d274524c9bff398e7f52c33059c811f3dcdce9e507bc99903ba411fcd",
+        "query_cursor_overridden": true,
+        "received_bytes": 821,
+        "revision": 5
+      },
+      "snapshot_resume": {
+        "messages": 4,
+        "passed": true,
+        "projection_sha256": "ae03ca0d274524c9bff398e7f52c33059c811f3dcdce9e507bc99903ba411fcd",
+        "received_bytes": 959,
+        "revision": 5,
+        "superseded_projections": 4
+      }
+    },
+    "complete": true,
+    "elapsed_seconds": 6.1,
+    "failed": 0,
+    "operation": "read_only_retained_sse",
+    "origin": "https://onboarding---coder-ezxz4mgdsq-uc.a.run.app",
+    "passed": 3
+  },
+  "bundle_baseline": {
+    "origin": "https://openagents.com",
+    "path": "/components/assets/coder_components_web_bg.wasm",
+    "bytes": 5689644,
+    "sha256": "d21cbabdd045ba831b92a38053c2bf9d3fe8d1f669916952a386f03f852ae9ce",
+    "ordinary_chat_staging_wasm_bytes": 130576,
+    "reduction_percent": 97.71
+  },
+  "browser": {
+    "scope": "Final live staging chat and synthetic demo, plus local agent-created scratch chat retirement",
+    "final_picker_errors": 0,
+    "checks": [
+      "Repository and exact branch revision choices",
+      "Environment unavailable state without native admission",
+      "Model and voice capability panels",
+      "Draft preservation during fragment updates",
+      "Independent demo drafts and navigation",
+      "Complete synthetic replay through the first later task",
+      "Beginning/Latest transcript navigation"
+    ],
+    "retirement": {
+      "scope": "agent-created local scratch conversation",
+      "older_transcript_window": true,
+      "draft_cleared": true,
+      "input_disabled": true,
+      "sse_sources_remaining": 0,
+      "http_commands_remaining": 0,
+      "transcript_cleared": true,
+      "record_restored": true
+    }
+  },
+  "initial_staging_durability": {
+    "bucket": "openagentsgemini-web-chats-stage",
+    "generation": "1791493925326624",
+    "bytes": 1110,
+    "messages": 4,
+    "requests": 2,
+    "durable": true
+  },
+  "preserved_game_assets": {
+    "scope": "Full-response hashes checked on the initial staging image; final native overlay retains these files unchanged",
+    "assets": [
+      {
+        "path": "/everglade/everglade_web_bg.wasm",
+        "bytes": 28496567,
+        "sha256": "7d1c11b7e828cd33212280ad1ed3bf4fee00f29386a5b25b554d537a76cfe492",
+        "preserved": true
+      },
+      {
+        "path": "/everglade/kit/bake/fc5414a1bfef9e730f3d7d779e4447f12cc86d4e571042eec42518abb30ef7c2.vlay",
+        "bytes": 51684139,
+        "sha256": "fc5414a1bfef9e730f3d7d779e4447f12cc86d4e571042eec42518abb30ef7c2",
+        "preserved": true
+      }
+    ]
+  },
+  "rust_tests": {
+    "openagents-web": 167,
+    "coder-access": 102,
+    "coder-cloud_operator": 16
+  },
+  "formatting_passed": true,
+  "limitations": [
+    "Native reviewed command and canonical job integration uses synthetic fixtures; no real provider lifecycle is qualified.",
+    "Staging has no admitted native Cloud account or resident binding. Public source metadata grants no execution authority.",
+    "Native reviewed requests use a file-backed journal. Hosted recovery across replicas requires durable custodian or shared-journal qualification before activation.",
+    "The broader coder-cloud pool test has an unrelated macOS GNU mv -T fixture failure; only the targeted operator test group is claimed passing.",
+    "Original evidence is complete within upstream retention bounds. This record does not claim retention of every byte ever generated.",
+    "The HTTP endpoint does not attest its server source. Independent Cloud Build and running image metadata establish the deployed native commit.",
+    "The optional exact Mac/Linux bundle comparison failed because platform-specific module identities and Wasm bytes differ. Final overlay comparison against the deployed Linux baseline passed.",
+    "Persistent computers, previews, prepared environment versions, and retail activation remain separate work."
+  ]
+}

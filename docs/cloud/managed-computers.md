@@ -1,7 +1,8 @@
 # Cloud computers and repository environments
 
-Status: implementation plan, October 8, 2026. The first web integration uses
-existing admitted operator Cloud jobs. Prepared environment versions, service
+Status: first web integration implemented and published to staging on October 8,
+2026; see the [deployment record](../deployment/openagents-web.md#october-8-2026-chat-and-cloud-composer-on-staging).
+The native integration uses existing admitted operator Cloud jobs. Prepared environment versions, service
 previews, scheduled wake, and general persistent-machine custody remain designed.
 [The glossary](../glossary.md) defines the terms and their implementation status.
 [Orbs research](../research/orbs.md) supplies the external reference; the
@@ -126,6 +127,12 @@ drafts, review fencing, original job recovery, and unconfigured availability.
 Use an isolated host and provider resource for qualified execution; never use
 an owner's personal checkout or ambient login. Record which paths are real,
 synthetic, or unconfigured.
+
+Public web chats use generation-fenced GCS records. Native reviewed requests
+retain their existing file-backed journal and canonical resident jobs. Hosting
+those controls requires a persistent custodian or a shared admitted journal;
+ephemeral Cloud Run replicas do not supply it. Qualify restart and replica
+recovery before enabling native execution on the hosted site.
 
 Production promotion requires a later owner request. Follow the existing staged
 Cloud Run process and preserve production traffic, sidecar, runtime, and game

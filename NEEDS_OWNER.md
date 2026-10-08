@@ -9,6 +9,10 @@ pins, and explicitly selected provider credentials described in
 [`docs/cloud/README.md`](docs/cloud/README.md). Qualify the real provider lifecycle
 on an isolated computer before admitting it. The integrated fixture uses a
 synthetic backend and does not establish funded or persistent computer operation.
+Native reviewed requests also require durable control-journal custody. The
+current journal uses native files; the public chat's GCS adapter does not provide
+shared native journal storage. Qualify a single persistent custodian or a shared
+admitted journal before enabling native controls across Cloud Run replicas.
 Production promotion requires a later request; this task publishes staging only.
 
 ## Verify native terminal display idle (#10909)
