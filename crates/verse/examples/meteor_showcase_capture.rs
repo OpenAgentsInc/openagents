@@ -1684,7 +1684,7 @@ fn main() -> Result<(), String> {
         "final_drain_charged_to_frame": frames.checked_sub(1),
         "warmup_submissions": completed.warmup_submissions,
         "warmup_drain_ms": completed.warmup_drain_ms,
-        "warmup_method": "Three initial exposure renders each wait for their exact submission before the next one. They finish before primary submission 0 and remain inside its frame timing.",
+        "warmup_method": if completed.warmup_submissions > 0 { "Initial exposure renders each wait for their exact submission before the next one. They finish before primary submission 0 and remain inside its frame timing." } else { "This stage required no separate exposure warm-up submissions." },
         "png_writes_and_progress_logs_deferred": pipelined,
         "deferred_png_memory_bound_bytes": 1024 * 1024 * 1024u64,
         "continuous_iteration_ms": spread(samples.iter().map(|s| s.cadence).collect()),
