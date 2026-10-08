@@ -34,3 +34,8 @@ private-assets.json
 !/scratch/README.md
 # The licensed medieval kit pack, fetched into the web build context only.
 /crates/openagents-web/kit/
+
+# Agent worktrees and local Claude Code state.
+/.claude/
+# Finder metadata.
+.DS_Store
