@@ -43,6 +43,20 @@ RUN scripts/build-everglade-web.sh /build/everglade \
     && find crates/openagents-web/kit -maxdepth 1 -name '*.vtp' \
         -exec cp {} /build/everglade/kit/ \; 2>/dev/null || true
 
+# Build the shared component catalog and Cloud privacy adapter directly in
+# this isolated stage. The local build scripts use the machine's build lease.
+RUN cargo build --locked --release --target wasm32-unknown-unknown \
+        -p coder-components-web -p coder-cloud-web \
+    && mkdir -p /build/components /build/cloud \
+    && wasm-bindgen --target web --no-typescript --out-dir /build/components \
+        target/wasm32-unknown-unknown/release/coder_components_web.wasm \
+    && wasm-bindgen --target web --no-typescript --out-dir /build/cloud \
+        target/wasm32-unknown-unknown/release/coder_cloud_web.wasm \
+    && test -s /build/components/coder_components_web.js \
+    && test -s /build/components/coder_components_web_bg.wasm \
+    && test -s /build/cloud/coder_cloud_web.js \
+    && test -s /build/cloud/coder_cloud_web_bg.wasm
+
 FROM debian:13-slim
 
 RUN apt-get update \
@@ -53,8 +67,10 @@ RUN apt-get update \
         --home-dir /home/web --shell /usr/sbin/nologin web
 COPY --from=builder /build/target/release/openagents-web /usr/local/bin/openagents-web
 COPY --from=everglade /build/everglade /srv/everglade
+COPY --from=everglade /build/components /srv/components
+COPY --from=everglade /build/cloud /srv/cloud
 
 USER 10001:10001
 EXPOSE 8080
 ENTRYPOINT ["/usr/local/bin/openagents-web"]
-CMD ["--listen", "0.0.0.0:8080", "--public-host", "openagents.com", "--everglade", "/srv/everglade"]
+CMD ["--listen", "0.0.0.0:8080", "--public-host", "openagents.com", "--everglade", "/srv/everglade", "--components-build", "/srv/components", "--cloud-build", "/srv/cloud"]

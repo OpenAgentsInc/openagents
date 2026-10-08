@@ -24,6 +24,8 @@
 !/scripts/install/coder.ps1
 !/programs/
 !/questions/
+!/plugins/
+!/knowledge/
 !/packages/
 /packages/*
 !/packages/coder-defaults/
@@ -32,10 +34,14 @@
 !/deploy/eval-runner/
 !/docs/
 /docs/*
+!/docs/agents/
 !/docs/coder/
 !/docs/cost/
+!/docs/decision-models/
 !/docs/protocol/
+!/docs/sales/
 !/docs/terminal-bench/
+!/docs/transcripts/
 !/bench/
 /bench/*
 !/bench/coder/
