@@ -1995,3 +1995,33 @@ supplied snapshot's digest. Owner steps:
   fetch, a delivery). None is admitted; a release that declares one is
   refused by the paid route and needs its own authority design.
 
+
+## REV-74 public reply channel: GitHub Issues (#10881)
+
+Code state: `coder::task::sales::outbox::public_reply` is a disabled
+GitHub Issues adapter. A grant in `Mode::Fixture` admits fixture posting
+only through `FakeTransport`; a `Mode::Live` grant is refused, and no live
+HTTP transport exists. The owner must do the following before any public
+reply is posted:
+
+1. Confirm the measured need: name the invited OpenAgentsInc issue threads
+   where a maintainer or prospect asked for an answer, and record the
+   invitation evidence digest as `Grant::invitation_sha256`.
+2. Create a dedicated GitHub account for the agent whose profile states
+   that it is an AI agent operated by OpenAgents, and record its login as
+   `Grant::account` and the label (login plus "AI") as `Grant::label`.
+3. Confirm the GitHub terms for automated accounts at activation time and
+   that each repository's maintainers accept replies from the labeled
+   account in those threads.
+4. Issue a fine-grained token scoped to those repositories with
+   `issues: write` only, hold it in the host credential broker, and record
+   its digest as `Grant::credential_sha256`. Never place the token in the
+   store, a request record, a log, or a fixture.
+5. Implement and review the live transport (`POST
+   /repos/{owner}/{repo}/issues/{number}/comments`, API version
+   `2022-11-28`) as a single-use, nonserializable admission like
+   `SmtpAdmission`, then lift the `Mode::Live` refusal in
+   `Store::public_reply_grant` in a reviewed change.
+6. Keep the daily cap at or below five replies per grant, keep
+   `public_reply_pause` available, and reconcile every `Unknown` attempt
+   against the thread before any further reply there.
