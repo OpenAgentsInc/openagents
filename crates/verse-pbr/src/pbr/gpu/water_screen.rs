@@ -8,7 +8,6 @@ use crate::water::screen::{DEPTH_COPY, Plan, copy_source};
 
 /// Pipelines and buffers made once for a tier that copies.
 pub(super) struct WaterScreen {
-    pub plan: Plan,
     copy_layout: wgpu::BindGroupLayout,
     copy: wgpu::RenderPipeline,
     /// The zone's water in one draw over the copies (`fs_water_screen`).
@@ -46,7 +45,7 @@ pub(super) struct Parts<'a> {
 }
 
 impl WaterScreen {
-    pub fn new(device: &wgpu::Device, plan: Plan, parts: Parts<'_>) -> Self {
+    pub fn new(device: &wgpu::Device, parts: Parts<'_>) -> Self {
         let options = wgpu::PipelineCompilationOptions {
             constants: parts.constants,
             ..Default::default()
@@ -193,7 +192,6 @@ impl WaterScreen {
             cache: None,
         });
         Self {
-            plan,
             copy_layout,
             copy,
             water: parts.water,

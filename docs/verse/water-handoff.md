@@ -87,7 +87,7 @@ with `c8c9f7d02e`, which split the coast into C1 to C6.
 | Issue | Remaining work | Blocked by |
 | --- | --- | --- |
 | [#10919](https://github.com/OpenAgentsInc/openagents/issues/10919) Everglade pond reflections | Not started. Find why Everglade's ponds read as flat green from above (`everglade-water/lantern-above.png`) when the harness ponds (`water-screen/`) show reflection and refraction. Candidates: the preset, Fresnel at that angle, the bed color, the scene copy and mirror not running in Everglade, or Everglade's tier defaults. Fix it, commit before and after captures from the same viewpoints, and add a test that catches the cause. | Nothing |
-| [#10783](https://github.com/OpenAgentsInc/openagents/issues/10783) W11 measurement and budgets | In progress on `codex/water-w11-measurement`. Source and measurement harness checkpointed; no W11 Cargo check or measurement has run yet. Measure per-tier GPU time, GPU memory, and CPU for water on the development Mac and on `everglade-web` with WebGPU and WebGL2; put device runs in `NEEDS_OWNER.md`. Replace the target budgets in [water.md](water.md#budgets-per-tier) with measured ones and set the constants and overrun behavior in `verse_engine::quality`. Known overruns: W10's floating-bodies view at 4.29 ms against High's 4 ms. | Nothing (W7 to W10 are closed) |
+| [#10783](https://github.com/OpenAgentsInc/openagents/issues/10783) W11 measurement and budgets | In progress on `codex/water-w11-measurement`. Source and measurement harness checkpointed. Remote verification started; native desktop audio lacks `alsa.pc`, so use the capture consumer check and cover default features on the Mac later. No measurement has run yet. Measure per-tier GPU time, GPU memory, and CPU for water on the development Mac and on `everglade-web` with WebGPU and WebGL2; put device runs in `NEEDS_OWNER.md`. Replace the target budgets in [water.md](water.md#budgets-per-tier) with measured ones and set the constants and overrun behavior in `verse_engine::quality`. Known overruns: W10's floating-bodies view at 4.29 ms against High's 4 ms. | Nothing (W7 to W10 are closed) |
 | [#10784](https://github.com/OpenAgentsInc/openagents/issues/10784) umbrella | Close when W11 closes and [water.md](water.md) has the measured budgets. | #10783 |
 | [#10885](https://github.com/OpenAgentsInc/openagents/issues/10885) C1 zone shell | Not started. `ZoneId::Coast`, the plaza's west arch, generated terrain and bathymetry, the ocean with a tide, the harbor shelter mask, the estuary, spawn, and zone tests. Start from W10's coastal test scene, `verse_zone_water::coast`, and extend the bed to the horizon, as [coast.md](coast.md) says. | Nothing (W3, W4, and W10 are closed) |
 | [#10886](https://github.com/OpenAgentsInc/openagents/issues/10886) C2 kits and pack | Blender kits and the pinned coast pack, through `openagents artifact submit`. | C1 |
@@ -128,7 +128,16 @@ reported separately. The native bench paces actual display intervals at
 60 Hz, so back-to-back frame bursts cannot hide worker cost. Missing GPU
 results neither advance nor reset the GPU overrun streak.
 
-Resume from `codex/water-w11-measurement`; the checkpoint is unverified.
+Resume from `codex/water-w11-measurement`; acceptance is still pending.
+The first remote native check compiled the edited physics, engine, and
+PBR crates, then stopped on the unrelated default desktop audio dependency:
+`alsa.pc` is absent from coderos-4080's pkg-config path. Use Verse's
+`--no-default-features --features capture` consumer there; check native
+default features in the later Mac window. Do not change system packages.
+The stable remote source is
+`/home/christopherdavid/.openagents/scratch/process-2198653/water-w11-agent12`,
+with its own `~/work/openagents-target-agent12`. Advance only that checkout
+between commands; do not compile the SHA-named placement snapshots.
 The fixed-view ignored raster test is `w11::water_w11_fixed_views` in
 `verse-pbr`'s `water_capture` example. Compile that filtered test with
 `--release --no-run`, then run its executable under a quiet lease with
