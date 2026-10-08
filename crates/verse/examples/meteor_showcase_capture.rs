@@ -9,6 +9,8 @@
 //! [--compare-particles] [--no-particle-lighting] [--no-soft-particles]
 //! [--particle-frame N] [--particle-repeats N] [--particle-every N]
 //! [--smoke-frame N]
+//! [--no-temporal-aa] [--compare-temporal-aa] [--camera director|pan|orbit]
+//! [--static-houses]
 //!
 //! Installs the showcase from the committed, pinned Everglade pack as
 //! `verse --meteor-showcase` does, bakes its light, and renders it offscreen
@@ -43,6 +45,12 @@
 //! lights fixed and writes matched impact, ground-smoke, and aftermath images.
 //! `--particle-frame` measures only that snapshot; otherwise
 //! `--particle-every` selects frames. Particle repeats and spacing default to 1.
+//! Temporal comparison keeps separate on/off renderers, advancing both once
+//! per simulation frame with alternating render order. Their histories stay
+//! warm, and GPU timestamps exclude pixel readback. Matched images accompany
+//! the usual captures and saved frames. Use `--camera pan --static-houses`
+//! or `--camera orbit --static-houses` to inspect intact house edges; the
+//! default destruction sequence exercises fast debris.
 //!
 //! Run it with `VERSE_QUALITY=high` for the high tier, and with
 //! `VERSE_KIT_PACK` naming the licensed kit pack to draw it in place of its
@@ -91,6 +99,27 @@ struct Args {
     particle_frame: Option<usize>,
     particle_repeats: usize,
     particle_every: usize,
+    no_temporal_aa: bool,
+    compare_temporal_aa: bool,
+    camera: CameraPath,
+    static_houses: bool,
+}
+
+#[derive(Clone, Copy)]
+enum CameraPath {
+    Director,
+    Pan,
+    Orbit,
+}
+
+impl CameraPath {
+    fn name(self) -> &'static str {
+        match self {
+            Self::Director => "director",
+            Self::Pan => "pan",
+            Self::Orbit => "orbit",
+        }
+    }
 }
 
 /// One frame's costs, ms, and how much it drew.
@@ -409,6 +438,10 @@ fn args() -> Result<Args, String> {
         particle_frame: None,
         particle_repeats: 1,
         particle_every: 1,
+        no_temporal_aa: false,
+        compare_temporal_aa: false,
+        camera: CameraPath::Director,
+        static_houses: false,
     };
     while let Some(flag) = it.next() {
         let mut value = || it.next().ok_or(format!("{flag} takes a value"));
@@ -422,6 +455,17 @@ fn args() -> Result<Args, String> {
             "--no-particle-lighting" => args.no_particle_lighting = true,
             "--no-soft-particles" => args.no_soft_particles = true,
             "--compare-particles" => args.compare_particles = true,
+            "--no-temporal-aa" => args.no_temporal_aa = true,
+            "--compare-temporal-aa" => args.compare_temporal_aa = true,
+            "--static-houses" => args.static_houses = true,
+            "--camera" => {
+                args.camera = match value()?.as_str() {
+                    "director" => CameraPath::Director,
+                    "pan" => CameraPath::Pan,
+                    "orbit" => CameraPath::Orbit,
+                    _ => return Err("--camera takes director, pan, or orbit".into()),
+                }
+            }
             "--particle-repeats" => {
                 args.particle_repeats = value()?
                     .parse()
@@ -493,7 +537,84 @@ fn args() -> Result<Args, String> {
     if args.particle_frame.is_some_and(|frame| frame < 3) {
         return Err("--particle-frame must follow the first three warm-up frames".into());
     }
+    if args.compare_temporal_aa
+        && (args.no_temporal_aa || std::env::var("VERSE_TEMPORAL_AA").as_deref() == Ok("off"))
+    {
+        return Err("Temporal comparison requires temporal antialiasing enabled".into());
+    }
+    if args.compare_temporal_aa && (args.compare_flash_lights || args.compare_particles) {
+        return Err("Run temporal comparison separately so each renderer advances once per simulation frame".into());
+    }
     Ok(args)
+}
+
+fn write_temporal_pair(
+    out: &Path,
+    name: &str,
+    on: &[u8],
+    off: Option<&[u8]>,
+) -> Result<(), String> {
+    if let Some(off) = off {
+        write_png(&out.join(format!("{name}-taa-off.png")), off)?;
+        write_png(&out.join(format!("{name}-taa-on.png")), on)?;
+    }
+    Ok(())
+}
+
+fn paired_world(
+    world: &verse::mesh::Mesh,
+) -> (
+    verse::mesh::Mesh,
+    Option<verse::pbr::textured::BakedVertices>,
+) {
+    let mut copy = world.clone();
+    let Some(original) = &world.textured else {
+        return (copy, None);
+    };
+    let mut scene = original.as_ref().clone();
+    scene.baked = verse::pbr::textured::BakedVertices::default();
+    let receiver = scene.baked.clone();
+    copy.textured = Some(std::sync::Arc::new(scene));
+    (copy, Some(receiver))
+}
+
+fn forward_bake(
+    source: &verse::pbr::textured::BakedVertices,
+    receivers: &[verse::pbr::textured::BakedVertices],
+) {
+    let lights = source.take();
+    let lamps = source.take_lamps();
+    for receiver in receivers {
+        if let Some(lights) = &lights {
+            receiver.deliver_lights(lights.clone());
+        }
+        if let Some(lamps) = &lamps {
+            receiver.deliver_lamps(lamps.clone());
+        }
+    }
+}
+
+fn temporal_report(phases: &[(&str, Vec<RenderPair>)], gpu_supported: bool) -> serde_json::Value {
+    let mut out = serde_json::Map::new();
+    for (name, pairs) in phases {
+        out.insert((*name).to_owned(), serde_json::json!({
+            "frames": pairs.len(),
+            "valid_gpu_frames": pairs.iter().filter(|p| p.gpu_overhead().is_some()).count(),
+            "invalid_gpu_frames": if gpu_supported { pairs.iter().filter(|p| p.gpu_overhead().is_none()).count() } else { 0 },
+            "gpu_increment_ms": spread(pairs.iter().filter_map(RenderPair::gpu_overhead).collect()),
+            "mean_gpu_increment_ms": if !pairs.is_empty() && pairs.iter().all(|p| p.gpu_overhead().is_some()) { Some(pairs.iter().filter_map(RenderPair::gpu_overhead).sum::<f32>() / pairs.len() as f32) } else { None },
+            "encode_increment_ms": spread(pairs.iter().map(|p| p.on.0 - p.off.0).collect()),
+            "cpu_gpu_increment_ms": spread(pairs.iter().filter_map(RenderPair::cpu_gpu_overhead).collect()),
+            "gpu_increment_under_1ms_p99": if pairs.iter().all(|p| p.gpu_overhead().is_some()) && !pairs.is_empty() {
+                let mut costs: Vec<_> = pairs.iter().filter_map(RenderPair::gpu_overhead).collect();
+                costs.sort_by(f32::total_cmp);
+                Some(costs[((costs.len() - 1) as f32 * 0.99).round() as usize] < 1.0)
+            } else { None },
+            "all_gpu_increments_under_1ms": if !pairs.is_empty() && pairs.iter().all(|p| p.gpu_overhead().is_some()) { Some(pairs.iter().filter_map(RenderPair::gpu_overhead).all(|ms| ms < 1.0)) } else { None },
+            "frame_results": pairs.iter().map(|p| serde_json::json!({"frame": p.index, "off_gpu_ms": p.off_gpu, "on_gpu_ms": p.on_gpu, "gpu_increment_ms": p.gpu_overhead()})).collect::<Vec<_>>(),
+        }));
+    }
+    serde_json::Value::Object(out)
 }
 
 fn write_png(path: &Path, pixels: &[u8]) -> Result<(), String> {
@@ -608,6 +729,25 @@ fn camera(t: f32) -> (Vec3, Vec3) {
     (eye, target)
 }
 
+fn shot(path: CameraPath, t: f32) -> (Vec3, Vec3) {
+    match path {
+        CameraPath::Director => camera(t),
+        CameraPath::Pan => {
+            let (eye, gaze) = camera(0.0);
+            let offset = Vec3::new(t * 2.0, 0.0, 0.0);
+            (eye + offset, gaze + offset)
+        }
+        CameraPath::Orbit => {
+            let [cx, cz] = showcase::LOT;
+            let angle = 2.8 + t * 0.08;
+            (
+                Vec3::new(cx + angle.sin() * 58.0, 8.0, cz + angle.cos() * 58.0),
+                Vec3::new(cx, 6.0, cz),
+            )
+        }
+    }
+}
+
 fn main() -> Result<(), String> {
     let args = args()?;
     std::fs::create_dir_all(&args.out).map_err(|e| format!("{}: {e}", args.out.display()))?;
@@ -663,14 +803,18 @@ fn main() -> Result<(), String> {
         LIVE_CAST
     } else {
         runtime.set_spawn(glam::Vec3::new(-46.0, 0.0, -80.0), 0.0)?;
-        if !runtime.stage_meteor_showcase(showcase::DELAY) {
+        if !args.static_houses && !runtime.stage_meteor_showcase(showcase::DELAY) {
             return Err("The showcase's caster could not be staged".into());
         }
         eprintln!("baking the light");
         runtime.settle_zone_light();
         showcase::DELAY
     };
-    let release = cast_at + zones::everglade::demolition::meteor::CAST;
+    let release = if args.static_houses {
+        args.seconds + 1.0
+    } else {
+        cast_at + zones::everglade::demolition::meteor::CAST
+    };
     let mut phases: Vec<(&str, Vec<Sample>)> = vec![
         ("before", Vec::new()),
         ("swarm", Vec::new()),
@@ -686,16 +830,37 @@ fn main() -> Result<(), String> {
         ("swarm", Vec::new()),
         ("after", Vec::new()),
     ];
+    let mut temporal_phases: Vec<(&str, Vec<RenderPair>)> = vec![
+        ("before", Vec::new()),
+        ("swarm", Vec::new()),
+        ("after", Vec::new()),
+    ];
     let atlas = verse::ui::Atlas::new(16.0);
     let ui = verse::ui::UiBatch::default();
-    runtime.set_shot(Some(camera(0.0)));
-    let mut renderer = verse::render::Offscreen::new(
-        WIDTH,
-        HEIGHT,
-        &runtime.world.mesh,
-        &atlas,
-        runtime.atmosphere(),
-    )?;
+    runtime.set_shot(Some(shot(args.camera, 0.0)));
+    // Independent delivery slots let each GPU receive the same bake. A late
+    // background delivery waits until the next paired simulation snapshot.
+    let (capture_world, on_bake) = if args.compare_temporal_aa {
+        paired_world(&runtime.world.mesh)
+    } else {
+        (runtime.world.mesh.clone(), None)
+    };
+    let mut renderer =
+        verse::render::Offscreen::new(WIDTH, HEIGHT, &capture_world, &atlas, runtime.atmosphere())?;
+    let mut bake_receivers: Vec<_> = on_bake.into_iter().collect();
+    let mut temporal_baseline = if args.compare_temporal_aa {
+        let (baseline_world, off_bake) = paired_world(&runtime.world.mesh);
+        bake_receivers.extend(off_bake);
+        Some(verse::render::Offscreen::new(
+            WIDTH,
+            HEIGHT,
+            &baseline_world,
+            &atlas,
+            runtime.atmosphere(),
+        )?)
+    } else {
+        None
+    };
     let mut encoder = match &args.video {
         Some(path) => Some(
             Command::new("ffmpeg")
@@ -737,8 +902,8 @@ fn main() -> Result<(), String> {
             index: k,
             ..Default::default()
         };
-        runtime.set_shot(Some(camera(t)));
-        if args.live && !cast && t >= cast_at {
+        runtime.set_shot(Some(shot(args.camera, t)));
+        if args.live && !args.static_houses && !cast && t >= cast_at {
             // Key 1, the ring on the ground between the houses, a click.
             cast = true;
             runtime.zone_intent(zones::Intent::MeteorSwarm)?;
@@ -764,7 +929,7 @@ fn main() -> Result<(), String> {
                 }
             }
         }
-        runtime.set_shot(Some(camera(t)));
+        runtime.set_shot(Some(shot(args.camera, t)));
         let started = std::time::Instant::now();
         let mut dynamic = runtime.dynamic_mesh();
         sample.mesh = started.elapsed().as_secs_f32() * 1000.0;
@@ -777,6 +942,8 @@ fn main() -> Result<(), String> {
         if let Some(neon) = &mut dynamic.neon {
             neon.particle_lighting = !args.no_particle_lighting;
             neon.soft_particles = !args.no_soft_particles;
+            neon.temporal_aa =
+                !args.no_temporal_aa && !args.compare_flash_lights && !args.compare_particles;
         }
         let sprites = dynamic.sprites.len();
         sample.sprites = sprites;
@@ -801,7 +968,50 @@ fn main() -> Result<(), String> {
             .map(|r| r.points.len().saturating_sub(1))
             .sum();
         most_sprites = most_sprites.max(sprites);
-        let pixels = renderer.render(runtime.view(aspect), &dynamic, &ui)?;
+        if args.compare_temporal_aa
+            && let Some(scene) = &runtime.world.mesh.textured
+        {
+            forward_bake(&scene.baked, &bake_receivers);
+        }
+        let mut temporal_pair = RenderPair {
+            index: k,
+            ..Default::default()
+        };
+        let mut off_pixels = None;
+        if let Some(baseline) = &mut temporal_baseline
+            && k % 2 == 0
+        {
+            if let Some(neon) = &mut dynamic.neon {
+                neon.temporal_aa = false;
+            }
+            off_pixels = Some(baseline.render(view, &dynamic, &ui)?);
+            temporal_pair.off = baseline.last_timing();
+            temporal_pair.off_gpu = baseline.last_gpu_ms();
+            if let Some(neon) = &mut dynamic.neon {
+                neon.temporal_aa = true;
+            }
+        }
+        let pixels = renderer.render(view, &dynamic, &ui)?;
+        temporal_pair.on = renderer.last_timing();
+        temporal_pair.on_gpu = renderer.last_gpu_ms();
+        if let Some(baseline) = &mut temporal_baseline
+            && k % 2 != 0
+        {
+            if let Some(neon) = &mut dynamic.neon {
+                neon.temporal_aa = false;
+            }
+            off_pixels = Some(baseline.render(view, &dynamic, &ui)?);
+            temporal_pair.off = baseline.last_timing();
+            temporal_pair.off_gpu = baseline.last_gpu_ms();
+            if let Some(neon) = &mut dynamic.neon {
+                neon.temporal_aa = true;
+            }
+        }
+        if args.compare_temporal_aa && !renderer.temporal_aa_available() {
+            return Err(
+                "Temporal comparison requires a desktop Medium or High HDR renderer".into(),
+            );
+        }
         (sample.encode, sample.gpu) = renderer.last_timing();
         sample.flash_lights = renderer.selected_flash_lights();
         if let Some(stats) = renderer.draw_stats() {
@@ -817,6 +1027,9 @@ fn main() -> Result<(), String> {
             2
         };
         phases[phase].1.push(sample);
+        if args.compare_temporal_aa && k >= 8 {
+            temporal_phases[phase].1.push(temporal_pair);
+        }
         // Keep the simulation, camera, and geometry fixed for both renders.
         // Exclude startup warm-up and alternate order to reduce order bias.
         if args.compare_flash_lights && k >= 3 && k % args.flash_every == 0 {
@@ -855,6 +1068,7 @@ fn main() -> Result<(), String> {
         }
         if k == (2.0 * fps) as usize {
             write_png(&args.out.join("establishing.png"), &pixels)?;
+            write_temporal_pair(&args.out, "establishing", &pixels, off_pixels.as_deref())?;
         }
         let capture_impact = args.impact_frame.map_or_else(
             || first_impact.is_some_and(|f| k >= f + (1.1 * fps) as usize),
@@ -864,6 +1078,7 @@ fn main() -> Result<(), String> {
             write_png(&args.out.join("impact.png"), &pixels)?;
             impact_shot = true;
             impact_frame = Some(k);
+            write_temporal_pair(&args.out, "impact", &pixels, off_pixels.as_deref())?;
             if args.compare_flash_lights {
                 let (current, other) = if args.no_flash_lights {
                     ("impact-flash-off.png", "impact-flash-on.png")
@@ -897,6 +1112,7 @@ fn main() -> Result<(), String> {
         if smoke_frame.is_none() && capture_smoke {
             smoke_frame = Some(k);
             write_png(&args.out.join("ground-smoke.png"), &pixels)?;
+            write_temporal_pair(&args.out, "ground-smoke", &pixels, off_pixels.as_deref())?;
             if args.compare_particles {
                 capture_particle_pair(
                     &mut renderer,
@@ -920,6 +1136,7 @@ fn main() -> Result<(), String> {
         }
         if k + fps as usize == frames {
             write_png(&args.out.join("aftermath.png"), &pixels)?;
+            write_temporal_pair(&args.out, "aftermath", &pixels, off_pixels.as_deref())?;
             if args.compare_particles {
                 capture_particle_pair(
                     &mut renderer,
@@ -938,6 +1155,12 @@ fn main() -> Result<(), String> {
             write_png(
                 &args.out.join("frames").join(format!("{k:04}.png")),
                 &pixels,
+            )?;
+            write_temporal_pair(
+                &args.out.join("frames"),
+                &format!("{k:04}"),
+                &pixels,
+                off_pixels.as_deref(),
             )?;
         }
         if let Some(child) = &mut encoder {
@@ -975,6 +1198,8 @@ fn main() -> Result<(), String> {
         .then(|| measure_flash_pool(runtime.view(aspect).eye));
     let summary = serde_json::json!({
         "mode": if args.live { "live" } else { "film" },
+        "camera_path": args.camera.name(),
+        "static_houses": args.static_houses,
         "width": WIDTH,
         "height": HEIGHT,
         "fps": fps,
@@ -994,12 +1219,21 @@ fn main() -> Result<(), String> {
         },
         "light_settled_before_capture": !args.live || args.settle_light,
         "gpu_timestamp_features_supported": renderer.gpu_timestamps_available(),
-        "gpu_timestamps_available": flash_phases.iter().chain(&particle_phases).flat_map(|(_, pairs)| pairs).any(|p| p.gpu_overhead().is_some()),
+        "gpu_timestamps_available": flash_phases.iter().chain(&particle_phases).chain(&temporal_phases).flat_map(|(_, pairs)| pairs).any(|p| p.gpu_overhead().is_some()),
         "flash_lights_enabled": !args.no_flash_lights,
         "impact_frame": impact_frame,
         "smoke_frame": smoke_frame,
         "particle_lighting_enabled": !args.no_particle_lighting,
         "soft_particles_enabled": !args.no_soft_particles,
+        "temporal_aa_available": renderer.temporal_aa_available(),
+        "temporal_aa_enabled": renderer.temporal_aa_available() && !args.no_temporal_aa && !args.compare_flash_lights && !args.compare_particles && std::env::var("VERSE_TEMPORAL_AA").as_deref() != Ok("off"),
+        "temporal_comparison": if args.compare_temporal_aa { serde_json::json!({
+            "warmup_frames": 8,
+            "history_method": "Separate on/off renderers retain their own history and exposure, advance once per identical simulation frame, and alternate order. Each has its own baked-light delivery slot; runtime light and lamp deliveries are forwarded identically before either render. Deliveries arriving mid-pair wait until the next frame. No repeated snapshot renders or temporal toggle resets enter the sample.",
+            "gpu_method": "GPU encoder timestamps cover scene commands, including the temporal passes, before pixel readback. Nonpositive or unsupported timestamps remain null. Wall-clock waits include readback and polling; the budget uses the paired GPU increment.",
+            "acceptance_gpu_increment_ms": 1.0,
+            "phases": temporal_report(&temporal_phases, renderer.gpu_timestamps_available()),
+        }) } else { serde_json::Value::Null },
         "sprite_area_method": "Sum of half-width times (half-width plus half-tail) over squared camera distance, before GPU clipping; an angular overdraw proxy, not pixel coverage.",
         "particle_comparison": if args.compare_particles { serde_json::json!({
             "repeats_per_snapshot": args.particle_repeats,
@@ -1038,4 +1272,40 @@ fn main() -> Result<(), String> {
         eprintln!("wrote {}", path.display());
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn paired_bake_deliveries_are_independent_and_match_each_revision() {
+        let source = verse::pbr::textured::TexturedScene::default();
+        let world = verse::mesh::Mesh {
+            textured: Some(std::sync::Arc::new(source)),
+            ..Default::default()
+        };
+        let (on_world, on) = paired_world(&world);
+        let (off_world, off) = paired_world(&world);
+        let receivers = [on.unwrap(), off.unwrap()];
+        let source = &world.textured.as_ref().unwrap().baked;
+        for revision in [1, 2] {
+            let lights = vec![[revision; 4]; 3];
+            let lamps = vec![[revision + 1; 4]; 3];
+            source.deliver_lights(lights.clone());
+            source.deliver_lamps(lamps.clone());
+            forward_bake(source, &receivers);
+            assert_eq!(
+                on_world.textured.as_ref().unwrap().baked.take(),
+                Some(lights.clone())
+            );
+            assert_eq!(
+                off_world.textured.as_ref().unwrap().baked.take(),
+                Some(lights)
+            );
+            assert_eq!(receivers[0].take_lamps(), Some(lamps.clone()));
+            assert_eq!(receivers[1].take_lamps(), Some(lamps));
+            assert!(source.take().is_none());
+        }
+    }
 }

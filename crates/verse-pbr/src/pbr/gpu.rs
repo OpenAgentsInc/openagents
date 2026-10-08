@@ -350,6 +350,16 @@ impl Capability {
             + screen
             + water
             + u64::from(SHADOW_SIZE).pow(2) * u64::from(self.quality.cascades) * 4
+            + if super::temporal::supported(
+                Platform::current(),
+                self.quality.tier,
+                self.hdr.is_some(),
+                self.gles,
+            ) {
+                super::temporal::bytes(width, height)
+            } else {
+                0
+            }
     }
     pub fn probe(
         adapter: &wgpu::Adapter,
@@ -713,10 +723,24 @@ pub struct PhotoTargets {
     water_group: wgpu::BindGroup,
     /// The particles' group 3 with the depth copy for their soft fade.
     fx_group: wgpu::BindGroup,
+    temporal: Option<super::temporal::Targets>,
     water_bytes: u64,
 }
 
 impl PhotoTargets {
+    /// Whether this view can retain temporal history on its adapter and tier.
+    #[must_use]
+    pub fn temporal_aa_available(&self) -> bool {
+        self.temporal.is_some()
+    }
+
+    /// Discards temporal history after replacing the world behind this view.
+    pub fn reset_temporal_history(&mut self) {
+        if let Some(temporal) = &mut self.temporal {
+            temporal.reset();
+        }
+    }
+
     pub fn size(&self) -> [u32; 2] {
         self.size
     }
@@ -787,6 +811,7 @@ pub struct Photo {
     /// Repeating, trilinear sampling for base-color images.
     textured_sampler: wgpu::Sampler,
     post: Option<Output>,
+    temporal: Option<super::temporal::Temporal>,
     /// The high tier's depth prepass and screen-space passes.
     prepass: Option<Prepass>,
     screen: Option<ScreenGpu>,
@@ -1966,6 +1991,13 @@ impl Photo {
         let post = capability
             .hdr
             .map(|hdr| Output::new(device, hdr, output_format));
+        let temporal = super::temporal::supported(
+            Platform::current(),
+            capability.quality.tier,
+            capability.hdr.is_some(),
+            capability.gles,
+        )
+        .then(|| super::temporal::Temporal::new(device, scene_format, samples));
         let star_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("verse stars"),
             size: std::mem::size_of::<StarInstance>() as u64,
@@ -2002,6 +2034,7 @@ impl Photo {
             empty_group,
             textured_sampler,
             post,
+            temporal,
             prepass,
             screen,
             screen_white: white_terms(device, queue),
@@ -2497,6 +2530,7 @@ impl Photo {
         let sampled = attach | wgpu::TextureUsages::TEXTURE_BINDING;
         let samples = self.capability.samples;
         let copies = self.water_screen.is_some();
+        let sampled_depth = copies || self.temporal.is_some();
         let msaa = (samples > 1).then(|| {
             texture(
                 "verse photo msaa",
@@ -2532,7 +2566,7 @@ impl Photo {
             height,
             samples,
             1,
-            if copies { sampled } else { attach },
+            if sampled_depth { sampled } else { attach },
         )
         .create_view(&Default::default());
         let adapt = output::adapt_textures(device, scene_format);
@@ -2602,6 +2636,10 @@ impl Photo {
             ],
         });
         let fx_group = self.fx_parts.group(device, &self.fx_layout, depth_copy);
+        let temporal = self
+            .temporal
+            .as_ref()
+            .map(|temporal| temporal.targets(device, &scene, &depth, [width, height]));
         let water_bytes = self.water_screen.as_ref().map_or(0, |water| {
             let scene_bytes = u64::from(scene_format.block_copy_size(None).unwrap_or(8));
             water.plan.bytes(width, height, scene_bytes)
@@ -2619,6 +2657,7 @@ impl Photo {
             water,
             water_group,
             fx_group,
+            temporal,
         }
     }
 
@@ -2637,6 +2676,15 @@ impl Photo {
         ui: Option<(&wgpu::RenderPipeline, &wgpu::BindGroup, &wgpu::Buffer, u32)>,
     ) {
         self.stats.set(DrawStats::default());
+        let (time, enabled) = match stage {
+            Stage::Space(sky) => (sky.time, true),
+            Stage::Neon(neon) => (neon.time, neon.temporal_aa),
+        };
+        let enabled = enabled && std::env::var("VERSE_TEMPORAL_AA").ok().as_deref() != Some("off");
+        let view = targets
+            .temporal
+            .as_mut()
+            .map_or(view, |temporal| temporal.prepare(view, time, enabled));
         match stage {
             Stage::Space(sky) => {
                 self.encode_space(device, queue, encoder, output, targets, view, sky, world)
@@ -2807,7 +2855,11 @@ impl Photo {
                     view: &targets.depth,
                     depth_ops: Some(wgpu::Operations {
                         load: wgpu::LoadOp::Clear(0.0),
-                        store: wgpu::StoreOp::Discard,
+                        store: if targets.temporal.as_ref().is_some_and(|t| t.enabled) {
+                            wgpu::StoreOp::Store
+                        } else {
+                            wgpu::StoreOp::Discard
+                        },
                     }),
                     stencil_ops: None,
                 }),
@@ -2890,6 +2942,7 @@ impl Photo {
         }
 
         let camera = sky.camera;
+        self.encode_temporal(queue, encoder, targets, world.motion);
         self.post_chain(
             queue,
             encoder,
@@ -3482,7 +3535,11 @@ impl Photo {
                 &targets.depth,
                 wgpu::LoadOp::Load,
                 wgpu::LoadOp::Load,
-                wgpu::StoreOp::Discard,
+                if targets.temporal.as_ref().is_some_and(|t| t.enabled) {
+                    wgpu::StoreOp::Store
+                } else {
+                    wgpu::StoreOp::Discard
+                },
             );
             pass.set_bind_group(0, &self.scene_group, &[]);
             self.draw_water(
@@ -3509,7 +3566,11 @@ impl Photo {
                 &targets.depth,
                 wgpu::LoadOp::Clear(clear),
                 wgpu::LoadOp::Clear(0.0),
-                wgpu::StoreOp::Discard,
+                if targets.temporal.as_ref().is_some_and(|t| t.enabled) {
+                    wgpu::StoreOp::Store
+                } else {
+                    wgpu::StoreOp::Discard
+                },
             );
             self.draw_opaque(&mut pass, targets, &opaque);
             self.draw_water(
@@ -3522,6 +3583,7 @@ impl Photo {
             );
             self.draw_blended(&mut pass, targets, &opaque);
         }
+        self.encode_temporal(queue, encoder, targets, world.motion);
         self.post_chain(
             queue,
             encoder,
@@ -3744,6 +3806,18 @@ impl Photo {
         }
     }
 
+    fn encode_temporal(
+        &self,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        targets: &mut PhotoTargets,
+        motions: &[super::temporal::MotionDraw<'_>],
+    ) {
+        if let (Some(temporal), Some(history)) = (&self.temporal, &mut targets.temporal) {
+            temporal.encode(queue, encoder, &targets.scene, history, motions);
+        }
+    }
+
     /// Bloom, exposure adaptation, and the graded output transform into
     /// `output`. Direct mode has no float target and skips it.
     fn post_chain(
@@ -3878,6 +3952,8 @@ fn eye_water(water: &crate::water::Water, view_proj: Mat4, eye: Vec3) -> (Option
 
 /// The retained geometry a physical frame draws.
 pub struct Batches<'a> {
+    /// Moving objects with previous transforms for temporal reprojection.
+    pub motion: &'a [super::temporal::MotionDraw<'a>],
     #[cfg(not(target_arch = "wasm32"))]
     pub streamed: Option<(&'a crate::streaming::Source, &'a wgpu::BindGroup)>,
     pub lit: (&'a wgpu::Buffer, u32),

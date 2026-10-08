@@ -889,6 +889,9 @@ impl Renderer {
         self.scene.textured_baked = None;
         self.scene.textured_edits = None;
         self.scene.figure = None;
+        if let Some(targets) = &mut self.targets.photo {
+            targets.reset_temporal_history();
+        }
         // Animated models can be much larger than plaza avatars. A return
         // releases their buffer capacity instead of retaining the largest zone.
         self.scene.dynamic_faces = dynamic_batch(&self.device, "verse dynamic faces");
@@ -1815,6 +1818,15 @@ impl Offscreen {
         self.scene.capability.quality
     }
 
+    /// Whether this renderer's physical targets support temporal antialiasing.
+    #[must_use]
+    pub fn temporal_aa_available(&self) -> bool {
+        self.targets
+            .photo
+            .as_ref()
+            .is_some_and(|targets| targets.temporal_aa_available())
+    }
+
     /// Whether this adapter supports GPU timestamps for measured frames.
     #[must_use]
     pub fn gpu_timestamps_available(&self) -> bool {
@@ -1930,7 +1942,7 @@ impl Offscreen {
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("verse capture"),
         });
-        let timestamps = self.gpu_timestamps.as_ref().filter(|_| !read_pixels);
+        let timestamps = self.gpu_timestamps.as_ref();
         if let Some(timer) = timestamps {
             encoder.write_timestamp(&timer.queries, 0);
             // Metal can omit a timestamp when its blit encoder has no real
@@ -2732,6 +2744,7 @@ impl Scene {
             gpu.update_levels(view.eye);
         }
         let batches = Batches {
+            motion: &[],
             #[cfg(not(target_arch = "wasm32"))]
             streamed: self
                 .streaming

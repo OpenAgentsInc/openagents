@@ -414,6 +414,7 @@ fn render(
             view,
             Stage::Neon(&neon),
             Batches {
+                motion: &[],
                 streamed: None,
                 lit: (&scene.lit, scene.count),
                 faces: [(&scene.lit, 0); 2],

@@ -31,6 +31,7 @@ pub mod instanced;
 pub mod output;
 pub mod screen;
 pub mod sky;
+pub mod temporal;
 pub mod textured;
 pub mod textured_bake;
 /// The water a frame draws, at its old path ([`crate::water::frame`]).
@@ -311,6 +312,8 @@ pub struct Neon {
     pub particle_lighting: bool,
     /// Whether particles fade into the opaque depth on Medium and High.
     pub soft_particles: bool,
+    /// Whether desktop Medium and High accumulate camera samples over time.
+    pub temporal_aa: bool,
     /// How brightly a textured scene's baked lamp layer burns, 0 for off to 1
     /// for as baked ([`baked_layers`]), such as from dusk to dawn.
     pub baked_lamps: f32,
@@ -537,6 +540,7 @@ impl Neon {
             flash_lamps: [Lamp::OFF; MAX_FLASH_CANDIDATES],
             particle_lighting: true,
             soft_particles: true,
+            temporal_aa: true,
             baked_lamps: 0.0,
             grade: Grade::STAGE,
             key_color: [1.0; 3],

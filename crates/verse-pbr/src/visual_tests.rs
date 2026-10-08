@@ -182,6 +182,7 @@ fn physical_capture(
         view(),
         stage,
         Batches {
+            motion: &[],
             streamed: None,
             lit: (&buffer, geometry.len() as u32),
             faces: [(&buffer, 0); 2],

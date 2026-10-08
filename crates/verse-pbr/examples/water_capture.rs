@@ -863,6 +863,7 @@ fn physical(
     view.view_proj = Mat4::perspective_rh(0.9, width as f32 / height as f32, 0.1, 400.0)
         * Mat4::look_at_rh(spec.eye, spec.target, Vec3::Y);
     let batches = &Batches {
+        motion: &[],
         streamed: None,
         lit: (&buffer, geometry.len() as u32),
         faces: [(&buffer, 0); 2],
