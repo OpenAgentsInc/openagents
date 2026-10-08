@@ -39,9 +39,21 @@ def main():
             if obj.type != "MESH":
                 continue
             bpy.context.view_layer.objects.active = obj
+            # Keep the silhouette's extrema, including feet and lamp tops.
+            # A zero-weight vertex makes its edges ineligible for collapse.
+            group = obj.vertex_groups.new(name="Far interior")
+            group.add([v.index for v in obj.data.vertices], 1.0, "REPLACE")
+            low = [min(v.co[a] for v in obj.data.vertices) for a in range(3)]
+            high = [max(v.co[a] for v in obj.data.vertices) for a in range(3)]
+            fixed = [v.index for v in obj.data.vertices if any(
+                abs(v.co[a]-low[a]) < 1e-6 or abs(v.co[a]-high[a]) < 1e-6
+                for a in range(3))]
+            group.remove(fixed)
             modifier = obj.modifiers.new("Far level", "DECIMATE")
             modifier.ratio = min(1.0, budget / max(before, 1))
             modifier.use_collapse_triangulate = True
+            modifier.vertex_group = group.name
+            modifier.vertex_group_factor = 1.0
             bpy.ops.object.modifier_apply(modifier=modifier.name)
         after = triangles()
         if after > budget or after == 0:
