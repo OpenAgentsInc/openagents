@@ -89,14 +89,7 @@ fn capture() {
     let atlas = Atlas::new(16.0);
     let ui = UiBatch::default();
     let atmosphere = runtime.everglade_zone_mut().unwrap().atmosphere();
-    let mut renderer = Offscreen::new(
-        1280,
-        800,
-        &runtime.world.mesh,
-        &atlas,
-        atmosphere,
-    )
-    .unwrap();
+    let mut renderer = Offscreen::new(1280, 800, &runtime.world.mesh, &atlas, atmosphere).unwrap();
     assert_eq!(
         renderer.adapter_info().vendor,
         0x10de,
