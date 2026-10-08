@@ -283,7 +283,7 @@ fn plan(store: &Store, f: &Fixture) -> Review {
 }
 #[test]
 fn populated_legacy_save_migrates_preserving_receipts_ownership_and_completed_quests() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
     let root = dir.path().join("state");
     let f = populate(&root, true);
     let original = std::fs::read(root.join("chamber.json")).unwrap();
@@ -416,13 +416,14 @@ fn populated_legacy_save_migrates_preserving_receipts_ownership_and_completed_qu
 }
 #[test]
 fn drift_unsafe_definitions_and_later_commit_refuse_without_discarding_source() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
     let root = dir.path().join("state");
     let f = populate(&root, false);
     let mut store = Store::open(&root, [8; 32], 120).unwrap();
     let review = plan(&store, &f);
     let original = std::fs::read(root.join("chamber.json")).unwrap();
-    let other_directory = tempfile::tempdir().unwrap();
+    let other_directory =
+        tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
     let mut foreign_source = f.config.clone();
     let mut foreign_target = f.target.clone();
     foreign_source.state_dir = Some(other_directory.path().into());
@@ -480,7 +481,7 @@ fn drift_unsafe_definitions_and_later_commit_refuse_without_discarding_source() 
 }
 #[test]
 fn revoked_character_reenrollment_keeps_its_actor_and_balances() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
     let root = dir.path().join("state");
     let f = populate(&root, false);
     let mut store = Store::open(&root, [8; 32], 120).unwrap();
@@ -560,7 +561,7 @@ fn crash_recovery_selects_source_before_seal_and_target_after_seal() {
         "migration_journal",
         "migration_sealed",
     ] {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
         let root = dir.path().join("state");
         let f = populate(&root, false);
         let status = std::process::Command::new(std::env::current_exe().unwrap())
@@ -599,7 +600,7 @@ fn interrupted_rollback_keeps_the_target_until_its_own_seal() {
         "migration_journal",
         "migration_sealed",
     ] {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
         let root = dir.path().join("state");
         let f = populate(&root, false);
         let mut store = Store::open(&root, [8; 32], 120).unwrap();
@@ -647,7 +648,7 @@ fn interrupted_rollback_keeps_the_target_until_its_own_seal() {
 }
 #[test]
 fn a_storage_failure_recovers_the_source_after_storage_becomes_available() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
     let root = dir.path().join("state");
     let f = populate(&root, false);
     let mut store = Store::open(&root, [8; 32], 120).unwrap();
@@ -682,7 +683,7 @@ fn a_storage_failure_recovers_the_source_after_storage_becomes_available() {
 }
 #[test]
 fn changed_source_revision_and_active_objective_are_refused() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
     let root = dir.path().join("state");
     let f = populate(&root, false);
     let mut store = Store::open(&root, [8; 32], 120).unwrap();
@@ -730,7 +731,7 @@ fn changed_source_revision_and_active_objective_are_refused() {
 
 #[test]
 fn reintroduced_npc_and_new_props_use_a_generation_beyond_previous_content() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
     let root = dir.path().join("state");
     let f = populate(&root, false);
     let mut store = Store::open(&root, [8; 32], 120).unwrap();
@@ -787,7 +788,7 @@ fn reintroduced_npc_and_new_props_use_a_generation_beyond_previous_content() {
 
 #[test]
 fn a_corrupt_backup_cannot_replace_the_applied_world() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
     let root = dir.path().join("state");
     let f = populate(&root, false);
     let mut store = Store::open(&root, [8; 32], 120).unwrap();
@@ -819,7 +820,7 @@ fn a_corrupt_backup_cannot_replace_the_applied_world() {
 #[test]
 fn restored_backup_preserves_reviewed_rollback_and_refuses_later_progress() {
     use super::super::backup::{self, Budget};
-    let dir = tempfile::tempdir().unwrap();
+    let dir = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
     let root = dir.path().join("source");
     let f = populate(&root, false);
     let mut store = Store::open(&root, [8; 32], 120).unwrap();

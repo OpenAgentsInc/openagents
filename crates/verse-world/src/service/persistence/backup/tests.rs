@@ -19,7 +19,7 @@ fn transaction(gateway: &Gateway, n: u64) -> Transaction {
 }
 #[test]
 fn backup_restores_acknowledged_characters_and_archived_retry_receipts() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
     let root = dir.path().join("state");
     let mut store = Store::open(&root, [8; 32], 120).unwrap();
     let mut gateway = super::super::tests::prepared();
@@ -60,7 +60,7 @@ fn backup_restores_acknowledged_characters_and_archived_retry_receipts() {
 }
 #[test]
 fn corruption_scope_budget_and_incomplete_publication_refuse_without_overwrite() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
     let mut store = Store::open(&dir.path().join("state"), [8; 32], 120).unwrap();
     let mut gateway = super::super::tests::prepared();
     store.commit(&mut gateway).unwrap();
@@ -93,7 +93,7 @@ fn corruption_scope_budget_and_incomplete_publication_refuse_without_overwrite()
 #[test]
 fn symlinked_history_and_parent_paths_are_refused() {
     use std::os::unix::fs::symlink;
-    let dir = tempfile::tempdir().unwrap();
+    let dir = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
     let root = dir.path().join("state");
     let mut store = Store::open(&root, [8; 32], 120).unwrap();
     let mut gateway = super::super::tests::prepared();
@@ -114,7 +114,7 @@ fn symlinked_history_and_parent_paths_are_refused() {
 
 #[test]
 fn offline_retention_keeps_current_retry_roots_and_removes_only_unreferenced_files() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
     let root = dir.path().join("state");
     let mut store = Store::open(&root, [8; 32], 120).unwrap();
     let mut gateway = super::super::tests::prepared();
@@ -160,7 +160,7 @@ fn interrupted_restore_refuses_partial_state_and_keeps_the_verified_source() {
         "before_publish",
         "published",
     ] {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
         let output = std::process::Command::new(std::env::current_exe().unwrap())
             .args([
                 "--exact",
