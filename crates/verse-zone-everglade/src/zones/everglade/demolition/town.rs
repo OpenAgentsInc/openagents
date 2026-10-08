@@ -51,7 +51,7 @@ use crate::pbr::textured::{
     DynamicInstance, Figure, IndexRange, InstancedFigure, Primitive, TexturedMesh, TexturedScene,
     TexturedVertex, UNBAKED,
 };
-use crate::pbr::textured_bake::{AmbientProbes, encode};
+use crate::pbr::textured_bake::{AmbientProbes, BakeLight, encode};
 use crate::zones::everglade::floaters::{FLOAT, Floater, Painter};
 use crate::zones::everglade::height;
 use crate::zones::everglade::layout::{self, Placement};
@@ -65,8 +65,10 @@ use std::sync::{Arc, Mutex};
 use verse_world::social::columns::Columns;
 use verse_world::social::sight::Sight;
 
+mod baked_repair;
 mod receivers;
 mod rubble;
+mod vertex_lights;
 pub use rubble::MergeStats;
 
 /// Whether this build runs on a browser or a phone, whose budgets are
@@ -959,6 +961,7 @@ pub struct Town {
     relight_vertices: Vec<TexturedVertex>,
     relight_receivers: receivers::Index,
     relight_seen: (u64, u64),
+    baked_repair: Option<Mutex<baked_repair::Repair>>,
     /// The solids without any building, the solids now, and whether they
     /// changed.
     base: Solids,
@@ -1257,6 +1260,7 @@ impl Town {
             relight_vertices: Vec::new(),
             relight_receivers: receivers::Index::default(),
             relight_seen: (u64::MAX, u64::MAX),
+            baked_repair: None,
             current: base.clone(),
             base,
             solids: None,
@@ -1575,6 +1579,7 @@ impl Town {
     /// Stands every building whole in the static cells again and ends the
     /// spell's meteors and marks.
     pub fn restore(&mut self) {
+        self.invalidate_baked_repair();
         let lifted: Vec<usize> = self.wreck.lifted.iter().map(|l| l.building).collect();
         for building in lifted {
             self.wreck.let_go(building);
@@ -1833,6 +1838,9 @@ impl Town {
     /// Brings the drawn pieces, the hidden placements, and the solids up
     /// to the rules.
     fn sync(&mut self) {
+        if self.wreck.revision != self.seen.0 {
+            self.invalidate_baked_repair();
+        }
         let site = &self.wreck.site;
         // How each site piece looks.
         self.looks = self
@@ -2276,13 +2284,20 @@ impl Town {
                 }
             })
             .collect();
-        Some(
-            self.pool
-                .scene
+        let mut cache = self
+            .pool
+            .scene
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut frame = cache.frame(instances, &parts);
+        if let Some(repair) = &self.baked_repair {
+            frame.vertex_lights = repair
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .frame(instances, &parts),
-        )
+                .lights
+                .stream(&frame, cache.light_members());
+        }
+        Some(frame)
     }
 
     /// The hammer in hand as `hold` holds it, cracks on damaged walls,

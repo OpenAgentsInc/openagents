@@ -31,6 +31,7 @@ pub mod hotbar;
 pub mod kit;
 pub mod meteor;
 pub mod relight;
+pub(crate) mod repair;
 pub mod site;
 #[cfg(test)]
 mod tests;

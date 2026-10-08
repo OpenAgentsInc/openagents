@@ -1,6 +1,8 @@
 //! Selective light repair on one worker, with bounded delivery and cancellation.
 
-use crate::pbr::textured::{AlphaMode, InstancedFigure, TexturedScene, TexturedVertex};
+use crate::pbr::textured::{
+    AlphaMode, InstancedFigure, TexturedMesh, TexturedScene, TexturedVertex,
+};
 use crate::pbr::textured_bake::{BakeLight, BakeSettings, SceneBaker};
 use glam::{Mat3, Mat4, Vec3};
 use std::collections::BTreeMap;
@@ -33,10 +35,28 @@ pub(crate) struct RepairRequest {
     pub scene: Arc<TexturedScene>,
     /// Individual source chunks, including settled chunks before renderer merging.
     pub instances: Option<InstancedFigure>,
+    /// Local source meshes omitted from the renderer cache after settling.
+    /// Their indices follow the shared rigid scene meshes. Only the worker
+    /// appends them to a scene when rebuilding its hierarchy.
+    pub extra_sources: Arc<Vec<TexturedMesh>>,
     pub targets: Arc<[RepairTarget]>,
     pub light: BakeLight,
     pub settings: BakeSettings,
     pub key: u64,
+}
+
+impl RepairRequest {
+    fn rigid_snapshot(&self) -> Option<InstancedFigure> {
+        let mut rigid = self.instances.clone();
+        if let Some(frame) = &mut rigid
+            && !self.extra_sources.is_empty()
+        {
+            Arc::make_mut(&mut frame.scene)
+                .meshes
+                .extend(self.extra_sources.iter().cloned());
+        }
+        rigid
+    }
 }
 
 /// Adjacent occupied texels only. Static patches become dynamic LightPatch spans;
@@ -126,7 +146,7 @@ impl RepairQueue {
         }
     }
 
-    fn channel() -> (Self, SyncSender<RepairBatch>) {
+    pub(super) fn channel() -> (Self, SyncSender<RepairBatch>) {
         let (send, receive) = std::sync::mpsc::sync_channel(DELIVERY_CAPACITY);
         (
             Self {
@@ -230,6 +250,7 @@ struct CachedBaker {
 struct CacheKey {
     scene: Arc<TexturedScene>,
     rigid_scene: Option<Arc<TexturedScene>>,
+    extra_sources: Arc<Vec<TexturedMesh>>,
     edits_revision: u64,
     geometry_epoch: u64,
     cache_epoch: u64,
@@ -245,6 +266,7 @@ impl CacheKey {
                 .instances
                 .as_ref()
                 .map(|frame| frame.scene.clone()),
+            extra_sources: job.request.extra_sources.clone(),
             edits_revision: job.stamp.edits_revision,
             geometry_epoch: job.request.geometry_epoch,
             cache_epoch: job.stamp.cache_epoch,
@@ -259,6 +281,7 @@ impl CacheKey {
                 (None, None) => true,
                 _ => false,
             }
+            && Arc::ptr_eq(&self.extra_sources, &next.extra_sources)
             && self.edits_revision == next.edits_revision
             && self.geometry_epoch == next.geometry_epoch
             && self.cache_epoch == next.cache_epoch
@@ -269,9 +292,10 @@ impl CacheKey {
 impl CachedBaker {
     fn prepare(&mut self, job: &Job) -> Result<bool, String> {
         self.prepare_with(job, |request| {
+            let rigid = request.rigid_snapshot();
             SceneBaker::for_repair(
                 &request.scene,
-                request.instances.as_ref(),
+                rigid.as_ref(),
                 request.light,
                 request.settings,
                 request.key,
@@ -314,11 +338,12 @@ struct ChunkPose {
 
 struct ChunkLookup<'a> {
     frame: Option<&'a InstancedFigure>,
+    extra_sources: &'a [TexturedMesh],
     poses: BTreeMap<u64, ChunkPose>,
 }
 
 impl<'a> ChunkLookup<'a> {
-    fn new(frame: Option<&'a InstancedFigure>) -> Self {
+    fn new(frame: Option<&'a InstancedFigure>, extra_sources: &'a [TexturedMesh]) -> Self {
         let poses = frame
             .into_iter()
             .flat_map(|frame| frame.instances.iter())
@@ -333,13 +358,22 @@ impl<'a> ChunkLookup<'a> {
                 )
             })
             .collect();
-        Self { frame, poses }
+        Self {
+            frame,
+            extra_sources,
+            poses,
+        }
     }
 
     fn vertex(&self, id: u64, vertex: u32) -> Option<(TexturedVertex, bool)> {
         let frame = self.frame?;
         let pose = self.poses.get(&id)?;
-        let mesh = frame.scene.meshes.get(pose.mesh)?;
+        let mesh = if pose.mesh < frame.scene.meshes.len() {
+            frame.scene.meshes.get(pose.mesh)?
+        } else {
+            self.extra_sources
+                .get(pose.mesh - frame.scene.meshes.len())?
+        };
         let mut index = vertex as usize;
         for primitive in &mesh.primitives {
             if index >= primitive.vertices.len() {
@@ -481,7 +515,7 @@ fn worker(shared: Arc<Shared>, send: SyncSender<RepairBatch>) {
         if !job.stamp.current(&shared) {
             continue;
         }
-        let lookup = ChunkLookup::new(job.request.instances.as_ref());
+        let lookup = ChunkLookup::new(job.request.instances.as_ref(), &job.request.extra_sources);
         let Some((_, baker)) = &cache.entry else {
             continue;
         };
@@ -522,6 +556,7 @@ mod tests {
             geometry_epoch: 1,
             scene: Arc::new(TexturedScene::default()),
             instances: None,
+            extra_sources: Arc::new(Vec::new()),
             targets: Arc::from(targets),
             light: BakeLight {
                 sun_dir: Vec3::Y,
@@ -653,6 +688,7 @@ mod tests {
         let (mut queue, _) = RepairQueue::channel();
         let first = request(1, &[RepairTarget::Static(0)]);
         let scene = first.scene.clone();
+        let sources = first.extra_sources.clone();
         queue.request(first);
         let mut cache = CachedBaker::default();
         let builds = Cell::new(0);
@@ -669,6 +705,7 @@ mod tests {
         assert!(cache.prepare_with(&take(&queue), build).unwrap());
         let mut next = request(2, &[RepairTarget::Static(0)]);
         next.scene = scene.clone();
+        next.extra_sources = sources.clone();
         next.light.sky = 3.0;
         next.key = 2;
         queue.request(next);
@@ -683,6 +720,7 @@ mod tests {
         for change in 0..4 {
             let mut next = request(3 + change, &[RepairTarget::Static(0)]);
             next.scene = scene.clone();
+            next.extra_sources = sources.clone();
             match change {
                 0 => geometry_epoch += 1,
                 1 => scene.edits.write(0, Vec::new()),
@@ -699,6 +737,7 @@ mod tests {
         next.scene = Arc::new(scene.as_ref().clone());
         next.geometry_epoch = geometry_epoch;
         next.settings = settings;
+        next.extra_sources = sources.clone();
         let new_scene = next.scene.clone();
         queue.request(next);
         assert!(cache.prepare_with(&take(&queue), build).unwrap());
@@ -710,11 +749,14 @@ mod tests {
         let rigid = InstancedFigure {
             scene: Arc::new(TexturedScene::default()),
             instances: Arc::new(Vec::new()),
+            vertex_lights: None,
+            motion_epoch: Arc::new(()),
         };
         let mut next = request(9, &[RepairTarget::Static(0)]);
         next.scene = new_scene.clone();
         next.geometry_epoch = geometry_epoch;
         next.settings = settings;
+        next.extra_sources = sources.clone();
         next.instances = Some(rigid.clone());
         queue.request(next);
         assert!(cache.prepare_with(&take(&queue), build).unwrap());
@@ -727,6 +769,7 @@ mod tests {
         next.scene = new_scene;
         next.geometry_epoch = geometry_epoch;
         next.settings = settings;
+        next.extra_sources = sources;
         next.instances = Some(rigid);
         next.light.sky = 4.0;
         queue.request(next);
@@ -793,8 +836,10 @@ mod tests {
                 light: [0; 4],
                 settled: true,
             }]),
+            vertex_lights: None,
+            motion_epoch: Arc::new(()),
         };
-        let lookup = ChunkLookup::new(Some(&frame));
+        let lookup = ChunkLookup::new(Some(&frame), &[]);
         let (vertex, foliage) = lookup.vertex(99, 1).unwrap();
         assert_eq!(vertex.pos, [6.0, 2.0, 3.0]);
         assert_eq!(vertex.uv, [0.8; 2]);
@@ -803,5 +848,81 @@ mod tests {
         assert!(!lookup.vertex(99, 0).unwrap().1);
         assert!(lookup.vertex(99, 2).is_none());
         assert!(lookup.vertex(98, 0).is_none());
+    }
+    #[test]
+    fn extra_sources_resolve_settled_meshes_without_mutating_the_shared_scene() {
+        let mut base = TexturedScene::default();
+        base.add_material(TexturedMaterial::default());
+        let base = Arc::new(base);
+        let source = TexturedMesh {
+            primitives: vec![Primitive {
+                material: 0,
+                vertices: [Vec3::ZERO, Vec3::X, Vec3::Z]
+                    .map(|p| TexturedVertex::new(p, Vec3::Y, [0.0; 2]))
+                    .to_vec(),
+                indices: vec![0, 1, 2],
+            }],
+        };
+        let transform = Mat4::from_translation(Vec3::new(4.0, 2.0, 3.0));
+        let frame = InstancedFigure {
+            scene: base.clone(),
+            instances: Arc::new(vec![DynamicInstance {
+                id: 99,
+                mesh: 0,
+                current: transform,
+                previous: transform,
+                color: [1.0; 4],
+                light: [0; 4],
+                settled: true,
+            }]),
+            vertex_lights: None,
+            motion_epoch: Arc::new(()),
+        };
+        let (mut queue, _) = RepairQueue::channel();
+        let mut first = request(1, &[RepairTarget::Chunk { id: 99, vertex: 1 }]);
+        first.instances = Some(frame.clone());
+        first.extra_sources = Arc::new(vec![source.clone()]);
+        let static_scene = first.scene.clone();
+        let sources = first.extra_sources.clone();
+        let resolved = first.rigid_snapshot().unwrap();
+        resolved.validate().unwrap();
+        assert!(
+            base.meshes.is_empty(),
+            "appending sources does not mutate the retained base"
+        );
+        assert!(Arc::ptr_eq(&frame.motion_epoch, &resolved.motion_epoch));
+        let lookup = ChunkLookup::new(first.instances.as_ref(), &sources);
+        assert_eq!(lookup.vertex(99, 1).unwrap().0.pos, [5.0, 2.0, 3.0]);
+        queue.request(first);
+        let builds = Cell::new(0);
+        let mut cache = CachedBaker::default();
+        let build = |request: &RepairRequest| {
+            builds.set(builds.get() + 1);
+            SceneBaker::for_repair(
+                &request.scene,
+                request.rigid_snapshot().as_ref(),
+                request.light,
+                request.settings,
+                request.key,
+            )
+        };
+        assert!(cache.prepare_with(&take(&queue), build).unwrap());
+        for change in 0..2 {
+            let mut next = request(2 + change, &[RepairTarget::Chunk { id: 99, vertex: 1 }]);
+            next.scene = static_scene.clone();
+            next.instances = Some(frame.clone());
+            next.extra_sources = if change == 0 {
+                sources.clone()
+            } else {
+                Arc::new(vec![source.clone()])
+            };
+            queue.request(next);
+            assert!(cache.prepare_with(&take(&queue), build).unwrap());
+            assert_eq!(
+                builds.get(),
+                1 + change as usize,
+                "only source identity changes rebuild the hierarchy"
+            );
+        }
     }
 }

@@ -1,7 +1,7 @@
 //! Repaired chunk light, retained independently of rigid geometry and poses.
 
 use super::rubble::LightMember;
-use crate::pbr::textured::{InstancedFigure, TexturedScene, VertexLightStream};
+use crate::pbr::textured::{InstancedFigure, TexturedMesh, TexturedScene, VertexLightStream};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
@@ -60,6 +60,17 @@ impl VertexLights {
     /// renderer's aggregate instance list. Shade their ambient before this call.
     /// Use the generation returned by the repair queue, rather than a site revision.
     pub fn begin(&mut self, generation: u64, snapshot: &InstancedFigure) -> bool {
+        self.begin_with_sources(generation, snapshot, &[])
+    }
+
+    /// Separate source meshes follow the shared scene's mesh indices. This
+    /// avoids copying the scene's images to append evicted settled sources.
+    pub fn begin_with_sources(
+        &mut self,
+        generation: u64,
+        snapshot: &InstancedFigure,
+        sources: &[TexturedMesh],
+    ) -> bool {
         if generation <= self.sample_generation {
             return false;
         }
@@ -77,7 +88,19 @@ impl VertexLights {
         }
         let mut ids = BTreeSet::new();
         for instance in snapshot.instances.iter() {
-            let Some(count) = vertex_count(&snapshot.scene, instance.mesh) else {
+            let count = if instance.mesh < snapshot.scene.meshes.len() {
+                vertex_count(&snapshot.scene, instance.mesh)
+            } else {
+                sources
+                    .get(instance.mesh - snapshot.scene.meshes.len())
+                    .map(|mesh| {
+                        mesh.primitives
+                            .iter()
+                            .map(|primitive| primitive.vertices.len())
+                            .sum()
+                    })
+            };
+            let Some(count) = count else {
                 continue;
             };
             ids.insert(instance.id);

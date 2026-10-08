@@ -109,6 +109,10 @@ impl Cache {
         }
     }
 
+    pub fn motion_epoch(&self) -> Arc<()> {
+        self.motion_epoch.clone()
+    }
+
     pub fn held(&self) -> usize {
         vertices(&self.scene.meshes)
     }
