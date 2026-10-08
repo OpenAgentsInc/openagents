@@ -35,7 +35,12 @@ pub struct Sprite {
     pub alpha: f32,
     /// 1 adds light, 0 covers like smoke, between mixes.
     pub additive: f32,
+    /// Uses the legacy surface color in the scene's display scale.
     pub lit: bool,
+    /// Takes the scene's sun, ambient, shadow, and local lights.
+    pub scene_lit: bool,
+    /// Optical density for scene lighting, from 0 to 8.
+    pub density: f32,
     /// The sheet's texture-array layer.
     pub layer: u32,
     /// The two frames' texture rectangles and how far between them.
@@ -54,13 +59,16 @@ pub struct SpriteVertex {
     pub color: [f32; 4],
     pub uv_a: [f32; 2],
     pub uv_b: [f32; 2],
-    /// Frame blend, sheet layer, additive, and 1 for lit.
+    /// Frame blend, sheet layer, additive, and light mode: 0 emitted,
+    /// 1 legacy surface color, or 2 plus density for scene lighting.
     pub params: [f32; 4],
+    /// Quad center (xyz) and particle half width (w), in meters.
+    pub center_half: [f32; 4],
 }
 
 /// Sprites a frame draws at `tier`; the rest are dropped by priority and
-/// size. Each is six 60-byte vertices, so the high tier's 2048, enough for
-/// an eight-meteor swarm's trails and blasts together, cost about 740 KB a
+/// size. Each is six 76-byte vertices, so the high tier's 2048, enough for
+/// an eight-meteor swarm's trails and blasts together, cost about 934 KB a
 /// frame.
 #[must_use]
 pub fn budget(tier: Tier) -> usize {
@@ -165,7 +173,17 @@ fn quad(s: &Sprite, eye: Vec3, out: &mut Vec<SpriteVertex>) {
         s.mix.clamp(0.0, 1.0),
         s.layer as f32,
         s.additive.clamp(0.0, 1.0),
-        if s.lit { 1.0 } else { 0.0 },
+        if s.scene_lit {
+            2.0 + if s.density.is_finite() {
+                s.density.clamp(0.0, 8.0)
+            } else {
+                1.0
+            }
+        } else if s.lit {
+            1.0
+        } else {
+            0.0
+        },
     ];
     let uv = |r: [f32; 4], x: f32, y: f32| {
         [
@@ -187,6 +205,69 @@ fn quad(s: &Sprite, eye: Vec3, out: &mut Vec<SpriteVertex>) {
             uv_a: uv(s.rect_a, x, y),
             uv_b: uv(s.rect_b, x, y),
             params,
+            center_half: center.extend(s.half).to_array(),
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sprite() -> Sprite {
+        Sprite {
+            at: Vec3::ZERO,
+            half: 0.5,
+            angle: 0.0,
+            tail: Vec3::X * 4.0,
+            facing: Facing::Camera,
+            color: [1.0; 3],
+            alpha: 1.0,
+            additive: 0.0,
+            lit: false,
+            scene_lit: false,
+            density: 1.0,
+            layer: 1,
+            rect_a: [0.0, 0.0, 1.0, 1.0],
+            rect_b: [0.0, 0.0, 1.0, 1.0],
+            mix: 0.0,
+            priority: 1,
+        }
+    }
+
+    #[test]
+    fn scene_density_zero_is_distinct_from_legacy_and_emitted_color() {
+        let mut s = sprite();
+        let mut vertices = Vec::new();
+        for (legacy, scene, density, mode) in [
+            (false, false, 1.0, 0.0),
+            (true, false, 1.0, 1.0),
+            (false, true, 0.0, 2.0),
+            (true, true, 1.5, 3.5),
+            (false, true, 50.0, 10.0),
+            (false, true, -1.0, 2.0),
+            (false, true, f32::NAN, 3.0),
+        ] {
+            s.lit = legacy;
+            s.scene_lit = scene;
+            s.density = density;
+            vertices.clear();
+            quad(&s, Vec3::Z * 10.0, &mut vertices);
+            assert_eq!(vertices.len(), 6);
+            assert!(vertices.iter().all(|vertex| vertex.params[3] == mode));
+        }
+    }
+
+    #[test]
+    fn lighting_samples_the_quad_center_even_when_a_tail_moves_it() {
+        let s = sprite();
+        let mut vertices = Vec::new();
+        quad(&s, Vec3::Z * 10.0, &mut vertices);
+        assert!(
+            vertices
+                .iter()
+                .all(|v| v.center_half == [2.0, 0.0, 0.0, 0.5])
+        );
+        assert_eq!(std::mem::size_of::<SpriteVertex>(), 76);
     }
 }

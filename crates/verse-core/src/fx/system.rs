@@ -406,12 +406,8 @@ fn sprite(e: &Emitter, p: &Particle) -> Sprite {
             (a as u32 % span, (a as u32 + 1) % span, f - a)
         }
     };
-    let color = e.color.at(t);
+    let color = e.color_at(t);
     let alpha = e.alpha.at(t).clamp(0.0, 1.0);
-    let luminance = match e.light {
-        Light::Emit => e.luminance,
-        Light::Lit => 1.0,
-    };
     let tail = if e.stretch > 0.0 {
         let tail = -p.vel * e.stretch;
         tail.clamp_length_max(e.stretch_max * p.scale)
@@ -427,10 +423,12 @@ fn sprite(e: &Emitter, p: &Particle) -> Sprite {
             Orient::Camera => Facing::Camera,
             Orient::Ground => Facing::Ground,
         },
-        color: color.map(|c| c * luminance),
+        color,
         alpha,
         additive: e.additive_at(t),
         lit: e.light == Light::Lit,
+        scene_lit: e.lit,
+        density: e.density,
         layer: super::sheet::layer(&e.sheet).unwrap_or(0),
         rect_a: sheet.rect(first + a),
         rect_b: sheet.rect(first + b),

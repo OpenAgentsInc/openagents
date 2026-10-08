@@ -1,7 +1,7 @@
 use glam::Vec3;
 use verse_engine::quality::Tier;
 
-use super::def::{ColorCurve, Curve, Effect};
+use super::def::{Blend, ColorCurve, Curve, Effect, Light};
 use super::sheet::{self, SHEETS};
 use super::*;
 
@@ -89,6 +89,126 @@ size = [1.0, 1.0]
         let error = Effect::parse("bad", &source).unwrap_err();
         assert!(error.contains(why), "{error} should say {why}");
     }
+}
+
+#[test]
+fn scene_lighting_defaults_preserve_emitted_and_display_color_units() {
+    let source = r#"
+description = "A test particle."
+[[emitter]]
+name = "a"
+sheet = "smoke"
+burst = 1
+life = [1.0, 1.0]
+size = [1.0, 1.0]
+color = [0.2, 0.4, 0.6]
+luminance = 50.0
+"#;
+    let effect = Effect::parse("units", source).unwrap();
+    let mut emitter = effect.emitters[0].clone();
+    assert!(!emitter.lit);
+    assert_eq!(emitter.density, 1.0);
+    for (actual, expected) in emitter.color_at(0.0).into_iter().zip([10.0, 20.0, 30.0]) {
+        assert!((actual - expected).abs() < 1e-4);
+    }
+    emitter.light = Light::Lit;
+    assert_eq!(emitter.color_at(0.0), [0.2, 0.4, 0.6]);
+    emitter.light = Light::Emit;
+    emitter.lit = true;
+    assert_eq!(emitter.color_at(0.0), [0.2, 0.4, 0.6]);
+}
+
+#[test]
+fn particle_density_accepts_its_bounds_and_refuses_invalid_values() {
+    let source = r#"
+description = "A test particle."
+[[emitter]]
+name = "a"
+sheet = "smoke"
+burst = 1
+life = [1.0, 1.0]
+size = [1.0, 1.0]
+"#;
+    for density in ["0.0", "8.0"] {
+        assert!(Effect::parse("density", &format!("{source}density = {density}\n")).is_ok());
+    }
+    for density in ["-0.1", "8.1", "nan", "inf", "-inf"] {
+        let error =
+            Effect::parse("density", &format!("{source}density = {density}\n")).unwrap_err();
+        assert!(error.contains("density"), "{error}");
+    }
+}
+
+#[test]
+fn emitted_particles_carry_scene_lighting_density_and_albedo() {
+    let source = r#"
+description = "A test smoke puff."
+[[emitter]]
+name = "smoke"
+sheet = "smoke"
+blend = "alpha"
+lit = true
+density = 2.25
+luminance = 50.0
+burst = 1
+life = [1.0, 1.0]
+size = [1.0, 1.0]
+color = [0.2, 0.4, 0.6]
+"#;
+    let library = std::sync::Arc::new(Library::parse([("smoke", source)]).unwrap());
+    let mut fx = Particles::with_library(library, u64::MAX, 3);
+    fx.start("smoke", Spawn::at(Vec3::new(1.0, 2.0, 3.0)))
+        .unwrap();
+    fx.tick(0.01, flat);
+    let mut out = Vec::new();
+    fx.draw(&mut out);
+    assert_eq!(out.len(), 1);
+    let sprite = out[0];
+    assert!(sprite.scene_lit);
+    assert!(
+        !sprite.lit,
+        "legacy units remain independent of scene lighting"
+    );
+    assert_eq!(sprite.density, 2.25);
+    assert_eq!(sprite.color, [0.2, 0.4, 0.6]);
+    assert_eq!(sprite.additive, 0.0);
+}
+
+#[test]
+fn showcase_smoke_and_dust_take_scene_light_while_fire_stays_emissive() {
+    let library = Library::builtin();
+    let mut lit = 0;
+    let mut emissive = 0;
+    for name in [
+        "meteor_explosion",
+        "meteor_smolder",
+        "meteor_arc_trail",
+        "meteor_trail",
+        "debris_dust",
+        "tower_crash",
+        "scorch_embers",
+    ] {
+        for emitter in &library.get(name).unwrap().emitters {
+            if emitter.blend == Blend::Alpha {
+                assert!(emitter.lit, "{name}: {} takes scene light", emitter.name);
+                assert!(emitter.density > 0.0);
+                lit += 1;
+            } else {
+                assert!(!emitter.lit, "{name}: {} stays emissive", emitter.name);
+                assert_eq!(emitter.light, Light::Emit);
+                assert_eq!(
+                    emitter.color_at(0.5),
+                    emitter
+                        .color
+                        .at(0.5)
+                        .map(|channel| channel * emitter.luminance)
+                );
+                emissive += 1;
+            }
+        }
+    }
+    assert_eq!(lit, 10);
+    assert!(emissive > 0);
 }
 
 #[test]
@@ -219,6 +339,8 @@ fn a_frame_keeps_within_the_tier_budget_by_priority_then_size() {
         alpha: 1.0,
         additive: 1.0,
         lit: false,
+        scene_lit: false,
+        density: 1.0,
         layer: 0,
         rect_a: [0.0, 0.0, 1.0, 1.0],
         rect_b: [0.0, 0.0, 1.0, 1.0],
@@ -257,6 +379,8 @@ fn a_tail_lays_the_quad_along_the_flight() {
         alpha: 1.0,
         additive: 1.0,
         lit: false,
+        scene_lit: false,
+        density: 1.0,
         layer: 2,
         rect_a: [0.0, 0.0, 1.0, 1.0],
         rect_b: [0.0, 0.0, 1.0, 1.0],
@@ -306,6 +430,9 @@ fn a_style_draws_external_particles_with_an_effects_look() {
     assert!(old.half > young.half);
     assert!(old.alpha > young.alpha);
     assert!(young.lit && young.additive == 0.0);
+    assert!(young.scene_lit && old.scene_lit);
+    assert_eq!(young.density, 1.0);
+    assert_eq!(old.density, young.density);
     assert!(
         style
             .sprite(9, Vec3::ZERO, Vec3::ZERO, 0.5, 0.5, [1.0; 3], 0)

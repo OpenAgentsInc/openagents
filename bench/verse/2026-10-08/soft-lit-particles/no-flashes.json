@@ -1,0 +1,316 @@
+{
+  "mode": "live",
+  "width": 1920,
+  "height": 1080,
+  "fps": 60.0,
+  "steps_per_frame": 1,
+  "quality": "high",
+  "effective_quality": "high",
+  "adapter": {
+    "name": "Apple M5 Max",
+    "vendor": 0,
+    "device": 0,
+    "backend": "Metal",
+    "device_type": "IntegratedGpu"
+  },
+  "light_settled_before_capture": true,
+  "gpu_timestamp_features_supported": true,
+  "gpu_timestamps_available": false,
+  "flash_lights_enabled": false,
+  "impact_frame": 469,
+  "smoke_frame": 600,
+  "particle_lighting_enabled": true,
+  "soft_particles_enabled": true,
+  "sprite_area_method": "Sum of half-width times (half-width plus half-tail) over squared camera distance, before GPU clipping; an angular overdraw proxy, not pixel coverage.",
+  "particle_comparison": {
+    "repeats_per_snapshot": 1,
+    "every_frames": 10000,
+    "selected_frame": null,
+    "method": "Repeated interleaved renders of a fixed simulation snapshot, alternating order. Only scene particle lighting and soft fade change; authored colors, density, flash lights, geometry, and camera remain fixed. Reports mean completion increments with individual tail noise; excludes simulation and startup costs.",
+    "timing_limit": "Wall-clock completion includes submission and polling overhead. Invalid or unsupported GPU timestamps remain null.",
+    "phases": {
+      "before": {
+        "snapshots": 0,
+        "valid_gpu_snapshots": 0,
+        "invalid_gpu_snapshots": 0,
+        "render_overhead_ms": null,
+        "individual_render_overhead_ms": null,
+        "snapshot_results": []
+      },
+      "swarm": {
+        "snapshots": 0,
+        "valid_gpu_snapshots": 0,
+        "invalid_gpu_snapshots": 0,
+        "render_overhead_ms": null,
+        "individual_render_overhead_ms": null,
+        "snapshot_results": []
+      },
+      "after": {
+        "snapshots": 0,
+        "valid_gpu_snapshots": 0,
+        "invalid_gpu_snapshots": 0,
+        "render_overhead_ms": null,
+        "individual_render_overhead_ms": null,
+        "snapshot_results": []
+      }
+    }
+  },
+  "flash_light_comparison": null,
+  "phases": {
+    "before": {
+      "frames": 330,
+      "frame_ms": {
+        "p50": 4.9852070808410645,
+        "p99": 8.787792205810547,
+        "max": 182.6436767578125
+      },
+      "tick_ms": {
+        "p50": 0.1262499988079071,
+        "p99": 0.5007079839706421,
+        "max": 0.6312499642372131
+      },
+      "dynamic_mesh_ms": {
+        "p50": 0.9594999551773071,
+        "p99": 1.1306670904159546,
+        "max": 1.2218749523162842
+      },
+      "encode_ms": {
+        "p50": 1.1655000448226929,
+        "p99": 1.546708106994629,
+        "max": 160.53329467773438
+      },
+      "gpu_wait_ms": {
+        "p50": 2.6662089824676514,
+        "p99": 6.437833786010742,
+        "max": 21.13629150390625
+      },
+      "town_swarm_ms": {
+        "p50": 0.0015829999465495348,
+        "p99": 0.0036660002078861,
+        "max": 0.022332999855279922
+      },
+      "town_physics_ms": {
+        "p50": 0.0001250000059371814,
+        "p99": 0.0006670000148005784,
+        "max": 0.001041000010445714
+      },
+      "town_sync_ms": {
+        "p50": 0.0009169999975711107,
+        "p99": 0.33537498116493225,
+        "max": 0.39191702008247375
+      },
+      "town_pose_ms": {
+        "p50": 0.000291000003926456,
+        "p99": 0.0005829999572597444,
+        "max": 0.000750000006519258
+      },
+      "town_solids_ms": {
+        "p50": 0.0,
+        "p99": 0.0,
+        "max": 0.0009169999975711107
+      },
+      "chunks_max": 0,
+      "posed_vertices_max": 0,
+      "sprites_max": 66,
+      "draws_max": 1486,
+      "triangles_max": 552198,
+      "flash_lights_selected_max": 0,
+      "lit_alpha_max": 0,
+      "density_max": 0.0,
+      "most_sprites_snapshot": {
+        "frame": 270,
+        "sprites": 66,
+        "lit_alpha": 0,
+        "density_max": 0.0,
+        "sprite_angular_area": 0.0032892124727368355,
+        "lit_alpha_angular_area": 0.0
+      },
+      "most_sprite_area_snapshot": {
+        "frame": 320,
+        "sprites": 65,
+        "lit_alpha": 0,
+        "density_max": 0.0,
+        "sprite_angular_area": 0.003439171239733696,
+        "lit_alpha_angular_area": 0.0
+      },
+      "most_lit_alpha_area_snapshot": {
+        "frame": 329,
+        "sprites": 60,
+        "lit_alpha": 0,
+        "density_max": 0.0,
+        "sprite_angular_area": 0.003237051423639059,
+        "lit_alpha_angular_area": 0.0
+      }
+    },
+    "swarm": {
+      "frames": 360,
+      "frame_ms": {
+        "p50": 22.810375213623047,
+        "p99": 41.63874816894531,
+        "max": 53.515045166015625
+      },
+      "tick_ms": {
+        "p50": 9.369124412536621,
+        "p99": 28.630334854125977,
+        "max": 35.495750427246094
+      },
+      "dynamic_mesh_ms": {
+        "p50": 4.156041145324707,
+        "p99": 4.5220417976379395,
+        "max": 4.9730000495910645
+      },
+      "encode_ms": {
+        "p50": 3.129000186920166,
+        "p99": 3.8832077980041504,
+        "max": 6.347707748413086
+      },
+      "gpu_wait_ms": {
+        "p50": 5.171750068664551,
+        "p99": 9.055832862854004,
+        "max": 10.307415962219238
+      },
+      "town_swarm_ms": {
+        "p50": 0.06849999725818634,
+        "p99": 0.24333399534225464,
+        "max": 5.0341668128967285
+      },
+      "town_physics_ms": {
+        "p50": 8.807165145874023,
+        "p99": 28.138290405273438,
+        "max": 34.736083984375
+      },
+      "town_sync_ms": {
+        "p50": 0.022207999601960182,
+        "p99": 0.5045420527458191,
+        "max": 0.7575830221176147
+      },
+      "town_pose_ms": {
+        "p50": 0.2929590046405792,
+        "p99": 0.3337090015411377,
+        "max": 0.3891249895095825
+      },
+      "town_solids_ms": {
+        "p50": 0.0,
+        "p99": 0.005249999929219484,
+        "max": 0.006000000052154064
+      },
+      "chunks_max": 700,
+      "posed_vertices_max": 177525,
+      "sprites_max": 1841,
+      "draws_max": 1537,
+      "triangles_max": 732670,
+      "flash_lights_selected_max": 0,
+      "lit_alpha_max": 982,
+      "density_max": 1.5,
+      "most_sprites_snapshot": {
+        "frame": 482,
+        "sprites": 1841,
+        "lit_alpha": 982,
+        "density_max": 1.5,
+        "sprite_angular_area": 1.9936511516571045,
+        "lit_alpha_angular_area": 1.3622418642044067
+      },
+      "most_sprite_area_snapshot": {
+        "frame": 513,
+        "sprites": 1347,
+        "lit_alpha": 845,
+        "density_max": 1.5,
+        "sprite_angular_area": 2.327331781387329,
+        "lit_alpha_angular_area": 1.6940178871154785
+      },
+      "most_lit_alpha_area_snapshot": {
+        "frame": 519,
+        "sprites": 1270,
+        "lit_alpha": 799,
+        "density_max": 1.5,
+        "sprite_angular_area": 2.144502878189087,
+        "lit_alpha_angular_area": 1.6995289325714111
+      }
+    },
+    "after": {
+      "frames": 150,
+      "frame_ms": {
+        "p50": 14.483291625976562,
+        "p99": 18.894081115722656,
+        "max": 19.965166091918945
+      },
+      "tick_ms": {
+        "p50": 2.1697909832000732,
+        "p99": 5.913083076477051,
+        "max": 6.012583255767822
+      },
+      "dynamic_mesh_ms": {
+        "p50": 4.131542205810547,
+        "p99": 4.191083908081055,
+        "max": 4.204999923706055
+      },
+      "encode_ms": {
+        "p50": 3.081833839416504,
+        "p99": 3.3890421390533447,
+        "max": 3.562666893005371
+      },
+      "gpu_wait_ms": {
+        "p50": 3.981084108352661,
+        "p99": 8.979957580566406,
+        "max": 9.092625617980957
+      },
+      "town_swarm_ms": {
+        "p50": 0.054583001881837845,
+        "p99": 0.07045800238847733,
+        "max": 0.0724170058965683
+      },
+      "town_physics_ms": {
+        "p50": 1.690916895866394,
+        "p99": 5.382958889007568,
+        "max": 5.491958141326904
+      },
+      "town_sync_ms": {
+        "p50": 0.02204200066626072,
+        "p99": 0.033959001302719116,
+        "max": 0.08454199880361557
+      },
+      "town_pose_ms": {
+        "p50": 0.2933329939842224,
+        "p99": 0.36879199743270874,
+        "max": 0.3713749945163727
+      },
+      "town_solids_ms": {
+        "p50": 0.0,
+        "p99": 0.0,
+        "max": 0.004915999714285135
+      },
+      "chunks_max": 700,
+      "posed_vertices_max": 177525,
+      "sprites_max": 384,
+      "draws_max": 861,
+      "triangles_max": 527544,
+      "flash_lights_selected_max": 0,
+      "lit_alpha_max": 240,
+      "density_max": 1.5,
+      "most_sprites_snapshot": {
+        "frame": 711,
+        "sprites": 384,
+        "lit_alpha": 235,
+        "density_max": 1.5,
+        "sprite_angular_area": 1.0210435390472412,
+        "lit_alpha_angular_area": 1.0112662315368652
+      },
+      "most_sprite_area_snapshot": {
+        "frame": 707,
+        "sprites": 382,
+        "lit_alpha": 238,
+        "density_max": 1.5,
+        "sprite_angular_area": 1.056410551071167,
+        "lit_alpha_angular_area": 1.0468932390213013
+      },
+      "most_lit_alpha_area_snapshot": {
+        "frame": 707,
+        "sprites": 382,
+        "lit_alpha": 238,
+        "density_max": 1.5,
+        "sprite_angular_area": 1.056410551071167,
+        "lit_alpha_angular_area": 1.0468932390213013
+      }
+    }
+  }
+}

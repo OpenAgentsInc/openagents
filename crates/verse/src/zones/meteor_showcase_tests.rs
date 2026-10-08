@@ -174,6 +174,34 @@ fn eight_meteors_on_distinct_arcs_break_both_houses_and_the_debris_rests() {
     assert_eq!(flying, 8);
     assert_eq!(lit_impacts, 8, "every staged meteor starts direct light");
     assert_eq!(town(&runtime).bombardment()[1], 0, "every meteor landed");
+    let sprites = runtime.dynamic_mesh().sprites;
+    let smoke: Vec<_> = sprites.iter().filter(|sprite| sprite.scene_lit).collect();
+    assert!(
+        !smoke.is_empty(),
+        "the ruins emit smoke that takes scene light"
+    );
+    assert!(
+        smoke.iter().all(|sprite| {
+            sprite.lit
+                && sprite.additive < 1.0
+                && sprite.density.is_finite()
+                && sprite.density > 0.0
+        }),
+        "smoke keeps surface-color units, alpha blending, and positive optical density"
+    );
+    assert!(
+        sprites
+            .iter()
+            .any(|sprite| sprite.additive == 1.0 && !sprite.scene_lit),
+        "the ruins keep emissive fire or embers"
+    );
+    assert!(
+        sprites
+            .iter()
+            .filter(|sprite| sprite.additive == 1.0)
+            .all(|sprite| !sprite.scene_lit),
+        "additive particles remain emissive"
+    );
     run(&mut runtime, 10.0);
     assert!(
         runtime

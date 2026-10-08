@@ -1,0 +1,244 @@
+{
+  "issue": 10934,
+  "retained_at_utc": "2026-10-08T06:52:57.628641+00:00",
+  "source_commit": "72381c8f2d8d992bd4cd50a43a3fff72e50c7552",
+  "capture_completed_at_utc": {
+    "survey": "2026-10-08T05:41:24.168381+00:00",
+    "most-sprites": "2026-10-08T05:43:11.352375+00:00",
+    "most-lit-area": "2026-10-08T05:43:37.368360+00:00",
+    "baseline-most-sprites": "2026-10-08T06:51:50.233822+00:00",
+    "baseline-most-lit-area": "2026-10-08T06:52:09.922211+00:00",
+    "sun": "2026-10-08T06:52:32.081401+00:00"
+  },
+  "source_base": "d257bef504bc5b9e08616a55e3272fafce810c79",
+  "source_sha256": {
+    "assets/verse/fx/effects/debris_dust.toml": "eda7056713eca3d6300f830965015b165a898cb0f98528a73fa1be401ecf1612",
+    "assets/verse/fx/effects/meteor_arc_trail.toml": "59928c59f56801e795a1b26d1486c9240e6f90680b709bc749d06a96f3cf6b0d",
+    "assets/verse/fx/effects/meteor_explosion.toml": "7c22426f0e36b7ca987ce8f76a0fca398a60f670ab475a536d6f39cad425d6ea",
+    "assets/verse/fx/effects/meteor_smolder.toml": "810271a2105271e8d6d63ae9c1964bcea42c33673255f0b712955d77e1dd3d4a",
+    "assets/verse/fx/effects/meteor_trail.toml": "e6f1568c7e8688a6cc63a4c2931c0f41cb9b63a551fb1a208b20cda86b23ea18",
+    "assets/verse/fx/effects/scorch_embers.toml": "86dc3e58cdbd7ff5c8c982b9b1c7bcb75d0658ac6971950ba544ef410bf366a0",
+    "assets/verse/fx/effects/tower_crash.toml": "86aa5affcd0086881f000242cd9b852072775e9994bd016985a55179cb78c423",
+    "crates/verse-core/src/fx/def.rs": "f7a8afcb9d61d7a61b3be56e30b2fb03a11a35f41b0a3393df1eac967fb386e1",
+    "crates/verse-core/src/fx/system.rs": "6705b431055b474f9a4ac6ea815c16f77b0fc4e869422d5bfec48e554659e1b2",
+    "crates/verse-core/src/fx/tests.rs": "dd9468ee6982b0c495d7def0bd783e0e1b68c89d1fd79ee98d05d6683ddbc113",
+    "crates/verse-pbr/examples/fire_capture.rs": "191da6b07828a10a74e02f32c009d1447d882e2fb201a2cd9e65b98fda9b2874",
+    "crates/verse-pbr/src/fx/sprite.rs": "621ded091f2ce190526530048ec2f15cda4743596aa65c50408734817d579d7c",
+    "crates/verse-pbr/src/pbr/gpu.rs": "1c4f967bea3c30277bbd4dd96b17382f4a3c1332e896e0437a257aed50802a3c",
+    "crates/verse-pbr/src/pbr/mod.rs": "e033b0ef443d282199f34b5a9cdc1f186494f38bd4a937dbe8e30b91b90a1f7c",
+    "crates/verse-pbr/src/pbr/photo.wgsl": "bc3f6747c19e59b7c1c5cf533d9d1a1e3b042e0573772fcd33f49f2b54c6c8df",
+    "crates/verse/examples/meteor_showcase_capture.rs": "35e93cbac66435d5d7761364e41762e627c6824dbcc731b4330213adb6156602",
+    "crates/verse/src/render.rs": "6d6b809d17bd13af113bc894dd71325459a7c1e40b2dd972ec262201e6a3bde9",
+    "crates/verse/src/zones/meteor_showcase_tests.rs": "635e25e9b25f5e3a946dd13a6366a6611f9842da221b74279f1786c2a13dccc5",
+    "docs/verse/particles.md": "09e4ca81ecdf05ba2932a18647563dcb3074c4df86a4d961b5de38cd1204869c"
+  },
+  "toolchain": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
+  "capture_binary_sha256": {
+    "before": "801212a76ce9b6a5abf8acc0063cc1b39b3417a6e0c378ee87e65f57b3784027",
+    "after": "d57162fbc569049c5ae3d84a4376a6a2a06c286fbb6ae4da7e5d9ccedda15eab"
+  },
+  "build_profile": "dev; Verse, PBR, core, engine, physics, and zone packages use opt-level 3",
+  "capture_environment": {
+    "VERSE_QUALITY": "high",
+    "VERSE_KIT_PACK": "<cache>/dae1612d4c22438a933c27b406c1e18fe134b13eab8eb5240ddcf5506ffb0b93.vtp"
+  },
+  "capture_commands": {
+    "no-flashes": "openagents lease quiet --priority owner -- openagents lease gpu -- meteor_showcase_capture <scratch>/soft-particles-sun --live --settle-light --no-video --no-flash-lights --compare-particles --particle-every 10000 --seconds 14 --impact-frame 469 --smoke-frame 600",
+    "survey": "openagents lease quiet --priority owner --receipt <scratch>/soft-particles-survey-lease.json -- openagents lease gpu -- meteor_showcase_capture <scratch>/soft-particles-survey --live --settle-light --no-video --compare-particles --particle-repeats 32 --particle-every 15 --seconds 14 --impact-frame 469 --smoke-frame 600 --every 60",
+    "most-sprites": "openagents lease quiet --priority owner -- openagents lease gpu -- meteor_showcase_capture <scratch>/soft-particles-most-sprites --live --settle-light --no-video --compare-particles --particle-repeats 128 --particle-frame 482 --seconds 14 --impact-frame 469 --smoke-frame 600",
+    "most-lit-area": "openagents lease quiet --priority owner -- openagents lease gpu -- meteor_showcase_capture <scratch>/soft-particles-most-lit-area --live --settle-light --no-video --compare-particles --particle-repeats 128 --particle-frame 519 --seconds 14 --impact-frame 469 --smoke-frame 600"
+  },
+  "performance": {
+    "budget_ms": 1.0,
+    "max_snapshot_mean_render_increment_ms": 0.8562579154968262,
+    "measured_snapshots": 57,
+    "stress_snapshots": {
+      "most-sprites": {
+        "before": {
+          "snapshots": 0,
+          "valid_gpu_snapshots": 0,
+          "invalid_gpu_snapshots": 0,
+          "render_overhead_ms": null,
+          "individual_render_overhead_ms": null,
+          "snapshot_results": []
+        },
+        "swarm": {
+          "snapshots": 1,
+          "valid_gpu_snapshots": 0,
+          "invalid_gpu_snapshots": 1,
+          "render_overhead_ms": {
+            "p50": 0.2330174446105957,
+            "p99": 0.2330174446105957,
+            "max": 0.2330174446105957
+          },
+          "individual_render_overhead_ms": {
+            "p50": 0.05066728591918945,
+            "p99": 1.578458547592163,
+            "max": 2.372999668121338
+          },
+          "snapshot_results": [
+            {
+              "frame": 482,
+              "lit_alpha": 982,
+              "render_overhead_ms": 0.2330174446105957,
+              "encode_overhead_ms": 0.01637125015258789,
+              "off_render_ms": 7.098110198974609,
+              "on_render_ms": 7.331127643585205,
+              "gpu_overhead_ms": null,
+              "cpu_gpu_overhead_ms": null,
+              "individual_render_overhead_ms": {
+                "p50": 0.05066728591918945,
+                "p99": 1.578458547592163,
+                "max": 2.372999668121338
+              }
+            }
+          ]
+        },
+        "after": {
+          "snapshots": 0,
+          "valid_gpu_snapshots": 0,
+          "invalid_gpu_snapshots": 0,
+          "render_overhead_ms": null,
+          "individual_render_overhead_ms": null,
+          "snapshot_results": []
+        }
+      },
+      "most-lit-area": {
+        "before": {
+          "snapshots": 0,
+          "valid_gpu_snapshots": 0,
+          "invalid_gpu_snapshots": 0,
+          "render_overhead_ms": null,
+          "individual_render_overhead_ms": null,
+          "snapshot_results": []
+        },
+        "swarm": {
+          "snapshots": 1,
+          "valid_gpu_snapshots": 0,
+          "invalid_gpu_snapshots": 1,
+          "render_overhead_ms": {
+            "p50": 0.09646391868591309,
+            "p99": 0.09646391868591309,
+            "max": 0.09646391868591309
+          },
+          "individual_render_overhead_ms": {
+            "p50": 0.0020003318786621094,
+            "p99": 2.645916223526001,
+            "max": 3.473666191101074
+          },
+          "snapshot_results": [
+            {
+              "frame": 519,
+              "lit_alpha": 799,
+              "render_overhead_ms": 0.09646391868591309,
+              "encode_overhead_ms": 0.005552530288696289,
+              "off_render_ms": 6.994047164916992,
+              "on_render_ms": 7.090511322021484,
+              "gpu_overhead_ms": null,
+              "cpu_gpu_overhead_ms": null,
+              "individual_render_overhead_ms": {
+                "p50": 0.0020003318786621094,
+                "p99": 2.645916223526001,
+                "max": 3.473666191101074
+              }
+            }
+          ]
+        },
+        "after": {
+          "snapshots": 0,
+          "valid_gpu_snapshots": 0,
+          "invalid_gpu_snapshots": 0,
+          "render_overhead_ms": null,
+          "individual_render_overhead_ms": null,
+          "snapshot_results": []
+        }
+      }
+    },
+    "previous_renderer": {
+      "source_commit": "d257bef504bc5b9e08616a55e3272fafce810c79",
+      "results": {
+        "most-sprites": {
+          "frame": 482,
+          "before_render_ms": 6.947007179260254,
+          "after_render_ms": 7.331127643585205,
+          "mean_render_increment_ms": 0.38412046432495117,
+          "before_phase_frame_ms": {
+            "p50": 22.25287437438965,
+            "p99": 44.2980842590332,
+            "max": 47.94929122924805
+          },
+          "after_phase_frame_ms": {
+            "p50": 22.70833396911621,
+            "p99": 44.861793518066406,
+            "max": 51.899253845214844
+          }
+        },
+        "most-lit-area": {
+          "frame": 519,
+          "before_render_ms": 7.029845714569092,
+          "after_render_ms": 7.090511322021484,
+          "mean_render_increment_ms": 0.06066560745239258,
+          "before_phase_frame_ms": {
+            "p50": 22.516830444335938,
+            "p99": 43.327003479003906,
+            "max": 50.55854034423828
+          },
+          "after_phase_frame_ms": {
+            "p50": 22.992582321166992,
+            "p99": 45.15753936767578,
+            "max": 52.777671813964844
+          }
+        }
+      },
+      "method": "The previous commit is built in the grid-pack checkout with its separate persistent Cargo target. Its flash comparison harness uses --flash-every equal to the selected frame, yielding one snapshot at that frame with 128 pairs. Compare the flash-enabled mean with the new renderer enabled at the identical deterministic frame, scene, camera, and settled light. Both old and new keep their normal soft fade enabled; this comparison includes the expanded vertex packing and upload. Processes run sequentially under quiet/GPU leases, so cross-process timing noise remains. The held dynamic mesh excludes simulation and particle DTO construction; normal phase timings remain in each report.",
+      "commands": {
+        "most-sprites": "openagents lease quiet --priority owner -- openagents lease gpu -- meteor-showcase-capture-10933-final <scratch>/soft-particles-baseline-most-sprites --live --settle-light --no-video --compare-flash-lights --flash-repeats 128 --flash-every 482 --seconds 14 --impact-frame 469",
+        "most-lit-area": "openagents lease quiet --priority owner -- openagents lease gpu -- meteor-showcase-capture-10933-final <scratch>/soft-particles-baseline-most-lit-area --live --settle-light --no-video --compare-flash-lights --flash-repeats 128 --flash-every 519 --seconds 14 --impact-frame 469"
+      }
+    },
+    "limits": "Repeated fixed-snapshot wall-clock measurements include encode, submit, and completion wait. Individual polling tails remain in the capture files. GPU timestamps returned no valid samples on this adapter. The off control disables both scene lighting and soft fade; opaque depth copying stays fixed, and soft fade already existed before this change. Startup shader compilation and light baking are outside the incremental comparison."
+  },
+  "checks": [
+    {
+      "command": "cargo test -p verse-core -p verse-pbr",
+      "result": "59 core and 154 PBR tests passed; 7 PBR tests ignored"
+    },
+    {
+      "command": "cargo test -p verse --lib meteor_showcase",
+      "result": "8 passed"
+    },
+    {
+      "command": "cargo test -p verse --lib render::tests",
+      "result": "11 passed"
+    },
+    {
+      "command": "cargo test -p verse --lib gles_tests",
+      "result": "10 passed"
+    },
+    {
+      "command": "cargo test -p verse-zone-everglade --lib",
+      "result": "258 passed"
+    },
+    {
+      "command": "cargo build -p verse --example meteor_showcase_capture",
+      "result": "Passed"
+    },
+    {
+      "command": "cargo build -p verse-pbr --example fire_capture",
+      "result": "Passed"
+    },
+    {
+      "command": "cargo fmt -p verse-core -p verse-pbr -p verse --check; git diff --check",
+      "result": "Passed"
+    }
+  ],
+  "webgl2": "Both sprite stages translate to GLSL ES 3.00 without extensions. The combined texture/sampler reflection, including sampler-less depth loads, remains within 16 units. Device admission requests nine varyings within the WebGL2 floor. No interactive browser run.",
+  "matched_previous_renderer_images": {
+    "frame": 469,
+    "before": "impact-previous-renderer.png",
+    "after": "impact-particles-on.png",
+    "method": "The actual previous renderer and the current enabled renderer share the deterministic scene, camera, geometry, settled light, and enabled flash lights. Authored lit flags and albedo handling change with the implementation. The separately named particles-off images are feature controls in the new renderer, not screenshots from the previous commit."
+  },
+  "visual_controls": "Matched images share the deterministic scene, geometry, camera, and settled light. The no-flashes capture disables impact flash lights while keeping sun, ambient, shadows, and permanent lamps fixed. Its images test directional lighting without the transient flash contribution; it contributes no performance samples.",
+  "soft_depth": "Medium/High copy R16Float view depth before sprites, even without water. Fade spans 0.6 meters; Low keeps full opacity without a depth copy."
+}

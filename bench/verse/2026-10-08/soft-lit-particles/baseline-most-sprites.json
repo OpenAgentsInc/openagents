@@ -1,0 +1,311 @@
+{
+  "mode": "live",
+  "width": 1920,
+  "height": 1080,
+  "fps": 60.0,
+  "steps_per_frame": 1,
+  "quality": "high",
+  "effective_quality": "high",
+  "adapter": {
+    "name": "Apple M5 Max",
+    "vendor": 0,
+    "device": 0,
+    "backend": "Metal",
+    "device_type": "IntegratedGpu"
+  },
+  "light_settled_before_capture": true,
+  "gpu_timestamp_features_supported": true,
+  "gpu_timestamps_available": false,
+  "flash_lights_enabled": true,
+  "impact_frame": 469,
+  "flash_light_comparison": {
+    "repeats_per_snapshot": 128,
+    "every_frames": 482,
+    "flash_pool_step_ms": 0.0005623576580546796,
+    "flash_pool_iterations": 4096,
+    "flash_pool_candidates": 32,
+    "flash_pool_method": "Mean tick plus camera-ranked projection for a full pool, with ascending input brightness to shift every candidate. Excludes impact spawn and aggregation across sources; no lights expire during the sample.",
+    "method": "Each selected simulation snapshot averages repeated interleaved off/on render pairs, alternating order after three warm-up frames. Encode, submit, and completion wait omit pixel readback; individual render overhead spreads retain tail noise. Excludes simulation and first-frame warm-up costs. GPU averages require every repeat to have valid off/on timestamps.",
+    "timing_limit": "Wall-clock render completion includes submission and polling overhead; it is not a GPU timestamp measurement.",
+    "gpu_method": "Optional encoder timestamps around scene commands, excluding buffer uploads, query resolve, and readback. Includes one 8-byte marker copy in each variant. Timestamp command ordering depends on the backend and driver; nonpositive durations are invalid.",
+    "phases": {
+      "before": {
+        "pairs": 0,
+        "individual_pairs": 0,
+        "individual_render_overhead_ms": null,
+        "gpu_pairs": 0,
+        "invalid_gpu_pairs": 0,
+        "pairs_with_flash_lights": 0,
+        "active_individual_render_overhead_ms": null,
+        "flash_lights_selected_max": 0,
+        "active_render_overhead_ms": null,
+        "active_encode_overhead_ms": null,
+        "active_completion_wait_overhead_ms": null,
+        "active_off_render_ms": null,
+        "active_on_render_ms": null,
+        "active_gpu_pairs": 0,
+        "active_invalid_gpu_pairs": 0,
+        "active_gpu_overhead_ms": null,
+        "active_cpu_gpu_overhead_ms": null,
+        "active_off_gpu_ms": null,
+        "active_on_gpu_ms": null,
+        "all_render_overhead_ms": null
+      },
+      "swarm": {
+        "pairs": 1,
+        "individual_pairs": 128,
+        "individual_render_overhead_ms": {
+          "p50": 0.02520918846130371,
+          "p99": 1.3765826225280762,
+          "max": 1.5104992389678955
+        },
+        "gpu_pairs": 0,
+        "invalid_gpu_pairs": 1,
+        "pairs_with_flash_lights": 1,
+        "active_individual_render_overhead_ms": {
+          "p50": 0.02520918846130371,
+          "p99": 1.3765826225280762,
+          "max": 1.5104992389678955
+        },
+        "flash_lights_selected_max": 8,
+        "active_render_overhead_ms": {
+          "p50": 0.10770869255065918,
+          "p99": 0.10770869255065918,
+          "max": 0.10770869255065918
+        },
+        "active_encode_overhead_ms": {
+          "p50": 0.011645317077636719,
+          "p99": 0.011645317077636719,
+          "max": 0.011645317077636719
+        },
+        "active_completion_wait_overhead_ms": {
+          "p50": 0.09606337547302246,
+          "p99": 0.09606337547302246,
+          "max": 0.09606337547302246
+        },
+        "active_off_render_ms": {
+          "p50": 6.839298248291016,
+          "p99": 6.839298248291016,
+          "max": 6.839298248291016
+        },
+        "active_on_render_ms": {
+          "p50": 6.947007179260254,
+          "p99": 6.947007179260254,
+          "max": 6.947007179260254
+        },
+        "active_gpu_pairs": 0,
+        "active_invalid_gpu_pairs": 1,
+        "active_gpu_overhead_ms": null,
+        "active_cpu_gpu_overhead_ms": null,
+        "active_off_gpu_ms": null,
+        "active_on_gpu_ms": null,
+        "all_render_overhead_ms": {
+          "p50": 0.10770869255065918,
+          "p99": 0.10770869255065918,
+          "max": 0.10770869255065918
+        }
+      },
+      "after": {
+        "pairs": 0,
+        "individual_pairs": 0,
+        "individual_render_overhead_ms": null,
+        "gpu_pairs": 0,
+        "invalid_gpu_pairs": 0,
+        "pairs_with_flash_lights": 0,
+        "active_individual_render_overhead_ms": null,
+        "flash_lights_selected_max": 0,
+        "active_render_overhead_ms": null,
+        "active_encode_overhead_ms": null,
+        "active_completion_wait_overhead_ms": null,
+        "active_off_render_ms": null,
+        "active_on_render_ms": null,
+        "active_gpu_pairs": 0,
+        "active_invalid_gpu_pairs": 0,
+        "active_gpu_overhead_ms": null,
+        "active_cpu_gpu_overhead_ms": null,
+        "active_off_gpu_ms": null,
+        "active_on_gpu_ms": null,
+        "all_render_overhead_ms": null
+      }
+    }
+  },
+  "phases": {
+    "before": {
+      "frames": 330,
+      "frame_ms": {
+        "p50": 5.020374774932861,
+        "p99": 9.461333274841309,
+        "max": 174.7926483154297
+      },
+      "tick_ms": {
+        "p50": 0.12416600435972214,
+        "p99": 0.49604201316833496,
+        "max": 0.5639580488204956
+      },
+      "dynamic_mesh_ms": {
+        "p50": 0.9857920408248901,
+        "p99": 1.2620829343795776,
+        "max": 1.2652080059051514
+      },
+      "encode_ms": {
+        "p50": 1.1286669969558716,
+        "p99": 1.5247091054916382,
+        "max": 153.7077178955078
+      },
+      "gpu_wait_ms": {
+        "p50": 2.70408296585083,
+        "p99": 6.537291049957275,
+        "max": 20.061792373657227
+      },
+      "town_swarm_ms": {
+        "p50": 0.0011659999145194888,
+        "p99": 0.0034580000210553408,
+        "max": 0.0037090000696480274
+      },
+      "town_physics_ms": {
+        "p50": 0.0000830000062705949,
+        "p99": 0.0004579999949783087,
+        "max": 0.0007919999770820141
+      },
+      "town_sync_ms": {
+        "p50": 0.0008750000270083547,
+        "p99": 0.38087499141693115,
+        "max": 0.4308750033378601
+      },
+      "town_pose_ms": {
+        "p50": 0.00020900000527035445,
+        "p99": 0.0005419999943114817,
+        "max": 0.0005829999572597444
+      },
+      "town_solids_ms": {
+        "p50": 0.0,
+        "p99": 0.0,
+        "max": 0.0009169999975711107
+      },
+      "chunks_max": 0,
+      "posed_vertices_max": 0,
+      "sprites_max": 66,
+      "draws_max": 1486,
+      "triangles_max": 552198,
+      "flash_lights_selected_max": 0
+    },
+    "swarm": {
+      "frames": 360,
+      "frame_ms": {
+        "p50": 22.25287437438965,
+        "p99": 44.2980842590332,
+        "max": 47.94929122924805
+      },
+      "tick_ms": {
+        "p50": 9.341166496276855,
+        "p99": 27.715375900268555,
+        "max": 33.45387268066406
+      },
+      "dynamic_mesh_ms": {
+        "p50": 4.154082775115967,
+        "p99": 4.405832767486572,
+        "max": 4.914250373840332
+      },
+      "encode_ms": {
+        "p50": 3.0207080841064453,
+        "p99": 3.7714171409606934,
+        "max": 6.142542362213135
+      },
+      "gpu_wait_ms": {
+        "p50": 5.173999786376953,
+        "p99": 10.251208305358887,
+        "max": 11.560333251953125
+      },
+      "town_swarm_ms": {
+        "p50": 0.0659169927239418,
+        "p99": 0.24808399379253387,
+        "max": 0.44495901465415955
+      },
+      "town_physics_ms": {
+        "p50": 8.783207893371582,
+        "p99": 27.192834854125977,
+        "max": 32.695247650146484
+      },
+      "town_sync_ms": {
+        "p50": 0.02158300019800663,
+        "p99": 0.5016250014305115,
+        "max": 0.6857079863548279
+      },
+      "town_pose_ms": {
+        "p50": 0.29262498021125793,
+        "p99": 0.3383749723434448,
+        "max": 0.4883750081062317
+      },
+      "town_solids_ms": {
+        "p50": 0.0,
+        "p99": 0.005249999929219484,
+        "max": 0.005667000077664852
+      },
+      "chunks_max": 700,
+      "posed_vertices_max": 177525,
+      "sprites_max": 1841,
+      "draws_max": 1537,
+      "triangles_max": 732670,
+      "flash_lights_selected_max": 8
+    },
+    "after": {
+      "frames": 150,
+      "frame_ms": {
+        "p50": 14.277000427246094,
+        "p99": 18.926584243774414,
+        "max": 21.274333953857422
+      },
+      "tick_ms": {
+        "p50": 2.302708148956299,
+        "p99": 5.810165882110596,
+        "max": 6.067334175109863
+      },
+      "dynamic_mesh_ms": {
+        "p50": 4.143542289733887,
+        "p99": 4.212874889373779,
+        "max": 4.218208312988281
+      },
+      "encode_ms": {
+        "p50": 3.1158339977264404,
+        "p99": 3.470750093460083,
+        "max": 3.551833152770996
+      },
+      "gpu_wait_ms": {
+        "p50": 3.979084014892578,
+        "p99": 8.729667663574219,
+        "max": 9.008915901184082
+      },
+      "town_swarm_ms": {
+        "p50": 0.05695800110697746,
+        "p99": 0.06745800375938416,
+        "max": 0.07216700166463852
+      },
+      "town_physics_ms": {
+        "p50": 1.7774159908294678,
+        "p99": 5.301875114440918,
+        "max": 5.575083255767822
+      },
+      "town_sync_ms": {
+        "p50": 0.023374998942017555,
+        "p99": 0.0320420004427433,
+        "max": 0.08799999952316284
+      },
+      "town_pose_ms": {
+        "p50": 0.30083298683166504,
+        "p99": 0.37279200553894043,
+        "max": 0.37516701221466064
+      },
+      "town_solids_ms": {
+        "p50": 0.0,
+        "p99": 0.0,
+        "max": 0.005249999929219484
+      },
+      "chunks_max": 700,
+      "posed_vertices_max": 177525,
+      "sprites_max": 384,
+      "draws_max": 861,
+      "triangles_max": 527544,
+      "flash_lights_selected_max": 4
+    }
+  }
+}

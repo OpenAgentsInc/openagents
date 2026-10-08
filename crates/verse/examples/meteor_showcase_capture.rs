@@ -6,6 +6,9 @@
 //! [--every K] [--no-video] [--live] [--no-flash-lights]
 //! [--compare-flash-lights] [--impact-frame N] [--settle-light]
 //! [--flash-repeats N] [--flash-every N]
+//! [--compare-particles] [--no-particle-lighting] [--no-soft-particles]
+//! [--particle-frame N] [--particle-repeats N] [--particle-every N]
+//! [--smoke-frame N]
 //!
 //! Installs the showcase from the committed, pinned Everglade pack as
 //! `verse --meteor-showcase` does, bakes its light, and renders it offscreen
@@ -35,6 +38,11 @@
 //! `--flash-repeats` averages up to 256 interleaved off/on pairs per fixed
 //! snapshot; `--flash-every` selects every Nth frame for comparison. Both
 //! default to 1. The report keeps each individual render overhead's spread.
+//! Particle comparison uses the same repeated pairs, toggling only scene
+//! lighting and soft fade. It keeps the authored colors, density, and flash
+//! lights fixed and writes matched impact, ground-smoke, and aftermath images.
+//! `--particle-frame` measures only that snapshot; otherwise
+//! `--particle-every` selects frames. Particle repeats and spacing default to 1.
 //!
 //! Run it with `VERSE_QUALITY=high` for the high tier, and with
 //! `VERSE_KIT_PACK` naming the licensed kit pack to draw it in place of its
@@ -76,11 +84,19 @@ struct Args {
     flash_repeats: usize,
     flash_every: usize,
     impact_frame: Option<usize>,
+    smoke_frame: Option<usize>,
+    no_particle_lighting: bool,
+    no_soft_particles: bool,
+    compare_particles: bool,
+    particle_frame: Option<usize>,
+    particle_repeats: usize,
+    particle_every: usize,
 }
 
 /// One frame's costs, ms, and how much it drew.
 #[derive(Clone, Copy, Default)]
 struct Sample {
+    index: usize,
     tick: f32,
     mesh: f32,
     encode: f32,
@@ -96,6 +112,10 @@ struct Sample {
     draws: u64,
     triangles: u64,
     flash_lights: usize,
+    lit_alpha: usize,
+    density_max: f32,
+    sprite_area: f32,
+    lit_alpha_area: f32,
 }
 
 impl Sample {
@@ -107,7 +127,8 @@ impl Sample {
 
 /// Averaged off/on renders of one simulation snapshot, without pixel readback.
 #[derive(Clone, Default)]
-struct FlashPair {
+struct RenderPair {
+    index: usize,
     off: (f32, f32),
     on: (f32, f32),
     off_gpu: Option<f32>,
@@ -116,7 +137,7 @@ struct FlashPair {
     individual_render_overhead: Vec<f32>,
 }
 
-impl FlashPair {
+impl RenderPair {
     fn overhead(&self) -> f32 {
         self.on.0 + self.on.1 - self.off.0 - self.off.1
     }
@@ -130,6 +151,96 @@ impl FlashPair {
     }
 }
 
+enum Comparison {
+    Flashes([verse::pbr::Lamp; verse::pbr::MAX_FLASH_CANDIDATES]),
+    Particles,
+}
+
+fn measure_pair(
+    renderer: &mut verse::render::Offscreen,
+    view: verse::render::View,
+    dynamic: &mut verse::mesh::Mesh,
+    ui: &verse::ui::UiBatch,
+    frame: usize,
+    repeats: usize,
+    comparison: Comparison,
+) -> Result<RenderPair, String> {
+    let original = dynamic
+        .neon
+        .as_ref()
+        .map(|n| (n.flash_lamps, n.particle_lighting, n.soft_particles));
+    let mut pair = RenderPair {
+        index: frame,
+        ..Default::default()
+    };
+    let mut gpu_total = (0.0, 0.0);
+    let mut gpu_valid = true;
+    for repeat in 0..repeats {
+        let mut timings = [(0.0, 0.0); 2];
+        let mut gpu = [None; 2];
+        for enabled in if (frame + repeat) % 2 == 0 {
+            [false, true]
+        } else {
+            [true, false]
+        } {
+            if let Some(neon) = &mut dynamic.neon {
+                match &comparison {
+                    Comparison::Flashes(lamps) => {
+                        neon.flash_lamps = *lamps;
+                        if !enabled {
+                            neon.flash_lamps.fill(verse::pbr::Lamp::OFF);
+                        }
+                    }
+                    Comparison::Particles => {
+                        neon.particle_lighting = enabled;
+                        neon.soft_particles = enabled;
+                    }
+                }
+            }
+            let index = usize::from(enabled);
+            timings[index] = renderer.measure(view, dynamic, ui)?;
+            gpu[index] = renderer.last_gpu_ms();
+            if enabled {
+                pair.selected = match &comparison {
+                    Comparison::Flashes(_) => renderer.selected_flash_lights(),
+                    Comparison::Particles => dynamic
+                        .sprites
+                        .iter()
+                        .filter(|s| s.scene_lit && s.additive < 1.0 && s.alpha > 1e-3)
+                        .count(),
+                };
+            }
+        }
+        pair.off.0 += timings[0].0;
+        pair.off.1 += timings[0].1;
+        pair.on.0 += timings[1].0;
+        pair.on.1 += timings[1].1;
+        pair.individual_render_overhead
+            .push(timings[1].0 + timings[1].1 - timings[0].0 - timings[0].1);
+        if let [Some(off), Some(on)] = gpu {
+            gpu_total.0 += off;
+            gpu_total.1 += on;
+        } else {
+            gpu_valid = false;
+        }
+    }
+    let repeats = repeats as f32;
+    pair.off.0 /= repeats;
+    pair.off.1 /= repeats;
+    pair.on.0 /= repeats;
+    pair.on.1 /= repeats;
+    if gpu_valid {
+        pair.off_gpu = Some(gpu_total.0 / repeats);
+        pair.on_gpu = Some(gpu_total.1 / repeats);
+    }
+    if let (Some(neon), Some((lamps, lighting, soft))) = (&mut dynamic.neon, original) {
+        neon.flash_lamps = lamps;
+        neon.particle_lighting = lighting;
+        neon.soft_particles = soft;
+    }
+    Ok(pair)
+}
+
 /// The 50th and 99th percentiles and the largest of `values`.
 fn spread(mut values: Vec<f32>) -> serde_json::Value {
     if values.is_empty() {
@@ -138,6 +249,16 @@ fn spread(mut values: Vec<f32>) -> serde_json::Value {
     values.sort_by(f32::total_cmp);
     let at = |p: f32| values[((values.len() - 1) as f32 * p).round() as usize];
     serde_json::json!({"p50": at(0.5), "p99": at(0.99), "max": values[values.len() - 1]})
+}
+
+fn snapshot(sample: Option<&Sample>) -> serde_json::Value {
+    sample.map_or(serde_json::Value::Null, |s| {
+        serde_json::json!({
+            "frame": s.index, "sprites": s.sprites, "lit_alpha": s.lit_alpha,
+            "density_max": s.density_max, "sprite_angular_area": s.sprite_area,
+            "lit_alpha_angular_area": s.lit_alpha_area,
+        })
+    })
 }
 
 /// Each phase's frame costs, as `capture.json` holds them.
@@ -166,18 +287,23 @@ fn report(phases: &[(&str, Vec<Sample>)]) -> serde_json::Value {
                 "draws_max": most(|s| s.draws),
                 "triangles_max": most(|s| s.triangles),
                 "flash_lights_selected_max": most(|s| s.flash_lights as u64),
+                "lit_alpha_max": most(|s| s.lit_alpha as u64),
+                "density_max": samples.iter().map(|s| s.density_max).fold(0.0_f32, f32::max),
+                "most_sprites_snapshot": snapshot(samples.iter().max_by_key(|s| s.sprites)),
+                "most_sprite_area_snapshot": snapshot(samples.iter().max_by(|a,b| a.sprite_area.total_cmp(&b.sprite_area))),
+                "most_lit_alpha_area_snapshot": snapshot(samples.iter().max_by(|a,b| a.lit_alpha_area.total_cmp(&b.lit_alpha_area))),
             }),
         );
     }
     serde_json::Value::Object(out)
 }
 
-fn flash_report(phases: &[(&str, Vec<FlashPair>)], gpu_supported: bool) -> serde_json::Value {
+fn flash_report(phases: &[(&str, Vec<RenderPair>)], gpu_supported: bool) -> serde_json::Value {
     let mut out = serde_json::Map::new();
     for (name, pairs) in phases {
         let active: Vec<_> = pairs.iter().filter(|pair| pair.selected > 0).collect();
-        let col = |f: fn(&FlashPair) -> f32| spread(active.iter().map(|pair| f(pair)).collect());
-        let gpu_col = |f: fn(&FlashPair) -> Option<f32>| {
+        let col = |f: fn(&RenderPair) -> f32| spread(active.iter().map(|pair| f(pair)).collect());
+        let gpu_col = |f: fn(&RenderPair) -> Option<f32>| {
             spread(active.iter().filter_map(|pair| f(pair)).collect())
         };
         out.insert(
@@ -193,7 +319,7 @@ fn flash_report(phases: &[(&str, Vec<FlashPair>)], gpu_supported: bool) -> serde
                 "pairs_with_flash_lights": active.len(),
                 "active_individual_render_overhead_ms": spread(active.iter().flat_map(|p| p.individual_render_overhead.iter().copied()).collect()),
                 "flash_lights_selected_max": pairs.iter().map(|p| p.selected).max().unwrap_or(0),
-                "active_render_overhead_ms": col(FlashPair::overhead),
+                "active_render_overhead_ms": col(RenderPair::overhead),
                 "active_encode_overhead_ms": col(|p| p.on.0 - p.off.0),
                 "active_completion_wait_overhead_ms": col(|p| p.on.1 - p.off.1),
                 "active_off_render_ms": col(|p| p.off.0 + p.off.1),
@@ -202,13 +328,37 @@ fn flash_report(phases: &[(&str, Vec<FlashPair>)], gpu_supported: bool) -> serde
                 "active_invalid_gpu_pairs": if gpu_supported {
                     active.iter().filter(|p| p.gpu_overhead().is_none()).count()
                 } else { 0 },
-                "active_gpu_overhead_ms": gpu_col(FlashPair::gpu_overhead),
-                "active_cpu_gpu_overhead_ms": gpu_col(FlashPair::cpu_gpu_overhead),
+                "active_gpu_overhead_ms": gpu_col(RenderPair::gpu_overhead),
+                "active_cpu_gpu_overhead_ms": gpu_col(RenderPair::cpu_gpu_overhead),
                 "active_off_gpu_ms": gpu_col(|p| p.off_gpu),
                 "active_on_gpu_ms": gpu_col(|p| p.on_gpu),
-                "all_render_overhead_ms": spread(pairs.iter().map(FlashPair::overhead).collect()),
+                "all_render_overhead_ms": spread(pairs.iter().map(RenderPair::overhead).collect()),
             }),
         );
+    }
+    serde_json::Value::Object(out)
+}
+
+fn particle_report(phases: &[(&str, Vec<RenderPair>)], gpu_supported: bool) -> serde_json::Value {
+    let mut out = serde_json::Map::new();
+    for (name, pairs) in phases {
+        out.insert((*name).to_owned(), serde_json::json!({
+            "snapshots": pairs.len(),
+            "valid_gpu_snapshots": pairs.iter().filter(|p| p.gpu_overhead().is_some()).count(),
+            "invalid_gpu_snapshots": if gpu_supported { pairs.iter().filter(|p| p.gpu_overhead().is_none()).count() } else { 0 },
+            "render_overhead_ms": spread(pairs.iter().map(RenderPair::overhead).collect()),
+            "individual_render_overhead_ms": spread(pairs.iter().flat_map(|p| p.individual_render_overhead.iter().copied()).collect()),
+            "snapshot_results": pairs.iter().map(|p| serde_json::json!({
+                "frame": p.index, "lit_alpha": p.selected,
+                "render_overhead_ms": p.overhead(),
+                "encode_overhead_ms": p.on.0 - p.off.0,
+                "off_render_ms": p.off.0 + p.off.1,
+                "on_render_ms": p.on.0 + p.on.1,
+                "gpu_overhead_ms": p.gpu_overhead(),
+                "cpu_gpu_overhead_ms": p.cpu_gpu_overhead(),
+                "individual_render_overhead_ms": spread(p.individual_render_overhead.clone()),
+            })).collect::<Vec<_>>(),
+        }));
     }
     serde_json::Value::Object(out)
 }
@@ -248,6 +398,13 @@ fn args() -> Result<Args, String> {
         flash_repeats: 1,
         flash_every: 1,
         impact_frame: None,
+        smoke_frame: None,
+        no_particle_lighting: false,
+        no_soft_particles: false,
+        compare_particles: false,
+        particle_frame: None,
+        particle_repeats: 1,
+        particle_every: 1,
     };
     while let Some(flag) = it.next() {
         let mut value = || it.next().ok_or(format!("{flag} takes a value"));
@@ -258,6 +415,33 @@ fn args() -> Result<Args, String> {
             "--settle-light" => args.settle_light = true,
             "--no-flash-lights" => args.no_flash_lights = true,
             "--compare-flash-lights" => args.compare_flash_lights = true,
+            "--no-particle-lighting" => args.no_particle_lighting = true,
+            "--no-soft-particles" => args.no_soft_particles = true,
+            "--compare-particles" => args.compare_particles = true,
+            "--particle-repeats" => {
+                args.particle_repeats = value()?
+                    .parse()
+                    .map_err(|_| "--particle-repeats takes a whole number".to_owned())?
+            }
+            "--particle-every" => {
+                args.particle_every = value()?
+                    .parse()
+                    .map_err(|_| "--particle-every takes a whole number".to_owned())?
+            }
+            "--particle-frame" => {
+                args.particle_frame = Some(
+                    value()?
+                        .parse()
+                        .map_err(|_| "--particle-frame takes a whole number".to_owned())?,
+                )
+            }
+            "--smoke-frame" => {
+                args.smoke_frame = Some(
+                    value()?
+                        .parse()
+                        .map_err(|_| "--smoke-frame takes a whole number".to_owned())?,
+                )
+            }
             "--flash-repeats" => {
                 args.flash_repeats = value()?
                     .parse()
@@ -296,6 +480,15 @@ fn args() -> Result<Args, String> {
     if args.flash_every == 0 {
         return Err("--flash-every must be positive".into());
     }
+    if !(1..=256).contains(&args.particle_repeats) {
+        return Err("--particle-repeats must be between 1 and 256".into());
+    }
+    if args.particle_every == 0 {
+        return Err("--particle-every must be positive".into());
+    }
+    if args.particle_frame.is_some_and(|frame| frame < 3) {
+        return Err("--particle-frame must follow the first three warm-up frames".into());
+    }
     Ok(args)
 }
 
@@ -309,6 +502,39 @@ fn write_png(path: &Path, pixels: &[u8]) -> Result<(), String> {
         .write_header()
         .and_then(|mut w| w.write_image_data(pixels))
         .map_err(|e| format!("{}: {e}", path.display()))
+}
+
+fn capture_particle_pair(
+    renderer: &mut verse::render::Offscreen,
+    view: verse::render::View,
+    dynamic: &mut verse::mesh::Mesh,
+    ui: &verse::ui::UiBatch,
+    out: &Path,
+    name: &str,
+) -> Result<(), String> {
+    let original = dynamic
+        .neon
+        .as_ref()
+        .map(|n| (n.particle_lighting, n.soft_particles));
+    for enabled in [false, true] {
+        if let Some(neon) = &mut dynamic.neon {
+            neon.particle_lighting = enabled;
+            neon.soft_particles = enabled;
+        }
+        let pixels = renderer.render(view, dynamic, ui)?;
+        write_png(
+            &out.join(format!(
+                "{name}-particles-{}.png",
+                if enabled { "on" } else { "off" }
+            )),
+            &pixels,
+        )?;
+    }
+    if let (Some(neon), Some((lighting, soft))) = (&mut dynamic.neon, original) {
+        neon.particle_lighting = lighting;
+        neon.soft_particles = soft;
+    }
+    Ok(())
 }
 
 /// Eases `x` from 0 to 1 with zero slope at both ends.
@@ -416,8 +642,14 @@ fn main() -> Result<(), String> {
     let fps = if args.live { 60.0 } else { FPS };
     let steps = if args.live { 1 } else { STEPS };
     let frames = (args.seconds * fps).round() as usize;
-    if args.impact_frame.is_some_and(|frame| frame >= frames) {
-        return Err("--impact-frame must be within the captured frame range".into());
+    for (flag, frame) in [
+        ("--impact-frame", args.impact_frame),
+        ("--smoke-frame", args.smoke_frame),
+        ("--particle-frame", args.particle_frame),
+    ] {
+        if frame.is_some_and(|frame| frame >= frames) {
+            return Err(format!("{flag} must be within the captured frame range"));
+        }
     }
     let cast_at = if args.live {
         if args.settle_light {
@@ -440,7 +672,12 @@ fn main() -> Result<(), String> {
         ("swarm", Vec::new()),
         ("after", Vec::new()),
     ];
-    let mut flash_phases: Vec<(&str, Vec<FlashPair>)> = vec![
+    let mut flash_phases: Vec<(&str, Vec<RenderPair>)> = vec![
+        ("before", Vec::new()),
+        ("swarm", Vec::new()),
+        ("after", Vec::new()),
+    ];
+    let mut particle_phases: Vec<(&str, Vec<RenderPair>)> = vec![
         ("before", Vec::new()),
         ("swarm", Vec::new()),
         ("after", Vec::new()),
@@ -485,13 +722,17 @@ fn main() -> Result<(), String> {
     let mut first_impact: Option<usize> = None;
     let mut impact_shot = false;
     let mut impact_frame = None;
+    let mut smoke_frame = None;
     let mut slowest = 0.0_f64;
     let mut most_sprites = 0;
     let aspect = WIDTH as f32 / HEIGHT as f32;
     let mut cast = false;
     for k in 0..frames {
         let t = k as f32 / fps;
-        let mut sample = Sample::default();
+        let mut sample = Sample {
+            index: k,
+            ..Default::default()
+        };
         runtime.set_shot(Some(camera(t)));
         if args.live && !cast && t >= cast_at {
             // Key 1, the ring on the ground between the houses, a click.
@@ -529,8 +770,26 @@ fn main() -> Result<(), String> {
         {
             neon.flash_lamps.fill(verse::pbr::Lamp::OFF);
         }
+        if let Some(neon) = &mut dynamic.neon {
+            neon.particle_lighting = !args.no_particle_lighting;
+            neon.soft_particles = !args.no_soft_particles;
+        }
         let sprites = dynamic.sprites.len();
         sample.sprites = sprites;
+        let view = runtime.view(aspect);
+        for sprite in &dynamic.sprites {
+            if sprite.alpha <= 1e-3 {
+                continue;
+            }
+            let area = sprite.half * (sprite.half + sprite.tail.length() * 0.5)
+                / view.eye.distance_squared(sprite.at).max(0.01);
+            sample.sprite_area += area;
+            if sprite.scene_lit && sprite.additive < 1.0 {
+                sample.lit_alpha += 1;
+                sample.lit_alpha_area += area;
+                sample.density_max = sample.density_max.max(sprite.density);
+            }
+        }
         most_sprites = most_sprites.max(sprites);
         let pixels = renderer.render(runtime.view(aspect), &dynamic, &ui)?;
         (sample.encode, sample.gpu) = renderer.last_timing();
@@ -551,59 +810,33 @@ fn main() -> Result<(), String> {
         // Keep the simulation, camera, and geometry fixed for both renders.
         // Exclude startup warm-up and alternate order to reduce order bias.
         if args.compare_flash_lights && k >= 3 && k % args.flash_every == 0 {
-            let mut pair = FlashPair::default();
-            let mut gpu_total = (0.0, 0.0);
-            let mut gpu_valid = true;
-            for repeat in 0..args.flash_repeats {
-                let mut timings = [(0.0, 0.0); 2];
-                let mut gpu = [None; 2];
-                for enabled in if (k + repeat) % 2 == 0 {
-                    [false, true]
-                } else {
-                    [true, false]
-                } {
-                    if let (Some(neon), Some(lamps)) = (&mut dynamic.neon, flash_lamps) {
-                        neon.flash_lamps = lamps;
-                        if !enabled {
-                            neon.flash_lamps.fill(verse::pbr::Lamp::OFF);
-                        }
-                    }
-                    let index = usize::from(enabled);
-                    timings[index] = renderer.measure(runtime.view(aspect), &dynamic, &ui)?;
-                    gpu[index] = renderer.last_gpu_ms();
-                    if enabled {
-                        pair.selected = renderer.selected_flash_lights();
-                    }
-                }
-                pair.off.0 += timings[0].0;
-                pair.off.1 += timings[0].1;
-                pair.on.0 += timings[1].0;
-                pair.on.1 += timings[1].1;
-                pair.individual_render_overhead
-                    .push(timings[1].0 + timings[1].1 - timings[0].0 - timings[0].1);
-                if let [Some(off), Some(on)] = gpu {
-                    gpu_total.0 += off;
-                    gpu_total.1 += on;
-                } else {
-                    gpu_valid = false;
-                }
-            }
-            let repeats = args.flash_repeats as f32;
-            pair.off.0 /= repeats;
-            pair.off.1 /= repeats;
-            pair.on.0 /= repeats;
-            pair.on.1 /= repeats;
-            if gpu_valid {
-                pair.off_gpu = Some(gpu_total.0 / repeats);
-                pair.on_gpu = Some(gpu_total.1 / repeats);
-            }
-            flash_phases[phase].1.push(pair);
-            if let (Some(neon), Some(lamps)) = (&mut dynamic.neon, flash_lamps) {
-                neon.flash_lamps = lamps;
-                if args.no_flash_lights {
-                    neon.flash_lamps.fill(verse::pbr::Lamp::OFF);
-                }
-            }
+            let lamps =
+                flash_lamps.unwrap_or([verse::pbr::Lamp::OFF; verse::pbr::MAX_FLASH_CANDIDATES]);
+            flash_phases[phase].1.push(measure_pair(
+                &mut renderer,
+                view,
+                &mut dynamic,
+                &ui,
+                k,
+                args.flash_repeats,
+                Comparison::Flashes(lamps),
+            )?);
+        }
+        if args.compare_particles
+            && k >= 3
+            && args
+                .particle_frame
+                .map_or(k % args.particle_every == 0, |frame| k == frame)
+        {
+            particle_phases[phase].1.push(measure_pair(
+                &mut renderer,
+                view,
+                &mut dynamic,
+                &ui,
+                k,
+                args.particle_repeats,
+                Comparison::Particles,
+            )?);
         }
         let wreck = runtime.everglade_wreckage().unwrap_or_default();
         let landed = runtime.zone_snapshot(1.0).caption;
@@ -636,10 +869,57 @@ fn main() -> Result<(), String> {
                 }
                 let other_pixels = renderer.render(runtime.view(aspect), &dynamic, &ui)?;
                 write_png(&args.out.join(other), &other_pixels)?;
+                if let (Some(neon), Some(lamps)) = (&mut dynamic.neon, flash_lamps) {
+                    neon.flash_lamps = lamps;
+                    if args.no_flash_lights {
+                        neon.flash_lamps.fill(verse::pbr::Lamp::OFF);
+                    }
+                }
             }
+            if args.compare_particles {
+                capture_particle_pair(&mut renderer, view, &mut dynamic, &ui, &args.out, "impact")?;
+            }
+        }
+        let capture_smoke = args.smoke_frame.map_or_else(
+            || first_impact.is_some_and(|frame| k >= frame + (0.65 * fps) as usize),
+            |frame| k == frame,
+        );
+        if smoke_frame.is_none() && capture_smoke {
+            smoke_frame = Some(k);
+            write_png(&args.out.join("ground-smoke.png"), &pixels)?;
+            if args.compare_particles {
+                capture_particle_pair(
+                    &mut renderer,
+                    view,
+                    &mut dynamic,
+                    &ui,
+                    &args.out,
+                    "ground-smoke",
+                )?;
+            }
+        }
+        if args.compare_particles && args.particle_frame == Some(k) {
+            capture_particle_pair(
+                &mut renderer,
+                view,
+                &mut dynamic,
+                &ui,
+                &args.out,
+                "selected-frame",
+            )?;
         }
         if k + fps as usize == frames {
             write_png(&args.out.join("aftermath.png"), &pixels)?;
+            if args.compare_particles {
+                capture_particle_pair(
+                    &mut renderer,
+                    view,
+                    &mut dynamic,
+                    &ui,
+                    &args.out,
+                    "aftermath",
+                )?;
+            }
         }
         if let Some(every) = args.every
             && every > 0
@@ -700,9 +980,21 @@ fn main() -> Result<(), String> {
         },
         "light_settled_before_capture": !args.live || args.settle_light,
         "gpu_timestamp_features_supported": renderer.gpu_timestamps_available(),
-        "gpu_timestamps_available": flash_phases.iter().flat_map(|(_, pairs)| pairs).any(|p| p.gpu_overhead().is_some()),
+        "gpu_timestamps_available": flash_phases.iter().chain(&particle_phases).flat_map(|(_, pairs)| pairs).any(|p| p.gpu_overhead().is_some()),
         "flash_lights_enabled": !args.no_flash_lights,
         "impact_frame": impact_frame,
+        "smoke_frame": smoke_frame,
+        "particle_lighting_enabled": !args.no_particle_lighting,
+        "soft_particles_enabled": !args.no_soft_particles,
+        "sprite_area_method": "Sum of half-width times (half-width plus half-tail) over squared camera distance, before GPU clipping; an angular overdraw proxy, not pixel coverage.",
+        "particle_comparison": if args.compare_particles { serde_json::json!({
+            "repeats_per_snapshot": args.particle_repeats,
+            "every_frames": args.particle_every,
+            "selected_frame": args.particle_frame,
+            "method": "Repeated interleaved renders of a fixed simulation snapshot, alternating order. Only scene particle lighting and soft fade change; authored colors, density, flash lights, geometry, and camera remain fixed. Reports mean completion increments with individual tail noise; excludes simulation and startup costs.",
+            "timing_limit": "Wall-clock completion includes submission and polling overhead. Invalid or unsupported GPU timestamps remain null.",
+            "phases": particle_report(&particle_phases, renderer.gpu_timestamps_available()),
+        }) } else { serde_json::Value::Null },
         "flash_light_comparison": if args.compare_flash_lights {
             serde_json::json!({
                 "repeats_per_snapshot": args.flash_repeats,

@@ -147,6 +147,11 @@ struct Frame {
 }
 
 impl Frame {
+    fn set_particle_controls(&mut self, neon: &Neon) {
+        self.fire_control[2] = f32::from(u8::from(neon.particle_lighting));
+        self.fire_control[3] = f32::from(u8::from(neon.soft_particles));
+    }
+
     /// Packs flashes first, then fills the remaining slots with permanent
     /// lamps. Diagnostic indices keep permanent lamps at 0..MAX_LAMPS and
     /// place flashes after them.
@@ -973,7 +978,7 @@ impl Photo {
             Tier::Medium => 8.0,
             Tier::High => 16.0,
         };
-        [steps, if self.fire_volumes { 1.0 } else { 0.0 }, 0.0, 0.0]
+        [steps, if self.fire_volumes { 1.0 } else { 0.0 }, 1.0, 1.0]
     }
     fn water_control(&self) -> [f32; 4] {
         crate::water::control(self.capability.quality.tier)
@@ -1019,7 +1024,7 @@ impl Photo {
                 ),
                 wgpu::BindGroupLayoutEntry {
                     binding: 2,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Comparison),
                     count: None,
                 },
@@ -1668,8 +1673,8 @@ impl Photo {
             step_mode: wgpu::VertexStepMode::Vertex,
             attributes: &crate::water::frame::VERTEX_ATTRIBUTES,
         }];
-        const SPRITE: [wgpu::VertexAttribute; 5] = wgpu::vertex_attr_array![
-            0 => Float32x3, 1 => Float32x4, 2 => Float32x2, 3 => Float32x2, 4 => Float32x4
+        const SPRITE: [wgpu::VertexAttribute; 6] = wgpu::vertex_attr_array![
+            0 => Float32x3, 1 => Float32x4, 2 => Float32x2, 3 => Float32x2, 4 => Float32x4, 5 => Float32x4
         ];
         let pipelines = Pipelines {
             // Seen from above and below, so neither face is culled. The
@@ -3143,6 +3148,7 @@ impl Photo {
             ..Frame::zeroed()
         };
         let mut uniform = frame(reversed, neon.line_width, 1.0);
+        uniform.set_particle_controls(neon);
         let daylight = neon.daylight.filter(super::Daylight::valid);
         if let Some(day) = &daylight {
             // The Sun stands where the key light comes from, or overhead.
@@ -4382,6 +4388,138 @@ fn load_sky(device: &wgpu::Device, queue: &wgpu::Queue) -> Result<[wgpu::Texture
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn particle_comparison_controls_preserve_fire_settings() {
+        let mut neon = Neon::plaza(0.0);
+        assert!(neon.particle_lighting && neon.soft_particles);
+        let mut frame = Frame::zeroed();
+        frame.fire_control = [16.0, 1.0, 0.0, 0.0];
+        frame.set_particle_controls(&neon);
+        assert_eq!(frame.fire_control, [16.0, 1.0, 1.0, 1.0]);
+        neon.particle_lighting = false;
+        frame.set_particle_controls(&neon);
+        assert_eq!(frame.fire_control, [16.0, 1.0, 0.0, 1.0]);
+        neon.soft_particles = false;
+        frame.set_particle_controls(&neon);
+        assert_eq!(frame.fire_control, [16.0, 1.0, 0.0, 0.0]);
+    }
+
+    #[test]
+    fn sprite_center_lighting_translates_to_webgl2_within_texture_slots() {
+        use naga::back::glsl;
+        let shared = crate::shading::source(include_str!("photo.wgsl"));
+        let source = verse_gfx::gles::wgsl(&shared, true);
+        let module = naga::front::wgsl::parse_str(&source).unwrap();
+        let info = naga::valid::Validator::new(
+            naga::valid::ValidationFlags::all(),
+            naga::valid::Capabilities::empty(),
+        )
+        .validate(&module)
+        .unwrap();
+        let mut binding_map = glsl::BindingMap::default();
+        let mut bindings: Vec<_> = module
+            .global_variables
+            .iter()
+            .filter_map(|(_, var)| {
+                var.binding
+                    .map(|binding| (binding, &module.types[var.ty].inner))
+            })
+            .collect();
+        bindings.sort_by_key(|(binding, _)| (binding.group, binding.binding));
+        let mut counters = [0_u8; 3];
+        for (binding, inner) in bindings {
+            let class = match inner {
+                naga::TypeInner::Sampler { .. } => 0,
+                naga::TypeInner::Image { .. } => 1,
+                _ => 2,
+            };
+            binding_map.insert(binding, counters[class]);
+            counters[class] += 1;
+        }
+        let options = glsl::Options {
+            version: glsl::Version::Embedded {
+                version: 300,
+                is_webgl: true,
+            },
+            writer_flags: glsl::WriterFlags::ADJUST_COORDINATE_SPACE
+                | glsl::WriterFlags::FORCE_POINT_SIZE,
+            binding_map,
+            zero_initialize_workgroup_memory: true,
+        };
+        let mut textures = std::collections::BTreeSet::new();
+        let mut texture_units = std::collections::BTreeSet::new();
+        for (entry, stage) in [
+            ("vs_sprite", naga::ShaderStage::Vertex),
+            ("fs_sprite", naga::ShaderStage::Fragment),
+        ] {
+            let index = module
+                .entry_points
+                .iter()
+                .position(|point| point.name == entry)
+                .unwrap();
+            for (handle, var) in module.global_variables.iter() {
+                if !info.get_entry_point(index)[handle].is_empty()
+                    && matches!(module.types[var.ty].inner, naga::TypeInner::Image { .. })
+                {
+                    textures.insert(var.name.clone().unwrap());
+                }
+            }
+            let (processed, validated) = naga::back::pipeline_constants::process_overrides(
+                &module,
+                &info,
+                Some((stage, entry)),
+                &Default::default(),
+            )
+            .unwrap();
+            let pipeline = glsl::PipelineOptions {
+                shader_stage: stage,
+                entry_point: entry.into(),
+                multiview: None,
+            };
+            let mut out = String::new();
+            let reflection = glsl::Writer::new(
+                &mut out,
+                &processed,
+                &validated,
+                &options,
+                &pipeline,
+                naga::proc::BoundsCheckPolicies::default(),
+            )
+            .unwrap()
+            .write()
+            .unwrap();
+            for mapping in reflection.texture_mapping.values() {
+                texture_units.insert((
+                    processed.global_variables[mapping.texture]
+                        .name
+                        .clone()
+                        .unwrap(),
+                    mapping
+                        .sampler
+                        .map(|sampler| processed.global_variables[sampler].name.clone().unwrap()),
+                ));
+            }
+            assert!(!out.contains("#extension"), "{entry} requires an extension");
+        }
+        for required in [
+            "shadow_map",
+            "probe_r",
+            "probe_g",
+            "probe_b",
+            "fx_scene_depth",
+        ] {
+            assert!(
+                textures.contains(required),
+                "sprite lighting/fade needs {required}"
+            );
+        }
+        assert!(
+            texture_units.len() <= 16,
+            "sprite program uses {} GLES texture units: {texture_units:?}",
+            texture_units.len()
+        );
+    }
 
     #[test]
     fn a_portable_device_floor_does_not_hide_the_adapters_quality_ceiling() {

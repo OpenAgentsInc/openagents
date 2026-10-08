@@ -92,6 +92,7 @@ struct Frame {
     lamps: array<vec4<f32>, 64>,
     // rgb a neon stage's key light color; w 1 when set, white otherwise.
     key_tint: vec4<f32>,
+    // Fire march steps and enable flag; scene particle lighting and soft fade.
     fire_control: vec4<f32>,
     // What this tier's water draws (`verse_pbr::water::control`): analytic
     // detail waves (0 for the baked tile), the glints' fade distance (m),
@@ -1654,7 +1655,7 @@ fn fs_glow(i: GlowOut) -> @location(0) vec4<f32> {
 // opaque scene: it fades over the last `f.water_screen.w` m before what it
 // meets instead of cutting a hard line (Lorach, "Soft Particles", 2007).
 fn soft_particle(world: vec3<f32>, pixel: vec2<f32>) -> f32 {
-    if f.water_screen.x < 0.5 || f.water_screen.w <= 0.0 {
+    if f.fire_control.w < 0.5 || f.water_screen.x < 0.5 || f.water_screen.w <= 0.0 {
         return 1.0;
     }
     let size = vec2<i32>(textureDimensions(fx_scene_depth));
@@ -1673,8 +1674,10 @@ struct SpriteIn {
     @location(1) color: vec4<f32>,
     @location(2) uv_a: vec2<f32>,
     @location(3) uv_b: vec2<f32>,
-    // x frame blend, y sheet layer, z additive, w 1 when lit.
+    // x frame blend, y sheet layer, z additive; w 0 emitted, 1 legacy
+    // surface color, or 2 plus optical density for scene lighting.
     @location(4) params: vec4<f32>,
+    @location(5) center_half: vec4<f32>,
 };
 
 struct SpriteOut {
@@ -1684,6 +1687,11 @@ struct SpriteOut {
     @location(2) uv_b: vec2<f32>,
     @location(3) params: vec4<f32>,
     @location(4) world: vec3<f32>,
+    @location(5) center_half: vec4<f32>,
+    // Ambient irradiance and the sun's visibility, sampled at the center.
+    @location(6) illumination: vec4<f32>,
+    @location(7) points: vec3<f32>,
+    @location(8) point_direction: vec3<f32>,
 };
 
 @vertex
@@ -1695,7 +1703,59 @@ fn vs_sprite(v: SpriteIn) -> SpriteOut {
     o.uv_b = v.uv_b;
     o.params = v.params;
     o.world = v.pos;
+    o.center_half = v.center_half;
+    o.illumination = vec4<f32>(0.0);
+    o.points = vec3<f32>(0.0);
+    o.point_direction = vec3<f32>(0.0);
+    // Center samples keep the work proportional to the number of particles,
+    // including the cascade filter and local lights, rather than their area.
+    if v.params.w >= 2.0 && v.params.z < 1.0 && f.fire_control.z > 0.5 {
+        let center = v.center_half.xyz;
+        var ambient = probe_irradiance(center, vec3<f32>(0.0, 1.0, 0.0));
+        if f.sky_light.x > 0.5 {
+            ambient = sky_irradiance(vec3<f32>(0.0, 1.0, 0.0));
+        }
+        let clip = f.view_proj * vec4<f32>(center, 1.0);
+        let ndc = clip.xy / max(abs(clip.w), 1e-4);
+        let pixel = vec2<f32>(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5) * f.viewport.xy;
+        o.illumination = vec4<f32>(ambient, sun_shadow(center, vec3<f32>(0.0, 1.0, 0.0), pixel));
+        for (var k = 0; k < i32(f.lamp_params.x); k++) {
+            let at = f.lamps[k * 2];
+            let to = at.xyz - center;
+            let d2 = dot(to, to);
+            let e = f.lamps[k * 2 + 1].rgb * verse_point_falloff(d2, at.w, true);
+            o.points += e;
+            o.point_direction += to * inverseSqrt(max(d2, 1e-4)) * luma(e);
+        }
+    }
     return o;
+}
+
+// A camera-facing rounded plume: its upper side faces upward, and its
+// underside faces away from the sun. Density absorbs more light on the
+// side facing away from the source; ambient light keeps that side visible.
+fn sprite_surface(i: SpriteOut, texel: vec4<f32>) -> vec3<f32> {
+    let toward = normalize(f.eye.xyz - i.center_half.xyz);
+    let radial = (i.world - i.center_half.xyz) / max(i.center_half.w, 1e-4);
+    let n = normalize(radial + toward * 0.65);
+    let wrap = clamp((dot(n, f.sun.xyz) + 0.5) / 1.5, 0.0, 1.0);
+    let density = clamp(i.params.w - 2.0, 0.0, 8.0);
+    let transmission = exp(-density * texel.a * (1.0 - wrap) * 1.5);
+    var tint = vec3<f32>(1.0);
+    if f.key_tint.w > 0.5 {
+        tint = f.key_tint.rgb;
+    }
+    let sun = tint * f.sun.w * i.illumination.w * wrap * transmission;
+    let ambient = i.illumination.rgb * (0.65 + 0.35 * clamp(n.y, -1.0, 1.0));
+    var point_wrap = 1.0;
+    let direction_length = length(i.point_direction);
+    if direction_length > 1e-4 {
+        point_wrap = clamp((dot(n, i.point_direction / direction_length) + 0.5) / 1.5, 0.0, 1.0);
+    }
+    let point_transmission = exp(-density * texel.a * (1.0 - point_wrap));
+    let points = i.points * (0.5 + 0.5 * point_wrap) * point_transmission;
+    let albedo = texel.rgb / max(texel.a, 1.0 / 255.0) * i.color.rgb;
+    return neon_fog(expose(albedo / PI * (ambient + sun + points)), i.world, 1.0) * texel.a;
 }
 
 @fragment
@@ -1718,9 +1778,18 @@ fn fs_sprite(i: SpriteOut) -> @location(0) vec4<f32> {
     // around it: unpremultiplied for the fog, premultiplied again after.
     let coverage = max(texel.a, 1.0 / 255.0);
     let straight = texel.rgb / coverage * i.color.rgb * guide_scale();
-    let lit = neon_fog(straight, i.world, 1.0) * texel.a;
+    var lit = neon_fog(straight, i.world, 1.0) * texel.a;
+    var lit_share = clamp(i.params.w, 0.0, 1.0);
+    if i.params.w >= 2.0 {
+        // Only the alpha share takes light. Additive fire stays emissive,
+        // including while an effect blends from fire into smoke.
+        lit_share = 1.0 - clamp(i.params.z, 0.0, 1.0);
+        if f.fire_control.z > 0.5 {
+            lit = sprite_surface(i, texel);
+        }
+    }
     let soft = soft_particle(i.world, i.clip.xy);
-    let rgb = mix(emitted, lit, i.params.w) * alpha * soft;
+    let rgb = mix(emitted, lit, lit_share) * alpha * soft;
     let cover = texel.a * alpha * (1.0 - clamp(i.params.z, 0.0, 1.0)) * soft;
     return vec4<f32>(rgb, cover);
 }

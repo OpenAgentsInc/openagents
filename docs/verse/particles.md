@@ -80,6 +80,8 @@ Colors work the same way with `[r, g, b]` values, and keyed colors are
 | `blend` | `additive` | `additive` adds light; `alpha` covers what's behind. |
 | `additive` | From `blend` | A curve from 0 (alpha) to 1 (additive), so fire can cool into smoke that covers. |
 | `light` | `emit` | `emit`: color times `luminance` in cd/m² before exposure. `lit`: a surface color in the scene's display scale; the sheet carries its own shading. |
+| `lit` | `false` | Light the alpha share with the scene's sun, sky, sun shadows, and local lamps. `color` is albedo; additive fire stays emissive. |
+| `density` | 1 | Optical density from 0 to 8 for scene lighting. Higher values darken the underside of a plume. |
 | `orient` | `camera` | `camera` faces the viewer; `ground` lies flat. |
 | `delay`, `burst`, `rate`, `duration` | 0 | Start delay (s), particles at once, particles a second, and how long the rate runs (0 runs until the effect is stopped). |
 | `life`, `size`, `speed`, `radial`, `spin` | Required for `life` and `size` | `[min, max]`: lifetime (s), half size (m), speed along `direction` (m/s), speed out from the center (m/s), and turn rate (rad/s). |
@@ -127,7 +129,7 @@ the same particles. `Particles` keeps at most 4096 particles and 256 effects.
 
 A frame's sprites go to the physical renderer in `Mesh::sprites`. The
 renderer keeps at most `fx::budget(tier)` of them (160 on the low tier,
-768 on medium, and 1536 on high), highest priority and largest on screen
+768 on medium, and 2048 on high), highest priority and largest on screen
 first, sorts them back to front, and builds six vertices each. One
 pipeline draws them all, after the glows, through one premultiplied blend
 state: additive particles write no alpha, so they add light in any order,
@@ -143,6 +145,13 @@ High, a frame that draws particles copies the opaque scene's depth first
 (`verse_pbr::water::screen`), and each sprite fades over the last 0.6 m
 before what it meets instead of cutting a hard line; Low has no depth copy
 and keeps the hard line.
+
+Emitters with `lit = true` sample ambient light, the sun's cascaded shadow,
+and local lamps at the sprite center. A rounded plume normal and the
+emitter's density shape the light across the sprite, so its top catches
+sunlight and impact flashes illuminate nearby smoke. This reuses the
+scene's textures within WebGL2's 16-texture limit. The older
+`light = "lit"` setting keeps its baked sheet shading.
 
 ### Preview
 

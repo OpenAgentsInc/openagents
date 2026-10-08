@@ -306,6 +306,11 @@ pub struct Neon {
     /// Transient impact and spell lights, selected before permanent lamps
     /// within the tier's shared lamp budget. They cast no shadows.
     pub flash_lamps: [Lamp; MAX_FLASH_CANDIDATES],
+    /// Whether scene-lit particles take the scene's light. When disabled,
+    /// they keep their legacy surface colors for capture comparisons.
+    pub particle_lighting: bool,
+    /// Whether particles fade into the opaque depth on Medium and High.
+    pub soft_particles: bool,
     /// How brightly a textured scene's baked lamp layer burns, 0 for off to 1
     /// for as baked ([`baked_layers`]), such as from dusk to dawn.
     pub baked_lamps: f32,
@@ -530,6 +535,8 @@ impl Neon {
             height_fog: None,
             lamps: [Lamp::OFF; MAX_LAMPS],
             flash_lamps: [Lamp::OFF; MAX_FLASH_CANDIDATES],
+            particle_lighting: true,
+            soft_particles: true,
             baked_lamps: 0.0,
             grade: Grade::STAGE,
             key_color: [1.0; 3],

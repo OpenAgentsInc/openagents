@@ -2155,11 +2155,10 @@ fn scope_error(
     }
 }
 
-// The world shader passes color, world position, and fog at locations 0..2;
-// the physical lit shader passes six values plus built-ins; the HUD shader passes UV and
-// color. Every downlevel adapter offers at least 15. None uses compute or
-// storage.
-const INTER_STAGE: u32 = 8;
+// The scene-lit sprite shader passes nine values, including its center's
+// illumination. Other scene shaders use fewer. Every downlevel adapter
+// offers at least 15. None uses compute or storage.
+const INTER_STAGE: u32 = 9;
 
 // Every backend requests the OpenGL ES 3.0 floor (the WebGL 2 limits, which
 // have no storage buffers or compute), so a GLES-only device qualifies and
@@ -3095,6 +3094,7 @@ mod tests {
         mobile.max_texture_dimension_2d = 4096;
         let required = scene_limits(mobile.clone()).unwrap();
         assert_eq!(required.max_inter_stage_shader_variables, INTER_STAGE);
+        assert_eq!(required.max_inter_stage_shader_variables, 9);
         assert_eq!(required.max_texture_dimension_2d, 4096);
         assert!(required.check_limits(&mobile));
         mobile.max_inter_stage_shader_variables = INTER_STAGE - 1;

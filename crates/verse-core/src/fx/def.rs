@@ -218,6 +218,13 @@ pub struct Emitter {
     pub additive: Option<Curve>,
     #[serde(default)]
     pub light: Light,
+    /// Receives scene illumination, with the color curve as albedo.
+    /// Overrides the legacy color units in `light` and `luminance`.
+    #[serde(default)]
+    pub lit: bool,
+    /// Absorption density for scene-lit smoke and dust, from 0 to 8.
+    #[serde(default = "one")]
+    pub density: f32,
     /// Scales an emitting particle's color, cd/m².
     #[serde(default = "one")]
     pub luminance: f32,
@@ -361,6 +368,17 @@ impl Emitter {
         }
     }
 
+    /// The color at `t`, as albedo, display color, or emitted luminance.
+    #[must_use]
+    pub fn color_at(&self, t: f32) -> [f32; 3] {
+        let gain = if self.lit || self.light == Light::Lit {
+            1.0
+        } else {
+            self.luminance
+        };
+        self.color.at(t).map(|channel| channel * gain)
+    }
+
     /// The most particles this emitter can have alive at once.
     #[must_use]
     pub fn peak(&self) -> f32 {
@@ -400,6 +418,9 @@ impl Emitter {
         ranged(self.radial, "radial")?;
         if self.life[1] <= 0.0 {
             return Err(what("life must be above 0"));
+        }
+        if !self.density.is_finite() || !(0.0..=8.0).contains(&self.density) {
+            return Err(what("density must be finite and between 0 and 8"));
         }
         if self.spin.iter().any(|v| !v.is_finite()) {
             return Err(what("spin isn't finite"));
