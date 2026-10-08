@@ -41,6 +41,118 @@ fn world() -> World {
     }
     world
 }
+
+fn mixed_response_world() -> World {
+    let mut world = World::new(1.0 / 120.0);
+    world.sleep.enabled = false;
+    let bodies = [
+        (BodyKind::Static, DVec3::ZERO),
+        (BodyKind::Dynamic, DVec3::new(0.7, 0.0, 0.0)),
+        (BodyKind::Dynamic, DVec3::new(0.35, 0.6, 0.0)),
+        (BodyKind::Kinematic, DVec3::new(0.8, 0.5, 0.0)),
+        (BodyKind::Dynamic, DVec3::new(0.3, 0.25, 0.5)),
+        (BodyKind::Static, DVec3::new(0.8, 0.25, 0.5)),
+    ];
+    for (i, (kind, pos)) in bodies.into_iter().enumerate() {
+        let mut body = Body::new(1.0, DVec3::new(0.3, 0.4, 0.5), pos).with_kind(kind);
+        body.sleeping = i == 1;
+        if body.responds() {
+            body.vel = DVec3::new(0.08, -0.03, 0.02) * i as f64;
+            body.omega = DVec3::new(0.01, 0.02, -0.03);
+        }
+        let id = world.add(body);
+        world.add_collider(Collider::new(id, Shape::Sphere { radius: 0.5 }));
+    }
+    world
+}
+
+#[test]
+fn responding_queries_keep_fixed_sleeping_and_kinematic_pairs_in_exhaustive_order() {
+    let mut world = mixed_response_world();
+    let expected = world.detect(&|_, _| 0.01);
+    let (actual, stats) = world.detect_bounded(0.01).unwrap();
+    assert_eq!(format!("{actual:?}"), format!("{expected:?}"));
+    assert_eq!(
+        stats.candidate_pairs, 9,
+        "responding pairs are counted once"
+    );
+    assert_eq!(
+        actual.iter().map(|m| (m.a.0, m.b.0)).collect::<Vec<_>>(),
+        [
+            (0, 2),
+            (0, 4),
+            (1, 2),
+            (1, 4),
+            (2, 3),
+            (2, 4),
+            (2, 5),
+            (3, 4),
+            (4, 5)
+        ]
+    );
+}
+
+#[test]
+fn responding_queries_replay_exact_motion_through_sleep_scripted_wake_and_reset() {
+    let initial = mixed_response_world();
+    let pristine = serde_json::to_vec(&initial).unwrap();
+    let mut actual = initial.clone();
+    let mut expected = initial;
+    expected.exhaustive_detection = true;
+    for step in 0..24 {
+        if step == 12 {
+            actual = serde_json::from_slice(&pristine).unwrap();
+            expected = serde_json::from_slice(&pristine).unwrap();
+            expected.exhaustive_detection = true;
+        }
+        for world in [&mut actual, &mut expected] {
+            if step == 2 {
+                for body in world.bodies_mut() {
+                    if body.kind == BodyKind::Dynamic {
+                        body.sleeping = true;
+                    }
+                    body.vel = DVec3::ZERO;
+                    body.omega = DVec3::ZERO;
+                }
+            } else if matches!(step, 0 | 3 | 12) {
+                world[BodyId(3)].vel = DVec3::X * 0.2;
+            }
+            if step == 8 {
+                world.remove_body(BodyId(4));
+                world.collider_mut(ColliderId(2)).filter = Filter::NONE;
+            } else if step == 9 {
+                world.collider_mut(ColliderId(2)).filter = Filter::ALL;
+            }
+        }
+        actual.step(&NoField);
+        expected.step(&NoField);
+        assert_eq!(
+            format!("{:?}", actual.contacts),
+            format!("{:?}", expected.contacts),
+            "contact order and impulses at step {step}"
+        );
+        let bytes = serde_json::to_vec(&actual).unwrap();
+        assert_eq!(
+            bytes,
+            serde_json::to_vec(&expected).unwrap(),
+            "state at step {step}"
+        );
+        if step == 0 {
+            assert!(
+                !actual[BodyId(1)].sleeping,
+                "the scripted body wakes its neighbor"
+            );
+        } else if step == 2 {
+            assert!(actual.contacts.is_empty(), "no body can respond");
+        }
+        if step == 6 {
+            actual = serde_json::from_slice(&bytes).unwrap();
+            expected = serde_json::from_slice(&bytes).unwrap();
+            expected.exhaustive_detection = true;
+        }
+    }
+}
+
 #[test]
 fn bounded_motion_matches_exhaustive_manifolds_after_moves_filters_and_removal() {
     let mut world = world();
@@ -203,7 +315,10 @@ fn sparse_background_prunes_pairs_and_tracks_kind_changes_and_reused_leaves() {
     let (contacts, stats) = world.detect_bounded(0.01).unwrap();
     assert!(contacts.is_empty());
     assert_eq!(stats.candidate_pairs, 0);
-    assert!(stats.scene_nodes < 5000);
+    assert!(
+        stats.scene_nodes < 128,
+        "static bodies do not start queries"
+    );
     world.bodies_mut()[4095].kind = BodyKind::Dynamic;
     world.bodies_mut()[4095].pos = DVec3::X * 0.9;
     let (contacts, stats) = world.detect_bounded(0.01).unwrap();

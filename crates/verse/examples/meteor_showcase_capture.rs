@@ -3,7 +3,8 @@
 //! and the smoke settling over the ruins (issue #10926).
 //!
 //! Usage: meteor_showcase_capture OUT_DIR [--video PATH] [--seconds N]
-//! [--every K] [--no-video] [--readback-every-frame] [--live] [--no-flash-lights]
+//! [--every K] [--no-video] [--readback-every-frame] [--gpu-timestamps]
+//! [--live] [--no-flash-lights]
 //! [--compare-flash-lights] [--impact-frame N] [--settle-light]
 //! [--flash-repeats N] [--flash-every N]
 //! [--compare-particles] [--no-particle-lighting] [--no-soft-particles]
@@ -55,6 +56,9 @@
 //! without reading pixels. Every frame advances scene history and exposure and
 //! enters the timing report. `--readback-every-frame` restores all-frame pixel
 //! readback; temporal comparison always retains it for both renderers.
+//! Ordinary captures omit timestamp diagnostic work. `--gpu-timestamps` and
+//! every comparison mode enable it. Combine `--readback-every-frame` and
+//! `--gpu-timestamps` to restore the original diagnostic capture workload.
 //!
 //! Run it with `VERSE_QUALITY=high` for the high tier, and with
 //! `VERSE_KIT_PACK` naming the licensed kit pack to draw it in place of its
@@ -88,6 +92,7 @@ struct Args {
     out: PathBuf,
     video: Option<PathBuf>,
     readback_every_frame: bool,
+    gpu_timestamps: bool,
     seconds: f32,
     every: Option<usize>,
     sequence: Option<[usize; 2]>,
@@ -143,6 +148,7 @@ impl Args {
             video: Some(out.join("meteor-swarm-v2.mp4")),
             out,
             readback_every_frame: false,
+            gpu_timestamps: false,
             seconds: 12.5,
             every: None,
             sequence: None,
@@ -165,6 +171,13 @@ impl Args {
             camera: CameraPath::Director,
             static_houses: false,
         }
+    }
+
+    fn timestamps_requested(&self) -> bool {
+        self.gpu_timestamps
+            || self.compare_temporal_aa
+            || self.compare_particles
+            || self.compare_flash_lights
     }
 
     fn select_frame(
@@ -594,6 +607,7 @@ fn args() -> Result<Args, String> {
             "--video" => args.video = Some(PathBuf::from(value()?)),
             "--no-video" => args.video = None,
             "--readback-every-frame" => args.readback_every_frame = true,
+            "--gpu-timestamps" => args.gpu_timestamps = true,
             "--live" => args.live = true,
             "--settle-light" => args.settle_light = true,
             "--no-flash-lights" => args.no_flash_lights = true,
@@ -1031,6 +1045,7 @@ fn main() -> Result<(), String> {
     };
     let mut renderer =
         verse::render::Offscreen::new(WIDTH, HEIGHT, &capture_world, &atlas, runtime.atmosphere())?;
+    renderer.set_gpu_timestamps_enabled(args.timestamps_requested());
     let mut bake_receivers: Vec<_> = on_bake.into_iter().collect();
     let mut temporal_baseline = if args.compare_temporal_aa {
         let (baseline_world, off_bake) = paired_world(&runtime.world.mesh);
@@ -1045,6 +1060,9 @@ fn main() -> Result<(), String> {
     } else {
         None
     };
+    if let Some(baseline) = &mut temporal_baseline {
+        baseline.set_gpu_timestamps_enabled(args.timestamps_requested());
+    }
     let mut encoder = match &args.video {
         Some(path) => Some(
             Command::new("ffmpeg")
@@ -1447,6 +1465,10 @@ fn main() -> Result<(), String> {
         },
         "light_settled_before_capture": !args.live || args.settle_light,
         "gpu_timestamp_features_supported": renderer.gpu_timestamps_available(),
+        "gpu_timestamps_flag": args.gpu_timestamps,
+        "gpu_timestamps_requested": args.timestamps_requested(),
+        "gpu_timestamp_diagnostics_enabled": renderer.gpu_timestamps_enabled(),
+        "gpu_timestamp_diagnostics_method": "Ordinary captures omit both timestamp marker draws, counter resolve/copy, and query mapping/readback. --gpu-timestamps and every comparison mode request diagnostics; unsupported devices omit them. Rendering, history, exposure, serial queue submission, and the existing completion wait remain unchanged. Enabled diagnostics use two one-pixel marker draws and four queries; invalid durations remain null. --readback-every-frame plus --gpu-timestamps reproduces the original pixel and timer workload.",
         "gpu_timestamps_available": flash_phases.iter().chain(&particle_phases).chain(&temporal_phases).flat_map(|(_, pairs)| pairs).any(|p| p.gpu_overhead().is_some()),
         "flash_lights_enabled": !args.no_flash_lights,
         "impact_frame": impact_frame,
@@ -1506,6 +1528,28 @@ fn main() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn timestamp_diagnostics_are_explicit_or_required_by_comparisons() {
+        let mut args = Args::new(PathBuf::new());
+        assert!(!args.timestamps_requested());
+        args.readback_every_frame = true;
+        assert!(
+            !args.timestamps_requested(),
+            "pixel readback is independent of counters"
+        );
+        args.gpu_timestamps = true;
+        assert!(args.timestamps_requested());
+        args.gpu_timestamps = false;
+        args.compare_flash_lights = true;
+        assert!(args.timestamps_requested());
+        args.compare_flash_lights = false;
+        args.compare_particles = true;
+        assert!(args.timestamps_requested());
+        args.compare_particles = false;
+        args.compare_temporal_aa = true;
+        assert!(args.timestamps_requested());
+    }
 
     #[test]
     fn selective_readback_covers_every_saved_frame_and_retires_automatic_shots() {

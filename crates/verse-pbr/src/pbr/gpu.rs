@@ -509,6 +509,8 @@ struct Prepass {
 struct RigidIndirect {
     buffer: wgpu::Buffer,
     runs: Vec<instanced::IndirectRun>,
+    motion: wgpu::Buffer,
+    motion_count: u32,
 }
 
 /// Textured static meshes on the GPU: merged cells and shared meshes
@@ -535,6 +537,7 @@ pub struct TexturedGpu {
     rigid_meshes: Vec<Vec<textured::Batch>>,
     rendered_instances: instanced::RenderedInstances,
     rigid_indirect: Option<RigidIndirect>,
+    motion_draws: Vec<instanced::Draw>,
     /// The scene's index edits applied so far
     /// ([`textured::IndexEdits::revision`]); part of the static casters'
     /// identity, so a cached shadow redraws after an edit.
@@ -615,6 +618,7 @@ impl TexturedGpu {
         }
         self.batches = batches;
         self.near = vec![true; self.batches.len()];
+        self.motion_draws = instanced::moving_draws(&self.batches, &records);
         if let Some(indirect) = &mut self.rigid_indirect {
             let mut order: Vec<_> = (0..self.batches.len()).collect();
             order.sort_unstable_by_key(|&i| {
@@ -635,6 +639,24 @@ impl TexturedGpu {
                 queue.write_buffer(&indirect.buffer, 0, bytes);
             }
             indirect.runs = runs;
+            let commands: Vec<_> = self
+                .motion_draws
+                .iter()
+                .map(|draw| draw.indirect())
+                .collect();
+            let bytes: &[u8] = bytemuck::cast_slice(&commands);
+            if bytes.len() as u64 > indirect.motion.size() {
+                indirect.motion = device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("verse rigid indirect motion"),
+                    size: (bytes.len() as u64).next_power_of_two(),
+                    usage: wgpu::BufferUsages::INDIRECT | wgpu::BufferUsages::COPY_DST,
+                    mapped_at_creation: false,
+                });
+            }
+            if !bytes.is_empty() {
+                queue.write_buffer(&indirect.motion, 0, bytes);
+            }
+            indirect.motion_count = commands.len() as u32;
         }
     }
 
@@ -651,15 +673,26 @@ impl TexturedGpu {
         &wgpu::Buffer,
         &wgpu::Buffer,
         &wgpu::Buffer,
-        Vec<instanced::Draw>,
+        Vec<super::temporal::MotionCommand<'_>>,
     ) {
-        let order: Vec<usize> = (0..self.batches.len()).collect();
-        (
-            &self.vertices,
-            &self.indices,
-            &self.instances,
-            instanced::draws(&self.batches, &order),
-        )
+        let commands = if let Some(indirect) = &self.rigid_indirect {
+            if indirect.motion_count == 0 {
+                Vec::new()
+            } else {
+                vec![super::temporal::MotionCommand::Indirect {
+                    buffer: &indirect.motion,
+                    first: 0,
+                    count: indirect.motion_count,
+                }]
+            }
+        } else {
+            self.motion_draws
+                .iter()
+                .copied()
+                .map(super::temporal::MotionCommand::Indexed)
+                .collect()
+        };
+        (&self.vertices, &self.indices, &self.instances, commands)
     }
 
     /// Rewrites the merged indices from `first` on, within the buffer.
@@ -2301,6 +2334,13 @@ impl Photo {
                     mapped_at_creation: false,
                 }),
                 runs: Vec::new(),
+                motion: device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("verse rigid indirect motion"),
+                    size: 20,
+                    usage: wgpu::BufferUsages::INDIRECT | wgpu::BufferUsages::COPY_DST,
+                    mapped_at_creation: false,
+                }),
+                motion_count: 0,
             });
         }
         gpu.write_instances(device, queue, frame);
@@ -2531,6 +2571,7 @@ impl Photo {
             rigid_meshes: Vec::new(),
             rendered_instances: instanced::RenderedInstances::default(),
             rigid_indirect: None,
+            motion_draws: Vec::new(),
             edits: 0,
             near: vec![true; prepared.items.len()],
             detail_groups: scene.detail_groups.clone(),

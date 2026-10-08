@@ -717,6 +717,8 @@ pub struct DetectionStats {
     pub colliders: usize,
     pub geometry_updates: usize,
     pub scene_nodes: usize,
+    /// Distinct unordered pairs considered before filtering. Indexed queries
+    /// include conservative false positives from cached leaf bounds.
     pub candidate_pairs: usize,
     pub filtered_pairs: usize,
     pub bound_tests: usize,
@@ -867,61 +869,58 @@ impl World {
             })
             .collect();
         for (i, bounds) in bounds.iter().enumerate() {
-            let collider = &self.colliders()[i];
-            let responds = self[collider.body].responds();
             if let Some(bounds) = bounds {
                 stats.index_updates += usize::from(self.collision_index.set(i, *bounds));
             } else {
                 stats.index_updates += usize::from(self.collision_index.remove(i));
             }
-            if let Some(bounds) = bounds.filter(|_| responds) {
-                stats.index_updates += usize::from(self.responding_index.set(i, bounds));
-            } else {
-                stats.index_updates += usize::from(self.responding_index.remove(i));
-            }
         }
-        let mut manifolds = Vec::new();
+        let mut pairs = Vec::new();
         for (i, bounds) in bounds.iter().enumerate() {
-            let a = &self.colliders()[i];
             let Some(bounds) = bounds else {
                 continue;
             };
-            let responds = self[a.body].responds();
-            let tree = if responds {
-                &self.collision_index
-            } else {
-                &self.responding_index
-            };
-            for j in tree
-                .query(*bounds, &mut stats.scene_nodes)
-                .into_iter()
-                .filter(|&j| j > i)
+            if !self[self.colliders()[i].body].responds() {
+                continue;
+            }
+            for j in self.collision_index.query(*bounds, &mut stats.scene_nodes) {
+                if i == j || (j < i && self[self.colliders()[j].body].responds()) {
+                    continue;
+                }
+                pairs.push((i.min(j), i.max(j)));
+            }
+        }
+        // Keep fixed partners on either side of the responding collider.
+        // Canonical order preserves the exhaustive detector's normals and
+        // sequential solver order.
+        pairs.sort_unstable();
+        pairs.dedup();
+        stats.candidate_pairs = pairs.len();
+        let mut manifolds = Vec::new();
+        for (i, j) in pairs {
+            let (a, b) = (&self.colliders()[i], &self.colliders()[j]);
+            if a.body == b.body
+                || !a.filter.allows(b.filter)
+                || (!self[a.body].responds() && !self[b.body].responds())
             {
-                stats.candidate_pairs += 1;
-                let b = &self.colliders()[j];
-                if a.body == b.body
-                    || !a.filter.allows(b.filter)
-                    || (!responds && !self[b.body].responds())
-                {
-                    continue;
-                }
-                stats.filtered_pairs += 1;
-                let m = margin(i, j);
-                stats.bound_tests += 1;
-                let ga = geometry.entries[i].unwrap();
-                let gb = geometry.entries[j].unwrap();
-                if ga.center.distance(gb.center) > ga.radius + gb.radius + m {
-                    continue;
-                }
-                stats.narrow_phase += 1;
-                let points = contact(ga.placed, gb.placed, m);
-                if !points.is_empty() {
-                    manifolds.push(Manifold {
-                        a: ColliderId(i as u32),
-                        b: ColliderId(j as u32),
-                        points,
-                    });
-                }
+                continue;
+            }
+            stats.filtered_pairs += 1;
+            let m = margin(i, j);
+            stats.bound_tests += 1;
+            let ga = geometry.entries[i].unwrap();
+            let gb = geometry.entries[j].unwrap();
+            if ga.center.distance(gb.center) > ga.radius + gb.radius + m {
+                continue;
+            }
+            stats.narrow_phase += 1;
+            let points = contact(ga.placed, gb.placed, m);
+            if !points.is_empty() {
+                manifolds.push(Manifold {
+                    a: ColliderId(i as u32),
+                    b: ColliderId(j as u32),
+                    points,
+                });
             }
         }
         self.collision_geometry = geometry;

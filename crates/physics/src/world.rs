@@ -68,8 +68,6 @@ pub struct World {
     #[serde(skip)]
     pub(crate) collision_index: crate::broadphase::Tree<usize>,
     #[serde(skip)]
-    pub(crate) responding_index: crate::broadphase::Tree<usize>,
-    #[serde(skip)]
     pub(crate) collision_geometry: crate::collision::GeometryCache,
     #[cfg(test)]
     #[serde(skip)]
@@ -162,7 +160,6 @@ impl World {
             bodies: Vec::new(),
             colliders: Vec::new(),
             collision_index: Default::default(),
-            responding_index: Default::default(),
             collision_geometry: Default::default(),
             #[cfg(test)]
             exhaustive_detection: false,

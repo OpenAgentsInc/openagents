@@ -20,7 +20,17 @@ pub struct MotionDraw<'a> {
     pub vertices: &'a wgpu::Buffer,
     pub indices: &'a wgpu::Buffer,
     pub instances: &'a wgpu::Buffer,
-    pub draw: super::instanced::Draw,
+    pub draw: MotionCommand<'a>,
+}
+
+/// Direct draws are portable; native devices can share one indirect command stream.
+pub enum MotionCommand<'a> {
+    Indexed(super::instanced::Draw),
+    Indirect {
+        buffer: &'a wgpu::Buffer,
+        first: u32,
+        count: u32,
+    },
 }
 
 /// Whether the physical renderer can keep temporal history on this platform.
@@ -373,8 +383,22 @@ mod tests {
         let instance =
             wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
         let adapter = pollster::block_on(instance.request_adapter(&Default::default())).unwrap();
-        let (device, queue) =
-            pollster::block_on(adapter.request_device(&Default::default())).unwrap();
+        let indirect = adapter
+            .get_downlevel_capabilities()
+            .flags
+            .contains(wgpu::DownlevelFlags::INDIRECT_EXECUTION)
+            && adapter
+                .features()
+                .contains(wgpu::Features::INDIRECT_FIRST_INSTANCE);
+        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+            required_features: if indirect {
+                wgpu::Features::INDIRECT_FIRST_INSTANCE
+            } else {
+                wgpu::Features::empty()
+            },
+            ..Default::default()
+        }))
+        .unwrap();
         let size = wgpu::Extent3d {
             width: 4,
             height: 4,
@@ -382,6 +406,47 @@ mod tests {
         };
         for samples in [1, 4] {
             let temporal = Temporal::new(&device, wgpu::TextureFormat::Rgba16Float, samples);
+            let depth_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some("motion test masked scene"),
+                source: wgpu::ShaderSource::Wgsl(
+                    "@vertex fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+                        let positions = array<vec2<f32>, 3>(vec2<f32>(-1.0, -1.0), vec2<f32>(3.0, -1.0), vec2<f32>(-1.0, 3.0));
+                        return vec4<f32>(positions[i], 0.002, 1.0);
+                    }
+                    @fragment fn fs() -> @builtin(frag_depth) f32 { return 0.002; }"
+                        .into(),
+                ),
+            });
+            let depth_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("motion test masked scene"),
+                layout: None,
+                vertex: wgpu::VertexState {
+                    module: &depth_shader,
+                    entry_point: Some("vs"),
+                    compilation_options: Default::default(),
+                    buffers: &[],
+                },
+                primitive: Default::default(),
+                depth_stencil: Some(wgpu::DepthStencilState {
+                    format: wgpu::TextureFormat::Depth32Float,
+                    depth_write_enabled: true,
+                    depth_compare: wgpu::CompareFunction::Always,
+                    stencil: Default::default(),
+                    bias: Default::default(),
+                }),
+                multisample: wgpu::MultisampleState {
+                    count: samples,
+                    ..Default::default()
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &depth_shader,
+                    entry_point: Some("fs"),
+                    compilation_options: Default::default(),
+                    targets: &[],
+                }),
+                multiview_mask: None,
+                cache: None,
+            });
             let depth = device.create_texture(&wgpu::TextureDescriptor {
                 label: Some("motion test scene depth"),
                 size,
@@ -444,8 +509,14 @@ mod tests {
                 contents: bytemuck::cast_slice(&vertices),
                 usage: wgpu::BufferUsages::VERTEX,
             });
+            let indices = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: None,
+                contents: bytemuck::cast_slice(&[0_u32, 1, 2]),
+                usage: wgpu::BufferUsages::INDEX,
+            });
             let mut records = Vec::new();
             for (current, previous) in [
+                (Mat4::IDENTITY, Mat4::IDENTITY),
                 (
                     Mat4::IDENTITY,
                     Mat4::from_translation(Vec3::new(0.25, 0.0, 0.0)),
@@ -468,6 +539,18 @@ mod tests {
                 contents: bytemuck::cast_slice(&records),
                 usage: wgpu::BufferUsages::VERTEX,
             });
+            let commands = [1, 2].map(|first_instance| wgpu::util::DrawIndexedIndirectArgs {
+                index_count: 3,
+                instance_count: 1,
+                first_index: 0,
+                base_vertex: 0,
+                first_instance,
+            });
+            let commands = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: None,
+                contents: bytemuck::cast_slice(&commands),
+                usage: wgpu::BufferUsages::INDIRECT,
+            });
             let readback = device.create_buffer(&wgpu::BufferDescriptor {
                 label: None,
                 size: 1024,
@@ -475,76 +558,96 @@ mod tests {
                 mapped_at_creation: false,
             });
             let output_view = output.create_view(&Default::default());
-            let mut encoder = device.create_command_encoder(&Default::default());
-            {
-                let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: None,
-                    color_attachments: &[],
-                    depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                        view: &depth_view,
-                        depth_ops: Some(wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(0.002),
-                            store: wgpu::StoreOp::Store,
+            for use_indirect in [false, true].into_iter().filter(|&mode| !mode || indirect) {
+                let mut encoder = device.create_command_encoder(&Default::default());
+                {
+                    let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                        label: None,
+                        color_attachments: &[],
+                        depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                            view: &depth_view,
+                            depth_ops: Some(wgpu::Operations {
+                                load: wgpu::LoadOp::Clear(0.001),
+                                store: wgpu::StoreOp::Store,
+                            }),
+                            stencil_ops: None,
                         }),
-                        stencil_ops: None,
-                    }),
-                    ..Default::default()
-                });
-            }
-            {
-                let mut pass =
-                    color_pass(&mut encoder, "motion visibility regression", &output_view);
-                pass.set_pipeline(&temporal.motion);
-                pass.set_bind_group(0, &group, &[]);
-                pass.set_vertex_buffer(0, vertices.slice(..));
-                pass.set_vertex_buffer(1, records.slice(..));
-                pass.draw(0..3, 0..1);
-                pass.draw(0..3, 1..2);
-            }
-            encoder.copy_texture_to_buffer(
-                wgpu::TexelCopyTextureInfo {
-                    texture: &output,
-                    mip_level: 0,
-                    origin: wgpu::Origin3d::ZERO,
-                    aspect: wgpu::TextureAspect::All,
-                },
-                wgpu::TexelCopyBufferInfo {
-                    buffer: &readback,
-                    layout: wgpu::TexelCopyBufferLayout {
-                        offset: 0,
-                        bytes_per_row: Some(256),
-                        rows_per_image: Some(4),
+                        ..Default::default()
+                    });
+                    // The unfilled right half represents holes in a masked surface.
+                    pass.set_pipeline(&depth_pipeline);
+                    pass.set_scissor_rect(0, 0, 2, 4);
+                    pass.draw(0..3, 0..1);
+                }
+                {
+                    let mut pass =
+                        color_pass(&mut encoder, "motion visibility regression", &output_view);
+                    pass.set_pipeline(&temporal.motion);
+                    pass.set_bind_group(0, &group, &[]);
+                    pass.set_vertex_buffer(0, vertices.slice(..));
+                    pass.set_vertex_buffer(1, records.slice(..));
+                    pass.set_index_buffer(indices.slice(..), wgpu::IndexFormat::Uint32);
+                    if use_indirect {
+                        pass.multi_draw_indexed_indirect(&commands, 0, 2);
+                    } else {
+                        pass.draw_indexed(0..3, 0, 1..2);
+                        pass.draw_indexed(0..3, 0, 2..3);
+                    }
+                }
+                encoder.copy_texture_to_buffer(
+                    wgpu::TexelCopyTextureInfo {
+                        texture: &output,
+                        mip_level: 0,
+                        origin: wgpu::Origin3d::ZERO,
+                        aspect: wgpu::TextureAspect::All,
                     },
-                },
-                size,
-            );
-            queue.submit([encoder.finish()]);
-            let (tx, rx) = std::sync::mpsc::channel();
-            readback
-                .slice(..)
-                .map_async(wgpu::MapMode::Read, move |result| {
-                    tx.send(result).unwrap();
-                });
-            device
-                .poll(wgpu::PollType::Wait {
-                    submission_index: None,
-                    timeout: None,
-                })
-                .unwrap();
-            rx.recv().unwrap().unwrap();
-            let data = readback.slice(..).get_mapped_range();
-            let texel = &data[256 + 8..256 + 16];
-            let x =
-                half::f16::from_bits(u16::from_le_bytes(texel[..2].try_into().unwrap())).to_f32();
-            let valid =
-                half::f16::from_bits(u16::from_le_bytes(texel[6..8].try_into().unwrap())).to_f32();
-            assert!(
-                (x - 0.125).abs() < 1e-4,
-                "{samples}x depth accepted hidden motion: {x}"
-            );
-            assert_eq!(valid, 1.0);
-            drop(data);
-            readback.unmap();
+                    wgpu::TexelCopyBufferInfo {
+                        buffer: &readback,
+                        layout: wgpu::TexelCopyBufferLayout {
+                            offset: 0,
+                            bytes_per_row: Some(256),
+                            rows_per_image: Some(4),
+                        },
+                    },
+                    size,
+                );
+                queue.submit([encoder.finish()]);
+                let (tx, rx) = std::sync::mpsc::channel();
+                readback
+                    .slice(..)
+                    .map_async(wgpu::MapMode::Read, move |result| {
+                        tx.send(result).unwrap();
+                    });
+                device
+                    .poll(wgpu::PollType::Wait {
+                        submission_index: None,
+                        timeout: None,
+                    })
+                    .unwrap();
+                rx.recv().unwrap().unwrap();
+                let data = readback.slice(..).get_mapped_range();
+                let texel = &data[256 + 8..256 + 16];
+                let x = half::f16::from_bits(u16::from_le_bytes(texel[..2].try_into().unwrap()))
+                    .to_f32();
+                let valid =
+                    half::f16::from_bits(u16::from_le_bytes(texel[6..8].try_into().unwrap()))
+                        .to_f32();
+                assert!(
+                    (x - 0.125).abs() < 1e-4,
+                    "{samples}x depth, indirect={use_indirect}, accepted hidden motion: {x}"
+                );
+                assert_eq!(valid, 1.0);
+                let hole = &data[256 + 3 * 8..256 + 4 * 8];
+                let hole_valid =
+                    half::f16::from_bits(u16::from_le_bytes(hole[6..8].try_into().unwrap()))
+                        .to_f32();
+                assert_eq!(
+                    hole_valid, 0.0,
+                    "masked holes must retain camera reprojection"
+                );
+                drop(data);
+                readback.unmap();
+            }
         }
     }
 }
@@ -837,12 +940,20 @@ impl Temporal {
                     pass.set_index_buffer(motion.indices.slice(..), wgpu::IndexFormat::Uint32);
                     buffers = Some(current);
                 }
-                let draw = motion.draw;
-                pass.draw_indexed(
-                    draw.first..draw.first + draw.count,
-                    0,
-                    draw.instances.first..draw.instances.first + draw.instances.count,
-                );
+                match &motion.draw {
+                    MotionCommand::Indexed(draw) => pass.draw_indexed(
+                        draw.first..draw.first + draw.count,
+                        0,
+                        draw.instances.first..draw.instances.first + draw.instances.count,
+                    ),
+                    MotionCommand::Indirect {
+                        buffer,
+                        first,
+                        count,
+                    } => {
+                        pass.multi_draw_indexed_indirect(buffer, u64::from(*first) * 20, *count);
+                    }
+                }
             }
         }
         let write = targets.write;

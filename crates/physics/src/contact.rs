@@ -111,6 +111,11 @@ struct Motion {
     omega: DVec3,
     inverse_mass: f64,
     inverse_inertia: DMat3,
+    revision: u64,
+}
+
+fn vector_bits(v: DVec3) -> [u64; 3] {
+    v.to_array().map(f64::to_bits)
 }
 
 impl Motion {
@@ -122,31 +127,49 @@ impl Motion {
         if self.inverse_mass == 0.0 {
             return;
         }
+        let old = (self.vel, self.omega);
         self.vel += impulse * self.inverse_mass;
         self.omega += self.inverse_inertia * r.cross(impulse);
+        self.record_change(old);
     }
 
     fn twist(&mut self, angular: DVec3) {
         if self.inverse_mass == 0.0 {
             return;
         }
+        let old = vector_bits(self.omega);
         self.omega += self.inverse_inertia * angular;
+        if vector_bits(self.omega) != old {
+            self.revision += 1;
+        }
     }
 
     fn push_axis(&mut self, impulse: DVec3, angular: DVec3, delta: f64) {
         if self.inverse_mass == 0.0 {
             return;
         }
+        let old = (self.vel, self.omega);
         self.vel += impulse * self.inverse_mass;
         self.omega += angular * delta;
+        self.record_change(old);
     }
 
     fn push_tangents(&mut self, impulse: DVec3, angular: [DVec3; 2], delta: [f64; 2]) {
         if self.inverse_mass == 0.0 {
             return;
         }
+        let old = (self.vel, self.omega);
         self.vel += impulse * self.inverse_mass;
         self.omega += angular[0] * delta[0] + angular[1] * delta[1];
+        self.record_change(old);
+    }
+
+    fn record_change(&mut self, old: (DVec3, DVec3)) {
+        if vector_bits(self.vel) != vector_bits(old.0)
+            || vector_bits(self.omega) != vector_bits(old.1)
+        {
+            self.revision += 1;
+        }
     }
 }
 
@@ -189,7 +212,106 @@ struct Row {
     normal_impulse: f64,
     tangent_impulse: [f64; 2],
     twist_impulse: f64,
+    fixed_at: Option<[u64; 2]>,
     report: ContactReport,
+}
+
+impl Row {
+    #[inline(always)]
+    fn solve<const SKIP_CONVERGED: bool>(&mut self, motions: &mut [Motion]) -> bool {
+        let (a, b) = (self.a, self.b);
+        let revisions = [motions[a].revision, motions[b].revision];
+        if SKIP_CONVERGED && self.fixed_at == Some(revisions) {
+            return true;
+        }
+        let old_impulses = [
+            self.normal_impulse,
+            self.tangent_impulse[0],
+            self.tangent_impulse[1],
+            self.twist_impulse,
+        ]
+        .map(f64::to_bits);
+        // Friction first, bounded by the current normal impulse.
+        let relative = motions[b].vel - motions[a].vel;
+        let tangent_speed = [
+            self.axes[1].velocity(
+                self.tangents[0],
+                relative,
+                motions[a].omega,
+                motions[b].omega,
+            ),
+            self.axes[2].velocity(
+                self.tangents[1],
+                relative,
+                motions[a].omega,
+                motions[b].omega,
+            ),
+        ];
+        let limit = self.friction * self.normal_impulse;
+        let old = self.tangent_impulse;
+        let mut next = [
+            old[0] - tangent_speed[0] * self.axes[1].mass,
+            old[1] - tangent_speed[1] * self.axes[2].mass,
+        ];
+        let size = next[0].hypot(next[1]);
+        if size > limit {
+            let scale = if size > 0.0 { limit / size } else { 0.0 };
+            next = [next[0] * scale, next[1] * scale];
+        }
+        self.tangent_impulse = next;
+        let delta = self.tangents[0] * (next[0] - old[0]) + self.tangents[1] * (next[1] - old[1]);
+        motions[a].push_tangents(
+            -delta,
+            [self.axes[1].angular[0], self.axes[2].angular[0]],
+            [old[0] - next[0], old[1] - next[1]],
+        );
+        motions[b].push_tangents(
+            delta,
+            [self.axes[1].angular[1], self.axes[2].angular[1]],
+            [next[0] - old[0], next[1] - old[1]],
+        );
+        if self.torsional > 0.0 {
+            let spin = (motions[b].omega - motions[a].omega).dot(self.normal);
+            let limit = self.torsional * self.normal_impulse;
+            let old = self.twist_impulse;
+            let next = (old - spin * self.twist_mass).clamp(-limit, limit);
+            self.twist_impulse = next;
+            let delta = self.normal * (next - old);
+            motions[a].twist(-delta);
+            motions[b].twist(delta);
+        }
+        let speed = self.axes[0].velocity(
+            self.normal,
+            motions[b].vel - motions[a].vel,
+            motions[a].omega,
+            motions[b].omega,
+        );
+        let old = self.normal_impulse;
+        let next = (old + (self.target - speed) * self.axes[0].mass).max(0.0);
+        self.normal_impulse = next;
+        let delta = self.normal * (next - old);
+        motions[a].push_axis(-delta, self.axes[0].angular[0], old - next);
+        motions[b].push_axis(delta, self.axes[0].angular[1], next - old);
+        let impulses = [
+            self.normal_impulse,
+            self.tangent_impulse[0],
+            self.tangent_impulse[1],
+            self.twist_impulse,
+        ]
+        .map(f64::to_bits);
+        // A changing row must run again: its new normal impulse changes
+        // the friction limits even if no other constraint touches it.
+        self.fixed_at = (impulses == old_impulses
+            && revisions == [motions[a].revision, motions[b].revision])
+        .then_some(revisions);
+        false
+    }
+}
+
+#[derive(Default)]
+struct SolveWork {
+    #[cfg(test)]
+    skipped_rows: usize,
 }
 
 /// A tether: one scalar constraint along the line between its anchors.
@@ -390,6 +512,16 @@ impl World {
     /// of `dt`. Records each joint's impulses and returns what each contact
     /// point did.
     pub(crate) fn solve(&mut self, manifolds: &[Manifold], dt: f64) -> Vec<ContactReport> {
+        self.solve_with_convergence::<true>(manifolds, dt).0
+    }
+
+    fn solve_with_convergence<const SKIP_CONVERGED: bool>(
+        &mut self,
+        manifolds: &[Manifold],
+        dt: f64,
+    ) -> (Vec<ContactReport>, SolveWork) {
+        #[allow(unused_mut)]
+        let mut work = SolveWork::default();
         let settings = self.solver;
         let mut motions: Vec<Motion> = self
             .bodies()
@@ -407,6 +539,7 @@ impl World {
                     omega: b.omega_world(),
                     inverse_mass,
                     inverse_inertia: inverse,
+                    revision: 0,
                 }
             })
             .collect();
@@ -478,6 +611,7 @@ impl World {
                         [w.tangent.dot(tangents[0]), w.tangent.dot(tangents[1])]
                     }),
                     twist_impulse: warm.map_or(0.0, |w| w.twist),
+                    fixed_at: None,
                     report: ContactReport {
                         a: manifold.a,
                         b: manifold.b,
@@ -514,69 +648,12 @@ impl World {
                 row.solve(&mut motions);
             }
             for row in &mut rows {
-                let (a, b) = (row.a, row.b);
-                // Friction first, bounded by the current normal impulse.
-                let relative = motions[b].vel - motions[a].vel;
-                let tangent_speed = [
-                    row.axes[1].velocity(
-                        row.tangents[0],
-                        relative,
-                        motions[a].omega,
-                        motions[b].omega,
-                    ),
-                    row.axes[2].velocity(
-                        row.tangents[1],
-                        relative,
-                        motions[a].omega,
-                        motions[b].omega,
-                    ),
-                ];
-                let limit = row.friction * row.normal_impulse;
-                let old = row.tangent_impulse;
-                let mut next = [
-                    old[0] - tangent_speed[0] * row.axes[1].mass,
-                    old[1] - tangent_speed[1] * row.axes[2].mass,
-                ];
-                let size = next[0].hypot(next[1]);
-                if size > limit {
-                    let scale = if size > 0.0 { limit / size } else { 0.0 };
-                    next = [next[0] * scale, next[1] * scale];
+                if row.solve::<SKIP_CONVERGED>(&mut motions) {
+                    #[cfg(test)]
+                    {
+                        work.skipped_rows += 1;
+                    }
                 }
-                row.tangent_impulse = next;
-                let delta =
-                    row.tangents[0] * (next[0] - old[0]) + row.tangents[1] * (next[1] - old[1]);
-                motions[a].push_tangents(
-                    -delta,
-                    [row.axes[1].angular[0], row.axes[2].angular[0]],
-                    [old[0] - next[0], old[1] - next[1]],
-                );
-                motions[b].push_tangents(
-                    delta,
-                    [row.axes[1].angular[1], row.axes[2].angular[1]],
-                    [next[0] - old[0], next[1] - old[1]],
-                );
-                if row.torsional > 0.0 {
-                    let spin = (motions[b].omega - motions[a].omega).dot(row.normal);
-                    let limit = row.torsional * row.normal_impulse;
-                    let old = row.twist_impulse;
-                    let next = (old - spin * row.twist_mass).clamp(-limit, limit);
-                    row.twist_impulse = next;
-                    let delta = row.normal * (next - old);
-                    motions[a].twist(-delta);
-                    motions[b].twist(delta);
-                }
-                let speed = row.axes[0].velocity(
-                    row.normal,
-                    motions[b].vel - motions[a].vel,
-                    motions[a].omega,
-                    motions[b].omega,
-                );
-                let old = row.normal_impulse;
-                let next = (old + (row.target - speed) * row.axes[0].mass).max(0.0);
-                row.normal_impulse = next;
-                let delta = row.normal * (next - old);
-                motions[a].push_axis(-delta, row.axes[0].angular[0], old - next);
-                motions[b].push_axis(delta, row.axes[0].angular[1], next - old);
             }
         }
         for (index, row) in &tethers {
@@ -617,7 +694,8 @@ impl World {
                 twist: row.twist_impulse,
             })
             .collect();
-        rows.into_iter()
+        let reports = rows
+            .into_iter()
             .map(|row| ContactReport {
                 impulse: row.normal * row.normal_impulse
                     + row.tangents[0] * row.tangent_impulse[0]
@@ -625,7 +703,8 @@ impl World {
                 twist: row.normal * row.twist_impulse,
                 ..row.report
             })
-            .collect()
+            .collect();
+        (reports, work)
     }
 
     fn joint_groups(
@@ -772,6 +851,289 @@ mod warm_tests {
     use super::*;
 
     #[test]
+    fn motion_revisions_track_actual_changes_in_every_impulse_path() {
+        let mut motion = Motion {
+            vel: DVec3::ZERO,
+            omega: DVec3::ZERO,
+            inverse_mass: 1.0,
+            inverse_inertia: DMat3::IDENTITY,
+            revision: 0,
+        };
+        motion.push(DVec3::ZERO, DVec3::Y);
+        motion.twist(DVec3::ZERO);
+        motion.push_axis(DVec3::ZERO, DVec3::X, 0.0);
+        motion.push_tangents(DVec3::ZERO, [DVec3::X, DVec3::Z], [0.0; 2]);
+        assert_eq!(motion.revision, 0);
+        motion.push(DVec3::X, DVec3::Y);
+        assert_eq!(motion.revision, 1);
+        motion.twist(DVec3::Y);
+        assert_eq!(motion.revision, 2);
+        motion.push_axis(DVec3::X * 2.0, DVec3::Z * 3.0, 0.2);
+        assert_eq!(motion.revision, 3);
+        motion.push_tangents(DVec3::Y, [DVec3::X, DVec3::Z], [0.25, -0.4]);
+        assert_eq!(motion.revision, 4);
+
+        // A nonzero impulse can round away without changing either input.
+        motion.vel = DVec3::splat(1e100);
+        motion.omega = DVec3::splat(1e100);
+        motion.push(DVec3::ONE, DVec3::Y);
+        motion.twist(DVec3::ONE);
+        motion.push_axis(DVec3::ONE, DVec3::ONE, 1.0);
+        motion.push_tangents(DVec3::ONE, [DVec3::X, DVec3::Z], [1.0; 2]);
+        assert_eq!(motion.revision, 4);
+
+        // Signed zero must invalidate an exact input checkpoint.
+        motion.vel = DVec3::new(-0.0, 0.0, 0.0);
+        motion.omega = DVec3::ZERO;
+        motion.push(DVec3::ZERO, DVec3::ZERO);
+        assert_eq!(motion.vel.x.to_bits(), 0.0f64.to_bits());
+        assert_eq!(motion.revision, 5);
+        motion.inverse_mass = 0.0;
+        let before = (vector_bits(motion.vel), vector_bits(motion.omega));
+        motion.push(DVec3::ONE, DVec3::Y);
+        motion.twist(DVec3::ONE);
+        motion.push_axis(DVec3::ONE, DVec3::ONE, 1.0);
+        motion.push_tangents(DVec3::ONE, [DVec3::X, DVec3::Z], [1.0; 2]);
+        assert_eq!((vector_bits(motion.vel), vector_bits(motion.omega)), before);
+        assert_eq!(motion.revision, 5);
+    }
+
+    #[test]
+    fn a_changing_normal_must_run_friction_again_and_other_motion_invalidates_convergence() {
+        let mut motions = [
+            Motion {
+                vel: DVec3::ZERO,
+                omega: DVec3::ZERO,
+                inverse_mass: 0.0,
+                inverse_inertia: DMat3::ZERO,
+                revision: 0,
+            },
+            Motion {
+                vel: DVec3::X,
+                omega: DVec3::ZERO,
+                inverse_mass: 1.0,
+                inverse_inertia: DMat3::IDENTITY,
+                revision: 0,
+            },
+        ];
+        let normal = DVec3::Y;
+        let tangents = basis(normal);
+        let axes = [normal, tangents[0], tangents[1]].map(|direction| {
+            ContactAxis::new(
+                &motions[0],
+                &motions[1],
+                DVec3::ZERO,
+                DVec3::ZERO,
+                direction,
+            )
+        });
+        let mut row = Row {
+            a: 0,
+            b: 1,
+            ra: DVec3::ZERO,
+            rb: DVec3::ZERO,
+            normal,
+            tangents,
+            axes,
+            twist_mass: 1.0,
+            target: 1.0,
+            friction: 0.5,
+            torsional: 0.3,
+            normal_impulse: 0.0,
+            tangent_impulse: [0.0; 2],
+            twist_impulse: 0.0,
+            fixed_at: None,
+            report: ContactReport {
+                a: ColliderId(0),
+                b: ColliderId(1),
+                body_a: BodyId(0),
+                body_b: BodyId(1),
+                point: DVec3::ZERO,
+                normal,
+                separation: -0.05,
+                impulse: DVec3::ZERO,
+                twist: DVec3::ZERO,
+            },
+        };
+        assert!(!row.solve::<true>(&mut motions));
+        assert_eq!(row.normal_impulse, 1.0);
+        assert!(row.fixed_at.is_none());
+        assert!(!row.solve::<true>(&mut motions));
+        assert_eq!(motions[1].vel.x, 0.5);
+        assert!(row.fixed_at.is_none());
+        assert!(!row.solve::<true>(&mut motions));
+        assert!(row.fixed_at.is_some());
+        assert!(row.solve::<true>(&mut motions));
+
+        motions[1].twist(DVec3::Y);
+        assert!(!row.solve::<true>(&mut motions));
+        assert_eq!(row.twist_impulse, -0.3);
+        assert!(row.fixed_at.is_none());
+        for _ in 0..3 {
+            row.solve::<true>(&mut motions);
+        }
+        assert!(row.fixed_at.is_some());
+        motions[1].push_axis(-DVec3::Y * 2.0, DVec3::ZERO, -2.0);
+        assert!(!row.solve::<true>(&mut motions));
+        assert_eq!(row.normal_impulse, 3.0);
+        assert!(row.fixed_at.is_none());
+    }
+
+    #[test]
+    fn exact_convergence_matches_all_iterations_with_coupled_contacts_and_joints() {
+        use crate::body::{Body, BodyKind};
+        use crate::collision::{Collider, ContactPoint, Shape};
+        use crate::joint::Joint;
+        use glam::DQuat;
+
+        let mut reference = World::new(1.0 / 120.0);
+        let mut fixed = Body::new(1.0, DVec3::ONE, DVec3::ZERO);
+        fixed.kind = BodyKind::Static;
+        let ground = reference.add(fixed);
+        let floor = reference.add_collider(Collider::new(
+            ground,
+            Shape::Cuboid {
+                half: DVec3::new(100.0, 0.1, 100.0),
+            },
+        ));
+        let mut platform = Body::new(1.0, DVec3::ONE, DVec3::Y);
+        platform.kind = BodyKind::Kinematic;
+        platform.vel = DVec3::new(0.07, 0.0, -0.03);
+        platform.omega = DVec3::new(0.0, 0.2, 0.0);
+        let platform = reference.add(platform);
+        let mut bodies = Vec::new();
+        let mut colliders = Vec::new();
+        for i in 0..7 {
+            let t = f64::from(i) * 0.3;
+            let mut body = Body::new(
+                1.0 + t,
+                DVec3::new(0.7 + t, 1.1, 0.9),
+                DVec3::new(f64::from(i) * 1.5, 0.8, 0.0),
+            );
+            body.orientation = DQuat::from_rotation_y(t) * DQuat::from_rotation_x(0.2);
+            body.vel = DVec3::new(t.sin(), -0.3, t.cos() * 0.2);
+            body.omega = DVec3::new(0.1, -0.3 + t, 0.2);
+            let id = reference.add(body);
+            let mut collider = Collider::new(id, Shape::Sphere { radius: 0.5 });
+            collider.material.friction = 0.65;
+            collider.material.torsional = 0.25;
+            collider.material.restitution = 0.3;
+            colliders.push(reference.add_collider(collider));
+            bodies.push(id);
+        }
+        reference.add_joint(
+            Joint::new(
+                bodies[0],
+                DVec3::X * 0.5,
+                bodies[1],
+                -DVec3::X * 0.5,
+                JointKind::Point,
+            )
+            .soft(7.0, 0.7)
+            .limited(30.0, 10.0),
+        );
+        reference.add_joint(
+            Joint::weld_here(&reference, bodies[3], bodies[4], DVec3::new(5.2, 1.0, 0.2))
+                .soft(9.0, 0.8)
+                .limited(60.0, 0.3),
+        );
+        reference.add_joint(
+            Joint::new(
+                platform,
+                DVec3::X * 0.2,
+                bodies[5],
+                DVec3::Y * 0.3,
+                JointKind::Tether { length: 2.0 },
+            )
+            .limited(20.0, 10.0),
+        );
+        let mut manifolds = Vec::new();
+        for (i, (&body, &collider)) in bodies.iter().zip(&colliders).enumerate() {
+            manifolds.push(Manifold {
+                a: floor,
+                b: collider,
+                points: vec![
+                    ContactPoint {
+                        point: reference[body].pos - DVec3::Y * 0.5 + DVec3::X * 0.2,
+                        normal: DVec3::Y,
+                        separation: if i % 3 == 0 { 0.012 } else { -0.025 },
+                    },
+                    ContactPoint {
+                        point: reference[body].pos - DVec3::Y * 0.5 - DVec3::X * 0.2,
+                        normal: DVec3::Y,
+                        separation: -0.01,
+                    },
+                ],
+            });
+            if i > 0 {
+                manifolds.push(Manifold {
+                    a: colliders[i - 1],
+                    b: collider,
+                    points: vec![ContactPoint {
+                        point: (reference[bodies[i - 1]].pos + reference[body].pos) * 0.5
+                            + DVec3::Y * 0.2,
+                        normal: DVec3::X,
+                        separation: -0.005,
+                    }],
+                });
+            }
+        }
+        reference.warm = manifolds
+            .iter()
+            .flat_map(|m| {
+                m.points.iter().map(|c| WarmContact {
+                    a: m.a,
+                    b: m.b,
+                    point: c.point,
+                    normal: 0.17,
+                    tangent: DVec3::new(0.2, 0.0, -0.1),
+                    twist: 0.07,
+                })
+            })
+            .collect();
+        // An independent speculative row actually exercises the skip path.
+        let resting = reference.add(Body::new(1.0, DVec3::ONE, DVec3::new(60.0, 0.5, 0.0)));
+        let resting = reference.add_collider(Collider::new(resting, Shape::Sphere { radius: 0.5 }));
+        manifolds.push(Manifold {
+            a: floor,
+            b: resting,
+            points: vec![ContactPoint {
+                point: DVec3::X * 60.0,
+                normal: DVec3::Y,
+                separation: 0.01,
+            }],
+        });
+        let mut optimized = reference.clone();
+        let mut skipped = 0;
+        for step in 0..24 {
+            let dt = reference.dt;
+            let (expected, reference_work) =
+                reference.solve_with_convergence::<false>(&manifolds, dt);
+            let (actual, work) = optimized.solve_with_convergence::<true>(&manifolds, dt);
+            assert_eq!(reference_work.skipped_rows, 0);
+            skipped += work.skipped_rows;
+            assert_eq!(
+                serde_json::to_vec(&actual).unwrap(),
+                serde_json::to_vec(&expected).unwrap(),
+                "reports at solve {step}"
+            );
+            assert_eq!(
+                serde_json::to_vec(&optimized).unwrap(),
+                serde_json::to_vec(&reference).unwrap(),
+                "world at solve {step}"
+            );
+            for world in [&mut reference, &mut optimized] {
+                world[bodies[step % bodies.len()]].vel += DVec3::new(0.02, -0.07, 0.01);
+                world[bodies[(step + 2) % bodies.len()]].omega += DVec3::new(0.01, 0.02, -0.03);
+            }
+        }
+        assert!(
+            skipped >= 24 * 19,
+            "unchanged rows must skip later iterations"
+        );
+    }
+
+    #[test]
     fn cached_contact_axes_match_vector_impulses_and_keep_kinematic_motion() {
         for i in 0..128 {
             let t = f64::from(i) * 0.13;
@@ -785,6 +1147,7 @@ mod warm_tests {
                 inverse_inertia: rotation
                     * DMat3::from_diagonal(DVec3::new(0.3, 0.7, 0.9))
                     * rotation.transpose(),
+                revision: 0,
             };
             let b = Motion {
                 vel: DVec3::new(-0.3, 0.8, t.sin()),
@@ -795,6 +1158,7 @@ mod warm_tests {
                 } else {
                     DMat3::from_diagonal(DVec3::new(0.8, 0.4, 0.6))
                 },
+                revision: 0,
             };
             let normal = DVec3::new(0.3, 1.0, t.sin() * 0.2).normalize();
             let directions = [normal, basis(normal)[0], basis(normal)[1]];

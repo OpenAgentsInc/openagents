@@ -1854,6 +1854,7 @@ pub struct Offscreen {
     /// The last frame's CPU encode and submit, and its completion wait, ms.
     timing: (f32, f32),
     gpu_timestamps: Option<GpuTimestamps>,
+    gpu_timestamps_enabled: bool,
     last_gpu_ms: Option<f32>,
     last_gpu_ticks: Option<[u64; 4]>,
 }
@@ -1941,6 +1942,7 @@ impl Offscreen {
             settled: false,
             timing: (0.0, 0.0),
             gpu_timestamps,
+            gpu_timestamps_enabled: true,
             last_gpu_ms: None,
             last_gpu_ticks: None,
         })
@@ -1984,6 +1986,19 @@ impl Offscreen {
     #[must_use]
     pub fn gpu_timestamps_available(&self) -> bool {
         self.gpu_timestamps.is_some()
+    }
+
+    /// Enables capture timestamp markers and query readback when supported.
+    /// Disabling diagnostics keeps rendering and the completion wait unchanged.
+    pub fn set_gpu_timestamps_enabled(&mut self, enabled: bool) {
+        self.gpu_timestamps_enabled = enabled;
+        self.last_gpu_ms = None;
+        self.last_gpu_ticks = None;
+    }
+
+    #[must_use]
+    pub fn gpu_timestamps_enabled(&self) -> bool {
+        self.gpu_timestamps_enabled && self.gpu_timestamps_available()
     }
 
     /// The last frame's GPU timestamp duration, in ms, if it was measured.
@@ -2102,7 +2117,10 @@ impl Offscreen {
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("verse capture"),
         });
-        let timestamps = self.gpu_timestamps.as_ref();
+        let timestamps = self
+            .gpu_timestamps
+            .as_ref()
+            .filter(|_| self.gpu_timestamps_enabled);
         if let Some(timer) = timestamps {
             timer.marker(&mut encoder, false);
         }

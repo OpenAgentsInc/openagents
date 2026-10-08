@@ -644,6 +644,69 @@ pub struct Draw {
     pub instances: Run,
 }
 
+impl Draw {
+    pub(crate) fn indirect(self) -> wgpu::util::DrawIndexedIndirectArgs {
+        wgpu::util::DrawIndexedIndirectArgs {
+            index_count: self.count,
+            instance_count: self.instances.count,
+            first_index: self.first,
+            base_vertex: 0,
+            first_instance: self.instances.first,
+        }
+    }
+}
+
+/// Stationary objects use camera reprojection; only changed poses need object motion.
+pub(crate) fn moving_draws(items: &[Batch], records: &[Instance]) -> Vec<Draw> {
+    let mut out = Vec::new();
+    for (i, item) in items.iter().enumerate() {
+        let Some(run) = item.run else { continue };
+        let mut first = run.first;
+        let end = run.first + run.count;
+        while first < end {
+            if records[first as usize].rows == records[first as usize].previous {
+                first += 1;
+                continue;
+            }
+            let mut next = first + 1;
+            while next < end && records[next as usize].rows != records[next as usize].previous {
+                next += 1;
+            }
+            append_draw(
+                items,
+                &mut out,
+                i,
+                Run {
+                    first,
+                    count: next - first,
+                },
+            );
+            first = next;
+        }
+    }
+    out
+}
+
+fn append_draw(items: &[Batch], out: &mut Vec<Draw>, i: usize, run: Run) {
+    let item = &items[i];
+    if let (Some(last), Some(_)) = (out.last_mut(), item.run)
+        && items[last.item].run.is_some()
+        && last.first == item.first
+        && last.count == item.count
+        && items[last.item].material == item.material
+        && last.instances.first + last.instances.count == run.first
+    {
+        last.instances.count += run.count;
+        return;
+    }
+    out.push(Draw {
+        item: i,
+        first: item.first,
+        count: item.count,
+        instances: run,
+    });
+}
+
 /// The draws of `items` in `order`: one per item, except that consecutive
 /// runs of one shared mesh's indices whose records follow on from each
 /// other draw together.
@@ -653,22 +716,7 @@ pub fn draws(items: &[Batch], order: &[usize]) -> Vec<Draw> {
     for &i in order {
         let item = &items[i];
         let run = item.run.unwrap_or(Run { first: 0, count: 1 });
-        if let (Some(last), Some(_)) = (out.last_mut(), item.run)
-            && items[last.item].run.is_some()
-            && last.first == item.first
-            && last.count == item.count
-            && items[last.item].material == item.material
-            && last.instances.first + last.instances.count == run.first
-        {
-            last.instances.count += run.count;
-            continue;
-        }
-        out.push(Draw {
-            item: i,
-            first: item.first,
-            count: item.count,
-            instances: run,
-        });
+        append_draw(items, &mut out, i, run);
     }
     out
 }
@@ -705,13 +753,7 @@ pub(crate) fn indirect_draws(
         run.count += 1;
         run.triangles += u64::from(draw.count / 3) * u64::from(draw.instances.count);
         run.instances += u64::from(draw.instances.count);
-        commands.push(wgpu::util::DrawIndexedIndirectArgs {
-            index_count: draw.count,
-            instance_count: draw.instances.count,
-            first_index: draw.first,
-            base_vertex: 0,
-            first_instance: draw.instances.first,
-        });
+        commands.push(draw.indirect());
     }
     (commands, runs)
 }
@@ -762,6 +804,40 @@ mod tests {
             (2, 1, 12)
         );
         assert!(indirect_draws(&batches, &[]).0.is_empty());
+    }
+
+    #[test]
+    fn motion_splits_mixed_runs_and_omits_exact_stationary_poses() {
+        let batch = Batch {
+            first: 12,
+            count: 9,
+            material: 0,
+            min: Vec3::ZERO,
+            max: Vec3::ONE,
+            level: Level::Always,
+            run: Some(Run { first: 0, count: 5 }),
+        };
+        let mut records = vec![Instance::MERGED; 5];
+        for i in [1, 2, 4] {
+            records[i].rows[0][3] = 1.0;
+        }
+        let draws = moving_draws(&[batch], &records);
+        assert_eq!(draws.len(), 2);
+        assert_eq!(draws[0].instances, Run { first: 1, count: 2 });
+        assert_eq!(draws[1].instances, Run { first: 4, count: 1 });
+        assert_eq!(draws[0].indirect().first_instance, 1);
+        assert_eq!(draws[1].indirect().first_instance, 4);
+        assert_eq!(draws[0].indirect().first_index, 12);
+        for record in &mut records {
+            record.previous = record.rows;
+        }
+        assert!(moving_draws(&[batch], &records).is_empty());
+        records[3].rows[1][0] = f32::EPSILON;
+        assert_eq!(
+            moving_draws(&[batch], &records)[0].instances.first,
+            3,
+            "rotation is not rounded away"
+        );
     }
 
     #[test]
