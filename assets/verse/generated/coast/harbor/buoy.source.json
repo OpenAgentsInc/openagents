@@ -1,0 +1,17 @@
+{
+  "out": "harbor/buoy.glb",
+  "triangles": 66,
+  "size_xyz_m": [
+    0.951,
+    1.0,
+    2.2
+  ],
+  "bytes": 7208,
+  "actions": [],
+  "blender": "5.2.2 LTS",
+  "mode": "Reference",
+  "external_inputs": [],
+  "triangle_budget": 2999,
+  "sha256": "65704eb055b858cce8bd82b5a9b4e8223d91a7d1ca5e1a50ba7bc6d5e3e84ee4",
+  "effective_density_kg_m3": 250
+}

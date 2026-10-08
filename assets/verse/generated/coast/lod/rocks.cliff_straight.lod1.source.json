@@ -1,0 +1,18 @@
+{
+  "out": "lod/rocks.cliff_straight.lod1.glb",
+  "triangles": 220,
+  "size_xyz_m": [
+    12.772,
+    4.325,
+    12.2
+  ],
+  "bytes": 49704,
+  "actions": [],
+  "blender": "5.2.2 LTS",
+  "mode": "Reference",
+  "external_inputs": [],
+  "triangle_budget": 4000,
+  "generated_from": "c1f2dec4db350ec132a9d9167a2aec8e88eee17c1efa9a16d2121baed6bd0aeb",
+  "level": 1,
+  "sha256": "128d9475dd0443575ad4de8a6ab4f91ec45790e878aa3cd44ea37742a90ff01c"
+}

@@ -1,0 +1,16 @@
+{
+  "out": "rocks/cliff_inlet.glb",
+  "triangles": 560,
+  "size_xyz_m": [
+    13.425,
+    8.161,
+    8.906
+  ],
+  "bytes": 86064,
+  "actions": [],
+  "blender": "5.2.2 LTS",
+  "mode": "Reference",
+  "external_inputs": [],
+  "triangle_budget": 4000,
+  "sha256": "1d8311d952e29ffeca4a50b41dfaf75bdb4bf2e064034cbe9a4eefbfd074768b"
+}

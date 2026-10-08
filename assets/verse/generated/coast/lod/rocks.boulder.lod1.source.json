@@ -1,0 +1,18 @@
+{
+  "out": "lod/rocks.boulder.lod1.glb",
+  "triangles": 176,
+  "size_xyz_m": [
+    3.004,
+    2.627,
+    2.142
+  ],
+  "bytes": 42004,
+  "actions": [],
+  "blender": "5.2.2 LTS",
+  "mode": "Reference",
+  "external_inputs": [],
+  "triangle_budget": 4000,
+  "generated_from": "a315306df3e68a7d7f080df67deb51bababde9c80092d1845fed9dd4c799cf6f",
+  "level": 1,
+  "sha256": "bfc55c16a91fafca9ad31b9830e671bda645df95660f8cbf6f4a8c1b539f79df"
+}

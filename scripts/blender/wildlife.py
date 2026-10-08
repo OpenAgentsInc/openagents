@@ -257,7 +257,10 @@ def main():
     a = kit.args()
     folder = a[0] if a else os.path.join(kit.REPO, "assets", "verse", "generated", "wildlife")
     os.makedirs(folder, exist_ok=True)
+    import coast_wildlife
     built = {"songbird": songbird, "duck": duck, "cat": cat}
+    built.update({name: (lambda folder, name=name: coast_wildlife.build(folder, name))
+                  for name in coast_wildlife.MODELS})
     names = a[1:] or list(built) + list(AMBIENT)
     for n in names:
         if n in built:
@@ -267,4 +270,5 @@ def main():
         ambient(folder, converted)
 
 
-main()
+if __name__ == '__main__':
+    main()

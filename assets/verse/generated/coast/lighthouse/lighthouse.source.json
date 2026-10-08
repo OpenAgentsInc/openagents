@@ -1,0 +1,16 @@
+{
+  "out": "lighthouse/lighthouse.glb",
+  "triangles": 1394,
+  "size_xyz_m": [
+    8.0,
+    8.0,
+    23.35
+  ],
+  "bytes": 138708,
+  "actions": [],
+  "blender": "5.2.2 LTS",
+  "mode": "Reference",
+  "external_inputs": [],
+  "triangle_budget": 10000,
+  "sha256": "1b66464d3f40a0f1b9b123f1e9782d4e344f3b5d321dfe944e322f2973002d64"
+}

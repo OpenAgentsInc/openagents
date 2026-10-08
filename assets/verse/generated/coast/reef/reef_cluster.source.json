@@ -1,0 +1,16 @@
+{
+  "out": "reef/reef_cluster.glb",
+  "triangles": 60,
+  "size_xyz_m": [
+    1.485,
+    0.62,
+    0.522
+  ],
+  "bytes": 31828,
+  "actions": [],
+  "blender": "5.2.2 LTS",
+  "mode": "Reference",
+  "external_inputs": [],
+  "triangle_budget": 300,
+  "sha256": "72bc92dd02718ca7b97c012c7500b05bfb200a9269099b18ae8662eca3d38447"
+}

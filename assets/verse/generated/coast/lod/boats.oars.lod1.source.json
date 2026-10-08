@@ -1,0 +1,18 @@
+{
+  "out": "lod/boats.oars.lod1.glb",
+  "triangles": 48,
+  "size_xyz_m": [
+    0.807,
+    2.419,
+    0.055
+  ],
+  "bytes": 8560,
+  "actions": [],
+  "blender": "5.2.2 LTS",
+  "mode": "Reference",
+  "external_inputs": [],
+  "triangle_budget": 3999,
+  "generated_from": "8cfd2fe33e90cb040931953aa63292041084099fbef36e8220ef75f9f73fb52c",
+  "level": 1,
+  "sha256": "a5b0f843e34dbd794559886dd30ba595d048e78fa77ff7308fa038b7df495d5e"
+}

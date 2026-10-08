@@ -1,0 +1,18 @@
+{
+  "out": "lod/rocks.sea_arch.lod2.glb",
+  "triangles": 140,
+  "size_xyz_m": [
+    10.331,
+    3.312,
+    9.618
+  ],
+  "bytes": 43132,
+  "actions": [],
+  "blender": "5.2.2 LTS",
+  "mode": "Reference",
+  "external_inputs": [],
+  "triangle_budget": 4000,
+  "generated_from": "533df3aa15725dd3a18346fe1b0853b9743de1149e6c465d9b761ffacbea5eb1",
+  "level": 2,
+  "sha256": "267f8417cba82dbeb4264af65ac78d789fd68662b23865735588a88ae9be8de4"
+}

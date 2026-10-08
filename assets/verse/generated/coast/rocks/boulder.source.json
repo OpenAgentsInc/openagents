@@ -1,0 +1,16 @@
+{
+  "out": "rocks/boulder.glb",
+  "triangles": 320,
+  "size_xyz_m": [
+    2.973,
+    2.626,
+    2.156
+  ],
+  "bytes": 56756,
+  "actions": [],
+  "blender": "5.2.2 LTS",
+  "mode": "Reference",
+  "external_inputs": [],
+  "triangle_budget": 4000,
+  "sha256": "a315306df3e68a7d7f080df67deb51bababde9c80092d1845fed9dd4c799cf6f"
+}

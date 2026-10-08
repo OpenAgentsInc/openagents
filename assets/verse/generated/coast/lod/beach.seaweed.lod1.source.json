@@ -1,0 +1,18 @@
+{
+  "out": "lod/beach.seaweed.lod1.glb",
+  "triangles": 88,
+  "size_xyz_m": [
+    1.395,
+    1.383,
+    0.121
+  ],
+  "bytes": 15716,
+  "actions": [],
+  "blender": "5.2.2 LTS",
+  "mode": "Reference",
+  "external_inputs": [],
+  "triangle_budget": 599,
+  "generated_from": "0329cf8f16c8b26acbabb5e01df390ef38a8fdf368d8c6708dd3289215577185",
+  "level": 1,
+  "sha256": "0329cf8f16c8b26acbabb5e01df390ef38a8fdf368d8c6708dd3289215577185"
+}

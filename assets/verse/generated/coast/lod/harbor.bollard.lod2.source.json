@@ -1,0 +1,18 @@
+{
+  "out": "lod/harbor.bollard.lod2.glb",
+  "triangles": 18,
+  "size_xyz_m": [
+    0.64,
+    0.583,
+    0.636
+  ],
+  "bytes": 4636,
+  "actions": [],
+  "blender": "5.2.2 LTS",
+  "mode": "Reference",
+  "external_inputs": [],
+  "triangle_budget": 2999,
+  "generated_from": "66b85a7faf6e5093a9b7bed4530f9202c72e8817be384f2ac71bdbf7e978eab7",
+  "level": 2,
+  "sha256": "63d3f2b82c92b14b94ca377f9f91fed58ffda6f02cb252fa53a85a28f57e9111"
+}

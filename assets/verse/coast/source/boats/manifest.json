@@ -1,0 +1,38 @@
+{
+  "creator": "OpenAgents",
+  "files": {
+    "license.txt": "457b40c28fb92ef776de6b6879d3738ecec6b09d8d2be407a8ffd58e7fc92ec0",
+    "oars.bin": "5fd0ee4c34d6791cfaf66ef829574352f04279604c275312f83bf245b058ea22",
+    "oars.gltf": "1ef899bf6005fff470d16b235164f34b9065614079b82faf3ffdfe935a068af6",
+    "sloop.bin": "cce4e2f9e6bf1e7c9e5a222a18757711a8b391f39abf8f705bd2cea022dbcc1c",
+    "sloop.gltf": "50d36e97108a3609add031b44c0af41a1c007813ce88a6ee2f82e34d32aad341",
+    "wreck_bow.bin": "bb1c3f1602742bf51af42b89e3132ade062c034bd03e6780d3b4a19681f48610",
+    "wreck_bow.gltf": "6bdc78c981d834b94fa0739fcac2ddc76627d8428b16a0715517df0a0b051295",
+    "wreck_stern.bin": "0112644dd33f605c5de1ba9e1ad83cb7ad7bf269cb79591f27a9eb1996d8dde0",
+    "wreck_stern.gltf": "72798c6c9a142d12fb8e9d4808f1441148facca07d43dac592dd7d071d7e8daf"
+  },
+  "license": "CC0-1.0",
+  "originals": {
+    "license.txt": "457b40c28fb92ef776de6b6879d3738ecec6b09d8d2be407a8ffd58e7fc92ec0",
+    "oars.bin": "8cfd2fe33e90cb040931953aa63292041084099fbef36e8220ef75f9f73fb52c",
+    "oars.gltf": "8cfd2fe33e90cb040931953aa63292041084099fbef36e8220ef75f9f73fb52c",
+    "sloop.bin": "56d612909d2b80a7b2931b3efc48a546e025b78a755a8b68a8f34fdddcfd332a",
+    "sloop.gltf": "56d612909d2b80a7b2931b3efc48a546e025b78a755a8b68a8f34fdddcfd332a",
+    "wreck_bow.bin": "3d544287693b60973cebbff9b0f79133c75c7ce484d7de5b938a8667b763abd3",
+    "wreck_bow.gltf": "3d544287693b60973cebbff9b0f79133c75c7ce484d7de5b938a8667b763abd3",
+    "wreck_stern.bin": "85d92e51a3f49178b61e0433cf631604f0249f119319c4a3bffa980842c49806",
+    "wreck_stern.gltf": "85d92e51a3f49178b61e0433cf631604f0249f119319c4a3bffa980842c49806"
+  },
+  "package": "Original procedural coast boats",
+  "schema": "openagents.verse.source-manifest.v1",
+  "transforms": {
+    "oars.bin": "Split original generated GLB; preserve geometry, base color, skin, and clips; lens emission is assigned by the coast renderer",
+    "oars.gltf": "Split original generated GLB; preserve geometry, base color, skin, and clips; lens emission is assigned by the coast renderer",
+    "sloop.bin": "Split original generated GLB; preserve geometry, base color, skin, and clips; lens emission is assigned by the coast renderer",
+    "sloop.gltf": "Split original generated GLB; preserve geometry, base color, skin, and clips; lens emission is assigned by the coast renderer",
+    "wreck_bow.bin": "Split original generated GLB; preserve geometry, base color, skin, and clips; lens emission is assigned by the coast renderer",
+    "wreck_bow.gltf": "Split original generated GLB; preserve geometry, base color, skin, and clips; lens emission is assigned by the coast renderer",
+    "wreck_stern.bin": "Split original generated GLB; preserve geometry, base color, skin, and clips; lens emission is assigned by the coast renderer",
+    "wreck_stern.gltf": "Split original generated GLB; preserve geometry, base color, skin, and clips; lens emission is assigned by the coast renderer"
+  }
+}

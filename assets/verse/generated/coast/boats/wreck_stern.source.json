@@ -1,0 +1,16 @@
+{
+  "out": "boats/wreck_stern.glb",
+  "triangles": 220,
+  "size_xyz_m": [
+    2.495,
+    3.132,
+    0.955
+  ],
+  "bytes": 20344,
+  "actions": [],
+  "blender": "5.2.2 LTS",
+  "mode": "Reference",
+  "external_inputs": [],
+  "triangle_budget": 3999,
+  "sha256": "85d92e51a3f49178b61e0433cf631604f0249f119319c4a3bffa980842c49806"
+}

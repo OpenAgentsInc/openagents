@@ -1,0 +1,18 @@
+{
+  "out": "lod/rocks.tide_pool_shelf.lod2.glb",
+  "triangles": 720,
+  "size_xyz_m": [
+    23.891,
+    21.6,
+    0.636
+  ],
+  "bytes": 120344,
+  "actions": [],
+  "blender": "5.2.2 LTS",
+  "mode": "Reference",
+  "external_inputs": [],
+  "triangle_budget": 4000,
+  "generated_from": "0de5dd2457bd8d5849828768f11540c88bcd15c4ba39c26e22d6f4dc735916de",
+  "level": 2,
+  "sha256": "1f31351b91f28e76a904037aaf0dbf80741958a1ab7bccc424c8c8058059ce9a"
+}

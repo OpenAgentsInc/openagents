@@ -1,0 +1,18 @@
+{
+  "out": "lod/rocks.cliff_corner.lod2.glb",
+  "triangles": 100,
+  "size_xyz_m": [
+    10.452,
+    8.368,
+    12.174
+  ],
+  "bytes": 37432,
+  "actions": [],
+  "blender": "5.2.2 LTS",
+  "mode": "Reference",
+  "external_inputs": [],
+  "triangle_budget": 4000,
+  "generated_from": "c65440705455583776b93b04b493333af66c0efed0640b8a9faf49d62c9f4c4d",
+  "level": 2,
+  "sha256": "2359c11d28b6861de33d208c5b9183e4ede9f01a0738a3f7340ce121979fb0bb"
+}

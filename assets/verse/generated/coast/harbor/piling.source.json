@@ -1,0 +1,16 @@
+{
+  "out": "harbor/piling.glb",
+  "triangles": 36,
+  "size_xyz_m": [
+    0.38,
+    0.4,
+    4.0
+  ],
+  "bytes": 3332,
+  "actions": [],
+  "blender": "5.2.2 LTS",
+  "mode": "Reference",
+  "external_inputs": [],
+  "triangle_budget": 2999,
+  "sha256": "0b9947a8493d65660f5707fcd14f1822f4a57b92edde5ae8807cc5db95bec46f"
+}

@@ -1,0 +1,18 @@
+{
+  "out": "lod/beach.rope.lod2.glb",
+  "triangles": 70,
+  "size_xyz_m": [
+    0.648,
+    0.708,
+    0.118
+  ],
+  "bytes": 9956,
+  "actions": [],
+  "blender": "5.2.2 LTS",
+  "mode": "Reference",
+  "external_inputs": [],
+  "triangle_budget": 599,
+  "generated_from": "115cbe1b48cd55c5e9580ffa1eafe5a5b3d457d0d72028ff594e89bf6d2c2621",
+  "level": 2,
+  "sha256": "7a2a8f06cff5c640cae8fbbc1d19024d952a2f8f87af4887c98de93139a237c2"
+}

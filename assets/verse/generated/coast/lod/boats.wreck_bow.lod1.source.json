@@ -1,0 +1,18 @@
+{
+  "out": "lod/boats.wreck_bow.lod1.glb",
+  "triangles": 124,
+  "size_xyz_m": [
+    2.469,
+    3.444,
+    0.925
+  ],
+  "bytes": 15584,
+  "actions": [],
+  "blender": "5.2.2 LTS",
+  "mode": "Reference",
+  "external_inputs": [],
+  "triangle_budget": 3999,
+  "generated_from": "3d544287693b60973cebbff9b0f79133c75c7ce484d7de5b938a8667b763abd3",
+  "level": 1,
+  "sha256": "ad387b19341b66f3a5f5a155c665db297708435f691f1d2bdfd603bcf1f8373e"
+}

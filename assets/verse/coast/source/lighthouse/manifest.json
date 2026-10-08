@@ -1,0 +1,35 @@
+{
+  "creator": "OpenAgents",
+  "files": {
+    "coast_8cdb7ca38b8c1e3f88ee0a1f.png": "8cdb7ca38b8c1e3f88ee0a1f67f5ed9f9c254dfc838d3ab1227ef5748b39732f",
+    "fog_bell.bin": "b0d6c93a6f317e70e741431b3db2a190c6345ddda35d7ce79161e10e75b6e081",
+    "fog_bell.gltf": "c61c7528773856f3eed47b66218ea0b1587dc2751ad086603f8a27233f718fa0",
+    "keeper_cottage.bin": "ccc51afa548a0b61d3d36fff49b7770f7af01313bcbf13435cc9172102f1873d",
+    "keeper_cottage.gltf": "dab3fe31f24e56b1fc02450fe04312e70067d091de3b099a82274546cbb409dd",
+    "license.txt": "457b40c28fb92ef776de6b6879d3738ecec6b09d8d2be407a8ffd58e7fc92ec0",
+    "lighthouse.bin": "6562a8b78b4425f83fc0d28f28aebd1cdf9517ea8afd55797e08156495ff6417",
+    "lighthouse.gltf": "814674e66eb4f6ca6e20d5087cc07fce8c5f64babff2baf0e4cebf82abfa4993"
+  },
+  "license": "CC0-1.0",
+  "originals": {
+    "coast_8cdb7ca38b8c1e3f88ee0a1f.png": "1b66464d3f40a0f1b9b123f1e9782d4e344f3b5d321dfe944e322f2973002d64",
+    "fog_bell.bin": "11760eea1f50768826d866da500738d5b1764999a05a6ac7473bb7571a9eef76",
+    "fog_bell.gltf": "11760eea1f50768826d866da500738d5b1764999a05a6ac7473bb7571a9eef76",
+    "keeper_cottage.bin": "f6f174d21202ac5a2b31027f7682dbd4ffb198acbe2e28ae9ded6e138a6731be",
+    "keeper_cottage.gltf": "f6f174d21202ac5a2b31027f7682dbd4ffb198acbe2e28ae9ded6e138a6731be",
+    "license.txt": "457b40c28fb92ef776de6b6879d3738ecec6b09d8d2be407a8ffd58e7fc92ec0",
+    "lighthouse.bin": "1b66464d3f40a0f1b9b123f1e9782d4e344f3b5d321dfe944e322f2973002d64",
+    "lighthouse.gltf": "1b66464d3f40a0f1b9b123f1e9782d4e344f3b5d321dfe944e322f2973002d64"
+  },
+  "package": "Original procedural coast lighthouse",
+  "schema": "openagents.verse.source-manifest.v1",
+  "transforms": {
+    "coast_8cdb7ca38b8c1e3f88ee0a1f.png": "Split original generated GLB; preserve geometry, base color, skin, and clips; lens emission is assigned by the coast renderer",
+    "fog_bell.bin": "Split original generated GLB; preserve geometry, base color, skin, and clips; lens emission is assigned by the coast renderer",
+    "fog_bell.gltf": "Split original generated GLB; preserve geometry, base color, skin, and clips; lens emission is assigned by the coast renderer",
+    "keeper_cottage.bin": "Split original generated GLB; preserve geometry, base color, skin, and clips; lens emission is assigned by the coast renderer",
+    "keeper_cottage.gltf": "Split original generated GLB; preserve geometry, base color, skin, and clips; lens emission is assigned by the coast renderer",
+    "lighthouse.bin": "Split original generated GLB; preserve geometry, base color, skin, and clips; lens emission is assigned by the coast renderer",
+    "lighthouse.gltf": "Split original generated GLB; preserve geometry, base color, skin, and clips; lens emission is assigned by the coast renderer"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "out": "lod/beach.beach_grass.lod2.glb",
+  "triangles": 88,
+  "size_xyz_m": [
+    0.815,
+    0.813,
+    0.678
+  ],
+  "bytes": 16112,
+  "actions": [],
+  "blender": "5.2.2 LTS",
+  "mode": "Reference",
+  "external_inputs": [],
+  "triangle_budget": 599,
+  "generated_from": "99ef29d4c548ef38b067f6c11ae312d8d95a1afac5f6831f5ee2a688380e9bdf",
+  "level": 2,
+  "sha256": "7be8c6115dab8376e28358c3e6e3dc534779ae6c984f97f8a15373fb6d926d14"
+}

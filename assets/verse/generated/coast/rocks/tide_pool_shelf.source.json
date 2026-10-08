@@ -1,0 +1,16 @@
+{
+  "out": "rocks/tide_pool_shelf.glb",
+  "triangles": 2880,
+  "size_xyz_m": [
+    23.933,
+    21.613,
+    0.609
+  ],
+  "bytes": 331584,
+  "actions": [],
+  "blender": "5.2.2 LTS",
+  "mode": "Reference",
+  "external_inputs": [],
+  "triangle_budget": 4000,
+  "sha256": "0de5dd2457bd8d5849828768f11540c88bcd15c4ba39c26e22d6f4dc735916de"
+}

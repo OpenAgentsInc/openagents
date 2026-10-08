@@ -1,0 +1,18 @@
+{
+  "out": "lod/harbor.piling.lod1.glb",
+  "triangles": 18,
+  "size_xyz_m": [
+    0.413,
+    0.411,
+    4.0
+  ],
+  "bytes": 2712,
+  "actions": [],
+  "blender": "5.2.2 LTS",
+  "mode": "Reference",
+  "external_inputs": [],
+  "triangle_budget": 2999,
+  "generated_from": "0b9947a8493d65660f5707fcd14f1822f4a57b92edde5ae8807cc5db95bec46f",
+  "level": 1,
+  "sha256": "4145ba64e5b9194550e7cbff9d296e76266fff229f19335683f2d8a23f43eca8"
+}

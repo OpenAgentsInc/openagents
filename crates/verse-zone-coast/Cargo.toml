@@ -16,5 +16,11 @@ verse-zone-water = { path = "../verse-zone-water" }
 verse-core = { path = "../verse-core" }
 verse-world = { path = "../verse-world" }
 
+sha2 = "0.10"
+verse-zone-everglade = { path = "../verse-zone-everglade" }
+
+[dev-dependencies]
+serde_json = "1"
+
 [lints]
 workspace = true

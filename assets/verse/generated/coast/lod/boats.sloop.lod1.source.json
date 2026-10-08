@@ -1,0 +1,18 @@
+{
+  "out": "lod/boats.sloop.lod1.glb",
+  "triangles": 315,
+  "size_xyz_m": [
+    2.487,
+    6.763,
+    6.05
+  ],
+  "bytes": 41616,
+  "actions": [],
+  "blender": "5.2.2 LTS",
+  "mode": "Reference",
+  "external_inputs": [],
+  "triangle_budget": 3999,
+  "generated_from": "56d612909d2b80a7b2931b3efc48a546e025b78a755a8b68a8f34fdddcfd332a",
+  "level": 1,
+  "sha256": "90757eb77ffc7761bcee34597d8a516722d10d593bbe28f672596f585a3370c3"
+}
