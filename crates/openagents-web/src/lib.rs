@@ -4,7 +4,7 @@
 //! page, the terms and the privacy policy, the pairing link's landing page,
 //! and profiles) and the local, read-only task browser at `/app`.
 //!
-//! Interactive pages include the public Ask terminal, flow map, Verse demos,
+//! Interactive pages include the homepage composer, flow map, Verse demos,
 //! Rust component catalog, and separately configured Cloud workspace. Pages that need
 //! the production account store read through [`backend::Backend`]; a
 //! development server uses [`backend::Development`] and renders every page
@@ -123,6 +123,7 @@ pub(crate) struct App(Arc<Inner>);
 pub(crate) struct Inner {
     pub config: Config,
     pub answering: Arc<ask::Answering>,
+    pub chats: Arc<pages::chat::Store>,
 }
 
 impl std::ops::Deref for App {
@@ -137,6 +138,7 @@ pub fn router(config: Config) -> Router {
     let app = App(Arc::new(Inner {
         config,
         answering: Arc::default(),
+        chats: Arc::default(),
     }));
     let hosts = Hosts {
         port: app.config.port,
@@ -148,9 +150,11 @@ pub fn router(config: Config) -> Router {
         .route("/api/stats", get(pay_proxy))
         .route("/health", get(|| async { "ok" }))
         .route("/static/site.css", get(stylesheet))
+        .route("/static/tailwind.css", get(tailwind))
         .route(paper_mono::WOFF2_PATH, get(paper_mono_font))
         .route("/static/verse-grid.jpg", get(verse_grid))
         .route("/static/ask.js", get(ask_script))
+        .route("/static/chat.js", get(chat_script))
         .route("/static/flow.js", get(flow_script))
         .route("/static/everglade.js", get(everglade_script))
         .route("/favicon.svg", get(favicon))
@@ -291,7 +295,19 @@ async fn paper_mono_font() -> Response {
         .into_response()
 }
 
-/// The homepage terminal's script.
+/// The homepage composer's script.
+async fn chat_script() -> Response {
+    (
+        [
+            (header::CONTENT_TYPE, "text/javascript; charset=utf-8"),
+            (header::CACHE_CONTROL, "public, max-age=300"),
+        ],
+        include_str!("../static/chat.js"),
+    )
+        .into_response()
+}
+
+/// The former homepage terminal's script, still served for `/ask`.
 async fn ask_script() -> Response {
     (
         [
@@ -334,6 +350,19 @@ async fn stylesheet() -> Response {
             (header::CACHE_CONTROL, "public, max-age=300"),
         ],
         css(),
+    )
+        .into_response()
+}
+
+/// The Tailwind utilities pages use, generated from
+/// `static/tailwind.input.css` by `scripts/build-web-tailwind.sh`.
+async fn tailwind() -> Response {
+    (
+        [
+            (header::CONTENT_TYPE, "text/css; charset=utf-8"),
+            (header::CACHE_CONTROL, "public, max-age=300"),
+        ],
+        include_str!("../static/tailwind.css"),
     )
         .into_response()
 }

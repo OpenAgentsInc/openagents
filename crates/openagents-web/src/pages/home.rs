@@ -1,14 +1,6 @@
-//! The homepage: what OpenAgents is, one link to `/download`, and a terminal
-//! to ask OpenAgents about itself. The Grid's screenshot is on
-//! `/docs/the-grid`.
-//!
-//! The terminal (#10106) loads `static/ask.js`.
-//! `help`, `download` (or `install`), `docs`, and `clear` are its commands,
-//! matched whole;
-//! any other line is a question for [`crate::ask`], which answers it from
-//! the same OpenAgents chat the apps use, as the website: about OpenAgents
-//! only, never Coder or a computer. Without the script the box says to
-//! turn scripts on and the download link still works.
+//! The homepage: what OpenAgents is, one link to `/download`, and a
+//! composer that starts a chat at `/chat/{uuid}`. The Grid's screenshot
+//! is on `/docs/the-grid`.
 
 use axum::Router;
 use axum::extract::State;
@@ -52,41 +44,20 @@ your own machines, and Coder is the one that writes code.</p>",
     out
 }
 
-/// The homepage's policy: the site's, plus its one script and its
-/// questions to `/ask`.
-const HOME_POLICY: &str = "default-src 'none'; style-src 'self'; font-src 'self'; img-src 'self'; \
-script-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; \
-frame-ancestors 'none'";
-
-/// The terminal: a welcome, the screen the answers land on, and the line
-/// a visitor types into.
-fn terminal() -> &'static str {
-    "<section class=\"box term\" aria-labelledby=\"term-title\">\
-<h2 class=\"box-title\" id=\"term-title\">Ask OpenAgents</h2>\
-<div class=\"term-screen\" id=\"term-screen\" role=\"log\" aria-live=\"polite\">\
-<p class=\"term-welcome\">Ask us anything about OpenAgents: the apps, Coder, plugins, \
-pricing, or privacy. Coder works on your own computer through the OpenAgents app for Mac. \
-Type <code>help</code> for commands.</p>\
-<noscript><p class=\"dim\">Turn on JavaScript to ask a question here, or \
-<a href=\"/download\">download OpenAgents</a>.</p></noscript></div>\
-<form class=\"term-line\" id=\"term-form\" action=\"/download\" method=\"get\">\
-<label class=\"term-prompt\" for=\"term-input\">&gt;</label>\
-<input id=\"term-input\" name=\"q\" type=\"text\" autocomplete=\"off\" \
-spellcheck=\"false\" maxlength=\"4000\" placeholder=\"Ask about OpenAgents\" \
-aria-label=\"Ask OpenAgents\"></form></section>\
-<script src=\"/static/ask.js\" defer></script>"
-}
-
 async fn home(State(app): State<App>) -> Response {
     let credit = credit(app.config.backend.new_account_credit_cents());
     let mut response = page(
         "OpenAgents",
         None,
-        &format!("{}{}", intro(credit.as_deref()), terminal()),
+        &format!(
+            "{}{}",
+            intro(credit.as_deref()),
+            super::chat::composer("/chat", "Start a chat")
+        ),
     );
     response.headers_mut().insert(
         header::CONTENT_SECURITY_POLICY,
-        HeaderValue::from_static(HOME_POLICY),
+        HeaderValue::from_static(super::chat::COMPOSER_POLICY),
     );
     response
 }

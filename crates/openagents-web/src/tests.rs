@@ -65,7 +65,7 @@ async fn get(router: Router, uri: &str) -> (StatusCode, String) {
 }
 
 /// Every public HTML page a development server serves.
-const PAGES: [&str; 45] = [
+const PAGES: [&str; 43] = [
     "/",
     "/cloud",
     "/live",
@@ -75,8 +75,6 @@ const PAGES: [&str; 45] = [
     "/stats",
     "/efficiency",
     "/download",
-    "/pilot",
-    "/pilot/install",
     "/terms",
     "/privacy",
     "/connect",
@@ -146,8 +144,8 @@ async fn every_public_page_answers_in_development() {
         assert_eq!(status, StatusCode::OK, "{uri}: {body}");
         let lower = body.to_ascii_lowercase();
         assert!(lower.starts_with("<!doctype html>"), "{uri}");
-        // The homepage terminal (#10106) and the live map (#10197) are
-        // the site's scripts.
+        // The homepage composer and the live map (#10197) are the
+        // site's scripts.
         let script = uri == "/" || uri == "/live";
         assert_eq!(
             lower.matches("<script").count(),
@@ -161,10 +159,12 @@ async fn every_public_page_answers_in_development() {
         assert!(policy.starts_with("default-src 'none'"), "{uri}: {policy}");
         if script {
             assert!(policy.contains("script-src 'self'"), "{uri}: {policy}");
-            assert!(policy.contains("connect-src 'self'"), "{uri}: {policy}");
             assert!(!policy.contains("unsafe"), "{uri}: {policy}");
         } else {
             assert!(!policy.contains("script-src"), "{uri}: {policy}");
+        }
+        if uri == "/live" {
+            assert!(policy.contains("connect-src 'self'"), "{uri}: {policy}");
         }
         assert_eq!(headers[header::X_CONTENT_TYPE_OPTIONS], "nosniff");
     }
@@ -188,7 +188,7 @@ async fn cloud_is_public_but_browser_work_and_purchases_remain_unavailable() {
     assert!(html.contains("Retail Cloud v1 · Proposed"));
     assert!(html.contains("disabled aria-describedby=\"workspace-reason\""));
     assert!(!html.contains("<form"));
-    for path in ["/download", "/pilot", "/grid", "/docs", "/components"] {
+    for path in ["/download", "/grid", "/docs", "/components"] {
         assert!(html.contains(&format!("href=\"{path}\"")), "{path}");
         let (status, _, _) = get_with(site.clone(), path, "openagents.com").await;
         assert_eq!(status, StatusCode::OK, "{path}");
@@ -220,47 +220,107 @@ async fn the_legal_pages_carry_the_published_text() {
 }
 
 #[tokio::test]
-async fn the_homepage_links_one_download_page_and_leads_with_the_terminal() {
+async fn the_homepage_links_one_download_page_and_starts_a_chat() {
     let root = tempfile::tempdir().unwrap();
-    let (_, home) = get(router(config(root.path().into())), "/").await;
+    let site = router(config(root.path().into()));
+    let (_, home) = get(site.clone(), "/").await;
     assert!(home.contains("<a class=\"button\" href=\"/download\">[ Download OpenAgents ]</a>"));
     assert!(!home.contains("/install"), "every link says /download");
     assert!(!home.contains(".dmg"), "downloads live on /download");
     assert!(!home.contains("curl ") && !home.contains("irm "));
-    // The terminal (#10106): its box, its line, and its one script.
-    assert!(home.contains("<h2 class=\"box-title\" id=\"term-title\">Ask OpenAgents</h2>"));
-    assert!(home.contains("id=\"term-input\""));
-    assert!(home.contains("<script src=\"/static/ask.js\" defer></script>"));
-    // The Grid's screenshot moved to its own guide.
+    assert!(home.contains("id=\"chat-input\""));
+    assert!(home.contains("action=\"/chat\""));
+    assert!(home.contains("<script src=\"/static/chat.js\" defer></script>"));
+    assert!(!home.contains("term-input") && !home.contains("/static/ask.js"));
+    assert!(!home.contains("href=\"/pilot\""));
     assert!(!home.contains("<img"));
-    let (status, grid) = get(router(config(root.path().into())), "/docs/the-grid").await;
+    let (status, grid) = get(site.clone(), "/docs/the-grid").await;
     assert_eq!(status, StatusCode::OK);
     assert!(grid.contains("<h1>The Grid</h1>"), "{grid}");
     assert!(grid.contains(
         "<img src=\"/static/verse-grid.jpg\" alt=\"The Grid, the OpenAgents Verse world"
     ));
-    let (status, headers, image) =
-        get_bytes(router(config(root.path().into())), "/static/verse-grid.jpg").await;
+    let (status, headers, image) = get_bytes(site.clone(), "/static/verse-grid.jpg").await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(headers[header::CONTENT_TYPE], "image/jpeg");
     assert!(image.starts_with(&[0xff, 0xd8, 0xff]), "a JPEG");
-    let (status, headers, script) =
-        get_with(router(config(root.path().into())), "/static/ask.js", LOCAL).await;
+    let (status, headers, script) = get_with(site, "/static/chat.js", LOCAL).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(
         headers[header::CONTENT_TYPE],
         "text/javascript; charset=utf-8"
     );
-    assert!(script.contains("fetch(\"/ask\""));
-    // `download` is the command; `install` is its alias.
-    assert!(script.contains("download: function ()"));
-    assert!(script.contains("\"/download\", \"openagents.com/download\""));
-    assert!(script.contains("commands.install = commands.download;"));
-    assert!(!script.contains("\"/install\""));
+    assert!(script.contains("chat-form"));
+    assert!(script.contains("requestSubmit"));
+}
+
+#[tokio::test]
+async fn the_composer_card_is_styled_by_the_served_tailwind_utilities() {
+    let root = tempfile::tempdir().unwrap();
+    let site = router(config(root.path().into()));
+    let (_, home) = get(site.clone(), "/").await;
+    assert!(home.contains("<link rel=\"stylesheet\" href=\"/static/tailwind.css\">"));
+    assert!(home.contains("chat-composer-card"));
+    assert!(home.contains("tw:w-full tw:h-[195px]"));
+    assert!(home.contains("tw:max-w-[640px]"));
+    assert!(home.contains("placeholder=\"Ask OpenAgents to build, fix bugs, explore\""));
+    assert!(home.contains("<button type=\"submit\" aria-label=\"Send\""));
+    let (status, headers, css) = get_with(site, "/static/tailwind.css", LOCAL).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(headers[header::CONTENT_TYPE], "text/css; charset=utf-8");
+    assert!(css.contains(".tw\\:h-\\[195px\\]{height:195px}"), "{css}");
     assert!(
-        !script.contains("innerHTML = message.text"),
-        "only server-drawn HTML"
+        css.contains(".tw\\:max-w-\\[640px\\]{max-width:640px}"),
+        "{css}"
     );
+    assert!(
+        css.contains(".tw\\:size-6{width:24px;height:24px}"),
+        "{css}"
+    );
+    assert!(css.contains("var(--noir-surface-subtle)"), "{css}");
+    assert!(!css.contains("@layer base"), "no preflight");
+}
+
+#[tokio::test]
+async fn posting_the_homepage_composer_opens_a_chat_page() {
+    let root = tempfile::tempdir().unwrap();
+    let site = router(config(root.path().into()));
+    let response = site
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/chat")
+                .header(header::HOST, LOCAL)
+                .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+                .body(Body::from("q=Set+up+OpenAgents"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    let location = response.headers()[header::LOCATION].to_str().unwrap();
+    assert!(
+        location.starts_with("/chat/") && location.len() == 42,
+        "{location}"
+    );
+    let (status, html) = get(site.clone(), location).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(html.contains("Set up OpenAgents"));
+    assert!(html.contains(&format!("action=\"{location}\"")));
+    let (status, missing) = get(site, "/chat/00000000-0000-4000-8000-000000000000").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert!(missing.contains("<h1>Not found</h1>"));
+}
+
+#[tokio::test]
+async fn the_pilot_pages_answer_not_found() {
+    let root = tempfile::tempdir().unwrap();
+    for uri in ["/pilot", "/pilot/install"] {
+        let (status, html) = get(router(config(root.path().into())), uri).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{uri}");
+        assert!(html.contains("<h1>Not found</h1>"), "{uri}: {html}");
+    }
 }
 
 /// `/live` (#10197): the map's canvas, the totals, its one script reading
@@ -1132,6 +1192,8 @@ fn the_site_owns_its_pages_and_the_removed_sections() {
     for path in [
         "/",
         "/download",
+        "/chat",
+        "/chat/x",
         "/install",
         "/desktop",
         "/cli/install.sh",
@@ -1154,7 +1216,9 @@ fn the_site_owns_its_pages_and_the_removed_sections() {
         "/.well-known/apple-app-site-association",
         "/.well-known/assetlinks.json",
         "/static/site.css",
+        "/static/tailwind.css",
         "/static/ask.js",
+        "/static/chat.js",
         "/static/flow.js",
         "/static/everglade.js",
         "/static/verse-grid.jpg",

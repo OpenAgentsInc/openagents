@@ -10,7 +10,7 @@ body{margin:0;height:100vh;height:100dvh;display:flex;flex-direction:column;back
 ::selection{background:var(--noir-selection);color:var(--noir-selection-foreground)}
 a{color:var(--noir-content);text-underline-offset:3px}
 a:hover{background:var(--noir-control-hover)}
-a:focus-visible,button:focus-visible,input:focus-visible,summary:focus-visible{outline:1px solid var(--noir-accent);outline-offset:2px}
+a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible,summary:focus-visible{outline:1px solid var(--noir-accent);outline-offset:2px}
 h1,h2,h3,h4{color:var(--noir-content);font-weight:700;line-height:1.3}
 h1{font-size:1.4rem;margin:0 0 1rem}
 h2{font-size:1.15rem;margin:2rem 0 .75rem}
@@ -61,11 +61,16 @@ main:focus{outline:none}
 .error{color:var(--noir-danger);border-left:2px solid var(--noir-danger);padding-left:1ch}
 .notice{border:1px dashed var(--noir-stroke);padding:.75rem 2ch;color:var(--noir-content);margin:0 0 1.5rem}
 
-/* The homepage: the intro, then the terminal. */
+/* The homepage: the intro, then the composer. */
 .intro{margin:0 0 2rem}
 .intro h1{font-size:2rem;margin:0 0 .75rem}
 .lede{color:var(--noir-content);font-size:1.1rem;max-width:60ch}
-/* The homepage terminal: the screen the answers land on, then the line. */
+/* The composer's card is styled by Tailwind utilities (static/tailwind.css). */
+.composer{margin:0 0 1.5rem}
+.thread{margin:0 0 1.5rem}
+.thread-said{white-space:pre-wrap;overflow-wrap:anywhere}
+.thread-said .term-mark{display:block;margin-bottom:.25rem}
+/* The former homepage terminal, kept for leftover term classes. */
 .term{padding-bottom:.5rem}
 .term-screen{max-height:min(36rem,60vh);overflow-y:auto;overscroll-behavior:contain;margin:0 0 .75rem}
 .term-screen p{margin:0 0 .5rem}

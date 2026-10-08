@@ -136,7 +136,10 @@ to on. Up/Down selects an agent, Space or Enter toggles it, and R refreshes
 detection. Live choices save immediately and persist across restarts. Agents
 turned off or no longer installed are excluded from chat's tools. Claude Code
 requires its installed ACP adapter. Codex uses its native CLI bridge when no
-ACP adapter is installed. Chat delegates through
+ACP adapter is installed. The Cursor agent runs as `cursor-agent acp` with its
+own login or `CURSOR_API_KEY`
+([`docs/coder/runtime/cursor.md`](../../docs/coder/runtime/cursor.md)).
+Chat delegates through
 `acp_subagent` using a registered ID; it cannot choose an executable.
 Coder starts tools and subagents with full filesystem and network access.
 Native Codex bypasses approvals and its sandbox, and ACP permission requests

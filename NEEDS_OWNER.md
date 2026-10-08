@@ -60,19 +60,6 @@ proxies, and holds its frame rate. P3 now serves a 21,467,658-byte kit with
 60.5 MiB of decoded textures; B4 (#10908) still needs web and phone tiers.
 Repeat the physical-device measurements after that tier work.
 
-## Upload the kit town's baked light layers (#10906)
-
-The kit town's light layers are pinned by `KIT_BAKE_SHA256` in
-`crates/verse-zone-everglade/src/zones/everglade_pack/kit_bake.rs` and live
-only in `~/.openagents/verse/private/medieval-town/bakes/` and the zone
-cache. Desktops that download the kit fetch them from
-`https://openagents.com/everglade/kit/bake/<KIT_BAKE_SHA256>.vlay`. Copy
-the pinned file to `gs://openagentsgemini-verse-private-assets/bakes/`
-and serve it at that path as the kit pack is served (the website image
-does not copy it yet).
-Until then, a desktop without the file in its cache bakes the town's light
-at load as before.
-
 ## Admit the villagers' fuller days (town clock)
 
 The town clock now runs by default. On it, a daylight town hour is 4.25
@@ -2116,3 +2103,16 @@ origin. Check physical IME, gesture clipboard denial, keyboard accessories,
 glyph coverage, and WebGPU/WebGL2 behavior on supported devices. Scratch hosts,
 synthetic grants, and retained fixture threads activate no owner's executor,
 retail shell, commercial lane, or wallet.
+
+## Everglade destruction: 20 destroyed buildings on desktop (#10941)
+
+The code freezes evicted buildings and turns timed regrowth off in
+`dev-destruction` builds (PR #10989); the desktop checks need a real GPU:
+
+1. Run the desktop Verse build with `--features dev-destruction` at High
+   quality and destroy 20 buildings in a row. All 20 stay destroyed.
+2. Walk 100 m away and wait 2 minutes. Nothing regrows. Press `R`; the
+   town is whole again.
+3. Record the frame time before and after the 20 destroyed buildings
+   (the raised caps are 24 buildings and 1500 pieces). If the frame time
+   drops under 60 fps, open an issue with both numbers.

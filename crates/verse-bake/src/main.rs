@@ -44,7 +44,7 @@ use verse_pbr::pbr::textured::TexturedScene;
 
 const USAGE: &str = "usage: verse-bake [--fixture | --scene FILE.glb | --everglade PACK.vtp] \
 [--backend cpu|gpu] [--compare] [--threads N] [--out DIR] [--vertex-rays N] \
-[--probe-rays N] [--bounces N] [--sun-rays N] [--seed N] [--quick] [--layers [--check]]";
+[--probe-rays N] [--bounces N] [--sun-rays N] [--seed N] [--quick] [--layers [--check | --reuse-only]]";
 
 /// CPU workers unless `--threads` asks for more, so a bake leaves a shared
 /// machine room for builds and its window server.
@@ -79,6 +79,7 @@ struct Options {
     quick: bool,
     layers: bool,
     check: bool,
+    reuse_only: bool,
 }
 
 enum Source {
@@ -102,6 +103,7 @@ fn parse(args: impl IntoIterator<Item = String>) -> Result<Options, String> {
         quick: false,
         layers: false,
         check: false,
+        reuse_only: false,
     };
     let mut args = args.into_iter();
     while let Some(arg) = args.next() {
@@ -136,9 +138,13 @@ fn parse(args: impl IntoIterator<Item = String>) -> Result<Options, String> {
             "--quick" => options.quick = true,
             "--layers" => options.layers = true,
             "--check" => options.check = true,
+            "--reuse-only" => options.reuse_only = true,
             "-h" | "--help" => return Err(USAGE.into()),
             other => return Err(format!("unknown argument {other}\n{USAGE}")),
         }
+    }
+    if options.reuse_only && (!options.layers || options.check) {
+        return Err("--reuse-only requires --layers and cannot accompany --check".into());
     }
     Ok(options)
 }
@@ -467,6 +473,33 @@ fn layered(
         return check_layers(&options.out, &verse_bake::hex(&digest));
     }
     let key = verse_bake::hex(&verse_bake::layers_key(scene, light, settings));
+    if options.reuse_only {
+        let path = options.out.join(format!("{key}.vlay"));
+        let receipt_path = options
+            .out
+            .join(format!("{key}.layers.{}.json", options.backend.label()));
+        let receipt: serde_json::Value = serde_json::from_slice(
+            &std::fs::read(&receipt_path)
+                .map_err(|e| format!("{}: {e}; reuse does not bake", receipt_path.display()))?,
+        )
+        .map_err(|e| e.to_string())?;
+        let bytes = std::fs::read(&path)
+            .map_err(|e| format!("{}: {e}; reuse does not bake", path.display()))?;
+        let digest = verse_bake::hex(&digest);
+        verify_reuse_receipt(&receipt, &key, &digest, &bytes)?;
+        let layers = verse_pbr::pbr::baked_layers::Layers::decode(&bytes)?;
+        if layers.scene != digest || layers.vertex_count() != scene.vertices.len() {
+            return Err("The completed layers do not match the current scene".into());
+        }
+        let file_digest = verse_bake::hex(&sha2::Sha256::digest(&bytes));
+        println!("pub const KIT_BAKE_SHA256: &str = \"{file_digest}\";");
+        println!("pub const KIT_BAKE_BYTES: u64 = {};", bytes.len());
+        eprintln!(
+            "verse-bake: reused verified layers at {} without baking",
+            path.display()
+        );
+        return Ok(());
+    }
     eprintln!(
         "verse-bake: {source}: {} vertices, {} triangles, {} emissive, {} suns, layers {}",
         scene.vertices.len(),
@@ -602,4 +635,50 @@ fn check_layers(dir: &Path, digest: &str) -> Result<(), String> {
 #[cfg(not(feature = "everglade"))]
 fn check_layers(_: &Path, _: &str) -> Result<(), String> {
     Err("--check needs the everglade feature".into())
+}
+
+/// Checks the completed artifact's receipt without trusting its filename.
+fn verify_reuse_receipt(
+    receipt: &serde_json::Value,
+    key: &str,
+    scene: &str,
+    bytes: &[u8],
+) -> Result<(), String> {
+    let digest = verse_bake::hex(&sha2::Sha256::digest(bytes));
+    if receipt["schema"] != "openagents.verse-bake.layers-receipt.v1"
+        || receipt["dirty"] != false
+        || receipt["bake_key"] != key
+        || receipt["scene"]["digest"] != scene
+        || receipt["layers"]["sha256"] != digest
+        || receipt["layers"]["bytes"].as_u64() != Some(bytes.len() as u64)
+    {
+        return Err(
+            "The completed layers receipt does not match the current scene, recipe, or bytes"
+                .into(),
+        );
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod reuse_tests {
+    use super::*;
+
+    #[test]
+    fn reuse_refuses_changed_scene_recipe_dirty_source_and_corrupt_bytes() {
+        let bytes = b"completed layer bytes";
+        let receipt = json!({"schema":"openagents.verse-bake.layers-receipt.v1", "dirty":false,
+            "bake_key":"recipe", "scene":{"digest":"scene"},
+            "layers":{"sha256":verse_bake::hex(&sha2::Sha256::digest(bytes)), "bytes":bytes.len()}});
+        assert!(verify_reuse_receipt(&receipt, "recipe", "scene", bytes).is_ok());
+        assert!(verify_reuse_receipt(&receipt, "other", "scene", bytes).is_err());
+        assert!(verify_reuse_receipt(&receipt, "recipe", "other", bytes).is_err());
+        assert!(verify_reuse_receipt(&receipt, "recipe", "scene", b"corrupt").is_err());
+        let mut dirty = receipt;
+        dirty["dirty"] = json!(true);
+        assert!(verify_reuse_receipt(&dirty, "recipe", "scene", bytes).is_err());
+        assert!(parse(["--reuse-only".to_owned()]).is_err());
+        assert!(parse(["--layers", "--reuse-only", "--check"].map(str::to_owned)).is_err());
+        assert!(parse(["--layers", "--reuse-only"].map(str::to_owned)).is_ok());
+    }
 }

@@ -115,13 +115,16 @@ The registry has four entries:
   `crates/verse-zone-everglade/src/zones/everglade_pack/kit.rs`, and it runs
   only on a machine with the private export
   (`docs/verse/everglade-medieval-refactor.md`).
-- `everglade-kit-bake` runs `verse-bake --layers` over the Everglade pack
-  with the pinned kit pack installed to regenerate, and the same command
-  with `--check` to check that the pinned layers fit the scene the sources
-  build. The layers are derived from licensed geometry, so the entry pins
+- `everglade-kit-bake` runs `verse-bake --layers --reuse-only` over the
+  Everglade pack with the pinned kit installed. Put the completed VLAY and
+  its clean CPU receipt in `~/.openagents/verse/private/medieval-town/bakes`.
+  Reuse verifies the current scene and recipe key, receipt, byte digest,
+  and decoded vertex count. Missing or mismatched results fail; the queue
+  never starts a bake. The separate `--layers --check` command verifies
+  that the pinned layers fit the scene the sources build. The layers are derived from licensed geometry, so the entry pins
   no file, only `KIT_BAKE_SHA256` and `KIT_BAKE_BYTES` in
   `crates/verse-zone-everglade/src/zones/everglade_pack/kit_bake.rs`. A CPU
-  bake takes about half an hour.
+  bake remains an explicit offline operation, outside queue retries.
 
 A generated fixture or a lockfile can join the queue with a file of its
 own.
