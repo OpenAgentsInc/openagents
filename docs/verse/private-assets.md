@@ -5,18 +5,20 @@ Status: implemented on desktop, October 6, 2026 (#10769, #10770, #10771,
 
 Verse can draw licensed 3D assets that this public repository must never
 hold. A licensed asset, such as a Fab listing under the standard license,
-may be used in a product, but its raw files may not be redistributed. Every
-other piece of Verse content is committed under `assets/verse/` and served
-from public URLs, so a licensed asset needs its own path: a private registry
-on the owner's Google Cloud project, a conversion command that uploads only
-our compiled pack, a broker that hands a short-lived download link to the
-keys a manifest names, and placements that live on the owner's computer
-rather than in code.
+may be used in a product, but its raw files may not be redistributed.
+Private characters use a registry on the owner's Google Cloud project, a
+conversion command that uploads only the compiled pack, a broker that gives
+authorized keys a short-lived download link, and placements on the owner's
+computer. Licensed town kits use a separate pack served to every client,
+with committed IDs, placements, and proxies.
 
 The [GCP resources](../deployment/verse-private-assets.md) record what runs
 and how to operate it.
 
-## Rules
+## Private characters
+
+Private characters use the owner-local registry and broker. Licensed town
+kits follow the [licensed-kit rules](#licensed-kits) below.
 
 - Never commit a vendor file, converted geometry, a texture, or a pack of a
   licensed asset. Local builds go under `~/.openagents/verse/private-build/`,
@@ -25,13 +27,39 @@ and how to operate it.
 - Committed code holds no reference to a private asset: no name, digest,
   length, or position. Placements live in owner-local configuration
   (`~/.openagents/verse/private-assets.json`).
-- A private pack never enters the Everglade or Grid packs, and the web build
-  has no private path. The Everglade web image copies only
-  `assets/verse/everglade/*.vtp`.
+- A private character pack never enters the Everglade or Grid packs. The
+  web build has no private-character path.
 - No API key or service-account key exists anywhere. The broker runs on
   Cloud Run under its own service account and signs through the IAM
   Credentials API with Google-managed keys. The upload command uses the
   owner's own `gcloud` login.
+
+## Licensed kits
+
+A licensed kit supplies the town's building pieces. The owner approved
+this class on October 7, 2026, for the Modular Medieval Town pack that
+Everglade's houses use
+([Everglade medieval refactor](everglade-medieval-refactor.md)). It follows
+its own rules:
+
+- Its vendor files, converted geometry, textures, and compiled pack never
+  enter the repository. The export and the builds stay under
+  `~/.openagents/verse/private/medieval-town/`; the bucket keeps the vendor
+  files under `vendor/medieval-town/` and the compiled packs under
+  `packs/`.
+- Committed code may name its pieces by IDs of our own (such as
+  `kit/wall-4`), place them, and record each piece's box, the recipe that
+  maps our IDs to the vendor's mesh names, and the compiled pack's digest
+  and length (`everglade_pack::kit`). Collision, navigation, breaking, and
+  the world tree come from those committed boxes, never from the licensed
+  meshes.
+- The compiled pack ships in builds and is served from the OpenAgents web
+  origin to every client. The web image copies
+  it from the bucket at build time, so the repository holds no copy.
+- Every build without the pack, such as a contributor's checkout or a test,
+  draws committed proxies in the public pack's own images.
+- A new digest lands only through the artifact queue
+  (`openagents artifact submit everglade-kit`).
 
 ## The registry
 

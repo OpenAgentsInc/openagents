@@ -340,7 +340,20 @@ Row's footbridge, into Walden Woods. The run is shallow: a walker wades
 across it anywhere or crosses the footbridge's deck, which, with the
 jetties and the rowboats, breaks like the other props.
 
-The city's buildings are a table in `layout::city`. Most are the workshop's
+Since October 7, 2026, the town's vernacular houses are built from the
+licensed Modular Medieval Town kit ([Everglade medieval
+refactor](everglade-medieval-refactor.md)): 65 medieval kit houses
+(`layout::kit_house`) on Stoop Lane, Main Street, the Fountain Plaza,
+Market Row, in the Lantern Quarter, the Knowledge, Foundry, and Creative
+Districts, and the first town around the Commons, with the plaza's
+fountain, stalls, and Main Street's lamps. The kit pack loads beside the
+Everglade pack from the OpenAgents web origin; without it the houses draw
+as committed proxies. The landmarks, Brownstone Row, the cabins in the
+woods, and the farm keep the models this section describes. The rest of
+this section describes the town as it stood before, and parts of it still
+hold for those buildings.
+
+The city's buildings are a table in `layout::city`. Most were the workshop's
 own kit pieces, one to three stories under round-tile roofs, painted in
 varied plaster and roof colors, and each wall run blocks walking as one
 footprint. Seventy-four places hold a whole generated building instead

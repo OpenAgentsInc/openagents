@@ -28,6 +28,8 @@ use std::f32::consts::{FRAC_PI_2, PI};
 pub const STORY: f32 = 4.5;
 /// A wall's height, m.
 pub const WALL: f32 = 4.0;
+/// The kit chimney's height over its base, m (`kit/chimney`'s box).
+const CHIMNEY_TALL: f32 = 3.89;
 /// How high the ground floor stands over the ground at the lot's center, m:
 /// the plinth's 2 m less the 1.25 m it is sunk.
 pub const FLOOR_RISE: f32 = 0.75;
@@ -483,13 +485,29 @@ impl KitHouse {
                 x += 2.0;
             }
         }
-        if noise(self.seed, 7) < 0.6 {
-            let side = if noise(self.seed, 8) < 0.5 { -1.0 } else { 1.0 };
-            // Through one slope, 2 m down it from the ridge.
-            let x = side * (half - 1.5);
-            let at = if along_front { [x, -2.0] } else { [2.0, -x] };
+        if let Some(at) = self.chimney_at() {
             put("kit/chimney", at, eaves + 1.0, 0.0);
         }
+    }
+
+    /// Where the chimney stands, if the house has one, in the house's frame:
+    /// through one slope, 2 m down it from the ridge.
+    fn chimney_at(&self) -> Option<[f32; 2]> {
+        if noise(self.seed, 7) >= 0.6 {
+            return None;
+        }
+        let along_front = (self.depth - 10.0).abs() <= (self.width - 10.0).abs();
+        let half = if along_front { self.width } else { self.depth } / 2.0;
+        let side = if noise(self.seed, 8) < 0.5 { -1.0 } else { 1.0 };
+        let x = side * (half - 1.5);
+        Some(if along_front { [x, -2.0] } else { [2.0, -x] })
+    }
+
+    /// The top of the chimney, where its smoke rises, x, y, and z, m.
+    #[must_use]
+    pub fn chimney_top(&self) -> Option<[f32; 3]> {
+        let [x, z] = self.world(self.chimney_at()?);
+        Some([x, self.eaves() + 1.0 + CHIMNEY_TALL, z])
     }
 
     /// The axis-aligned box around a box of the house's frame.

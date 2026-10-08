@@ -1045,10 +1045,11 @@ fn the_city_is_sixteen_times_the_glade_and_every_door_opens_from_the_spawn() {
         assert!(!blockers.iter().any(|b| b.contains(x, z, 0.0)));
     }
     // Each district has its buildings: dozens of roofs, not one hall,
-    // kit-built and generated.
-    let roofs = layout::placements()
+    // kit-built, medieval kit-built (one ridge end each), and generated.
+    let placements = layout::placements();
+    let roofs = placements
         .iter()
-        .filter(|p| p.model == layout::HOUSE_ROOF)
+        .filter(|p| p.model == layout::HOUSE_ROOF || p.model == "kit/ridge-end")
         .count();
     let generated = layout::generated()
         .iter()
@@ -1216,22 +1217,16 @@ fn brownstone_row_crosses_glade_run_on_its_footbridge() {
         last = *top;
     }
     assert!((last - height(bx + 4.0, bz)).abs() <= solids::STEP);
-    // Every generated landmark and building is in the pack and placed.
+    // Every generated landmark and building is in the pack and placed; the
+    // vernacular houses and the plaza's fountain are the medieval kit's.
     let placements = layout::placements();
     for model in [
         "generated/observatory",
-        "generated/fountain",
         "generated/bandshell",
         "generated/market_stall",
         "generated/library",
-        "generated/tavern",
-        "generated/market_hall",
-        "generated/corner_shop",
-        "generated/l_house",
         "generated/cottage_tower",
         "generated/narrow_house",
-        "generated/tall_house",
-        "generated/dormer_house",
         "generated/footbridge",
     ] {
         assert!(placements.iter().any(|p| p.model == model), "{model}");

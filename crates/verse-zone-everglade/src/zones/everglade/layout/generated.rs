@@ -109,55 +109,6 @@ pub const LIBRARY: Model = Model {
     inside: None,
 };
 
-pub const TAVERN: Model = Model {
-    name: "generated/tavern",
-    blocks: &[[-6.2, 6.2, -8.1, 0.1, 6.12]],
-    roofs: &[gable([0.0, -3.6], true, [5.45, 7.1], 5.55, 12.1)],
-    front: [0.0, 0.9],
-    inside: None,
-};
-
-/// The market hall's open arcade: posts on three sides and a closed back
-/// wall, with the hall floor above them.
-pub const MARKET_HALL: Model = Model {
-    name: "generated/market_hall",
-    blocks: &[
-        [-6.26, -5.74, -8.26, 0.26, 6.12],
-        [5.74, 6.26, -8.26, 0.26, 6.12],
-        [-4.26, -3.74, -0.26, 0.26, 6.12],
-        [-2.26, -1.74, -0.26, 0.26, 6.12],
-        [-0.26, 0.26, -0.26, 0.26, 6.12],
-        [1.74, 2.26, -0.26, 0.26, 6.12],
-        [3.74, 4.26, -0.26, 0.26, 6.12],
-        [-6.0, 6.0, -8.31, -7.9, 6.12],
-    ],
-    roofs: &[
-        gable([-3.0, -3.65], false, [3.55, 5.2], 5.5, 11.0),
-        gable([3.0, -3.65], false, [3.55, 5.2], 5.5, 11.0),
-    ],
-    front: [1.0, 1.5],
-    inside: Some([1.0, -3.0]),
-};
-
-pub const CORNER_SHOP: Model = Model {
-    name: "generated/corner_shop",
-    blocks: &[[-3.2, 3.2, -8.1, 0.1, 6.12]],
-    roofs: &[gable([0.0, -3.95], false, [4.1, 4.8], 5.5, 11.0)],
-    front: [0.0, 0.9],
-    inside: None,
-};
-
-pub const L_HOUSE: Model = Model {
-    name: "generated/l_house",
-    blocks: &[[-4.1, 0.1, -4.0, 0.1, 6.12], [-4.1, 4.1, -10.1, -4.0, 6.12]],
-    roofs: &[
-        gable([0.0, -7.05], true, [3.9, 4.8], 5.5, 11.0),
-        gable([-2.0, -2.0], false, [2.8, 2.4], 5.5, 9.2),
-    ],
-    front: [3.0, -3.1],
-    inside: None,
-};
-
 pub const COTTAGE_TOWER: Model = Model {
     name: "generated/cottage_tower",
     blocks: &[[-3.1, 3.1, -6.1, 0.1, 3.12], [-5.0, -1.6, -2.3, 1.1, 9.0]],
@@ -208,19 +159,6 @@ pub const MUSIC_HALL: Model = Model {
     inside: None,
 };
 
-/// The meeting hall, with its porch posts.
-pub const MEETING_HALL: Model = Model {
-    name: "generated/meeting_hall",
-    blocks: &[
-        [-6.1, 6.1, -10.1, 0.1, 4.16],
-        [-2.45, -2.15, 2.15, 2.5, 4.16],
-        [2.15, 2.45, 2.15, 2.5, 4.16],
-    ],
-    roofs: &[gable([0.0, -5.0], false, [6.8, 5.3], 4.16, 10.07)],
-    front: [0.0, 3.4],
-    inside: None,
-};
-
 /// The boathouse: its arch faces the water and its door is on its west
 /// side.
 pub const BOATHOUSE: Model = Model {
@@ -237,15 +175,6 @@ pub const BOARDWALK_CAFE: Model = Model {
     blocks: &[[-4.1, 4.1, -6.1, 0.1, 3.27]],
     roofs: &[gable([0.0, -3.0], true, [3.7, 4.3], 3.27, 8.11)],
     front: [1.0, 1.6],
-    inside: None,
-};
-
-/// The bakery and its bread oven on its east side (+x).
-pub const BAKERY: Model = Model {
-    name: "generated/bakery",
-    blocks: &[[-3.1, 3.1, -8.1, 0.1, 6.12], [3.0, 4.55, -6.2, -3.05, 2.5]],
-    roofs: &[gable([0.0, -3.8], false, [3.6, 4.4], 6.12, 10.89)],
-    front: [-1.0, 0.9],
     inside: None,
 };
 
@@ -281,15 +210,6 @@ pub const CLOCK_TOWER: Model = Model {
     blocks: &[[-2.4, 2.4, -4.6, 0.2, 15.1], [-3.1, 3.1, -12.5, -4.4, 4.16]],
     roofs: &[gable([0.0, -8.72], false, [3.6, 4.3], 4.16, 8.99)],
     front: [0.0, 1.6],
-    inside: None,
-};
-
-/// The guild hall and its round turret at the front's east corner (+x).
-pub const GUILD_HALL: Model = Model {
-    name: "generated/guild_hall",
-    blocks: &[[5.0, 7.6, -1.0, 1.6, 12.0], [-6.1, 6.1, -10.1, 0.1, 6.12]],
-    roofs: &[gable([0.0, -4.7], true, [6.0, 6.5], 6.12, 11.98)],
-    front: [0.0, 0.9],
     inside: None,
 };
 
@@ -357,16 +277,6 @@ pub const COTTAGE_THATCH: Model = Model {
     inside: None,
 };
 
-/// The hipped house. Its landing surface is the middle of the long
-/// slopes; past it the hips fall away to the eaves, onto the walls' top.
-pub const HIP_HOUSE: Model = Model {
-    name: "generated/hip_house",
-    blocks: &[[-5.1, 5.1, -8.1, 0.1, 6.12]],
-    roofs: &[gable([0.0, -4.0], true, [4.5, 2.0], 6.12, 8.52)],
-    front: [-0.5, 0.9],
-    inside: None,
-};
-
 /// The gambrel barn. Its landing surface is the shallow upper roof between
 /// the knees, and a block under the steep lower slopes stops a lander near
 /// their surface.
@@ -375,18 +285,6 @@ pub const GAMBREL_BARN: Model = Model {
     blocks: &[[-5.2, 5.2, -12.2, 0.2, 3.6], [-4.4, 4.4, -12.2, 0.2, 4.9]],
     roofs: &[gable([0.0, -6.0], false, [3.3, 6.35], 5.9, 7.1)],
     front: [2.6, 1.0],
-    inside: None,
-};
-
-/// The sixth round's lighter town houses (`scripts/blender/town_houses.py`):
-/// a narrow shop under a front gable. Its upper floor juts over the
-/// street; the block is the ground floor's. The zone paints each of these
-/// houses in its own colors (`layout::paint`).
-pub const SHOP_HOUSE: Model = Model {
-    name: "generated/shop_house",
-    blocks: &[[-3.9, 3.9, -9.1, 0.1, 6.1]],
-    roofs: &[gable([0.0, -4.28], false, [4.4, 5.28], 6.1, 9.82)],
-    front: [0.0, 1.0],
     inside: None,
 };
 
@@ -424,36 +322,6 @@ pub const BROWNSTONE: Model = Model {
     inside: None,
 };
 
-/// The timber-framed house; its main ridge runs along the street.
-pub const TIMBER_HOUSE: Model = Model {
-    name: "generated/timber_house",
-    blocks: &[[-4.1, 4.1, -9.1, 0.1, 5.9]],
-    roofs: &[gable([0.0, -4.25], true, [5.25, 4.5], 5.9, 9.12)],
-    front: [-2.3, 1.0],
-    inside: None,
-};
-
-/// The Lantern Quarter's inn under its hipped roof.
-pub const LANTERN_INN: Model = Model {
-    name: "generated/lantern_inn",
-    blocks: &[[-5.1, 5.1, -9.1, 0.1, 6.1]],
-    roofs: &[gable([0.0, -4.5], true, [5.05, 1.3], 6.15, 9.45)],
-    front: [0.0, 1.0],
-    inside: None,
-};
-
-/// The eighth round's townhouses (`scripts/blender/town_houses.py`), in
-/// the kit-built townhouses' places: a narrow house of three storeys, each
-/// jettied further over the street, under a steep front gable. The block
-/// is its upper storeys' reach, which the jetties carry 0.9 m forward.
-pub const TALL_HOUSE: Model = Model {
-    name: "generated/tall_house",
-    blocks: &[[-3.1, 3.1, -8.1, 0.1, 8.85]],
-    roofs: &[gable([0.0, -3.55], false, [3.55, 4.95], 8.87, 13.27)],
-    front: [0.6, 1.0],
-    inside: None,
-};
-
 /// A narrow row house of three storeys under a front gable, for Brownstone
 /// Row's terraces, two to a place.
 pub const NARROW_HOUSE: Model = Model {
@@ -461,16 +329,6 @@ pub const NARROW_HOUSE: Model = Model {
     blocks: &[[-2.05, 2.05, -8.05, 0.05, 8.85]],
     roofs: &[gable([0.0, -3.65], false, [2.45, 4.75], 8.87, 12.47)],
     front: [0.85, 1.1],
-    inside: None,
-};
-
-/// Two storeys with the ridge along the street, a balcony across its
-/// jettied upper floor, and two dormers.
-pub const DORMER_HOUSE: Model = Model {
-    name: "generated/dormer_house",
-    blocks: &[[-4.1, 4.1, -8.1, 0.1, 5.9]],
-    roofs: &[gable([0.0, -3.75], true, [4.75, 4.5], 5.92, 9.52)],
-    front: [0.0, 1.2],
     inside: None,
 };
 

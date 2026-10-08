@@ -35,22 +35,15 @@ pub fn build(out: &mut Vec<Placement>, placed: &mut Placed) {
 }
 
 /// The sixth round's houses, which this round dresses.
-pub const LIGHT_HOUSES: [&str; 6] = [
-    "generated/shop_house",
+pub const LIGHT_HOUSES: [&str; 3] = [
     "generated/gambrel_house",
     "generated/stone_cottage",
     "generated/brownstone",
-    "generated/timber_house",
-    "generated/lantern_inn",
 ];
 
 /// The eighth round's townhouses, which the zone paints like the sixth
 /// round's (`layout::paint`) but this round doesn't dress.
-pub const TOWNHOUSES: [&str; 3] = [
-    "generated/tall_house",
-    "generated/narrow_house",
-    "generated/dormer_house",
-];
+pub const TOWNHOUSES: [&str; 1] = ["generated/narrow_house"];
 
 /// The heading that points a model's front from `from` toward `to`.
 fn toward(from: [f32; 2], to: [f32; 2]) -> f32 {
@@ -200,9 +193,8 @@ fn gardens(out: &mut Vec<Placement>, placed: &mut Placed, houses: &[Instance]) {
     }
 }
 
-/// Street furniture before each of the new houses, beside its door on the
-/// side away from its walk: crates and a flower cart by the shops, a bench
-/// and barrels by the inns, and a litter bin or a planter by the homes.
+/// Street furniture beside each generated home's door, away from its walk:
+/// a litter bin or a planter.
 fn fronts(out: &mut Vec<Placement>, placed: &mut Placed, houses: &[Instance]) {
     for (k, house) in houses.iter().enumerate() {
         // A brownstone's areaway rail and stoop fill its front.
@@ -215,18 +207,9 @@ fn fronts(out: &mut Vec<Placement>, placed: &mut Placed, houses: &[Instance]) {
         let local = |x: f32, z: f32| house.world([fx + side * x, z]);
         let outward = house.outward();
         let facing = outward[0].atan2(outward[1]);
-        let pieces: &[(&'static str, f32, f32, f32, Collision)] = match house.model.name {
-            "generated/shop_house" => &[
-                ("generated/crate_stack", 2.4, 0.9, 0.9, Collision::Bounds),
-                ("generated/flower_cart", -2.6, 1.0, 1.0, Collision::Bounds),
-            ],
-            "generated/lantern_inn" => &[
-                ("generated/park_bench", 2.6, 1.2, 0.9, Collision::Bounds),
-                ("generated/barrel", -2.4, 1.0, 0.4, Collision::Bounds),
-                ("generated/barrel", -3.1, 1.3, 0.4, Collision::Bounds),
-            ],
-            _ if k % 3 == 0 => &[("generated/street_bin", 1.6, 1.0, 0.4, Collision::Core(0.25))],
-            _ if k % 3 == 1 => &[("generated/planter", 1.7, 1.0, 0.6, Collision::Bounds)],
+        let pieces: &[(&'static str, f32, f32, f32, Collision)] = match k % 3 {
+            0 => &[("generated/street_bin", 1.6, 1.0, 0.4, Collision::Core(0.25))],
+            1 => &[("generated/planter", 1.7, 1.0, 0.6, Collision::Bounds)],
             _ => &[],
         };
         for &(model, x, z, r, collision) in pieces {

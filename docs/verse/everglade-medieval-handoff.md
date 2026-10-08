@@ -1,18 +1,18 @@
 # Everglade medieval refactor: handoff
 
-> **Stopped mid-work on 2026-10-07 at the owner's request (usage limit).**
-> Unverified work is saved on two branches, not on `main`:
-> - `wip/everglade-medieval-p9` (423c18519a): P9's public-pack cleanup (13
->   stand-in models removed, private-assets.md, zones.md, everglade.md) and the
->   fixes for the three failing `cargo test -p verse --lib zones::everglade`
->   tests (lamps keep 3 m from doors, the plaza bench and cart moved, the
->   Brownstone Row model list). Run that test and the Everglade lib tests, then
->   land it. The pack change must go through the everglade-pack artifact queue.
-> - `wip/everglade-b2-doc` (52ec66fe15): one docs commit on top of B2, whose
->   code landed as 0e0d8afd37.
-> The three `verse zones::everglade` tests still fail on `main` until the first
-> branch lands.
+P9 resumes on October 7, 2026, from the saved
+`wip/everglade-medieval-p9` commit `423c18519a`. Its public-pack cleanup
+removes 13 replaced stand-ins and their far levels, updates the licensed-kit
+documentation, and clears lamps and plaza furniture from doorways and
+walks. The Verse Everglade tests pass (46 tests). The zone library passes
+251 tests; its only failure is the stale public-pack digest, which the
+queue regenerates. The world-tree snapshot and standing-point routes pass
+without a snapshot change. The public pack lands
+through `openagents artifact submit everglade-pack`; its verification is
+recorded below after the queue runs.
 
+The saved `wip/everglade-b2-doc` commit `52ec66fe15` holds one documentation
+commit on top of B2, whose code landed as `0e0d8afd37`.
 
 Status as of October 7, 2026. The plan, its decisions, and the "As built"
 notes are in [Everglade medieval refactor](everglade-medieval-refactor.md).
@@ -32,7 +32,7 @@ The umbrella issue is #10903.
 | P7: the rest of the vernacular | #10900 | `19cc9a02c1` | Closed |
 | P7b: the first town | #10927 | `c9c75765b5`, fix `7e77971050` | Closed |
 | P8: web and phone | #10901 | `df3f5fa15e` | Closed; pack uploaded, Cloud Build grant in place |
-| P9: cleanup | #10902 | see the P9 commit | See its issue |
+| P9: cleanup | #10902 | recovered from `423c18519a` | Verse tests pass; public-pack queue pending |
 | B1: offline baker | #10905 | `0360046732`, `983432c41f` | Closed |
 | B2: lightmap layers | #10906 | by its subagent | See its issue |
 | B3: time of day and destruction | #10907 | none | Not started |
