@@ -129,6 +129,47 @@ fn instance_id(town: &Town, span: &Span) -> Option<u64> {
     )
 }
 
+/// Valid worker deliveries and applied texels, counted across all generations.
+/// Repeated repair of the same vertex counts again. Current progress belongs
+/// only to the active generation; cancelled deliveries never increase it.
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize)]
+pub struct BakedRepairDiagnostics {
+    pub enabled: bool,
+    pub active: bool,
+    pub generation: u64,
+    pub geometry_epoch: u64,
+    pub clock_minute: Option<u64>,
+    pub sun_direction: [f32; 3],
+    pub sun_lux: f32,
+    pub sky_lux: f32,
+    pub ground_lux: f32,
+    pub requests: u64,
+    pub geometry_requests: u64,
+    pub clock_requests: u64,
+    pub invalidations: u64,
+    pub delivered_batches: u64,
+    pub delivered_vertices: u64,
+    pub processed_vertices: u64,
+    pub skipped_vertices: u64,
+    pub applied_batches: u64,
+    pub applied_static_vertices: u64,
+    pub applied_chunk_vertices: u64,
+    pub rejected_chunk_vertices: u64,
+    pub completed_generations: u64,
+    pub completed_geometry_generations: u64,
+    pub completed_clock_generations: u64,
+    pub last_completed_generation: u64,
+    pub current_geometry: bool,
+    pub current_targets: usize,
+    pub current_processed: usize,
+    pub current_skipped: usize,
+    pub current_applied_vertices: usize,
+    pub current_backlog: usize,
+    pub current_complete: bool,
+    pub error_count: u64,
+    pub error: Option<String>,
+}
+
 pub(super) struct Repair {
     queue: RepairQueue,
     pub lights: VertexLights,
@@ -146,6 +187,7 @@ pub(super) struct Repair {
     targets: Arc<[RepairTarget]>,
     membership: Vec<(u64, SourceKey, bool)>,
     error: Option<String>,
+    diagnostics: BakedRepairDiagnostics,
 }
 
 impl Repair {
@@ -170,12 +212,25 @@ impl Repair {
             targets: Arc::from([]),
             membership: Vec::new(),
             error: None,
+            diagnostics: BakedRepairDiagnostics {
+                enabled: true,
+                ..Default::default()
+            },
         }
     }
 
     fn invalidate(&mut self) {
         self.queue.invalidate();
         self.lights.reset();
+        self.diagnostics.invalidations = self.diagnostics.invalidations.saturating_add(1);
+        self.diagnostics.active = false;
+        self.diagnostics.current_targets = 0;
+        self.diagnostics.current_processed = 0;
+        self.diagnostics.current_skipped = 0;
+        self.diagnostics.current_applied_vertices = 0;
+        self.diagnostics.current_backlog = 0;
+        self.diagnostics.current_complete = false;
+        self.diagnostics.error = None;
         self.affected_buildings = None;
         self.ground = Arc::new(Vec::new());
         self.published_fallback = None;
@@ -279,6 +334,7 @@ impl Repair {
             // Invalidate first so a buffered old result cannot restore a stale
             // ground shadow while the immediate fallback remains visible.
             self.queue.invalidate();
+            self.diagnostics.invalidations = self.diagnostics.invalidations.saturating_add(1);
             town.world.baked.clear_repairs();
             self.refresh_ground(town);
             self.publish_fallback(town);
@@ -328,6 +384,29 @@ impl Repair {
             key: super::SEED,
         });
         self.generation = generation;
+        let diagnostics = &mut self.diagnostics;
+        diagnostics.active = true;
+        diagnostics.generation = generation;
+        diagnostics.geometry_epoch = self.geometry_epoch;
+        diagnostics.clock_minute = Some(minute);
+        diagnostics.sun_direction = light.sun_dir.to_array();
+        diagnostics.sun_lux = light.sun_illuminance;
+        diagnostics.sky_lux = light.sky;
+        diagnostics.ground_lux = light.ground;
+        diagnostics.requests = diagnostics.requests.saturating_add(1);
+        if geometry {
+            diagnostics.geometry_requests = diagnostics.geometry_requests.saturating_add(1);
+        } else {
+            diagnostics.clock_requests = diagnostics.clock_requests.saturating_add(1);
+        }
+        diagnostics.current_geometry = geometry;
+        diagnostics.current_targets = self.targets.len();
+        diagnostics.current_processed = 0;
+        diagnostics.current_skipped = 0;
+        diagnostics.current_applied_vertices = 0;
+        diagnostics.current_backlog = self.targets.len();
+        diagnostics.current_complete = self.targets.is_empty();
+        diagnostics.error = None;
         self.lights
             .begin_with_sources(generation, &snapshot, &self.sources.meshes);
         self.seen = Some(seen);
@@ -344,21 +423,85 @@ impl Repair {
             return;
         }
         self.error = batch.error;
+        let diagnostics = &mut self.diagnostics;
+        diagnostics.delivered_batches = diagnostics.delivered_batches.saturating_add(1);
+        diagnostics.processed_vertices = diagnostics
+            .processed_vertices
+            .saturating_add(batch.processed as u64);
+        diagnostics.skipped_vertices = diagnostics
+            .skipped_vertices
+            .saturating_add(batch.skipped as u64);
+        diagnostics.current_processed = diagnostics
+            .current_processed
+            .saturating_add(batch.processed);
+        diagnostics.current_skipped = diagnostics.current_skipped.saturating_add(batch.skipped);
+        diagnostics.current_backlog = diagnostics
+            .current_targets
+            .saturating_sub(diagnostics.current_processed);
+        diagnostics.error = self.error.clone();
+        if self.error.is_some() {
+            diagnostics.error_count = diagnostics.error_count.saturating_add(1);
+        }
+        let mut delivered = 0;
+        let mut applied = 0;
         let mut patches = Vec::new();
         for patch in batch.patches {
             match patch {
-                RepairPatch::Static { first, lights } => patches.push(LightPatch {
-                    first,
-                    lights,
-                    dynamic: true,
-                }),
+                RepairPatch::Static { first, lights } => {
+                    delivered += lights.len();
+                    applied += lights.len();
+                    diagnostics.applied_static_vertices = diagnostics
+                        .applied_static_vertices
+                        .saturating_add(lights.len() as u64);
+                    patches.push(LightPatch {
+                        first,
+                        lights,
+                        dynamic: true,
+                    });
+                }
                 RepairPatch::Chunk { id, first, lights } => {
-                    self.lights.apply(batch.generation, id, first, &lights);
+                    delivered += lights.len();
+                    if self.lights.apply(batch.generation, id, first, &lights) {
+                        applied += lights.len();
+                        diagnostics.applied_chunk_vertices = diagnostics
+                            .applied_chunk_vertices
+                            .saturating_add(lights.len() as u64);
+                    } else {
+                        diagnostics.rejected_chunk_vertices = diagnostics
+                            .rejected_chunk_vertices
+                            .saturating_add(lights.len() as u64);
+                    }
                 }
             }
         }
         if !patches.is_empty() {
             town.world.baked.deliver_patches(patches);
+        }
+        diagnostics.delivered_vertices = diagnostics
+            .delivered_vertices
+            .saturating_add(delivered as u64);
+        diagnostics.current_applied_vertices =
+            diagnostics.current_applied_vertices.saturating_add(applied);
+        if applied > 0 {
+            diagnostics.applied_batches = diagnostics.applied_batches.saturating_add(1);
+        }
+        diagnostics.current_complete = batch.complete
+            && self.error.is_none()
+            && diagnostics.current_processed == diagnostics.current_targets
+            && diagnostics
+                .current_applied_vertices
+                .saturating_add(diagnostics.current_skipped)
+                == diagnostics.current_processed;
+        if diagnostics.current_complete && diagnostics.current_targets > 0 {
+            diagnostics.completed_generations = diagnostics.completed_generations.saturating_add(1);
+            diagnostics.last_completed_generation = batch.generation;
+            if diagnostics.current_geometry {
+                diagnostics.completed_geometry_generations =
+                    diagnostics.completed_geometry_generations.saturating_add(1);
+            } else {
+                diagnostics.completed_clock_generations =
+                    diagnostics.completed_clock_generations.saturating_add(1);
+            }
         }
     }
 }
@@ -400,6 +543,20 @@ impl Town {
             repair.request(self, light, minute);
             repair.poll(self);
         }
+    }
+
+    /// Fixed-size progress counters for selective repair, including pending work.
+    #[must_use]
+    pub fn baked_repair_diagnostics(&self) -> BakedRepairDiagnostics {
+        self.baked_repair
+            .as_ref()
+            .map_or_else(BakedRepairDiagnostics::default, |repair| {
+                repair
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .diagnostics
+                    .clone()
+            })
     }
 
     /// The latest repair worker error, if a request failed.
@@ -903,5 +1060,142 @@ mod tests {
         let repair = town.baked_repair.as_ref().unwrap().lock().unwrap();
         assert_eq!(repair.geometry_epoch, final_epoch);
         assert!(Arc::ptr_eq(&source, &repair.sources.meshes));
+    }
+    #[test]
+    fn diagnostics_track_partial_completion_and_ignore_stale_or_empty_jobs() {
+        let (mut town, send) = fixture();
+        town.poll_baked_repair(light(), 1);
+        let pending = town.baked_repair_diagnostics();
+        assert!(pending.enabled && pending.active);
+        assert_eq!(pending.current_targets, 6);
+        assert_eq!(pending.current_backlog, 6);
+        assert_eq!(pending.applied_batches, 0);
+        assert!(!pending.current_complete);
+        let mut partial = response(&town, [17; 4]);
+        partial.complete = false;
+        partial.processed = 4;
+        partial.skipped = 1;
+        let id = town.pool.instances[0].id;
+        partial.patches = vec![
+            RepairPatch::Static {
+                first: 0,
+                lights: vec![[17; 4]; 2],
+            },
+            RepairPatch::Chunk {
+                id,
+                first: 0,
+                lights: vec![[17; 4]],
+            },
+        ];
+        send.try_send(partial).unwrap();
+        town.poll_baked_repair(light(), 1);
+        let partial = town.baked_repair_diagnostics();
+        assert_eq!(
+            (partial.delivered_batches, partial.delivered_vertices),
+            (1, 3)
+        );
+        assert_eq!(
+            (
+                partial.current_processed,
+                partial.current_skipped,
+                partial.current_backlog
+            ),
+            (4, 1, 2)
+        );
+        assert!(!partial.current_complete);
+        let mut complete = response(&town, [19; 4]);
+        complete.processed = 2;
+        complete.patches = vec![RepairPatch::Chunk {
+            id,
+            first: 1,
+            lights: vec![[19; 4]; 2],
+        }];
+        send.try_send(complete).unwrap();
+        town.poll_baked_repair(light(), 1);
+        let completed = town.baked_repair_diagnostics();
+        assert_eq!(
+            (
+                completed.applied_static_vertices,
+                completed.applied_chunk_vertices
+            ),
+            (2, 3)
+        );
+        assert_eq!(
+            (
+                completed.completed_generations,
+                completed.completed_geometry_generations
+            ),
+            (1, 1)
+        );
+        assert_eq!(completed.current_backlog, 0);
+        assert!(completed.current_complete);
+        assert_eq!(completed.last_completed_generation, completed.generation);
+        send.try_send(response(&town, [99; 4])).unwrap();
+        town.poll_baked_repair(light(), 2);
+        let clock = town.baked_repair_diagnostics();
+        assert_eq!(
+            (
+                clock.requests,
+                clock.geometry_requests,
+                clock.clock_requests
+            ),
+            (2, 1, 1)
+        );
+        assert_eq!(
+            clock.delivered_batches, completed.delivered_batches,
+            "cancelled delivery receives no credit"
+        );
+        assert_eq!(clock.current_backlog, 6);
+        assert!(!clock.current_complete);
+        town.restore();
+        let restored = town.baked_repair_diagnostics();
+        assert!(!restored.active);
+        assert_eq!(
+            restored.completed_generations, 1,
+            "lifetime evidence survives reset"
+        );
+        town.poll_baked_repair(light(), 2);
+        let empty = town.baked_repair_diagnostics();
+        assert_eq!(empty.current_targets, 0);
+        assert!(empty.current_complete);
+        assert_eq!(
+            empty.completed_generations, 1,
+            "empty requests do not prove worker completion"
+        );
+    }
+
+    #[test]
+    fn diagnostics_retain_errors_and_rejected_texels_across_replacement_requests() {
+        let (mut town, send) = fixture();
+        town.poll_baked_repair(light(), 1);
+        let mut failed = response(&town, [99; 4]);
+        failed.processed = 0;
+        failed.patches.clear();
+        failed.error = Some("Test hierarchy failure".into());
+        send.try_send(failed).unwrap();
+        town.poll_baked_repair(light(), 1);
+        let failed = town.baked_repair_diagnostics();
+        assert_eq!(failed.error.as_deref(), Some("Test hierarchy failure"));
+        assert_eq!(failed.error_count, 1);
+        assert!(!failed.current_complete);
+        assert_eq!(failed.completed_generations, 0);
+        town.poll_baked_repair(light(), 2);
+        let replaced = town.baked_repair_diagnostics();
+        assert!(replaced.error.is_none());
+        assert_eq!(replaced.error_count, 1);
+        let mut rejected = response(&town, [99; 4]);
+        rejected.skipped = 5;
+        rejected.patches = vec![RepairPatch::Chunk {
+            id: u64::MAX,
+            first: 0,
+            lights: vec![[99; 4]],
+        }];
+        send.try_send(rejected).unwrap();
+        town.poll_baked_repair(light(), 2);
+        let rejected = town.baked_repair_diagnostics();
+        assert_eq!(rejected.delivered_vertices, 1);
+        assert_eq!(rejected.rejected_chunk_vertices, 1);
+        assert_eq!(rejected.applied_batches, 0);
+        assert!(!rejected.current_complete);
     }
 }

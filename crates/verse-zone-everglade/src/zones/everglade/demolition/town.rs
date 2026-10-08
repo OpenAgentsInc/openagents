@@ -69,6 +69,7 @@ mod baked_repair;
 mod receivers;
 mod rubble;
 mod vertex_lights;
+pub use baked_repair::BakedRepairDiagnostics;
 pub use rubble::MergeStats;
 
 /// Whether this build runs on a browser or a phone, whose budgets are

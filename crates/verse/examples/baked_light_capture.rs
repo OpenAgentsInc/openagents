@@ -1,9 +1,10 @@
 //! Captures the production town clock and measures immutable sun blending.
-//! Usage: baked_light_capture OUTPUT_DIR [PAIRS] [TIMELAPSE_FRAMES]
+//! Usage: baked_light_capture OUTPUT_DIR [PAIRS] [TIMELAPSE_FRAMES] [--preflight-only]
 //! Requires VERSE_KIT_PACK and VERSE_KIT_BAKE for exactly the current scene.
 
 use serde_json::json;
 use sha2::{Digest, Sha256};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use verse::{
@@ -15,12 +16,21 @@ use verse::{
 const WIDTH: u32 = 1920;
 const HEIGHT: u32 = 1080;
 const WARMUP: usize = 16;
+const REPAIR_HOLD_FRAMES: usize = 3600;
+const REPAIR_HOLD_SECONDS: u64 = 180;
+
+type RepairDiagnostics = verse::zones::everglade::demolition::town::BakedRepairDiagnostics;
 
 fn main() -> Result<(), String> {
-    let mut args = std::env::args().skip(1);
+    let args: Vec<_> = std::env::args().skip(1).collect();
+    let preflight_only = args.iter().any(|arg| arg == "--preflight-only");
+    let mut args = args.into_iter().filter(|arg| arg != "--preflight-only");
     let dir = PathBuf::from(args.next().ok_or("Expected an output directory")?);
     let pairs = number(args.next(), 128)?;
     let frames = number(args.next(), 1440)?;
+    if let Some(argument) = args.next() {
+        return Err(format!("Unexpected argument: {argument}"));
+    }
     if pairs < 16 || pairs % 16 != 0 || frames < 2 {
         return Err(
             "Pairs must be a positive multiple of 16; timelapse frames must be at least 2".into(),
@@ -31,6 +41,10 @@ fn main() -> Result<(), String> {
         .join("../..")
         .join(everglade_pack::PACK_DIRECTORY)
         .join(format!("{}.vtp", everglade_pack::PACK_SHA256));
+    let inputs = json!({"base_pack":path_identity(&path)?,
+        "kit":input_identity(everglade_pack::kit::LOCAL_ENV)?,
+        "layers":input_identity(everglade_pack::kit_bake::LOCAL_ENV)?});
+    write_json(&dir.join("inputs.json"), &inputs)?;
     let pack = everglade_pack::ZonePack::load_local(&path)?;
     let layers =
         everglade_pack::kit_bake::offered().ok_or("The capture requires offline light layers")?;
@@ -50,6 +64,17 @@ fn main() -> Result<(), String> {
         ));
     }
     layers.validate()?;
+    let preflight = json!({"schema":"openagents.verse-baked-light-preflight.v1",
+        "verified":true,"scene":digest,"vertices":layers.vertex_count(),"bake_key":layers.bake_key,
+        "inputs":inputs,"captured_before_simulation":true});
+    write_json(&dir.join("preflight.json"), &preflight)?;
+    if preflight_only {
+        println!(
+            "Verified baked scene {digest}; {} vertices",
+            layers.vertex_count()
+        );
+        return Ok(());
+    }
     drop(merged);
     drop(world);
     let mut runtime = WorldRuntime::new();
@@ -82,6 +107,7 @@ fn main() -> Result<(), String> {
         .clone();
     let idle = InputState::default();
     runtime.tick(&idle, 1.0 / 60.0);
+    verify_repair_health(&dir, &repair_diagnostics(&mut runtime)?)?;
     let mut dynamic = runtime.dynamic_mesh();
     dynamic
         .neon
@@ -201,7 +227,7 @@ fn main() -> Result<(), String> {
     let report = json!({"schema":"openagents.verse-baked-light-capture.v1",
         "resolution":[WIDTH,HEIGHT],"adapter":format!("{:?}",adapter),"quality":format!("{:?}",on_renderer.quality().tier),
         "scene":digest,"vertices":layers.vertex_count(),"bake_key":layers.bake_key,
-        "inputs":{"kit":input_identity(everglade_pack::kit::LOCAL_ENV)?,"layers":input_identity(everglade_pack::kit_bake::LOCAL_ENV)?},
+        "inputs":inputs,"inputs_hashed_before_simulation":true,
         "clock":"Unpinned production wall-clock adapter; solar weights, sky brightness and lamp fade use exact town time; sky shape keeps its scheduled cadence",
         "phase_warmup_frames":phase_warmup,
         "timelapse_method":{"frames":frames,"hours":24.0,"pixels":"Selected frames; all other frames complete rendering without pixel extraction",
@@ -262,6 +288,8 @@ fn destruction_capture(
     runtime.set_shot(Some((eye, aim + Vec3::Y * 4.0)));
     let idle = InputState::default();
     runtime.tick(&idle, 1.0 / 60.0);
+    let repair_before = repair_diagnostics(runtime)?;
+    verify_repair_health(dir, &repair_before)?;
     let mut dynamic = runtime.dynamic_mesh();
     dynamic.neon.as_mut().unwrap().temporal_aa = false;
     let view = runtime.view(WIDTH as f32 / HEIGHT as f32);
@@ -308,12 +336,14 @@ fn destruction_capture(
             .iter()
             .filter(|piece| piece.relight)
             .count();
+        let repair = town.baked_repair_diagnostics();
+        verify_repair_health(dir, &repair)?;
         relit_max = relit_max.max(relit);
         hidden_max = hidden_max.max(town.hidden());
         if [360, 480, 600, 900].contains(&frame) {
             let file = format!("destruction-{frame:04}.png");
             write_png(&dir.join(&file), &renderer.render(view, &dynamic, ui)?)?;
-            captures.push(json!({"frame":frame,"file":file,"relit_pieces":relit,"hidden_placements":town.hidden(),"chunks":town.profile().chunks}));
+            captures.push(json!({"frame":frame,"file":file,"relit_pieces":relit,"hidden_placements":town.hidden(),"chunks":town.profile().chunks,"repair":repair}));
         } else {
             renderer.measure(view, &dynamic, ui)?;
         }
@@ -321,6 +351,54 @@ fn destruction_capture(
     if relit_max == 0 || hidden_max == 0 {
         return Err("The meteor capture did not break a baked kit building".into());
     }
+    let after_swarm = repair_diagnostics(runtime)?;
+    let (noon_repair, noon_hold) = drain_repair(runtime, renderer, ui, dir, &repair_before)?;
+    if noon_repair.completed_geometry_generations <= repair_before.completed_geometry_generations {
+        write_json(
+            &dir.join("repair-verification.json"),
+            &json!({"verified":false,"reason":"No selective geometry generation completed",
+                "before":repair_before,"noon":noon_repair,"noon_hold":noon_hold}),
+        )?;
+        return Err("The destruction capture completed no selective geometry repair".into());
+    }
+    let mut dynamic = runtime.dynamic_mesh();
+    dynamic.neon.as_mut().unwrap().temporal_aa = false;
+    write_png(
+        &dir.join("destruction-repaired-noon.png"),
+        &renderer.render(runtime.view(WIDTH as f32 / HEIGHT as f32), &dynamic, ui)?,
+    )?;
+
+    runtime.set_town_clock(town_clock::Clock::DAYTIME.pinned(Some(0.0)));
+    let (night_repair, night_hold) = drain_repair(runtime, renderer, ui, dir, &noon_repair)?;
+    if night_repair.geometry_epoch != noon_repair.geometry_epoch
+        || night_repair.completed_clock_generations <= noon_repair.completed_clock_generations
+        || night_repair.clock_minute == noon_repair.clock_minute
+        || night_repair.sun_direction == noon_repair.sun_direction
+        || night_repair.sun_lux >= noon_repair.sun_lux
+        || night_repair.sky_lux >= noon_repair.sky_lux
+    {
+        write_json(
+            &dir.join("repair-verification.json"),
+            &json!({"verified":false,"reason":"Clock repair did not reuse geometry and follow midnight light",
+                "noon":noon_repair,"night":night_repair,"noon_hold":noon_hold,"night_hold":night_hold}),
+        )?;
+        return Err(
+            "The destruction capture did not repair the same geometry under midnight light".into(),
+        );
+    }
+    let mut dynamic = runtime.dynamic_mesh();
+    dynamic.neon.as_mut().unwrap().temporal_aa = false;
+    let view = runtime.view(WIDTH as f32 / HEIGHT as f32);
+    let phase_warmup = sky_warmup(renderer.quality());
+    for _ in 0..phase_warmup {
+        renderer.measure(view, &dynamic, ui)?;
+    }
+    write_png(
+        &dir.join("destruction-repaired-night.png"),
+        &renderer.render(view, &dynamic, ui)?,
+    )?;
+
+    runtime.set_town_clock(town_clock::Clock::DAYTIME.pinned(Some(12.0)));
     runtime.zone_intent(verse::zones::Intent::Rebuild)?;
     let town = runtime
         .everglade_zone_mut()
@@ -330,18 +408,156 @@ fn destruction_capture(
     if !pristine {
         return Err("Restore did not reset the town's fallback state".into());
     }
+    let repair_restored = town.baked_repair_diagnostics();
+    if repair_restored.active
+        || repair_restored.current_targets != 0
+        || repair_restored.current_backlog != 0
+    {
+        return Err("Restore did not invalidate selective repair work".into());
+    }
     let mut dynamic = runtime.dynamic_mesh();
     dynamic.neon.as_mut().unwrap().temporal_aa = false;
+    let view = runtime.view(WIDTH as f32 / HEIGHT as f32);
+    for _ in 0..phase_warmup {
+        poll_held_zone(runtime)?;
+        dynamic = runtime.dynamic_mesh();
+        dynamic.neon.as_mut().unwrap().temporal_aa = false;
+        renderer.measure(view, &dynamic, ui)?;
+    }
+    let repair_restored_after_poll = repair_diagnostics(runtime)?;
+    verify_repair_health(dir, &repair_restored_after_poll)?;
+    let town = runtime
+        .everglade_zone_mut()
+        .and_then(|zone| zone.town())
+        .unwrap();
+    if repair_restored_after_poll.current_targets != 0
+        || repair_restored_after_poll.current_backlog != 0
+        || town.hidden() != 0
+        || town.site().pieces().iter().any(|piece| piece.relight)
+    {
+        return Err(
+            "Restore warmup revived selective repair targets or changed pristine geometry".into(),
+        );
+    }
     write_png(
         &dir.join("destruction-restored.png"),
-        &renderer.render(runtime.view(WIDTH as f32 / HEIGHT as f32), &dynamic, ui)?,
+        &renderer.render(view, &dynamic, ui)?,
     )?;
+    let verification = json!({"schema":"openagents.verse-baked-repair-verification.v1","verified":true,
+        "before":repair_before,"after_swarm":after_swarm,"noon":noon_repair,"night":night_repair,
+        "restored_before_poll":repair_restored,"restored_after_poll":repair_restored_after_poll,
+        "noon_hold":noon_hold,"night_hold":night_hold,"night_and_restore_sky_warmup_frames_each":phase_warmup,
+        "restore_warmup_simulation_dt":0.0,
+        "noon_image":"destruction-repaired-noon.png","night_image":"destruction-repaired-night.png"});
+    write_json(&dir.join("repair-verification.json"), &verification)?;
     Ok(
         json!({"building_center":[x,z],"building_is_kit":true,"frames":960,"fps":60,
         "pristine":"destruction-pristine.png","restored":"destruction-restored.png",
         "relit_pieces_max":relit_max,"hidden_placements_max":hidden_max,"restore_fallback_reset":pristine,
+        "selective_repair":verification,
         "captures":captures,"timing":"Diagnostic serial rendering; separate blend comparison supplies frame cost"}),
     )
+}
+
+fn repair_diagnostics(runtime: &mut WorldRuntime) -> Result<RepairDiagnostics, String> {
+    runtime
+        .everglade_zone_mut()
+        .and_then(|zone| zone.town())
+        .map(|town| town.baked_repair_diagnostics())
+        .ok_or("The baked town disappeared".into())
+}
+
+fn poll_held_zone(runtime: &mut WorldRuntime) -> Result<(), String> {
+    // Runtime tick ignores dt=0. The zone tick polls one worker batch
+    // while physics time and the pinned town clock remain fixed.
+    let player = runtime.player;
+    runtime
+        .everglade_zone_mut()
+        .ok_or("The baked zone disappeared")?
+        .tick(0.0, &player, &[]);
+    Ok(())
+}
+
+fn repair_healthy(repair: &RepairDiagnostics) -> bool {
+    repair.enabled
+        && repair.error.is_none()
+        && repair.error_count == 0
+        && repair.rejected_chunk_vertices == 0
+}
+
+fn verify_repair_health(dir: &Path, repair: &RepairDiagnostics) -> Result<(), String> {
+    if repair_healthy(repair) {
+        return Ok(());
+    }
+    write_json(
+        &dir.join("repair-verification.json"),
+        &json!({"verified":false,"repair":repair}),
+    )?;
+    Err("Selective repair is disabled, has a worker error, or rejected a chunk patch".into())
+}
+
+fn repair_ready(before: &RepairDiagnostics, repair: &RepairDiagnostics) -> bool {
+    repair_healthy(repair)
+        && repair.active
+        && repair.generation > before.generation
+        && repair.current_targets > 0
+        && repair.current_complete
+        && repair.current_backlog == 0
+        && repair.current_processed == repair.current_targets
+        && repair.current_applied_vertices > 0
+        && repair.current_applied_vertices + repair.current_skipped == repair.current_targets
+        && repair.last_completed_generation == repair.generation
+        && repair.completed_generations > before.completed_generations
+        && repair.applied_batches > before.applied_batches
+        && repair.delivered_vertices > before.delivered_vertices
+        && repair.applied_static_vertices > before.applied_static_vertices
+        && repair.applied_chunk_vertices > before.applied_chunk_vertices
+}
+
+fn drain_repair(
+    runtime: &mut WorldRuntime,
+    renderer: &mut verse::render::Offscreen,
+    ui: &verse::ui::UiBatch,
+    dir: &Path,
+    before: &RepairDiagnostics,
+) -> Result<(RepairDiagnostics, serde_json::Value), String> {
+    let started = std::time::Instant::now();
+    let mut frames = 0;
+    let mut progress = Vec::new();
+    let mut repair = repair_diagnostics(runtime)?;
+    verify_repair_health(dir, &repair)?;
+    while !repair_ready(before, &repair)
+        && frames < REPAIR_HOLD_FRAMES
+        && started.elapsed().as_secs() < REPAIR_HOLD_SECONDS
+    {
+        poll_held_zone(runtime)?;
+        let mut dynamic = runtime.dynamic_mesh();
+        dynamic.neon.as_mut().unwrap().temporal_aa = false;
+        renderer.measure(runtime.view(WIDTH as f32 / HEIGHT as f32), &dynamic, ui)?;
+        frames += 1;
+        repair = repair_diagnostics(runtime)?;
+        verify_repair_health(dir, &repair)?;
+        if frames % 30 == 0 {
+            progress.push(json!({"hold_frame":frames,"wall_seconds":started.elapsed().as_secs_f64(),"repair":repair}));
+        }
+    }
+    let hold = json!({"frames":frames,"wall_seconds":started.elapsed().as_secs_f64(),
+        "frame_limit":REPAIR_HOLD_FRAMES,"wall_seconds_limit":REPAIR_HOLD_SECONDS,
+        "simulation_dt":0.0,"clock":"Pinned; no physics time advances",
+        "method":"Production zone tick polls at most one selective batch per hold frame; each frame completes rendering without pixel extraction",
+        "progress":progress});
+    if !repair_ready(before, &repair) {
+        write_json(
+            &dir.join("repair-verification.json"),
+            &json!({"verified":false,"reason":"Selective repair did not finish within the bounded hold",
+            "before":before,"repair":repair,"hold":hold}),
+        )?;
+        return Err(format!(
+            "Selective repair remains incomplete: {} of {} targets processed after {frames} hold frames",
+            repair.current_processed, repair.current_targets
+        ));
+    }
+    Ok((repair, hold))
 }
 
 fn sky_warmup(quality: verse_engine::quality::Quality) -> usize {
@@ -385,10 +601,32 @@ fn running_clock(hour: f64) -> town_clock::Clock {
 
 fn input_identity(name: &str) -> Result<serde_json::Value, String> {
     let path = std::env::var_os(name).ok_or_else(|| format!("Missing {name}"))?;
-    let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
-    Ok(
-        json!({"path":PathBuf::from(path),"bytes":bytes.len(),"sha256":format!("{:x}",Sha256::digest(&bytes))}),
+    path_identity(Path::new(&path))
+}
+
+fn path_identity(path: &Path) -> Result<serde_json::Value, String> {
+    let path = path.canonicalize().map_err(|e| e.to_string())?;
+    let mut file = std::fs::File::open(&path).map_err(|e| e.to_string())?;
+    let mut hash = Sha256::new();
+    let mut bytes = 0_u64;
+    let mut buffer = [0; 32 * 1024];
+    loop {
+        let count = file.read(&mut buffer).map_err(|e| e.to_string())?;
+        if count == 0 {
+            break;
+        }
+        hash.update(&buffer[..count]);
+        bytes += count as u64;
+    }
+    Ok(json!({"path":path,"bytes":bytes,"sha256":format!("{:x}",hash.finalize())}))
+}
+
+fn write_json(path: &Path, report: &serde_json::Value) -> Result<(), String> {
+    std::fs::write(
+        path,
+        serde_json::to_vec_pretty(report).map_err(|e| e.to_string())?,
     )
+    .map_err(|e| e.to_string())
 }
 
 fn mean_interval(values: &[f64]) -> (f64, f64, f64) {
@@ -417,6 +655,64 @@ fn write_png(path: &Path, pixels: &[u8]) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn selective_capture_requires_current_worker_completion_and_both_receiver_types() {
+        let before = RepairDiagnostics {
+            enabled: true,
+            generation: 7,
+            completed_generations: 2,
+            applied_batches: 3,
+            delivered_vertices: 8,
+            applied_static_vertices: 4,
+            applied_chunk_vertices: 4,
+            ..Default::default()
+        };
+        let complete = RepairDiagnostics {
+            active: true,
+            generation: 8,
+            current_targets: 5,
+            current_processed: 5,
+            current_skipped: 1,
+            current_applied_vertices: 4,
+            current_complete: true,
+            last_completed_generation: 8,
+            completed_generations: 3,
+            applied_batches: 5,
+            delivered_vertices: 12,
+            applied_static_vertices: 6,
+            applied_chunk_vertices: 6,
+            ..before.clone()
+        };
+        assert!(repair_ready(&before, &complete));
+        let mut fallback_only = complete.clone();
+        fallback_only.current_targets = 0;
+        fallback_only.current_processed = 0;
+        fallback_only.current_applied_vertices = 0;
+        fallback_only.current_skipped = 0;
+        assert!(!repair_ready(&before, &fallback_only));
+        let mut old_completion = complete.clone();
+        old_completion.generation += 1;
+        assert!(!repair_ready(&before, &old_completion));
+        let mut unfinished = complete.clone();
+        unfinished.current_complete = false;
+        unfinished.current_backlog = 1;
+        assert!(!repair_ready(&before, &unfinished));
+        let mut missing_chunks = complete.clone();
+        missing_chunks.applied_chunk_vertices = before.applied_chunk_vertices;
+        assert!(!repair_ready(&before, &missing_chunks));
+        let mut missing_ground = complete.clone();
+        missing_ground.applied_static_vertices = before.applied_static_vertices;
+        assert!(!repair_ready(&before, &missing_ground));
+        let mut lost_error = complete.clone();
+        lost_error.error_count = 1;
+        assert!(!repair_ready(&before, &lost_error));
+        let mut rejected = complete;
+        rejected.rejected_chunk_vertices = 1;
+        assert!(!repair_ready(&before, &rejected));
+        assert!(!repair_ready(&before, &RepairDiagnostics::default()));
+    }
+
     #[test]
     fn paired_interval_retains_order_noise_and_uses_all_balanced_batches() {
         let values: Vec<_> = (0..128)

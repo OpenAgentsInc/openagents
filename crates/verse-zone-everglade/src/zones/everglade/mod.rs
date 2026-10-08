@@ -700,6 +700,19 @@ impl Everglade {
             .unwrap_or_else(Self::afternoon)
     }
 
+    /// Repairs use the current light; the load bake keeps its stable key.
+    #[cfg(any(not(target_arch = "wasm32"), test))]
+    fn repair_light(&self) -> BakeLight {
+        let key = self
+            .look
+            .and_then(|look| look(self.elapsed).key)
+            .unwrap_or_else(|| {
+                baked::clock_light(self.light, self.now, self.clock.pinned_hour().is_some())
+                    .key(Self::afternoon())
+            });
+        BakeLight::from_key(&key)
+    }
+
     /// The afternoon light: a warm sun from behind the approach that casts
     /// shadows over the clearing, a cool rim, and sky and ground fill.
     fn afternoon() -> Key {
@@ -1485,7 +1498,7 @@ impl Everglade {
         }
         #[cfg(not(target_arch = "wasm32"))]
         if self.baked.as_ref().is_some_and(|baked| baked.active) {
-            let light = BakeLight::from_key(&self.key());
+            let light = self.repair_light();
             let minute =
                 self.now
                     .day
