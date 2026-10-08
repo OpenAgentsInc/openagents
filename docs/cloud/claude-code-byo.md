@@ -73,6 +73,19 @@ October 8, 2026. Recheck both before each availability decision.
 | Parallel fleets | Require the user's own API key or cloud credential. |
 | Phone and web observation | Observers see the task and its evidence, never the credential. |
 
+## Implemented (BYO-01, #11008)
+
+- `coder_cloud::claude` pins the engine (`claude`, `@anthropic-ai/claude-code`
+  at `VERSION`, installed at `/usr/local/bin/claude` by
+  `scripts/cloud/coder-host-setup.sh`) and refuses `CLAUDE_CODE_OAUTH_TOKEN`
+  and any claude.ai login value in every Coder credential path.
+- `secret-screen` recognizes and redacts claude.ai logins; Cloud traces,
+  events, and results pass through it, and artifacts refuse
+  `.credentials.json`.
+- The web workbench's "Sign in to Claude" opens a terminal on the user's
+  computer running the unmodified program; the terminal host keeps only
+  digests of typed input. The account sign-in form refuses claude.ai logins.
+
 ## Existing docs this supersedes
 
 - `2026-10-02-boat-sdk-plan.md` describes connecting Claude Pro or Max on Boat's

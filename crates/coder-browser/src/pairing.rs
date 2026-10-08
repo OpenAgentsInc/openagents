@@ -26,6 +26,37 @@ pub struct Pins {
     pub terminal: Option<coder_pty::wire::TerminalRef>,
     #[serde(default)]
     pub session: Option<String>,
+    /// An engine sign-in to run in a fresh host terminal once enrolled.
+    #[serde(default)]
+    pub sign_in: Option<SignIn>,
+}
+/// Run one engine's own sign-in program, unmodified and with no arguments,
+/// in a new terminal on the user's computer. The user completes the
+/// engine vendor's flow there; the page never sees or keeps the login.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SignIn {
+    /// The absolute program path on the host.
+    pub program: String,
+    /// The host workspace common ID the terminal opens in.
+    pub workspace: String,
+}
+impl SignIn {
+    /// The exact terminal open request: the program, no arguments, and no
+    /// environment, so every sign-in method the program offers stays.
+    #[must_use]
+    pub fn open(&self, request: String) -> coder_pty::wire::Open {
+        coder_pty::wire::Open::new(
+            request,
+            self.workspace.clone(),
+            "",
+            coder_pty::wire::Launch::Command {
+                program: self.program.clone(),
+                args: vec![],
+            },
+            coder_pty::wire::Size::new(24, 80),
+        )
+    }
 }
 impl Pins {
     /// Require secure WebSockets, except for an explicitly opted-in same-host loopback fixture.
@@ -97,6 +128,21 @@ impl Pins {
                     .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
         }) {
             return Err(Error::Malformed);
+        }
+        if let Some(sign_in) = &self.sign_in {
+            if !id(&sign_in.workspace)
+                || !sign_in.program.starts_with('/')
+                || sign_in.program.len() > 256
+                || sign_in.program.chars().any(char::is_control)
+                || self.terminal.is_some()
+                || self.session.is_some()
+            {
+                return Err(Error::Malformed);
+            }
+            sign_in
+                .open(format!("{:064x}", 0))
+                .check()
+                .map_err(|_| Error::Malformed)?;
         }
         Ok(if local {
             RelayPolicy::LoopbackTest
@@ -203,6 +249,7 @@ mod tests {
             loopback: false,
             terminal: None,
             session: None,
+            sign_in: None,
         }
     }
     fn redemption(pairing: &Pairing, terminal: bool) -> (HostInvitation, Pending, Event) {
@@ -419,6 +466,41 @@ mod tests {
         assert!(p.validate("http://host.example").is_err());
         p.route = Some("ws://127.0.0.1:8888/reach?credential=no".into());
         assert!(p.validate("http://127.0.0.1:7777").is_err());
+    }
+    #[test]
+    fn engine_sign_in_opens_the_exact_program_with_nothing_added() {
+        let mut p = pins();
+        let sign_in = SignIn {
+            program: "/usr/local/bin/claude".into(),
+            workspace: "a".repeat(64),
+        };
+        p.sign_in = Some(sign_in.clone());
+        assert!(p.validate("https://openagents.com").is_ok());
+        let open = sign_in.open("b".repeat(64));
+        assert_eq!(
+            open.launch,
+            coder_pty::wire::Launch::Command {
+                program: "/usr/local/bin/claude".into(),
+                args: vec![]
+            }
+        );
+        assert!(open.env.is_empty() && open.dir.is_empty());
+        for bad in [
+            SignIn {
+                program: "claude".into(),
+                workspace: "a".repeat(64),
+            },
+            SignIn {
+                program: "/usr/local/bin/claude".into(),
+                workspace: "checkout".into(),
+            },
+        ] {
+            p.sign_in = Some(bad);
+            assert!(p.validate("https://openagents.com").is_err());
+        }
+        p.sign_in = Some(sign_in);
+        p.session = Some("c".repeat(64));
+        assert!(p.validate("https://openagents.com").is_err());
     }
     #[test]
     fn each_page_generates_a_different_device() {

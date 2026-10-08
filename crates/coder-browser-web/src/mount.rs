@@ -4,7 +4,7 @@ use crate::{Composition, gpu::Gpu};
 use coder_browser::{
     Direct, Incoming, Relayed, State,
     browser::{self, Socket},
-    pairing::{Pairing, Pins},
+    pairing::{Pairing, Pins, SignIn},
     workbench::Workbench,
 };
 use coder_host_wire::TermRequest;
@@ -49,6 +49,7 @@ enum Command {
     Attach(TerminalRef, Mode),
     Detach,
     Thread(ResourceRef, Option<u64>),
+    SignIn(SignIn),
 }
 
 struct Runtime {
@@ -575,7 +576,10 @@ impl Runtime {
                 }
                 runtime.connected.set(true);
                 runtime.connecting.set(false);
-                *runtime.command.borrow_mut() = Some(Command::List);
+                *runtime.command.borrow_mut() = Some(match runtime.pins.sign_in.clone() {
+                    Some(sign_in) => Command::SignIn(sign_in),
+                    None => Command::List,
+                });
                 runtime.clone().transport(link, epoch).await
             };
             let result = Abortable::new(work, registration).await;
@@ -751,6 +755,41 @@ impl Runtime {
                         *self.terminal.borrow_mut() = Some(terminal);
                         *self.attachment.borrow_mut() = Some(attachment);
                         self.notice.set_text_content(Some("Attached to the exact native terminal. Waiting for its current snapshot and typist state…"));
+                    }
+                    Command::SignIn(sign_in) => {
+                        if self.model.borrow().is_some() {
+                            return Err(failure());
+                        }
+                        // The engine's own program, unmodified and with no
+                        // arguments, in a new terminal on the user's
+                        // computer. Its sign-in completes there; this page
+                        // keeps no input and never reads the login.
+                        let result = link
+                            .request(TermRequest::Open(
+                                sign_in.open(coder_browser::new_request_id()),
+                            ))
+                            .await
+                            .map_err(|_| failure())?;
+                        if !self.enrollment_current(epoch) {
+                            return Err(failure());
+                        }
+                        let Some(Value::Opened { terminal, .. }) = result.value else {
+                            self.notice.set_text_content(Some("The computer did not open the sign-in terminal. Check that this computer's engine is installed and that this device holds terminal access."));
+                            self.drain_incoming(&mut link)?;
+                            self.pending.set(false);
+                            continue;
+                        };
+                        if terminal.generation
+                            != coder_browser::terminal_generation(
+                                &self.pins.host,
+                                self.pins.generation,
+                            )
+                        {
+                            return Err(failure());
+                        }
+                        self.notice.set_text_content(Some("Opened the sign-in terminal on your computer. Complete the sign-in there; OpenAgents never sees or keeps your login."));
+                        *self.command.borrow_mut() =
+                            Some(Command::Attach(terminal, Mode::Interact));
                     }
                     Command::Detach => {
                         let terminal = self.terminal.borrow().clone();

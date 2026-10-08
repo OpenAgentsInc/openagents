@@ -64,7 +64,8 @@ async fn index(State(app): State<App>, headers: HeaderMap) -> Response {
             if binding.browser_config(&viewer).is_ok() {
                 count += 1;
                 content.push_str(&format!(
-                    "<li><a href=\"/cloud/app/hosts/{}/workbench\">Open workbench on {}</a></li>",
+                    "<li><a href=\"/cloud/app/hosts/{}/workbench\">Open workbench on {}</a> · <a href=\"/cloud/app/hosts/{}/workbench?sign_in=claude\">Sign in to Claude</a></li>",
+                    escape(binding.id()),
                     escape(binding.id()),
                     escape(binding.id())
                 ));
@@ -77,6 +78,9 @@ async fn index(State(app): State<App>, headers: HeaderMap) -> Response {
         );
     }
     content.push_str("</ul><p>Retail Cloud tasks offer no customer shell.</p>");
+    if count > 0 {
+        content.push_str(CLAUDE_SIGN_IN);
+    }
     workspace_shell(
         &app,
         &headers,
@@ -93,6 +97,22 @@ async fn index(State(app): State<App>, headers: HeaderMap) -> Response {
 struct Input {
     resource: Option<String>,
     session: Option<String>,
+    sign_in: Option<String>,
+}
+
+/// Plain-text engine copy: no logos, and no OpenAgents Claude login form.
+const CLAUDE_SIGN_IN: &str = "<p>A computer with the Claude Code engine runs Claude Code. Sign in to Claude opens a terminal on your computer and runs <code>claude</code>; you finish Anthropic's own sign-in there, with your own plan or API key. OpenAgents never asks for, receives, or stores your Claude login, and it stays only in your computer.</p>";
+
+/// The engine sign-in a workbench page may run: only Claude Code's own
+/// program, from the runtime image, with no arguments.
+fn sign_in(engine: &str, binding: &Binding) -> Result<Value, SessionError> {
+    if engine != coder_cloud::claude::ENGINE {
+        return Err(SessionError::InvalidRequest);
+    }
+    Ok(serde_json::json!({
+        "program": coder_cloud::claude::PROGRAM,
+        "workspace": coder_host::mailbox::workspace_id(binding.workspace()),
+    }))
 }
 
 pub(super) fn reference(input: &str) -> Result<workbench::ResourceRef, SessionError> {
@@ -218,6 +238,16 @@ async fn host(
         } else {
             identity.push_str("<p>This reference needs its own admitted owner viewer. This terminal page offers no action for it.</p>");
         }
+    }
+    if let Some(engine) = &input.sign_in {
+        if input.resource.is_some() || input.session.is_some() {
+            return refused(SessionError::InvalidRequest);
+        }
+        config["sign_in"] = match sign_in(engine, binding) {
+            Ok(value) => value,
+            Err(error) => return refused(error),
+        };
+        identity.push_str(CLAUDE_SIGN_IN);
     }
     if let Some(session) = input.session {
         if session.len() != 64

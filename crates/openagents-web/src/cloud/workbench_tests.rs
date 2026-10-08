@@ -402,3 +402,66 @@ async fn workbench_standing_retires_after_config_replacement_assets_loss_or_nati
         native.stop().await;
     }
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn claude_sign_in_runs_the_engine_in_the_granted_terminal_and_never_takes_a_login() {
+    let (fixture, native, cookies) = connected().await;
+    let index = get(&fixture, &cookies, "/cloud/app/workbench").await;
+    assert!(index.body.contains(&format!("{PAGE}?sign_in=claude")));
+    assert!(index.body.contains("Sign in to Claude"));
+    assert!(index.body.contains("runs Claude Code"));
+    // Plain-text copy only, and no OpenAgents Claude login form.
+    for absent in ["claude-logo", "anthropic-logo", "type=\"password\""] {
+        assert!(!index.body.contains(absent), "{absent}");
+    }
+    let page = get(&fixture, &cookies, &format!("{PAGE}?sign_in=claude")).await;
+    assert_eq!(page.status, StatusCode::OK, "{}", page.body);
+    private_navigation(&page);
+    // Opening the page starts nothing; the enrolled page opens the terminal.
+    assert_eq!(native.running.as_ref().unwrap().terminals(), 0);
+    let config = decoded_pre(&page.body, "cloud-workbench-config");
+    assert_eq!(
+        config["sign_in"],
+        json!({
+            "program": coder_cloud::claude::PROGRAM,
+            "workspace": coder_host::mailbox::workspace_id("checkout"),
+        })
+    );
+    assert!(page.body.contains("never asks for, receives, or stores"));
+    for refused in [
+        format!("{PAGE}?sign_in=codex"),
+        format!("{PAGE}?sign_in=claude&session={}", "a".repeat(64)),
+    ] {
+        assert_ne!(
+            get(&fixture, &cookies, &refused).await.status,
+            StatusCode::OK,
+            "{refused}"
+        );
+    }
+    native.stop().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn account_sign_in_refuses_claude_logins() {
+    let fixture = fixture().await;
+    let mut cookies = Cookies::default();
+    let page = get(&fixture, &cookies, "/cloud/sign-in").await;
+    cookies.apply(&page);
+    let csrf = field(&page.body, "csrf");
+    // Assembled at run time so no credential-shaped literal sits here.
+    let token = format!("sk-ant-oat01-{}", "t5".repeat(40));
+    for value in [token.clone(), format!("CLAUDE_CODE_OAUTH_TOKEN={token}")] {
+        let input = form(&[("credential", &value), ("csrf", &csrf)]);
+        let answer = request(
+            &fixture.site,
+            Method::POST,
+            "/cloud/sign-in",
+            &cookies,
+            Some(&input),
+            Some(ORIGIN),
+        )
+        .await;
+        assert_ne!(answer.status, StatusCode::SEE_OTHER);
+        assert!(!answer.body.contains(&token));
+    }
+}

@@ -284,6 +284,11 @@ async fn sign_in_submit(
     if let Err(error) = service.verify_csrf(&headers, None, "sign-in", "", &form.csrf) {
         return refused(error);
     }
+    // An OpenAgents account credential only: a claude.ai login or
+    // `claude setup-token` value is refused before it goes anywhere.
+    if coder_cloud::claude::admit_value(&form.credential).is_err() {
+        return refused(SessionError::InvalidRequest);
+    }
     let grant = match service.sign_in(&form.credential).await {
         Ok(value) => value,
         Err(error) => return refused(error),
