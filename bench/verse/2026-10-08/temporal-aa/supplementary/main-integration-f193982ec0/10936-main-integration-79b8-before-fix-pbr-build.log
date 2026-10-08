@@ -1,0 +1,31 @@
+openagents lease: waiting for build: 1 of 1 slots of build are held; this needs 1: build held by codex:01a119ab-cb4c-7331-b0dc-8ddce4fb09a0 (cargo pid 47659)
+   Compiling verse-world v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-world)
+   Compiling nostr v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/nostr)
+   Compiling coder-ui v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/coder-ui)
+   Compiling verse-gfx v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-gfx)
+   Compiling verse-content v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-content)
+   Compiling verse-pbr v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-pbr)
+error[E0308]: mismatched types
+    --> crates/verse-pbr/src/pbr/gpu.rs:4077:13
+     |
+4069 |         self.draw_casters(
+     |              ------------ arguments to this method are incorrect
+...
+4077 |             [world.textured, None],
+     |             ^^^^^^^^^^^^^^^^^^^^^^ expected an array with a size of 3, found one with a size of 2
+     |
+     = note: expected array `[std::option::Option<&TexturedGpu>; 3]`
+                found array `[std::option::Option<&TexturedGpu>; 2]`
+note: method defined here
+    --> crates/verse-pbr/src/pbr/gpu.rs:4085:8
+     |
+4085 |     fn draw_casters(
+     |        ^^^^^^^^^^^^
+...
+4090 |         textured: [Option<&TexturedGpu>; 3],
+     |         -----------------------------------
+
+For more information about this error, try `rustc --explain E0308`.
+error: could not compile `verse-pbr` (lib) due to 1 previous error
+warning: build failed, waiting for other jobs to finish...
+openagents lease: `cargo` ended on a signal

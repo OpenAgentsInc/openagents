@@ -1,0 +1,59 @@
+{
+  "schema": "openagents.verse.main-integration-evidence.v1",
+  "source": "f193982ec03bc55cd00345e7146c5b566a4c62b2",
+  "status": "focused_integration_checks_pass",
+  "measured_runtime_source": "fb9a5fd280db673926cfd0d649f924da3091a24b",
+  "new_timing_or_live_visual_acceptance": false,
+  "checks": {
+    "pbr": {
+      "passed": 212,
+      "ignored": 18,
+      "expanded_static_and_rigid_rain_cover_regression": "passed"
+    },
+    "native": {
+      "passed": 11,
+      "binary_sha256": "7dbed32fec6007cbe897285836bc8f1b865601f5d0db52e0f54ea575eebac738"
+    },
+    "capture_example": {
+      "passed": 10
+    },
+    "gles": {
+      "passed": 10
+    },
+    "render": {
+      "passed": 14,
+      "ignored": 1
+    }
+  },
+  "command_metadata": "10936-main-integration-commands.json",
+  "source_binding": "Coordinator command metadata and passing PBR build log; native runner selects that PBR binary and records its SHA256. Consumer runner additionally asserts the exact Git HEAD.",
+  "lease_binding": "Receipts retain resource, session, whole-run coverage, timestamps, and successful exit. Command metadata and manifests bind argv and source; the receipts do not independently attest source.",
+  "earlier_attempts": [
+    {
+      "source": "0c7aed4d1eda47c8e6169fac23bc58ad0d78be9f",
+      "status": "aborted_build_lease_wait",
+      "reported_exit": 143,
+      "test_execution": false,
+      "log": "10936-main-integration-pbr-aborted-wait.log",
+      "attribution": "Source and exit are coordinator-reported; retained raw log records waiting only. No acquisition receipt exists."
+    },
+    {
+      "source": "79b8ea0e44fd72331f2ea76b34a40787e31de998",
+      "status": "compile_failure_E0308_then_termination",
+      "reported_pbr_exit": 1,
+      "test_execution": false,
+      "metadata": "10936-main-integration-79b8-before-fix.json",
+      "log": "10936-main-integration-79b8-before-fix-pbr-build.log",
+      "receipt": "10936-main-integration-79b8-before-fix-pbr-build-lease.json",
+      "attribution": "Coordinator reports exit 1 after the compile failure and later termination request. Raw log records E0308 and signal termination; retained receipt has no exit field."
+    },
+    {
+      "source": "79b8ea0e44fd72331f2ea76b34a40787e31de998",
+      "status": "aborted_consumer_build_lease_wait",
+      "reported_exit": 143,
+      "test_execution": false,
+      "log": "10936-main-integration-79b8-before-fix-consumer-build.log",
+      "attribution": "Source and exit are coordinator-reported; raw log records waiting only."
+    }
+  ]
+}

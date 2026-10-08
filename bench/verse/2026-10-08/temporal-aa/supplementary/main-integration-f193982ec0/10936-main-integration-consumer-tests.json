@@ -1,0 +1,49 @@
+[
+  {
+    "source": "f193982ec03bc55cd00345e7146c5b566a4c62b2",
+    "label": "cli",
+    "command": [
+      "cargo",
+      "test",
+      "-p",
+      "verse",
+      "--example",
+      "meteor_showcase_capture",
+      "--features",
+      "capture"
+    ],
+    "start_unix": 1791500071.958255,
+    "exit": 0,
+    "end_unix": 1791500290.109914
+  },
+  {
+    "source": "f193982ec03bc55cd00345e7146c5b566a4c62b2",
+    "label": "gles",
+    "command": [
+      "cargo",
+      "test",
+      "-p",
+      "verse",
+      "--lib",
+      "gles_tests"
+    ],
+    "start_unix": 1791500290.114134,
+    "exit": 0,
+    "end_unix": 1791500408.084525
+  },
+  {
+    "source": "f193982ec03bc55cd00345e7146c5b566a4c62b2",
+    "label": "render",
+    "command": [
+      "cargo",
+      "test",
+      "-p",
+      "verse",
+      "--lib",
+      "render::"
+    ],
+    "start_unix": 1791500408.085397,
+    "exit": 0,
+    "end_unix": 1791500412.84396
+  }
+]

@@ -1,0 +1,78 @@
+{
+  "source": "f193982ec03bc55cd00345e7146c5b566a4c62b2",
+  "cwd": "/Users/christopherdavid/.codex/worktrees/bb65/openagents",
+  "environment": {
+    "CARGO_TARGET_DIR": "/Users/christopherdavid/work/openagents-target-agent0",
+    "OPENAGENTS_BUILD_DISK_GB": "3",
+    "OPENAGENTS_LEASE_PRIORITY": "owner"
+  },
+  "checks": [
+    {
+      "label": "pbr",
+      "source": "f193982ec03bc55cd00345e7146c5b566a4c62b2",
+      "command": [
+        "openagents",
+        "lease",
+        "build",
+        "--keep-target-dir",
+        "--receipt",
+        "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-main-integration-pbr-build-lease.json",
+        "--",
+        "cargo",
+        "test",
+        "-p",
+        "verse-pbr"
+      ],
+      "log": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-main-integration-pbr-build.log",
+      "receipt": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-main-integration-pbr-build-lease.json",
+      "exit": 0,
+      "result": {
+        "passed": 212,
+        "ignored": 18
+      }
+    },
+    {
+      "label": "consumer",
+      "source": "f193982ec03bc55cd00345e7146c5b566a4c62b2",
+      "command": [
+        "openagents",
+        "lease",
+        "build",
+        "--keep-target-dir",
+        "--receipt",
+        "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-main-integration-consumer-build-lease.json",
+        "--",
+        "python3",
+        "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-main-integration-consumer-tests.py"
+      ],
+      "log": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-main-integration-consumer-build.log",
+      "receipt": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-main-integration-consumer-build-lease.json",
+      "exit": 0,
+      "result": {
+        "capture_example_passed": 10,
+        "gles_passed": 10,
+        "render_passed": 14,
+        "render_ignored": 1
+      }
+    }
+  ],
+  "native": {
+    "source": "f193982ec03bc55cd00345e7146c5b566a4c62b2",
+    "command": [
+      "openagents",
+      "lease",
+      "gpu",
+      "--priority",
+      "owner",
+      "--receipt",
+      "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-main-integration-native-gpu.json",
+      "--",
+      "python3",
+      "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-main-integration-native.py"
+    ],
+    "manifest": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-main-integration-native-manifest.json",
+    "exit": 0,
+    "passed": 11
+  },
+  "scope": "Focused integration checks only; fb9a timing and visual reports retain their original measured source."
+}

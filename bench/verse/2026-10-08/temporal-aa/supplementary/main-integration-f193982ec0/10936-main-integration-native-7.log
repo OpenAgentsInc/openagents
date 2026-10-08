@@ -1,0 +1,6 @@
+
+running 1 test
+test pbr::temporal::reactive_tests::moving_reactive_geometry_cannot_leave_history_in_a_bright_trail ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 229 filtered out; finished in 1.22s
+

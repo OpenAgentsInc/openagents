@@ -1,0 +1,2 @@
+openagents lease: waiting for build: more urgent or earlier requests for build go first: build queued by codex:01a119ae-8a0b-7850-9b7f-ca9fe5a3203b (cargo pid 27569)
+openagents lease: waiting for build: 1 of 1 slots of build are held; this needs 1: build held by codex:01a119ae-8a0b-7850-9b7f-ca9fe5a3203b (cargo pid 27569)

@@ -1,0 +1,7 @@
+{
+  "source": "79b8ea0e44fd72331f2ea76b34a40787e31de998",
+  "pbr_attempt": "Compile E0308: rain caster array has two slots instead of the merged three-slot signature; the remaining jobs were terminated after this failure.",
+  "pbr_test_execution": "No package tests executed.",
+  "consumer_attempt": "Cancelled lease waiter; no Cargo consumer job executed.",
+  "fix": "Extend caster array for rigid geometry, invalidate dynamic rain cover, and bind reactive sprites to the sprite scene group."
+}
