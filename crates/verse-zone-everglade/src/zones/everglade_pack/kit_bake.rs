@@ -116,3 +116,39 @@ pub fn load_local(path: &Path) -> Result<Layers, String> {
     }
     decode_pinned(&bytes)
 }
+
+/// Exact platform scenes audited against the completed artifact.
+#[must_use]
+pub fn compatibility() -> Arc<verse_pbr::pbr::baked_layers::SceneCompatibility> {
+    static RECORD: std::sync::OnceLock<Arc<verse_pbr::pbr::baked_layers::SceneCompatibility>> =
+        std::sync::OnceLock::new();
+    RECORD
+        .get_or_init(|| {
+            Arc::new(
+                serde_json::from_str(include_str!(
+                    "../../../../../assets/verse/everglade-layer-compatibility.json"
+                ))
+                .expect("the checked-in layer compatibility record is valid"),
+            )
+        })
+        .clone()
+}
+
+#[cfg(test)]
+mod compatibility_tests {
+    use super::*;
+
+    #[test]
+    #[ignore = "requires the private completed layer artifact in VERSE_KIT_BAKE"]
+    fn completed_layers_match_reviewed_platform_identities() {
+        let path =
+            std::env::var_os(LOCAL_ENV).expect("set VERSE_KIT_BAKE to the completed artifact");
+        let bytes = std::fs::read(path).unwrap();
+        let layers = Layers::decode(&bytes).unwrap();
+        let record = compatibility();
+        for target in &record.targets {
+            assert!(record.accepts(&layers, &target.scene, target.bake_key.as_deref()));
+        }
+        assert!(!record.accepts(&layers, "unknown", None));
+    }
+}

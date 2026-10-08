@@ -519,3 +519,61 @@ fn the_town_player_wades_then_swims_into_every_pond_among_the_placements() {
         assert!(reached, "{} can't be waded into", layout::POND_NAMES[k]);
     }
 }
+
+/// Exports private comparison data without tracing or rendering a frame.
+#[test]
+#[ignore = "needs the licensed kit and an explicit private scratch directory"]
+fn private_layer_scene_proof() {
+    use sha2::{Digest, Sha256};
+    use std::io::Write;
+
+    let output =
+        PathBuf::from(std::env::var_os("VERSE_SCENE_PROOF").expect("explicit scratch output"));
+    assert!(std::env::var_os(everglade_pack::kit::LOCAL_ENV).is_some());
+    std::fs::create_dir_all(&output).unwrap();
+    let world = Everglade::world(pack()).unwrap();
+    let scene = world.mesh.textured.unwrap();
+    let merged = scene.merge().unwrap();
+    let mut vertices =
+        std::io::BufWriter::new(std::fs::File::create(output.join("vertices.bin")).unwrap());
+    for vertex in &merged.vertices {
+        for value in vertex.pos.iter().chain(&vertex.normal).chain(&vertex.uv) {
+            vertices.write_all(&value.to_le_bytes()).unwrap();
+        }
+        vertices.write_all(&vertex.color).unwrap();
+    }
+    vertices.flush().unwrap();
+    let dirt = scene
+        .images
+        .iter()
+        .find(|image| image.name == "everglade/ground/dirt")
+        .unwrap();
+    std::fs::write(output.join("dirt.rgba"), &dirt.rgba).unwrap();
+    let mut indices = Sha256::new();
+    for index in &merged.indices {
+        indices.update(index.to_le_bytes());
+    }
+    let hex = verse_pbr::pbr::baked_layers::hex;
+    let report = serde_json::json!({
+        "scene": hex(&verse_pbr::pbr::baked_layers::scene_digest(&scene, &merged)),
+        "vertices": merged.vertices.len(),
+        "vertex_stride": 36,
+        "architecture": std::env::consts::ARCH,
+        "debug_assertions": cfg!(debug_assertions),
+        "indices": merged.indices.len(),
+        "indices_sha256": hex(&indices.finalize()),
+        "batches": merged.batches.iter().map(|b| serde_json::json!({
+            "material":b.material,"first":b.first,"count":b.count,"level":format!("{:?}",b.level)
+        })).collect::<Vec<_>>(),
+        "materials": scene.materials.iter().map(|m| format!("{m:?}")).collect::<Vec<_>>(),
+        "images": scene.images.iter().map(|image| serde_json::json!({
+            "width":image.width,"height":image.height,"sha256":hex(&Sha256::digest(&image.rgba))
+        })).collect::<Vec<_>>(),
+    });
+    std::fs::write(
+        output.join("proof.json"),
+        serde_json::to_vec_pretty(&report).unwrap(),
+    )
+    .unwrap();
+    eprintln!("private scene proof: {}", report["scene"]);
+}

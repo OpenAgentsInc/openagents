@@ -27,3 +27,6 @@ mod web;
 mod terminal;
 #[cfg(target_arch = "wasm32")]
 mod theme;
+
+#[cfg(all(test, target_arch = "wasm32"))]
+mod light_proof;

@@ -23,6 +23,7 @@ use super::time_of_day;
 pub(super) fn choice(light: &time_of_day::Light) -> Option<LayerChoice> {
     let layers = kit_bake::offered()?;
     Some(LayerChoice {
+        compatibility: Some(kit_bake::compatibility()),
         sun: layers.nearest_sun(light.key_dir),
         ratio: layers.sun_ratio(light.key_lux, light.sky_lux),
         layers,

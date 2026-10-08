@@ -829,6 +829,8 @@ fn surface(
 /// to combine them ([`super::baked_layers`]).
 #[derive(Clone, Debug)]
 pub struct LayerChoice {
+    /// Exact reviewed alternatives, bound to the complete layer artifact.
+    pub compatibility: Option<Arc<super::baked_layers::SceneCompatibility>>,
     pub layers: Arc<super::baked_layers::Layers>,
     /// The sun direction whose bounce joins the sky's, if any.
     pub sun: Option<usize>,
@@ -838,7 +840,7 @@ pub struct LayerChoice {
 
 impl LayerChoice {
     /// The light and lamp texels and the probes of `scene`, when the layers
-    /// were baked for exactly that scene.
+    /// were baked for that scene or its explicitly audited equivalent.
     ///
     /// # Errors
     ///
@@ -847,7 +849,13 @@ impl LayerChoice {
     pub fn apply(&self, scene: &TexturedScene) -> Result<Layered, String> {
         let merged = scene.merge()?;
         let digest = super::baked_layers::hex(&super::baked_layers::scene_digest(scene, &merged));
-        if digest != self.layers.scene || merged.vertices.len() != self.layers.vertex_count() {
+        if (digest != self.layers.scene
+            && !self
+                .compatibility
+                .as_ref()
+                .is_some_and(|record| record.accepts(&self.layers, &digest, None)))
+            || merged.vertices.len() != self.layers.vertex_count()
+        {
             return Err(format!(
                 "the baked light layers are for scene {}, not {digest}",
                 self.layers.scene
@@ -879,6 +887,9 @@ enum Outcome {
 }
 
 enum JobState {
+    /// Validated offline layers waiting for the normal delivery poll.
+    #[cfg(any(test, target_arch = "wasm32"))]
+    Ready(Option<Layered>),
     /// A worker thread bakes and sends the result.
     #[cfg(not(target_arch = "wasm32"))]
     Thread(std::sync::mpsc::Receiver<Option<Outcome>>),
@@ -917,8 +928,8 @@ impl BakeJob {
         Self::start_layered(scene, light, settings, key, None)
     }
 
-    /// [`Self::start`], using `layers` instead when they fit the scene. A
-    /// target without threads always bakes.
+    /// [`Self::start`], using `layers` instead when they fit the scene.
+    /// Targets without threads prepare matching layers once at load.
     #[must_use]
     pub fn start_layered(
         scene: Arc<TexturedScene>,
@@ -979,14 +990,23 @@ impl BakeJob {
 
     #[cfg(target_arch = "wasm32")]
     fn spawn(
-        _: &Arc<TexturedScene>,
+        scene: &Arc<TexturedScene>,
         _: BakeLight,
         _: BakeSettings,
         _: u64,
-        _: Option<LayerChoice>,
+        layers: Option<LayerChoice>,
         _: &Arc<AtomicBool>,
     ) -> Option<JobState> {
-        None
+        Self::inline_layers(scene, layers)
+    }
+
+    #[cfg(any(test, target_arch = "wasm32"))]
+    fn inline_layers(scene: &TexturedScene, layers: Option<LayerChoice>) -> Option<JobState> {
+        let layered = layers?
+            .apply(scene)
+            .map_err(|error| eprintln!("verse: baking light at load: {error}"))
+            .ok()?;
+        Some(JobState::Ready(Some(layered)))
     }
 
     /// Whether the bake has finished or failed.
@@ -1005,6 +1025,8 @@ impl BakeJob {
     /// delivers the vertices to the scene's slot and returns the probes.
     pub fn poll(&mut self) -> Option<AmbientProbes> {
         let outcome = match &mut self.state {
+            #[cfg(any(test, target_arch = "wasm32"))]
+            JobState::Ready(layered) => Some(layered.take().map(Outcome::Layered)),
             #[cfg(not(target_arch = "wasm32"))]
             JobState::Thread(receive) => match receive.try_recv() {
                 Ok(outcome) => Some(outcome),
@@ -1376,12 +1398,58 @@ mod tests {
     }
 
     #[test]
+    fn reviewed_scene_pair_requires_exact_artifact_recipe_and_target() {
+        use super::super::baked_layers::{CompatibleScene, SceneCompatibility, hex, scene_digest};
+        use sha2::Digest as _;
+        let mut scene = TexturedScene::default();
+        ground(&mut scene, [0.3; 3]);
+        let mut layers = layers_for(&scene);
+        let target = hex(&scene_digest(&scene, &scene.merge().unwrap()));
+        layers.scene = "reviewed-source".into();
+        let bytes = layers.encode();
+        let record = SceneCompatibility {
+            artifact_sha256: hex(&sha2::Sha256::digest(&bytes)),
+            artifact_bytes: bytes.len() as u64,
+            baked_scene: layers.scene.clone(),
+            baked_key: layers.bake_key.clone(),
+            vertices: layers.vertex_count(),
+            targets: vec![CompatibleScene {
+                scene: target.clone(),
+                bake_key: Some("target-recipe".into()),
+            }],
+        };
+        assert!(record.accepts(&layers, &target, Some("target-recipe")));
+        assert!(!record.accepts(&layers, &target, Some("other-recipe")));
+        assert!(!record.accepts(&layers, "unknown-scene", None));
+        let mut altered = layers.clone();
+        altered.sky[0][0] ^= 1;
+        assert!(!record.accepts(&altered, &target, None));
+        altered = layers.clone();
+        altered.bake_key = "other-source-recipe".into();
+        assert!(!record.accepts(&altered, &target, None));
+        let choice = LayerChoice {
+            compatibility: Some(Arc::new(record)),
+            layers: Arc::new(layers),
+            sun: Some(0),
+            ratio: 1.0,
+        };
+        assert!(choice.apply(&scene).is_ok());
+        let mut unreviewed = TexturedScene::default();
+        ground(&mut unreviewed, [0.31; 3]);
+        assert!(choice.apply(&unreviewed).is_err());
+        let mut strict = choice;
+        strict.compatibility = None;
+        assert!(strict.apply(&scene).is_err());
+    }
+
+    #[test]
     fn a_job_delivers_layers_baked_for_its_scene_instead_of_baking() {
         let mut scene = TexturedScene::default();
         ground(&mut scene, [0.3; 3]);
         let layers = Arc::new(layers_for(&scene));
         let scene = Arc::new(scene);
         let choice = LayerChoice {
+            compatibility: None,
             layers: layers.clone(),
             sun: Some(0),
             ratio: 1.0,
@@ -1397,6 +1465,42 @@ mod tests {
     }
 
     #[test]
+    fn threadless_jobs_deliver_matching_layers_once_without_stepping() {
+        let mut scene = TexturedScene::default();
+        ground(&mut scene, [0.3; 3]);
+        let layers = Arc::new(layers_for(&scene));
+        let choice = LayerChoice {
+            compatibility: None,
+            layers: layers.clone(),
+            sun: Some(0),
+            ratio: 1.0,
+        };
+        let state = BakeJob::inline_layers(&scene, Some(choice.clone())).unwrap();
+        assert!(matches!(state, JobState::Ready(_)));
+        let mut job = BakeJob {
+            slot: scene.baked.clone(),
+            light: LIGHT,
+            settings: settings(),
+            key: 1,
+            cancel: Arc::new(AtomicBool::new(false)),
+            state,
+            layered: false,
+        };
+        assert!(!job.finished());
+        assert!(scene.baked.take().is_none());
+        assert!(job.poll().is_some());
+        assert!(job.finished() && job.layered());
+        assert_eq!(scene.baked.take().unwrap(), layers.sky);
+        assert_eq!(scene.baked.take_lamps().unwrap()[1], layers.lamps[0].1);
+        assert!(job.poll().is_none());
+        assert!(scene.baked.take().is_none());
+        assert!(BakeJob::inline_layers(&scene, None).is_none());
+        let mut other = TexturedScene::default();
+        ground(&mut other, [0.8; 3]);
+        assert!(BakeJob::inline_layers(&other, Some(choice)).is_none());
+    }
+
+    #[test]
     fn a_scene_without_its_bake_data_renders_with_the_load_time_bake() {
         let mut other = TexturedScene::default();
         ground(&mut other, [0.8; 3]);
@@ -1406,6 +1510,7 @@ mod tests {
         let scene = Arc::new(scene);
         for layers in [None, Some(stale)] {
             let choice = layers.map(|layers| LayerChoice {
+                compatibility: None,
                 layers: Arc::new(layers),
                 sun: Some(0),
                 ratio: 1.0,
