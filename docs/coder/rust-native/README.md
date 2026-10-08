@@ -16,8 +16,16 @@ The foundation is implemented; the full UI framework is a plan. Refer to the
 [framework README](../../../crates/rust-native/README.md) for the
 current API and delivered subset.
 
+The first Coder Cloud web deliverable is the
+[shared Coder component library and `/components` catalog](coder-components.md).
+It extends `coder-ui` over the current Rust Native v2 core and requires web
+versions of every `coder-new` presentation component, state, and full screen.
+Its source-derived Coder profile supports recreating the current terminal UI
+exactly on the web.
+
 | Document | Question it answers |
 | --- | --- |
+| [Shared Coder components and web catalog](coder-components.md) | What must the shared library and initial `/components` deliverable include, and how is complete Coder UI parity verified? |
 | [Specification](architecture.md) | What belongs in the shared core, application host, and each renderer? |
 | [Build order](build-order.md) | What should ship first, and how can existing development adopt it immediately? |
 | [Adoption map](adoption.md) | Which public files and existing clients should change, and which behavior must remain? |

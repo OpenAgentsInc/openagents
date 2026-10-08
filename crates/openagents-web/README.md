@@ -25,6 +25,13 @@ proposed authenticated web workspace, Verse connection, and commercial
 interfaces. Those interfaces require new admitted adapters; the local task
 browser keeps its current loopback-only scope.
 
+Its first proposed deliverable is the public
+[`/components` catalog](../../docs/coder/rust-native/coder-components.md): web
+versions of every `coder-new` presentation component and state, composed from
+the shared Rust Native Coder library. Synthetic interactive fixtures and full
+screen previews must support exact Coder UI recreation. This route and the
+general web adapter are specified, not implemented.
+
 ## Run it
 
 From the monorepo root:

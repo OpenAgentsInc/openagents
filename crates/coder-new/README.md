@@ -9,6 +9,12 @@ token counts as the rail. Their magenta diamonds pulse while running commands
 show a rotating spinner. Each agent conversation has its own tool calls,
 arguments, results, and current activity.
 
+The [shared component and web catalog specification](../../docs/coder/rust-native/coder-components.md)
+uses this crate's public presentation as the complete source inventory for the
+first Coder Cloud deliverable at `/components`. It requires shared Rust Native
+components, interactive fixtures, and exact full-screen web recreation; it does
+not establish a delivered browser UI.
+
 Type `/` to see commands above the input, following the existing OpenAgents
 terminal's slash suggestions. The command and description occupy separate
 columns. Typing filters the list; Up/Down selects, Tab completes, Enter runs,

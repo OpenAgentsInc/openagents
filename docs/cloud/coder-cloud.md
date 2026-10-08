@@ -47,7 +47,9 @@ Use the [current Coder terminal](../../crates/coder-new/README.md),
 [workbench resources](../terminal/workbench-resources.md),
 [shared UI architecture](../coder/rust-native/architecture.md), and
 [Rust Native contract](../../crates/rust-native/docs/spec.md) as implementation
-references. Domain contracts take precedence over older transcript terminology.
+references. The [shared Coder component specification](../coder/rust-native/coder-components.md)
+defines the initial web deliverable and complete `coder-new` inventory. Domain
+contracts take precedence over older transcript terminology.
 
 ## Current foundations and remaining integration
 
@@ -58,6 +60,7 @@ Older sales gap tables and runbooks retain their dated context.
 | System | Existing foundation | New web work or remaining limit |
 | --- | --- | --- |
 | Public site | [`openagents-web`](../../crates/openagents-web/README.md) serves Rust pages, documentation, downloads, pilot intake, discovery, public payment views, and browser worlds. | Add the authenticated workspace and qualified commercial navigation. Some production routes still use the legacy sidecar; track their replacement explicitly. |
+| Shared UI | Rust Native v2 provides semantic conversation elements, editing/IME, selection, Markdown, styles, and layout; `coder-ui` owns theme values. | Extend `coder-ui` into the shared Coder component library, add the reusable web adapter, and deliver every `coder-new` presentation component at `/components`. Existing palette sharing does not complete component sharing. |
 | Local task browser | `/app` reads private local tasks and ATIF, with a loopback-only guard. | Preserve that guard. It is not the authenticated cloud app. |
 | Cloud delegation | [#10910](https://github.com/OpenAgentsInc/openagents/issues/10910), including [#10912](https://github.com/OpenAgentsInc/openagents/issues/10912)–[#10917](https://github.com/OpenAgentsInc/openagents/issues/10917), landed durable jobs, Boat integrated agents, headless Coder on Boat/GCE, workspace transfer, usage, recovery, and the terminal agent rail. | Add scoped web observation and controls over [`coder-cloud`](../../crates/coder-cloud/src/lib.rs). Operator access and verified isolated smokes do not establish a retail service. |
 | Paid retail | [REV-13–REV-15](https://github.com/OpenAgentsInc/openagents/issues/10820) landed customer transport, resident execution, selected native controls, and deployment packaging. | The browser needs its own admitted adapter and acceptance. Commercial confirmation, funded qualification, and production activation remain required. |
@@ -84,6 +87,7 @@ private work, records, and controls.
 | --- | --- |
 | `/` | OpenAgents introduction, Download, Coder Cloud, Verse, Docs, and the qualified pilot offer. The anonymous Ask OpenAgents terminal keeps its knowledge-only scope. |
 | `/cloud` | Coder Cloud explanation, supported execution choices, contract-based pricing, availability, and **Open workspace**. No historical price or unlimited-capacity claim. |
+| `/components`, `/components/{component}` | Public interactive component library, complete `coder-new` state inventory, source references, typed properties/intents, and full Coder screen previews. The first deliverable; all examples use synthetic data. |
 | `/cloud/app` | Authenticated workspace shell and overview. This separate route preserves local `/app`. |
 | `/cloud/app/projects` | Authorized repositories, goals, issues, blockers, review queue, and delivery history. |
 | `/cloud/app/tasks/{id}` | One canonical task and its attempts, transcript, children, artifacts, checks, controls, and cost. |
@@ -111,13 +115,59 @@ private account, agent, or customer record never becomes public because it has a
 URL. The historical subdomain can redirect only after its owner confirms the
 mapping and compatibility requirements.
 
+## Shared components and first deliverable
+
+The sibling `~/work/coder` has a shared component library across platforms.
+Build its Rust Native equivalent here: shared semantic components and typed
+interactions, product-owned presentation values, and thin platform renderers.
+Reimplement the design in this repository; no private sibling code becomes a
+dependency or public artifact.
+
+The initial deliverable is **`openagents.com/components`**, with web versions of
+**all components from `crates/coder-new`**. Its scope includes imported Markdown
+and diff renderers, every visible state and layout branch, all pickers and
+specialized settings forms, recovery states, and complete screen compositions.
+Production/live variants need fixtures even when existing demo images omit them.
+The library must support recreating the exact current Coder UI on the web.
+
+Extend the existing `coder-ui` into the pure Coder component owner. Keep generic
+elements, styles, editing, selection, and validation in `rust-native`; add a
+reusable `rust-native-web` adapter for escaped semantic HTML and Rust/Wasm DOM
+interaction. Application projections retain session state, effects, transport,
+and authority. Neither the generic framework nor the browser component library
+depends on the full `coder-new` runtime or Ratatui. Coder Cloud composes the same
+components instead of creating a second library of page-specific markup.
+
+The [component specification](../coder/rust-native/coder-components.md) supplies
+the source inventory, dependency boundaries, catalog routes, interactions,
+reference sizes, and completion criteria. Maintain a source-pinned manifest
+that maps every render site and visible variant to shared components and
+interactive fixtures. Generate navigation and completeness from that manifest;
+missing or obsolete fixtures fail its checks.
+
+Provide isolated examples and complete Coder previews with selectable text,
+accessible controls, keyboard/pointer input, editing/IME, focus, scrolling, and
+deterministic state/animation controls. Preserve the source layout, Paper Mono,
+tokens, symbols, wrapping, tool/diff geometry, and live/demo differences in the
+default **Coder terminal** profile. Responsive alternatives have separate names
+and verification. A screenshot gallery or a terminal buffer drawn in a browser
+does not meet the component-library deliverable.
+
+Public fixture examples require no account or commercial activation. Demonstrate
+send, test, save, resume, approval, stop, and other effects through deterministic
+Rust fixture controllers with no live service or private-store access. The web
+catalog's completion establishes the shared web presentation layer; native
+adoption and authenticated service integration retain their own acceptance.
+
 ## Workspace interaction
 
 On a wide screen, use a workspace/navigation rail, the selected conversation or
 work view, and an optional detail pane for files, reviews, receipts, or Verse.
 On a narrow screen, open those views sequentially without losing selection or
-scroll position. Use Paper Mono and the site's existing white intensity palette;
-status also has text, not color alone. Verse keeps its own rendering and palette.
+scroll position. Use Paper Mono and the site's existing white intensity palette
+for the site shell. Coder components use the source-derived Coder profile,
+including its cyan, magenta, amber, green, orange, and red semantic accents.
+Status also has text, not color alone. Verse keeps its own rendering and palette.
 
 The overview answers: what is working, where it runs, what waits, what needs your
 decision, what it costs, and what result is ready. Work rows show task title,
@@ -500,7 +550,10 @@ Rust/Wasm and typed events; generated loader glue remains platform glue. Use rea
 accessible controls for navigation, input, decisions, and records. Canvas is for
 Verse and the existing terminal renderer, not every account or sales form.
 Apply stable node keys, displayed revision checks, bounded paging, Unicode/IME,
-keyboard access, and detached-view cleanup from the shared UI contract.
+keyboard access, and detached-view cleanup through the shared component library
+and web adapter. New account, sales, and Verse connection views extend that
+library with product components where appropriate; they do not fork core
+editing, layout, focus, or interaction behavior.
 
 The web session adapter resolves existing account/session and membership owners;
 current canonical attribution maps native records but grants no product rights.
@@ -549,11 +602,12 @@ not claim or close them.
 
 | Slice | Deliverable | Acceptance |
 | --- | --- | --- |
-| 1. Shell and observation | Rust account/workspace adapter, public Cloud description, authenticated overview, canonical task/child/file/evidence reads, freshness, and capability-based navigation. | Two isolated accounts cannot read each other's records; read-only user cannot mutate; reload follows the same task; private local `/app` and anonymous `/ask` retain their bounds. |
-| 2. Work on a granted computer | Enrollment, project/task submission, exact steering/cancellation, operator cloud jobs for authorized operators, reviews, and host terminal attachment. | Browser and another client inspect the same work; lost replies do not redispatch; revocation blocks effects; checks bind the exact candidate; stop/cleanup uncertainty remains visible. |
-| 3. Connected Verse and agents | Separate world/host/private-work states, stations linked to work, Alice/Studio views, exact decisions/reviews, and supported delegation settings. | Join/leave changes no task rights; app/station links resolve identical resources; stale review refuses; private content stays out of presence; connection loss disables input. Qualify new Devin/placement/queue capabilities only after their owners land. |
-| 4. Qualified Cloud purchase | Browser retail delegation, exact funding/quote/confirmation, progress, artifacts, cancellation, receipt, and recovery. | Fake-payment tests cover concurrent overspend, changed quote, revoked rights, lost dispatch, provider loss, unknown meter, cleanup, and duplicate credit/settlement; then O3/O4/O8 qualify the exact deployed browser lane before availability. |
-| 5. Commercial workspace | Proven plugin/gateway lane views, teams and reports, private sales/pilot/fulfillment controls, referrals/partners, Paul and Agora projection. | Every enabled route has its own policy/funding qualification; original statements reconcile; outbound actions need exact approvals; untrusted replies and revoked batches cannot dispatch; shared aggregates reveal no private records. |
+| 1. Shared components and `/components` | Rust Native Coder component library, reusable web adapter, interactive public catalog of every `coder-new` component/state, and complete source-equivalent screens. | Every source render site and visible variant maps to a working fixture; declared interactions work; complete Coder UI composes from the library with verified layout/color/content parity; no live service or private-store effects. See the [complete component acceptance](../coder/rust-native/coder-components.md#delivery-and-completion-evidence). |
+| 2. Shell and observation | Rust account/workspace adapter, public Cloud description, authenticated overview, canonical task/child/file/evidence reads, freshness, and capability-based navigation. | Two isolated accounts cannot read each other's records; read-only user cannot mutate; reload follows the same task; private local `/app` and anonymous `/ask` retain their bounds. |
+| 3. Work on a granted computer | Enrollment, project/task submission, exact steering/cancellation, operator cloud jobs for authorized operators, reviews, and host terminal attachment. | Browser and another client inspect the same work; lost replies do not redispatch; revocation blocks effects; checks bind the exact candidate; stop/cleanup uncertainty remains visible. |
+| 4. Connected Verse and agents | Separate world/host/private-work states, stations linked to work, Alice/Studio views, exact decisions/reviews, and supported delegation settings. | Join/leave changes no task rights; app/station links resolve identical resources; stale review refuses; private content stays out of presence; connection loss disables input. Qualify new Devin/placement/queue capabilities only after their owners land. |
+| 5. Qualified Cloud purchase | Browser retail delegation, exact funding/quote/confirmation, progress, artifacts, cancellation, receipt, and recovery. | Fake-payment tests cover concurrent overspend, changed quote, revoked rights, lost dispatch, provider loss, unknown meter, cleanup, and duplicate credit/settlement; then O3/O4/O8 qualify the exact deployed browser lane before availability. |
+| 6. Commercial workspace | Proven plugin/gateway lane views, teams and reports, private sales/pilot/fulfillment controls, referrals/partners, Paul and Agora projection. | Every enabled route has its own policy/funding qualification; original statements reconcile; outbound actions need exact approvals; untrusted replies and revoked batches cannot dispatch; shared aggregates reveal no private records. |
 
 All slices support empty, denied, unavailable, stale, failed, cancelled, and
 reconciliation states. Essential workflows work without a 3D renderer. Qualify

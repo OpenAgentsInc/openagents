@@ -9,6 +9,12 @@ names the existing files. The [suite tracker](../migration-status.md)
 remains the application-level issue map; this document supplies the UI work
 within it, rather than another competing product roadmap.
 
+The October 8 [shared component specification](coder-components.md) defines the
+first Coder Cloud web deliverable: `/components`, with every `coder-new`
+presentation component, visible variant, and complete screen built from a shared
+Rust Native Coder library. That web scope uses the current v2 core; the dated
+foundation and platform milestones below retain their historical scope.
+
 ## First foundation: delivered in #9693
 
 The initial crate contains validated semantic views, typed button intents,
