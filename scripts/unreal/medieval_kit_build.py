@@ -39,9 +39,11 @@ recipe, which holds names and no geometry, are committed.
 import argparse
 import hashlib
 import json
+import os
 import re
 import shutil
 import struct
+import subprocess
 import sys
 from pathlib import Path
 
@@ -486,9 +488,12 @@ def load_recipe(path):
     for piece_id, piece in pieces.items():
         if not PIECE_ID.match(piece_id) or len(piece_id) + 5 > MAX_FILE_NAME_BYTES:
             sys.exit(f"recipe piece ID {piece_id!r} is not lowercase [a-z0-9-] within the name limit")
-        unknown = set(piece) - {"mesh", "mirror_x", "scale", "lod0"}
+        unknown = set(piece) - {"mesh", "mirror_x", "scale", "lod0", "far_triangles"}
         if unknown or "mesh" not in piece:
-            sys.exit(f"recipe piece {piece_id} needs `mesh` and allows only mirror_x, scale, lod0")
+            sys.exit(f"recipe piece {piece_id} needs `mesh` and allows only mirror_x, scale, lod0, far_triangles")
+        far = piece.get("far_triangles")
+        if far is not None and (not isinstance(far, int) or isinstance(far, bool) or far < 1):
+            sys.exit(f"recipe piece {piece_id} needs a positive far_triangles budget")
         scale = piece.get("scale")
         if scale is not None and (len(scale) != 3 or not all(isinstance(c, (int, float)) for c in scale)):
             sys.exit(f"recipe piece {piece_id} has a scale that is not [sx, sy, sz]")
@@ -501,6 +506,8 @@ def main():
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     parser.add_argument("--recipe", type=Path, default=DEFAULT_RECIPE)
     parser.add_argument("--only", default="", help="comma-separated piece IDs")
+    parser.add_argument("--blender", default=os.environ.get("BLENDER"),
+                        help="headless Blender executable for far levels")
     args = parser.parse_args()
 
     export_root = args.export.expanduser().resolve()
@@ -544,6 +551,17 @@ def main():
             "height": height,
             "bytes": target.stat().st_size,
         }
+
+    if any(p.get("far_triangles") for p in pieces.values()):
+        blender = args.blender or shutil.which("blender")
+        mac = "/Applications/Blender.app/Contents/MacOS/Blender"
+        if blender is None and Path(mac).is_file():
+            blender = mac
+        if blender is None:
+            sys.exit("Far levels need headless Blender; set BLENDER or --blender")
+        subprocess.run([blender, "-b", "--factory-startup", "-t", "4", "--python",
+                        str(REPO / "scripts/blender/medieval_kit_far.py"), "--",
+                        str(out), str(args.recipe.expanduser().resolve())], check=True)
 
     summary = {
         "pieces": len(built),

@@ -77,7 +77,7 @@ the original October 7 plan.
 | P9: cleanup | #10902 | `f008baa090`, repin `4b9ad70748` | Closed; both suites and pack consistency pass |
 | B1: offline baker | #10905 | `0360046732`, `983432c41f` | Closed |
 | B2: lightmap layers | #10906 | by its subagent | See its issue |
-| B3: time of day and destruction | #10907 | none | Not started |
+| B3: time of day and destruction | #10907 | checkpoint `a2f4bbf7d3` on `codex/everglade-b3` | Unverified; claim released while P3 takes priority |
 | B4: tiers and measurement | #10908 | none | Not started |
 
 The town has 65 medieval kit houses: Stoop Lane, Main Street, the Fountain
@@ -90,7 +90,14 @@ unchanged.
 
 ## What's open
 
-- **P3 (#10896).** Two pieces remain. First, far levels: the kit pack has
+- **P3 (#10896).** Claimed on October 8 on `codex/everglade-p3`.
+  Source preparation adds private prop far-level generation, checks far
+  admission against the near piece's box, and exports the actual Rust house
+  recipes with per-distance budgets for coplanar analysis. These changes
+  await formatting, focused tests, private compilation, and captures.
+  The current renderer has only an 80 m near/far switch; verify the plan
+  budgets for all three house levels before treating P3 as complete.
+  Two pieces remain. First, far levels: the kit pack has
   no `lod/kit.<id>` models. The compiler accepts `<id>.far.gltf`, so the
   build script needs to write decimated far levels for the heavy pieces:
   the fountain (7,752 triangles), the lamps (2,976), and the stalls and
@@ -100,8 +107,11 @@ unchanged.
   merged house with the demo's, side by side.
 - **B2 (#10906).** Its issue holds what its subagent landed and what
   remains.
-- **B3 (#10907).** Not started. It needs B2's layers. Kit lamps glow
-  (their materials are `Emit_…`) but light nothing until B3.
+- **B3 (#10907).** Checkpoint `a2f4bbf7d3` on `codex/everglade-b3` holds
+  unverified blending, damage repair, private-layer preflight, and acceptance
+  tools. Its handoff lists the exact remaining checks, private scene identity,
+  captures, and timing plan. The claim is released while P3 takes priority;
+  no B3 Cargo command, bake, capture, or measurement has run.
 - **B4 (#10908).** Not started. It needs B2 and P8. One 512 px kit pack
   serves every tier today (10.2 MB to transfer, about 28 MiB decoded),
   which is over the phone's 8 MiB transfer budget. A phone tier is part of
@@ -211,3 +221,8 @@ That directory is cleared on reboot, so copies of the later ones are in the
 session's scratch directory. The P5 to P7 captures are `p5-stoop-*.png`,
 `p6-*.png`, `p7-*.png`, `p7b-approach.png`, `p4-house/*.png` (a kit house
 breaking), and `p3-grade-before.png` and `p3-grade-after.png`.
+
+The requested web image `openagents-web:d3f3ad546c` serves the kit on
+revision `coder-web-d3f3ad546c-20261008043217` at 100 percent traffic. The
+deployment record is `26bb7ef2ab`. That image predates P9 and retains the
+older public pack until a later image deploys the cleanup.
