@@ -126,8 +126,10 @@ unchanged.
   selected batches within 10,000/3,000/800 triangles and 12/5/1 draws,
   post-gap coplanar checks, demo comparison, grade captures, and one house
   at 10/50/120 m. The initial coplanar scan finds genuine floor/band recipe
-  overlaps and two tiny roof-end wood-trim material seams inside licensed meshes;
-  assess those seams visually rather than claiming zero failures.
+  overlaps and two tiny roof-end wood-trim material seams inside licensed meshes.
+  The bounded derived finish prototype passes the unmodified detector for
+  both roof-end pieces; the regenerated 65-house scan and real captures
+  remain required before claiming no failures.
 - **B2 (#10906).** Its issue holds what its subagent landed and what
   remains.
 - **B3 (#10907).** Checkpoint `a2f4bbf7d3` on `codex/everglade-b3` holds
@@ -205,8 +207,28 @@ label. No exemption or suppression hides these seams;
 their correction and visual assessment are pending. The bounded prototype
 offsets only `MI_trim_wood_02_01` by +3 mm X before mirroring in the two
 derived roof-end exports. Recipe offsets are limited to 5 mm; original
-vendor GLBs remain untouched. Synthetic mirrored-gap tests and actual
-private preview checks remain pending. Actual all-house distance budgets,
+vendor GLBs remain untouched. Three synthetic tests pass, including the
+mirrored gap and recipe validation. The actual private preview passes the
+unmodified detector for both pieces: 255 triangles and six primitives each,
+44 moved vertices each, and maximum displacement 0.00300002 m. UV, color,
+normal, index, and material arrays remain unchanged. Actual boxes remain
+within the committed piece bounds. `roof-finish-preview-receipt.json`
+records the source, recipe, GLB, and output byte identities.
+
+Full CPU regeneration uses source
+`c17428fc306692538147937b2d635461cca52682`, recipe SHA-256
+`269ac649621b7738d31eb07e0da61d93569df8b07e2d262ac9d721e88f5b0d50`,
+and build-report SHA-256
+`31bd436846596d6cf1e742dfc7d7c9b793b4c4cd8d2e28c83c1dbb38bb75f11b`.
+The original roof GLB remains
+`4757fdd45e3ca4cf44108f3e144d5093def055967fc82cf679a2e63ca5d51bea`.
+`raw-kit-p3-roof-identities.txt` also pins the compiled export test binary:
+`483da388fa8287311321371bab54b349a7c53c351419a7946121c7f7b923ba2e`
+(Rust source `3314ae5773`). The raw rebuild passes with 53 pieces, zero
+skips, and 28 textures. `kit-build-p3-before-roof/` retains the preceding
+private build. The current 65-house source export writes
+`house-check-p3-roof/`; the corrected atlas batches and all-house coplanar
+checks follow it. Actual all-house distance budgets,
 private pack admission, and captures remain open.
 
 The portable headless CPU runtime is Blender 4.5.14 LTS. Its official archive
