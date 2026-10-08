@@ -191,10 +191,13 @@ impl Cli {
             if ran.status.success() {
                 Ok(String::from_utf8_lossy(&ran.stdout).into_owned())
             } else {
+                // `exec`'s exit is the remote command's; the error names it
+                // so a caller classifies the code, never the script text.
                 let error = String::from_utf8_lossy(&ran.stderr);
                 Err(format!(
-                    "{name} refused `{}`: {}",
-                    words.join(" "),
+                    "{name}'s `{}` exited {}: {}",
+                    words[0],
+                    ran.status.code().unwrap_or(-1),
                     error.trim()
                 ))
             }
@@ -241,7 +244,10 @@ impl Remote for Cli {
         self.exec(name, &["sh", "-c", &script])
             .map(|_| ())
             .map_err(|why| {
-                if why.contains("exit 3") || why.contains("cat-file") {
+                // The script exits 3 when the fetch fails and 1 when the
+                // base is absent — both mean the commit is not on the
+                // remote's `origin`; 2 is the clone refusing outright.
+                if why.contains("exited 3") || why.contains("exited 1") {
                     format!("the starting commit is not pushed, so {name} cannot fetch it")
                 } else {
                     why
