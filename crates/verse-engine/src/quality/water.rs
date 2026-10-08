@@ -15,26 +15,28 @@ pub struct WaterBudget {
 
 impl WaterBudget {
     #[must_use]
+    // Calibrated from the October 8 W11 fixed views on Metal and Vulkan.
+    // GPU caps include pass instrumentation; sustained overruns still reduce effects.
     pub const fn of(tier: Tier) -> Self {
         let mib = 1024 * 1024;
         match tier {
             Tier::Low => Self {
-                gpu_ms: 1.5,
+                gpu_ms: 3.5,
                 gpu_bytes: 8 * mib,
                 main_ms: 0.3,
                 worker_ms: 0.5,
             },
             Tier::Medium => Self {
-                gpu_ms: 2.5,
+                gpu_ms: 3.5,
                 gpu_bytes: 32 * mib,
                 main_ms: 0.5,
                 worker_ms: 1.0,
             },
             Tier::High => Self {
                 gpu_ms: 4.0,
-                gpu_bytes: 96 * mib,
+                gpu_bytes: 64 * mib,
                 main_ms: 0.8,
-                worker_ms: 2.0,
+                worker_ms: 2.5,
             },
         }
     }
