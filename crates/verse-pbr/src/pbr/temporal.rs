@@ -28,6 +28,8 @@ pub enum MotionCommand<'a> {
     Indexed {
         draw: super::instanced::Draw,
         double_sided: bool,
+        /// Current world bounds; absent for callers without rigid batch bounds.
+        bounds: Option<[Vec3; 2]>,
     },
     Indirect {
         buffer: &'a wgpu::Buffer,
@@ -51,6 +53,17 @@ impl MotionCommand<'_> {
             Self::Indexed { draw, .. } => draw.count > 0 && draw.instances.count > 0,
             Self::Indirect { count, .. } => *count > 0,
         }
+    }
+
+    fn admitted(&self, view_proj: Mat4) -> bool {
+        self.has_vertices()
+            && match self {
+                Self::Indexed {
+                    bounds: Some([min, max]),
+                    ..
+                } => super::textured::in_frustum_conservative(*min, *max, view_proj),
+                _ => true,
+            }
     }
 }
 
@@ -285,6 +298,7 @@ mod tests {
                 ..draws[0]
             },
             double_sided: false,
+            bounds: None,
         };
         assert!(!empty.has_vertices());
     }
@@ -336,6 +350,50 @@ mod tests {
         assert!((pixel_shift - sample).abs().max_element() < 1e-4);
         assert_eq!((a.z, a.w), (b.z, b.w));
         assert_eq!(camera.eye, original.eye);
+    }
+
+    #[test]
+    fn motion_admission_uses_the_rendered_jitter_and_preserves_uncertain_streams() {
+        let point = Vec3::new(1.000_2, 0.0, 0.5);
+        let mut command = MotionCommand::Indexed {
+            draw: super::super::instanced::Draw {
+                item: 0,
+                first: 9,
+                count: 6,
+                instances: super::super::instanced::Run { first: 7, count: 2 },
+            },
+            double_sided: false,
+            bounds: Some([point, point]),
+        };
+        assert!(!command.admitted(Mat4::IDENTITY));
+        let camera = jittered(
+            View {
+                view_proj: Mat4::IDENTITY,
+                eye: Vec3::ZERO,
+            },
+            [1920, 1080],
+            jitter(1),
+        );
+        assert!(command.admitted(camera.view_proj));
+        if let MotionCommand::Indexed { bounds, .. } = &mut command {
+            *bounds = Some([Vec3::NAN, Vec3::ONE]);
+        }
+        assert!(command.admitted(Mat4::IDENTITY));
+        if let MotionCommand::Indexed { bounds, .. } = &mut command {
+            *bounds = None;
+        }
+        assert!(command.admitted(Mat4::IDENTITY));
+        if let MotionCommand::Indexed { draw, .. } = command {
+            assert_eq!(
+                (
+                    draw.first,
+                    draw.count,
+                    draw.instances.first,
+                    draw.instances.count
+                ),
+                (9, 6, 7, 2)
+            );
+        }
     }
 
     #[test]
@@ -472,8 +530,14 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "Requires a native GPU; checks empty motion with retained object data"]
+    #[ignore = "Requires a native GPU; checks empty and clipped motion with retained object data"]
     fn empty_motion_keeps_camera_reprojection_with_stale_object_data() {
+        for clipped_draw in [false, true] {
+            camera_reprojection_with_stale_object_data(clipped_draw);
+        }
+    }
+
+    fn camera_reprojection_with_stale_object_data(clipped_draw: bool) {
         use wgpu::util::DeviceExt;
         let instance =
             wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
@@ -594,7 +658,54 @@ mod tests {
                 ..Default::default()
             });
         }
-        temporal.encode(&queue, &mut encoder, &scene_view, &mut targets, &[]);
+        let vertices =
+            [Vec3::ZERO, Vec3::X, Vec3::Y].map(|position| super::super::instanced::GpuVertex {
+                pos: (position + Vec3::Z * 0.002).to_array(),
+                normal: [0; 2],
+                uv: [0.0; 2],
+                color: [255; 4],
+            });
+        let vertices = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: None,
+            contents: bytemuck::cast_slice(&vertices),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+        let indices = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: None,
+            contents: bytemuck::cast_slice(&[0_u32, 1, 2]),
+            usage: wgpu::BufferUsages::INDEX,
+        });
+        let records = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: None,
+            contents: bytemuck::bytes_of(&super::super::instanced::Instance::new(
+                Mat4::from_translation(Vec3::X * 10.0),
+                0,
+            )),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+        let motions = [MotionDraw {
+            vertices: &vertices,
+            indices: &indices,
+            instances: &records,
+            draw: MotionCommand::Indexed {
+                draw: super::super::instanced::Draw {
+                    item: 0,
+                    first: 0,
+                    count: 3,
+                    instances: super::super::instanced::Run { first: 0, count: 1 },
+                },
+                double_sided: false,
+                bounds: Some([Vec3::new(10.0, 0.0, 0.002), Vec3::new(11.0, 1.0, 0.002)]),
+            },
+        }];
+        assert!(!motions[0].draw.admitted(Mat4::IDENTITY));
+        temporal.encode(
+            &queue,
+            &mut encoder,
+            &scene_view,
+            &mut targets,
+            if clipped_draw { &motions } else { &[] },
+        );
         encoder.copy_texture_to_buffer(
             scene.as_image_copy(),
             wgpu::TexelCopyBufferInfo {
@@ -626,7 +737,7 @@ mod tests {
             half::f16::from_bits(u16::from_le_bytes(data[264..266].try_into().unwrap())).to_f32();
         assert!(
             (color - 0.225).abs() < 0.001,
-            "empty motion must retain camera history: {color}"
+            "empty or clipped motion must retain camera history: {color}, clipped={clipped_draw}"
         );
         drop(data);
         readback.unmap();
@@ -783,6 +894,10 @@ mod tests {
                     Mat4::from_translation(Vec3::new(0.0, 0.0, -0.000005)),
                     Mat4::from_translation(Vec3::new(-0.25, 0.0, 0.0)),
                 ),
+                (
+                    Mat4::from_translation(Vec3::new(10.0, 0.0, 0.0)),
+                    Mat4::from_translation(Vec3::new(9.0, 0.0, 0.0)),
+                ),
             ] {
                 for matrix in [current, previous] {
                     let matrix = matrix.transpose();
@@ -797,7 +912,7 @@ mod tests {
                 contents: bytemuck::cast_slice(&records),
                 usage: wgpu::BufferUsages::VERTEX,
             });
-            let commands = [1, 2].map(|first_instance| wgpu::util::DrawIndexedIndirectArgs {
+            let commands = [1, 2, 3].map(|first_instance| wgpu::util::DrawIndexedIndirectArgs {
                 index_count: 3,
                 instance_count: 1,
                 first_index: 0,
@@ -819,110 +934,150 @@ mod tests {
             for use_indirect in [false, true].into_iter().filter(|&mode| !mode || indirect) {
                 for reversed in [false, true] {
                     for double_sided in [false, true] {
-                        let mut encoder = device.create_command_encoder(&Default::default());
-                        {
-                            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                                label: None,
-                                color_attachments: &[],
-                                depth_stencil_attachment: Some(
-                                    wgpu::RenderPassDepthStencilAttachment {
-                                        view: &depth_view,
-                                        depth_ops: Some(wgpu::Operations {
-                                            load: wgpu::LoadOp::Clear(0.001),
-                                            store: wgpu::StoreOp::Store,
-                                        }),
-                                        stencil_ops: None,
-                                    },
-                                ),
-                                ..Default::default()
-                            });
-                            // The unfilled right half represents holes in a masked surface.
-                            pass.set_pipeline(&depth_pipeline);
-                            pass.set_scissor_rect(0, 0, 2, 4);
-                            pass.draw(0..3, 0..1);
-                        }
-                        {
-                            let mut pass = color_pass(
-                                &mut encoder,
-                                "motion visibility regression",
-                                &output_view,
-                            );
-                            pass.set_pipeline(&temporal.motion[usize::from(double_sided)]);
-                            pass.set_bind_group(0, &group, &[]);
-                            pass.set_vertex_buffer(0, vertices.slice(..));
-                            pass.set_vertex_buffer(1, records.slice(..));
-                            pass.set_index_buffer(
-                                indices[usize::from(reversed)].slice(..),
-                                wgpu::IndexFormat::Uint32,
-                            );
-                            if use_indirect {
-                                pass.multi_draw_indexed_indirect(&commands, 0, 2);
-                            } else {
-                                pass.draw_indexed(0..3, 0, 1..2);
-                                pass.draw_indexed(0..3, 0, 2..3);
+                        let mut unfiltered = None;
+                        for cull in [false, true] {
+                            let mut encoder = device.create_command_encoder(&Default::default());
+                            {
+                                let mut pass =
+                                    encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                                        label: None,
+                                        color_attachments: &[],
+                                        depth_stencil_attachment: Some(
+                                            wgpu::RenderPassDepthStencilAttachment {
+                                                view: &depth_view,
+                                                depth_ops: Some(wgpu::Operations {
+                                                    load: wgpu::LoadOp::Clear(0.001),
+                                                    store: wgpu::StoreOp::Store,
+                                                }),
+                                                stencil_ops: None,
+                                            },
+                                        ),
+                                        ..Default::default()
+                                    });
+                                // The unfilled right half represents holes in a masked surface.
+                                pass.set_pipeline(&depth_pipeline);
+                                pass.set_scissor_rect(0, 0, 2, 4);
+                                pass.draw(0..3, 0..1);
                             }
-                        }
-                        encoder.copy_texture_to_buffer(
-                            wgpu::TexelCopyTextureInfo {
-                                texture: &output,
-                                mip_level: 0,
-                                origin: wgpu::Origin3d::ZERO,
-                                aspect: wgpu::TextureAspect::All,
-                            },
-                            wgpu::TexelCopyBufferInfo {
-                                buffer: &readback,
-                                layout: wgpu::TexelCopyBufferLayout {
-                                    offset: 0,
-                                    bytes_per_row: Some(256),
-                                    rows_per_image: Some(4),
+                            {
+                                let mut pass = color_pass(
+                                    &mut encoder,
+                                    "motion visibility regression",
+                                    &output_view,
+                                );
+                                pass.set_pipeline(&temporal.motion[usize::from(double_sided)]);
+                                pass.set_bind_group(0, &group, &[]);
+                                pass.set_vertex_buffer(0, vertices.slice(..));
+                                pass.set_vertex_buffer(1, records.slice(..));
+                                pass.set_index_buffer(
+                                    indices[usize::from(reversed)].slice(..),
+                                    wgpu::IndexFormat::Uint32,
+                                );
+                                if use_indirect {
+                                    pass.multi_draw_indexed_indirect(&commands, 0, 3);
+                                } else {
+                                    let mut issued = 0;
+                                    for first in [1, 2, 3] {
+                                        let x = if first == 3 { 10.0 } else { 0.0 };
+                                        let z = if first == 2 { 0.001_995 } else { 0.002 };
+                                        let command = MotionCommand::Indexed {
+                                            draw: super::super::instanced::Draw {
+                                                item: 0,
+                                                first: 0,
+                                                count: 3,
+                                                instances: super::super::instanced::Run {
+                                                    first,
+                                                    count: 1,
+                                                },
+                                            },
+                                            double_sided,
+                                            bounds: Some([
+                                                Vec3::new(x - 1.0, -1.0, z),
+                                                Vec3::new(x + 3.0, 3.0, z),
+                                            ]),
+                                        };
+                                        if !cull || command.admitted(Mat4::IDENTITY) {
+                                            pass.draw_indexed(0..3, 0, first..first + 1);
+                                            issued += 1;
+                                        }
+                                    }
+                                    assert_eq!(issued, if cull { 2 } else { 3 });
+                                }
+                            }
+                            encoder.copy_texture_to_buffer(
+                                wgpu::TexelCopyTextureInfo {
+                                    texture: &output,
+                                    mip_level: 0,
+                                    origin: wgpu::Origin3d::ZERO,
+                                    aspect: wgpu::TextureAspect::All,
                                 },
-                            },
-                            size,
-                        );
-                        queue.submit([encoder.finish()]);
-                        let (tx, rx) = std::sync::mpsc::channel();
-                        readback
-                            .slice(..)
-                            .map_async(wgpu::MapMode::Read, move |result| {
-                                tx.send(result).unwrap();
-                            });
-                        device
-                            .poll(wgpu::PollType::Wait {
-                                submission_index: None,
-                                timeout: None,
-                            })
-                            .unwrap();
-                        rx.recv().unwrap().unwrap();
-                        let data = readback.slice(..).get_mapped_range();
-                        let texel = &data[256 + 8..256 + 16];
-                        let x = half::f16::from_bits(u16::from_le_bytes(
-                            texel[..2].try_into().unwrap(),
-                        ))
-                        .to_f32();
-                        let valid = half::f16::from_bits(u16::from_le_bytes(
-                            texel[6..8].try_into().unwrap(),
-                        ))
-                        .to_f32();
-                        if reversed && !double_sided {
-                            assert_eq!(valid, 0.0, "single-sided back faces must not write motion");
-                        } else {
-                            assert!(
-                                (x - 0.125).abs() < 1e-4,
-                                "{samples}x depth, indirect={use_indirect}, reversed={reversed}, double_sided={double_sided}, accepted hidden motion: {x}"
+                                wgpu::TexelCopyBufferInfo {
+                                    buffer: &readback,
+                                    layout: wgpu::TexelCopyBufferLayout {
+                                        offset: 0,
+                                        bytes_per_row: Some(256),
+                                        rows_per_image: Some(4),
+                                    },
+                                },
+                                size,
                             );
-                            assert_eq!(valid, 1.0);
+                            queue.submit([encoder.finish()]);
+                            let (tx, rx) = std::sync::mpsc::channel();
+                            readback
+                                .slice(..)
+                                .map_async(wgpu::MapMode::Read, move |result| {
+                                    tx.send(result).unwrap();
+                                });
+                            device
+                                .poll(wgpu::PollType::Wait {
+                                    submission_index: None,
+                                    timeout: None,
+                                })
+                                .unwrap();
+                            rx.recv().unwrap().unwrap();
+                            let data = readback.slice(..).get_mapped_range();
+                            if cull {
+                                assert_eq!(
+                                    &*data,
+                                    unfiltered.as_deref().unwrap(),
+                                    "frustum admission must preserve every motion pixel"
+                                );
+                            } else {
+                                unfiltered = Some(data.to_vec());
+                            }
+                            let texel = &data[256 + 8..256 + 16];
+                            let x = half::f16::from_bits(u16::from_le_bytes(
+                                texel[..2].try_into().unwrap(),
+                            ))
+                            .to_f32();
+                            let valid = half::f16::from_bits(u16::from_le_bytes(
+                                texel[6..8].try_into().unwrap(),
+                            ))
+                            .to_f32();
+                            if reversed && !double_sided {
+                                assert_eq!(
+                                    valid, 0.0,
+                                    "single-sided back faces must not write motion"
+                                );
+                            } else {
+                                assert!(
+                                    (x - 0.125).abs() < 1e-4,
+                                    "{samples}x depth, indirect={use_indirect}, reversed={reversed}, double_sided={double_sided}, accepted hidden motion: {x}"
+                                );
+                                assert_eq!(valid, 1.0);
+                            }
+                            let hole = &data[256 + 3 * 8..256 + 4 * 8];
+                            let hole_valid = half::f16::from_bits(u16::from_le_bytes(
+                                hole[6..8].try_into().unwrap(),
+                            ))
+                            .to_f32();
+                            assert_eq!(
+                                hole_valid, 0.0,
+                                "masked holes must retain camera reprojection"
+                            );
+                            drop(data);
+                            readback.unmap();
                         }
-                        let hole = &data[256 + 3 * 8..256 + 4 * 8];
-                        let hole_valid = half::f16::from_bits(u16::from_le_bytes(
-                            hole[6..8].try_into().unwrap(),
-                        ))
-                        .to_f32();
-                        assert_eq!(
-                            hole_valid, 0.0,
-                            "masked holes must retain camera reprojection"
-                        );
-                        drop(data);
-                        readback.unmap();
                     }
                 }
             }
@@ -1211,15 +1366,17 @@ impl Temporal {
         }
         let has_motion = motions.iter().any(|motion| motion.draw.has_vertices());
         let mut uniform = targets.camera.prepared;
+        let camera = Mat4::from_cols_array_2d(&uniform.current);
         uniform.settings[3] = f32::from(u8::from(has_motion));
         queue.write_buffer(&targets.uniform, 0, bytemuck::bytes_of(&uniform));
         if has_motion {
+            // An entirely clipped stream still clears the preceding frame's motion.
             let mut pass = color_pass(encoder, "verse object motion", &targets.motion);
             pass.set_bind_group(0, &targets.motion_group, &[]);
             let mut buffers = None;
             let mut sides = None;
             for motion in motions {
-                if !motion.draw.has_vertices() {
+                if !motion.draw.admitted(camera) {
                     continue;
                 }
                 let double_sided = motion.draw.double_sided();

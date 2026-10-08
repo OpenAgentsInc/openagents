@@ -58,6 +58,15 @@ fn main() -> Result<(), String> {
     let digest =
         verse::pbr::baked_layers::hex(&verse::pbr::baked_layers::scene_digest(scene, &merged));
     if digest != layers.scene || merged.vertices.len() != layers.vertex_count() {
+        write_json(
+            &dir.join("preflight-failure.json"),
+            &json!({"schema":"openagents.verse-baked-light-preflight.v1",
+                "verified":false,"expected_scene":layers.scene,"actual_scene":digest,
+                "expected_vertices":layers.vertex_count(),"actual_vertices":merged.vertices.len(),
+                "actual_indices":merged.indices.len(),"actual_batches":merged.batches.len(),
+                "actual_materials":scene.materials.len(),"actual_images":scene.images.len(),
+                "inputs":inputs,"captured_before_simulation":true}),
+        )?;
         return Err(format!(
             "Offline layers match scene {}, but the capture builds {digest}",
             layers.scene

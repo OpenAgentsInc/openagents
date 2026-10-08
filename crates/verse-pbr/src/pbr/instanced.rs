@@ -766,6 +766,43 @@ pub fn draws(items: &[Batch], order: &[usize]) -> Vec<Draw> {
     out
 }
 
+/// Rigid color order under its rendered camera, without size or fog cutoffs.
+pub(crate) fn camera_order(
+    items: &[Batch],
+    materials: &[textured::TexturedMaterial],
+    view: verse_engine::presentation::View,
+) -> Vec<usize> {
+    textured::draw_order(items, materials, view.eye, |_, batch| {
+        textured::in_frustum_conservative(batch.min, batch.max, view.view_proj)
+    })
+}
+
+/// Coalesces admitted opaque caster ranges within one bound geometry buffer.
+/// These passes read no material. A single instance keeps the complete index
+/// and instance invocation order unchanged when adjacent ranges join.
+pub(crate) fn opaque_caster_draws(items: &[Batch], order: &[usize]) -> Vec<Draw> {
+    let mut out = draws(items, order);
+    let mut written = 0_usize;
+    for read in 0..out.len() {
+        let next = out[read];
+        if written > 0 {
+            let last = &mut out[written - 1];
+            if last.instances.count == 1
+                && last.instances == next.instances
+                && last.first.checked_add(last.count) == Some(next.first)
+                && let Some(count) = last.count.checked_add(next.count)
+            {
+                last.count = count;
+                continue;
+            }
+        }
+        out[written] = next;
+        written += 1;
+    }
+    out.truncate(written);
+    out
+}
+
 /// Adjacent indirect commands that share one material, with their draw costs.
 #[derive(Clone, Copy)]
 pub(crate) struct IndirectRun {
@@ -903,6 +940,179 @@ mod tests {
         AlphaMode, Level, Primitive, TexturedMaterial, TexturedMesh, TexturedScene, TexturedVertex,
     };
     use super::*;
+
+    fn caster_invocations(calls: &[Draw]) -> Vec<(u32, u32)> {
+        calls
+            .iter()
+            .flat_map(|draw| {
+                (draw.instances.first..draw.instances.first + draw.instances.count).flat_map(
+                    move |instance| {
+                        (draw.first..draw.first + draw.count).map(move |index| (index, instance))
+                    },
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn rigid_camera_order_only_removes_wholly_clipped_batches() {
+        let batch = |z: f32, x: f32, material, first| Batch {
+            first,
+            count: 3,
+            material,
+            min: Vec3::new(x - 0.01, -0.01, z - 0.01),
+            max: Vec3::new(x + 0.01, 0.01, z + 0.01),
+            level: Level::Always,
+            run: Some(Run {
+                first: first + 7,
+                count: 2,
+            }),
+        };
+        let items = [
+            batch(-10.0, 0.0, 0, 0),
+            batch(10.0, 0.0, 0, 3),
+            batch(-10.0, 50.0, 1, 6),
+            batch(-10.0, 0.0, 1, 9),
+            batch(-20.0, 0.0, 2, 12),
+            batch(-5.0, 0.0, 2, 15),
+        ];
+        let materials = [
+            TexturedMaterial::default(),
+            TexturedMaterial {
+                alpha: AlphaMode::Mask { cutoff: 0.5 },
+                ..Default::default()
+            },
+            TexturedMaterial {
+                alpha: AlphaMode::Blend,
+                ..Default::default()
+            },
+        ];
+        let view = verse_engine::presentation::View {
+            eye: Vec3::ZERO,
+            view_proj: Mat4::perspective_rh(1.0, 1.0, 0.1, 100.0),
+        };
+        let original = textured::draw_order(&items, &materials, view.eye, |_, _| true);
+        let admitted = camera_order(&items, &materials, view);
+        assert_eq!(admitted, [0, 3, 4, 5]);
+        let expected: Vec<_> = original
+            .into_iter()
+            .filter(|i| ![1, 2].contains(i))
+            .collect();
+        assert_eq!(admitted, expected);
+        for draw in draws(&items, &admitted) {
+            assert_eq!(draw.instances, items[draw.item].run.unwrap());
+            assert_eq!(draw.first, items[draw.item].first);
+            assert_eq!(draw.count, items[draw.item].count);
+        }
+        assert_eq!(camera_order(&items, &materials, view), admitted);
+    }
+
+    #[test]
+    fn opaque_caster_ranges_preserve_admitted_index_and_instance_order() {
+        let batch = |first, material, run| Batch {
+            first,
+            count: 3,
+            material,
+            min: Vec3::ZERO,
+            max: Vec3::ONE,
+            level: Level::Always,
+            run,
+        };
+        let batches = [
+            batch(0, 0, None),
+            batch(3, 1, None),
+            batch(6, 2, None), // A masked range leaves an opaque gap.
+            batch(9, 0, None),
+            batch(12, 3, None), // A blended range cannot become a caster.
+            batch(15, 0, Some(Run { first: 7, count: 1 })),
+            batch(18, 1, Some(Run { first: 7, count: 1 })),
+            batch(21, 0, Some(Run { first: 8, count: 2 })),
+            batch(24, 1, Some(Run { first: 8, count: 2 })),
+            batch(0, 1, None), // Overlapping geometry retains its order.
+        ];
+        let materials = [
+            TexturedMaterial::default(),
+            TexturedMaterial::default(),
+            TexturedMaterial {
+                alpha: AlphaMode::Mask { cutoff: 0.5 },
+                ..TexturedMaterial::default()
+            },
+            TexturedMaterial {
+                alpha: AlphaMode::Blend,
+                ..TexturedMaterial::default()
+            },
+        ];
+        for visible in 0_u32..1 << batches.len() {
+            let admitted: Vec<_> = (0..batches.len())
+                .filter(|&i| {
+                    visible & (1 << i) != 0
+                        && textured::raster(materials[batches[i].material].alpha.pass(), false)
+                            .shadow
+                            == Some(false)
+                })
+                .collect();
+            let old = draws(&batches, &admitted);
+            let coalesced = opaque_caster_draws(&batches, &admitted);
+            assert_eq!(
+                caster_invocations(&coalesced),
+                caster_invocations(&old),
+                "visibility mask {visible}"
+            );
+            assert!(coalesced.len() <= old.len());
+        }
+        let admitted = [0, 1, 3, 5, 6, 7, 8, 9];
+        let coalesced = opaque_caster_draws(&batches, &admitted);
+        assert_eq!(coalesced.len(), 6);
+        assert_eq!((coalesced[0].first, coalesced[0].count), (0, 6));
+        assert_eq!((coalesced[2].first, coalesced[2].count), (15, 6));
+        assert_eq!(coalesced[2].instances, Run { first: 7, count: 1 });
+        assert_eq!(coalesced[3].instances.count, 2);
+        assert_eq!(coalesced[4].instances.count, 2);
+        let reversed = [1, 0];
+        assert_eq!(
+            opaque_caster_draws(&batches, &reversed),
+            draws(&batches, &reversed)
+        );
+    }
+
+    #[test]
+    fn opaque_caster_ranges_reduce_merged_cells_without_crossing_visibility_gaps() {
+        let mut scene = TexturedScene::default();
+        for _ in 0..4 {
+            scene.add_material(TexturedMaterial::default());
+        }
+        let meshes: Vec<_> = (0..4)
+            .map(|material| {
+                let mut mesh = tree();
+                mesh.primitives[0].material = material;
+                scene.add_mesh(mesh)
+            })
+            .collect();
+        for cell in 0..64 {
+            scene.place(
+                meshes[cell % meshes.len()],
+                Mat4::from_translation(Vec3::X * (cell as f32 * textured::CELL + 1.0)),
+            );
+        }
+        let prepared = Prepared::of_scene(&scene).unwrap();
+        assert_eq!(prepared.items.len(), 64);
+        assert!(prepared.items.iter().all(|item| item.run.is_none()));
+        let admitted: Vec<_> = (0..prepared.items.len()).collect();
+        let old = draws(&prepared.items, &admitted);
+        let coalesced = opaque_caster_draws(&prepared.items, &admitted);
+        assert_eq!(old.len(), 64);
+        assert_eq!(coalesced.len(), 1);
+        assert_eq!(caster_invocations(&coalesced), caster_invocations(&old));
+        assert_eq!(coalesced[0].count as usize, prepared.indices.len());
+        let admitted: Vec<_> = admitted
+            .into_iter()
+            .filter(|&i| i != 21 && i != 43)
+            .collect();
+        let old = draws(&prepared.items, &admitted);
+        let coalesced = opaque_caster_draws(&prepared.items, &admitted);
+        assert_eq!(coalesced.len(), 3);
+        assert_eq!(caster_invocations(&coalesced), caster_invocations(&old));
+    }
 
     #[test]
     fn indirect_commands_keep_instance_offsets_ranges_and_actual_draw_costs() {
