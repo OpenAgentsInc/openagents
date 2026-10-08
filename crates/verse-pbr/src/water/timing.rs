@@ -83,12 +83,14 @@ struct Slot {
     resolve: wgpu::Buffer,
     readback: wgpu::Buffer,
     pending: Option<(u64, u8, Receiver<Result<(), wgpu::BufferAsyncError>>)>,
+    awaiting: Option<(u64, u8, Receiver<()>)>,
 }
 
 pub(crate) struct Timer {
     slots: Vec<Slot>,
     frame: u64,
     period: f64,
+    queue: wgpu::Queue,
 }
 
 /// Charge dependent passes by their completion frontier on tile GPUs,
@@ -142,6 +144,7 @@ impl Timer {
             return None;
         }
         Some(Self {
+            queue: queue.clone(),
             frame: 0,
             period: f64::from(queue.get_timestamp_period()),
             slots: (0..3)
@@ -164,6 +167,7 @@ impl Timer {
                         mapped_at_creation: false,
                     }),
                     pending: None,
+                    awaiting: None,
                 })
                 .collect(),
         })
@@ -173,6 +177,29 @@ impl Timer {
         self.frame = self.frame.saturating_add(1);
         let mut latest = None;
         for slot in &mut self.slots {
+            if let Some((frame, mask, receiver)) = &slot.awaiting {
+                match receiver.try_recv() {
+                    Ok(()) => {
+                        let (frame, mask) = (*frame, *mask);
+                        let mut encoder =
+                            device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                                label: Some("Completed water timestamp resolve"),
+                            });
+                        Self::resolve_slot(&mut encoder, slot, mask);
+                        self.queue.submit([encoder.finish()]);
+                        let (send, receive) = mpsc::channel();
+                        slot.readback
+                            .slice(..)
+                            .map_async(wgpu::MapMode::Read, move |result| {
+                                let _ = send.send(result);
+                            });
+                        slot.pending = Some((frame, mask, receive));
+                        slot.awaiting = None;
+                    }
+                    Err(mpsc::TryRecvError::Disconnected) => slot.awaiting = None,
+                    Err(mpsc::TryRecvError::Empty) => {}
+                }
+            }
             let Some((frame, mask, receiver)) = &slot.pending else {
                 continue;
             };
@@ -207,7 +234,12 @@ impl Timer {
                 Err(mpsc::TryRecvError::Empty) => {}
             }
         }
-        (self.slots.iter().position(|s| s.pending.is_none()), latest)
+        (
+            self.slots
+                .iter()
+                .position(|s| s.pending.is_none() && s.awaiting.is_none()),
+            latest,
+        )
     }
     pub fn boundary(
         &self,
@@ -221,13 +253,7 @@ impl Timer {
             end_of_pass_write_index: Some(pass * 2 + 1),
         })
     }
-    pub fn resolve(&self, encoder: &mut wgpu::CommandEncoder, slot: Option<usize>, mask: u8) {
-        if mask & 8 == 0 {
-            return;
-        }
-        let Some(slot) = slot.map(|i| &self.slots[i]) else {
-            return;
-        };
+    fn resolve_slot(encoder: &mut wgpu::CommandEncoder, slot: &Slot, mask: u8) {
         // An unwritten query can stall Vulkan or invalidate Metal readback.
         // Every resolve starts at the required 256-byte alignment; copy each
         // written pair to its own position before reusing the resolve buffer.
@@ -252,13 +278,14 @@ impl Timer {
         let Some(slot) = slot.map(|i| &mut self.slots[i]) else {
             return;
         };
+        // Metal can resolve a render-pass end counter before that pass
+        // completes. Resolve in a later submission after completion, without
+        // waiting on the render thread or reusing the in-flight query slot.
         let (send, receive) = mpsc::channel();
-        slot.readback
-            .slice(..)
-            .map_async(wgpu::MapMode::Read, move |result| {
-                let _ = send.send(result);
-            });
-        slot.pending = Some((self.frame, mask, receive));
+        self.queue.on_submitted_work_done(move || {
+            let _ = send.send(());
+        });
+        slot.awaiting = Some((self.frame, mask, receive));
     }
     pub fn bytes(&self) -> u64 {
         // Eight 64-bit query results, plus equally sized resolve and

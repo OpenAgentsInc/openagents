@@ -388,3 +388,9 @@ All under `bench/verse/2026-10-07/`:
 | `everglade-weather/` | W9: weather, rain, and wetness |
 | `water-w10/` | W10: the clipmap ocean and coastal scene |
 | `sea-states/` | #10918: the three sea states before and after (`sheet-high.png`, `sheet-low.png`) |
+
+The October 8 Metal timer diagnosis retains the two failed experiments in
+`bench/verse/2026-10-08/water-w11/metal-timer-diagnosis/`. Deferring query
+resolution until submission completion, without blocking the render thread,
+passes the first Mac case with 96/96 valid samples. The remaining fixed
+views and budget calibration are still pending.
