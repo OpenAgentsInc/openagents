@@ -442,6 +442,8 @@ async fn chat_and_information_panels_render_semantic_controls() {
         );
     }
     assert!(body.contains("/static/chat-start.js"));
+    assert!(body.contains("hx-disabled-elt=\"#chat-form button[type=submit]\""));
+    assert!(!body.contains("hx-disabled-elt=\"find button[type=submit]\""));
     for retired in ["OriginalText", "/components/assets/", "coder_web.js"] {
         assert!(!body.contains(retired), "{retired}");
     }
