@@ -1,15 +1,8 @@
 # The coast
 
-Status: specification, revised 2026-10-07. Nothing in this document is
-implemented. The owner approved an ocean or coastal zone on 2026-10-06 and
-asked for a specification only for now. The specification was tracked by
-[#10796](https://github.com/OpenAgentsInc/openagents/issues/10796); the build
-is split into one issue a phase, C1 to C6 (see
-[Phases and estimates](#phases-and-estimates)), blocked by the water system's
-spectral waves (W4,
-[#10776](https://github.com/OpenAgentsInc/openagents/issues/10776)) and its
-clipmap ocean and streaming (W10,
-[#10782](https://github.com/OpenAgentsInc/openagents/issues/10782)).
+Status: C1 implementation in progress, revised 2026-10-08. W1 through W11
+are closed. The coast remains split into C1 through C6; C1 reuses the
+shipped water renderer, spectrum, clipmap, shared clock, and spell code.
 
 The coast is a loaded zone where Verse's ocean is the main attraction: a
 temperate bay with a sand beach and surf, sea cliffs, a harbor with
@@ -36,36 +29,38 @@ each water phase.
 
 ## What exists today
 
-Checked against `origin/main` at `76ba27e1d5`:
+Checked against main `17617d4ab2` and the C1 branch:
 
-- **The Water Lab** ([`verse-zone-water`](../../crates/verse-zone-water/src/lib.rs),
-  phase W0, described in [Water Lab controls](zones.md#water-lab-controls)) is
-  a 300 m cove with a Gerstner swell, a river, falls, and a plunge pool. It
-  has wading, swimming, and diving with Water Breathing; floating crates,
-  barrels, and planks on `physics` rigid bodies
-  ([`floats.rs`](../../crates/verse-zone-water/src/floats.rs)); the water
-  spell hotbar ([`spells.rs`](../../crates/verse-zone-water/src/spells.rs));
-  the Water Orb ([`orb.rs`](../../crates/verse-zone-water/src/orb.rs)); the
-  Grove's Thunderbolt with conduction through the water
-  ([`bolt.rs`](../../crates/verse-zone-water/src/bolt.rs)); and training
-  dummies ([`targets.rs`](../../crates/verse-zone-water/src/targets.rs)).
-  Its arch, `WATER LAB`, took the plaza's west arch at `(-12, 0, 12)`, the
-  spot the Ruins zone left on 2026-10-05.
-- **The water pass** ([`pbr::water`](../../crates/verse-pbr/src/pbr/water.rs))
-  draws static water patches with up to eight Gerstner swell waves, sixteen
-  detail waves, analytic ripples, Beer–Lambert extinction, and analytic
-  caustics, and evaluates the same swell on the CPU.
-- **`physics::water`** (W1,
-  [#10773](https://github.com/OpenAgentsInc/openagents/issues/10773), closed)
-  has bodies, the Gerstner surface with deterministic time, buoyancy, drag,
-  and currents ([`crates/physics/src/water/`](../../crates/physics/src/water/mod.rs)).
-- **Shared zone worlds.** A zone entered through an arch joins its own NIP-MV
-  world, keyed by `ZoneId::world_id`, so players who walked through the same
-  arch see each other ([Mobile](mobile.md)).
-- **Missing.** W2 to W11 are open: no FFT ocean, clipmap, planar reflection
-  or screen-space reflection, Kelvin wakes, rowable boats, underwater
-  post-processing, weather, or per-tier measurement. Verse has no
-  zone-to-zone transition.
+- **Water Lab.** `verse-zone-water` retains its public paths while
+  `verse-water-spells` owns the shared hotbar, Water Orb, Thunderbolt,
+  spell rules, and water simulation. Its cove remains available.
+- **Shared water renderer.** `verse_pbr::water` provides the shared shader,
+  scene-copy refraction, planar reflection, High-tier SSR, ripples, wakes,
+  underwater optics, and measured adaptive budgets. WebGL2 keeps the Low
+  path without GPU timestamps or compute requirements.
+- **Spectrum and ocean.** `physics::water::WaveSet::with_spectrum` supplies
+  gameplay waves. `verse_pbr::water::Water::ocean` and `WaterSurface::ocean`
+  drive W10's camera-centered clipmap. `verse_zone_water::coast` is the
+  retained W10 fixture; C1 extends its bay rather than replacing the water
+  system.
+- **Fields.** `verse_pbr::water::field::Field` packs depth, shore distance,
+  and two current channels into RGBA16F pages, 64 texels or 128 m per side
+  at 2 m resolution. Ten pages cover 1,280 m, including a 40 m border around
+  the playable square. C1 adds shelter as a separate R8 plane; renderer
+  admission and upload must count it before C1 closes.
+- **Clock and physics.** `physics::water::tick_at` derives 120 Hz ticks from
+  Unix milliseconds. `physics::water::Water` is the query boundary for
+  buoyancy and currents. The tide folds the integer tick before converting
+  to floating point. The gameplay sampler uses the same shelter function
+  that generates the render mask.
+- **Qualification.** W11 records measured tier budgets and calibrated
+  overrun behavior in [Water](water.md#budgets-per-tier). Those limits are
+  admission budgets, not a guarantee that the coast keeps every effect.
+  C6 still measures the complete coast and qualifies owner-only devices.
+- **Remaining C1 integration.** Register the zone, entry and return paths,
+  tide-aware rendering and shelter, and per-tier bay captures. C2 through
+  C6 still add the pack, boats, diving content, transitions, and multiplayer
+  behavior described below.
 
 The coast doesn't replace the Water Lab. The Lab stays a small, fast-loading
 demo; the coast reuses its modules (see
@@ -191,16 +186,17 @@ channel 6 m wide and 1 m deep from the gate to the mouth.
 | Sandbar crest | 0.6 | Dry when the tide is more than 0.6 m below mean. |
 | Tide-pool shelf rim | 0.3 | The pools separate from the sea when the tide is more than 0.3 m below mean. |
 
-**Baked fields.** On install, the zone bakes these from `ground` into
-textures over the playable square at 2 m a texel (600 × 600), each
-streamed with the 8 m cells it covers (M1):
+**Baked fields.** On install, the zone generates these from `ground` at 2 m per texel.
+W10 groups the field into ten 64 × 64 pages per axis (640 × 640 texels),
+covering the playable square and its 40 m border. Pages stream near the
+camera under the water field budget:
 
-- **Depth** below mean sea level (R16F, about 0.7 MiB), for absorption (S6),
+- **Depth** below mean sea level (one channel of RGBA16F), for absorption (S6),
   shoaling (V7), caustics (S10), and the shore foam's distance.
-- **Shore distance** (R16F), signed, for shore foam (S9) and surf placement.
+- **Shore distance** (one channel of RGBA16F), signed, for shore foam (S9) and surf placement.
 - **Shelter mask** (R8), 0.1 inside the breakwater and 1 in the open, that
   scales the swell's amplitude in both the gameplay surface and the shader.
-- **Flow** (RG16F), the estuary's current and the offshore bounds current
+- **Flow** (two channels of RGBA16F), the estuary's current and the offshore bounds current
   (P3, P4).
 
 The bake is deterministic, so every client builds the same textures from the
@@ -433,8 +429,8 @@ W11's measurements. Over budget, a tier draws less and never fails.
 | Budget | Low (WebGL2, GLES 3.0) | Medium (phones, WebGPU) | High (desktop) |
 | --- | --- | --- | --- |
 | Resident GPU bytes for the zone | ≤ 160 MiB, Everglade's `RESIDENT_BYTES_BUDGET` | ≤ 160 MiB | ≤ 224 MiB, the renderer's `textured::MAX_BYTES` |
-| Of which water (from [Water](water.md#budgets-per-tier)) | ≤ 8 MiB | ≤ 32 MiB | ≤ 96 MiB |
-| GPU time for water, 1080p equivalent | ≤ 1.5 ms | ≤ 2.5 ms | ≤ 4 ms |
+| Of which water (from [Water](water.md#budgets-per-tier)) | ≤ 8 MiB | ≤ 32 MiB | ≤ 64 MiB |
+| GPU time for water, 1080p equivalent | ≤ 3.5 ms | ≤ 3.5 ms | ≤ 4 ms |
 | Fog end and draw distance | 600 m | 1.2 km | 2 km, the atmosphere's validated maximum |
 | Clipmap rings | 3 | 4 | 5 |
 | Spectral cascades | A baked looping tile | 2 × 64² | 3 × 128² |

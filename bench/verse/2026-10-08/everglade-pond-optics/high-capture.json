@@ -1,0 +1,157 @@
+{
+  "scene": "f55a1e76fca2e2b96af777e296549aa9b51776cadbcfff6eaf1c77a8ad83b2ab",
+  "pictures": [
+    {
+      "name": "lantern-above",
+      "file": "lantern-above.png",
+      "sha256": "d04be9a4ab2ed02504052306a432450a0a2555b3e8ca4a74c19a4ef6611a9221",
+      "player": [
+        -2.4259684085845947,
+        0.0,
+        21.32785415649414
+      ],
+      "eye": [
+        -3.543635845184326,
+        8.056204795837402,
+        15.157907485961914
+      ],
+      "surface": null,
+      "bed": 0.0,
+      "medium": "ground",
+      "breath": null
+    },
+    {
+      "name": "lantern-eye",
+      "file": "lantern-eye.png",
+      "sha256": "25d5ac0ecd01c2d08f7dba21f2824e5bee6dc00fcd671b70284a228de6b25f7a",
+      "player": [
+        -2.4259684085845947,
+        0.0,
+        21.32785415649414
+      ],
+      "eye": [
+        -2.4259684085845947,
+        1.6999999284744263,
+        21.32785415649414
+      ],
+      "surface": null,
+      "bed": 0.0,
+      "medium": "ground",
+      "breath": null
+    },
+    {
+      "name": "reed-above",
+      "file": "reed-above.png",
+      "sha256": "606d602aa35458587056f1eb45f3f54cc932679be460d224f99370caa3d1a39d",
+      "player": [
+        4.6367878913879395,
+        0.0,
+        -36.15691375732422
+      ],
+      "eye": [
+        3.212149143218994,
+        8.056204795837402,
+        -30.050537109375
+      ],
+      "surface": null,
+      "bed": 0.0,
+      "medium": "ground",
+      "breath": null
+    },
+    {
+      "name": "reed-eye",
+      "file": "reed-eye.png",
+      "sha256": "ca0d3b543e45e3301eb7bd3710a2c8502081553b016625ece69adac3e4e04d08",
+      "player": [
+        4.6367878913879395,
+        0.0,
+        -36.15691375732422
+      ],
+      "eye": [
+        4.6367878913879395,
+        1.6999999284744263,
+        -36.15691375732422
+      ],
+      "surface": null,
+      "bed": 0.0,
+      "medium": "ground",
+      "breath": null
+    },
+    {
+      "name": "thinking-above",
+      "file": "thinking-above.png",
+      "sha256": "3c81a2812e73f7a90711338279cda178518b916231bb77ecb7c5482519e4c3cc",
+      "player": [
+        -108.22264862060547,
+        0.0,
+        -67.95249938964844
+      ],
+      "eye": [
+        -105.18598175048828,
+        5.512333869934082,
+        -70.02999877929688
+      ],
+      "surface": null,
+      "bed": 0.0,
+      "medium": "ground",
+      "breath": null
+    },
+    {
+      "name": "thinking-eye",
+      "file": "thinking-eye.png",
+      "sha256": "3cf528dd6b01577df851fbd29047397cedfa44288ba4adb91faaf325f5e34624",
+      "player": [
+        -108.22264862060547,
+        0.0,
+        -67.95249938964844
+      ],
+      "eye": [
+        -108.22264862060547,
+        1.6999999284744263,
+        -67.95249938964844
+      ],
+      "surface": null,
+      "bed": 0.0,
+      "medium": "ground",
+      "breath": null
+    },
+    {
+      "name": "fern-above",
+      "file": "fern-above.png",
+      "sha256": "543886329ee1d4de1e892e2fe74f7b155a1a0dfd67f8d8568db9f71cec7d7953",
+      "player": [
+        85.66920471191406,
+        0.0,
+        71.15291595458984
+      ],
+      "eye": [
+        81.49141693115234,
+        8.056204795837402,
+        66.4770736694336
+      ],
+      "surface": null,
+      "bed": 0.0,
+      "medium": "ground",
+      "breath": null
+    },
+    {
+      "name": "fern-eye",
+      "file": "fern-eye.png",
+      "sha256": "7319d6910399b3d804342226c3037adf84e61626ec2cfa275c6b579f97966857",
+      "player": [
+        85.66920471191406,
+        0.0,
+        71.15291595458984
+      ],
+      "eye": [
+        85.66920471191406,
+        1.6999999284744263,
+        71.15291595458984
+      ],
+      "surface": null,
+      "bed": 0.0,
+      "medium": "ground",
+      "breath": null
+    }
+  ]
+}

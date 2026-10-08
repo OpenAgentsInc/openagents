@@ -1,0 +1,17 @@
+[package]
+name = "verse-zone-coast"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Verse's coast: deterministic terrain, tide, and coastal water."
+
+[dependencies]
+glam = "0.30.10"
+physics = { path = "../physics" }
+verse-pbr = { path = "../verse-pbr" }
+verse-water-spells = { path = "../verse-water-spells" }
+verse-zone-water = { path = "../verse-zone-water" }
+
+[lints]
+workspace = true

@@ -113,18 +113,21 @@ impl SessionGrant {
         if remaining == 0 {
             return Err(SessionError::Unauthenticated);
         }
-        Ok(vec![
+        let mut cookies = legacy_clears(self.secure);
+        cookies.extend([
             cookie(SESSION_COOKIE, self.token.expose(), remaining, self.secure)?,
             cookie(WORKSPACE_COOKIE, "", 0, self.secure)?,
             cookie(LOGIN_COOKIE, "", 0, self.secure)?,
-        ])
+        ]);
+        Ok(cookies)
     }
 }
 
-/// A public form ticket and, on the first visit, its private nonce cookie.
+/// A public form ticket and the private nonce cookies that bind it.
 pub struct CsrfForm {
     pub token: String,
     pub cookie: Option<HeaderValue>,
+    pub legacy_cookies: Vec<HeaderValue>,
 }
 
 /// Explicit transport settings and pinned CSRF custody, without an account book.
@@ -402,19 +405,47 @@ impl CloudSession {
         self.read_view(&token, Some(target)).await
     }
 
-    pub fn workspace_cookie(&self, workspace: &str) -> Result<HeaderValue> {
+    pub fn workspace_cookies(&self, workspace: &str) -> Result<Vec<HeaderValue>> {
         self.ready()?;
         if !identifier(workspace) {
             return Err(SessionError::InvalidRequest);
         }
-        cookie(WORKSPACE_COOKIE, workspace, 2_592_000, self.secure)
+        Ok(vec![
+            clear_legacy(WORKSPACE_COOKIE, self.secure),
+            cookie(WORKSPACE_COOKIE, workspace, 2_592_000, self.secure)?,
+        ])
+    }
+
+    /// Reissue current standing at the root path and retire its legacy cookies.
+    pub fn refresh_cookies(
+        &self,
+        headers: &HeaderMap,
+        viewer: &Viewer,
+    ) -> Result<Vec<HeaderValue>> {
+        self.ready()?;
+        self.viewer_cookie(headers, viewer)?;
+        let remaining = viewer.expires_at.saturating_sub(now());
+        if remaining == 0 {
+            return Err(SessionError::Unauthenticated);
+        }
+        let token = value(headers, SESSION_COOKIE)?.ok_or(SessionError::Unauthenticated)?;
+        let mut cookies = legacy_clears(self.secure);
+        cookies.push(cookie(SESSION_COOKIE, &token, remaining, self.secure)?);
+        cookies.push(match &viewer.workspace {
+            Some(workspace) => cookie(WORKSPACE_COOKIE, &workspace.id, 2_592_000, self.secure)?,
+            None => cookie(WORKSPACE_COOKIE, "", 0, self.secure)?,
+        });
+        cookies.push(cookie(LOGIN_COOKIE, "", 0, self.secure)?);
+        Ok(cookies)
     }
 
     pub fn clear_cookies(&self) -> Vec<HeaderValue> {
-        [SESSION_COOKIE, WORKSPACE_COOKIE, LOGIN_COOKIE]
-            .into_iter()
-            .map(|name| cookie(name, "", 0, self.secure).expect("static cookie is valid"))
-            .collect()
+        let mut cookies = legacy_clears(self.secure);
+        cookies.extend(
+            [SESSION_COOKIE, WORKSPACE_COOKIE, LOGIN_COOKIE]
+                .map(|name| cookie(name, "", 0, self.secure).expect("static cookie is valid")),
+        );
+        cookies
     }
 
     /// End the cookie's native session without depending on workspace membership.
@@ -435,20 +466,17 @@ impl CloudSession {
     pub fn login_csrf(&self, headers: &HeaderMap, scope: &str, target: &str) -> Result<CsrfForm> {
         self.ready()?;
         self.request_host(headers)?;
-        let (nonce, set_cookie) = match value(headers, LOGIN_COOKIE)? {
+        let nonce = match value(headers, LOGIN_COOKIE)? {
             Some(nonce) if nonce.len() == 64 && nonce.bytes().all(|b| b.is_ascii_hexdigit()) => {
-                (nonce, None)
+                nonce
             }
             Some(_) => return Err(SessionError::InvalidRequest),
-            None => {
-                let nonce = hex(&secp256k1::rand::random::<[u8; 32]>());
-                let set_cookie = cookie(LOGIN_COOKIE, &nonce, TICKET_SECONDS, self.secure)?;
-                (nonce, Some(set_cookie))
-            }
+            None => hex(&secp256k1::rand::random::<[u8; 32]>()),
         };
         Ok(CsrfForm {
             token: self.ticket(&hex(&Sha256::digest(nonce.as_bytes())), None, scope, target)?,
-            cookie: set_cookie,
+            cookie: Some(cookie(LOGIN_COOKIE, &nonce, TICKET_SECONDS, self.secure)?),
+            legacy_cookies: vec![clear_legacy(LOGIN_COOKIE, self.secure)],
         })
     }
 
@@ -700,8 +728,28 @@ fn endpoint(value: &str, origin: bool) -> std::result::Result<url::Url, String> 
 }
 
 fn cookie(name: &str, value: &str, seconds: u64, secure: bool) -> Result<HeaderValue> {
+    cookie_at(name, value, seconds, secure, "/")
+}
+
+fn clear_legacy(name: &str, secure: bool) -> HeaderValue {
+    cookie_at(name, "", 0, secure, "/cloud").expect("static cookie is valid")
+}
+
+fn legacy_clears(secure: bool) -> Vec<HeaderValue> {
+    [SESSION_COOKIE, WORKSPACE_COOKIE, LOGIN_COOKIE]
+        .map(|name| clear_legacy(name, secure))
+        .into()
+}
+
+fn cookie_at(
+    name: &str,
+    value: &str,
+    seconds: u64,
+    secure: bool,
+    path: &str,
+) -> Result<HeaderValue> {
     let mut header = HeaderValue::from_str(&format!(
-        "{name}={value}; Path=/cloud; HttpOnly; SameSite=Strict; Max-Age={seconds}{}",
+        "{name}={value}; Path={path}; HttpOnly; SameSite=Strict; Max-Age={seconds}{}",
         if secure { "; Secure" } else { "" },
     ))
     .map_err(|_| SessionError::InvalidRequest)?;

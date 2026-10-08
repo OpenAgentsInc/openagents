@@ -14,6 +14,11 @@ and Save lifecycle. Start with the [Cursor workflow analysis](example-cursor-clo
 and [ordered tool ledger](example-cursor-cloud-agent-onboarding/cursor-environment-onboarding-tool-sequence.md) for the
 evidence behind the design.
 
+The [managed computer plan](managed-computers.md) joins that onboarding contract
+with the [Orbs research](../research/orbs.md), current native Cloud jobs, and the
+web composer. Its terms and implementation boundaries match the
+[glossary](../glossary.md#cloud-computers-and-repository-environments).
+
 ## Resident operator bridge
 
 The following command loads a separately admitted operator policy:
@@ -93,6 +98,7 @@ the GCE spot pool granted as one computer (`openagents cloud up/down/status`,
 
 | Document | What it covers |
 | --- | --- |
+| [Cloud computers and repository environments](managed-computers.md) | Working web selections over admitted native jobs, and the remaining prepared environment, machine, service, preview, and retail owners |
 | [Repository environment onboarding](example-cursor-cloud-agent-onboarding/environment-onboarding.md) | Proposed native environment owner, existing infrastructure and issue dependencies, recipe/build/verifier/Save contracts, complete evidence, and implementation slices |
 | [Cursor onboarding analysis](example-cursor-cloud-agent-onboarding/cursor-environment-onboarding-analysis.md) | Exact observed setup stages, changes, backend build order, fresh verification, limitations, and decisions for the OpenAgents port |
 | [Cursor onboarding tool sequence](example-cursor-cloud-agent-onboarding/cursor-environment-onboarding-tool-sequence.md) | All 121 parent call IDs in submission order, exact shell commands, seven child calls, and links to original responses |

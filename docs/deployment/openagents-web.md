@@ -694,3 +694,26 @@ or spatial tier budget claim; B4 (#10908) remains open.
 Private receipts and captures remain under
 `codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/b4-csp/` in operator scratch.
 Rollback: `gcloud run services update-traffic coder --region us-central1 --project openagentsgemini --to-revisions coder-web-b2-88cb5f7599-20261008174258=100`.
+
+## October 8, 2026: measured water in production
+
+Revision `coder-web-w11-1d126aad2b-20261008202124` serves 100% of traffic.
+Cloud Build `957ed3a6-4dc7-4fb6-ab11-b317459532c5` produces image digest
+`sha256:e9a27a0484f6edc3f154d7342df49ded03233f8171e7283e410aa257a9d768ec`.
+The normal production browser module comes from main `1d126aad2b9a2354163ba6585f1dd933ea4368f9`.
+Its optimized Wasm is 28,496,567 bytes, SHA-256
+`7d1c11b7e828cd33212280ad1ed3bf4fee00f29386a5b25b554d537a76cfe492`.
+The overlay preserves the preceding B4 image's native server, sidecar,
+runtime configuration, onboarding tag, packs, and `fc5414` bake. No bake runs.
+
+The `new` tag receives no traffic until 12 full-response checks, malformed
+path refusals, exact artifact hashes, and four offscreen browser cases pass.
+Production repeats these checks successfully after promotion. Everglade
+and Water Lab render on WebGPU and WebGL2 without browser errors. Both
+town cases use baked light. WebGPU reports completed GPU timestamps;
+WebGL2 correctly reports no GPU timestamps. These deployment checks make
+no performance claim; W11's calibrated native and browser measurements
+remain in `bench/verse/2026-10-08/water-w11/`. Deployment receipts and private
+capture hashes are in its `production-1d126aad2b/` directory.
+
+Rollback: `gcloud run services update-traffic coder --region us-central1 --project openagentsgemini --to-revisions coder-web-b4-dbd84fdb3d-20261008195645=100`.

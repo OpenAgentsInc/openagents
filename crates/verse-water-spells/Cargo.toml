@@ -1,13 +1,12 @@
 [package]
-name = "verse-zone-water"
+name = "verse-water-spells"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
-description = "Verse's Water Lab zone: a cove with a sea, a river, a waterfall, floating rigid bodies, and water spells, drawn by the physical renderer's water pass."
+description = "Shared Verse water spell simulation, hotbar, projectiles, and floating bodies."
 
 [dependencies]
-verse-water-spells = { path = "../verse-water-spells" }
 glam = "0.30.10"
 physics = { path = "../physics" }
 verse-content = { path = "../verse-content", features = ["compiler"] }

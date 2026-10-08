@@ -1,3 +1,16 @@
+## Activate native Cloud runtimes on web staging (#10992)
+
+The web source/runtime controls use the existing native operator review and job
+owner. Staging has no configured native account service or enrolled resident
+binding, so it exposes public source metadata and reports execution unavailable.
+To activate actual repository work, provision the protected account configuration,
+current account/workspace binding, reviewed host custody, operator source/profile
+pins, and explicitly selected provider credentials described in
+[`docs/cloud/README.md`](docs/cloud/README.md). Qualify the real provider lifecycle
+on an isolated computer before admitting it. The integrated fixture uses a
+synthetic backend and does not establish funded or persistent computer operation.
+Production promotion requires a later request; this task publishes staging only.
+
 ## Verify native terminal display idle (#10909)
 
 Run the updated native terminal with a screen lease, leave its default sheet

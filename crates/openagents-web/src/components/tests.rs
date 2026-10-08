@@ -127,13 +127,20 @@ async fn demo_is_owned_public_and_standalone_without_a_task_store() {
     assert!(crate::upstream::owned("/demo"));
     let (status, headers, html) = request(config, "/demo", "openagents.com").await;
     assert_eq!(status, StatusCode::OK);
-    assert!(html.contains("class=\"demo-grid\""));
+    assert!(html.contains("id=\"demo-sidebar\""));
     assert!(!html.contains("<svg"));
     assert!(html.contains("id=\"demo-root\""));
-    assert!(html.contains("openagents.coder.demo.v1"));
-    assert!(!html.contains("<header"));
-    assert!(!html.contains("<footer"));
+    assert!(html.contains("Machines and results are simulated."));
+    assert!(!html.contains("site-header"));
+    assert!(!html.contains("site-footer"));
     assert!(!html.contains("src=\"/components/assets/demo-start.js\""));
+    for asset in ["htmx.min.js", "htmx-sse.js", "chat-start.js"] {
+        assert!(
+            html.contains(&format!("src=\"/static/{asset}\"")),
+            "{asset}"
+        );
+    }
+    assert!(html.contains("hx-get=\"/demo/5/workspace\""));
     assert!(
         headers[header::CONTENT_SECURITY_POLICY]
             .to_str()
@@ -144,7 +151,7 @@ async fn demo_is_owned_public_and_standalone_without_a_task_store() {
 }
 
 #[tokio::test]
-async fn demo_uses_only_registered_wasm_assets_and_has_no_url_state() {
+async fn demo_uses_the_shared_rust_adapter_and_ignores_unowned_url_state() {
     let root = tempfile::tempdir().unwrap();
     std::fs::write(root.path().join(GLUE), "export function start_demo(){};").unwrap();
     std::fs::write(root.path().join(WASM), b"\0asm").unwrap();
@@ -159,7 +166,8 @@ async fn demo_uses_only_registered_wasm_assets_and_has_no_url_state() {
     .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(original, with_state);
-    assert!(original.contains("src=\"/components/assets/demo-start.js\""));
+    assert!(original.contains("src=\"/static/chat-start.js\""));
+    assert!(!original.contains("src=\"/components/assets/demo-start.js\""));
     for (asset, mime) in [
         ("demo-start.js", "text/javascript; charset=utf-8"),
         ("demo.css", "text/css; charset=utf-8"),

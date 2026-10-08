@@ -279,6 +279,8 @@ fn fixture(backend: Fake) -> Fixture {
         cwd: source.clone(),
         source_revision: revision,
         source_digest,
+        repository: None,
+        branch: None,
         paths: vec![],
         include: vec![],
         pool: "fixture-pool".into(),
@@ -697,6 +699,79 @@ fn changed_profile_cannot_run_an_old_registered_driver() {
     );
     assert_eq!(f.backend.dispatches.load(Ordering::SeqCst), 0);
 }
+
+#[test]
+fn profile_display_metadata_is_projected_and_changes_the_admission_pin() {
+    let mut f = fixture(Fake::default());
+    let original = f.policy.profiles["fixture"].clone();
+    let old_pin = Operator::profile_revision(&original).unwrap();
+    let profile = f.policy.profiles.get_mut("fixture").unwrap();
+    profile.repository = Some("OpenAgentsInc/openagents".into());
+    let repository_pin = Operator::profile_revision(profile).unwrap();
+    assert_ne!(repository_pin, old_pin);
+    profile.branch = Some("codex/environment-setup".into());
+    assert_ne!(Operator::profile_revision(profile).unwrap(), repository_pin);
+    profile.template = Some("oa-project-fixture-v1".into());
+    assert_ne!(Operator::profile_revision(profile).unwrap(), old_pin);
+    assert_eq!(profile.source_revision, original.source_revision);
+    assert_eq!(profile.source_digest, original.source_digest);
+    f.owner.replace_policy(f.policy.clone()).unwrap();
+    let Outcome::CloudCatalog { catalog } = f
+        .owner
+        .execute(
+            "catalog",
+            &f.principal,
+            &Operation::CloudCatalog {
+                query: dto::CatalogQuery {
+                    workspace: "checkout".into(),
+                    project: "synthetic".into(),
+                },
+            },
+        )
+        .unwrap()
+    else {
+        panic!("The operator did not return its catalog.");
+    };
+    catalog.validate().unwrap();
+    let projected = &catalog.profiles[0];
+    assert_eq!(
+        projected.repository.as_deref(),
+        Some("OpenAgentsInc/openagents")
+    );
+    assert_eq!(projected.branch.as_deref(), Some("codex/environment-setup"));
+    assert_eq!(projected.template.as_deref(), Some("oa-project-fixture-v1"));
+    assert_eq!(projected.size, "small");
+    assert_eq!(projected.source_revision, original.source_revision);
+    assert_eq!(projected.source_digest, original.source_digest);
+    assert_eq!(projected.availability, "unavailable");
+    assert_eq!(f.backend.dispatches.load(Ordering::SeqCst), 0);
+}
+
+#[test]
+fn older_operator_profiles_keep_their_encoding_and_refuse_invalid_labels() {
+    let f = fixture(Fake::default());
+    let original = &f.policy.profiles["fixture"];
+    let encoded = serde_json::to_value(original).unwrap();
+    assert!(encoded.get("repository").is_none());
+    assert!(encoded.get("branch").is_none());
+    let decoded: Profile = serde_json::from_value(encoded.clone()).unwrap();
+    assert_eq!(decoded.repository, None);
+    assert_eq!(decoded.branch, None);
+    assert_eq!(serde_json::to_value(&decoded).unwrap(), encoded);
+    assert_eq!(
+        Operator::profile_revision(&decoded).unwrap(),
+        Operator::profile_revision(original).unwrap()
+    );
+    let mut policy = f.policy.clone();
+    policy.profiles.get_mut("fixture").unwrap().repository =
+        Some("https://github.com/OpenAgentsInc/openagents".into());
+    assert!(policy.validate().is_err());
+    let profile = policy.profiles.get_mut("fixture").unwrap();
+    profile.repository = Some("OpenAgentsInc/openagents".into());
+    profile.branch = Some("../other".into());
+    assert!(policy.validate().is_err());
+}
+
 #[test]
 fn same_size_private_credential_replacement_changes_the_profile_pin() {
     let mut f = fixture(Fake::default());

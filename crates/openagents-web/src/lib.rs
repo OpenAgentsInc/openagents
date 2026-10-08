@@ -17,6 +17,7 @@ mod chat_html;
 pub mod chat_store;
 pub mod cloud;
 mod components;
+mod composer;
 mod demo;
 mod layout;
 mod markdown;
@@ -166,6 +167,7 @@ pub fn router(config: Config) -> Router {
         .merge(purchases::routes())
         .merge(components::routes())
         .merge(chat_html::routes())
+        .merge(composer::routes())
         .merge(demo::routes())
         .merge(cloud::routes())
         .merge(pilot::routes())
@@ -213,7 +215,10 @@ async fn guard(hosts: Hosts, request: Request, next: Next) -> Response {
     // Cloud credentials and private work must stay on this Rust surface,
     // including when an unconfigured Host header would use the legacy proxy.
     let cloud = path == "/cloud" || path.starts_with("/cloud/");
-    let chat = path == "/chat" || path.starts_with("/chat/") || path == "/ask";
+    let chat = path == "/chat"
+        || path.starts_with("/chat/")
+        || path == "/ask"
+        || path.starts_with("/composer/");
     let public = hosts.public.contains(&host);
     let cloud_cookie = request
         .headers()
@@ -241,7 +246,9 @@ async fn guard(hosts: Hosts, request: Request, next: Next) -> Response {
             })
         });
     // A wrongly routed Cloud credential cannot become a legacy credential.
-    if cloud_cookie && !cloud || native_session && !(local || public) {
+    if cloud_cookie && (!(local || public) || !upstream::owned(path))
+        || native_session && !(local || public)
+    {
         return cloud::protect(
             (StatusCode::FORBIDDEN, "Use the configured Cloud address").into_response(),
         );

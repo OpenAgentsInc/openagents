@@ -49,6 +49,11 @@ pub struct Profile {
     pub cwd: PathBuf,
     pub source_revision: String,
     pub source_digest: String,
+    /// Display metadata; source admission uses the revision and digest above.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repository: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub branch: Option<String>,
     pub paths: Vec<String>,
     pub include: Vec<String>,
     pub pool: String,
@@ -84,6 +89,21 @@ impl Policy {
                 dto::alias(value).map_err(|_| "Invalid operator profile binding.")?;
             }
             dto::digest(&p.source_digest).map_err(|_| "Invalid operator source digest.")?;
+            if let Some(repository) = &p.repository {
+                dto::repository(repository).map_err(|_| "Invalid operator repository label.")?;
+            }
+            if let Some(branch) = &p.branch {
+                dto::branch(branch).map_err(|_| "Invalid operator branch label.")?;
+            }
+            if p.size.is_empty()
+                || p.size.len() > 128
+                || p.size.contains('\0')
+                || p.template
+                    .as_ref()
+                    .is_some_and(|v| v.is_empty() || v.len() > 256 || v.contains('\0'))
+            {
+                return Err("The operator machine labels exceed their limits.".into());
+            }
             if !p.cwd.is_absolute()
                 || p.source_revision.len() != 40
                 || !p.source_revision.bytes().all(|b| b.is_ascii_hexdigit())
@@ -1279,6 +1299,10 @@ impl coder_host::cloud::Cloud for Operator {
                             revision: Self::profile_revision(&p)?,
                             source_revision: p.source_revision,
                             source_digest: p.source_digest,
+                            repository: p.repository,
+                            branch: p.branch,
+                            template: p.template,
+                            size: p.size,
                             placement: if p.placement == Placement::Boat {
                                 "boat"
                             } else {

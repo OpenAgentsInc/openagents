@@ -20,7 +20,7 @@ use coder_access::protocol::{Operation, Outcome, random_id};
 use coder_access::{Right, cloud, project};
 use coder_ui::{control, coordination};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
-use serde_json::{Value, json};
+use serde_json::json;
 
 pub(super) fn routes() -> Router<App> {
     Router::new()
@@ -453,7 +453,7 @@ async fn cloud_projects(
     page(&context, &headers, &content, &operation, &outcome, false)
 }
 
-async fn catalog(
+pub(super) async fn catalog(
     context: &Context<'_>,
     headers: &HeaderMap,
     project: &str,
@@ -536,7 +536,7 @@ async fn jobs(
     page(&context, &headers, &content, &operation, &outcome, false)
 }
 
-fn can_operate(context: &Context<'_>) -> bool {
+pub(super) fn can_operate(context: &Context<'_>) -> bool {
     context
         .binding
         .access()
@@ -755,7 +755,7 @@ async fn stage_submit(
     controls::staged(&context, &headers, &form.request, operation).await
 }
 
-async fn job_read(
+pub(super) async fn job_read(
     context: &Context<'_>,
     headers: &HeaderMap,
     project: &str,
@@ -838,7 +838,7 @@ fn job_view(context: &Context<'_>, value: &cloud::Job) -> Result<String, Respons
     ))
 }
 
-async fn job(
+pub(super) async fn job(
     State(app): State<App>,
     headers: HeaderMap,
     Path((binding, project, job)): Path<(String, String, String)>,
@@ -916,7 +916,8 @@ async fn job(
             String::new()
         };
         content.push_str(&format!(
-            "<form method=\"post\">{}{}{}{}{field}{button}</form>",
+            "<form method=\"post\" action=\"{}\">{}{}{}{}{field}{button}</form>",
+            escape(&job_url(context.binding.id(), &value.scope)),
             ticket(&csrf),
             hidden("request", &request),
             hidden("action", action),

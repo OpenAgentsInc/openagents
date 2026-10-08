@@ -21,7 +21,9 @@ async fn home(State(app): State<App>, headers: HeaderMap) -> Response {
     let (owner, fresh) = super::chat::visitor(&headers);
     let body = html! {
         div.home-stage {
-            (PreEscaped(super::chat::composer("/chat", "Start a chat")))
+            (PreEscaped(super::chat::composer("/chat", "Start a chat", None)))
+            div #composer-panel {}
+            (crate::composer::state_field(&app, &owner, &Default::default(), false))
             input type="hidden" name="request_id" value=(super::chat::new_id()) form="chat-form";
             input type="hidden" name="csrf" value=(super::chat::csrf(&app,&owner)) form="chat-form";
         }

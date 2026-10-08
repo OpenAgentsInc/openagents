@@ -73,6 +73,7 @@ struct Runtime {
     composing: Cell<bool>,
     swapping: Cell<bool>,
     retired: Cell<bool>,
+    access_retired: Cell<bool>,
 }
 
 fn field(value: &JsValue, name: &str) -> JsValue {
@@ -141,6 +142,7 @@ pub fn start() -> Result<(), JsValue> {
         composing: Cell::new(false),
         swapping: Cell::new(false),
         retired: Cell::new(false),
+        access_retired: Cell::new(false),
     });
     *runtime.selected.borrow_mut() = runtime.selected_key();
     runtime.sync_route();
@@ -439,6 +441,18 @@ impl Runtime {
     }
 
     fn event(self: &Rc<Self>, name: &str, event: &Event) {
+        if name == "htmx:sseBeforeMessage" {
+            if !self.current_stream(event) {
+                event.prevent_default();
+                return;
+            }
+            // The SSE extension supplies the raw MessageEvent as detail.
+            if field(&detail(event), "type").as_string().as_deref() == Some("retired") {
+                self.retire_chat();
+                event.prevent_default();
+                return;
+            }
+        }
         match name {
             "pagehide" | "openagents-cloud-retired" => {
                 self.retire();
@@ -448,7 +462,7 @@ impl Runtime {
                 self.retire();
                 return;
             }
-            "pageshow" if self.private.is_none() => {
+            "pageshow" if self.private.is_none() && !self.access_retired.get() => {
                 self.retired.set(false);
                 self.swapping.set(false);
                 *self.selected.borrow_mut() = self.selected_key();
@@ -461,7 +475,8 @@ impl Runtime {
         if !self.usable() {
             if matches!(
                 name,
-                "htmx:beforeRequest"
+                "submit"
+                    | "htmx:beforeRequest"
                     | "htmx:beforeSwap"
                     | "htmx:oobBeforeSwap"
                     | "htmx:sseBeforeMessage"
@@ -526,6 +541,17 @@ impl Runtime {
             "htmx:beforeRequest" => self.before_request(event),
             "htmx:afterRequest" => self.after_request(event),
             "htmx:beforeSwap" | "htmx:oobBeforeSwap" | "htmx:sseBeforeMessage" => {
+                if name == "htmx:beforeSwap"
+                    && self.response_chat(event).as_deref() == Some(self.selected_key().as_str())
+                    && field(&detail(event), "xhr")
+                        .dyn_ref::<XmlHttpRequest>()
+                        .and_then(|xhr| xhr.status().ok())
+                        .is_some_and(|status| matches!(status, 401 | 403 | 404))
+                {
+                    self.retire_chat();
+                    event.prevent_default();
+                    return;
+                }
                 if name == "htmx:beforeSwap" {
                     *self.response_chat.borrow_mut() = self.response_chat(event);
                 }
@@ -649,6 +675,9 @@ impl Runtime {
     }
 
     fn after_request(&self, event: &Event) {
+        if self.retired.get() {
+            return;
+        }
         let data = detail(event);
         let xhr = field(&data, "xhr");
         let status = xhr
@@ -825,6 +854,58 @@ impl Runtime {
         }
         self.frame.borrow_mut().take();
         self.composing.set(false);
+    }
+
+    /// Stop transport before clearing values that require current server access.
+    fn retire_chat(&self) {
+        self.access_retired.set(true);
+        self.retire();
+        let htmx = field(self.window.as_ref(), "htmx");
+        let trigger = field(&htmx, "trigger").dyn_into::<Function>().ok();
+        for (attribute, event) in [
+            ("hx-get", "htmx:abort"),
+            ("hx-post", "htmx:abort"),
+            ("hx-put", "htmx:abort"),
+            ("hx-delete", "htmx:abort"),
+            ("hx-patch", "htmx:abort"),
+            ("sse-connect", "htmx:beforeCleanupElement"),
+            ("data-sse-connect", "htmx:beforeCleanupElement"),
+        ] {
+            while let Ok(Some(element)) = self.document.query_selector(&format!("[{attribute}]")) {
+                if let Some(trigger) = &trigger {
+                    let data = Object::new();
+                    let _ = Reflect::set(&data, &JsValue::from_str("elt"), element.as_ref());
+                    let _ =
+                        trigger.call3(&htmx, element.as_ref(), &JsValue::from_str(event), &data);
+                }
+                // A callback already queued by HTMX cannot reconnect this source.
+                if element.remove_attribute(attribute).is_err() {
+                    break;
+                }
+            }
+        }
+        for id in [
+            "composer-controls",
+            "composer-panel",
+            "chat-ticket",
+            "chat-transcript",
+        ] {
+            if let Some(element) = self.document.get_element_by_id(id) {
+                element.set_text_content(None);
+            }
+        }
+        if let Some(state) = self.document.get_element_by_id("composer-state")
+            && let Some(state) = state.dyn_ref::<HtmlInputElement>()
+        {
+            state.set_value("");
+            state.set_default_value("");
+        }
+        self.input.set_disabled(true);
+        if let Some(feedback) = self.document.get_element_by_id("chat-feedback") {
+            feedback.set_text_content(Some(
+                "Access to this conversation is unavailable. Reopen it to check access.",
+            ));
+        }
     }
 }
 

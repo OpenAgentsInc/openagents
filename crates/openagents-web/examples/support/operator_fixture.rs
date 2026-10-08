@@ -126,6 +126,8 @@ pub fn operator(
                 cwd: cwd.clone(),
                 source_revision,
                 source_digest,
+                repository: None,
+                branch: None,
                 paths: vec![],
                 include: vec![],
                 pool: "synthetic-local-pool".into(),

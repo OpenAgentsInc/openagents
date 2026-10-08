@@ -2,9 +2,11 @@
 //!
 //! Usage: everglade_water_capture OUTPUT_DIRECTORY
 //!
-//! Installs Everglade from the committed, pinned pack, settles its light,
-//! and renders with Everglade's hotbar and breath bar into
-//! `OUTPUT_DIRECTORY`:
+//! Installs Everglade from the pinned public pack and the local kit, reuses
+//! the matching pinned light layers, and renders with Everglade's hotbar and breath bar into
+//! `OUTPUT_DIRECTORY`. Set `VERSE_KIT_PACK` and `VERSE_KIT_BAKE` to the
+//! pinned private artifacts. Unknown scene identities fail before installation
+//! can start a fallback bake. The town clock is pinned to noon.
 //!
 //! - For each pond (`lantern`, `reed`, `thinking`, and `fern`), its water
 //!   drawn by the shared water shader over its carved bowl:
@@ -23,7 +25,9 @@
 //!
 //! It writes `capture.json`: each picture's place, the player's medium and
 //! breath there, and the picture's SHA-256. `VERSE_QUALITY` (`low`,
-//! `medium`, `high`) picks the tier.
+//! `medium`, `high`) picks the tier. Set `VERSE_POND_OPTICS_ONLY=1` for
+//! only the eight above-bank and eye-level pond views. The ignored
+//! `capture_pond_optics` test reads its output from `VERSE_POND_CAPTURE_OUTPUT`.
 
 use std::path::{Path, PathBuf};
 
@@ -46,6 +50,10 @@ fn main() -> Result<(), String> {
             .nth(1)
             .ok_or("Expected an output directory")?,
     );
+    capture(dir)
+}
+
+fn capture(dir: PathBuf) -> Result<(), String> {
     std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     let pack = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
@@ -56,7 +64,27 @@ fn main() -> Result<(), String> {
             everglade_pack::PACK_EXTENSION
         ));
     let pack = everglade_pack::ZonePack::load_local(&pack)?;
+    // Refuse before installation can start a fallback bake. Captures reuse
+    // the reviewed layers and never trace a new town.
+    let layers = everglade_pack::kit_bake::offered()
+        .ok_or("Set VERSE_KIT_PACK and VERSE_KIT_BAKE to the pinned artifacts")?;
+    let world = zones::everglade::Everglade::world(&pack)?;
+    let scene = world.mesh.textured.as_ref().ok_or("Missing town scene")?;
+    let merged = scene.merge()?;
+    let digest =
+        verse::pbr::baked_layers::hex(&verse::pbr::baked_layers::scene_digest(scene, &merged));
+    if merged.vertices.len() != layers.vertex_count()
+        || (digest != layers.scene
+            && !everglade_pack::kit_bake::compatibility().accepts(&layers, &digest, None))
+    {
+        return Err(format!(
+            "The pinned bake does not accept capture scene {digest}"
+        ));
+    }
+    drop(merged);
+    drop(world);
     let mut runtime = WorldRuntime::new();
+    runtime.set_town_clock(town_clock::Clock::DAYTIME.pinned(Some(12.0)));
     runtime.install_everglade(&pack);
     if runtime.zone != zones::ZoneId::Everglade {
         return Err("Everglade did not install from the pinned pack".into());
@@ -91,11 +119,24 @@ fn main() -> Result<(), String> {
         runtime.camera.pitch = 0.22;
         tick(&mut runtime, &InputState::default(), 0.6);
         records.push(shot(&runtime, &atlas, &dir, &format!("{name}-eye"))?);
+        if std::env::var_os("VERSE_POND_OPTICS_ONLY").is_some() {
+            continue;
+        }
         let float = ew::surface(cx, cz).unwrap() - medium::FLOAT_DEPTH as f32;
         runtime.set_spawn(Vec3::new(cx + dx, float, cz + dz), (-dx).atan2(-dz))?;
         frame_camera(&mut runtime, 5.5, 0.42);
         tick(&mut runtime, &InputState::default(), 0.3);
         records.push(shot(&runtime, &atlas, &dir, &format!("{name}-swimming"))?);
+    }
+
+    if std::env::var_os("VERSE_POND_OPTICS_ONLY").is_some() {
+        return std::fs::write(
+            dir.join("capture.json"),
+            serde_json::to_string_pretty(&json!({"scene": digest, "pictures": records}))
+                .map_err(|e| e.to_string())?
+                + "\n",
+        )
+        .map_err(|e| e.to_string());
     }
 
     // The weir from downstream: wading in the run below the plunge pool,
@@ -273,4 +314,11 @@ fn shot(
             "under": b.under,
         })),
     }))
+}
+
+#[test]
+#[ignore = "requires the private pinned kit, bake, and a GPU lease"]
+fn capture_pond_optics() {
+    let out = std::env::var_os("VERSE_POND_CAPTURE_OUTPUT").expect("set capture output");
+    capture(PathBuf::from(out)).unwrap();
 }

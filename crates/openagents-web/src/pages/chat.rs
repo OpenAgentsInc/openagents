@@ -18,7 +18,9 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
 use crate::App;
-use crate::chat_store::{Conversation, Error, Loaded, Message, Outcome, Pending, Request, Role};
+use crate::chat_store::{
+    Conversation, Error, Loaded, Message, Outcome, Pending, Request, Role, Selection,
+};
 use crate::layout::{self, problem};
 
 const MAX_CHARS: usize = 4_000;
@@ -42,6 +44,8 @@ struct Prompt {
     q: String,
     request_id: String,
     csrf: String,
+    #[serde(default)]
+    selection: String,
 }
 
 #[derive(Default, Deserialize)]
@@ -93,7 +97,11 @@ pub(crate) fn csrf(app: &App, owner: &str) -> String {
         .collect()
 }
 
-fn command(app: &App, headers: &HeaderMap, prompt: &Prompt) -> Result<(String, String), Response> {
+pub(crate) fn validate_form(
+    app: &App,
+    headers: &HeaderMap,
+    supplied: &str,
+) -> Result<String, Response> {
     let Some(owner) = crate::ask::visitor(headers) else {
         return Err(refusal(
             StatusCode::FORBIDDEN,
@@ -103,12 +111,11 @@ fn command(app: &App, headers: &HeaderMap, prompt: &Prompt) -> Result<(String, S
     let expected = csrf(app, &owner);
     // Compare digests in constant time without exposing the visitor signing key.
     let mut mac = Hmac::<Sha256>::new_from_slice(expected.as_bytes()).expect("HMAC accepts text");
-    mac.update(prompt.csrf.as_bytes());
+    mac.update(supplied.as_bytes());
     let mut correct =
         Hmac::<Sha256>::new_from_slice(expected.as_bytes()).expect("HMAC accepts text");
     correct.update(expected.as_bytes());
-    if mac.verify_slice(&correct.finalize().into_bytes()).is_err() || !valid_id(&prompt.request_id)
-    {
+    if mac.verify_slice(&correct.finalize().into_bytes()).is_err() {
         return Err(refusal(
             StatusCode::FORBIDDEN,
             "The message ticket is invalid. Reload this page.",
@@ -140,6 +147,17 @@ fn command(app: &App, headers: &HeaderMap, prompt: &Prompt) -> Result<(String, S
             ));
         }
     }
+    Ok(owner)
+}
+
+fn command(app: &App, headers: &HeaderMap, prompt: &Prompt) -> Result<(String, String), Response> {
+    let owner = validate_form(app, headers, &prompt.csrf)?;
+    if !valid_id(&prompt.request_id) {
+        return Err(refusal(
+            StatusCode::FORBIDDEN,
+            "The message ticket is invalid. Reload this page.",
+        ));
+    }
     let Some(text) = normalize(&prompt.q) else {
         return Err(refusal(
             StatusCode::BAD_REQUEST,
@@ -149,13 +167,22 @@ fn command(app: &App, headers: &HeaderMap, prompt: &Prompt) -> Result<(String, S
     Ok((owner, text))
 }
 
+fn selected(app: &App, owner: &str, prompt: &Prompt) -> Result<Option<Selection>, Response> {
+    let selection = crate::composer::state(app, owner, &prompt.selection)?;
+    Ok((selection != Selection::default()).then_some(selection))
+}
+
 async fn start(State(app): State<App>, headers: HeaderMap, Form(prompt): Form<Prompt>) -> Response {
     let (owner, text) = match command(&app, &headers, &prompt) {
         Ok(v) => v,
         Err(r) => return r,
     };
     let id = prompt.request_id.clone();
-    let digest = digest(&text);
+    let selection = match selected(&app, &owner, &prompt) {
+        Ok(v) => v,
+        Err(r) => return r,
+    };
+    let digest = request_digest(&text, selection.as_ref());
     match app.config.chat_store.load(&owner, &id).await {
         Ok(Some(record))
             if record
@@ -175,40 +202,72 @@ async fn start(State(app): State<App>, headers: HeaderMap, Form(prompt): Form<Pr
         Ok(None) => {}
         Err(e) => return unavailable(e),
     }
-    let admitted_at = now();
-    match app
-        .config
-        .chat_store
-        .claim(&owner, &id, admitted_at + LEASE_SECONDS)
+    let cloud = if selection.as_ref().is_some_and(|s| s.runtime.is_some()) {
+        match crate::cloud::composer::stage(
+            &app,
+            &headers,
+            &owner,
+            &id,
+            selection.as_ref().unwrap(),
+            &text,
+            None,
+        )
         .await
-    {
-        Ok(true) => {}
-        Ok(false) => {
-            return refusal(
-                StatusCode::CONFLICT,
-                "OpenAgents is still answering your previous message.",
-            );
+        {
+            Ok(v) => Some(v),
+            Err(r) => return r,
         }
-        Err(e) => return unavailable(e),
+    } else {
+        None
+    };
+    let admitted_at = now();
+    if cloud.is_none() {
+        match app
+            .config
+            .chat_store
+            .claim(&owner, &id, admitted_at + LEASE_SECONDS)
+            .await
+        {
+            Ok(true) => {}
+            Ok(false) => {
+                return refusal(
+                    StatusCode::CONFLICT,
+                    "OpenAgents is still answering your previous message.",
+                );
+            }
+            Err(e) => return unavailable(e),
+        }
     }
     let record = Conversation {
         id: id.clone(),
         owner: owner.clone(),
         revision: 1,
-        title: text.chars().take(64).collect(),
-        messages: vec![
-            Message {
+        title: if cloud.is_some() {
+            "Cloud work".into()
+        } else {
+            text.chars().take(64).collect()
+        },
+        messages: if cloud.is_some() {
+            vec![Message {
                 role: Role::User,
-                text,
+                text: text.clone(),
                 request_id: Some(id.clone()),
-            },
-            Message {
-                role: Role::Assistant,
-                text: String::new(),
-                request_id: Some(id.clone()),
-            },
-        ],
-        pending: Some(Pending {
+            }]
+        } else {
+            vec![
+                Message {
+                    role: Role::User,
+                    text,
+                    request_id: Some(id.clone()),
+                },
+                Message {
+                    role: Role::Assistant,
+                    text: String::new(),
+                    request_id: Some(id.clone()),
+                },
+            ]
+        },
+        pending: cloud.is_none().then(|| Pending {
             request_id: id.clone(),
             started_unix: now(),
             job_id: None,
@@ -217,7 +276,10 @@ async fn start(State(app): State<App>, headers: HeaderMap, Form(prompt): Form<Pr
             id: id.clone(),
             digest,
             outcome: Outcome::Pending,
+            selection: selection.clone(),
+            cloud: cloud.clone(),
         }],
+        selection,
         updated_unix: now(),
     };
     let loaded = match app.config.chat_store.create(&record).await {
@@ -230,11 +292,13 @@ async fn start(State(app): State<App>, headers: HeaderMap, Form(prompt): Form<Pr
             return unavailable(e);
         }
     };
-    spawn_answer(app.clone(), loaded, admitted_at);
+    if cloud.is_none() {
+        spawn_answer(app.clone(), loaded, admitted_at);
+    }
     crate::chat_html::protect(Redirect::to(&format!("/chat/{id}")).into_response())
 }
 
-async fn load(app: &App, headers: &HeaderMap, id: &str) -> Result<Loaded, Response> {
+pub(crate) async fn load(app: &App, headers: &HeaderMap, id: &str) -> Result<Loaded, Response> {
     let Some(owner) = crate::ask::visitor(headers).filter(|_| valid_id(id)) else {
         return Err(missing());
     };
@@ -273,6 +337,35 @@ async fn load(app: &App, headers: &HeaderMap, id: &str) -> Result<Loaded, Respon
             Err(e) => return Err(unavailable(e)),
         }
     }
+    // Check every returned generation, including a reload after a storage conflict.
+    // Frozen native selections stay private after later composer changes.
+    let mut runtimes = Vec::new();
+    if let Some(runtime) = loaded
+        .conversation
+        .selection
+        .as_ref()
+        .and_then(|s| s.runtime.as_ref())
+    {
+        runtimes.push(runtime.clone());
+    }
+    for request in &loaded.conversation.requests {
+        if let Some(runtime) = request.selection.as_ref().and_then(|s| s.runtime.as_ref()) {
+            runtimes.push(runtime.clone());
+        }
+    }
+    let mut checked = std::collections::HashSet::new();
+    for runtime in runtimes {
+        let scope = (
+            runtime.binding.clone(),
+            runtime.account.clone(),
+            runtime.workspace.clone(),
+            runtime.members_epoch,
+            runtime.project.clone(),
+        );
+        if checked.insert(scope) {
+            crate::cloud::composer::authorize(app, headers, &runtime).await?;
+        }
+    }
     Ok(loaded)
 }
 
@@ -281,13 +374,23 @@ async fn show(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>
         Ok(v) => v,
         Err(r) => return r,
     };
+    if let Some(cloud) = record
+        .conversation
+        .requests
+        .iter()
+        .rev()
+        .find_map(|r| r.cloud.as_ref())
+    {
+        return crate::cloud::composer::view(&app, &headers, cloud).await;
+    }
     let body = html! {
         div.chat-shell hx-history="false" {
             (sidebar(&app,&record.conversation).await)
             section.chat-main aria-label="Conversation" {
                 div #chat-content { (content(&record.conversation, None)) }
                 div.chat-dock.chat-column {
-                    (PreEscaped(composer(&format!("/chat/{id}"),"Continue this chat")))
+                    (PreEscaped(composer(&format!("/chat/{id}"),"Continue this chat", record.conversation.selection.as_ref())))
+                    div #composer-panel {}
                     (ticket(&app,&record.conversation,false))
                     p #chat-feedback role="status" aria-live="polite" {}
                 }
@@ -306,6 +409,19 @@ async fn workspace(State(app): State<App>, headers: HeaderMap, Path(id): Path<St
         Ok(v) => v,
         Err(r) => return r,
     };
+    if record
+        .conversation
+        .requests
+        .iter()
+        .any(|r| r.cloud.is_some())
+    {
+        let mut response = crate::chat_html::protect(StatusCode::OK.into_response());
+        response.headers_mut().insert(
+            "HX-Redirect",
+            HeaderValue::from_str(&format!("/chat/{id}")).expect("UUID URL"),
+        );
+        return response;
+    }
     let body = html! { title {(record.conversation.title) " · OpenAgents"} (content(&record.conversation,None)) (ticket(&app,&record.conversation,true)) (sidebar(&app,&record.conversation).await) };
     let mut response = crate::chat_html::protect(body.into_response());
     response.headers_mut().insert(
@@ -329,7 +445,11 @@ async fn follow(
         Ok(v) => v,
         Err(r) => return r,
     };
-    let hash = digest(&text);
+    let selection = match selected(&app, &owner, &prompt) {
+        Ok(v) => v,
+        Err(r) => return r,
+    };
+    let hash = request_digest(&text, selection.as_ref());
     if let Some(request) = loaded
         .conversation
         .requests
@@ -344,6 +464,12 @@ async fn follow(
         }
         return accepted(&app, &headers, &loaded.conversation).await;
     }
+    if selection != loaded.conversation.selection {
+        return refusal(
+            StatusCode::CONFLICT,
+            "The source or runtime selection changed. Reload this chat before sending.",
+        );
+    }
     if loaded.conversation.pending.is_some() {
         return refusal(
             StatusCode::CONFLICT,
@@ -356,21 +482,53 @@ async fn follow(
             "This chat is full. Start another chat; the original messages remain available.",
         );
     }
-    let admitted_at = now();
-    match app
-        .config
-        .chat_store
-        .claim(&owner, &prompt.request_id, admitted_at + LEASE_SECONDS)
+    let previous = loaded
+        .conversation
+        .requests
+        .iter()
+        .rev()
+        .find_map(|r| r.cloud.as_ref());
+    if previous.is_some() && selection.as_ref().is_none_or(|s| s.runtime.is_none()) {
+        return refusal(
+            StatusCode::CONFLICT,
+            "Continue Cloud work through its current job controls.",
+        );
+    }
+    let cloud = if selection.as_ref().is_some_and(|s| s.runtime.is_some()) {
+        match crate::cloud::composer::stage(
+            &app,
+            &headers,
+            &owner,
+            &prompt.request_id,
+            selection.as_ref().unwrap(),
+            &text,
+            previous,
+        )
         .await
-    {
-        Ok(true) => {}
-        Ok(false) => {
-            return refusal(
-                StatusCode::CONFLICT,
-                "OpenAgents is still answering your previous message.",
-            );
+        {
+            Ok(v) => Some(v),
+            Err(r) => return r,
         }
-        Err(e) => return unavailable(e),
+    } else {
+        None
+    };
+    let admitted_at = now();
+    if cloud.is_none() {
+        match app
+            .config
+            .chat_store
+            .claim(&owner, &prompt.request_id, admitted_at + LEASE_SECONDS)
+            .await
+        {
+            Ok(true) => {}
+            Ok(false) => {
+                return refusal(
+                    StatusCode::CONFLICT,
+                    "OpenAgents is still answering your previous message.",
+                );
+            }
+            Err(e) => return unavailable(e),
+        }
     }
     let mut next = loaded.conversation.clone();
     next.revision += 1;
@@ -380,12 +538,14 @@ async fn follow(
         text,
         request_id: Some(prompt.request_id.clone()),
     });
-    next.messages.push(Message {
-        role: Role::Assistant,
-        text: String::new(),
-        request_id: Some(prompt.request_id.clone()),
-    });
-    next.pending = Some(Pending {
+    if cloud.is_none() {
+        next.messages.push(Message {
+            role: Role::Assistant,
+            text: String::new(),
+            request_id: Some(prompt.request_id.clone()),
+        });
+    }
+    next.pending = cloud.is_none().then(|| Pending {
         request_id: prompt.request_id.clone(),
         started_unix: now(),
         job_id: None,
@@ -394,6 +554,8 @@ async fn follow(
         id: prompt.request_id.clone(),
         digest: hash,
         outcome: Outcome::Pending,
+        selection,
+        cloud: cloud.clone(),
     });
     let loaded = match app.config.chat_store.compare_and_swap(&loaded, &next).await {
         Ok(v) => v,
@@ -406,12 +568,22 @@ async fn follow(
             return unavailable(e);
         }
     };
-    spawn_answer(app.clone(), loaded.clone(), admitted_at);
+    if cloud.is_none() {
+        spawn_answer(app.clone(), loaded.clone(), admitted_at);
+    }
     accepted(&app, &headers, &loaded.conversation).await
 }
 
 async fn accepted(app: &App, headers: &HeaderMap, chat: &Conversation) -> Response {
     if headers.get("HX-Request").is_some_and(|v| v == "true") {
+        if chat.requests.last().is_some_and(|r| r.cloud.is_some()) {
+            let mut response = crate::chat_html::protect(StatusCode::OK.into_response());
+            response.headers_mut().insert(
+                "HX-Redirect",
+                HeaderValue::from_str(&format!("/chat/{}", chat.id)).expect("UUID URL"),
+            );
+            return response;
+        }
         crate::chat_html::protect(
             html! { (ticket(app,chat,true)) (sidebar(app,chat).await) }.into_response(),
         )
@@ -475,14 +647,28 @@ async fn answer(app: App, mut loaded: Loaded, admitted_at: u64) {
         None
     };
     let mut job = match door {
-        Some(door) => Some(door.ask(
-            turns,
-            Context {
-                surface: Surface::Web,
-                ..Context::default()
-            },
-            reply.clone(),
-        )),
+        Some(door) => Some(
+            door.ask(
+                turns,
+                Context {
+                    surface: Surface::Web,
+                    project: chat
+                        .selection
+                        .as_ref()
+                        .and_then(|s| s.repository.as_ref())
+                        .map(|r| openagents_chat::router::Project {
+                            name: format!(
+                                "Public {} @{}",
+                                r.repository.chars().take(75).collect::<String>(),
+                                r.revision
+                            ),
+                            path: None,
+                        }),
+                    ..Context::default()
+                },
+                reply.clone(),
+            ),
+        ),
         None => None,
     };
     let deadline = tokio::time::Instant::now() + Duration::from_secs(130);
@@ -625,13 +811,14 @@ async fn sidebar(app: &App, chat: &Conversation) -> Markup {
     }
 }
 
-fn ticket(app: &App, chat: &Conversation, oob: bool) -> Markup {
+pub(crate) fn ticket(app: &App, chat: &Conversation, oob: bool) -> Markup {
+    let selection = chat.selection.clone().unwrap_or_default();
     html! { div #chat-ticket hx-swap-oob=[oob.then_some("outerHTML")] {
         input type="hidden" id="chat-selected" name="chat" value=(chat.id) form="chat-form";
         input type="hidden" name="request_id" value=(new_id()) form="chat-form";
         input type="hidden" name="csrf" value=(csrf(app,&chat.owner)) form="chat-form";
 
-    } }
+    } (crate::composer::state_field(app, &chat.owner, &selection, oob)) @if oob { (crate::composer::controls(&selection, true)) } }
 }
 
 fn content(chat: &Conversation, before: Option<usize>) -> Markup {
@@ -813,6 +1000,14 @@ fn digest(text: &str) -> String {
         .map(|b| format!("{b:02x}"))
         .collect()
 }
+fn request_digest(text: &str, selection: Option<&Selection>) -> String {
+    match selection {
+        None => digest(text),
+        Some(selection) => {
+            digest(&serde_json::to_string(&(text, selection)).expect("selection serializes"))
+        }
+    }
+}
 fn refusal(status: StatusCode, text: &str) -> Response {
     crate::chat_html::protect((status, html! {p.error role="alert" {(text)}}).into_response())
 }
@@ -834,27 +1029,13 @@ stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\" focusabl
 }
 
 const CHEVRON_DOWN: &str = "<path d=\"m6 9 6 6 6-6\"/>";
-const CLOUD: &str = "<path d=\"M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z\"/>";
 const PLUS: &str = "<path d=\"M5 12h14\"/><path d=\"M12 5v14\"/>";
 const MIC: &str = "<path d=\"M12 19v3\"/><path d=\"M19 10v2a7 7 0 0 1-14 0v-2\"/>\
 <rect x=\"9\" y=\"2\" width=\"6\" height=\"13\" rx=\"3\"/>";
 const ARROW_UP: &str = "<path d=\"m5 12 7-7 7 7\"/><path d=\"M12 19V5\"/>";
 
-/// A text-style picker above the card. Not wired yet, so it says so.
-fn picker(label: &str, content: &str) -> String {
-    format!(
-        "<button type=\"button\" aria-disabled=\"true\" title=\"{label} (coming soon)\" \
-class=\"tw:inline-flex tw:items-center tw:gap-1 tw:h-6 tw:px-1.5 tw:rounded-md tw:bg-transparent \
-tw:text-xs tw:text-noir-content-secondary tw:hover:bg-noir-surface-raised tw:hover:text-noir-content \
-tw:active:bg-noir-stroke-subtle\">{content}{}</button>",
-        icon(12, CHEVRON_DOWN)
-    )
-}
-
-/// The homepage and chat composer: the repository, branch, and environment
-/// pickers, then a 640 by 155 pixel card holding the text box and its
-/// toolbar. Only the text box and the send button do anything yet.
-pub(crate) fn composer(action: &str, label: &str) -> String {
+/// The homepage and chat share source/runtime controls and a stable text box.
+pub(crate) fn composer(action: &str, label: &str, selection: Option<&Selection>) -> String {
     let transport = if action.starts_with("/chat/") {
         format!(
             " hx-post=\"{action}\" hx-swap=\"none\" hx-disabled-elt=\"find button[type=submit]\" hx-sync=\"this:drop\""
@@ -862,15 +1043,8 @@ pub(crate) fn composer(action: &str, label: &str) -> String {
     } else {
         String::new()
     };
-    let pickers = format!(
-        "{}{}{}",
-        picker(
-            "Repository",
-            "<span class=\"tw:truncate\">openagents</span>"
-        ),
-        picker("Branch", "<span class=\"tw:truncate\">main</span>"),
-        picker("Environment", &icon(14, CLOUD)),
-    );
+    let selection = selection.cloned().unwrap_or_default();
+    let pickers = crate::composer::controls(&selection, false).into_string();
     let round = "tw:inline-flex tw:items-center tw:justify-center tw:size-6 tw:shrink-0 \
 tw:rounded-full tw:p-0";
     let quiet = "tw:bg-noir-surface-raised tw:text-noir-content-secondary \
@@ -890,15 +1064,15 @@ tw:border-0 tw:bg-transparent tw:resize-none tw:font-mono tw:text-sm \
 tw:text-noir-content tw:placeholder:text-noir-content-secondary tw:outline-none \
 tw:focus-visible:outline-none\"></textarea>\
 <div class=\"tw:flex tw:items-center tw:gap-3 tw:px-3 tw:py-3\">\
-<button type=\"button\" aria-disabled=\"true\" aria-label=\"Add context and tools\" \
-title=\"Add context and tools (coming soon)\" class=\"{round} {quiet}\">{plus}</button>\
-<button type=\"button\" aria-disabled=\"true\" title=\"Model (coming soon)\" \
+<button type=\"button\" aria-label=\"Add context and tools\" \
+hx-get=\"/composer/context\" hx-include=\"#composer-state,#chat-selected,[name=csrf][form=chat-form]\" hx-target=\"#composer-panel\" hx-swap=\"innerHTML\" hx-sync=\"#composer-panel:replace\" class=\"{round} {quiet}\">{plus}</button>\
+<button type=\"button\" title=\"Model\" hx-get=\"/composer/model\" hx-include=\"#composer-state,#chat-selected,[name=csrf][form=chat-form]\" hx-target=\"#composer-panel\" hx-swap=\"innerHTML\" hx-sync=\"#composer-panel:replace\" \
 class=\"tw:inline-flex tw:items-center tw:gap-1 tw:h-6 tw:pl-2 tw:pr-1.5 tw:rounded-full \
 tw:bg-transparent tw:text-xs tw:text-noir-content-secondary tw:hover:bg-noir-surface-raised \
 tw:hover:text-noir-content tw:active:bg-noir-stroke-subtle\">Auto{chevron}</button>\
 <div class=\"tw:flex-1\"></div>\
-<button type=\"button\" aria-disabled=\"true\" aria-label=\"Voice input\" \
-title=\"Voice input (coming soon)\" class=\"{round} {quiet}\">{mic}</button>\
+<button type=\"button\" aria-label=\"Voice input\" hx-get=\"/composer/voice\" hx-include=\"#composer-state,#chat-selected,[name=csrf][form=chat-form]\" hx-target=\"#composer-panel\" hx-swap=\"innerHTML\" hx-sync=\"#composer-panel:replace\" \
+title=\"Voice input availability\" class=\"{round} {quiet}\">{mic}</button>\
 <button type=\"submit\" aria-label=\"Send\" title=\"Send\" class=\"{round} \
 tw:bg-noir-accent-solid tw:text-noir-on-accent-solid tw:hover:bg-noir-content-secondary \
 tw:active:bg-noir-content-tertiary\">{arrow}</button>\
@@ -985,7 +1159,7 @@ fn missing() -> Response {
 }
 
 #[cfg(test)]
-mod tests {
+mod uuid_tests {
     use super::*;
 
     #[test]
@@ -996,3 +1170,7 @@ mod tests {
         assert!(!valid_id("00000000-0000-0000-0000-000000000000"));
     }
 }
+
+#[cfg(test)]
+#[path = "chat_tests.rs"]
+mod tests;

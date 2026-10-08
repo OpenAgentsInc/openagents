@@ -5,6 +5,7 @@
 //! cannot replace a record that changed after it was read. Neither adapter
 //! treats an HTTP connection as the owner of a running answer.
 
+use std::collections::HashSet;
 use std::fmt;
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
@@ -34,7 +35,54 @@ pub(crate) struct Conversation {
     pub messages: Vec<Message>,
     pub pending: Option<Pending>,
     pub requests: Vec<Request>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selection: Option<Selection>,
     pub updated_unix: u64,
+}
+
+/// GitHub metadata identifies a selected source; it does not authorize execution.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct RepositorySource {
+    pub repository: String,
+    pub branch: String,
+    pub revision: String,
+}
+
+/// A runtime pins one native catalog entry and its account authority.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct RuntimeSelection {
+    pub binding: String,
+    pub account: String,
+    pub workspace: String,
+    pub members_epoch: u64,
+    pub project: String,
+    pub profile: String,
+    pub profile_revision: String,
+    pub source_revision: String,
+    pub source_digest: String,
+    pub placement: String,
+    pub executor: String,
+    pub model: Option<String>,
+    pub max_timeout_seconds: u64,
+}
+
+/// The conversation can change its selection; an accepted request retains it.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct Selection {
+    pub revision: u64,
+    pub repository: Option<RepositorySource>,
+    pub runtime: Option<RuntimeSelection>,
+}
+
+/// The native control journal owns the signed request and execution result.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct CloudRequest {
+    pub binding: String,
+    pub request: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -66,6 +114,10 @@ pub(crate) struct Request {
     pub id: String,
     pub digest: String,
     pub outcome: Outcome,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selection: Option<Selection>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cloud: Option<CloudRequest>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -228,6 +280,7 @@ impl Store {
         {
             return Err(Error::Invalid("The conversation mutation is invalid."));
         }
+        validate_retained_requests(&previous.conversation, conversation)?;
         self.write(conversation, Some(previous.generation.clone()))
             .await
     }
@@ -706,6 +759,7 @@ async fn limited_body(mut response: Response, limit: usize) -> Result<Vec<u8>, E
 }
 
 fn encode(conversation: &Conversation) -> Result<Vec<u8>, Error> {
+    validate_conversation(conversation)?;
     let bytes = serde_json::to_vec(&Record {
         schema: SCHEMA.to_owned(),
         conversation: conversation.clone(),
@@ -731,7 +785,165 @@ fn decode(bytes: &[u8], owner: &str, id: &str) -> Result<Conversation, Error> {
             "The retained conversation identity is invalid.",
         ));
     }
+    validate_conversation(&record.conversation)
+        .map_err(|_| Error::Corrupt("The retained conversation selection is invalid."))?;
     Ok(record.conversation)
+}
+
+impl RepositorySource {
+    pub(crate) fn validate(&self) -> Result<(), Error> {
+        coder_access::cloud::repository(&self.repository)
+            .map_err(|_| Error::Invalid("The selected repository is invalid."))?;
+        coder_access::cloud::branch(&self.branch)
+            .map_err(|_| Error::Invalid("The selected branch is invalid."))?;
+        if !commit(&self.revision) {
+            return Err(Error::Invalid(
+                "The selected repository revision is invalid.",
+            ));
+        }
+        Ok(())
+    }
+}
+
+impl RuntimeSelection {
+    pub(crate) fn validate(&self) -> Result<(), Error> {
+        if !binding_id(&self.binding)
+            || !bounded_text(&self.account, 128)
+            || !self.account.bytes().all(|byte| byte.is_ascii_graphic())
+            || self.members_epoch > 9_007_199_254_740_991
+            || !commit(&self.source_revision)
+            || !matches!(self.placement.as_str(), "boat" | "gce")
+            || !bounded_text(&self.executor, 128)
+            || self
+                .model
+                .as_ref()
+                .is_some_and(|model| !bounded_text(model, 128))
+            || self.max_timeout_seconds == 0
+            || self.max_timeout_seconds > 43_200
+        {
+            return Err(Error::Invalid("The selected runtime is invalid."));
+        }
+        for alias in [&self.workspace, &self.project, &self.profile] {
+            coder_access::cloud::alias(alias)
+                .map_err(|_| Error::Invalid("The selected runtime scope is invalid."))?;
+        }
+        for pin in [&self.profile_revision, &self.source_digest] {
+            coder_access::cloud::digest(pin)
+                .map_err(|_| Error::Invalid("The selected runtime pin is invalid."))?;
+        }
+        Ok(())
+    }
+}
+
+impl Selection {
+    pub(crate) fn validate(&self) -> Result<(), Error> {
+        if self.revision == 0 && (self.repository.is_some() || self.runtime.is_some()) {
+            return Err(Error::Invalid("The selection revision is invalid."));
+        }
+        if let Some(repository) = &self.repository {
+            repository.validate()?;
+        }
+        if let Some(runtime) = &self.runtime {
+            runtime.validate()?;
+        }
+        if let (Some(repository), Some(runtime)) = (&self.repository, &self.runtime)
+            && repository.revision != runtime.source_revision
+        {
+            return Err(Error::Invalid(
+                "The selected source differs from the runtime source.",
+            ));
+        }
+        Ok(())
+    }
+}
+
+impl CloudRequest {
+    pub(crate) fn validate(&self) -> Result<(), Error> {
+        if !binding_id(&self.binding) || coder_access::protocol::identity(&self.request).is_err() {
+            return Err(Error::Invalid(
+                "The native Cloud request reference is invalid.",
+            ));
+        }
+        Ok(())
+    }
+}
+
+fn validate_conversation(conversation: &Conversation) -> Result<(), Error> {
+    validate_address(&conversation.owner, &conversation.id)?;
+    if conversation.revision == 0 {
+        return Err(Error::Invalid("The conversation revision is invalid."));
+    }
+    if let Some(selection) = &conversation.selection {
+        selection.validate()?;
+    }
+    let mut identities = HashSet::new();
+    for request in &conversation.requests {
+        if !valid_id(&request.id)
+            || !identities.insert(&request.id)
+            || request.digest.len() != 64
+            || !request
+                .digest
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        {
+            return Err(Error::Invalid("The retained message identity is invalid."));
+        }
+        if let Some(selection) = &request.selection {
+            selection.validate()?;
+        }
+        if let Some(cloud) = &request.cloud {
+            cloud.validate()?;
+            if request
+                .selection
+                .as_ref()
+                .and_then(|selection| selection.runtime.as_ref())
+                .is_none_or(|runtime| runtime.binding != cloud.binding)
+            {
+                return Err(Error::Invalid(
+                    "The native Cloud request changed its selected runtime.",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_retained_requests(previous: &Conversation, next: &Conversation) -> Result<(), Error> {
+    for request in &previous.requests {
+        let retained = next
+            .requests
+            .iter()
+            .find(|retained| retained.id == request.id);
+        if retained.is_none_or(|retained| {
+            retained.digest != request.digest
+                || retained.selection != request.selection
+                || request
+                    .cloud
+                    .as_ref()
+                    .is_some_and(|cloud| retained.cloud.as_ref() != Some(cloud))
+        }) {
+            return Err(Error::Invalid(
+                "An accepted message cannot change its source or native request.",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn binding_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"_-".contains(&byte))
+}
+
+fn bounded_text(value: &str, limit: usize) -> bool {
+    !value.trim().is_empty() && value.len() <= limit && !value.chars().any(char::is_control)
+}
+
+fn commit(value: &str) -> bool {
+    value.len() == 40 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
 async fn blocking<T, F>(operation: F) -> Result<T, Error>
@@ -963,4 +1175,235 @@ pub(crate) fn now_unix() -> u64 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    const OWNER: &str = "11111111111111111111111111111111";
+    const ID: &str = "83e18906-00e2-436c-978b-13a4932f58b0";
+
+    fn selection() -> Selection {
+        Selection {
+            revision: 1,
+            repository: Some(RepositorySource {
+                repository: "OpenAgentsInc/openagents".into(),
+                branch: "main".into(),
+                revision: "a".repeat(40),
+            }),
+            runtime: Some(RuntimeSelection {
+                binding: "operator-fixture".into(),
+                account: "account-fixture".into(),
+                workspace: "workspace-fixture".into(),
+                members_epoch: 7,
+                project: "openagents".into(),
+                profile: "boat-codex".into(),
+                profile_revision: format!("sha256:{}", "b".repeat(64)),
+                source_revision: "a".repeat(40),
+                source_digest: format!("sha256:{}", "c".repeat(64)),
+                placement: "boat".into(),
+                executor: "codex".into(),
+                model: Some("gpt-6.1-sol".into()),
+                max_timeout_seconds: 300,
+            }),
+        }
+    }
+
+    fn conversation() -> Conversation {
+        Conversation {
+            id: ID.into(),
+            owner: OWNER.into(),
+            revision: 1,
+            title: "Prepare the repository".into(),
+            messages: vec![Message {
+                role: Role::User,
+                text: "Prepare the repository".into(),
+                request_id: Some(ID.into()),
+            }],
+            pending: None,
+            requests: vec![Request {
+                id: ID.into(),
+                digest: digest(b"Prepare the repository"),
+                outcome: Outcome::Answered,
+                selection: None,
+                cloud: None,
+            }],
+            selection: None,
+            updated_unix: 1,
+        }
+    }
+
+    #[test]
+    fn records_without_selection_fields_remain_readable() {
+        let bytes = serde_json::to_vec(&json!({
+            "schema": SCHEMA,
+            "conversation": {
+                "id": ID,
+                "owner": OWNER,
+                "revision": 1,
+                "title": "Existing chat",
+                "messages": [],
+                "pending": null,
+                "requests": [{
+                    "id": ID,
+                    "digest": "a".repeat(64),
+                    "outcome": "answered"
+                }],
+                "updated_unix": 1
+            }
+        }))
+        .unwrap();
+        let retained = decode(&bytes, OWNER, ID).unwrap();
+        assert!(retained.selection.is_none());
+        assert!(retained.requests[0].selection.is_none());
+        assert!(retained.requests[0].cloud.is_none());
+        let encoded: serde_json::Value =
+            serde_json::from_slice(&encode(&retained).unwrap()).unwrap();
+        let record = encoded["conversation"].as_object().unwrap();
+        assert!(!record.contains_key("selection"));
+        let request = encoded["conversation"]["requests"][0].as_object().unwrap();
+        assert!(!request.contains_key("selection"));
+        assert!(!request.contains_key("cloud"));
+    }
+
+    #[test]
+    fn source_and_native_request_round_trip_without_credentials() {
+        let mut record = conversation();
+        record.selection = Some(selection());
+        record.requests[0].selection = record.selection.clone();
+        record.requests[0].cloud = Some(CloudRequest {
+            binding: "operator-fixture".into(),
+            request: "d".repeat(64),
+        });
+        let bytes = encode(&record).unwrap();
+        let retained = decode(&bytes, OWNER, ID).unwrap();
+        assert_eq!(retained.selection, record.selection);
+        assert_eq!(retained.requests[0].selection, record.requests[0].selection);
+        assert_eq!(retained.requests[0].cloud, record.requests[0].cloud);
+        let mut value = serde_json::to_value(selection()).unwrap();
+        value["runtime"]["credentials"] = json!({"OPENAI_API_KEY": "not-a-key"});
+        assert!(serde_json::from_value::<Selection>(value).is_err());
+    }
+
+    #[test]
+    fn selections_validate_addresses_pins_and_bounds() {
+        assert!(Selection::default().validate().is_ok());
+        assert!(selection().validate().is_ok());
+        let mut invalid = selection();
+        invalid.revision = 0;
+        assert!(invalid.validate().is_err());
+        let mut invalid = selection();
+        invalid.repository.as_mut().unwrap().repository = "../openagents".into();
+        assert!(invalid.validate().is_err());
+        let mut invalid = selection();
+        invalid.repository.as_mut().unwrap().branch = "main..other".into();
+        assert!(invalid.validate().is_err());
+        let mut invalid = selection();
+        invalid.repository.as_mut().unwrap().revision = "b".repeat(40);
+        assert!(invalid.validate().is_err());
+        let mut invalid = selection();
+        invalid.runtime.as_mut().unwrap().binding = "../host".into();
+        assert!(invalid.validate().is_err());
+        let mut invalid = selection();
+        invalid.runtime.as_mut().unwrap().account = "account\nother".into();
+        assert!(invalid.validate().is_err());
+        let mut invalid = selection();
+        invalid.runtime.as_mut().unwrap().profile_revision = "b".repeat(64);
+        assert!(invalid.validate().is_err());
+        let mut invalid = selection();
+        invalid.runtime.as_mut().unwrap().members_epoch = 9_007_199_254_740_992;
+        assert!(invalid.validate().is_err());
+        let mut invalid = selection();
+        invalid.runtime.as_mut().unwrap().max_timeout_seconds = 43_201;
+        assert!(invalid.validate().is_err());
+        let mut invalid = selection();
+        invalid.runtime.as_mut().unwrap().model = Some("m".repeat(129));
+        assert!(invalid.validate().is_err());
+    }
+
+    #[test]
+    fn native_request_requires_the_frozen_runtime_binding() {
+        let mut record = conversation();
+        record.requests[0].cloud = Some(CloudRequest {
+            binding: "operator-fixture".into(),
+            request: "d".repeat(64),
+        });
+        assert!(encode(&record).is_err());
+        record.requests[0].selection = Some(selection());
+        assert!(encode(&record).is_ok());
+        record.requests[0].cloud.as_mut().unwrap().binding = "another-host".into();
+        assert!(encode(&record).is_err());
+        record.requests[0].cloud.as_mut().unwrap().binding = "operator-fixture".into();
+        record.requests[0].cloud.as_mut().unwrap().request = ID.into();
+        assert!(encode(&record).is_err());
+    }
+
+    #[tokio::test]
+    async fn local_cas_freezes_accepted_source_and_native_request() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::local(directory.path().join("chats"));
+        let mut record = conversation();
+        record.selection = Some(selection());
+        record.requests[0].selection = record.selection.clone();
+        let original = store.create(&record).await.unwrap();
+
+        let mut next = record.clone();
+        next.revision += 1;
+        next.selection.as_mut().unwrap().revision += 1;
+        next.selection
+            .as_mut()
+            .unwrap()
+            .repository
+            .as_mut()
+            .unwrap()
+            .branch = "next".into();
+        let changed = store.compare_and_swap(&original, &next).await.unwrap();
+        assert_eq!(changed.conversation.requests[0].selection, record.selection);
+        assert_eq!(
+            store
+                .load(OWNER, ID)
+                .await
+                .unwrap()
+                .unwrap()
+                .conversation
+                .selection,
+            next.selection
+        );
+        assert!(matches!(
+            store.compare_and_swap(&original, &next).await,
+            Err(Error::Conflict)
+        ));
+
+        let mut rebound = next.clone();
+        rebound.revision += 1;
+        rebound.requests[0].selection = rebound.selection.clone();
+        assert!(matches!(
+            store.compare_and_swap(&changed, &rebound).await,
+            Err(Error::Invalid(_))
+        ));
+
+        let mut staged = next.clone();
+        staged.revision += 1;
+        staged.requests[0].cloud = Some(CloudRequest {
+            binding: "operator-fixture".into(),
+            request: "d".repeat(64),
+        });
+        let accepted = store.compare_and_swap(&changed, &staged).await.unwrap();
+        let mut cleared = staged.clone();
+        cleared.revision += 1;
+        cleared.requests[0].cloud = None;
+        assert!(matches!(
+            store.compare_and_swap(&accepted, &cleared).await,
+            Err(Error::Invalid(_))
+        ));
+        let mut redirected = staged;
+        redirected.revision += 1;
+        redirected.requests[0].cloud.as_mut().unwrap().request = "e".repeat(64);
+        assert!(matches!(
+            store.compare_and_swap(&accepted, &redirected).await,
+            Err(Error::Invalid(_))
+        ));
+    }
 }

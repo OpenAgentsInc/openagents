@@ -2378,12 +2378,95 @@ impl Run<'_> {
         ));
     }
 
+    /// Why the task was asked to stop, as its store recorded it, when the
+    /// stop came from a command rather than from the turn's own end.
+    fn stop_reason(&self) -> Option<String> {
+        super::Store::open(&self.work.store)
+            .ok()?
+            .show(&self.record.task)
+            .ok()?
+            .cancellation_reason
+            .filter(|reason| !reason.trim().is_empty())
+    }
+
+    /// Commit whatever the turn left uncommitted in the worktree and push it
+    /// to `coder/stranded-<task8>`, so a stop or failure between turns does
+    /// not lose the work with its computer. Whether a branch was pushed.
+    fn keep_unfinished(&mut self) -> bool {
+        if self.stranded.is_some() {
+            return true;
+        }
+        let dirty = local::git_out(self.worktree, &["status", "--porcelain"])
+            .map(|out| !out.trim().is_empty())
+            .unwrap_or(false);
+        let ahead = local::git_out(
+            self.worktree,
+            &[
+                "rev-list",
+                "--count",
+                &format!("{}..HEAD", self.record.base),
+            ],
+        )
+        .ok()
+        .and_then(|out| out.trim().parse::<u64>().ok())
+        .unwrap_or(0)
+            > 0;
+        if !dirty && !ahead {
+            return false;
+        }
+        if dirty {
+            let message = format!(
+                "WIP: Coder's unfinished work on #{} (task {})",
+                self.issue.number,
+                &self.record.task[..8.min(self.record.task.len())]
+            );
+            if local::git_out(self.worktree, &["add", "-A"]).is_err()
+                || local::git_out(
+                    self.worktree,
+                    &[
+                        "-c",
+                        "user.name=Coder",
+                        "-c",
+                        "user.email=coder@openagents.com",
+                        "commit",
+                        "-q",
+                        "--no-verify",
+                        "-m",
+                        &message,
+                    ],
+                )
+                .is_err()
+            {
+                self.note("Could not commit the unfinished work before keeping it.");
+                return false;
+            }
+        }
+        self.strand()
+    }
+
     fn stopped(&mut self, why: &str) {
         self.flow.link.outcome = "stopped".into();
+        let reason = self
+            .stop_reason()
+            .map(|reason| format!(" The stop request said: {reason}"))
+            .unwrap_or_default();
+        let kept = if self.keep_unfinished() {
+            match &self.stranded {
+                Some(branch) => format!(
+                    "The unfinished change is kept on the branch [`{branch}`](https://github.com/{}/tree/{branch}).",
+                    self.repository
+                ),
+                None => String::new(),
+            }
+        } else {
+            format!(
+                "Any partial change is in Coder's worktree `{}` on the computer that ran it.",
+                self.worktree.display()
+            )
+        };
         let comment = format!(
-            "Coder stopped working on this before it landed anything: {why} The issue stays \
-             open. Any partial change is in Coder's worktree `{}` on the computer that ran it.\n\n{}{}{}\n\n{RELEASE_MARK}",
-            self.worktree.display(),
+            "Coder stopped working on this before it landed anything: {why}{reason} The issue stays \
+             open. {kept}\n\n{}{}{}\n\n{RELEASE_MARK}",
             self.how_far(),
             self.run_line(),
             self.artifacts(None)
@@ -2413,6 +2496,7 @@ impl Run<'_> {
             comment.push_str("\n```\n\n");
         }
         comment.push_str(&self.how_far());
+        self.keep_unfinished();
         let kept = match &self.stranded {
             Some(branch) => format!(
                 "Nothing landed on the default branch, and the issue stays open. The change is \
