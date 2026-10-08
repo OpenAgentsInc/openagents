@@ -74,7 +74,7 @@ the original October 7 plan.
 | P8: web and phone | #10901 | `df3f5fa15e` | Closed; pack uploaded, Cloud Build grant in place |
 | P9: cleanup | #10902 | `f008baa090`, repin `4b9ad70748` | Closed; both suites and pack consistency pass |
 | B1: offline baker | #10905 | `0360046732`, `983432c41f` | Closed |
-| B2: lightmap layers | #10906 | by its subagent | See its issue |
+| B2: lightmap layers | #10906 | `0e0d8afd37`, verification on `codex/everglade-b2-verification` | Five focused tests pass; publication and capture acceptance remain |
 | B3: time of day and destruction | #10907 | checkpoint `a2f4bbf7d3` on `codex/everglade-b3` | Unverified; claim released while P3 takes priority |
 | B4: tiers and measurement | #10908 | none | Not started |
 
@@ -88,8 +88,21 @@ unchanged.
 
 ## What's open
 
-- **B2 (#10906).** Its issue holds what its subagent landed and what
-  remains.
+- **B2 (#10906).** The coordinator holds the claim. The landed per-vertex
+  layers pass the lamp/bounce fixture, three format and combination tests,
+  the missing/stale-layer fallback test, and scoped formatting on
+  `coderos-4080`. Artifact submission `01791470792224747042-2390831-0`
+  regenerates the current P3 scene through `everglade-kit-bake`. Its first
+  bake was stopped when the Mac fell below the owner's 25 GB floor; idle
+  local target-agent12 was removed after preserving its two water capture
+  executables, restoring 110.8 GB free. The pending queue entry can resume.
+  The `kit_light_acceptance` helper and `uses_baked_light` accessor on the
+  verification branch are unverified; compile the filtered ignored test
+  and run it under remote quiet/GPU leases after the bake. Captures must
+  reject a mismatched scene and prove both offline and fallback paths.
+  Upload, website delivery, and before/after Stoop Lane captures remain.
+  The original second-UV lightmaps and denser lamp probes are still
+  deferred in the plan; per-vertex results do not establish those checks.
 - **B3 (#10907).** Checkpoint `a2f4bbf7d3` on `codex/everglade-b3` holds
   unverified blending, damage repair, private-layer preflight, and acceptance
   tools. Its handoff lists the exact remaining checks, private scene identity,
