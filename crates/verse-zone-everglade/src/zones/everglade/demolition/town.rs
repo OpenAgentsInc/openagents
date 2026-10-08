@@ -26,7 +26,8 @@
 //! that are damaged, loose, or broken leave the static cells: their
 //! placements' triangles are made degenerate in the uploaded indices
 //! ([`crate::pbr::textured::IndexEdits`]) and their chunks draw in the
-//! frame's rigid instance stream, transformed on the GPU. At most
+//! frame's rigid instance stream, transformed on the GPU. Settled opaque
+//! chunks share static geometry with the same material and light. At most
 //! [`MAX_LIVE`] buildings are raised at once and at most [`MAX_CHUNKS`]
 //! chunks live. A raised building that took no damage goes back to the
 //! static cells at once; a damaged one regrows whole after [`REGROW`]
@@ -60,9 +61,12 @@ use crate::zones::everglade::solids::{self, Roof, Solids};
 use crate::zones::everglade_pack::ZonePack;
 use glam::{DVec3, Mat4, Quat, Vec3};
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use verse_world::social::columns::Columns;
 use verse_world::social::sight::Sight;
+
+mod rubble;
+pub use rubble::MergeStats;
 
 /// Whether this build runs on a browser or a phone, whose budgets are
 /// smaller (`docs/verse/destructible-buildings.md`, Performance budgets).
@@ -610,6 +614,14 @@ struct Span {
     chunk: usize,
     part: usize,
     mesh: usize,
+    shape: usize,
+    material: usize,
+}
+
+struct SettledPart {
+    instance: DynamicInstance,
+    source: [usize; 3],
+    material: usize,
 }
 
 /// How a site piece looks: its chunk shape and its house's paint.
@@ -622,11 +634,13 @@ struct Look {
 /// Immutable chunk meshes and this frame's rigid transforms.
 struct Pool {
     kit: TexturedScene,
-    scene: Arc<TexturedScene>,
+    scene: Mutex<rubble::Cache>,
     meshes: BTreeMap<(usize, usize, usize, usize), usize>,
     spans: Vec<Span>,
     drawn: Vec<usize>,
     instances: Vec<DynamicInstance>,
+    static_parts: Vec<SettledPart>,
+    settled: BTreeSet<(usize, usize)>,
     previous: BTreeMap<u64, Mat4>,
     limit: usize,
 }
@@ -636,12 +650,14 @@ const VERTEX_BYTES: usize = std::mem::size_of::<TexturedVertex>() + 4;
 impl Pool {
     fn new(kit: TexturedScene) -> Self {
         Self {
-            scene: Arc::new(kit.clone()),
+            scene: Mutex::new(rubble::Cache::new(kit.clone())),
             kit,
             meshes: BTreeMap::new(),
             spans: Vec::new(),
             drawn: Vec::new(),
             instances: Vec::new(),
+            static_parts: Vec::new(),
+            settled: BTreeSet::new(),
             previous: BTreeMap::new(),
             limit: POOL_BYTES / VERTEX_BYTES,
         }
@@ -649,11 +665,9 @@ impl Pool {
 
     fn held(&self) -> usize {
         self.scene
-            .meshes
-            .iter()
-            .flat_map(|m| &m.primitives)
-            .map(|p| p.vertices.len())
-            .sum()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .held()
     }
 
     fn pack(
@@ -663,17 +677,29 @@ impl Pool {
         meshes: &[Vec<ChunkMesh>],
         materials: &BTreeMap<(u16, usize), usize>,
         live: &dyn Fn(usize, usize) -> bool,
+        settled: BTreeSet<(usize, usize)>,
     ) {
         // Keep cached source geometry within the same budget as live debris.
         let mut missing = BTreeSet::new();
         let mut added = 0;
+        let mut reserved = 0;
         for &piece in &drawn {
             let Look { shape, paint } = looks[piece];
             for (chunk, mesh) in meshes[shape].iter().enumerate() {
                 if !live(piece, chunk) {
                     continue;
                 }
-                for (part, (_, vertices)) in mesh.parts.iter().enumerate() {
+                for (part, (source, vertices)) in mesh.parts.iter().enumerate() {
+                    let Some(&material) = materials.get(&(*source, paint)) else {
+                        continue;
+                    };
+                    if settled.contains(&(piece, chunk))
+                        && self.kit.materials[material].alpha
+                            != crate::pbr::textured::AlphaMode::Blend
+                    {
+                        reserved += vertices.len();
+                        continue;
+                    }
                     let key = (shape, paint, chunk, part);
                     if !self.meshes.contains_key(&key) && missing.insert(key) {
                         added += vertices.len();
@@ -681,8 +707,12 @@ impl Pool {
                 }
             }
         }
-        if self.held() + added > self.limit {
-            self.scene = Arc::new(self.kit.clone());
+        let cache = self
+            .scene
+            .get_mut()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if cache.source_vertices() + added + reserved.max(cache.stats.vertices) > self.limit {
+            *cache = rubble::Cache::new(self.kit.clone());
             self.meshes.clear();
         }
         let mut spans = Vec::new();
@@ -702,11 +732,15 @@ impl Pool {
                     }
                     total += vertices.len();
                     let key = (shape, paint, chunk, part);
-                    let mesh = if let Some(&mesh) = self.meshes.get(&key) {
+                    let mesh = if settled.contains(&(piece, chunk))
+                        && self.kit.materials[material].alpha
+                            != crate::pbr::textured::AlphaMode::Blend
+                    {
+                        usize::MAX
+                    } else if let Some(&mesh) = self.meshes.get(&key) {
                         mesh
                     } else {
-                        let scene = Arc::make_mut(&mut self.scene);
-                        let mesh = scene.add_mesh(TexturedMesh {
+                        let mesh = cache.add_source(TexturedMesh {
                             primitives: vec![Primitive {
                                 vertices: vertices.clone(),
                                 indices: (0..vertices.len() as u32).collect(),
@@ -721,20 +755,29 @@ impl Pool {
                         chunk,
                         part,
                         mesh,
+                        shape,
+                        material,
                     });
                 }
             }
         }
         self.spans = spans;
         self.drawn = drawn;
+        self.settled = settled;
     }
 
     fn clear(&mut self) {
-        self.scene = Arc::new(self.kit.clone());
+        *self
+            .scene
+            .get_mut()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) =
+            rubble::Cache::new(self.kit.clone());
         self.meshes.clear();
         self.spans.clear();
         self.drawn.clear();
         self.instances.clear();
+        self.static_parts.clear();
+        self.settled.clear();
         self.previous.clear();
     }
 
@@ -742,7 +785,10 @@ impl Pool {
         self.previous.clear();
         // Retain rebuilds body and piece IDs. Detach a renderer's retained
         // source so its GPU history cannot confuse the old and new bodies.
-        let _ = Arc::make_mut(&mut self.scene);
+        self.scene
+            .get_mut()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .reset_motion();
     }
 }
 
@@ -1688,7 +1734,7 @@ impl Town {
             sync_ms: between(physics_done, sync_done),
             pose_ms: between(sync_done, pose_done),
             posed_vertices: 0,
-            rigid_instances: self.pool.instances.len(),
+            rigid_instances: self.pool.instances.len() + self.merge_stats().groups,
             awake_bodies: self.wreck.site.debris_stats().awake,
             sleeping_bodies: self.wreck.site.debris_stats().sleeping,
             merged_chunks: self.wreck.site.debris_stats().merged,
@@ -1854,6 +1900,17 @@ impl Town {
                 state.status != Status::Broken || state.chunks.iter().any(|c| !c.gone)
             })
             .collect();
+        let settled: BTreeSet<_> =
+            drawn
+                .iter()
+                .flat_map(|&piece| {
+                    site.pieces()[piece].chunks.iter().enumerate().filter_map(
+                        move |(chunk, state)| {
+                            (!state.gone && state.settled.is_some()).then_some((piece, chunk))
+                        },
+                    )
+                })
+                .collect();
         let seen = (self.wreck.revision, self.wreck.site.revision());
         if seen.0 != self.seen.0 {
             self.pool.reset_motion();
@@ -1861,6 +1918,7 @@ impl Town {
         if seen != self.seen
             || drawn != self.pool.drawn
             || self.pool.spans.len() != self.count_spans(&drawn, &live)
+            || settled != self.pool.settled
         {
             if drawn.is_empty() {
                 self.pool.clear();
@@ -1871,6 +1929,7 @@ impl Town {
                     &self.wreck.meshes,
                     &self.materials,
                     &live,
+                    settled,
                 );
             }
         }
@@ -2025,6 +2084,16 @@ impl Town {
         self.pool.held() * VERTEX_BYTES
     }
 
+    /// Static rubble groups and geometry transformations since the last reset.
+    #[must_use]
+    pub fn merge_stats(&self) -> MergeStats {
+        self.pool
+            .scene
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .stats
+    }
+
     /// The solids: everything but the buildings, each static building's
     /// blocks and roofs, and each raised building's standing pieces.
     fn refresh_solids(&mut self) {
@@ -2097,6 +2166,7 @@ impl Town {
             .then(|| LocalOcclusion::new(site));
         let pool = &mut self.pool;
         pool.instances.clear();
+        pool.static_parts.clear();
         let mut previous = BTreeMap::new();
         for span in &pool.spans {
             let piece = &site.pieces()[span.piece];
@@ -2144,7 +2214,7 @@ impl Town {
             } else {
                 UNBAKED
             };
-            pool.instances.push(DynamicInstance {
+            let instance = DynamicInstance {
                 id,
                 mesh: span.mesh,
                 current,
@@ -2152,8 +2222,17 @@ impl Town {
                 color: [shade, shade, shade, 1.0],
                 light,
                 settled,
-            });
-            previous.insert(id, current);
+            };
+            if span.mesh == usize::MAX {
+                pool.static_parts.push(SettledPart {
+                    instance,
+                    source: [span.shape, span.chunk, span.part],
+                    material: span.material,
+                });
+            } else {
+                pool.instances.push(instance);
+                previous.insert(id, current);
+            }
         }
         pool.previous = previous;
     }
@@ -2169,32 +2248,36 @@ impl Town {
     /// Rigid debris meshes and transforms, with ambient sampled per chunk.
     #[must_use]
     pub fn instances(&self, probes: Option<&AmbientProbes>) -> Option<InstancedFigure> {
-        if self.pool.instances.is_empty() {
+        if self.pool.instances.is_empty() && self.pool.static_parts.is_empty() {
             return None;
         }
         let mut instances = self.pool.instances.clone();
-        if let Some(probes) = probes {
-            for instance in &mut instances {
-                // A local destruction estimate overrides pristine probes.
-                if instance.light != UNBAKED {
-                    continue;
-                }
-                let mut center = [TexturedVertex::new(
-                    instance.current.w_axis.truncate(),
-                    instance
-                        .current
-                        .transform_vector3(Vec3::Y)
-                        .normalize_or(Vec3::Y),
-                    [0.0; 2],
-                )];
-                probes.shade(&mut center);
-                instance.light = center[0].light;
-            }
+        for instance in &mut instances {
+            rubble::shade(instance, probes);
         }
-        Some(InstancedFigure {
-            scene: self.pool.scene.clone(),
-            instances: Arc::new(instances),
-        })
+        let parts: Vec<_> = self
+            .pool
+            .static_parts
+            .iter()
+            .map(|part| {
+                let mut instance = part.instance;
+                rubble::shade(&mut instance, probes);
+                let [shape, chunk, part_index] = part.source;
+                rubble::Part {
+                    instance,
+                    source: part.source,
+                    material: part.material,
+                    vertices: &self.wreck.meshes[shape][chunk].parts[part_index].1,
+                }
+            })
+            .collect();
+        Some(
+            self.pool
+                .scene
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .frame(instances, &parts),
+        )
     }
 
     /// The hammer in hand as `hold` holds it, cracks on damaged walls,
