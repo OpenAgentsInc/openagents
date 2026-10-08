@@ -1900,3 +1900,16 @@ steps:
 - Publishing a shared aggregate anywhere outside the owner's board (the
   website, a weekly update) is an owner step after
   `openagents sales earned approve`; nothing ships it automatically.
+
+## REV-72 partner and affiliate desks (#10879)
+
+Code is complete: Arthur and Vanna bind to their own crew anchors and read
+the canonical pipeline with every money limit reported as unavailable.
+Owner steps:
+
+- Approve each desk binding against its exact digest (`configure_desk`) once
+  the native `arthur` and `vanna` agents are admitted through the hiring book.
+- Publish referral and partner terms, commission base and share, hold
+  period, and payout rail (O7). Until then `Limits` stays all-false and no
+  brief or draft may promise earnings.
+- Name the growth owner recorded in each binding.

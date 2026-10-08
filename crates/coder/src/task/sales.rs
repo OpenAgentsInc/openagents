@@ -24,6 +24,7 @@ pub mod privacy;
 pub mod qualification;
 pub mod referrals;
 pub mod replies;
+pub mod roles;
 pub mod town;
 pub mod training;
 
@@ -316,6 +317,8 @@ struct State {
     #[serde(default)]
     paul: paul::Book,
     #[serde(default)]
+    roles: roles::Book,
+    #[serde(default)]
     earned: earned::Book,
 }
 impl Default for State {
@@ -343,6 +346,7 @@ impl Default for State {
             meetings: meetings::Book::default(),
             qualification: qualification::Book::default(),
             paul: paul::Book::default(),
+            roles: roles::Book::default(),
             earned: earned::Book::default(),
         }
     }
@@ -545,6 +549,7 @@ impl Store {
         state.qualification.check()?;
         state.qualification.check_certificates(&state.agents)?;
         state.paul.check()?;
+        state.roles.check()?;
         privacy::remember_retained(&mut state)?;
         if state.leads.values().any(|lead| lead.schema != LEAD_SCHEMA)
             || state
