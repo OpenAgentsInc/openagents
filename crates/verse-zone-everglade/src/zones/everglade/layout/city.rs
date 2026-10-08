@@ -1095,14 +1095,16 @@ pub fn build(out: &mut Vec<Placement>) {
 fn market(out: &mut Vec<Placement>) {
     // Stalls on the plaza's east side, facing the fountain across it, with
     // their stock beside them.
-    for (k, z) in [66.5_f32, 77.0].into_iter().enumerate() {
+    for (k, z) in [65.5_f32, 77.0].into_iter().enumerate() {
         prop(out, "kit/stall", [6.5, z], WEST);
-        prop(out, "kit/barrel", [7.9, z + 1.6], 0.3 * k as f32);
-        prop(out, "kit/basket", [7.6, z - 1.7], 0.0);
+        // South of each stall, clear of the east café's walk along z = 69.
+        prop(out, "kit/barrel", [7.9, z - 1.8], 0.3 * k as f32);
+        prop(out, "kit/basket", [7.6, z - 3.0], 0.0);
     }
-    prop(out, "kit/crate", [8.0, 69.0], 0.4);
-    prop(out, "kit/cart", [-8.5, 67.0], 0.5);
-    prop(out, "kit/bench", [-6.0, 69.6], FRAC_PI_2);
+    prop(out, "kit/crate", [8.0, 63.0], 0.4);
+    // Clear of the west café's walk along z = 69.
+    prop(out, "kit/cart", [-8.5, 66.3], 0.5);
+    prop(out, "kit/bench", [-6.0, 71.0], FRAC_PI_2);
     prop(out, "kit/bench", [-6.0, 80.8], -FRAC_PI_2);
     // Flower boxes at the fountain's four sides.
     let [fx, fz] = PLAZA_FOUNTAIN.at;
@@ -1201,12 +1203,18 @@ fn lanterns(out: &mut Vec<Placement>) {
         .into_iter()
         .find(|(b, _)| b.name == "the lantern")
         .expect("the tavern is a kit house");
-    let front = tavern.depth / 2.0;
-    for (k, local) in [[-3.4, front + 1.0], [-2.6, front + 1.3], [3.6, front + 1.1]]
+    // Either side of its steps, clear of the doorway.
+    let (door, n) = tavern.front();
+    let along = [n[1], -n[0]];
+    for (k, (side, out_by)) in [(-2.6, 1.0), (-3.4, 1.3), (2.8, 1.1)]
         .into_iter()
         .enumerate()
     {
-        prop(out, "kit/barrel", tavern.world(local), 0.7 * k as f32);
+        let at = [
+            door[0] + along[0] * side + n[0] * out_by,
+            door[1] + along[1] * side + n[1] * out_by,
+        ];
+        prop(out, "kit/barrel", at, 0.7 * k as f32);
     }
 }
 

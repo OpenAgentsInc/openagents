@@ -29,30 +29,13 @@ replacement credential; the configured keys fail authentication. Codex login
 forwarding passes Boat's live integrated API check. Microcoder through the
 OpenAgents cloud fallback passes the headless Boat and GCE lifecycles.
 
-## Archive the medieval town kit in the private bucket (#10894)
+## Everglade's medieval kit at 60 frames per second (#10901)
 
-The `gcloud` login on this Mac needs reauthentication, so the kit's
-vendor files are not archived yet. Run `gcloud auth login`, then
-`scripts/unreal/medieval_town_archive.py archive
-~/.openagents/verse/private/medieval-town/export`. It uploads the vault
-copy's `Content` directory (2.4 GB) and the export's `digests.json` to
-`gs://openagentsgemini-verse-private-assets/vendor/medieval-town/`. The
-export itself is done and deterministic.
-
-The same login uploads the kit pack every client fetches (#10901). Copy
-the pinned pack, `KIT_SHA256` in
-`crates/verse-zone-everglade/src/zones/everglade_pack/kit.rs`, from
-`~/.openagents/verse/private/medieval-town/packs/<KIT_SHA256>.vtp` to
-`gs://openagentsgemini-verse-private-assets/packs/`, and give the Cloud
-Build service account read access to that prefix, so
-`crates/openagents-web/cloudbuild.yaml` copies it into the image. Then
-build and deploy the website (`docs/deployment/openagents-web.md`), and
-check `https://openagents.com/everglade/kit/<KIT_SHA256>.vtp` returns the
-pack. On the reference laptop, open `/everglade?frames` and confirm about
-60 frames per second on Stoop Lane and Main Street; on a phone, open
-Everglade and confirm the town draws the kit and holds its frame rate.
-Each later repin of the kit pack needs the same upload before the next
-web deploy.
+After the openagents.com deploy that serves the kit pack, open
+`https://openagents.com/everglade?frames` on the reference laptop and
+confirm about 60 frames per second on Stoop Lane and Main Street. On a
+phone, open Everglade and confirm the town draws the kit, not its grey
+proxies, and holds its frame rate.
 
 ## Admit the villagers' fuller days (town clock)
 

@@ -123,6 +123,17 @@ fn frame(a: [f32; 2], b: [f32; 2]) -> ([f32; 2], [f32; 2], f32) {
 /// Lamps on both sides of every paved street, alternating, and on one
 /// side of the lit lanes.
 fn lamps(out: &mut Vec<Placement>, placed: &mut Vec<([f32; 2], f32)>) {
+    // Doors open onto the streets; a lamp keeps out of each doorway.
+    let doors: Vec<[f32; 2]> = super::doors()
+        .into_iter()
+        .flat_map(|(_, outside, inside)| [outside, inside])
+        .chain(city::street_fronts().into_iter().map(|(at, _)| at))
+        .collect();
+    let in_a_doorway = |at: [f32; 2]| {
+        doors
+            .iter()
+            .any(|d| (d[0] - at[0]).hypot(d[1] - at[1]) < 3.0)
+    };
     let streets = PAVED
         .iter()
         .map(|s| (*s, LAMP_STEP, true))
@@ -146,6 +157,9 @@ fn lamps(out: &mut Vec<Placement>, placed: &mut Vec<([f32; 2], f32)>) {
                     a[0] + t[0] * along + n[0] * offset * s,
                     a[1] + t[1] * along + n[1] * offset * s,
                 ];
+                if in_a_doorway(at) {
+                    continue;
+                }
                 let lamp = Placement::new(model, at, 0.0, Collision::Core(0.15));
                 // The other side when this one is taken.
                 if try_put(out, placed, lamp, 0.25) {

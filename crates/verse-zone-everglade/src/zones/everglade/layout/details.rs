@@ -290,30 +290,20 @@ fn flowers(out: &mut Vec<Placement>, placed: &mut Placed) {
 /// The chimneys that smoke, in their generated model's frame: x, height,
 /// and z of each chimney's top, m, read from the chimney pieces of each
 /// glb that `scripts/blender/buildings.py` builds.
-const CHIMNEYS: [(&str, [f32; 3]); 21] = [
-    ("generated/bakery", [3.3, 12.69, -5.7]),
+const CHIMNEYS: [(&str, [f32; 3]); 11] = [
     ("generated/smithy", [4.85, 10.53, -4.0]),
     ("generated/log_cabin", [-3.55, 5.87, -2.5]),
     ("generated/farmhouse", [3.57, 6.98, -3.6]),
     ("generated/cottage_thatch", [1.57, 6.4, -3.1]),
     ("generated/cottage_tower", [1.67, 6.84, -4.6]),
-    ("generated/tavern", [-4.23, 10.05, -6.2]),
-    ("generated/guild_hall", [4.47, 9.96, -8.0]),
-    ("generated/hip_house", [-2.63, 9.24, -5.2]),
     ("generated/boardwalk_cafe", [2.47, 6.62, -4.8]),
     // The sixth round's (`scripts/blender/town_houses.py`).
-    ("generated/shop_house", [1.9, 10.82, -7.4]),
     ("generated/gambrel_house", [1.4, 8.1, -6.5]),
     ("generated/stone_cottage", [4.35, 7.25, -3.2]),
     ("generated/brownstone", [-3.45, 12.5, -4.4]),
     ("generated/brownstone", [3.45, 12.3, -5.6]),
-    ("generated/timber_house", [2.4, 10.02, -5.7]),
-    ("generated/lantern_inn", [-3.0, 10.25, -5.1]),
-    ("generated/lantern_inn", [3.4, 10.05, -5.9]),
     // The eighth round's.
-    ("generated/tall_house", [-1.5, 13.87, -6.0]),
     ("generated/narrow_house", [0.9, 13.17, -6.8]),
-    ("generated/dormer_house", [2.7, 10.32, -6.3]),
 ];
 
 /// Where smoke rises from the town's chimneys, a little above each top, m.
@@ -330,5 +320,13 @@ pub fn chimneys() -> Vec<[f32; 3]> {
                     [wx, super::height(i.at[0], i.at[1]) + y * i.scale + 0.2, wz]
                 })
         })
+        // The medieval kit houses' chimneys, the first town's and the city's.
+        .chain(
+            super::first_town_houses()
+                .into_iter()
+                .chain(super::city::kit_houses().into_iter().map(|(_, h)| h))
+                .filter_map(|h| h.chimney_top())
+                .map(|[x, y, z]| [x, y + 0.2, z]),
+        )
         .collect()
 }

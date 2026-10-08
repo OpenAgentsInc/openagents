@@ -14,7 +14,10 @@ separately loaded **zones**:
 - **Everglade** (southwest arch, `EVERGLADE`): the forest glade where the
   [Agent Studio](agent-studio.md) will live ([specification](everglade.md)).
   Its ground is generated; its trees, workshop, and station furniture come
-  from a pinned pack of CC0 Quaternius models that loads on entry.
+  from a pinned pack of CC0 Quaternius models that loads on entry. Its
+  houses are built from a licensed medieval kit whose pack loads beside it
+  from the OpenAgents web origin, with committed proxies in its place when
+  it can't ([Private assets](private-assets.md), "Licensed kits").
 
 The Ruins zone, which ran the original Ruins of Atlantis Wizard Woods combat
 behind the plaza's west arch, was removed on 2026-10-05, with its arch, its

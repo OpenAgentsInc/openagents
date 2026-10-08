@@ -28,10 +28,38 @@ and how to operate it.
 - A private pack never enters the Everglade or Grid packs, and the web build
   has no private path. The Everglade web image copies only
   `assets/verse/everglade/*.vtp`.
+- These rules cover private characters. A **licensed kit**, a second class
+  the owner approved on October 7, 2026, follows the next section's rules.
 - No API key or service-account key exists anywhere. The broker runs on
   Cloud Run under its own service account and signs through the IAM
   Credentials API with Google-managed keys. The upload command uses the
   owner's own `gcloud` login.
+
+## Licensed kits
+
+A licensed kit builds the town rather than standing in it: the Modular
+Medieval Town pack that Everglade's houses are built from
+([Everglade medieval refactor](everglade-medieval-refactor.md)). It follows
+its own rules:
+
+- Its vendor files, converted geometry, textures, and compiled pack never
+  enter the repository. The export and the builds stay under
+  `~/.openagents/verse/private/medieval-town/`; the bucket keeps the vendor
+  files under `vendor/medieval-town/` and the compiled packs under
+  `packs/`.
+- Committed code may name its pieces by IDs of our own (such as
+  `kit/wall-4`), place them, and record each piece's box, the recipe that
+  maps our IDs to the vendor's mesh names, and the compiled pack's digest
+  and length (`everglade_pack::kit`). Collision, navigation, breaking, and
+  the world tree come from those committed boxes, never from the licensed
+  meshes.
+- The compiled pack ships in builds and is served from the OpenAgents web
+  origin to every client, as any web game's assets are. The web image copies
+  it from the bucket at build time, so the repository holds no copy.
+- Every build without the pack, such as a contributor's checkout or a test,
+  draws committed proxies in the public pack's own images.
+- A new digest lands only through the artifact queue
+  (`openagents artifact submit everglade-kit`).
 
 ## The registry
 

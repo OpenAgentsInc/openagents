@@ -35,22 +35,15 @@ pub fn build(out: &mut Vec<Placement>, placed: &mut Placed) {
 }
 
 /// The sixth round's houses, which this round dresses.
-pub const LIGHT_HOUSES: [&str; 6] = [
-    "generated/shop_house",
+pub const LIGHT_HOUSES: [&str; 3] = [
     "generated/gambrel_house",
     "generated/stone_cottage",
     "generated/brownstone",
-    "generated/timber_house",
-    "generated/lantern_inn",
 ];
 
 /// The eighth round's townhouses, which the zone paints like the sixth
 /// round's (`layout::paint`) but this round doesn't dress.
-pub const TOWNHOUSES: [&str; 3] = [
-    "generated/tall_house",
-    "generated/narrow_house",
-    "generated/dormer_house",
-];
+pub const TOWNHOUSES: [&str; 1] = ["generated/narrow_house"];
 
 /// The heading that points a model's front from `from` toward `to`.
 fn toward(from: [f32; 2], to: [f32; 2]) -> f32 {
