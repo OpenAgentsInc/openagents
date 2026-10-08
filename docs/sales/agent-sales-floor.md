@@ -1116,3 +1116,35 @@ grants, meetings, and pipeline stages earn nothing.
   whose aggregate still recomputes from the books, or an `unavailable`
   state (none, expired, no longer matches). It carries no lead, sale,
   amount, or timing beyond the day boundary and floor.
+
+## Arthur's partner desk and Vanna's affiliate desk (REV-72)
+
+Arthur (`SalesPartner`) and Vanna (`SalesAffiliate`) read the private
+pipeline through `task::sales::roles`. Each desk has its own binding
+(`openagents.sales-role-desk.v1`), approved by the owner against the exact
+binding digest and the next revision, bound to that agent's own crew anchor
+(key, charter, memory, job role, active state), and capped at or under the
+floor's USD 5 per day. A binding grants no new power: both desks remain on
+the existing contact permission, certification, exact-send approval, and
+suppression paths, and headcount still comes from the hiring book.
+
+- Arthur's brief (`partner_brief`) lists the canonical partner assignments
+  from `Lead::partner_assignments` as hashed lead references with the
+  assignment kind, status, retained brief reference, and whether an owner
+  handoff is pending. It states `Limits` (terms published, commissions,
+  payouts, agent contracts, discounts, fulfillment), which are all `false`
+  until the owner publishes terms, and carries the disclosure sentence
+  verbatim so no draft implies earnings.
+- Vanna's view (`attribution_view`) reads `Lead::acquisition` (the bound
+  `tenancy::accounts::referrals::Source`) and the canonical service-sale
+  summaries. An outside person, author, or partner referrer earns a referral
+  only when terms publish; an own-agent link identifies the acquisition and
+  earns nothing; a missing, declined, disabled, unknown, or malformed source
+  is not attributed. Self-referral, repeated referrers, malformed or unknown
+  sources, and refunds exceeding payments are findings that count toward
+  `under_review`. `payout_authority` is always `false`.
+- `desk_memory` projects only hashed references and a review-required lesson
+  into the role's memory; no contact, account, lead id, or amount leaves the
+  private store.
+
+Tests: `cargo test -p coder --lib sales::roles`.
