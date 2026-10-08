@@ -98,7 +98,8 @@ pub trait Remote: Send {
     /// `name`'s phase for `task`, `Unknown` when unreadable.
     fn phase(&mut self, name: &str, task: &str) -> Phase;
     /// `task`'s change as `base` plus the whole diff, once it completed.
-    fn review(&mut self, name: &str, task: &str) -> Result<Review, String>;
+    /// `checkout` is the computer's checkout the task ran in.
+    fn review(&mut self, name: &str, task: &str, checkout: &str) -> Result<Review, String>;
     /// Cancel `task`; a missing or ended task answers `Ok`.
     fn cancel(&mut self, name: &str, task: &str) -> Result<(), String>;
 }
@@ -258,7 +259,9 @@ impl Remote for Cli {
              fi; \
              git -C \"$checkout\" fetch -q origin '{base}' 2>/dev/null || \
              git -C \"$checkout\" fetch -q origin || exit 3; \
-             git -C \"$checkout\" cat-file -e '{base}^{{commit}}'"
+             git -C \"$checkout\" cat-file -e '{base}^{{commit}}' && \
+             git -C \"$checkout\" reset --hard -q '{base}' && \
+             git -C \"$checkout\" clean -fdq"
         );
         self.exec(name, &["sh", "-c", &script])
             .map(|_| ())
@@ -322,17 +325,17 @@ impl Remote for Cli {
         }
     }
 
-    fn review(&mut self, name: &str, task: &str) -> Result<Review, String> {
-        // The remote task's run record names its worktree and base; the
-        // whole diff against that base is the patch, binary included.
+    fn review(&mut self, name: &str, task: &str, checkout: &str) -> Result<Review, String> {
+        let _ = task;
+        // A remote task writes in the checkout `ensure` pinned to `base`;
+        // `git diff --binary` against the pin carries the whole change back.
         let script = format!(
-            "record=\"$HOME/.openagents/tasks/local/{task}.json\"; \
-             test -f \"$record\" || {{ echo 'no such task' >&2; exit 4; }}; \
-             worktree=\"$(sed -n 's/.*\"checkout\":\"[^\"]*\",\"worktree\":\"\\([^\"]*\\)\",\"base\":\"[^\"]*\".*/\\1/p' \"$record\")\"; \
-             base=\"$(sed -n 's/.*\"checkout\":\"[^\"]*\",\"worktree\":\"[^\"]*\",\"base\":\"\\([^\"]*\\)\".*/\\1/p' \"$record\")\"; \
-             test -n \"$worktree\" && test -n \"$base\" || {{ echo 'unreadable record' >&2; exit 5; }}; \
-             git -C \"$worktree\" add -A && \
-             echo \"BASE=$base\"; git -C \"$worktree\" diff --cached --binary \"$base\""
+            "checkout='{checkout}'; \
+             case \"$checkout\" in '~/'*) checkout=\"$HOME/${{checkout#'~/'}}\";; esac; \
+             test -d \"$checkout\" || {{ echo 'no such checkout' >&2; exit 4; }}; \
+             base=\"$(git -C \"$checkout\" rev-parse HEAD)\" || exit 5; \
+             git -C \"$checkout\" add -A && \
+             echo \"BASE=$base\"; git -C \"$checkout\" diff --cached --binary HEAD"
         );
         let out = self.exec(name, &["sh", "-c", &script])?;
         let Some(base) = out
@@ -465,7 +468,7 @@ pub(crate) mod tests {
             }
         }
 
-        fn review(&mut self, name: &str, task: &str) -> Result<Review, String> {
+        fn review(&mut self, name: &str, task: &str, checkout: &str) -> Result<Review, String> {
             self.calls
                 .lock()
                 .unwrap()

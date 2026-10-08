@@ -1589,11 +1589,7 @@ impl Studio {
             // A slot a computer holds runs there, not here: its flow's
             // `remote` names the computer, and the seat's own tick lands
             // or closes it.
-            if item
-                .flow
-                .as_ref()
-                .is_some_and(|flow| flow.remote.is_some())
-            {
+            if item.flow.as_ref().is_some_and(|flow| flow.remote.is_some()) {
                 continue;
             }
             let mut ready = true;

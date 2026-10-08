@@ -374,7 +374,10 @@ fn a_conflicting_merge_is_refused_and_leaves_the_checkout() {
     .unwrap();
     // Preparing again keeps the same worktree.
     assert_eq!(
-        prepare(&worktrees, &s.store, &s.repo, "ada", &task, "Edit", None, None).unwrap(),
+        prepare(
+            &worktrees, &s.store, &s.repo, "ada", &task, "Edit", None, None
+        )
+        .unwrap(),
         worktree
     );
     let home = s.dir.path().join("home");
@@ -555,7 +558,13 @@ fn a_remote_tasks_change_lands_and_a_failed_one_closes() {
     };
     // One placed task lands its patch at the merge decision.
     let (_goal, task) = studio
-        .submit_remote(direct("Add notes.txt"), "coderos-4080", "HEAD", 1_000)
+        .submit_remote(
+            direct("Add notes.txt"),
+            "coderos-4080",
+            "~/work/openagents",
+            "HEAD",
+            1_000,
+        )
         .unwrap();
     studio.attach_remote_task(&task, "rt-1").unwrap();
     let works = studio.remote_tasks("alice");
@@ -573,7 +582,13 @@ fn a_remote_tasks_change_lands_and_a_failed_one_closes() {
     // A second remote task that fails is closed with its reason, and its
     // note waits for the person.
     let (_goal, task) = studio
-        .submit_remote(direct("Add more"), "coderos-4080", "HEAD", 1_001)
+        .submit_remote(
+            direct("Add more"),
+            "coderos-4080",
+            "~/work/openagents",
+            "HEAD",
+            1_001,
+        )
         .unwrap();
     studio.attach_remote_task(&task, "rt-2").unwrap();
     studio

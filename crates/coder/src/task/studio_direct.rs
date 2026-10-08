@@ -26,6 +26,8 @@ pub struct RemoteTask {
     pub computer: String,
     /// Its identity on the computer's host, when attached.
     pub remote_task: Option<String>,
+    /// The computer's checkout the task ran in, when attached.
+    pub remote_checkout: Option<String>,
     /// Its change's stage.
     pub stage: super::flow::Stage,
 }
@@ -75,6 +77,7 @@ impl Studio {
         &mut self,
         direct: Direct,
         computer: &str,
+        checkout: &str,
         base: &str,
         now: u64,
     ) -> Result<(String, String), Error> {
@@ -105,7 +108,7 @@ impl Studio {
         )
         .map_err(|message| Error::Tasks(super::super::Error::Io(std::io::Error::other(message))))?;
         let item = &mut self.state.goals[index].plan[0];
-        item.flow = Some(super::flow::Flow::remote(&task_id, computer));
+        item.flow = Some(super::flow::Flow::remote(&task_id, computer, checkout));
         self.save()?;
         Ok((goal_id, task_id))
     }
@@ -140,6 +143,7 @@ impl Studio {
                     task: entry.slot.task_id.clone(),
                     computer: flow.remote.clone()?,
                     remote_task: flow.remote_task.clone(),
+                    remote_checkout: flow.remote_checkout.clone(),
                     stage: flow.stage,
                 })
             })
