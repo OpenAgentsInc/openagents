@@ -2,7 +2,7 @@
 #
 # Super+Return and Super+T open a window here, and so does the session's own
 # first window. Each is the terminal emulator the session keeps, `foot` by
-# default, running this repository's `coder` or a bare shell, in the Coder
+# default, running this repository's `coder-new` or a bare shell, in the Coder
 # palette and font that `os/modules/coderos/desktop.nix` writes to
 # /etc/coderos/foot.ini.
 #
@@ -19,10 +19,10 @@
 #   CODER_PANE_TERMINAL         foot                   the terminal emulator
 #   CODER_PANE_TERMINAL_CONFIG  /etc/coderos/foot.ini  the palette and the font a
 #                                                      `foot` window reads
-#   CODER_PANE_CLIENT           coder                  the client a pane runs
+#   CODER_PANE_CLIENT           coder-new              the client a pane runs
 #   CODER_PANE_DIRECTORY        unset                  where a pane opens
 
-client="${CODER_PANE_CLIENT:-coder}"
+client="${CODER_PANE_CLIENT:-coder-new}"
 read -r -a terminal <<< "${CODER_PANE_TERMINAL:-foot}"
 config="${CODER_PANE_TERMINAL_CONFIG:-/etc/coderos/foot.ini}"
 

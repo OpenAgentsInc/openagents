@@ -67,10 +67,9 @@ lease run --class release-gate -- CMD` or `--class bench`; soaks use
 `openagents lease quiet --class soak -- CMD` and stay here
 (`docs/coder/runtime/placement.md`).
 
-Capture offscreen (`verse --capture FILE.png` and other offscreen paths).
-Don't open a visible window or run `screencapture` without a `screen` lease
-(`openagents lease screen -- CMD`), which needs the owner's grant; an agent
-`verse` refuses to open a window without one.
+Prefer offscreen captures (`verse --capture FILE.png` and other offscreen
+paths). When the owner asks for a visible window or desktop test, run it
+directly; no separate screen lease or grant is required.
 
 Keep scratch files (captures, scripts, notes) in the directory `openagents
 scratch` prints (`$OPENAGENTS_SCRATCH` under a lease or a Coder delegation),

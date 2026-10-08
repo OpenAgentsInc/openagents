@@ -124,7 +124,7 @@ The tty1 login starts Hyprland with `/etc/coderos/hyprland.conf`, which the
 module writes, and asks a running session to reload it after every switch.
 The first window is `bin/coder-pane`: foot, in the Coder palette from
 `/etc/coderos/foot.ini`, running `coderos.desktop.command`, which is this
-repository's `coder` found on the session's PATH. Point `directory` at a
+repository's `coder-new` found on the session's PATH. Point `directory` at a
 checkout so that writing delegations each get a worktree.
 
 The keys follow Omarchy's tiling set:

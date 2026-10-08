@@ -717,17 +717,17 @@ in
       '';
     };
 
-    # A string, not a package: `coder` is built from a checkout of this
-    # repository, and `scripts/install-coder.sh` links it into ~/.local/bin.
+    # A string, not a package: `coder-new` is built from a checkout of this
+    # repository and installed on the session's PATH.
     # `environment.localBinInPath` puts ~/.local/bin on the login shell's
     # PATH, and the session inherits it from the login shell, so a bare
     # command name resolves there.
     command = lib.mkOption {
       type = lib.types.str;
-      default = "coder";
+      default = "coder-new";
       description = ''
         The Coder command a pane runs, and the one the close key asks what is
-        running. The default is this repository's `coder`, found on the
+        running. The default is this repository's `coder-new`, found on the
         session's PATH.
       '';
     };

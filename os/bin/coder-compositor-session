@@ -56,7 +56,7 @@ CONFIG="${CODER_COMPOSITOR_CONFIG:-/etc/coderos/compositor.json}"
 DEFAULT_COMPOSITOR="coder-compositor"
 DEFAULT_PANE="coder-pane"
 DEFAULT_TERMINAL="foot"
-DEFAULT_COMMAND="coder"
+DEFAULT_COMMAND="coder-new"
 
 # How long to wait for the compositor to announce its sockets. It prints the
 # line as soon as both are bound, which is under a second on this host; the

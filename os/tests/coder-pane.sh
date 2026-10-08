@@ -80,7 +80,7 @@ ran_with_palette() {
 }
 
 said=$(ran)
-if [ "$said" = "-- coder" ]; then
+if [ "$said" = "-- coder-new" ]; then
   pass "Super+Return opens the emulator running Coder"
 else
   fail "Super+Return opens the emulator running Coder: $said"
@@ -94,14 +94,14 @@ else
 fi
 
 said=$(ran --app-id=coder-work --title='coder · read the audit')
-if [ "$said" = "--app-id=coder-work --title=coder · read the audit -- coder" ]; then
+if [ "$said" = "--app-id=coder-work --title=coder · read the audit -- coder-new" ]; then
   pass "a pane carries the app-id and the title it was given"
 else
   fail "a pane carries the app-id and the title it was given: $said"
 fi
 
 said=$(ran --app-id coder-work --title 'two words')
-if [ "$said" = "--app-id=coder-work --title=two words -- coder" ]; then
+if [ "$said" = "--app-id=coder-work --title=two words -- coder-new" ]; then
   pass "the flags take their value as the next argument too"
 else
   fail "the flags take their value as the next argument too: $said"
@@ -117,7 +117,7 @@ fi
 
 # --- The palette and the font -------------------------------------------
 said=$(ran_with_palette)
-if [ "$said" = "--config=$palette -- coder" ]; then
+if [ "$said" = "--config=$palette -- coder-new" ]; then
   pass "a pane reads the palette file the session wrote"
 else
   fail "a pane reads the palette file the session wrote: $said"
@@ -134,7 +134,7 @@ fi
 # without it, whether or not the file is there.
 said=$(PATH="$stubs:$tools" CODER_PANE_TERMINAL=kitty \
   CODER_PANE_TERMINAL_CONFIG="$palette" bash -euo pipefail "$script")
-if [ "$said" = "-- coder" ]; then
+if [ "$said" = "-- coder-new" ]; then
   pass "an emulator that is not foot gets no palette flag"
 else
   fail "an emulator that is not foot gets no palette flag: $said"
@@ -144,7 +144,7 @@ fi
 said=$(PATH="$stubs:$tools" CODER_PANE_TERMINAL=foot \
   CODER_PANE_TERMINAL_CONFIG="$no_palette" \
   CODER_PANE_DIRECTORY=/srv/checkouts/openagents bash -euo pipefail "$script")
-if [ "$said" = "--working-directory=/srv/checkouts/openagents -- coder" ]; then
+if [ "$said" = "--working-directory=/srv/checkouts/openagents -- coder-new" ]; then
   pass "the directory the session names opens the window there"
 else
   fail "the directory the session names opens the window there: $said"
