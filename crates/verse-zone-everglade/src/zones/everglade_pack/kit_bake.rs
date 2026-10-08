@@ -26,7 +26,8 @@ use super::pinned::PinnedFile;
 
 /// Exact content identity of the reviewed light layers, or empty while
 /// none is published.
-pub const KIT_BAKE_SHA256: &str = "14ae7f75e9ce4f81483f6f44369753545cb2cab892177607438b3077ebbbae23";
+pub const KIT_BAKE_SHA256: &str =
+    "14ae7f75e9ce4f81483f6f44369753545cb2cab892177607438b3077ebbbae23";
 /// Transfer size of the reviewed light layers; zero while none is
 /// published.
 pub const KIT_BAKE_BYTES: u64 = 51682623;

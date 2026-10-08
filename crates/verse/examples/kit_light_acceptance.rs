@@ -49,9 +49,8 @@ fn capture() {
     let world = zones::everglade::Everglade::world(&pack).unwrap();
     let scene = world.mesh.textured.as_ref().unwrap();
     let merged = scene.merge().unwrap();
-    let digest = verse::pbr::baked_layers::hex(&verse::pbr::baked_layers::scene_digest(
-        scene, &merged,
-    ));
+    let digest =
+        verse::pbr::baked_layers::hex(&verse::pbr::baked_layers::scene_digest(scene, &merged));
     let vertices = merged.vertices.len();
     let layers = everglade_pack::kit_bake::offered();
     if expected {
@@ -95,7 +94,11 @@ fn capture() {
         zones::atmosphere(runtime.zone),
     )
     .unwrap();
-    assert_eq!(renderer.adapter_info().vendor, 0x10de, "Use the remote NVIDIA GPU");
+    assert_eq!(
+        renderer.adapter_info().vendor,
+        0x10de,
+        "Use the remote NVIDIA GPU"
+    );
     let adapter = renderer.adapter_info().name.clone();
     let mut records = Vec::new();
     for (name, eye, target) in [
@@ -191,13 +194,14 @@ mod private_light_tests {
         use verse::zones::everglade_pack::kit_bake;
 
         assert!(kit_bake::KIT_BAKE_BYTES > 0);
-        let output = std::path::PathBuf::from(
-            std::env::var_os("VERSE_KIT_LIGHT_OUTPUT").unwrap(),
-        );
+        let output = std::path::PathBuf::from(std::env::var_os("VERSE_KIT_LIGHT_OUTPUT").unwrap());
         std::fs::create_dir_all(&output).unwrap();
         super::private(&output);
         let cache = output.join("download-cache");
-        assert!(!cache.exists(), "Verify a download, not a previous cache hit");
+        assert!(
+            !cache.exists(),
+            "Verify a download, not a previous cache hit"
+        );
         let layers = kit_bake::fetch(&cache, true, &AtomicBool::new(false)).unwrap();
         let report = serde_json::json!({
             "url": kit_bake::pinned().url,
@@ -211,7 +215,8 @@ mod private_light_tests {
         std::fs::write(
             output.join("download-report.json"),
             serde_json::to_vec_pretty(&report).unwrap(),
-        ).unwrap();
+        )
+        .unwrap();
         println!("{report}");
     }
 }
