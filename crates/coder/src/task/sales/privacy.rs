@@ -53,6 +53,9 @@ pub struct Admission {
     pub source_sha256: String,
     pub permission_reference_sha256: String,
     pub owner_reference: String,
+    /// Digest of the lead's jurisdiction evidence; required outside `US`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope_sha256: Option<String>,
     /// Owner-confirmed addresses of this same business contact. No alias
     /// grants that channel permission; each lead still needs its own consent.
     pub aliases: Vec<String>,
@@ -98,6 +101,14 @@ pub enum Operation {
         customer: Option<String>,
         reference: String,
         ambiguous: bool,
+    },
+    /// A reviewed non-US recipient scope, versioned; owner only.
+    Scope {
+        scope: super::jurisdictions::Scope,
+    },
+    RevokeScope {
+        scope: String,
+        reference: String,
     },
 }
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
@@ -188,6 +199,8 @@ pub(super) struct Book {
     pub(super) agent_cleanup: BTreeMap<String, bool>,
     #[serde(default)]
     pub(super) native_cleanup_truncated: bool,
+    #[serde(default, skip_serializing_if = "super::jurisdictions::Book::is_empty")]
+    pub(super) jurisdictions: super::jurisdictions::Book,
 }
 impl Default for Book {
     fn default() -> Self {
@@ -209,6 +222,7 @@ impl Default for Book {
             agent_names: BTreeSet::new(),
             agent_cleanup: BTreeMap::new(),
             native_cleanup_truncated: false,
+            jurisdictions: super::jurisdictions::Book::default(),
         }
     }
 }
@@ -230,6 +244,7 @@ impl Book {
         {
             return Err("sales privacy state exceeds its bound".into());
         }
+        self.jurisdictions.check()?;
         for value in self.identifiers.values() {
             token(&value.sha256)?;
             if !(4..=MAX_IDENTIFIER).contains(&value.length) {
@@ -374,6 +389,24 @@ pub(super) fn inactive(state: &State, lead: &Lead, now: u64) -> bool {
 }
 fn scope(lead: &Lead) -> Result<String> {
     super::agents::scope(lead)
+}
+fn scope_digest(lead: &Lead) -> Result<Option<String>> {
+    lead.details
+        .scope
+        .as_ref()
+        .map(|e| {
+            Ok(digest(&serde_json::to_vec(e).map_err(
+                |_| "jurisdiction evidence serialization failed",
+            )?))
+        })
+        .transpose()
+}
+fn lead_channel(lead: &Lead) -> Result<String> {
+    Ok(contact(&lead.contact)?
+        .split_once(':')
+        .ok_or("sales contact channel is unavailable")?
+        .0
+        .to_string())
 }
 pub(super) fn remember_identifier(state: &mut State, value: &str) -> Result<()> {
     let value = value.to_ascii_lowercase();
@@ -677,7 +710,7 @@ impl Store {
         self.refresh()?;
         self.admin(access)?;
         Ok(
-            serde_json::json!({"schema":SCHEMA,"revision":self.state.privacy.revision,"enabled":self.state.privacy.enabled,"policy":self.state.privacy.policy,"admitted_leads":self.state.privacy.grants.keys().collect::<Vec<_>>(),"suppressed_customers":self.state.privacy.suppressed_customers.len(),"copies":self.state.privacy.copies.values().map(|c|serde_json::json!({"reference":c.reference,"leads":c.leads,"recipient":c.recipient,"sha256":c.sha256,"state":c.state,"retain_until":c.retain_until})).collect::<Vec<_>>(),"deleted":self.state.privacy.deleted,"retired_obligations":self.state.privacy.retired_obligations,"agent_cleanup":self.state.privacy.agent_cleanup,"native_cleanup_truncated":self.state.privacy.native_cleanup_truncated,"policy_history":self.state.privacy.policy_history,"model_disclosure_available":false,"sender_available":false,"relay_disclosure_available":false,"historical_remote_erasure_verified":false}),
+            serde_json::json!({"schema":SCHEMA,"revision":self.state.privacy.revision,"enabled":self.state.privacy.enabled,"policy":self.state.privacy.policy,"admitted_leads":self.state.privacy.grants.keys().collect::<Vec<_>>(),"suppressed_customers":self.state.privacy.suppressed_customers.len(),"copies":self.state.privacy.copies.values().map(|c|serde_json::json!({"reference":c.reference,"leads":c.leads,"recipient":c.recipient,"sha256":c.sha256,"state":c.state,"retain_until":c.retain_until})).collect::<Vec<_>>(),"deleted":self.state.privacy.deleted,"retired_obligations":self.state.privacy.retired_obligations,"agent_cleanup":self.state.privacy.agent_cleanup,"native_cleanup_truncated":self.state.privacy.native_cleanup_truncated,"policy_history":self.state.privacy.policy_history,"jurisdictions":self.state.privacy.jurisdictions.view((self.clock)()),"model_disclosure_available":false,"sender_available":false,"relay_disclosure_available":false,"historical_remote_erasure_verified":false}),
         )
     }
     pub fn apply_sales_privacy(&mut self, access: &Access, bytes: &[u8]) -> Result<u64> {
@@ -755,8 +788,8 @@ impl Store {
                 text(&admission.owner_reference, 256)?;
                 if lead.revision != admission.expected_lead_revision
                     || lead.details.account != admission.customer
-                    || lead.details.jurisdiction != "US"
-                    || admission.jurisdiction != "US"
+                    || lead.details.jurisdiction != admission.jurisdiction
+                    || scope_digest(&lead)? != admission.scope_sha256
                     || digest(lead.source.as_bytes()) != admission.source_sha256
                     || digest(lead.details.permission.reference.as_bytes())
                         != admission.permission_reference_sha256
@@ -775,6 +808,9 @@ impl Store {
                 {
                     return Err("business contact admission does not match current source, permission, or retention".into());
                 }
+                next.privacy
+                    .jurisdictions
+                    .admit(&lead.details, &lead_channel(&lead)?, now)?;
                 check_identity(&next, &lead.contact, &lead.details.account)?;
                 let own = normalize(&lead.contact)?;
                 let normalized = admission
@@ -836,6 +872,15 @@ impl Store {
                     engagement_sha256: admission.permission_reference_sha256,
                 };
                 next.privacy.grants.insert(lead.id, grant);
+            }
+            Operation::Scope { scope } => {
+                next.privacy
+                    .jurisdictions
+                    .record(scope, access.principal(), now)?;
+            }
+            Operation::RevokeScope { scope, reference } => {
+                text(&reference, 256)?;
+                next.privacy.jurisdictions.revoke(&scope, now)?;
             }
             Operation::Engagement {
                 lead,
@@ -932,7 +977,6 @@ impl Store {
             .ok_or("sales contact needs explicit owner business and permission admission")?;
         if grant.scope_sha256 != scope(lead)?
             || inactive(&self.state, lead, (self.clock)())
-            || lead.details.jurisdiction != "US"
             || lead.details.permission.state != PermissionState::Granted
             || lead.details.permission.expires_at <= (self.clock)()
             || !lead
@@ -945,6 +989,10 @@ impl Store {
         {
             return Err("sales contact admission is stale or outside its channel".into());
         }
+        self.state
+            .privacy
+            .jurisdictions
+            .admit(&lead.details, channel, (self.clock)())?;
         if channel != "email" {
             return Err("proactive contact channel has no qualified adapter".into());
         }
@@ -1779,6 +1827,7 @@ mod tests {
                         details: Details {
                             account: account.into(),
                             jurisdiction: "US".into(),
+                            scope: None,
                             permission: Permission {
                                 state: PermissionState::Granted,
                                 reference: "Owner verified customer business request".into(),
@@ -1831,6 +1880,7 @@ mod tests {
                 source_sha256: digest(lead.source.as_bytes()),
                 permission_reference_sha256: digest(lead.details.permission.reference.as_bytes()),
                 owner_reference: "operator checked actual requested business contact".into(),
+                scope_sha256: None,
                 aliases,
             }
         }
@@ -1860,6 +1910,211 @@ mod tests {
                 .unwrap();
             member
         }
+    }
+    fn ca_scope(version: u64) -> super::super::jurisdictions::Scope {
+        use super::super::jurisdictions::*;
+        Scope {
+            schema: SCOPE_SCHEMA.into(),
+            id: "ca-business-email".into(),
+            version,
+            jurisdiction: "CA".into(),
+            category: Category::Business,
+            channel: "email".into(),
+            bases: vec![Basis::ExpressConsent, Basis::ExistingBusinessRelationship],
+            cohort_reference: "three Canadian pilot requests in the private pipeline".into(),
+            reviewer: "human:counsel".into(),
+            review_reference: "CASL review 2026-10, CRTC consent guidance".into(),
+            reviewed_at: now() - 86_400,
+            expires_at: now() + 180 * 86_400,
+            requirements: Requirements {
+                identification: true,
+                postal_address: true,
+                opt_out_days: 10,
+                opt_out_available_days: 60,
+                ai_disclosure: true,
+                permission_max_secs: 180 * 86_400,
+                retention_max_secs: 365 * 86_400,
+            },
+        }
+    }
+    fn ca_evidence(version: u64) -> super::super::jurisdictions::Evidence {
+        use super::super::jurisdictions::*;
+        Evidence {
+            scope: "ca-business-email".into(),
+            scope_version: version,
+            category: Category::Business,
+            basis: Basis::ExpressConsent,
+            basis_reference: "signed consent form casl-0001".into(),
+            basis_recorded_at: now() - 3600,
+            evidence_expires_at: now() + 90 * 86_400,
+            reviewer: "human:counsel".into(),
+        }
+    }
+    impl Fixture {
+        fn create_scoped(
+            &mut self,
+            name: &str,
+            address: &str,
+            account: &str,
+            jurisdiction: &str,
+            scope: Option<super::super::jurisdictions::Evidence>,
+        ) -> String {
+            let lead = self.create(name, address, account);
+            let mut details = self.store.state.leads[&lead].details.clone();
+            details.jurisdiction = jurisdiction.into();
+            details.scope = scope;
+            details.data.retain_until = now() + 300 * 86_400;
+            self.store.state.leads.get_mut(&lead).unwrap().details = details;
+            lead
+        }
+        fn scoped_admission(&self, lead: &str) -> Admission {
+            let mut a = self.admission(lead, vec![self.store.state.leads[lead].contact.clone()]);
+            let l = &self.store.state.leads[lead];
+            a.jurisdiction = l.details.jurisdiction.clone();
+            a.scope_sha256 = scope_digest(l).unwrap();
+            a
+        }
+    }
+    #[test]
+    fn international_contact_is_disabled_until_an_exact_reviewed_scope_admits_it() {
+        let mut f = Fixture::new();
+        // Default: a Canadian business lead with no evidence is refused, and so is
+        // one whose evidence names a scope nobody has reviewed.
+        let bare = f.create_scoped("ca-bare", "email:ops@example.ca", "acct-ca-1", "CA", None);
+        let a = f.scoped_admission(&bare);
+        assert!(
+            f.command("admit-bare", Operation::Admit { admission: a })
+                .is_err()
+        );
+        let early = f.create_scoped(
+            "ca-early",
+            "email:cto@example.ca",
+            "acct-ca-2",
+            "CA",
+            Some(ca_evidence(1)),
+        );
+        let a = f.scoped_admission(&early);
+        assert!(
+            f.command("admit-early", Operation::Admit { admission: a })
+                .is_err()
+        );
+        assert_eq!(
+            f.store.sales_privacy_view(&f.owner).unwrap()["jurisdictions"]["international_contact"],
+            "disabled"
+        );
+        // A reviewed Canadian individual scope or a published-address basis is refused.
+        let mut bad = ca_scope(1);
+        bad.category = super::super::jurisdictions::Category::Individual;
+        assert!(
+            f.command("scope-bad", Operation::Scope { scope: bad })
+                .is_err()
+        );
+        f.command("scope-1", Operation::Scope { scope: ca_scope(1) })
+            .unwrap();
+        // Exact evidence admits; domain suffix alone never does.
+        let a = f.scoped_admission(&early);
+        f.command("admit-ok", Operation::Admit { admission: a })
+            .unwrap();
+        f.store
+            .contact_admitted(&f.store.state.leads[&early], "email")
+            .unwrap();
+        assert!(
+            f.store
+                .contact_admitted(&f.store.state.leads[&early], "nostr")
+                .is_err()
+        );
+        assert!(
+            f.store
+                .contact_admitted(&f.store.state.leads[&bare], "email")
+                .is_err()
+        );
+        // Wrong category, expired evidence, or a US lead carrying evidence is refused.
+        let mut wrong = ca_evidence(1);
+        wrong.category = super::super::jurisdictions::Category::Individual;
+        let l = f.create_scoped(
+            "ca-wrong",
+            "email:vp@example.ca",
+            "acct-ca-3",
+            "CA",
+            Some(wrong),
+        );
+        let a = f.scoped_admission(&l);
+        assert!(
+            f.command("admit-wrong", Operation::Admit { admission: a })
+                .is_err()
+        );
+        let mut stale = ca_evidence(1);
+        stale.evidence_expires_at = now() - 1;
+        let l = f.create_scoped(
+            "ca-stale",
+            "email:cfo@example.ca",
+            "acct-ca-4",
+            "CA",
+            Some(stale),
+        );
+        let a = f.scoped_admission(&l);
+        assert!(
+            f.command("admit-stale", Operation::Admit { admission: a })
+                .is_err()
+        );
+        let l = f.create_scoped(
+            "us-ev",
+            "email:us@example.com",
+            "acct-us-9",
+            "US",
+            Some(ca_evidence(1)),
+        );
+        let a = f.scoped_admission(&l);
+        assert!(
+            f.command("admit-us-ev", Operation::Admit { admission: a })
+                .is_err()
+        );
+        // A new rule version or revocation blocks an already admitted lead at dispatch.
+        f.command("scope-2", Operation::Scope { scope: ca_scope(2) })
+            .unwrap();
+        assert!(
+            f.store
+                .contact_admitted(&f.store.state.leads[&early], "email")
+                .is_err()
+        );
+        let fresh = f.create_scoped(
+            "ca-v2",
+            "email:eng@example.ca",
+            "acct-ca-5",
+            "CA",
+            Some(ca_evidence(2)),
+        );
+        let a = f.scoped_admission(&fresh);
+        f.command("admit-v2", Operation::Admit { admission: a })
+            .unwrap();
+        f.store
+            .contact_admitted(&f.store.state.leads[&fresh], "email")
+            .unwrap();
+        f.command(
+            "revoke",
+            Operation::RevokeScope {
+                scope: "ca-business-email".into(),
+                reference: "review withdrawn".into(),
+            },
+        )
+        .unwrap();
+        assert!(
+            f.store
+                .contact_admitted(&f.store.state.leads[&fresh], "email")
+                .is_err()
+        );
+        // Restart does not restore the revoked scope.
+        let root = f.dir.path().join("host");
+        drop(f.store);
+        let reopened = Store::open_with_clock(&root, now).unwrap();
+        assert!(
+            reopened
+                .contact_admitted(&reopened.state.leads[&fresh], "email")
+                .is_err()
+        );
+        let view =
+            serde_json::to_string(&reopened.state.privacy.jurisdictions.view(now())).unwrap();
+        assert!(!view.contains("example.ca") && !view.contains("casl-0001"));
     }
     #[test]
     fn actual_contact_gate_requires_fresh_business_evidence_and_rejects_ambiguous_aliases() {

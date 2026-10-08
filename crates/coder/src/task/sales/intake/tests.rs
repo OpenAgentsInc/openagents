@@ -126,6 +126,7 @@ fn existing_manual_contact_needs_human_reconciliation_without_a_competing_lead()
                 details: Details {
                     account: "Manual fixture account".into(),
                     jurisdiction: "US".into(),
+                    scope: None,
                     permission: Permission {
                         state: PermissionState::Unknown,
                         reference: "private-consent-verification-pending".into(),

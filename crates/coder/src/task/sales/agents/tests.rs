@@ -135,6 +135,7 @@ impl Fixture {
                     details: Details {
                         account: "private-account".into(),
                         jurisdiction: "US".into(),
+                        scope: None,
                         permission: Permission {
                             state: PermissionState::Granted,
                             reference: "customer agreed private outreach and recipient".into(),
@@ -181,6 +182,7 @@ impl Fixture {
                     ),
                     owner_reference: "operator verified requested private business introduction"
                         .into(),
+                    scope_sha256: None,
                     aliases: vec![source.contact.clone()],
                 },
             },
@@ -1021,6 +1023,7 @@ fn fresh_assignment_tokens_cannot_reuse_revoked_or_removed_lead_credentials() {
                     fresh_lead.details.permission.reference.as_bytes(),
                 ),
                 owner_reference: "owner verified independent buyer introduction".into(),
+                scope_sha256: None,
                 aliases: vec![fresh_lead.contact],
             },
         },
@@ -2741,6 +2744,7 @@ fn outbox_standing_follow_up_is_disabled_until_an_exact_invited_thread_grant() {
                 source_sha256: digest(source.source.as_bytes()),
                 permission_reference_sha256: digest(source.details.permission.reference.as_bytes()),
                 owner_reference: "operator verified requested private business introduction".into(),
+                scope_sha256: None,
                 aliases: vec![source.contact.clone()],
             },
         },

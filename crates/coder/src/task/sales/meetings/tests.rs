@@ -40,6 +40,7 @@ fn fixture() -> (Fixture, Access) {
                 source_sha256: digest(lead.source.as_bytes()),
                 permission_reference_sha256: digest(lead.details.permission.reference.as_bytes()),
                 owner_reference: "operator checked requested demo and named human consent".into(),
+                scope_sha256: None,
                 aliases: vec![lead.contact.clone()],
             },
         },

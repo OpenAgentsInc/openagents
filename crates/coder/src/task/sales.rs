@@ -16,6 +16,7 @@ pub mod email;
 pub mod expenses;
 pub mod floor;
 pub mod intake;
+pub mod jurisdictions;
 pub mod meetings;
 pub mod outbox;
 pub mod partners;
@@ -115,6 +116,9 @@ pub struct CustomerDecision {
 pub struct Details {
     pub account: String,
     pub jurisdiction: String,
+    /// Positive evidence for a reviewed non-US scope; the US baseline has none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope: Option<jurisdictions::Evidence>,
     pub permission: Permission,
     pub workflow: String,
     pub baseline_reference: String,
@@ -436,6 +440,9 @@ fn validate(details: &Details, now: u64) -> Result<()> {
     }
     for s in &details.readers {
         id(s)?;
+    }
+    if let Some(evidence) = &details.scope {
+        evidence.check()?;
     }
     let permission = &details.permission;
     text(&permission.reference, 256)?;
@@ -1652,6 +1659,7 @@ pub(crate) mod tests {
         Details {
             account: "synthetic-account".into(),
             jurisdiction: "synthetic jurisdiction record".into(),
+            scope: None,
             permission: Permission {
                 state: PermissionState::Granted,
                 reference: "synthetic-consent-v1".into(),

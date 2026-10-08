@@ -104,7 +104,13 @@ impl Policy {
                 .channels
                 .iter()
                 .any(|c| !matches!(c.as_str(), "email" | "nostr" | "community"))
-            || self.jurisdictions != ["US"]
+            || self.jurisdictions.first().map(String::as_str) != Some("US")
+            || self.jurisdictions.len() > 4
+            || self.jurisdictions.iter().collect::<BTreeSet<_>>().len() != self.jurisdictions.len()
+            || self
+                .jurisdictions
+                .iter()
+                .any(|j| j.len() != 2 || !j.bytes().all(|b| b.is_ascii_uppercase()))
             || self.timezone != "America/Chicago"
             || self.allowed_agents.is_empty()
             || self.allowed_agents.len() > 16
@@ -495,6 +501,7 @@ pub(super) fn scope(lead: &Lead) -> Result<String> {
             &lead.contact,
             &lead.details.account,
             &lead.details.jurisdiction,
+            &lead.details.scope,
             &lead.details.permission,
             &lead.details.data,
             &lead.responsible_human,
@@ -1021,11 +1028,13 @@ impl Store {
             .ok_or("sales contact channel is unavailable")?
             .0
             .to_string();
-        if lead.details.jurisdiction != "US"
-            || !policy.jurisdictions.contains(&lead.details.jurisdiction)
-        {
+        if !policy.jurisdictions.contains(&lead.details.jurisdiction) {
             return Err("sales jurisdiction is unknown or outside policy".into());
         }
+        self.state
+            .privacy
+            .jurisdictions
+            .admit(&lead.details, &channel, now)?;
         if lead.details.permission.state != PermissionState::Granted
             || lead.details.permission.expires_at <= now
             || lead.details.permission.recorded_at > now
