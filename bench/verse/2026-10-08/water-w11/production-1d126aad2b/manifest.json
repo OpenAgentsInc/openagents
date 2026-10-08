@@ -1,0 +1,59 @@
+{
+  "source": "1d126aad2b9a2354163ba6585f1dd933ea4368f9",
+  "performance_claim": false,
+  "records": [
+    {
+      "source": "deployment-inputs.json",
+      "sha256": "7757e590f824d36d6318b84de11357cb7e9c3a8b45775793a63544650fca5cd8",
+      "record": "deployment-inputs.json.gz"
+    },
+    {
+      "source": "deploy/deploy-state.json",
+      "sha256": "0230170c0d19a5b24ddb0cddd318c1fb8ef8c4eb1c49b6eff7941439921b8b29",
+      "record": "deploy-deploy-state.json.gz"
+    },
+    {
+      "source": "staging/delivery.json",
+      "sha256": "8f95a7663ef2ae6d0a0ca249214bac6dd919b4a3d5df7490686f1ea66c7353c7",
+      "record": "staging-delivery.json.gz"
+    },
+    {
+      "source": "staging/results.json",
+      "sha256": "43bfc30561ae665503b6a420e58f11898b80f71a28e2bfdcfb93dce497094847",
+      "record": "staging-results.json.gz"
+    },
+    {
+      "source": "production/delivery.json",
+      "sha256": "8f95a7663ef2ae6d0a0ca249214bac6dd919b4a3d5df7490686f1ea66c7353c7",
+      "record": "production-delivery.json.gz"
+    },
+    {
+      "source": "production/browser/results.json",
+      "sha256": "901dd924019b37671cb5b3cef84cf86692ec54fe0ff8fab8655428fe51de2492",
+      "record": "production-browser-results.json.gz"
+    }
+  ],
+  "private_captures": [
+    {
+      "file": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-production/production/browser/everglade-webgl2.png",
+      "sha256": "ec21a073c961501468aad0de72f732f8e477312719045ae215f2543c891a07f3"
+    },
+    {
+      "file": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-production/production/browser/everglade-webgpu.png",
+      "sha256": "c34c7e3d888aa294c9bffd40571979b9bcd85594ca2c7c2c05ad30cd89a5e302"
+    },
+    {
+      "file": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-production/production/browser/water-webgl2.png",
+      "sha256": "9d23ce978ccc808cfc1e6c89fbc828c175a3781a42c7687151d9e14c8916e7bb"
+    },
+    {
+      "file": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-production/production/browser/water-webgpu.png",
+      "sha256": "83386cfc15553b80868530e1243f24df4b05cf5932544bce4adacd23d14f7dc8"
+    }
+  ],
+  "harness_repairs": [
+    "Water Lab does not publish the town offline_light field; accept its absence.",
+    "Decode WebSocket extended lengths with mutually exclusive 126 and 127 branches. ByteIO boundary checks pass."
+  ],
+  "bake_policy": "Reuse the pinned fc5414 artifact; no bake ran."
+}

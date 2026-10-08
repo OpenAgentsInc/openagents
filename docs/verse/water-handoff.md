@@ -1,14 +1,14 @@
 # Water handoff
 
-Status: W11 active with the coordinator, 2026-10-08. Phases W1 to W10 are landed. This page records what
+Status: W11 is code-complete and deployed, 2026-10-08. Phases W1 to W10 are landed. This page records what
 landed, what remains open, and how to pick the work up again. The
 specification is [Water](water.md), and the coastal zone's is
 [The coast](coast.md).
 
 ## October 8 coordination checkpoint
 
-The coordinator holds #10783 on `codex/water-w11-integrated`, rebased on
-main `24db60de9a`. Native query resolution waits for render submission
+W11 lands on main `1d126aad2b` and production revision
+`coder-web-w11-1d126aad2b-20261008202124`. Native query resolution waits for render submission
 completion without blocking the frame thread. All 15 Apple M5 Max and all
 15 RTX 4080 fixed views return 96/96 valid GPU samples. Empty ripple kernels
 are skipped without losing clock phase, and spectrum integrals are cached.
@@ -27,8 +27,19 @@ Evidence is under `bench/verse/2026-10-08/water-w11/` in
 `calibrated-965e57a09a/`. All eight refreshed browser cases pass on the frozen timer build
 `40284fdcc7`, retained in `browser-deferred-40284fdcc7/`; integration retains both B4's
 `offline_light` and W11's water telemetry. Physical phone steps are in
-`NEEDS_OWNER.md`. Final integration checks and production module delivery
-remain before closure. No new bake is needed.
+`NEEDS_OWNER.md`. Final integration checks pass. A normal release module
+from `1d126aad2b` passes four production browser cases: Water Lab and
+Everglade on WebGPU and WebGL2. Both town cases load the pinned bake;
+WebGPU reports real timestamps and WebGL2 leaves them unavailable.
+All 12 delivery checks and artifact hashes pass before and after promotion.
+Receipts and private capture hashes are in `production-1d126aad2b/` beside
+the measurement records. No new bake runs. #10783 and umbrella #10784 are
+code-complete; phone qualification remains owner-only.
+
+The coordinator now holds #10919 on `codex/water-pond-optics`. Its initial
+CPU regression confirms mirror admission for all four ponds on Medium and
+High from above and at eye level; visual diagnosis remains open. Coast
+C1 through C6 remain separate work.
 
 The earlier checkpoint below remains historical evidence.
 
