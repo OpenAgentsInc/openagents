@@ -69,6 +69,8 @@ pub struct World {
     pub(crate) collision_index: crate::broadphase::Tree<usize>,
     #[serde(skip)]
     pub(crate) responding_index: crate::broadphase::Tree<usize>,
+    #[serde(skip)]
+    pub(crate) collision_geometry: crate::collision::GeometryCache,
     #[cfg(test)]
     #[serde(skip)]
     pub(crate) exhaustive_detection: bool,
@@ -161,6 +163,7 @@ impl World {
             colliders: Vec::new(),
             collision_index: Default::default(),
             responding_index: Default::default(),
+            collision_geometry: Default::default(),
             #[cfg(test)]
             exhaustive_detection: false,
             joints: Vec::new(),
@@ -252,6 +255,9 @@ impl World {
                 .colliders
                 .iter()
                 .map(|c| {
+                    if c.filter == crate::collision::Filter::NONE {
+                        return 0.0;
+                    }
                     let body = &self.bodies[c.body.0 as usize];
                     body.vel.length()
                         + body.omega_world().length() * (c.offset.length() + c.shape.bound())
@@ -313,27 +319,46 @@ impl World {
     /// colliding, and its joints are removed, waking what they held. Its id
     /// stays valid and is not reused.
     pub fn remove_body(&mut self, id: BodyId) {
+        self.remove_matching(&[id], |body| body == id);
+    }
+
+    /// Removes several bodies in one collider and joint pass. IDs stay valid.
+    pub fn remove_bodies(&mut self, ids: &[BodyId]) {
+        if ids.is_empty() {
+            return;
+        }
+        if let [id] = ids {
+            self.remove_body(*id);
+            return;
+        }
+        let removed: std::collections::HashSet<BodyId> = ids.iter().copied().collect();
+        self.remove_matching(ids, |body| removed.contains(&body));
+    }
+
+    fn remove_matching(&mut self, ids: &[BodyId], removes: impl Fn(BodyId) -> bool) {
         let joints: Vec<crate::joint::JointId> = self
             .joints()
-            .filter(|(_, j)| j.a == id || j.b == id)
+            .filter(|(_, j)| removes(j.a) || removes(j.b))
             .map(|(joint, _)| joint)
             .collect();
         for joint in joints {
             self.remove_joint(joint);
         }
         for collider in &mut self.colliders {
-            if collider.body == id {
+            if removes(collider.body) {
                 collider.filter = crate::collision::Filter::NONE;
             }
         }
-        let body = &mut self[id];
-        body.kind = BodyKind::Static;
-        body.vel = DVec3::ZERO;
-        body.omega = DVec3::ZERO;
-        body.force = DVec3::ZERO;
-        body.torque = DVec3::ZERO;
-        body.sleeping = false;
-        body.removed = true;
+        for &id in ids {
+            let body = &mut self[id];
+            body.kind = BodyKind::Static;
+            body.vel = DVec3::ZERO;
+            body.omega = DVec3::ZERO;
+            body.force = DVec3::ZERO;
+            body.torque = DVec3::ZERO;
+            body.sleeping = false;
+            body.removed = true;
+        }
     }
 
     /// Wake a body.
@@ -405,6 +430,9 @@ impl World {
             && self.dt.is_finite()
             && self.dt >= 0.
             && self.colliders.iter().all(|c| {
+                if c.filter == crate::collision::Filter::NONE {
+                    return true;
+                }
                 let (pos, radius) = bound(c, self);
                 pos.is_finite()
                     && radius.is_finite()
@@ -415,30 +443,32 @@ impl World {
         if indexed {
             for i in 0..self.colliders.len() {
                 let c = &self.colliders[i];
+                if c.filter == crate::collision::Filter::NONE {
+                    updates += usize::from(self.collision_index.remove(i));
+                    continue;
+                }
                 let (pos, radius) = bound(c, self);
                 let body = &self[c.body];
                 let reach = (body.vel.length()
                     + body.omega_world().length() * (c.offset.length() + radius))
                     * self.dt;
                 let extent = DVec3::splat(radius + margin * 0.5 + reach);
-                if c.filter == crate::collision::Filter::NONE {
-                    updates += usize::from(self.collision_index.remove(i));
-                } else {
-                    updates += usize::from(self.collision_index.set(
-                        i,
-                        crate::broadphase::Bounds {
-                            min: pos - extent,
-                            max: pos + extent,
-                        },
-                    ));
-                }
+                updates += usize::from(self.collision_index.set(
+                    i,
+                    crate::broadphase::Bounds {
+                        min: pos - extent,
+                        max: pos + extent,
+                    },
+                ));
             }
         }
         let mut nodes = 0;
         let mut candidates = 0;
         let mut wake = Vec::new();
         for mover in &self.colliders {
-            if !movers.contains(&(mover.body.0 as usize)) {
+            if mover.filter == crate::collision::Filter::NONE
+                || !movers.contains(&(mover.body.0 as usize))
+            {
                 continue;
             }
             let (pa, ra) = bound(mover, self);

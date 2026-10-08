@@ -271,6 +271,7 @@ pub struct TownProfile {
     pub merged_chunks: usize,
     pub contact_points: usize,
     pub warm_candidates: usize,
+    pub physics_timings: super::site::PhysicsTimings,
 }
 
 /// Now, where the target has a clock; a browser's has none.
@@ -1551,6 +1552,7 @@ impl Town {
             merged_chunks: self.wreck.site.debris_stats().merged,
             contact_points: self.wreck.site.step_stats().contact_points,
             warm_candidates: self.wreck.site.step_stats().warm_candidates,
+            physics_timings: self.wreck.site.physics_timings(),
             chunks: self
                 .wreck
                 .site

@@ -211,6 +211,56 @@ enum Placed {
     },
 }
 
+#[derive(Clone, Copy, Debug)]
+struct Geometry {
+    shape: Shape,
+    offset: DVec3,
+    rotation: DQuat,
+    body_pos: DVec3,
+    body_orientation: DQuat,
+    placed: Placed,
+    center: DVec3,
+    radius: f64,
+}
+
+impl Geometry {
+    fn matches(&self, collider: &Collider, body: &crate::Body) -> bool {
+        self.shape == collider.shape
+            && self.offset == collider.offset
+            && self.rotation == collider.rotation
+            && self.body_pos == body.pos
+            && self.body_orientation == body.orientation
+    }
+
+    fn new(collider: &Collider, world: &World) -> Self {
+        let body = &world[collider.body];
+        let (center, rotation) = collider.pose(world);
+        Self {
+            shape: collider.shape,
+            offset: collider.offset,
+            rotation: collider.rotation,
+            body_pos: body.pos,
+            body_orientation: body.orientation,
+            placed: place(collider.shape, center, rotation),
+            center,
+            radius: collider.shape.bound(),
+        }
+    }
+}
+
+/// Derived geometry follows exact public collider and body mutations.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct GeometryCache {
+    entries: Vec<Option<Geometry>>,
+}
+
+impl PartialEq for GeometryCache {
+    fn eq(&self, _: &Self) -> bool {
+        // Derived caches do not change authoritative world equality.
+        true
+    }
+}
+
 fn place(shape: Shape, pos: DVec3, rotation: DQuat) -> Placed {
     match shape {
         Shape::Sphere { radius } => Placed::Capsule {
@@ -634,6 +684,7 @@ fn reduce(points: &mut Vec<ContactPoint>) {
 #[derive(Clone, Copy, Debug, Default, serde::Serialize)]
 pub struct DetectionStats {
     pub colliders: usize,
+    pub geometry_updates: usize,
     pub scene_nodes: usize,
     pub candidate_pairs: usize,
     pub filtered_pairs: usize,
@@ -743,52 +794,62 @@ impl World {
             colliders: self.colliders().len(),
             ..Default::default()
         };
-        let placed: Vec<_> = self
-            .colliders()
+        let mut geometry = std::mem::take(&mut self.collision_geometry);
+        geometry.entries.resize(self.colliders().len(), None);
+        for (entry, collider) in geometry.entries.iter_mut().zip(self.colliders()) {
+            if collider.filter == Filter::NONE {
+                *entry = None;
+            } else if entry
+                .as_ref()
+                .is_none_or(|g| !g.matches(collider, &self[collider.body]))
+            {
+                *entry = Some(Geometry::new(collider, self));
+                stats.geometry_updates += 1;
+            }
+        }
+        if geometry
+            .entries
             .iter()
-            .map(|c| {
-                let (pos, rotation) = c.pose(self);
-                (place(c.shape, pos, rotation), pos, c.shape.bound())
-            })
-            .collect();
-        if placed
-            .iter()
-            .any(|(_, pos, radius)| !pos.is_finite() || !radius.is_finite() || *radius < 0.)
+            .flatten()
+            .any(|g| !g.center.is_finite() || !g.radius.is_finite() || g.radius < 0.)
         {
+            self.collision_geometry = geometry;
             return Err("Invalid rigid broadphase geometry".into());
         }
-        let bounds: Vec<_> = placed
+        let bounds: Vec<_> = geometry
+            .entries
             .iter()
             .enumerate()
-            .map(|(i, (_, pos, radius))| {
-                let extent = DVec3::splat(radius + base * 0.5 + reaches[i]);
-                crate::broadphase::Bounds {
-                    min: *pos - extent,
-                    max: *pos + extent,
-                }
+            .map(|(i, entry)| {
+                entry.as_ref().map(|g| {
+                    let extent = DVec3::splat(g.radius + base * 0.5 + reaches[i]);
+                    crate::broadphase::Bounds {
+                        min: g.center - extent,
+                        max: g.center + extent,
+                    }
+                })
             })
             .collect();
-        for (i, &bounds) in bounds.iter().enumerate() {
+        for (i, bounds) in bounds.iter().enumerate() {
             let collider = &self.colliders()[i];
-            let present = collider.filter != Filter::NONE;
             let responds = self[collider.body].responds();
-            if present {
-                stats.index_updates += usize::from(self.collision_index.set(i, bounds));
+            if let Some(bounds) = bounds {
+                stats.index_updates += usize::from(self.collision_index.set(i, *bounds));
             } else {
                 stats.index_updates += usize::from(self.collision_index.remove(i));
             }
-            if present && responds {
+            if let Some(bounds) = bounds.filter(|_| responds) {
                 stats.index_updates += usize::from(self.responding_index.set(i, bounds));
             } else {
                 stats.index_updates += usize::from(self.responding_index.remove(i));
             }
         }
         let mut manifolds = Vec::new();
-        for (i, &bounds) in bounds.iter().enumerate() {
+        for (i, bounds) in bounds.iter().enumerate() {
             let a = &self.colliders()[i];
-            if a.filter == Filter::NONE {
+            let Some(bounds) = bounds else {
                 continue;
-            }
+            };
             let responds = self[a.body].responds();
             let tree = if responds {
                 &self.collision_index
@@ -796,7 +857,7 @@ impl World {
                 &self.responding_index
             };
             for j in tree
-                .query(bounds, &mut stats.scene_nodes)
+                .query(*bounds, &mut stats.scene_nodes)
                 .into_iter()
                 .filter(|&j| j > i)
             {
@@ -811,13 +872,13 @@ impl World {
                 stats.filtered_pairs += 1;
                 let m = margin(i, j);
                 stats.bound_tests += 1;
-                let (pa, ca, ra) = placed[i];
-                let (pb, cb, rb) = placed[j];
-                if ca.distance(cb) > ra + rb + m {
+                let ga = geometry.entries[i].unwrap();
+                let gb = geometry.entries[j].unwrap();
+                if ga.center.distance(gb.center) > ga.radius + gb.radius + m {
                     continue;
                 }
                 stats.narrow_phase += 1;
-                let points = contact(pa, pb, m);
+                let points = contact(ga.placed, gb.placed, m);
                 if !points.is_empty() {
                     manifolds.push(Manifold {
                         a: ColliderId(i as u32),
@@ -827,6 +888,7 @@ impl World {
                 }
             }
         }
+        self.collision_geometry = geometry;
         Ok((manifolds, stats))
     }
 }

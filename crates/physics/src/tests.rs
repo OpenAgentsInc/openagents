@@ -1235,6 +1235,44 @@ fn removed_bodies_stop_interacting() {
     assert_ne!(d, b, "removed ids are not reused");
 }
 
+#[test]
+fn batch_removal_matches_individual_removal_and_wakes_joint_neighbors() {
+    let mut world = World::new(0.01);
+    let ids: Vec<_> = (0..5)
+        .map(|i| world.add(Body::new(1.0, DVec3::ONE, DVec3::X * f64::from(i))))
+        .collect();
+    for &id in &ids {
+        world.add_collider(Collider::new(id, Shape::Sphere { radius: 0.3 }));
+        world[id].sleeping = true;
+    }
+    for pair in ids.windows(2) {
+        world.add_joint(crate::Joint::new(
+            pair[0],
+            DVec3::ZERO,
+            pair[1],
+            DVec3::ZERO,
+            crate::JointKind::Tether { length: 1.0 },
+        ));
+    }
+    for &id in &ids {
+        world[id].sleeping = true;
+    }
+    let mut individual = world.clone();
+    for &id in &[ids[1], ids[3]] {
+        individual.remove_body(id);
+    }
+    world.remove_bodies(&[ids[1], ids[3], ids[1]]);
+    assert_eq!(world, individual);
+    for &id in &[ids[0], ids[2], ids[4]] {
+        assert!(!world[id].removed && !world[id].sleeping);
+    }
+    for _ in 0..12 {
+        world.step(&NoField);
+        individual.step(&NoField);
+        assert_eq!(world, individual);
+    }
+}
+
 /// #9827: forces and impulses through the public API wake a sleeper.
 #[test]
 fn a_force_on_a_sleeping_body_moves_it() {

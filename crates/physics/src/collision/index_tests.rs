@@ -80,6 +80,76 @@ fn bounded_motion_matches_exhaustive_manifolds_after_moves_filters_and_removal()
     assert!(world.detect_bounded(f64::NAN).is_err());
     assert!(world.detect_motion_profiled(0., &[0.]).is_err());
 }
+
+#[test]
+fn unchanged_geometry_is_cached_and_public_mutations_refresh_it() {
+    let mut world = world();
+    let (_, first) = world.detect_bounded(0.01).unwrap();
+    assert_eq!(first.geometry_updates, world.colliders().len());
+    let (_, unchanged) = world.detect_bounded(0.01).unwrap();
+    assert_eq!(unchanged.geometry_updates, 0);
+
+    world[BodyId(1)].pos += DVec3::X * 0.4;
+    world[BodyId(2)].orientation = DQuat::from_rotation_x(0.8);
+    world.collider_mut(ColliderId(3)).offset += DVec3::Z;
+    world.collider_mut(ColliderId(4)).rotation = DQuat::from_rotation_y(0.9);
+    world.collider_mut(ColliderId(5)).shape = Shape::Sphere { radius: 1.2 };
+    let (actual, changed) = world.detect_bounded(0.01).unwrap();
+    assert_eq!(changed.geometry_updates, 5);
+    assert_eq!(
+        format!("{actual:?}"),
+        format!("{:?}", world.detect(&|_, _| 0.01))
+    );
+
+    world.collider_mut(ColliderId(1)).filter = Filter::NONE;
+    world[BodyId(1)].pos = DVec3::splat(f64::NAN);
+    let (_, disabled) = world.detect_bounded(0.01).unwrap();
+    assert_eq!(disabled.geometry_updates, 0);
+    world[BodyId(1)].pos = DVec3::ZERO;
+    world.collider_mut(ColliderId(1)).filter = Filter::ALL;
+    let (actual, enabled) = world.detect_bounded(0.01).unwrap();
+    assert_eq!(enabled.geometry_updates, 1);
+    assert_eq!(
+        format!("{actual:?}"),
+        format!("{:?}", world.detect(&|_, _| 0.01))
+    );
+
+    let mut reassigned = world[BodyId(1)];
+    reassigned.kind = BodyKind::Static;
+    let reassigned = world.add(reassigned);
+    world.collider_mut(ColliderId(1)).body = reassigned;
+    let (actual, same_pose) = world.detect_bounded(0.01).unwrap();
+    assert_eq!(same_pose.geometry_updates, 0);
+    assert_eq!(
+        format!("{actual:?}"),
+        format!("{:?}", world.detect(&|_, _| 0.01))
+    );
+    world[reassigned].kind = BodyKind::Dynamic;
+    world[reassigned].sleeping = true;
+    let (actual, sleeping) = world.detect_bounded(0.01).unwrap();
+    assert_eq!(sleeping.geometry_updates, 0);
+    assert_eq!(
+        format!("{actual:?}"),
+        format!("{:?}", world.detect(&|_, _| 0.01))
+    );
+    world[reassigned].sleeping = false;
+    world[reassigned].pos += DVec3::Z * 0.7;
+    let (actual, moved) = world.detect_bounded(0.01).unwrap();
+    assert_eq!(moved.geometry_updates, 1);
+    assert_eq!(
+        format!("{actual:?}"),
+        format!("{:?}", world.detect(&|_, _| 0.01))
+    );
+
+    let mut restored: World = serde_json::from_slice(&serde_json::to_vec(&world).unwrap()).unwrap();
+    let (actual, restored_stats) = restored.detect_bounded(0.01).unwrap();
+    assert_eq!(restored_stats.geometry_updates, restored.colliders().len());
+    assert_eq!(
+        format!("{actual:?}"),
+        format!("{:?}", world.detect(&|_, _| 0.01))
+    );
+}
+
 #[test]
 fn indexed_steps_replay_exhaustive_state_through_wake_reuse_and_restore() {
     let mut actual = world();

@@ -144,6 +144,13 @@ struct Sample {
     merged_chunks: usize,
     contact_points: usize,
     warm_candidates: usize,
+    physics_steps: u32,
+    detect_ms: f32,
+    solve_ms: f32,
+    step_ms: f32,
+    geometry_updates: usize,
+    body_records: usize,
+    collider_records: usize,
     sprites: usize,
     ribbons: usize,
     ribbon_segments: usize,
@@ -359,6 +366,13 @@ fn report(phases: &[(&str, Vec<Sample>)]) -> serde_json::Value {
                 "gpu_wait_ms": col(|s| s.gpu),
                 "town_swarm_ms": col(|s| s.swarm),
                 "town_physics_ms": col(|s| s.physics),
+                "physics_detect_ms": col(|s| s.detect_ms),
+                "physics_solve_ms": col(|s| s.solve_ms),
+                "physics_step_ms": col(|s| s.step_ms),
+                "physics_steps_max": most(|s| s.physics_steps as u64),
+                "geometry_updates_max": most(|s| s.geometry_updates as u64),
+                "body_records_max": most(|s| s.body_records as u64),
+                "collider_records_max": most(|s| s.collider_records as u64),
                 "town_sync_ms": col(|s| s.sync),
                 "town_pose_ms": col(|s| s.pose),
                 "town_solids_ms": col(|s| s.solids),
@@ -1033,6 +1047,13 @@ fn main() -> Result<(), String> {
                     sample.merged_chunks = town.merged_chunks;
                     sample.contact_points = town.contact_points;
                     sample.warm_candidates = town.warm_candidates;
+                    sample.physics_steps += town.physics_timings.steps;
+                    sample.detect_ms += town.physics_timings.detect_ms;
+                    sample.solve_ms += town.physics_timings.solve_ms;
+                    sample.step_ms += town.physics_timings.step_ms;
+                    sample.geometry_updates += town.physics_timings.geometry_updates;
+                    sample.body_records = town.physics_timings.body_records;
+                    sample.collider_records = town.physics_timings.collider_records;
                 }
             }
         }

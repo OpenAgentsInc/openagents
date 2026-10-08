@@ -258,28 +258,9 @@ pub fn rigid_frame(
                 let mut min = Vec3::splat(f32::INFINITY);
                 let mut max = Vec3::splat(f32::NEG_INFINITY);
                 for &index in &order[from..to] {
-                    for corner in 0..8 {
-                        let point = Vec3::new(
-                            if corner & 1 == 0 {
-                                part.min.x
-                            } else {
-                                part.max.x
-                            },
-                            if corner & 2 == 0 {
-                                part.min.y
-                            } else {
-                                part.max.y
-                            },
-                            if corner & 4 == 0 {
-                                part.min.z
-                            } else {
-                                part.max.z
-                            },
-                        );
-                        let point = instances[index].current.transform_point3(point);
-                        min = min.min(point);
-                        max = max.max(point);
-                    }
+                    let (lo, hi) = transformed_bounds(part.min, part.max, instances[index].current);
+                    min = min.min(lo);
+                    max = max.max(hi);
                 }
                 Batch {
                     min,
@@ -295,6 +276,15 @@ pub fn rigid_frame(
         from = to;
     }
     (records, batches)
+}
+
+fn transformed_bounds(min: Vec3, max: Vec3, transform: Mat4) -> (Vec3, Vec3) {
+    let center = transform.transform_point3((min + max) * 0.5);
+    let half = (max - min) * 0.5;
+    let extent = (transform.x_axis.truncate() * half.x).abs()
+        + (transform.y_axis.truncate() * half.y).abs()
+        + (transform.z_axis.truncate() * half.z).abs();
+    (center - extent, center + extent)
 }
 
 /// A run of instance records that draws one shared mesh's index range.
@@ -683,12 +673,124 @@ pub fn draws(items: &[Batch], order: &[usize]) -> Vec<Draw> {
     out
 }
 
+/// Adjacent indirect commands that share one material, with their draw costs.
+pub(crate) struct IndirectRun {
+    pub material: usize,
+    pub first: u32,
+    pub count: u32,
+    pub triangles: u64,
+    pub instances: u64,
+}
+
+/// Preserves indexed draw ranges and instance offsets in a compact command stream.
+pub(crate) fn indirect_draws(
+    items: &[Batch],
+    order: &[usize],
+) -> (Vec<wgpu::util::DrawIndexedIndirectArgs>, Vec<IndirectRun>) {
+    let draws = draws(items, order);
+    let mut commands = Vec::with_capacity(draws.len());
+    let mut runs: Vec<IndirectRun> = Vec::new();
+    for draw in draws {
+        let material = items[draw.item].material;
+        if runs.last().is_none_or(|run| run.material != material) {
+            runs.push(IndirectRun {
+                material,
+                first: commands.len() as u32,
+                count: 0,
+                triangles: 0,
+                instances: 0,
+            });
+        }
+        let run = runs.last_mut().expect("an indirect material run");
+        run.count += 1;
+        run.triangles += u64::from(draw.count / 3) * u64::from(draw.instances.count);
+        run.instances += u64::from(draw.instances.count);
+        commands.push(wgpu::util::DrawIndexedIndirectArgs {
+            index_count: draw.count,
+            instance_count: draw.instances.count,
+            first_index: draw.first,
+            base_vertex: 0,
+            first_instance: draw.instances.first,
+        });
+    }
+    (commands, runs)
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::textured::{
         AlphaMode, Level, Primitive, TexturedMaterial, TexturedMesh, TexturedScene, TexturedVertex,
     };
     use super::*;
+
+    #[test]
+    fn indirect_commands_keep_instance_offsets_ranges_and_actual_draw_costs() {
+        let batch = |first, count, material, instance, copies| Batch {
+            first,
+            count,
+            material,
+            min: Vec3::ZERO,
+            max: Vec3::ONE,
+            level: Level::Always,
+            run: Some(Run {
+                first: instance,
+                count: copies,
+            }),
+        };
+        let batches = [
+            batch(0, 3, 1, 0, 2),
+            batch(0, 3, 1, 2, 3),
+            batch(3, 6, 1, 5, 1),
+            batch(9, 9, 2, 6, 4),
+        ];
+        let (commands, runs) = indirect_draws(&batches, &[0, 1, 2, 3]);
+        assert_eq!(
+            std::mem::size_of::<wgpu::util::DrawIndexedIndirectArgs>(),
+            20
+        );
+        assert_eq!(commands.len(), 3, "adjacent copies of one mesh still merge");
+        assert_eq!(commands[0].instance_count, 5);
+        assert_eq!(commands[1].first_index, 3);
+        assert_eq!(commands[1].first_instance, 5);
+        assert_eq!(commands[2].first_instance, 6);
+        assert!(commands.iter().all(|c| c.base_vertex == 0));
+        assert_eq!(runs.len(), 2);
+        assert_eq!((runs[0].material, runs[0].first, runs[0].count), (1, 0, 2));
+        assert_eq!((runs[0].triangles, runs[0].instances), (7, 6));
+        assert_eq!(
+            (runs[1].first, runs[1].count, runs[1].triangles),
+            (2, 1, 12)
+        );
+        assert!(indirect_draws(&batches, &[]).0.is_empty());
+    }
+
+    #[test]
+    fn affine_bounds_match_transformed_corners_with_rotation_and_scale() {
+        let min = Vec3::new(-2.0, -1.0, 0.5);
+        let max = Vec3::new(3.0, 4.0, 2.5);
+        for i in 0..100 {
+            let transform = Mat4::from_scale_rotation_translation(
+                Vec3::new(0.5, 2.0, 1.5),
+                glam::Quat::from_euler(glam::EulerRot::XYZ, i as f32 * 0.02, 0.7, -0.3),
+                Vec3::new(8.0, -3.0, 20.0),
+            );
+            let (lo, hi) = transformed_bounds(min, max, transform);
+            let mut expected_lo = Vec3::splat(f32::INFINITY);
+            let mut expected_hi = Vec3::splat(f32::NEG_INFINITY);
+            for corner in 0..8 {
+                let p = Vec3::new(
+                    if corner & 1 == 0 { min.x } else { max.x },
+                    if corner & 2 == 0 { min.y } else { max.y },
+                    if corner & 4 == 0 { min.z } else { max.z },
+                );
+                let p = transform.transform_point3(p);
+                expected_lo = expected_lo.min(p);
+                expected_hi = expected_hi.max(p);
+            }
+            assert!(lo.distance(expected_lo) < 1e-5);
+            assert!(hi.distance(expected_hi) < 1e-5);
+        }
+    }
 
     #[test]
     fn octahedral_normals_round_trip_within_a_twentieth_of_a_degree() {

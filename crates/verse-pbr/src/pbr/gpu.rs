@@ -506,6 +506,11 @@ struct Prepass {
     masked: wgpu::RenderPipeline,
 }
 
+struct RigidIndirect {
+    buffer: wgpu::Buffer,
+    runs: Vec<instanced::IndirectRun>,
+}
+
 /// Textured static meshes on the GPU: merged cells and shared meshes
 /// uploaded once ([`Prepared`]), their instance records, the light texture,
 /// and one bind group per material.
@@ -529,6 +534,7 @@ pub struct TexturedGpu {
     figure: bool,
     rigid_meshes: Vec<Vec<textured::Batch>>,
     rendered_instances: instanced::RenderedInstances,
+    rigid_indirect: Option<RigidIndirect>,
     /// The scene's index edits applied so far
     /// ([`textured::IndexEdits::revision`]); part of the static casters'
     /// identity, so a cached shadow redraws after an edit.
@@ -609,6 +615,27 @@ impl TexturedGpu {
         }
         self.batches = batches;
         self.near = vec![true; self.batches.len()];
+        if let Some(indirect) = &mut self.rigid_indirect {
+            let mut order: Vec<_> = (0..self.batches.len()).collect();
+            order.sort_unstable_by_key(|&i| {
+                let material = self.batches[i].material;
+                (self.materials[material].alpha.pass(), material)
+            });
+            let (commands, runs) = instanced::indirect_draws(&self.batches, &order);
+            let bytes: &[u8] = bytemuck::cast_slice(&commands);
+            if bytes.len() as u64 > indirect.buffer.size() {
+                indirect.buffer = device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("verse rigid indirect draws"),
+                    size: (bytes.len() as u64).next_power_of_two(),
+                    usage: wgpu::BufferUsages::INDIRECT | wgpu::BufferUsages::COPY_DST,
+                    mapped_at_creation: false,
+                });
+            }
+            if !bytes.is_empty() {
+                queue.write_buffer(&indirect.buffer, 0, bytes);
+            }
+            indirect.runs = runs;
+        }
     }
 
     /// Resets motion after a rendered frame omits the rigid instance stream.
@@ -2261,6 +2288,21 @@ impl Photo {
         let (prepared, meshes) = instanced::rigid_meshes(&frame.scene);
         let mut gpu = self.upload_textured_with(device, queue, &frame.scene, &prepared, true);
         gpu.rigid_meshes = meshes;
+        if !self.capability.gles
+            && device
+                .features()
+                .contains(wgpu::Features::INDIRECT_FIRST_INSTANCE)
+        {
+            gpu.rigid_indirect = Some(RigidIndirect {
+                buffer: device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("verse rigid indirect draws"),
+                    size: 20,
+                    usage: wgpu::BufferUsages::INDIRECT | wgpu::BufferUsages::COPY_DST,
+                    mapped_at_creation: false,
+                }),
+                runs: Vec::new(),
+            });
+        }
         gpu.write_instances(device, queue, frame);
         gpu
     }
@@ -2488,6 +2530,7 @@ impl Photo {
             figure,
             rigid_meshes: Vec::new(),
             rendered_instances: instanced::RenderedInstances::default(),
+            rigid_indirect: None,
             edits: 0,
             near: vec![true; prepared.items.len()],
             detail_groups: scene.detail_groups.clone(),
@@ -2552,6 +2595,38 @@ impl Photo {
         let Some(gpu) = textured else {
             return;
         };
+        if which != Pass::Blended
+            && order.len() == gpu.batches.len()
+            && let Some(indirect) = &gpu.rigid_indirect
+        {
+            let mut sides = None;
+            for run in &indirect.runs {
+                let material = &gpu.materials[run.material];
+                if material.alpha.pass() != which {
+                    continue;
+                }
+                if sides.is_none() {
+                    pass.set_vertex_buffer(0, gpu.vertices.slice(..));
+                    pass.set_vertex_buffer(1, gpu.instances.slice(..));
+                    pass.set_index_buffer(gpu.indices.slice(..), wgpu::IndexFormat::Uint32);
+                    pass.set_bind_group(3, &gpu.light_group, &[]);
+                }
+                if sides != Some(material.double_sided) {
+                    pass.set_pipeline(
+                        &pipelines[which as usize][usize::from(material.double_sided)],
+                    );
+                    sides = Some(material.double_sided);
+                }
+                pass.set_bind_group(2, &gpu.groups[run.material], &[]);
+                pass.multi_draw_indexed_indirect(
+                    &indirect.buffer,
+                    u64::from(run.first) * 20,
+                    run.count,
+                );
+                self.count_runs(u64::from(run.count), run.instances, run.triangles, true);
+            }
+            return;
+        }
         let order: Vec<usize> = order
             .iter()
             .copied()
@@ -2591,13 +2666,17 @@ impl Photo {
             0,
             first..first + draw.instances.count,
         );
-        let mut stats = self.stats.get();
         let triangles = u64::from(draw.count / 3) * u64::from(draw.instances.count);
-        stats.draws += 1;
-        stats.instances += u64::from(draw.instances.count);
+        self.count_runs(1, u64::from(draw.instances.count), triangles, scene);
+    }
+
+    fn count_runs(&self, draws: u64, instances: u64, triangles: u64, scene: bool) {
+        let mut stats = self.stats.get();
+        stats.draws += draws;
+        stats.instances += instances;
         stats.triangles += triangles;
         if scene {
-            stats.scene_draws += 1;
+            stats.scene_draws += draws;
             stats.scene_triangles += triangles;
         }
         self.stats.set(stats);
@@ -2777,6 +2856,8 @@ impl Photo {
             Stage::Neon(neon) => (neon.time, neon.temporal_aa),
         };
         let enabled = enabled && std::env::var("VERSE_TEMPORAL_AA").ok().as_deref() != Some("off");
+        // Projection jitter moves raster samples; it must not resize cached shadow maps.
+        let shadow_view = view;
         let view = targets
             .temporal
             .as_mut()
@@ -2785,9 +2866,17 @@ impl Photo {
             Stage::Space(sky) => {
                 self.encode_space(device, queue, encoder, output, targets, view, sky, world)
             }
-            Stage::Neon(neon) => {
-                self.encode_neon(device, queue, encoder, output, targets, view, neon, world)
-            }
+            Stage::Neon(neon) => self.encode_neon(
+                device,
+                queue,
+                encoder,
+                output,
+                targets,
+                view,
+                shadow_view,
+                neon,
+                world,
+            ),
         }
         if let Some((pipeline, group, buffer, count)) = ui
             && count > 0
@@ -3190,6 +3279,54 @@ impl Photo {
             pass.set_vertex_buffer(0, gpu.vertices.slice(..));
             pass.set_vertex_buffer(1, gpu.instances.slice(..));
             pass.set_index_buffer(gpu.indices.slice(..), wgpu::IndexFormat::Uint32);
+            if k == 2
+                && let Some(indirect) = &gpu.rigid_indirect
+            {
+                pass.set_pipeline(opaque_pipeline);
+                let mut opaque_first = 0;
+                let mut opaque_count = 0;
+                let mut opaque_triangles = 0;
+                let mut opaque_instances = 0;
+                for run in &indirect.runs {
+                    if gpu.materials[run.material].alpha.pass() != Pass::Opaque {
+                        continue;
+                    }
+                    if opaque_count == 0 {
+                        opaque_first = run.first;
+                    }
+                    opaque_count += run.count;
+                    opaque_triangles += run.triangles;
+                    opaque_instances += run.instances;
+                }
+                if opaque_count > 0 {
+                    pass.multi_draw_indexed_indirect(
+                        &indirect.buffer,
+                        u64::from(opaque_first) * 20,
+                        opaque_count,
+                    );
+                    self.count_runs(
+                        u64::from(opaque_count),
+                        opaque_instances,
+                        opaque_triangles,
+                        false,
+                    );
+                }
+                pass.set_pipeline(masked_pipeline);
+                pass.set_bind_group(1, &self.empty_group, &[]);
+                for run in &indirect.runs {
+                    if gpu.materials[run.material].alpha.pass() != Pass::Masked {
+                        continue;
+                    }
+                    pass.set_bind_group(2, &gpu.groups[run.material], &[]);
+                    pass.multi_draw_indexed_indirect(
+                        &indirect.buffer,
+                        u64::from(run.first) * 20,
+                        run.count,
+                    );
+                    self.count_runs(u64::from(run.count), run.instances, run.triangles, false);
+                }
+                continue;
+            }
             for masked in [false, true] {
                 if masked {
                     pass.set_pipeline(masked_pipeline);
@@ -3290,6 +3427,7 @@ impl Photo {
         output: &wgpu::TextureView,
         targets: &mut PhotoTargets,
         view: verse_engine::presentation::View,
+        shadow_view: verse_engine::presentation::View,
         neon: &Neon,
         world: Batches<'_>,
     ) {
@@ -3369,7 +3507,7 @@ impl Photo {
             let exposure = super::exposure(key.ev100);
             let probes = key.probes();
             self.update_probes(device, queue, Some(&probes));
-            let cascades = self.key_shadow(key, view);
+            let cascades = self.key_shadow(key, shadow_view);
             self.last_lighting.exposure = exposure;
             self.last_lighting.shadow_views = cascades.cascades.len();
             self.last_lighting.shadow_size = SHADOW_SIZE;

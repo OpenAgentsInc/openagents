@@ -2283,6 +2283,12 @@ async fn open_async(
     let required_limits = scene_limits(adapter.limits())?;
     // The physical path prefers a compact 32-bit floating-point scene target.
     let required_features = adapter.features() & wgpu::Features::RG11B10UFLOAT_RENDERABLE;
+    #[cfg(not(target_arch = "wasm32"))]
+    let required_features = required_features
+        | rigid_indirect_features(
+            adapter.features(),
+            adapter.get_downlevel_capabilities().flags,
+        );
     #[cfg(all(feature = "capture", not(target_arch = "wasm32")))]
     let required_features = required_features
         | if adapter.features().contains(timestamp_features()) {
@@ -2300,6 +2306,18 @@ async fn open_async(
         .await
         .map_err(|e| format!("no graphics device: {e}"))?;
     Ok((adapter, device, queue))
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn rigid_indirect_features(
+    features: wgpu::Features,
+    flags: wgpu::DownlevelFlags,
+) -> wgpu::Features {
+    if flags.contains(wgpu::DownlevelFlags::INDIRECT_EXECUTION) {
+        features & wgpu::Features::INDIRECT_FIRST_INSTANCE
+    } else {
+        wgpu::Features::empty()
+    }
 }
 
 /// An error scope's result, waited for natively. A browser cannot block:
@@ -3659,4 +3677,14 @@ fn pass_timestamp_spans_reject_missing_errors_and_invalid_order() {
         assert!(timestamp_duration([100, 110, 280, 300], period).is_none());
     }
     assert_eq!(timestamp_features(), wgpu::Features::TIMESTAMP_QUERY);
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+#[test]
+fn rigid_indirect_requires_execution_and_nonzero_first_instance_support() {
+    let feature = wgpu::Features::INDIRECT_FIRST_INSTANCE;
+    let execution = wgpu::DownlevelFlags::INDIRECT_EXECUTION;
+    assert_eq!(rigid_indirect_features(feature, execution), feature);
+    assert!(rigid_indirect_features(feature, wgpu::DownlevelFlags::empty()).is_empty());
+    assert!(rigid_indirect_features(wgpu::Features::empty(), execution).is_empty());
 }

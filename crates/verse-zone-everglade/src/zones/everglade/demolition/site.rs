@@ -299,6 +299,18 @@ pub struct DebrisStats {
     pub merged: usize,
 }
 
+/// Physics phases accumulated across every fixed step in the last tick.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct PhysicsTimings {
+    pub steps: u32,
+    pub detect_ms: f32,
+    pub solve_ms: f32,
+    pub step_ms: f32,
+    pub geometry_updates: usize,
+    pub body_records: usize,
+    pub collider_records: usize,
+}
+
 /// One chunk of a broken piece.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Chunk {
@@ -458,6 +470,7 @@ pub struct Site {
     /// thaws. [`Site::hold_frozen`] then checks what is frozen.
     unsettled: bool,
     rubble_merging: bool,
+    timings: PhysicsTimings,
     /// The water debris floats or sinks in, and the boxes of its beds and
     /// banks, which replace the slab under it.
     water: Option<&'static WaterSet>,
@@ -498,6 +511,7 @@ impl Site {
             rests: BTreeMap::new(),
             unsettled: false,
             rubble_merging: true,
+            timings: PhysicsTimings::default(),
             water: None,
             beds: Vec::new(),
             wet: BTreeSet::new(),
@@ -556,6 +570,7 @@ impl Site {
     /// as if their time ran out: a town retires its oldest debris this way
     /// to stay within its geometry budget.
     pub fn retire_chunks(&mut self, chunks: &[(usize, usize)]) {
+        let mut retired = Vec::new();
         for &(p, i) in chunks {
             let Some(chunk) = self
                 .pieces
@@ -568,9 +583,9 @@ impl Site {
                 continue;
             }
             chunk.gone = true;
-            let body = chunk.body;
-            self.remove_chunk(body);
+            retired.push(chunk.body);
         }
+        self.remove_chunks(&retired);
     }
 
     /// Makes the flat ground slab `half` meters either side of the origin,
@@ -1057,6 +1072,7 @@ impl Site {
         let time = self.world.time();
         let mut chunks = Vec::with_capacity(spec.chunks.len());
         let mut puffs = Vec::new();
+        let mut buried_bodies = Vec::new();
         let matter = spec.matter;
         let piece_mass = spec.mass;
         let cuboids = spec.chunks.clone();
@@ -1103,7 +1119,7 @@ impl Site {
             let buried = ground.is_some_and(|g| pos.y + reach < g + 0.02);
             let chunk_id = self.add_chunk(chunk, &cuboid);
             if buried {
-                self.remove_chunk(chunk_id);
+                buried_bodies.push(chunk_id);
                 chunks.push(Chunk {
                     body: chunk_id,
                     until: time,
@@ -1130,6 +1146,7 @@ impl Site {
             });
             puffs.push(pos.as_vec3());
         }
+        self.remove_chunks(&buried_bodies);
         let state = &mut self.pieces[piece];
         state.status = Status::Broken;
         state.hit_points = 0;
@@ -1180,12 +1197,13 @@ impl Site {
         }
         alive.sort_by(|a, b| a.0.total_cmp(&b.0));
         let excess = alive.len() - self.max_chunks;
+        let mut retired = Vec::with_capacity(excess);
         for &(_, p, i) in &alive[..excess] {
             let chunk = &mut self.pieces[p].chunks[i];
             chunk.gone = true;
-            let body = chunk.body;
-            self.remove_chunk(body);
+            retired.push(chunk.body);
         }
+        self.remove_chunks(&retired);
     }
 
     /// Wakes and pushes loose bodies within `radius` of `at`.
@@ -2133,13 +2151,17 @@ impl Site {
     /// Wakes body `id`, and moves it again if it was frozen at rest.
     fn rouse(&mut self, id: BodyId) {
         let mut merged = false;
-        for chunk in self.pieces.iter_mut().flat_map(|p| &mut p.chunks) {
-            if chunk.body == id && !chunk.gone && chunk.settled.take().is_some() {
-                chunk.settle_since = None;
-                if let Some(collider) = chunk.merged_collider.take() {
-                    self.world.collider_mut(collider).filter = Filter::NONE;
+        if self.world[id].removed || self.frozen.contains(&id.0) {
+            for chunk in self.pieces.iter_mut().flat_map(|p| &mut p.chunks) {
+                if chunk.body == id && !chunk.gone {
+                    chunk.settle_since = None;
+                    if chunk.settled.take().is_some() {
+                        if let Some(collider) = chunk.merged_collider.take() {
+                            self.world.collider_mut(collider).filter = Filter::NONE;
+                        }
+                        merged = true;
+                    }
                 }
-                merged = true;
             }
         }
         if merged {
@@ -2251,16 +2273,23 @@ impl Site {
             .copied()
             .filter(|id| !held.contains(id))
             .collect();
-        for id in thaw {
-            self.rouse(BodyId(id));
-            wake_near(&mut self.world, BodyId(id));
+        let thaw: Vec<BodyId> = thaw.into_iter().map(BodyId).collect();
+        for &id in &thaw {
+            self.rouse(id);
         }
+        wake_near_many(&mut self.world, &thaw);
         self.unsettled = false;
     }
 
     /// Keeps settled geometry and collision while retiring individual bodies.
     fn merge_rubble(&mut self, now: f64) {
         if !self.rubble_merging {
+            return;
+        }
+        if self.frozen.is_empty() {
+            for chunk in self.pieces.iter_mut().flat_map(|p| &mut p.chunks) {
+                chunk.settle_since = None;
+            }
             return;
         }
         // Only merge islands rooted in the ground. Rubble resting on an
@@ -2282,17 +2311,27 @@ impl Site {
                 }
             }
         }
-        for (piece, index) in merge {
+        if merge.is_empty() {
+            return;
+        }
+        let selected: std::collections::HashMap<BodyId, usize> = merge
+            .iter()
+            .enumerate()
+            .map(|(order, &(piece, index))| (self.pieces[piece].chunks[index].body, order))
+            .collect();
+        let mut owned = vec![Vec::new(); merge.len()];
+        for collider in self.world.colliders() {
+            if collider.filter != Filter::NONE
+                && let Some(&order) = selected.get(&collider.body)
+            {
+                owned[order].push(*collider);
+            }
+        }
+        let ground = self.world[BodyId(0)].pos;
+        let mut retired = Vec::with_capacity(merge.len());
+        for ((piece, index), colliders) in merge.into_iter().zip(owned) {
             let id = self.pieces[piece].chunks[index].body;
             let pose = self.body_pose(id);
-            let ground = self.world[BodyId(0)].pos;
-            let colliders: Vec<_> = self
-                .world
-                .colliders()
-                .iter()
-                .copied()
-                .filter(|c| c.body == id && c.filter != Filter::NONE)
-                .collect();
             // Chunks have exactly one cuboid collider. Attach its exact pose
             // to the ground body; static pairs never enter the solver.
             let mut merged = None;
@@ -2303,19 +2342,25 @@ impl Site {
                 collider.rotation = orientation;
                 merged = Some(self.world.add_collider(collider));
             }
-            self.world.remove_body(id);
+            retired.push(id);
             self.frozen.remove(&id.0);
             self.resting.remove(&id.0);
             let chunk = &mut self.pieces[piece].chunks[index];
             chunk.settled = Some(pose);
             chunk.merged_collider = merged;
         }
+        self.world.remove_bodies(&retired);
     }
 
     /// Work performed by the most recent fixed physics step.
     #[must_use]
     pub fn step_stats(&self) -> physics::StepStats {
         self.world.stats
+    }
+
+    #[must_use]
+    pub fn physics_timings(&self) -> PhysicsTimings {
+        self.timings
     }
 
     /// Active debris bodies and rubble retained in the static batch.
@@ -2342,26 +2387,37 @@ impl Site {
         stats
     }
 
-    /// Removes chunk body `id` when it ends, waking what sleeps on it and
-    /// checking the debris frozen on it.
-    fn remove_chunk(&mut self, id: BodyId) {
+    /// Removes chunk bodies when they end, waking what sleeps on them and
+    /// checking the debris frozen on them.
+    fn remove_chunks(&mut self, ids: &[BodyId]) {
+        if ids.is_empty() {
+            return;
+        }
+        let removed: std::collections::HashSet<BodyId> = ids.iter().copied().collect();
         for chunk in self.pieces.iter_mut().flat_map(|p| &mut p.chunks) {
-            if chunk.body == id {
+            if removed.contains(&chunk.body) {
                 if let Some(collider) = chunk.merged_collider.take() {
                     self.world.collider_mut(collider).filter = Filter::NONE;
                 }
             }
         }
-        wake_near(&mut self.world, id);
-        self.world.remove_body(id);
-        self.frozen.remove(&id.0);
-        self.rests.remove(&id.0);
-        self.resting.remove(&id.0);
+        wake_near_many(&mut self.world, ids);
+        self.world.remove_bodies(ids);
+        for id in ids {
+            self.frozen.remove(&id.0);
+            self.rests.remove(&id.0);
+            self.resting.remove(&id.0);
+        }
         self.unsettled = true;
     }
 
     /// Advances the yard by `dt` seconds of wall time.
     pub fn tick(&mut self, dt: f32) {
+        self.timings = PhysicsTimings {
+            body_records: self.world.bodies().len(),
+            collider_records: self.world.colliders().len(),
+            ..PhysicsTimings::default()
+        };
         self.age_dust(dt);
         self.hold_frozen();
         let any_moving = self.pieces.iter().any(|p| match p.status {
@@ -2379,6 +2435,14 @@ impl Site {
             self.pending -= STEP;
             steps += 1;
             self.step();
+            let stats = self.world.stats;
+            self.timings.steps += 1;
+            self.timings.detect_ms += stats.detect.as_secs_f32() * 1000.0;
+            self.timings.solve_ms += stats.solve.as_secs_f32() * 1000.0;
+            self.timings.step_ms += stats.total.as_secs_f32() * 1000.0;
+            self.timings.geometry_updates += stats.detection.geometry_updates;
+            self.timings.body_records = self.world.bodies().len();
+            self.timings.collider_records = self.world.colliders().len();
         }
         if steps == MAX_STEPS {
             self.pending = 0.0;
@@ -2557,9 +2621,7 @@ impl Site {
                 }
             }
         }
-        for body in ended {
-            self.remove_chunk(body);
-        }
+        self.remove_chunks(&ended);
         self.hold_frozen();
     }
 
@@ -2643,6 +2705,9 @@ impl Site {
                     .collider_mut(physics::ColliderId(index as u32))
                     .filter = filter;
             }
+        }
+        if over.is_empty() {
+            return;
         }
         // Each body floats as its matter does, whatever mass it was given
         // to fall well: its buoyancy is scaled by its mass over the mass
@@ -2878,17 +2943,36 @@ fn world_half(rotation: DQuat, half: DVec3) -> DVec3 {
 /// Wakes every sleeping body whose colliders come near `body`'s, so what
 /// rested on a piece falls when the piece goes (`wall_of_stone::rig`).
 fn wake_near(world: &mut World, body: BodyId) {
+    wake_near_matching(world, |id| id == body);
+}
+
+fn wake_near_many(world: &mut World, bodies: &[BodyId]) {
+    if bodies.is_empty() {
+        return;
+    }
+    if let [body] = bodies {
+        wake_near(world, *body);
+        return;
+    }
+    let bodies: std::collections::HashSet<BodyId> = bodies.iter().copied().collect();
+    wake_near_matching(world, |id| bodies.contains(&id));
+}
+
+fn wake_near_matching(world: &mut World, owns: impl Fn(BodyId) -> bool) {
+    if !world.bodies().iter().any(|b| b.sleeping) {
+        return;
+    }
     let reach = world.solver.margin + 0.1;
     let near: Vec<BodyId> = {
         let colliders = world.colliders();
         let own: Vec<(DVec3, f64)> = colliders
             .iter()
-            .filter(|c| c.body == body)
+            .filter(|c| owns(c.body))
             .map(|c| (c.pose(world).0, c.shape.bound()))
             .collect();
         colliders
             .iter()
-            .filter(|c| c.body != body && world[c.body].sleeping)
+            .filter(|c| !owns(c.body) && world[c.body].sleeping)
             .filter(|c| {
                 let (at, bound) = (c.pose(world).0, c.shape.bound());
                 own.iter().any(|(p, r)| p.distance(at) <= r + bound + reach)
@@ -3059,6 +3143,61 @@ mod rubble_tests {
             1
         );
         assert_eq!(site.debris_stats().awake, 1);
+    }
+
+    #[test]
+    fn reactivated_rubble_waits_a_full_rest_interval_before_merging_again() {
+        let (mut site, id) = resting_chunk();
+        site.merge_rubble(0.0);
+        site.merge_rubble(MERGE_AFTER - 0.01);
+        site.rouse(id);
+        site.merge_rubble(10.0);
+        site.world[id].kind = BodyKind::Static;
+        site.frozen.insert(id.0);
+        site.rests.insert(id.0, vec![0]);
+        site.merge_rubble(20.0);
+        site.merge_rubble(20.0 + MERGE_AFTER - 0.01);
+        assert!(!site.world[id].removed);
+        site.merge_rubble(20.0 + MERGE_AFTER);
+        assert!(site.world[id].removed);
+    }
+
+    #[test]
+    fn batch_chunk_expiry_matches_individual_expiry_and_releases_the_pile() {
+        let (mut batch, bottom) = resting_chunk();
+        let cuboid = Cuboid {
+            center: DVec3::ZERO,
+            rotation: DQuat::IDENTITY,
+            half: DVec3::splat(0.3),
+        };
+        let mut under = bottom;
+        for y in [0.9, 1.5] {
+            let id = batch.add_chunk(
+                Body::new(10.0, DVec3::ONE, DVec3::new(0.0, y, 0.0)),
+                &cuboid,
+            );
+            let mut chunk = batch.pieces[0].chunks[0];
+            chunk.body = id;
+            batch.pieces[0].chunks.push(chunk);
+            batch.world[id].kind = BodyKind::Static;
+            batch.frozen.insert(id.0);
+            batch.rests.insert(id.0, vec![under.0]);
+            under = id;
+        }
+        batch.merge_rubble(0.0);
+        batch.merge_rubble(MERGE_AFTER);
+        let mut individual = batch.clone();
+        batch.retire_chunks(&[(0, 0), (0, 1)]);
+        individual.retire_chunks(&[(0, 0)]);
+        individual.retire_chunks(&[(0, 1)]);
+        batch.hold_frozen();
+        individual.hold_frozen();
+        assert_eq!(batch.world, individual.world);
+        assert_eq!(batch.pieces, individual.pieces);
+        assert_eq!(batch.rests, individual.rests);
+        assert!(!batch.world[under].removed);
+        assert_eq!(batch.world[under].kind, BodyKind::Dynamic);
+        assert!(batch.pieces[0].chunks[2].settled.is_none());
     }
 
     #[test]

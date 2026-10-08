@@ -828,10 +828,15 @@ impl Temporal {
             let mut pass = color_pass(encoder, "verse object motion", &targets.motion);
             pass.set_pipeline(&self.motion);
             pass.set_bind_group(0, &targets.motion_group, &[]);
+            let mut buffers = None;
             for motion in motions {
-                pass.set_vertex_buffer(0, motion.vertices.slice(..));
-                pass.set_vertex_buffer(1, motion.instances.slice(..));
-                pass.set_index_buffer(motion.indices.slice(..), wgpu::IndexFormat::Uint32);
+                let current = (motion.vertices, motion.instances, motion.indices);
+                if buffers != Some(current) {
+                    pass.set_vertex_buffer(0, motion.vertices.slice(..));
+                    pass.set_vertex_buffer(1, motion.instances.slice(..));
+                    pass.set_index_buffer(motion.indices.slice(..), wgpu::IndexFormat::Uint32);
+                    buffers = Some(current);
+                }
                 let draw = motion.draw;
                 pass.draw_indexed(
                     draw.first..draw.first + draw.count,

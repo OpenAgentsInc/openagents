@@ -350,8 +350,9 @@ impl World {
             .bodies()
             .iter()
             .map(|b| {
-                let r = DMat3::from_quat(b.orientation);
-                let inverse = if b.inverse_mass() > 0.0 {
+                let inverse_mass = b.inverse_mass();
+                let inverse = if inverse_mass > 0.0 {
+                    let r = DMat3::from_quat(b.orientation);
                     r * DMat3::from_diagonal(b.inertia.recip()) * r.transpose()
                 } else {
                     DMat3::ZERO
@@ -359,7 +360,7 @@ impl World {
                 Motion {
                     vel: b.vel,
                     omega: b.omega_world(),
-                    inverse_mass: b.inverse_mass(),
+                    inverse_mass,
                     inverse_inertia: inverse,
                 }
             })
