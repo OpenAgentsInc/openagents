@@ -68,6 +68,8 @@ fn capture() {
     runtime.install_everglade(&pack);
     assert_eq!(runtime.zone, zones::ZoneId::Everglade);
     runtime.settle_zone_light();
+    // Refresh the staged frame after the asynchronous layers become active.
+    runtime.set_town_clock(town_clock::Clock::DAYTIME.pinned(Some(hour)));
     assert_eq!(
         runtime.everglade_zone_mut().unwrap().uses_baked_light(),
         expected,
@@ -91,7 +93,7 @@ fn capture() {
         800,
         &runtime.world.mesh,
         &atlas,
-        zones::atmosphere(runtime.zone),
+        runtime.everglade_zone_mut().unwrap().atmosphere(),
     )
     .unwrap();
     assert_eq!(
@@ -125,6 +127,9 @@ fn capture() {
         };
         let dynamic = runtime.dynamic_mesh();
         let intensity = dynamic.neon.as_ref().unwrap().baked_lamps;
+        if expected && hour >= 22.0 {
+            assert!(intensity > 0.99, "Capture the active night lamp layer");
+        }
         for _ in 0..8 {
             renderer.render(view, &dynamic, &ui).unwrap();
         }
