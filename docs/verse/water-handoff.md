@@ -392,5 +392,7 @@ All under `bench/verse/2026-10-07/`:
 The October 8 Metal timer diagnosis retains the two failed experiments in
 `bench/verse/2026-10-08/water-w11/metal-timer-diagnosis/`. Deferring query
 resolution until submission completion, without blocking the render thread,
-passes the first Mac case with 96/96 valid samples. The remaining fixed
-views and budget calibration are still pending.
+passes all 15 Mac and all 15 RTX 4080 fixed views with 96/96 valid samples
+per view. The records are in `metal-deferred-f176dfa0c8/` and
+`vulkan-deferred-f176dfa0c8/` under `bench/verse/2026-10-08/water-w11/`.
+Budget calibration and the refreshed browser check remain pending.
