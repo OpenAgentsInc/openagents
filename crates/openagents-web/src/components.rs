@@ -28,7 +28,7 @@ pub(crate) fn routes() -> Router<App> {
 async fn demo(State(app): State<App>) -> Response {
     let mut state = coder_ui::demo::DemoState::default();
     let snapshot = coder_demo_ui::capture(&mut state, 110, 36);
-    let preview = coder_demo_ui::svg(&snapshot);
+    let preview = coder_demo_ui::html(&snapshot);
     let readable = escape(
         &snapshot
             .cells

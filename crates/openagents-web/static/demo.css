@@ -1,14 +1,18 @@
 @font-face { font-family: 'Paper Mono'; src: url('/fonts/PaperMono-Variable.woff2') format('woff2'); font-weight: 100 800; font-display: swap; }
 html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: var(--noir-terminal-background); }
 #demo-root, #demo-mount { width: 100%; height: 100%; }
-#demo-mount > svg { display: block; }
+
 #demo-status { position: fixed; bottom: 0; left: 18px; margin: 0; padding: 4px 0; color: var(--noir-content-secondary); background: var(--noir-terminal-background); font: 12px 'Paper Mono', monospace; }
 #demo-mount { position: relative; display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden; }
-#demo-mount > svg, #demo-mount > .rn-view { flex: none; }
+#demo-mount > .demo-grid, #demo-mount > .rn-view { flex: none; }
 #demo-mount > .rn-view { width: 100%; }
 #demo-mount > .rn-view, #demo-mount [data-rn-node="demo-shell"] { padding: 0; gap: 0; }
 #demo-mount [data-rn-surface="coder-demo-grid"] { min-height: 0; line-height: 0; border: 0; padding: 0; margin: 0; outline: none; background: var(--noir-terminal-background); }
-#demo-mount [data-rn-surface="coder-demo-grid"] > svg { display: block; user-select: text; font-variant-ligatures: none; }
+/* The browser paints ordinary text; the Rust controller updates only changed rows. */
+.demo-grid { position: relative; flex: none; font: 15px/20px 'Paper Mono', monospace; font-variant-ligatures: none; font-kerning: none; white-space: pre; user-select: text; color: var(--noir-content); background: var(--noir-terminal-background); }
+.demo-row { display: block; height: 20px; line-height: 20px; white-space: pre; }
+.demo-run { display: inline-block; height: 20px; line-height: 20px; vertical-align: top; white-space: pre; }
+.demo-cursor { position: absolute; width: 9px; height: 20px; color: var(--noir-cursor-text); background: var(--noir-cursor); pointer-events: none; user-select: none; }
 #demo-mount [data-rn-node="demo-keyboard"] { position: absolute; inset: 0; width: 0; height: 0; min-height: 0; padding: 0; gap: 0; }
 #demo-mount [data-rn-node="demo-keyboard"] > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 #demo-mount [data-demo-input] { position: absolute; left: var(--demo-input-x, 0px); top: var(--demo-input-y, 0px); width: 1px; height: 20px; min-height: 0; padding: 0; border: 0; resize: none; opacity: 0; overflow: hidden; font: 15px/20px 'Paper Mono', monospace; }

@@ -184,5 +184,7 @@ fn rail(
     }
 }
 
+mod html;
+pub use html::{html, html_row};
 mod svg;
 pub use svg::svg;

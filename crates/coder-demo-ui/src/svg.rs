@@ -112,7 +112,7 @@ pub fn svg(snapshot: &Snapshot) -> String {
     svg
 }
 
-fn hex(color: Color) -> String {
+pub(crate) fn hex(color: Color) -> String {
     match color {
         Color::Rgb(r, g, b) => format!("#{r:02x}{g:02x}{b:02x}"),
         Color::Reset => hex(t::TEXT_SECONDARY),
@@ -120,7 +120,7 @@ fn hex(color: Color) -> String {
     }
 }
 
-fn escape(text: &str) -> String {
+pub(crate) fn escape(text: &str) -> String {
     text.replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")

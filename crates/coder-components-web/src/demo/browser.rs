@@ -188,8 +188,52 @@ impl Runtime {
             return Ok(());
         };
         let snapshot = coder_demo_ui::capture(state, width, height);
-        // Only the owning Rust renderer's escaped SVG enters this registered surface.
-        self.surface.set_inner_html(&coder_demo_ui::svg(&snapshot));
+        // Preserve unchanged HTML rows while typing and animating the cursor.
+        let previous = self.snapshot.borrow();
+        if let Some(previous) = previous
+            .as_ref()
+            .filter(|p| p.width == width && p.height == height)
+        {
+            for (y, (row, old)) in snapshot
+                .cells
+                .chunks(usize::from(width))
+                .zip(previous.cells.chunks(usize::from(width)))
+                .enumerate()
+            {
+                if row != old {
+                    if let Some(element) = self
+                        .surface
+                        .query_selector(&format!("[data-demo-row='{y}']"))?
+                    {
+                        element.set_inner_html(&coder_demo_ui::html_row(row));
+                    }
+                }
+            }
+            if snapshot.cursor != previous.cursor
+                || snapshot.cursor.is_some_and(|(x, y)| {
+                    let at = usize::from(y) * usize::from(width) + usize::from(x);
+                    snapshot.cells[at].symbol != previous.cells[at].symbol
+                })
+            {
+                if let Some(cursor) = self.surface.query_selector(".demo-cursor")? {
+                    if let Some((x, y)) = snapshot.cursor {
+                        cursor.set_attribute(
+                            "style",
+                            &format!("left:{}px;top:{}px", x * 9, y * 20),
+                        )?;
+                        cursor.set_text_content(Some(
+                            &snapshot.cells[usize::from(y) * usize::from(width) + usize::from(x)]
+                                .symbol,
+                        ));
+                    } else {
+                        cursor.set_attribute("style", "display:none")?;
+                    }
+                }
+            }
+        } else {
+            self.surface.set_inner_html(&coder_demo_ui::html(&snapshot));
+        }
+        drop(previous);
         self.surface
             .set_attribute("data-demo-columns", &width.to_string())?;
         self.surface
@@ -692,7 +736,7 @@ pub fn demo_receipt() -> String {
             "draft_bytes":state.as_ref().map(|s|s.draft.text.len()),
             "draft_cursor":state.as_ref().map(|s|s.draft.cursor),
             "messages":state.as_ref().map(|s|s.messages.len()),
-            "renderer":"original-ratatui-cells", "browser_storage":false,
+            "renderer":"html-css-rows", "browser_storage":false,
         })
         .to_string()
     })
