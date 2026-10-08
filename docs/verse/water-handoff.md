@@ -152,6 +152,11 @@ found only an obsolete capture extent helper, which is removed. The remote
 has no `wasm-bindgen` command; use the Mac's matched 0.2.128 CLI after
 copying the exact compiler artifact. The Mac quiet soak still prevents
 local builds and measurements.
+Preserve the remote Cargo JSON and artifact record. `stage.py` accepts an
+explicit relocated artifact and the remote record with its original
+Linux path, source SHA, SHA-256, byte count, and Cargo JSON digest. It
+verifies the copied bytes before generating glue; do not rewrite the
+compiler evidence or choose an artifact with a wildcard.
 The stable remote source is
 `/home/christopherdavid/.openagents/scratch/process-2198653/water-w11-agent12`,
 with its own `~/work/openagents-target-agent12`. Advance only that checkout

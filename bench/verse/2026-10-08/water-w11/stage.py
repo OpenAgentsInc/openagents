@@ -1,6 +1,6 @@
 """Stage the exact test-compiled browser application and private inputs.
 
-Usage: stage.py CARGO_JSON SOURCE_SHA OUT_DIR PRIVATE_KIT
+Usage: stage.py CARGO_JSON SOURCE_SHA OUT_DIR PRIVATE_KIT [RELOCATED_ARTIFACT REMOTE_RECORD]
 Cargo must emit JSON from the filtered wasm32 --lib --release --no-run test.
 Run after compilation, outside a measurement interval. OUT_DIR is scratch.
 """
@@ -61,7 +61,9 @@ def identity(path):
 
 
 if __name__ == '__main__':
-    cargo_json, source_sha, output, private_kit = sys.argv[1:]
+    cargo_json, source_sha, output, private_kit = sys.argv[1:5]
+    relocated = sys.argv[5:]
+    assert len(relocated) in [0, 2], 'Supply both the relocated artifact and original remote record'
     root = Path(__file__).resolve().parents[4]
     output, private_kit = Path(output).resolve(), Path(private_kit).resolve()
     assert subprocess.check_output(['git','rev-parse','HEAD'], cwd=root, text=True).strip() == source_sha
@@ -73,7 +75,15 @@ if __name__ == '__main__':
                  and row['target']['name'] == 'everglade_web' and row['profile']['test']
                  and row.get('executable') and row['executable'].endswith('.wasm')]
     assert len(artifacts) == 1, artifacts
-    artifact = Path(artifacts[0]['executable'])
+    original_path = artifacts[0]['executable']
+    artifact = Path(original_path)
+    if relocated:
+        artifact = Path(relocated[0]).resolve()
+        remote = json.loads(Path(relocated[1]).read_text())
+        assert artifact.is_relative_to(scratch), 'Copy the artifact only to assigned scratch'
+        assert remote['source_sha'] == source_sha and remote['original_path'] == original_path, remote
+        assert hashlib.sha256(Path(cargo_json).read_bytes()).hexdigest() == remote['cargo_json_sha256']
+        assert identity(artifact) == {'sha256':remote['sha256'], 'bytes':remote['bytes']}, remote
     raw_exports, raw_start = module(artifact)
     assert 'start' in raw_exports, 'Test compilation must preserve the browser start export'
     assert raw_start is None, 'Do not initialize an implicit Rust test harness entry'
@@ -100,7 +110,9 @@ if __name__ == '__main__':
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, destination)
     shutil.copyfile(root/'crates/everglade-web/index.html', output/'index.html')
-    record = {'source_sha':source_sha, 'compiler_artifact':artifact.name,
+    record = {'source_sha':source_sha,
+              'compiler_artifact':dict(identity(artifact), original_path=original_path,
+                                       relocated_path=str(artifact) if relocated else None),
               'wasm_bindgen':version, 'app_start_verified':True,
               'wasm':dict(identity(wasm), url='/everglade_web_bg.wasm'),
               'glue':dict(identity(output/'everglade_web.js'), url='/everglade_web.js'),
