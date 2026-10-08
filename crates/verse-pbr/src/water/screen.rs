@@ -115,6 +115,27 @@ impl Plan {
         self
     }
 
+    /// Admits optical targets after counting all persistent water resources.
+    #[must_use]
+    pub fn with_budget(
+        mut self,
+        width: u32,
+        height: u32,
+        scene_bytes: u64,
+        resident_bytes: u64,
+        budget_bytes: u64,
+    ) -> Self {
+        if self
+            .bytes(width, height, scene_bytes)
+            .saturating_add(resident_bytes)
+            > budget_bytes
+        {
+            self.copies = false;
+            self.mirror_divisor = 0;
+        }
+        self
+    }
+
     /// The mirror's size for a view `width` by `height`.
     #[must_use]
     pub fn mirror_size(&self, width: u32, height: u32) -> Option<[u32; 2]> {
@@ -302,6 +323,22 @@ mod tests {
         assert_eq!(low.bytes(1920, 1080, 8), 0);
         assert_eq!(low.mirror_size(1920, 1080), None);
         assert_eq!(low.uniform(true), [0.0; 4]);
+    }
+
+    #[test]
+    fn water_admission_counts_persistent_resources_at_the_budget_boundary() {
+        let plan = Plan::of(Tier::Medium);
+        let optical = plan.bytes(1920, 1080, 8);
+        let base = 2 * 1024 * 1024;
+        let budget = optical + base;
+        assert_eq!(plan.with_budget(1920, 1080, 8, base, budget), plan);
+        // Even a small persistent uniform or query allocation must be
+        // included before allocating the optical targets.
+        let admitted = plan.with_budget(1920, 1080, 8, base + 576, budget);
+        assert!(!admitted.copies);
+        assert_eq!(admitted.mirror_divisor, 0);
+        assert_eq!(admitted.bytes(1920, 1080, 8), 0);
+        assert_eq!(admitted.uniform(true), [0.0; 4]);
     }
 
     fn first_gpu_reduction(tier: Tier) -> verse_engine::quality::WaterEffects {

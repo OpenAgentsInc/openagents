@@ -2519,22 +2519,18 @@ impl Photo {
         let attach = wgpu::TextureUsages::RENDER_ATTACHMENT;
         let sampled = attach | wgpu::TextureUsages::TEXTURE_BINDING;
         let samples = self.capability.samples;
-        let mut water_plan = crate::water::screen::Plan::of(self.capability.quality.tier)
-            .with_effects(self.water_policy.effects());
         let scene_bytes = u64::from(scene_format.block_copy_size(None).unwrap_or(8));
-        let base = self.ocean.bytes()
-            + self.water_field.bytes()
-            + crate::water::tile::bytes()
-            + self.water_buffer.size()
-            + self.water_surface_bytes;
         // Admit resources before allocating targets. An unusually large
         // view keeps analytic transmission instead of exceeding residency.
-        if water_plan.bytes(width, height, scene_bytes) + base
-            > self.water_policy.budget().gpu_bytes
-        {
-            water_plan.copies = false;
-            water_plan.mirror_divisor = 0;
-        }
+        let water_plan = crate::water::screen::Plan::of(self.capability.quality.tier)
+            .with_effects(self.water_policy.effects())
+            .with_budget(
+                width,
+                height,
+                scene_bytes,
+                self.water_base_bytes(self.water_surface_bytes),
+                self.water_policy.budget().gpu_bytes,
+            );
         let copies = self.water_screen.is_some() && water_plan.copies;
         let msaa = (samples > 1).then(|| {
             texture(
@@ -2672,8 +2668,11 @@ impl Photo {
     /// targets. The main scene and shared sky are outside water's budget.
     #[must_use]
     pub fn water_bytes(&self, targets: &PhotoTargets, surface: u64) -> u64 {
-        targets.water_bytes()
-            + surface
+        targets.water_bytes() + self.water_base_bytes(surface)
+    }
+
+    fn water_base_bytes(&self, surface: u64) -> u64 {
+        surface
             + self.ocean.bytes()
             + self.water_field.bytes()
             + crate::water::tile::bytes()
