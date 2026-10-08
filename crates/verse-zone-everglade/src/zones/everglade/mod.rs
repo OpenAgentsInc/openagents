@@ -176,6 +176,8 @@ pub struct Everglade {
     /// The town's offline-baked light layers, when it has them
     /// ([`baked`]).
     baked: Option<baked::BakedLight>,
+    /// Worker startup is attempted once when the verified offline bake arrives.
+    repair_attempted: bool,
     /// Blocks another zone's rules add to the spells' own, such as the
     /// Grove's training dummies, each a footprint and its top, m.
     extra_blocks: Vec<(crate::controller::Footprint, f32)>,
@@ -355,6 +357,7 @@ impl Everglade {
             bake: None,
             probes: None,
             baked: None,
+            repair_attempted: false,
             extra_blocks: Vec::new(),
             demolition: None,
             town: None,
@@ -749,6 +752,7 @@ impl Everglade {
         self.baked = choice
             .as_ref()
             .map(|choice| baked::BakedLight::new(choice, scene.clone()));
+        self.repair_attempted = false;
         self.bake = Some(BakeJob::start_layered(scene, light, settings, key, choice));
         self.probes = None;
     }
@@ -1478,6 +1482,26 @@ impl Everglade {
             && let Some(probes) = self.baked.as_mut().and_then(|b| b.update(&self.light))
         {
             self.probes = Some(Arc::new(probes));
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        if self.baked.as_ref().is_some_and(|baked| baked.active) {
+            let light = BakeLight::from_key(&self.key());
+            let minute =
+                self.now
+                    .day
+                    .saturating_mul(1440)
+                    .saturating_add((self.now.second / 60.0).floor() as i64) as u64;
+            if let Some(town) = &mut self.town {
+                if !self.repair_attempted {
+                    self.repair_attempted = true;
+                    if let Err(error) = town.enable_baked_repair(light) {
+                        eprintln!("verse: Could not start baked town light repair: {error}");
+                    }
+                }
+                if town.baked_repair_enabled() {
+                    town.poll_baked_repair(light, minute);
+                }
+            }
         }
     }
 
