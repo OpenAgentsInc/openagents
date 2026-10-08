@@ -50,7 +50,7 @@ impl Sources {
             .collect();
         let added: usize = needed
             .iter()
-            .filter(|(key, _)| !self.indices.contains_key(key))
+            .filter(|(key, _)| !self.indices.contains_key(*key))
             .map(|(_, vertices)| vertices.len())
             .sum();
         if self.vertices + added > town.pool.limit {
