@@ -81,6 +81,10 @@ def run(mode, zone, dry):
     query = '?frames&town-clock=off' + ('&gl' if mode == 'webgl2' else '')
     if zone == 'water':
         query += '&zone=water'
+    else:
+        # Lantern Pond's southern bank, facing the center. The default
+        # town spawn does not show a representative water footprint.
+        query += '&at=-2.43,21.13,0.1792'
     if dry:
         query += '&water-dry'
     page.call('Page.navigate', {'url':origin + '/index.html' + query})
@@ -106,6 +110,7 @@ def run(mode, zone, dry):
         time.sleep(1)
         page.eval('window.__waterFence.submitted')
     probe = page.eval("({api:window.__waterFence.api,samples:window.__waterFence.samples,errors:window.__waterFence.errors,size:[document.querySelector('canvas').width,document.querySelector('canvas').height],webgl2:!!document.querySelector('canvas').getContext('webgl2'),userAgent:navigator.userAgent})")['result']['value']
+    assert probe['size'] == [1920,1080], probe
     assert probe['webgl2'] == (mode == 'webgl2'), probe
     assert not probe['errors'], probe
     logs = console(page)
@@ -123,7 +128,7 @@ def run(mode, zone, dry):
     image.write_bytes(base64.b64decode(screenshot['data']))
     result = {'case':tag, 'mode':mode, 'tier':'low' if mode == 'webgl2' else 'medium',
               'high_tier':'not admitted on the browser platform', 'size':probe['size'],
-              'user_agent':probe['userAgent'], 'samples':samples,
+              'user_agent':probe['userAgent'], 'query':query, 'samples':samples,
               'gpu_timestamps_supported':any(s['gpu_timestamps'] for s in samples),
               'gpu_ms':summary([s['gpu']['water_ms'] for s in samples if s['gpu']]),
               'main_ms':summary([s['main_ms'] for s in samples]),
