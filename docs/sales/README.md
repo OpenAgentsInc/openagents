@@ -9,6 +9,9 @@ sales work, led by Paul from a building in Everglade. Product and payment
 documents retain their implementation contracts. These are public plans;
 customer records, compensation agreements, and negotiations stay private.
 
+The [implementation handoff](revenue-handoff.md) records the completed seven-issue
+scope, retained verification, owner activation, and the remaining build order.
+
 ## Contents
 
 - [Summary](#summary)
