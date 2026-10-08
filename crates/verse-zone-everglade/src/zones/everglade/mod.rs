@@ -1503,7 +1503,7 @@ impl Everglade {
                     .saturating_mul(1440)
                     .saturating_add((self.now.second / 60.0).floor() as i64) as u64;
             if let Some(town) = &mut self.town {
-                if !self.repair_attempted {
+                if !self.repair_attempted && (!cfg!(target_arch = "wasm32") || town.hidden() > 0) {
                     self.repair_attempted = true;
                     if let Err(error) = town.enable_baked_repair(light) {
                         eprintln!("verse: Could not start baked town light repair: {error}");
