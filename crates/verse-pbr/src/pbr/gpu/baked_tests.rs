@@ -12,6 +12,34 @@ use std::sync::Arc;
 const SIZE: u32 = 4;
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
 
+fn light_shader_source(gles: bool) -> String {
+    let shared = crate::shading::source(include_str!("../photo.wgsl"));
+    let production = verse_gfx::gles::wgsl(&shared, gles);
+    format!(
+        "{production}\nstruct TestLight {{ @location(0) ambient: vec4<f32>, @location(1) lamp: vec4<f32> }}\n@fragment fn fs_test_light(i: TexturedOut) -> TestLight {{ return TestLight(i.ambient, vec4<f32>(i.lamp, 1.0)); }}"
+    )
+}
+
+#[test]
+fn native_light_harness_expands_production_code_and_selects_each_backend_variant() {
+    for gles in [false, true] {
+        let source = light_shader_source(gles);
+        let module = naga::front::wgsl::parse_str(&source)
+            .unwrap_or_else(|error| panic!("{}", error.emit_to_string(&source)));
+        naga::valid::Validator::new(
+            naga::valid::ValidationFlags::all(),
+            naga::valid::Capabilities::empty(),
+        )
+        .validate(&module)
+        .unwrap_or_else(|error| panic!("{}", error.emit_to_string(&source)));
+        for entry in ["vs_textured", "fs_test_light"] {
+            assert!(module.entry_points.iter().any(|item| item.name == entry));
+        }
+        assert!(source.contains("fn water_gerstner("));
+        assert!(!source.contains("//#if"));
+    }
+}
+
 struct Harness {
     device: wgpu::Device,
     queue: wgpu::Queue,
@@ -86,10 +114,7 @@ impl Harness {
         });
         // Use the production vertex entry point. The test fragment reports its
         // decoded outputs before exposure, materials, or postprocessing vary them.
-        let source = format!(
-            "{}\nstruct TestLight {{ @location(0) ambient: vec4<f32>, @location(1) lamp: vec4<f32> }}\n@fragment fn fs_test_light(i: TexturedOut) -> TestLight {{ return TestLight(i.ambient, vec4<f32>(i.lamp, 1.0)); }}",
-            include_str!("../photo.wgsl")
-        );
+        let source = light_shader_source(capability.gles);
         let module = shader(&device, "baked test production vertex", &source);
         let targets = [0, 1].map(|_| {
             Some(wgpu::ColorTargetState {
