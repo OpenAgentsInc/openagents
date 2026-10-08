@@ -1,0 +1,29 @@
+{
+  "source": "f176dfa0c87b42ebc7bba3887b06c2ddfaafed56",
+  "files": {
+    "matrix-vulkan-native.json.gz": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-rtx-deferred/matrix-vulkan/native.json",
+      "sha256": "10f45462c4517aa9618b8a363b587f13c22a97e3e97c2f3ac67521d27e2db6ff"
+    },
+    "matrix-vulkan-run.log.gz": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-rtx-deferred/matrix-vulkan/run.log",
+      "sha256": "223344484aecf57d532b29000655b5c5b0c46922a8804abc48fa17ca6a9aef00"
+    },
+    "matrix-vulkan-gpu.json.gz": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-rtx-deferred/matrix-vulkan/gpu.json",
+      "sha256": "dcd7f988edf56e86c13161f3a9ac5cf8445ba74f9849d59eb4ed2ec25a3f7550"
+    },
+    "matrix-vulkan-quiet.json.gz": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-rtx-deferred/matrix-vulkan/quiet.json",
+      "sha256": "d81dfda2fe225808d6ca144bce77b606504c7e21004ce0ce403202a0852463ca"
+    },
+    "tests.log.gz": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-rtx-deferred/tests.log",
+      "sha256": "3d905ee21567ed7a8b237f980a31fc1d176dce0b95cfda0ff05f69a96f2ad7e6"
+    },
+    "executable.json.gz": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-rtx-deferred/executable.json",
+      "sha256": "38cce8b4377e0b82411d4dc1f86b249d33c2fe75357407a3684b57ae1949744b"
+    }
+  }
+}
