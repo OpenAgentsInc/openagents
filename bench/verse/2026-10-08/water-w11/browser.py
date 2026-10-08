@@ -3,6 +3,7 @@
 Run under openagents browser run against the candidate WASM test build.
 """
 import base64
+from datetime import datetime, timezone
 import hashlib
 import json
 import os
@@ -129,11 +130,13 @@ def run(mode, zone, dry):
         page.eval('window.__waterFence.submitted')
     page.events.clear()
     page.eval('window.__waterFence.samples=[]')
+    measured_at = datetime.now(timezone.utc).isoformat()
     measured = time.monotonic()
     while time.monotonic() - measured < 12:
         time.sleep(1)
         page.eval('window.__waterFence.submitted')
     probe = page.eval("({api:window.__waterFence.api,samples:window.__waterFence.samples,errors:window.__waterFence.errors,size:[document.querySelector('canvas').width,document.querySelector('canvas').height],webgl2:!!document.querySelector('canvas').getContext('webgl2'),userAgent:navigator.userAgent})")['result']['value']
+    elapsed = time.monotonic() - measured
     assert probe['size'] == [1920,1080], probe
     assert probe['webgl2'] == (mode == 'webgl2'), probe
     assert not probe['errors'], probe
@@ -150,7 +153,12 @@ def run(mode, zone, dry):
     screenshot = page.call('Page.captureScreenshot', {'format':'png'})
     image = destination / f'{tag}.png'
     image.write_bytes(base64.b64decode(screenshot['data']))
+    jobs = sum(s['completed_jobs'] for s in samples)
+    synthesis_ms = sum(s['completed_synthesis_ms'] for s in samples)
     result = {'case':tag, 'mode':mode, 'tier':admission['tier'],
+              'measured_at_utc':measured_at, 'measurement_elapsed_seconds':elapsed,
+              'water_log_frames':len(samples), 'queue_fence_completions':len(probe['samples']),
+              'measurement_window':'one-second renderer log batches observed during the dated interval',
               'high_tier':'not admitted on the browser platform', 'size':probe['size'],
               'user_agent':probe['userAgent'], 'query':query, 'samples':samples,
               'inputs':inputs, 'renderer_admission':admission, 'startup_responses':network,
@@ -160,9 +168,10 @@ def run(mode, zone, dry):
               'main_ms':summary([s['main_ms'] for s in samples]),
               'worker_ms':summary([s['worker_ms'] for s in samples]),
               'main_cpu_ms':None, 'worker_cpu_supported':False,
-              'completed_jobs':sum(s['completed_jobs'] for s in samples),
-              'completed_synthesis_ms':sum(s['completed_synthesis_ms'] for s in samples),
-              'per_job_elapsed_ms':summary([s['synthesis_ms'] for s in samples if s['completed_jobs']]),
+              'completed_jobs':jobs, 'completed_synthesis_ms':synthesis_ms,
+              'mean_completed_job_elapsed_ms':synthesis_ms/jobs if jobs else None,
+              'mean_completed_job_cpu_ms':None,
+              'observed_last_job_elapsed_ms':summary([s['synthesis_ms'] for s in samples if s['completed_jobs']]),
               'worker_bytes':max((s['worker_bytes'] for s in samples), default=0),
               'ripple_cpu_bytes':max((s['ripple_cpu_bytes'] for s in samples), default=0),
               'gpu_bytes':max((s['gpu_bytes'] for s in samples), default=0),

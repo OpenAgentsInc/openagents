@@ -124,7 +124,10 @@ where available; water residency and CPU admission remain active.
 Queue-fence estimates remain separate. Native CPU clocks measure
 thread CPU time. Worker cost counts completed synthesis jobs over the
 measurement interval, including superseded results; per-job duration is
-reported separately. The native bench paces actual display intervals at
+reported separately. Job means divide total completed work by its actual
+job count; last-job duration samples retain that label when several jobs
+finish in one display frame. Browser receipts date their interval and
+identify the one-second log batches observed within it. The native bench paces actual display intervals at
 60 Hz, so back-to-back frame bursts cannot hide worker cost. Missing GPU
 results neither advance nor reset the GPU overrun streak.
 Native correctness captures read the final measured 1920 × 1080 texture;
