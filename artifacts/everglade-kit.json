@@ -2,13 +2,16 @@
   "schema": "openagents.artifact.v1",
   "name": "everglade-kit",
   "description": "The licensed medieval kit pack: built from the private export by scripts/unreal/medieval_kit_build.py and compiled by the everglade_kit example, outside the repository. Only its digest and length are pinned, in everglade_pack/kit.rs; it regenerates only on a machine with the private export.",
-  "regenerate": "python3 scripts/unreal/medieval_kit_build.py >&2 && cargo run --release -p verse-zone-everglade --example everglade_kit",
+  "regenerate": "python3 scripts/unreal/medieval_kit_build.py >&2 && VERSE_KIT_HOUSE_BUILD=\"$HOME/.openagents/verse/private/medieval-town/kit-build\" cargo run --release -p verse-zone-everglade --example kit_house_check -- \"$OPENAGENTS_SCRATCH/kit-houses\" >&2 && \"$BLENDER\" -b --factory-startup -t 4 --python-exit-code 1 --python scripts/blender/medieval_house_levels.py -- \"$OPENAGENTS_SCRATCH/kit-houses\" \"$HOME/.openagents/verse/private/medieval-town/kit-build\" >&2 && cargo run --release -p verse-zone-everglade --example everglade_kit",
   "check": "cargo run --release -p verse-zone-everglade --example everglade_kit -- --check",
   "build_lease": true,
   "pinned": [],
   "pin": {
     "file": "crates/verse-zone-everglade/src/zones/everglade_pack/kit.rs",
-    "lines": ["pub const KIT_SHA256: &str = ", "pub const KIT_BYTES: u64 = "]
+    "lines": [
+      "pub const KIT_SHA256: &str = ",
+      "pub const KIT_BYTES: u64 = "
+    ]
   },
   "message": "Repin the Everglade kit pack with {changes}"
 }
