@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 const USAGE: &str = "usage: openagents-web [--store DIRECTORY] [--customer DIRECTORY] [--listen ADDRESS] \
 [--pay-host http://HOST:PORT] [--public-host HOST]... [--upstream http://HOST:PORT] \
-[--everglade DIRECTORY] [--components-build DIRECTORY] [--cloud-build DIRECTORY] \
+[--chat-store DIRECTORY | --chat-bucket BUCKET] [--chat-build DIRECTORY] [--everglade DIRECTORY] [--components-build DIRECTORY] [--cloud-build DIRECTORY] \
 [--cloud-config PRIVATE_JSON] [--cloud-hosts PRIVATE_JSON] [--pilot-config PRIVATE_JSON]";
 
 #[tokio::main]
@@ -11,6 +11,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let home = PathBuf::from(std::env::var_os("HOME").ok_or("HOME is unset")?);
     let mut config = openagents_web::Config::development(home.join(".openagents/tasks"));
     let mut listen: SocketAddr = "127.0.0.1:4300".parse()?;
+    let mut chat_bucket = std::env::var("OPENAGENTS_WEB_CHAT_BUCKET").ok();
     let mut pay_host = std::env::var("OPENAGENTS_WEB_PAY_HOST").ok();
     let mut upstream = std::env::var("OPENAGENTS_WEB_UPSTREAM").ok();
     let mut arguments = std::env::args().skip(1);
@@ -18,6 +19,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let value = arguments.next().ok_or(USAGE)?;
         match option.as_str() {
             "--store" => config.store = PathBuf::from(value),
+            "--chat-store" => {
+                chat_bucket = None;
+                config.chat_store = std::sync::Arc::new(openagents_web::chat_store::Store::local(
+                    PathBuf::from(value),
+                ))
+            }
+            "--chat-bucket" => chat_bucket = Some(value),
+            "--chat-build" => config.chat_build = Some(PathBuf::from(value)),
             "--customer" => config.customer = Some(PathBuf::from(value)),
             "--listen" => listen = value.parse().map_err(|_| USAGE)?,
             "--public-host" => config.public_hosts.push(value),
@@ -46,11 +55,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             _ => return Err(USAGE.into()),
         }
     }
+    let shared_chats = chat_bucket.is_some();
+    if let Some(bucket) = chat_bucket {
+        config.chat_store = std::sync::Arc::new(openagents_web::chat_store::Store::gcs(
+            bucket,
+            "conversations".into(),
+        )?);
+    }
     config.port = listen.port();
     // A public deployment is served over HTTPS behind its proxy.
     config.secure_cookies = !config.public_hosts.is_empty();
+    if config.secure_cookies && !shared_chats {
+        return Err(
+            "A public chat deployment requires --chat-bucket or OPENAGENTS_WEB_CHAT_BUCKET".into(),
+        );
+    }
     // Instances that share visitors share the secret their keys come from.
     if let Ok(salt) = std::env::var("OPENAGENTS_WEB_ASK_SALT") {
+        if salt.len() != 64 || !salt.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return Err("OPENAGENTS_WEB_ASK_SALT is not 64 hex characters".into());
+        }
         let bytes: Vec<u8> = (0..salt.len())
             .step_by(2)
             .filter_map(|at| salt.get(at..at + 2))
@@ -59,6 +83,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         config.ask_salt = bytes
             .try_into()
             .map_err(|_| "OPENAGENTS_WEB_ASK_SALT is not 64 hex characters")?;
+    } else if config.secure_cookies {
+        return Err("A public chat deployment requires OPENAGENTS_WEB_ASK_SALT".into());
     }
     // Paths the site doesn't own go to the previous server, if one is named.
     if let Some(url) = upstream.filter(|url| !url.is_empty()) {

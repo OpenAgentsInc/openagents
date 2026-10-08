@@ -18,71 +18,10 @@ const WASM: &str = "coder_components_web_bg.wasm";
 
 pub(crate) fn routes() -> Router<App> {
     Router::new()
-        .route("/demo", get(demo))
         .route("/components", get(index))
         .route("/components/{component}", get(component))
         .route("/components/manifest.json", get(manifest))
         .route("/components/assets/{file}", get(asset))
-}
-
-async fn demo(State(app): State<App>) -> Response {
-    let mut state = coder_ui::demo::DemoState::default();
-    state.select_onboarding();
-    let snapshot = coder_demo_ui::capture(&mut state, 110, 36);
-    let preview = coder_demo_ui::html(&snapshot);
-    let readable = escape(
-        &snapshot
-            .cells
-            .chunks(110)
-            .map(|row| {
-                row.iter()
-                    .map(|cell| cell.symbol.as_str())
-                    .collect::<String>()
-            })
-            .collect::<Vec<_>>()
-            .join("\n"),
-    );
-    let interactive = app
-        .config
-        .components_build
-        .as_ref()
-        .is_some_and(|dir| dir.join(GLUE).is_file() && dir.join(WASM).is_file());
-    let (status, script) = if interactive {
-        (
-            "Loading the local Rust demo…",
-            "<script type=\"module\" src=\"/components/assets/demo-start.js\"></script>",
-        )
-    } else {
-        (
-            "Static demo preview. Build the browser module to enable local interaction.",
-            "",
-        )
-    };
-    let chats = [
-        (5, "Set up OpenAgents", "Environment onboarding · saved v1"),
-        (0, "Coder workspace", "Four conversations in parallel"),
-        (1, "Keyboard navigation", "Draft editing and cursor restoration"),
-        (2, "Agent rail layout", "Wide and narrow layouts"),
-        (3, "Conversation switching", "Independent drafts and history"),
-        (4, "Preview colors", "Shared Coder Noir palette"),
-    ]
-    .into_iter()
-    .map(|(index, title, detail)| {
-        let selected = if index == 5 { " aria-current=\"true\"" } else { "" };
-        format!(
-            "<button type=\"button\" id=\"demo-chat-{index}\" class=\"demo-chat\" data-demo-chat=\"{index}\"{selected}><span class=\"demo-chat-title\">{title}</span><span class=\"demo-chat-detail\">{detail}</span></button>"
-        )
-    })
-    .collect::<String>();
-    let html = format!(
-        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="dark"><title>Environment onboarding demo · OpenAgents</title><link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/components/assets/native.css"><link rel="stylesheet" href="/components/assets/demo.css"></head><body><div id="demo-root"><aside id="demo-sidebar" aria-label="Chat sidebar"><a class="demo-brand" href="/demo">OpenAgents<span>Workspace</span></a><nav aria-label="Chats"><h2>Chats</h2>{chats}</nav><section class="demo-flow" aria-label="Onboarding stages"><h2>Environment setup</h2><ol><li>Discover the repository</li><li>Install and repair</li><li>Build a clean image</li><li>Verify a fresh machine</li><li>Review and save</li><li>Run the first task</li></ol></section><p class="demo-disclosure">Demo conversations<br>Machines and results are simulated.</p></aside><main id="demo-workspace" aria-label="Demo conversation"><section id="demo-header" aria-label="Conversation overview"><div><p class="demo-eyebrow">OpenAgents / Engineering <span class="demo-badge">Demo</span></p><h1 id="demo-chat-heading">Set up OpenAgents</h1><p id="demo-chat-description">From repository discovery to the first task on a saved environment.</p></div><div class="demo-history-controls" aria-label="Conversation navigation"><button type="button" id="demo-history-start">Beginning</button><button type="button" id="demo-history-end">Latest</button></div></section><div id="demo-mount">{preview}</div><pre id="demo-readable" aria-label="Conversation text">{readable}</pre></main></div><p id="demo-status" role="status">{status}</p><pre id="demo-initial" hidden>{{"schema":"openagents.coder.demo.v1"}}</pre>{script}</body></html>"#
-    );
-    let mut response = Html(html).into_response();
-    response.headers_mut().insert(
-        header::CONTENT_SECURITY_POLICY,
-        HeaderValue::from_static(POLICY),
-    );
-    response
 }
 
 #[derive(Default, Deserialize)]

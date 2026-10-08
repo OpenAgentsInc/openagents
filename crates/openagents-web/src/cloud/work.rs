@@ -9,7 +9,8 @@ use axum::Router;
 use axum::extract::rejection::QueryRejection;
 use axum::extract::{Path, Query, State};
 use axum::http::HeaderMap;
-use axum::response::{IntoResponse, Json, Redirect, Response};
+use axum::http::HeaderValue;
+use axum::response::{Html, IntoResponse, Json, Redirect, Response, Sse, sse::Event};
 use axum::routing::get;
 use base64::{
     Engine,
@@ -18,9 +19,12 @@ use base64::{
 use coder_access::protocol::{Operation, Outcome};
 use coder_access::task_read::{self, ListQuery, OriginalQuery, PageQuery, Scope};
 use coder_ui::observation;
+use futures_util::stream;
+use maud::{PreEscaped, html};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
+use std::{convert::Infallible, time::Duration};
 
 pub(super) fn routes() -> Router<App> {
     Router::new()
@@ -31,6 +35,7 @@ pub(super) fn routes() -> Router<App> {
             get(original),
         )
         .route("/cloud/app/hosts/{binding}/standing", get(standing))
+        .route("/cloud/app/hosts/{binding}/watch", get(watch))
 }
 
 #[derive(Deserialize, Default)]
@@ -168,6 +173,10 @@ fn task_id(value: &str) -> bool {
 #[serde(deny_unknown_fields)]
 struct PageInput {
     cursor: Option<String>,
+    #[serde(default)]
+    fragment: bool,
+    pin: Option<String>,
+    identity: Option<String>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -767,6 +776,9 @@ async fn tasks(
         Ok(value) => value,
         Err(response) => return response,
     };
+    if let Err(response) = verify_fragment(service, &headers, binding, &viewer, &input).await {
+        return response;
+    }
     let cursor = match input
         .cursor
         .as_deref()
@@ -855,18 +867,17 @@ async fn tasks(
             escape(binding.id())
         ));
     }
-    let resource = match resource(binding, &Pin::List {}, &viewer) {
-        Ok(v) => v,
-        Err(e) => return refused(e),
-    };
-    workspace_shell(
+    observed(
         &app,
         &headers,
         service,
         &viewer,
-        "tasks",
-        Some(&content),
-        Some(resource),
+        binding,
+        &input,
+        &Pin::List {},
+        "cloud-list-content",
+        &format!("/cloud/app/hosts/{}/tasks", binding.id()),
+        &content,
     )
 }
 
@@ -886,6 +897,9 @@ async fn task(
         Ok(v) => v,
         Err(r) => return r,
     };
+    if let Err(response) = verify_fragment(service, &headers, binding, &viewer, &input).await {
+        return response;
+    }
     let cursor = match input
         .cursor
         .as_deref()
@@ -921,7 +935,7 @@ async fn task(
         Err(r) => return r,
     };
     let mut content = format!(
-        "<p><a href=\"/cloud/app/hosts/{}/tasks\">Resident tasks</a> · <a href=\"/cloud/app/hosts/{}/tasks/{}\">Refresh this task</a></p><p>Resident generation {}. This page is a bounded original snapshot; refresh to read newer records.</p>",
+        "<p><a href=\"/cloud/app/hosts/{}/tasks\">Resident tasks</a> · <a href=\"/cloud/app/hosts/{}/tasks/{}\">Reopen this task</a></p><p>Resident generation {}. Bounded original evidence refreshes while this admission remains current. Reopen the task after its source or revision changes.</p>",
         escape(&id),
         escape(&id),
         escape(&task),
@@ -1097,19 +1111,306 @@ async fn task(
         scope: page.scope.clone(),
         source: page.evidence.original.as_ref().map(|o| o.source.clone()),
     };
-    let resource = match resource(binding, &pin, &viewer) {
-        Ok(v) => v,
-        Err(e) => return refused(e),
-    };
-    workspace_shell(
+    observed(
         &app,
         &headers,
         service,
         &viewer,
+        binding,
+        &input,
+        &pin,
+        "cloud-task-content",
+        &format!("/cloud/app/hosts/{}/tasks/{task}", binding.id()),
+        &content,
+    )
+}
+
+/// Keep the admitted shell and all reviewed forms outside the observation swap.
+async fn verify_fragment(
+    service: &CloudSession,
+    headers: &HeaderMap,
+    binding: &Binding,
+    viewer: &Viewer,
+    input: &PageInput,
+) -> Result<(), Response> {
+    if !input.fragment {
+        return Ok(());
+    }
+    let (encoded, identity) = input
+        .pin
+        .as_deref()
+        .zip(input.identity.as_deref())
+        .ok_or_else(|| refused(SessionError::InvalidRequest))?;
+    let pin: Pin = decode(encoded).map_err(refused)?;
+    if pin_identity(binding, &pin, viewer) != identity {
+        return Err(refused(SessionError::Conflict));
+    }
+    let operation = watch_operation(binding, &pin).map_err(refused)?;
+    // Recheck the original source prefix before reading a newer projection.
+    let answer = read(service, headers, binding, viewer, operation.clone()).await?;
+    if !watch_answer(&pin, &operation, &answer) {
+        return Err(refused(SessionError::Conflict));
+    }
+    Ok(())
+}
+
+/// Project a read without replacing its original admission descriptor.
+#[allow(clippy::too_many_arguments)]
+fn observed(
+    app: &App,
+    headers: &HeaderMap,
+    service: &CloudSession,
+    viewer: &Viewer,
+    binding: &Binding,
+    input: &PageInput,
+    pin: &Pin,
+    element: &str,
+    path: &str,
+    content: &str,
+) -> Response {
+    let identity = pin_identity(binding, pin, viewer);
+    if input.fragment {
+        let Some((encoded, expected)) = input.pin.as_deref().zip(input.identity.as_deref()) else {
+            return refused(SessionError::InvalidRequest);
+        };
+        let original: Pin = match decode(encoded) {
+            Ok(value) => value,
+            Err(error) => return refused(error),
+        };
+        if watch_operation(binding, &original).is_err()
+            || pin_identity(binding, &original, viewer) != identity
+            || expected != identity
+        {
+            return refused(SessionError::Conflict);
+        }
+        let mut response = protect(Html(content.to_owned()).into_response());
+        let standing = json!({"active":true,"identity":identity}).to_string();
+        if let Ok(value) = HeaderValue::from_str(&standing) {
+            response
+                .headers_mut()
+                .insert("x-openagents-resource", value);
+        }
+        return response;
+    }
+    if input.pin.is_some() || input.identity.is_some() {
+        return refused(SessionError::InvalidRequest);
+    }
+    let encoded = match encode(pin) {
+        Ok(value) => value,
+        Err(error) => return refused(error),
+    };
+    let resource = match resource(binding, pin, viewer) {
+        Ok(value) => value,
+        Err(error) => return refused(error),
+    };
+    let cursor = input
+        .cursor
+        .as_deref()
+        .map_or_else(String::new, |cursor| format!("&cursor={cursor}"));
+    let refresh = format!("{path}?fragment=true&pin={encoded}&identity={identity}{cursor}");
+    let watch = format!(
+        "/cloud/app/hosts/{}/watch?pin={encoded}&identity={identity}",
+        binding.id()
+    );
+    let content = html! {
+        section id="cloud-observation" hx-ext="sse" sse-connect=(watch) sse-close="retire" {
+            div id="cloud-live-status" sse-swap="gap,retire" hx-swap="innerHTML" aria-live="polite" {
+                p class="dim" { "Observing canonical records. A changed source or admission requires a fresh view." }
+            }
+            div id=(element) hx-get=(refresh) hx-trigger="sse:refresh,sse:gap"
+                hx-target="this" hx-swap="innerHTML" hx-sync="this:drop" {
+                (PreEscaped(content))
+            }
+        }
+    }.into_string();
+    workspace_shell(
+        app,
+        headers,
+        service,
+        viewer,
         "tasks",
         Some(&content),
         Some(resource),
     )
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WatchInput {
+    pin: String,
+    identity: String,
+}
+
+fn watch_operation(binding: &Binding, pin: &Pin) -> Result<Operation, SessionError> {
+    match pin {
+        Pin::List {} => Ok(Operation::ListTasks {
+            query: ListQuery {
+                workspace: binding.workspace().into(),
+                cursor: None,
+                limit: 1,
+            },
+        }),
+        Pin::Task { query, scope, .. }
+            if query.workspace == binding.workspace()
+                && scope.workspace == binding.workspace()
+                && query.task == scope.task
+                && query.revision == Some(scope.revision)
+                && query.limit == 1
+                && query.validate().is_ok()
+                && scope.validate().is_ok() =>
+        {
+            Ok(Operation::ReadTask {
+                query: query.clone(),
+            })
+        }
+        _ => Err(SessionError::InvalidRequest),
+    }
+}
+
+fn watch_answer(pin: &Pin, operation: &Operation, answer: &Outcome) -> bool {
+    match (pin, operation, answer) {
+        (Pin::List {}, Operation::ListTasks { query }, Outcome::Tasks { tasks }) => {
+            tasks.validate().is_ok() && tasks.answers(query)
+        }
+        (
+            Pin::Task { scope, source, .. },
+            Operation::ReadTask { query },
+            Outcome::Task { task },
+        ) => {
+            task.validate().is_ok()
+                && task.answers(query)
+                && task.scope == *scope
+                && task
+                    .evidence
+                    .original
+                    .as_ref()
+                    .map(|original| &original.source)
+                    == source.as_ref()
+        }
+        _ => false,
+    }
+}
+
+struct Watch {
+    app: App,
+    headers: HeaderMap,
+    binding: String,
+    pin: Pin,
+    identity: String,
+    previous: Option<String>,
+    first: bool,
+    reads: u16,
+    ended: bool,
+}
+
+async fn watch(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    input: Result<Query<WatchInput>, QueryRejection>,
+) -> Response {
+    let Ok(Query(input)) = input else {
+        return refused(SessionError::InvalidRequest);
+    };
+    let (_, viewer, binding) = match admitted(&app, &headers, &id).await {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let pin: Pin = match decode(&input.pin) {
+        Ok(value) => value,
+        Err(error) => return refused(error),
+    };
+    if watch_operation(binding, &pin).is_err()
+        || input.identity != pin_identity(binding, &pin, &viewer)
+    {
+        return refused(SessionError::Conflict);
+    }
+    let prefix = format!("v1:{}:", input.identity.trim_start_matches("sha256:"));
+    let previous = match headers.get("last-event-id") {
+        None => None,
+        Some(value) => {
+            let Some(value) = value.to_str().ok().filter(|value| {
+                value.strip_prefix(&prefix).is_some_and(|digest| {
+                    digest.len() == 64 && digest.bytes().all(|byte| byte.is_ascii_hexdigit())
+                })
+            }) else {
+                return refused(SessionError::Conflict);
+            };
+            Some(value.into())
+        }
+    };
+    let state = Watch {
+        app,
+        headers,
+        binding: id,
+        pin,
+        identity: input.identity,
+        previous,
+        first: true,
+        reads: 0,
+        ended: false,
+    };
+    let stream = stream::unfold(state, |mut state| async move {
+        if state.ended {
+            return None;
+        }
+        if !state.first {
+            tokio::time::sleep(Duration::from_secs(5)).await;
+        }
+        let snapshot = watch_snapshot(&state).await;
+        state.reads += 1;
+        let event = match snapshot {
+            Some(digest) if state.reads <= 120 => {
+                let id = format!(
+                    "v1:{}:{}",
+                    state.identity.trim_start_matches("sha256:"),
+                    digest.trim_start_matches("sha256:")
+                );
+                if state.previous.as_ref() == Some(&id) {
+                    Event::default().comment("canonical standing checked")
+                } else {
+                    let gap = state.first && state.previous.is_some();
+                    state.previous = Some(id.clone());
+                    let data = if gap {
+                        html! { p class="dim" { "The canonical snapshot changed while detached. Reading the current bounded projection; original records remain available below." } }.into_string()
+                    } else {
+                        "Canonical snapshot changed".into()
+                    };
+                    Event::default()
+                        .event(if gap { "gap" } else { "refresh" })
+                        .id(id)
+                        .data(data)
+                }
+            }
+            _ => {
+                state.ended = true;
+                Event::default().event("retire").data(html! {
+                    p { "Observation stopped. Reopen this view to check current account, host, and original source standing." }
+                }.into_string())
+            }
+        };
+        state.first = false;
+        Some((Ok::<_, Infallible>(event), state))
+    });
+    let mut response = protect(Sse::new(stream).into_response());
+    response
+        .headers_mut()
+        .insert("x-accel-buffering", HeaderValue::from_static("no"));
+    response
+}
+
+async fn watch_snapshot(state: &Watch) -> Option<String> {
+    let (service, viewer, binding) = admitted(&state.app, &state.headers, &state.binding)
+        .await
+        .ok()?;
+    if pin_identity(binding, &state.pin, &viewer) != state.identity {
+        return None;
+    }
+    let operation = watch_operation(binding, &state.pin).ok()?;
+    let answer = read(service, &state.headers, binding, &viewer, operation.clone())
+        .await
+        .ok()?;
+    watch_answer(&state.pin, &operation, &answer).then(|| metadata_digest(&json!(answer)))
 }
 
 fn original_url(
@@ -1143,6 +1444,9 @@ async fn original(
     let Ok(Query(input)) = input else {
         return refused(SessionError::InvalidRequest);
     };
+    if input.fragment || input.pin.is_some() || input.identity.is_some() {
+        return refused(SessionError::InvalidRequest);
+    }
     let Some(input) = input.cursor else {
         return refused(SessionError::InvalidRequest);
     };

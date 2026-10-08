@@ -10,8 +10,8 @@ The site, catalog, Cloud, and demo use Coder Noir from
 accents and cursors. Shared semantic CSS tokens preserve the native palette,
 including status colors and translucent control states. The game scenes retain
 their content colors. The interactive pages run scripts under a
-policy that allows its one same-site script and same-origin requests: the
-homepage composer (`static/chat.js`, form posts to `/chat`), `/live`'s
+policy that allows same-site scripts and same-origin requests: the
+homepage and chat composer (HTMX with a small Rust/Wasm interaction adapter), `/live`'s
 map (`static/flow.js`, requests to `/api/flow/*`, drawn on a canvas in the
 application theme's colors), and `/everglade`'s loader (`static/everglade.js`),
 whose policy also allows `'wasm-unsafe-eval'` to compile the Everglade
@@ -42,11 +42,53 @@ fresh verification, Save, and a first task on the saved version. Its chat
 sidebar also keeps the original five demo conversations, with independent
 drafts, messages, and scroll positions. **Beginning** and **Latest** navigate
 the selected history. Keyboard controls, plugin settings, and the model picker
-remain available. The
-shared `coder-ui::demo` controller renders through the portable
-`coder-demo-ui` HTML/CSS adapter, mounted as a Rust Native surface. Typing
-updates changed rows while preserving the rest of the page. It uses
-the same Wasm build as the catalog and has no site header or footer.
+remain available. Axum and Maud render the shared `coder-ui::demo` fixtures as
+HTML; HTTP fragments and SSE update the selected conversation. The small
+`coder-chat-web` Rust/Wasm adapter preserves drafts, caret, and scroll in page
+memory. Ordinary chat and demo pages do not load the catalog's Wasm build.
+The demo has no site header or footer and starts no provider work.
+
+## Durable public chat
+
+The homepage submits `POST /chat` and redirects to `/chat/{uuid}`. Axum owns
+conversation commands and worker observation; Maud renders HTML, and HTMX
+performs HTTP fragment swaps and receives SSE updates. The small
+`coder-chat-web` adapter keeps immediate editing, drafts, focus, and scroll in
+the browser. It uses no persistent browser storage and grants no execution
+rights. The existing chat worker still answers with the `web` policy.
+
+Each server-issued form carries a UUID request identity and cookie-bound CSRF
+ticket. The `oa_visitor` HttpOnly cookie scopes every conversation read and
+write. Exact retries recover the existing request; a changed message with the
+same identity is refused. A durable visitor lease admits one answer at a time
+across replicas. Answers continue independently of the browser's SSE connection.
+
+`GET /chat/{uuid}/workspace` swaps the selected chat, `/transcript` pages its
+retained messages, and `/events` sends revision-tagged transcript snapshots.
+Superseded projections produce an explicit gap notice. Original message text
+remains available through `/messages/{index}/original` in bounded chunks;
+rendering escapes source text and does not execute returned markup.
+
+Use `--chat-store DIRECTORY` for restart-durable local records. It uses private
+files, operating-system locks, fsync, and atomic replacement. Production uses
+`--chat-bucket BUCKET`, a private Google Cloud Storage bucket under the
+`conversations/` prefix. Metadata-service OAuth uses the runtime service account,
+which needs object read, create, delete, and list permissions. Enable bucket object versioning so a read can finish against its captured
+generation while another replica writes. Object-generation
+preconditions fence concurrent writes; storage failure never selects a local
+fallback. Set the same secret `OPENAGENTS_WEB_ASK_SALT` (64 hex characters) on
+all replicas and revisions for stable worker identities and CSRF tickets.
+
+Build `coder-chat-web` for `wasm32-unknown-unknown`, generate its JavaScript glue
+with `scripts/build-coder-chat-web.sh OUTPUT`, and pass that output as
+`--chat-build DIRECTORY`.
+The directory supplies `coder_chat_web.js` and `coder_chat_web_bg.wasm` only.
+The worker door cannot resume a lost process or recover ephemeral relay events.
+An interrupted pending request becomes `Unknown` when next observed after
+180 seconds, preserving its partial answer and preventing automatic replay.
+Public deployments require the bucket and shared salt at startup.
+Production must retain CPU outside requests for background answer observation.
+The former `POST /ask` route returns `410` and links to the homepage.
 
 ## Run the component catalog
 
@@ -85,6 +127,9 @@ the `Host` headers `127.0.0.1:4300` and `localhost:4300`.
 | `--store DIRECTORY` | `~/.openagents/tasks` | The task store `/app` reads. It is never created. |
 | `--listen ADDRESS` | `127.0.0.1:4300` | The address to bind. |
 | `--public-host HOST` | none | Another `Host` header the public pages answer, such as `openagents.com`. Repeatable. The task browser still answers only the local hosts. |
+| `--chat-store DIRECTORY` | A sibling `web-chats` directory next to `--store` | Private, restart-durable public conversation records on one machine. |
+| `--chat-bucket BUCKET` | none | Private shared conversation records and visitor leases in Google Cloud Storage; replaces local chat storage. |
+| `--chat-build DIRECTORY` | none | Generated `coder_chat_web.js` and `coder_chat_web_bg.wasm` for composer and scroll interaction. |
 | `--components-build DIRECTORY` | none | The generated `coder_components_web.js` and `coder_components_web_bg.wasm` files for local catalog interaction. Only these names are served. |
 | `--cloud-build DIRECTORY` | none | Rust/Wasm private-view lifecycle assets built by `scripts/build-coder-cloud-web.sh`. Private content waits for current account and resource standing before display. |
 | `--cloud-config PRIVATE_JSON` | none | Explicit account-service origin, public origin, and protected CSRF key. Native user sessions and current workspace membership scope each request. |
@@ -92,8 +137,9 @@ the `Host` headers `127.0.0.1:4300` and `localhost:4300`.
 | `--everglade DIRECTORY` | none | The Everglade web build (`scripts/build-everglade-web.sh`'s output, `everglade_web.js` and `everglade_web_bg.wasm`) with the pinned pack under `pack/`, served at `/everglade`. Without it, `/everglade` says Everglade is unavailable. |
 | `--pilot-config PRIVATE_JSON` | none | Explicit task root and create-only intake credential. `/pilot` answers 404; POST intake stays available to the configured pipeline. |
 
-A development server needs no secrets and makes no network requests:
-everything it serves is compiled in or read from this repository.
+A development server renders public pages without secrets. Sending a real
+chat message reaches the OpenAgents chat worker; synthetic demo conversations
+connect to no provider or account.
 
 ## Styles
 
@@ -116,11 +162,11 @@ colors map to the Coder Noir `--noir-*` variables.
 | Route | Source | Development server |
 | --- | --- | --- |
 | `/` | A composer, centered between the header and the footer, that starts `/chat/{uuid}` | Renders. |
-| `/chat`, `/chat/{uuid}` | In-memory chat started from the homepage composer | Renders in this process; a restart forgets the chat. |
+| `/chat`, `/chat/{uuid}` | Durable visitor-owned worker conversations started from the homepage composer | Local storage survives restarts; answers require the live chat worker. |
 | `/download` | `src/pages/download.rs`: the notarized OpenAgents for Mac `.dmg` in `openagentsgemini-oa-updates`, OpenAgents Terminal's install commands, and one link to build everything else from source | Renders. |
 | `/pilot`, `/pilot/install` | Archived Coder-pilot offer copy in `src/pilot.rs` (`ARCHIVED_OFFER`, `ARCHIVED_INSTALL`) | `404`. |
 | `/install`, `/desktop` | Permanent redirect (`308`) to `/download`, so older links keep working | Redirects. |
-| `POST /ask` | Former homepage terminal questions (`src/ask.rs`, #10106): a NIP-CJ job to the OpenAgents chat worker through `relay.openagents.com`, surface `web`, signed with a key derived from the visitor's `oa_visitor` cookie and the server's secret (`OPENAGENTS_WEB_ASK_SALT`, random per process when unset). The worker answers about OpenAgents only and never offers Coder, a computer, a command, or a screen. One question at a time and 6 a minute per visitor, 32 waiting at once for everyone, besides the worker's quotas. Streams newline-delimited JSON | Answers from the live chat worker. |
+| `POST /ask` | Retired homepage terminal route; links to the homepage without dispatching work | `410`. |
 | `/docs`, `/docs/{slug}` | `content/docs/*.md`, short guides in reading order, compiled in: what OpenAgents is, download (`/docs/install` redirects to `/docs/download`), connecting a computer, chat, Coder, plugins (what they are, writing, testing, publishing and sharing), the Verse, the Grid (with its screenshot, `static/verse-grid.jpg`, captured from the live relay with `crates/verse/examples/overlook_capture.rs`), privacy and security, and help | Renders. |
 | `/live` | `src/pages/live.rs` and `static/flow.js` (#10197): the route map drawn from the pay host's flow snapshot, each streamed event animated as the desktop deck's `routes-live` scene does (white request out, gold payment back, gold share to the author, gold payout to the wallet, a ring for a bonus), a totals ticker, the last event's time, and the recent events. Reads `/api/flow/snapshot` and `/api/flow/stream` on this origin (#10195); never draws synthetic traffic. The mapping's tests are `static/flow.test.js` (`node --test`) | Says the flow stream is unreachable until `/api/flow/*` answers. |
 | `/everglade` | `src/pages/everglade.rs` and `static/everglade.js` (#10525): a canvas that fills the window, with no site header or footer and no page zoom, and a loader that imports the Everglade web build's glue (#10524) and calls its `init()`. `/everglade/{file}` serves the `.js` and `.wasm` files in the `--everglade` directory (five minutes' cache) and `/everglade/pack/{sha256}.vtp` the digest-named pack in its `pack/` (a year's immutable cache); nothing else on disk. Policy: same-origin scripts and requests and `'wasm-unsafe-eval'`. The Verse guide links it. The glue's file name is `GLUE` in `src/pages/everglade.rs` and must match the build script's output | Says Everglade is unavailable unless started with `--everglade DIR`. |
@@ -130,7 +176,7 @@ colors map to the Coder Noir `--noir-*` variables.
 | `/.well-known/apple-app-site-association`, `/.well-known/assetlinks.json` | Universal link and App Link claims for `/connect` | Serves. |
 | `/u/{login}` | `Backend::profile` | Says the backend isn't connected. |
 | `/components`, `/components/{component}` | Shared Coder components, named synthetic variants, typed controls, source references, and full screen previews | Renders; Rust/Wasm interaction requires `--components-build`. |
-| `/demo` | Environment onboarding and original Coder demo conversations, with a chat sidebar, HTML/CSS renderer, and local Rust controller | Static onboarding frame; Rust/Wasm interaction requires `--components-build`. |
+| `/demo` | Server-rendered environment onboarding and original Coder fixture conversations, with HTTP and SSE updates | Renders without the catalog Wasm build; local editing requires `--chat-build`. |
 | `/cloud`, `/cloud/sign-in`, `/cloud/app` | Public availability and the native account/workspace shell | Public entry renders; private pages require explicit native account configuration and the Cloud Wasm build. |
 | `/cloud/app/hosts/{binding}/tasks`, `/cloud/app/hosts/{binding}/tasks/{task}` | Bounded, signed resident task reads under current Observe authority; original ATIF messages, tools, child references, checks, cost, and source pins | Requires a separately provisioned host binding. It reads no local `/app` records. |
 | `/app`, `/app/tasks/{id}` | The local task store | Reads the store; local hosts only. |
@@ -329,8 +375,8 @@ no script except the homepage terminal's, `/live`'s map, and
 `/everglade`'s loader (`/stats` is drawn on the server); `/everglade`'s
 policy, its build files' and pack's content types and caches, and that no
 other file or path outside its directory is served; the homepage's single download
-link and its terminal; The Grid guide's screenshot; `/ask`'s stream, cookie,
-bounds, and one-at-a-time rule, against an in-process door;
+link and its composer; The Grid guide's screenshot; `/ask`'s retirement,
+homepage link, and absence of visitor-cookie creation;
 the download page and the `/install`, `/desktop`, and `/docs/install` redirects; that the legal pages carry the
 published text; that application styles share the native Coder Noir tokens and
 that primary and secondary text meet WCAG AA; the `/connect` page's policy and the association

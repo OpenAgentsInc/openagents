@@ -25,12 +25,16 @@ RUN rustup target add wasm32-unknown-unknown \
     && cargo install --locked wasm-bindgen-cli --version "$version"
 COPY . .
 RUN cargo build --locked --release --target wasm32-unknown-unknown \
-        -p coder-components-web -p coder-cloud-web \
-    && mkdir -p /build/components /build/cloud \
+        -p coder-components-web -p coder-cloud-web -p coder-chat-web \
+    && mkdir -p /build/components /build/cloud /build/chat \
     && wasm-bindgen --target web --no-typescript --out-dir /build/components \
         target/wasm32-unknown-unknown/release/coder_components_web.wasm \
     && wasm-bindgen --target web --no-typescript --out-dir /build/cloud \
         target/wasm32-unknown-unknown/release/coder_cloud_web.wasm \
+    && wasm-bindgen --target web --no-typescript --out-dir /build/chat \
+        target/wasm32-unknown-unknown/release/coder_chat_web.wasm \
+    && test -s /build/chat/coder_chat_web.js \
+    && test -s /build/chat/coder_chat_web_bg.wasm \
     && test -s /build/components/coder_components_web.js \
     && test -s /build/components/coder_components_web_bg.wasm \
     && test -s /build/cloud/coder_cloud_web.js \
@@ -40,3 +44,4 @@ FROM ${LIVE_WEB_IMAGE} AS site
 COPY --from=builder /build/target/release/openagents-web /usr/local/bin/openagents-web
 COPY --from=components /build/components /srv/components
 COPY --from=components /build/cloud /srv/cloud
+COPY --from=components /build/chat /srv/chat

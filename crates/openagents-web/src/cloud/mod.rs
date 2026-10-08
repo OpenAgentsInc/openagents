@@ -207,7 +207,13 @@ fn page(body: &str) -> Response {
     let body = format!(
         "<div class=\"cloud\">{body}</div><script type=\"module\" src=\"/cloud/assets/start.js\"></script>"
     );
-    let html = document("Workspace", Some("/cloud"), &body).replace("</head>", "<link rel=\"stylesheet\" href=\"/cloud/assets/cloud.css\"><link rel=\"stylesheet\" href=\"/cloud/assets/native.css\"></head>");
+    let html = document("Workspace", Some("/cloud"), &body).replace(
+        "</head>",
+        &format!(
+            "{}<link rel=\"stylesheet\" href=\"/cloud/assets/cloud.css\"><link rel=\"stylesheet\" href=\"/cloud/assets/native.css\"></head>",
+            crate::chat_html::head().into_string()
+        ),
+    );
     protect(axum::response::Html(html).into_response())
 }
 
@@ -538,7 +544,7 @@ fn workspace_shell(
         ticket(&csrf)
     );
     page(&format!(
-        "<section id=\"cloud-resume\" aria-live=\"polite\"><h1>Workspace</h1><p>Reopen this view to check current account standing.</p><p><a href=\"/cloud/app\">Reopen workspace</a></p>{local_logout}</section><div id=\"cloud-private\" hidden><pre id=\"cloud-standing\" hidden>{initial}</pre>{resource}<div class=\"cloud-layout\"><aside class=\"cloud-sidebar\"><h1>Workspace</h1><nav aria-label=\"Workspace\">{nav}</nav><h2>Choose workspace</h2><div class=\"cloud-switcher\">{switcher}</div><form method=\"post\" action=\"/cloud/sign-out\">{}<button type=\"submit\">Sign out</button></form></aside><section class=\"cloud-main\">{summary}<hr>{content}</section></div></div>",
+        "<section id=\"cloud-resume\" aria-live=\"polite\"><h1>Workspace</h1><p>Reopen this view to check current account standing.</p><p><a href=\"/cloud/app\">Reopen workspace</a></p>{local_logout}</section><div id=\"cloud-private\" hx-history=\"false\" hidden><pre id=\"cloud-standing\" hidden>{initial}</pre>{resource}<div class=\"cloud-layout\"><aside class=\"cloud-sidebar\"><h1>Workspace</h1><nav aria-label=\"Workspace\">{nav}</nav><h2>Choose workspace</h2><div class=\"cloud-switcher\">{switcher}</div><form method=\"post\" action=\"/cloud/sign-out\">{}<button type=\"submit\">Sign out</button></form></aside><section class=\"cloud-main\">{summary}<hr>{content}</section></div></div>",
         ticket(&csrf)
     ))
 }

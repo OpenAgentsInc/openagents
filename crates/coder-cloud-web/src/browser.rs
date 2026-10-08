@@ -3,7 +3,7 @@ use crate::resource::{MAX_RESOURCE_BYTES, Resource};
 use crate::{MAX_STANDING_BYTES, Privacy};
 use futures_util::future::{Either, select};
 use gloo_timers::future::TimeoutFuture;
-use js_sys::{Reflect, Uint8Array};
+use js_sys::{Function, Object, Reflect, Uint8Array};
 use std::{
     cell::{Cell, RefCell},
     rc::Rc,
@@ -36,6 +36,7 @@ struct Runtime {
     pending: RefCell<Option<AbortController>>,
     listeners: RefCell<Vec<Listener>>,
     revealed: Cell<bool>,
+    retired: Cell<bool>,
 }
 
 struct Login {
@@ -92,6 +93,7 @@ pub fn start() -> Result<(), JsValue> {
         pending: RefCell::new(None),
         listeners: RefCell::new(Vec::new()),
         revealed: Cell::new(false),
+        retired: Cell::new(false),
     });
     if !runtime.visible_and_admitted() || invalid_resource {
         runtime.retire();
@@ -103,6 +105,15 @@ pub fn start() -> Result<(), JsValue> {
         (runtime.window.clone().into(), "pageshow"),
     ] {
         runtime.listen(target, name)?;
+    }
+    for name in [
+        "htmx:beforeRequest",
+        "htmx:beforeSwap",
+        "htmx:sseBeforeMessage",
+        "htmx:sseError",
+        "htmx:sendError",
+    ] {
+        runtime.listen_htmx(name)?;
     }
     ACTIVE.with(|active| *active.borrow_mut() = Some(runtime.clone()));
     spawn_local(async move { runtime.poll().await });
@@ -174,7 +185,7 @@ impl Drop for Login {
 
 impl Runtime {
     fn visible_and_admitted(&self) -> bool {
-        !self.document.hidden() && self.privacy.borrow().active(now())
+        !self.retired.get() && !self.document.hidden() && self.privacy.borrow().active(now())
     }
 
     fn listen(self: &Rc<Self>, target: EventTarget, name: &'static str) -> Result<(), JsValue> {
@@ -191,10 +202,116 @@ impl Runtime {
         Ok(())
     }
 
+    fn listen_htmx(self: &Rc<Self>, name: &'static str) -> Result<(), JsValue> {
+        let weak = Rc::downgrade(self);
+        let callback = Closure::wrap(Box::new(move |event: Event| {
+            let Some(runtime) = weak.upgrade() else {
+                return;
+            };
+            let Ok(detail) = Reflect::get(&event, &JsValue::from_str("detail")) else {
+                return;
+            };
+            let element = Reflect::get(&detail, &JsValue::from_str("elt"))
+                .ok()
+                .and_then(|value| value.dyn_into::<Element>().ok());
+            if !element.is_some_and(|element| runtime.private.contains(Some(&element))) {
+                return;
+            }
+            let accepted = runtime.visible_and_admitted()
+                && match name {
+                    "htmx:beforeSwap" => {
+                        let standing = Reflect::get(&detail, &JsValue::from_str("xhr"))
+                            .ok()
+                            .and_then(|xhr| {
+                                Reflect::get(&xhr, &JsValue::from_str("getResponseHeader"))
+                                    .ok()
+                                    .and_then(|function| function.dyn_into::<Function>().ok())
+                                    .and_then(|function| {
+                                        function
+                                            .call1(
+                                                &xhr,
+                                                &JsValue::from_str("X-OpenAgents-Resource"),
+                                            )
+                                            .ok()
+                                    })
+                            })
+                            .and_then(|value| value.as_string());
+                        standing.is_some_and(|standing| {
+                            runtime
+                                .resource
+                                .borrow()
+                                .as_ref()
+                                .is_some_and(|resource| resource.accepts(standing.as_bytes()))
+                        })
+                    }
+                    "htmx:sseBeforeMessage" => Reflect::get(&detail, &JsValue::from_str("type"))
+                        .ok()
+                        .and_then(|value| value.as_string())
+                        .is_none_or(|event| event != "retire"),
+                    "htmx:sseError" | "htmx:sendError" => false,
+                    _ => true,
+                };
+            if !accepted {
+                event.prevent_default();
+                let _ = Reflect::set(&detail, &JsValue::from_str("shouldSwap"), &JsValue::FALSE);
+                runtime.retire();
+            }
+        }) as Box<dyn FnMut(Event)>);
+        let target: EventTarget = self.document.clone().into();
+        target.add_event_listener_with_callback(name, callback.as_ref().unchecked_ref())?;
+        self.listeners.borrow_mut().push((target, name, callback));
+        Ok(())
+    }
+
+    /// Let the HTMX SSE extension close its sources before their DOM is wiped.
+    fn stop_htmx(&self) {
+        let Ok(htmx) = Reflect::get(&self.window, &JsValue::from_str("htmx")) else {
+            return;
+        };
+        let Some(trigger) = Reflect::get(&htmx, &JsValue::from_str("trigger"))
+            .ok()
+            .and_then(|value| value.dyn_into::<Function>().ok())
+        else {
+            return;
+        };
+        for (selector, event) in [
+            (
+                "[hx-get],[hx-post],[hx-put],[hx-delete],[hx-patch]",
+                "htmx:abort",
+            ),
+            (
+                "[sse-connect],[data-sse-connect]",
+                "htmx:beforeCleanupElement",
+            ),
+        ] {
+            if let Ok(elements) = self.private.query_selector_all(selector) {
+                for index in 0..elements.length() {
+                    let Some(element) = elements.item(index) else {
+                        continue;
+                    };
+                    let detail = Object::new();
+                    let _ = Reflect::set(&detail, &JsValue::from_str("elt"), &element);
+                    let _ = trigger.call3(&htmx, &element, &JsValue::from_str(event), &detail);
+                    if event == "htmx:beforeCleanupElement"
+                        && let Some(element) = element.dyn_ref::<Element>()
+                    {
+                        // A retry already queued by the extension cannot reopen it.
+                        let _ = element.remove_attribute("sse-connect");
+                        let _ = element.remove_attribute("data-sse-connect");
+                    }
+                }
+            }
+        }
+    }
+
     /// Clear first, then present a safe navigation that rechecks server admission.
     fn retire(&self) {
+        if self.retired.replace(true) {
+            return;
+        }
         self.privacy.borrow_mut().retire();
         self.resource.borrow_mut().take();
+        self.stop_htmx();
         let _ = self.private.remove_attribute("data-cloud-privacy-ready");
         if let Ok(event) = Event::new("openagents-cloud-retired") {
             let _ = self.document.dispatch_event(&event);

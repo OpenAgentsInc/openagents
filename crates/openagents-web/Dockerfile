@@ -50,12 +50,16 @@ RUN scripts/build-everglade-web.sh /build/everglade \
 # Build the shared component catalog and Cloud privacy adapter directly in
 # this isolated stage. The local build scripts use the machine's build lease.
 RUN cargo build --locked --release --target wasm32-unknown-unknown \
-        -p coder-components-web -p coder-cloud-web \
-    && mkdir -p /build/components /build/cloud \
+        -p coder-components-web -p coder-cloud-web -p coder-chat-web \
+    && mkdir -p /build/components /build/cloud /build/chat \
     && wasm-bindgen --target web --no-typescript --out-dir /build/components \
         target/wasm32-unknown-unknown/release/coder_components_web.wasm \
     && wasm-bindgen --target web --no-typescript --out-dir /build/cloud \
         target/wasm32-unknown-unknown/release/coder_cloud_web.wasm \
+    && wasm-bindgen --target web --no-typescript --out-dir /build/chat \
+        target/wasm32-unknown-unknown/release/coder_chat_web.wasm \
+    && test -s /build/chat/coder_chat_web.js \
+    && test -s /build/chat/coder_chat_web_bg.wasm \
     && test -s /build/components/coder_components_web.js \
     && test -s /build/components/coder_components_web_bg.wasm \
     && test -s /build/cloud/coder_cloud_web.js \
@@ -73,8 +77,9 @@ COPY --from=builder /build/target/release/openagents-web /usr/local/bin/openagen
 COPY --from=everglade /build/everglade /srv/everglade
 COPY --from=everglade /build/components /srv/components
 COPY --from=everglade /build/cloud /srv/cloud
+COPY --from=everglade /build/chat /srv/chat
 
 USER 10001:10001
 EXPOSE 8080
 ENTRYPOINT ["/usr/local/bin/openagents-web"]
-CMD ["--listen", "0.0.0.0:8080", "--public-host", "openagents.com", "--everglade", "/srv/everglade", "--components-build", "/srv/components", "--cloud-build", "/srv/cloud"]
+CMD ["--listen", "0.0.0.0:8080", "--public-host", "openagents.com", "--everglade", "/srv/everglade", "--components-build", "/srv/components", "--cloud-build", "/srv/cloud", "--chat-build", "/srv/chat"]
