@@ -83,6 +83,7 @@ pub fn houses() -> [KitHouse; 2] {
             stories: 3,
             style: KitStyle::Timber,
             door_bay: 1,
+            door_at: None,
             seed: 13,
         },
         KitHouse {
@@ -94,6 +95,7 @@ pub fn houses() -> [KitHouse; 2] {
             stories: 3,
             style: KitStyle::Timber,
             door_bay: 0,
+            door_at: None,
             seed: 6,
         },
     ]
