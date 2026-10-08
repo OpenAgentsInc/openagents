@@ -659,3 +659,38 @@ revision and superseded server image never receive production traffic.
 Evidence remains in operator scratch under `b2-verification/layers-overlay/`.
 
 Rollback: `gcloud run services update-traffic coder --region us-central1 --project openagentsgemini --to-revisions coder-web-onboarding-88cb5f7599-20261008172714=100`.
+
+## October 8, 2026: verified baked-town browser loading
+
+Revision `coder-web-b4-dbd84fdb3d-20261008195645` serves 100% of traffic.
+Cloud Build `889f9249-7d6a-427e-8889-9178dba04e35` produces image digest
+`sha256:b82817f4a64bb672f5aa0a232f81696f55a6751594e423a4c34b76b799244e1e`.
+It overlays the verified browser module and existing VLAY on the preceding
+live image, preserving its native web server, component and Cloud bundles,
+sidecar, environment, VPC, and onboarding tag. No bake runs in this build.
+
+The normal release module is compiled at `dbd84fdb3dff53d2b5e83c2a436740abfb6b072a`;
+its compiled workspace inputs match landed main `c103b903f0` after rebase.
+It fetches and verifies VLAY `fc5414a1bfef9e730f3d7d779e4447f12cc86d4e571042eec42518abb30ef7c2`
+(51,684,139 bytes), delivered through the reuse-only artifact queue in
+`984bca94e3`. Browser chrome uses DOM style properties under the existing
+strict CSP. The optimized Wasm module is 28,450,183 bytes, SHA-256
+`76175be3d074367980bff64a757039b8f1892871bf6010feea252dd981a1ec80`.
+The kit remains `c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e`,
+and the public pack remains `a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f`.
+
+The candidate first receives only the zero-traffic `new` tag. Staging and
+production each pass 12 full-response checks and malformed-path refusals;
+all artifact sizes and hashes match. Before promotion, offscreen Chrome
+renders the baked town on WebGPU and WebGL2 with `offline_light: true`,
+no browser errors, and the root theme token present. Both captures are
+inspected. Production also passes both browser backends with baked light active and
+no browser errors. Readiness and
+unchanged production traffic are checked before promotion. Earlier
+candidates with a buffered-response failure or CSP error never receive
+production traffic. This is functional loading evidence, not a frame-rate
+or spatial tier budget claim; B4 (#10908) remains open.
+
+Private receipts and captures remain under
+`codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/b4-csp/` in operator scratch.
+Rollback: `gcloud run services update-traffic coder --region us-central1 --project openagentsgemini --to-revisions coder-web-b2-88cb5f7599-20261008174258=100`.

@@ -144,8 +144,10 @@ unchanged.
   CSP. The optimized production module is 28,450,183 bytes. Cloud Build
   `889f9249-7d6a-427e-8889-9178dba04e35` overlays the verified module and
   existing VLAY on the live image. Revision
-  `coder-web-b4-dbd84fdb3d-20261008195645` is staged with zero traffic;
-  its full file delivery checks pass, and browser verification is pending.
+  `coder-web-b4-dbd84fdb3d-20261008195645` now serves 100% of traffic.
+  Staging WebGPU and WebGL2 render with `offline_light: true` and no
+  browser errors; full staging and production file checks pass. Production also passes both browser backends with baked light active
+  and no browser errors.
   Spatial tier reduction and budgets remain open. The 512 px kit still
   serves every tier (21,467,658 bytes transferred, 60.5 MiB decoded).
   B3's final repair commit needs a subsequent browser module refresh;
