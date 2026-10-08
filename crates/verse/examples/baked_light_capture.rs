@@ -1,7 +1,7 @@
 //! Captures the production town clock and measures immutable sun blending.
 //! Usage: baked_light_capture OUTPUT_DIR [PAIRS] [TIMELAPSE_FRAMES]
 //! [--preflight-only] [--repair-hold-seconds SECONDS]
-//! [--blend-only | --skip-blend | --destruction-only]
+//! [--blend-only | --skip-blend | --destruction-only | --receiver-inspection-only]
 //! Requires VERSE_KIT_PACK and VERSE_KIT_BAKE for exactly the current scene.
 //! Destruction modes require --features capture,dev-destruction.
 
@@ -29,6 +29,7 @@ enum CaptureMode {
     BlendOnly,
     SkipBlend,
     DestructionOnly,
+    ReceiverInspectionOnly,
 }
 
 impl CaptureMode {
@@ -38,6 +39,7 @@ impl CaptureMode {
             Self::BlendOnly => "blend-only",
             Self::SkipBlend => "skip-blend",
             Self::DestructionOnly => "destruction-only",
+            Self::ReceiverInspectionOnly => "receiver-inspection-only",
         }
     }
 }
@@ -72,6 +74,14 @@ fn main() -> Result<(), String> {
         "kit":input_identity(everglade_pack::kit::LOCAL_ENV)?,
         "layers":input_identity(everglade_pack::kit_bake::LOCAL_ENV)?});
     write_json(&dir.join("inputs.json"), &inputs)?;
+    if mode == CaptureMode::ReceiverInspectionOnly
+        && (std::env::var_os(everglade_pack::kit::UNPINNED_ENV).is_some()
+            || inputs["layers"]["sha256"].as_str()
+                != Some(everglade_pack::kit_bake::KIT_BAKE_SHA256)
+            || inputs["layers"]["bytes"].as_u64() != Some(everglade_pack::kit_bake::KIT_BAKE_BYTES))
+    {
+        return Err("Receiver inspection requires the current pinned layers with the unpinned override unset".into());
+    }
     let pack = everglade_pack::ZonePack::load_local(&path)?;
     let layers =
         everglade_pack::kit_bake::offered().ok_or("The capture requires offline light layers")?;
@@ -157,6 +167,11 @@ fn main() -> Result<(), String> {
     replay_layers(&scene, &layers);
     off_renderer.render(runtime.view(WIDTH as f32 / HEIGHT as f32), &dynamic, &ui)?;
     let adapter = on_renderer.adapter_info().clone();
+    if mode == CaptureMode::ReceiverInspectionOnly
+        && on_renderer.quality().tier != verse_engine::quality::Tier::High
+    {
+        return Err("Receiver inspection requires the native High renderer".into());
+    }
     let phase_warmup = sky_warmup(on_renderer.quality());
     let mut captures = Vec::new();
     let mut timelapse = Vec::new();
@@ -263,7 +278,10 @@ fn main() -> Result<(), String> {
             }
         }
     }
-    let measurement = if matches!(mode, CaptureMode::SkipBlend | CaptureMode::DestructionOnly) {
+    let measurement = if matches!(
+        mode,
+        CaptureMode::SkipBlend | CaptureMode::DestructionOnly | CaptureMode::ReceiverInspectionOnly
+    ) {
         None
     } else {
         let increments: Vec<_> = samples
@@ -288,17 +306,28 @@ fn main() -> Result<(), String> {
         "inputs":inputs,"run":run,"inputs_hashed_before_simulation":true,
         "clock":"Unpinned production wall-clock adapter; solar weights, sky brightness and lamp fade use exact town time; sky shape keeps its scheduled cadence",
         "phase_warmup_frames":phase_warmup,
-        "named_phases_status":if matches!(mode, CaptureMode::BlendOnly | CaptureMode::DestructionOnly) {"skipped"} else {"complete"},
-        "timelapse_status":if matches!(mode, CaptureMode::BlendOnly | CaptureMode::DestructionOnly) {"skipped"} else {"complete"},
-        "timelapse_method":if matches!(mode, CaptureMode::BlendOnly | CaptureMode::DestructionOnly) {serde_json::Value::Null} else {json!({"frames":frames,"hours":24.0,"pixels":"Selected frames; all other frames complete rendering without pixel extraction",
+        "named_phases_status":if matches!(mode, CaptureMode::BlendOnly | CaptureMode::DestructionOnly | CaptureMode::ReceiverInspectionOnly) {"skipped"} else {"complete"},
+        "timelapse_status":if matches!(mode, CaptureMode::BlendOnly | CaptureMode::DestructionOnly | CaptureMode::ReceiverInspectionOnly) {"skipped"} else {"complete"},
+        "timelapse_method":if matches!(mode, CaptureMode::BlendOnly | CaptureMode::DestructionOnly | CaptureMode::ReceiverInspectionOnly) {serde_json::Value::Null} else {json!({"frames":frames,"hours":24.0,"pixels":"Selected frames; all other frames complete rendering without pixel extraction",
             "scheduled_sky_frames_per_step":(frames-1) as f64/360.0,
             "scheduled_sky_warmup_frames":phase_warmup,
             "sky_bake_can_finish_between_steps":(frames-1) as f64/360.0 >= phase_warmup as f64,
             "limitation":"An accelerated timeline with too few frames per scheduled sky step can retain an older sky shape; exact brightness and sun weights still advance. Named phase images converge the sky bake."})},
         "temporal_aa":false,"captures":captures,"timelapse":timelapse,
         "destruction":null,"destruction_status":if mode == CaptureMode::BlendOnly {"skipped"} else {"pending"},
-        "measurement":measurement,"measurement_status":if matches!(mode, CaptureMode::SkipBlend | CaptureMode::DestructionOnly) {"skipped"} else {"complete"},
+        "measurement":measurement,"measurement_status":if matches!(mode, CaptureMode::SkipBlend | CaptureMode::DestructionOnly | CaptureMode::ReceiverInspectionOnly) {"skipped"} else {"complete"},
         "samples":samples});
+    if mode == CaptureMode::ReceiverInspectionOnly {
+        report["clock"] = json!(
+            "Pinned noon for the 960-frame destruction and supplementary receiver inspection; pinned noon also used for restore"
+        );
+        report["selective_completion_status"] = json!("pending; long selective holds skipped");
+        report["receiver_inspection_scope"] = json!({
+            "supplementary":true,"full_verification":false,
+            "filtered_channels":["sprites","ribbons","glow"],
+            "layer_pin":everglade_pack::kit_bake::KIT_BAKE_SHA256,"pin_enforced":true,
+            "performance_status":"skipped","selective_holds_status":"skipped"});
+    }
     // Retain the completed clock and paired measurements if destruction fails.
     let report_path = dir.join("capture.json");
     write_json(&report_path, &report)?;
@@ -309,6 +338,7 @@ fn main() -> Result<(), String> {
             &ui,
             &dir,
             repair_hold_seconds,
+            mode == CaptureMode::ReceiverInspectionOnly,
         ) {
             Ok(destruction) => {
                 report["destruction"] = destruction;
@@ -336,6 +366,10 @@ fn main() -> Result<(), String> {
                 .as_f64()
                 .unwrap()
         );
+    } else if mode == CaptureMode::ReceiverInspectionOnly {
+        println!(
+            "Completed receiver inspection and restore; selective convergence and blend timing skipped"
+        );
     } else {
         println!("Completed clock and repair capture; blend timing skipped");
     }
@@ -348,6 +382,7 @@ fn destruction_capture(
     ui: &verse::ui::UiBatch,
     dir: &Path,
     repair_hold_seconds: u64,
+    receiver_inspection_only: bool,
 ) -> Result<serde_json::Value, String> {
     use glam::Vec3;
     use verse::zones::everglade::demolition::meteor::Volley;
@@ -388,12 +423,19 @@ fn destruction_capture(
         &dir.join("destruction-pristine.png"),
         &renderer.render(view, &dynamic, ui)?,
     )?;
+    if receiver_inspection_only {
+        write_png(
+            &dir.join("destruction-pristine-receivers.png"),
+            &renderer.render(view, &receiver_inspection_mesh(&dynamic), ui)?,
+        )?;
+    }
     let targets = vec![
         Vec3::new(x, building.top - 0.5, z),
         Vec3::new(x - hx, building.base + 1.5, z + hz),
         Vec3::new(x + hx, building.base + 1.5, z + hz),
         Vec3::new(x, building.base + 2.0, z + hz),
     ];
+    let target_positions: Vec<_> = targets.iter().map(|target| target.to_array()).collect();
     runtime
         .everglade_zone_mut()
         .and_then(|zone| zone.town_mut())
@@ -407,6 +449,7 @@ fn destruction_capture(
             600.0,
         );
     let mut captures = Vec::new();
+    let mut inspection = None;
     let mut relit_max = 0;
     let mut hidden_max = 0;
     for frame in 0..960 {
@@ -432,6 +475,21 @@ fn destruction_capture(
             let file = format!("destruction-{frame:04}.png");
             write_png(&dir.join(&file), &renderer.render(view, &dynamic, ui)?)?;
             captures.push(json!({"frame":frame,"file":file,"relit_pieces":relit,"hidden_placements":town.hidden(),"chunks":town.profile().chunks,"repair":repair}));
+            if receiver_inspection_only && frame == 900 {
+                let file = "destruction-0900-receivers.png";
+                let filtered = receiver_inspection_mesh(&dynamic);
+                write_png(&dir.join(file), &renderer.render(view, &filtered, ui)?)?;
+                inspection = Some(
+                    json!({"frame":frame,"ordinary":"destruction-0900.png","file":file,
+                    "same_simulation_state":true,"simulation_ticks_between_pair":0,
+                    "filtered_channels":["sprites","ribbons","glow"],
+                    "removed":{"sprites":dynamic.sprites.len(),"ribbons":dynamic.ribbons.len(),"glow_vertices":dynamic.glow.len()},
+                    "retained_lit_vertices":filtered.lit.len(),
+                    "retained_rigid_instances":filtered.instances.as_ref().map_or(0,|figure|figure.instances.len()),
+                    "lighting_stage_identical":filtered.neon == dynamic.neon,
+                    "repair":repair,"selective_completion_status":"pending; not evaluated by this supplementary inspection"}),
+                );
+            }
         } else {
             renderer.measure(view, &dynamic, ui)?;
         }
@@ -440,73 +498,100 @@ fn destruction_capture(
         return Err("The meteor capture did not break a baked kit building".into());
     }
     let after_swarm = repair_diagnostics(runtime)?;
-    let (noon_repair, noon_hold) = drain_repair(
-        runtime,
-        renderer,
-        ui,
-        dir,
-        &repair_before,
-        repair_hold_seconds,
-    )?;
-    if noon_repair.completed_geometry_generations <= repair_before.completed_geometry_generations {
-        write_json(
-            &dir.join("repair-verification.json"),
-            &json!({"verified":false,"reason":"No selective geometry generation completed",
-                "before":repair_before,"noon":noon_repair,"noon_hold":noon_hold}),
-        )?;
-        return Err("The destruction capture completed no selective geometry repair".into());
-    }
-    let mut dynamic = runtime.dynamic_mesh();
-    dynamic.neon.as_mut().unwrap().temporal_aa = false;
-    write_png(
-        &dir.join("destruction-repaired-noon.png"),
-        &renderer.render(runtime.view(WIDTH as f32 / HEIGHT as f32), &dynamic, ui)?,
-    )?;
-
-    runtime.set_town_clock(town_clock::Clock::DAYTIME.pinned(Some(0.0)));
-    let (night_repair, night_hold) = drain_repair(
-        runtime,
-        renderer,
-        ui,
-        dir,
-        &noon_repair,
-        repair_hold_seconds,
-    )?;
-    if night_repair.geometry_epoch != noon_repair.geometry_epoch
-        || night_repair.completed_clock_generations <= noon_repair.completed_clock_generations
-        || night_repair.clock_minute == noon_repair.clock_minute
-        || night_repair.sun_direction == noon_repair.sun_direction
-        || night_repair.sun_lux >= noon_repair.sun_lux
-        || night_repair.sky_lux >= noon_repair.sky_lux
-    {
-        write_json(
-            &dir.join("repair-verification.json"),
-            &json!({"verified":false,"reason":"Clock repair did not reuse geometry and follow midnight light",
-                "noon":noon_repair,"night":night_repair,"noon_hold":noon_hold,"night_hold":night_hold}),
-        )?;
-        return Err(
-            "The destruction capture did not repair the same geometry under midnight light".into(),
-        );
-    }
-    let mut dynamic = runtime.dynamic_mesh();
-    dynamic.neon.as_mut().unwrap().temporal_aa = false;
-    let view = runtime.view(WIDTH as f32 / HEIGHT as f32);
     let phase_warmup = sky_warmup(renderer.quality());
-    for _ in 0..phase_warmup {
-        renderer.measure(view, &dynamic, ui)?;
-    }
-    write_png(
-        &dir.join("destruction-repaired-night.png"),
-        &renderer.render(view, &dynamic, ui)?,
-    )?;
-    write_json(
-        &dir.join("repair-before-restore.json"),
-        &json!({"status":"noon-night-complete-restore-pending","verified":false,
+    let mut verification = if receiver_inspection_only {
+        json!({"schema":"openagents.verse-baked-receiver-inspection.v1","verified":false,
+            "selective_completion_status":"pending; supplementary inspection does not evaluate worker convergence",
+            "selective_holds_status":"skipped","noon_hold":null,"night_hold":null,
+            "before":repair_before,"after_swarm":after_swarm,
+            "inspection":inspection,"layer_pin":everglade_pack::kit_bake::KIT_BAKE_SHA256,
+            "pin_enforced":true,
+            "filtered_channels":["sprites","ribbons","glow"],
+            "filter_scope":"Only a copied dynamic Mesh's sprites, ribbons, and glow are cleared; geometry, rocks, chunks, lamps, lighting, and simulation are retained"})
+    } else {
+        let (noon_repair, noon_hold) = drain_repair(
+            runtime,
+            renderer,
+            ui,
+            dir,
+            &repair_before,
+            repair_hold_seconds,
+        )?;
+        if noon_repair.completed_geometry_generations
+            <= repair_before.completed_geometry_generations
+        {
+            write_json(
+                &dir.join("repair-verification.json"),
+                &json!({"verified":false,"reason":"No selective geometry generation completed",
+                "before":repair_before,"noon":noon_repair,"noon_hold":noon_hold}),
+            )?;
+            return Err("The destruction capture completed no selective geometry repair".into());
+        }
+        let mut dynamic = runtime.dynamic_mesh();
+        dynamic.neon.as_mut().unwrap().temporal_aa = false;
+        write_png(
+            &dir.join("destruction-repaired-noon.png"),
+            &renderer.render(runtime.view(WIDTH as f32 / HEIGHT as f32), &dynamic, ui)?,
+        )?;
+
+        runtime.set_town_clock(town_clock::Clock::DAYTIME.pinned(Some(0.0)));
+        let (night_repair, night_hold) = drain_repair(
+            runtime,
+            renderer,
+            ui,
+            dir,
+            &noon_repair,
+            repair_hold_seconds,
+        )?;
+        if night_repair.geometry_epoch != noon_repair.geometry_epoch
+            || night_repair.completed_clock_generations <= noon_repair.completed_clock_generations
+            || night_repair.clock_minute == noon_repair.clock_minute
+            || night_repair.sun_direction == noon_repair.sun_direction
+            || night_repair.sun_lux >= noon_repair.sun_lux
+            || night_repair.sky_lux >= noon_repair.sky_lux
+        {
+            write_json(
+                &dir.join("repair-verification.json"),
+                &json!({"verified":false,"reason":"Clock repair did not reuse geometry and follow midnight light",
+                "noon":noon_repair,"night":night_repair,"noon_hold":noon_hold,"night_hold":night_hold}),
+            )?;
+            return Err(
+                "The destruction capture did not repair the same geometry under midnight light"
+                    .into(),
+            );
+        }
+        let mut dynamic = runtime.dynamic_mesh();
+        dynamic.neon.as_mut().unwrap().temporal_aa = false;
+        let view = runtime.view(WIDTH as f32 / HEIGHT as f32);
+        for _ in 0..phase_warmup {
+            renderer.measure(view, &dynamic, ui)?;
+        }
+        write_png(
+            &dir.join("destruction-repaired-night.png"),
+            &renderer.render(view, &dynamic, ui)?,
+        )?;
+        write_json(
+            &dir.join("repair-before-restore.json"),
+            &json!({"status":"noon-night-complete-restore-pending","verified":false,
             "before":repair_before,"after_swarm":after_swarm,
             "noon":noon_repair,"night":night_repair,
             "noon_hold":noon_hold,"night_hold":night_hold,
             "camera_eye":eye.to_array(),"camera_aim":(aim + Vec3::Y * 4.0).to_array()}),
-    )?;
+        )?;
+
+        json!({"schema":"openagents.verse-baked-repair-verification.v1","verified":true,
+            "before":repair_before,"after_swarm":after_swarm,"noon":noon_repair,"night":night_repair,
+            "noon_hold":noon_hold,"night_hold":night_hold,
+            "night_and_restore_sky_warmup_frames_each":phase_warmup,
+            "restore_warmup_simulation_dt":0.0,
+            "noon_image":"destruction-repaired-noon.png","night_image":"destruction-repaired-night.png"})
+    };
+    if receiver_inspection_only {
+        write_json(
+            &dir.join("receiver-inspection-before-restore.json"),
+            &verification,
+        )?;
+    }
 
     runtime.set_town_clock(town_clock::Clock::DAYTIME.pinned(Some(12.0)));
     runtime.zone_intent(verse::zones::Intent::Rebuild)?;
@@ -553,22 +638,47 @@ fn destruction_capture(
         &dir.join("destruction-restored.png"),
         &renderer.render(view, &dynamic, ui)?,
     )?;
-    let verification = json!({"schema":"openagents.verse-baked-repair-verification.v1","verified":true,
-        "before":repair_before,"after_swarm":after_swarm,"noon":noon_repair,"night":night_repair,
-        "restored_before_poll":repair_restored,"restored_after_poll":repair_restored_after_poll,
-        "noon_hold":noon_hold,"night_hold":night_hold,"night_and_restore_sky_warmup_frames_each":phase_warmup,
-        "restore_warmup_simulation_dt":0.0,
-        "noon_image":"destruction-repaired-noon.png","night_image":"destruction-repaired-night.png"});
-    write_json(&dir.join("repair-verification.json"), &verification)?;
-    Ok(
-        json!({"building_center":[x,z],"building_is_kit":true,"frames":960,"fps":60,
+    verification["restored_before_poll"] = json!(repair_restored);
+    verification["restored_after_poll"] = json!(repair_restored_after_poll);
+    if receiver_inspection_only {
+        write_png(
+            &dir.join("destruction-restored-receivers.png"),
+            &renderer.render(view, &receiver_inspection_mesh(&dynamic), ui)?,
+        )?;
+        verification["restore_warmup_frames"] = json!(phase_warmup);
+        verification["restore_warmup_simulation_dt"] = json!(0.0);
+        verification["restore_fallback_reset"] = json!(pristine);
+        verification["pristine_receiver_image"] = json!("destruction-pristine-receivers.png");
+        verification["restored_receiver_image"] = json!("destruction-restored-receivers.png");
+        write_json(&dir.join("receiver-inspection.json"), &verification)?;
+    } else {
+        write_json(&dir.join("repair-verification.json"), &verification)?;
+    }
+    let mut report = json!({"building_center":[x,z],"building_is_kit":true,"frames":960,"fps":60,
         "camera_eye":eye.to_array(),"camera_aim":(aim + Vec3::Y * 4.0).to_array(),
         "player_ground_origin":eye.with_y(building.base).to_array(),
         "pristine":"destruction-pristine.png","restored":"destruction-restored.png",
         "relit_pieces_max":relit_max,"hidden_placements_max":hidden_max,"restore_fallback_reset":pristine,
         "selective_repair":verification,
-        "captures":captures,"timing":"Diagnostic serial rendering; separate blend comparison supplies frame cost"}),
-    )
+        "captures":captures,"timing":"Diagnostic serial rendering; separate blend comparison supplies frame cost"});
+    if receiver_inspection_only {
+        report["mode"] = json!("receiver-inspection-only");
+        report["targets"] = json!(target_positions);
+        report["seeds"] = json!({"swarm_default":"0x3E7E0125","town_geometry":"0x70E7D3B0"});
+        report["selective_completion_status"] = json!("pending; long holds skipped");
+        report["timing"] = json!(
+            "Supplementary same-state serial inspection; no performance or selective convergence claim"
+        );
+    }
+    Ok(report)
+}
+
+fn receiver_inspection_mesh(dynamic: &verse::mesh::Mesh) -> verse::mesh::Mesh {
+    let mut filtered = dynamic.clone();
+    filtered.sprites.clear();
+    filtered.ribbons.clear();
+    filtered.glow.clear();
+    filtered
 }
 
 fn repair_diagnostics(runtime: &mut WorldRuntime) -> Result<RepairDiagnostics, String> {
@@ -691,14 +801,18 @@ fn capture_args(
     while let Some(argument) = args.next() {
         match argument.as_str() {
             "--preflight-only" => preflight_only = true,
-            "--blend-only" | "--skip-blend" | "--destruction-only" => {
+            "--blend-only"
+            | "--skip-blend"
+            | "--destruction-only"
+            | "--receiver-inspection-only" => {
                 if mode != CaptureMode::Full {
                     return Err("Choose only one capture mode".into());
                 }
                 mode = match argument.as_str() {
                     "--blend-only" => CaptureMode::BlendOnly,
                     "--skip-blend" => CaptureMode::SkipBlend,
-                    _ => CaptureMode::DestructionOnly,
+                    "--destruction-only" => CaptureMode::DestructionOnly,
+                    _ => CaptureMode::ReceiverInspectionOnly,
                 };
             }
             "--repair-hold-seconds" => {
@@ -947,7 +1061,17 @@ mod tests {
         assert_eq!(parse("--blend-only"), CaptureMode::BlendOnly);
         assert_eq!(parse("--skip-blend"), CaptureMode::SkipBlend);
         assert_eq!(parse("--destruction-only"), CaptureMode::DestructionOnly);
+        assert_eq!(
+            parse("--receiver-inspection-only"),
+            CaptureMode::ReceiverInspectionOnly
+        );
         assert!(capture_args(["out", "--blend-only", "--skip-blend"].map(str::to_string)).is_err());
+        assert!(
+            capture_args(
+                ["out", "--receiver-inspection-only", "--destruction-only"].map(str::to_string)
+            )
+            .is_err()
+        );
         assert!(
             capture_args(["out", "--destruction-only", "--skip-blend"].map(str::to_string))
                 .is_err()
