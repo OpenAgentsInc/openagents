@@ -234,7 +234,14 @@ struct Frames {
 impl Frames {
     /// Adds one frame that came `gap` ms after the last and took `work` ms,
     /// and logs the second when it is over.
-    fn add(&mut self, now: f64, gap: f64, work: f64, wreckage: Option<[usize; 3]>) {
+    fn add(
+        &mut self,
+        now: f64,
+        gap: f64,
+        work: f64,
+        wreckage: Option<[usize; 3]>,
+        offline_light: Option<bool>,
+    ) {
         if self.count == 0 && self.since == 0.0 {
             self.since = now;
         }
@@ -246,8 +253,10 @@ impl Frames {
         }
         let n = f64::from(self.count.max(1));
         let [raised, pieces, chunks] = wreckage.unwrap_or_default();
+        let offline_light =
+            offline_light.map_or("null", |active| if active { "true" } else { "false" });
         web_sys::console::info_1(&JsValue::from_str(&format!(
-            "Everglade frames {{\"frames\":{},\"gap_ms\":{:.1},\"gap_max_ms\":{:.1},\"work_ms\":{:.2},\"work_max_ms\":{:.2},\"raised\":{raised},\"pieces\":{pieces},\"chunks\":{chunks}}}",
+            "Everglade frames {{\"frames\":{},\"gap_ms\":{:.1},\"gap_max_ms\":{:.1},\"work_ms\":{:.2},\"work_max_ms\":{:.2},\"raised\":{raised},\"pieces\":{pieces},\"chunks\":{chunks},\"offline_light\":{offline_light}}}",
             self.count,
             self.gap.0 / n,
             self.gap.1,
@@ -657,7 +666,17 @@ impl Page {
             let ended = web_sys::window()
                 .and_then(|w| w.performance())
                 .map_or(started, |p| p.now());
-            frames.add(now, gap, ended - started, self.runtime.everglade_wreckage());
+            let offline_light = self
+                .runtime
+                .everglade_zone_mut()
+                .map(|zone| zone.uses_baked_light());
+            frames.add(
+                now,
+                gap,
+                ended - started,
+                self.runtime.everglade_wreckage(),
+                offline_light,
+            );
         }
     }
 
