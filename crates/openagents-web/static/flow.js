@@ -6,11 +6,11 @@
 // animates each streamed event the way the desktop deck's `routes-live`
 // scene does (crates/openagents-desktop/src/route_live.rs):
 //
-//   call, run  white, from the router out to the node
-//   payment    gold, from the node back to the router
-//   share      gold, from the router out past the node to its author
-//   payout     gold, from the router straight to the author's wallet
-//   bonus      gold with a ring, out to the author
+//   call, run  neutral, from the router out to the node
+//   payment    warning, from the node back to the router
+//   share      warning, from the router out past the node to its author
+//   payout     warning, from the router straight to the author's wallet
+//   bonus      warning with a ring, out to the author
 //
 // Events on one node wait for the one before to land. Nothing is made up:
 // the snapshot's events are history (counted and listed, not animated), and
@@ -22,8 +22,13 @@
 (function (root) {
   "use strict";
 
-  var REQUEST = "rgb(236,240,255)";
-  var PAYMENT = "rgb(255,206,84)";
+  function theme(role) {
+    var name = "--noir-" + role;
+    return typeof document === "undefined" || typeof root.getComputedStyle !== "function" ? "var(" + name + ")" :
+      root.getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  }
+  var REQUEST = theme("content");
+  var PAYMENT = theme("warning");
   var TRIP = 1.6;
   var SHARE = 2.0;
   var PAYOUT = 1.4;
@@ -31,18 +36,18 @@
   var AUTHOR = 34;
   var WALLET = 64;
 
-  // The desktop's node colors (crates/openagents-chat-app/src/visual.rs).
+  // Application theme roles preserve the map's distinct node kinds.
   var KIND_COLOR = {
-    front: "rgb(229,229,229)",
-    family: "rgb(128,128,136)",
-    route: "rgb(124,134,255)",
-    answer: "rgb(77,196,180)",
-    knowledge: "rgb(132,196,98)",
-    model: "rgb(150,164,186)",
-    coder: "rgb(186,140,255)",
-    engine: "rgb(230,121,180)",
-    plugin: "rgb(242,162,72)",
-    screen: "rgb(224,204,96)"
+    front: theme("content"),
+    family: theme("content-secondary"),
+    route: theme("info"),
+    answer: theme("terminal-ansi-6"),
+    knowledge: theme("success"),
+    model: theme("content-secondary"),
+    coder: theme("terminal-ansi-5"),
+    engine: theme("terminal-ansi-13"),
+    plugin: theme("warning"),
+    screen: theme("warning")
   };
   // Base radii in world units (route_map::layout::radius at weight 0.5).
   var KIND_RADIUS = {
@@ -364,12 +369,12 @@
     fit();
     context.setTransform(view.ratio, 0, 0, view.ratio, 0, 0);
     context.clearRect(0, 0, view.w, view.h);
-    context.fillStyle = "rgb(6,6,6)";
+    context.fillStyle = theme("canvas");
     context.fillRect(0, 0, view.w, view.h);
     // As the map shrinks, nodes grow a little so they read (as the deck).
     var boost = Math.min(Math.max(Math.sqrt(0.55 / Math.max(view.scale, 0.01)), 1), 2.2);
     context.lineWidth = 1;
-    context.strokeStyle = "rgba(255,255,255,0.15)";
+    context.strokeStyle = theme("stroke-subtle");
     context.globalAlpha = 1;
     map.nodes.forEach(function (n) {
       if (n.parent < 0) return;
@@ -381,7 +386,7 @@
     });
     map.nodes.forEach(function (n) {
       var r = Math.max((KIND_RADIUS[n.kind] || 8) * view.scale * boost, 1.5);
-      dot(screen(n), r, KIND_COLOR[n.kind] || "rgb(128,128,136)", 1);
+      dot(screen(n), r, KIND_COLOR[n.kind] || theme("content-secondary"), 1);
     });
     var now = clock();
     schedule.land(now);

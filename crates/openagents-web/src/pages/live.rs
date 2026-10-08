@@ -4,8 +4,8 @@
 //! The page is a canvas (`static/flow.js`, the site's second script) that
 //! draws the route map from the pay host's `/flow/snapshot` topology and
 //! animates each event from `/flow/stream` as the desktop deck's
-//! `routes-live` scene does: a white request out to its node, a gold
-//! payment back to the router, a gold share on to the author, a gold
+//! `routes-live` scene does: a neutral request out to its node, a warning-colored
+//! payment back to the router, a warning-colored share on to the author, a warning-colored
 //! payout to the author's wallet, and a ring for a bonus
 //! (`docs/payments/2026-10-02-central-receive-and-splits.md`, section 7).
 //! Both are same-origin under `/api/flow/`, which this server proxies to
@@ -50,9 +50,9 @@ stream.</p>\
 <div><dt>Received</dt><dd id=\"flow-received\">\u{2014}</dd></div>\
 <div><dt>Paid out</dt><dd id=\"flow-paid\">\u{2014}</dd></div>\
 <div><dt>Calls</dt><dd id=\"flow-calls\">\u{2014}</dd></div></dl>\
-<p class=\"dim\">White dots are calls and runs going out from the router. Gold dots are \
+<p class=\"dim\">Neutral dots are calls and runs going out from the router. Warning-colored dots are \
 payments coming back, shares going on to a plugin's author, and payouts to the author's \
-wallet; a gold dot with a ring is a bonus. Payers show only as a daily alias.</p>\
+wallet; a warning-colored dot with a ring is a bonus. Payers show only as a daily alias.</p>\
 <h2>Recent events</h2>\
 <ol class=\"flow-recent\" id=\"flow-recent\"><li class=\"dim\">None yet.</li></ol>\
 <p><a href=\"/stats\">[ Stats ]</a> <span class=\"dim\">The totals, plugins, authors, and payouts \

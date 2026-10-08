@@ -162,7 +162,10 @@ fn exported_previews_follow_the_background_preference() {
     let mut app = App::default();
     app.open_appearance();
     let default = snapshot::svg(&mut app, 80, 24);
-    assert!(default.contains("<rect width=\"100%\" height=\"100%\" fill=\"#0a0a0a\"/>"));
+    assert!(default.contains(&format!(
+        "<rect width=\"100%\" height=\"100%\" fill=\"#{:06x}\"/>",
+        coder_ui::coder_noir::TERMINAL_BACKGROUND
+    )));
     key(&mut app, KeyCode::Enter);
     let transparent = snapshot::svg(&mut app, 80, 24);
     assert!(!transparent.contains("<rect"));

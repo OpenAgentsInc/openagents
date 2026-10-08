@@ -50,7 +50,7 @@ impl Gpu {
                 "Native host terminal rendered by the shared Rust GPU renderer",
             )?;
             canvas.set_attribute("tabindex", "0")?;
-            canvas.set_attribute("style", "display:block;width:100%;height:420px;max-width:100%;background:#101010;touch-action:none")?;
+            canvas.set_attribute("style", &format!("display:block;width:100%;height:420px;max-width:100%;background:#{:06x};touch-action:none", coder_ui::coder_noir::TERMINAL_BACKGROUND))?;
             canvas.set_width(parent.client_width().clamp(240, MAX_SIDE as i32) as u32);
             canvas.set_height(420);
             parent.append_child(&canvas)?;
@@ -217,6 +217,7 @@ impl Gpu {
         let view = frame
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
+        let [r, g, b] = verse_gfx::palette::linear(coder_ui::coder_noir::TERMINAL_BACKGROUND);
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -231,9 +232,9 @@ impl Gpu {
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.006,
-                            g: 0.006,
-                            b: 0.006,
+                            r: f64::from(r),
+                            g: f64::from(g),
+                            b: f64::from(b),
                             a: 1.0,
                         }),
                         store: wgpu::StoreOp::Store,

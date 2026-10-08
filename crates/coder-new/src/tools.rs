@@ -120,7 +120,7 @@ pub fn tool_lines(call: &ToolCall, phase: u8, width: u16) -> Vec<Line<'static>> 
             styled(format!(" +{added}"), t::DIFF_INSERT_FG),
             styled(format!(" -{removed}"), t::DIFF_DELETE_FG),
         ]);
-        lines.extend(t::usgc_lines(diff::lines(
+        lines.extend(t::noir_lines(diff::lines(
             call.output,
             call.input,
             0,

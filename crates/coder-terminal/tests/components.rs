@@ -451,8 +451,14 @@ fn a_reply_styles_its_marks() {
         .iter()
         .find(|span| span.content == "wrap_rows")
         .expect("the code span");
-    // grok-build's inline code: md_code (#3A95AB), bold.
-    assert_eq!(code.style.fg, Some(Color::Rgb(58, 149, 171)));
+    // Coder Noir inline code keeps the original bold modifier.
+    assert_eq!(
+        code.style.fg,
+        Some({
+            let c = coder_ui::coder_noir::rgb(coder_ui::coder_noir::ANSI[6]);
+            Color::Rgb(c.red, c.green, c.blue)
+        })
+    );
     assert!(code.style.add_modifier.contains(Modifier::BOLD));
     let link = spans
         .iter()
@@ -573,17 +579,17 @@ fn a_failure_is_loud_and_a_quiet_line_is_half() {
     let failed = &lines[3];
     let last = failed.spans.last().unwrap();
     assert_eq!(last.content.as_ref(), " · exit 101");
-    assert_eq!(last.style.fg, Some(Color::Rgb(134, 69, 81)));
-    assert_eq!(failed.spans[1].style.fg, Some(Color::Rgb(134, 69, 81)));
+    assert_eq!(last.style.fg, Some(Color::Rgb(134, 45, 40)));
+    assert_eq!(failed.spans[1].style.fg, Some(Color::Rgb(134, 45, 40)));
     let verb = &failed.spans[2];
     assert_eq!(verb.content.as_ref(), "Run ");
     assert!(verb.style.add_modifier.contains(Modifier::BOLD));
     let quiet = &lines[1];
-    assert_eq!(quiet.spans[1].style.fg, Some(Color::Rgb(89, 113, 63)));
-    assert_eq!(quiet.spans[2].style.fg, Some(Color::Rgb(108, 108, 108)));
+    assert_eq!(quiet.spans[1].style.fg, Some(Color::Rgb(86, 111, 76)));
+    assert_eq!(quiet.spans[2].style.fg, Some(Color::Rgb(101, 101, 101)));
     let group = &lines[0];
-    assert_eq!(group.spans[1].style.fg, Some(Color::Rgb(108, 108, 108)));
-    assert_eq!(group.spans[2].style.fg, Some(Color::Rgb(120, 120, 120)));
+    assert_eq!(group.spans[1].style.fg, Some(Color::Rgb(101, 101, 101)));
+    assert_eq!(group.spans[2].style.fg, Some(Color::Rgb(129, 129, 129)));
     assert!(group.spans[2].style.add_modifier.contains(Modifier::BOLD));
     // Without color the white ladder still says it.
     let ladder = Ladder::new(Colors::None);

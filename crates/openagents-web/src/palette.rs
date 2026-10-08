@@ -1,13 +1,10 @@
-//! The site's palette: four intensities of white on near-black.
-//!
-//! Every distinction the site draws is a difference in how bright the same
-//! white is, never a second hue. The ladder mirrors the terminal's four
-//! intensities, so a page reads the way a terminal screen does, in
-//! black and white.
+//! Coder Noir roles shared by the website and Coder application surfaces.
 //!
 //! `Full`, `ThreeQuarters`, and `Half` carry text and meet WCAG AA (4.5:1)
 //! on [`BACKGROUND`]. `Quarter` draws rules, borders, and the faintest
 //! decoration only, never text a reader must read.
+
+use coder_ui::coder_noir as noir;
 
 /// One step of the white ladder, faintest to brightest.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -35,10 +32,10 @@ impl Intensity {
     #[must_use]
     pub const fn color(self) -> u32 {
         match self {
-            Intensity::Quarter => 0x4a4a4a,
-            Intensity::Half => 0x8a8a8a,
-            Intensity::ThreeQuarters => 0xc8c8c8,
-            Intensity::Full => 0xffffff,
+            Intensity::Quarter => noir::CONTENT_TERTIARY,
+            Intensity::Half => noir::CONTENT_SECONDARY,
+            Intensity::ThreeQuarters => noir::CONTENT,
+            Intensity::Full => noir::ANSI[15],
         }
     }
 
@@ -55,21 +52,25 @@ impl Intensity {
 }
 
 /// The near-black field every step sits on.
-pub const BACKGROUND: u32 = 0x0a0a0a;
+pub const BACKGROUND: u32 = noir::CANVAS;
 
 /// The field a hovered or selected row brightens to.
-pub const TINT: u32 = 0x1a1a1a;
+pub const TINT: u32 = noir::SURFACE_RAISED;
 
 /// The `:root` block the stylesheet opens with, generated from the ladder
 /// so the CSS and this module cannot disagree.
 #[must_use]
 pub fn root_block() -> String {
-    let mut out = String::from(":root{");
-    for step in Intensity::ALL {
-        out.push_str(&format!("{}:#{:06x};", step.variable(), step.color()));
-    }
-    out.push_str(&format!("--bg:#{BACKGROUND:06x};--tint:#{TINT:06x}}}\n"));
+    let mut out = noir::css_variables();
+    // Retain the site's public variable names for existing embedded views.
+    out.push_str(":root{--bg:var(--noir-canvas);--tint:var(--noir-surface-raised);--w25:var(--noir-stroke-subtle);--w50:var(--noir-content-secondary);--w75:var(--noir-content);--w100:var(--noir-content);}\n");
     out
+}
+
+/// Prefix application styles with the native theme's exact semantic tokens.
+#[must_use]
+pub fn stylesheet(rules: &str) -> String {
+    format!("{}{rules}", root_block())
 }
 
 /// WCAG relative luminance of a packed RGB value.
@@ -133,8 +134,9 @@ mod tests {
     #[test]
     fn the_root_block_names_every_step() {
         let block = root_block();
+        assert!(block.starts_with(&noir::css_variables()));
         for step in Intensity::ALL {
-            assert!(block.contains(&format!("{}:#{:06x}", step.variable(), step.color())));
+            assert!(block.contains(step.variable()));
         }
     }
 }

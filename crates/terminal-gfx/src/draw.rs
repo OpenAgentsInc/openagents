@@ -1,10 +1,9 @@
 //! Draws a `coder-vt` grid and the pane chrome into a UI batch.
 //!
-//! The chrome follows OpenAgents Terminal: one hue, the white ladder of
-//! `coder_ui::theme` on its near-black field. A program's own colors draw
-//! as the program asked; its default colors are the ladder's.
+//! Coder Noir supplies chrome, defaults, and the 16 ANSI roles. A program's
+//! explicit RGB colors and the xterm color cube remain unchanged.
 
-use coder_ui::theme::{Intensity, NEAR_BLACK};
+use coder_ui::{coder_noir as noir, theme::Intensity};
 use coder_vt::{Cell, Color, CursorShape, Flags, Row};
 
 use terminal_core::layout::Rect;
@@ -18,10 +17,10 @@ pub fn white(step: Intensity, alpha: f32) -> [f32; 4] {
     [r, g, b, alpha]
 }
 
-/// The near-black field at an opacity.
+/// The terminal field at an opacity.
 #[must_use]
 pub fn field(alpha: f32) -> [f32; 4] {
-    let [r, g, b] = palette::linear(NEAR_BLACK);
+    let [r, g, b] = palette::linear(noir::TERMINAL_BACKGROUND);
     [r, g, b, alpha]
 }
 
@@ -30,15 +29,18 @@ fn rgb(value: u32) -> [f32; 4] {
     [r, g, b, 1.0]
 }
 
-/// xterm's 256-color palette.
+/// The terminal selection overlay at an opacity.
+#[must_use]
+pub fn selection(alpha: f32) -> [f32; 4] {
+    let [r, g, b] = palette::linear(noir::TERMINAL_SELECTION);
+    [r, g, b, alpha]
+}
+
+/// Coder Noir's ANSI roles followed by xterm's color cube and grayscale.
 #[must_use]
 pub fn indexed(index: u8) -> u32 {
-    const BASE: [u32; 16] = [
-        0x000000, 0xcd3131, 0x0dbc79, 0xe5e510, 0x2472c8, 0xbc3fbc, 0x11a8cd, 0xe5e5e5, 0x666666,
-        0xf14c4c, 0x23d18b, 0xf5f543, 0x3b8eea, 0xd670d6, 0x29b8db, 0xffffff,
-    ];
     match index {
-        0..=15 => BASE[usize::from(index)],
+        0..=15 => noir::ANSI[usize::from(index)],
         16..=231 => {
             let i = u32::from(index - 16);
             let level = |v: u32| if v == 0 { 0 } else { 55 + v * 40 };
@@ -311,7 +313,7 @@ fn foreground(cell: &Cell) -> [f32; 4] {
             Some(color) => color,
             None if flags.contains(Flags::BOLD) => white(Intensity::Full, 1.0),
             None if flags.contains(Flags::MARKER) => white(Intensity::Half, 1.0),
-            None => white(Intensity::ThreeQuarters, 1.0),
+            None => rgb(noir::TERMINAL_FOREGROUND),
         }
     };
     if flags.contains(Flags::DIM) {
@@ -371,7 +373,7 @@ pub fn glyph(batch: &mut UiBatch, atlas: &Atlas, x: f32, y: f32, cell: &Cell, fg
 /// hyperlinked cells.
 pub fn grid(batch: &mut UiBatch, atlas: &Atlas, origin: [f32; 2], grid: &Grid<'_>) {
     let [cw, ch] = cell_size(atlas);
-    let default_fg = white(Intensity::ThreeQuarters, 1.0);
+    let default_fg = rgb(noir::TERMINAL_FOREGROUND);
     // Backgrounds first, so glyphs draw over them, one rectangle per run
     // of cells that share a background.
     for (r, row) in grid.rows.iter().enumerate() {
@@ -449,12 +451,12 @@ pub fn cursor(
         batch.frame(atlas, x, y, width, ch, 1.0, white(Intensity::Half, 1.0));
         return;
     }
-    let color = white(Intensity::Full, 0.9);
+    let color = rgb(noir::TERMINAL_CURSOR);
     match shape {
         CursorShape::Block => {
             batch.rect(atlas, x, y, width, ch, color);
             if let Some(cell) = cell.filter(|c| c.ch != ' ' && c.width != 0) {
-                glyph(batch, atlas, x, y, cell, field(1.0));
+                glyph(batch, atlas, x, y, cell, rgb(noir::CURSOR_TEXT));
             }
         }
         CursorShape::Underline => {
@@ -545,4 +547,31 @@ pub fn chrome(
     };
     batch.frame(atlas, rect.x, rect.y, rect.w, rect.h, 1.0, border);
     inner(rect, [cw, ch])
+}
+
+#[cfg(test)]
+mod palette_tests {
+    use super::*;
+
+    #[test]
+    fn ansi_roles_use_coder_noir_and_extended_program_colors_stay_original() {
+        for (index, color) in noir::ANSI.into_iter().enumerate() {
+            assert_eq!(indexed(index as u8), color);
+        }
+        assert_eq!(indexed(16), 0x000000);
+        assert_eq!(indexed(21), 0x0000ff);
+        assert_eq!(indexed(196), 0xff0000);
+        assert_eq!(indexed(255), 0xeeeeee);
+        assert_eq!(program(Color::Rgb(17, 93, 201)), Some(rgb(0x115dc9)));
+    }
+
+    #[test]
+    fn terminal_defaults_and_selection_use_their_theme_roles() {
+        let [r, g, b] = palette::linear(noir::TERMINAL_BACKGROUND);
+        assert_eq!(field(1.0), [r, g, b, 1.0]);
+        assert_eq!(foreground(&Cell::default()), rgb(noir::TERMINAL_FOREGROUND));
+        let [r, g, b] = palette::linear(noir::TERMINAL_SELECTION);
+        assert_eq!(selection(0.35), [r, g, b, 0.35]);
+        assert_eq!(noir::TERMINAL_CURSOR, noir::CONTENT);
+    }
 }

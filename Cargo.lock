@@ -5135,6 +5135,7 @@ dependencies = [
  "coder-host-wire",
  "coder-pty",
  "coder-reach",
+ "coder-ui",
  "console_error_panic_hook",
  "futures-util",
  "glam",

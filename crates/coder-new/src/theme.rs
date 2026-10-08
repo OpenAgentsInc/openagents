@@ -1,84 +1,97 @@
-//! Historical USGC accents with Coder's existing neutral colors. See NOTICE.
+//! Coder Noir roles for the native Coder renderer.
 
 use ratatui::{
     style::{Color, Style},
     text::Line,
 };
 
-const fn rgb(hex: u32) -> Color {
-    Color::Rgb((hex >> 16) as u8, (hex >> 8) as u8, hex as u8)
+const fn rgb(value: u32) -> Color {
+    Color::Rgb((value >> 16) as u8, (value >> 8) as u8, value as u8)
 }
 
-pub const BG_BASE: Color = rgb(coder_ui::theme::NEAR_BLACK);
-pub const BG_LIGHT: Color = rgb(0x242424);
-pub const BG_DARK: Color = rgb(0x1c1c1c);
-pub const TEXT_PRIMARY: Color = rgb(0xe1e1e1);
-pub const TEXT_SECONDARY: Color = rgb(0xc8c8c8);
-pub const GRAY_DIM: Color = rgb(0x585858);
-pub const GRAY: Color = rgb(0x6c6c6c);
-pub const GRAY_BRIGHT: Color = rgb(0x787878);
-pub const PROMPT_BORDER_ACTIVE: Color = rgb(0x505058);
+pub const BG_BASE: Color = rgb(coder_ui::coder_noir::TERMINAL_BACKGROUND);
+pub const BG_LIGHT: Color = rgb(coder_ui::coder_noir::SURFACE_RAISED);
+pub const BG_DARK: Color = rgb(coder_ui::coder_noir::SURFACE_SUBTLE);
+pub const TEXT_PRIMARY: Color = rgb(coder_ui::coder_noir::ANSI[15]);
+pub const TEXT_SECONDARY: Color = rgb(coder_ui::coder_noir::CONTENT);
+pub const GRAY_DIM: Color = rgb(coder_ui::coder_noir::CONTENT_TERTIARY);
+pub const GRAY: Color = rgb(coder_ui::coder_noir::CONTENT_TERTIARY);
+pub const GRAY_BRIGHT: Color = rgb(coder_ui::coder_noir::CONTENT_SECONDARY);
+pub const PROMPT_BORDER_ACTIVE: Color = rgb(coder_ui::coder_noir::CONTENT_SECONDARY);
+pub const ACCENT_MODEL: Color = rgb(coder_ui::coder_noir::ANSI[6]);
+pub const ACCENT_DELEGATE: Color = rgb(coder_ui::coder_noir::ANSI[5]);
+pub const COMMAND: Color = rgb(coder_ui::coder_noir::WARNING);
+pub const ACCENT_SKILL: Color = rgb(coder_ui::coder_noir::INFO);
+pub const ACCENT_SUCCESS: Color = rgb(coder_ui::coder_noir::SUCCESS);
+pub const PATH: Color = rgb(coder_ui::coder_noir::WARNING);
+pub const MD_CODE: Color = rgb(coder_ui::coder_noir::ANSI[6]);
+pub const DIFF_DELETE_FG: Color = rgb(coder_ui::coder_noir::DANGER);
+pub const DIFF_INSERT_FG: Color = rgb(coder_ui::coder_noir::SUCCESS);
+pub const DIFF_DELETE_BG: Color = rgb(coder_ui::coder_noir::DANGER_CONTAINER);
+pub const DIFF_INSERT_BG: Color = rgb(coder_ui::coder_noir::SUCCESS_CONTAINER);
+pub const CURSOR: Color = rgb(coder_ui::coder_noir::CURSOR);
+pub const CURSOR_TEXT: Color = rgb(coder_ui::coder_noir::CURSOR_TEXT);
 
-// USGC foreground roles from the retained frontend palette: info, accent,
-// amber, success, warning, and error. Cyan is its running-text color.
-pub const ACCENT_MODEL: Color = rgb(0x00ffff);
-pub const ACCENT_DELEGATE: Color = rgb(0xff00ff);
-pub const COMMAND: Color = rgb(0xffbf00);
-pub const ACCENT_SKILL: Color = rgb(0x00ffff);
-pub const ACCENT_SUCCESS: Color = rgb(0x00a645);
-pub const PATH: Color = rgb(0xff6600);
-pub const MD_CODE: Color = rgb(0x00ffff);
-pub const DIFF_DELETE_FG: Color = rgb(0xff0000);
-pub const DIFF_INSERT_FG: Color = rgb(0x00a645);
-pub const DIFF_DELETE_BG: Color = dim(0xff0000);
-pub const DIFF_INSERT_BG: Color = dim(0x00a645);
-
-// Terminal backgrounds have no alpha channel. Quarter-intensity USGC colors
-// retain quiet change bands beneath the syntax-highlighted text.
-const fn dim(hex: u32) -> Color {
-    Color::Rgb(
-        ((hex >> 16) as u8) / 4,
-        ((hex >> 8) as u8) / 4,
-        (hex as u8) / 4,
-    )
-}
-
-/// Apply Coder's accents to imported Markdown and diff styles.
-pub(crate) fn usgc_lines(mut lines: Vec<Line<'static>>) -> Vec<Line<'static>> {
+/// Apply the shared appearance to imported Markdown and diff styles.
+pub(crate) fn noir_lines(mut lines: Vec<Line<'static>>) -> Vec<Line<'static>> {
     for line in &mut lines {
-        line.style = usgc_style(line.style);
+        line.style = noir_style(line.style);
         for span in &mut line.spans {
-            span.style = usgc_style(span.style);
+            span.style = noir_style(span.style);
         }
     }
     lines
 }
 
-fn usgc_style(style: Style) -> Style {
+fn noir_style(style: Style) -> Style {
     Style {
-        fg: style.fg.map(usgc_color),
-        bg: style.bg.map(usgc_color),
+        fg: style.fg.map(noir_color),
+        bg: style.bg.map(noir_color),
         ..style
     }
 }
 
-fn usgc_color(color: Color) -> Color {
-    let Color::Rgb(red, green, blue) = color else {
-        return color;
+fn noir_color(value: Color) -> Color {
+    let Color::Rgb(red, green, blue) = value else {
+        return value;
     };
-    let hex = u32::from(red) << 16 | u32::from(green) << 8 | u32::from(blue);
-    match hex {
-        0x420e14 => DIFF_DELETE_BG,
-        0x063806 => DIFF_INSERT_BG,
-        0x914c54 | 0xdb4b4b | 0xde5971 | 0xf7768e | 0xfc7b7b | 0xff5370 => DIFF_DELETE_FG,
-        0x9ece6a => ACCENT_SUCCESS,
-        0xff9e64 => PATH,
-        0x9abdf5 | 0xc0cefc | 0xe0af68 | 0xffdb69 => COMMAND,
-        0x9d7cd8 | 0xb267e6 | 0xba3c97 | 0xbb9af7 => ACCENT_DELEGATE,
-        0x0db9d7 | 0x1abc9c | 0x3a95ab | 0x41a6b5 | 0x449dab | 0x6183bb | 0x61bdf2 | 0x6d91de
-        | 0x73daca | 0x7aa2f7 | 0x7aa6da | 0x7dcfff | 0x89ddff | 0xb4f9f8 => ACCENT_SKILL,
-        0x4e5579 | 0x51597d | 0x5a638c => GRAY_DIM,
-        0x646e9c | 0x747ca1 | 0x9aa5ce => GRAY_BRIGHT,
-        _ => color,
+    let value = coder_ui::source_theme::remap(coder_ui::coder_noir::rgb(
+        u32::from(red) << 16 | u32::from(green) << 8 | u32::from(blue),
+    ));
+    Color::Rgb(value.red, value.green, value.blue)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn native_roles_match_the_shared_coder_noir_profile() {
+        use coder_ui::source_theme as shared;
+        for (native, shared) in [
+            (BG_BASE, shared::BG_BASE),
+            (BG_LIGHT, shared::BG_LIGHT),
+            (BG_DARK, shared::BG_DARK),
+            (TEXT_PRIMARY, shared::TEXT_PRIMARY),
+            (TEXT_SECONDARY, shared::TEXT_SECONDARY),
+            (GRAY_DIM, shared::GRAY_DIM),
+            (GRAY, shared::GRAY),
+            (GRAY_BRIGHT, shared::GRAY_BRIGHT),
+            (PROMPT_BORDER_ACTIVE, shared::PROMPT_BORDER_ACTIVE),
+            (ACCENT_MODEL, shared::ACCENT_MODEL),
+            (ACCENT_SKILL, shared::ACCENT_SKILL),
+            (ACCENT_DELEGATE, shared::ACCENT_DELEGATE),
+            (COMMAND, shared::COMMAND),
+            (PATH, shared::PATH),
+            (MD_CODE, shared::MD_CODE),
+            (DIFF_DELETE_FG, shared::DIFF_DELETE_FG),
+            (DIFF_INSERT_FG, shared::DIFF_INSERT_FG),
+            (DIFF_DELETE_BG, shared::DIFF_DELETE_BG),
+            (DIFF_INSERT_BG, shared::DIFF_INSERT_BG),
+        ] {
+            assert_eq!(native, Color::Rgb(shared.red, shared.green, shared.blue));
+        }
+        assert_eq!(CURSOR, TEXT_SECONDARY);
+        assert_ne!(PROMPT_BORDER_ACTIVE, DIFF_DELETE_FG);
     }
 }

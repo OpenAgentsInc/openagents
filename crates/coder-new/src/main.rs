@@ -180,7 +180,7 @@ fn main() -> io::Result<()> {
             EnableMouseCapture,
             SetCursorStyle::BlinkingBlock
         )?;
-        let ratatui::style::Color::Rgb(r, g, b) = coder_new::theme::TEXT_SECONDARY else {
+        let ratatui::style::Color::Rgb(r, g, b) = coder_new::theme::CURSOR else {
             unreachable!("Coder uses RGB colors");
         };
         write!(io::stdout(), "\x1b]12;#{r:02x}{g:02x}{b:02x}\x07")?;

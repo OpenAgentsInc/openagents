@@ -246,12 +246,13 @@ directory and plugin settings stay in effect. Stop active work before resuming.
 Streaming replies checkpoint every five seconds and save again when they end;
 typing and scrolling do not write session files. Demo conversations are not saved.
 
-The base background uses Coder's shared near-black color (`#0a0a0a`). White,
-gray, and composer-border colors retain the Grok Night values. Accents use the
-historical USGC palette: cyan, magenta, amber, orange, red, and green. Markdown
-and syntax highlighting use the same accents, with dark red and green diff
-bands. Use a truecolor terminal to display them exactly. [NOTICE](NOTICE)
-records the palette references and renderer attribution.
+Coder Noir uses Superlogical's Static Noir surfaces, content tones, and ANSI
+palette, combined with Coder's neutral accent and cursor. The terminal field is
+`#0e0e0e`; active borders are neutral, models and inline code use cyan, and
+red marks errors and deletions. Markdown and syntax highlighting share those
+roles, with dark red and green diff bands. Use a truecolor terminal to display
+them exactly. [NOTICE](NOTICE) records the palette reference and renderer
+attribution.
 
 Export the actual Ratatui buffer without an interactive terminal:
 

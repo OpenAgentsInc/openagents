@@ -1,10 +1,6 @@
-//! Coder's white theme, shared by its application surfaces.
-//!
-//! The terminal speaks in one hue: white over a near-black field. Every
-//! distinction the interface draws — prompt against draft, status rail
-//! against rule, a dimmed older turn — is a difference in *how bright* the
-//! same white burns, never a second color.
+//! Coder Noir’s neutral intensity ladder, shared by application surfaces.
 
+use crate::coder_noir;
 use serde::{Deserialize, Serialize};
 
 /// One step of the white ladder.
@@ -16,13 +12,13 @@ use serde::{Deserialize, Serialize};
 )]
 #[serde(rename_all = "snake_case")]
 pub enum Intensity {
-    /// 25% white — receded: the oldest scrollback, a disabled affordance.
+    /// Receded: the oldest scrollback, a disabled affordance.
     Quarter,
-    /// 50% white — quiet: comments, rules, secondary rails.
+    /// Quiet: comments, rules, secondary rails.
     Half,
-    /// 75% white — present: prose, strings, focused text.
+    /// Present: prose, strings, focused text.
     ThreeQuarters,
-    /// 100% white — loud: the prompt, the caret, a keyword, an error.
+    /// Bright: the prompt, the caret, a keyword, an error.
     #[default]
     Full,
 }
@@ -39,10 +35,10 @@ impl Intensity {
     /// The white of this step, as a packed RGB value.
     pub const fn color(self) -> u32 {
         match self {
-            Intensity::Quarter => 0x4a4a4a,
-            Intensity::Half => 0x8a8a8a,
-            Intensity::ThreeQuarters => 0xc8c8c8,
-            Intensity::Full => 0xffffff,
+            Intensity::Quarter => coder_noir::CONTENT_TERTIARY,
+            Intensity::Half => coder_noir::CONTENT_SECONDARY,
+            Intensity::ThreeQuarters => coder_noir::CONTENT,
+            Intensity::Full => coder_noir::ANSI[15],
         }
     }
 
@@ -68,9 +64,9 @@ impl Intensity {
 }
 
 /// The near-black field every white tone sits on.
-pub const NEAR_BLACK: u32 = 0x0a0a0a;
+pub const NEAR_BLACK: u32 = coder_noir::CANVAS;
 /// The near-black tint a selected cell brightens to.
-pub const NEAR_BLACK_TINT: u32 = 0x1a1a1a;
+pub const NEAR_BLACK_TINT: u32 = coder_noir::SURFACE_RAISED;
 
 #[cfg(test)]
 mod tests {
@@ -92,7 +88,7 @@ mod tests {
 
     #[test]
     fn each_step_owns_its_white() {
-        assert_eq!(Intensity::Full.color(), 0xffffff);
-        assert_eq!(Intensity::Quarter.color(), 0x4a4a4a);
+        assert_eq!(Intensity::Full.color(), coder_noir::ANSI[15]);
+        assert_eq!(Intensity::Quarter.color(), coder_noir::CONTENT_TERTIARY);
     }
 }

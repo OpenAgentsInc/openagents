@@ -89,7 +89,13 @@ pub fn palette() -> grok::Palette {
 /// unknown.
 pub fn code_style(syntax: Option<Token>, ladder: Ladder) -> Style {
     match syntax {
-        Some(token) => token.style(syntax_level(ladder)),
+        Some(token) => {
+            let mut style = token.style(ColorLevel::TrueColor);
+            style.fg = style
+                .fg
+                .map(|color| crate::ladder::appearance(color, syntax_level(ladder)));
+            style
+        }
         None => ladder.style(Intensity::Full),
     }
 }
@@ -1346,7 +1352,13 @@ mod tests {
         };
         let (r, g, b) = keyword.rgb;
         let style = marks.style(base, ladder);
-        assert_eq!(style.fg, Some(ratatui::style::Color::Rgb(r, g, b)));
+        assert_eq!(
+            style.fg,
+            Some(crate::ladder::appearance(
+                ratatui::style::Color::Rgb(r, g, b),
+                ColorLevel::TrueColor
+            ))
+        );
         assert_eq!(style.bg, Some(ladder.background()));
         // An unknown fence stays plain code at the top of the ladder.
         let plain = render("```nope\nlet s = 1;\n```");

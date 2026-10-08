@@ -5,12 +5,15 @@ openagents.com serves, the terms of service and the privacy policy, the one
 download page, and the landing page for the pairing QR code. It also serves a
 local, read-only task browser at `/app`.
 
-The site is drawn in four intensities of white on
-near-black (`src/palette.rs`). The interactive pages run scripts under a
+The site, catalog, Cloud, and demo use Coder Noir from
+`coder_ui::coder_noir`: Superlogical's Static Noir base with neutral Coder
+accents and cursors. Shared semantic CSS tokens preserve the native palette,
+including status colors and translucent control states. The game scenes retain
+their content colors. The interactive pages run scripts under a
 policy that allows its one same-site script and same-origin requests: the
 homepage's terminal (`static/ask.js`, requests to `/ask`), `/live`'s
 map (`static/flow.js`, requests to `/api/flow/*`, drawn on a canvas in the
-desktop map's colors), and `/everglade`'s loader (`static/everglade.js`),
+application theme's colors), and `/everglade`'s loader (`static/everglade.js`),
 whose policy also allows `'wasm-unsafe-eval'` to compile the Everglade
 build. The component catalog permits its same-origin Rust/Wasm loader when
 configured. Other responses carry a policy that allows no script.
@@ -306,8 +309,8 @@ other file or path outside its directory is served; the homepage's single downlo
 link and its terminal; The Grid guide's screenshot; `/ask`'s stream, cookie,
 bounds, and one-at-a-time rule, against an in-process door;
 the download page and the `/install`, `/desktop`, and `/docs/install` redirects; that the legal pages carry the
-published text; that every color in the stylesheet is a gray and that the
-text steps meet WCAG AA; the `/connect` page's policy and the association
+published text; that application styles share the native Coder Noir tokens and
+that primary and secondary text meet WCAG AA; the `/connect` page's policy and the association
 files; that the removed sections, the release proxy, the Terminal install
 commands, the old `/doc` pages, and the blog answer `404` and are never
 linked; that the docs list every guide and every site link in a guide

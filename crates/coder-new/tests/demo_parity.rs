@@ -5,6 +5,9 @@ use ratatui::{Terminal, backend::TestBackend};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
+#[path = "../../coder-demo-ui/tests/support/coder_noir.rs"]
+mod coder_noir;
+
 fn apply(app: &mut App, action: &Value) {
     if let Some(text) = action["paste"].as_str() {
         app.handle(Event::Paste(text.into()));
@@ -40,11 +43,12 @@ fn native_demo_projection_preserves_all_pre_extraction_cells_and_cursors() {
         "../../coder-demo-ui/tests/fixtures/native-d2fb95d33d.json"
     ))
     .unwrap();
+    let noir = coder_noir::expected(&golden);
     let mut app = App::default();
     assert!(app.mode == Mode::Demo);
     let mut dimensions = (0, 0);
     let mut terminal = Terminal::new(TestBackend::new(1, 1)).unwrap();
-    for reference in golden["frames"].as_array().unwrap() {
+    for (index, reference) in golden["frames"].as_array().unwrap().iter().enumerate() {
         let width = reference["width"].as_u64().unwrap() as u16;
         let height = reference["height"].as_u64().unwrap() as u16;
         if dimensions != (width, height) {
@@ -76,7 +80,7 @@ fn native_demo_projection_preserves_all_pre_extraction_cells_and_cursors() {
             .collect::<Vec<_>>();
         let digest = format!("{:x}", Sha256::digest(serde_json::to_vec(&cells).unwrap()));
         assert_eq!(
-            digest, reference["cell_sha256"],
+            digest, noir["frames"][index]["cell_sha256"],
             "original native {} at {width}×{height}",
             reference["name"]
         );
