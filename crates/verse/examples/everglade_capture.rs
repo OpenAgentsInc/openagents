@@ -452,7 +452,9 @@ mod private_capture_tests {
         let output = PathBuf::from(
             std::env::var_os("VERSE_CAPTURE_OUTPUT").expect("VERSE_CAPTURE_OUTPUT is required"),
         );
-        let parent = output.parent().expect("The output needs a private directory");
+        let parent = output
+            .parent()
+            .expect("The output needs a private directory");
         std::fs::create_dir_all(parent).unwrap();
         let parent = parent.canonicalize().unwrap();
         assert!(
