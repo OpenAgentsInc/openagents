@@ -602,6 +602,15 @@ fn a_reactive_head_cannot_seed_neighbor_history_through_color_conditioning() {
                     history[3] < 0.0,
                     "{samples}x head-dependent ribbon seeded retainable history: {history:?}"
                 );
+                // Reject the blend in this frame as well as later history.
+                // Marking the conditioned halo negative cannot undo its visible RGB.
+                for channel in 0..3 {
+                    let expected = half::f16::from_f32(BRIGHT_RIBBON[channel]).to_f32();
+                    assert_eq!(
+                        history[channel], expected,
+                        "{samples}x current ribbon retained a head-conditioned halo in channel {channel}: {history:?}"
+                    );
+                }
             } else {
                 assert!(
                     history[3] > 0.0 && history[0] < narrow[0] - 4.0,
