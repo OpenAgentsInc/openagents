@@ -126,7 +126,7 @@ unchanged.
   selected batches within 10,000/3,000/800 triangles and 12/5/1 draws,
   post-gap coplanar checks, demo comparison, grade captures, and one house
   at 10/50/120 m. The initial coplanar scan finds genuine floor/band recipe
-  overlaps and two tiny roof-end material seams inside licensed meshes;
+  overlaps and two tiny roof-end wood-trim material seams inside licensed meshes;
   assess those seams visually rather than claiming zero failures.
 - **B2 (#10906).** Its issue holds what its subagent landed and what
   remains.
@@ -183,16 +183,21 @@ every far model is 799–800 triangles in one primitive. The build has 61
 textures, including 33 shared 512 px atlases. Three far models lose a
 0.131907 m negative-Z roof extremum: `house-c1ceda6765b05298`,
 `house-e48501b0455065eb`, and `house-a06a4e4efaba17de`. The bounded generator
-correction fits actual vertex positions along that axis to its source span
-and leaves UVs and materials intact. Its synthetic failed-extremum fixture
-and reruns of batches 19, 25, and 29 remain pending. Other model hashes must
-stay identical. These are source-file counts, not final pack admission or
+correction fits actual indexed vertex positions along that axis to its
+source span and leaves UVs and materials intact. The first fixture passes,
+but the rerun exposes loose decimator vertices that do not belong to any
+rendered triangle; measuring all vertices cannot prove the rendered box.
+The extended fixture includes that case. Its check and reruns of batches
+19, 25, and 29 remain pending. The first attempt leaves 289 other files
+byte-identical. These are source-file counts, not final pack admission or
 distance-selected acceptance.
 
 The post-gap coplanar reports cover all 65 houses in
 `coplanar-p3-source-*.jsonl`: zero inter-piece recipe overlaps, and eight
 intra-mesh face-pair overlaps per house, about 0.0277 m², in the supplied
-roof-end wood/plaster seams. No exemption or suppression hides these seams;
+roof-end `T_trim_wood_01_BC`/`T_trim_wood_02_BC` seams. The exact raw-piece
+inspection in `coplanar-roof-input.log` corrects the earlier wood/plaster
+label. No exemption or suppression hides these seams;
 their visual assessment is pending. Actual all-house distance budgets,
 private pack admission, and captures remain open.
 

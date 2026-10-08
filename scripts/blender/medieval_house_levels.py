@@ -70,12 +70,22 @@ def merge_materials(obj):
         face.material_index = index
 
 
+def surface_vertices(obj):
+    # A decimator can leave loose vertices. Only indexed surface vertices
+    # define the silhouette that the exported triangles actually render.
+    indices = {index for face in obj.data.polygons for index in face.vertices}
+    if not indices:
+        raise RuntimeError("The house has no indexed surface")
+    return [obj.data.vertices[index] for index in sorted(indices)]
+
+
 def restore_extrema(obj, low, high):
     # Decimation weights are soft. If a roof extremum disappears, restore
     # its actual span without changing UVs, materials, or the other axes.
+    surface = surface_vertices(obj)
     for axis in range(3):
-        actual_low = min(v.co[axis] for v in obj.data.vertices)
-        actual_high = max(v.co[axis] for v in obj.data.vertices)
+        actual_low = min(v.co[axis] for v in surface)
+        actual_high = max(v.co[axis] for v in surface)
         if max(abs(actual_low - low[axis]), abs(actual_high - high[axis])) <= 0.1:
             continue
         span = actual_high - actual_low
@@ -95,8 +105,9 @@ def reduced(source, budget):
     obj.data = source.data.copy()
     bpy.context.collection.objects.link(obj)
     bpy.context.view_layer.objects.active = obj
-    low = np.array([min(v.co[a] for v in obj.data.vertices) for a in range(3)])
-    high = np.array([max(v.co[a] for v in obj.data.vertices) for a in range(3)])
+    surface = surface_vertices(obj)
+    low = np.array([min(v.co[a] for v in surface) for a in range(3)])
+    high = np.array([max(v.co[a] for v in surface) for a in range(3)])
     fixed = obj.vertex_groups.new(name="House silhouette")
     fixed.add(list(range(len(obj.data.vertices))), 1.0, "REPLACE")
     fixed.remove([v.index for v in obj.data.vertices if any(
@@ -188,13 +199,17 @@ def verify_extrema():
     # This is the lost 0.132 m extremum seen in three real far houses.
     mesh = bpy.data.meshes.new("Synthetic shortened silhouette")
     positions = [(x, y, z) for x in [0.132, 4] for y in [0, 8] for z in [0, 12]]
-    mesh.from_pydata(positions, [], [])
+    # This unused overshoot must not become the rendered box's extremum.
+    positions.append((5, 9, 13))
+    faces = [(0, 1, 3, 2), (4, 6, 7, 5), (0, 4, 5, 1),
+             (2, 3, 7, 6), (0, 2, 6, 4), (1, 5, 7, 3)]
+    mesh.from_pydata(positions, [], faces)
     obj = bpy.data.objects.new("Synthetic shortened silhouette", mesh)
     restore_extrema(obj, np.array([0, 0, 0]), np.array([4, 8, 12]))
-    actual = np.array([v.co[:] for v in mesh.vertices])
+    actual = np.array([v.co[:] for v in surface_vertices(obj)])
     np.testing.assert_allclose(actual.min(axis=0), [0, 0, 0], atol=1e-6)
     np.testing.assert_allclose(actual.max(axis=0), [4, 8, 12], atol=1e-6)
-    np.testing.assert_allclose(actual[:, 1:], np.array(positions)[:, 1:], atol=1e-6)
+    np.testing.assert_allclose(actual[:, 1:], np.array(positions[:8])[:, 1:], atol=1e-6)
 
 
 def png(path, linear):
