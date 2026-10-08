@@ -450,6 +450,32 @@ pub fn rows(spectrum: &Spectrum, plan: Plan, gain: f32, significant: f32) -> [[f
     rows
 }
 
+/// Spectrum integrals are independent of the display clock and swell gain.
+#[derive(Default)]
+struct UniformRows(Option<(Spectrum, Plan, [[f32; 4]; ROWS])>);
+
+impl UniformRows {
+    fn get(&mut self, spectrum: &Spectrum, plan: Plan, gain: f32) -> [[f32; 4]; ROWS] {
+        if self
+            .0
+            .as_ref()
+            .is_none_or(|(s, p, _)| s != spectrum || *p != plan)
+        {
+            self.0 = Some((
+                *spectrum,
+                plan,
+                rows(spectrum, plan, 1.0, spectrum.significant_height() as f32),
+            ));
+        }
+        let mut value = self.0.as_ref().unwrap().2;
+        for row in &mut value[..plan.count] {
+            row[3] *= gain;
+        }
+        value[3][3] *= gain;
+        value
+    }
+}
+
 /// The sea's mean square slope in a wind of `wind_speed` m/s, as Cox and
 /// Munk measured it from sun glitter over a clean surface:
 /// `σ² = 0.003 + 5.12 × 10⁻³ U` ("Measurement of the Roughness of the Sea
@@ -579,8 +605,8 @@ pub struct OceanGpu {
     shown: Option<(Spectrum, u64)>,
     /// The tick asked for last, to predict the next.
     asked: Option<u64>,
-    /// The spectrum's significant height, computed once per spectrum.
-    significant: Option<(Spectrum, f32)>,
+    /// Cached spectrum integrals, independent of time and swell gain.
+    uniform_rows: UniformRows,
     /// Wait for the exact tick each frame instead of drawing the last one
     /// ready (captures and tests).
     pub exact: bool,
@@ -631,7 +657,7 @@ impl OceanGpu {
             worker: Worker::new(tier),
             shown: None,
             asked: None,
-            significant: None,
+            uniform_rows: UniformRows::default(),
             exact: false,
             micros: 0.0,
             worker_bytes: 0,
@@ -817,15 +843,7 @@ impl OceanGpu {
         if self.shown.is_none_or(|(s, _)| s != *spectrum) {
             return [[0.0; 4]; ROWS];
         }
-        let significant = match self.significant {
-            Some((s, h)) if s == *spectrum => h,
-            _ => {
-                let h = spectrum.significant_height() as f32;
-                self.significant = Some((*spectrum, h));
-                h
-            }
-        };
-        rows(spectrum, self.plan, gain, significant)
+        self.uniform_rows.get(spectrum, self.plan, gain)
     }
 
     fn show(&mut self, queue: &wgpu::Queue, spectrum: &Spectrum, tick: u64) {
@@ -965,6 +983,26 @@ mod tests {
             fetch: 60_000.0,
             choppiness: 1.1,
             ..Spectrum::default()
+        }
+    }
+
+    #[test]
+    fn cached_uniforms_follow_spectrum_tier_and_swell_gain() {
+        let mut cache = UniformRows::default();
+        for wind in [12.0, 20.0, 12.0] {
+            let spectrum = Spectrum {
+                wind_speed: wind,
+                ..sea()
+            };
+            for tier in Tier::ALL {
+                let plan = plan(tier);
+                for gain in [1.0, 0.0, 0.35, 1.5] {
+                    assert_eq!(
+                        cache.get(&spectrum, plan, gain),
+                        rows(&spectrum, plan, gain, spectrum.significant_height() as f32)
+                    );
+                }
+            }
         }
     }
 
