@@ -509,6 +509,7 @@ struct Prepass {
 struct RigidIndirect {
     buffer: wgpu::Buffer,
     runs: Vec<instanced::IndirectRun>,
+    cells: Vec<textured::Batch>,
     motion: wgpu::Buffer,
     motion_count: u32,
 }
@@ -639,6 +640,7 @@ impl TexturedGpu {
                 queue.write_buffer(&indirect.buffer, 0, bytes);
             }
             indirect.runs = runs;
+            indirect.cells = instanced::indirect_cells(&self.batches, &order);
             let commands: Vec<_> = self
                 .motion_draws
                 .iter()
@@ -2334,6 +2336,7 @@ impl Photo {
                     mapped_at_creation: false,
                 }),
                 runs: Vec::new(),
+                cells: Vec::new(),
                 motion: device.create_buffer(&wgpu::BufferDescriptor {
                     label: Some("verse rigid indirect motion"),
                     size: 20,
@@ -3312,7 +3315,8 @@ impl Photo {
                 pass.draw(0..count, 0..1);
             }
         }
-        // `keep` culls the world's cells; the figure's always draw.
+        // Static cells and rigid instances have world-space bounds. Posed
+        // figures keep their local bounds and always draw.
         for (k, gpu) in textured.into_iter().enumerate() {
             let Some(gpu) = gpu else {
                 continue;
@@ -3323,48 +3327,48 @@ impl Photo {
             if k == 2
                 && let Some(indirect) = &gpu.rigid_indirect
             {
-                pass.set_pipeline(opaque_pipeline);
-                let mut opaque_first = 0;
-                let mut opaque_count = 0;
-                let mut opaque_triangles = 0;
-                let mut opaque_instances = 0;
-                for run in &indirect.runs {
-                    if gpu.materials[run.material].alpha.pass() != Pass::Opaque {
-                        continue;
+                let visible =
+                    instanced::visible_indirect_runs(&indirect.cells, &indirect.runs, keep);
+                for masked in [false, true] {
+                    pass.set_pipeline(if masked {
+                        masked_pipeline
+                    } else {
+                        opaque_pipeline
+                    });
+                    if masked {
+                        pass.set_bind_group(1, &self.empty_group, &[]);
                     }
-                    if opaque_count == 0 {
-                        opaque_first = run.first;
+                    let mut draws: Vec<instanced::IndirectRun> = Vec::new();
+                    for run in &visible {
+                        if textured::raster(gpu.materials[run.material].alpha.pass(), false).shadow
+                            != Some(masked)
+                        {
+                            continue;
+                        }
+                        if !masked
+                            && let Some(last) = draws.last_mut()
+                            && last.first + last.count == run.first
+                        {
+                            last.count += run.count;
+                            last.triangles += run.triangles;
+                            last.instances += run.instances;
+                        } else {
+                            draws.push(*run);
+                        }
                     }
-                    opaque_count += run.count;
-                    opaque_triangles += run.triangles;
-                    opaque_instances += run.instances;
-                }
-                if opaque_count > 0 {
-                    pass.multi_draw_indexed_indirect(
-                        &indirect.buffer,
-                        u64::from(opaque_first) * 20,
-                        opaque_count,
-                    );
-                    self.count_runs(
-                        u64::from(opaque_count),
-                        opaque_instances,
-                        opaque_triangles,
-                        false,
-                    );
-                }
-                pass.set_pipeline(masked_pipeline);
-                pass.set_bind_group(1, &self.empty_group, &[]);
-                for run in &indirect.runs {
-                    if gpu.materials[run.material].alpha.pass() != Pass::Masked {
-                        continue;
+                    let mut bound = None;
+                    for run in &draws {
+                        if masked && bound != Some(run.material) {
+                            pass.set_bind_group(2, &gpu.groups[run.material], &[]);
+                            bound = Some(run.material);
+                        }
+                        pass.multi_draw_indexed_indirect(
+                            &indirect.buffer,
+                            u64::from(run.first) * 20,
+                            run.count,
+                        );
+                        self.count_runs(u64::from(run.count), run.instances, run.triangles, false);
                     }
-                    pass.set_bind_group(2, &gpu.groups[run.material], &[]);
-                    pass.multi_draw_indexed_indirect(
-                        &indirect.buffer,
-                        u64::from(run.first) * 20,
-                        run.count,
-                    );
-                    self.count_runs(u64::from(run.count), run.instances, run.triangles, false);
                 }
                 continue;
             }
@@ -3381,7 +3385,7 @@ impl Photo {
                         let cell_pass = gpu.materials[batch.material].alpha.pass();
                         textured::raster(cell_pass, false).shadow == Some(masked)
                             && gpu.shown(i)
-                            && (k != 0 || keep(batch))
+                            && (k == 1 || keep(batch))
                     })
                     .collect();
                 let mut bound = None;

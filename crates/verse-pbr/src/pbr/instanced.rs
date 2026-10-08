@@ -722,12 +722,76 @@ pub fn draws(items: &[Batch], order: &[usize]) -> Vec<Draw> {
 }
 
 /// Adjacent indirect commands that share one material, with their draw costs.
+#[derive(Clone, Copy)]
 pub(crate) struct IndirectRun {
     pub material: usize,
     pub first: u32,
     pub count: u32,
     pub triangles: u64,
     pub instances: u64,
+}
+
+/// One conservative world-space box per indirect command, including merged runs.
+pub(crate) fn indirect_cells(items: &[Batch], order: &[usize]) -> Vec<Batch> {
+    let mut calls = Vec::new();
+    let mut cells: Vec<Batch> = Vec::new();
+    for &i in order {
+        let item = &items[i];
+        let before = calls.len();
+        append_draw(
+            items,
+            &mut calls,
+            i,
+            item.run.unwrap_or(Run { first: 0, count: 1 }),
+        );
+        if calls.len() == before {
+            let cell = cells.last_mut().expect("a merged indirect cell");
+            cell.min = cell.min.min(item.min);
+            cell.max = cell.max.max(item.max);
+            cell.run = Some(calls.last().expect("a merged indirect draw").instances);
+        } else {
+            cells.push(*item);
+        }
+    }
+    cells
+}
+
+/// Contiguous visible commands, preserving material boundaries and GPU offsets.
+pub(crate) fn visible_indirect_runs(
+    cells: &[Batch],
+    runs: &[IndirectRun],
+    keep: &dyn Fn(&Batch) -> bool,
+) -> Vec<IndirectRun> {
+    let mut visible = Vec::new();
+    for run in runs {
+        let end = run.first + run.count;
+        let mut first = run.first;
+        while first < end {
+            if !keep(&cells[first as usize]) {
+                first += 1;
+                continue;
+            }
+            let mut next = first;
+            let mut triangles = 0;
+            let mut instances = 0;
+            while next < end && keep(&cells[next as usize]) {
+                let cell = &cells[next as usize];
+                let copies = u64::from(cell.run.map_or(1, |r| r.count));
+                instances += copies;
+                triangles += u64::from(cell.count / 3) * copies;
+                next += 1;
+            }
+            visible.push(IndirectRun {
+                material: run.material,
+                first,
+                count: next - first,
+                triangles,
+                instances,
+            });
+            first = next;
+        }
+    }
+    visible
 }
 
 /// Preserves indexed draw ranges and instance offsets in a compact command stream.
@@ -804,6 +868,49 @@ mod tests {
             (2, 1, 12)
         );
         assert!(indirect_draws(&batches, &[]).0.is_empty());
+    }
+
+    #[test]
+    fn indirect_culling_keeps_merged_bounds_and_nonzero_command_offsets() {
+        let batch = |first, material, instance, x: f32| Batch {
+            first,
+            count: 6,
+            material,
+            min: Vec3::new(x, 0.0, 0.0),
+            max: Vec3::new(x + 1.0, 1.0, 1.0),
+            level: Level::Always,
+            run: Some(Run {
+                first: instance,
+                count: 2,
+            }),
+        };
+        let batches = [
+            batch(0, 0, 0, -20.0),
+            batch(0, 0, 2, 0.0),
+            batch(6, 0, 4, 20.0),
+            batch(12, 0, 6, 0.0),
+            batch(18, 1, 8, 0.0),
+            batch(24, 1, 10, 20.0),
+        ];
+        let order = [0, 1, 2, 3, 4, 5];
+        let (commands, runs) = indirect_draws(&batches, &order);
+        let cells = indirect_cells(&batches, &order);
+        assert_eq!(cells.len(), commands.len());
+        assert_eq!((cells[0].min.x, cells[0].max.x), (-20.0, 1.0));
+        assert_eq!(cells[0].run.unwrap().count, 4);
+        let visible = visible_indirect_runs(&cells, &runs, &|b| {
+            textured::in_slab(b.min, b.max, Mat4::IDENTITY)
+        });
+        assert_eq!(
+            visible
+                .iter()
+                .map(|r| (r.material, r.first, r.count))
+                .collect::<Vec<_>>(),
+            [(0, 0, 1), (0, 2, 1), (1, 3, 1)]
+        );
+        assert_eq!(visible.iter().map(|r| r.triangles).sum::<u64>(), 16);
+        assert_eq!(commands[visible[1].first as usize].first_instance, 6);
+        assert_eq!(commands[visible[2].first as usize].first_instance, 8);
     }
 
     #[test]
