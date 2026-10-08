@@ -207,6 +207,28 @@ impl GridSurface {
     pub fn evals(&self) -> Option<verse::gym_hall::View> {
         self.scene.evals_view()
     }
+    /// The pylon league section of the open EVALS board.
+    pub fn league(&self) -> Option<verse::gym_league::View> {
+        self.scene.league_view()
+    }
+    /// Reads the Gym's pylon league from `relay` (`wss://`, or a loopback
+    /// `ws://` fixture), counting only `checkers`' verdicts, for the rest
+    /// of this mount.
+    pub fn pin_league(
+        &mut self,
+        relay: String,
+        checkers: std::collections::BTreeSet<String>,
+    ) -> Result<(), String> {
+        if relay.starts_with("ws:") {
+            coder_connect::RelayPolicy::LoopbackTest
+                .validate(&relay)
+                .map_err(|_| "A league fixture requires a loopback relay".to_owned())?;
+        } else if !relay.starts_with("wss://") {
+            return Err("The pylon league reads a wss:// relay".into());
+        }
+        self.scene.pin_league(relay, checkers);
+        Ok(())
+    }
     pub fn world(&self) -> &verse::runtime::WorldRuntime {
         &self.scene.world
     }

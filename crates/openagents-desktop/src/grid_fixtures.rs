@@ -306,6 +306,116 @@ fn playable_grid_gpu_and_native_views_at_both_sizes_and_scales() {
     assert!(!home.path().join(".openagents").exists());
 }
 
+/// The pylon league on the Gym's EVALS board (#10922), over the real GPU
+/// layer: a seeded league on an in-process relay (real providers on fake
+/// engines, a checker's canaries and redundant job), read by the Gym with
+/// the same `pylon::league::fetch` the CLI uses. No live relay.
+#[test]
+#[ignore = "requires a GPU; run with OPENAGENTS_GRID_EVIDENCE to retain captures"]
+fn pylon_league_on_the_gym_evals_board() {
+    use coder_mobile::verse_surface::Command;
+    let evidence = std::env::var_os("OPENAGENTS_GRID_EVIDENCE").map(std::path::PathBuf::from);
+    if let Some(dir) = &evidence {
+        std::fs::create_dir_all(dir).unwrap();
+    }
+    let pylons = tempfile::tempdir().unwrap();
+    let fixture = pylon::fixture::League::start(pylons.path()).unwrap();
+    let home = tempfile::tempdir().unwrap();
+    let start = Instant::now();
+    let (mut app, _) = DesktopApp::performance_fixture(0, 0, start);
+    let grid = Grid::new("ws://127.0.0.1:1".into(), home.path().into(), true);
+    app.set_grid(grid.clone());
+    app.activate(
+        Intent::Navigate {
+            action: chrome::Action::Grid,
+        },
+        start,
+    );
+    let watcher: openagents_desktop::grid::Watcher = Box::new(|| {
+        openagents_desktop::backdrop::GridBackdrop::new("ws://127.0.0.1:1", Box::new(|| true))
+    });
+    let mut layer = Layer::new(grid.clone(), Some(watcher));
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+    let adapter =
+        pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
+            .unwrap();
+    let (device, queue) =
+        pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default())).unwrap();
+    let gpu = Gpu {
+        adapter: &adapter,
+        device: &device,
+        queue: &queue,
+    };
+    app.activate(Intent::Grid { key: "play".into() }, start);
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while grid.borrow().surface.is_none() && Instant::now() < deadline {
+        app.tick(Instant::now());
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    {
+        let mut state = grid.borrow_mut();
+        let surface = state.surface.as_mut().unwrap();
+        // The offline fixture Grid has no relay, so the league says so.
+        surface.command(Command::GoEvals).unwrap();
+        let offline = surface.league().unwrap();
+        assert_eq!(offline.state, "offline");
+        assert!(offline.empty.unwrap().contains("offline"));
+        surface.command(Command::Close).unwrap();
+        surface
+            .pin_league(fixture.relay.clone(), fixture.checkers.clone())
+            .unwrap();
+        surface.command(Command::GoEvals).unwrap();
+    }
+    let deadline = Instant::now() + Duration::from_secs(20);
+    loop {
+        app.tick(Instant::now());
+        render(&mut layer, &gpu, (900, 600), Instant::now());
+        let league = grid.borrow().surface.as_ref().unwrap().league().unwrap();
+        if league.state == "ready" {
+            assert_eq!(league.boards.len(), 4);
+            assert_eq!(league.boards[1].class, "GPU · medium");
+            assert_eq!(league.boards[1].lines[0].pass, "100%");
+            assert!(league.boards[1].lines[0].sigil);
+            assert_eq!(league.boards[1].lines[1].standing, "failing");
+            break;
+        }
+        assert!(Instant::now() < deadline, "the league reads: {league:?}");
+        std::thread::sleep(Duration::from_millis(16));
+    }
+    for (name, width, height, scale) in [
+        ("pylon-league", 1280.0, 800.0, 2.0),
+        ("pylon-league-1920x1080-1x", 1920.0, 1080.0, 1.0),
+    ] {
+        let (views, scene) = rust_native_desktop::capture_views(&mut app, width, height, scale);
+        assert!(scene.unsupported.is_empty());
+        assert!(scene.bounds.contains_key("grid-board"));
+        let rect = layer
+            .surface()
+            .map(|name| {
+                scene
+                    .backdrop_rect(name)
+                    .expect("the Verse page is laid out")
+            })
+            .unwrap_or(Rect {
+                x: 0.0,
+                y: 0.0,
+                w: width,
+                h: height,
+            });
+        layer.next_frame(Instant::now());
+        layer.viewport(rect, scale);
+        let size = (
+            (rect.w * scale).round() as u32,
+            (rect.h * scale).round() as u32,
+        );
+        let world = render(&mut layer, &gpu, size, Instant::now());
+        let out = composite(&views, &world, rect, scale, app.theme().background, 0.0);
+        if let Some(dir) = &evidence {
+            std::fs::write(dir.join(format!("{name}.png")), out.png().unwrap()).unwrap();
+        }
+    }
+}
+
 /// The Episode 289 deck's title slide over the live Grid, as the window
 /// composites it: the slide viewer's views over the real GPU layer, which
 /// tours the plaza behind the slide. Two frames twenty seconds apart show

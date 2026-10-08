@@ -6,8 +6,15 @@ rust-version.workspace = true
 publish.workspace = true
 description = "A NIP-PYLON compute provider and client: beacons, free NIP-CJ text jobs on a Psionic model server, receipts, and pool aggregates."
 
+[features]
+# An in-process relay and a seeded league (`fixture`) for other crates'
+# tests and captures, which must never reach a live relay.
+fixture = ["dep:futures-util", "dep:tokio-tungstenite"]
+
 [dependencies]
 coder-lease = { path = "../coder-lease" }
+futures-util = { version = "0.3", optional = true }
+tokio-tungstenite = { version = "0.30.0", optional = true }
 nostr = { path = "../nostr" }
 nostr-transport = { path = "../nostr-transport" }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }

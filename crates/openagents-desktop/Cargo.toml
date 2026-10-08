@@ -135,6 +135,8 @@ background = { path = "../background" }
 
 [dev-dependencies]
 pollster = "0.4"
+# The seeded pylon league on an in-process relay, for the Gym's league capture.
+pylon = { path = "../pylon", features = ["fixture"] }
 secp256k1 = { version = "0.31.1", features = ["rand"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 tempfile = "3"

@@ -10,6 +10,8 @@
 pub mod gym;
 pub mod gym_evals;
 pub mod gym_hall;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod gym_league;
 pub mod gym_notes;
 pub mod gym_replay;
 #[cfg(not(target_arch = "wasm32"))]

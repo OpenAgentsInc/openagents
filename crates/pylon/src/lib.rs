@@ -18,6 +18,8 @@ pub mod cli;
 pub mod client;
 pub mod engine;
 pub mod field;
+#[cfg(feature = "fixture")]
+pub mod fixture;
 pub mod identity;
 pub mod inflight;
 pub mod job;

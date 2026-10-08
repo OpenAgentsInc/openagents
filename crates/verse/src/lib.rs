@@ -43,6 +43,8 @@ pub mod grid_robot;
 #[cfg(not(target_arch = "wasm32"))]
 pub use verse_gym::gym;
 #[cfg(not(target_arch = "wasm32"))]
+pub use verse_gym::gym_league;
+#[cfg(not(target_arch = "wasm32"))]
 pub use verse_gym::gym_results;
 pub use verse_gym::{gym_evals, gym_hall, gym_notes, gym_replay};
 #[cfg(feature = "hosted-social")]

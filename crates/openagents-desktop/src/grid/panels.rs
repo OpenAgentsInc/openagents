@@ -332,7 +332,52 @@ impl Projection {
         }
     }
 
-    pub fn evals(&mut self, view: verse::gym_hall::View) {
+    /// The pylon league: one block per hardware class, worded from the
+    /// same league `openagents pylon league` prints.
+    fn league(&mut self, view: verse::gym_league::View) {
+        self.words(format!(
+            "PYLON LEAGUE · {}{}\n{}",
+            view.state,
+            if view.relay.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    " · {} · {} trusted checker{}",
+                    view.relay,
+                    view.checkers,
+                    if view.checkers == 1 { "" } else { "s" }
+                )
+            },
+            view.note
+        ));
+        if let Some(empty) = view.empty {
+            self.words(empty);
+        }
+        for board in view.boards {
+            let lines = board
+                .lines
+                .into_iter()
+                .map(|l| {
+                    format!(
+                        "{} · {} · pass {} ({})\n{} jobs · median {} · {} · {}{}",
+                        l.label,
+                        l.model,
+                        l.pass,
+                        l.checks,
+                        l.jobs,
+                        l.median,
+                        l.cost,
+                        l.standing,
+                        if l.sigil { " · sigil" } else { "" },
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n\n");
+            self.words(format!("{} · {}\n\n{}", board.class, board.suite, lines));
+        }
+    }
+
+    pub fn evals(&mut self, view: verse::gym_hall::View, league: Option<verse::gym_league::View>) {
         self.close();
         self.words(format!(
             "EVALS · {}\n{}",
@@ -375,6 +420,9 @@ impl Projection {
                     group.more
                 ));
             }
+        }
+        if let Some(league) = league {
+            self.league(league);
         }
         self.button(
             if view.notes_on {

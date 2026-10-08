@@ -878,6 +878,13 @@ pub(crate) struct Scene {
     /// notes, read while the player is in the Gym. It exists while the
     /// bare world has a relay.
     pub(crate) hall: Option<verse::gym_hall::Hall>,
+    /// The pylon league on the EVALS board, read while the player is in
+    /// the Gym ([`verse::gym_league`]). Without a relay it reads nothing
+    /// and says the Grid is offline.
+    pub(crate) league: verse::gym_league::Reader,
+    /// A host chose the league's relay and checkers (a local fixture);
+    /// joining or leaving a relay keeps them.
+    pub(crate) league_pinned: bool,
     pub(crate) evals_open: bool,
     /// The host shows the native EVALS panel, so a tap on the EVALS board
     /// may open it and the board shows its tap cue.
@@ -1123,6 +1130,8 @@ impl Scene {
             results_open: false,
             results_panel: false,
             hall: None,
+            league: verse::gym_league::Reader::new(None, std::collections::BTreeSet::new()),
+            league_pinned: false,
             evals_open: false,
             evals_panel: false,
             gym_notes: config.gym_notes,
@@ -1197,6 +1206,9 @@ impl Scene {
         let relay = validated_world_relay(&relay)?;
         self.session = None;
         self.hall = None;
+        if !self.league_pinned {
+            self.league = verse::gym_league::Reader::new(None, std::collections::BTreeSet::new());
+        }
         self.presented_entities = Box::new(verse::mesh::Mesh::default());
         self.relay = Some(relay);
         // Joining from the computer must keep the current pose and panel. Only
@@ -1460,6 +1472,17 @@ impl Scene {
             ));
             self.eval_credit_from = None;
         }
+        if self.world.is_bare() && !self.league_pinned && self.league.relay().is_none() {
+            // The same relay and trusted checkers as `openagents pylon league`.
+            self.league = verse::gym_league::Reader::new(
+                Some(
+                    self.reader_relay
+                        .clone()
+                        .unwrap_or_else(|| verse::session::PUBLIC_RELAY.to_owned()),
+                ),
+                verse::gym_league::Reader::trusted(),
+            );
+        }
         if self.world.is_bare() && self.xp.is_none() {
             let signer = verse::identity::Identity::from_secret("phone", self.secret)?.signer;
             self.xp = Some(verse::xp::Board::start_with(
@@ -1491,6 +1514,9 @@ impl Scene {
         self.presented_entities = Box::new(verse::mesh::Mesh::default());
         self.session = None;
         self.hall = None;
+        if !self.league_pinned {
+            self.league = verse::gym_league::Reader::new(None, std::collections::BTreeSet::new());
+        }
         self.evals_open = false;
         self.xp = None;
         self.playtest = None;
@@ -2433,6 +2459,7 @@ impl Scene {
             }
         }
         self.poll_hall(now);
+        self.league.poll();
         if self.results_open {
             self.results.tick(f64::from(dt));
         }
@@ -2881,10 +2908,12 @@ impl Scene {
         packet.results_active = self.results_panel && packet.gym_active;
         packet.evals = self.world.evals(self.aspect()).into();
         packet.evals_open = self.evals_open;
+        // Both only grow, so their sum changes whenever either screen does.
         packet.evals_revision = self
             .hall
             .as_ref()
-            .map_or(0, verse::gym_hall::Hall::revision);
+            .map_or(0, verse::gym_hall::Hall::revision)
+            + self.league.revision();
         packet.evals_active = self.evals_panel && self.hall.is_some() && packet.gym_active;
         packet.gym_notes = self.gym_notes;
         packet.studio_open = self.studio.is_some();
@@ -3823,6 +3852,7 @@ impl Scene {
         if let Some(hall) = &mut self.hall {
             hall.set_active(inside && self.evals_panel);
         }
+        self.league.set_active(inside && self.evals_panel);
     }
 
     fn require_evals_panel(&self) -> Result<(), String> {
@@ -3846,6 +3876,23 @@ impl Scene {
             .ok()
             .and(self.hall.as_ref())
             .map(verse::gym_hall::Hall::view)
+    }
+
+    /// The pylon league section of the open EVALS panel.
+    pub fn league_view(&self) -> Option<verse::gym_league::View> {
+        self.require_evals_panel().ok().map(|()| self.league.view())
+    }
+
+    /// Reads the league from `relay`, counting `checkers`' verdicts, for
+    /// the rest of this mount.
+    pub(crate) fn pin_league(
+        &mut self,
+        relay: String,
+        checkers: std::collections::BTreeSet<String>,
+    ) {
+        self.league = verse::gym_league::Reader::new(Some(relay), checkers);
+        self.league_pinned = true;
+        self.sync_gym_interest();
     }
 
     /// Called only after pointer or accessibility picking validates the

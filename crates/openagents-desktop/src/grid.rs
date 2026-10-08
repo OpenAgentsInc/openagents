@@ -549,7 +549,7 @@ impl Grid {
                     }
                     Some(Panel::Evals) => {
                         if let Some(view) = surface.evals() {
-                            projection.evals(view);
+                            projection.evals(view, surface.league());
                         }
                     }
                     None => {}
