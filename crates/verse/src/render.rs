@@ -3215,12 +3215,16 @@ impl Scene {
         } else {
             Vec::new()
         };
+        let reactive_lit = (temporal_enabled && !dynamic.reactive_lit.is_empty())
+            .then(|| (photo.dynamic_lit.buffer.clone(), photo.dynamic_lit.count));
         let batches = Batches {
             motion: &motion,
-            reactive_lit: temporal_enabled.then_some(crate::pbr::temporal::ReactiveLit {
-                vertices: &photo.dynamic_lit.buffer,
-                count: photo.dynamic_lit.count,
-                ranges: &dynamic.reactive_lit,
+            reactive_lit: reactive_lit.as_ref().map(|(vertices, count)| {
+                crate::pbr::temporal::ReactiveLit {
+                    vertices,
+                    count: *count,
+                    ranges: &dynamic.reactive_lit,
+                }
             }),
             #[cfg(not(target_arch = "wasm32"))]
             streamed: self
