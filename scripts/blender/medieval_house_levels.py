@@ -156,7 +156,7 @@ def atlas_triangles(all_triangles, atlas, half):
     count = sum(len(t) for t in all_triangles)
     columns = math.ceil(math.sqrt(count * 2))
     rows = math.ceil(count / columns)
-    cell = np.array([512 / columns, 256 / rows])
+    cell = np.array([512 // columns, 256 // rows])
     output = []
     sequence = 0
     for level in all_triangles:
