@@ -40,6 +40,15 @@ fn rules() -> &'static [Rule] {
                 r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(-----END [A-Z ]*PRIVATE KEY-----|$)",
                 "[redacted:private-key]",
             ),
+            // Claude Code's subscription token variable carries a
+            // claude.ai login whatever the value's shape
+            // (`docs/cloud/claude-code-byo.md`, rule 3).
+            rule(
+                "claude-oauth-env",
+                true,
+                r#"CLAUDE_CODE_OAUTH_TOKEN(["']?\s*[=:]\s*["']?)[^\s"',;}]+"#,
+                "CLAUDE_CODE_OAUTH_TOKEN${1}[redacted:claude-oauth-env]",
+            ),
             rule(
                 "anthropic-key",
                 true,
@@ -221,6 +230,35 @@ impl std::fmt::Display for Refusal {
     }
 }
 
+/// The environment variable that carries a claude.ai subscription token.
+pub const CLAUDE_CODE_OAUTH_TOKEN: &str = "CLAUDE_CODE_OAUTH_TOKEN";
+
+/// Whether `text` holds a Claude.ai login: an OAuth access or refresh
+/// token (including a `claude setup-token` value), Claude Code's
+/// credentials document, or a `CLAUDE_CODE_OAUTH_TOKEN` assignment.
+/// OpenAgents never collects, stores, or forwards one
+/// (`docs/cloud/claude-code-byo.md`, rule 2). An Anthropic API key is a
+/// different custody class and does not match.
+#[must_use]
+pub fn claude_login_in(text: &str) -> bool {
+    static LOGIN: OnceLock<Regex> = OnceLock::new();
+    LOGIN
+        .get_or_init(|| {
+            Regex::new(r"sk-ant-o[ar]t[0-9]*-|claudeAiOauth|CLAUDE_CODE_OAUTH_TOKEN\s*[=:]")
+                .unwrap_or_else(|e| panic!("claude login: {e}"))
+        })
+        .is_match(text)
+}
+
+/// Whether a relative or absolute path names Claude Code's login file
+/// (`~/.claude/.credentials.json`, or `.credentials.json` under
+/// `$CLAUDE_CONFIG_DIR`). Evidence, export, and saved images exclude it.
+#[must_use]
+pub fn claude_login_path(path: &str) -> bool {
+    path.split(['/', '\\'])
+        .any(|part| part == ".credentials.json")
+}
+
 /// The shortest credential value the exact comparison checks: shorter
 /// values match ordinary words.
 pub const EXACT_MIN: usize = 12;
@@ -353,6 +391,39 @@ mod tests {
         );
         assert_eq!(screen.redact(&value), "[redacted:exact]");
         assert!(format!("{screen:?}").contains("1 exact"));
+    }
+
+    #[test]
+    fn claude_logins_are_recognized_and_redacted() {
+        // Assembled at run time so no credential-shaped literal sits in
+        // the source.
+        let access = format!("sk-ant-oat01-{}", "Q7".repeat(30));
+        let refresh = format!("sk-ant-ort01-{}", "R8".repeat(30));
+        let document = format!(
+            r#"{{"claudeAiOauth":{{"accessToken":"{access}","refreshToken":"{refresh}"}}}}"#
+        );
+        for text in [
+            access.as_str(),
+            refresh.as_str(),
+            document.as_str(),
+            "CLAUDE_CODE_OAUTH_TOKEN=opaque",
+        ] {
+            assert!(claude_login_in(text), "{text}");
+            assert!(credential_in(text).is_some(), "{text}");
+        }
+        let api_key = format!("sk-ant-api03-{}", "k9".repeat(30));
+        assert!(!claude_login_in(&api_key));
+        assert!(!claude_login_in("run claude in the terminal"));
+        let env = "export CLAUDE_CODE_OAUTH_TOKEN='opaque-value' && claude";
+        let out = redact(env);
+        assert!(!out.contains("opaque-value"), "{out}");
+        assert!(out.contains("CLAUDE_CODE_OAUTH_TOKEN='[redacted:claude-oauth-env]"));
+        let json = format!(r#"{{"CLAUDE_CODE_OAUTH_TOKEN": "{access}"}}"#);
+        assert!(!redact(&json).contains(&access));
+        assert!(!redact(&document).contains(&refresh));
+        assert!(claude_login_path("/home/user/.claude/.credentials.json"));
+        assert!(claude_login_path(".claude/.credentials.json"));
+        assert!(!claude_login_path("docs/credentials.md"));
     }
 
     #[test]

@@ -2900,6 +2900,7 @@ dependencies = [
  "coder-access",
  "coder-host",
  "libc",
+ "secret-screen",
  "serde",
  "serde_json",
  "sha2 0.10.9",

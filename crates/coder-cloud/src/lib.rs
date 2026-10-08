@@ -11,6 +11,7 @@ use std::{
 };
 
 pub mod boat_backend;
+pub mod claude;
 pub mod gce_backend;
 pub mod operator;
 mod operator_adapters;
@@ -79,6 +80,7 @@ impl Spec {
                     "Credential names must be uppercase environment variable names.".into(),
                 );
             }
+            claude::admit_name(name)?;
         }
         Ok(())
     }

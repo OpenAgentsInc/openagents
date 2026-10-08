@@ -116,6 +116,60 @@ fn real_adapters_require_selected_credentials_and_qualified_executor_identity() 
 }
 
 #[test]
+fn claude_code_is_an_admitted_engine_that_never_takes_a_claude_login() {
+    let f = fixture(Fake::default());
+    let mut profile = f.policy.profiles["fixture"].clone();
+    let token = f.owner.0.root.join("synthetic-boat-token");
+    write(&token, b"synthetic-provider-token").unwrap();
+    profile.adapter = Adapter::Boat {
+        origin: "https://127.0.0.1:9".into(),
+        token_file: token,
+    };
+    profile.executor = crate::claude::ENGINE.into();
+    // No engine credential: the login lives inside the user's computer.
+    assert!(
+        crate::operator_adapters::configured(&profile)
+            .unwrap()
+            .is_some()
+    );
+    // The user's own API key is a separate custody class and is admitted.
+    let key = f.owner.0.root.join("synthetic-anthropic-key");
+    write(&key, b"synthetic-api-key").unwrap();
+    let mut keyed = profile.clone();
+    keyed
+        .credentials
+        .insert(crate::claude::API_KEY.into(), key.clone());
+    assert!(
+        crate::operator_adapters::configured(&keyed)
+            .unwrap()
+            .is_some()
+    );
+    // A claude.ai login under the API key's name is refused outright.
+    write(&key, format!("sk-ant-oat01-{}", "s4".repeat(40)).as_bytes()).unwrap();
+    assert!(crate::operator_adapters::configured(&keyed).is_err());
+    // The subscription-token variable is never an injectable credential.
+    let mut oauth = profile.clone();
+    oauth
+        .credentials
+        .insert("CLAUDE_CODE_OAUTH_TOKEN".into(), key.clone());
+    assert!(
+        crate::operator_adapters::configured(&oauth)
+            .unwrap()
+            .is_none()
+    );
+    let mut policy = f.policy.clone();
+    policy.profiles.insert("fixture".into(), oauth);
+    assert!(policy.validate().is_err());
+    let mut codex_key = profile.clone();
+    codex_key.credentials.insert("OPENAI_API_KEY".into(), key);
+    assert!(
+        crate::operator_adapters::configured(&codex_key)
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[test]
 fn first_cancellation_evidence_survives_distinct_and_legacy_retries() {
     let f = fixture(Fake::default());
     let store = f.owner.store().unwrap();

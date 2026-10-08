@@ -12,6 +12,7 @@ coder-access = { path = "../coder-access", default-features = false }
 coder-host = { path = "../coder-host", default-features = false }
 libc = "0.2"
 sha2 = "0.10"
+secret-screen = { path = "../secret-screen" }
 boat = { path = "../boat" }
 base64 = "0.22"
 serde = { version = "1", features = ["derive"] }

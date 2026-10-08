@@ -30,11 +30,27 @@ pub(crate) fn configured(p: &Profile) -> Result<Option<Arc<dyn Driver>>, String>
     }) {
         return Ok(None);
     }
-    if !["OPENAI_API_KEY", "OA_CODEX_AUTH"].iter().any(|name| {
+    // Codex needs a selected engine credential. Claude Code may use the
+    // user's own API key, or else the login the user made inside their own
+    // computer, which never passes through this profile.
+    let engine_keys: &[&str] = if p.executor == crate::claude::ENGINE {
+        &[crate::claude::API_KEY]
+    } else {
+        &["OPENAI_API_KEY", "OA_CODEX_AUTH"]
+    };
+    let selected = |name: &&str| {
         values
             .get(*name)
             .is_some_and(|value| !value.trim().is_empty())
-    }) {
+    };
+    let refused = if p.executor == crate::claude::ENGINE {
+        engine_keys
+            .iter()
+            .any(|name| values.contains_key(*name) && !selected(name))
+    } else {
+        !engine_keys.iter().any(selected)
+    };
+    if refused {
         return Ok(None);
     }
     let credentials =
@@ -105,17 +121,25 @@ pub(crate) fn configured(p: &Profile) -> Result<Option<Arc<dyn Driver>>, String>
     }
 }
 fn qualified_identity(p: &Profile) -> bool {
+    let tools = |name: &str| matches!(name, "GH_TOKEN" | "GITHUB_TOKEN");
     p.mode == crate::Mode::Coder
-        && p.executor == "codex"
-        && p.credentials
-            .keys()
-            .any(|name| matches!(name.as_str(), "OPENAI_API_KEY" | "OA_CODEX_AUTH"))
-        && p.credentials.keys().all(|name| {
-            matches!(
-                name.as_str(),
-                "OPENAI_API_KEY" | "OA_CODEX_AUTH" | "GH_TOKEN" | "GITHUB_TOKEN"
-            )
-        })
+        && match p.executor.as_str() {
+            "codex" => {
+                p.credentials
+                    .keys()
+                    .any(|name| matches!(name.as_str(), "OPENAI_API_KEY" | "OA_CODEX_AUTH"))
+                    && p.credentials.keys().all(|name| {
+                        matches!(name.as_str(), "OPENAI_API_KEY" | "OA_CODEX_AUTH") || tools(name)
+                    })
+            }
+            // Claude Code never takes a claude.ai login from a profile
+            // (docs/cloud/claude-code-byo.md); only the user's own API key.
+            crate::claude::ENGINE => p
+                .credentials
+                .keys()
+                .all(|name| name == crate::claude::API_KEY || tools(name)),
+            _ => false,
+        }
 }
 
 /// A pinned pool and named hosts. This adapter never grows a pool or selects
