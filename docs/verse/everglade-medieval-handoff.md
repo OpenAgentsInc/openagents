@@ -90,7 +90,8 @@ unchanged.
 
 ## What's open
 
-- **P3 (#10896).** Claimed on October 8 on `codex/everglade-p3`.
+- **P3 (#10896).** Checkpointed on October 8 on `codex/everglade-p3`;
+  the claim is released and the board returns to Todo for the usage stop.
   CPU acceptance at `c17428fc30` passes for all 65 actual canonical houses:
   near has 3,156–10,000 triangles and 10–12 selected draws, middle has
   2,999–3,000 triangles and one draw, and far has 799–800 triangles and
@@ -274,12 +275,78 @@ and Cargo JSON SHA-256 is
 The toolbox retains `p3-candidate-no-run*`, `p3-capture-no-run*` (including
 the failed attempt), and `p3-composed-headless-check*` with full commands,
 logs, and executable paths. The team Cargo slot is released after this
-batch. Remaining jobs are one compiled CPU candidate-output run, actual
-roof/interior, grade, same-demo-actor, and 10/50/120 m raster captures,
-far damage/restore evidence, then acceptance review and the artifact queue,
-private upload, and dependent deploy. Obtain a separate coordinator window
-before those steps. No P3 GPU capture, artifact submission, repin, upload,
-or main landing has run.
+batch. The compiled strict checker passes in 262.43 seconds and writes
+candidate `c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e`
+to `house-check-p3-candidate/`: 21,467,658 bytes, 189 models, 283,800
+triangles, and 63,438,848 decoded texture bytes. Its hash and `0600` file
+permissions pass verification. `p3-candidate-cpu-report.json` has SHA-256
+`a1923f8f0407986ea77f923fd08913f8d0e69fa7d907d39753224a29c3bbb380`.
+All 65 strict distance-selected budgets still pass. The 60.5 MiB desktop
+texture payload does not establish the B4 phone tier.
+
+Six serial remote quiet/GPU captures pass in 57.75–61.22 seconds with
+the immutable capture executable above and candidate `c559955403b4`.
+The coordinator accepts them as geometry and LOD evidence. The near cabin
+view favors the roof and gives limited facade/palette evidence; middle and
+far retain recognizable massing, roof bounds, and palette. Market exterior
+and gable remain coherent; the interior retains floor, ceiling, walls,
+and windows. Its darkness and existing rain-through-ceiling limitation
+do not establish lighting acceptance. Every caption states horizontal
+selector distance, full eye/target coordinates, and Euclidean eye-to-floor
+anchor distance. The private `p3-raster/receipt-index.json`, SHA-256
+`6c3f4b3545c98a9d922c64a8082f0a7436a7800e131ae7a528df375b934717c1`, binds
+the six PNG hashes, exact poses, commands, sources, and lease receipts:
+
+| Private PNG in `p3-raster/` | Horizontal distance (m) | Euclidean distance (m) | SHA-256 |
+| --- | ---: | ---: | --- |
+| `cabin-h10.png` | 10 | 19.939 | `22eda700eaa7a304511bae18cdf93adb7046fab35a27d1409252e5f0b2a01d91` |
+| `cabin-h50.png` | 50 | 53.578 | `17ff6a18e8ac83eebad5c1bdf7a4dd9bd78b1a52453f279c14b258b4f8cfeb2e` |
+| `cabin-h120.png` | 120 | 123.513 | `8283a0ea9d543197457bccd2e50c1575f35299c645dccfc94fc77bbd1487f2a3` |
+| `market-exterior.png` | 32 | 37.344 | `79ea3df40b97c906e337a45dac3ce3f9293b12d09998f263c4900959ab3fd4fa` |
+| `market-roof.png` | 25 | 33.467 | `a6444a1741794bb4f8c6378cdbb6ab827aeebfc4be4b1eaf217ed12d389e28f5` |
+| `market-interior.png` | 3 | 3.250 | `a28901d6d0e877e9764285d63ab024610bc49c0ef15f05fbd4cb1db4dd615580` |
+
+The remote directory is
+`/home/christopherdavid/.openagents/scratch/process-2159833/medieval-p3-tools/p3-raster/`.
+The Mac copy, including receipts, is
+`/Users/christopherdavid/.openagents/scratch/codex-01a119ad-8a81-7882-9d04-97d83523f0c8/p3-tools/p3-raster/`.
+No P3 artifact submission, repin, upload, deployment, or main landing has run.
+Remaining acceptance is the accurately labeled same exported demo actor
+before/after merge and grade, matching grade captures, far damage/repeated
+damage/restore captures, and any reviewed near facade supplement. Then
+rebase onto current main, preserve independent changes, obtain focused
+composition checks, and submit through `everglade-kit` before private upload
+and the dependent web deploy. The claim is released for the usage stop;
+these are resumable steps, not an external blocker or owner-only work.
+
+Resume only after a fresh claim/status audit and coordinator resource window.
+The retained private helper checks the immutable executable and candidate
+hashes and takes quiet/GPU leases. To repeat one approved capture, replace
+`cabin-h50` with another name from the table:
+
+```sh
+openagents lease run --class bench --place remote:coderos-4080 --priority normal -- sh -c '
+  cd "$HOME/.openagents/scratch/process-2159833/medieval-p3-tools/source" &&
+  OPENAGENTS_BUILD_LEASES=1 OPENAGENTS_SLOT_FREE_GB=25 OPENAGENTS_LEASE_PRIORITY=normal \
+    python3 ../p3-raster-capture.py cabin-h50'
+```
+
+To repeat the CPU candidate acceptance, use its retained source/build
+identities and output outside Git:
+
+```sh
+openagents lease run --class build --place remote:coderos-4080 --priority normal -- sh -c '
+  cd "$HOME/.openagents/scratch/process-2159833/medieval-p3-tools/source" &&
+  export CARGO_TARGET_DIR="$HOME/work/openagents-target-agent11" CARGO_BUILD_JOBS=4 RUST_TEST_THREADS=4 \
+    OPENAGENTS_BUILD_LEASES=1 OPENAGENTS_SLOT_FREE_GB=25 OPENAGENTS_LEASE_PRIORITY=normal \
+    VERSE_KIT_HOUSE_BUILD="$HOME/.openagents/verse/private/medieval-town/kit-build" \
+    VERSE_KIT_HOUSE_OUTPUT="$HOME/.openagents/scratch/process-2159833/medieval-p3-tools/house-check-p3-candidate" \
+    VERSE_KIT_HOUSE_VERIFY=1 &&
+  unset VERSE_KIT_PACK VERSE_KIT_BAKE &&
+  openagents lease build --keep-target-dir --priority normal -- \
+    timeout 600 "$CARGO_TARGET_DIR/debug/examples/kit_house_check-d503a2e1635f07a5" \
+    --ignored --exact tests::export_private_house_acceptance --nocapture'
+```
 
 The portable headless CPU runtime is Blender 4.5.14 LTS. Its official archive
 SHA-256 is `9ba871ff2ecd36526b77432745980b7e6664ecd0c7ca11c48849073dcfe06da3`.
