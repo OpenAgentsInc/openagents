@@ -448,7 +448,11 @@ fn photo_encode_preserves_reactive_coverage_and_history_beside_an_hdr_ribbon() {
     let instance =
         wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
     let adapter = pollster::block_on(instance.request_adapter(&Default::default())).unwrap();
-    let (device, queue) = pollster::block_on(adapter.request_device(&Default::default())).unwrap();
+    let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+        required_features: adapter.features() & wgpu::Features::TIMESTAMP_QUERY,
+        ..Default::default()
+    }))
+    .unwrap();
     let copy = flat(&device, "return textureLoad(image, vec2<i32>(p.xy), 0);");
     let mask = flat(
         &device,
@@ -672,6 +676,7 @@ fn photo_encode_preserves_reactive_coverage_and_history_beside_an_hdr_ribbon() {
             // Each variant submits separately: Photo's frame uniform must not
             // be overwritten by another encode before these draws execute.
             queue.submit([encoder.finish()]);
+            photo.submitted();
             readback.map_async(wgpu::MapMode::Read, .., |result| result.unwrap());
             device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
             let bytes = readback.get_mapped_range(..);

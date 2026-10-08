@@ -4466,7 +4466,11 @@ impl Photo {
                     &targets.depth,
                     wgpu::LoadOp::Load,
                     wgpu::LoadOp::Load,
-                    wgpu::StoreOp::Discard,
+                    if targets.temporal.as_ref().is_some_and(|t| t.enabled) {
+                        wgpu::StoreOp::Store
+                    } else {
+                        wgpu::StoreOp::Discard
+                    },
                 );
                 self.draw_blended(&mut pass, targets, &opaque);
             } else {
