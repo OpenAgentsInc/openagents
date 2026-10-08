@@ -142,9 +142,16 @@ default features in the later Mac window. Do not change system packages.
 At source `97ab779f788948dc42ed1dca38ad58749a5ef6e0`, the remote
 `cargo check --locked -p verse --no-default-features --features capture -j4`
 and `cargo check --locked -p everglade-web --target wasm32-unknown-unknown -j4`
-passed. The latter uses `CC_wasm32_unknown_unknown=clang`. Pure water tests
-and shared shader validation remain pending; P3 currently holds the team
-Cargo token.
+passed. The latter uses `CC_wasm32_unknown_unknown=clang`.
+At `fee6c4ff2b04d56dfcf7c0c48e2a9bafe9b2c6bd`, remote
+water-filtered library tests passed: physics 40, engine 6, and PBR 52,
+with `water::parity` excluded. Shared shader validation passed its default
+and GLES variants, the explicit wasm32 consumer recheck passed, and the
+filtered `water_capture` example compiled with `--no-run`. That compilation
+found only an obsolete capture extent helper, which is removed. The remote
+has no `wasm-bindgen` command; use the Mac's matched 0.2.128 CLI after
+copying the exact compiler artifact. The Mac quiet soak still prevents
+local builds and measurements.
 The stable remote source is
 `/home/christopherdavid/.openagents/scratch/process-2198653/water-w11-agent12`,
 with its own `~/work/openagents-target-agent12`. Advance only that checkout
