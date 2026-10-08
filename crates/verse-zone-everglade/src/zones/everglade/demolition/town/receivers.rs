@@ -99,6 +99,7 @@ mod tests {
     fn building(rect: ([f32; 2], [f32; 2]), base: f32, top: f32) -> Building {
         Building {
             rect,
+            walls: None,
             base,
             top,
             stories: 1,
