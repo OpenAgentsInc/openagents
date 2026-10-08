@@ -2075,3 +2075,27 @@ Owner steps before a real tenant uses it:
 3. Name the reviewer account and the audit fields the customer requires.
 4. Link each member's Google subject, or set `linking` to
    `verified_email_domain` and label accounts with their work email.
+
+## REV-76 second jurisdiction: Canada business email under CASL (#10883)
+
+Code state: international contact stays disabled by default. A lead outside
+`US` is contacted only with positive evidence (`details.scope`) that names an
+enabled, versioned, reviewed scope (`openagents.sales-jurisdiction-scope.v1`,
+recorded through `sales privacy apply` with `kind: scope`, revoked with
+`kind: revoke_scope`) whose jurisdiction, business category, email channel,
+consent basis, and rule version match exactly; admission pins the evidence
+digest, dispatch rechecks scope, revocation, expiry, and suppression, and a
+restart cannot restore a revoked or expired scope. The reviewed Canadian
+scope admits business recipients on express consent or an existing business
+relationship only, never a published address.
+
+Owner steps before the scope is enabled:
+
+1. Confirm the buyer cohort that needs Canada and record it as
+   `cohort_reference`.
+2. Obtain the CASL review (CRTC consent guidance, identification, and
+   unsubscribe requirements) from the named reviewer and record its
+   reference and expiry in the scope.
+3. Add `CA` to the sales policy's `jurisdictions` after `US`.
+4. Record each Canadian lead's consent or relationship evidence with its
+   recorded date, expiry, and reviewer before any draft.

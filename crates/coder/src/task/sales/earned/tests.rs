@@ -29,6 +29,7 @@ fn fixture() -> (TempDir, Store, Access, PathBuf) {
                 details: crate::task::sales::Details {
                     account: "synthetic-account".into(),
                     jurisdiction: "synthetic jurisdiction record".into(),
+                    scope: None,
                     permission: crate::task::sales::Permission {
                         state: crate::task::sales::PermissionState::Granted,
                         reference: "synthetic-consent-v1".into(),

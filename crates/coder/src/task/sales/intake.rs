@@ -355,7 +355,7 @@ impl Store {
                 .checked_add(policy.retention_seconds)
                 .ok_or("intake retention overflow")?;
             let details = Details {
-                account: submission.account.clone(), jurisdiction: submission.jurisdiction.clone(),
+                account: submission.account.clone(), jurisdiction: submission.jurisdiction.clone(), scope: None,
                 permission: Permission { state: PermissionState::Granted, reference: format!("self-asserted-intake:{}:{}", policy.consent_version, submission.request), recorded_at: now, expires_at: until, channels: vec!["email".into()] },
                 workflow: submission.workflow.clone(), baseline_reference: "No comparative evidence supplied; scope and installation need private qualification".into(),
                 data: DataBoundary { recipients: vec![format!("human:{owner}")], permitted_use: USE.into(), retain_until: until },

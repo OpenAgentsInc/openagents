@@ -606,7 +606,7 @@ impl Store {
             || p.expires_at <= now
             || self.state.agents.current.get(&p.id) != Some(&record.sha256)
             || !p.channels.iter().any(|c| c == "email")
-            || p.jurisdictions != ["US"]
+            || p.jurisdictions.first().map(String::as_str) != Some("US")
         {
             return Err("email policy is expired, revoked, or outside its scope".into());
         }
