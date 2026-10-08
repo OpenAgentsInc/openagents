@@ -93,7 +93,11 @@ fn boulder(center: Vec3, turn: f32) -> Vec<super::super::LitVertex> {
 }
 
 fn flat(device: &wgpu::Device, fragment: &str) -> wgpu::RenderPipeline {
-    let source = format!("@group(0) @binding(0) var image: texture_2d<f32>;
+    sampled_flat(device, "texture_2d<f32>", fragment)
+}
+
+fn sampled_flat(device: &wgpu::Device, image_type: &str, fragment: &str) -> wgpu::RenderPipeline {
+    let source = format!("@group(0) @binding(0) var image: {image_type};
         @vertex fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {{
             return vec4<f32>(f32((i << 1u) & 2u) * 2.0 - 1.0, f32(i & 2u) * 2.0 - 1.0, 0.0, 1.0);
         }}
@@ -431,4 +435,348 @@ fn production_lit_projection_marks_every_visible_faceted_sample() {
             assert!(partial, "the fixture must exercise resolved edge samples");
         }
     }
+}
+
+#[test]
+#[ignore = "Requires a native GPU; checks full High scene orchestration with a reactive rock and HDR ribbon"]
+fn photo_encode_preserves_reactive_coverage_and_history_beside_an_hdr_ribbon() {
+    assert_ne!(
+        std::env::var("VERSE_TEMPORAL_AA").ok().as_deref(),
+        Some("off"),
+        "this diagnostic requires temporal AA"
+    );
+    let instance =
+        wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
+    let adapter = pollster::block_on(instance.request_adapter(&Default::default())).unwrap();
+    let (device, queue) = pollster::block_on(adapter.request_device(&Default::default())).unwrap();
+    let copy = flat(&device, "return textureLoad(image, vec2<i32>(p.xy), 0);");
+    let mask = flat(
+        &device,
+        "return vec4<f32>(textureLoad(image, vec2<i32>(p.xy), 0).r, 0.0, 0.0, 1.0);",
+    );
+    // Only opaque geometry writes the physical depth. With no foreground
+    // blocker, its nonzero samples are an independent rock-coverage reference.
+    let coverage = sampled_flat(
+        &device,
+        "texture_depth_multisampled_2d",
+        "var covered = 0.0; var nearest = 0.0;
+         for (var sample = 0; sample < 4; sample++) {
+             let d = textureLoad(image, vec2<i32>(p.xy), sample);
+             covered += select(0.0, 0.25, d > 0.0);
+             nearest = max(nearest, d);
+         }
+         return vec4<f32>(covered, nearest, 0.0, 1.0);",
+    );
+    let texture = |format, usage| {
+        device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("full photo reactive diagnostic"),
+            size: wgpu::Extent3d {
+                width: SIZE[0],
+                height: SIZE[1],
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format,
+            usage,
+            view_formats: &[],
+        })
+    };
+    let target = texture(
+        wgpu::TextureFormat::Rgba16Float,
+        wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+    );
+    let output = texture(
+        wgpu::TextureFormat::Rgba8Unorm,
+        wgpu::TextureUsages::RENDER_ATTACHMENT,
+    )
+    .create_view(&Default::default());
+    let readback = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("full photo reactive diagnostic"),
+        size: 4 * u64::from(ROW * SIZE[1]),
+        usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    let mut photo = Photo::new(
+        &device,
+        &queue,
+        Capability {
+            hdr: Some(wgpu::TextureFormat::Rgba16Float),
+            samples: 4,
+            gles: false,
+            quality: Tier::High.quality(),
+        },
+        wgpu::TextureFormat::Rgba8Unorm,
+    )
+    .unwrap();
+    let mut targets = std::array::from_fn::<_, 3, _>(|_| photo.targets(&device, SIZE[0], SIZE[1]));
+    assert!(photo.prepass.is_some() && photo.water_screen.is_some());
+    let eye = Vec3::new(143.2, 17.4, 201.8);
+    let center = Vec3::new(139.7, 12.6, 150.3);
+    let toward = (eye - center).normalize();
+    let right = (center - eye).cross(Vec3::Y).normalize();
+    let view = verse_engine::presentation::View {
+        eye,
+        view_proj: Mat4::perspective_rh(0.9, SIZE[0] as f32 / SIZE[1] as f32, 0.1, 1000.0)
+            * Mat4::look_at_rh(eye, center, Vec3::Y),
+    };
+    // A clipped static mesh keeps the identical key-light path active in the
+    // no-rock control. Nonzero prefix and suffix vertices test range offsets.
+    let outside = boulder(center + right * 100.0, 0.0);
+    let static_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("clipped static light admission"),
+        contents: bytemuck::cast_slice(&outside),
+        usage: wgpu::BufferUsages::VERTEX,
+    });
+    let mut partial = false;
+    let mut hdr = false;
+    let mut dependent_background = false;
+    let mut preceding_footprint = vec![false; (SIZE[0] * SIZE[1]) as usize];
+    for (frame, (offset, present, occluded)) in [
+        (0.0, false, false),
+        (0.0, false, false),
+        (-10.0, true, false),
+        (-4.0, true, false),
+        (2.0, true, false),
+        (8.0, true, false),
+        (14.0, true, false),
+        (60.0, true, false),
+        (0.0, true, true),
+        (0.0, false, false),
+        (0.0, false, false),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let head = boulder(center + right * offset, frame as f32 * 0.41);
+        let blocker_center = eye.lerp(center, 0.75);
+        let blocker: Vec<_> = boulder(blocker_center, 0.2)
+            .into_iter()
+            .map(|mut vertex| {
+                vertex.pos = (blocker_center
+                    + (Vec3::from_array(vertex.pos) - blocker_center) * 2.0)
+                    .to_array();
+                vertex
+            })
+            .collect();
+        let world_vertices = if occluded { &blocker } else { &outside };
+        let world_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("full photo opaque control"),
+            contents: bytemuck::cast_slice(world_vertices),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+        let ribbon = crate::fx::Ribbon {
+            points: [-24.0, -12.0, 0.0, 12.0, 24.0]
+                .into_iter()
+                .map(|offset| crate::fx::RibbonPoint {
+                    at: center + right * offset - toward * 5.0,
+                    half: 7.0,
+                    color: [12.0, 5.0, 0.8],
+                    alpha: 1.0,
+                })
+                .collect(),
+            layer: crate::fx::sheet::layer("fireball").unwrap(),
+            rect: crate::fx::sheet::find("fireball").unwrap().rect(6),
+            priority: 240,
+        };
+        let mut sprites = Vec::new();
+        crate::fx::vertices_with_ribbons(&[], &[ribbon], eye, 1024, &mut sprites);
+        photo.sprites.write(&device, &queue, &sprites);
+        assert!(photo.sprites.count > 0, "the split particle path must run");
+        let mut neon = Neon::plaza(frame as f32 / 60.0);
+        neon.field = [0.005, 0.004, 0.003];
+        neon.fog_start = 2000.0;
+        neon.fog_end = 3000.0;
+        neon.key = Some(super::super::Key {
+            dir: Vec3::new(0.3, 0.8, 0.4).normalize(),
+            illuminance: 5.0,
+            angular_radius: 0.01,
+            rim_dir: -Vec3::Y,
+            rim_illuminance: 0.0,
+            rim_angular_radius: 0.01,
+            sky: 1.0,
+            ground: 0.2,
+            ev100: 0.0,
+            shadow_center: center,
+            shadow_half: 80.0,
+            shadow_distance: None,
+            cache_far_shadows: false,
+        });
+        let mut frame_images = Vec::new();
+        for (variant, targets) in targets.iter_mut().enumerate() {
+            let mut vertices = outside.clone();
+            let first = vertices.len() as u32;
+            if present && variant != 2 {
+                vertices.extend_from_slice(&head);
+            }
+            let end = vertices.len() as u32;
+            vertices.extend_from_slice(&outside);
+            photo.dynamic_lit.write(&device, &queue, &vertices);
+            let dynamic = photo.dynamic_lit.buffer.clone();
+            let dynamic_count = photo.dynamic_lit.count;
+            let ranges = if variant == 0 && first < end {
+                vec![first..end]
+            } else {
+                vec![]
+            };
+            let mut encoder = device.create_command_encoder(&Default::default());
+            photo.encode(
+                &device,
+                &queue,
+                &mut encoder,
+                &output,
+                targets,
+                view,
+                Stage::Neon(&neon),
+                Batches {
+                    motion: &[],
+                    reactive_lit: Some(super::super::temporal::ReactiveLit {
+                        vertices: &dynamic,
+                        count: dynamic_count,
+                        ranges: &ranges,
+                    }),
+                    #[cfg(not(target_arch = "wasm32"))]
+                    streamed: None,
+                    lit: (&world_buffer, world_vertices.len() as u32),
+                    faces: [(&static_buffer, 0); 2],
+                    lines: [(&static_buffer, 0); 2],
+                    textured: None,
+                    figure: None,
+                    instances: None,
+                    water: None,
+                },
+                None,
+            );
+            let temporal = targets.temporal.as_ref().unwrap();
+            assert!(temporal.enabled, "full Photo path must enable temporal AA");
+            for (index, (source, pipeline)) in [
+                (temporal.reactive_view(), &mask),
+                (&targets.depth, &coverage),
+                (temporal.history_view(), &copy),
+                (&targets.scene, &copy),
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                snapshot(
+                    &device,
+                    &mut encoder,
+                    source,
+                    pipeline,
+                    &target,
+                    &readback,
+                    index as u64,
+                );
+            }
+            // Each variant submits separately: Photo's frame uniform must not
+            // be overwritten by another encode before these draws execute.
+            queue.submit([encoder.finish()]);
+            readback.map_async(wgpu::MapMode::Read, .., |result| result.unwrap());
+            device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+            let bytes = readback.get_mapped_range(..);
+            let pixels: Vec<[f32; 4]> = bytes
+                .chunks_exact(8)
+                .map(|p| {
+                    std::array::from_fn(|k| {
+                        half::f16::from_bits(u16::from_le_bytes([p[k * 2], p[k * 2 + 1]])).to_f32()
+                    })
+                })
+                .collect();
+            let n = (SIZE[0] * SIZE[1]) as usize;
+            let [marker, depth, history, scene] =
+                std::array::from_fn(|k| &pixels[k * n..(k + 1) * n]);
+            assert!(pixels.iter().flatten().all(|v| v.is_finite()));
+            hdr |= scene.iter().any(|p| p[0] > 1.0 && p[1] > 0.1);
+            if variant == 0 && present {
+                let mut visible = 0;
+                let mut dependent = 0;
+                for p in 0..n {
+                    if occluded {
+                        assert_eq!(marker[p][0], 0.0, "nearer geometry must hide the marker");
+                        continue;
+                    }
+                    assert!(
+                        (depth[p][0] - marker[p][0]).abs() < 0.004,
+                        "frame {frame} pixel {p}: physical coverage {} reactive {}",
+                        depth[p][0],
+                        marker[p][0]
+                    );
+                    partial |= marker[p][0] > 0.0 && marker[p][0] < 1.0;
+                    visible += usize::from(marker[p][0] > 0.0);
+                    let x = p as i32 % SIZE[0] as i32;
+                    let y = p as i32 / SIZE[0] as i32;
+                    let touches_head = (-1..=1).any(|dy| {
+                        (-1..=1).any(|dx| {
+                            let x = (x + dx).clamp(0, SIZE[0] as i32 - 1);
+                            let y = (y + dy).clamp(0, SIZE[1] as i32 - 1);
+                            marker[(y * SIZE[0] as i32 + x) as usize][0] > 0.0
+                        })
+                    });
+                    if touches_head {
+                        dependent += 1;
+                        assert!(
+                            history[p][3] < 0.0,
+                            "frame {frame} pixel {p}: actual Photo history retained head-dependent color at alpha {}",
+                            history[p][3]
+                        );
+                        dependent_background |= depth[p][0] == 0.0 && scene[p][0] > 0.1;
+                    }
+                }
+                eprintln!(
+                    "full Photo frame {frame}: visible={visible}, dependent={dependent}, occluded={occluded}"
+                );
+                if offset < 60.0 && !occluded {
+                    assert!(
+                        visible > 0,
+                        "visible rock must populate the actual R8 target"
+                    );
+                }
+            } else {
+                assert!(
+                    history.iter().all(|p| p[3] > 0.0),
+                    "unmarked and no-rock controls must keep ordinary history metadata"
+                );
+            }
+            frame_images.push(pixels);
+            drop(bytes);
+            readback.unmap();
+        }
+        let n = (SIZE[0] * SIZE[1]) as usize;
+        let marked = &frame_images[0];
+        let unmarked = &frame_images[1];
+        let absent = &frame_images[2];
+        let mut marked_error = 0.0_f32;
+        let mut unmarked_error = 0.0_f32;
+        let mut prior_background = 0;
+        for p in 0..n {
+            if preceding_footprint[p] && marked[n + p][0] == 0.0 {
+                prior_background += 1;
+                for channel in 0..3 {
+                    marked_error = marked_error
+                        .max((marked[2 * n + p][channel] - absent[2 * n + p][channel]).abs());
+                    unmarked_error = unmarked_error
+                        .max((unmarked[2 * n + p][channel] - absent[2 * n + p][channel]).abs());
+                }
+            }
+            preceding_footprint[p] = marked[2 * n + p][3] < 0.0;
+        }
+        // Keep the control differences visible even when coverage/metadata
+        // pass: this distinguishes a later color leak from a lost marker.
+        eprintln!(
+            "full Photo frame {frame}: preceding background={prior_background}, retained HDR max error marked={marked_error}, unmarked={unmarked_error}"
+        );
+    }
+    assert!(
+        partial,
+        "full High rendering must exercise partial MSAA edge samples"
+    );
+    assert!(
+        hdr,
+        "the actual atlas-backed ribbon must reach HDR scene color"
+    );
+    assert!(
+        dependent_background,
+        "the reactive conditioning footprint must touch ribbon over clear depth"
+    );
 }
