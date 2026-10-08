@@ -344,6 +344,8 @@ pub enum Detail {
     Near(u8),
     /// While its cell is at or beyond switch `i`.
     Far(u8),
+    /// One whole object's near, middle, far, or original-piece fallback level.
+    Group { group: u16, level: u8 },
 }
 
 impl Detail {
@@ -353,6 +355,7 @@ impl Detail {
         match self {
             Self::Always => None,
             Self::Near(i) | Self::Far(i) => Some(usize::from(i)),
+            Self::Group { .. } => None,
         }
     }
 }
@@ -363,8 +366,21 @@ impl Detail {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Level {
     Always,
-    Near { anchor: [f32; 2], switch: f32 },
-    Far { anchor: [f32; 2], switch: f32 },
+    Near {
+        anchor: [f32; 2],
+        switch: f32,
+    },
+    Far {
+        anchor: [f32; 2],
+        switch: f32,
+    },
+    Group {
+        group: u16,
+        anchor: [f32; 2],
+        switches: [f32; 2],
+        level: u8,
+        fallback: u8,
+    },
 }
 
 impl Level {
@@ -377,6 +393,22 @@ impl Level {
         let (anchor, switch) = match self {
             Self::Always => return true,
             Self::Near { anchor, switch } | Self::Far { anchor, switch } => (anchor, switch),
+            Self::Group {
+                anchor,
+                switches,
+                level,
+                ..
+            } => {
+                // A group's history belongs to the shared selector, never to
+                // separate batches. Without it, choose the exact distance.
+                return DetailGroup {
+                    anchor,
+                    switches,
+                    fallback: 0,
+                }
+                .selected(eye, None)
+                    == level;
+            }
         };
         let distance = (eye.x - anchor[0]).hypot(eye.z - anchor[1]);
         match was {
@@ -393,6 +425,7 @@ impl Level {
             Self::Always => true,
             Self::Near { .. } => near,
             Self::Far { .. } => !near,
+            Self::Group { .. } => near,
         }
     }
 
@@ -400,6 +433,60 @@ impl Level {
     #[must_use]
     pub fn drawn_from(self, eye: Vec3) -> bool {
         self.drawn(self.near(eye, None))
+    }
+
+    /// Uses the original pieces at every distance after the object changes.
+    #[must_use]
+    pub fn drawn_with_fallback(
+        self,
+        selected: bool,
+        groups: &std::collections::BTreeSet<u16>,
+    ) -> bool {
+        match self {
+            Self::Group {
+                group,
+                level,
+                fallback,
+                ..
+            } if groups.contains(&group) => level == fallback,
+            _ => self.drawn(selected),
+        }
+    }
+}
+
+/// Distance levels that share one object anchor and one destruction fallback.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct DetailGroup {
+    pub anchor: [f32; 2],
+    pub switches: [f32; 2],
+    /// The original pieces: near (0), or a separate fallback (3).
+    pub fallback: u8,
+}
+
+impl DetailGroup {
+    /// Chooses exactly one level, retaining the shared earlier level within
+    /// its hysteresis band. A teleport can cross both switches at once.
+    #[must_use]
+    pub fn selected(self, eye: Vec3, was: Option<u8>) -> u8 {
+        let distance = (eye.x - self.anchor[0]).hypot(eye.z - self.anchor[1]);
+        match was {
+            Some(0) if distance < self.switches[0] + HYSTERESIS => return 0,
+            Some(1)
+                if distance >= self.switches[0] - HYSTERESIS
+                    && distance < self.switches[1] + HYSTERESIS =>
+            {
+                return 1;
+            }
+            Some(2) if distance >= self.switches[1] - HYSTERESIS => return 2,
+            _ => {}
+        }
+        if distance < self.switches[0] {
+            0
+        } else if distance < self.switches[1] {
+            1
+        } else {
+            2
+        }
     }
 }
 
@@ -413,6 +500,7 @@ pub struct TexturedScene {
     /// The distances, in meters across the ground, at which placements
     /// change level ([`Detail`]), at most [`MAX_SWITCHES`].
     pub switches: Vec<f32>,
+    pub detail_groups: Vec<DetailGroup>,
     /// Where a background light bake delivers this scene's merged vertices
     /// with their light channel filled
     /// ([`crate::pbr::textured_bake::SceneBaker`]); the renderer writes them
@@ -451,9 +539,30 @@ struct IndexEditState {
     revision: u64,
     /// The first merged index of each range, its revision, and its indices.
     ranges: BTreeMap<u32, (u64, Vec<u32>)>,
+    fallback_groups: std::collections::BTreeSet<u16>,
 }
 
 impl IndexEdits {
+    /// Replaces the object groups that must draw their original pieces.
+    pub fn set_group_fallbacks(&self, groups: std::collections::BTreeSet<u16>) {
+        let mut state = self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if state.fallback_groups != groups {
+            state.fallback_groups = groups;
+            state.revision += 1;
+        }
+    }
+
+    #[must_use]
+    pub fn group_fallbacks(&self) -> std::collections::BTreeSet<u16> {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .fallback_groups
+            .clone()
+    }
     /// Sets the merged indices from `first` on to `indices`.
     pub fn write(&self, first: u32, indices: Vec<u32>) {
         let mut state = self
@@ -664,6 +773,30 @@ impl TexturedScene {
                 anchor,
                 switch: self.switches[usize::from(i)],
             },
+            Detail::Group { group, level } => {
+                let g = self.detail_groups[usize::from(group)];
+                Level::Group {
+                    group,
+                    anchor: g.anchor,
+                    switches: g.switches,
+                    level,
+                    fallback: g.fallback,
+                }
+            }
+        }
+    }
+
+    /// Merges one object's pieces at its anchor, while preserving their transforms.
+    pub(crate) fn placement_cell(&self, placement: &Placement) -> (i32, i32) {
+        match placement.detail {
+            Detail::Group { group, .. } => {
+                let anchor = self.detail_groups[usize::from(group)].anchor;
+                (
+                    (anchor[0] / CELL).floor() as i32,
+                    (anchor[1] / CELL).floor() as i32,
+                )
+            }
+            _ => cell_of(placement.transform),
         }
     }
 
@@ -677,11 +810,20 @@ impl TexturedScene {
             || self.materials.len() > MAX_MATERIALS
             || self.placements.len() > MAX_PLACEMENTS
             || self.switches.len() > MAX_SWITCHES
+            || self.detail_groups.len() > 384
         {
             return Err("textured scene exceeds its image, material, or placement bound".into());
         }
         if !self.switches.iter().all(|s| s.is_finite() && *s > 0.0) {
             return Err("textured scene has an invalid switch distance".into());
+        }
+        if !self.detail_groups.iter().all(|g| {
+            g.anchor.iter().all(|a| a.is_finite())
+                && g.switches.iter().all(|s| s.is_finite() && *s > 0.0)
+                && g.switches[0] < g.switches[1]
+                && matches!(g.fallback, 0 | 3)
+        }) {
+            return Err("textured scene has an invalid detail group".into());
         }
         for image in &self.images {
             image.validate()?;
@@ -700,6 +842,8 @@ impl TexturedScene {
                     .detail
                     .switch()
                     .is_some_and(|i| i >= self.switches.len())
+                || matches!(placement.detail, Detail::Group { group, level }
+                    if usize::from(group) >= self.detail_groups.len() || level > 3)
             {
                 return Err("textured placement has an invalid mesh or transform".into());
             }
@@ -770,7 +914,7 @@ impl TexturedScene {
             let t = placement.transform;
             let normals = Mat3::from_mat4(t).inverse().transpose();
             let mirrored = t.determinant() < 0.0;
-            let cell = cell_of(t);
+            let cell = self.placement_cell(placement);
             for p in &self.meshes[placement.mesh].primitives {
                 let pass = self.materials[p.material].alpha.pass();
                 let (vertices, indices) = cells
@@ -850,7 +994,7 @@ impl TexturedScene {
                 local.push(ranges);
                 continue;
             }
-            let cell = cell_of(placement.transform);
+            let cell = self.placement_cell(placement);
             let primitives = self
                 .meshes
                 .get(placement.mesh)
@@ -1575,6 +1719,160 @@ fn decode_png(bytes: &[u8]) -> Result<(u32, u32, Vec<u8>), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn detail_groups_select_one_level_across_both_switches() {
+        let levels: Vec<_> = (0..3)
+            .map(|level| Level::Group {
+                group: 0,
+                anchor: [0.0; 2],
+                switches: [40.0, 80.0],
+                level,
+                fallback: 0,
+            })
+            .collect();
+        let group = DetailGroup {
+            anchor: [0.0; 2],
+            switches: [40.0, 80.0],
+            fallback: 0,
+        };
+        let mut was = None;
+        for distance in (0..1000)
+            .map(|n| n as f32 / 10.0)
+            .chain((0..1000).rev().map(|n| n as f32 / 10.0))
+        {
+            let eye = Vec3::new(0.0, 2.0, distance);
+            let selected = group.selected(eye, was);
+            assert_eq!(
+                levels
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, level)| level.drawn(*i == usize::from(selected)))
+                    .count(),
+                1,
+                "distance {distance}"
+            );
+            was = Some(selected);
+        }
+        let mut was = None;
+        for (distance, expected) in [
+            (10.0, 0),
+            (80.1, 2),
+            (39.9, 0),
+            (120.0, 2),
+            (40.1, 1),
+            (10.0, 0),
+            (79.9, 1),
+            (120.0, 2),
+            (39.9, 0),
+            (0.0, 0),
+            (80.0, 2),
+            (79.9, 2),
+            (37.4, 0),
+            (42.6, 1),
+            (82.6, 2),
+            (77.4, 1),
+            (37.4, 0),
+        ] {
+            let selected = group.selected(Vec3::new(0.0, 2.0, distance), was);
+            assert_eq!(selected, expected, "jump to {distance} from {was:?}");
+            assert_eq!(
+                levels
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, level)| level.drawn(*i == usize::from(selected)))
+                    .count(),
+                1
+            );
+            was = Some(selected);
+        }
+        for (distance, selected) in [(10.0, 0), (50.0, 1), (120.0, 2)] {
+            assert!(levels[selected].drawn_from(Vec3::new(0.0, 2.0, distance)));
+        }
+    }
+
+    #[test]
+    fn detail_groups_merge_across_cells_keep_ranges_and_restore_after_far_damage() {
+        let mut scene = scene(&[AlphaMode::Opaque]);
+        scene.detail_groups.push(DetailGroup {
+            anchor: [0.0; 2],
+            switches: [40.0, 80.0],
+            fallback: 0,
+        });
+        scene.placements.clear();
+        for x in [-12.0, 12.0] {
+            scene.place_detail(
+                0,
+                Mat4::from_translation(Vec3::new(x, 0.0, 0.0)),
+                Detail::Group { group: 0, level: 0 },
+            );
+        }
+        for level in [1, 2] {
+            scene.place_detail(0, Mat4::IDENTITY, Detail::Group { group: 0, level });
+        }
+        let merged = scene.merge().unwrap();
+        let near = merged
+            .batches
+            .iter()
+            .find(|b| matches!(b.level, Level::Group { level: 0, .. }))
+            .unwrap();
+        assert_eq!(near.count, 12);
+        assert!(near.min.x <= -12.0 && near.max.x >= 13.0);
+        let ranges = scene.index_ranges();
+        assert_eq!(ranges.len(), 4);
+        for (i, ranges) in ranges.iter().enumerate() {
+            for range in ranges {
+                assert_eq!(
+                    scene.range_indices(i, range),
+                    merged.indices[range.first as usize..(range.first + range.count) as usize]
+                );
+            }
+        }
+        let eye = Vec3::new(0.0, 2.0, 120.0);
+        let shown = |groups: &std::collections::BTreeSet<u16>| {
+            merged
+                .batches
+                .iter()
+                .filter(|b| b.level.drawn_with_fallback(b.level.near(eye, None), groups))
+                .count()
+        };
+        assert_eq!(shown(&scene.edits.group_fallbacks()), 1);
+        scene.edits.set_group_fallbacks([0].into_iter().collect());
+        assert_eq!(shown(&scene.edits.group_fallbacks()), 1);
+        assert!(
+            near.level
+                .drawn_with_fallback(false, &scene.edits.group_fallbacks())
+        );
+        let first = ranges[0][0];
+        scene
+            .edits
+            .write(first.first, vec![first.base; first.count as usize]);
+        let seen = scene.edits.revision();
+        scene.edits.set_group_fallbacks([0].into_iter().collect());
+        assert_eq!(scene.edits.revision(), seen);
+        let second = ranges[1][0];
+        scene
+            .edits
+            .write(second.first, vec![second.base; second.count as usize]);
+        let (later, revision) = scene.edits.since(seen);
+        assert!(revision > seen);
+        assert_eq!(
+            later,
+            vec![(second.first, vec![second.base; second.count as usize])]
+        );
+        for (i, range) in [(0, first), (1, second)] {
+            scene
+                .edits
+                .write(range.first, scene.range_indices(i, &range));
+        }
+        scene.edits.set_group_fallbacks(Default::default());
+        assert_eq!(shown(&scene.edits.group_fallbacks()), 1);
+        assert!(
+            !near
+                .level
+                .drawn_with_fallback(false, &scene.edits.group_fallbacks())
+        );
+    }
 
     fn quad(material: usize) -> TexturedMesh {
         let v = |x: f32, y: f32| TexturedVertex::new(Vec3::new(x, y, 0.0), Vec3::Z, [x, y]);

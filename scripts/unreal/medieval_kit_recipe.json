@@ -5,6 +5,7 @@
    "mesh": "Meshes/Props/SM_anvil_01"
   },
   "awning": {
+   "far_triangles": 128,
    "mesh": "Meshes/Props/SM_tent_01"
   },
   "balcony": {
@@ -42,6 +43,7 @@
    "mesh": "Meshes/Props/SM_bucket_01"
   },
   "cart": {
+   "far_triangles": 256,
    "lod0": true,
    "mesh": "Meshes/Props/SM_carriage"
   },
@@ -91,9 +93,11 @@
    "mesh": "Meshes/Architecture/SM_blacksmith_fireplace_01"
   },
   "fountain": {
+   "far_triangles": 800,
    "mesh": "Meshes/Props/SM_fountain_01"
   },
   "lamp": {
+   "far_triangles": 192,
    "mesh": "Meshes/Props/SM_street_lamp_01"
   },
   "plinth-2": {
@@ -126,10 +130,12 @@
    "mirror_x": true
   },
   "roof-end": {
+   "finish_offsets": {"MI_trim_wood_02_01": [0.003, 0.0, 0.0]},
    "lod0": true,
    "mesh": "Meshes/Architecture/Modules/Roof/SM_roof_A_part_01_02"
   },
   "roof-end-mirror": {
+   "finish_offsets": {"MI_trim_wood_02_01": [0.003, 0.0, 0.0]},
    "lod0": true,
    "mesh": "Meshes/Architecture/Modules/Roof/SM_roof_A_part_01_02",
    "mirror_x": true
@@ -153,6 +159,7 @@
    "mesh": "Meshes/Architecture/SM_porch_stairs_01"
   },
   "stall": {
+   "far_triangles": 256,
    "mesh": "Meshes/Props/SM_tent_02"
   },
   "table": {

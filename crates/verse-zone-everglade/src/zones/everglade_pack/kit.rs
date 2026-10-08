@@ -362,7 +362,11 @@ pub fn install(pack: &mut ZonePack, kit: Option<&ZonePack>) -> Installed {
                 let materials = *remap.get_or_insert_with(|| append(pack, k));
                 pack.models.push(shifted(model, materials));
                 if let Some(far) = k.model(&compiled::far_name(piece.model)) {
-                    pack.models.push(shifted(far, materials));
+                    if fits(piece, far) {
+                        pack.models.push(shifted(far, materials));
+                    } else {
+                        report.refused.push(far.name.clone());
+                    }
                 }
                 report.kit += 1;
                 continue;
@@ -385,6 +389,31 @@ pub fn install(pack: &mut ZonePack, kit: Option<&ZonePack>) -> Installed {
         let coat = coats[Coat::ALL.iter().position(|c| *c == piece.coat).unwrap_or(0)];
         pack.models.push(proxy(piece, coat, glass, glow));
         report.proxies += 1;
+    }
+    if let Some(k) = kit {
+        use crate::zones::everglade::house_lod;
+        for house in house_lod::houses() {
+            let (low, high) = house_lod::bounds(house);
+            for level in 0..3 {
+                let name = house_lod::model(house, level);
+                let Some(model) = k.model(&name) else {
+                    continue;
+                };
+                let (min, max) = model.bounds();
+                let fits = (0..3).all(|axis| {
+                    (min[axis] - low[axis]).abs() <= 0.11 && (max[axis] - high[axis]).abs() <= 0.11
+                }) && model.triangles() <= house_lod::TRIANGLES[level]
+                    && model.primitives.len() <= house_lod::DRAWS[level];
+                if fits {
+                    if !pack.models.iter().any(|m| m.name == name) {
+                        let materials = *remap.get_or_insert_with(|| append(pack, k));
+                        pack.models.push(shifted(model, materials));
+                    }
+                } else {
+                    report.refused.push(name);
+                }
+            }
+        }
     }
     pack.models.sort_by(|a, b| a.name.cmp(&b.name));
     report
@@ -798,22 +827,22 @@ mod tests {
         // the wall is refused; the bucket's cube is reshaped to its box.
         let bytes = compiled::sample(&["bucket", "wall-4"]);
         let mut kit = compiled::decode(&bytes).unwrap();
-        // Shape the bucket's cube to the bucket's box.
+        // Shape both bucket levels to the bucket's box.
         let bucket = piece_of("kit/bucket").unwrap();
-        for p in &mut kit
+        for model in kit
             .models
             .iter_mut()
-            .find(|m| m.name == "kit/bucket")
-            .unwrap()
-            .primitives
+            .filter(|m| m.name == "kit/bucket" || m.name == "lod/kit.bucket")
         {
-            for v in &mut p.vertices {
-                for i in 0..3 {
-                    v.position[i] = if v.position[i] > 0.4 {
-                        bucket.max[i]
-                    } else {
-                        bucket.min[i]
-                    };
+            for primitive in &mut model.primitives {
+                for v in &mut primitive.vertices {
+                    for i in 0..3 {
+                        v.position[i] = if v.position[i] > 0.2 {
+                            bucket.max[i]
+                        } else {
+                            bucket.min[i]
+                        };
+                    }
                 }
             }
         }
@@ -833,6 +862,40 @@ mod tests {
             pack.textures[material.texture.unwrap() as usize].name,
             "kit/T_sample"
         );
+    }
+
+    #[test]
+    fn far_levels_must_keep_to_the_same_piece_box() {
+        let mut source = compiled::decode(&compiled::sample(&["bucket"])).unwrap();
+        let bucket = piece_of("kit/bucket").unwrap();
+        for model in &mut source.models {
+            for primitive in &mut model.primitives {
+                for vertex in &mut primitive.vertices {
+                    for i in 0..3 {
+                        vertex.position[i] = if vertex.position[i] > 0.2 {
+                            bucket.max[i]
+                        } else {
+                            bucket.min[i]
+                        };
+                    }
+                }
+            }
+        }
+        let mut pack = bare();
+        assert!(install(&mut pack, Some(&source)).refused.is_empty());
+        assert!(pack.model("lod/kit.bucket").is_some());
+        source
+            .models
+            .iter_mut()
+            .find(|m| m.name == "lod/kit.bucket")
+            .unwrap()
+            .primitives[0]
+            .vertices[0]
+            .position[0] = bucket.max[0] + 1.0;
+        let report = install(&mut pack, Some(&source));
+        assert_eq!(report.refused, ["lod/kit.bucket"]);
+        assert!(pack.model("kit/bucket").is_some());
+        assert!(pack.model("lod/kit.bucket").is_none());
     }
 
     #[test]

@@ -1665,6 +1665,16 @@ impl Town {
             .collect();
         let hidden: BTreeSet<(usize, usize)> =
             damaged.iter().map(|&i| self.wreck.refs[i]).collect();
+        self.world.edits.set_group_fallbacks(
+            hidden
+                .iter()
+                .flat_map(|&(b, k)| self.wreck.buildings[b].pieces[k].placements.iter())
+                .filter_map(|&p| match self.world.placements.get(p)?.detail {
+                    crate::pbr::textured::Detail::Group { group, .. } => Some(group),
+                    _ => None,
+                })
+                .collect(),
+        );
         if hidden != self.hidden {
             let edits = &self.world.edits;
             // A carved placement's ranges are rewritten whole, with the

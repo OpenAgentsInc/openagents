@@ -39,9 +39,12 @@ recipe, which holds names and no geometry, are committed.
 import argparse
 import hashlib
 import json
+import math
+import os
 import re
 import shutil
 import struct
+import subprocess
 import sys
 from pathlib import Path
 
@@ -299,6 +302,14 @@ def transform(piece, positions, normals, indices):
     return positions, fixed, indices
 
 
+def finish_positions(piece, material, positions):
+    """Offsets a derived finish before the piece's mirror and scale."""
+    offset = piece.get("finish_offsets", {}).get(material.split(".")[0])
+    if offset is None:
+        return positions
+    return [tuple(p[axis] + offset[axis] for axis in range(3)) for p in positions]
+
+
 class Writer:
     """Packs accessors into one 4-byte-aligned binary buffer."""
 
@@ -333,6 +344,8 @@ def build_piece(export, out, piece_id, piece, textures_used):
 
     # Group the source primitives by the glTF material they resolve to.
     groups = {}
+    finishes = piece.get("finish_offsets", {})
+    matched_finishes = set()
     for name, positions, normals, uvs, indices in sources:
         image, tint, (tu, tv), blend, two_sided = export.base_color(name)
         if "TRANSLUCENT" in blend or "ADDITIVE" in blend or "glass" in name.lower():
@@ -356,6 +369,9 @@ def build_piece(export, out, piece_id, piece, textures_used):
         if any(word in name.lower() for word in EMISSIVE):
             gltf_name = "Emit_" + gltf_name
         key = (gltf_name, texture, alpha, two_sided, tuple(factor or ()))
+        positions = finish_positions(piece, name, positions)
+        if name.split(".")[0] in finishes:
+            matched_finishes.add(name.split(".")[0])
         positions, normals, indices = transform(piece, positions, normals, indices)
         uvs = [(uv[0] * tu, uv[1] * tv) for uv in uvs]
         if any(abs(c) > MAX_UV for uv in uvs for c in uv):
@@ -375,6 +391,9 @@ def build_piece(export, out, piece_id, piece, textures_used):
         target["colors"] += [rgba] * len(positions)
         target["indices"] += [i + base for i in indices]
 
+    missing_finishes = set(finishes) - matched_finishes
+    if missing_finishes:
+        raise SkipPiece(f"finish materials are missing: {sorted(missing_finishes)}")
     writer = Writer()
     materials, images, gltf_textures, primitives = [], [], [], []
     triangles = 0
@@ -486,9 +505,20 @@ def load_recipe(path):
     for piece_id, piece in pieces.items():
         if not PIECE_ID.match(piece_id) or len(piece_id) + 5 > MAX_FILE_NAME_BYTES:
             sys.exit(f"recipe piece ID {piece_id!r} is not lowercase [a-z0-9-] within the name limit")
-        unknown = set(piece) - {"mesh", "mirror_x", "scale", "lod0"}
+        unknown = set(piece) - {"mesh", "mirror_x", "scale", "lod0", "far_triangles", "finish_offsets"}
         if unknown or "mesh" not in piece:
-            sys.exit(f"recipe piece {piece_id} needs `mesh` and allows only mirror_x, scale, lod0")
+            sys.exit(f"recipe piece {piece_id} needs `mesh` and allows only mirror_x, scale, lod0, far_triangles, finish_offsets")
+        finishes = piece.get("finish_offsets", {})
+        if not isinstance(finishes, dict) or any(
+            not isinstance(name, str) or not name or not isinstance(offset, list)
+            or len(offset) != 3 or any(not isinstance(c, (int, float)) or isinstance(c, bool)
+                                      or not math.isfinite(c) or abs(c) > 0.005 for c in offset)
+            for name, offset in finishes.items()
+        ):
+            sys.exit(f"recipe piece {piece_id} needs named finish offsets within 5 mm")
+        far = piece.get("far_triangles")
+        if far is not None and (not isinstance(far, int) or isinstance(far, bool) or far < 1):
+            sys.exit(f"recipe piece {piece_id} needs a positive far_triangles budget")
         scale = piece.get("scale")
         if scale is not None and (len(scale) != 3 or not all(isinstance(c, (int, float)) for c in scale)):
             sys.exit(f"recipe piece {piece_id} has a scale that is not [sx, sy, sz]")
@@ -501,6 +531,8 @@ def main():
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     parser.add_argument("--recipe", type=Path, default=DEFAULT_RECIPE)
     parser.add_argument("--only", default="", help="comma-separated piece IDs")
+    parser.add_argument("--blender", default=os.environ.get("BLENDER"),
+                        help="headless Blender executable for far levels")
     args = parser.parse_args()
 
     export_root = args.export.expanduser().resolve()
@@ -518,6 +550,11 @@ def main():
             sys.exit(f"the recipe has no piece {', '.join(missing)}")
         pieces = {p: pieces[p] for p in wanted}
 
+    # Remove only prior derived house outputs. The current Rust recipes
+    # regenerate them after the piece build, including their atlas palette.
+    for pattern in ["house-*-near.gltf", "house-*-near.bin", "house-*-middle.gltf", "house-*-middle.bin", "house-*-far.gltf", "house-*-far.bin", "house-atlas-*.png"]:
+        for file in out.glob(pattern):
+            file.unlink()
     export = Export(export_root)
     out.mkdir(parents=True, exist_ok=True)
     built, skipped, textures_used = {}, {}, set()
@@ -544,6 +581,17 @@ def main():
             "height": height,
             "bytes": target.stat().st_size,
         }
+
+    if any(p.get("far_triangles") for p in pieces.values()):
+        blender = args.blender or shutil.which("blender")
+        mac = "/Applications/Blender.app/Contents/MacOS/Blender"
+        if blender is None and Path(mac).is_file():
+            blender = mac
+        if blender is None:
+            sys.exit("Far levels need headless Blender; set BLENDER or --blender")
+        subprocess.run([blender, "-b", "--factory-startup", "-t", "4", "--python-exit-code", "1", "--python",
+                        str(REPO / "scripts/blender/medieval_kit_far.py"), "--",
+                        str(out), str(args.recipe.expanduser().resolve())], check=True)
 
     summary = {
         "pieces": len(built),

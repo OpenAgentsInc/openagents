@@ -41,7 +41,7 @@ use std::collections::BTreeMap;
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3};
 
-use super::textured::{self, Batch, Detail, Merged, Pass, TexturedScene, TexturedVertex, cell_of};
+use super::textured::{self, Batch, Detail, Merged, Pass, TexturedScene, TexturedVertex};
 
 /// One vertex as the GPU holds it: 28 bytes, where [`TexturedVertex`] is 40.
 #[repr(C)]
@@ -183,6 +183,7 @@ pub struct Prepared {
     pub instances: Vec<Instance>,
     /// Each light texel, in [`TexturedScene::merge`]'s vertex order.
     pub lights: Vec<[u8; 4]>,
+    pub fallback_groups: std::collections::BTreeSet<u16>,
 }
 
 /// A merge cell: pass, material, cell, and level.
@@ -223,7 +224,7 @@ impl Layout {
             let Some(mesh) = scene.meshes.get(placement.mesh) else {
                 continue;
             };
-            let cell = cell_of(placement.transform);
+            let cell = scene.placement_cell(placement);
             let mirrored = placement.transform.determinant() < 0.0;
             for (index, p) in mesh.primitives.iter().enumerate() {
                 let Some(material) = scene.materials.get(p.material) else {
@@ -303,6 +304,7 @@ impl Prepared {
             indices: merged.indices,
             items: merged.batches,
             instances: vec![Instance::MERGED],
+            fallback_groups: scene.edits.group_fallbacks(),
         };
         drop(merged.vertices);
         // The instanced placements' cells, as the merge's second half
@@ -321,7 +323,7 @@ impl Prepared {
                 continue;
             }
             let t = placement.transform;
-            let cell = cell_of(t);
+            let cell = scene.placement_cell(placement);
             for (primitive, p) in scene.meshes[placement.mesh].primitives.iter().enumerate() {
                 let key = (
                     scene.materials[p.material].alpha.pass(),
@@ -442,6 +444,7 @@ impl Prepared {
             items: merged.batches.clone(),
             instances: vec![Instance::MERGED],
             lights: merged.vertices.iter().map(|v| v.light).collect(),
+            fallback_groups: std::collections::BTreeSet::new(),
         }
     }
 
@@ -462,7 +465,9 @@ impl Prepared {
         let order: Vec<usize> = (0..self.items.len())
             .filter(|&i| {
                 let b = &self.items[i];
-                b.level.drawn_from(eye) && textured::drawn(b.min, b.max, view_proj, eye, far)
+                b.level
+                    .drawn_with_fallback(b.level.near(eye, None), &self.fallback_groups)
+                    && textured::drawn(b.min, b.max, view_proj, eye, far)
             })
             .collect();
         let calls = draws(&self.items, &order);

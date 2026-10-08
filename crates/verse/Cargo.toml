@@ -285,6 +285,10 @@ name = "textured_capture"
 required-features = ["capture"]
 
 [[example]]
+name = "kit_visual_acceptance"
+required-features = ["capture"]
+
+[[example]]
 name = "crypt_lab"
 required-features = ["capture"]
 

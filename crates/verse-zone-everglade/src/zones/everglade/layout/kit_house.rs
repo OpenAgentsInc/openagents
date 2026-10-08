@@ -39,6 +39,8 @@ const PLINTH: f32 = 2.0;
 const PLINTH_OUT: f32 = 0.25;
 /// A wall's thickness behind its outer face, m.
 const THICK: f32 = 0.5;
+/// Separation between overlapping finish faces, m: twice the coplanar epsilon.
+const SURFACE_GAP: f32 = 0.003;
 /// The roof's rise from its eaves to the ridge, m, and the ridge caps'
 /// height over the roof's base.
 const RIDGE_CAP: f32 = 3.75;
@@ -329,10 +331,15 @@ impl KitHouse {
                 if story < top_story {
                     // The band over the walls, round the corners too.
                     let band = y + WALL;
-                    put("kit/band-1", point(side, 0.0, -THICK), band, side.yaw);
                     put(
                         "kit/band-1",
-                        point(side, side.length - 1.0, -THICK),
+                        point(side, 0.0, -THICK + SURFACE_GAP),
+                        band,
+                        side.yaw,
+                    );
+                    put(
+                        "kit/band-1",
+                        point(side, side.length - 1.0, -THICK + SURFACE_GAP),
                         band,
                         side.yaw,
                     );
@@ -342,7 +349,12 @@ impl KitHouse {
                         } else {
                             "kit/band-2"
                         };
-                        put(model, point(side, offset, -THICK), band, side.yaw);
+                        put(
+                            model,
+                            point(side, offset, -THICK + SURFACE_GAP),
+                            band,
+                            side.yaw,
+                        );
                     }
                 }
             }
@@ -351,7 +363,8 @@ impl KitHouse {
         // the whole outline in 4 m squares and a 4 m by 2 m row.
         let (hw, hd) = (self.width / 2.0, self.depth / 2.0);
         for story in 0..=top_story {
-            let y = floor + STORY * f32::from(story) - 0.5;
+            // The ground slab's top must not coincide with the plinth top.
+            let y = floor + STORY * f32::from(story) - 0.5 + SURFACE_GAP;
             let mut u = -hw;
             while u < hw - 0.5 {
                 let mut w = -hd;
