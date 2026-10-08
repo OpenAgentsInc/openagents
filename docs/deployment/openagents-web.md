@@ -488,3 +488,27 @@ Evidence stays outside git in
 Both `candidate/` and `production/` contain `http-checks.json`,
 `browser-checks.json`, `everglade-webgpu.png`, and `everglade-webgl2.png`.
 Rollback: `gcloud run services update-traffic coder --region us-central1 --project openagentsgemini --to-revisions coder-web-docs-c6415404e8-20261007003942=100`.
+
+## 2026-10-08: direct component catalog
+
+Revision `coder-web-components-6daf112710-202610081303` serves 100% of
+traffic. `/components` now serves the shared Rust catalog and its interactive
+Wasm bundle: 40 component families and 483 variants. The public header stays
+Download, Docs, Pilot; the homepage carries no Cloud or component promotion.
+
+Cloud Build `f3f7acdc-c74b-47e8-8eed-246a84c03125` builds clean commit
+`6daf1127104f7cf91e64eea2df483fc47881d8dd` through
+`cloudbuild-components.yaml`, over the previous production image so the game
+Wasm and packs stay unchanged. The resulting image digest is
+`sha256:b73ce7216e07dbe1349bf3ce7acc1510c3b73649ba89f2c76f17aa752009449a`.
+The live spec preserves the sidecar, runtime settings, secrets, and VPC;
+the web arguments add `/srv/components` and `/srv/cloud` asset directories.
+No Cloud account or host binding is activated.
+
+Staging and production each pass 31 HTTP checks and 34 browser assertions,
+including real catalog interactions and Everglade on WebGPU and WebGL2.
+The 19 checked existing public pages and game assets match the previous
+production response bodies byte for byte. Evidence remains in the deployment
+session's scratch directory and
+`codex-01a11a7c-eb19-7780-b9e7-cd6e305db168/components-production-proof/`.
+Rollback: `--to-revisions coder-web-d3f3ad546c-20261008043217=100`.
