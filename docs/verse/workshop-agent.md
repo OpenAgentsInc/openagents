@@ -5,7 +5,9 @@ October 6, 2026. It specifies a persistent agent that you own, that has a
 desk in the Everglade workshop, and that does work on your computers through
 the Coder host. It builds on the [Agent Studio](agent-studio.md), which is
 implemented, and on NIPs that are drafts; [What exists and what is
-missing](#what-exists-and-what-is-missing) says which parts exist.
+missing](#what-exists-and-what-is-missing) says which parts exist. To
+delegate work to Alice, put her on autopilot, and supervise her, read the
+[Alice runbook](alice-runbook.md).
 
 The workshop agent is **Alice**, our original character
 ([Female character](female-character.md)). She works in the owner's house

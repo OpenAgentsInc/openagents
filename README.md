@@ -88,7 +88,9 @@ Then follow [Install Coder](docs/coder/guides/install.md),
 **Alice** is the [workshop agent](docs/verse/workshop-agent.md): a persistent
 agent you own, with a standing desk in your house in Everglade. You walk up
 and talk to her, or reach her with `openagents agent ask alice ...` or `@alice`
-in the terminal. The host plans, checks, and journals each request.
+in the terminal. The host plans, checks, and journals each request. The
+[Alice runbook](docs/verse/alice-runbook.md) shows how to delegate to her,
+let her code on autopilot, and supervise her.
 
 - **Her own identity.** Alice has her own Nostr key, attested by the owner's
   key under [NIP-OA](nips/block/NIP-OA.md), and a signed profile. The host can

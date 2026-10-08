@@ -41,6 +41,7 @@ the [document catalog](catalog.md) to find a specific reference.
 | Fan Coder runs out onto Google Cloud machines | [Cloud](cloud/README.md), [parallel execution audit](cloud/2026-10-02-cloud-parallel-execution-audit.md) |
 | Build general agents and optimization | [Agent architecture](agents/README.md), [optimization](optimization/README.md) |
 | Explore world interfaces | [Voyager](voyager/README.md), [Minecraft](minecraft/README.md), [Verse](verse/README.md), [Gym building](verse/gym.md), [Unreal source study](research/unreal/README.md) |
+| Delegate work to Alice, the workshop agent, and supervise her | [Alice runbook](verse/alice-runbook.md), [workshop agent](verse/workshop-agent.md) |
 | Verify a change | [Targeted development and release verification](verification.md) |
 | Understand earlier decisions | [Historical surveys](history/README.md), [audits](audits/README.md), [transcript archive](transcripts/README.md) |
 | Trace the history of selling spare compute for bitcoin: GPUtopia, Pylon, and the compute market | [Compute](compute/README.md), [compute for bitcoin history](compute/compute-for-bitcoin.md) |

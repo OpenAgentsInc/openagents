@@ -228,8 +228,8 @@ the owner's house.
 your CONFIRM; make code changes in her own worktree and bring them to the
 Merge station; run her standing jobs.
 
-**Never.** Merge, push, open a pull request, change her charter, or act for
-anyone but you.
+**Never.** Merge unless you ask her to, push, open a pull request, change
+her charter, or act for anyone but you.
 
 **Today.** Implemented: [Workshop agent](workshop-agent.md),
 [`agent_host.rs`](../../crates/coder/src/task/agent_host.rs), and her look
