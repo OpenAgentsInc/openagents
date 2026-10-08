@@ -83,9 +83,16 @@ fn main() -> Result<(), String> {
             report.refused
         ));
     }
-    for far in pack.models.iter().filter(|m| m.name.starts_with(compiled::FAR_PREFIX)) {
+    for far in pack
+        .models
+        .iter()
+        .filter(|m| m.name.starts_with(compiled::FAR_PREFIX))
+    {
         if empty.model(&far.name).is_none() {
-            return Err(format!("The compiled far level was not admitted: {}", far.name));
+            return Err(format!(
+                "The compiled far level was not admitted: {}",
+                far.name
+            ));
         }
     }
     if check {

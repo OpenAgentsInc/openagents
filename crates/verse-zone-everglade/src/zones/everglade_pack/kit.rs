@@ -847,7 +847,11 @@ mod tests {
             for primitive in &mut model.primitives {
                 for vertex in &mut primitive.vertices {
                     for i in 0..3 {
-                        vertex.position[i] = if vertex.position[i] > 0.2 { bucket.max[i] } else { bucket.min[i] };
+                        vertex.position[i] = if vertex.position[i] > 0.2 {
+                            bucket.max[i]
+                        } else {
+                            bucket.min[i]
+                        };
                     }
                 }
             }
@@ -855,8 +859,14 @@ mod tests {
         let mut pack = bare();
         assert!(install(&mut pack, Some(&source)).refused.is_empty());
         assert!(pack.model("lod/kit.bucket").is_some());
-        source.models.iter_mut().find(|m| m.name == "lod/kit.bucket").unwrap()
-            .primitives[0].vertices[0].position[0] = bucket.max[0] + 1.0;
+        source
+            .models
+            .iter_mut()
+            .find(|m| m.name == "lod/kit.bucket")
+            .unwrap()
+            .primitives[0]
+            .vertices[0]
+            .position[0] = bucket.max[0] + 1.0;
         let report = install(&mut pack, Some(&source));
         assert_eq!(report.refused, ["lod/kit.bucket"]);
         assert!(pack.model("kit/bucket").is_some());
