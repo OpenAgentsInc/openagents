@@ -92,6 +92,7 @@ fn main() -> Result<(), String> {
     replay_layers(&scene, &layers);
     off_renderer.render(runtime.view(WIDTH as f32 / HEIGHT as f32), &dynamic, &ui)?;
     let adapter = on_renderer.adapter_info().clone();
+    let phase_warmup = sky_warmup(on_renderer.quality());
     let mut captures = Vec::new();
     for (name, hour) in [
         ("dawn", 6.0),
@@ -116,13 +117,16 @@ fn main() -> Result<(), String> {
             .ok_or("Everglade has no light stage")?
             .temporal_aa = false;
         let view = runtime.view(WIDTH as f32 / HEIGHT as f32);
-        for _ in 0..WARMUP {
+        for _ in 0..phase_warmup {
             on_renderer.measure(view, &dynamic, &ui)?;
         }
         let pixels = on_renderer.render(view, &dynamic, &ui)?;
         let file = format!("{name}.png");
         write_png(&dir.join(&file), &pixels)?;
-        captures.push(json!({"file":file,"requested_hour":hour,"sun":dynamic.neon.as_ref().unwrap().baked_sun}));
+        captures.push(
+            json!({"file":file,"requested_hour":hour,"sun":dynamic.neon.as_ref().unwrap().baked_sun,
+            "sky_lux":dynamic.neon.as_ref().unwrap().baked_sky,"warmup_frames":phase_warmup}),
+        );
     }
     let mut timelapse = Vec::new();
     let save_every = (frames / 48).max(1);
@@ -146,7 +150,8 @@ fn main() -> Result<(), String> {
             on_renderer.measure(view, &dynamic, &ui)?;
             None
         };
-        timelapse.push(json!({"frame":frame,"requested_hour":hour,"file":file,"sun":dynamic.neon.as_ref().unwrap().baked_sun}));
+        timelapse.push(json!({"frame":frame,"requested_hour":hour,"file":file,"sun":dynamic.neon.as_ref().unwrap().baked_sun,
+            "sky_lux":dynamic.neon.as_ref().unwrap().baked_sky}));
     }
     runtime.set_town_clock(running_clock(9.0));
     runtime.tick(&idle, 1.0 / 60.0);
@@ -158,6 +163,14 @@ fn main() -> Result<(), String> {
     let mut off = on.clone();
     off.neon.as_mut().unwrap().baked_sun = [0.0; 4];
     let view = runtime.view(WIDTH as f32 / HEIGHT as f32);
+    // Give both variants the same first sky bake and exposure history;
+    // the timelapse renderer's previous sky must not enter the comparison.
+    on_renderer = verse::render::Offscreen::new(WIDTH, HEIGHT, &runtime.world.mesh, &atlas, air)?;
+    off_renderer = verse::render::Offscreen::new(WIDTH, HEIGHT, &runtime.world.mesh, &atlas, air)?;
+    replay_layers(&scene, &layers);
+    on_renderer.render(view, &on, &ui)?;
+    replay_layers(&scene, &layers);
+    off_renderer.render(view, &off, &ui)?;
     let mut samples = Vec::new();
     for pair in 0..pairs + WARMUP {
         let mut record = [(0.0, 0.0, None); 2];
@@ -187,9 +200,16 @@ fn main() -> Result<(), String> {
         "resolution":[WIDTH,HEIGHT],"adapter":format!("{:?}",adapter),"quality":format!("{:?}",on_renderer.quality().tier),
         "scene":digest,"vertices":layers.vertex_count(),"bake_key":layers.bake_key,
         "inputs":{"kit":input_identity(everglade_pack::kit::LOCAL_ENV)?,"layers":input_identity(everglade_pack::kit_bake::LOCAL_ENV)?},
-        "clock":"Unpinned production wall-clock adapter; sky keeps its scheduled cadence and solar weights use exact town time",
+        "clock":"Unpinned production wall-clock adapter; solar weights, sky brightness and lamp fade use exact town time; sky shape keeps its scheduled cadence",
+        "phase_warmup_frames":phase_warmup,
+        "timelapse_method":{"frames":frames,"hours":24.0,"pixels":"Selected frames; all other frames complete rendering without pixel extraction",
+            "scheduled_sky_frames_per_step":(frames-1) as f64/360.0,
+            "scheduled_sky_warmup_frames":phase_warmup,
+            "sky_bake_can_finish_between_steps":(frames-1) as f64/360.0 >= phase_warmup as f64,
+            "limitation":"An accelerated timeline with too few frames per scheduled sky step can retain an older sky shape; exact brightness and sun weights still advance. Named phase images converge the sky bake."},
         "temporal_aa":false,"captures":captures,"timelapse":timelapse,
-        "measurement":{"pairs":pairs,"warmup_pairs":WARMUP,"independent_renderers":true,"identical_bake_replayed":true,
+        "measurement":{"pairs":pairs,"warmup_pairs":WARMUP,"independent_renderers":true,"identical_bake_replayed":true,"fresh_same_state_renderers":true,
+            "initial_seed_frames_per_variant":1,
             "off_first":pairs/2,"on_first":pairs/2,"readback":"Both variants read back every measured frame",
             "scope":"CPU fit, encode and submit plus serial completion wait, polling, mapping and pixel extraction; excludes PNG writing and simulation",
             "gpu_timestamps_supported":on_renderer.gpu_timestamps_available(),"gpu_timestamps_enabled":on_renderer.gpu_timestamps_enabled(),
@@ -206,6 +226,12 @@ fn main() -> Result<(), String> {
         "Baked blend frame-completion mean {mean:.3} ms; approximate 95% interval {lower:.3} to {upper:.3} ms"
     );
     Ok(())
+}
+
+fn sky_warmup(quality: verse_engine::quality::Quality) -> usize {
+    let (size, samples) = quality.sky_cube();
+    let cost = verse_engine::environment::Prefilter::new(size, samples).cost();
+    (cost.div_ceil(verse::pbr::environment::GRADUAL_BUDGET) as usize + 1).max(WARMUP)
 }
 
 fn number(value: Option<String>, default: usize) -> Result<usize, String> {
