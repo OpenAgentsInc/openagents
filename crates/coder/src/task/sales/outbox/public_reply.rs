@@ -1,8 +1,9 @@
 //! One conditional public-reply channel: GitHub Issues on repositories the
 //! owner names (REV-74). The adapter stays disabled: a grant admits fixture
-//! operation only, a live grant is refused until the owner activates the
-//! channel, and every reply binds one invited thread, one labeled account,
-//! exact content, and an unexpired approval. A platform response is data.
+//! operation only; a live grant posts through `GithubTransport` with a
+//! broker-held token whose digest the grant pins. Every reply binds one
+//! invited thread, one labeled account, exact content, and an unexpired
+//! approval. A platform response is data.
 use super::*;
 
 pub const GRANT_SCHEMA: &str = "openagents.sales.public-reply-grant.v1";
@@ -233,9 +234,100 @@ pub fn request(reply: &Reply, grant: &Grant) -> Result<Request> {
         body,
     })
 }
-/// A transport posts one request once. Only the fixture transport exists.
+/// A transport posts one request once.
 pub trait Transport {
     fn post(&mut self, request: &Request, cancel: &AtomicBool) -> Result<Observation>;
+    /// Hands the transport the broker-held token for this one post.
+    fn credential(&mut self, _token: &[u8]) -> Result<()> {
+        Err("this transport takes no credential".into())
+    }
+}
+/// Live GitHub REST transport. The token lives only in this value and is
+/// zeroed on drop; it never enters a request record or the store.
+#[derive(Default)]
+pub struct GithubTransport {
+    token: Vec<u8>,
+}
+impl Drop for GithubTransport {
+    fn drop(&mut self) {
+        self.token.fill(0);
+    }
+}
+impl Transport for GithubTransport {
+    fn credential(&mut self, token: &[u8]) -> Result<()> {
+        if token.is_empty() || token.len() > 512 || !token.is_ascii() {
+            return Err("github token is malformed".into());
+        }
+        self.token = token.to_vec();
+        Ok(())
+    }
+    fn post(&mut self, request: &Request, cancel: &AtomicBool) -> Result<Observation> {
+        if self.token.is_empty() {
+            return Err("github transport has no credential".into());
+        }
+        if cancel.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err("public reply cancelled before submission".into());
+        }
+        let token = std::str::from_utf8(&self.token).map_err(|_| "github token is malformed")?;
+        let mut builder = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .map_err(|_| "github client is unavailable")?
+            .post(&request.url)
+            .bearer_auth(token)
+            .body(request.body.clone());
+        for (name, value) in &request.headers {
+            builder = builder.header(name.as_str(), value.as_str());
+        }
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|_| "github runtime is unavailable")?;
+        let reply_sha256 = digest(request.body.as_bytes());
+        let response = runtime.block_on(builder.send());
+        let response = match response {
+            Ok(r) => r,
+            Err(e) if e.is_timeout() => {
+                return Ok(Observation {
+                    reply_sha256,
+                    delivery: email::Delivery::Unknown,
+                    status: None,
+                    reference_sha256: digest(b"github request timed out"),
+                });
+            }
+            Err(_) => {
+                return Ok(Observation {
+                    reply_sha256,
+                    delivery: email::Delivery::Failed,
+                    status: None,
+                    reference_sha256: digest(b"github request was not sent"),
+                });
+            }
+        };
+        let status = response.status().as_u16();
+        let body = runtime
+            .block_on(response.bytes())
+            .map(|b| b.to_vec())
+            .unwrap_or_default();
+        let comment_id = serde_json::from_slice::<serde_json::Value>(&body)
+            .ok()
+            .and_then(|v| v.get("id").and_then(serde_json::Value::as_u64));
+        let delivery = match status {
+            201 => email::Delivery::Accepted,
+            401 => email::Delivery::AuthenticationFailed,
+            403 | 404 | 410 | 422 => email::Delivery::Failed,
+            500..=599 => email::Delivery::Unknown,
+            _ => email::Delivery::Failed,
+        };
+        Ok(Observation {
+            reply_sha256,
+            delivery,
+            status: Some(status),
+            reference_sha256: digest(
+                format!("github:{status}:{}", comment_id.unwrap_or(0)).as_bytes(),
+            ),
+        })
+    }
 }
 pub struct FakeTransport {
     pub delivery: email::Delivery,
@@ -293,9 +385,6 @@ impl Store {
         token(&grant.owner_review_sha256)?;
         for thread in &grant.threads {
             thread.check()?;
-        }
-        if grant.mode == Mode::Live {
-            return Err("live public replies are not activated; the GitHub Issues adapter is disabled until the owner records platform permission".into());
         }
         if grant.schema != GRANT_SCHEMA
             || !segment(&grant.account)
@@ -550,6 +639,47 @@ impl Store {
         transport: &mut dyn Transport,
         cancel: &AtomicBool,
     ) -> Result<ReplyRecord> {
+        self.dispatch(
+            access,
+            id,
+            reply_sha256,
+            Mode::Fixture,
+            None,
+            transport,
+            cancel,
+        )
+    }
+    /// Posts one live GitHub comment with the broker-held token for the
+    /// grant's account. The token must still hash to the grant's pin.
+    pub fn public_reply_dispatch_live(
+        &mut self,
+        access: &Access,
+        id: &str,
+        reply_sha256: &str,
+        keys: &dyn email::MailboxCredentials,
+        cancel: &AtomicBool,
+    ) -> Result<ReplyRecord> {
+        let mut transport = GithubTransport::default();
+        self.dispatch(
+            access,
+            id,
+            reply_sha256,
+            Mode::Live,
+            Some(keys),
+            &mut transport,
+            cancel,
+        )
+    }
+    fn dispatch(
+        &mut self,
+        access: &Access,
+        id: &str,
+        reply_sha256: &str,
+        mode: Mode,
+        keys: Option<&dyn email::MailboxCredentials>,
+        transport: &mut dyn Transport,
+        cancel: &AtomicBool,
+    ) -> Result<ReplyRecord> {
         self.refresh()?;
         self.admin(access)?;
         let now = (self.clock)();
@@ -559,8 +689,17 @@ impl Store {
         }
         let record = book.replies.get(id).ok_or("public reply is unavailable")?;
         let grant = book.active_grant(&record.reply.grant, now)?;
-        if grant.mode != Mode::Fixture {
-            return Err("fixture transport cannot consume live public-reply authority".into());
+        if grant.mode != mode {
+            return Err("public reply transport does not match the grant's mode".into());
+        }
+        if let Some(keys) = keys {
+            let secret = keys
+                .load(&grant.account)
+                .map_err(|_| "host public-reply credential is unavailable")?;
+            if digest(secret.expose()) != grant.credential_sha256 {
+                return Err("host public-reply credential is revoked or changed".into());
+            }
+            transport.credential(secret.expose())?;
         }
         if record.phase != ReplyPhase::Approved
             || record.attempt.is_some()

@@ -2985,16 +2985,13 @@ fn public_reply_adapter_stays_disabled_and_posts_one_exact_invited_reply_in_fixt
         expires_at: now() + 7 * 86_400,
         owner_review_sha256: "3".repeat(64),
     };
-    assert!(
-        f.store
-            .public_reply_grant(&f.owner, grant("g-live", Mode::Live))
-            .is_err(),
-        "live grants are refused while the adapter is disabled"
-    );
+    assert!(!f.store.state.outbox.public_replies.enabled(now()));
+    f.store
+        .public_reply_grant(&f.owner, grant("g-live", Mode::Live))
+        .unwrap();
     let mut unlabeled = grant("g-unlabeled", Mode::Fixture);
     unlabeled.label = "Paul".into();
     assert!(f.store.public_reply_grant(&f.owner, unlabeled).is_err());
-    assert!(!f.store.state.outbox.public_replies.enabled(now()));
     f.store
         .public_reply_grant(&f.owner, grant("g-1", Mode::Fixture))
         .unwrap();
@@ -3055,6 +3052,19 @@ fn public_reply_adapter_stays_disabled_and_posts_one_exact_invited_reply_in_fixt
         "paused"
     );
     f.store.public_reply_pause(&f.owner, false).unwrap();
+    let mut live_reply = reply("r-live");
+    live_reply.grant = "g-live".into();
+    let live_sha = f.store.public_reply_propose(&f.owner, live_reply).unwrap();
+    f.store
+        .public_reply_decide(&f.owner, "r-live", &live_sha, true)
+        .unwrap();
+    assert!(
+        f.store
+            .public_reply_dispatch_fixture(&f.owner, "r-live", &live_sha, &mut transport, &cancel)
+            .is_err(),
+        "fixture transport never consumes a live grant"
+    );
+    assert!(transport.posted.is_empty());
     let posted = f
         .store
         .public_reply_dispatch_fixture(&f.owner, "r-1", &sha, &mut transport, &cancel)
@@ -3103,7 +3113,7 @@ fn public_reply_adapter_stays_disabled_and_posts_one_exact_invited_reply_in_fixt
         )
         .unwrap();
     assert!(response.opt_out && response.directive_like);
-    assert_eq!(f.store.state.outbox.public_replies.grants.len(), 1);
+    assert_eq!(f.store.state.outbox.public_replies.grants.len(), 2);
     assert_eq!(
         f.store.state.outbox.public_replies.replies["r-2"].phase,
         ReplyPhase::Invalidated
@@ -3152,6 +3162,10 @@ fn public_reply_adapter_stays_disabled_and_posts_one_exact_invited_reply_in_fixt
     );
     f.store
         .public_reply_revoke(&f.owner, "g-1", &"7".repeat(64))
+        .unwrap();
+    assert!(f.store.state.outbox.public_replies.enabled(now()));
+    f.store
+        .public_reply_revoke(&f.owner, "g-live", &"7".repeat(64))
         .unwrap();
     assert!(!f.store.state.outbox.public_replies.enabled(now()));
 }
