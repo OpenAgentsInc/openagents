@@ -360,6 +360,8 @@ pub struct WaterLab {
     pub rainfall: everglade::weather::Rainfall,
     /// Whether the weather's storm is driving the sea.
     storm_sea: bool,
+    /// Seconds until the next burst of spray off a whitecap.
+    spray_wait: f32,
     /// How wet the character is.
     drying: verse_pbr::water::rain::Drying,
 }
@@ -369,6 +371,11 @@ pub const WEATHER_SEED: u64 = 0xC0A5_7A11;
 
 /// Floating numbers at once, oldest dropped first.
 pub const MAX_FLOATERS: usize = 48;
+/// Bursts of spray a second off the sea's whitecaps around the character,
+/// per unit of whitecap coverage (`verse_pbr::water::ocean::coverage`): a
+/// gale's sea throws several a second, a fresh breeze's one now and then,
+/// and a calm sea none.
+pub const SPRAY_RATE: f32 = 40.0;
 
 impl Default for WaterLab {
     fn default() -> Self {
@@ -443,6 +450,7 @@ impl WaterLab {
             ),
             rainfall: everglade::weather::Rainfall::new(everglade::WATER_TIER),
             storm_sea: false,
+            spray_wait: 0.0,
             drying: verse_pbr::water::rain::Drying::default(),
         };
         // The lab shows weather on demand: clear until `U` turns it, unless
@@ -818,6 +826,7 @@ impl WaterLab {
             let name = if storm { "storm" } else { sea::SEAS[self.sea] };
             self.water.sea_body_mut().spectrum = sea::spectrum(name);
         }
+        self.tick_spray(dt, feet, forward);
         let p = Vec2::new(feet.x, feet.z);
         let immersed = self.surface_at(p).is_some_and(|s| s.height > feet.y + 0.3);
         self.drying.tick(dt, immersed, self.sky.weather.rain as f32);
@@ -841,6 +850,52 @@ impl WaterLab {
             &[],
         );
         self.sources.extend(self.rainfall.sources.iter().copied());
+    }
+
+    /// Spray blown off the whitecaps ahead of the character, as often as
+    /// the sea's wind makes them ([`SPRAY_RATE`]), carried downwind.
+    fn tick_spray(&mut self, dt: f32, feet: Vec3, forward: Vec3) {
+        let Some(spectrum) = self.water.sea_body().spectrum else {
+            return;
+        };
+        let wind_speed = spectrum.wind_speed as f32;
+        let rate = verse_pbr::water::ocean::coverage(wind_speed) * SPRAY_RATE;
+        if rate <= 0.0 {
+            self.spray_wait = 0.0;
+            return;
+        }
+        self.spray_wait -= dt;
+        let ahead = Vec2::new(forward.x, forward.z)
+            .try_normalize()
+            .unwrap_or(Vec2::Y);
+        let side = Vec2::new(-ahead.y, ahead.x);
+        let wind = spectrum.direction();
+        let downwind = Vec3::new(wind.x as f32, 0.0, wind.y as f32);
+        // At most a few bursts a frame, however long the frame.
+        let mut bursts = 0;
+        while self.spray_wait <= 0.0 && bursts < 4 {
+            self.spray_wait += 1.0 / rate;
+            bursts += 1;
+            let reach = 8.0 + self.random() * 40.0;
+            let across = (self.random() * 2.0 - 1.0) * 25.0;
+            let at = Vec2::new(feet.x, feet.z) + ahead * reach + side * across;
+            // Open sea only: not the river, nor the shallows' surf.
+            if terrain::fresh_water(at).is_some() || ground(at.x, at.y) > LEVEL - 2.0 {
+                continue;
+            }
+            if let Some(surface) = self.surface_at(at) {
+                let scale = 0.8 + 0.6 * self.random();
+                self.fx.start(
+                    "water_crest_spray",
+                    Spawn::at(Vec3::new(at.x, surface.height, at.y))
+                        .scaled(scale)
+                        .moving(downwind * wind_speed * 0.3 + Vec3::Y),
+                );
+            }
+        }
+        if self.spray_wait < 0.0 {
+            self.spray_wait = 0.0;
+        }
     }
 
     /// Pins the cove's weather to the next state: the schedule, then clear,

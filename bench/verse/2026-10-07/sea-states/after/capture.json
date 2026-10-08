@@ -1,0 +1,602 @@
+[
+  {
+    "image": "dry/physical-low-sea-calm.png",
+    "renderer": "physical",
+    "tier": "low",
+    "view": "sea-calm",
+    "water": false,
+    "screen_copies": false,
+    "water_indices": 0,
+    "scene_target": "Rgba8UnormSrgb (no floating-point target)",
+    "samples": 1,
+    "ocean_worker_us": 0.0,
+    "frame_ms_1080p": 1.130725,
+    "water_gpu_bytes_1080p": 0,
+    "sha256": "62eba77c2b89d23d619e7336b5dd2f246872c7001527e24316828de66e07787d",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "physical-low-sea-calm.png",
+    "renderer": "physical",
+    "tier": "low",
+    "view": "sea-calm",
+    "water": true,
+    "screen_copies": false,
+    "water_indices": 84912,
+    "scene_target": "Rgba8UnormSrgb (no floating-point target)",
+    "samples": 1,
+    "ocean_worker_us": 58.5,
+    "frame_ms_1080p": 1.8587208,
+    "water_gpu_bytes_1080p": 915288,
+    "sha256": "e40595e52f53ae575b3344bd79063a0a9d25fb9f074d14398838982a61b47d61",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "dry/physical-low-sea-moderate.png",
+    "renderer": "physical",
+    "tier": "low",
+    "view": "sea-moderate",
+    "water": false,
+    "screen_copies": false,
+    "water_indices": 0,
+    "scene_target": "Rgba8UnormSrgb (no floating-point target)",
+    "samples": 1,
+    "ocean_worker_us": 58.5,
+    "frame_ms_1080p": 1.1257833,
+    "water_gpu_bytes_1080p": 0,
+    "sha256": "62eba77c2b89d23d619e7336b5dd2f246872c7001527e24316828de66e07787d",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "physical-low-sea-moderate.png",
+    "renderer": "physical",
+    "tier": "low",
+    "view": "sea-moderate",
+    "water": true,
+    "screen_copies": false,
+    "water_indices": 84912,
+    "scene_target": "Rgba8UnormSrgb (no floating-point target)",
+    "samples": 1,
+    "ocean_worker_us": 55.667,
+    "frame_ms_1080p": 1.9259167000000001,
+    "water_gpu_bytes_1080p": 915288,
+    "sha256": "5637269ec97e56849aef36dca093374661146eaf9c12c022502f73c64c911efb",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "dry/physical-low-sea-storm.png",
+    "renderer": "physical",
+    "tier": "low",
+    "view": "sea-storm",
+    "water": false,
+    "screen_copies": false,
+    "water_indices": 0,
+    "scene_target": "Rgba8UnormSrgb (no floating-point target)",
+    "samples": 1,
+    "ocean_worker_us": 55.667,
+    "frame_ms_1080p": 1.1017917000000002,
+    "water_gpu_bytes_1080p": 0,
+    "sha256": "62eba77c2b89d23d619e7336b5dd2f246872c7001527e24316828de66e07787d",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "physical-low-sea-storm.png",
+    "renderer": "physical",
+    "tier": "low",
+    "view": "sea-storm",
+    "water": true,
+    "screen_copies": false,
+    "water_indices": 84912,
+    "scene_target": "Rgba8UnormSrgb (no floating-point target)",
+    "samples": 1,
+    "ocean_worker_us": 55.875,
+    "frame_ms_1080p": 1.9719625,
+    "water_gpu_bytes_1080p": 915288,
+    "sha256": "12a4d2cbfceeb93edf0bae5f111f8e7d8b9e5b76548d074bfa4efccea252c157",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "dry/physical-low-open-calm.png",
+    "renderer": "physical",
+    "tier": "low",
+    "view": "open-calm",
+    "water": false,
+    "screen_copies": false,
+    "water_indices": 0,
+    "scene_target": "Rgba8UnormSrgb (no floating-point target)",
+    "samples": 1,
+    "ocean_worker_us": 55.875,
+    "frame_ms_1080p": 1.9021000000000001,
+    "water_gpu_bytes_1080p": 0,
+    "sha256": "31b58b39b9d7807a8d5f9263fae4a38e8ab754e9a9ea1e86afc069c5a0e0e76f",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "physical-low-open-calm.png",
+    "renderer": "physical",
+    "tier": "low",
+    "view": "open-calm",
+    "water": true,
+    "screen_copies": false,
+    "water_indices": 204750,
+    "scene_target": "Rgba8UnormSrgb (no floating-point target)",
+    "samples": 1,
+    "ocean_worker_us": 51.333,
+    "frame_ms_1080p": 2.7661792000000003,
+    "water_gpu_bytes_1080p": 2198840,
+    "sha256": "ed14811b15e1d9f027bf07fa7fdc3f8b1fd20dbbb2c168ac370dbeda4c68b69c",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "dry/physical-low-open-moderate.png",
+    "renderer": "physical",
+    "tier": "low",
+    "view": "open-moderate",
+    "water": false,
+    "screen_copies": false,
+    "water_indices": 0,
+    "scene_target": "Rgba8UnormSrgb (no floating-point target)",
+    "samples": 1,
+    "ocean_worker_us": 51.333,
+    "frame_ms_1080p": 1.8738333,
+    "water_gpu_bytes_1080p": 0,
+    "sha256": "31b58b39b9d7807a8d5f9263fae4a38e8ab754e9a9ea1e86afc069c5a0e0e76f",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "physical-low-open-moderate.png",
+    "renderer": "physical",
+    "tier": "low",
+    "view": "open-moderate",
+    "water": true,
+    "screen_copies": false,
+    "water_indices": 204750,
+    "scene_target": "Rgba8UnormSrgb (no floating-point target)",
+    "samples": 1,
+    "ocean_worker_us": 54.375,
+    "frame_ms_1080p": 2.8165833000000005,
+    "water_gpu_bytes_1080p": 2198840,
+    "sha256": "1038adb7c61275ade03ab1aa52dc72f759bacbac5dec73048545e5460fb5ccc1",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "dry/physical-low-open-storm.png",
+    "renderer": "physical",
+    "tier": "low",
+    "view": "open-storm",
+    "water": false,
+    "screen_copies": false,
+    "water_indices": 0,
+    "scene_target": "Rgba8UnormSrgb (no floating-point target)",
+    "samples": 1,
+    "ocean_worker_us": 54.375,
+    "frame_ms_1080p": 1.8960500000000002,
+    "water_gpu_bytes_1080p": 0,
+    "sha256": "31b58b39b9d7807a8d5f9263fae4a38e8ab754e9a9ea1e86afc069c5a0e0e76f",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "physical-low-open-storm.png",
+    "renderer": "physical",
+    "tier": "low",
+    "view": "open-storm",
+    "water": true,
+    "screen_copies": false,
+    "water_indices": 204750,
+    "scene_target": "Rgba8UnormSrgb (no floating-point target)",
+    "samples": 1,
+    "ocean_worker_us": 55.0,
+    "frame_ms_1080p": 2.8727459,
+    "water_gpu_bytes_1080p": 2198840,
+    "sha256": "3cafc00c21972fc1cb27b0017eb14b6d7bc64e7a58b701a64c690e32076691fe",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "dry/physical-high-sea-calm.png",
+    "renderer": "physical",
+    "tier": "high",
+    "view": "sea-calm",
+    "water": false,
+    "screen_copies": false,
+    "water_indices": 0,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 0.0,
+    "frame_ms_1080p": 2.3008083,
+    "water_gpu_bytes_1080p": 0,
+    "sha256": "ddc852bb2816a2daa51678308a5ce331cb809e397e5aa43dd3c325f41b2253b4",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "w2/physical-high-sea-calm.png",
+    "renderer": "physical",
+    "tier": "high",
+    "view": "sea-calm",
+    "water": true,
+    "screen_copies": false,
+    "water_indices": 1556748,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 635.9169999999999,
+    "frame_ms_1080p": 26.811458300000005,
+    "water_gpu_bytes_1080p": 62265312,
+    "sha256": "7a8284d4ec9c9000c512cd9e1f22296b1cb37d13b78a57aa99dedb7d4b9925b4",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "physical-high-sea-calm.png",
+    "renderer": "physical",
+    "tier": "high",
+    "view": "sea-calm",
+    "water": true,
+    "screen_copies": true,
+    "water_indices": 1556748,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 791.9169999999999,
+    "frame_ms_1080p": 8.3285084,
+    "water_gpu_bytes_1080p": 62265312,
+    "sha256": "3702dc07b29cf1b4d84c0d3b5d4e471a0206ec8dd125bf1b78ff3b2d2b88c73f",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "dry/physical-high-sea-moderate.png",
+    "renderer": "physical",
+    "tier": "high",
+    "view": "sea-moderate",
+    "water": false,
+    "screen_copies": false,
+    "water_indices": 0,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 791.9169999999999,
+    "frame_ms_1080p": 2.4666291,
+    "water_gpu_bytes_1080p": 0,
+    "sha256": "ddc852bb2816a2daa51678308a5ce331cb809e397e5aa43dd3c325f41b2253b4",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "w2/physical-high-sea-moderate.png",
+    "renderer": "physical",
+    "tier": "high",
+    "view": "sea-moderate",
+    "water": true,
+    "screen_copies": false,
+    "water_indices": 1556748,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 961.7090000000001,
+    "frame_ms_1080p": 16.4711583,
+    "water_gpu_bytes_1080p": 62265312,
+    "sha256": "c18a07d05dd4cd988a86de36cefa2f7416be0b7855d8483aba6090691ffd2dec",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "physical-high-sea-moderate.png",
+    "renderer": "physical",
+    "tier": "high",
+    "view": "sea-moderate",
+    "water": true,
+    "screen_copies": true,
+    "water_indices": 1556748,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 798.3330000000001,
+    "frame_ms_1080p": 9.2623709,
+    "water_gpu_bytes_1080p": 62265312,
+    "sha256": "10a99282038af0f71f95659c429648ba0b69e0fa3a7285447d9e2679a3172c02",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "dry/physical-high-sea-storm.png",
+    "renderer": "physical",
+    "tier": "high",
+    "view": "sea-storm",
+    "water": false,
+    "screen_copies": false,
+    "water_indices": 0,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 798.3330000000001,
+    "frame_ms_1080p": 2.8761,
+    "water_gpu_bytes_1080p": 0,
+    "sha256": "ddc852bb2816a2daa51678308a5ce331cb809e397e5aa43dd3c325f41b2253b4",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "w2/physical-high-sea-storm.png",
+    "renderer": "physical",
+    "tier": "high",
+    "view": "sea-storm",
+    "water": true,
+    "screen_copies": false,
+    "water_indices": 1556748,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 637.708,
+    "frame_ms_1080p": 12.441445900000002,
+    "water_gpu_bytes_1080p": 62265312,
+    "sha256": "f073d5c8653b7fc6cd98b4060d326331fba381aab946b63211d6ada94126b36e",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "physical-high-sea-storm.png",
+    "renderer": "physical",
+    "tier": "high",
+    "view": "sea-storm",
+    "water": true,
+    "screen_copies": true,
+    "water_indices": 1556748,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 832.875,
+    "frame_ms_1080p": 8.749862499999999,
+    "water_gpu_bytes_1080p": 62265312,
+    "sha256": "f063c119cf1ded5f70e4a834cfe2837cb7f15d15ea6f63ca6ae363016074435f",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "dry/physical-high-open-calm.png",
+    "renderer": "physical",
+    "tier": "high",
+    "view": "open-calm",
+    "water": false,
+    "screen_copies": false,
+    "water_indices": 0,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 832.875,
+    "frame_ms_1080p": 4.051504100000001,
+    "water_gpu_bytes_1080p": 0,
+    "sha256": "873a775c40a455578e58671c1dafce92d388e6ad3be3ed3e51b02a96e973fe0b",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "w2/physical-high-open-calm.png",
+    "renderer": "physical",
+    "tier": "high",
+    "view": "open-calm",
+    "water": true,
+    "screen_copies": false,
+    "water_indices": 3752490,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 968.75,
+    "frame_ms_1080p": 27.239633299999998,
+    "water_gpu_bytes_1080p": 85709160,
+    "sha256": "bcc328626f7ab5f798d6a7463c6b12e37b1af27cbe024b1654bb9dd7ecafd9f2",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "physical-high-open-calm.png",
+    "renderer": "physical",
+    "tier": "high",
+    "view": "open-calm",
+    "water": true,
+    "screen_copies": true,
+    "water_indices": 3752490,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 1076.1670000000001,
+    "frame_ms_1080p": 10.764412499999999,
+    "water_gpu_bytes_1080p": 85709160,
+    "sha256": "6fded3c0129971666ed8daffa7d3d0faa135f909326e2ac44b6f5ce042ffb1de",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "dry/physical-high-open-moderate.png",
+    "renderer": "physical",
+    "tier": "high",
+    "view": "open-moderate",
+    "water": false,
+    "screen_copies": false,
+    "water_indices": 0,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 1076.1670000000001,
+    "frame_ms_1080p": 3.6220584000000002,
+    "water_gpu_bytes_1080p": 0,
+    "sha256": "873a775c40a455578e58671c1dafce92d388e6ad3be3ed3e51b02a96e973fe0b",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "w2/physical-high-open-moderate.png",
+    "renderer": "physical",
+    "tier": "high",
+    "view": "open-moderate",
+    "water": true,
+    "screen_copies": false,
+    "water_indices": 3752490,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 857.4169999999999,
+    "frame_ms_1080p": 15.332341699999997,
+    "water_gpu_bytes_1080p": 85709160,
+    "sha256": "565cc70485849de1842f7f910a823ef4c42d6496f930a0c17de9d57eee62dfc2",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "physical-high-open-moderate.png",
+    "renderer": "physical",
+    "tier": "high",
+    "view": "open-moderate",
+    "water": true,
+    "screen_copies": true,
+    "water_indices": 3752490,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 786.167,
+    "frame_ms_1080p": 9.6681875,
+    "water_gpu_bytes_1080p": 85709160,
+    "sha256": "3267c4cf4c656c45f19ece62aac8985e811d6fce16d40d8dd15c6f6d4cc938e8",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "dry/physical-high-open-storm.png",
+    "renderer": "physical",
+    "tier": "high",
+    "view": "open-storm",
+    "water": false,
+    "screen_copies": false,
+    "water_indices": 0,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 786.167,
+    "frame_ms_1080p": 3.683325,
+    "water_gpu_bytes_1080p": 0,
+    "sha256": "873a775c40a455578e58671c1dafce92d388e6ad3be3ed3e51b02a96e973fe0b",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "w2/physical-high-open-storm.png",
+    "renderer": "physical",
+    "tier": "high",
+    "view": "open-storm",
+    "water": true,
+    "screen_copies": false,
+    "water_indices": 3752490,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 948.417,
+    "frame_ms_1080p": 13.36825,
+    "water_gpu_bytes_1080p": 85709160,
+    "sha256": "350406473f1b45b42cba0f0201ff9fe67eacc6dc78f2ce87837f21e8ef219768",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  },
+  {
+    "image": "physical-high-open-storm.png",
+    "renderer": "physical",
+    "tier": "high",
+    "view": "open-storm",
+    "water": true,
+    "screen_copies": true,
+    "water_indices": 3752490,
+    "scene_target": "Rgba16Float",
+    "samples": 4,
+    "ocean_worker_us": 955.0,
+    "frame_ms_1080p": 10.5654,
+    "water_gpu_bytes_1080p": 85709160,
+    "sha256": "d21f1459734aaf7e85191462f930ae3a748c6d19e36574261282454259d17335",
+    "resolution": [
+      960,
+      540
+    ],
+    "adapter": "Apple M5 Max (Metal)"
+  }
+]

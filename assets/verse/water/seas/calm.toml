@@ -1,11 +1,12 @@
-# A light breeze over a short fetch: low, rounded wind ripples on a
-# glassy sea. Values from the JONSWAP fetch laws, not tuned to a look.
-description = "A light breeze: low, rounded waves."
-wind_speed = 4.0
-fetch = 8000.0
+# A light air to light breeze (Beaufort 1 to 2) over a short fetch: a
+# glassy sea with low, rounded ripples. Values from the JONSWAP fetch laws,
+# not tuned to a look.
+description = "A light breeze: a glassy sea with low, rounded ripples."
+wind_speed = 2.5
+fetch = 4000.0
 peak_wavelength = 0.0
 amplitude = 1.0
-choppiness = 0.5
+choppiness = 0.3
 spread = 1.0
 standing = 0.0
 time_scale = 1.0

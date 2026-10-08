@@ -61,6 +61,10 @@ const WATER_RIPPLE_SPEED: f32 = 1.1;
 // `water::tile::SIZE`, m, and the slope its texels' full range stands for.
 const WATER_TILE_METERS: f32 = 8.0;
 const WATER_TILE_SLOPE: f32 = 0.5;
+// The whitecap cover below which no foam shows, and above which it is
+// solid (`water::ocean::WHITECAP_EDGE` and `WHITECAP_CORE`).
+const WATER_WHITECAP_EDGE: f32 = 0.3;
+const WATER_WHITECAP_CORE: f32 = 0.7;
 // The flow maps' cycle, s (Vlachos 2010 uses a similar period).
 const WATER_FLOW_PERIOD: f32 = 1.6;
 
@@ -103,8 +107,9 @@ struct WaterUniform {
     // The spectral sea (`water::ocean::rows`): per cascade 1 / tile (1/m),
     // the shortest wavelength (m), the wavenumber it shoals by (rad/m), and
     // its gain; then the cascade count, the cascades that move vertices, 1
-    // for surf, and the significant height (m); half a texel and the
-    // peak's angular frequency (rad/s); and each cascade's slope variance.
+    // for surf, and the significant height (m); half a texel, the peak's
+    // angular frequency (rad/s), and the gains on the sea's ripples and on
+    // its cascades' slopes; and each cascade's slope variance.
     ocean: array<vec4<f32>, 6>,
     // The ocean's clipmap (`water::clipmap::rows`): per level its center
     // (x, z, m), spacing (m), and the distance from the eye where its morph
@@ -252,6 +257,8 @@ fn water_ocean_move(b: u32, p0: vec2<f32>, depth: f32, scale: f32) -> vec4<f32> 
 // variance the fading left behind (z), and the whitecaps' foam (w).
 fn water_ocean_detail(b: u32, p: vec2<f32>, depth: f32, scale: f32, footprint: f32, dpx: vec2<f32>, dpy: vec2<f32>) -> vec4<f32> {
     var o = vec4<f32>(0.0);
+    var coarse = 0.0;
+    var squeeze = 0.0;
     let count = water_ocean_count(b);
     for (var c = 0; c < count; c++) {
         let row = water.ocean[c];
@@ -260,9 +267,33 @@ fn water_ocean_detail(b: u32, p: vec2<f32>, depth: f32, scale: f32, footprint: f
         let keep = clamp(row.y / (6.0 * max(footprint, 1e-4)) - 0.5, 0.0, 1.0);
         let a = textureSampleGrad(water_waves, water_tile_sampler, uv, c * 2, dpx * row.x, dpy * row.x);
         let s = textureSampleGrad(water_waves, water_tile_sampler, uv, c * 2 + 1, dpx * row.x, dpy * row.x);
-        o += vec4<f32>(s.xy * (g * keep), water.ocean[5][c] * g * g * (1.0 - keep * keep), 0.0);
-        o.w = max(o.w, a.w * clamp(g, 0.0, 1.0));
+        // The cascades' slopes follow the wind (`water::ocean::slope_gains`).
+        let sg = g * water.ocean[4].w;
+        o += vec4<f32>(s.xy * (sg * keep), water.ocean[5][c] * sg * sg * (1.0 - keep * keep), 0.0);
+        let foam = a.w * clamp(g, 0.0, 1.0);
+        if c == 0 {
+            coarse = foam;
+        } else {
+            o.w = max(o.w, foam);
+        }
+        if c == 1 {
+            squeeze = s.z * keep;
+        }
     }
+    // Cascade 0's texels span metres to tens of metres, so on its own its
+    // foam would whiten whole crests of the longest waves. Where a finer
+    // cascade is drawn, its foam gathers only on that cascade's crests
+    // inside the breaking zone, in streaks the size of the waves breaking.
+    // Low has no finer cascade, so two octaves of value noise, metres
+    // across, break it into ragged patches instead.
+    if count > 1 {
+        coarse *= smoothstep(0.0, 0.5, squeeze);
+    } else {
+        let t = water.params.x * 0.15;
+        let n = 0.6 * water_noise(vec3<f32>(p * 0.37, t)) + 0.4 * water_noise(vec3<f32>(p * 1.3, t));
+        coarse *= smoothstep(0.5, 0.75, n);
+    }
+    o.w = max(o.w, coarse);
     return o;
 }
 
@@ -780,7 +811,12 @@ fn water_normal(s: WaterFragment) -> WaterNormal {
         lost = sea.z;
         o.whitecap = sea.w * (1.0 - s.calm);
     }
-    let detail = water_flow_detail(s.rest, s.flow, s.footprint, s.dpx, s.dpy);
+    var detail = water_flow_detail(s.rest, s.flow, s.footprint, s.dpx, s.dpy);
+    if water_ocean_count(s.body) > 0 {
+        // The sea's ripples follow its wind (`water::ocean::slope_gains`).
+        let rg = water.ocean[4].z;
+        detail = vec3<f32>(detail.xy * rg, detail.z * rg * rg);
+    }
     let field = water_ripple_field(s.rest);
     let rain = water_rain_slope(s.rest, water.params.x, water.look.z, s.footprint);
     slope = (slope + detail.xy + water_ripples(s.rest) + field.yz + rain + s.slope) * (1.0 - s.calm);
@@ -820,8 +856,12 @@ fn water_shade(s: WaterFragment, wn: WaterNormal) -> WaterShade {
     var foam = max(water_foam(b, s.rest, s.shore, s.crest, s.foam, noise), clamp(s.extra_foam, 0.0, 1.0));
     if water_ocean_count(b) > 0 && s.scale > 0.0 {
         let amount = water.bodies[b].scatter.w;
-        // Whitecaps: the foam field, broken up by the mottled cover.
-        let caps = wn.whitecap * smoothstep(0.15, 0.55, noise + 0.35 * wn.whitecap);
+        // Whitecaps: the foam field's dense patches, broken up by the
+        // mottled cover. Its thin edges, where old foam has faded or a
+        // coarse cascade's texels blur it, stay clear rather than veil
+        // the sea.
+        let core = smoothstep(WATER_WHITECAP_EDGE, WATER_WHITECAP_CORE, wn.whitecap);
+        let caps = core * smoothstep(0.25, 0.6, noise + 0.25 * core);
         foam = max(foam, clamp(caps * amount, 0.0, 1.0));
         // Surf: where the shoaling waves reach their breaking height
         // (Medium and High), broken waves run up the shore as bands of

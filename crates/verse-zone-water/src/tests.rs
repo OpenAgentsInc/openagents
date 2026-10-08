@@ -635,3 +635,20 @@ fn a_fireball_on_the_water_burns_dummies_within_its_radius() {
     assert!(hurt(&lab, 0), "{}", lab.targets[0].dummy.hp);
     assert!(!hurt(&lab, 1));
 }
+
+/// A gale's sea throws spray off its whitecaps around the character; a
+/// calm sea, otherwise the same, throws none.
+#[test]
+fn a_storm_sea_throws_spray() {
+    let particles = |sea: usize| {
+        let mut lab = quiet_lab();
+        lab.set_sea(sea);
+        let feet = Vec3::new(0.0, LEVEL, -30.0);
+        for _ in 0..30 {
+            lab.tick(1.0 / 30.0, feet, Vec3::NEG_Z);
+        }
+        lab.fx.len()
+    };
+    let (calm, storm) = (particles(0), particles(2));
+    assert!(storm > calm + 20, "{calm} {storm}");
+}

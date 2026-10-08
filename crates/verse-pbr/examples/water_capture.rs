@@ -26,7 +26,8 @@
 //! surface, and the still pond with posts standing in it, phase W5), and
 //! the spectral sea in its calm, moderate, and storm states (`sea-calm`,
 //! `sea-moderate`, `sea-storm`, and the storm's surf, `sea-storm-surf`,
-//! phase W4), through the physical renderer and the imported renderer at
+//! phase W4), the same three over open water 30 m deep (`open-calm`,
+//! `open-moderate`, and `open-storm`, #10918), through the physical renderer and the imported renderer at
 //! Low, Medium, and High, each with and without its water (the latter into
 //! `dry/`, for the comparison only), and writes the PNGs,
 //! `capture.json` (one record a picture, with its digest and frame times),
@@ -85,6 +86,10 @@ enum Ground {
     /// A beach under a spectral sea in the named state
     /// (`assets/verse/water/seas/`).
     Sea(&'static str),
+    /// Open water 30 m deep with no shore in view, under a spectral sea in
+    /// the named state, so the sea's own waves and whitecaps show without
+    /// shoaling or surf (#10918).
+    Open(&'static str),
 }
 
 /// One fixed view.
@@ -197,6 +202,42 @@ fn all_views() -> Vec<ViewSpec> {
             eye: Vec3::new(0.0, 5.0, 31.0),
             target: Vec3::new(0.0, -0.5, -30.0),
             ground: Ground::Sea("storm"),
+            sun: Vec3::new(0.35, 0.42, -0.84).normalize(),
+            dusk: false,
+            under: false,
+            posts: false,
+            still: false,
+            waterline: false,
+        },
+        ViewSpec {
+            name: "open-calm",
+            eye: Vec3::new(0.0, 12.0, 95.0),
+            target: Vec3::new(0.0, -2.0, -60.0),
+            ground: Ground::Open("calm"),
+            sun: Vec3::new(0.35, 0.42, -0.84).normalize(),
+            dusk: false,
+            under: false,
+            posts: false,
+            still: false,
+            waterline: false,
+        },
+        ViewSpec {
+            name: "open-moderate",
+            eye: Vec3::new(0.0, 12.0, 95.0),
+            target: Vec3::new(0.0, -2.0, -60.0),
+            ground: Ground::Open("moderate"),
+            sun: Vec3::new(0.35, 0.42, -0.84).normalize(),
+            dusk: false,
+            under: false,
+            posts: false,
+            still: false,
+            waterline: false,
+        },
+        ViewSpec {
+            name: "open-storm",
+            eye: Vec3::new(0.0, 12.0, 95.0),
+            target: Vec3::new(0.0, -2.0, -60.0),
+            ground: Ground::Open("storm"),
             sun: Vec3::new(0.35, 0.42, -0.84).normalize(),
             dusk: false,
             under: false,
@@ -419,6 +460,11 @@ fn spectral_sea(name: &str) -> WaterBody {
     WaterBody::ocean(WaterId(0), 0.0).with_waves(waves)
 }
 
+/// A flat bed 30 m down, the spectral sea's depth.
+fn open_bed(_x: f64, _z: f64) -> f64 {
+    -30.0
+}
+
 fn beach_bed(x: f64, z: f64) -> f64 {
     // Sand rising toward the camera from a shelf 6 m down.
     let ripple = 0.08 * (x * 0.7).sin() * (z * 0.4).cos();
@@ -468,6 +514,14 @@ fn world(ground: Ground) -> World {
             bed: beach_bed,
             extent: Some((Vec2::new(-90.0, -150.0), Vec2::new(90.0, 22.0))),
             bounds: (Vec2::new(-90.0, -150.0), Vec2::new(90.0, 40.0)),
+        },
+        Ground::Open(name) => World {
+            body: spectral_sea(name),
+            preset: "ocean",
+            kind: Kind::Body(1.0),
+            bed: open_bed,
+            extent: Some((Vec2::new(-130.0, -170.0), Vec2::new(130.0, 120.0))),
+            bounds: (Vec2::new(-130.0, -170.0), Vec2::new(130.0, 120.0)),
         },
     }
 }

@@ -119,7 +119,7 @@ mod tests {
             .map(|s| s.spectrum(0.0, 1, 200.0).significant_height())
             .collect();
         assert!(heights.windows(2).all(|w| w[0] < w[1]), "{heights:?}");
-        assert!(heights[0] < 0.4 && heights[2] > 3.0, "{heights:?}");
+        assert!(heights[0] < 0.2 && heights[2] > 5.0, "{heights:?}");
         assert!(SeaState::named("moderate").is_some());
     }
 }

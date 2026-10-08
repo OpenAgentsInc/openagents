@@ -989,6 +989,21 @@ every tier (the Water Lab's floats read the same gain), and on Medium and
 High draws surf: bores at the shallow-water speed and spilling crests where
 the waves reach that limit.
 
+A spectrum's tile follows its peak, so every sea state's cascades carry
+about the same slope, and in stills a gale looked like a breeze seen
+closer ([#10918](https://github.com/OpenAgentsInc/openagents/issues/10918)).
+The sea's normals now follow Cox and Munk's mean square slope for the wind,
+0.003 + 5.12 × 10⁻³ U [CoxMunk54]: the fine ripples make up what the
+cascades lack, and a calm sea's cascade slopes shrink until it is glassy
+(`water::ocean::slope_gains`). The calm sea is a 2.5 m/s breeze over 4 km
+and the storm a strong gale, 22 m/s over 200 km (Beaufort 9). A sea seen
+for the first time breaks its whole whitecap coverage at once; the shader
+draws only the foam field's dense patches; and where a finer cascade is
+drawn, cascade 0's coarse foam gathers on that cascade's crests. The Water
+Lab throws spray off the whitecaps as often as the coverage. Captures of
+the three states before and after, at High and Low, from the beach and over
+open water 30 m deep, are in `bench/verse/2026-10-07/sea-states/`.
+
 Measured on an Apple M5 Max with `cargo run --release -p verse-pbr --example
 water_fft_cost` (`bench/verse/2026-10-07/water-w4/cost.json`), one tick of
 every cascade, the foam field, and the half-float texels took 0.06 ms on Low,
@@ -1363,6 +1378,9 @@ Still open:
 - [CooleyTukey65] James W. Cooley and John W. Tukey, "An Algorithm for the
   Machine Calculation of Complex Fourier Series," *Mathematics of
   Computation*, 1965.
+- [CoxMunk54] Charles Cox and Walter Munk, "Measurement of the Roughness of
+  the Sea Surface from Photographs of the Sun's Glitter," *Journal of the
+  Optical Society of America*, 1954.
 - [Dupuy12] Jonathan Dupuy and Eric Bruneton, "Real-time Animation and
   Rendering of Ocean Whitecaps," SIGGRAPH Asia 2012 technical briefs.
 - [Finch04] Mark Finch, "Effective Water Simulation from Physical Models,"

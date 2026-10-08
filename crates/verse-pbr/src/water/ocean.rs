@@ -38,11 +38,24 @@ pub const WHITECAP: f32 = 0.97;
 /// The Jacobian span below the breaking threshold over which cover goes
 /// from none to full.
 pub const WHITECAP_SPAN: f32 = 0.08;
+/// The whitecap cover below which the shader draws no foam: thin cover,
+/// where old foam has faded or a coarse cascade's texels blur it, would
+/// otherwise veil the whole sea (`WATER_WHITECAP_EDGE`).
+pub const WHITECAP_EDGE: f32 = 0.3;
+/// The whitecap cover above which the shader draws solid foam
+/// (`WATER_WHITECAP_CORE`).
+pub const WHITECAP_CORE: f32 = 0.7;
 /// How long foam lasts, s: its cover falls by `e` in this time.
 pub const FOAM_LIFE: f32 = 2.4;
 /// Foam drifts downwind at this share of the wind speed (the surface
 /// drift of wind-driven water is about 3%).
 pub const FOAM_DRIFT: f32 = 0.03;
+/// About the mean square slope the sea's fine ripples carry as authored
+/// (`Water::ocean`'s and `Water::calm`'s detail waves lie between 0.08
+/// and 0.13), which [`slope_gains`] scales from.
+pub const RIPPLE_VARIANCE: f32 = 0.1;
+/// The least gain on the sea's ripples, so a glassy sea still glitters.
+pub const RIPPLE_FLOOR: f32 = 0.15;
 /// Layers per cascade in the texture.
 pub const LAYERS: u32 = 2;
 /// Rows of the uniform the shader reads (`water.ocean`).
@@ -195,7 +208,16 @@ impl Synthesis {
                 }
             }
             let [dx, height, dz, sx, sz, jacobian] = &self.wide;
-            let threshold = breaking(jacobian, spectrum.wind_speed as f32, &mut self.scratch);
+            // With no foam carried on, the whole coverage breaks at once,
+            // so a sea seen for the first time (a capture, a new sea
+            // state) shows its whitecaps from its first frame.
+            let share = if elapsed.is_some() { 0.5 } else { 1.0 };
+            let threshold = breaking(
+                jacobian,
+                spectrum.wind_speed as f32,
+                share,
+                &mut self.scratch,
+            );
             let foam = &mut self.foam[c];
             match elapsed {
                 Some(dt) => {
@@ -266,10 +288,11 @@ pub fn coverage(wind_speed: f32) -> f32 {
 }
 
 /// The Jacobian below which a tile's crests break this tick: the
-/// quantile that leaves half the wind's whitecap coverage breaking anew
-/// (the foam that lingers makes up the rest), never above [`WHITECAP`].
-fn breaking(jacobian: &[f32], wind_speed: f32, scratch: &mut Vec<f32>) -> f32 {
-    let share = coverage(wind_speed) * 0.5;
+/// quantile that leaves `share` of the wind's whitecap coverage breaking
+/// anew (half while foam lingers to make up the rest, all of it when none
+/// does), never above [`WHITECAP`].
+fn breaking(jacobian: &[f32], wind_speed: f32, share: f32, scratch: &mut Vec<f32>) -> f32 {
+    let share = coverage(wind_speed) * share;
     let k = (share * jacobian.len() as f32) as usize;
     if k == 0 {
         return f32::NEG_INFINITY;
@@ -320,7 +343,8 @@ fn advect(field: &mut [f32], scratch: &mut Vec<f32>, n: usize, shift: [f32; 2]) 
 /// - row 3: cascade count, cascades that move vertices, 1 when surf is
 ///   drawn, and the significant height (m);
 /// - row 4: half a texel in texture coordinates, the peak's angular
-///   frequency (rad/s) the surf's bores run at, and two spare;
+///   frequency (rad/s) the surf's bores run at, and the gains on the sea's
+///   fine ripples and on its cascades' slopes ([`slope_gains`]);
 /// - row 5: each cascade's slope variance (for the roughness its faded
 ///   slopes leave behind), and one spare.
 #[must_use]
@@ -353,7 +377,40 @@ pub fn rows(spectrum: &Spectrum, plan: Plan, gain: f32, significant: f32) -> [[f
         0.0,
         0.0,
     ];
+    let resolved: f32 = rows[5][..plan.count].iter().sum();
+    let (ripples, cascades) = slope_gains(spectrum.wind_speed as f32, resolved);
+    rows[4][2] = ripples;
+    rows[4][3] = cascades;
     rows
+}
+
+/// The sea's mean square slope in a wind of `wind_speed` m/s, as Cox and
+/// Munk measured it from sun glitter over a clean surface:
+/// `σ² = 0.003 + 5.12 × 10⁻³ U` ("Measurement of the Roughness of the Sea
+/// Surface from Photographs of the Sun's Glitter", JOSA 1954).
+#[must_use]
+pub fn slope_variance_for(wind_speed: f32) -> f32 {
+    0.003 + 5.12e-3 * wind_speed.max(0.0)
+}
+
+/// The gains on a sea's normals so its total slope is Cox and Munk's for
+/// its wind ([`slope_variance_for`]): first on the fine ripples, the
+/// detail waves that bend normals but never move the surface, then on the
+/// cascades' slopes, which `resolved` is the mean square of. A spectrum's
+/// tile follows its peak, so every sea's cascades carry about the same
+/// slope, and a still could not tell a gale's from a breeze's. Most of a
+/// wind sea's slope is in waves shorter than the cascades resolve, so the
+/// ripples make up what the cascades lack: a gale's spread its glitter
+/// and roughen it, and a calm sea's fade toward [`RIPPLE_FLOOR`] while
+/// its cascades' slopes shrink to the glassy surface Cox and Munk saw.
+/// Visual only: neither gain moves the surface.
+#[must_use]
+pub fn slope_gains(wind_speed: f32, resolved: f32) -> (f32, f32) {
+    let target = slope_variance_for(wind_speed);
+    let cascades = (target / resolved.max(1e-6)).sqrt().min(1.0);
+    let missing = (target - resolved * cascades * cascades).max(0.0);
+    let ripples = (missing / RIPPLE_VARIANCE).sqrt().max(RIPPLE_FLOOR);
+    (ripples, cascades)
 }
 
 /// The mean squared slope of a cascade's band, `∫ k² E(k) dk`, on its
@@ -803,5 +860,54 @@ mod tests {
         assert!(gain(k, 1.2, 0.3) > 1.0);
         assert_eq!(gain(k, 0.0, 1.0), 0.0);
         assert!(gain(k, 0.5, 2.0) * 2.0 <= 0.78 * 0.5 + 1e-4);
+    }
+
+    /// A sea's total slope follows Cox and Munk's for its wind: a calm
+    /// sea's cascades and ripples are turned down, a gale's ripples up,
+    /// and the gains rise with the wind.
+    #[test]
+    fn slopes_follow_the_wind() {
+        let total = |wind: f32, resolved: f32| {
+            let (ripples, cascades) = slope_gains(wind, resolved);
+            resolved * cascades * cascades + RIPPLE_VARIANCE * ripples * ripples
+        };
+        // About what every sea's cascades carry on High.
+        let resolved = 0.03;
+        for wind in [9.0, 15.0, 22.0] {
+            let want = slope_variance_for(wind);
+            assert!((total(wind, resolved) - want).abs() < 1e-4, "{wind}");
+        }
+        let (calm_ripples, calm_cascades) = slope_gains(2.5, resolved);
+        let (moderate_ripples, moderate_cascades) = slope_gains(9.0, resolved);
+        let (storm_ripples, storm_cascades) = slope_gains(22.0, resolved);
+        assert!(calm_cascades < 1.0);
+        assert!(moderate_cascades == 1.0 && storm_cascades == 1.0);
+        assert!(calm_ripples == RIPPLE_FLOOR);
+        assert!(calm_ripples < moderate_ripples && moderate_ripples < storm_ripples);
+    }
+
+    /// A sea seen for the first time shows its whole whitecap coverage,
+    /// and a gale's covers many times a fresh breeze's.
+    #[test]
+    fn a_new_sea_shows_its_whitecaps() {
+        let cover = |wind: f32| {
+            let spectrum = Spectrum {
+                wind_speed: f64::from(wind),
+                ..sea()
+            };
+            let mut s = Synthesis::new(&spectrum, Tier::High).unwrap();
+            let frame = s.step(500);
+            let n = s.plan.size * s.plan.size;
+            // The finest cascade's foam: the share above the shader's edge.
+            let layer = &frame.texels[(s.plan.count - 1) * 2 * n..][..n];
+            layer
+                .iter()
+                .filter(|t| half::f16::from_bits(t[3]).to_f32() > WHITECAP_EDGE)
+                .count() as f32
+                / n as f32
+        };
+        let (moderate, storm) = (cover(9.0), cover(22.0));
+        assert!(storm > coverage(22.0) * 0.5, "{storm}");
+        assert!(storm > moderate * 5.0, "{moderate} {storm}");
     }
 }
