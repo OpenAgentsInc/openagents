@@ -2410,7 +2410,7 @@ impl Site {
             let fixed = |id: physics::BodyId| {
                 bodies
                     .get(id.0 as usize)
-                    .is_some_and(|b| b.kind == BodyKind::Static)
+                    .is_some_and(|b| b.kind == BodyKind::Static || b.sleeping)
             };
             for c in &self.world.contacts {
                 for (body, other, collider) in
@@ -3061,6 +3061,55 @@ mod rubble_tests {
             1
         );
         assert_eq!(site.debris_stats().awake, 1);
+    }
+
+    #[test]
+    fn a_newly_sleeping_dynamic_island_retires_every_supported_chunk() {
+        let (mut site, bottom) = resting_chunk();
+        site.world[bottom].kind = BodyKind::Dynamic;
+        site.world[bottom].pos.y = 0.285;
+        site.frozen.clear();
+        site.rests.clear();
+        let cuboid = Cuboid {
+            center: DVec3::ZERO,
+            rotation: DQuat::IDENTITY,
+            half: DVec3::splat(0.3),
+        };
+        let top = site.add_chunk(
+            Body::new(10.0, DVec3::ONE, DVec3::new(0.0, 0.846, 0.0)),
+            &cuboid,
+        );
+        site.pieces[0].chunks.push(Chunk {
+            body: top,
+            until: 20.0,
+            gone: false,
+            settled: None,
+            settle_since: None,
+            merged_collider: None,
+        });
+        // The world puts the entire touching, grounded island to sleep
+        // immediately after its first solve. Both supports are still Dynamic.
+        site.world.sleep.time = 0.0;
+        site.world.sleep.linear = 1.0;
+        site.world.sleep.angular = 1.0;
+        site.tick(STEP as f32);
+        assert!(site.world[bottom].sleeping && site.world[top].sleeping);
+        assert_eq!(site.world[bottom].kind, BodyKind::Dynamic);
+        assert!(
+            site.rests
+                .get(&top.0)
+                .is_some_and(|under| under.contains(&bottom.0))
+        );
+        for _ in 0..(7.0 / STEP) as usize {
+            site.tick(STEP as f32);
+        }
+        assert_eq!(
+            site.debris_stats().merged,
+            2,
+            "the upper sleeper retires with its island"
+        );
+        assert!(site.world[bottom].removed && site.world[top].removed);
+        assert_eq!(site.step_stats().awake, 0);
     }
 
     #[test]
