@@ -7,8 +7,8 @@ pipeline and isolated PTY offscreen and passed on 2026-10-08:
 zero idle submissions, 0.161% idle CPU, and 169.66 MiB peak RSS sampled every
 30 seconds. The report is `docs/terminal/verification/2026-10-08-native-retention/one-hour.json`.
 It cannot measure the physical display or reproduce the owner's lost
-pre-reboot 20 GB process. If the display check
-finds a defect, open a new issue with the process RSS and CPU sample.
+pre-reboot 20 GB process. If the display check finds a defect, open a new
+issue with the process RSS and CPU sample.
 
 ## Ship a TestFlight build and open the Verse tab on the iPhone (#10928)
 
