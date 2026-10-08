@@ -7964,6 +7964,71 @@
           ]
         },
         {
+          "name": "town",
+          "children": [
+            {
+              "name": "table",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "town",
+                  "table"
+                ],
+                "usage": [
+                  "town table"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "town"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "table"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "bodies",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "town",
+                  "bodies"
+                ],
+                "usage": [
+                  "town bodies"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "town"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "bodies"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
+        },
+        {
           "name": "meetings",
           "children": [
             {
