@@ -12,6 +12,7 @@
 //! [--smoke-frame N]
 //! [--no-temporal-aa] [--compare-temporal-aa] [--camera director|pan|orbit]
 //! [--static-houses] [--sequence FIRST:LAST]
+//! [--no-destruction-relighting] [--capture-rebuild]
 //!
 //! Installs the showcase from the committed, pinned Everglade pack as
 //! `verse --meteor-showcase` does, bakes its light, and renders it offscreen
@@ -59,6 +60,11 @@
 //! Ordinary captures omit timestamp diagnostic work. `--gpu-timestamps` and
 //! every comparison mode enable it. Combine `--readback-every-frame` and
 //! `--gpu-timestamps` to restore the original diagnostic capture workload.
+//! `--no-destruction-relighting` keeps the pristine bake on damaged geometry
+//! for a matched control. `--capture-rebuild` saves `pristine.png` at frame 0,
+//! then applies R after the final simulation frame and writes `restored.png`
+//! with the same camera and stage. Live rebuild capture requires
+//! `--settle-light`; temporal comparison cannot include a rebuild.
 //!
 //! Run it with `VERSE_QUALITY=high` for the high tier, and with
 //! `VERSE_KIT_PACK` naming the licensed kit pack to draw it in place of its
@@ -116,10 +122,13 @@ struct Args {
     compare_temporal_aa: bool,
     camera: CameraPath,
     static_houses: bool,
+    no_destruction_relighting: bool,
+    capture_rebuild: bool,
 }
 
 #[derive(Default)]
 struct FrameSelection {
+    pristine: bool,
     establishing: bool,
     impact: bool,
     smoke: bool,
@@ -133,6 +142,7 @@ impl FrameSelection {
         args.video.is_some()
             || args.readback_every_frame
             || args.compare_temporal_aa
+            || self.pristine
             || self.establishing
             || self.impact
             || self.smoke
@@ -170,6 +180,8 @@ impl Args {
             compare_temporal_aa: false,
             camera: CameraPath::Director,
             static_houses: false,
+            no_destruction_relighting: false,
+            capture_rebuild: false,
         }
     }
 
@@ -190,6 +202,7 @@ impl Args {
         smoke_saved: bool,
     ) -> FrameSelection {
         FrameSelection {
+            pristine: self.capture_rebuild && k == 0,
             establishing: k == (2.0 * fps) as usize,
             impact: !impact_saved
                 && self.impact_frame.map_or_else(
@@ -615,6 +628,8 @@ fn args() -> Result<Args, String> {
             "--no-particle-lighting" => args.no_particle_lighting = true,
             "--no-soft-particles" => args.no_soft_particles = true,
             "--compare-particles" => args.compare_particles = true,
+            "--no-destruction-relighting" => args.no_destruction_relighting = true,
+            "--capture-rebuild" => args.capture_rebuild = true,
             "--no-temporal-aa" => args.no_temporal_aa = true,
             "--compare-temporal-aa" => args.compare_temporal_aa = true,
             "--static-houses" => args.static_houses = true,
@@ -707,6 +722,12 @@ fn args() -> Result<Args, String> {
     }
     if args.particle_every == 0 {
         return Err("--particle-every must be positive".into());
+    }
+    if args.capture_rebuild && args.live && !args.settle_light {
+        return Err("--capture-rebuild with --live requires --settle-light".into());
+    }
+    if args.capture_rebuild && args.compare_temporal_aa {
+        return Err("--capture-rebuild cannot be combined with --compare-temporal-aa".into());
     }
     if args.particle_frame.is_some_and(|frame| frame < 3) {
         return Err("--particle-frame must follow the first three warm-up frames".into());
@@ -976,11 +997,17 @@ fn main() -> Result<(), String> {
     if runtime.zone != zones::ZoneId::MeteorShowcase {
         return Err("The Meteor Showcase did not install from the pinned pack".into());
     }
+    if args.no_destruction_relighting {
+        runtime.set_meteor_showcase_relighting(false)?;
+    }
     // The film stands the player out of shot and stages the caster; a live
     // run casts as the player, from the spawn, with the light still baking.
     let fps = if args.live { 60.0 } else { FPS };
     let steps = if args.live { 1 } else { STEPS };
     let frames = (args.seconds * fps).round() as usize;
+    if args.capture_rebuild && frames == 0 {
+        return Err("--capture-rebuild requires at least one simulation frame".into());
+    }
     if args.sequence.is_some_and(|[_, last]| last >= frames) {
         return Err("--sequence must be within the captured frame range".into());
     }
@@ -1035,7 +1062,8 @@ fn main() -> Result<(), String> {
     ];
     let atlas = verse::ui::Atlas::new(16.0);
     let ui = verse::ui::UiBatch::default();
-    runtime.set_shot(Some(shot(args.camera, 0.0)));
+    let pristine_shot = shot(args.camera, 0.0);
+    runtime.set_shot(Some(pristine_shot));
     // Independent delivery slots let each GPU receive the same bake. A late
     // background delivery waits until the next paired simulation snapshot.
     let (capture_world, on_bake) = if args.compare_temporal_aa {
@@ -1101,6 +1129,7 @@ fn main() -> Result<(), String> {
     let mut artifact_readback_frames = Vec::new();
     let aspect = WIDTH as f32 / HEIGHT as f32;
     let mut cast = false;
+    let mut pristine_snapshot = None;
     for k in 0..frames {
         let t = k as f32 / fps;
         let mut sample = Sample {
@@ -1303,6 +1332,10 @@ fn main() -> Result<(), String> {
             )?);
         }
         let landed = runtime.zone_snapshot(1.0).caption;
+        if selection.pristine {
+            write_png(&args.out.join("pristine.png"), &pixels)?;
+            pristine_snapshot = Some((view, dynamic.neon));
+        }
         if selection.establishing {
             write_png(&args.out.join("establishing.png"), &pixels)?;
             write_temporal_pair(&args.out, "establishing", &pixels, off_pixels.as_deref())?;
@@ -1424,6 +1457,31 @@ fn main() -> Result<(), String> {
             return Err(format!("ffmpeg failed: {status}"));
         }
     }
+    let rebuild_capture = if args.capture_rebuild {
+        let (view, stage) = pristine_snapshot.ok_or("No pristine rebuild frame was captured")?;
+        runtime.zone_intent(zones::Intent::Rebuild)?;
+        runtime.set_shot(Some(pristine_shot));
+        let mut dynamic = runtime.dynamic_mesh();
+        dynamic.neon = stage;
+        let pixels = renderer.render(view, &dynamic, &ui)?;
+        artifact_readback_frames.push(frames);
+        write_png(&args.out.join("restored.png"), &pixels)?;
+        serde_json::json!({
+            "pristine_image": "pristine.png",
+            "restored_image": "restored.png",
+            "pristine_frame": 0,
+            "restoration_frame": frames,
+            "after_simulation_frame": frames - 1,
+            "simulation_seconds": (frames - 1) as f32 / fps,
+            "stage_time": stage.map(|neon| neon.time),
+            "shot": {"eye": pristine_shot.0.to_array(), "target": pristine_shot.1.to_array()},
+            "pristine_view": {"eye": view.eye.to_array(), "view_proj": view.view_proj.to_cols_array_2d()},
+            "restored_view": {"eye": view.eye.to_array(), "view_proj": view.view_proj.to_cols_array_2d()},
+            "method": "Applies the same rebuild intent as R after the final simulation frame, then renders with the saved pristine camera and stage without advancing simulation. The runtime clock and character state continue; exact pristine bake restoration is checked by unit tests.",
+        })
+    } else {
+        serde_json::Value::Null
+    };
     let flash_pool_step_ms = args
         .compare_flash_lights
         .then(|| measure_flash_pool(runtime.view(aspect).eye));
@@ -1464,6 +1522,8 @@ fn main() -> Result<(), String> {
             "device_type": format!("{:?}", renderer.adapter_info().device_type),
         },
         "light_settled_before_capture": !args.live || args.settle_light,
+        "destruction_relighting_enabled": !args.no_destruction_relighting,
+        "rebuild_capture": rebuild_capture,
         "gpu_timestamp_features_supported": renderer.gpu_timestamps_available(),
         "gpu_timestamps_flag": args.gpu_timestamps,
         "gpu_timestamps_requested": args.timestamps_requested(),

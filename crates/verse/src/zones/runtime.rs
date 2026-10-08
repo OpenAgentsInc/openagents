@@ -381,6 +381,27 @@ impl WorldRuntime {
             .is_some_and(|glade| super::meteor_showcase::stage(glade, delay).is_ok())
     }
 
+    /// Enables destruction relighting, or keeps the pristine bake as a capture control.
+    ///
+    /// # Errors
+    ///
+    /// Returns a message outside the Meteor Showcase or if its town is unavailable.
+    pub fn set_meteor_showcase_relighting(&mut self, enabled: bool) -> Result<(), String> {
+        if self.zone != ZoneId::MeteorShowcase {
+            return Err("Destruction relighting controls require the Meteor Showcase".into());
+        }
+        let town = self
+            .zone_state
+            .everglade
+            .as_deref_mut()
+            .and_then(super::everglade::Everglade::town_mut)
+            .ok_or("The Meteor Showcase has no destructible town")?;
+        town.set_destruction_relighting(enabled.then(|| {
+            super::everglade::time_of_day::Light::at_hours(super::meteor_showcase::HOUR as f32)
+                .key_dir
+        }))
+    }
+
     /// What Everglade's town's last tick cost, in a zone with one.
     #[must_use]
     pub fn everglade_town_profile(
