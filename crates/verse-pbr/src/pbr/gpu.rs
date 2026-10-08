@@ -3931,7 +3931,7 @@ impl Photo {
     }
 
     /// What a neon stage draws after its water: blended textured cells,
-    /// guide lines, glows, and particles. Group 0 must be bound.
+    /// guide lines, glows, and particles.
     fn draw_blended<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
@@ -3939,6 +3939,7 @@ impl Photo {
         opaque: &Opaque<'_, 'a>,
     ) {
         let world = opaque.world;
+        pass.set_bind_group(0, &self.scene_group, &[]);
         pass.set_bind_group(1, &targets.guide_groups[0], &[]);
         self.draw_textured(pass, world.textured, opaque.order, Pass::Blended);
         self.draw_textured(pass, world.figure, opaque.figure_order, Pass::Blended);

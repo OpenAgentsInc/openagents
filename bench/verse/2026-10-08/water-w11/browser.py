@@ -13,6 +13,8 @@ import sys
 import time
 import urllib.request
 
+from PIL import Image
+
 from cdp import Cdp
 
 origin, destination = sys.argv[1], Path(sys.argv[2])
@@ -29,7 +31,18 @@ for key in ['wasm', 'glue', 'pack', 'kit']:
     assert hashlib.sha256(payload).hexdigest() == expected['sha256'], key
 del payload
 PROBE = r'''(() => {
-  const probe = window.__waterFence = {api:null, samples:[], submitted:0, errors:[]};
+  const probe = window.__waterFence = {api:null, samples:[], submitted:0, errors:[], deviceErrors:[], deviceLost:[]};
+  if (typeof GPUAdapter !== 'undefined') {
+    const request = GPUAdapter.prototype.requestDevice;
+    GPUAdapter.prototype.requestDevice = function(...args) {
+      return request.apply(this,args).then(device => {
+        probe.deviceFeatures = [...device.features];
+        device.addEventListener('uncapturederror', event => probe.deviceErrors.push({type:event.error.constructor.name,message:event.error.message}));
+        device.lost.then(value => probe.deviceLost.push({reason:value.reason,message:value.message}));
+        return device;
+      });
+    };
+  }
   const context = HTMLCanvasElement.prototype.getContext;
   HTMLCanvasElement.prototype.getContext = function(...args) {
     const result = context.apply(this,args);
@@ -75,9 +88,18 @@ def console(page):
             args = event['params']['args']
             rows.append({'level':event['params']['type'],
                          'text':' '.join(str(a.get('value', a.get('description', ''))) for a in args)})
+        elif event['method'] == 'Log.entryAdded':
+            entry = event['params']['entry']
+            rows.append({'level':entry['level'], 'text':entry['text'], 'url':entry.get('url')})
         elif event['method'] == 'Runtime.exceptionThrown':
             rows.append({'level':'exception', 'text':str(event['params']['exceptionDetails'])})
     return rows
+
+
+def unexpected_errors(rows):
+    # Chrome requests the minimal local test page's absent favicon.
+    return [row for row in rows if row['level'] in ['error', 'exception']
+            and not (row.get('url') or '').endswith('/favicon.ico')]
 
 
 def run(mode, zone, dry):
@@ -123,7 +145,7 @@ def run(mode, zone, dry):
         assert any(row['url'] == origin + inputs[key]['url'] and row['status'] == 200
                    for row in network), (key, network)
     assert not any('proxies' in row['text'] for row in startup_logs), startup_logs
-    assert not [row for row in startup_logs if row['level'] in ['error', 'exception']], startup_logs
+    assert not unexpected_errors(startup_logs), startup_logs
     warmed = time.monotonic()
     while time.monotonic() - warmed < 12:
         time.sleep(1)
@@ -135,17 +157,17 @@ def run(mode, zone, dry):
     while time.monotonic() - measured < 12:
         time.sleep(1)
         page.eval('window.__waterFence.submitted')
-    probe = page.eval("({api:window.__waterFence.api,samples:window.__waterFence.samples,errors:window.__waterFence.errors,size:[document.querySelector('canvas').width,document.querySelector('canvas').height],webgl2:!!document.querySelector('canvas').getContext('webgl2'),userAgent:navigator.userAgent})")['result']['value']
+    probe = page.eval("({api:window.__waterFence.api,samples:window.__waterFence.samples,errors:window.__waterFence.errors,deviceErrors:window.__waterFence.deviceErrors,deviceLost:window.__waterFence.deviceLost,deviceFeatures:window.__waterFence.deviceFeatures,size:[document.querySelector('canvas').width,document.querySelector('canvas').height],webgl2:!!document.querySelector('canvas').getContext('webgl2'),userAgent:navigator.userAgent})")['result']['value']
     elapsed = time.monotonic() - measured
     assert probe['size'] == [1920,1080], probe
     assert probe['webgl2'] == (mode == 'webgl2'), probe
-    assert not probe['errors'], probe
+    assert not probe['errors'] and not probe['deviceErrors'] and not probe['deviceLost'], probe
     logs = console(page)
     samples = []
     for row in logs:
         if row['text'].startswith('Everglade water ['):
             samples += json.loads(row['text'][len('Everglade water '):])
-    errors = [row for row in logs if row['level'] in ['error', 'exception']]
+    errors = unexpected_errors(logs)
     assert not errors, errors
     if not dry:
         assert samples, logs
@@ -153,6 +175,7 @@ def run(mode, zone, dry):
     screenshot = page.call('Page.captureScreenshot', {'format':'png'})
     image = destination / f'{tag}.png'
     image.write_bytes(base64.b64decode(screenshot['data']))
+    assert any(low != high for low, high in Image.open(image).convert('RGB').getextrema()), 'Blank frame: ' + tag
     jobs = sum(s['completed_jobs'] for s in samples)
     synthesis_ms = sum(s['completed_synthesis_ms'] for s in samples)
     result = {'case':tag, 'mode':mode, 'tier':admission['tier'],
@@ -160,7 +183,9 @@ def run(mode, zone, dry):
               'water_log_frames':len(samples), 'queue_fence_completions':len(probe['samples']),
               'measurement_window':'one-second renderer log batches observed during the dated interval',
               'high_tier':'not admitted on the browser platform', 'size':probe['size'],
-              'user_agent':probe['userAgent'], 'query':query, 'samples':samples,
+              'user_agent':probe['userAgent'], 'device_features':probe.get('deviceFeatures'),
+              'device_errors':probe['deviceErrors'], 'device_lost':probe['deviceLost'],
+              'console':logs, 'visual_capture_checked':True, 'query':query, 'samples':samples,
               'inputs':inputs, 'renderer_admission':admission, 'startup_responses':network,
               'licensed_kit_loaded':zone == 'everglade',
               'gpu_timestamps_supported':any(s['gpu_timestamps'] for s in samples),
@@ -180,17 +205,64 @@ def run(mode, zone, dry):
               'inline_synthesis':True, 'capture':image.name,
               'capture_sha256':hashlib.sha256(image.read_bytes()).hexdigest()}
     page.call('Page.close')
+    page.s.close()
     return result
 
 
+# Preserve a failed case and close its GPU tab before the next case.
+def failed(mode, zone, dry, error):
+    tag = f'{zone}-{mode}' + ('-dry' if dry else '')
+    row = {'case':tag, 'mode':mode, 'success':False,
+           'failed_at_utc':datetime.now(timezone.utc).isoformat(),
+           'failure_type':type(error).__name__, 'failure':str(error)[:32000]}
+    trace = error.__traceback__
+    page = None
+    while trace:
+        if trace.tb_frame.f_code.co_name == 'run':
+            values = trace.tb_frame.f_locals
+            page = values.get('page')
+            for key in ['admission','probe','network','samples','elapsed','measured_at','query']:
+                if key in values: row[key] = values[key]
+        trace = trace.tb_next
+    if page:
+        try:
+            row['probe_at_failure'] = page.eval('({probe:window.__waterFence,status:document.querySelector("#everglade-status")?.textContent,size:[document.querySelector("canvas")?.width,document.querySelector("canvas")?.height]})')['result'].get('value')
+            screenshot = page.call('Page.captureScreenshot', {'format':'png'})
+            image = destination / (tag+'-failed.png')
+            image.write_bytes(base64.b64decode(screenshot['data']))
+            row['capture'] = image.name
+            row['capture_sha256'] = hashlib.sha256(image.read_bytes()).hexdigest()
+        except Exception as capture_error:
+            row['evidence_error'] = str(capture_error)[:2000]
+        row['console'] = console(page)
+        row['responses'] = [{'url':event['params']['response']['url'], 'status':event['params']['response']['status']} for event in page.events if event['method']=='Network.responseReceived']
+        try: page.call('Page.close')
+        except Exception: pass
+        finally: page.s.close()
+    return row
+
 results = []
+selected = os.environ.get('WATER_W11_BROWSER_CASES')
+selected = set(selected.split(',')) if selected else None
+known = {f'{zone}-{mode}' for zone in ['water', 'everglade'] for mode in ['webgpu', 'webgl2']}
+assert selected is None or selected and selected <= known, selected
 for zone in ['water', 'everglade']:
     for mode in ['webgpu', 'webgl2']:
-        dry = run(mode, zone, True)
-        wet = run(mode, zone, False)
-        wet['queue_fence_water_ms_estimate'] = max(0, wet['queue_fence_frame_ms_estimate']['mean']
-                                                 - dry['queue_fence_frame_ms_estimate']['mean'])
-        results += [dry, wet]
-        (destination / 'browser.json').write_text(json.dumps(results, indent=2) + '\n')
-        print(json.dumps({key:wet[key] for key in ['case','gpu_ms','main_ms','worker_ms','gpu_bytes',
-              'queue_fence_water_ms_estimate']}), flush=True)
+        if selected is not None and f'{zone}-{mode}' not in selected:
+            continue
+        pair = []
+        for dry in [True, False]:
+            try:
+                row = run(mode, zone, dry)
+                row['success'] = True
+            except Exception as error:
+                row = failed(mode, zone, dry, error)
+            results.append(row); pair.append(row)
+            (destination / 'browser.json').write_text(json.dumps(results,indent=2)+'\n')
+            print(json.dumps({k:(str(row[k])[:800] if k == 'failure' else row[k]) for k in ['case','success','failure','gpu_ms','main_ms','gpu_bytes'] if k in row}),flush=True)
+        dry, wet = pair
+        if dry['success'] and wet['success']:
+            wet['queue_fence_water_ms_estimate'] = max(0, wet['queue_fence_frame_ms_estimate']['mean']-dry['queue_fence_frame_ms_estimate']['mean'])
+        (destination / 'browser.json').write_text(json.dumps(results,indent=2)+'\n')
+Path(destination/'harness.json').write_text(json.dumps({'executed_harness_sha256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),'failure_retention':True,'log_and_device_errors_checked':True,'blank_frames_rejected':True},indent=2)+'\n')
+sys.exit(any(not row['success'] for row in results))
