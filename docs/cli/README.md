@@ -111,6 +111,26 @@ fixture checks advertise no live sender. The durable outbox separately owns any
 dispatch authority. Complete the [outreach owner checks](../../NEEDS_OWNER.md#sales-outreach-launch)
 before real use.
 
+`sales outbox propose` freezes one exact owner approval subject, including the
+recipient, MIME bytes, attachment digests, current authority, and count reservation.
+A selected SMTP endpoint also requires its exact
+`provider:email:CONFIG_ID:HOSTNAME` recipient in the lead and policy grants.
+`outbox apply` approves that digest or records an attributable owner send, rejection,
+pause, reconciliation evidence, or owner-reviewed restart.
+`outbox view` returns one typed subject for supported renderers and identifies
+phone or lectern surfaces whose Sales owner binding is unavailable. `outbox dispatch` consumes the approval once through implicit TLS SMTP;
+it releases the sales lock during network waits and reopens current authority
+before credentials, recipients, and body disclosure. Native certification, original
+cost attribution, reply handling, consent, suppression, and owner activation must
+all be available. An uncertain attempt consumes its reservation and cannot replay.
+`outbox fixture` uses isolated evidence, counts separately, and cannot qualify a
+live operating week or raise the outreach cap. SMTP acceptance does not prove delivery.
+Owner reconciliation preserves the original uncertain attempt and consumed count;
+it never asserts delivery or enables a second send. Attachment filenames and
+proposal metadata receive the same credential and customer screening as content.
+The transport follows [SMTP reply semantics](https://www.rfc-editor.org/info/rfc5321/)
+and [implicit TLS submission](https://www.rfc-editor.org/info/rfc8314/).
+
 ## Commercial customer (`openagents customer`)
 
 `openagents customer` binds the installed client to the existing gateway account,

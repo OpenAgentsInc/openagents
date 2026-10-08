@@ -29,7 +29,7 @@ struct Fixture {
 }
 impl Fixture {
     fn new() -> Self {
-        Self::with_execution_budget(0)
+        Self::with_options(0, None)
     }
     fn without_customers() -> Self {
         let dir = tempfile::tempdir().unwrap();
@@ -84,6 +84,12 @@ impl Fixture {
         }
     }
     fn with_execution_budget(execution_budget_usd_millionths: u64) -> Self {
+        Self::with_options(execution_budget_usd_millionths, None)
+    }
+    fn with_endpoint(endpoint: Option<&str>) -> Self {
+        Self::with_options(0, endpoint)
+    }
+    fn with_options(execution_budget_usd_millionths: u64, endpoint: Option<&str>) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().join("host");
         let mut store = Store::open_with_clock(&root, now).unwrap();
@@ -106,11 +112,14 @@ impl Fixture {
             )
             .unwrap();
         let anchor = store.sales_agent_anchor(&owner, "paul").unwrap();
-        let recipients = vec![
+        let mut recipients = vec![
             "human:operator".into(),
             format!("agent:{}", anchor.pubkey),
             "provider:email:fixture".into(),
         ];
+        if let Some(endpoint) = endpoint {
+            recipients.push(endpoint.into());
+        }
         let bytes = serde_json::to_vec(&Command {
             schema: COMMAND_SCHEMA.into(),
             id: "native-private-lead".into(),
@@ -1259,6 +1268,7 @@ fn email_fixture(
         id: "fixture".into(),
         version: 1,
         provider: Provider::Fixture,
+        smtp: None,
         sender: "operator@fixture.invalid".into(),
         reply_to: "operator@fixture.invalid".into(),
         company: "Synthetic Company".into(),
@@ -1730,3 +1740,577 @@ fn email_replaced_credential_file_cannot_reuse_preparation_bytes() {
 mod expense_tests;
 #[path = "../meetings/tests.rs"]
 mod meeting_tests;
+
+fn outbox_proposal(
+    message: super::super::email::Message,
+    name: &str,
+) -> super::super::outbox::Proposal {
+    use super::super::outbox::*;
+    Proposal {
+        schema: PROPOSAL_SCHEMA.into(),
+        id: name.into(),
+        kind: MessageKind::OwnerPilot,
+        message,
+        attachments: vec![],
+        certification_reference: None,
+        draft_reference: None,
+        follow_up_reference: None,
+        model_reservation_reference: None,
+        maximum_cost_microusd: 0,
+    }
+}
+fn outbox_decide(
+    f: &mut Fixture,
+    keys: &dyn super::super::email::MailboxCredentials,
+    subject: &super::super::outbox::Subject,
+    approve: bool,
+) -> Result<u64> {
+    use super::super::outbox::*;
+    let command = Command {
+        schema: COMMAND_SCHEMA.into(),
+        id: format!("decide-{}", subject.proposal.id),
+        expected_revision: f.store.state.outbox.revision,
+        operation: Operation::Decide {
+            proposal: subject.proposal.id.clone(),
+            subject_sha256: subject.sha256()?,
+            approve,
+        },
+    };
+    f.store
+        .apply_sales_outbox(&f.owner, &serde_json::to_vec(&command).unwrap(), keys)
+}
+fn outbox_transport(
+    subject: &super::super::outbox::Subject,
+    delivery: super::super::email::Delivery,
+) -> super::super::email::FakeTransport {
+    use super::super::email::*;
+    FakeTransport {
+        calls: 0,
+        result: serde_json::to_vec(&ProviderEvidence {
+            message_sha256: subject.message_sha256.clone(),
+            provider_id: "isolated-fixture".into(),
+            reference_sha256: "a".repeat(64),
+            delivery,
+            tls: Validation::Passed,
+            authentication: Validation::Passed,
+        })
+        .unwrap(),
+    }
+}
+#[test]
+fn outbox_exact_approval_unknown_and_restart_never_repeat_the_original_attempt() {
+    use super::super::{email::Delivery, outbox::*};
+    let mut f = Fixture::new();
+    let (_, keys, message) = email_fixture(&mut f);
+    let subject = f
+        .store
+        .propose_sales_outbox(&f.owner, outbox_proposal(message, "original"), &keys)
+        .unwrap();
+    let mut transport = outbox_transport(&subject, Delivery::Unknown);
+    let cancel = std::sync::atomic::AtomicBool::new(false);
+    assert!(
+        f.store
+            .dispatch_sales_outbox_fixture(
+                &f.owner,
+                "original",
+                &subject.sha256().unwrap(),
+                &keys,
+                &mut transport,
+                &cancel
+            )
+            .is_err()
+    );
+    assert_eq!(transport.calls, 0);
+    outbox_decide(&mut f, &keys, &subject, true).unwrap();
+    assert!(
+        f.store
+            .dispatch_sales_outbox_fixture(
+                &f.owner,
+                "original",
+                &"f".repeat(64),
+                &keys,
+                &mut transport,
+                &cancel
+            )
+            .is_err()
+    );
+    let seen = f
+        .store
+        .dispatch_sales_outbox_fixture(
+            &f.owner,
+            "original",
+            &subject.sha256().unwrap(),
+            &keys,
+            &mut transport,
+            &cancel,
+        )
+        .unwrap();
+    assert_eq!(seen.phase, Phase::Unknown);
+    assert!(seen.count_consumed);
+    assert_eq!(transport.calls, 1);
+    assert!(
+        f.store
+            .dispatch_sales_outbox_fixture(
+                &f.owner,
+                "original",
+                &subject.sha256().unwrap(),
+                &keys,
+                &mut transport,
+                &cancel
+            )
+            .is_err()
+    );
+    let root = f.dir.path().join("host");
+    drop(f.store);
+    let mut store = Store::open_with_clock(&root, now).unwrap();
+    assert!(
+        store
+            .dispatch_sales_outbox_fixture(
+                &f.owner,
+                "original",
+                &subject.sha256().unwrap(),
+                &keys,
+                &mut transport,
+                &cancel
+            )
+            .is_err()
+    );
+    assert_eq!(
+        store.sales_outbox_view(&f.owner).unwrap()["fixture_messages_and_reservations"],
+        1
+    );
+    assert_eq!(transport.calls, 1);
+}
+#[test]
+fn outbox_reserves_all_message_classes_and_rejection_releases_only_unsent_counts() {
+    use super::super::outbox::*;
+    let mut f = Fixture::new();
+    let (_, keys, message) = email_fixture(&mut f);
+    let kinds = [
+        MessageKind::OwnerPilot,
+        MessageKind::FirstMessage,
+        MessageKind::Reply,
+        MessageKind::FollowUp,
+        MessageKind::SalesPost,
+    ];
+    let mut subjects = vec![];
+    for (i, kind) in kinds.into_iter().enumerate() {
+        let mut proposal = outbox_proposal(message.clone(), &format!("message-{i}"));
+        proposal.kind = kind;
+        subjects.push(
+            f.store
+                .propose_sales_outbox(&f.owner, proposal, &keys)
+                .unwrap(),
+        );
+    }
+    assert!(
+        f.store
+            .propose_sales_outbox(&f.owner, outbox_proposal(message.clone(), "sixth"), &keys)
+            .is_err()
+    );
+    assert_eq!(
+        f.store.sales_outbox_view(&f.owner).unwrap()["live_messages_and_reservations"],
+        0
+    );
+    outbox_decide(&mut f, &keys, &subjects[0], false).unwrap();
+    f.store
+        .propose_sales_outbox(&f.owner, outbox_proposal(message, "replacement"), &keys)
+        .unwrap();
+    let command = Command {
+        schema: COMMAND_SCHEMA.into(),
+        id: "fake-ramp".into(),
+        expected_revision: f.store.state.outbox.revision,
+        operation: Operation::RaiseCap {
+            cap: 10,
+            operating_week_sha256: "a".repeat(64),
+            owner_review_sha256: "b".repeat(64),
+        },
+    };
+    assert!(
+        f.store
+            .apply_sales_outbox(&f.owner, &serde_json::to_vec(&command).unwrap(), &keys)
+            .is_err()
+    );
+}
+#[test]
+fn outbox_changed_attachment_opt_out_and_pause_refuse_before_fixture_effects() {
+    use super::super::{email::Delivery, outbox::*};
+    for change in ["attachment", "optout", "pause"] {
+        let mut f = Fixture::new();
+        let (_, keys, message) = email_fixture(&mut f);
+        let mut proposal = outbox_proposal(message, "bounded-original");
+        let directory = f.dir.path().join("attachments");
+        super::super::super::prepare_directory(&directory).unwrap();
+        let path = directory.join("scope.txt");
+        agent::write_private(&path, b"original private scope").unwrap();
+        proposal.attachments.push(Attachment {
+            filename: "scope.txt".into(),
+            media_type: "text/plain".into(),
+            path: path.clone(),
+            sha256: digest(b"original private scope"),
+            bytes: 22,
+        });
+        let subject = f
+            .store
+            .propose_sales_outbox(&f.owner, proposal, &keys)
+            .unwrap();
+        outbox_decide(&mut f, &keys, &subject, true).unwrap();
+        match change {
+            "attachment" => {
+                std::fs::write(&path, b"changed private scope").unwrap();
+            }
+            "optout" => {
+                let command = super::super::privacy::Command {
+                    schema: super::super::privacy::COMMAND_SCHEMA.into(),
+                    id: "outbox-optout".into(),
+                    expected_revision: f.store.state.privacy.revision,
+                    operation: super::super::privacy::Operation::OptOut {
+                        contact: "email:private-buyer@fixture.invalid".into(),
+                        reference: "customer requested immediate stop".into(),
+                        customer: None,
+                        ambiguous: true,
+                    },
+                };
+                f.store
+                    .apply_sales_privacy(&f.owner, &serde_json::to_vec(&command).unwrap())
+                    .unwrap();
+            }
+            _ => {
+                let command = Command {
+                    schema: COMMAND_SCHEMA.into(),
+                    id: "pause-outbox".into(),
+                    expected_revision: f.store.state.outbox.revision,
+                    operation: Operation::Pause {
+                        incident: IncidentKind::Complaint,
+                        reference_sha256: "d".repeat(64),
+                    },
+                };
+                f.store
+                    .apply_sales_outbox(&f.owner, &serde_json::to_vec(&command).unwrap(), &keys)
+                    .unwrap();
+            }
+        }
+        let mut transport = outbox_transport(&subject, Delivery::Accepted);
+        assert!(
+            f.store
+                .dispatch_sales_outbox_fixture(
+                    &f.owner,
+                    &subject.proposal.id,
+                    &subject.sha256().unwrap(),
+                    &keys,
+                    &mut transport,
+                    &std::sync::atomic::AtomicBool::new(false)
+                )
+                .is_err()
+        );
+        assert_eq!(transport.calls, 0);
+    }
+}
+#[test]
+fn outbox_unicode_mime_is_ascii_and_each_encoded_word_preserves_unicode() {
+    use base64::{Engine, engine::general_purpose::STANDARD};
+    let mut f = Fixture::new();
+    let (_, keys, mut message) = email_fixture(&mut f);
+    message.subject = "é".repeat(17) + "🦀 private requested scope";
+    message.body = "Requested scope: café, 日本語, 🦀.".into();
+    let proposal = outbox_proposal(message, "unicode-original");
+    let prepared = f
+        .store
+        .prepare_email(&f.owner, proposal.message.clone(), &keys)
+        .unwrap();
+    let mime = super::super::outbox::mime(&f.store, &prepared, &proposal, now()).unwrap();
+    assert!(mime.is_ascii());
+    let mime = String::from_utf8(mime).unwrap();
+    let subject = mime
+        .split("Subject: ")
+        .nth(1)
+        .unwrap()
+        .split("\r\nDate:")
+        .next()
+        .unwrap();
+    let mut decoded = String::new();
+    for word in subject.split_ascii_whitespace() {
+        let bytes = STANDARD
+            .decode(
+                word.strip_prefix("=?UTF-8?B?")
+                    .unwrap()
+                    .strip_suffix("?=")
+                    .unwrap(),
+            )
+            .unwrap();
+        decoded.push_str(&String::from_utf8(bytes).unwrap());
+    }
+    assert_eq!(decoded, proposal.message.subject);
+    let body = mime
+        .split("\r\n\r\n")
+        .nth(1)
+        .unwrap()
+        .split_ascii_whitespace()
+        .collect::<String>();
+    let body = String::from_utf8(STANDARD.decode(body).unwrap()).unwrap();
+    assert!(body.contains(&proposal.message.body));
+}
+#[test]
+fn outbox_owner_reports_count_once_and_unsupported_claims_pause_without_delivery_evidence() {
+    use super::super::outbox::*;
+    for approved in [true, false] {
+        let mut f = Fixture::new();
+        let (_, keys, message) = email_fixture(&mut f);
+        let subject = f
+            .store
+            .propose_sales_outbox(&f.owner, outbox_proposal(message, "manual-owner"), &keys)
+            .unwrap();
+        if approved {
+            outbox_decide(&mut f, &keys, &subject, true).unwrap();
+        }
+        let command = Command {
+            schema: COMMAND_SCHEMA.into(),
+            id: "reported-owner-send".into(),
+            expected_revision: f.store.state.outbox.revision,
+            operation: Operation::OwnerSent {
+                proposal: Some(subject.proposal.id.clone()),
+                subject_sha256: Some(subject.sha256().unwrap()),
+                message_kind: MessageKind::OwnerPilot,
+                sent_at: now(),
+                reference_sha256: "a".repeat(64),
+            },
+        };
+        let bytes = serde_json::to_vec(&command).unwrap();
+        let revision = f.store.apply_sales_outbox(&f.owner, &bytes, &keys).unwrap();
+        assert_eq!(
+            f.store.apply_sales_outbox(&f.owner, &bytes, &keys).unwrap(),
+            revision
+        );
+        let view = f.store.sales_outbox_view(&f.owner).unwrap();
+        assert_eq!(view["fixture_messages_and_reservations"], 1);
+        assert_eq!(view["owner_reports_are_delivery_evidence"], false);
+        assert_eq!(view["paused"], !approved);
+        assert!(
+            !f.store
+                .state
+                .outbox
+                .records
+                .values()
+                .any(|r| r.phase == Phase::Delivered)
+        );
+    }
+}
+#[test]
+fn email_actual_smtp_endpoint_needs_both_original_lead_and_current_policy_recipient_grants() {
+    use super::super::email::*;
+    for admitted in [false, true] {
+        let mut f = Fixture::with_endpoint(if admitted {
+            Some("provider:email:fixture:smtp.fixture.invalid")
+        } else {
+            None
+        });
+        let (_, keys, mut message) = email_fixture(&mut f);
+        let mut config = f.store.state.email.configs[&message.config_sha256]
+            .config
+            .clone();
+        config.version = 2;
+        config.provider = Provider::Smtp;
+        config.smtp = Some(smtp::Config {
+            server: "smtp.fixture.invalid".into(),
+            port: 465,
+            username: "operator@fixture.invalid".into(),
+            authentication: smtp::Authentication::Plain,
+        });
+        let command = Command {
+            schema: COMMAND_SCHEMA.into(),
+            id: "smtp-endpoint".into(),
+            expected_revision: 1,
+            operation: Operation::Configure { config },
+        };
+        f.store
+            .apply_email(&f.owner, &serde_json::to_vec(&command).unwrap())
+            .unwrap();
+        message.config_sha256 = f.store.state.email.current.clone().unwrap();
+        assert_eq!(
+            f.store.prepare_email(&f.owner, message, &keys).is_ok(),
+            admitted
+        );
+    }
+}
+
+#[test]
+fn outbox_screens_attachment_names_and_proposal_metadata_after_loading_credentials() {
+    use super::super::outbox::*;
+    for field in ["filename", "id", "path"] {
+        let mut f = Fixture::new();
+        let (_, keys, message) = email_fixture(&mut f);
+        let secret = "synthetic-oauth-credential-with-arbitrary-length";
+        let mut proposal = outbox_proposal(message, "private-metadata");
+        let directory = f.dir.path().join("attachment-metadata");
+        super::super::super::prepare_directory(&directory).unwrap();
+        let path = directory.join(if field == "path" { secret } else { "scope.txt" });
+        agent::write_private(&path, b"bounded scope").unwrap();
+        proposal.attachments.push(Attachment {
+            filename: if field == "filename" {
+                format!("{secret}.txt")
+            } else {
+                "scope.txt".into()
+            },
+            media_type: "text/plain".into(),
+            path,
+            sha256: digest(b"bounded scope"),
+            bytes: 13,
+        });
+        if field == "id" {
+            proposal.id = secret.into();
+        }
+        assert!(
+            f.store
+                .propose_sales_outbox(&f.owner, proposal, &keys)
+                .is_err()
+        );
+        assert!(f.store.state.outbox.records.is_empty());
+        assert!(
+            !std::fs::read_to_string(f.store.dir.join("state.json"))
+                .unwrap_or_default()
+                .contains(secret)
+        );
+    }
+}
+
+#[test]
+fn outbox_portable_projection_and_reconciliation_preserve_unknown_without_member_authority() {
+    use super::super::{email::Delivery, outbox::*};
+    let mut f = Fixture::new();
+    let (_, keys, message) = email_fixture(&mut f);
+    let subject = f
+        .store
+        .propose_sales_outbox(
+            &f.owner,
+            outbox_proposal(message, "reconcile-original"),
+            &keys,
+        )
+        .unwrap();
+    outbox_decide(&mut f, &keys, &subject, true).unwrap();
+    let mut transport = outbox_transport(&subject, Delivery::Unknown);
+    let record = f
+        .store
+        .dispatch_sales_outbox_fixture(
+            &f.owner,
+            &subject.proposal.id,
+            &subject.sha256().unwrap(),
+            &keys,
+            &mut transport,
+            &std::sync::atomic::AtomicBool::new(false),
+        )
+        .unwrap();
+    let command = Command {
+        schema: COMMAND_SCHEMA.into(),
+        id: "original-reconciliation".into(),
+        expected_revision: f.store.state.outbox.revision,
+        operation: Operation::Reconcile {
+            proposal: record.id.clone(),
+            subject_sha256: record.subject_sha256.clone(),
+            mime_sha256: record.mime_sha256.clone(),
+            attempt: record.attempt.clone().unwrap(),
+            reference_sha256: "f".repeat(64),
+        },
+    };
+    let bytes = serde_json::to_vec(&command).unwrap();
+    for role in [super::super::Role::Reader, super::super::Role::Writer] {
+        let principal = format!("member-{role:?}").to_ascii_lowercase();
+        let path = f.dir.path().join(&principal);
+        f.store.issue(&f.owner, &principal, role, &path).unwrap();
+        let member = f
+            .store
+            .authenticate(&Store::read_credential(&path).unwrap())
+            .unwrap();
+        assert!(f.store.sales_outbox_projection(&member).is_err());
+        assert!(f.store.apply_sales_outbox(&member, &bytes, &keys).is_err());
+    }
+    f.store.apply_sales_outbox(&f.owner, &bytes, &keys).unwrap();
+    f.store.apply_sales_outbox(&f.owner, &bytes, &keys).unwrap();
+    let projection = f.store.sales_outbox_projection(&f.owner).unwrap();
+    assert_eq!(
+        serde_json::to_value(&projection).unwrap(),
+        f.store.sales_outbox_view(&f.owner).unwrap()
+    );
+    assert_eq!(projection.records[0].phase, Phase::Unknown);
+    assert_eq!(projection.records[0].attempt_started_at, Some(now()));
+    assert_eq!(projection.records[0].observation_at, Some(now()));
+    assert_eq!(projection.fixture_messages_and_reservations, 1);
+    assert_eq!(projection.reconciliations.len(), 1);
+    assert!(!projection.reconciliations_are_delivery_evidence);
+    assert!(!projection.outbound_authority);
+    assert_eq!(
+        projection.records[0]
+            .subject
+            .as_ref()
+            .unwrap()
+            .sha256()
+            .unwrap(),
+        subject.sha256().unwrap()
+    );
+    assert_eq!(
+        projection
+            .capabilities
+            .iter()
+            .filter(|c| c.owner_binding_available)
+            .count(),
+        1
+    );
+    assert_eq!(transport.calls, 1);
+    assert!(
+        f.store
+            .dispatch_sales_outbox_fixture(
+                &f.owner,
+                &subject.proposal.id,
+                &subject.sha256().unwrap(),
+                &keys,
+                &mut transport,
+                &std::sync::atomic::AtomicBool::new(false)
+            )
+            .is_err()
+    );
+    assert_eq!(transport.calls, 1);
+    let obligations = f.store.state.outbox.obligations(&f.lead);
+    assert_eq!(obligations.len(), 1);
+    assert_eq!(obligations[0].amount_minor, None);
+    assert!(obligations[0].unknown);
+}
+
+#[test]
+fn outbox_reads_and_idempotent_results_refuse_later_known_credentials() {
+    use super::super::email;
+    let mut f = Fixture::new();
+    let (original, keys, mut message) = email_fixture(&mut f);
+    let proposal = outbox_proposal(message.clone(), "later-known-private-mailbox-token");
+    f.store
+        .propose_sales_outbox(&f.owner, proposal.clone(), &keys)
+        .unwrap();
+    let mut config = f.store.state.email.configs[&original].config.clone();
+    config.version = 2;
+    config.credential_sha256 = digest(proposal.id.as_bytes());
+    let command = email::Command {
+        schema: email::COMMAND_SCHEMA.into(),
+        id: "rotate-fixture-mailbox".into(),
+        expected_revision: 1,
+        operation: email::Operation::Configure { config },
+    };
+    f.store
+        .apply_email(&f.owner, &serde_json::to_vec(&command).unwrap())
+        .unwrap();
+    agent::write_private(
+        &f.dir.path().join("mailbox-fixture-key"),
+        proposal.id.as_bytes(),
+    )
+    .unwrap();
+    message.config_sha256 = f.store.state.email.current.clone().unwrap();
+    f.store.prepare_email(&f.owner, message, &keys).unwrap();
+    assert!(f.store.sales_outbox_projection(&f.owner).is_err());
+    assert!(
+        f.store
+            .propose_sales_outbox(&f.owner, proposal, &keys)
+            .is_err()
+    );
+    assert_eq!(f.store.state.outbox.records.len(), 1);
+    assert_eq!(
+        f.store.state.outbox.records.values().next().unwrap().phase,
+        super::super::outbox::Phase::Proposed
+    );
+}

@@ -1,4 +1,4 @@
-//! Private sales records. This command never contacts a prospect or starts an agent.
+//! Private sales records and separately approved native outbound dispatch.
 use crate::{Args, Output};
 #[cfg(test)]
 use coder::cli_route::tree::{Declared, Effect};
@@ -18,6 +18,8 @@ mod meetings;
 mod models;
 #[path = "sales_paul.rs"]
 pub(crate) mod paul;
+#[path = "sales_outbox.rs"]
+mod outbox;
 #[path = "sales_privacy.rs"]
 mod privacy;
 #[path = "sales_qualification.rs"]
@@ -60,6 +62,16 @@ pub const USAGE: &str = "usage: openagents sales COMMAND --root DIR [--credentia
         Prepare a private message; grants no dispatch authority.
   email evidence --input FILE --message-sha256 SHA
         Map provider acceptance, delivery, bounce, failure, or uncertainty.
+  outbox view
+        Read exact owner approval subjects and consumed attempt states.
+  outbox propose --input FILE --mailbox-key FILE
+        Reserve counts and freeze exact private recipient, content, and authority.
+  outbox apply --input FILE [--mailbox-key FILE]
+        Approve an exact subject, reject, pause, or review restart.
+  outbox fixture --proposal ID --subject-sha256 SHA --input FILE --mailbox-key FILE
+        Consume a fixture approval with isolated synthetic provider evidence.
+  outbox dispatch --proposal ID --subject-sha256 SHA --mailbox-key FILE
+        Consume one live approval through the qualified native SMTP adapter.
   agents anchor --agent NAME
         Read the owner's exact native agent key and charter pins.
   agents owner
@@ -172,8 +184,9 @@ pub const USAGE: &str = "usage: openagents sales COMMAND --root DIR [--credentia
 All commands require an explicit private host root. Except init, read the
 current human's credential from FILE; do not put its secret on the command
 line. Propose a handoff through apply with that lead's current revision;
-only the named target's credential can accept it. This pipeline grants no
-outbound, provider, execution, or customer-data disclosure authority.
+only the named target's credential can accept it. Generic pipeline operations grant no
+outbound, provider, execution, or customer-data disclosure authority. The separate
+outbox requires exact owner approval and current native prerequisites for SMTP.
 Only the owner can record_service_sale, reconcile_service_payment, or
 reconcile_service_fulfillment through apply with --evidence-root DIR.
 Use --sale with show/export for the original authorized service scope.
@@ -207,6 +220,11 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("email apply", Effect::Grants),
     Declared::computer("email check", Effect::LocalWrite),
     Declared::computer("email evidence", Effect::ReadOnly),
+    Declared::computer("outbox view", Effect::ReadOnly),
+    Declared::computer("outbox propose", Effect::LocalWrite),
+    Declared::computer("outbox apply", Effect::Grants),
+    Declared::computer("outbox fixture", Effect::LocalWrite),
+    Declared::computer("outbox dispatch", Effect::Publishes),
     Declared::computer("agents anchor", Effect::ReadOnly),
     Declared::computer("agents owner", Effect::ReadOnly),
     Declared::computer("agents owner-apply", Effect::Grants),
@@ -275,6 +293,9 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
     }
     if words.first().is_some_and(|w| w == "meetings") {
         return meetings::run(output, &words[1..]);
+    }
+    if words.first().is_some_and(|w| w == "outbox") {
+        return outbox::run(output, &words[1..]);
     }
     if words.first().is_some_and(|w| w == "email") {
         return email::run(output, &words[1..]);

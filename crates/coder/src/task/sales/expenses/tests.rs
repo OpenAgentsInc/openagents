@@ -695,3 +695,71 @@ fn synthetic_training_has_no_customer_or_outbound_authority_and_shares_floor() {
     );
     assert!(store.state.leads.is_empty());
 }
+
+#[test]
+fn outbox_cost_snapshot_uses_original_native_receipt_without_repricing_it() {
+    use crate::task::sales::{email, outbox};
+    let mut f = Fixture::with_execution_budget(2_000);
+    let (_, _, mut message) = super::email_fixture(&mut f);
+    let a = f.access();
+    message.sender = email::Sender::Agent {
+        anchor: f.anchor.clone(),
+        assignment: a.assignment.clone(),
+    };
+    let s = source(e::Kind::Planner);
+    publish(&mut f, &policy(vec![s.clone()], 5_000, 5_000, 1_500));
+    let hold = f
+        .store
+        .reserve_sales_model(&a, &input("outbox-original-cost", s.clone()))
+        .unwrap();
+    let r = hold.receipt().clone();
+    let mut proposal = super::outbox_proposal(message, "original-cost");
+    proposal.model_reservation_reference = Some(r.id.clone());
+    proposal.maximum_cost_microusd = r.maximum_usd_millionths;
+    assert!(
+        f.store
+            .outbox_budget(&proposal, outbox::Mode::Live)
+            .is_err()
+    );
+    f.store
+        .settle_sales_model(&f.owner, &r.id, &settled("unknown-original", None, None))
+        .unwrap();
+    assert!(
+        f.store
+            .outbox_budget(&proposal, outbox::Mode::Live)
+            .is_err()
+    );
+    f.store
+        .settle_sales_model(
+            &f.owner,
+            &r.id,
+            &settled("known-original", Some(1_000), None),
+        )
+        .unwrap();
+    let original = f
+        .store
+        .outbox_budget(&proposal, outbox::Mode::Live)
+        .unwrap();
+    let mut next = policy(vec![s], 5_000, 5_000, 1_000);
+    next.revision = 2;
+    publish(&mut f, &next);
+    assert_eq!(
+        f.store
+            .outbox_budget(&proposal, outbox::Mode::Live)
+            .unwrap(),
+        original
+    );
+    proposal.maximum_cost_microusd += 1;
+    assert!(
+        f.store
+            .outbox_budget(&proposal, outbox::Mode::Live)
+            .is_err()
+    );
+    proposal.maximum_cost_microusd -= 1;
+    proposal.message.lead = format!("lead_{}", "f".repeat(64));
+    assert!(
+        f.store
+            .outbox_budget(&proposal, outbox::Mode::Live)
+            .is_err()
+    );
+}

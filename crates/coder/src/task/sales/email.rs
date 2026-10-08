@@ -5,6 +5,8 @@ use coder_host::serve::keys::{AccountKeys, Secret};
 use serde_json::{Value, json};
 use std::sync::atomic::{AtomicBool, Ordering};
 
+pub mod smtp;
+
 pub const CONFIG_SCHEMA: &str = "openagents.sales.email-config.v1";
 pub const COMMAND_SCHEMA: &str = "openagents.sales.email-command.v1";
 pub const MESSAGE_SCHEMA: &str = "openagents.sales.email-message.v1";
@@ -44,6 +46,8 @@ pub struct Config {
     pub id: String,
     pub version: u64,
     pub provider: Provider,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub smtp: Option<smtp::Config>,
     pub sender: String,
     pub reply_to: String,
     pub company: String,
@@ -85,6 +89,35 @@ impl Config {
             || self.templates.len() > 32
         {
             return Err("email configuration schema or bound is unsupported".into());
+        }
+        if let Some(smtp) = &self.smtp {
+            smtp.check()?;
+            text(
+                &format!(
+                    "provider:email:{}:{}",
+                    self.id,
+                    smtp.server.to_ascii_lowercase()
+                ),
+                256,
+            )?;
+        }
+        if self.provider == Provider::Fixture && self.smtp.is_some() {
+            return Err("fixture mailbox cannot claim a live SMTP endpoint".into());
+        }
+        fn credential_in_metadata(value: &Value, sha: &str) -> bool {
+            match value {
+                Value::String(s) => digest(s.as_bytes()) == sha,
+                Value::Array(rows) => rows.iter().any(|v| credential_in_metadata(v, sha)),
+                Value::Object(rows) => rows
+                    .iter()
+                    .any(|(k, v)| digest(k.as_bytes()) == sha || credential_in_metadata(v, sha)),
+                _ => false,
+            }
+        }
+        let metadata =
+            serde_json::to_value(self).map_err(|_| "email configuration serialization failed")?;
+        if credential_in_metadata(&metadata, &self.credential_sha256) {
+            return Err("email configuration refuses provider credentials in metadata".into());
         }
         id(&self.id)?;
         id(&self.human_responsible)?;
@@ -561,7 +594,7 @@ impl Store {
         self.persist(next)?;
         Ok(revision)
     }
-    fn email_policy(&self, sha: &str, now: u64) -> Result<&agents::Policy> {
+    pub(super) fn email_policy(&self, sha: &str, now: u64) -> Result<&agents::Policy> {
         let record = self
             .state
             .agents
@@ -579,7 +612,7 @@ impl Store {
         }
         Ok(p)
     }
-    fn email_config(&self, sha: &str, now: u64) -> Result<&Config> {
+    pub(super) fn email_config(&self, sha: &str, now: u64) -> Result<&Config> {
         let record = self
             .state
             .email
@@ -632,6 +665,20 @@ impl Store {
             || !policy.data_recipients.contains(&recipient)
         {
             return Err("email provider is outside the admitted recipient boundary".into());
+        }
+        if let Some(smtp) = &config.smtp {
+            let endpoint = format!(
+                "provider:email:{}:{}",
+                config.id,
+                smtp.server.to_ascii_lowercase()
+            );
+            if !lead.details.data.recipients.contains(&endpoint)
+                || !policy.data_recipients.contains(&endpoint)
+            {
+                return Err(
+                    "selected SMTP endpoint is outside the original recipient boundary".into(),
+                );
+            }
         }
         if config.templates.get(&message.template.reference) != Some(&message.template.sha256) {
             return Err("email template version is unavailable".into());
@@ -693,6 +740,11 @@ impl Store {
             &mut next,
             std::str::from_utf8(secret.expose())
                 .map_err(|_| "host mailbox credential is unavailable")?,
+        )?;
+        privacy::check_credentials(
+            &next,
+            &serde_json::to_string(&config)
+                .map_err(|_| "email configuration serialization failed")?,
         )?;
         self.persist(next)?;
         let rendered = format!(

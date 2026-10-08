@@ -21,13 +21,16 @@ fn write(path: &Path, value: &Value) {
     fs::set_permissions(path, fs::Permissions::from_mode(0o600)).unwrap();
 }
 fn run(base: &Path, args: &[&str]) -> Output {
+    run_group(base, "email", args)
+}
+fn run_group(base: &Path, group: &str, args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_openagents"))
         .env_clear()
         .env("HOME", base)
         .env("PATH", "/usr/bin:/bin")
         .env("OPENAGENTS_SCRATCH", base.join("scratch"))
         .current_dir(base)
-        .args(["--json", "sales", "email"])
+        .args(["--json", "sales", group])
         .args(args)
         .arg("--root")
         .arg(base.join("host"))
@@ -201,6 +204,125 @@ fn installed_email_configuration_checks_opaque_provider_credentials_without_send
         ],
     );
     assert_eq!(evidence["delivery"], "accepted");
+    message["body"] = json!("Here is the requested private workflow scope.");
+    let proposal = json!({"schema":sales::outbox::PROPOSAL_SCHEMA,"id":"original-owner-pilot","kind":"owner_pilot","message":message,"attachments":[],"certification_reference":null,"model_reservation_reference":null,"maximum_cost_microusd":0});
+    write(&base.join("proposal.json"), &proposal);
+    let proposed = run_group(
+        base,
+        "outbox",
+        &[
+            "propose",
+            "--input",
+            "proposal.json",
+            "--mailbox-key",
+            "mailbox",
+        ],
+    );
+    assert!(
+        proposed.status.success(),
+        "{}",
+        String::from_utf8_lossy(&proposed.stderr)
+    );
+    let frozen: Value = serde_json::from_slice(&proposed.stdout).unwrap();
+    assert_eq!(frozen["outbound_authority"], false);
+    let subject = frozen["subject_sha256"].as_str().unwrap();
+    let attempt_args = [
+        "fixture",
+        "--proposal",
+        "original-owner-pilot",
+        "--subject-sha256",
+        subject,
+        "--input",
+        "provider.json",
+        "--mailbox-key",
+        "mailbox",
+    ];
+    assert!(!run_group(base, "outbox", &attempt_args).status.success());
+    write(
+        &base.join("decision.json"),
+        &json!({"schema":sales::outbox::COMMAND_SCHEMA,"id":"owner-approved-original","expected_revision":1,"operation":{"kind":"decide","proposal":"original-owner-pilot","subject_sha256":subject,"approve":true}}),
+    );
+    let approved = run_group(
+        base,
+        "outbox",
+        &[
+            "apply",
+            "--input",
+            "decision.json",
+            "--mailbox-key",
+            "mailbox",
+        ],
+    );
+    assert!(
+        approved.status.success(),
+        "{}",
+        String::from_utf8_lossy(&approved.stderr)
+    );
+    assert!(
+        !run_group(
+            base,
+            "outbox",
+            &[
+                "dispatch",
+                "--proposal",
+                "original-owner-pilot",
+                "--subject-sha256",
+                subject,
+                "--mailbox-key",
+                "mailbox"
+            ]
+        )
+        .status
+        .success()
+    );
+    write(
+        &base.join("provider.json"),
+        &json!({"message_sha256":frozen["subject"]["message_sha256"],"provider_id":"fixture-outbox-attempt","reference_sha256":"f".repeat(64),"delivery":"unknown","tls":"passed","authentication":"passed"}),
+    );
+    let observed = run_group(base, "outbox", &attempt_args);
+    assert!(
+        observed.status.success(),
+        "{}",
+        String::from_utf8_lossy(&observed.stderr)
+    );
+    let observed: Value = serde_json::from_slice(&observed.stdout).unwrap();
+    assert_eq!(observed["fixture_calls"], 1);
+    assert_eq!(observed["record"]["phase"], "unknown");
+    assert_eq!(observed["record"]["count_consumed"], true);
+    assert!(!run_group(base, "outbox", &attempt_args).status.success());
+    let status = run_group(base, "outbox", &["view"]);
+    assert!(status.status.success());
+    let status: Value = serde_json::from_slice(&status.stdout).unwrap();
+    assert_eq!(status["fixture_messages_and_reservations"], 1);
+    assert_eq!(status["live_messages_and_reservations"], 0);
+    assert!(!status.to_string().contains(secret));
+    let record = &status["records"][0];
+    write(
+        &base.join("reconcile.json"),
+        &json!({
+            "schema":sales::outbox::COMMAND_SCHEMA,"id":"original-reconciliation", "expected_revision":status["revision"],
+            "operation":{"kind":"reconcile","proposal":"original-owner-pilot","subject_sha256":record["subject_sha256"],
+            "mime_sha256":record["mime_sha256"],"attempt":record["attempt"],"reference_sha256":"e".repeat(64)}
+        }),
+    );
+    assert!(
+        run_group(base, "outbox", &["apply", "--input", "reconcile.json"])
+            .status
+            .success()
+    );
+    assert!(
+        run_group(base, "outbox", &["apply", "--input", "reconcile.json"])
+            .status
+            .success()
+    );
+    let projection = run_group(base, "outbox", &["view"]);
+    let projection: Value = serde_json::from_slice(&projection.stdout).unwrap();
+    assert_eq!(projection["schema"], sales::outbox::PROJECTION_SCHEMA);
+    assert_eq!(projection["fixture_messages_and_reservations"], 1);
+    assert_eq!(projection["records"][0]["phase"], "unknown");
+    assert_eq!(projection["reconciliations_are_delivery_evidence"], false);
+    assert_eq!(projection["reconciliations"].as_object().unwrap().len(), 1);
+    assert!(!run_group(base, "outbox", &attempt_args).status.success());
     write(
         &base.join("revoke.json"),
         &json!({"schema":sales::email::COMMAND_SCHEMA,"id":"revoke","expected_revision":1,"operation":{"kind":"revoke","config_sha256":current,"reference_sha256":"f".repeat(64)}}),

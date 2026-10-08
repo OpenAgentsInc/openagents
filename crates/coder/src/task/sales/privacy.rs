@@ -530,6 +530,24 @@ pub(super) fn check_credentials(state: &State, text: &str) -> Result<()> {
     }
     Ok(())
 }
+/// Native approved outbound material may name its original lead, never another customer.
+pub(super) fn check_outbound_copy(state: &State, lead: &Lead, text: &str) -> Result<()> {
+    check_credentials(state, text)?;
+    let mut own = state.clone();
+    own.privacy.identifiers.clear();
+    remember(&mut own, lead)?;
+    let mut restricted = state.clone();
+    restricted
+        .privacy
+        .identifiers
+        .retain(|key, _| !own.privacy.identifiers.contains_key(key));
+    if contains_customer(&restricted, text)? {
+        return Err(
+            "outbound material contains a customer outside the original approved lead".into(),
+        );
+    }
+    Ok(())
+}
 pub(super) fn remove(state: &mut State, lead: &str, now: u64, reference: &str) -> Result<()> {
     let found = state.leads.get(lead).ok_or("lead is unavailable")?.clone();
     // Legacy unadmitted records still retain their original contact suppression.
@@ -566,7 +584,8 @@ pub(super) fn remove(state: &mut State, lead: &str, now: u64, reference: &str) -
                 });
         }
     }
-    let mut obligations = vec![];
+    let mut obligations = state.outbox.obligations(lead);
+    state.outbox.redact(lead, now);
     for sale in found.service_sales.values() {
         obligations.extend(service_obligations(sale)?);
     }
@@ -939,7 +958,7 @@ fn identity(file: &File, directory: bool) -> Result<Identity> {
         Ok(Identity::default())
     }
 }
-fn private_bytes(path: &Path, maximum: usize) -> Result<(File, Vec<u8>)> {
+pub(super) fn private_bytes(path: &Path, maximum: usize) -> Result<(File, Vec<u8>)> {
     let mut file = super::super::private_open(path, false, false)
         .map_err(|_| "private copy is unavailable")?;
     identity(&file, false)?;

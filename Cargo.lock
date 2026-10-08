@@ -2732,6 +2732,7 @@ dependencies = [
  "acp-client",
  "atif",
  "background",
+ "base64 0.22.1",
  "capability",
  "coder-boundary",
  "coder-connect",
@@ -2768,9 +2769,11 @@ dependencies = [
  "plugin",
  "private-fs",
  "ratatui",
+ "rcgen",
  "receipts",
  "reqwest 0.12.28",
  "route-contract",
+ "rustls",
  "secp256k1 0.31.1",
  "secret-screen",
  "serde",
@@ -2780,9 +2783,11 @@ dependencies = [
  "tempfile",
  "tenancy",
  "tokio",
+ "tokio-rustls",
  "tokio-tungstenite 0.30.0",
  "toml",
  "wat",
+ "webpki-roots 1.0.9",
  "world-tree",
 ]
 
@@ -10500,6 +10505,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "19b17cddbe7ec3f8bc800887bab5e717348c95ea2ca0b1bf0837fb964dc67099"
 
 [[package]]
+name = "pem"
+version = "4.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d354a98a3d1251555de99e8fdd8afda05573c31b82f59063a7b0a29b5527f120"
+dependencies = [
+ "base64 0.23.1",
+ "serde_core",
+]
+
+[[package]]
 name = "pem-rfc7468"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -11917,6 +11932,7 @@ version = "0.14.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8774e05a7d0de114588e6a28fe7e71694b82614ed569d86d8b389dfbc98b8ad8"
 dependencies = [
+ "pem",
  "ring",
  "rustls-pki-types",
  "time",

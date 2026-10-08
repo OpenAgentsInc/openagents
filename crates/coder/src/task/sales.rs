@@ -15,6 +15,7 @@ pub mod email;
 pub mod expenses;
 pub mod intake;
 pub mod meetings;
+pub mod outbox;
 pub mod partners;
 pub mod paul;
 pub mod privacy;
@@ -306,6 +307,8 @@ struct State {
     qualification: qualification::Book,
     #[serde(default)]
     paul: paul::Book,
+    #[serde(default)]
+    outbox: outbox::Book,
 }
 impl Default for State {
     fn default() -> Self {
@@ -330,6 +333,7 @@ impl Default for State {
             meetings: meetings::Book::default(),
             qualification: qualification::Book::default(),
             paul: paul::Book::default(),
+            outbox: outbox::Book::default(),
         }
     }
 }
@@ -529,6 +533,7 @@ impl Store {
         state.qualification.check()?;
         state.qualification.check_certificates(&state.agents)?;
         state.paul.check()?;
+        state.outbox.check()?;
         privacy::remember_retained(&mut state)?;
         if state.leads.values().any(|lead| lead.schema != LEAD_SCHEMA)
             || state
@@ -593,6 +598,10 @@ impl Store {
             poisoned: false,
         };
         store.refresh()?;
+        let mut next = store.state.clone();
+        if next.outbox.recover() {
+            store.persist(next)?;
+        }
         Ok(store)
     }
     fn persist(&mut self, mut next: State) -> Result<()> {
