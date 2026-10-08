@@ -49,14 +49,16 @@ pub use apply::{Push, Settings, Term, apply, apply_scaled, apply_where, apply_wi
 pub use body::{
     Course, FRESH, Kind, Level, Outline, SALT, Sample, Station, Surface, WaterBody, WaterId,
 };
-pub use event::{Effect, Event, Eventful, Evented, Events, TICK_HZ, tick_at};
+pub use event::{Effect, Event, Evented, Eventful, Events, TICK_HZ, tick_at};
 pub use flow::{FlowGrid, Obstacle};
 pub use medium::{Medium, Stroke};
 pub use set::{Water, WaterSet};
 pub use spectrum::{Cascade, Field, Spectrum, Synth, Tile};
 pub use submerge::{Plane, Submersion, area, below, submerged, volume};
-pub use weather::{Climate, Ground, Overlay, OverlayKind, Schedule, State as WeatherState, Weather};
 pub use surface::{Displacement, G, INVERSIONS, MAX_WAVES, Phases, Wave, WaveSet};
+pub use weather::{
+    Climate, Ground, Overlay, OverlayKind, Schedule, State as WeatherState, Weather,
+};
 
 #[cfg(test)]
 mod spectrum_tests;
