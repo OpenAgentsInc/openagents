@@ -111,6 +111,36 @@ pub(crate) fn private_append(path: &Path, create: bool) -> Result<Option<File>> 
     };
     checked(file).map(Some)
 }
+/// How long a store open waits for a held lock before refusing as busy.
+const LOCK_WAIT: std::time::Duration = std::time::Duration::from_secs(2);
+/// Take the store's exclusive lock, waiting a bounded time for a holder.
+///
+/// A store holds its lock only for one short local operation, but the lock
+/// can also look held after its holder dropped it: `flock` belongs to the
+/// open file description, and a thread that forks a child (a PTY or any
+/// spawn with a `pre_exec` hook) shares every open descriptor with that
+/// child until it execs and close-on-exec drops them. Under load that window
+/// is long enough for the next open in this process to see `WouldBlock`, so
+/// the open retries briefly before it refuses as busy.
+fn acquire(lock: &File) -> Result<()> {
+    let deadline = std::time::Instant::now() + LOCK_WAIT;
+    let mut pause = std::time::Duration::from_millis(1);
+    loop {
+        match lock.try_lock() {
+            Ok(()) => return Ok(()),
+            Err(std::fs::TryLockError::WouldBlock) if std::time::Instant::now() < deadline => {
+                std::thread::sleep(pause);
+                pause = (pause * 2).min(std::time::Duration::from_millis(25));
+            }
+            Err(_) => {
+                return Err(Error::new(
+                    ErrorCode::Conflict,
+                    "observer store is busy; retry the local operation",
+                ));
+            }
+        }
+    }
+}
 impl Store {
     pub fn open(directory: &Path, create: bool) -> Result<Self> {
         Self::open_named(directory, "observer", create)
@@ -134,12 +164,7 @@ impl Store {
         }
         let directory = directory.canonicalize().map_err(io)?;
         let lock = private(&directory.join(format!("{name}.lock")), fresh)?;
-        lock.try_lock().map_err(|_| {
-            Error::new(
-                ErrorCode::Conflict,
-                "observer store is busy; retry the local operation",
-            )
-        })?;
+        acquire(&lock)?;
         Ok(Self {
             directory,
             name,
