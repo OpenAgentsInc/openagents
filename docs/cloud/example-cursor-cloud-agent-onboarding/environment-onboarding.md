@@ -529,6 +529,27 @@ cleanup. Git auth is per-process `GIT_CONFIG_*` naming the credential
 variable; no token reaches `.git/config`. Every tool call goes through the
 ENV-02a recorder. Qualification against real Boat is part of ENV-08.
 
+ENV-04 lives in [`crates/coder-environment-build`](../../../crates/coder-environment-build/src/lib.rs).
+A `BuildJob` rebuilds the pinned recipe revision on a fresh builder computer
+(`coder_working_computer::Purpose::EnvironmentBuild`), never the setup or a
+chat computer and never restored from a checkpoint. It runs the exact install
+script once by identity, then a sanitization command with no credentials that
+removes sign-ins (`~/.claude/.credentials.json`, `~/.codex/auth.json`, `gh`,
+npm, Cargo, Git, Docker, SSH), private mounts, declared exclusions, and
+explored state the recipe does not keep (`Recipe.capture.keep_explored`);
+strips credentials from Git configuration; and verifies every required path.
+Capture is gated on that typed report, then on a stopped builder, then on the
+provider's typed image readiness with an immutable snapshot ID (Boat: a named
+snapshot under an owned `oaenv-<build>-<digest>` name that a capture reads
+first and never replaces). The name, snapshot, and image-manifest digest are
+recorded on the `BuildAttempt`. A recipe edit stales earlier builds
+(`Environment::is_stale`): a stale build cannot be verified or saved, and one
+that goes stale mid-build is cancelled before capture. A crash or lost reply
+leaves the attempt needing reconciliation; the next visit reads the command
+or image by identity before acting. Usage and cleanup are separate retained
+facts, and unknown cleanup blocks new builders for the environment.
+Restore hydration of the output image is checked by the ENV-05 verifier.
+
 Proposed blocker edges are ENV-02 → ENV-01; ENV-03 → ENV-01/02;
 ENV-04 → ENV-01/02/03; ENV-05 → ENV-04; ENV-06 → ENV-05;
 ENV-07 → ENV-01/02/06 and the completed web foundations; and

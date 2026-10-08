@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 
+pub mod capture;
 pub mod evidence;
 pub mod store;
 pub mod transition;
@@ -214,6 +215,10 @@ pub struct Recipe {
     pub credential_names: BTreeSet<String>,
     pub qualification: Qualification,
     pub limits: Limits,
+    /// What the clean build captures into its image (ENV-04). Omitted when
+    /// empty, so recipes without one keep their digest.
+    #[serde(default, skip_serializing_if = "capture::Capture::is_empty")]
+    pub capture: capture::Capture,
 }
 impl Recipe {
     /// Canonical digest: fields serialize in declaration order and maps/sets
@@ -285,7 +290,7 @@ impl Recipe {
         {
             return Err("The recipe limits are invalid.");
         }
-        Ok(())
+        self.capture.validate()
     }
 }
 
@@ -555,6 +560,19 @@ impl Environment {
     }
     pub fn version(&self, id: &str) -> Option<&EnvironmentVersion> {
         self.versions.iter().find(|v| v.id == id)
+    }
+    /// A build is stale once the draft has moved past the recipe revision
+    /// it was frozen to: it can no longer be verified or saved.
+    pub fn is_stale(&self, build: &BuildAttempt) -> bool {
+        build.recipe_revision != self.draft_revision
+    }
+    /// Every build a later recipe edit has made stale.
+    pub fn stale_builds(&self) -> Vec<&str> {
+        self.builds
+            .iter()
+            .filter(|b| self.is_stale(b))
+            .map(|b| b.id.as_str())
+            .collect()
     }
     pub fn active(&self) -> Option<&EnvironmentVersion> {
         self.selection

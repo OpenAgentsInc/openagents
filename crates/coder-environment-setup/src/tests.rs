@@ -47,6 +47,7 @@ fn recipe() -> Recipe {
             total_machine_allocations: 4,
             output_bytes: 1 << 20,
         },
+        capture: Default::default(),
     }
 }
 fn environment() -> Environment {
@@ -192,6 +193,7 @@ fn edit(script: &str) -> RecipeEdit {
         credential_names: None,
         qualification: None,
         limits: None,
+        capture: None,
     }
 }
 fn started(r: ToolResult) -> String {

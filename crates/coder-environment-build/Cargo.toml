@@ -1,0 +1,21 @@
+[package]
+name = "coder-environment-build"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Clean environment builds: rebuild a pinned recipe revision on a fresh builder computer, sanitize it, and capture an immutable output image under an owned, never-replaced name."
+
+[dependencies]
+coder-environment = { path = "../coder-environment" }
+coder-environment-setup = { path = "../coder-environment-setup" }
+coder-working-computer = { path = "../coder-working-computer" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1", features = ["macros", "rt"] }
+
+[lints]
+workspace = true

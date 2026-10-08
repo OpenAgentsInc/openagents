@@ -41,6 +41,7 @@ fn recipe(install: char) -> Recipe {
             total_machine_allocations: 4,
             output_bytes: 1 << 28,
         },
+        capture: Default::default(),
     }
 }
 fn env() -> Environment {

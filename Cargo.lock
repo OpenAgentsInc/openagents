@@ -3110,6 +3110,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "coder-environment-build"
+version = "0.1.0"
+dependencies = [
+ "coder-environment",
+ "coder-environment-setup",
+ "coder-working-computer",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "coder-environment-setup"
 version = "0.1.0"
 dependencies = [

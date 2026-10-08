@@ -582,6 +582,13 @@ fn start_verification(
     if build.unresolved.is_some() {
         return Err(Refusal::Unresolved(build_id.into()));
     }
+    // A recipe edit stales every earlier build: verify the current one.
+    if env.is_stale(build) {
+        return Err(Refusal::StaleBuild {
+            build_recipe: build.recipe_revision,
+            draft: env.draft_revision,
+        });
+    }
     let image = match (build.state, &build.image) {
         (BuildState::Ready, Some(image)) => image.clone(),
         _ => return Err(Refusal::BuildNotReady(build_id.into())),

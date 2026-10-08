@@ -125,6 +125,10 @@ pub enum Purpose {
     Chat,
     /// The `chat` field holds the setup session identity.
     EnvironmentSetup { environment: String },
+    /// A clean builder for one build attempt (ENV-04): created fresh from
+    /// the recipe's pinned base, never a setup or chat computer, and never
+    /// restored from any checkpoint. The `chat` field holds the build job.
+    EnvironmentBuild { environment: String, build: String },
 }
 impl Purpose {
     pub fn is_chat(&self) -> bool {
@@ -455,6 +459,27 @@ impl Computer {
         Ok(c)
     }
 
+    /// A clean builder for one build attempt (`spec.chat` names the build
+    /// job). Like a setup computer, it starts from no saved version and
+    /// runs no declared services.
+    pub fn for_build(
+        spec: Spec,
+        environment: &str,
+        build: &str,
+        now_ms: u64,
+    ) -> Result<Self, &'static str> {
+        if spec.base.is_some() || !spec.services.is_empty() {
+            return Err("A builder starts from its pinned base and declares no services.");
+        }
+        let mut c = Self::new(spec, now_ms)?;
+        c.purpose = Purpose::EnvironmentBuild {
+            environment: environment.into(),
+            build: build.into(),
+        };
+        c.validate()?;
+        Ok(c)
+    }
+
     /// A computer dedicated to one environment setup session (`spec.chat`
     /// names the session). It starts from no saved environment version and
     /// runs no declared services.
@@ -498,6 +523,14 @@ impl Computer {
             && (!valid_id(environment) || self.base.is_some() || !self.services.is_empty())
         {
             return Err("A setup computer is invalid.");
+        }
+        if let Purpose::EnvironmentBuild { environment, build } = &self.purpose
+            && (!valid_id(environment)
+                || !valid_id(build)
+                || self.base.is_some()
+                || !self.services.is_empty())
+        {
+            return Err("A builder computer is invalid.");
         }
         if self.credential_names.len() > 32
             || !self

@@ -123,6 +123,9 @@ pub struct RecipeEdit {
     pub qualification: Option<Qualification>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub limits: Option<Limits>,
+    /// What the clean build may capture (ENV-04).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capture: Option<coder_environment::capture::Capture>,
 }
 
 /// A discovery command the agent asks to run.
@@ -488,6 +491,9 @@ impl<P: Commands> Setup<P> {
         }
         if let Some(v) = &edit.limits {
             recipe.limits = v.clone();
+        }
+        if let Some(v) = &edit.capture {
+            recipe.capture = v.clone();
         }
         let command = EnvCommand::UpdateRecipe {
             expected_draft_revision: expected,

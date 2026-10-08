@@ -96,6 +96,50 @@ pub trait Commands: Provider {
     async fn stop_command(&self, computer: &Computer, resource: &str, id: &str) -> Outcome<String>;
 }
 
+/// A provider's readiness for a captured image. Exit codes and request
+/// acknowledgements are not readiness: only `Ready` with an immutable
+/// snapshot identity is.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "state", rename_all = "snake_case", deny_unknown_fields)]
+pub enum ImageState {
+    Pending,
+    Ready,
+    Failed { reason: String },
+}
+
+/// One captured output image under an owned name.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ImageRecord {
+    pub name: String,
+    /// The resource the provider captured it from.
+    pub source: String,
+    pub state: ImageState,
+    /// The immutable snapshot behind the name, once known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub snapshot: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size_bytes: Option<u64>,
+}
+
+/// Immutable output images for a dedicated builder (ENV-04). There is no
+/// replace, rename, or delete: a name, once captured, always means the
+/// same snapshot.
+#[allow(async_fn_in_trait)]
+pub trait Images: Provider {
+    /// Capture `resource`'s filesystem under `name`. Implementations read
+    /// `name` first: an image of this resource is returned as it is, and
+    /// one of another resource is refused, never replaced.
+    async fn capture_image(
+        &self,
+        computer: &Computer,
+        resource: &str,
+        name: &str,
+    ) -> Outcome<ImageRecord>;
+    /// Read an image by name; `None` when the provider has none.
+    async fn read_image(&self, name: &str) -> Outcome<Option<ImageRecord>>;
+}
+
 /// The result of one provider effect.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
@@ -280,6 +324,11 @@ pub mod fake {
         pub broken_services: BTreeSet<String>,
         /// The meter keeps running after stop (a provider fault).
         pub sticky_meter: bool,
+        /// Captured images by name, with the files they hold.
+        pub images: BTreeMap<String, (ImageRecord, BTreeMap<String, String>)>,
+        /// Newly captured images report `Pending` until
+        /// [`FakeProvider::settle_images`].
+        pub images_pending: bool,
         pub counter: u64,
     }
 
@@ -346,6 +395,23 @@ pub mod fake {
             let m = s.machines.get_mut(resource).expect("machine");
             assert!(m.running, "writes need a running machine");
             m.files.insert(path.into(), contents.into());
+        }
+        /// Files held by a captured image.
+        pub fn image_files(&self, name: &str) -> Option<BTreeMap<String, String>> {
+            self.state
+                .lock()
+                .unwrap()
+                .images
+                .get(name)
+                .map(|(_, f)| f.clone())
+        }
+        /// Mark every pending image ready.
+        pub fn settle_images(&self) {
+            for (record, _) in self.state.lock().unwrap().images.values_mut() {
+                if record.state == ImageState::Pending {
+                    record.state = ImageState::Ready;
+                }
+            }
         }
         pub fn snapshot_files(&self, snapshot: &str) -> Option<BTreeMap<String, String>> {
             self.state.lock().unwrap().snapshots.get(snapshot).cloned()
@@ -711,6 +777,63 @@ pub mod fake {
                     }
                 }
             });
+            Self::finish(inject, || out)
+        }
+    }
+
+    impl Images for FakeProvider {
+        async fn capture_image(
+            &self,
+            _c: &Computer,
+            resource: &str,
+            name: &str,
+        ) -> Outcome<ImageRecord> {
+            let inject = self.begin("capture_image");
+            if matches!(inject, Some(Inject::Failed | Inject::Unknown)) {
+                return Self::finish(inject, || unreachable_outcome());
+            }
+            let mut s = self.state.lock().unwrap();
+            let out = if let Some((record, _)) = s.images.get(name) {
+                if record.source == resource {
+                    Outcome::done(record.clone())
+                } else {
+                    Outcome::failed("the image name belongs to another source")
+                }
+            } else if let Some(m) = s.machines.get(resource) {
+                let files = m.files.clone();
+                let snapshot = Self::next_id(&mut s, "image-snap");
+                let record = ImageRecord {
+                    name: name.into(),
+                    source: resource.into(),
+                    state: if s.images_pending {
+                        ImageState::Pending
+                    } else {
+                        ImageState::Ready
+                    },
+                    snapshot: Some(snapshot),
+                    size_bytes: Some(files.values().map(|v| v.len() as u64).sum()),
+                };
+                s.images.insert(name.into(), (record.clone(), files));
+                Outcome::done(record)
+            } else {
+                Outcome::failed("no such resource")
+            };
+            drop(s);
+            Self::finish(inject, || out)
+        }
+        async fn read_image(&self, name: &str) -> Outcome<Option<ImageRecord>> {
+            let inject = self.begin("read_image");
+            if matches!(inject, Some(Inject::Failed | Inject::Unknown)) {
+                return Self::finish(inject, || unreachable_outcome());
+            }
+            let out = Outcome::done(
+                self.state
+                    .lock()
+                    .unwrap()
+                    .images
+                    .get(name)
+                    .map(|(r, _)| r.clone()),
+            );
             Self::finish(inject, || out)
         }
     }

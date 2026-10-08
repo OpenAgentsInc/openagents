@@ -9,12 +9,18 @@
 //! filesystem, so no checkpoint captures them; [`Provider::apply_credentials`]
 //! then verifies their presence by name without reading values.
 //!
-//! Named snapshots are reusable templates; this provider never saves one,
-//! and it never downloads or reads snapshot files.
+//! Named snapshots are reusable templates: a chat or setup computer never
+//! saves one; only a dedicated builder's [`Images`] capture does (ENV-04).
+//! This provider never downloads or reads snapshot files.
 //!
 //! Errors: a definite 4xx from a mutation is `Failed`; transport loss,
 //! deadlines, and 5xx are `Unknown`, and a 404 on reads means gone.
 
+//!
+//! Output images ([`Images`], ENV-04) are Boat named snapshots saved from a
+//! dedicated builder sandbox under an owned name. A capture reads the name
+//! first and refuses one saved from another sandbox, so a name is never
+//! replaced; readiness is Boat's snapshot status plus its snapshot ID.
 //!
 //! Identified commands ([`Commands`]): Boat commands carry no idempotency
 //! key and are never retried, so each command runs inside a wrapper that
@@ -27,7 +33,7 @@
 
 use crate::provider::{
     CheckpointEvidence, CommandCursor, CommandProgress, CommandRead, CommandSpec, Commands,
-    Inspection, Meter, Outcome, Provider,
+    ImageRecord, ImageState, Images, Inspection, Meter, Outcome, Provider,
 };
 use crate::{Checkpoint, Computer, Health, ServiceDecl};
 use base64::Engine;
@@ -610,6 +616,78 @@ impl Commands for BoatProvider {
             Ok(Some(text)) => Outcome::done(text.trim().to_owned()),
             Ok(None) => Outcome::unknown("the stop command did not finish"),
             Err(e) => mutation("stop command", e),
+        }
+    }
+}
+
+/// Map a Boat named snapshot to an image record.
+pub fn image_record(s: &NamedSnapshot) -> ImageRecord {
+    let state = match s.status.as_str() {
+        "completed" | "ready" | "saved" => ImageState::Ready,
+        "failed" | "error" => ImageState::Failed {
+            reason: s.error.clone().unwrap_or_else(|| s.status.clone()),
+        },
+        _ => ImageState::Pending,
+    };
+    ImageRecord {
+        name: s.name.clone(),
+        source: s.source_sandbox_id.clone(),
+        // Without a snapshot identity the image is not ready.
+        state: match (&state, &s.snapshot_id) {
+            (ImageState::Ready, None) => ImageState::Pending,
+            _ => state,
+        },
+        snapshot: s.snapshot_id.clone(),
+        size_bytes: s.size_bytes.and_then(|b| u64::try_from(b).ok()),
+    }
+}
+
+impl Images for BoatProvider {
+    async fn capture_image(
+        &self,
+        _c: &Computer,
+        resource: &str,
+        name: &str,
+    ) -> Outcome<ImageRecord> {
+        match self.read_image(name).await {
+            Outcome::Done { value: Some(r) } if r.source == resource => return Outcome::done(r),
+            Outcome::Done { value: Some(_) } => {
+                return Outcome::failed("the image name belongs to another sandbox");
+            }
+            Outcome::Done { value: None } => {}
+            Outcome::Failed { reason } | Outcome::Unknown { reason } => {
+                return Outcome::unknown(format!("read before capture: {reason}"));
+            }
+        }
+        match self
+            .client
+            .save_named_snapshot(&SaveNamedSnapshotParams {
+                body: NamedSnapshotSaveRequest {
+                    sandbox_id: resource.into(),
+                    name: name.into(),
+                    ..Default::default()
+                },
+                ..Default::default()
+            })
+            .await
+        {
+            Ok(r) => Outcome::done(image_record(&r.snapshot)),
+            Err(e) => mutation("save named snapshot", e),
+        }
+    }
+
+    async fn read_image(&self, name: &str) -> Outcome<Option<ImageRecord>> {
+        match self
+            .client
+            .get_named_snapshot(&GetNamedSnapshotParams {
+                name: name.into(),
+                ..Default::default()
+            })
+            .await
+        {
+            Ok(r) => Outcome::done(Some(image_record(&r.snapshot))),
+            Err(e) if status(&e) == Some(404) => Outcome::done(None),
+            Err(e) => Outcome::unknown(format!("read named snapshot: {e}")),
         }
     }
 }
