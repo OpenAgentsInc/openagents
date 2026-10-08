@@ -559,7 +559,7 @@ def main():
             blender = mac
         if blender is None:
             sys.exit("Far levels need headless Blender; set BLENDER or --blender")
-        subprocess.run([blender, "-b", "--factory-startup", "-t", "4", "--python",
+        subprocess.run([blender, "-b", "--factory-startup", "-t", "4", "--python-exit-code", "1", "--python",
                         str(REPO / "scripts/blender/medieval_kit_far.py"), "--",
                         str(out), str(args.recipe.expanduser().resolve())], check=True)
 

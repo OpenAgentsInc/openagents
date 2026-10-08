@@ -802,22 +802,22 @@ mod tests {
         // the wall is refused; the bucket's cube is reshaped to its box.
         let bytes = compiled::sample(&["bucket", "wall-4"]);
         let mut kit = compiled::decode(&bytes).unwrap();
-        // Shape the bucket's cube to the bucket's box.
+        // Shape both bucket levels to the bucket's box.
         let bucket = piece_of("kit/bucket").unwrap();
-        for p in &mut kit
+        for model in kit
             .models
             .iter_mut()
-            .find(|m| m.name == "kit/bucket")
-            .unwrap()
-            .primitives
+            .filter(|m| m.name == "kit/bucket" || m.name == "lod/kit.bucket")
         {
-            for v in &mut p.vertices {
-                for i in 0..3 {
-                    v.position[i] = if v.position[i] > 0.4 {
-                        bucket.max[i]
-                    } else {
-                        bucket.min[i]
-                    };
+            for primitive in &mut model.primitives {
+                for v in &mut primitive.vertices {
+                    for i in 0..3 {
+                        v.position[i] = if v.position[i] > 0.2 {
+                            bucket.max[i]
+                        } else {
+                            bucket.min[i]
+                        };
+                    }
                 }
             }
         }
