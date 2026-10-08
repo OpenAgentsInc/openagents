@@ -987,14 +987,6 @@ fn physical_sampled(
     ))
 }
 
-fn extent() -> wgpu::Extent3d {
-    wgpu::Extent3d {
-        width: WIDTH,
-        height: HEIGHT,
-        depth_or_array_layers: 1,
-    }
-}
-
 fn read(
     gpu: &Gpu,
     texture: &wgpu::Texture,
