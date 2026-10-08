@@ -146,7 +146,7 @@ fn l1_flight_is_inertial_and_carries_parts_to_the_jig() {
     assert!(runtime.zone_snapshot(1.0).station.unwrap().speed_m_s > 0.3);
     // Put the hands at the depot and fetch the main engine.
     {
-        let lagrange = runtime.zone_state.lagrange.as_mut().unwrap();
+        let lagrange = runtime.zone_state.lagrange.as_deref_mut().unwrap();
         let station = &mut lagrange.station;
         station.face(-std::f64::consts::FRAC_PI_2);
         station.astronaut_mut().vel = glam::DVec3::ZERO;
@@ -164,7 +164,7 @@ fn l1_flight_is_inertial_and_carries_parts_to_the_jig() {
     assert!(held.controls.iter().any(|c| c.action == Intent::Release));
     // Move the held engine onto its latch and release slowly.
     {
-        let lagrange = runtime.zone_state.lagrange.as_mut().unwrap();
+        let lagrange = runtime.zone_state.lagrange.as_deref_mut().unwrap();
         let station = &mut lagrange.station;
         let part = station.body(&station.parts[0]).pos;
         station.translate(verse_lagrange::PartKind::MainEngine.slot() - part);
@@ -179,13 +179,13 @@ fn l1_flight_is_inertial_and_carries_parts_to_the_jig() {
     let before = runtime
         .zone_state
         .lagrange
-        .as_ref()
+        .as_deref()
         .unwrap()
         .dynamic()
         .lines
         .len();
     runtime.zone_intent(Intent::Forces).unwrap();
-    let lagrange = runtime.zone_state.lagrange.as_ref().unwrap();
+    let lagrange = runtime.zone_state.lagrange.as_deref().unwrap();
     assert!(lagrange.overlay);
     assert!(lagrange.dynamic().lines.len() > before);
     assert!(
@@ -329,7 +329,7 @@ fn walking_through_the_grid_portal_enters_a_neutral_lagrange_1_and_flying_back_r
     runtime
         .zone_state
         .lagrange
-        .as_mut()
+        .as_deref_mut()
         .unwrap()
         .station
         .apply(verse_lagrange::Input::FlyTo {
@@ -404,7 +404,7 @@ fn coder_plaza_arches_still_need_their_button_and_stay_amber() {
     runtime.set_spawn(at - glam::Vec3::Z * 2.0, 0.0).unwrap();
     runtime.zone_intent(Intent::Enter).unwrap();
     assert_eq!(runtime.zone, ZoneId::Lagrange1);
-    let lagrange = runtime.zone_state.lagrange.as_ref().unwrap();
+    let lagrange = runtime.zone_state.lagrange.as_deref().unwrap();
     assert!(!lagrange.neutral);
     assert!(lagrange.dynamic().lines.iter().any(|v| !gray(v.color)));
     assert!(runtime.world.mesh.lines.iter().any(|v| !gray(v.color)));
@@ -449,7 +449,7 @@ fn the_tether_button_unclips_and_clips_back_on() {
     runtime
         .zone_state
         .lagrange
-        .as_mut()
+        .as_deref_mut()
         .unwrap()
         .station
         .translate(glam::DVec3::new(10.0, 0.0, 0.0));
@@ -459,7 +459,7 @@ fn the_tether_button_unclips_and_clips_back_on() {
     runtime
         .zone_state
         .lagrange
-        .as_mut()
+        .as_deref_mut()
         .unwrap()
         .station
         .translate(glam::DVec3::new(-10.0, 0.0, 0.0));

@@ -32,7 +32,7 @@ fn the_characters_chop_cracks_a_shop_front() {
         runtime
             .zone_state
             .everglade
-            .as_mut()
+            .as_deref_mut()
             .expect("Everglade")
             .demolish(false)
             .unwrap();
@@ -43,7 +43,7 @@ fn the_characters_chop_cracks_a_shop_front() {
     let town = runtime
         .zone_state
         .everglade
-        .as_ref()
+        .as_deref()
         .and_then(|glade| glade.town())
         .expect("the town");
     let shop = building(town, SHOPS[0]);
@@ -83,7 +83,11 @@ fn everglade_offers_no_offensive_spell_and_its_demolition_still_runs() {
     // event will drive it: Meteor Swarm's circle ahead of the player, then
     // its cast.
     let player = runtime.player.clone();
-    let glade = runtime.zone_state.everglade.as_mut().expect("Everglade");
+    let glade = runtime
+        .zone_state
+        .everglade
+        .as_deref_mut()
+        .expect("Everglade");
     glade.meteor_swarm(&player).unwrap();
     assert!(
         glade.confirm_swarm(&player),
@@ -95,7 +99,7 @@ fn everglade_offers_no_offensive_spell_and_its_demolition_still_runs() {
     let town = runtime
         .zone_state
         .everglade
-        .as_ref()
+        .as_deref()
         .and_then(|glade| glade.town())
         .expect("the town");
     assert!(town.swarm().status().ready, "no cooldown");

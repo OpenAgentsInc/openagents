@@ -725,7 +725,7 @@ impl Renderer {
         height: u32,
         atlas: &Atlas,
         static_instances: &[Instance],
-    ) -> Result<Self, String> {
+    ) -> Result<Box<Self>, String> {
         let id = verse_engine::residency::Catalog::new(prepared.pack())?.id();
         let context = GpuContext {
             name: gpu.adapter_name(),
@@ -746,6 +746,7 @@ impl Renderer {
             static_instances,
             Some(context),
         )
+        .map(Box::new)
     }
     fn build(
         prepared: verse_engine::loading::Prepared,

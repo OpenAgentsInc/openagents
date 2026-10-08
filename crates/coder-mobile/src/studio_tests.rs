@@ -21,7 +21,7 @@ use verse::zones::everglade::studio::Source;
 use verse::zones::everglade_pack::{PACK_DIRECTORY, PACK_EXTENSION, PACK_SHA256, ZonePack};
 use verse::zones::{Intent as ZoneIntent, ZoneId};
 
-fn scene() -> Scene {
+fn scene() -> Box<Scene> {
     Scene::new(Config {
         secret_hex: "11".repeat(32),
         width: 800,
@@ -70,7 +70,7 @@ fn station(id: &str) -> [f32; 3] {
 }
 
 /// An active phone scene inside Everglade, standing at `at`.
-fn in_everglade(at: [f32; 3]) -> Scene {
+fn in_everglade(at: [f32; 3]) -> Box<Scene> {
     let mut scene = scene();
     scene.activate(true).unwrap();
     scene.world.install_everglade(pack());
@@ -388,7 +388,7 @@ fn pausing_or_leaving_everglade_drops_the_panel() {
 #[test]
 fn the_native_json_path_carries_the_studio_view() {
     let mut handle = VerseHandle {
-        scene: Box::new(in_everglade(station("task_wall"))),
+        scene: in_everglade(station("task_wall")),
         renderer: None,
         rendered_zone_revision: 0,
         rendered_chamber_revision: 0,

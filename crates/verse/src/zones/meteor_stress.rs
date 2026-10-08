@@ -164,7 +164,7 @@ mod integration_tests {
         let town = runtime
             .zone_state
             .everglade
-            .as_ref()
+            .as_deref()
             .unwrap()
             .town()
             .unwrap();
@@ -184,7 +184,7 @@ mod integration_tests {
         let town = runtime
             .zone_state
             .everglade
-            .as_mut()
+            .as_deref_mut()
             .unwrap()
             .town_mut()
             .unwrap();
@@ -214,7 +214,7 @@ mod integration_tests {
             let town = runtime
                 .zone_state
                 .everglade
-                .as_ref()
+                .as_deref()
                 .unwrap()
                 .town()
                 .unwrap();
@@ -238,7 +238,7 @@ mod integration_tests {
         let town = runtime
             .zone_state
             .everglade
-            .as_ref()
+            .as_deref()
             .unwrap()
             .town()
             .unwrap();
@@ -253,7 +253,7 @@ mod integration_tests {
             runtime
                 .zone_state
                 .everglade
-                .as_ref()
+                .as_deref()
                 .unwrap()
                 .town()
                 .unwrap()

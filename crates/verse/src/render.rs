@@ -172,7 +172,7 @@ pub enum DrawStatus {
 pub struct Renderer {
     surface: Arc<wgpu::Surface<'static>>,
     instance: wgpu::Instance,
-    source_world: Mesh,
+    source_world: Box<Mesh>,
     source_atlas: Atlas,
     options: RenderOptions,
     health: crate::gpu_lifecycle::Health,
@@ -184,7 +184,7 @@ pub struct Renderer {
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
-    scene: Scene,
+    scene: Box<Scene>,
     targets: Targets,
     /// The sRGB encoding pass into a linear surface, on OpenGL ES.
     present: Option<Present>,
@@ -387,7 +387,7 @@ impl Renderer {
                 }
             }
         }
-        Ok(renderer)
+        Ok(*renderer)
     }
 
     /// Creates an Apple surface from the native host's CAMetalLayer.
@@ -405,7 +405,7 @@ impl Renderer {
         world: &Mesh,
         atlas: &Atlas,
         options: RenderOptions,
-    ) -> Result<Self, String> {
+    ) -> Result<Box<Self>, String> {
         if layer.is_null() {
             return Err("native Metal layer is null".into());
         }
@@ -441,7 +441,7 @@ impl Renderer {
         world: &Mesh,
         atlas: &Atlas,
         options: RenderOptions,
-    ) -> Result<Self, String> {
+    ) -> Result<Box<Self>, String> {
         let window = std::ptr::NonNull::new(window).ok_or("native Android window is null")?;
         options.validate()?;
         validate_extent(width, height, options.max_extent)?;
@@ -482,7 +482,7 @@ impl Renderer {
         world: &Mesh,
         atlas: &Atlas,
         options: RenderOptions,
-    ) -> Result<Self, String> {
+    ) -> Result<Box<Self>, String> {
         let options = options.validate()?;
         validate_extent(width, height, options.max_extent)?;
         let opened = open(&instance, Some(&surface))?;
@@ -527,7 +527,7 @@ impl Renderer {
             .scene
             .prepare_photo_async(&renderer.device, &renderer.queue)
             .await;
-        Ok(renderer)
+        Ok(*renderer)
     }
 
     /// Why the physical renderer is unavailable, when
@@ -538,6 +538,7 @@ impl Renderer {
     }
 
     /// Configures `surface` on an opened device and uploads the world.
+    #[inline(never)]
     fn assemble(
         instance: wgpu::Instance,
         surface: Arc<wgpu::Surface<'static>>,
@@ -547,7 +548,7 @@ impl Renderer {
         world: &Mesh,
         atlas: &Atlas,
         options: RenderOptions,
-    ) -> Result<Self, String> {
+    ) -> Result<Box<Self>, String> {
         let max_extent = options
             .max_extent
             .min(device.limits().max_texture_dimension_2d);
@@ -623,7 +624,7 @@ impl Renderer {
         surface.configure(&device, &config);
         let present = (encode && !hdr).then(|| Present::new(&device, format, width, height));
         let drawn = present.as_ref().map_or(format, |_| Present::FORMAT);
-        let scene = Scene::new(
+        let scene = Box::new(Scene::new(
             &device,
             &queue,
             &adapter,
@@ -631,13 +632,13 @@ impl Renderer {
             world,
             atlas,
             options.sample_count,
-        );
+        ));
         let targets = Targets::new(&device, drawn, width, height, scene.samples);
         let health = crate::gpu_lifecycle::Health::attach(&device);
-        Ok(Self {
+        Ok(Box::new(Self {
             surface,
             instance,
-            source_world: world.clone(),
+            source_world: Box::new(world.clone()),
             source_atlas: atlas.clone(),
             options,
             health,
@@ -657,7 +658,7 @@ impl Renderer {
             hdr,
             overlay: None,
             physical_error: None,
-        })
+        }))
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -718,7 +719,7 @@ impl Renderer {
         #[cfg(not(target_arch = "wasm32"))]
         self.scene
             .move_streaming(&mut next.scene, next.resources, &next.device, &next.queue)?;
-        *self = next;
+        *self = *next;
         Ok(true)
     }
     #[cfg(not(target_arch = "wasm32"))]
@@ -892,7 +893,7 @@ impl Renderer {
         // releases their buffer capacity instead of retaining the largest zone.
         self.scene.dynamic_faces = dynamic_batch(&self.device, "verse dynamic faces");
         self.scene.dynamic_lines = dynamic_batch(&self.device, "verse dynamic lines");
-        self.source_world = world.clone();
+        self.source_world = Box::new(world.clone());
         self.resources = resources;
         #[cfg(not(target_arch = "wasm32"))]
         if let Some(source) = &mut self.scene.streaming {

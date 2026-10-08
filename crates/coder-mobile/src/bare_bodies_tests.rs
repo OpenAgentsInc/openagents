@@ -10,7 +10,7 @@ use verse::session::{EVENT_BUDGET, Status};
 
 use super::bare_presence_tests::loopback_relay;
 
-fn bare_scene(relay: &str) -> Scene {
+fn bare_scene(relay: &str) -> Box<Scene> {
     let mut scene = Scene::new(Config {
         world_offline: true,
         ..crate::verse_ffi::bare_config(800, 1200, 2.0, false, None)

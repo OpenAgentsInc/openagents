@@ -105,7 +105,7 @@ impl Drop for NativeWindow {
 struct AndroidVerse {
     // Rust drops fields in declaration order: suspend and drop the renderer
     // before releasing the acquired native window it renders into.
-    handle: VerseHandle,
+    handle: Box<VerseHandle>,
     window: Option<NativeWindow>,
 }
 
@@ -271,16 +271,15 @@ pub extern "system" fn Java_com_openagents_coder_CoderNative_createVerse<'local>
                     height: config.height,
                     scale: config.scale,
                 };
-                let scene =
-                    crate::verse_ffi::create_scene(move || Scene::new(config).map(Box::new))?;
+                let scene = crate::verse_ffi::create_scene(move || Scene::new(config))?;
                 let mut verse = AndroidVerse {
-                    handle: VerseHandle {
+                    handle: Box::new(VerseHandle {
                         scene,
                         renderer: None,
                         rendered_zone_revision: u64::MAX,
                         rendered_chamber_revision: 0,
                         layer: std::ptr::null_mut(),
-                    },
+                    }),
                     window: None,
                 };
                 verse.attach(env, &surface, surface_config)?;

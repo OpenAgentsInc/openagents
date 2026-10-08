@@ -20,7 +20,7 @@ fn town_mut(runtime: &mut WorldRuntime) -> &mut Town {
     runtime
         .zone_state
         .everglade
-        .as_mut()
+        .as_deref_mut()
         .and_then(|glade| glade.town_mut())
         .expect("a destructible town")
 }

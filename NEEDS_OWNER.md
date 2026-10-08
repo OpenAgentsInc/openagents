@@ -1950,6 +1950,19 @@ Code is complete and disabled: `grant_standing`, `revoke_standing`, and
   the exact qualification digest, naming the reviewed inviting reply. No
   batch grant, measurement, or elapsed time enables a policy on its own.
 
+## Configure the Cloud account connection (#10949)
+
+Before enabling `/cloud/app`, qualify an explicit native account service and
+HTTPS origin. Pass `--cloud-config PRIVATE_JSON` with schema
+`openagents.cloud.web-config.v1`, `public_origin`, `account_service`, and an
+absolute `csrf_secret` path; both files must be private, owned, regular files
+under a private directory. The secret contains 32 random bytes. Build
+`scripts/build-coder-cloud-web.sh OUTPUT` and pass `--cloud-build OUTPUT`.
+Account creation, recovery-token issuance, and other-session revocation remain
+with the native account owner. Qualify native recovery and revoked membership
+on the deployed origin before enabling sign-in. This connection grants no
+computer, execution, sales, custody, or spending rights.
+
 ## REV-44 browser purchase surface (#10851)
 
 The owner chose the browser on 2026-10-04. Code lands a read-only purchase
@@ -1965,3 +1978,4 @@ same customer store the installed client writes. Owner steps:
   browser. Today they stay on the installed client, which holds the resident
   wallet and the private purchase authorization; moving them is a separate
   issue with its own authority design.
+||||||| a9353683b3

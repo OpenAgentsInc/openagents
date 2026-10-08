@@ -1284,11 +1284,7 @@ async fn cloud_credentials_and_proposed_paths_never_reach_the_legacy_proxy() {
             assert_eq!(
                 status,
                 if host == "openagents.com" {
-                    if path == "/cloud" {
-                        StatusCode::METHOD_NOT_ALLOWED
-                    } else {
-                        StatusCode::NOT_FOUND
-                    }
+                    StatusCode::METHOD_NOT_ALLOWED
                 } else {
                     StatusCode::FORBIDDEN
                 },
@@ -1297,6 +1293,52 @@ async fn cloud_credentials_and_proposed_paths_never_reach_the_legacy_proxy() {
             let body = to_bytes(response.into_body(), 1 << 20).await.unwrap();
             assert!(!String::from_utf8_lossy(&body).contains("synthetic_private"));
         }
+    }
+    assert_eq!(hits.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn misplaced_cloud_credentials_never_proxy_on_unowned_paths() {
+    use std::sync::atomic::Ordering;
+    let root = tempfile::tempdir().unwrap();
+    let (url, hits) = echo_upstream().await;
+    let site = router(proxying(root.path(), &url));
+    for host in ["openagents.com", "unknown.openagents.com"] {
+        let response = site
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/old-private-api")
+                    .header(header::HOST, host)
+                    .header(header::COOKIE, "oa_cloud_session=sess_synthetic_private")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        assert_eq!(
+            response.headers()[header::CACHE_CONTROL],
+            "no-store, private"
+        );
+    }
+    for authorization in [
+        "Bearer sess_synthetic_private",
+        "bEaReR  sess_synthetic_private",
+    ] {
+        let response = site
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/old-private-api")
+                    .header(header::HOST, "unknown.openagents.com")
+                    .header(header::AUTHORIZATION, authorization)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
     }
     assert_eq!(hits.load(Ordering::SeqCst), 0);
 }

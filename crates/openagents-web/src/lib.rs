@@ -4,10 +4,8 @@
 //! page, the terms and the privacy policy, the pairing link's landing page,
 //! and profiles) and the local, read-only task browser at `/app`.
 //!
-//! Three pages run a script: the homepage's terminal (`static/ask.js`),
-//! which posts questions to [`ask`] (#10106), `/live`'s map of the flow
-//! stream (`static/flow.js`, #10197), and `/everglade`'s loader for the
-//! Everglade wasm build (`static/everglade.js`, #10525). Pages that need
+//! Interactive pages include the public Ask terminal, flow map, Verse demos,
+//! Rust component catalog, and separately configured Cloud workspace. Pages that need
 //! the production account store read through [`backend::Backend`]; a
 //! development server uses [`backend::Development`] and renders every page
 //! without records or secrets. The design follows the private Coder
@@ -15,6 +13,7 @@
 
 pub mod ask;
 pub mod backend;
+pub mod cloud;
 mod components;
 mod layout;
 mod markdown;
@@ -81,6 +80,10 @@ pub struct Config {
     pub everglade: Option<PathBuf>,
     /// The independently built Rust/Wasm component catalog assets.
     pub components_build: Option<PathBuf>,
+    /// Explicit native account adapter; absence leaves the Cloud workspace unavailable.
+    pub cloud: Option<Arc<cloud::session::CloudSession>>,
+    /// Rust/Wasm private-view lifecycle assets.
+    pub cloud_build: Option<PathBuf>,
     /// Optional create-only capability into the host-private sales pipeline.
     /// Without owner-accepted terms, the proposed offer has no intake form.
     pub pilot: Option<Arc<pilot::Intake>>,
@@ -103,6 +106,8 @@ impl Config {
             pay_upstream: None,
             everglade: None,
             components_build: None,
+            cloud: None,
+            cloud_build: None,
             pilot: None,
         }
     }
@@ -150,6 +155,7 @@ pub fn router(config: Config) -> Router {
         .merge(pages::routes())
         .merge(purchases::routes())
         .merge(components::routes())
+        .merge(cloud::routes())
         .merge(pilot::routes())
         .merge(ask::routes())
         .merge(tasks::routes())
@@ -196,6 +202,37 @@ async fn guard(hosts: Hosts, request: Request, next: Next) -> Response {
     // including when an unconfigured Host header would use the legacy proxy.
     let cloud = path == "/cloud" || path.starts_with("/cloud/");
     let public = hosts.public.contains(&host);
+    let cloud_cookie = request
+        .headers()
+        .get_all(header::COOKIE)
+        .iter()
+        .any(|value| {
+            value.to_str().map_or(true, |cookies| {
+                cookies.split(';').any(|part| {
+                    part.trim()
+                        .split_once('=')
+                        .is_some_and(|(name, _)| name.starts_with("oa_cloud_"))
+                })
+            })
+        });
+    let native_session = request
+        .headers()
+        .get_all(header::AUTHORIZATION)
+        .iter()
+        .any(|value| {
+            value.to_str().is_ok_and(|value| {
+                value.split_once(' ').is_some_and(|(kind, token)| {
+                    kind.eq_ignore_ascii_case("bearer")
+                        && token.trim_start_matches(' ').starts_with("sess_")
+                })
+            })
+        });
+    // A wrongly routed Cloud credential cannot become a legacy credential.
+    if cloud_cookie && !cloud || native_session && !(local || public) {
+        return cloud::protect(
+            (StatusCode::FORBIDDEN, "Use the configured Cloud address").into_response(),
+        );
+    }
     if let Some(upstream) = &hosts.upstream
         && !browser
         && !intake

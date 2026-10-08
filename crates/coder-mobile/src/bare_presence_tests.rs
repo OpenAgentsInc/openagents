@@ -10,7 +10,7 @@ use verse::session::{BARE_WORLD, Session, Status};
 #[path = "../../verse/tests/support/loopback_relay.rs"]
 pub(crate) mod loopback_relay;
 
-fn bare_scene(relay: &str) -> Scene {
+fn bare_scene(relay: &str) -> Box<Scene> {
     let mut scene = Scene::new(Config {
         world_offline: true,
         ..crate::verse_ffi::bare_config(800, 1200, 2.0, false, None)

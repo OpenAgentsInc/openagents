@@ -1,8 +1,10 @@
 # Coder Cloud and the OpenAgents web app
 
-Status: product and interface specification, October 8, 2026. The web interfaces
-below are proposed. Existing Rust owners remain authoritative; an implemented
-library, closed issue, or fixture does not establish public availability.
+Status: product and interface specification, October 8, 2026. The component
+catalog, public Cloud page, and explicitly configured native account shell are
+implemented. Other interfaces below remain proposed. Existing Rust owners remain
+authoritative; an implemented library, closed issue, or fixture does not
+establish public availability.
 
 Coder Cloud is the browser workspace at **openagents.com** for directing Coder,
 supervising agents on your computers or admitted cloud capacity, inspecting
@@ -613,12 +615,13 @@ and retain each native owner and its separate activation gates.
 
 ### Tracked web implementation
 
-The component catalog is complete under #10943. The remaining web work is:
+The component catalog is complete under #10943. These issues track the ordered
+web implementation:
 
 | Order | Issue | Deliverable |
 | --- | --- | --- |
-| WEB-01 | [#10948](https://github.com/OpenAgentsInc/openagents/issues/10948) | Public Cloud entry and honest availability. |
-| WEB-02 | [#10949](https://github.com/OpenAgentsInc/openagents/issues/10949) | Native sessions and the authenticated workspace shell. |
+| WEB-01 | [#10948](https://github.com/OpenAgentsInc/openagents/issues/10948) | Implemented: public Cloud entry and honest availability. |
+| WEB-02 | [#10949](https://github.com/OpenAgentsInc/openagents/issues/10949) | Implemented: native sessions and the authenticated workspace shell; explicit account-service configuration, current membership, and Rust/Wasm private-view cleanup. |
 | WEB-03 | [#10950](https://github.com/OpenAgentsInc/openagents/issues/10950) | Canonical resident task reads and browser observation. |
 | WEB-04 | [#10951](https://github.com/OpenAgentsInc/openagents/issues/10951) | Browser enrollment and durable granted task controls. |
 | WEB-05 | [#10952](https://github.com/OpenAgentsInc/openagents/issues/10952) | Projects and operator Cloud jobs through resident owners. |

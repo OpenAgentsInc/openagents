@@ -13,7 +13,7 @@ use verse::gym_hall::{Action, Hall};
 use verse::net::{In, Link, Out};
 use verse::session::{BARE_WORLD, Session};
 
-fn bare_scene(relay: &str, evals_panel: bool) -> Scene {
+fn bare_scene(relay: &str, evals_panel: bool) -> Box<Scene> {
     let mut scene = Scene::new(Config {
         world_offline: true,
         ..crate::verse_ffi::bare_config(800, 1200, 2.0, false, None)

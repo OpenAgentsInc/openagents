@@ -89,7 +89,7 @@ impl<'a> Account<'a> {
     /// Returns the shared call errors and [`Error::ResponseValidation`]
     /// on an undecodable body.
     pub async fn session(&self) -> Result<SessionView> {
-        self.read(SESSION_PATH, &CallOptions::new()).await
+        self.private_read(SESSION_PATH).await
     }
 
     /// `GET /v1/account` — the caller's account and every workspace it
@@ -100,7 +100,7 @@ impl<'a> Account<'a> {
     /// Returns the shared call errors; a credential with no account is
     /// [`Error::Api`] with `no_account` or `membership_required`.
     pub async fn details(&self) -> Result<AccountDetails> {
-        self.read(ACCOUNT_PATH, &CallOptions::new()).await
+        self.private_read(ACCOUNT_PATH).await
     }
 
     /// `GET /v1/balance` — the named workspace's monetary position and
@@ -135,7 +135,29 @@ impl<'a> Account<'a> {
         self.read(&path, &query.options).await
     }
 
-    /// The read every account call shares.
+    /// Account identity and standing never enter diagnostic headers or bodies.
+    async fn private_read<T>(&self, path: &str) -> Result<T>
+    where
+        T: for<'de> Deserialize<'de>,
+    {
+        let raw = self
+            .client
+            .request_private_bounded(Method::GET, path, None, 64 * 1024)
+            .await?;
+        if raw.bytes.len() <= 64 * 1024
+            && let Ok(value) = serde_json::from_slice(&raw.bytes)
+        {
+            return Ok(value);
+        }
+        Err(Error::ResponseValidation {
+            status: raw.status,
+            field_path: "private account document".into(),
+            body: None,
+            request_id: None,
+        })
+    }
+
+    /// The read monetary and usage calls share.
     async fn read<T>(&self, path: &str, options: &CallOptions) -> Result<T>
     where
         T: for<'de> Deserialize<'de>,

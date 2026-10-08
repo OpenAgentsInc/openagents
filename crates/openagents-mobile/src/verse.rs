@@ -157,7 +157,7 @@ pub unsafe extern "C" fn openagents_verse_create(
         openagents_verse_create_inner(layer, bytes, len)
     }));
     match result {
-        Ok(Ok(handle)) => Box::into_raw(Box::new(handle)),
+        Ok(Ok(handle)) => Box::into_raw(handle),
         error => {
             let message = match error {
                 Ok(Err(message)) => message,
@@ -180,7 +180,7 @@ unsafe fn openagents_verse_create_inner(
     layer: *mut c_void,
     bytes: *const u8,
     len: usize,
-) -> Result<VerseHandle, String> {
+) -> Result<Box<VerseHandle>, String> {
     let bytes = unsafe { std::slice::from_raw_parts(bytes, len) };
     let config: Config = serde_json::from_slice(bytes)
         .map_err(|_| "Invalid native Verse configuration".to_owned())?;

@@ -300,7 +300,8 @@ fn node<I>(n: &Node<I>, out: &mut String) -> Result<(), RenderError> {
             );
             let _ = write!(out, "<span>{}</span>", escape(label));
             let attrs = format!(
-                " class=\"rn-input\" data-rn-action=\"change\" data-rn-max-bytes=\"{max_bytes}\" data-rn-secret=\"{secret}\" aria-label=\"{}\" placeholder=\"{}\"{}",
+                " class=\"rn-input\" name=\"{}\" data-rn-action=\"change\" data-rn-max-bytes=\"{max_bytes}\" data-rn-secret=\"{secret}\" aria-label=\"{}\" placeholder=\"{}\"{}",
+                escape(&n.key),
                 escape(label),
                 escape(placeholder),
                 if *enabled { "" } else { " disabled" }
@@ -846,6 +847,7 @@ mod tests {
         }))
         .unwrap();
         assert!(html.contains("type=\"password\""));
+        assert!(html.contains("name=\"root\""));
         assert!(html.contains("autocomplete=\"off\""));
         assert!(!html.contains("KEY_CHANGE"));
     }

@@ -328,20 +328,23 @@ impl Default for Snapshot {
     }
 }
 
+/// The zones' living state. Every zone payload is boxed — a zone is tens of
+/// kilobytes, and an inline `State` would put ~50 KB on the stack of any
+/// function that builds or resets the world (#10928).
 pub(crate) struct State {
-    everglade_loader: Option<everglade_pack::Loader>,
+    everglade_loader: Option<Box<everglade_pack::Loader>>,
     loading: LoadState,
     progress: f32,
     error: Option<String>,
-    lagrange: Option<Lagrange>,
-    lab: Option<Lab>,
-    everglade: Option<Everglade>,
+    lagrange: Option<Box<Lagrange>>,
+    lab: Option<Box<Lab>>,
+    everglade: Option<Box<Everglade>>,
     /// The Grove's training field. The Grove also fills `everglade`, whose
     /// movement, spells, and character it walks with.
-    grove: Option<grove::Grove>,
+    grove: Option<Box<grove::Grove>>,
     /// The crypt's light and effects. The crypt also fills `everglade`,
     /// whose movement, spells, and character it walks with.
-    crypt: Option<crypt::Crypt>,
+    crypt: Option<Box<crypt::Crypt>>,
     /// The Water Lab's sea, floats, and spells. The lab also fills
     /// `everglade`, whose movement and character it walks with.
     water: Option<Box<water::WaterLab>>,
@@ -356,16 +359,16 @@ pub(crate) struct State {
     dev_destruction: bool,
     /// The Agent Studio Everglade draws. It keeps its source across visits
     /// and observes only while the player is in Everglade.
-    studio: everglade::studio::Studio,
+    studio: Box<everglade::studio::Studio>,
     /// Everglade's admitted townsfolk, placed from the town clock
     /// (`everglade::townsfolk`).
-    townsfolk: everglade::townsfolk::Townsfolk,
+    townsfolk: Box<everglade::townsfolk::Townsfolk>,
     /// Everglade's Pylon Field and Wellspring, from the compute source the
     /// application installs: this computer on the desktop, nothing on the
     /// web and the phones (`everglade::compute`).
-    compute: everglade::compute::Compute,
+    compute: Box<everglade::compute::Compute>,
     /// Private sales observations from an explicitly configured owner.
-    sales_floor: everglade::sales_floor::Floor,
+    sales_floor: Box<everglade::sales_floor::Floor>,
     /// What Everglade's caption leads with, such as that no coding agent
     /// can sign in ([`crate::runtime::WorldRuntime::set_studio_notice`]).
     studio_notice: Option<String>,
@@ -397,7 +400,7 @@ pub(crate) struct State {
     #[cfg(not(target_arch = "wasm32"))]
     private_signer: Option<nostr::domain::RelaySigner>,
     #[cfg(not(target_arch = "wasm32"))]
-    private_loader: Option<everglade_pack::private_assets::PrivateLoader>,
+    private_loader: Option<Box<everglade_pack::private_assets::PrivateLoader>>,
 }
 impl Default for State {
     fn default() -> Self {
@@ -415,10 +418,10 @@ impl Default for State {
             demolition: false,
             town_clock: town_clock::Clock::DAYTIME,
             dev_destruction: false,
-            studio: everglade::studio::Studio::default(),
-            townsfolk: everglade::townsfolk::Townsfolk::default(),
-            compute: everglade::compute::Compute::default(),
-            sales_floor: everglade::sales_floor::Floor::default(),
+            studio: Box::new(everglade::studio::Studio::default()),
+            townsfolk: Box::new(everglade::townsfolk::Townsfolk::default()),
+            compute: Box::new(everglade::compute::Compute::default()),
+            sales_floor: Box::new(everglade::sales_floor::Floor::default()),
             studio_notice: None,
             workshop_owner: false,
             destination: ZoneId::Everglade,
