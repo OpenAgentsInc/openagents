@@ -5,7 +5,7 @@
 //! The layers are derived from licensed geometry, so they ship the way the
 //! kit pack does: built outside the repository, kept in the private bucket
 //! and the zone cache, and pinned here by digest through the artifact queue
-//! (`openagents artifact submit everglade-kit`). They sit beside the kit
+//! (`openagents artifact submit everglade-kit-bake`). They sit beside the kit
 //! pack, not inside it, so the kit pack stays small for the web and
 //! phones, and a layout change that rebakes the light doesn't rebuild the
 //! kit.
