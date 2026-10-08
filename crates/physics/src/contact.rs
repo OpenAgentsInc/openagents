@@ -114,6 +114,7 @@ struct Motion {
     revision: u64,
 }
 
+#[inline(always)]
 fn vector_bits(v: DVec3) -> [u64; 3] {
     v.to_array().map(f64::to_bits)
 }
@@ -164,6 +165,7 @@ impl Motion {
         self.record_change(old);
     }
 
+    #[inline(always)]
     fn record_change(&mut self, old: (DVec3, DVec3)) {
         if vector_bits(self.vel) != vector_bits(old.0)
             || vector_bits(self.omega) != vector_bits(old.1)
@@ -238,6 +240,16 @@ fn friction_inside(next: [f64; 2], limit: f64) -> bool {
 
 #[inline(always)]
 fn project_friction<const GUARDED: bool>(mut next: [f64; 2], limit: f64) -> [f64; 2] {
+    if GUARDED && limit == 0.0 && next.iter().all(|v| v.is_finite()) {
+        // A finite nonzero vector has positive hypot, so a zero cone
+        // multiplies by the limit's signed zero. Keep an all-zero vector
+        // unchanged, as the original size comparison does.
+        return if next[0] != 0.0 || next[1] != 0.0 {
+            [next[0] * limit, next[1] * limit]
+        } else {
+            next
+        };
+    }
     if GUARDED && friction_inside(next, limit) {
         return next;
     }
@@ -252,6 +264,83 @@ fn project_friction<const GUARDED: bool>(mut next: [f64; 2], limit: f64) -> [f64
 impl Row {
     #[inline(always)]
     fn solve<const OPTIMIZED: bool>(&mut self, motions: &mut [Motion]) -> bool {
+        if OPTIMIZED && let Ok([a, b]) = motions.get_disjoint_mut([self.a, self.b]) {
+            return self.solve_disjoint(a, b);
+        }
+        self.solve_indexed::<OPTIMIZED>(motions)
+    }
+
+    #[inline(always)]
+    fn solve_disjoint(&mut self, a: &mut Motion, b: &mut Motion) -> bool {
+        let revisions = [a.revision, b.revision];
+        if self.fixed_at == Some(revisions) {
+            return true;
+        }
+        let old_impulses = [
+            self.normal_impulse,
+            self.tangent_impulse[0],
+            self.tangent_impulse[1],
+            self.twist_impulse,
+        ]
+        .map(f64::to_bits);
+        // Friction first, bounded by the current normal impulse.
+        let relative = b.vel - a.vel;
+        let tangent_speed = [
+            self.axes[1].velocity(self.tangents[0], relative, a.omega, b.omega),
+            self.axes[2].velocity(self.tangents[1], relative, a.omega, b.omega),
+        ];
+        let limit = self.friction * self.normal_impulse;
+        let old = self.tangent_impulse;
+        let next = [
+            old[0] - tangent_speed[0] * self.axes[1].mass,
+            old[1] - tangent_speed[1] * self.axes[2].mass,
+        ];
+        let next = project_friction::<true>(next, limit);
+        self.tangent_impulse = next;
+        let delta = self.tangents[0] * (next[0] - old[0]) + self.tangents[1] * (next[1] - old[1]);
+        a.push_tangents(
+            -delta,
+            [self.axes[1].angular[0], self.axes[2].angular[0]],
+            [old[0] - next[0], old[1] - next[1]],
+        );
+        b.push_tangents(
+            delta,
+            [self.axes[1].angular[1], self.axes[2].angular[1]],
+            [next[0] - old[0], next[1] - old[1]],
+        );
+        if self.torsional > 0.0 {
+            let spin = (b.omega - a.omega).dot(self.normal);
+            let limit = self.torsional * self.normal_impulse;
+            let old = self.twist_impulse;
+            let next = (old - spin * self.twist_mass).clamp(-limit, limit);
+            self.twist_impulse = next;
+            let delta = self.normal * (next - old);
+            a.twist(-delta);
+            b.twist(delta);
+        }
+        let speed = self.axes[0].velocity(self.normal, b.vel - a.vel, a.omega, b.omega);
+        let old = self.normal_impulse;
+        let next = (old + (self.target - speed) * self.axes[0].mass).max(0.0);
+        self.normal_impulse = next;
+        let delta = self.normal * (next - old);
+        a.push_axis(-delta, self.axes[0].angular[0], old - next);
+        b.push_axis(delta, self.axes[0].angular[1], next - old);
+        let impulses = [
+            self.normal_impulse,
+            self.tangent_impulse[0],
+            self.tangent_impulse[1],
+            self.twist_impulse,
+        ]
+        .map(f64::to_bits);
+        // A changing row must run again: its new normal impulse changes
+        // the friction limits even if no other constraint touches it.
+        self.fixed_at = (impulses == old_impulses && revisions == [a.revision, b.revision])
+            .then_some(revisions);
+        false
+    }
+
+    #[inline(always)]
+    fn solve_indexed<const OPTIMIZED: bool>(&mut self, motions: &mut [Motion]) -> bool {
         let (a, b) = (self.a, self.b);
         let revisions = [motions[a].revision, motions[b].revision];
         if OPTIMIZED && self.fixed_at == Some(revisions) {
@@ -890,6 +979,116 @@ mod warm_tests {
         if friction_inside(next, limit) {
             assert!(next[0].hypot(next[1]) <= limit);
             assert_eq!(actual.map(f64::to_bits), next.map(f64::to_bits));
+        }
+    }
+
+    #[test]
+    fn zero_friction_cone_matches_hypot_for_signed_zeros_and_finite_extremes() {
+        let values = [
+            -f64::MAX,
+            -1.0,
+            -f64::MIN_POSITIVE,
+            -f64::from_bits(1),
+            -0.0,
+            0.0,
+            f64::from_bits(1),
+            f64::MIN_POSITIVE,
+            1.0,
+            f64::MAX,
+        ];
+        for x in values {
+            for y in values {
+                for limit in [-0.0, 0.0] {
+                    assert_friction_projection([x, y], limit);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn disjoint_motion_access_matches_indexed_rows_in_both_orders_and_keeps_alias_fallback() {
+        for ids in [(0, 1), (1, 0), (0, 0)] {
+            for i in 0..32 {
+                let t = f64::from(i) * 0.17;
+                let motions = [
+                    Motion {
+                        vel: DVec3::new(t.sin(), -0.1, t.cos()),
+                        omega: DVec3::new(0.2, t.cos(), -0.3),
+                        inverse_mass: if i % 3 == 0 { 0.0 } else { 0.7 },
+                        inverse_inertia: if i % 3 == 0 {
+                            DMat3::ZERO
+                        } else {
+                            DMat3::from_diagonal(DVec3::new(0.3, 0.7, 0.9))
+                        },
+                        revision: 0,
+                    },
+                    Motion {
+                        vel: DVec3::new(-0.3, 0.1, t.sin()),
+                        omega: DVec3::new(-0.1, 0.2, t.cos()),
+                        inverse_mass: 0.4,
+                        inverse_inertia: DMat3::from_diagonal(DVec3::new(0.9, 0.4, 0.6)),
+                        revision: 0,
+                    },
+                ];
+                let normal = DVec3::new(0.3, 1.0, t.sin() * 0.2).normalize();
+                let tangents = basis(normal);
+                let ra = DVec3::new(0.2, -0.3, t.sin());
+                let rb = DVec3::new(-0.1, t.cos(), 0.3);
+                let row = || Row {
+                    a: ids.0,
+                    b: ids.1,
+                    ra,
+                    rb,
+                    normal,
+                    tangents,
+                    axes: [normal, tangents[0], tangents[1]].map(|axis| {
+                        ContactAxis::new(&motions[ids.0], &motions[ids.1], ra, rb, axis)
+                    }),
+                    twist_mass: 0.6,
+                    target: 0.2,
+                    friction: 0.65,
+                    torsional: 0.3,
+                    normal_impulse: if i % 2 == 0 { 0.0 } else { 0.3 },
+                    tangent_impulse: [-0.0, 0.0],
+                    twist_impulse: 0.01,
+                    fixed_at: None,
+                    report: ContactReport {
+                        a: ColliderId(0),
+                        b: ColliderId(1),
+                        body_a: BodyId(ids.0 as u32),
+                        body_b: BodyId(ids.1 as u32),
+                        point: DVec3::ZERO,
+                        normal,
+                        separation: -0.01,
+                        impulse: DVec3::ZERO,
+                        twist: DVec3::ZERO,
+                    },
+                };
+                let (mut indexed, mut disjoint) = (row(), row());
+                let (mut expected, mut actual) = (motions, motions);
+                for _ in 0..20 {
+                    assert_eq!(
+                        indexed.solve_indexed::<true>(&mut expected),
+                        disjoint.solve::<true>(&mut actual)
+                    );
+                    for (a, b) in actual.iter().zip(expected) {
+                        assert_eq!(vector_bits(a.vel), vector_bits(b.vel));
+                        assert_eq!(vector_bits(a.omega), vector_bits(b.omega));
+                        assert_eq!(a.revision, b.revision);
+                    }
+                    let impulses = |row: &Row| {
+                        [
+                            row.normal_impulse,
+                            row.tangent_impulse[0],
+                            row.tangent_impulse[1],
+                            row.twist_impulse,
+                        ]
+                        .map(f64::to_bits)
+                    };
+                    assert_eq!(impulses(&indexed), impulses(&disjoint));
+                    assert_eq!(indexed.fixed_at, disjoint.fixed_at);
+                }
+            }
         }
     }
 
