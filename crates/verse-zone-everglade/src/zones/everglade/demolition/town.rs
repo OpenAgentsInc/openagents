@@ -42,7 +42,7 @@ use super::chunks::{self, ChunkMesh};
 use super::hammer::{self, Hammer};
 use super::kit::{self, CORNER_TRIM, Draft, SEAM, WALL_TOP};
 use super::meteor::{self, Strike, Swarm};
-use super::relight::{LocalOcclusion, REACH};
+use super::relight::LocalOcclusion;
 use super::site::{Blow, Cuboid, Link, Matter, PieceSpec, Role, Side, Site, Status, Target};
 use super::{BREAK, HIT};
 use crate::controller::{Footprint, PlayerController};
@@ -65,6 +65,7 @@ use std::sync::{Arc, Mutex};
 use verse_world::social::columns::Columns;
 use verse_world::social::sight::Sight;
 
+mod receivers;
 mod rubble;
 pub use rubble::MergeStats;
 
@@ -956,6 +957,7 @@ pub struct Town {
     /// receivers use the same merged light texels as B2.
     relight_sun: Option<Vec3>,
     relight_vertices: Vec<TexturedVertex>,
+    relight_receivers: receivers::Index,
     relight_seen: (u64, u64),
     /// The solids without any building, the solids now, and whether they
     /// changed.
@@ -1253,6 +1255,7 @@ impl Town {
             hidden: BTreeSet::new(),
             relight_sun: None,
             relight_vertices: Vec::new(),
+            relight_receivers: receivers::Index::default(),
             relight_seen: (u64::MAX, u64::MAX),
             current: base.clone(),
             base,
@@ -1303,6 +1306,11 @@ impl Town {
             Vec::new()
         };
         self.relight_sun = sun.map(|v| v.normalize_or(Vec3::Y));
+        self.relight_receivers = self
+            .relight_sun
+            .map_or_else(receivers::Index::default, |sun| {
+                receivers::Index::new(&self.relight_vertices, &self.wreck.buildings, sun)
+            });
         self.relight_seen = (u64::MAX, u64::MAX);
         self.sync();
         Ok(())
@@ -1965,10 +1973,10 @@ impl Town {
     /// their former sun shadows. Moving debris never enters this persistent
     /// estimate; current shadow passes account for it each frame.
     fn refresh_light(&self) {
-        let Some(sun) = self.relight_sun else {
+        if self.relight_sun.is_none() {
             self.world.baked.set_fallback(Vec::new());
             return;
-        };
+        }
         let affected: BTreeSet<usize> = self
             .wreck
             .refs
@@ -1979,32 +1987,11 @@ impl Town {
             .collect();
         let field = LocalOcclusion::new(&self.wreck.site);
         let mut fallback = Vec::new();
-        for (index, vertex) in self.relight_vertices.iter().enumerate() {
+        for index in self.relight_receivers.affected(affected) {
+            let vertex = &self.relight_vertices[index as usize];
             let point = Vec3::from(vertex.pos);
-            let receives = affected.iter().any(|&i| {
-                let building = &self.wreck.buildings[i];
-                let ([x, z], [hx, hz]) = building.rect;
-                let shadow = -sun * ((building.top - building.base).max(0.0) / sun.y.max(0.05));
-                let lo = Vec3::new(
-                    x - hx + shadow.x.min(0.0),
-                    building.base,
-                    z - hz + shadow.z.min(0.0),
-                );
-                let hi = Vec3::new(
-                    x + hx + shadow.x.max(0.0),
-                    building.base,
-                    z + hz + shadow.z.max(0.0),
-                );
-                point.y <= building.base + 0.25
-                    && point.x >= lo.x - REACH
-                    && point.x <= hi.x + REACH
-                    && point.z >= lo.z - REACH
-                    && point.z <= hi.z + REACH
-            });
-            if receives {
-                let open = field.sample(point, Vec3::from(vertex.normal), None);
-                fallback.push((index as u32, encode(Vec3::splat(open), open)));
-            }
+            let open = field.sample(point, Vec3::from(vertex.normal), None);
+            fallback.push((index, encode(Vec3::splat(open), open)));
         }
         self.world.baked.set_fallback(fallback);
     }
