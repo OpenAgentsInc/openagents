@@ -97,7 +97,19 @@ fn flat(device: &wgpu::Device, fragment: &str) -> wgpu::RenderPipeline {
 }
 
 fn sampled_flat(device: &wgpu::Device, image_type: &str, fragment: &str) -> wgpu::RenderPipeline {
-    let source = format!("@group(0) @binding(0) var image: {image_type};
+    sampled_flat_reference(device, image_type, None, fragment)
+}
+
+fn sampled_flat_reference(
+    device: &wgpu::Device,
+    image_type: &str,
+    reference_type: Option<&str>,
+    fragment: &str,
+) -> wgpu::RenderPipeline {
+    let reference = reference_type.map_or(String::new(), |kind| {
+        format!("@group(0) @binding(1) var reference: {kind};")
+    });
+    let source = format!("@group(0) @binding(0) var image: {image_type}; {reference}
         @vertex fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {{
             return vec4<f32>(f32((i << 1u) & 2u) * 2.0 - 1.0, f32(i & 2u) * 2.0 - 1.0, 0.0, 1.0);
         }}
@@ -138,13 +150,36 @@ fn snapshot(
     readback: &wgpu::Buffer,
     index: u64,
 ) {
+    snapshot_reference(
+        device, encoder, source, None, pipeline, target, readback, index,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn snapshot_reference(
+    device: &wgpu::Device,
+    encoder: &mut wgpu::CommandEncoder,
+    source: &wgpu::TextureView,
+    reference: Option<&wgpu::TextureView>,
+    pipeline: &wgpu::RenderPipeline,
+    target: &wgpu::Texture,
+    readback: &wgpu::Buffer,
+    index: u64,
+) {
+    let mut entries = vec![wgpu::BindGroupEntry {
+        binding: 0,
+        resource: wgpu::BindingResource::TextureView(source),
+    }];
+    if let Some(reference) = reference {
+        entries.push(wgpu::BindGroupEntry {
+            binding: 1,
+            resource: wgpu::BindingResource::TextureView(reference),
+        });
+    }
     let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: None,
         layout: &pipeline.get_bind_group_layout(0),
-        entries: &[wgpu::BindGroupEntry {
-            binding: 0,
-            resource: wgpu::BindingResource::TextureView(source),
-        }],
+        entries: &entries,
     });
     let view = target.create_view(&Default::default());
     {
@@ -440,6 +475,16 @@ fn production_lit_projection_marks_every_visible_faceted_sample() {
 #[test]
 #[ignore = "Requires a native GPU; checks full High scene orchestration with a reactive rock and HDR ribbon"]
 fn photo_encode_preserves_reactive_coverage_and_history_beside_an_hdr_ribbon() {
+    full_photo_reactive_case(false);
+}
+
+#[test]
+#[ignore = "Requires a native GPU; checks a moving perspective camera and reactive head over an opaque receiver and HDR ribbon"]
+fn photo_encode_tracks_a_reactive_head_over_a_stationary_receiver_with_camera_motion() {
+    full_photo_reactive_case(true);
+}
+
+fn full_photo_reactive_case(receiver: bool) {
     assert_ne!(
         std::env::var("VERSE_TEMPORAL_AA").ok().as_deref(),
         Some("off"),
@@ -458,19 +503,36 @@ fn photo_encode_preserves_reactive_coverage_and_history_beside_an_hdr_ribbon() {
         &device,
         "return vec4<f32>(textureLoad(image, vec2<i32>(p.xy), 0).r, 0.0, 0.0, 1.0);",
     );
-    // Only opaque geometry writes the physical depth. With no foreground
-    // blocker, its nonzero samples are an independent rock-coverage reference.
-    let coverage = sampled_flat(
-        &device,
-        "texture_depth_multisampled_2d",
-        "var covered = 0.0; var nearest = 0.0;
+    // Only opaque geometry writes physical depth. The clear-depth case counts
+    // nonzero samples; the receiver case compares each sample to the absent
+    // head's matching depth. Neither reference reads the reactive marker.
+    let coverage = if receiver {
+        sampled_flat_reference(
+            &device,
+            "texture_depth_multisampled_2d",
+            Some("texture_depth_multisampled_2d"),
+            "var covered = 0.0; var nearest = 0.0;
+             for (var sample = 0; sample < 4; sample++) {
+                 let d = textureLoad(image, vec2<i32>(p.xy), sample);
+                 let behind = textureLoad(reference, vec2<i32>(p.xy), sample);
+                 covered += select(0.0, 0.25, d > behind);
+                 nearest = max(nearest, d);
+             }
+             return vec4<f32>(covered, nearest, 0.0, 1.0);",
+        )
+    } else {
+        sampled_flat(
+            &device,
+            "texture_depth_multisampled_2d",
+            "var covered = 0.0; var nearest = 0.0;
          for (var sample = 0; sample < 4; sample++) {
              let d = textureLoad(image, vec2<i32>(p.xy), sample);
              covered += select(0.0, 0.25, d > 0.0);
              nearest = max(nearest, d);
          }
          return vec4<f32>(covered, nearest, 0.0, 1.0);",
-    );
+        )
+    };
     let texture = |format, usage| {
         device.create_texture(&wgpu::TextureDescriptor {
             label: Some("full photo reactive diagnostic"),
@@ -520,6 +582,20 @@ fn photo_encode_preserves_reactive_coverage_and_history_beside_an_hdr_ribbon() {
     let center = Vec3::new(139.7, 12.6, 150.3);
     let toward = (eye - center).normalize();
     let right = (center - eye).cross(Vec3::Y).normalize();
+    let up = toward.cross(right).normalize();
+    let receiver_center = center - toward * 15.0;
+    let corners = [(-70.0, -45.0), (70.0, -45.0), (70.0, 45.0), (-70.0, 45.0)]
+        .map(|(x, y)| receiver_center + right * x + up * y);
+    let receiver_vertices: Vec<_> = [0, 1, 2, 0, 2, 3]
+        .map(|k| super::super::LitVertex {
+            pos: corners[k].to_array(),
+            normal: toward.to_array(),
+            tangent: right.to_array(),
+            local: (corners[k] - receiver_center).to_array(),
+            color: [0.16, 0.10, 0.065],
+            params: [0.0, 0.9, 0.0, 1.0],
+        })
+        .into();
     let view = verse_engine::presentation::View {
         eye,
         view_proj: Mat4::perspective_rh(0.9, SIZE[0] as f32 / SIZE[1] as f32, 0.1, 1000.0)
@@ -536,6 +612,7 @@ fn photo_encode_preserves_reactive_coverage_and_history_beside_an_hdr_ribbon() {
     let mut partial = false;
     let mut hdr = false;
     let mut dependent_background = false;
+    let mut camera_moved = false;
     let mut preceding_footprint = vec![false; (SIZE[0] * SIZE[1]) as usize];
     for (frame, (offset, present, occluded)) in [
         (0.0, false, false),
@@ -553,6 +630,19 @@ fn photo_encode_preserves_reactive_coverage_and_history_beside_an_hdr_ribbon() {
     .into_iter()
     .enumerate()
     {
+        let view = if receiver {
+            let eye = eye
+                + right * (frame as f32 * 0.7).sin() * 1.1
+                + up * (frame as f32 * 0.5).sin() * 0.5;
+            camera_moved |= eye != view.eye;
+            verse_engine::presentation::View {
+                eye,
+                view_proj: Mat4::perspective_rh(0.9, SIZE[0] as f32 / SIZE[1] as f32, 0.1, 1000.0)
+                    * Mat4::look_at_rh(eye, center, up),
+            }
+        } else {
+            view
+        };
         let head = boulder(center + right * offset, frame as f32 * 0.41);
         let blocker_center = eye.lerp(center, 0.75);
         let blocker: Vec<_> = boulder(blocker_center, 0.2)
@@ -564,10 +654,17 @@ fn photo_encode_preserves_reactive_coverage_and_history_beside_an_hdr_ribbon() {
                 vertex
             })
             .collect();
-        let world_vertices = if occluded { &blocker } else { &outside };
+        let mut world_vertices = if receiver {
+            receiver_vertices.clone()
+        } else {
+            outside.clone()
+        };
+        if occluded {
+            world_vertices.extend_from_slice(&blocker);
+        }
         let world_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("full photo opaque control"),
-            contents: bytemuck::cast_slice(world_vertices),
+            contents: bytemuck::cast_slice(&world_vertices),
             usage: wgpu::BufferUsages::VERTEX,
         });
         let ribbon = crate::fx::Ribbon {
@@ -585,7 +682,7 @@ fn photo_encode_preserves_reactive_coverage_and_history_beside_an_hdr_ribbon() {
             priority: 240,
         };
         let mut sprites = Vec::new();
-        crate::fx::vertices_with_ribbons(&[], &[ribbon], eye, 1024, &mut sprites);
+        crate::fx::vertices_with_ribbons(&[], &[ribbon], view.eye, 1024, &mut sprites);
         photo.sprites.write(&device, &queue, &sprites);
         assert!(photo.sprites.count > 0, "the split particle path must run");
         let mut neon = Neon::plaza(frame as f32 / 60.0);
@@ -607,8 +704,13 @@ fn photo_encode_preserves_reactive_coverage_and_history_beside_an_hdr_ribbon() {
             shadow_distance: None,
             cache_far_shadows: false,
         });
-        let mut frame_images = Vec::new();
-        for (variant, targets) in targets.iter_mut().enumerate() {
+        let mut frame_images: [Vec<[f32; 4]>; 3] = std::array::from_fn(|_| Vec::new());
+        // The absent-head depth supplies a same-camera, same-sample receiver
+        // reference. It renders first before either head variant reads it.
+        let order = if receiver { [2, 1, 0] } else { [0, 1, 2] };
+        for variant in order {
+            let reference_depth = receiver.then(|| targets[2].depth.clone());
+            let targets = &mut targets[variant];
             let mut vertices = outside.clone();
             let first = vertices.len() as u32;
             if present && variant != 2 {
@@ -663,10 +765,15 @@ fn photo_encode_preserves_reactive_coverage_and_history_beside_an_hdr_ribbon() {
             .into_iter()
             .enumerate()
             {
-                snapshot(
+                snapshot_reference(
                     &device,
                     &mut encoder,
                     source,
+                    if index == 1 {
+                        reference_depth.as_ref()
+                    } else {
+                        None
+                    },
                     pipeline,
                     &target,
                     &readback,
@@ -692,6 +799,19 @@ fn photo_encode_preserves_reactive_coverage_and_history_beside_an_hdr_ribbon() {
             let [marker, depth, history, scene] =
                 std::array::from_fn(|k| &pixels[k * n..(k + 1) * n]);
             assert!(pixels.iter().flatten().all(|v| v.is_finite()));
+            if receiver {
+                let middle = (SIZE[1] / 2 * SIZE[0] + SIZE[0] / 2) as usize;
+                assert!(
+                    depth[middle][1] > 0.0,
+                    "the receiver must write physical depth"
+                );
+                if variant == 2 {
+                    assert!(
+                        depth.iter().all(|p| p[0] == 0.0),
+                        "the same-sample receiver reference cannot occlude itself"
+                    );
+                }
+            }
             hdr |= scene.iter().any(|p| p[0] > 1.0 && p[1] > 0.1);
             if variant == 0 && present {
                 let mut visible = 0;
@@ -725,7 +845,9 @@ fn photo_encode_preserves_reactive_coverage_and_history_beside_an_hdr_ribbon() {
                             "frame {frame} pixel {p}: actual Photo history retained head-dependent color at alpha {}",
                             history[p][3]
                         );
-                        dependent_background |= depth[p][0] == 0.0 && scene[p][0] > 0.1;
+                        dependent_background |= depth[p][0] == 0.0
+                            && (!receiver || depth[p][1] > 0.0)
+                            && scene[p][0] > 0.1;
                     }
                 }
                 eprintln!(
@@ -743,7 +865,7 @@ fn photo_encode_preserves_reactive_coverage_and_history_beside_an_hdr_ribbon() {
                     "unmarked and no-rock controls must keep ordinary history metadata"
                 );
             }
-            frame_images.push(pixels);
+            frame_images[variant] = pixels;
             drop(bytes);
             readback.unmap();
         }
@@ -782,6 +904,12 @@ fn photo_encode_preserves_reactive_coverage_and_history_beside_an_hdr_ribbon() {
     );
     assert!(
         dependent_background,
-        "the reactive conditioning footprint must touch ribbon over clear depth"
+        "the reactive conditioning footprint must touch ribbon beyond the head"
     );
+    if receiver {
+        assert!(
+            camera_moved,
+            "the receiver case must move the perspective camera"
+        );
+    }
 }
