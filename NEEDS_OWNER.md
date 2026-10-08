@@ -2099,3 +2099,20 @@ Owner steps before the scope is enabled:
 3. Add `CA` to the sales policy's `jurisdictions` after `US`.
 4. Record each Canadian lead's consent or relationship evidence with its
    recorded date, expiry, and reviewer before any draft.
+
+## REV-75: consented booked voice participation (#10882)
+
+Voice stays disabled until the owner records a `sales voice` authority. The
+code admits only web meetings the recipient requested, over an accepted
+meeting, under the accepting human's start, mute, takeover, and end controls;
+it builds no outbound call. Before activation:
+
+- Confirm written selling has proven useful and keep that evidence reference.
+- Obtain a legal review of AI voice participation in web meetings for the
+  actual medium (telephone is refused in code; FCC 24-17 covers AI telephone
+  voices) and record its reference and reviewer.
+- Name the qualified human supervisor and brief them on the controls.
+- Leave recording off, or record a separate consent reference, recipient
+  list, and retention before enabling it.
+- Wire the chosen meeting medium's native audio glue to `voice_turn`; the
+  session stores speech and transcripts as untrusted data only.

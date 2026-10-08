@@ -28,6 +28,7 @@ pub mod replies;
 pub mod roles;
 pub mod town;
 pub mod training;
+pub mod voice;
 
 pub const SCHEMA: &str = "openagents.sales.pipeline.v1";
 pub const COMMAND_SCHEMA: &str = "openagents.sales.pipeline-command.v1";
@@ -316,6 +317,8 @@ struct State {
     training: training::Book,
     #[serde(default)]
     meetings: meetings::Book,
+    #[serde(default, skip_serializing_if = "voice::Book::is_empty")]
+    voice: voice::Book,
     #[serde(default)]
     qualification: qualification::Book,
     #[serde(default)]
@@ -348,6 +351,7 @@ impl Default for State {
             replies: replies::Book::default(),
             training: training::Book::default(),
             meetings: meetings::Book::default(),
+            voice: voice::Book::default(),
             qualification: qualification::Book::default(),
             paul: paul::Book::default(),
             roles: roles::Book::default(),
@@ -553,6 +557,7 @@ impl Store {
         state.replies.check()?;
         state.training.check()?;
         state.meetings.check()?;
+        state.voice.check()?;
         state.qualification.check()?;
         state.qualification.check_certificates(&state.agents)?;
         state.paul.check()?;

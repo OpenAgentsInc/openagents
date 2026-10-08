@@ -1744,6 +1744,8 @@ fn email_replaced_credential_file_cannot_reuse_preparation_bytes() {
 mod expense_tests;
 #[path = "../meetings/tests.rs"]
 mod meeting_tests;
+#[path = "../voice/tests.rs"]
+mod voice_tests;
 
 fn outbox_proposal(
     message: super::super::email::Message,
