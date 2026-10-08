@@ -87,7 +87,7 @@ with `c8c9f7d02e`, which split the coast into C1 to C6.
 | Issue | Remaining work | Blocked by |
 | --- | --- | --- |
 | [#10919](https://github.com/OpenAgentsInc/openagents/issues/10919) Everglade pond reflections | Not started. Find why Everglade's ponds read as flat green from above (`everglade-water/lantern-above.png`) when the harness ponds (`water-screen/`) show reflection and refraction. Candidates: the preset, Fresnel at that angle, the bed color, the scene copy and mirror not running in Everglade, or Everglade's tier defaults. Fix it, commit before and after captures from the same viewpoints, and add a test that catches the cause. | Nothing |
-| [#10783](https://github.com/OpenAgentsInc/openagents/issues/10783) W11 measurement and budgets | In progress on `codex/water-w11-measurement`. Source and measurement harness checkpointed. Remote verification started; native desktop audio lacks `alsa.pc`, so use the capture consumer check and cover default features on the Mac later. No measurement has run yet. Measure per-tier GPU time, GPU memory, and CPU for water on the development Mac and on `everglade-web` with WebGPU and WebGL2; put device runs in `NEEDS_OWNER.md`. Replace the target budgets in [water.md](water.md#budgets-per-tier) with measured ones and set the constants and overrun behavior in `verse_engine::quality`. Known overruns: W10's floating-bodies view at 4.29 ms against High's 4 ms. | Nothing (W7 to W10 are closed) |
+| [#10783](https://github.com/OpenAgentsInc/openagents/issues/10783) W11 measurement and budgets | In progress on `codex/water-w11-measurement`. Source and measurement harness checkpointed. Remote verification started; native desktop audio lacks `alsa.pc`, so use the capture consumer check and cover default features on the Mac later. The isolated Low `pond-noon` native measurement passes after retaining failed-case evidence; the remaining native views and browser measurements are pending. Measure per-tier GPU time, GPU memory, and CPU for water on the development Mac and on `everglade-web` with WebGPU and WebGL2; put device runs in `NEEDS_OWNER.md`. Replace the target budgets in [water.md](water.md#budgets-per-tier) with measured ones and set the constants and overrun behavior in `verse_engine::quality`. Known overruns: W10's floating-bodies view at 4.29 ms against High's 4 ms. | Nothing (W7 to W10 are closed) |
 | [#10784](https://github.com/OpenAgentsInc/openagents/issues/10784) umbrella | Close when W11 closes and [water.md](water.md) has the measured budgets. | #10783 |
 | [#10885](https://github.com/OpenAgentsInc/openagents/issues/10885) C1 zone shell | Not started. `ZoneId::Coast`, the plaza's west arch, generated terrain and bathymetry, the ocean with a tide, the harbor shelter mask, the estuary, spawn, and zone tests. Start from W10's coastal test scene, `verse_zone_water::coast`, and extend the bed to the horizon, as [coast.md](coast.md) says. | Nothing (W3, W4, and W10 are closed) |
 | [#10886](https://github.com/OpenAgentsInc/openagents/issues/10886) C2 kits and pack | Blender kits and the pinned coast pack, through `openagents artifact submit`. | C1 |
@@ -138,13 +138,13 @@ covered only by the separate wet-minus-dry fence estimate.
 Residency admission and receipts share the same persistent-resource total,
 including the mirror uniform and timestamp query, resolve, and readback
 payloads. GPU memory reports declared owned resources; driver metadata
-and allocation padding remain opaque. A pure admission-boundary regression
-is pending in the next focused batch.
+and allocation padding remain opaque. The pure admission-boundary regression passes in the focused batch.
 The first GPU degradation skips optics absent from its tier: Medium drops
 its mirror because it has no SSR; Low's diagnostic probe lowers visual
 cadence because it has no optical targets. The reduction receipt compares
 actual admitted plans or cadence, so a flag change alone cannot satisfy
-acceptance. These focused regressions and refreshed artifacts are pending;
+acceptance. These focused regressions pass, and refreshed native and WASM
+artifacts compile at `732c49a582474fa6e669716637d1e0b194d5e8ba`;
 normal Low and unsupported runtime GPU timing remain absent.
 
 Resume from `codex/water-w11-measurement`; acceptance is still pending.
@@ -164,9 +164,9 @@ and GLES variants, the explicit wasm32 consumer recheck passed, and the
 filtered `water_capture` example compiled with `--no-run`. That compilation
 found only an obsolete capture extent helper, which is removed. The remote
 has no `wasm-bindgen` command; use the Mac's matched 0.2.128 CLI after
-copying the exact compiler artifact. The terminal's hour soak passed;
-local compilation and measurement still require the coordinator's next
-window after the terminal and P3 verification commands.
+copying the exact compiler artifact. The terminal's hour soak passed. Native release compilation and the
+isolated diagnostic measurement have finished; subsequent measurements
+still require the coordinator's window.
 Preserve the remote Cargo JSON and artifact record. `stage.py` accepts an
 explicit relocated artifact and the remote record with its original
 Linux path, source SHA, SHA-256, byte count, and Cargo JSON digest. It
@@ -183,8 +183,8 @@ The fixed-view ignored raster test is `w11::water_w11_fixed_views` in
 `bench/verse/2026-10-08/water-w11/browser.py`; run it through
 `openagents browser run` against the candidate WASM output. It measures
 Low on WebGL2 and Medium on WebGPU; the browser platform does not admit
-High. Measurements, captures, budget updates in [water.md](water.md), and
-phone steps in `NEEDS_OWNER.md` are still pending. No issue has closed.
+High. The remaining measurements, budget updates in [water.md](water.md),
+and phone steps in `NEEDS_OWNER.md` are still pending. No issue has closed.
 Compile the browser candidate with the existing `presence_ui::tests` filter,
 `--lib --target wasm32-unknown-unknown --release --no-run --message-format=json`.
 `stage.py` selects its exact executable from Cargo's output and requires
@@ -230,13 +230,47 @@ The harness wrote evidence after assertions, so that view's timing data
 was lost; logs and the original executable identity remain in Mac scratch
 `w11-metrics-732c49a582474fa6e669716637d1e0b194d5e8ba/native`.
 The harness now saves each record before assertions and accepts
-`WATER_W11_CASE=low/pond-noon` for a bounded diagnostic run. Compile that
-focused release example again under the coordinator's token, then retain
-the actual values before choosing a policy or budget correction.
+`WATER_W11_CASE=low/pond-noon` for a bounded diagnostic run.
+At `ba2deeb24fef40279638d3920361e7314795a9f4`, that harness-only repair
+compiles with the same filtered release `--no-run` command. Application
+source bytes match the staged `732c49a582` WASM candidate. The diagnostic
+passes on 2026-10-08 at 1920 × 1080 and 60 Hz on Apple M5 Max Metal.
+Of the final 96 frames, five have completed GPU timestamps: mean
+2.369817 ms, p95 2.469958 ms, and max 2.554583 ms. Main-thread CPU time
+is mean 0.177677 ms, p95 0.231292 ms, and max 0.271833 ms. Declared water
+GPU residency is 989,164 bytes; ripple CPU storage is 131,072 bytes.
+This pond completes no spectral synthesis jobs, so worker CPU is zero.
+The separate wet-minus-dry queue-fence estimate is 3.045376 ms.
+The GPU result exceeds the old 1.5 ms target, but actual visual cadence
+changes from every frame to every second frame at display frame 170.
+The eight expensive completed GPU observations after the 120-frame warm-up
+trigger that change; absent results remain neutral. Low admits no optical
+targets. The final frame has no completed GPU result. The capture changes
+42.09% of pixels from its dry pair and remains correct. The receipt records
+`within_budget: false` and `effects_reduced: true`; it does not establish
+that cadence reduction lowers the isolated surface cost. The original
+failed run has no retained raw timing, so its failure's cause remains
+unknown. Keep the current product constants until the remaining measured
+cases have been reviewed.
+The exact executable is
+`~/work/openagents-target-agent12/release/examples/water_capture-47c83a3ea48e2c11`,
+SHA-256 `56ca95fb79b1af16a8484782fc648def5e68f787abf13eaec1c946e05e87f782`.
+Run arguments are `w11::water_w11_fixed_views --ignored --exact
+--test-threads=1 --nocapture`, with `WATER_W11_CASE=low/pond-noon` and
+`WATER_W11_OUTPUT` set by the scratch wrapper. Quiet and GPU lease receipts
+are `w11-low-diagnostic-quiet.json` and `w11-low-diagnostic-gpu.json`.
+The diagnostic record, command, inputs, log, and capture are retained under
+Mac scratch `w11-metrics-ba2deeb24fef40279638d3920361e7314795a9f4/native-low-pond-noon`.
+The capture SHA-256 is
+`76feb1e03ec83b7918415422f3276908cb7ac92b8cff3dde81fbf05abf6b9059`.
+The proposed next scope is the remaining 14 native tier/view pairs and the
+eight browser wet/dry cases, using these frozen application bytes. No new
+policy, compilation, or image job starts before the coordinator reviews
+the actual diagnostic data.
 
 The coordinator holds the team build token. Request a window before
 Cargo or measurement, use at most four jobs for W11, and preserve the
-terminal's quiet soak. Do not run `water::parity` on the Mac: those tests
+other agents' quiet leases. Do not run `water::parity` on the Mac: those tests
 use GPU compute. Run them only on `coderos-4080` through a remote lease.
 The required browser consumer check is
 `cargo check -p everglade-web --target wasm32-unknown-unknown`.
