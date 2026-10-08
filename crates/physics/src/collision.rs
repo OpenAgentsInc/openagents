@@ -211,6 +211,31 @@ enum Placed {
     },
 }
 
+impl Placed {
+    fn bounds(self) -> (crate::broadphase::Bounds, DVec3) {
+        match self {
+            Self::Capsule { p, q, radius } => (
+                crate::broadphase::Bounds {
+                    min: p.min(q) - DVec3::splat(radius.abs()),
+                    max: p.max(q) + DVec3::splat(radius.abs()),
+                },
+                DVec3::ONE,
+            ),
+            Self::Cuboid { center, axes, half } => {
+                let (x, y, z) = (axes.x_axis.abs(), axes.y_axis.abs(), axes.z_axis.abs());
+                let extent = x * half.x.abs() + y * half.y.abs() + z * half.z.abs();
+                (
+                    crate::broadphase::Bounds {
+                        min: center - extent,
+                        max: center + extent,
+                    },
+                    x + y + z,
+                )
+            }
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 struct Geometry {
     shape: Shape,
@@ -221,6 +246,8 @@ struct Geometry {
     placed: Placed,
     center: DVec3,
     radius: f64,
+    bounds: crate::broadphase::Bounds,
+    margin_scale: DVec3,
 }
 
 impl Geometry {
@@ -235,15 +262,19 @@ impl Geometry {
     fn new(collider: &Collider, world: &World) -> Self {
         let body = &world[collider.body];
         let (center, rotation) = collider.pose(world);
+        let placed = place(collider.shape, center, rotation);
+        let (bounds, margin_scale) = placed.bounds();
         Self {
             shape: collider.shape,
             offset: collider.offset,
             rotation: collider.rotation,
             body_pos: body.pos,
             body_orientation: body.orientation,
-            placed: place(collider.shape, center, rotation),
+            placed,
             center,
             radius: collider.shape.bound(),
+            bounds,
+            margin_scale,
         }
     }
 }
@@ -822,10 +853,15 @@ impl World {
             .enumerate()
             .map(|(i, entry)| {
                 entry.as_ref().map(|g| {
-                    let extent = DVec3::splat(g.radius + base * 0.5 + reaches[i]);
+                    // SAT allows the margin along each box axis. Expanding
+                    // its local half-extents preserves those corner contacts.
+                    let margin = base * 0.5 + reaches[i];
+                    let rounding =
+                        8.0 * f64::EPSILON * (g.center.abs().max_element() + g.radius).max(1.0);
+                    let extent = g.margin_scale * margin + DVec3::splat(rounding);
                     crate::broadphase::Bounds {
-                        min: g.center - extent,
-                        max: g.center + extent,
+                        min: g.bounds.min - extent,
+                        max: g.bounds.max + extent,
                     }
                 })
             })

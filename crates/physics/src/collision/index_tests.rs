@@ -217,6 +217,86 @@ fn sparse_background_prunes_pairs_and_tracks_kind_changes_and_reused_leaves() {
 }
 
 #[test]
+fn a_wide_floor_does_not_query_airborne_chunks_but_keeps_motion_contacts() {
+    let mut world = World::new(1.0 / 120.0);
+    let floor = world.add(Body::new(1.0, DVec3::ONE, -DVec3::Y * 0.1).with_kind(BodyKind::Static));
+    world.add_collider(Collider::new(
+        floor,
+        Shape::Cuboid {
+            half: DVec3::new(80.0, 0.1, 80.0),
+        },
+    ));
+    for i in 0..699 {
+        let body = world.add(Body::new(
+            1.0,
+            DVec3::ONE,
+            DVec3::new(
+                (i % 27) as f64 * 2.0 - 26.0,
+                6.0,
+                (i / 27) as f64 * 2.0 - 26.0,
+            ),
+        ));
+        world.add_collider(Collider::new(
+            body,
+            Shape::Cuboid {
+                half: DVec3::splat(0.3),
+            },
+        ));
+    }
+    let approaching = world.add(Body::new(1.0, DVec3::ONE, DVec3::Y * 0.32));
+    world.add_collider(Collider::new(
+        approaching,
+        Shape::Cuboid {
+            half: DVec3::splat(0.3),
+        },
+    ));
+    let mut reaches = vec![0.0; world.colliders().len()];
+    *reaches.last_mut().unwrap() = 0.04;
+    let (actual, stats) = world.detect_motion_profiled(0.01, &reaches).unwrap();
+    let expected = world.detect(&|a, b| {
+        0.01 + if a.body == approaching || b.body == approaching {
+            0.04
+        } else {
+            0.0
+        }
+    });
+    assert!(!expected.is_empty());
+    assert_eq!(format!("{actual:?}"), format!("{expected:?}"));
+    assert_eq!(stats.candidate_pairs, 1);
+    assert_eq!(stats.narrow_phase, 1);
+}
+
+#[test]
+fn oriented_margin_bounds_preserve_corner_contacts_from_sat() {
+    let mut world = World::new(1.0 / 120.0);
+    let rotations = [
+        DQuat::from_rotation_z(std::f64::consts::FRAC_PI_4),
+        DQuat::from_rotation_z(std::f64::consts::FRAC_PI_6)
+            * DQuat::from_rotation_y(std::f64::consts::FRAC_PI_4),
+    ];
+    let extent_x = rotations.map(|rotation| {
+        let axes = DMat3::from_quat(rotation);
+        axes.x_axis.x.abs() + axes.y_axis.x.abs() + axes.z_axis.x.abs()
+    });
+    // The world-space gap exceeds the margin, but the closest edges are
+    // within the margin along every separating axis.
+    let distance = extent_x[0] + extent_x[1] + 1.05;
+    for (x, rotation) in [0.0, distance].into_iter().zip(rotations) {
+        let mut body = Body::new(1.0, DVec3::ONE, DVec3::X * x);
+        body.orientation = rotation;
+        let id = world.add(body);
+        world.add_collider(Collider::new(id, Shape::Cuboid { half: DVec3::ONE }));
+    }
+    let expected = world.detect(&|_, _| 1.0);
+    assert!(
+        !expected.is_empty(),
+        "the existing SAT admits this corner gap"
+    );
+    let (actual, _) = world.detect_bounded(1.0).unwrap();
+    assert_eq!(format!("{actual:?}"), format!("{expected:?}"));
+}
+
+#[test]
 fn scripted_motion_wakes_near_sleepers_without_enumerating_distant_pairs() {
     let mut world = World::new(1. / 120.);
     world.sleep.enabled = false;

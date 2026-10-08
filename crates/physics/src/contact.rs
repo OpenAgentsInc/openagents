@@ -119,12 +119,58 @@ impl Motion {
     }
 
     fn push(&mut self, impulse: DVec3, r: DVec3) {
+        if self.inverse_mass == 0.0 {
+            return;
+        }
         self.vel += impulse * self.inverse_mass;
         self.omega += self.inverse_inertia * r.cross(impulse);
     }
 
     fn twist(&mut self, angular: DVec3) {
+        if self.inverse_mass == 0.0 {
+            return;
+        }
         self.omega += self.inverse_inertia * angular;
+    }
+
+    fn push_axis(&mut self, impulse: DVec3, angular: DVec3, delta: f64) {
+        if self.inverse_mass == 0.0 {
+            return;
+        }
+        self.vel += impulse * self.inverse_mass;
+        self.omega += angular * delta;
+    }
+
+    fn push_tangents(&mut self, impulse: DVec3, angular: [DVec3; 2], delta: [f64; 2]) {
+        if self.inverse_mass == 0.0 {
+            return;
+        }
+        self.vel += impulse * self.inverse_mass;
+        self.omega += angular[0] * delta[0] + angular[1] * delta[1];
+    }
+}
+
+#[derive(Clone, Copy)]
+struct ContactAxis {
+    arms: [DVec3; 2],
+    angular: [DVec3; 2],
+    mass: f64,
+}
+
+impl ContactAxis {
+    fn new(a: &Motion, b: &Motion, ra: DVec3, rb: DVec3, direction: DVec3) -> Self {
+        let arms = [ra.cross(direction), rb.cross(direction)];
+        let angular = [a.inverse_inertia * arms[0], b.inverse_inertia * arms[1]];
+        let k = a.inverse_mass + b.inverse_mass + arms[0].dot(angular[0]) + arms[1].dot(angular[1]);
+        Self {
+            arms,
+            angular,
+            mass: if k > 0.0 { 1.0 / k } else { 0.0 },
+        }
+    }
+
+    fn velocity(&self, direction: DVec3, linear: DVec3, a: DVec3, b: DVec3) -> f64 {
+        direction.dot(linear) + self.arms[1].dot(b) - self.arms[0].dot(a)
     }
 }
 
@@ -135,8 +181,7 @@ struct Row {
     rb: DVec3,
     normal: DVec3,
     tangents: [DVec3; 2],
-    normal_mass: f64,
-    tangent_mass: [f64; 2],
+    axes: [ContactAxis; 3],
     twist_mass: f64,
     target: f64,
     friction: f64,
@@ -419,10 +464,10 @@ impl World {
                     rb,
                     normal: c.normal,
                     tangents,
-                    normal_mass: effective_mass(ma, mb, ra, rb, c.normal),
-                    tangent_mass: [
-                        effective_mass(ma, mb, ra, rb, tangents[0]),
-                        effective_mass(ma, mb, ra, rb, tangents[1]),
+                    axes: [
+                        ContactAxis::new(ma, mb, ra, rb, c.normal),
+                        ContactAxis::new(ma, mb, ra, rb, tangents[0]),
+                        ContactAxis::new(ma, mb, ra, rb, tangents[1]),
                     ],
                     twist_mass: if twist_k > 0.0 { 1.0 / twist_k } else { 0.0 },
                     target,
@@ -471,13 +516,26 @@ impl World {
             for row in &mut rows {
                 let (a, b) = (row.a, row.b);
                 // Friction first, bounded by the current normal impulse.
-                let relative =
-                    motions[b].point_velocity(row.rb) - motions[a].point_velocity(row.ra);
+                let relative = motions[b].vel - motions[a].vel;
+                let tangent_speed = [
+                    row.axes[1].velocity(
+                        row.tangents[0],
+                        relative,
+                        motions[a].omega,
+                        motions[b].omega,
+                    ),
+                    row.axes[2].velocity(
+                        row.tangents[1],
+                        relative,
+                        motions[a].omega,
+                        motions[b].omega,
+                    ),
+                ];
                 let limit = row.friction * row.normal_impulse;
                 let old = row.tangent_impulse;
                 let mut next = [
-                    old[0] - relative.dot(row.tangents[0]) * row.tangent_mass[0],
-                    old[1] - relative.dot(row.tangents[1]) * row.tangent_mass[1],
+                    old[0] - tangent_speed[0] * row.axes[1].mass,
+                    old[1] - tangent_speed[1] * row.axes[2].mass,
                 ];
                 let size = next[0].hypot(next[1]);
                 if size > limit {
@@ -487,8 +545,16 @@ impl World {
                 row.tangent_impulse = next;
                 let delta =
                     row.tangents[0] * (next[0] - old[0]) + row.tangents[1] * (next[1] - old[1]);
-                motions[a].push(-delta, row.ra);
-                motions[b].push(delta, row.rb);
+                motions[a].push_tangents(
+                    -delta,
+                    [row.axes[1].angular[0], row.axes[2].angular[0]],
+                    [old[0] - next[0], old[1] - next[1]],
+                );
+                motions[b].push_tangents(
+                    delta,
+                    [row.axes[1].angular[1], row.axes[2].angular[1]],
+                    [next[0] - old[0], next[1] - old[1]],
+                );
                 if row.torsional > 0.0 {
                     let spin = (motions[b].omega - motions[a].omega).dot(row.normal);
                     let limit = row.torsional * row.normal_impulse;
@@ -499,15 +565,18 @@ impl World {
                     motions[a].twist(-delta);
                     motions[b].twist(delta);
                 }
-                let relative =
-                    motions[b].point_velocity(row.rb) - motions[a].point_velocity(row.ra);
+                let speed = row.axes[0].velocity(
+                    row.normal,
+                    motions[b].vel - motions[a].vel,
+                    motions[a].omega,
+                    motions[b].omega,
+                );
                 let old = row.normal_impulse;
-                let next =
-                    (old + (row.target - relative.dot(row.normal)) * row.normal_mass).max(0.0);
+                let next = (old + (row.target - speed) * row.axes[0].mass).max(0.0);
                 row.normal_impulse = next;
                 let delta = row.normal * (next - old);
-                motions[a].push(-delta, row.ra);
-                motions[b].push(delta, row.rb);
+                motions[a].push_axis(-delta, row.axes[0].angular[0], old - next);
+                motions[b].push_axis(delta, row.axes[0].angular[1], next - old);
             }
         }
         for (index, row) in &tethers {
@@ -701,6 +770,77 @@ impl World {
 #[cfg(test)]
 mod warm_tests {
     use super::*;
+
+    #[test]
+    fn cached_contact_axes_match_vector_impulses_and_keep_kinematic_motion() {
+        for i in 0..128 {
+            let t = f64::from(i) * 0.13;
+            let ra = DVec3::new(t.sin(), (t * 0.7).cos(), 0.3);
+            let rb = DVec3::new(-0.2, (t * 1.3).sin(), t.cos());
+            let rotation = DMat3::from_quat(glam::DQuat::from_rotation_y(t));
+            let a = Motion {
+                vel: DVec3::new(1.0, t.cos(), -0.4),
+                omega: DVec3::new(t.sin(), -0.7, 0.2),
+                inverse_mass: 0.4,
+                inverse_inertia: rotation
+                    * DMat3::from_diagonal(DVec3::new(0.3, 0.7, 0.9))
+                    * rotation.transpose(),
+            };
+            let b = Motion {
+                vel: DVec3::new(-0.3, 0.8, t.sin()),
+                omega: DVec3::new(0.6, t.cos(), -0.2),
+                inverse_mass: if i % 3 == 0 { 0.0 } else { 0.2 },
+                inverse_inertia: if i % 3 == 0 {
+                    DMat3::ZERO
+                } else {
+                    DMat3::from_diagonal(DVec3::new(0.8, 0.4, 0.6))
+                },
+            };
+            let normal = DVec3::new(0.3, 1.0, t.sin() * 0.2).normalize();
+            let directions = [normal, basis(normal)[0], basis(normal)[1]];
+            let axes = directions.map(|d| ContactAxis::new(&a, &b, ra, rb, d));
+            let relative = b.point_velocity(rb) - a.point_velocity(ra);
+            for (axis, direction) in axes.iter().zip(directions) {
+                assert!(
+                    (axis.velocity(direction, b.vel - a.vel, a.omega, b.omega)
+                        - relative.dot(direction))
+                    .abs()
+                        < 1e-12
+                );
+                assert_eq!(axis.mass, effective_mass(&a, &b, ra, rb, direction));
+            }
+
+            let mut reference = [a, b];
+            let mut cached = reference;
+            let tangent_delta = [0.27, -0.31];
+            let impulse = directions[1] * tangent_delta[0] + directions[2] * tangent_delta[1];
+            reference[0].push(-impulse, ra);
+            reference[1].push(impulse, rb);
+            cached[0].push_tangents(
+                -impulse,
+                [axes[1].angular[0], axes[2].angular[0]],
+                [-tangent_delta[0], -tangent_delta[1]],
+            );
+            cached[1].push_tangents(
+                impulse,
+                [axes[1].angular[1], axes[2].angular[1]],
+                tangent_delta,
+            );
+            let normal_delta = 0.63;
+            reference[0].push(-normal * normal_delta, ra);
+            reference[1].push(normal * normal_delta, rb);
+            cached[0].push_axis(-normal * normal_delta, axes[0].angular[0], -normal_delta);
+            cached[1].push_axis(normal * normal_delta, axes[0].angular[1], normal_delta);
+            for (actual, expected) in cached.iter().zip(reference) {
+                assert!((actual.vel - expected.vel).length() < 1e-12);
+                assert!((actual.omega - expected.omega).length() < 1e-12);
+            }
+            if b.inverse_mass == 0.0 {
+                assert_eq!(cached[1].vel, b.vel);
+                assert_eq!(cached[1].omega, b.omega);
+            }
+        }
+    }
 
     #[test]
     fn pair_index_preserves_nearest_point_and_ties_without_scanning_other_pairs() {
