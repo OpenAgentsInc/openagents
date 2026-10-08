@@ -95,7 +95,17 @@ unchanged.
   regenerates the current P3 scene through `everglade-kit-bake`. Its first
   bake was stopped when the Mac fell below the owner's 25 GB floor; idle
   local target-agent12 was removed after preserving its two water capture
-  executables, restoring 110.8 GB free. The pending queue entry can resume.
+  executables, restoring 110.8 GB free. The resumed bake completes in
+  1,639,555 ms on four CPU workers: 4,326,184 vertices, 2,173,638 occluding
+  triangles, 330 lamps, and 806,114 lamp receivers. Its 51,682,623-byte
+  output has SHA-256
+  `14ae7f75e9ce4f81483f6f44369753545cb2cab892177607438b3077ebbbae23`,
+  bake key `5f9adbe288bb182e946991e934b169163e2dabfff2adeb9bcdd37f6b9627d207`,
+  and scene `a673374a9399f0f564e558bf50cc608a23227d39893bada078093fac021379df`.
+  The queue replays because main moves; no pin is published yet. The first
+  output and receipt are preserved in the coordinator's private
+  `b2-verification/` scratch directory. The private bucket copy has the
+  matching length and MD5; captures and public delivery are not accepted yet.
   The `kit_light_acceptance` helper and `uses_baked_light` accessor on the
   verification branch are unverified; compile the filtered ignored test
   and run it under remote quiet/GPU leases after the bake. Captures must
