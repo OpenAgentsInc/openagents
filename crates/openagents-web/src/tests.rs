@@ -1433,6 +1433,8 @@ async fn owned_pages_removed_sections_and_the_task_browser_never_go_upstream() {
     let site = router(proxying(root.path(), &url));
     for uri in PAGES.iter().copied().chain([
         "/health",
+        paper_mono::WOFF2_PATH,
+        "/fonts/Geist.ttf",
         "/.well-known/apple-app-site-association",
         "/.well-known/assetlinks.json",
         "/static/site.css",
