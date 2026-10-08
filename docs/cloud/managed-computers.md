@@ -49,7 +49,8 @@ homepage and chat composer to real choices and retained selections.
    source, profile, workspace, membership, or grant refuses the old selection.
 4. Repository execution stages the existing exact native Cloud request. It uses
    the retained review and confirmation flow, then observes the canonical job
-   and complete authorized output through the chat's work reference. The public
+   and retained original output through authorized bounded reads using the
+   chat's work reference. The public
    knowledge worker keeps its existing policy.
 5. Follow-ups use native continuation and recovery on the same retained job.
    Current Boat continuation resumes its sandbox; completion stops it and checks
