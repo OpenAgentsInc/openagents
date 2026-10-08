@@ -12,6 +12,8 @@ mod agents;
 mod claims;
 #[path = "sales_email.rs"]
 mod email;
+#[path = "sales_meetings.rs"]
+mod meetings;
 #[path = "sales_models.rs"]
 mod models;
 #[path = "sales_privacy.rs"]
@@ -68,6 +70,26 @@ pub const USAGE: &str = "usage: openagents sales COMMAND --root DIR [--credentia
         Apply a field-scoped change or propose a private draft.
   agents memory
         Read current opaque references and fixed nonidentifying summary fields.
+  meetings slot --input FILE --expected-version N
+        Publish explicit finite owner availability.
+  meetings slots
+        Read current published slots under assigned native agent access.
+  meetings queue
+        Read only current opaque assigned-agent proposal references.
+  meetings list
+        Read only the owner's or named human's bounded private briefs.
+  meetings propose --input FILE
+        Prepare the owner's bounded private meeting brief.
+  meetings recommend --meeting ID --revision N --slot ID --slot-version N
+        Recommend a published slot; requires a new owner confirmation.
+  meetings confirm --meeting ID --revision N --approve SHA256 --input FILE
+        Confirm the exact proposal as owner; input is a private JSON reference.
+  meetings accept --meeting ID --revision N --approve SHA256 --input FILE
+        Accept the bounded assignment only as the named human.
+  meetings decline --meeting ID --revision N --approve SHA256 --input FILE
+        Decline the bounded assignment only as the named human.
+  meetings show --meeting ID
+        Read only the owner's or named human's private brief.
   models policy-check --input FILE
         Check finite source prices and floor limits under owner access.
   models policy --input FILE --approve SHA256
@@ -160,6 +182,16 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("agents read", Effect::ReadOnly),
     Declared::computer("agents apply", Effect::LocalWrite),
     Declared::computer("agents memory", Effect::ReadOnly),
+    Declared::computer("meetings slot", Effect::Grants),
+    Declared::computer("meetings slots", Effect::ReadOnly),
+    Declared::computer("meetings queue", Effect::ReadOnly),
+    Declared::computer("meetings list", Effect::ReadOnly),
+    Declared::computer("meetings propose", Effect::LocalWrite),
+    Declared::computer("meetings recommend", Effect::LocalWrite),
+    Declared::computer("meetings confirm", Effect::Grants),
+    Declared::computer("meetings accept", Effect::Grants),
+    Declared::computer("meetings decline", Effect::Grants),
+    Declared::computer("meetings show", Effect::ReadOnly),
     Declared::computer("models policy-check", Effect::ReadOnly),
     Declared::computer("models policy", Effect::Grants),
     Declared::computer("models settle", Effect::LocalWrite),
@@ -187,6 +219,9 @@ pub(crate) const EFFECTS: &[Declared] = &[
 pub fn run(output: &Output, words: &[String]) -> u8 {
     if words.first().is_some_and(|w| w == "training") {
         return training::run(output, &words[1..]);
+    }
+    if words.first().is_some_and(|w| w == "meetings") {
+        return meetings::run(output, &words[1..]);
     }
     if words.first().is_some_and(|w| w == "email") {
         return email::run(output, &words[1..]);

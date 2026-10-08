@@ -353,7 +353,7 @@ pub(super) fn inactive(state: &State, lead: &Lead, now: u64) -> bool {
 fn scope(lead: &Lead) -> Result<String> {
     super::agents::scope(lead)
 }
-fn remember_identifier(state: &mut State, value: &str) -> Result<()> {
+pub(super) fn remember_identifier(state: &mut State, value: &str) -> Result<()> {
     let value = value.to_ascii_lowercase();
     if (4..=MAX_IDENTIFIER).contains(&value.len()) {
         let sha256 = salted(state, "identifier", &value);

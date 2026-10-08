@@ -1755,3 +1755,16 @@ as commercial evidence. Retain the original partial transcript and expense
 when execution fails or is interrupted; a new controller or schedule cannot
 reset unknown liability. Supply owner-marked examples and original reviews
 for REV-57 calibration and locked evaluation before enabling prospect drafts.
+
+## REV-59 meeting and human handoff activation
+
+Publish finite available slots under the pipeline owner's current credential,
+review the private brief against the checked claims and current pilot kit, and
+confirm the exact requested proposal. The named human must separately accept
+before the meeting has an agreed responsible person. These records do not read
+or change a calendar, send invitations, agree to prices or commercial terms,
+create product credit, or establish earned revenue. Keep real-contact permission,
+source and recipient boundaries, baseline unknowns, pilot scope, acceptance
+criteria, next action, and review date current. Changed lead or proposal scope
+requires a fresh confirmation; missing briefs, stale slots, declines, and absent
+acceptance remain pending. Human-led R0/R1 remains independent of this activation.

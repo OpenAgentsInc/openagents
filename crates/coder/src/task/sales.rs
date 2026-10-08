@@ -14,6 +14,7 @@ pub mod claims;
 pub mod email;
 pub mod expenses;
 pub mod intake;
+pub mod meetings;
 pub mod partners;
 pub mod privacy;
 pub mod referrals;
@@ -297,6 +298,8 @@ struct State {
     expenses: expenses::Book,
     #[serde(default)]
     training: training::Book,
+    #[serde(default)]
+    meetings: meetings::Book,
 }
 impl Default for State {
     fn default() -> Self {
@@ -318,6 +321,7 @@ impl Default for State {
             email: email::Book::default(),
             expenses: expenses::Book::default(),
             training: training::Book::default(),
+            meetings: meetings::Book::default(),
         }
     }
 }
@@ -513,6 +517,7 @@ impl Store {
         state.email.check()?;
         state.expenses.check()?;
         state.training.check()?;
+        state.meetings.check()?;
         privacy::remember_retained(&mut state)?;
         if state.leads.values().any(|lead| lead.schema != LEAD_SCHEMA)
             || state
@@ -660,6 +665,7 @@ impl Store {
             .map(|record| record.id.clone())
             .collect::<Vec<_>>();
         for id in &removed {
+            state.meetings.retire(id);
             privacy::remove(state, id, now, reference)?;
         }
         state.leads.retain(|_, record| {
@@ -691,6 +697,7 @@ impl Store {
         let mut changed = !expired.is_empty();
         changed |= next.expenses.recover(&self.dir, now)?;
         changed |= next.training.recover(&self.dir)?;
+        changed |= next.meetings.prune(now);
         let retired_sales = next
             .leads
             .values()

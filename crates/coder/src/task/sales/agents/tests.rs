@@ -1730,3 +1730,5 @@ fn email_replaced_credential_file_cannot_reuse_preparation_bytes() {
 }
 #[path = "../expenses/tests.rs"]
 mod expense_tests;
+#[path = "../meetings/tests.rs"]
+mod meeting_tests;

@@ -7387,6 +7387,431 @@
           ]
         },
         {
+          "name": "meetings",
+          "children": [
+            {
+              "name": "slot",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "meetings",
+                  "slot"
+                ],
+                "usage": [
+                  "meetings slot --input FILE --expected-version N"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "meetings"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "slot"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "input",
+                        "value": "FILE",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "expected-version",
+                        "value": "N",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Publish explicit finite owner availability.",
+                "effect": "grants",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "slots",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "meetings",
+                  "slots"
+                ],
+                "usage": [
+                  "meetings slots"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "meetings"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "slots"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Read current published slots under assigned native agent access.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "queue",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "meetings",
+                  "queue"
+                ],
+                "usage": [
+                  "meetings queue"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "meetings"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "queue"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Read only current opaque assigned-agent proposal references.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "list",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "meetings",
+                  "list"
+                ],
+                "usage": [
+                  "meetings list"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "meetings"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "list"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Read only the owner's or named human's bounded private briefs.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "propose",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "meetings",
+                  "propose"
+                ],
+                "usage": [
+                  "meetings propose --input FILE"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "meetings"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "propose"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "input",
+                        "value": "FILE",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Prepare the owner's bounded private meeting brief.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "recommend",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "meetings",
+                  "recommend"
+                ],
+                "usage": [
+                  "meetings recommend --meeting ID --revision N --slot ID --slot-version N"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "meetings"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "recommend"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "meeting",
+                        "value": "ID",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "revision",
+                        "value": "N",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "slot",
+                        "value": "ID",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "slot-version",
+                        "value": "N",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Recommend a published slot; requires a new owner confirmation.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "confirm",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "meetings",
+                  "confirm"
+                ],
+                "usage": [
+                  "meetings confirm --meeting ID --revision N --approve SHA256 --input FILE"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "meetings"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "confirm"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "meeting",
+                        "value": "ID",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "revision",
+                        "value": "N",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "approve",
+                        "value": "SHA256",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "input",
+                        "value": "FILE",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Confirm the exact proposal as owner; input is a private JSON reference.",
+                "effect": "grants",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "accept",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "meetings",
+                  "accept"
+                ],
+                "usage": [
+                  "meetings accept --meeting ID --revision N --approve SHA256 --input FILE"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "meetings"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "accept"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "meeting",
+                        "value": "ID",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "revision",
+                        "value": "N",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "approve",
+                        "value": "SHA256",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "input",
+                        "value": "FILE",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Accept the bounded assignment only as the named human.",
+                "effect": "grants",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "decline",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "meetings",
+                  "decline"
+                ],
+                "usage": [
+                  "meetings decline --meeting ID --revision N --approve SHA256 --input FILE"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "meetings"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "decline"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "meeting",
+                        "value": "ID",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "revision",
+                        "value": "N",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "approve",
+                        "value": "SHA256",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "input",
+                        "value": "FILE",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Decline the bounded assignment only as the named human.",
+                "effect": "grants",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "show",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "meetings",
+                  "show"
+                ],
+                "usage": [
+                  "meetings show --meeting ID"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "meetings"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "show"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "meeting",
+                        "value": "ID",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Read only the owner's or named human's private brief.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
+        },
+        {
           "name": "models",
           "children": [
             {
@@ -8480,6 +8905,46 @@
           "kind": "option",
           "name": "agent",
           "value": "NAME",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "expected-version",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "meeting",
+          "value": "ID",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "revision",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "slot",
+          "value": "ID",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "slot-version",
+          "value": "N",
           "open": true,
           "optional": true,
           "repeated": true
