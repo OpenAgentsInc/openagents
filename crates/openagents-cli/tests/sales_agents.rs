@@ -195,10 +195,43 @@ fn installed_private_agents_share_canonical_fields_without_cross_lead_or_memory_
         &command,
         &json!({"schema":"openagents.sales-agent-command.v1","id":"draft","expected_lead_revision":3,"operation":{"kind":"propose_draft","body":"private-0@fixture.invalid exact customer draft text","template":artifact("template"),"check_refs":[artifact("check")],"recommendation":artifact("paul-recommendation")}}),
     );
-    ok(
+    let blocked = run(
         base,
         "agent-0",
         &["agents", "apply", "--input", command.to_str().unwrap()],
+    );
+    assert!(!blocked.status.success());
+    assert!(
+        String::from_utf8_lossy(&blocked.stderr).contains("training")
+            || String::from_utf8_lossy(&blocked.stdout).contains("training")
+    );
+    assert!(
+        ok(base, "agent-0", &["agents", "read"])["drafts"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+    let questions = ok(
+        base,
+        "owner",
+        &["qualification", "questions", "--dimension", "tone"],
+    );
+    assert_eq!(questions["authority"], "advisory_only");
+    assert_eq!(
+        questions["questions"]["questions"]
+            .as_object()
+            .unwrap()
+            .len(),
+        2
+    );
+    assert!(
+        !run(
+            base,
+            "agent-0",
+            &["qualification", "questions", "--dimension", "claims"]
+        )
+        .status
+        .success()
     );
     let memory = ok(base, "agent-0", &["agents", "memory"]);
     let serialized = memory.to_string();

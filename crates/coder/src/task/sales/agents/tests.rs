@@ -2,6 +2,7 @@ use super::*;
 use crate::task::{agent, agent_key::FileKeys};
 use tempfile::TempDir;
 mod helpers;
+mod qualification;
 mod training;
 fn now() -> u64 {
     1_791_158_400
@@ -343,7 +344,12 @@ fn memory_excludes_private_text_and_cannot_authorize_policy_or_certification() {
     let mut f = Fixture::new();
     let access = f.access();
     let command = f.draft("draft", 2);
-    f.store.apply_sales_agent(&access, &command).unwrap();
+    assert!(
+        f.store
+            .apply_sales_agent(&access, &command)
+            .unwrap_err()
+            .contains("training")
+    );
     let projection = serde_json::to_string(&f.store.sales_agent_memory(&access).unwrap()).unwrap();
     for excluded in [
         "private-buyer",
@@ -389,27 +395,15 @@ fn memory_excludes_private_text_and_cannot_authorize_policy_or_certification() {
     );
 }
 #[test]
-fn owner_manual_certification_and_draft_review_never_grant_qualification_or_sending() {
+fn owner_manual_certification_never_grants_real_drafting_or_sending() {
     let mut f = Fixture::new();
     let access = f.access();
-    f.store
-        .apply_sales_agent(&access, &f.draft("draft", 2))
-        .unwrap();
-    let draft = f.store.read_sales_agent(&access).unwrap().drafts[0]
-        .reference
-        .clone();
-    f.owner_apply(
-        "review",
-        OwnerOperation::ReviewDraft {
-            lead: f.lead.clone(),
-            expected_lead_revision: 3,
-            draft,
-            state: DraftState::OwnerReviewed,
-            reference: artifact("owner-review"),
-        },
-        None,
-    )
-    .unwrap();
+    assert!(
+        f.store
+            .apply_sales_agent(&access, &f.draft("draft", 2))
+            .unwrap_err()
+            .contains("training")
+    );
     let certification = Certification {
         schema: CERT_SCHEMA.into(),
         id: "paul-training".into(),
@@ -433,10 +427,12 @@ fn owner_manual_certification_and_draft_review_never_grant_qualification_or_send
     assert_eq!(view.certificates[0].basis, "owner_recorded");
     assert!(!view.certificates[0].measured_qualified);
     assert!(!view.certificates[0].outbound_authority);
-    assert_eq!(
-        f.store.read_sales_agent(&access).unwrap().drafts[0].state,
-        DraftState::OwnerReviewed
+    assert!(
+        f.store
+            .apply_sales_agent(&access, &f.draft("after-manual-certificate", 2))
+            .is_err()
     );
+    assert!(f.store.read_sales_agent(&access).unwrap().drafts.is_empty());
 }
 #[test]
 fn native_charter_key_inactive_and_expired_assignment_each_refuse() {
@@ -547,19 +543,21 @@ fn field_grants_current_permission_jurisdiction_and_recipient_changes_refuse() {
     assert!(access.is_err());
 }
 #[test]
-fn caps_survive_new_policy_and_assignment_and_replays_do_not_consume_twice() {
+fn policy_and_assignment_changes_cannot_promote_new_hires_or_consume_draft_caps() {
     let mut f = Fixture::new();
     let access = f.access();
     let command = f.draft("first", 2);
-    f.store.apply_sales_agent(&access, &command).unwrap();
-    f.store.apply_sales_agent(&access, &command).unwrap();
-    let mut p = f.policy.clone();
-    p.version = 2;
-    p.daily_agent_cap = 1;
-    p.daily_floor_cap = 1;
+    assert!(f.store.apply_sales_agent(&access, &command).is_err());
+    assert!(f.store.apply_sales_agent(&access, &command).is_err());
+    let mut policy = f.policy.clone();
+    policy.version = 2;
+    policy.daily_agent_cap = 1;
+    policy.daily_floor_cap = 1;
     f.owner_apply(
         "lower",
-        OwnerOperation::PublishPolicy { policy: p.clone() },
+        OwnerOperation::PublishPolicy {
+            policy: policy.clone(),
+        },
         None,
     )
     .unwrap();
@@ -568,9 +566,9 @@ fn caps_survive_new_policy_and_assignment_and_replays_do_not_consume_twice() {
         "replacement",
         OwnerOperation::Assign {
             lead: f.lead.clone(),
-            expected_lead_revision: 3,
+            expected_lead_revision: 2,
             agent: f.anchor.clone(),
-            policy_sha256: p.sha256().unwrap(),
+            policy_sha256: policy.sha256().unwrap(),
             expires_at: now() + 800,
         },
         Some(token.clone()),
@@ -582,20 +580,15 @@ fn caps_survive_new_policy_and_assignment_and_replays_do_not_consume_twice() {
         .unwrap();
     assert!(
         f.store
-            .apply_sales_agent(&replacement, &f.draft("extra", 4))
+            .apply_sales_agent(&replacement, &f.draft("extra", 3))
             .unwrap_err()
-            .contains("cap reached")
+            .contains("training")
     );
-    assert_eq!(
-        f.store.state.agents.draft_days.values().next().unwrap()[&f.anchor.pubkey],
-        1
-    );
+    assert!(f.store.state.agents.draft_days.is_empty());
     f.reopen(now);
-    assert_eq!(
-        f.store.state.agents.draft_days.values().next().unwrap()[&f.anchor.pubkey],
-        1
-    );
+    assert!(f.store.state.agents.draft_days.is_empty());
 }
+
 #[test]
 fn assigned_credentials_never_read_other_leads_or_replace_agent_identity_on_migration() {
     let mut f = Fixture::new();
@@ -715,7 +708,7 @@ fn canonical_lock_serializes_concurrent_writers_and_stale_owner_revisions_refuse
     waiter.join().unwrap();
 }
 #[test]
-fn field_write_refusal_and_policy_revocation_preserve_original_drafts() {
+fn field_write_and_new_hire_refusals_preserve_revocation_without_creating_drafts() {
     let mut f = Fixture::new();
     let mut p = f.policy.clone();
     p.version = 2;
@@ -758,9 +751,12 @@ fn field_write_refusal_and_policy_revocation_preserve_original_drafts() {
             .unwrap_err()
             .contains("field grant")
     );
-    f.store
-        .apply_sales_agent(&a, &f.draft("recorded-draft", 3))
-        .unwrap();
+    assert!(
+        f.store
+            .apply_sales_agent(&a, &f.draft("blocked-draft", 3))
+            .unwrap_err()
+            .contains("training")
+    );
     f.owner_apply(
         "withdraw-policy",
         OwnerOperation::RevokePolicy {
@@ -779,7 +775,7 @@ fn field_write_refusal_and_policy_revocation_preserve_original_drafts() {
             .agent_records
             .drafts
             .len(),
-        1
+        0
     );
 }
 #[test]

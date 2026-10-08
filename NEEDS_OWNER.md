@@ -1770,6 +1770,16 @@ as commercial evidence. Retain the original partial transcript and expense
 when execution fails or is interrupted; a new controller or schedule cannot
 reset unknown liability. Supply owner-marked examples and original reviews
 for REV-57 calibration and locked evaluation before enabling prospect drafts.
+Use the qualification owner's exact review controls with ten passing written
+practices across five situations and twenty distinct reviewed samples, including
+opt-out and ambiguous consent. The bounded host adapter must prove its original
+model identity, full input/output/retry/deadline caps, and actual price source;
+there is no default live-provider adapter or zero-cost subscription inference.
+A measured certificate never grants sending authority. Correct an attributed
+complaint, changed identity/playbook/source, or two failed real drafts in one
+Chicago week before collecting fresh practice and review evidence for
+recertification; reusing an old sample or changing the certificate ID cannot
+reset the suspension.
 
 ## REV-59 meeting and human handoff activation
 

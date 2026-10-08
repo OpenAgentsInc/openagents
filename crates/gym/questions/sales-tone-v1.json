@@ -1,0 +1,26 @@
+{
+  "$comment": "Draft question text for REV57. No default probability threshold, owner labels, measured quality, or sending authority. Freeze only after owner-marked development measurements; keep question and decision digests distinct.",
+  "schema": "openagents.gym.question_set.v1",
+  "id": "sales-tone-v1",
+  "suite": "sales-tone",
+  "questions": {
+    "clarity": {
+      "type": "score",
+      "instructions": "How directly and clearly does `draft.text` express its purpose and next step for this prospect, considering `conversation_context`? Judge clarity only; do not reward commercial claims or reinterpret authorization.",
+      "criteria": [
+        "The purpose and proposed next step cannot be identified from the draft.",
+        "The purpose or next step can be inferred, but vague or conflicting wording obscures it.",
+        "The purpose and proposed next step are explicit and understandable without inference."
+      ]
+    },
+    "respect": {
+      "type": "score",
+      "instructions": "How respectfully does `draft.text` address the buyer, considering `conversation_context`? Judge the wording toward the buyer, without treating tone as permission or rewarding factual commercial claims.",
+      "criteria": [
+        "The wording belittles, shames, dismisses, or antagonizes the buyer.",
+        "The wording stays neutral but is abrupt or inattentive to the buyer's stated concern.",
+        "The wording acknowledges the buyer's concern and offers a clear, respectful response without belittling or antagonizing them."
+      ]
+    }
+  }
+}

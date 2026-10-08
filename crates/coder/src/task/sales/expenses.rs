@@ -374,6 +374,20 @@ pub(super) struct Book {
     reservations: BTreeMap<String, Reservation>,
 }
 impl Book {
+    pub(super) fn admitted_policy(&self, source: &Source) -> Result<(&str, &Policy)> {
+        let sha = self
+            .current
+            .as_deref()
+            .ok_or("sales model policy is unavailable")?;
+        let policy = self
+            .policies
+            .get(sha)
+            .ok_or("sales model policy is unavailable")?;
+        if !policy.sources.contains(source) {
+            return Err("sales decision source is no longer admitted".into());
+        }
+        Ok((sha, policy))
+    }
     /// Original attribution only; this lookup grants no execution authority.
     pub(super) fn reservation(&self, id: &str) -> Option<&Reservation> {
         self.reservations.get(id)

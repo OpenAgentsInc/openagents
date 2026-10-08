@@ -81,7 +81,7 @@ fn run(f: &mut Fixture, request: &helpers::Request, id: &str) -> Result<helpers:
     result
 }
 #[test]
-fn admitted_cited_helper_pins_exact_reviews_cost_and_native_draft_without_source_execution() {
+fn admitted_cited_helper_pins_reviews_cost_and_new_hires_cannot_draft() {
     let (mut f, request) = prepared();
     let record = run(&mut f, &request, "supported-helper").unwrap();
     assert_eq!(
@@ -115,29 +115,37 @@ fn admitted_cited_helper_pins_exact_reviews_cost_and_native_draft_without_source
             recommendation: Some(record.artifact.clone()),
         },
     );
-    f.store.apply_sales_agent(&access, &bytes).unwrap();
-    let draft = f.store.read_sales_agent(&access).unwrap().drafts.remove(0);
-    assert_eq!(draft.check_refs[0].sha256, record.artifact.sha256);
-    assert!(!draft.outbound_authority);
+    f.store
+        .validate_sales_helper_artifacts(
+            &f.lead,
+            &access.assignment,
+            &[record.artifact.clone()],
+            Some(&record.artifact),
+            record.answer.draft_body.as_deref().unwrap(),
+        )
+        .unwrap();
+    assert!(
+        f.store
+            .apply_sales_agent(&access, &bytes)
+            .unwrap_err()
+            .contains("training")
+    );
+    assert!(f.store.read_sales_agent(&access).unwrap().drafts.is_empty());
     std::fs::write(
         f.dir.path().join("contract"),
         b"changed maintained evidence",
     )
     .unwrap();
-    let revision = f.store.state.leads[&f.lead].revision;
     assert!(
-        f.owner_apply(
-            "stale-owner-review",
-            OwnerOperation::ReviewDraft {
-                lead: f.lead.clone(),
-                expected_lead_revision: revision,
-                draft: draft.reference,
-                state: DraftState::OwnerReviewed,
-                reference: artifact("owner-review"),
-            },
-            None
-        )
-        .is_err()
+        f.store
+            .validate_sales_helper_artifacts(
+                &f.lead,
+                &access.assignment,
+                &[record.artifact.clone()],
+                Some(&record.artifact),
+                record.answer.draft_body.as_deref().unwrap()
+            )
+            .is_err()
     );
     assert!(f.store.apply_sales_agent(&access, &bytes).is_err());
 }

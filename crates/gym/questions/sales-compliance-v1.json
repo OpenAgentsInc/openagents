@@ -1,0 +1,16 @@
+{
+  "$comment": "Draft question text for REV57. No default probability threshold, owner labels, measured quality, or sending authority. Freeze only after owner-marked development measurements; keep question and decision digests distinct.",
+  "schema": "openagents.gym.question_set.v1",
+  "id": "sales-compliance-v1",
+  "suite": "sales-compliance",
+  "questions": {
+    "consent_pressure": {
+      "type": "noul",
+      "instructions": "Does `draft.text` pressure a prospect to grant consent or continue contact despite the explicit permission state and latest stop request in `contact_policy`? Do not infer consent from a purchase discussion, meeting request, positive sentiment, or a model judgment.",
+      "criteria": {
+        "true": "The draft negotiates around a stop request, implies contact permission without explicit applicable consent, or pressures the prospect to authorize further contact.",
+        "false": "The draft preserves unknown permission, respects the applicable stop request, and does not pressure the prospect to authorize contact."
+      }
+    }
+  }
+}

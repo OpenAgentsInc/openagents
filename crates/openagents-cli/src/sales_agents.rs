@@ -70,18 +70,21 @@ fn parse(words: &[String]) -> Result<Args, String> {
     Ok(args)
 }
 pub(super) fn input(args: &Args) -> Result<Vec<u8>, String> {
+    input_bound(args, 32 * 1024)
+}
+pub(super) fn input_bound(args: &Args, limit: u64) -> Result<Vec<u8>, String> {
     let path = required(args, "input")?;
     let mut bytes = Vec::new();
     if path == "-" {
         std::io::stdin()
-            .take(32 * 1024 + 1)
+            .take(limit + 1)
             .read_to_end(&mut bytes)
             .map_err(|e| e.to_string())?;
     } else {
         let path = Path::new(path);
         let meta =
             std::fs::symlink_metadata(path).map_err(|_| "sales agent input is unavailable")?;
-        if !meta.is_file() || meta.len() > 32 * 1024 {
+        if !meta.is_file() || meta.len() > limit {
             return Err("sales agent input must be a bounded private regular file".into());
         }
         let mut options = std::fs::OpenOptions::new();
@@ -102,7 +105,7 @@ pub(super) fn input(args: &Args) -> Result<Vec<u8>, String> {
         let held = file
             .metadata()
             .map_err(|_| "sales agent input is unavailable")?;
-        if !held.is_file() || held.len() > 32 * 1024 {
+        if !held.is_file() || held.len() > limit {
             return Err("sales agent input must be a bounded private regular file".into());
         }
         #[cfg(unix)]
@@ -120,11 +123,11 @@ pub(super) fn input(args: &Args) -> Result<Vec<u8>, String> {
         if !private_fs::is_private(&file).map_err(|e| e.to_string())? {
             return Err("sales agent input must be private".into());
         }
-        file.take(32 * 1024 + 1)
+        file.take(limit + 1)
             .read_to_end(&mut bytes)
             .map_err(|e| e.to_string())?;
     }
-    if bytes.len() > 32 * 1024 {
+    if bytes.len() as u64 > limit {
         return Err("sales agent input exceeds 32 KiB".into());
     }
     Ok(bytes)

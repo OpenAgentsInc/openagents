@@ -6,7 +6,9 @@ adds the six sales job presets, narrowing host charters, and signed,
 owner-recorded crew verdicts on the shared runtime. Its initial scope is
 owner-requested drafting from supplied text and the member's own private
 memory; all model tools and standing jobs are disabled for sales roles.
-The other sales-floor adapters and operating policies remain planned. This
+REV-53, REV-55, REV-56, and REV-58 add the private pipeline, reviewed evidence
+helpers, synthetic written practice, and durable model reservations. The
+remaining adapters and operating policies are tracked in the roadmap. This
 page plans a sales organization of OpenAgents' own agents, run and visible inside
 [Everglade](../verse/everglade.md), that carries out the
 [sales strategy](README.md) under the owner's authority. The

@@ -171,7 +171,7 @@ impl Store {
         self.admin(owner)?;
         self.current_helper_answer(request)
     }
-    fn current_helper_answer(&self, request: &Request) -> Result<Answer> {
+    pub(crate) fn current_helper_answer(&self, request: &Request) -> Result<Answer> {
         let views = self.current_claim_views(&request.claims, &request.release)?;
         let mut citations = Vec::new();
         let mut clauses = Vec::new();

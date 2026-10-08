@@ -18,6 +18,8 @@ mod meetings;
 mod models;
 #[path = "sales_privacy.rs"]
 mod privacy;
+#[path = "sales_qualification.rs"]
+mod qualification;
 #[path = "sales_training.rs"]
 mod training;
 pub const USAGE: &str = "usage: openagents sales COMMAND --root DIR [--credential FILE] [--json]
@@ -120,6 +122,20 @@ pub const USAGE: &str = "usage: openagents sales COMMAND --root DIR [--credentia
         Retain bounded cited claims, prices, and recommendation with admitted cost.
   claims helper-show --reference ID
         Read the original private helper result and expense reference.
+  qualification questions --dimension claims|compliance|tone
+        Read pinned advisory questions without invented decision cuts.
+  qualification publish --input FILE
+        Retain original owner-labeled suites and a priced source.
+  qualification show --package ID
+        Read original measurements and frozen package evidence.
+  qualification freeze --package ID
+        Freeze successful original calibration and development rows.
+  qualification accept --reference ID --grade ID --input FILE
+        Record an owner review of an original passing sample.
+  qualification certify --input FILE
+        Require original passing practices and owner-reviewed samples.
+  qualification complaint --reference ID --expense ID --input FILE
+        Attribute an original real-draft complaint and suspend its actor.
   training personas
         Read labeled fictional buyer situations.
   training script-source
@@ -207,6 +223,13 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("claims helper-source", Effect::ReadOnly),
     Declared::computer("claims helper", Effect::LocalWrite),
     Declared::computer("claims helper-show", Effect::ReadOnly),
+    Declared::computer("qualification questions", Effect::ReadOnly),
+    Declared::computer("qualification publish", Effect::LocalWrite),
+    Declared::computer("qualification show", Effect::ReadOnly),
+    Declared::computer("qualification freeze", Effect::LocalWrite),
+    Declared::computer("qualification accept", Effect::LocalWrite),
+    Declared::computer("qualification certify", Effect::Grants),
+    Declared::computer("qualification complaint", Effect::Grants),
     Declared::computer("training personas", Effect::ReadOnly),
     Declared::computer("training script-source", Effect::ReadOnly),
     Declared::computer("training schedule", Effect::LocalWrite),
@@ -217,6 +240,9 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("review", Effect::LocalWrite),
 ];
 pub fn run(output: &Output, words: &[String]) -> u8 {
+    if words.first().is_some_and(|w| w == "qualification") {
+        return qualification::run(output, &words[1..]);
+    }
     if words.first().is_some_and(|w| w == "training") {
         return training::run(output, &words[1..]);
     }

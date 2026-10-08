@@ -260,6 +260,9 @@ pub(super) struct State {
     helpers: BTreeMap<String, helpers::Record>,
 }
 impl State {
+    pub(super) fn helper(&self, reference: &str) -> Option<&helpers::Record> {
+        self.helpers.get(reference)
+    }
     pub(super) fn check(&self) -> Result<()> {
         if self.sources.len() > MAX_REVISIONS
             || self.claims.len() > MAX_REVISIONS

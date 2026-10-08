@@ -8426,6 +8426,291 @@
           ]
         },
         {
+          "name": "qualification",
+          "children": [
+            {
+              "name": "questions",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "qualification",
+                  "questions"
+                ],
+                "usage": [
+                  "qualification questions --dimension claims|compliance|tone"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "qualification"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "questions"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "dimension",
+                        "value": "claims|compliance|tone",
+                        "choices": [
+                          "claims",
+                          "compliance",
+                          "tone"
+                        ]
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Read pinned advisory questions without invented decision cuts.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "publish",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "qualification",
+                  "publish"
+                ],
+                "usage": [
+                  "qualification publish --input FILE"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "qualification"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "publish"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "input",
+                        "value": "FILE",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Retain original owner-labeled suites and a priced source.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "show",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "qualification",
+                  "show"
+                ],
+                "usage": [
+                  "qualification show --package ID"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "qualification"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "show"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "package",
+                        "value": "ID",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Read original measurements and frozen package evidence.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "freeze",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "qualification",
+                  "freeze"
+                ],
+                "usage": [
+                  "qualification freeze --package ID"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "qualification"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "freeze"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "package",
+                        "value": "ID",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Freeze successful original calibration and development rows.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "accept",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "qualification",
+                  "accept"
+                ],
+                "usage": [
+                  "qualification accept --reference ID --grade ID --input FILE"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "qualification"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "accept"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "reference",
+                        "value": "ID",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "grade",
+                        "value": "ID",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "input",
+                        "value": "FILE",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Record an owner review of an original passing sample.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "certify",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "qualification",
+                  "certify"
+                ],
+                "usage": [
+                  "qualification certify --input FILE"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "qualification"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "certify"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "input",
+                        "value": "FILE",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Require original passing practices and owner-reviewed samples.",
+                "effect": "grants",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "complaint",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "qualification",
+                  "complaint"
+                ],
+                "usage": [
+                  "qualification complaint --reference ID --expense ID --input FILE"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "qualification"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "complaint"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "reference",
+                        "value": "ID",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "expense",
+                        "value": "ID",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "input",
+                        "value": "FILE",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Attribute an original real-draft complaint and suspend its actor.",
+                "effect": "grants",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
+        },
+        {
           "name": "training",
           "children": [
             {
@@ -9000,6 +9285,42 @@
         {
           "kind": "option",
           "name": "reference",
+          "value": "ID",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "dimension",
+          "value": "claims|compliance|tone",
+          "choices": [
+            "claims",
+            "compliance",
+            "tone"
+          ],
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "package",
+          "value": "ID",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "grade",
+          "value": "ID",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "expense",
           "value": "ID",
           "open": true,
           "optional": true,

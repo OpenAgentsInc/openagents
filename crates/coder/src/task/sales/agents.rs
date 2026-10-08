@@ -64,7 +64,7 @@ pub struct Artifact {
     pub sha256: String,
 }
 impl Artifact {
-    fn check(&self) -> Result<()> {
+    pub(super) fn check(&self) -> Result<()> {
         id(&self.reference)?;
         token(&self.sha256)
     }
@@ -210,6 +210,7 @@ pub struct LeadRecords {
 pub enum CertState {
     InTraining,
     OwnerMarked,
+    Qualified,
     Suspended,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -261,6 +262,8 @@ pub struct CertRecord {
     pub basis: String,
     pub measured_qualified: bool,
     pub outbound_authority: bool,
+    #[serde(default)]
+    pub measured: Option<super::qualification::MeasuredCertification>,
 }
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -330,9 +333,13 @@ impl Book {
         for (key, cert) in &self.certificates {
             cert.certification.check()?;
             if key != &format!("{}:{}", cert.certification.id, cert.certification.version)
-                || cert.basis != "owner_recorded"
-                || cert.measured_qualified
                 || cert.outbound_authority
+                || (cert.basis == "owner_recorded"
+                    && (cert.measured_qualified
+                        || cert.measured.is_some()
+                        || cert.certification.state == CertState::Qualified))
+                || (cert.basis == "gym_measured" && cert.measured.is_none())
+                || !matches!(cert.basis.as_str(), "owner_recorded" | "gym_measured")
             {
                 return Err("sales certification identity or authority disagrees".into());
             }
@@ -516,6 +523,7 @@ impl Store {
     pub fn sales_agent_owner_view(&mut self, access: &Access) -> Result<OwnerView> {
         self.refresh()?;
         self.admin(access)?;
+        self.refresh_sales_certificates()?;
         Ok(OwnerView {
             revision: self.state.agents.revision,
             current: self.state.agents.current.clone(),
@@ -910,6 +918,11 @@ impl Store {
             OwnerOperation::RecordCertification { certification } => {
                 admitted_until = Some(certification.expires_at);
                 certification.check()?;
+                if certification.state == CertState::Qualified {
+                    return Err(
+                        "manual owner marks cannot establish measured sales qualification".into(),
+                    );
+                }
                 let source = native::Native::read(
                     self.dir.parent().ok_or("host root is unavailable")?,
                     &certification.agent.name,
@@ -950,6 +963,7 @@ impl Store {
                         basis: "owner_recorded".into(),
                         measured_qualified: false,
                         outbound_authority: false,
+                        measured: None,
                     },
                 );
                 held_native = Some(source);
@@ -980,7 +994,7 @@ impl Store {
             outcome,
         )
     }
-    fn current_sales_policy(&self, sha: &str, now: u64) -> Result<&Policy> {
+    pub(super) fn current_sales_policy(&self, sha: &str, now: u64) -> Result<&Policy> {
         let record = self
             .state
             .agents
@@ -995,7 +1009,13 @@ impl Store {
         }
         Ok(&record.policy)
     }
-    fn agent_scope(&self, lead: &Lead, agent: &Anchor, policy: &Policy, now: u64) -> Result<()> {
+    pub(super) fn agent_scope(
+        &self,
+        lead: &Lead,
+        agent: &Anchor,
+        policy: &Policy,
+        now: u64,
+    ) -> Result<()> {
         let channel = contact(&lead.contact)?
             .split_once(':')
             .ok_or("sales contact channel is unavailable")?
@@ -1191,7 +1211,9 @@ impl Store {
     }
     pub fn apply_sales_agent(&mut self, access: &AgentAccess, bytes: &[u8]) -> Result<Receipt> {
         self.refresh()?;
-        let (lead, grant, policy, native) = self.checked_sales_agent(access)?;
+        let (_, _, _, native) = self.checked_sales_agent(access)?;
+        native.recheck()?;
+        drop(native);
         super::privacy::check_credentials(
             &self.state,
             std::str::from_utf8(bytes).map_err(|_| "sales agent command is not UTF-8")?,
@@ -1200,6 +1222,10 @@ impl Store {
         if command.schema != AGENT_COMMAND_SCHEMA {
             return Err("unsupported sales agent command".into());
         }
+        if matches!(&command.operation, AgentOperation::ProposeDraft { .. }) {
+            self.check_sales_agent_qualification(access)?;
+        }
+        let (lead, grant, policy, native) = self.checked_sales_agent(access)?;
         if let AgentOperation::ProposeDraft {
             body,
             check_refs,

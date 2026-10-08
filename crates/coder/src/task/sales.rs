@@ -17,6 +17,7 @@ pub mod intake;
 pub mod meetings;
 pub mod partners;
 pub mod privacy;
+pub mod qualification;
 pub mod referrals;
 pub mod training;
 
@@ -300,6 +301,8 @@ struct State {
     training: training::Book,
     #[serde(default)]
     meetings: meetings::Book,
+    #[serde(default)]
+    qualification: qualification::Book,
 }
 impl Default for State {
     fn default() -> Self {
@@ -322,6 +325,7 @@ impl Default for State {
             expenses: expenses::Book::default(),
             training: training::Book::default(),
             meetings: meetings::Book::default(),
+            qualification: qualification::Book::default(),
         }
     }
 }
@@ -518,6 +522,8 @@ impl Store {
         state.expenses.check()?;
         state.training.check()?;
         state.meetings.check()?;
+        state.qualification.check()?;
+        state.qualification.check_certificates(&state.agents)?;
         privacy::remember_retained(&mut state)?;
         if state.leads.values().any(|lead| lead.schema != LEAD_SCHEMA)
             || state
@@ -697,6 +703,7 @@ impl Store {
         let mut changed = !expired.is_empty();
         changed |= next.expenses.recover(&self.dir, now)?;
         changed |= next.training.recover(&self.dir)?;
+        changed |= next.qualification.recover(&self.dir)?;
         changed |= next.meetings.prune(now);
         let retired_sales = next
             .leads
