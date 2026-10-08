@@ -504,6 +504,15 @@ pub struct Tile {
     scratch: [Vec<f32>; 8],
 }
 
+impl Tile {
+    /// Heap storage retained by all fields and FFT scratch grids, bytes.
+    #[must_use]
+    pub fn heap_bytes(&self) -> usize {
+        [&self.dx, &self.height, &self.dz, &self.sx, &self.sz, &self.jacobian]
+            .into_iter().chain(self.scratch.iter()).map(|v| v.capacity() * 4).sum()
+    }
+}
+
 /// One tick of the gameplay band at [`GAMEPLAY_SIZE`]²: displacement and
 /// the water's velocity at each rest point.
 #[derive(Clone, Debug, PartialEq)]
@@ -564,6 +573,15 @@ pub struct Synth {
 }
 
 impl Synth {
+    /// Heap storage retained by mode tables, phases, and both transforms.
+    #[must_use]
+    pub fn heap_bytes(&self) -> usize {
+        self.phase.capacity() * std::mem::size_of::<[f32; 2]>()
+            + self.fft.heap_bytes() + self.gameplay.heap_bytes()
+            + self.modes.capacity() * std::mem::size_of::<Modes>()
+            + self.modes.iter().map(|m| m.nm.capacity() * 8 + m.h0.capacity() * 8
+                + m.h0m.capacity() * 8 + m.k.capacity() * 12 + m.harmonic.capacity() * 8).sum::<usize>()
+    }
     /// `count` cascades of `size` texels.
     ///
     /// # Errors

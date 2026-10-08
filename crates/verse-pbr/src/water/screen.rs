@@ -102,6 +102,15 @@ impl Plan {
         }
     }
 
+    /// Drops optional optics without changing the surface's fallback.
+    #[must_use]
+    pub fn with_effects(mut self, effects: verse_engine::quality::WaterEffects) -> Self {
+        self.copies &= effects.copies();
+        if !effects.mirror() { self.mirror_divisor = 0; }
+        if !effects.ssr() { self.ssr_steps = 0; }
+        self
+    }
+
     /// The mirror's size for a view `width` by `height`.
     #[must_use]
     pub fn mirror_size(&self, width: u32, height: u32) -> Option<[u32; 2]> {
