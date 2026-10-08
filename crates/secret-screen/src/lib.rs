@@ -259,6 +259,64 @@ pub fn claude_login_path(path: &str) -> bool {
         .any(|part| part == ".credentials.json")
 }
 
+/// Engine login files under a home directory: Claude Code's and Codex's.
+/// No evidence, export, or image carries them, and every value in them is
+/// redacted wherever it appears (`coder_environment::evidence::Redactor`).
+pub const ENGINE_LOGIN_FILES: &[&str] = &[".claude/.credentials.json", ".codex/auth.json"];
+
+/// Environment variables that carry engine logins or keys.
+pub const ENGINE_LOGIN_ENV: &[&str] = &[
+    CLAUDE_CODE_OAUTH_TOKEN,
+    "ANTHROPIC_API_KEY",
+    "OPENAI_API_KEY",
+    "CODEX_API_KEY",
+];
+
+/// Whether a relative or absolute path names an engine login file:
+/// Claude Code's `.credentials.json` anywhere, or Codex's `auth.json`
+/// under `.codex`.
+#[must_use]
+pub fn engine_login_path(path: &str) -> bool {
+    let parts: Vec<&str> = path.split(['/', '\\']).collect();
+    claude_login_path(path)
+        || parts
+            .windows(2)
+            .any(|pair| pair[0] == ".codex" && pair[1] == "auth.json")
+}
+
+/// The credential values inside a login or credential document: every
+/// string under a key that names a token, secret, key, or password (for
+/// example `accessToken`, `refresh_token`, `OPENAI_API_KEY`), at any
+/// depth. Text that is not JSON has none.
+#[must_use]
+pub fn credential_fragments(document: &str) -> Vec<String> {
+    fn walk(value: &serde_json::Value, named: bool, found: &mut Vec<String>) {
+        match value {
+            serde_json::Value::String(s) if named => found.push(s.clone()),
+            serde_json::Value::Object(fields) => {
+                for (name, value) in fields {
+                    let name = name.to_ascii_lowercase();
+                    let named = ["token", "secret", "key", "password"]
+                        .iter()
+                        .any(|w| name.contains(w));
+                    walk(value, named, found);
+                }
+            }
+            serde_json::Value::Array(values) => {
+                for value in values {
+                    walk(value, named, found);
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut found = Vec::new();
+    if let Ok(document) = serde_json::from_str::<serde_json::Value>(document) {
+        walk(&document, false, &mut found);
+    }
+    found
+}
+
 /// The shortest credential value the exact comparison checks: shorter
 /// values match ordinary words.
 pub const EXACT_MIN: usize = 12;
@@ -424,6 +482,25 @@ mod tests {
         assert!(claude_login_path("/home/user/.claude/.credentials.json"));
         assert!(claude_login_path(".claude/.credentials.json"));
         assert!(!claude_login_path("docs/credentials.md"));
+    }
+
+    #[test]
+    fn engine_logins_are_named_in_one_place() {
+        assert!(engine_login_path("/home/u/.claude/.credentials.json"));
+        assert!(engine_login_path("home/.codex/auth.json"));
+        assert!(!engine_login_path("crates/auth.json"));
+        for file in ENGINE_LOGIN_FILES {
+            assert!(engine_login_path(file), "{file}");
+        }
+        assert!(ENGINE_LOGIN_ENV.contains(&CLAUDE_CODE_OAUTH_TOKEN));
+        let access = format!("sk-ant-oat01-{}", "Q7".repeat(30));
+        let document = format!(
+            r#"{{"claudeAiOauth":{{"accessToken":"{access}","scopes":["user"]}},"tokens":[{{"id_token":"abc"}}],"OPENAI_API_KEY":"k"}}"#
+        );
+        let mut found = credential_fragments(&document);
+        found.sort();
+        assert_eq!(found, vec!["abc".to_string(), "k".to_string(), access]);
+        assert!(credential_fragments("not json").is_empty());
     }
 
     #[test]

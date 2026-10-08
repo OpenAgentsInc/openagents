@@ -20,16 +20,11 @@ pub const MAX_SELECTED_BYTES: usize = 1024 * 1024;
 /// Most values one redactor holds.
 pub const MAX_SELECTED_VALUES: usize = 4096;
 
-/// Engine login files under a home directory. Their values never enter
-/// evidence: [`Redactor::engine_logins`] selects every credential in them.
-pub const ENGINE_LOGIN_FILES: &[&str] = &[".claude/.credentials.json", ".codex/auth.json"];
-/// Environment variables that carry engine logins.
-pub const ENGINE_LOGIN_ENV: &[&str] = &[
-    "CLAUDE_CODE_OAUTH_TOKEN",
-    "ANTHROPIC_API_KEY",
-    "OPENAI_API_KEY",
-    "CODEX_API_KEY",
-];
+/// Engine login files and environment variables. Their values never
+/// enter evidence: [`Redactor::engine_logins`] selects every credential in
+/// them. The Claude Code and Codex login rules live in `secret-screen`, the
+/// one place every evidence path reads them from.
+pub use secret_screen::{ENGINE_LOGIN_ENV, ENGINE_LOGIN_FILES};
 
 #[derive(Clone, Default)]
 pub struct Redactor {
@@ -78,13 +73,9 @@ impl Redactor {
         if text.trim().len() >= MIN_SELECTED_BYTES {
             self.select(text)?;
         }
-        if let Ok(document) = serde_json::from_str::<Value>(text) {
-            let mut found = Vec::new();
-            fragments(&document, false, &mut found);
-            for value in found {
-                if value.trim().len() >= MIN_SELECTED_BYTES && value.len() <= MAX_SELECTED_BYTES {
-                    self.select(&value)?;
-                }
+        for value in secret_screen::credential_fragments(text) {
+            if value.trim().len() >= MIN_SELECTED_BYTES && value.len() <= MAX_SELECTED_BYTES {
+                self.select(&value)?;
             }
         }
         Ok(())
@@ -221,26 +212,5 @@ impl Redactor {
             }
             _ => 0,
         }
-    }
-}
-
-fn fragments(value: &Value, named: bool, found: &mut Vec<String>) {
-    match value {
-        Value::String(s) if named => found.push(s.clone()),
-        Value::Object(fields) => {
-            for (name, value) in fields {
-                let name = name.to_ascii_lowercase();
-                let named = ["token", "secret", "key", "password"]
-                    .iter()
-                    .any(|w| name.contains(w));
-                fragments(value, named, found);
-            }
-        }
-        Value::Array(values) => {
-            for value in values {
-                fragments(value, named, found);
-            }
-        }
-        _ => {}
     }
 }

@@ -9,6 +9,8 @@ description = "Repository environment records: draft recipes, immutable versions
 [dependencies]
 atif = { path = "../atif" }
 boat = { path = "../boat" }
+# The Claude Code and Codex login rules evidence redaction selects from.
+secret-screen = { path = "../secret-screen" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"

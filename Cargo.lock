@@ -3102,6 +3102,7 @@ version = "0.1.0"
 dependencies = [
  "atif",
  "boat",
+ "secret-screen",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -13082,6 +13083,7 @@ name = "secret-screen"
 version = "0.1.0"
 dependencies = [
  "regex",
+ "serde_json",
 ]
 
 [[package]]
