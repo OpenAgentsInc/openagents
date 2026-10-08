@@ -16,7 +16,7 @@ use axum::routing::{get, post};
 use serde::Deserialize;
 
 use crate::App;
-use crate::layout::{escape, page, problem};
+use crate::layout::{self, escape, problem};
 
 /// Pages that load `static/chat.js`.
 pub(crate) const COMPOSER_POLICY: &str = "default-src 'none'; style-src 'self'; font-src 'self'; img-src 'self'; \
@@ -103,7 +103,7 @@ async fn show(State(app): State<App>, Path(id): Path<String>) -> Response {
     let Some(messages) = app.chats.get(&id) else {
         return missing();
     };
-    let mut response = page("Chat", None, &thread(&id, &messages));
+    let mut response = layout::app("Chat", None, &thread(&id, &messages));
     response.headers_mut().insert(
         header::CONTENT_SECURITY_POLICY,
         HeaderValue::from_static(COMPOSER_POLICY),
@@ -130,16 +130,21 @@ async fn follow(State(app): State<App>, Path(id): Path<String>, form: Form<Promp
     Redirect::to(&format!("/chat/{id}")).into_response()
 }
 
+/// The messages scroll in the space under the header; the composer stays
+/// docked at the bottom of the window.
 fn thread(id: &str, messages: &[String]) -> String {
-    let mut body = String::from("<section class=\"thread\" aria-label=\"Chat\">");
+    let mut body = String::from(
+        "<section id=\"chat-thread\" class=\"thread\" aria-label=\"Chat\"><div class=\"chat-column\">",
+    );
     for message in messages {
         body.push_str(&format!(
             "<p class=\"thread-said\"><span class=\"term-mark\">You</span> {}</p>",
             escape(message)
         ));
     }
-    body.push_str("</section>");
+    body.push_str("</div></section><div class=\"chat-dock chat-column\">");
     body.push_str(&composer(&format!("/chat/{id}"), "Continue this chat"));
+    body.push_str("</div>");
     body
 }
 
@@ -172,7 +177,7 @@ tw:active:bg-noir-stroke-subtle\">{content}{}</button>",
 }
 
 /// The homepage and chat composer: the repository, branch, and environment
-/// pickers, then a 640 by 195 pixel card holding the text box and its
+/// pickers, then a 640 by 155 pixel card holding the text box and its
 /// toolbar. Only the text box and the send button do anything yet.
 pub(crate) fn composer(action: &str, label: &str) -> String {
     let pickers = format!(
@@ -193,12 +198,12 @@ tw:hover:bg-noir-stroke-subtle tw:hover:text-noir-content tw:active:bg-noir-stro
 <form id=\"chat-form\" action=\"{action}\" method=\"post\">\
 <div class=\"tw:flex tw:items-center tw:gap-2 tw:min-h-8 tw:px-1.5 tw:pb-1.5\">{pickers}</div>\
 <div id=\"chat-card\" class=\"chat-composer-card tw:relative tw:flex tw:flex-col tw:overflow-hidden \
-tw:w-full tw:h-[195px] tw:rounded-xl tw:cursor-text tw:border tw:border-noir-stroke-subtle \
+tw:w-full tw:h-[155px] tw:rounded-xl tw:cursor-text tw:border tw:border-noir-stroke-subtle \
 tw:bg-noir-surface-subtle tw:focus-within:border-noir-stroke\">\
 <label class=\"unseen\" for=\"chat-input\">Message</label>\
-<textarea id=\"chat-input\" name=\"q\" rows=\"4\" maxlength=\"{MAX_CHARS}\" required autofocus \
+<textarea id=\"chat-input\" name=\"q\" rows=\"2\" maxlength=\"{MAX_CHARS}\" required autofocus \
 placeholder=\"Ask OpenAgents to build, fix bugs, explore\" \
-class=\"tw:block tw:flex-1 tw:w-full tw:min-h-[72px] tw:max-h-[400px] tw:m-0 tw:px-3 tw:py-3 \
+class=\"tw:block tw:flex-1 tw:w-full tw:min-h-[32px] tw:max-h-[360px] tw:m-0 tw:px-3 tw:py-3 \
 tw:border-0 tw:bg-transparent tw:resize-none tw:font-mono tw:text-sm \
 tw:text-noir-content tw:placeholder:text-noir-content-secondary tw:outline-none \
 tw:focus-visible:outline-none\"></textarea>\

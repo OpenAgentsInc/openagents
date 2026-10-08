@@ -86,6 +86,47 @@ pub struct SunLayer {
     pub probes: Vec<[f32; 12]>,
 }
 
+/// Reviewed, exact scene identities that can share one immutable layer file.
+/// This is an explicit content audit, not a numeric tolerance at load time.
+#[derive(Clone, Debug, serde::Deserialize)]
+pub struct SceneCompatibility {
+    pub artifact_sha256: String,
+    pub artifact_bytes: u64,
+    pub baked_scene: String,
+    pub baked_key: String,
+    pub vertices: usize,
+    pub targets: Vec<CompatibleScene>,
+}
+
+#[derive(Clone, Debug, serde::Deserialize)]
+pub struct CompatibleScene {
+    pub scene: String,
+    /// Absent for clients that never run the offline baker.
+    pub bake_key: Option<String>,
+}
+
+impl SceneCompatibility {
+    /// Checks both the immutable artifact and an explicitly reviewed target.
+    #[must_use]
+    pub fn accepts(&self, layers: &Layers, scene: &str, key: Option<&str>) -> bool {
+        use sha2::Digest as _;
+        if layers.validate().is_err()
+            || layers.scene != self.baked_scene
+            || layers.bake_key != self.baked_key
+            || layers.vertex_count() != self.vertices
+            || !self.targets.iter().any(|target| {
+                target.scene == scene
+                    && key.is_none_or(|key| target.bake_key.as_deref() == Some(key))
+            })
+        {
+            return false;
+        }
+        let bytes = layers.encode();
+        bytes.len() as u64 == self.artifact_bytes
+            && hex(&sha2::Sha256::digest(&bytes)) == self.artifact_sha256
+    }
+}
+
 /// Every layer one offline bake produced for one scene.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Layers {

@@ -78,7 +78,7 @@ the original October 7 plan.
 | B1: offline baker | #10905 | `0360046732`, `983432c41f` | Closed |
 | B2: lightmap layers | #10906 | `0e0d8afd37`, verification on `codex/everglade-b2-verification` | Per-vertex implementation verified and deployed; UV storage and denser lamp probes remain deferred |
 | B3: time of day and destruction | #10907 | checkpoint `a2f4bbf7d3` on `codex/everglade-b3` | Claimed separately on October 8; check its issue before resuming |
-| B4: tiers and measurement | #10908 | none | Not started |
+| B4: tiers and measurement | #10908 | coordinator | Browser layer loading in progress |
 
 The town has 65 medieval kit houses: Stoop Lane, Main Street, the Fountain
 Plaza, Market Row, the Lantern Quarter, Well Square, the Knowledge,
@@ -125,7 +125,38 @@ unchanged.
   October 8; leave that claim alone. The checkpoint itself has no recorded
   B3 Cargo checks, captures, or measurements; consult the issue for newer
   verification evidence.
-- **B4 (#10908).** Not started. It needs B2 and P8. One 512 px kit pack
+- **B4 (#10908).** The coordinator holds the claim on
+  `codex/everglade-b4-tiers`. Commits `62e6b2fc52` and `bf25b60f6e` fetch
+  and verify the existing VLAY before browser town installation, deliver
+  matching layers without a stepped bake, and report the active state
+  under `?frames`. The focused delivery test and WASM check pass.
+  Browser validation correctly rejects the current scene after
+  `7afd440fe8` moved the fountain earlier in the placement order.
+  The B3 worker has completed matching current-order layers, SHA-256
+  `fc5414a1bfef9e730f3d7d779e4447f12cc86d4e571042eec42518abb30ef7c2`,
+  51,684,139 bytes, from clean source `9967c94cef`. The temporary order
+  restoration was reverted; retain main's ordering and publish these
+  completed layers through the queue after validation. Do not rebake to
+  chase main. Main `7857e78275` makes queue regeneration verified reuse
+  only. Its regression test rejects changed scenes, recipes, dirty
+  receipts, and corrupt bytes. Remote submission
+  `01791484173833860158-2604976-0` was rejected without baking: Linux builds
+  scene `5d33bd1f9115196944a8fc1a7ac3154c0d735f0d054426af0fb86a3f4caf635a`
+  and recipe key `cb19c4b9461edcc75a7d90e1a2da44a4cff967406ec333639a66a2785736a682`,
+  while the completed Mac artifact records scene
+  `f55a1e76fca2e2b96af777e296549aa9b51776cadbcfff6eaf1c77a8ad83b2ab`
+  and key `090f106f9c459f62f9cd67902a18531b7e00f9d15e292e0b60a0dd7b231b0b6b`.
+  Both input file digests and receipt settings/light agree. The release
+  Mac/Linux/browser comparison now proves identical topology, materials,
+  UVs, vertex colors, and licensed images; maximum position differences
+  are 0.031 mm, and at most nine procedural dirt pixels differ by one byte.
+  `bench/verse/2026-10-08/layer-scene-compatibility/` retains the audit
+  summary without licensed content. Checkpoint `20aa21e899` adds exact
+  reviewed scene alternatives bound to the immutable artifact SHA, source
+  recipe, and target recipe. Its checks and publication are pending; unknown
+  scenes and the different debug topology remain rejected. No new bake is
+  needed. Spatial tier reduction and budgets remain open.
+  One 512 px kit pack
   serves every tier today (21,467,658 bytes to transfer, 60.5 MiB decoded),
   exceeding the web and phone soft budgets. Both tiers need B4.
 

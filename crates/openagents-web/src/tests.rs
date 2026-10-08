@@ -224,7 +224,11 @@ async fn the_homepage_links_one_download_page_and_starts_a_chat() {
     let root = tempfile::tempdir().unwrap();
     let site = router(config(root.path().into()));
     let (_, home) = get(site.clone(), "/").await;
-    assert!(home.contains("<a class=\"button\" href=\"/download\">[ Download OpenAgents ]</a>"));
+    assert!(
+        home.contains("<a href=\"/download\">Download</a>"),
+        "the header links /download"
+    );
+    assert!(!home.contains("[ Download OpenAgents ]") && !home.contains("<h1>OpenAgents</h1>"));
     assert!(!home.contains("/install"), "every link says /download");
     assert!(!home.contains(".dmg"), "downloads live on /download");
     assert!(!home.contains("curl ") && !home.contains("irm "));
@@ -261,14 +265,20 @@ async fn the_composer_card_is_styled_by_the_served_tailwind_utilities() {
     let (_, home) = get(site.clone(), "/").await;
     assert!(home.contains("<link rel=\"stylesheet\" href=\"/static/tailwind.css\">"));
     assert!(home.contains("chat-composer-card"));
-    assert!(home.contains("tw:w-full tw:h-[195px]"));
+    assert!(home.contains("tw:w-full tw:h-[155px]"));
     assert!(home.contains("tw:max-w-[640px]"));
+    assert!(home.contains("<div class=\"home-stage\"><section class=\"composer"));
+    let site_css = include_str!("../static/site.css");
+    assert!(
+        site_css
+            .contains(".home-stage{flex:1;display:flex;align-items:center;justify-content:center}")
+    );
     assert!(home.contains("placeholder=\"Ask OpenAgents to build, fix bugs, explore\""));
     assert!(home.contains("<button type=\"submit\" aria-label=\"Send\""));
     let (status, headers, css) = get_with(site, "/static/tailwind.css", LOCAL).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(headers[header::CONTENT_TYPE], "text/css; charset=utf-8");
-    assert!(css.contains(".tw\\:h-\\[195px\\]{height:195px}"), "{css}");
+    assert!(css.contains(".tw\\:h-\\[155px\\]{height:155px}"), "{css}");
     assert!(
         css.contains(".tw\\:max-w-\\[640px\\]{max-width:640px}"),
         "{css}"
@@ -308,6 +318,20 @@ async fn posting_the_homepage_composer_opens_a_chat_page() {
     assert_eq!(status, StatusCode::OK);
     assert!(html.contains("Set up OpenAgents"));
     assert!(html.contains(&format!("action=\"{location}\"")));
+    assert!(html.contains("<header class=\"site-header\">"));
+    assert!(!html.contains("site-footer"), "the chat page has no footer");
+    assert!(!html.contains("href=\"/terms\"") && !html.contains("href=\"/privacy\""));
+    assert!(html.contains("<main id=\"content\" class=\"app\""));
+    let thread = html.find("id=\"chat-thread\"").unwrap();
+    let dock = html.find("class=\"chat-dock chat-column\"").unwrap();
+    let card = html.find("chat-composer-card").unwrap();
+    assert!(
+        thread < dock && dock < card,
+        "the composer docks under the thread"
+    );
+    let (_, home) = get(site.clone(), "/").await;
+    assert!(home.contains("<footer class=\"site-footer\">"));
+    assert!(home.contains("href=\"/terms\"") && home.contains("href=\"/privacy\""));
     let (status, missing) = get(site, "/chat/00000000-0000-4000-8000-000000000000").await;
     assert_eq!(status, StatusCode::NOT_FOUND);
     assert!(missing.contains("<h1>Not found</h1>"));
@@ -932,7 +956,7 @@ async fn a_connected_backend_fills_the_pages_and_escapes_what_it_returns() {
     let root = tempfile::tempdir().unwrap();
     let dir = root.path();
     let (_, home) = get(router(connected(dir)), "/").await;
-    assert!(home.contains("Every new account starts with $25 of credit."));
+    assert!(!home.contains("of credit"));
     let (_, profile) = get(router(connected(dir)), "/u/tester").await;
     assert!(profile.contains("Test Person") && profile.contains("https://github.com/tester"));
     for uri in ["/u/nobody"] {

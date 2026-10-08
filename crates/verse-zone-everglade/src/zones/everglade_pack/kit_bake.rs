@@ -27,10 +27,10 @@ use super::pinned::PinnedFile;
 /// Exact content identity of the reviewed light layers, or empty while
 /// none is published.
 #[rustfmt::skip]
-pub const KIT_BAKE_SHA256: &str = "14ae7f75e9ce4f81483f6f44369753545cb2cab892177607438b3077ebbbae23";
+pub const KIT_BAKE_SHA256: &str = "fc5414a1bfef9e730f3d7d779e4447f12cc86d4e571042eec42518abb30ef7c2";
 /// Transfer size of the reviewed light layers; zero while none is
 /// published.
-pub const KIT_BAKE_BYTES: u64 = 51682623;
+pub const KIT_BAKE_BYTES: u64 = 51684139;
 // Retain previous reviewed digests here when changing KIT_BAKE_SHA256.
 const KIT_BAKE_HISTORY: &[&str] = &[KIT_BAKE_SHA256];
 /// Environment variable naming a local layer file for offline tools, such
@@ -115,4 +115,40 @@ pub fn load_local(path: &Path) -> Result<Layers, String> {
         return Layers::decode(&bytes);
     }
     decode_pinned(&bytes)
+}
+
+/// Exact platform scenes audited against the completed artifact.
+#[must_use]
+pub fn compatibility() -> Arc<verse_pbr::pbr::baked_layers::SceneCompatibility> {
+    static RECORD: std::sync::OnceLock<Arc<verse_pbr::pbr::baked_layers::SceneCompatibility>> =
+        std::sync::OnceLock::new();
+    RECORD
+        .get_or_init(|| {
+            Arc::new(
+                serde_json::from_str(include_str!(
+                    "../../../../../assets/verse/everglade-layer-compatibility.json"
+                ))
+                .expect("the checked-in layer compatibility record is valid"),
+            )
+        })
+        .clone()
+}
+
+#[cfg(test)]
+mod compatibility_tests {
+    use super::*;
+
+    #[test]
+    #[ignore = "requires the private completed layer artifact in VERSE_KIT_BAKE"]
+    fn completed_layers_match_reviewed_platform_identities() {
+        let path =
+            std::env::var_os(LOCAL_ENV).expect("set VERSE_KIT_BAKE to the completed artifact");
+        let bytes = std::fs::read(path).unwrap();
+        let layers = Layers::decode(&bytes).unwrap();
+        let record = compatibility();
+        for target in &record.targets {
+            assert!(record.accepts(&layers, &target.scene, target.bake_key.as_deref()));
+        }
+        assert!(!record.accepts(&layers, "unknown", None));
+    }
 }

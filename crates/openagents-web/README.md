@@ -115,7 +115,7 @@ colors map to the Coder Noir `--noir-*` variables.
 
 | Route | Source | Development server |
 | --- | --- | --- |
-| `/` | What OpenAgents is, one `[ Download OpenAgents ]` link, and a composer that starts `/chat/{uuid}` | Renders. |
+| `/` | A composer, centered between the header and the footer, that starts `/chat/{uuid}` | Renders. |
 | `/chat`, `/chat/{uuid}` | In-memory chat started from the homepage composer | Renders in this process; a restart forgets the chat. |
 | `/download` | `src/pages/download.rs`: the notarized OpenAgents for Mac `.dmg` in `openagentsgemini-oa-updates`, OpenAgents Terminal's install commands, and one link to build everything else from source | Renders. |
 | `/pilot`, `/pilot/install` | Archived Coder-pilot offer copy in `src/pilot.rs` (`ARCHIVED_OFFER`, `ARCHIVED_INSTALL`) | `404`. |

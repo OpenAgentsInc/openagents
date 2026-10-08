@@ -1,6 +1,7 @@
 //! The document shell every page shares: the header with the wordmark and
 //! the sections, the page's own `<main>`, and the footer with the terms and
-//! the privacy policy.
+//! the privacy policy. App pages such as the chat keep the header and drop
+//! the footer.
 
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Response};
@@ -52,6 +53,35 @@ pub fn segment(value: &str) -> String {
 /// link it belongs to, and `body` is the trusted markup inside `<main>`.
 #[must_use]
 pub fn document(title: &str, section: Option<&str>, body: &str) -> String {
+    shell(
+        title,
+        section,
+        &format!(
+            "<div class=\"scroller\"><main id=\"content\" tabindex=\"-1\">{body}</main>\
+<footer class=\"site-footer\"><span class=\"copyright\">{COPYRIGHT}</span>\
+<nav aria-label=\"Legal and links\"><a href=\"/terms\">Terms</a>\
+<span class=\"sep\" aria-hidden=\"true\">\u{b7}</span><a href=\"/privacy\">Privacy</a>\
+<span class=\"sep\" aria-hidden=\"true\">\u{b7}</span><a href=\"{GITHUB}\" rel=\"noopener\">GitHub</a>\
+<span class=\"sep\" aria-hidden=\"true\">\u{b7}</span><a href=\"{X}\" rel=\"noopener\">X</a></nav>\
+</footer></div>"
+        ),
+    )
+}
+
+/// A page with the header and no footer: `<main class="app">` fills the
+/// window under the header and doesn't scroll, so `body` places its own
+/// scrolling regions. The chat page is one.
+#[must_use]
+pub fn app_document(title: &str, section: Option<&str>, body: &str) -> String {
+    shell(
+        title,
+        section,
+        &format!("<main id=\"content\" class=\"app\" tabindex=\"-1\">{body}</main>"),
+    )
+}
+
+/// The head and the header, then `rest`.
+fn shell(title: &str, section: Option<&str>, rest: &str) -> String {
     let title = if title == "OpenAgents" {
         "OpenAgents".to_owned()
     } else {
@@ -75,14 +105,7 @@ pub fn document(title: &str, section: Option<&str>, body: &str) -> String {
 <link rel=\"stylesheet\" href=\"/static/tailwind.css\"></head><body>\
 <a class=\"skip\" href=\"#content\">Skip to content</a>\
 <header class=\"site-header\"><nav aria-label=\"Main\"><a class=\"wordmark\" href=\"/\">OpenAgents</a>\
-<ul class=\"navlinks\">{nav}</ul></nav></header>\
-<div class=\"scroller\"><main id=\"content\" tabindex=\"-1\">{body}</main>\
-<footer class=\"site-footer\"><span class=\"copyright\">{COPYRIGHT}</span>\
-<nav aria-label=\"Legal and links\"><a href=\"/terms\">Terms</a>\
-<span class=\"sep\" aria-hidden=\"true\">\u{b7}</span><a href=\"/privacy\">Privacy</a>\
-<span class=\"sep\" aria-hidden=\"true\">\u{b7}</span><a href=\"{GITHUB}\" rel=\"noopener\">GitHub</a>\
-<span class=\"sep\" aria-hidden=\"true\">\u{b7}</span><a href=\"{X}\" rel=\"noopener\">X</a></nav>\
-</footer></div></body></html>"
+<ul class=\"navlinks\">{nav}</ul></nav></header>{rest}</body></html>"
     )
 }
 
@@ -90,6 +113,12 @@ pub fn document(title: &str, section: Option<&str>, body: &str) -> String {
 #[must_use]
 pub fn page(title: &str, section: Option<&str>, body: &str) -> Response {
     Html(document(title, section, body)).into_response()
+}
+
+/// A footerless [`app_document`] answered with `200`.
+#[must_use]
+pub fn app(title: &str, section: Option<&str>, body: &str) -> Response {
+    Html(app_document(title, section, body)).into_response()
 }
 
 /// A page with no header or footer: `body` fills the whole window, and the
@@ -158,6 +187,20 @@ mod tests {
         let css = include_str!("../static/site.css");
         assert!(css.contains("html,body{height:100%;overflow:hidden}"));
         assert!(css.contains(".scroller{flex:1;min-height:0;overflow-y:auto"));
+    }
+
+    #[test]
+    fn app_pages_keep_the_header_and_drop_the_footer() {
+        let html = app_document("Chat", None, "<p>x</p>");
+        assert!(html.contains("<header class=\"site-header\">"));
+        assert!(
+            html.contains("<main id=\"content\" class=\"app\" tabindex=\"-1\"><p>x</p></main>")
+        );
+        assert!(!html.contains("site-footer") && !html.contains("href=\"/terms\""));
+        assert!(!html.contains("class=\"scroller\""));
+        let css = include_str!("../static/site.css");
+        assert!(css.contains("main.app{flex:1;min-height:0;"));
+        assert!(css.contains(".app .thread{flex:1;min-height:0;overflow-y:auto;"));
     }
 
     #[test]

@@ -234,7 +234,14 @@ struct Frames {
 impl Frames {
     /// Adds one frame that came `gap` ms after the last and took `work` ms,
     /// and logs the second when it is over.
-    fn add(&mut self, now: f64, gap: f64, work: f64, wreckage: Option<[usize; 3]>) {
+    fn add(
+        &mut self,
+        now: f64,
+        gap: f64,
+        work: f64,
+        wreckage: Option<[usize; 3]>,
+        offline_light: Option<bool>,
+    ) {
         if self.count == 0 && self.since == 0.0 {
             self.since = now;
         }
@@ -246,8 +253,10 @@ impl Frames {
         }
         let n = f64::from(self.count.max(1));
         let [raised, pieces, chunks] = wreckage.unwrap_or_default();
+        let offline_light =
+            offline_light.map_or("null", |active| if active { "true" } else { "false" });
         web_sys::console::info_1(&JsValue::from_str(&format!(
-            "Everglade frames {{\"frames\":{},\"gap_ms\":{:.1},\"gap_max_ms\":{:.1},\"work_ms\":{:.2},\"work_max_ms\":{:.2},\"raised\":{raised},\"pieces\":{pieces},\"chunks\":{chunks}}}",
+            "Everglade frames {{\"frames\":{},\"gap_ms\":{:.1},\"gap_max_ms\":{:.1},\"work_ms\":{:.2},\"work_max_ms\":{:.2},\"raised\":{raised},\"pieces\":{pieces},\"chunks\":{chunks},\"offline_light\":{offline_light}}}",
             self.count,
             self.gap.0 / n,
             self.gap.1,
@@ -348,8 +357,15 @@ async fn run() -> Result<(), String> {
         runtime.install_grove_bytes(&bytes)?;
     } else {
         let kit = download_kit(&window).await;
+        if kit.is_some() {
+            download_bake(&window).await;
+        }
         status("Opening Everglade…");
         runtime.install_everglade_bytes_with_kit(&bytes, kit.as_deref())?;
+    }
+    #[cfg(test)]
+    if query_has(&window, "light-proof") {
+        crate::light_proof::export(&runtime)?;
     }
     // The page opens no studio panel, on a keyboard or a touchscreen.
     runtime.interact_hint = verse::runtime::InteractHint::None;
@@ -557,6 +573,25 @@ async fn download_kit(window: &Window) -> Option<Vec<u8>> {
     }
 }
 
+/// Offers the verified offline layers before the town creates its light job.
+async fn download_bake(window: &Window) {
+    use everglade_pack::kit_bake;
+    let file = kit_bake::pinned();
+    if file.bytes == 0 {
+        return;
+    }
+    let url = format!("/everglade/kit/bake/{}.vlay", file.sha256);
+    match fetch_pinned(window, &url, file.bytes)
+        .await
+        .and_then(|bytes| kit_bake::decode_pinned(&bytes))
+    {
+        Ok(layers) => kit_bake::offer(layers),
+        Err(error) => web_sys::console::warn_1(&JsValue::from_str(&format!(
+            "Everglade uses load-time light: {error}"
+        ))),
+    }
+}
+
 /// Fetches `url` from this origin with progress, without credentials or
 /// redirects, bounded by its pinned length `total`.
 async fn fetch_pinned(window: &Window, url: &str, total: u64) -> Result<Vec<u8>, String> {
@@ -635,7 +670,17 @@ impl Page {
             let ended = web_sys::window()
                 .and_then(|w| w.performance())
                 .map_or(started, |p| p.now());
-            frames.add(now, gap, ended - started, self.runtime.everglade_wreckage());
+            let offline_light = self
+                .runtime
+                .everglade_zone_mut()
+                .map(|zone| zone.uses_baked_light());
+            frames.add(
+                now,
+                gap,
+                ended - started,
+                self.runtime.everglade_wreckage(),
+                offline_light,
+            );
         }
     }
 
