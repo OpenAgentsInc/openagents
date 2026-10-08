@@ -12,6 +12,8 @@ pub(crate) mod agents;
 mod claims;
 #[path = "sales_email.rs"]
 mod email;
+#[path = "sales_floor.rs"]
+mod floor;
 #[path = "sales_meetings.rs"]
 mod meetings;
 #[path = "sales_models.rs"]
@@ -102,6 +104,9 @@ pub const USAGE: &str = "usage: openagents sales COMMAND --root DIR [--credentia
         Apply a field-scoped change or propose a private draft.
   agents memory
         Read current opaque references and fixed nonidentifying summary fields.
+  floor report
+  floor escalations
+  floor weekly-draft
   meetings slot --input FILE --expected-version N
         Publish explicit finite owner availability.
   meetings slots
@@ -263,6 +268,9 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("paul pipeline", Effect::LocalWrite),
     Declared::computer("paul research", Effect::LocalWrite),
     Declared::computer("paul practice", Effect::ReadOnly),
+    Declared::computer("floor report", Effect::ReadOnly),
+    Declared::computer("floor escalations", Effect::ReadOnly),
+    Declared::computer("floor weekly-draft", Effect::ReadOnly),
     Declared::computer("meetings slot", Effect::Grants),
     Declared::computer("meetings slots", Effect::ReadOnly),
     Declared::computer("meetings queue", Effect::ReadOnly),
@@ -319,6 +327,9 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
     }
     if words.first().is_some_and(|w| w == "training") {
         return training::run(output, &words[1..]);
+    }
+    if words.first().is_some_and(|w| w == "floor") {
+        return floor::run(output, &words[1..]);
     }
     if words.first().is_some_and(|w| w == "meetings") {
         return meetings::run(output, &words[1..]);

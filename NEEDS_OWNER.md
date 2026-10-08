@@ -1852,3 +1852,17 @@ exercised by fixtures over scratch hosts. Owner-only steps remain:
   provider and unit conversion, commission base and share, support owner
   and hours, pipeline owner, sales domain and legal review, first-team
   controls, and store release steps.
+
+## Sales floor report activation (REV-65, #10872)
+
+The report, escalations, and weekly draft work with no revenue, no financial
+adapter, and no delivery telemetry; absent inputs are labeled unknown or
+listed under `gaps`. Owner steps:
+
+- Run `openagents sales floor escalations --root DIR --credential FILE` on
+  the real sales root whenever the outbox is active; complaints and pauses
+  appear as `immediate`. No scheduler or notifier is installed by this code.
+- Decide whether a weekly draft is published; `sales floor weekly-draft`
+  never publishes, and `sales review` remains the exact owner decision.
+- Name the pipeline owner (deferred decision 7) before relying on the report
+  for the weekly review.

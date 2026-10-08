@@ -389,6 +389,9 @@ impl Book {
         Ok((sha, policy))
     }
     /// Original attribution only; this lookup grants no execution authority.
+    pub(super) fn reservations(&self) -> impl Iterator<Item = &Reservation> {
+        self.reservations.values()
+    }
     pub(super) fn reservation(&self, id: &str) -> Option<&Reservation> {
         self.reservations.get(id)
     }

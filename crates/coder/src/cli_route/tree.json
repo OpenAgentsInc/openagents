@@ -7869,6 +7869,101 @@
           ]
         },
         {
+          "name": "floor",
+          "children": [
+            {
+              "name": "report",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "floor",
+                  "report"
+                ],
+                "usage": [
+                  "floor report"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "floor"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "report"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "escalations",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "floor",
+                  "escalations"
+                ],
+                "usage": [
+                  "floor escalations"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "floor"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "escalations"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "weekly-draft",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "floor",
+                  "weekly-draft"
+                ],
+                "usage": [
+                  "floor weekly-draft"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "floor"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "weekly-draft"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
+        },
+        {
           "name": "meetings",
           "children": [
             {
