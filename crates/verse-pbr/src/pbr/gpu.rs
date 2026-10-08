@@ -2769,7 +2769,9 @@ impl Photo {
             + crate::water::tile::bytes()
             + self.water_buffer.size()
             + self.rain_frame.size()
-            + u64::from(crate::water::rain_occlusion::dimensions(self.capability.quality.tier).0).pow(2) * 4
+            + u64::from(crate::water::rain_occlusion::dimensions(self.capability.quality.tier).0)
+                .pow(2)
+                * 4
             + self
                 .water_screen
                 .as_ref()
@@ -3230,7 +3232,10 @@ impl Photo {
                 }),
                 stencil_ops: None,
             }),
-            timestamp_writes: self.water_timer.as_ref().and_then(|t| t.boundary(self.water_slot, 4)),
+            timestamp_writes: self
+                .water_timer
+                .as_ref()
+                .and_then(|t| t.boundary(self.water_slot, 4)),
             ..Default::default()
         });
         pass.set_bind_group(0, &self.rain_group, &[0]);

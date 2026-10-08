@@ -2141,3 +2141,12 @@ while water, swimming, buoyancy, and underwater visibility remain correct.
 Browser elapsed time is not thread CPU time; unavailable GPU timestamps
 remain unknown. Desktop and browser measurements do not qualify phone
 performance. Open a new issue for any device defect.
+
+## Rain occlusion cost per tier (#10939)
+
+The rain occlusion map (a straight-down depth pass, 256² over 64 m on Low,
+256² over 80 m on Medium, 512² over 96 m on High) is pass 4 in the water
+timer. Record its GPU cost per tier against the W11 budgets (#10783) on a
+real GPU: run `cargo run --release -p verse --example everglade_weather_capture`
+and read `pass_ms[4]` from the timing output. This box has only lavapipe,
+whose numbers say nothing about hardware.

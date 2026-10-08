@@ -47,7 +47,10 @@ fn a_roof_blocks_rain_wetness_and_a_removed_roof_opens_the_same_column() {
         });
         let source = format!(
             "{}\n{}",
-            verse_gfx::gles::wgsl(&crate::shading::source(include_str!("../photo.wgsl")), false),
+            verse_gfx::gles::wgsl(
+                &crate::shading::source(include_str!("../photo.wgsl")),
+                false
+            ),
             r"
 @vertex fn vs_rain_test(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
     let p = array<vec2<f32>, 3>(vec2<f32>(-1.0,-1.0), vec2<f32>(3.0,-1.0), vec2<f32>(-1.0,3.0));

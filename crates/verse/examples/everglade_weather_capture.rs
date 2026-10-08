@@ -102,7 +102,9 @@ fn main() -> Result<(), String> {
             sky.set_schedule(schedule);
             sky.fix(Some(TICK));
         }
-        for place in ["pond", "street", "workshop", "house", "porch", "agora", "arcade", "civic"] {
+        for place in [
+            "pond", "street", "workshop", "house", "porch", "agora", "arcade", "civic",
+        ] {
             match place {
                 "pond" => {
                     let ([cx, cz], r) = PONDS[0];
@@ -115,16 +117,19 @@ fn main() -> Result<(), String> {
                     camera(&mut runtime, 1.0, 0.15);
                 }
                 "house" | "porch" | "agora" | "arcade" | "civic" => {
-                    use zones::everglade::layout::{estate, agora, civic};
+                    use zones::everglade::layout::{agora, civic, estate};
                     let (building, local, floor) = match place {
-                        "house" => (estate::OWNERS_HOUSE, [0.0,-18.4], estate::FLOOR),
-                        "porch" => (estate::OWNERS_HOUSE, [0.0,-10.0], estate::FLOOR),
-                        "agora" => (agora::AGORA, [0.0,-15.0], agora::FLOOR),
-                        "arcade" => (agora::AGORA, [12.0,-15.0], agora::FLOOR),
-                        _ => (civic::CIVIC, [0.0,-19.6], civic::FLOOR),
+                        "house" => (estate::OWNERS_HOUSE, [0.0, -18.4], estate::FLOOR),
+                        "porch" => (estate::OWNERS_HOUSE, [0.0, -10.0], estate::FLOOR),
+                        "agora" => (agora::AGORA, [0.0, -15.0], agora::FLOOR),
+                        "arcade" => (agora::AGORA, [12.0, -15.0], agora::FLOOR),
+                        _ => (civic::CIVIC, [0.0, -19.6], civic::FLOOR),
                     };
-                    let [x,z] = building.world(local);
-                    runtime.set_spawn(Vec3::new(x, zones::everglade::height(x,z)+floor, z), building.yaw)?;
+                    let [x, z] = building.world(local);
+                    runtime.set_spawn(
+                        Vec3::new(x, zones::everglade::height(x, z) + floor, z),
+                        building.yaw,
+                    )?;
                     camera(&mut runtime, 1.0, 0.15);
                 }
                 _ => {
@@ -165,7 +170,9 @@ fn main() -> Result<(), String> {
             let rain_particles = glade.rainfall().map_or(0, |r| r.particles.len());
             let mut visible_rain = Vec::new();
             if let Some(rain) = glade.rainfall() {
-                rain.draw_covered(&mut visible_rain, runtime_eye, |p| glade.solids().rain_open(p));
+                rain.draw_covered(&mut visible_rain, runtime_eye, |p| {
+                    glade.solids().rain_open(p)
+                });
             }
             let rain_budget = glade.rainfall().map_or(0, |r| r.budget());
             let water_particles = glade.water_fx().map_or(0, |fx| fx.len());
