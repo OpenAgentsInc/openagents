@@ -760,10 +760,15 @@ fn uncertain_payment_and_lost_delivery_keep_original_identity_after_restart() {
         assert!(h.buy().is_err());
         let dir = h.root.path().join("customer");
         drop(h.store);
+        let browsed = coder::customer::plugins::browse(&dir).unwrap();
         let mut store = Store::open(&dir).unwrap();
         let v = store.plugin_view("one").unwrap();
         assert_eq!(v.phase, Phase::Unknown);
         assert_eq!(v.charge.is_some(), lost);
+        let mut expected = v.summary();
+        expected.created_at_ms = browsed[0].created_at_ms;
+        assert_eq!(browsed, vec![expected]);
+        assert_eq!(browsed[0].unresolved_maximum_msat, Some(6000));
         assert!(
             store
                 .begin_plugin(

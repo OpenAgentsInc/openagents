@@ -1279,3 +1279,123 @@ impl Store {
         Ok(result)
     }
 }
+
+/// The read-only projection a thin client shows for one plugin purchase.
+///
+/// Every field comes from the retained purchase: the same payer node, quote
+/// digest, approval digest, and receipt the installed client approved
+/// against. Private input, preimages, and credentials are never included.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Summary {
+    pub id: String,
+    pub phase: Phase,
+    pub account: String,
+    pub workspace: String,
+    pub plugin: Option<String>,
+    pub release: Option<String>,
+    pub url: String,
+    pub quote_digest: String,
+    pub approval_digest: String,
+    pub price_msat: u64,
+    pub max_fee_msat: u64,
+    pub payer_node: String,
+    pub payer_network: String,
+    pub created_at_ms: u64,
+    pub expires_at_ms: u64,
+    pub charge: Option<Charge>,
+    pub settled: Option<bool>,
+    pub transaction: Option<String>,
+    pub delivery_status: Option<u16>,
+    pub result_present: bool,
+    pub unresolved_maximum_msat: Option<u64>,
+    pub recovery_present: bool,
+}
+impl View {
+    pub fn summary(&self) -> Summary {
+        Summary {
+            id: self.id.clone(),
+            phase: self.phase,
+            account: self.customer.context.account.clone(),
+            workspace: self.customer.context.workspace.clone(),
+            plugin: self.offer.quote.plugin.clone(),
+            release: self.offer.quote.release.clone(),
+            url: self.offer.url.clone(),
+            quote_digest: execution::quote_digest(&self.offer.quote),
+            approval_digest: self.approval_digest.clone(),
+            price_msat: self.offer.quote.price_msat,
+            max_fee_msat: self.offer.max_fee_msat,
+            payer_node: self.offer.payer.node.clone(),
+            payer_network: self.offer.payer.network.clone(),
+            created_at_ms: 0,
+            expires_at_ms: self.offer.expires_at_ms,
+            charge: self.charge.clone(),
+            settled: self.settlement.as_ref().map(|s| s.success),
+            transaction: self.settlement.as_ref().map(|s| s.transaction.clone()),
+            delivery_status: self.delivery_status,
+            result_present: self.result.is_some(),
+            unresolved_maximum_msat: self.unresolved_maximum_msat,
+            recovery_present: self.recovery.is_some(),
+        }
+    }
+}
+/// Read the selected customer's plugin purchases without taking the lock,
+/// creating the directory, or trusting an interrupted temporary write.
+///
+/// A missing store yields no purchases. The committed `state.json` is the
+/// only authority a reader projects, so a page refreshed during a client's
+/// write shows the last committed phase, never a half-written one.
+pub fn browse(root: &Path) -> Result<Vec<Summary>> {
+    if !root.is_absolute() {
+        return Err("Customer state needs an explicit absolute directory.".into());
+    }
+    let path = root.join("state.json");
+    if !task::regular_or_absent(&path).map_err(|_| "Unsafe customer state file.")? {
+        return Ok(Vec::new());
+    }
+    let mut bytes = Vec::new();
+    task::private_open(&path, false, false)
+        .map_err(|_| "Unsafe customer state file.")?
+        .take(MAX_STATE as u64 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|_| "Customer state read failed.")?;
+    if bytes.len() > MAX_STATE {
+        return Err("Customer state exceeds its bound.".into());
+    }
+    let book: Book =
+        serde_json::from_slice(&bytes).map_err(|_| "Invalid customer state document.")?;
+    super::check(&book)?;
+    let Some(selected) = &book.selected else {
+        return Ok(Vec::new());
+    };
+    let mut out: Vec<Summary> = book
+        .plugin_purchases
+        .iter()
+        .filter(|(_, p)| same_customer(selected, &p.selection))
+        .map(|(id, p)| {
+            let mut summary = View {
+                id: id.clone(),
+                customer: p.selection.clone(),
+                offer: p.offer.clone(),
+                approval_digest: quote(id, p).digest(),
+                phase: p.phase,
+                charge: p.charge.clone(),
+                settlement: p.settlement.clone(),
+                result: p.result.clone(),
+                delivery_status: p.delivery_status,
+                unresolved_maximum_msat: p.unresolved().then(|| {
+                    p.offer
+                        .quote
+                        .price_msat
+                        .saturating_add(p.offer.max_fee_msat)
+                }),
+                recovery: p.recovery.clone(),
+            }
+            .summary();
+            summary.created_at_ms = p.created_at_ms;
+            summary
+        })
+        .collect();
+    out.sort_by(|a, b| b.created_at_ms.cmp(&a.created_at_ms).then(a.id.cmp(&b.id)));
+    Ok(out)
+}

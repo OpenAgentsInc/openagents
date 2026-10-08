@@ -1962,3 +1962,20 @@ Account creation, recovery-token issuance, and other-session revocation remain
 with the native account owner. Qualify native recovery and revoked membership
 on the deployed origin before enabling sign-in. This connection grants no
 computer, execution, sales, custody, or spending rights.
+
+## REV-44 browser purchase surface (#10851)
+
+The owner chose the browser on 2026-10-04. Code lands a read-only purchase
+browser (`openagents-web --customer DIRECTORY`, `/app/purchases`) over the
+same customer store the installed client writes. Owner steps:
+
+- Qualify the surface on a real install: run `openagents-web --customer
+  ROOT` beside an installed client, quote and approve one purchase on the
+  client, and confirm the browser shows the same payer, quote digest,
+  approval digest, and receipt through a restart of both. Retain the actual
+  outcome and limitations under `docs/payments/`.
+- Decide whether approval or cancellation should ever move into the
+  browser. Today they stay on the installed client, which holds the resident
+  wallet and the private purchase authorization; moving them is a separate
+  issue with its own authority design.
+||||||| a9353683b3

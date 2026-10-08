@@ -1699,3 +1699,84 @@ async fn the_site_serves_the_agent_discovery_documents_for_its_public_origin() {
         assert!(body.contains(needle), "{path}: {body}");
     }
 }
+
+// ---------------------------------------------------------------------
+// The local plugin purchase browser (REV-44).
+
+fn purchase_summary() -> coder::customer::plugins::Summary {
+    use coder::customer::plugins::{Charge, Phase, Summary};
+    Summary {
+        id: "one".into(),
+        phase: Phase::Unknown,
+        account: "buyer".into(),
+        workspace: "<b>ws</b>".into(),
+        plugin: Some("meeting-action-items".into()),
+        release: Some("sha256:ab".into()),
+        url: "https://api.example.com/v1/plugins/x/invoke".into(),
+        quote_digest: "sha256:q".into(),
+        approval_digest: "sha256:approval".into(),
+        price_msat: 6000,
+        max_fee_msat: 10,
+        payer_node: "02node".into(),
+        payer_network: "bitcoin".into(),
+        created_at_ms: 1,
+        expires_at_ms: 2,
+        charge: Some(Charge {
+            payment_hash: "hash".into(),
+            amount_msat: 6000,
+            fee_msat: 3,
+        }),
+        settled: None,
+        transaction: None,
+        delivery_status: None,
+        result_present: false,
+        unresolved_maximum_msat: Some(6010),
+        recovery_present: false,
+    }
+}
+
+#[tokio::test]
+async fn purchase_browser_reads_without_creating_or_writing() {
+    let root = tempfile::tempdir().unwrap();
+    let store = root.path().join("tasks");
+    let customer = root.path().join("customer");
+    let (status, body) = get(router(config(store.clone())), "/app/purchases").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert!(body.contains("--customer"));
+    let mut with = config(store);
+    with.customer = Some(customer.clone());
+    let (status, body) = get(router(with.clone()), "/app/purchases").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains("No purchases") && body.contains("Unavailable in the browser"));
+    assert!(!customer.exists());
+    let (status, _) = get(router(with), "/app/purchases/one").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert!(!customer.exists());
+}
+
+#[test]
+fn purchase_pages_show_identical_terms_and_name_the_installed_client_step() {
+    use coder::customer::plugins::Phase;
+    let mut item = purchase_summary();
+    let list = crate::purchases::render_list(std::slice::from_ref(&item));
+    assert!(list.contains("meeting-action-items") && list.contains("Unknown / 6000 msat"));
+    let one = crate::purchases::render_one(&item);
+    assert!(one.contains("&lt;b&gt;ws&lt;/b&gt;") && !one.contains("<b>ws</b>"));
+    for term in [
+        "sha256:q",
+        "sha256:approval",
+        "02node on bitcoin",
+        "at most 6010 msat",
+    ] {
+        assert!(one.contains(term), "{term}");
+    }
+    assert!(one.contains("purchase recover --root ROOT --purchase one"));
+    assert!(!one.contains("<form") && !one.contains("<script"));
+    item.phase = Phase::Quoted;
+    let quoted = crate::purchases::render_one(&item);
+    assert!(
+        quoted.contains("purchase approve --root ROOT --purchase one --digest sha256:approval")
+    );
+    item.phase = Phase::Approved;
+    assert!(crate::purchases::render_one(&item).contains("purchase invoke --root ROOT"));
+}
