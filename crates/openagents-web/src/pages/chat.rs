@@ -16,7 +16,7 @@ use axum::routing::{get, post};
 use serde::Deserialize;
 
 use crate::App;
-use crate::layout::{escape, page, problem};
+use crate::layout::{self, escape, problem};
 
 /// Pages that load `static/chat.js`.
 pub(crate) const COMPOSER_POLICY: &str = "default-src 'none'; style-src 'self'; font-src 'self'; img-src 'self'; \
@@ -103,7 +103,7 @@ async fn show(State(app): State<App>, Path(id): Path<String>) -> Response {
     let Some(messages) = app.chats.get(&id) else {
         return missing();
     };
-    let mut response = page("Chat", None, &thread(&id, &messages));
+    let mut response = layout::app("Chat", None, &thread(&id, &messages));
     response.headers_mut().insert(
         header::CONTENT_SECURITY_POLICY,
         HeaderValue::from_static(COMPOSER_POLICY),
@@ -130,16 +130,21 @@ async fn follow(State(app): State<App>, Path(id): Path<String>, form: Form<Promp
     Redirect::to(&format!("/chat/{id}")).into_response()
 }
 
+/// The messages scroll in the space under the header; the composer stays
+/// docked at the bottom of the window.
 fn thread(id: &str, messages: &[String]) -> String {
-    let mut body = String::from("<section class=\"thread\" aria-label=\"Chat\">");
+    let mut body = String::from(
+        "<section id=\"chat-thread\" class=\"thread\" aria-label=\"Chat\"><div class=\"chat-column\">",
+    );
     for message in messages {
         body.push_str(&format!(
             "<p class=\"thread-said\"><span class=\"term-mark\">You</span> {}</p>",
             escape(message)
         ));
     }
-    body.push_str("</section>");
+    body.push_str("</div></section><div class=\"chat-dock chat-column\">");
     body.push_str(&composer(&format!("/chat/{id}"), "Continue this chat"));
+    body.push_str("</div>");
     body
 }
 

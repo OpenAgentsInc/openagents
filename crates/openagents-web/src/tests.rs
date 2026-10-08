@@ -308,6 +308,20 @@ async fn posting_the_homepage_composer_opens_a_chat_page() {
     assert_eq!(status, StatusCode::OK);
     assert!(html.contains("Set up OpenAgents"));
     assert!(html.contains(&format!("action=\"{location}\"")));
+    assert!(html.contains("<header class=\"site-header\">"));
+    assert!(!html.contains("site-footer"), "the chat page has no footer");
+    assert!(!html.contains("href=\"/terms\"") && !html.contains("href=\"/privacy\""));
+    assert!(html.contains("<main id=\"content\" class=\"app\""));
+    let thread = html.find("id=\"chat-thread\"").unwrap();
+    let dock = html.find("class=\"chat-dock chat-column\"").unwrap();
+    let card = html.find("chat-composer-card").unwrap();
+    assert!(
+        thread < dock && dock < card,
+        "the composer docks under the thread"
+    );
+    let (_, home) = get(site.clone(), "/").await;
+    assert!(home.contains("<footer class=\"site-footer\">"));
+    assert!(home.contains("href=\"/terms\"") && home.contains("href=\"/privacy\""));
     let (status, missing) = get(site, "/chat/00000000-0000-4000-8000-000000000000").await;
     assert_eq!(status, StatusCode::NOT_FOUND);
     assert!(missing.contains("<h1>Not found</h1>"));
