@@ -216,12 +216,45 @@ struct Row {
     report: ContactReport,
 }
 
+#[inline(always)]
+fn friction_inside(next: [f64; 2], limit: f64) -> bool {
+    if next[0] == 0.0 && next[1] == 0.0 {
+        return limit >= 0.0 && limit.is_finite();
+    }
+    if limit <= 0.0 {
+        return false;
+    }
+    let squares = [next[0] * next[0], next[1] * next[1]];
+    let size_squared = squares[0] + squares[1];
+    let limit_squared = limit * limit;
+    // Stay well inside the cone, beyond squared-arithmetic and hypot
+    // rounding. Underflow, overflow, and boundary cases retain hypot.
+    size_squared.is_normal()
+        && limit_squared.is_normal()
+        && (squares[0].is_normal() || next[0] == 0.0)
+        && (squares[1].is_normal() || next[1] == 0.0)
+        && size_squared < limit_squared * (1.0 - 32.0 * f64::EPSILON)
+}
+
+#[inline(always)]
+fn project_friction<const GUARDED: bool>(mut next: [f64; 2], limit: f64) -> [f64; 2] {
+    if GUARDED && friction_inside(next, limit) {
+        return next;
+    }
+    let size = next[0].hypot(next[1]);
+    if size > limit {
+        let scale = if size > 0.0 { limit / size } else { 0.0 };
+        next = [next[0] * scale, next[1] * scale];
+    }
+    next
+}
+
 impl Row {
     #[inline(always)]
-    fn solve<const SKIP_CONVERGED: bool>(&mut self, motions: &mut [Motion]) -> bool {
+    fn solve<const OPTIMIZED: bool>(&mut self, motions: &mut [Motion]) -> bool {
         let (a, b) = (self.a, self.b);
         let revisions = [motions[a].revision, motions[b].revision];
-        if SKIP_CONVERGED && self.fixed_at == Some(revisions) {
+        if OPTIMIZED && self.fixed_at == Some(revisions) {
             return true;
         }
         let old_impulses = [
@@ -249,15 +282,11 @@ impl Row {
         ];
         let limit = self.friction * self.normal_impulse;
         let old = self.tangent_impulse;
-        let mut next = [
+        let next = [
             old[0] - tangent_speed[0] * self.axes[1].mass,
             old[1] - tangent_speed[1] * self.axes[2].mass,
         ];
-        let size = next[0].hypot(next[1]);
-        if size > limit {
-            let scale = if size > 0.0 { limit / size } else { 0.0 };
-            next = [next[0] * scale, next[1] * scale];
-        }
+        let next = project_friction::<OPTIMIZED>(next, limit);
         self.tangent_impulse = next;
         let delta = self.tangents[0] * (next[0] - old[0]) + self.tangents[1] * (next[1] - old[1]);
         motions[a].push_tangents(
@@ -512,10 +541,10 @@ impl World {
     /// of `dt`. Records each joint's impulses and returns what each contact
     /// point did.
     pub(crate) fn solve(&mut self, manifolds: &[Manifold], dt: f64) -> Vec<ContactReport> {
-        self.solve_with_convergence::<true>(manifolds, dt).0
+        self.solve_with_optimizations::<true>(manifolds, dt).0
     }
 
-    fn solve_with_convergence<const SKIP_CONVERGED: bool>(
+    fn solve_with_optimizations<const OPTIMIZED: bool>(
         &mut self,
         manifolds: &[Manifold],
         dt: f64,
@@ -648,7 +677,7 @@ impl World {
                 row.solve(&mut motions);
             }
             for row in &mut rows {
-                if row.solve::<SKIP_CONVERGED>(&mut motions) {
+                if row.solve::<OPTIMIZED>(&mut motions) {
                     #[cfg(test)]
                     {
                         work.skipped_rows += 1;
@@ -849,6 +878,145 @@ impl World {
 #[cfg(test)]
 mod warm_tests {
     use super::*;
+
+    fn assert_friction_projection(next: [f64; 2], limit: f64) {
+        let expected = project_friction::<false>(next, limit);
+        let actual = project_friction::<true>(next, limit);
+        assert_eq!(
+            actual.map(f64::to_bits),
+            expected.map(f64::to_bits),
+            "projection of {next:?} with limit {limit:?}"
+        );
+        if friction_inside(next, limit) {
+            assert!(next[0].hypot(next[1]) <= limit);
+            assert_eq!(actual.map(f64::to_bits), next.map(f64::to_bits));
+        }
+    }
+
+    #[test]
+    fn friction_interior_preserves_bits_and_boundaries_keep_hypot() {
+        for (next, limit, inside) in [
+            ([1.0, 2.0], 3.0, true),
+            ([-3.0, 4.0], 6.0, true),
+            ([1.0, -0.0], 2.0, true),
+            ([-0.0, 0.0], 0.0, true),
+            ([0.0, -0.0], -0.0, true),
+            ([3.0, 4.0], 5.0, false),
+            ([3.0, 4.0], 5.0f64.next_up(), false),
+            ([3.0, 4.0], 5.0f64.next_down(), false),
+            ([1.0, 0.0], 1.0f64.next_up(), false),
+            ([1.0, 0.0], 0.0, false),
+            ([-0.0, 0.0], -1.0, false),
+        ] {
+            assert_eq!(friction_inside(next, limit), inside);
+            assert_friction_projection(next, limit);
+        }
+    }
+
+    #[test]
+    fn friction_extremes_preserve_unconditional_hypot_bits() {
+        let nan = f64::from_bits(0x7ff8_0000_0000_0123);
+        let values = [
+            -f64::INFINITY,
+            -f64::MAX,
+            -1e160,
+            -1.0,
+            -f64::MIN_POSITIVE,
+            -f64::from_bits(1),
+            -0.0,
+            0.0,
+            f64::from_bits(1),
+            f64::MIN_POSITIVE,
+            f64::MIN_POSITIVE.sqrt().next_down(),
+            f64::MIN_POSITIVE.sqrt(),
+            f64::MIN_POSITIVE.sqrt().next_up(),
+            1e-160,
+            1.0,
+            1e160,
+            f64::MAX.sqrt().next_down(),
+            f64::MAX.sqrt(),
+            f64::MAX.sqrt().next_up(),
+            f64::MAX,
+            f64::INFINITY,
+            nan,
+            -nan,
+        ];
+        for x in values {
+            for y in values {
+                for limit in values {
+                    assert_friction_projection([x, y], limit);
+                }
+            }
+        }
+        for (next, limit) in [
+            ([f64::from_bits(1), 0.0], 1.0),
+            ([f64::MIN_POSITIVE, f64::MIN_POSITIVE], 1.0),
+            ([1e-160, 1e-160], 1.0),
+            ([1e160, 1e160], 1e161),
+            ([1.0, 1.0], f64::MAX),
+            ([1.0, 1.0], f64::INFINITY),
+            ([0.0, -0.0], f64::INFINITY),
+            ([nan, 1.0], 2.0),
+            ([1.0, 1.0], nan),
+        ] {
+            assert!(!friction_inside(next, limit));
+        }
+    }
+
+    #[test]
+    fn friction_scaled_boundaries_and_interior_match_hypot_exactly() {
+        for exponent in [
+            -1074, -1073, -1022, -700, -539, -538, -537, -536, -512, -511, -500, -100, 0, 100, 500,
+            511, 512, 513, 700, 1023,
+        ] {
+            let scale = if exponent < -1022 {
+                f64::from_bits(1 << (exponent + 1074))
+            } else {
+                f64::from_bits(((exponent + 1023) as u64) << 52)
+            };
+            for vector in [
+                [0.0, 1.0],
+                [3.0, 4.0],
+                [-1.0, 1.0],
+                [1.0, 1e-15],
+                [1e-15, -1.0],
+            ] {
+                let next = vector.map(|v| v * scale);
+                let norm = next[0].hypot(next[1]);
+                for limit in [norm.next_down(), norm, norm.next_up()] {
+                    assert!(!friction_inside(next, limit), "boundary at {exponent}");
+                    assert_friction_projection(next, limit);
+                }
+                for limit in [norm * 0.5, norm * 1.5] {
+                    assert_friction_projection(next, limit);
+                }
+            }
+        }
+        // Vary normal mantissas and exponents without a random dependency.
+        let mut state = 0x1234_5678_9abc_def0u64;
+        let mut interiors = 0;
+        for i in 0..4096 {
+            state = state.wrapping_mul(6364136223846793005).wrapping_add(1);
+            let x = f64::from_bits((1023u64 << 52) | (state >> 12));
+            state = state.wrapping_mul(6364136223846793005).wrapping_add(1);
+            let y = f64::from_bits((1023u64 << 52) | (state >> 12));
+            let exponent = i % 1001 - 500;
+            let scale = f64::from_bits(((exponent + 1023) as u64) << 52);
+            let next = [x * scale, -y * scale];
+            let norm = next[0].hypot(next[1]);
+            for limit in [
+                norm * 0.9,
+                norm * 1.1,
+                norm.next_down(),
+                norm,
+                norm.next_up(),
+            ] {
+                interiors += usize::from(friction_inside(next, limit));
+                assert_friction_projection(next, limit);
+            }
+        }
+        assert!(interiors >= 4096, "the normal interior guard must run");
+    }
 
     #[test]
     fn motion_revisions_track_actual_changes_in_every_impulse_path() {
@@ -1108,8 +1276,8 @@ mod warm_tests {
         for step in 0..24 {
             let dt = reference.dt;
             let (expected, reference_work) =
-                reference.solve_with_convergence::<false>(&manifolds, dt);
-            let (actual, work) = optimized.solve_with_convergence::<true>(&manifolds, dt);
+                reference.solve_with_optimizations::<false>(&manifolds, dt);
+            let (actual, work) = optimized.solve_with_optimizations::<true>(&manifolds, dt);
             assert_eq!(reference_work.skipped_rows, 0);
             skipped += work.skipped_rows;
             assert_eq!(
