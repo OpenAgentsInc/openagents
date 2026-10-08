@@ -26,9 +26,6 @@ const TEXT_MAX: usize = 64 * 1024;
 const ARGUMENT_MAX: usize = 128;
 const ARGUMENT_BYTES: usize = 64 * 1024;
 const RUN_SECONDS: u64 = 600;
-/// How long a Codex delegation that may edit the working directory runs:
-/// a coding task takes longer than a review.
-const WRITE_SECONDS: u64 = 30 * 60;
 const POLL: Duration = Duration::from_millis(50);
 
 /// Codex starts with full access. Explicitly gated chats keep Codex
@@ -55,14 +52,6 @@ impl CodexSandbox {
             Self::FullAccess => "danger-full-access",
             Self::ReadOnly => "read-only",
             Self::WorkspaceWrite => "workspace-write",
-        }
-    }
-
-    fn seconds(self) -> u64 {
-        match self {
-            Self::FullAccess => WRITE_SECONDS,
-            Self::ReadOnly => RUN_SECONDS,
-            Self::WorkspaceWrite => WRITE_SECONDS,
         }
     }
 }
@@ -570,6 +559,24 @@ pub async fn acp(
     result.map(|reply| json!({"session":id,"reply":text,"model":model,"stop_reason":reply.stop_reason.as_str(),"usage":reply.usage,"group_clear":group_clear})).map_err(|error| format!("ACP task failed: {error}; process group cleared: {group_clear}."))
 }
 
+fn codex_failure_reason(ending: &supervise::Ending, error: Option<&str>, stderr: &str) -> String {
+    if matches!(ending, supervise::Ending::TimedOut) {
+        return "The Codex task timed out.".into();
+    }
+    if let Some(error) = error {
+        return bounded(&error.replace(['\n', '\r'], " "), 512);
+    }
+    if coder_delegate::limit::says_limited(stderr) {
+        return "Codex reached a usage limit or rate limit.".into();
+    }
+    match ending {
+        supervise::Ending::Exited(Some(code)) => format!("Codex exited with status {code}."),
+        supervise::Ending::Exited(None) => "Codex was terminated by a signal.".into(),
+        supervise::Ending::Failed(error) => bounded(&error.replace(['\n', '\r'], " "), 512),
+        supervise::Ending::TimedOut => unreachable!(),
+    }
+}
+
 /// Drive Codex's native protocol without treating its executable as an ACP server.
 async fn codex_cli(
     program: &Path,
@@ -619,9 +626,7 @@ async fn codex_cli(
     command.env(mark, value);
     scrub_credentials(&mut command);
     let mut live = supervise::Job::from_command(command)
-        .bounded(
-            supervise::Limits::within(Duration::from_secs(sandbox.seconds())).keeping(TEXT_MAX),
-        )
+        .bounded(supervise::Limits::until_stopped().keeping(TEXT_MAX))
         .start(supervise::Input::Piped)?;
     if let Err(error) = live.send(task.as_bytes()).await {
         let stopped = live.stop().await;
@@ -675,16 +680,11 @@ async fn codex_cli(
         ));
     }
     if !stopped.ending.success() || events.error.is_some() {
-        let reason = events.error.unwrap_or_else(|| {
-            let stderr = bounded(&stopped.stderr.marked(), TEXT_MAX);
-            if !stderr.trim().is_empty() {
-                stderr
-            } else if matches!(stopped.ending, supervise::Ending::TimedOut) {
-                "The Codex task timed out.".into()
-            } else {
-                format!("Codex exited with status {:?}.", stopped.ending.code())
-            }
-        });
+        let reason = codex_failure_reason(
+            &stopped.ending,
+            events.error.as_deref(),
+            &stopped.stderr.marked(),
+        );
         // A usage or rate limit says so first, in one sentence, so the
         // chat carries on without Codex and the host can book the limit.
         let limited = if coder_delegate::limit::says_limited(&reason) {
@@ -1798,6 +1798,36 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
         assert!(
             error.starts_with("Codex is out of capacity, so continue without Codex."),
             "{error}"
+        );
+    }
+
+    #[test]
+    fn codex_failure_reports_the_ending_instead_of_old_mcp_logs() {
+        let logs = "ERROR rmcp: HTTP 401 unauthorized: bearer token required";
+        assert_eq!(
+            codex_failure_reason(&supervise::Ending::TimedOut, None, logs),
+            "The Codex task timed out."
+        );
+        assert_eq!(
+            codex_failure_reason(&supervise::Ending::Exited(None), None, logs),
+            "Codex was terminated by a signal."
+        );
+        assert_eq!(
+            codex_failure_reason(
+                &supervise::Ending::Exited(Some(1)),
+                Some("Codex needs a login."),
+                logs
+            ),
+            "Codex needs a login."
+        );
+        assert!(
+            codex_failure_reason(
+                &supervise::Ending::Exited(Some(1)),
+                Some(&"x".repeat(10_000)),
+                logs
+            )
+            .len()
+                <= 512
         );
     }
 

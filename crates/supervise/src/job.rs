@@ -161,7 +161,7 @@ async fn supervise(job: Job, dropped: oneshot::Receiver<()>) -> Ended {
             Ok(status) => Ending::Exited(status.code()),
             Err(error) => Ending::Failed(error.to_string()),
         },
-        () = tokio::time::sleep(job.limits.wall) => Ending::TimedOut,
+        () = crate::deadline(job.limits.wall) => Ending::TimedOut,
         _ = dropped => Ending::TimedOut,
     };
 
