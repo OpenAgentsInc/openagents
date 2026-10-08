@@ -22,6 +22,7 @@ fn entry(request: Request) -> Entry {
         request,
         received_at: NOW,
         state: State::Received,
+        expected_revision: None,
         edited: None,
         promoted: false,
     }
@@ -811,4 +812,237 @@ fn a_queued_message_never_revives_an_archived_task() {
             reason: Rejection::Conflict
         })
     );
+}
+
+#[test]
+fn exact_revision_commands_refuse_stale_and_keep_retries_unchanged() {
+    let temp = tempfile::tempdir().unwrap();
+    let dir = temp.path().join("tasks");
+    ended_task(&dir);
+    let phone = sender("phone");
+    let first = request("a", Kind::Send, 2, "Continue once.");
+    let (recorded, continued) =
+        record_at_revision(&dir, &phone, &first, 2, &STEERING, &always, NOW).unwrap();
+    assert_eq!(
+        recorded.state,
+        State::Done(Outcome::Applied { revision: 3 })
+    );
+    assert_eq!(continued.len(), 1);
+    let bytes = std::fs::read(dir.join(FILE)).unwrap();
+    let task = std::fs::read(dir.join("task/task.json")).unwrap();
+    let (_, continued) =
+        record_at_revision(&dir, &phone, &first, 2, &STEERING, &always, NOW + 1).unwrap();
+    assert!(continued.is_empty());
+    assert_eq!(std::fs::read(dir.join(FILE)).unwrap(), bytes);
+    assert_eq!(std::fs::read(dir.join("task/task.json")).unwrap(), task);
+    assert!(matches!(
+        record_at_revision(
+            &dir,
+            &phone,
+            &request("b", Kind::Steer, 2, "Stale edit."),
+            2,
+            &STEERING,
+            &always,
+            NOW
+        ),
+        Err(Error::RevisionMismatch)
+    ));
+    assert_eq!(std::fs::read(dir.join(FILE)).unwrap(), bytes);
+    let mut changed = first.clone();
+    changed.text = "Different request.".into();
+    assert!(matches!(
+        record_at_revision(&dir, &phone, &changed, 2, &STEERING, &always, NOW),
+        Err(Error::Conflict)
+    ));
+}
+
+#[test]
+fn competing_exact_revision_commands_have_only_one_winner() {
+    let temp = tempfile::tempdir().unwrap();
+    let dir = temp.path().join("tasks");
+    ended_task(&dir);
+    let barrier = std::sync::Arc::new(std::sync::Barrier::new(3));
+    let workers: Vec<_> = ["a", "b"]
+        .into_iter()
+        .map(|id| {
+            let dir = dir.clone();
+            let barrier = barrier.clone();
+            std::thread::spawn(move || {
+                barrier.wait();
+                record_at_revision(
+                    &dir,
+                    &sender(id),
+                    &request(id, Kind::Send, 2, "One winner."),
+                    2,
+                    &STEERING,
+                    &always,
+                    NOW,
+                )
+            })
+        })
+        .collect();
+    barrier.wait();
+    let results: Vec<_> = workers
+        .into_iter()
+        .map(|worker| worker.join().unwrap())
+        .collect();
+    assert_eq!(results.iter().filter(|result| result.is_ok()).count(), 1);
+    assert_eq!(
+        results
+            .iter()
+            .filter(|result| matches!(result, Err(Error::RevisionMismatch)))
+            .count(),
+        1
+    );
+    let task = Store::open(&dir).unwrap().show("task").unwrap();
+    assert_eq!((task.revision, task.follow_ups.len()), (3, 1));
+}
+
+fn canonical_queue(dir: &Path) -> (String, Sender) {
+    let task = "a".repeat(64);
+    let mut store = Store::open(dir).unwrap();
+    let command = Command {
+        schema: COMMAND_SCHEMA.into(),
+        command_id: "submit-canonical".into(),
+        task_id: task.clone(),
+        expected_revision: None,
+        action: Action::Submit {
+            intent: TaskIntent {
+                title: "Synthetic queue".into(),
+                prompt: "Synthetic instructions.".into(),
+                workspace: Workspace {
+                    path: "/synthetic/checkout".into(),
+                    source_revision: None,
+                },
+                configuration: RequestedConfiguration {
+                    adapter: "microcoder-repository".into(),
+                    model: None,
+                },
+                images: vec![],
+            },
+        },
+    };
+    store.apply(&serde_json::to_vec(&command).unwrap()).unwrap();
+    (
+        task,
+        sender(&coder_host::access::protocol::pubkey(
+            &secp256k1::SecretKey::from_byte_array([7; 32]).unwrap(),
+        )),
+    )
+}
+
+#[test]
+fn exact_queue_snapshots_fence_edits_and_lost_replies_never_renew() {
+    let temp = tempfile::tempdir().unwrap();
+    let dir = temp.path().join("tasks");
+    let (task, phone) = canonical_queue(&dir);
+    let read = |device: &Sender, now| {
+        edit_queue_at_revision(
+            &dir,
+            &"1".repeat(64),
+            &task,
+            device,
+            1,
+            &QueueEdit::List,
+            None,
+            &STEERING,
+            &always,
+            now,
+        )
+    };
+    let (_, initial, _, _) = read(&phone, NOW).unwrap();
+    let edit = |id: &str, device: &Sender, action: &QueueEdit, digest: &str, now| {
+        edit_queue_at_revision(
+            &dir,
+            &id.repeat(64),
+            &task,
+            device,
+            1,
+            action,
+            Some(digest),
+            &STEERING,
+            &always,
+            now,
+        )
+    };
+    let (leased, after_lease, _, _) = edit("2", &phone, &QueueEdit::Lease, &initial, NOW).unwrap();
+    assert_eq!(leased.lease.as_ref().unwrap().expires_at, NOW + LEASE);
+    let bytes = std::fs::read(dir.join(FILE)).unwrap();
+    let (retried, digest, continued, changed) =
+        edit("2", &phone, &QueueEdit::Lease, &initial, NOW + 20).unwrap();
+    assert_eq!((retried, digest), (leased, after_lease.clone()));
+    assert!(!changed && continued.is_empty());
+    assert_eq!(std::fs::read(dir.join(FILE)).unwrap(), bytes);
+    assert!(matches!(
+        edit("3", &phone, &QueueEdit::Release, &initial, NOW),
+        Err(Error::RevisionMismatch)
+    ));
+    assert_eq!(std::fs::read(dir.join(FILE)).unwrap(), bytes);
+    assert!(matches!(
+        edit("2", &phone, &QueueEdit::Release, &initial, NOW),
+        Err(Error::Conflict)
+    ));
+    let other = sender(&coder_host::access::protocol::pubkey(
+        &secp256k1::SecretKey::from_byte_array([8; 32]).unwrap(),
+    ));
+    assert!(matches!(
+        edit("4", &other, &QueueEdit::Lease, &after_lease, NOW),
+        Err(Error::Conflict)
+    ));
+    let (released, _, _, _) = edit("5", &phone, &QueueEdit::Release, &after_lease, NOW).unwrap();
+    assert!(released.lease.is_none());
+}
+
+#[test]
+fn an_unsealed_queue_request_remains_unknown_without_another_effect() {
+    let temp = tempfile::tempdir().unwrap();
+    let dir = temp.path().join("tasks");
+    let (task, phone) = canonical_queue(&dir);
+    let (_, initial, _, _) = edit_queue_at_revision(
+        &dir,
+        &"1".repeat(64),
+        &task,
+        &phone,
+        1,
+        &QueueEdit::List,
+        None,
+        &STEERING,
+        &always,
+        NOW,
+    )
+    .unwrap();
+    edit_queue_at_revision(
+        &dir,
+        &"2".repeat(64),
+        &task,
+        &phone,
+        1,
+        &QueueEdit::Lease,
+        Some(&initial),
+        &STEERING,
+        &always,
+        NOW,
+    )
+    .unwrap();
+    let mut journal = read(&dir).unwrap();
+    journal.queue_requests[0].result = None;
+    write(&dir, &journal).unwrap();
+    let bytes = std::fs::read(dir.join(FILE)).unwrap();
+    assert!(matches!(
+        edit_queue_at_revision(
+            &dir,
+            &"2".repeat(64),
+            &task,
+            &phone,
+            1,
+            &QueueEdit::Lease,
+            Some(&initial),
+            &STEERING,
+            &always,
+            NOW + 10
+        ),
+        Err(Error::ReopenRequired)
+    ));
+    assert_eq!(std::fs::read(dir.join(FILE)).unwrap(), bytes);
+    assert_eq!(read(&dir).unwrap().leases[0].expires_at, NOW + LEASE);
 }

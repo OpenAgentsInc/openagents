@@ -111,7 +111,42 @@ impl Client {
     pub fn verify_reply(&self, pending: &Pending, event: &Event, now: u64) -> Result<Outcome> {
         verify_reply(&self.secret, &self.host, pending, event, now)
     }
+    /// Check the original signed packet before retrying it with this device.
+    /// The saved request is never authority for a changed client or grant.
+    pub fn validate_pending(&self, pending: &Pending, now: u64) -> Result<()> {
+        if let Some(access) = &self.access {
+            access.verify(&self.secret, now, self.policy)?;
+            if let Some(right) = pending.request.op.required()
+                && !access.grant.rights.contains(right)
+            {
+                return Err(Error::missing(right));
+            }
+        }
+        let original: Request = open(
+            &pending.event,
+            &self.secret,
+            &pubkey(&self.secret),
+            &self.host,
+            REQUEST,
+        )?;
+        original.validate(self.policy)?;
+        fresh(original.issued_at, original.expires_at, now)?;
+        if original != pending.request
+            || original.host != self.host
+            || original.relay != self.relay
+            || original.grant.as_deref() != self.access.as_ref().map(|a| a.grant.grant.as_str())
+            || original.epoch != self.access.as_ref().map(|a| a.grant.epoch)
+            || pending.event.tag_values("h").collect::<Vec<_>>() != [original.request.as_str()]
+        {
+            return fail(
+                Code::Forbidden,
+                "saved host request does not match this device",
+            );
+        }
+        Ok(())
+    }
     pub async fn send(&self, pending: &Pending) -> Result<Outcome> {
+        self.validate_pending(pending, unix_time()?)?;
         let event = exchange(&self.relay, &self.secret, pending, &self.host, self.policy).await?;
         self.verify_reply(pending, &event, unix_time()?)
     }
@@ -375,4 +410,97 @@ pub async fn pending_enrollments(
     })
     .await
     .map_err(|_| Error::new(Code::Transport, "enrollment fetch timed out"))?
+}
+
+#[cfg(test)]
+mod pending_tests {
+    use super::*;
+
+    fn fixture() -> (Client, Pending, u64) {
+        let secret = SecretKey::new(&mut secp256k1::rand::rng());
+        let host = SecretKey::new(&mut secp256k1::rand::rng());
+        let client = Client::owner(
+            &pubkey(&host),
+            "wss://relay.example.com/",
+            secret,
+            RelayPolicy::Production,
+        )
+        .unwrap();
+        let now = unix_time().unwrap();
+        let pending = client
+            .prepare_with_id(
+                Operation::CreateTask {
+                    task: TaskCreate {
+                        title: "Synthetic retry".into(),
+                        prompt: "Keep the original command.".into(),
+                        workspace: "fixture".into(),
+                        images: vec![],
+                        engine: None,
+                    },
+                },
+                now,
+                "a".repeat(64),
+            )
+            .unwrap();
+        (client, pending, now)
+    }
+
+    #[test]
+    fn persisted_pending_keeps_its_signed_request_and_refuses_modified_metadata() {
+        let (client, pending, now) = fixture();
+        let bytes = serde_json::to_vec(&pending).unwrap();
+        let restored: Pending = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(restored.event.id, pending.event.id);
+        client.validate_pending(&restored, now).unwrap();
+        let mut changed = restored.clone();
+        let Operation::CreateTask { task } = &mut changed.request.op else {
+            panic!("create")
+        };
+        task.prompt = "Replacement command".into();
+        assert_eq!(
+            client.validate_pending(&changed, now).unwrap_err().code,
+            Code::Forbidden
+        );
+        changed = restored.clone();
+        changed.request.request = "b".repeat(64);
+        assert_eq!(
+            client.validate_pending(&changed, now).unwrap_err().code,
+            Code::Forbidden
+        );
+        changed = restored;
+        changed.event.content.push('x');
+        assert_eq!(
+            client.validate_pending(&changed, now).unwrap_err().code,
+            Code::Forbidden
+        );
+    }
+
+    #[test]
+    fn saved_pending_cannot_cross_device_host_or_its_freshness_window() {
+        let (client, pending, now) = fixture();
+        let stranger = Client::owner(
+            client.host(),
+            client.relay(),
+            SecretKey::new(&mut secp256k1::rand::rng()),
+            RelayPolicy::Production,
+        )
+        .unwrap();
+        assert_eq!(
+            stranger.validate_pending(&pending, now).unwrap_err().code,
+            Code::Forbidden
+        );
+        assert_eq!(
+            client
+                .validate_pending(&pending, pending.request.expires_at + 1)
+                .unwrap_err()
+                .code,
+            Code::Expired
+        );
+        let mut changed = pending;
+        changed.request.host = pubkey(&SecretKey::new(&mut secp256k1::rand::rng()));
+        assert_eq!(
+            client.validate_pending(&changed, now).unwrap_err().code,
+            Code::Forbidden
+        );
+    }
 }

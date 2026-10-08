@@ -32,6 +32,10 @@ use super::{
 #[path = "remote_observe.rs"]
 mod observation;
 
+#[cfg(test)]
+#[path = "remote_control_tests.rs"]
+mod control_tests;
+
 /// The durable inbox behind a resident host.
 #[derive(Clone, Debug)]
 pub struct Inbox {
@@ -384,6 +388,99 @@ impl Inbox {
     }
 }
 
+impl Inbox {
+    fn command_inner(
+        &self,
+        principal: &Principal,
+        command: &TaskCommand,
+        expected: Option<u64>,
+        standing: Standing<'_>,
+    ) -> Result<TaskRef, Code> {
+        use super::commands::{Kind, Outcome, Rejection, Request, State};
+        let sender = sender(principal);
+        let request = Request {
+            command: command.command.clone(),
+            task: command.task.clone(),
+            kind: match command.action {
+                CommandAction::Send => Kind::Send,
+                CommandAction::Queue => Kind::Queue,
+                CommandAction::Steer => Kind::Steer,
+                CommandAction::Interrupt => Kind::Interrupt,
+                CommandAction::Answer => Kind::Answer,
+            },
+            based_on: command.based_on,
+            text: command.text.clone(),
+            emulate: command.emulate,
+            issued_at: command.issued_at,
+        };
+        // The host admitted this request's grant a moment ago; any other
+        // sender's held command is rechecked.
+        let admitted =
+            |other: &super::commands::Sender| *other == sender || standing(&principal_of(other));
+        let result = match expected {
+            Some(revision) => super::commands::record_at_revision(
+                &self.store,
+                &sender,
+                &request,
+                revision,
+                &super::adapter::STEERING,
+                &admitted,
+                super::autostart::unix_now(),
+            ),
+            None => super::commands::record(
+                &self.store,
+                &sender,
+                &request,
+                &super::adapter::STEERING,
+                &admitted,
+                super::autostart::unix_now(),
+            ),
+        };
+        let (recorded, continued) = result.map_err(|error| match error {
+            Error::NotFound => Code::Forbidden,
+            other => refusal(other),
+        })?;
+        self.continued(&continued);
+        let task = recorded.task.as_ref().map(current).ok_or(Code::Forbidden)?;
+        match recorded.state {
+            State::Done(Outcome::Rejected { reason }) => Err(match reason {
+                Rejection::Conflict => Code::Conflict,
+                Rejection::Unsupported => Code::Unsupported,
+                Rejection::Unavailable => Code::Unavailable,
+                Rejection::Revoked => Code::Revoked,
+                Rejection::Stale => Code::Stale,
+                Rejection::Missing => Code::Forbidden,
+                Rejection::Bounds => Code::Bounds,
+            }),
+            State::Done(Outcome::Expired) => Err(Code::Expired),
+            State::Done(Outcome::Superseded) => Err(Code::Stale),
+            _ => Ok(task),
+        }
+    }
+}
+
+fn local_queue_edit(edit: &QueueEdit) -> super::commands::QueueEdit {
+    use super::commands::QueueEdit as Edit;
+    match edit {
+        QueueEdit::List {} => Edit::List,
+        QueueEdit::Lease {} => Edit::Lease,
+        QueueEdit::Release {} => Edit::Release,
+        QueueEdit::Edit { command, text } => Edit::Edit {
+            command: command.clone(),
+            text: text.clone(),
+        },
+        QueueEdit::Remove { command } => Edit::Remove {
+            command: command.clone(),
+        },
+        QueueEdit::Reorder { commands } => Edit::Reorder {
+            commands: commands.clone(),
+        },
+        QueueEdit::SendNow { command } => Edit::SendNow {
+            command: command.clone(),
+        },
+    }
+}
+
 impl Tasks for Inbox {
     fn task_list(
         &self,
@@ -645,31 +742,41 @@ impl Tasks for Inbox {
         command: &TaskCommand,
         standing: Standing<'_>,
     ) -> Result<TaskRef, Code> {
-        use super::commands::{Kind, Outcome, Rejection, Request, State};
+        self.command_inner(principal, command, None, standing)
+    }
+
+    fn command_at_revision(
+        &self,
+        principal: &Principal,
+        command: &TaskCommand,
+        revision: u64,
+        standing: Standing<'_>,
+    ) -> Result<TaskRef, Code> {
+        self.command_inner(principal, command, Some(revision), standing)
+    }
+
+    fn queue_at_revision(
+        &self,
+        request: &str,
+        principal: &Principal,
+        task: &str,
+        revision: u64,
+        edit: &QueueEdit,
+        queue_digest: Option<&str>,
+        standing: Standing<'_>,
+    ) -> Result<(TaskQueue, String, Option<TaskRef>), Code> {
         let sender = sender(principal);
-        let request = Request {
-            command: command.command.clone(),
-            task: command.task.clone(),
-            kind: match command.action {
-                CommandAction::Send => Kind::Send,
-                CommandAction::Queue => Kind::Queue,
-                CommandAction::Steer => Kind::Steer,
-                CommandAction::Interrupt => Kind::Interrupt,
-                CommandAction::Answer => Kind::Answer,
-            },
-            based_on: command.based_on,
-            text: command.text.clone(),
-            emulate: command.emulate,
-            issued_at: command.issued_at,
-        };
-        // The host admitted this request's grant a moment ago; any other
-        // sender's held command is rechecked.
+        let edit = local_queue_edit(edit);
         let admitted =
             |other: &super::commands::Sender| *other == sender || standing(&principal_of(other));
-        let (recorded, continued) = super::commands::record(
+        let (queue, digest, continued, changed) = super::commands::edit_queue_at_revision(
             &self.store,
+            request,
+            task,
             &sender,
-            &request,
+            revision,
+            &edit,
+            queue_digest,
             &super::adapter::STEERING,
             &admitted,
             super::autostart::unix_now(),
@@ -679,21 +786,15 @@ impl Tasks for Inbox {
             other => refusal(other),
         })?;
         self.continued(&continued);
-        let task = recorded.task.as_ref().map(current).ok_or(Code::Forbidden)?;
-        match recorded.state {
-            State::Done(Outcome::Rejected { reason }) => Err(match reason {
-                Rejection::Conflict => Code::Conflict,
-                Rejection::Unsupported => Code::Unsupported,
-                Rejection::Unavailable => Code::Unavailable,
-                Rejection::Revoked => Code::Revoked,
-                Rejection::Stale => Code::Stale,
-                Rejection::Missing => Code::Forbidden,
-                Rejection::Bounds => Code::Bounds,
-            }),
-            State::Done(Outcome::Expired) => Err(Code::Expired),
-            State::Done(Outcome::Superseded) => Err(Code::Stale),
-            _ => Ok(task),
-        }
+        let changed = changed
+            .then(|| {
+                Store::open(&self.store)
+                    .and_then(|store| store.show(task))
+                    .map(|task| current(&task))
+            })
+            .transpose()
+            .map_err(refusal)?;
+        Ok((queue, digest, changed))
     }
 
     /// List or edit a task's held messages. A device sees the text of its

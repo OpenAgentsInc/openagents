@@ -5,7 +5,7 @@
 //! many NIP-HOST requests carry it, after a crash, a reconnect, or a long
 //! time offline. The host keeps one journal per task store, keyed by the
 //! sending device and that ID, beside the task document in
-//! `commands.json`, and writes it only under the task store's lock.
+//! `commands.json`, and writes it only under a stable command-journal lock.
 //!
 //! [`decide`] is the pure evaluation, in this order:
 //!
@@ -177,6 +177,9 @@ pub struct Entry {
     /// Host time it was first recorded.
     pub received_at: u64,
     pub state: State,
+    /// An exact task fence checked when this entry is first evaluated.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_revision: Option<u64>,
     /// Text its device put in place of the request's while it was held. The
     /// request itself stays as sent, so a replay still matches it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -234,6 +237,29 @@ struct Journal {
     entries: Vec<Entry>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     leases: Vec<Lease>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    queue_requests: Vec<QueueReceipt>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct QueueReceipt {
+    request: String,
+    sender: Sender,
+    task: String,
+    revision: u64,
+    digest: String,
+    edit: QueueEdit,
+    received_at: u64,
+    /// Absence keeps an interrupted dispatch unknown; it never repeats the edit.
+    result: Option<QueueResult>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct QueueResult {
+    queue: coder_host::access::protocol::TaskQueue,
+    digest: String,
 }
 
 impl Default for Journal {
@@ -242,6 +268,7 @@ impl Default for Journal {
             schema: SCHEMA.into(),
             entries: Vec::new(),
             leases: Vec::new(),
+            queue_requests: Vec::new(),
         }
     }
 }
@@ -360,6 +387,13 @@ pub fn decide(
     if !standing {
         return rejected(Rejection::Revoked);
     }
+    if matches!(entry.state, State::Received)
+        && entry
+            .expected_revision
+            .is_some_and(|expected| expected != view.revision)
+    {
+        return rejected(Rejection::Stale);
+    }
     let request = &entry.effective();
     // An archived task left every list; a waiting message never revives it.
     if view.archived && request.kind != Kind::Interrupt {
@@ -467,8 +501,17 @@ pub fn process(
     now: u64,
 ) -> Result<Vec<Continued>, Error> {
     let mut store = Store::open(dir)?;
+    let _journal = journal_lock(&store)?;
     let mut journal = read(&store.dir)?;
-    let continued = evaluate(&mut store, &mut journal, task, steering, standing, now)?;
+    let continued = evaluate(
+        &mut store,
+        &mut journal,
+        task,
+        steering,
+        standing,
+        now,
+        None,
+    )?;
     Ok(continued)
 }
 
@@ -497,13 +540,53 @@ pub fn record(
     standing: &dyn Fn(&Sender) -> bool,
     now: u64,
 ) -> Result<(Recorded, Vec<Continued>), Error> {
+    record_inner(dir, sender, request, None, steering, standing, now)
+}
+
+/// Record a command under the same lock that applies its exact task revision.
+pub fn record_at_revision(
+    dir: &Path,
+    sender: &Sender,
+    request: &Request,
+    revision: u64,
+    steering: &Steering,
+    standing: &dyn Fn(&Sender) -> bool,
+    now: u64,
+) -> Result<(Recorded, Vec<Continued>), Error> {
+    if request.based_on != revision {
+        return Err(Error::Conflict);
+    }
+    record_inner(
+        dir,
+        sender,
+        request,
+        Some(revision),
+        steering,
+        standing,
+        now,
+    )
+}
+
+fn record_inner(
+    dir: &Path,
+    sender: &Sender,
+    request: &Request,
+    expected: Option<u64>,
+    steering: &Steering,
+    standing: &dyn Fn(&Sender) -> bool,
+    now: u64,
+) -> Result<(Recorded, Vec<Continued>), Error> {
     let mut store = Store::open(dir)?;
+    let _journal = journal_lock(&store)?;
     let mut journal = read(&store.dir)?;
     let existing = journal.entries.iter().find(|entry| {
         entry.sender.device == sender.device && entry.request.command == request.command
     });
     if let Some(entry) = existing {
-        if entry.request != *request {
+        if entry.request != *request
+            || entry.expected_revision != expected
+            || entry.sender != *sender
+        {
             return Err(Error::Conflict);
         }
         let state = entry.state.clone();
@@ -520,7 +603,21 @@ pub fn record(
     }
     // A run whose process is gone is ended before the command is read
     // (#10124): a stop then finds it stopped, and a message continues it.
-    let settled = store.settle(&request.task)?;
+    let guard = expected
+        .map(|_| store.task_guard(&request.task))
+        .transpose()?;
+    if expected.is_some_and(|expected| {
+        store
+            .show(&request.task)
+            .map_or(true, |task| task.revision != expected)
+    }) {
+        return Err(Error::RevisionMismatch);
+    }
+    let settled = if guard.is_none() {
+        store.settle(&request.task)?
+    } else {
+        None
+    };
     prune(&mut journal, now);
     if journal.entries.len() >= MAX_ENTRIES {
         return Err(Error::LimitExceeded);
@@ -530,6 +627,7 @@ pub fn record(
         request: request.clone(),
         received_at: now,
         state: State::Received,
+        expected_revision: expected,
         edited: None,
         promoted: false,
     });
@@ -551,6 +649,7 @@ pub fn record(
         steering,
         standing,
         now,
+        guard.as_ref(),
     )?;
     let state = journal
         .entries
@@ -595,7 +694,8 @@ pub fn entries(dir: &Path) -> Result<Vec<Entry>, Error> {
 }
 
 /// One change to a task's queue.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum QueueEdit {
     /// Read the queue.
     List,
@@ -656,7 +756,32 @@ pub fn edit_queue(
 ) -> Result<(QueueState, Vec<Continued>), Error> {
     let mut store = Store::open(dir)?;
     store.show(task)?;
+    let _journal = journal_lock(&store)?;
     let mut journal = read(&store.dir)?;
+    edit_queue_inner(
+        &mut store,
+        &mut journal,
+        task,
+        sender,
+        edit,
+        steering,
+        standing,
+        now,
+        None,
+    )
+}
+
+fn edit_queue_inner(
+    store: &mut Store,
+    journal: &mut Journal,
+    task: &str,
+    sender: &Sender,
+    edit: &QueueEdit,
+    steering: &Steering,
+    standing: &dyn Fn(&Sender) -> bool,
+    now: u64,
+    guard: Option<&super::TaskWriteGuard>,
+) -> Result<(QueueState, Vec<Continued>), Error> {
     journal.leases.retain(|lease| lease.expires_at > now);
     let holder = journal.lease(task, now).map(|lease| lease.device.clone());
     let mine = holder.as_deref() == Some(sender.device.as_str());
@@ -708,7 +833,7 @@ pub fn edit_queue(
         }
         _ if !mine => return Err(Error::Conflict),
         QueueEdit::Edit { command, text } => {
-            let index = own(&journal, command)?;
+            let index = own(journal, command)?;
             let entry = &mut journal.entries[index];
             if entry.held().is_none() {
                 return Err(Error::Conflict);
@@ -717,7 +842,7 @@ pub fn edit_queue(
             true
         }
         QueueEdit::Remove { command } => {
-            let index = own(&journal, command)?;
+            let index = own(journal, command)?;
             let entry = &mut journal.entries[index];
             match entry.state {
                 // Removing it again succeeds again.
@@ -730,7 +855,7 @@ pub fn edit_queue(
             }
         }
         QueueEdit::SendNow { command } => {
-            let index = own(&journal, command)?;
+            let index = own(journal, command)?;
             let entry = &mut journal.entries[index];
             match entry.held() {
                 Some(_) if entry.promoted => false,
@@ -742,7 +867,7 @@ pub fn edit_queue(
             }
         }
         QueueEdit::Reorder { commands } => {
-            let slots = queued(&journal);
+            let slots = queued(journal);
             let mut order = Vec::with_capacity(commands.len());
             for command in commands {
                 let found = slots
@@ -771,8 +896,8 @@ pub fn edit_queue(
     };
     let mut continued = Vec::new();
     if changed {
-        write(&store.dir, &journal)?;
-        continued = evaluate(&mut store, &mut journal, task, steering, standing, now)?;
+        write(&store.dir, journal)?;
+        continued = evaluate(store, journal, task, steering, standing, now, guard)?;
     }
     let mut items: Vec<(bool, usize)> = journal
         .entries
@@ -805,6 +930,168 @@ pub fn edit_queue(
     ))
 }
 
+/// Read an exact queue or dispatch one edit once under both native locks.
+/// A saved request without a result stays unknown after a crash.
+pub fn edit_queue_at_revision(
+    dir: &Path,
+    request: &str,
+    task: &str,
+    sender: &Sender,
+    revision: u64,
+    edit: &QueueEdit,
+    expected_digest: Option<&str>,
+    steering: &Steering,
+    standing: &dyn Fn(&Sender) -> bool,
+    now: u64,
+) -> Result<
+    (
+        coder_host::access::protocol::TaskQueue,
+        String,
+        Vec<Continued>,
+        bool,
+    ),
+    Error,
+> {
+    if !standing(sender) {
+        return Err(Error::Conflict);
+    }
+    let mut store = Store::open(dir)?;
+    let _journal = journal_lock(&store)?;
+    let mut journal = read(&store.dir)?;
+    let is_read = matches!(edit, QueueEdit::List);
+    if !is_read {
+        if let Some(record) = journal
+            .queue_requests
+            .iter()
+            .find(|record| record.request == request)
+        {
+            if record.sender != *sender
+                || record.task != task
+                || record.revision != revision
+                || record.edit != *edit
+                || Some(record.digest.as_str()) != expected_digest
+            {
+                return Err(Error::Conflict);
+            }
+            super::sync_directory(&store.dir)?;
+            let result = record.result.clone().ok_or(Error::ReopenRequired)?;
+            return Ok((result.queue, result.digest, Vec::new(), false));
+        }
+    }
+    let guard = store.task_guard(task)?;
+    let before = store.show(task)?;
+    if before.revision != revision {
+        return Err(Error::RevisionMismatch);
+    }
+    let digest = queue_digest(&journal, task, revision, now)?;
+    if expected_digest.is_some_and(|expected| expected != digest) {
+        return Err(Error::RevisionMismatch);
+    }
+    if !is_read && expected_digest.is_none() {
+        return Err(Error::Conflict);
+    }
+    let held = journal
+        .entries
+        .iter()
+        .filter(|entry| entry.request.task == task && entry.held().is_some())
+        .count();
+    if held > MAX_LISTED {
+        return Err(Error::LimitExceeded);
+    }
+    if !is_read {
+        journal
+            .queue_requests
+            .retain(|record| now.saturating_sub(record.received_at) <= 2 * TTL);
+        if journal.queue_requests.len() >= 128 {
+            return Err(Error::LimitExceeded);
+        }
+        journal.queue_requests.push(QueueReceipt {
+            request: request.into(),
+            sender: sender.clone(),
+            task: task.into(),
+            revision,
+            digest,
+            edit: edit.clone(),
+            received_at: now,
+            result: None,
+        });
+        // Admission is durable before an edit or task transition can happen.
+        write(&store.dir, &journal)?;
+    }
+    let (state, continued) = edit_queue_inner(
+        &mut store,
+        &mut journal,
+        task,
+        sender,
+        edit,
+        steering,
+        standing,
+        now,
+        Some(&guard),
+    )?;
+    let changed = before.revision != state.task.revision;
+    let queue = public_queue(state, sender);
+    let digest = queue_digest(&journal, task, queue.revision, now)?;
+    let outcome = coder_host::access::protocol::Outcome::QueueAtRevision {
+        queue: queue.clone(),
+        revision: queue.revision,
+        queue_digest: digest.clone(),
+    };
+    outcome.validate().map_err(|_| {
+        if is_read {
+            Error::LimitExceeded
+        } else {
+            Error::ReopenRequired
+        }
+    })?;
+    if !is_read {
+        let record = journal
+            .queue_requests
+            .iter_mut()
+            .find(|record| record.request == request)
+            .ok_or(Error::Corrupt("the queue request lost its record"))?;
+        record.result = Some(QueueResult {
+            queue: queue.clone(),
+            digest: digest.clone(),
+        });
+        write(&store.dir, &journal)?;
+    }
+    Ok((queue, digest, continued, changed))
+}
+
+fn public_queue(state: QueueState, sender: &Sender) -> coder_host::access::protocol::TaskQueue {
+    use coder_host::access::protocol::{QueueItem, QueueLease, TaskQueue};
+    TaskQueue {
+        task: state.task.task_id,
+        revision: state.task.revision,
+        lease: state.lease.map(|lease| QueueLease {
+            device: lease.device,
+            expires_at: lease.expires_at,
+        }),
+        items: state
+            .items
+            .into_iter()
+            .map(|item| QueueItem {
+                text: (item.device == sender.device).then_some(item.text),
+                command: item.command,
+                device: item.device,
+                priority: item.priority,
+            })
+            .collect(),
+    }
+}
+
+fn queue_digest(journal: &Journal, task: &str, revision: u64, now: u64) -> Result<String, Error> {
+    let entries: Vec<&Entry> = journal
+        .entries
+        .iter()
+        .filter(|entry| entry.request.task == task && entry.held().is_some())
+        .collect();
+    let bytes = serde_json::to_vec(&(task, revision, journal.lease(task, now), entries))
+        .map_err(|_| Error::Corrupt("the queue snapshot could not be encoded"))?;
+    Ok(nostr::contracts::digest_bytes(&bytes))
+}
+
 fn evaluate(
     store: &mut Store,
     journal: &mut Journal,
@@ -812,6 +1099,7 @@ fn evaluate(
     steering: &Steering,
     standing: &dyn Fn(&Sender) -> bool,
     now: u64,
+    guard: Option<&super::TaskWriteGuard>,
 ) -> Result<Vec<Continued>, Error> {
     let mut continued = Vec::new();
     let archived = super::archive::archived(&store.dir).contains(task);
@@ -838,7 +1126,30 @@ fn evaluate(
             .iter()
             .find(|&&index| matches!(journal.entries[index].state, State::Dispatching { .. }))
         {
-            finish_dispatch(store, journal, index, &mut continued)?;
+            let entry = &journal.entries[index];
+            let State::Dispatching { bytes, .. } = &entry.state else {
+                unreachable!()
+            };
+            let accepted = store.read_task(task)?.is_some_and(|file| {
+                file.commands
+                    .iter()
+                    .any(|accepted| accepted.request == *bytes)
+            });
+            if !accepted
+                && (!standing(&entry.sender) || now > entry.request.issued_at.saturating_add(TTL))
+            {
+                journal.entries[index].state =
+                    State::Done(if now > entry.request.issued_at.saturating_add(TTL) {
+                        Outcome::Expired
+                    } else {
+                        Outcome::Rejected {
+                            reason: Rejection::Revoked,
+                        }
+                    });
+                write(&store.dir, journal)?;
+                continue;
+            }
+            finish_dispatch(store, journal, index, &mut continued, guard)?;
             continue;
         }
         let mut changed = false;
@@ -915,7 +1226,7 @@ fn evaluate(
                     // applies the same bytes again, never new ones.
                     journal.entries[index].state = State::Dispatching { bytes, then_hold };
                     write(&store.dir, journal)?;
-                    finish_dispatch(store, journal, index, &mut continued)?;
+                    finish_dispatch(store, journal, index, &mut continued, guard)?;
                     changed = true;
                 }
             }
@@ -946,11 +1257,16 @@ fn finish_dispatch(
     journal: &mut Journal,
     index: usize,
     continued: &mut Vec<Continued>,
+    guard: Option<&super::TaskWriteGuard>,
 ) -> Result<(), Error> {
     let State::Dispatching { bytes, then_hold } = journal.entries[index].state.clone() else {
         return Ok(());
     };
-    let next = match store.apply(bytes.as_bytes()) {
+    let applied = match guard {
+        Some(guard) => store.apply_locked(bytes.as_bytes(), guard),
+        None => store.apply(bytes.as_bytes()),
+    };
+    let next = match applied {
         Ok(receipt) => {
             let command: Command = serde_json::from_str(&bytes)
                 .map_err(|_| Error::Corrupt("a recorded device command is invalid"))?;
@@ -996,6 +1312,14 @@ fn prune(journal: &mut Journal, now: u64) {
     journal
         .entries
         .retain(|entry| !entry.done() || now.saturating_sub(entry.received_at) <= 2 * TTL);
+}
+
+fn journal_lock(store: &Store) -> Result<std::fs::File, Error> {
+    let path = store.dir.join("commands.lock");
+    let file = super::open_lock(&path)?;
+    super::take_lock(&file, store.wait)?;
+    super::verify_same_file(&path, &file)?;
+    Ok(file)
 }
 
 fn read(dir: &Path) -> Result<Journal, Error> {

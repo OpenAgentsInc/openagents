@@ -116,6 +116,24 @@ impl Device {
     pub fn access(&self) -> &Access {
         &self.access
     }
+
+    /// Prepare a caller-owned operation identity for protected persistence.
+    /// Retry the returned packet unchanged instead of preparing it again.
+    pub fn prepare_operation(
+        &self,
+        operation: coder_access::protocol::Operation,
+        id: String,
+    ) -> Result<coder_access::client::Pending> {
+        let pending = self.client.prepare_with_id(operation, unix_time()?, id)?;
+        self.client.validate_pending(&pending, unix_time()?)?;
+        Ok(pending)
+    }
+
+    /// Verify a saved request against this exact device and current grant.
+    pub fn validate_pending(&self, pending: &coder_access::client::Pending) -> Result<()> {
+        self.client.validate_pending(pending, unix_time()?)?;
+        Ok(())
+    }
 }
 
 /// A host's presence and hints, as this device read them.

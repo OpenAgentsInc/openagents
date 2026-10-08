@@ -138,6 +138,30 @@ revision, and source identity. Oversized records leave explicit gaps and
 bounded original byte reads. Losing the grant, account, workspace, source pin,
 or active page clears the private mount; reconnect requires fresh navigation.
 
+## Reviewed resident controls
+
+To admit server custody, add `controls` to the protected host configuration:
+`{"directory":"ABSOLUTE_PRIVATE_DIRECTORY","bindings":["BINDING_ID"]}`.
+The directory must already exist, be owned by the operator, and have mode
+`0700`. A native host owner separately issues the device grant. Sign-in never
+issues that grant. Each browser session reviews the exact account, workspace,
+host generation, device, rights, expiry, and server custody at
+`/cloud/app/hosts/{binding}` before controls become available.
+
+Creation, commands, queue edits, and publication first retain a reviewed
+request and its original signed native packet. Confirmation dispatches that
+packet under current account and host authority. Repeated confirmation never
+creates another packet. The resident checks task revisions, queue digests, and
+publication candidates. A create request submits an inert task unless the
+resident owner has separately enabled auto-start. Explicit executor selection
+stays in the native task request.
+
+`/cloud/app/hosts/{binding}/requests/{request}` recovers the original sealed
+native result after reconnect or restart. Unknown execution or cleanup stays
+unknown; an expired packet requires observation rather than redispatch.
+Request journals contain private operation content and must remain private.
+The browser keeps no credential, prompt, or action in persistent storage.
+
 ## Task browser
 
 The browser reads the same durable task store and paged ATIF view as

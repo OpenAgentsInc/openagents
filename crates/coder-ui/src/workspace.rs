@@ -151,6 +151,17 @@ pub fn session(session: &Session<'_>, palette: Palette) -> View<WorkspaceIntent>
 
 #[must_use]
 pub fn connection(key: &str, title: &str, reason: &str, palette: Palette) -> View<WorkspaceIntent> {
+    connection_state(key, title, "Unavailable", reason, palette)
+}
+
+/// Display only a connection state established by the application adapter.
+pub fn connection_state(
+    key: &str,
+    title: &str,
+    state: &str,
+    reason: &str,
+    palette: Palette,
+) -> View<WorkspaceIntent> {
     View::new_v3(
         format!("cloud-{key}"),
         1,
@@ -165,7 +176,7 @@ pub fn connection(key: &str, title: &str, reason: &str, palette: Palette) -> Vie
                 children: vec![
                     text(
                         &format!("{key}-title"),
-                        format!("{title} · Unavailable"),
+                        format!("{title} · {state}"),
                         TextRole::Heading,
                         palette.heading,
                     ),

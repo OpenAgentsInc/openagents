@@ -1,6 +1,8 @@
 //! Same-origin Cloud pages over current native account authority. The public
 //! site, local task browser, and separately granted services remain distinct.
 
+mod controls;
+mod effects;
 pub mod hosts;
 mod private;
 pub mod session;
@@ -93,9 +95,12 @@ pub(crate) fn routes() -> Router<App> {
         .route("/cloud/assets/{file}", get(asset))
         .route("/cloud/app/tasks/{id}", get(work::task_alias))
         .merge(work::routes())
+        .merge(controls::routes())
         .layer(DefaultBodyLimit::max(8192));
     for (_, slug, _) in SECTIONS {
-        router = router.route(&format!("/cloud/app/{slug}"), get(section));
+        if slug != "computers" {
+            router = router.route(&format!("/cloud/app/{slug}"), get(section));
+        }
     }
     router
 }
@@ -417,14 +422,14 @@ fn workspace_shell(
     };
     let mut nav = String::from("<a href=\"/cloud/app\">Overview</a>");
     for (label, slug, reason) in SECTIONS {
-        if slug == "tasks"
+        if matches!(slug, "tasks" | "computers")
             && app
                 .config
                 .cloud_hosts
                 .as_ref()
                 .is_some_and(|hosts| !hosts.current(viewer).is_empty())
         {
-            nav.push_str("<a href=\"/cloud/app/tasks\">Tasks</a>");
+            nav.push_str(&format!("<a href=\"/cloud/app/{slug}\">{label}</a>"));
         } else if slug == "settings" {
             nav.push_str("<a href=\"/cloud/app/settings\">Settings</a>");
         } else {
@@ -437,6 +442,11 @@ fn workspace_shell(
     }
     let mut content = String::new();
     if selected == "overview" {
+        let configured = app
+            .config
+            .cloud_hosts
+            .as_ref()
+            .is_some_and(|hosts| !hosts.current(viewer).is_empty());
         for (key, label, reason) in [
             (
                 "world",
@@ -454,7 +464,26 @@ fn workspace_shell(
                 "No current observe, operate, review, typist, or sales grant. Account sign-in grants none of these rights.",
             ),
         ] {
-            match render(&workspace::connection(key, label, reason, colors())) {
+            let (state, reason) = if configured && key == "computer" {
+                (
+                    "Not checked",
+                    "This account has an explicit resident binding. Open Computers to verify the current native grant and resident generation.",
+                )
+            } else if configured && key == "private-work" {
+                (
+                    "Not checked",
+                    "Canonical task observation is configured. Open Tasks to check current Observe authority. Browser enrollment and every effect require their own exact review.",
+                )
+            } else {
+                ("Unavailable", reason)
+            };
+            match render(&workspace::connection_state(
+                key,
+                label,
+                state,
+                reason,
+                colors(),
+            )) {
                 Ok(value) => {
                     content.push_str(&format!("<section class=\"cloud-card\">{value}</section>"))
                 }

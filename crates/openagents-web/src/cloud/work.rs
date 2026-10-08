@@ -1,6 +1,6 @@
 //! Canonical task observation through an explicitly bound resident host.
 
-use super::hosts::Binding;
+use super::hosts::{Binding, Hosts};
 use super::session::{CloudSession, SessionError, Viewer};
 use super::{protect, refused, service, standing_value, workspace_shell};
 use crate::App;
@@ -182,6 +182,64 @@ enum Pin {
     Original {
         query: OriginalQuery,
     },
+    Control {
+        control: ControlPin,
+    },
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ControlPin {
+    scope_digest: String,
+    enrolled: bool,
+    request: Option<RequestPin>,
+    task: Option<ControlTaskPin>,
+    queue_digest: Option<String>,
+    review: Option<ReviewPin>,
+}
+
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RequestPin {
+    id: String,
+    packet_digest: String,
+    state: super::effects::State,
+    snapshot_digest: String,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ControlTaskPin {
+    query: PageQuery,
+    scope: Scope,
+    source: Option<String>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ReviewPin {
+    task: String,
+    base: String,
+    head_commit: String,
+    head: String,
+}
+
+fn metadata_digest(value: &Value) -> String {
+    format!("sha256:{:x}", Sha256::digest(value.to_string().as_bytes()))
+}
+
+fn request_pin(snapshot: &super::effects::Snapshot) -> RequestPin {
+    RequestPin {
+        id: snapshot.id.clone(),
+        packet_digest: snapshot.packet_digest.clone(),
+        state: snapshot.state,
+        snapshot_digest: metadata_digest(&json!({
+            "id":snapshot.id,"packet":snapshot.packet_digest,"state":snapshot.state,
+            "action":snapshot.action,"expires_at":snapshot.expires_at,
+            "outcome":snapshot.outcome,"refusal":snapshot.refusal,
+            "failure":snapshot.failure.map(|failure|failure.code())
+        })),
+    }
 }
 
 fn pin_identity(binding: &Binding, pin: &Pin, viewer: &Viewer) -> String {
@@ -191,6 +249,7 @@ fn pin_identity(binding: &Binding, pin: &Pin, viewer: &Viewer) -> String {
         Pin::Original { query } => {
             json!({"kind":"original","scope":query.scope,"original":query.original})
         }
+        Pin::Control { control } => json!({"kind":"control","control":control}),
     };
     identity(
         binding,
@@ -200,8 +259,303 @@ fn pin_identity(binding: &Binding, pin: &Pin, viewer: &Viewer) -> String {
 
 fn resource(binding: &Binding, pin: &Pin, viewer: &Viewer) -> Result<Value, SessionError> {
     let encoded = encode(pin)?;
-    Ok(
-        json!({"endpoint":format!("/cloud/app/hosts/{}/standing?pin={encoded}",binding.id()),"identity":pin_identity(binding,pin,viewer)}),
+    let endpoint = format!("/cloud/app/hosts/{}/standing?pin={encoded}", binding.id());
+    if endpoint.len() > 4096 {
+        return Err(SessionError::InvalidRequest);
+    }
+    Ok(json!({"endpoint":endpoint,"identity":pin_identity(binding,pin,viewer)}))
+}
+
+/// Bind a control page to current enrollment and original native evidence.
+pub(super) fn control_resource(
+    binding: &Binding,
+    viewer: &Viewer,
+    hosts: &Hosts,
+    snapshot: Option<&super::effects::Snapshot>,
+    page: Option<&task_read::Page>,
+    queue_digest: Option<&str>,
+    review: Option<&coder_access::review::TaskReview>,
+) -> Result<Value, SessionError> {
+    let scope = hosts.control_scope(viewer, binding);
+    let book = hosts.effects(viewer, binding.id())?;
+    let enrolled = book.enrolled(&scope, binding.identity())?;
+    let request = snapshot.map(request_pin);
+    if let Some(expected) = &request
+        && request_pin(&book.lookup(&scope, &expected.id)?) != *expected
+    {
+        return Err(SessionError::Conflict);
+    }
+    let task = page
+        .map(|page| {
+            page.validate().map_err(|_| SessionError::InvalidRequest)?;
+            if page.scope.workspace != binding.workspace() {
+                return Err(SessionError::InvalidRequest);
+            }
+            Ok(ControlTaskPin {
+                query: PageQuery {
+                    workspace: page.scope.workspace.clone(),
+                    task: page.scope.task.clone(),
+                    revision: Some(page.scope.revision),
+                    cursor: page.next.clone(),
+                    limit: 1,
+                },
+                scope: page.scope.clone(),
+                source: page
+                    .evidence
+                    .original
+                    .as_ref()
+                    .map(|source| source.source.clone()),
+            })
+        })
+        .transpose()?;
+    if queue_digest.is_some() && task.is_none()
+        || review.is_some_and(|review| {
+            review.validate().is_err()
+                || task
+                    .as_ref()
+                    .is_none_or(|task| task.scope.task != review.task)
+        })
+    {
+        return Err(SessionError::InvalidRequest);
+    }
+    let control = ControlPin {
+        scope_digest: metadata_digest(&scope),
+        enrolled,
+        request,
+        task,
+        queue_digest: queue_digest.map(str::to_owned),
+        review: review.map(|review| ReviewPin {
+            task: review.task.clone(),
+            base: review.base.clone(),
+            head_commit: review.head_commit.clone(),
+            head: review.head.clone(),
+        }),
+    };
+    resource(binding, &Pin::Control { control }, viewer)
+}
+
+fn check_control(
+    hosts: &Hosts,
+    binding: &Binding,
+    viewer: &Viewer,
+    control: &ControlPin,
+) -> Result<(), SessionError> {
+    let scope = hosts.control_scope(viewer, binding);
+    if metadata_digest(&scope) != control.scope_digest {
+        return Err(SessionError::Conflict);
+    }
+    let book = hosts.effects(viewer, binding.id())?;
+    if book.enrolled(&scope, binding.identity())? != control.enrolled {
+        return Err(SessionError::Conflict);
+    }
+    if let Some(request) = &control.request {
+        let snapshot = book.lookup(&scope, &request.id)?;
+        if request_pin(&snapshot) != *request {
+            return Err(SessionError::Conflict);
+        }
+        if snapshot
+            .action
+            .required()
+            .is_none_or(|right| !binding.access().grant.rights.contains(right))
+        {
+            return Err(SessionError::Forbidden);
+        }
+    }
+    Ok(())
+}
+
+async fn control_standing(
+    app: &App,
+    headers: &HeaderMap,
+    service: &CloudSession,
+    binding: &Binding,
+    viewer: &Viewer,
+    pin: &Pin,
+    control: &ControlPin,
+) -> Result<Response, Response> {
+    let hosts = app
+        .config
+        .cloud_hosts
+        .as_deref()
+        .ok_or_else(|| refused(SessionError::Unavailable))?;
+    check_control(hosts, binding, viewer, control).map_err(refused)?;
+    if let Some(task) = &control.task {
+        if task.query.workspace != binding.workspace()
+            || task.scope.workspace != binding.workspace()
+            || task.query.task != task.scope.task
+            || task.query.revision != Some(task.scope.revision)
+            || task.query.limit != 1
+            || task.query.validate().is_err()
+        {
+            return Err(refused(SessionError::InvalidRequest));
+        }
+        let result = read(
+            service,
+            headers,
+            binding,
+            viewer,
+            Operation::ReadTask {
+                query: task.query.clone(),
+            },
+        )
+        .await?;
+        if !matches!(result, Outcome::Task { task: page } if page.answers(&task.query)
+            && page.scope == task.scope
+            && page.evidence.original.as_ref().map(|source| &source.source) == task.source.as_ref())
+        {
+            return Err(refused(SessionError::Conflict));
+        }
+    } else {
+        if control.queue_digest.is_some() || control.review.is_some() {
+            return Err(refused(SessionError::InvalidRequest));
+        }
+        let query = ListQuery {
+            workspace: binding.workspace().into(),
+            cursor: None,
+            limit: 1,
+        };
+        let result = read(
+            service,
+            headers,
+            binding,
+            viewer,
+            Operation::ListTasks {
+                query: query.clone(),
+            },
+        )
+        .await?;
+        if !matches!(result, Outcome::Tasks { tasks } if tasks.answers(&query)) {
+            return Err(refused(SessionError::Conflict));
+        }
+    }
+    if let Some(expected) = &control.queue_digest {
+        let task = control
+            .task
+            .as_ref()
+            .ok_or_else(|| refused(SessionError::InvalidRequest))?;
+        let operation = Operation::QueueTaskAtRevision {
+            task: task.scope.task.clone(),
+            revision: task.scope.revision,
+            edit: coder_access::protocol::QueueEdit::List {},
+            queue_digest: None,
+        };
+        let result = binding
+            .read_queue(viewer, operation.clone())
+            .await
+            .map_err(refused)?;
+        if !result.answers(&operation)
+            || !matches!(result, Outcome::QueueAtRevision { queue_digest, .. } if queue_digest == *expected)
+        {
+            return Err(refused(SessionError::Conflict));
+        }
+    }
+    if let Some(review) = &control.review {
+        let task = control
+            .task
+            .as_ref()
+            .ok_or_else(|| refused(SessionError::InvalidRequest))?;
+        if review.task != task.scope.task {
+            return Err(refused(SessionError::InvalidRequest));
+        }
+        let operation = Operation::ReviewTask {
+            task: review.task.clone(),
+        };
+        let result = read(service, headers, binding, viewer, operation.clone()).await?;
+        if !result.answers(&operation)
+            || !matches!(result, Outcome::Review { review: current } if current.base == review.base
+                && current.head_commit == review.head_commit && current.head == review.head)
+        {
+            return Err(refused(SessionError::Conflict));
+        }
+    }
+    if let Some(request) = &control.request {
+        let scope = hosts.control_scope(viewer, binding);
+        let snapshot = hosts
+            .effects(viewer, binding.id())
+            .and_then(|book| book.lookup(&scope, &request.id))
+            .map_err(refused)?;
+        let operation = Operation::RequestOperation {
+            request: request.id.clone(),
+            request_event: request.packet_digest.clone(),
+        };
+        let result = read(service, headers, binding, viewer, operation.clone()).await?;
+        if !result.answers(&operation) {
+            return Err(refused(SessionError::Conflict));
+        }
+        let Outcome::RequestOperation { result, .. } = result else {
+            return Err(refused(SessionError::Conflict));
+        };
+        let same_source = match result.as_deref() {
+            Some(coder_access::protocol::ReplyResult::Ok { outcome }) => {
+                snapshot.state == super::effects::State::Answered
+                    && snapshot.outcome.as_ref() == Some(outcome)
+                    && snapshot.refusal.is_none()
+            }
+            Some(coder_access::protocol::ReplyResult::Refused { code, missing }) => {
+                let state = if matches!(
+                    code,
+                    coder_access::Code::Unavailable | coder_access::Code::Transport
+                ) {
+                    super::effects::State::Unknown
+                } else {
+                    super::effects::State::Refused
+                };
+                snapshot.state == state
+                    && snapshot
+                        .refusal
+                        .as_ref()
+                        .is_some_and(|refusal| refusal.code == *code && refusal.missing == *missing)
+                    && snapshot.outcome.is_none()
+            }
+            None => {
+                matches!(
+                    snapshot.state,
+                    super::effects::State::Prepared | super::effects::State::Unknown
+                ) && snapshot.outcome.is_none()
+                    && snapshot.refusal.is_none()
+            }
+        };
+        if !same_source {
+            return Err(refused(SessionError::Conflict));
+        }
+    }
+    let current = service.authenticate(headers).await.map_err(refused)?;
+    if authority_value(&current) != authority_value(viewer) {
+        return Err(refused(SessionError::Conflict));
+    }
+    check_control(hosts, binding, &current, control).map_err(refused)?;
+    Ok(protect(
+        Json(json!({"active":true,"identity":pin_identity(binding,pin,&current)})).into_response(),
+    ))
+}
+
+pub(super) fn list_resource(binding: &Binding, viewer: &Viewer) -> Result<Value, SessionError> {
+    resource(binding, &Pin::List {}, viewer)
+}
+
+pub(super) fn task_resource(
+    binding: &Binding,
+    page: &task_read::Page,
+    viewer: &Viewer,
+) -> Result<Value, SessionError> {
+    resource(
+        binding,
+        &Pin::Task {
+            query: PageQuery {
+                workspace: page.scope.workspace.clone(),
+                task: page.scope.task.clone(),
+                revision: Some(page.scope.revision),
+                cursor: page.next.clone(),
+                limit: 1,
+            },
+            scope: page.scope.clone(),
+            source: page
+                .evidence
+                .original
+                .as_ref()
+                .map(|original| original.source.clone()),
+        },
+        viewer,
     )
 }
 
@@ -399,6 +753,17 @@ async fn task(
         escape(&task),
         binding.generation()
     );
+    if coder_access::protocol::identity(&task).is_ok() {
+        content.push_str(&format!("<p><a href=\"/cloud/app/hosts/{}/tasks/{}/review\">Read exact candidate review</a></p>",escape(&id),escape(&task)));
+        if app
+            .config
+            .cloud_hosts
+            .as_ref()
+            .is_some_and(|hosts| hosts.effects(&viewer, &id).is_ok())
+        {
+            content.push_str(&format!("<p><a href=\"/cloud/app/hosts/{}/tasks/{}/actions\">Review granted task controls</a></p>",escape(&id),escape(&task)));
+        }
+    }
     let attempt = page.scope.attempt.map(|v| v.to_string());
     let revision = page.scope.revision.to_string();
     let phase = format!("{:?}", page.phase);
@@ -731,6 +1096,13 @@ async fn standing(
         Ok(v) => v,
         Err(e) => return refused(e),
     };
+    if let Pin::Control { control } = &pin {
+        return match control_standing(&app, &headers, service, binding, &viewer, &pin, control)
+            .await
+        {
+            Ok(response) | Err(response) => response,
+        };
+    }
     let operation = match &pin {
         Pin::List {} => Operation::ListTasks {
             query: ListQuery {
@@ -763,6 +1135,7 @@ async fn standing(
                 query: query.clone(),
             }
         }
+        Pin::Control { .. } => return refused(SessionError::InvalidRequest),
     };
     let result = match read(service, &headers, binding, &viewer, operation).await {
         Ok(v) => v,
@@ -796,6 +1169,24 @@ async fn standing(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn snapshot() -> super::super::effects::Snapshot {
+        super::super::effects::Snapshot {
+            id: "a".repeat(64),
+            packet_digest: "b".repeat(64),
+            action: Operation::CancelTask {
+                task: "c".repeat(64),
+                revision: 7,
+                reason: "Private cancellation request for person@example.invalid".into(),
+            },
+            expires_at: 2000,
+            state: super::super::effects::State::Prepared,
+            outcome: None,
+            refusal: None,
+            failure: None,
+        }
+    }
+
     #[test]
     fn cursors_are_bounded_original_data_and_targets_are_closed() {
         assert!(!identifier("../host"));
@@ -805,5 +1196,80 @@ mod tests {
         let encoded = encode(&json!({"prefix":"original","revision":7})).unwrap();
         assert_eq!(decode::<Value>(&encoded).unwrap()["revision"], 7);
         assert!(encode(&"x".repeat(5000)).is_err());
+    }
+
+    #[test]
+    fn request_pins_keep_private_action_bytes_out_of_standing_urls() {
+        let mut snapshot = snapshot();
+        let original = request_pin(&snapshot);
+        let encoded = encode(&original).unwrap();
+        let decoded: Value = decode(&encoded).unwrap();
+        let json = decoded.to_string();
+        assert!(!json.contains("Private cancellation") && !json.contains("example.invalid"));
+        assert!(decoded.get("action").is_none() && decoded.get("reason").is_none());
+        snapshot.state = super::super::effects::State::Unknown;
+        snapshot.failure = Some(SessionError::Unavailable);
+        assert!(request_pin(&snapshot) != original);
+        snapshot.state = super::super::effects::State::Refused;
+        snapshot.failure = None;
+        snapshot.refusal = Some(super::super::effects::Refusal {
+            code: coder_access::Code::Conflict,
+            missing: None,
+        });
+        let refusal = request_pin(&snapshot);
+        snapshot.refusal.as_mut().unwrap().code = coder_access::Code::Unavailable;
+        assert!(request_pin(&snapshot) != refusal);
+    }
+
+    #[test]
+    fn combined_control_sources_fit_the_pinned_endpoint_bound() {
+        let scope = Scope {
+            workspace: "w".repeat(128),
+            task: "c".repeat(64),
+            revision: 7,
+            attempt: Some(3),
+            intent_digest: format!("sha256:{}", "d".repeat(64)),
+        };
+        let pin = Pin::Control {
+            control: ControlPin {
+                scope_digest: format!("sha256:{}", "a".repeat(64)),
+                enrolled: true,
+                request: Some(request_pin(&snapshot())),
+                task: Some(ControlTaskPin {
+                    query: PageQuery {
+                        workspace: scope.workspace.clone(),
+                        task: scope.task.clone(),
+                        revision: Some(scope.revision),
+                        cursor: Some(task_read::Cursor {
+                            scope: scope.clone(),
+                            source: "trace:1234567890123456".into(),
+                            source_digest: format!("sha256:{}", "e".repeat(64)),
+                            source_bytes: 1_048_576,
+                            next_step: 32,
+                            prefix_digest: format!("sha256:{}", "f".repeat(64)),
+                        }),
+                        limit: 1,
+                    },
+                    scope: scope.clone(),
+                    source: Some("trace:1234567890123456".into()),
+                }),
+                queue_digest: Some(format!("sha256:{}", "b".repeat(64))),
+                review: Some(ReviewPin {
+                    task: scope.task.clone(),
+                    base: "a".repeat(64),
+                    head_commit: "b".repeat(64),
+                    head: "c".repeat(64),
+                }),
+            },
+        };
+        let encoded = encode(&pin).unwrap();
+        let endpoint = format!(
+            "/cloud/app/hosts/{}/standing?pin={encoded}",
+            "b".repeat(128)
+        );
+        assert!(endpoint.len() <= 4096);
+        assert!(decode::<Pin>(&encoded).is_ok());
+        let text = String::from_utf8(URL_SAFE_NO_PAD.decode(&encoded).unwrap()).unwrap();
+        assert!(!text.contains("example.invalid") && !text.contains("Private cancellation"));
     }
 }

@@ -1,5 +1,5 @@
 //! Fresh account, resident host, and retained task evidence for browser acceptance.
-//! The worker has a synthetic home and Observe-only access. No engine runs.
+//! The worker has a synthetic home. Optional control rights affect only scratch tasks.
 
 #[allow(dead_code)]
 #[path = "cloud_session_fixture.rs"]
@@ -37,11 +37,10 @@ fn main() -> Result<(), String> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let worker = args.first().is_some_and(|arg| arg == "--synthetic-worker");
     let args = if worker { &args[1..] } else { &args[..] };
-    let [directory, build, listen] = args else {
-        return Err(
-            "usage: cloud_task_fixture NEW_SCRATCH_DIRECTORY CLOUD_WASM_DIRECTORY 127.0.0.1:PORT"
-                .into(),
-        );
+    let (directory, build, listen, controls) = match args {
+        [directory, build, listen] => (directory, build, listen, false),
+        [directory, build, listen, mode] if mode == "controls" => (directory, build, listen, true),
+        _ => return Err("usage: cloud_task_fixture NEW_SCRATCH_DIRECTORY CLOUD_WASM_DIRECTORY 127.0.0.1:PORT [controls]".into()),
     };
     let directory = PathBuf::from(directory);
     if !directory.is_absolute() || !Path::new(build).is_absolute() {
@@ -87,10 +86,10 @@ fn main() -> Result<(), String> {
         .enable_all()
         .build()
         .map_err(|_| "fixture runtime failed")?
-        .block_on(serve(&directory, build, listen))
+        .block_on(serve(&directory, build, listen, controls))
 }
 
-async fn serve(directory: &Path, build: &str, listen: &str) -> Result<(), String> {
+async fn serve(directory: &Path, build: &str, listen: &str, controls: bool) -> Result<(), String> {
     let root = directory.join("resident-checkout");
     std::fs::create_dir(&root).map_err(|_| "synthetic checkout creation failed")?;
     let store = directory.join("resident-tasks");
@@ -150,8 +149,12 @@ async fn serve(directory: &Path, build: &str, listen: &str) -> Result<(), String
     let invitation = authority
         .invite(
             &relay_url,
-            coder_access::Rights::new([coder_access::Right::Observe])
-                .map_err(|_| "synthetic observe right failed")?,
+            coder_access::Rights::new(if controls {
+                vec![coder_access::Right::Observe, coder_access::Right::Operate]
+            } else {
+                vec![coder_access::Right::Observe]
+            })
+            .map_err(|_| "synthetic fixture rights failed")?,
             now(),
             now() + 3600,
         )
@@ -181,6 +184,61 @@ async fn serve(directory: &Path, build: &str, listen: &str) -> Result<(), String
         coder_access::RelayPolicy::LoopbackTest,
     )
     .map_err(|_| "synthetic device access failed")?;
+    if controls {
+        let inert = "d".repeat(64);
+        let mut native =
+            coder::task::Store::open(&store).map_err(|_| "synthetic control store failed")?;
+        let command = coder::task::Command {
+            schema: coder::task::COMMAND_SCHEMA.into(),
+            command_id: "synthetic-control-submit".into(),
+            task_id: inert.clone(),
+            expected_revision: None,
+            action: coder::task::Action::Submit {
+                intent: coder::task::TaskIntent {
+                    title: "Synthetic inert controls".into(),
+                    prompt: "Synthetic pending task. No engine has execution authority.".into(),
+                    workspace: coder::task::Workspace {
+                        path: root.to_string_lossy().into_owned(),
+                        source_revision: None,
+                    },
+                    configuration: coder::task::RequestedConfiguration {
+                        adapter: coder::task::adapter::NAME.into(),
+                        model: None,
+                    },
+                    images: vec![],
+                },
+            },
+        };
+        native
+            .apply(&serde_json::to_vec(&command).map_err(|_| "synthetic control encoding failed")?)
+            .map_err(|_| "synthetic inert control submission failed")?;
+        drop(native);
+        let principal = coder_host::Principal {
+            device: coder_access::protocol::pubkey(&device),
+            grant: Some(access.grant.grant.clone()),
+            epoch: Some(access.grant.epoch),
+        };
+        inbox
+            .command_at_revision(
+                &principal,
+                &coder_access::protocol::TaskCommand {
+                    command: "e".repeat(64),
+                    task: inert.clone(),
+                    action: coder_access::protocol::CommandAction::Queue,
+                    based_on: 1,
+                    text: "Synthetic held message for queue controls.".into(),
+                    emulate: false,
+                    issued_at: now(),
+                },
+                1,
+                &|_| true,
+            )
+            .map_err(|_| "synthetic queue submission failed")?;
+        println!(
+            "{}",
+            json!({"synthetic":true,"control_task":inert,"control_route":format!("/cloud/app/hosts/resident/tasks/{inert}/actions")})
+        );
+    }
     let mut host = coder_host::config::Config::new(state, vec![relay_url], 7);
     host.policy = coder_access::RelayPolicy::LoopbackTest;
     host.workspaces = workspaces;
@@ -196,10 +254,21 @@ async fn serve(directory: &Path, build: &str, listen: &str) -> Result<(), String
         &serde_json::to_vec(&access).map_err(|_| "synthetic access encoding failed")?,
     )?;
     let hosts = directory.join("hosts.json");
-    private_file(&hosts, &serde_json::to_vec(&json!({"schema":"openagents.cloud.host-bindings.v1","bindings":[{"id":"resident","account":"alice","workspace":"alice-personal","members_epoch":3,"host_workspace":"checkout","host_generation":7,"route":format!("tcp://{}",running.local_addr()),"access_file":access_path,"device_secret":secret}]})).map_err(|_| "synthetic binding encoding failed")?)?;
+    let mut document = json!({"schema":"openagents.cloud.host-bindings.v1","bindings":[{"id":"resident","account":"alice","workspace":"alice-personal","members_epoch":3,"host_workspace":"checkout","host_generation":7,"route":format!("tcp://{}",running.local_addr()),"access_file":access_path,"device_secret":secret}]});
+    if controls {
+        let journal = directory.join("browser-controls");
+        std::fs::create_dir(&journal).map_err(|_| "synthetic control journal creation failed")?;
+        std::fs::set_permissions(&journal, std::fs::Permissions::from_mode(0o700))
+            .map_err(|_| "synthetic control journal permissions failed")?;
+        document["controls"] = json!({"directory":journal,"bindings":["resident"]});
+    }
+    private_file(
+        &hosts,
+        &serde_json::to_vec(&document).map_err(|_| "synthetic binding encoding failed")?,
+    )?;
     println!(
         "{}",
-        json!({"synthetic":true,"task":task,"task_route":format!("/cloud/app/hosts/resident/tasks/{task}"),"device_right":"observe"})
+        json!({"synthetic":true,"task":task,"task_route":format!("/cloud/app/hosts/resident/tasks/{task}"),"device_right":if controls { "observe,operate" } else { "observe" }})
     );
     let result = account_fixture::serve(
         directory

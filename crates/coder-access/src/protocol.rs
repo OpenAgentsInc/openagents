@@ -585,6 +585,12 @@ pub enum Operation {
     Revoke { device: String },
     #[serde(rename = "task.create")]
     CreateTask { task: TaskCreate },
+    /// Read the retained result of an original effect without dispatching it.
+    #[serde(rename = "request.operation")]
+    RequestOperation {
+        request: String,
+        request_event: String,
+    },
     /// Read canonical tasks under an explicitly admitted host workspace label.
     #[serde(rename = "task.list")]
     ListTasks { query: crate::task_read::ListQuery },
@@ -625,9 +631,20 @@ pub enum Operation {
     /// A durable task command: send, queue, steer, interrupt, or answer.
     #[serde(rename = "task.command")]
     CommandTask { command: TaskCommand },
+    /// Apply a command only at the exact task revision it names.
+    #[serde(rename = "task.command.at_revision")]
+    CommandTaskAtRevision { command: TaskCommand, revision: u64 },
     /// List or edit a task's queued messages.
     #[serde(rename = "task.queue")]
     QueueTask { task: String, edit: QueueEdit },
+    /// Read a queue or apply one request-keyed edit at its exact snapshot.
+    #[serde(rename = "task.queue.at_revision")]
+    QueueTaskAtRevision {
+        task: String,
+        revision: u64,
+        edit: QueueEdit,
+        queue_digest: Option<String>,
+    },
     /// List the spend requests this host holds for the sender, and give it
     /// the sender's current spend grant for this host (phase 1 agent
     /// spending: `crate::spend`).
@@ -959,7 +976,12 @@ impl Operation {
     pub fn reads_only(&self) -> bool {
         matches!(
             self,
-            Self::ListThreads {}
+            Self::RequestOperation { .. }
+                | Self::QueueTaskAtRevision {
+                    edit: QueueEdit::List {},
+                    ..
+                }
+                | Self::ListThreads {}
                 | Self::ListTasks { .. }
                 | Self::ReadTask { .. }
                 | Self::ReadTaskOriginal { .. }
@@ -1068,10 +1090,13 @@ impl Operation {
                 | Self::ListTasks { .. }
                 | Self::ReadTask { .. }
                 | Self::ReadTaskOriginal { .. }
+                | Self::RequestOperation { .. }
                 | Self::SteerTask { .. }
                 | Self::CancelTask { .. }
                 | Self::ArchiveTask { .. }
                 | Self::CommandTask { .. }
+                | Self::CommandTaskAtRevision { .. }
+                | Self::QueueTaskAtRevision { .. }
                 | Self::QueueTask { .. }
                 | Self::ListWorkspaces {}
                 | Self::StudioSnapshot {}
@@ -1117,6 +1142,7 @@ impl Operation {
             Self::ListDevices {} => "device.list",
             Self::Revoke { .. } => "device.revoke",
             Self::CreateTask { .. } => "task.create",
+            Self::RequestOperation { .. } => "request.operation",
             Self::ListTasks { .. } => "task.list",
             Self::ReadTask { .. } => "task.read",
             Self::ReadTaskOriginal { .. } => "task.original",
@@ -1127,6 +1153,8 @@ impl Operation {
             Self::ArchiveTask { .. } => "task.archive",
             Self::ListWorkspaces {} => "workspace.list",
             Self::CommandTask { .. } => "task.command",
+            Self::CommandTaskAtRevision { .. } => "task.command.at_revision",
+            Self::QueueTaskAtRevision { .. } => "task.queue.at_revision",
             Self::QueueTask { .. } => "task.queue",
             Self::ListSpends { .. } => "spend.list",
             Self::SettleSpend { .. } => "spend.settle",
@@ -1199,6 +1227,7 @@ impl Operation {
             | Self::Revoke { .. } => Some(Right::AccessAdmin),
             Self::ListDevices {} => Some(Right::AccessRead),
             Self::InviteChats {}
+            | Self::RequestOperation { .. }
             | Self::ListTasks { .. }
             | Self::ReadTask { .. }
             | Self::ReadTaskOriginal { .. }
@@ -1226,6 +1255,8 @@ impl Operation {
             | Self::ArchiveTask { .. }
             | Self::ListWorkspaces {}
             | Self::CommandTask { .. }
+            | Self::CommandTaskAtRevision { .. }
+            | Self::QueueTaskAtRevision { .. }
             | Self::QueueTask { .. }
             | Self::ListSpends { .. }
             | Self::SettleSpend { .. }
@@ -1270,6 +1301,13 @@ impl Operation {
     }
     pub fn validate(&self) -> Result<()> {
         match self {
+            Self::RequestOperation {
+                request,
+                request_event,
+            } => {
+                identity(request).map_err(Error::from)?;
+                identity(request_event).map_err(Error::from)?;
+            }
             Self::ListTasks { query } => query.validate()?,
             Self::ReadTask { query } => query.validate()?,
             Self::ReadTaskOriginal { query } => query.validate()?,
@@ -1401,6 +1439,28 @@ impl Operation {
             }
             Self::ArchiveTask { task } => identity(task).map_err(Error::from)?,
             Self::CommandTask { command } => command.validate()?,
+            Self::CommandTaskAtRevision { command, revision } => {
+                command.validate()?;
+                safe(*revision)?;
+                if command.based_on != *revision {
+                    return fail(Code::Malformed, "command and exact revision differ");
+                }
+            }
+            Self::QueueTaskAtRevision {
+                task,
+                revision,
+                edit,
+                queue_digest,
+            } => {
+                identity(task).map_err(Error::from)?;
+                safe(*revision)?;
+                edit.validate()?;
+                match (edit, queue_digest) {
+                    (QueueEdit::List {}, None) => {}
+                    (_, Some(value)) => digest(value)?,
+                    _ => return fail(Code::Malformed, "queue edits require an exact digest"),
+                }
+            }
             Self::QueueTask { task, edit } => {
                 identity(task).map_err(Error::from)?;
                 edit.validate()?;
@@ -1669,6 +1729,12 @@ pub enum Outcome {
     Dispatched {
         receipt: Receipt,
     },
+    /// A known original result, or an explicit unknown without redispatch.
+    RequestOperation {
+        request: String,
+        request_event: String,
+        result: Option<Box<ReplyResult>>,
+    },
     /// The workspace labels a device may name in `task.create`, sorted and
     /// distinct. A label names a host-side root; it is never a path.
     Workspaces {
@@ -1686,6 +1752,12 @@ pub enum Outcome {
     /// A task's held messages after a `task.queue` operation.
     Queue {
         queue: TaskQueue,
+    },
+    /// The exact queue snapshot after a request-keyed edit or current read.
+    QueueAtRevision {
+        queue: TaskQueue,
+        revision: u64,
+        queue_digest: String,
     },
     /// The spend requests the host holds for the sender (`spend.list`), at
     /// most [`crate::spend::MAX_LISTED`].
@@ -1810,8 +1882,60 @@ impl Outcome {
         ) {
             crate::task_read::bounded(self, crate::task_read::MAX_REPLY_BYTES)?;
         }
-        if let Self::Queue { queue } = self {
+        if let Self::RequestOperation {
+            request,
+            request_event,
+            result,
+        } = self
+        {
+            identity(request).map_err(Error::from)?;
+            identity(request_event).map_err(Error::from)?;
+            if let Some(result) = result {
+                match result.as_ref() {
+                    ReplyResult::Ok { outcome }
+                        if matches!(
+                            outcome,
+                            Self::Dispatched { .. }
+                                | Self::QueueAtRevision { .. }
+                                | Self::Published { .. }
+                        ) =>
+                    {
+                        outcome.validate()?
+                    }
+                    ReplyResult::Refused { code, missing } => {
+                        if (*code == Code::MissingRight) != missing.is_some() {
+                            return fail(
+                                Code::Malformed,
+                                "recovery refusal right differs from its code",
+                            );
+                        }
+                    }
+                    _ => {
+                        return fail(
+                            Code::Malformed,
+                            "recovery result is not a supported task effect",
+                        );
+                    }
+                }
+            }
+            crate::task_read::bounded(self, crate::task_read::MAX_REPLY_BYTES + 2048)?;
+        }
+        if let Self::QueueAtRevision {
+            queue,
+            revision,
+            queue_digest,
+        } = self
+        {
+            safe(*revision)?;
+            if queue.revision != *revision {
+                return fail(Code::Malformed, "queue and exact revision differ");
+            }
+            digest(queue_digest)?;
+            crate::task_read::bounded(self, crate::task_read::MAX_REPLY_BYTES)?;
+        }
+        if let Self::Queue { queue } | Self::QueueAtRevision { queue, .. } = self {
             identity(&queue.task).map_err(Error::from)?;
+            safe(queue.revision)?;
             if queue.items.len() > MAX_QUEUE {
                 return fail(Code::Bounds, "too many queued messages");
             }
@@ -1828,6 +1952,7 @@ impl Outcome {
             }
             if let Some(lease) = &queue.lease {
                 public(&lease.device)?;
+                safe(lease.expires_at)?;
             }
         }
         if let Self::WalletLinks { links } = self {
@@ -1935,6 +2060,17 @@ impl Outcome {
     /// Whether this outcome is the one the operation can produce.
     pub fn answers(&self, op: &Operation) -> bool {
         match (op, self) {
+            (
+                Operation::RequestOperation {
+                    request,
+                    request_event,
+                },
+                Self::RequestOperation {
+                    request: answered,
+                    request_event: event,
+                    ..
+                },
+            ) => request == answered && request_event == event,
             (Operation::ListTasks { query }, Self::Tasks { tasks }) => tasks.answers(query),
             (Operation::ReadTask { query }, Self::Task { task }) => task.answers(query),
             (Operation::ReadTaskOriginal { query }, Self::TaskOriginal { original }) => {
@@ -1947,7 +2083,29 @@ impl Outcome {
             | (Operation::ListDevices {}, Self::Devices { .. })
             | (Operation::Revoke { .. }, Self::Revoked { .. })
             | (Operation::ListWorkspaces {}, Self::Workspaces { .. }) => true,
+            (Operation::CommandTaskAtRevision { command, .. }, Self::Dispatched { receipt }) => {
+                receipt.operation == op.name() && receipt.reference == command.task
+            }
             (Operation::QueueTask { task, .. }, Self::Queue { queue }) => queue.task == *task,
+            (
+                Operation::QueueTaskAtRevision {
+                    task,
+                    revision: expected,
+                    edit,
+                    ..
+                },
+                Self::QueueAtRevision {
+                    queue, revision, ..
+                },
+            ) => {
+                queue.task == *task
+                    && queue.revision == *revision
+                    && if matches!(edit, QueueEdit::List {}) {
+                        *revision == *expected
+                    } else {
+                        *revision >= *expected
+                    }
+            }
             (Operation::ListWalletLinks {}, Self::WalletLinks { .. }) => true,
             (Operation::AnswerWalletLink { id, .. }, Self::WalletLinkAnswered { id: answered }) => {
                 id == answered

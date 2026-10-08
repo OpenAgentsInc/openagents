@@ -376,6 +376,31 @@ pub trait Tasks: Send + Sync {
     ///
     /// # Errors
     /// Returns the NIP-HOST refusal code the device receives.
+    /// Apply a durable command while holding the task's exact revision fence.
+    fn command_at_revision(
+        &self,
+        _principal: &Principal,
+        _command: &TaskCommand,
+        _revision: u64,
+        _standing: Standing<'_>,
+    ) -> Result<TaskRef, Code> {
+        Err(Code::Unsupported)
+    }
+
+    /// Read or edit a pinned queue with a native request identity.
+    fn queue_at_revision(
+        &self,
+        _request: &str,
+        _principal: &Principal,
+        _task: &str,
+        _revision: u64,
+        _edit: &QueueEdit,
+        _queue_digest: Option<&str>,
+        _standing: Standing<'_>,
+    ) -> Result<(TaskQueue, String, Option<TaskRef>), Code> {
+        Err(Code::Unsupported)
+    }
+
     fn queue(
         &self,
         _principal: &Principal,

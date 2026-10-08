@@ -744,6 +744,13 @@ pub struct Store {
     fault: std::cell::Cell<Option<Fault>>,
 }
 
+/// A private fence for one task's journal and native transitions.
+struct TaskWriteGuard {
+    dir: PathBuf,
+    task: String,
+    file: File,
+}
+
 /// Read a retained task without initializing, migrating, settling, or cleaning its store.
 /// This replays the owning journal and requires an existing private v3 store.
 /// Missing or legacy stores remain unchanged; no execution or write lock is acquired.
@@ -908,6 +915,31 @@ impl Store {
             return Err(Error::Conflict);
         }
         let _task = self.lock_task(&command.task_id)?;
+        self.apply_under_task_lock(bytes, &command)
+    }
+
+    /// The caller holds this store's validated write lock for the command's task.
+    fn apply_locked(&mut self, bytes: &[u8], guard: &TaskWriteGuard) -> Result<Receipt, Error> {
+        self.check_healthy()?;
+        let command = parse_command(bytes)?;
+        if guard.dir != self.dir || guard.task != command.task_id {
+            return Err(Error::Conflict);
+        }
+        verify_same_file(
+            &self.dir.join(TASK_DIR).join(format!("{}.lock", guard.task)),
+            &guard.file,
+        )?;
+        if self
+            .identities()?
+            .iter()
+            .any(|item| item.command_id == command.command_id && item.task_id != command.task_id)
+        {
+            return Err(Error::Conflict);
+        }
+        self.apply_under_task_lock(bytes, &command)
+    }
+
+    fn apply_under_task_lock(&mut self, bytes: &[u8], command: &Command) -> Result<Receipt, Error> {
         let current = self.read_task(&command.task_id)?;
         if let Some(accepted) = current.as_ref().and_then(|file| {
             file.commands
@@ -1007,6 +1039,17 @@ impl Store {
     /// `id`'s validated file, or `None` when the task does not exist.
     fn read_task(&self, id: &str) -> Result<Option<TaskFile>, Error> {
         read_task_file(&self.task_path(id), id)
+    }
+
+    fn task_guard(&self, id: &str) -> Result<TaskWriteGuard, Error> {
+        if !identifier(id, false) {
+            return Err(Error::NotFound);
+        }
+        Ok(TaskWriteGuard {
+            dir: self.dir.clone(),
+            task: id.to_owned(),
+            file: self.lock_task(id)?,
+        })
     }
 
     /// Take `id`'s write lock, waiting up to this handle's wait.

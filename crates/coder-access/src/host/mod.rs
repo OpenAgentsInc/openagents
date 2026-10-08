@@ -48,9 +48,21 @@ fn task_answer(
     }
 }
 
+/// One principal whose current Operate standing was checked under the access lock.
+#[derive(Clone, Debug)]
+pub struct OperatePrincipal {
+    pub device: String,
+    pub grant: String,
+    pub epoch: u64,
+    pub expires_at: u64,
+}
+
 /// Supplies effects and disclosures from other profiles after admission.
 /// `request` is the idempotency key for every effect.
 pub trait Dispatch: Send {
+    /// Supply current standing while this synchronous dispatch holds the access lock.
+    /// An owner must not reopen that lock from a deferred-principal callback.
+    fn operate_snapshot(&mut self, _owner: &str, _principals: Vec<OperatePrincipal>) {}
     /// Canonical task reads after current Observe admission; the owner also
     /// checks its admitted workspace and evidence disclosure policy.
     fn task_list(
@@ -107,6 +119,19 @@ pub trait Dispatch: Send {
         _task: &str,
         _edit: &crate::protocol::QueueEdit,
     ) -> std::result::Result<crate::protocol::TaskQueue, Code> {
+        Err(Code::Unavailable)
+    }
+    /// Apply a request-keyed edit at the native task and queue snapshot.
+    fn queue_at_revision(
+        &mut self,
+        _request: &str,
+        _device: &str,
+        _grant: Option<(&str, u64)>,
+        _task: &str,
+        _revision: u64,
+        _edit: &crate::protocol::QueueEdit,
+        _queue_digest: Option<&str>,
+    ) -> std::result::Result<(crate::protocol::TaskQueue, String), Code> {
         Err(Code::Unavailable)
     }
     /// The host's spend requests. A host without them has none to offer.
@@ -331,6 +356,37 @@ struct Retained {
     expires_at: u64,
     /// `None` while a dispatched effect is uncertain.
     reply: Option<Event>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    recovery: Option<Recovery>,
+}
+
+/// Retain authority metadata for task-effect recovery without storing its prompt.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Recovery {
+    grant: Option<String>,
+    epoch: Option<u64>,
+    required: Right,
+    until: u64,
+}
+
+impl Recovery {
+    fn for_request(request: &Request) -> Option<Self> {
+        let supported = matches!(
+            &request.op,
+            Operation::CreateTask { .. }
+                | Operation::SteerTask { .. }
+                | Operation::CancelTask { .. }
+                | Operation::CommandTaskAtRevision { .. }
+                | Operation::PublishTask { .. }
+        ) || matches!(&request.op, Operation::QueueTaskAtRevision { edit, .. } if !matches!(edit, QueueEdit::List {}));
+        supported.then(|| Self {
+            grant: request.grant.clone(),
+            epoch: request.epoch,
+            required: Right::Operate,
+            until: request.expires_at.saturating_add(48 * 60 * 60),
+        })
+    }
 }
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -351,7 +407,12 @@ impl Book {
     fn prune(&mut self, now: u64) {
         self.grants
             .retain(|_, g| g.grant.expires_at.saturating_add(SKEW) > now);
-        self.replies.retain(|_, r| r.expires_at > now);
+        self.replies.retain(|_, r| {
+            r.recovery
+                .as_ref()
+                .map_or(r.expires_at, |recovery| recovery.until)
+                > now
+        });
         // A consumed invitation's grant outlives it, so pruning keeps references valid.
         self.invitations
             .retain(|_, i| i.expires_at.saturating_add(SKEW) > now);
@@ -877,6 +938,7 @@ impl Host {
                     signer,
                     expires_at: request.expires_at,
                     reply: Some(reply.clone()),
+                    recovery: Recovery::for_request(&request),
                 },
             );
             // Consumption, grant, and the exact reply commit together. No reply
@@ -967,6 +1029,23 @@ impl Host {
         now: u64,
         dispatch: &mut dyn Dispatch,
     ) -> Result<std::result::Result<Outcome, Error>> {
+        let standing = book
+            .grants
+            .values()
+            .filter(|record| {
+                record.revoked_at.is_none()
+                    && record.grant.expires_at > now
+                    && record.grant.epoch == book.epoch(&record.grant.device)
+                    && record.grant.rights.contains(Right::Operate)
+            })
+            .map(|record| OperatePrincipal {
+                device: record.grant.device.clone(),
+                grant: record.grant.grant.clone(),
+                epoch: record.grant.epoch,
+                expires_at: record.grant.expires_at,
+            })
+            .collect();
+        dispatch.operate_snapshot(&book.owner, standing);
         Ok(match &request.op {
             Operation::Redeem { .. } => Err(Error::new(Code::Malformed, "redeem has no grant")),
             Operation::Approve { .. } | Operation::Deny { .. } => {
@@ -996,6 +1075,64 @@ impl Host {
                 }
                 Err(code) => Err(Error::new(code, "the host lists no workspaces")),
             },
+            Operation::RequestOperation {
+                request: original,
+                request_event,
+            } => {
+                let result = if let Some(record) = book.replies.get(original) {
+                    if record.signer != p.key || record.request_event != *request_event {
+                        return Ok(Err(Error::new(
+                            Code::Forbidden,
+                            "the original request belongs to another identity",
+                        )));
+                    }
+                    let recovery = record
+                        .recovery
+                        .as_ref()
+                        .filter(|metadata| metadata.until > now)
+                        .ok_or_else(|| {
+                            Error::new(
+                                Code::Unavailable,
+                                "the original effect is outside recovery retention",
+                            )
+                        })?;
+                    if recovery.grant != request.grant || recovery.epoch != request.epoch {
+                        return Ok(Err(Error::new(
+                            Code::Stale,
+                            "recovery must use the original grant and epoch",
+                        )));
+                    }
+                    if !p.rights.contains(recovery.required) {
+                        return Ok(Err(Error::missing(recovery.required)));
+                    }
+                    match &record.reply {
+                        Some(event) => {
+                            let reply: Reply =
+                                open(event, secret, &book.host, &record.signer, REPLY)?;
+                            if reply.request != *original
+                                || reply.request_event != *request_event
+                                || reply.host != book.host
+                            {
+                                return fail(
+                                    Code::Malformed,
+                                    "the retained effect result differs from its original request",
+                                );
+                            }
+                            Some(Box::new(reply.result))
+                        }
+                        None => None,
+                    }
+                } else {
+                    None
+                };
+                let outcome = Outcome::RequestOperation {
+                    request: original.clone(),
+                    request_event: request_event.clone(),
+                    result,
+                };
+                outcome.validate()?;
+                Ok(outcome)
+            }
             Operation::ListTasks { query } => task_answer(
                 dispatch
                     .task_list(&p.key, query)
@@ -1035,6 +1172,49 @@ impl Host {
                     }
                     Err(code) => Err(Error::new(code, "the task owner refused the queue edit")),
                 }
+            }
+            Operation::QueueTaskAtRevision {
+                task,
+                revision,
+                edit,
+                queue_digest,
+            } => {
+                if !matches!(edit, QueueEdit::List {}) {
+                    if book.replies.len() >= MAX_REPLIES
+                        && !book.replies.contains_key(&request.request)
+                    {
+                        return fail(Code::Bounds, "retained reply limit reached");
+                    }
+                    book.replies
+                        .entry(request.request.clone())
+                        .or_insert_with(|| Retained {
+                            request_event: origin.0.to_owned(),
+                            signer: origin.1.to_owned(),
+                            expires_at: request.expires_at,
+                            reply: None,
+                            recovery: Recovery::for_request(request),
+                        });
+                    store.save(book)?;
+                }
+                let grant = p.grant.as_deref().zip(request.epoch);
+                task_answer(
+                    dispatch
+                        .queue_at_revision(
+                            &request.request,
+                            &p.key,
+                            grant,
+                            task,
+                            *revision,
+                            edit,
+                            queue_digest.as_deref(),
+                        )
+                        .map(|(queue, queue_digest)| Outcome::QueueAtRevision {
+                            revision: queue.revision,
+                            queue,
+                            queue_digest,
+                        }),
+                    &request.op,
+                )
             }
             Operation::ListSpends { grant } => {
                 if grant.issuer != p.key || grant.grantee != book.host {
@@ -1169,6 +1349,7 @@ impl Host {
                         signer: origin.1.to_owned(),
                         expires_at: request.expires_at,
                         reply: None,
+                        recovery: Recovery::for_request(request),
                     },
                 );
                 store.save(book)?;
@@ -1217,6 +1398,7 @@ impl Host {
                         signer: origin.1.to_owned(),
                         expires_at: request.expires_at,
                         reply: None,
+                        recovery: Recovery::for_request(request),
                     },
                 );
                 store.save(book)?;
@@ -1355,6 +1537,7 @@ impl Host {
             | Operation::CancelTask { .. }
             | Operation::ArchiveTask { .. }
             | Operation::CommandTask { .. }
+            | Operation::CommandTaskAtRevision { .. }
             | Operation::SendThread { .. }
             | Operation::StopThread { .. }
             | Operation::RunThread { .. }
@@ -1381,6 +1564,7 @@ impl Host {
                         signer: origin.1.to_owned(),
                         expires_at: request.expires_at,
                         reply: None,
+                        recovery: Recovery::for_request(request),
                     },
                 );
                 store.save(book)?;
@@ -1389,7 +1573,11 @@ impl Host {
                     Ok(receipt)
                         if receipt.operation == request.op.name()
                             && !receipt.reference.is_empty()
-                            && receipt.reference.len() <= 128 =>
+                            && receipt.reference.len() <= 128
+                            && (Outcome::Dispatched {
+                                receipt: receipt.clone(),
+                            })
+                            .answers(&request.op) =>
                     {
                         Ok(Outcome::Dispatched { receipt })
                     }
@@ -1472,6 +1660,25 @@ impl Host {
             }
         }
         for (id, retained) in &book.replies {
+            if let Some(recovery) = &retained.recovery {
+                if recovery.required != Right::Operate
+                    || recovery.until != retained.expires_at.saturating_add(48 * 60 * 60)
+                    || recovery.grant.is_some() != recovery.epoch.is_some()
+                {
+                    return fail(
+                        Code::Malformed,
+                        "retained recovery authority or lifetime differs",
+                    );
+                }
+                if let Some(grant) = &recovery.grant {
+                    identity(grant).map_err(Error::from)?;
+                }
+                if let Some(epoch) = recovery.epoch {
+                    if epoch > MAX_SAFE {
+                        return fail(Code::Malformed, "retained recovery epoch exceeds its bound");
+                    }
+                }
+            }
             if let Some(reply) = &retained.reply
                 && (reply.pubkey != host
                     || reply.tag_values("h").collect::<Vec<_>>() != [id.as_str()]

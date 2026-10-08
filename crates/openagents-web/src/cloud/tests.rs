@@ -19,6 +19,9 @@ use tower::ServiceExt;
 #[path = "../../../coder-control/src/tests/relay.rs"]
 mod task_relay;
 
+#[path = "control_tests.rs"]
+mod controls;
+
 const HOST: &str = "127.0.0.1:4300";
 const ORIGIN: &str = "http://127.0.0.1:4300";
 const CANARY: &str = "synthetic-native-private-canary";
@@ -433,6 +436,19 @@ fn private_file(path: &std::path::Path, bytes: &[u8]) {
 }
 
 async fn resident(fixture: &mut Fixture) -> Resident {
+    resident_with_controls(
+        fixture,
+        coder_access::Rights::new([coder_access::Right::Observe]).unwrap(),
+        false,
+    )
+    .await
+}
+
+async fn resident_with_controls(
+    fixture: &mut Fixture,
+    rights: coder_access::Rights,
+    controls: bool,
+) -> Resident {
     use coder_host::Tasks;
     let private = fixture
         .config
@@ -472,12 +488,7 @@ async fn resident(fixture: &mut Fixture) -> Resident {
         .init(&coder_access::protocol::pubkey(&owner))
         .unwrap();
     let invitation = authority
-        .invite(
-            &relay_url,
-            coder_access::Rights::new([coder_access::Right::Observe]).unwrap(),
-            now(),
-            now() + 3600,
-        )
+        .invite(&relay_url, rights, now(), now() + 3600)
         .unwrap();
     let parsed = coder_access::protocol::HostInvitation::parse(
         &invitation.code,
@@ -514,7 +525,14 @@ async fn resident(fixture: &mut Fixture) -> Resident {
     private_file(&secret, &device.secret_bytes());
     private_file(&access_path, &serde_json::to_vec(&access).unwrap());
     let config = private.join("hosts.json");
-    private_file(&config,&serde_json::to_vec(&json!({"schema":"openagents.cloud.host-bindings.v1","bindings":[{"id":"resident","account":"alice","workspace":"alice-personal","members_epoch":3,"host_workspace":"checkout","host_generation":7,"route":format!("tcp://{}",running.local_addr()),"access_file":access_path,"device_secret":secret}]})).unwrap());
+    let mut document = json!({"schema":"openagents.cloud.host-bindings.v1","bindings":[{"id":"resident","account":"alice","workspace":"alice-personal","members_epoch":3,"host_workspace":"checkout","host_generation":7,"route":format!("tcp://{}",running.local_addr()),"access_file":access_path,"device_secret":secret}]});
+    if controls {
+        let journal = private.join("browser-controls");
+        std::fs::create_dir(&journal).unwrap();
+        std::fs::set_permissions(&journal, std::fs::Permissions::from_mode(0o700)).unwrap();
+        document["controls"] = json!({"directory":journal,"bindings":["resident"]});
+    }
+    private_file(&config, &serde_json::to_vec(&document).unwrap());
     fixture.config.cloud_hosts = Some(Arc::new(super::hosts::Hosts::load(&config).unwrap()));
     fixture.site = crate::router(fixture.config.clone());
     Resident {

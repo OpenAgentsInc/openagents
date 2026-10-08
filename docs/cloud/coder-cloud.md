@@ -623,13 +623,13 @@ web implementation:
 | WEB-01 | [#10948](https://github.com/OpenAgentsInc/openagents/issues/10948) | Implemented: public Cloud entry and honest availability. |
 | WEB-02 | [#10949](https://github.com/OpenAgentsInc/openagents/issues/10949) | Implemented: native sessions and the authenticated workspace shell; explicit account-service configuration, current membership, and Rust/Wasm private-view cleanup. |
 | WEB-03 | [#10950](https://github.com/OpenAgentsInc/openagents/issues/10950) | Implemented: bounded canonical resident task, child-reference, evidence, and original byte reads under current Observe authority, with Rust/Wasm source and grant cleanup. |
-| WEB-04 | [#10951](https://github.com/OpenAgentsInc/openagents/issues/10951) | Browser enrollment and durable granted task controls. |
+| WEB-04 | [#10951](https://github.com/OpenAgentsInc/openagents/issues/10951) | Implemented: explicit server-custody review, original signed requests, native revision and queue fences, and sealed-result recovery for granted task controls. |
 | WEB-05 | [#10952](https://github.com/OpenAgentsInc/openagents/issues/10952) | Projects and operator Cloud jobs through resident owners. |
 | WEB-06 | [#10953](https://github.com/OpenAgentsInc/openagents/issues/10953) | Granted browser terminals and canonical workbench navigation. |
 | WEB-07 | [#10954](https://github.com/OpenAgentsInc/openagents/issues/10954) | Visible Verse connections and associated work links. |
 | WEB-08 | [#10955](https://github.com/OpenAgentsInc/openagents/issues/10955) | Alice and Studio observation, exact decisions, and safe request recovery. |
 | WEB-09 | [#10956](https://github.com/OpenAgentsInc/openagents/issues/10956) | Scoped retail browser delegation and credential custody. |
-| WEB-10 | [#10851](https://github.com/OpenAgentsInc/openagents/issues/10851) | Retail purchase, progress, artifacts, and recovery. |
+| WEB-10 | [#10970](https://github.com/OpenAgentsInc/openagents/issues/10970) | Authenticated Cloud purchase, progress, artifacts, and recovery; the completed #10851 is the local read-only purchase browser. |
 | WEB-11 | [#10957](https://github.com/OpenAgentsInc/openagents/issues/10957) | Original billing statements and admitted plugin or gateway lanes. |
 | WEB-12 | [#10958](https://github.com/OpenAgentsInc/openagents/issues/10958) | Team membership, scoped policies, limits, and reports. |
 | WEB-13 | [#10959](https://github.com/OpenAgentsInc/openagents/issues/10959) | Separate private sales-owner remote adapter. |

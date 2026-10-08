@@ -38,7 +38,25 @@ pub enum Route {
     Relay(String),
 }
 
-type Waiters = Arc<Mutex<HashMap<String, oneshot::Sender<ToDevice>>>>;
+type Waiters = Arc<Mutex<HashMap<String, (u64, oneshot::Sender<ToDevice>)>>>;
+
+/// Cancellation releases only the waiter this exchange installed.
+struct Waiter {
+    waiters: Waiters,
+    key: String,
+    sequence: u64,
+}
+impl Drop for Waiter {
+    fn drop(&mut self) {
+        let mut waiters = lock(&self.waiters);
+        if waiters
+            .get(&self.key)
+            .is_some_and(|(sequence, _)| *sequence == self.sequence)
+        {
+            waiters.remove(&self.key);
+        }
+    }
+}
 
 /// What an attachment receives: a frame, or a part of a record stream
 /// (NIP-TERM's snapshot feature).
@@ -178,7 +196,7 @@ impl Link {
                             _ => None,
                         };
                         let waiter = key.and_then(|key| lock(&reader_waiters).remove(&key));
-                        if let Some(waiter) = waiter {
+                        if let Some((_, waiter)) = waiter {
                             let _ = waiter.send(answer);
                         }
                     }
@@ -349,8 +367,15 @@ impl Link {
     /// A host refusal is `Error::Access` with its code and any missing right.
     pub async fn call(&self, op: Operation) -> Result<Outcome> {
         let pending = self.device.client.prepare(op, unix_time()?)?;
+        self.send_pending(&pending).await
+    }
+
+    /// Send the original persisted packet without minting another operation.
+    /// Both routes verify its exact device, grant, and signed request first.
+    pub async fn send_pending(&self, pending: &coder_access::client::Pending) -> Result<Outcome> {
+        self.device.validate_pending(pending)?;
         match &self.route {
-            Route::Relay(_) => Ok(self.device.client.send(&pending).await?),
+            Route::Relay(_) => Ok(self.device.client.send(pending).await?),
             Route::Direct(_) => {
                 let answer = self
                     .exchange(
@@ -364,7 +389,7 @@ impl Link {
                 Ok(self
                     .device
                     .client
-                    .verify_reply(&pending, &reply, unix_time()?)?)
+                    .verify_reply(pending, &reply, unix_time()?)?)
             }
         }
     }
@@ -420,18 +445,31 @@ impl Link {
             return Err(Error::Closed(code));
         }
         let (sender, receiver) = oneshot::channel();
-        lock(&direct.waiters).insert(key.clone(), sender);
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        let sequence = NEXT.fetch_add(1, Ordering::Relaxed);
+        {
+            let mut waiters = lock(&direct.waiters);
+            if waiters.contains_key(&key) {
+                return Err(Error::Access(coder_access::Error::new(
+                    coder_access::Code::Conflict,
+                    "this exact request is already in flight",
+                )));
+            }
+            waiters.insert(key.clone(), (sequence, sender));
+        }
+        let _waiter = Waiter {
+            waiters: direct.waiters.clone(),
+            key: key.clone(),
+            sequence,
+        };
         if direct.outbound.send(message).await.is_err() {
-            lock(&direct.waiters).remove(&key);
             return Err(Error::Closed(direct.closed.borrow().clone().flatten()));
         }
         match tokio::time::timeout(CALL_TIMEOUT, receiver).await {
             Ok(Ok(answer)) => Ok(answer),
             Ok(Err(_)) => Err(Error::Closed(direct.closed.borrow().clone().flatten())),
-            Err(_) => {
-                lock(&direct.waiters).remove(&key);
-                Err(Error::Transport("the host did not answer in time".into()))
-            }
+            Err(_) => Err(Error::Transport("the host did not answer in time".into())),
         }
     }
 

@@ -670,7 +670,10 @@ A request is `openagents.host-request.v1`:
 | `task.cancel` | `operate` | `dispatched` |
 | `task.archive` | `operate` | `dispatched` |
 | `task.command` | `operate` | `dispatched` |
+| `task.command.at_revision` | `operate` | `dispatched` |
 | `task.queue` | `operate` | `queue` |
+| `task.queue.at_revision` | `operate` | `queue_at_revision` |
+| `request.operation` | `observe`, then the original effect's current right | `request_operation` |
 | `terminal.open` | `terminal` | `dispatched` |
 | `task.terminal.open` | `terminal` | `dispatched` |
 | `workspace.list` | `operate` | `workspaces` |
@@ -1043,6 +1046,35 @@ attention `input` or `approval` and a fixed headline, never the question's
 text. An answer is data for the engine: an approval answer never widens the
 task's grant, workspace, routes, or spend, and is not a [POL](NIP-POL.md)
 approval.
+`task.command.at_revision` carries `{command, revision}`. The command's
+`based_on` must equal `revision`. The native owner holds the task's write lock
+across the exact revision check and transition. An unchanged command retry
+returns its recorded result after the task advances; a changed request under
+the same command ID refuses. Older hosts reject this additive operation.
+
+`task.queue.at_revision` carries `{task, revision, edit, queue_digest}`.
+A `list` may omit the digest and is an unretained read that still requires
+`operate`. Every edit, including taking, renewing, or releasing a lease, names
+the exact current SHA-256 queue snapshot. Queue content and leases have their
+own digest because editing them does not advance the task revision. The reply
+contains `{queue, revision, queue_digest}` and is at most 48 KiB. Under the
+command-journal and task write locks, the owner records the request ID and
+exact action before dispatch and seals its result afterward. An unchanged
+retry returns that result without renewing a lease or repeating a send. An
+interrupted request without a sealed result stays unknown and never dispatches
+again; the caller reads the canonical queue to reconcile it.
+
+`request.operation` carries the original `{request, request_event}` and reads
+its retained native result without dispatching an effect. It returns those
+references and `result`, either the original typed success or refusal, or null
+for an unknown or absent result. Task create, steer, cancel, exact command,
+exact queue edit, and publication results remain recoverable for 48 hours after
+the original request expires. The host checks the original signer, the same
+current original grant and epoch, and the original required right before
+revealing a result. A new recovery read never extends or replaces the effect's
+signed envelope. An `unavailable` refusal can still describe an uncertain
+effect; it does not prove that nothing changed.
+
 `task.queue` carries `{task, edit}` and lists or edits the task's held
 messages: queued messages, and emulated steers or messages sent now that
 wait for the turn's stop. `edit` is one of `{action: "list"}`,

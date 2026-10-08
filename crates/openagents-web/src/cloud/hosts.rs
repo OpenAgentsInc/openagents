@@ -21,6 +21,15 @@ const TIMEOUT: Duration = Duration::from_secs(5);
 struct Configuration {
     schema: String,
     bindings: Vec<Declared>,
+    #[serde(default)]
+    controls: Option<Controls>,
+}
+
+#[derive(Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+struct Controls {
+    directory: PathBuf,
+    bindings: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -60,6 +69,9 @@ pub struct Binding {
 pub struct Hosts {
     config: ProtectedFile,
     bindings: Vec<Binding>,
+    effects: Option<super::effects::Effects>,
+    control_bindings: Vec<String>,
+    control_policy: String,
 }
 
 impl Hosts {
@@ -76,7 +88,29 @@ impl Hosts {
             }
             bindings.push(Binding::load(declared)?);
         }
-        Ok(Self { config, bindings })
+        let mut effects = None;
+        let mut control_bindings = Vec::new();
+        let mut control_policy = String::new();
+        if let Some(controls) = declared.controls {
+            if controls.bindings.len() > 64
+                || controls.bindings.iter().enumerate().any(|(index, id)| {
+                    !bindings.iter().any(|b| b.id == *id) || controls.bindings[..index].contains(id)
+                })
+            {
+                return Err(UNAVAILABLE.into());
+            }
+            control_policy = digest(&serde_json::to_value(&controls).map_err(|_| UNAVAILABLE)?);
+            effects =
+                Some(super::effects::Effects::open(&controls.directory).map_err(|_| UNAVAILABLE)?);
+            control_bindings = controls.bindings;
+        }
+        Ok(Self {
+            config,
+            bindings,
+            effects,
+            control_bindings,
+            control_policy,
+        })
     }
 
     /// Resolve only the current native account, workspace, and membership epoch.
@@ -99,6 +133,27 @@ impl Hosts {
             .iter()
             .filter(|binding| binding.admit(viewer).is_ok())
             .collect()
+    }
+
+    pub(crate) fn effects(
+        &self,
+        viewer: &Viewer,
+        id: &str,
+    ) -> Result<&super::effects::Effects, SessionError> {
+        self.get(viewer, id)?;
+        if !self.control_bindings.iter().any(|allowed| allowed == id) {
+            return Err(SessionError::Forbidden);
+        }
+        self.effects.as_ref().ok_or(SessionError::Forbidden)
+    }
+
+    pub(crate) fn control_scope(&self, viewer: &Viewer, binding: &Binding) -> serde_json::Value {
+        let mut standing = super::standing_value(viewer);
+        standing
+            .as_object_mut()
+            .expect("standing is an object")
+            .remove("expires_at");
+        serde_json::json!({"account_standing":standing,"binding":binding.identity(),"binding_id":binding.id(),"host":binding.host(),"host_generation":binding.generation(),"host_workspace":binding.workspace(),"policy":self.control_policy,"native_grant":digest(&serde_json::to_value(&binding.access().grant).expect("grant serializes"))})
     }
 }
 
@@ -191,25 +246,48 @@ impl Binding {
         &self.identity
     }
 
-    /// One read opens a new authenticated channel and rechecks native authority.
-    pub(crate) async fn read(
+    pub(crate) fn access(&self) -> &Access {
+        self.device.access()
+    }
+
+    pub(crate) fn prepare(
         &self,
         viewer: &Viewer,
         operation: Operation,
-    ) -> Result<Outcome, SessionError> {
+        id: String,
+    ) -> Result<coder_access::client::Pending, SessionError> {
         self.admit(viewer)?;
-        if !operation.reads_only()
-            || operation.required() != Some(Right::Observe)
-            || !matches!(
-                operation,
-                Operation::ListTasks { .. }
-                    | Operation::ReadTask { .. }
-                    | Operation::ReadTaskOriginal { .. }
-            )
+        if operation
+            .required()
+            .is_none_or(|right| !self.access().grant.rights.contains(right))
         {
             return Err(SessionError::Forbidden);
         }
-        let link = match &self.route {
+        self.device
+            .prepare_operation(operation, id)
+            .map_err(native_error)
+    }
+
+    pub(crate) async fn send(
+        &self,
+        viewer: &Viewer,
+        pending: &coder_access::client::Pending,
+    ) -> Result<Outcome, SessionError> {
+        self.admit(viewer)?;
+        self.device
+            .validate_pending(pending)
+            .map_err(native_error)?;
+        let link = self.connect().await?;
+        let result = tokio::time::timeout(TIMEOUT, link.send_pending(pending))
+            .await
+            .map_err(|_| SessionError::Unavailable)?
+            .map_err(native_error)?;
+        self.admit(viewer)?;
+        Ok(result)
+    }
+
+    async fn connect(&self) -> Result<Link, SessionError> {
+        match &self.route {
             Route::Local(address) => {
                 let stream = tokio::time::timeout(TIMEOUT, tokio::net::TcpStream::connect(address))
                     .await
@@ -238,7 +316,31 @@ impl Binding {
                 .await
             }
         }
-        .map_err(native_error)?;
+        .map_err(native_error)
+    }
+
+    /// One read opens a new authenticated channel and rechecks native authority.
+    pub(crate) async fn read(
+        &self,
+        viewer: &Viewer,
+        operation: Operation,
+    ) -> Result<Outcome, SessionError> {
+        self.admit(viewer)?;
+        if !operation.reads_only()
+            || operation.required() != Some(Right::Observe)
+            || !matches!(
+                operation,
+                Operation::ListTasks { .. }
+                    | Operation::ReadTask { .. }
+                    | Operation::ReadTaskOriginal { .. }
+                    | Operation::ListWorkspaces {}
+                    | Operation::ReviewTask { .. }
+                    | Operation::RequestOperation { .. }
+            )
+        {
+            return Err(SessionError::Forbidden);
+        }
+        let link = self.connect().await?;
         let answer = tokio::time::timeout(TIMEOUT, link.call(operation))
             .await
             .map_err(|_| SessionError::Unavailable)?
@@ -252,6 +354,25 @@ impl Binding {
             return Err(SessionError::Conflict);
         }
         Ok(answer)
+    }
+
+    pub(crate) async fn read_queue(
+        &self,
+        viewer: &Viewer,
+        operation: Operation,
+    ) -> Result<Outcome, SessionError> {
+        self.admit(viewer)?;
+        if !matches!(
+            &operation,
+            Operation::QueueTaskAtRevision {
+                edit: coder_access::protocol::QueueEdit::List {},
+                ..
+            }
+        ) {
+            return Err(SessionError::Forbidden);
+        }
+        let pending = self.prepare(viewer, operation, coder_access::protocol::random_id())?;
+        self.send(viewer, &pending).await
     }
 }
 

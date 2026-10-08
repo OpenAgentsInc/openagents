@@ -2039,3 +2039,13 @@ restart, source changes, and HTTPS browser cleanup using the deployed native
 owners. The isolated account/host fixture supplies synthetic evidence only;
 it enrolls no owner's browser, starts no engine, and activates no retail,
 execution, terminal, sales, custody, or spending lane.
+
+## Qualify reviewed Cloud controls (#10951)
+
+Before enabling controls on the deployed origin, separately approve server
+custody for each explicitly mapped native device and configure the private
+control journal described in the web crate README. Qualify HTTPS enrollment,
+current membership and grant revocation, native lost-reply recovery, and
+candidate changes on that origin. Review resident auto-start and publication
+policy separately. Synthetic checks enroll only an isolated fixture device;
+they activate no owner's executor, publication, wallet, or commercial lane.

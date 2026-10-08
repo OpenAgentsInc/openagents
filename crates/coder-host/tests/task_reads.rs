@@ -40,9 +40,13 @@ impl Tasks for Reader {
         self.reads.fetch_add(1, Ordering::SeqCst);
         Err(Code::Unavailable)
     }
-    fn create(&self, _: &str, _: &str, _: &TaskCreate) -> Result<TaskRef, Code> {
+    fn create(&self, request: &str, _: &str, _: &TaskCreate) -> Result<TaskRef, Code> {
         self.effects.fetch_add(1, Ordering::SeqCst);
-        Err(Code::Unsupported)
+        Ok(TaskRef {
+            task: request.into(),
+            revision: 1,
+            phase: nostr::activity_summary::Phase::Queued,
+        })
     }
     fn steer(&self, _: &str, _: &str, _: &str, _: u64, _: &str) -> Result<TaskRef, Code> {
         self.effects.fetch_add(1, Ordering::SeqCst);
@@ -159,5 +163,67 @@ async fn task_read_dispatch_checks_native_workspace_disclosure_before_the_owner(
     );
     assert_eq!(reader.reads.load(Ordering::SeqCst), 3);
     assert_eq!(reader.effects.load(Ordering::SeqCst), 0);
+    host.running.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_reconnected_link_sends_the_original_packet_and_rejects_changed_bytes() {
+    let reader = Arc::new(Reader::default());
+    let host = connect::host_with(connect::Options {
+        tasks: Some(reader.clone()),
+        ..connect::Options::default()
+    })
+    .await;
+    let first = link(&host, Right::Operate).await;
+    let action = Operation::CreateTask {
+        task: TaskCreate {
+            title: "Synthetic exact retry".into(),
+            prompt: "Original bytes".into(),
+            workspace: "checkout".into(),
+            images: vec![],
+            engine: None,
+        },
+    };
+    let pending = first
+        .device()
+        .prepare_operation(action.clone(), "c".repeat(64))
+        .unwrap();
+    let mut forged = pending.clone();
+    let Operation::CreateTask { task } = &mut forged.request.op else {
+        panic!("create")
+    };
+    task.prompt = "Forged unsigned replacement".into();
+    denied(
+        first.send_pending(&forged).await.unwrap_err(),
+        Code::Forbidden,
+    );
+    assert_eq!(reader.effects.load(Ordering::SeqCst), 0);
+    // Losing this response does not authorize another operation identity.
+    first.send_pending(&pending).await.unwrap();
+    let device = first.device().clone();
+    drop(first);
+    let address = host.running.local_addr();
+    let reconnect = Link::direct(
+        device.clone(),
+        TcpStream::connect(address).await.unwrap(),
+        address.to_string(),
+        host.running.generation(),
+        Duration::from_secs(5),
+    )
+    .await
+    .unwrap();
+    reconnect.send_pending(&pending).await.unwrap();
+    assert_eq!(reader.effects.load(Ordering::SeqCst), 1);
+    let replacement = device.prepare_operation(action, "c".repeat(64)).unwrap();
+    assert_ne!(replacement.event.id, pending.event.id);
+    denied(
+        reconnect.send_pending(&replacement).await.unwrap_err(),
+        Code::Conflict,
+    );
+    assert_eq!(reader.effects.load(Ordering::SeqCst), 1);
+    // A saved result does not let the revoked device bypass fresh admission.
+    host.store.revoke(&device.key(), connect::now()).unwrap();
+    assert!(reconnect.send_pending(&pending).await.is_err());
+    assert_eq!(reader.effects.load(Ordering::SeqCst), 1);
     host.running.shutdown().await;
 }

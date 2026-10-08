@@ -23,6 +23,7 @@ use crate::tasks::TaskRef;
 /// published after the reply is committed.
 pub(crate) struct Dispatcher {
     shared: Arc<Shared>,
+    standing: Option<(String, Vec<coder_access::host::OperatePrincipal>)>,
     pub(crate) changed: Vec<TaskRef>,
     /// Agent spend requests, beside the access store.
     spends: crate::spend::Book,
@@ -66,10 +67,32 @@ impl Dispatcher {
         let links = crate::wallet_link::Book::open(&shared.config.access);
         Self {
             shared,
+            standing: None,
             changed: Vec::new(),
             spends,
             links,
             refusal: None,
+        }
+    }
+
+    /// Use admission already checked under the access lock during synchronous dispatch.
+    fn current_standing(&self) -> impl Fn(&crate::tasks::Principal) -> bool + Sync + use<> {
+        let snapshot = self.standing.clone();
+        let authority = self.shared.authority.clone();
+        move |principal| match &snapshot {
+            Some((owner, admitted)) => match (&principal.grant, principal.epoch) {
+                (None, None) => principal.device == *owner,
+                (Some(grant), Some(epoch)) => coder_access::unix_time().is_ok_and(|now| {
+                    admitted.iter().any(|current| {
+                        current.device == principal.device
+                            && current.grant == *grant
+                            && current.epoch == epoch
+                            && current.expires_at > now
+                    })
+                }),
+                _ => false,
+            },
+            None => super::standing(&authority, principal),
         }
     }
 
@@ -232,6 +255,14 @@ pub(crate) fn chat_invitation(config: &crate::config::Config) -> Result<(String,
 }
 
 impl Dispatch for Dispatcher {
+    fn operate_snapshot(
+        &mut self,
+        owner: &str,
+        principals: Vec<coder_access::host::OperatePrincipal>,
+    ) {
+        self.standing = Some((owner.to_owned(), principals));
+    }
+
     fn task_list(
         &mut self,
         _device: &str,
@@ -398,8 +429,7 @@ impl Dispatch for Dispatcher {
         edit: &QueueEdit,
     ) -> Result<TaskQueue, Code> {
         let principal = principal(device, grant);
-        let authority = self.shared.authority.clone();
-        let standing = move |other: &crate::tasks::Principal| super::standing(&authority, other);
+        let standing = self.current_standing();
         let (queue, changed) = self
             .shared
             .tasks
@@ -407,6 +437,31 @@ impl Dispatch for Dispatcher {
             .queue(&principal, task, edit, &standing)?;
         self.changed.extend(changed);
         Ok(queue)
+    }
+
+    fn queue_at_revision(
+        &mut self,
+        request: &str,
+        device: &str,
+        grant: Option<(&str, u64)>,
+        task: &str,
+        revision: u64,
+        edit: &QueueEdit,
+        queue_digest: Option<&str>,
+    ) -> Result<(TaskQueue, String), Code> {
+        let principal = principal(device, grant);
+        let standing = self.current_standing();
+        let (queue, digest, changed) = self.shared.tasks.clone().queue_at_revision(
+            request,
+            &principal,
+            task,
+            revision,
+            edit,
+            queue_digest,
+            &standing,
+        )?;
+        self.changed.extend(changed);
+        Ok((queue, digest))
     }
 
     /// The studio now, from the task owner's coordinator, at the next
@@ -441,8 +496,7 @@ impl Dispatch for Dispatcher {
         decision: &MergeDecision,
     ) -> Result<Merged, Code> {
         let principal = principal(device, grant);
-        let authority = self.shared.authority.clone();
-        let standing = move |other: &crate::tasks::Principal| super::standing(&authority, other);
+        let standing = self.current_standing();
         let result = studio_merge(self.shared.tasks.as_ref(), &principal, decision, &standing);
         let (merged, changed) = self.noted(result)?;
         self.changed.extend(changed);
@@ -491,9 +545,7 @@ impl Dispatch for Dispatcher {
         match op {
             Operation::CommandTask { command } => {
                 let principal = principal(device, grant);
-                let authority = self.shared.authority.clone();
-                let standing =
-                    move |other: &crate::tasks::Principal| super::standing(&authority, other);
+                let standing = self.current_standing();
                 let result = self
                     .shared
                     .tasks
@@ -501,13 +553,21 @@ impl Dispatch for Dispatcher {
                     .command(&principal, command, &standing);
                 self.task(op, result)
             }
+            Operation::CommandTaskAtRevision { command, revision } => {
+                let principal = principal(device, grant);
+                let standing = self.current_standing();
+                let result = self
+                    .shared
+                    .tasks
+                    .clone()
+                    .command_at_revision(&principal, command, *revision, &standing);
+                self.task(op, result)
+            }
             // A studio intent goes to the task owner's coordinator; the
             // studio's next update shows what it changed.
             op if op.studio_intent() => {
                 let principal = principal(device, grant);
-                let authority = self.shared.authority.clone();
-                let standing =
-                    move |other: &crate::tasks::Principal| super::standing(&authority, other);
+                let standing = self.current_standing();
                 // Forget a sentence an earlier call left on this thread.
                 let _ = crate::tasks::take_reason(Code::Unavailable);
                 let result = self
