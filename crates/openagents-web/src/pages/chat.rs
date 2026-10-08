@@ -1038,7 +1038,7 @@ const ARROW_UP: &str = "<path d=\"m5 12 7-7 7 7\"/><path d=\"M12 19V5\"/>";
 pub(crate) fn composer(action: &str, label: &str, selection: Option<&Selection>) -> String {
     let transport = if action.starts_with("/chat/") {
         format!(
-            " hx-post=\"{action}\" hx-swap=\"none\" hx-disabled-elt=\"find button[type=submit]\" hx-sync=\"this:drop\""
+            " hx-post=\"{action}\" hx-swap=\"none\" hx-disabled-elt=\"#chat-form button[type=submit]\" hx-sync=\"this:drop\""
         )
     } else {
         String::new()
