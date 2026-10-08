@@ -1,0 +1,80 @@
+{
+  "audit_performed_utc": "2026-10-08T16:00:00Z",
+  "agent_id": "bc-83e18906-00e2-436c-978b-13a4932f58b0",
+  "run_id": "run-7b90ddb0-9d8b-43cb-870a-22fdd0e4fd31",
+  "recheck_sources": [
+    {
+      "source": "GET /v1/agents/{agentId}/runs/{runId}",
+      "http_status": 200,
+      "run_status": "FINISHED"
+    },
+    {
+      "source": "GET /v1/agents/{agentId}/runs?limit=100",
+      "http_status": 200,
+      "run_list_contains_target_run": true
+    },
+    {
+      "source": "GET /v1/agents/{agentId}/runs/{runId}/stream (no Last-Event-ID)",
+      "http_status": 200,
+      "bytes": 1604878,
+      "result": "replayed retained stream; includes terminal done event"
+    },
+    {
+      "source": "GET /v1/agents/{agentId}/artifacts",
+      "http_status": 200,
+      "artifact_count": 3,
+      "result": "only test and install logs listed"
+    },
+    {
+      "source": "GET /v0/agents/{agentId}/conversation",
+      "http_status": 200,
+      "result": "text-only messages; no toolCall records"
+    },
+    {
+      "source": "@cursor/sdk Agent.getRun(...).conversation()",
+      "status": "finished",
+      "parent_turns": 1,
+      "structured_tool_calls_including_nested_child_calls": 89,
+      "contains_pr_management": false
+    },
+    {
+      "source": "GitHub GET pull request 10979 (gh pr view cross-check)",
+      "status": "OPEN",
+      "is_draft": true,
+      "title": "Describe the Cloud Agent toolchain",
+      "head": "cursor/cloud-agent-env-notes-58b0",
+      "result_is_not_the_missing_Cursor_tool_response": true
+    }
+  ],
+  "provider_call_id_audit": {
+    "unique_call_ids": 121,
+    "completed": 120,
+    "completed_with_result": 117,
+    "completed_truncated": 3,
+    "still_running": 1
+  },
+  "interaction_update_tool_completions_with_results": 99,
+  "missing_response": [
+    {
+      "call_id": "call-62505700-2c7f-4748-a086-4e5783ebef73-92\nfc_c2f92cbd-4b1f-9d94-809e-55a3d6f81ad2_0",
+      "name": "pr_management",
+      "status": "running"
+    }
+  ],
+  "recovered_truncated_records": [
+    {
+      "tool": "grep_search",
+      "call_id": "call-810178d1-e290-4f10-acb4-280cf31adc38-67",
+      "recovered_from": "interaction_update tool-call-completed result in retained SSE stream"
+    },
+    {
+      "tool": "edit_file",
+      "recovered_from": "structured SDK conversation result"
+    },
+    {
+      "tool": "task",
+      "recovered_from": "nested delegated conversation and results in structured SDK conversation"
+    }
+  ],
+  "conclusion": "Every provider call marked completed has a recoverable result across the retained SSE interaction updates and SDK transcript. The pr_management call is the sole exception: it has only a running event, no result in the retained SSE replay or SDK/v0 conversation, and is absent from the artifact list. GitHub confirms the resulting draft PR state, but cannot reconstruct the original Cursor tool response."
+}

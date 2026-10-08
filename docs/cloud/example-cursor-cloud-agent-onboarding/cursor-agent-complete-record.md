@@ -154,18 +154,21 @@ The 10:29 export at [Set up openagents environment ｜ Cursor (10_8_2026 10：29
 - The 20-line `AGENTS.md` addition and the draft branch/PR panel.
 - The panel had a **Save** action. The later 10:47 export says it was saved; the saved-environment API confirms that state.
 
-It does not include complete tool outputs. The v0 conversation endpoint returned only three parent messages. The v1 SSE stream is the event capture, but it does not contain every tool response payload. A later SDK conversation read recovered structured parent and nested child tool-call results, but two responses remain unavailable (audit below). Cursor documents the v1 route as `GET /v1/agents/{id}/runs/{runId}/stream` ([Cloud Agents API](https://cursor.com/docs/cloud-agent/api/endpoints)). Cursor staff have also said transcript exports omit tool outputs and suggested logging `postToolUse` results for future runs ([transcript discussion](https://forum.cursor.com/t/accessing-the-full-agent-transcript-in-cursor/157311/5)).
+It does not include complete tool outputs. The v0 conversation endpoint returned only three parent messages. The first v1 SSE capture is an event record, but its provider-level completion entries alone omit or truncate some result payloads. Re-fetching the retained stream exposed lower-level interaction completion results; the SDK conversation recovered the remaining truncated edit and task results. One `pr_management` call remains without any response (audit below). Cursor documents the v1 route as `GET /v1/agents/{id}/runs/{runId}/stream` ([Cloud Agents API](https://cursor.com/docs/cloud-agent/api/endpoints)). Cursor staff have also said transcript exports omit tool outputs and suggested logging `postToolUse` results for future runs ([transcript discussion](https://forum.cursor.com/t/accessing-the-full-agent-transcript-in-cursor/157311/5)).
 
 ## Completeness audit: tool calls and responses
 
-**No: we cannot claim 100% of every tool response.** Comparing event IDs in the captured v1 stream with the completed tool-call records and the SDK conversation produced this audit:
+The recheck recovered the two outputs previously thought missing. The retained v1 stream replay includes an `interaction_update` completion payload for the truncated `grep_search`; the SDK conversation contains results for the truncated `edit_file` and delegated `task` records.
 
-- The raw SSE contains 121 unique call IDs across the provider/tool event formats. Some are schema-discovery (`get_mcp_tools`) and wait (`await`) events rather than normal executable tool calls.
-- The parent SDK transcript contains 82 structured parent tool-call steps. The delegated verification task nests 15 child steps, including seven child tool calls; all seven have structured results. The SDK transcript recovers the `AGENTS.md` edit result and the verification task result that were truncated in the raw tool event records.
-- **Two raw call responses remain missing:** (1) a `grep_search` for `rustup|default toolchain|EXIT|error:` in `/home/ubuntu/work/cloud-agent-install.log` has a completed status but a truncated response payload; (2) `pr_management` (call ID begins `call-62505700-...-92`) remains `running` in the captured stream and has no response event. The HTML shows draft PR #10979, but that does not restore the exact `pr_management` API response.
-- The captured parent run ended `FINISHED`, with a terminal result and `done` event. That establishes run completion, not complete tool-response retention.
+- The re-fetched stream has 121 unique provider call IDs: 120 reached `completed`, and one `pr_management` call remained `running`. The completed calls include `get_mcp_tools` and `await` events as well as user-facing tools.
+- There are 117 completed provider event records with an inline `result`; three provider records were marked truncated (`grep_search`, `edit_file`, and `task`).
+- The retained stream contains 99 lower-level `tool-call-completed` interaction updates with result payloads. This lower-level result stream restores the full `grep_search` response even though its corresponding provider record says `truncated`.
+- The SDK conversation contains 82 parent and 7 nested child tool-call steps. It restores the structured results for the `edit_file` and delegated `task` calls.
+- **One tool call has no response to recover:** `pr_management` (call ID begins `call-62505700-...-92`) appears only as `running` in the retained stream. It has no completion in the retained replay, no result in the SDK or legacy v0 conversation, and no matching artifact. A separate GitHub PR lookup confirms that draft PR #10979 exists, but it cannot reproduce the missing Cursor tool response.
 
-Therefore the conversation is comprehensively documented from the available sources, but the record is **not a byte-for-byte complete tool call/response transcript**. The two missing outputs should stay marked missing; do not infer their contents from the visible UI or later summary.
+This means all 120 provider calls marked `completed` have a recoverable result across the stream's interaction updates and the SDK transcript. The full chain still does **not** have a response for the one `pr_management` call that never completed. The recheck sources and counts are recorded in [the recovery audit](cursor-agent-recovery-audit.json); the newly extracted 99 interaction results are in [the interaction result JSONL](cursor-agent-interaction-tool-results.jsonl).
+
+The captured parent run ended `FINISHED`, with a terminal result and `done` event. Run completion does not turn a still-running tool call into a successful call or a response.
 
 ## APIs used and repeatable collection procedure
 
@@ -204,7 +207,10 @@ All files are in the same scratch folder as this record.
 
 | Evidence | Contents |
 | --- | --- |
-| [Full run stream](cursor-agent-run-stream.sse) | Captured v1 SSE stream through `FINISHED`; contains tool events and the terminal result, but some event responses are truncated or absent. |
+| [Full run stream](cursor-agent-run-stream.sse) | Initially captured v1 SSE stream through `FINISHED`; provider-level entries mark some outputs truncated. |
+| [Run stream API recheck](cursor-agent-run-stream-recheck.sse) | Later no-cursor retained replay from the API; confirms interaction-level completions and the still-running PR tool call. |
+| [Interaction tool results](cursor-agent-interaction-tool-results.jsonl) | 99 `tool-call-completed` interaction updates with result payloads, including the full grep result. |
+| [Recovery audit](cursor-agent-recovery-audit.json) | API recheck status, source coverage, counts, recovered truncations, and the one unresolved call. |
 | [Completed tool outputs](cursor-agent-tool-outputs.jsonl) | 117 completed tool-call entries with result data. |
 | [All tool-call events](cursor-agent-tool-calls.jsonl) | 330 normalized provider tool event rows, including partial and running updates. |
 | [Cursor HTML export (10:29)](cursor-agent-html-export.html) | Original UI transcript and environment/PR snapshot from 10:29 AM CT. |
@@ -213,6 +219,12 @@ All files are in the same scratch folder as this record.
 | [SDK conversation](cursor-agent-sdk-conversation.json) | Structured parent transcript, including nested verification subagent conversation/results. |
 | [SDK tool-call rows](cursor-agent-sdk-tool-calls.jsonl) | Normalized 82 parent and 7 nested child tool calls from the SDK response. |
 | [Saved environments API response](cursor-environments-current.json) | Read-only `GET /v1/environments?limit=100`; confirms the environment is saved. |
+| [Run status recheck](cursor-agent-run-status-recheck.json) | Current read of the final run state and result. |
+| [Run list recheck](cursor-agent-runs-recheck.json) | Confirms the target run and draft PR URL in `git.branches`. |
+| [Artifact list recheck](cursor-agent-artifacts-recheck.json) | Confirms Cursor still exposes only three artifacts. |
+| [SDK conversation recheck](cursor-agent-sdk-conversation-recheck.json) | Second completed-run transcript read; contains 89 parent and nested child tool calls, no `pr_management` result. |
+| [Legacy conversation recheck](cursor-agent-conversation-recheck.json) | Confirms v0 still returns text messages without tool-call results. |
+| [GitHub PR cross-check](cursor-github-pr-crosscheck.json) | Independent PR state lookup; not the original Cursor tool response. |
 | [Artifact manifest](cursor-agent-artifacts.json) | The three files Cursor exposed through the agent artifact API. |
 | [Fresh-agent metadata](cursor-agent-verification-metadata.json) | Metadata for the build-verification agent. |
 | [Fresh-agent run listing](cursor-agent-verification-runs.json) | Confirms that verification task has no v1 API run entries. |

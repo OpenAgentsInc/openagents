@@ -26,13 +26,15 @@ commands, results, limitations, and evidence index.
 The saved files provide a detailed record, but they are not a complete
 byte-for-byte tool call and response transcript. The captured v1 SSE stream
 ends with the run's `FINISHED` result and `done` event, but some tool responses
-are truncated or absent. The SDK conversation recovers the `AGENTS.md` edit
-result, the delegated verification result, and seven nested child tool calls.
-Two responses remain unavailable:
-
-1. A completed `grep_search` of the install log has a truncated result.
-2. The `pr_management` call has a start event but no response event. The HTML
-   shows draft PR #10979 but does not contain the exact API response.
+are truncated or absent. The first audit missed a lower-level `interaction_update` completion: the
+re-fetched retained stream contains the complete `grep_search` result despite
+the provider record being marked truncated. The SDK conversation recovers the
+truncated `AGENTS.md` edit and delegated verification task results, including
+seven nested child tool calls. One call remains without a response: the
+`pr_management` event is still `running` in the retained replay. It has no result
+in the SDK transcript, legacy conversation, or artifact list. A GitHub API
+cross-check confirms draft PR #10979 exists, but that is not the original
+Cursor tool response.
 
 Do not treat the final assistant summary or visible HTML as a substitute for
 these missing tool outputs. The record distinguishes provider event counts,
@@ -45,8 +47,14 @@ different schemas.
   tool events, final run result, and terminal event.
 - `cursor-agent-tool-calls.jsonl`: normalized provider tool-call event rows,
   including starts, partial updates, and completions.
-- `cursor-agent-tool-outputs.jsonl`: completed tool event rows with result
-  payloads when the stream retained them.
+- `cursor-agent-tool-outputs.jsonl`: 117 completed provider tool event rows
+  with inline result payloads. Three provider records are marked truncated.
+- `cursor-agent-run-stream-recheck.sse`: later replay from the run stream API;
+  this exposes the lower-level result event missed by the first audit.
+- `cursor-agent-interaction-tool-results.jsonl`: all 99 lower-level tool
+  completion events with result payloads, including the full grep output.
+- `cursor-agent-recovery-audit.json`: the recheck methods, counts, recovered
+  result sources, and the one call without a response.
 - `cursor-agent-sdk-conversation.json`: structured parent transcript,
   including the delegated verification conversation and nested results.
 - `cursor-agent-sdk-tool-calls.jsonl`: normalized SDK tool calls, including
@@ -61,6 +69,14 @@ different schemas.
 - `cursor-agent-conversation.json`: legacy v0 text-only conversation result.
 - `cursor-agent-run-status.json` and `cursor-agent-metadata.json`: run status
   and earlier agent metadata. The earlier metadata predates completion.
+- `cursor-agent-run-status-recheck.json`, `cursor-agent-runs-recheck.json`,
+  and `cursor-agent-artifacts-recheck.json`: read-only API rechecks after the
+  run finished.
+- `cursor-agent-sdk-conversation-recheck.json` and
+  `cursor-agent-conversation-recheck.json`: repeat SDK and legacy transcript
+  reads; neither contains a `pr_management` result.
+- `cursor-github-pr-crosscheck.json`: separate GitHub API result for PR #10979;
+  this is not the missing Cursor tool response.
 - `cursor-agent-verification-conversation.json`,
   `cursor-agent-verification-metadata.json`, and
   `cursor-agent-verification-runs.json`: delegated verification task records.
@@ -146,4 +162,7 @@ provider response.
    environment from a draft. The list omits drafts and deleted environments.
 
 The raw evidence is retained here so future reviews can reproduce the audit
-without depending on the Cursor UI export alone.
+without depending on the Cursor UI export alone. Every call marked completed
+has a recoverable response across the event and SDK sources. The single
+`pr_management` call remained running and has no response payload to retrieve;
+the separate GitHub cross-check establishes the PR state only.
