@@ -542,6 +542,20 @@ impl Wreck {
         true
     }
 
+    /// Buildings whose absent pieces invalidate pristine ground light, including
+    /// damage retained after their pieces leave the live simulation.
+    fn relight_buildings(&self) -> BTreeSet<usize> {
+        self.refs
+            .iter()
+            .enumerate()
+            .filter(|(piece, _)| self.site.relight(*piece))
+            .map(|(_, &(building, _))| building)
+            .chain(self.frozen.iter().filter_map(|(&building, pieces)| {
+                pieces.contains(&Frozen::Gone).then_some(building)
+            }))
+            .collect()
+    }
+
     /// Takes `building` out of the rules. Damage it took stays: broken and
     /// fallen pieces stay out of the static cells and standing pieces keep
     /// their hit points, until the town is restored.
@@ -2151,14 +2165,7 @@ impl Town {
             self.set_relight_fallback(Vec::new());
             return;
         }
-        let affected: BTreeSet<usize> = self
-            .wreck
-            .refs
-            .iter()
-            .enumerate()
-            .filter(|(i, _)| self.wreck.site.relight(*i))
-            .map(|(_, &(building, _))| building)
-            .collect();
+        let affected = self.wreck.relight_buildings();
         let field = LocalOcclusion::new(&self.wreck.site);
         let mut fallback = Vec::new();
         for index in self.relight_receivers.affected(affected) {

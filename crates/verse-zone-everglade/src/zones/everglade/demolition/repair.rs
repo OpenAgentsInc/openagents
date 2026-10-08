@@ -25,13 +25,15 @@ pub(crate) enum RepairTarget {
 
 /// The complete currently affected target set, with shared source and rigid
 /// snapshots. Index edits stay shared and are guarded by their captured revision.
-/// The caller retains unfinished targets when replacing a request and removes
-/// expired chunk IDs. Only the worker merges geometry and poses target vertices.
+/// Clock updates retain the ordered traversal; structural requests replace it.
+/// Only the worker merges geometry and poses target vertices.
 pub(crate) struct RepairRequest {
     pub revision: u64,
     /// Changes for structural edits or rigid membership changes. Moving targets
     /// may reuse the previous occluder snapshot; their own sample poses stay current.
     pub geometry_epoch: u64,
+    pub clock_revision: u64,
+    pub clock_minute: u64,
     pub scene: Arc<TexturedScene>,
     /// Individual source chunks, including settled chunks before renderer merging.
     pub instances: Option<InstancedFigure>,
@@ -79,6 +81,12 @@ pub(crate) struct RepairBatch {
     pub generation: u64,
     pub revision: u64,
     pub geometry_epoch: u64,
+    pub sweep: u64,
+    pub clock_revision: u64,
+    pub clock_minute: u64,
+    pub light: BakeLight,
+    /// Every sample in this sweep has used the same clock revision so far.
+    pub stable_clock: bool,
     pub patches: Vec<RepairPatch>,
     pub processed: usize,
     pub skipped: usize,
@@ -89,6 +97,7 @@ pub(crate) struct RepairBatch {
 #[derive(Default)]
 struct Mailbox {
     pending: Option<Job>,
+    lighting: Option<Lighting>,
     stopped: bool,
 }
 
@@ -118,6 +127,32 @@ impl Stamp {
 struct Job {
     stamp: Stamp,
     request: RepairRequest,
+}
+
+#[derive(Clone)]
+struct Lighting {
+    generation: u64,
+    revision: u64,
+    minute: u64,
+    light: BakeLight,
+    instances: Option<InstancedFigure>,
+}
+
+#[derive(Default)]
+struct Traversal {
+    cursor: usize,
+    sweep: u64,
+    clock_revision: Option<u64>,
+    mixed_clock: bool,
+}
+
+impl Traversal {
+    fn restart(&mut self) {
+        self.cursor = 0;
+        self.sweep = self.sweep.wrapping_add(1);
+        self.clock_revision = None;
+        self.mixed_clock = false;
+    }
 }
 
 /// One detached worker and at most two queued batches. Neither polling nor
@@ -177,6 +212,13 @@ impl RepairQueue {
             .mailbox
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
+        mailbox.lighting = Some(Lighting {
+            generation,
+            revision: request.clock_revision,
+            minute: request.clock_minute,
+            light: request.light,
+            instances: request.instances.clone(),
+        });
         mailbox.pending = (!request.targets.is_empty()).then_some(Job {
             stamp: stamp.clone(),
             request,
@@ -186,17 +228,46 @@ impl RepairQueue {
         generation
     }
 
+    /// Coalesces clock-only updates without cancelling samples or resetting the
+    /// target cursor. The worker takes this snapshot before its next batch.
+    pub fn update_light(
+        &mut self,
+        revision: u64,
+        minute: u64,
+        light: BakeLight,
+        instances: Option<InstancedFigure>,
+    ) {
+        let Some(stamp) = self.current.as_ref() else {
+            return;
+        };
+        let mut mailbox = self
+            .shared
+            .mailbox
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        mailbox.lighting = Some(Lighting {
+            generation: stamp.generation,
+            revision,
+            minute,
+            light,
+            instances,
+        });
+        self.shared.wake.notify_one();
+    }
+
     /// Call before restoring pristine light or reusing body IDs. Invalidates
     /// buffered deliveries and the cached hierarchy without waiting for a worker.
     pub fn invalidate(&mut self) {
         self.shared.generation.fetch_add(1, Ordering::AcqRel);
         self.shared.cache_epoch.fetch_add(1, Ordering::AcqRel);
         self.current = None;
-        self.shared
+        let mut mailbox = self
+            .shared
             .mailbox
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .pending = None;
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        mailbox.pending = None;
+        mailbox.lighting = None;
         self.shared.wake.notify_one();
     }
 
@@ -220,6 +291,52 @@ impl Drop for RepairQueue {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .stopped = true;
         self.shared.wake.notify_one();
+    }
+}
+
+/// Snapshots illumination once per batch. Later clock updates cannot change
+/// the light halfway through a vertex trace or discard already sampled targets.
+fn update_job(shared: &Shared, job: &mut Job) -> bool {
+    let mailbox = shared
+        .mailbox
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let Some(lighting) = mailbox
+        .lighting
+        .as_ref()
+        .filter(|lighting| lighting.generation == job.stamp.generation)
+    else {
+        return false;
+    };
+    if mailbox.stopped || !job.stamp.current(shared) {
+        return false;
+    }
+    job.request.clock_revision = lighting.revision;
+    job.request.clock_minute = lighting.minute;
+    job.request.light = lighting.light;
+    job.request.instances = lighting.instances.clone();
+    true
+}
+
+fn wait_for_clock(shared: &Shared, job: &Job) -> bool {
+    let mut mailbox = shared
+        .mailbox
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    loop {
+        if mailbox.stopped || !job.stamp.current(shared) {
+            return false;
+        }
+        if mailbox.lighting.as_ref().is_some_and(|lighting| {
+            lighting.generation == job.stamp.generation
+                && lighting.revision != job.request.clock_revision
+        }) {
+            return true;
+        }
+        mailbox = shared
+            .wake
+            .wait(mailbox)
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
     }
 }
 
@@ -336,15 +453,16 @@ struct ChunkPose {
     normals: Mat3,
 }
 
-struct ChunkLookup<'a> {
-    frame: Option<&'a InstancedFigure>,
-    extra_sources: &'a [TexturedMesh],
+struct ChunkLookup {
+    frame: Option<InstancedFigure>,
+    extra_sources: Arc<Vec<TexturedMesh>>,
     poses: BTreeMap<u64, ChunkPose>,
 }
 
-impl<'a> ChunkLookup<'a> {
-    fn new(frame: Option<&'a InstancedFigure>, extra_sources: &'a [TexturedMesh]) -> Self {
+impl ChunkLookup {
+    fn new(frame: Option<InstancedFigure>, extra_sources: Arc<Vec<TexturedMesh>>) -> Self {
         let poses = frame
+            .as_ref()
             .into_iter()
             .flat_map(|frame| frame.instances.iter())
             .map(|instance| {
@@ -366,7 +484,7 @@ impl<'a> ChunkLookup<'a> {
     }
 
     fn vertex(&self, id: u64, vertex: u32) -> Option<(TexturedVertex, bool)> {
-        let frame = self.frame?;
+        let frame = self.frame.as_ref()?;
         let pose = self.poses.get(&id)?;
         let mesh = if pose.mesh < frame.scene.meshes.len() {
             frame.scene.meshes.get(pose.mesh)?
@@ -425,22 +543,32 @@ fn append_patch(patches: &mut Vec<RepairPatch>, target: RepairTarget, light: [u8
 
 fn sample_batch(
     job: &Job,
-    cursor: &mut usize,
+    traversal: &mut Traversal,
     mut elapsed: impl FnMut() -> Duration,
     current: impl Fn() -> bool,
     mut sample: impl FnMut(RepairTarget) -> Option<[u8; 4]>,
 ) -> Option<RepairBatch> {
+    if let Some(revision) = traversal.clock_revision {
+        traversal.mixed_clock |= revision != job.request.clock_revision;
+    } else {
+        traversal.clock_revision = Some(job.request.clock_revision);
+    }
     let mut batch = RepairBatch {
         generation: job.stamp.generation,
         revision: job.request.revision,
         geometry_epoch: job.request.geometry_epoch,
+        sweep: traversal.sweep,
+        clock_revision: job.request.clock_revision,
+        clock_minute: job.request.clock_minute,
+        light: job.request.light,
+        stable_clock: !traversal.mixed_clock,
         patches: Vec::new(),
         processed: 0,
         skipped: 0,
         complete: false,
         error: None,
     };
-    while *cursor < job.request.targets.len() && batch.processed < BATCH_SAMPLES {
+    while traversal.cursor < job.request.targets.len() && batch.processed < BATCH_SAMPLES {
         if !current() {
             return None;
         }
@@ -449,18 +577,18 @@ fn sample_batch(
         if elapsed() >= BATCH_TIME {
             break;
         }
-        let target = job.request.targets[*cursor];
+        let target = job.request.targets[traversal.cursor];
         match sample(target) {
             Some(light) => append_patch(&mut batch.patches, target, light),
             None => batch.skipped += 1,
         }
-        *cursor += 1;
+        traversal.cursor += 1;
         batch.processed += 1;
     }
     if !current() {
         return None;
     }
-    batch.complete = *cursor == job.request.targets.len();
+    batch.complete = traversal.cursor == job.request.targets.len();
     Some(batch)
 }
 
@@ -490,7 +618,7 @@ fn send_batch(
 
 fn worker(shared: Arc<Shared>, send: SyncSender<RepairBatch>) {
     let mut cache = CachedBaker::default();
-    while let Some(job) = next_job(&shared) {
+    while let Some(mut job) = next_job(&shared) {
         if !job.stamp.current(&shared) {
             continue;
         }
@@ -501,6 +629,11 @@ fn worker(shared: Arc<Shared>, send: SyncSender<RepairBatch>) {
                     generation: job.stamp.generation,
                     revision: job.request.revision,
                     geometry_epoch: job.request.geometry_epoch,
+                    sweep: 0,
+                    clock_revision: job.request.clock_revision,
+                    clock_minute: job.request.clock_minute,
+                    light: job.request.light,
+                    stable_clock: true,
                     patches: Vec::new(),
                     processed: 0,
                     skipped: 0,
@@ -515,16 +648,31 @@ fn worker(shared: Arc<Shared>, send: SyncSender<RepairBatch>) {
         if !job.stamp.current(&shared) {
             continue;
         }
-        let lookup = ChunkLookup::new(job.request.instances.as_ref(), &job.request.extra_sources);
-        let Some((_, baker)) = &cache.entry else {
-            continue;
-        };
-        let mut cursor = 0;
-        while cursor < job.request.targets.len() {
+        let mut traversal = Traversal::default();
+        let mut lookup = ChunkLookup::new(
+            job.request.instances.clone(),
+            job.request.extra_sources.clone(),
+        );
+        let mut lookup_revision = job.request.clock_revision;
+        loop {
+            if !update_job(&shared, &mut job) {
+                break;
+            }
+            if lookup_revision != job.request.clock_revision {
+                lookup = ChunkLookup::new(
+                    job.request.instances.clone(),
+                    job.request.extra_sources.clone(),
+                );
+                lookup_revision = job.request.clock_revision;
+            }
+            let Some((_, baker)) = &mut cache.entry else {
+                break;
+            };
+            baker.set_light(job.request.light);
             let started = Instant::now();
             let Some(batch) = sample_batch(
                 &job,
-                &mut cursor,
+                &mut traversal,
                 || started.elapsed(),
                 || job.stamp.current(&shared),
                 |target| match target {
@@ -536,8 +684,18 @@ fn worker(shared: Arc<Shared>, send: SyncSender<RepairBatch>) {
             ) else {
                 break;
             };
+            let complete = batch.complete;
+            let stable_clock = batch.stable_clock;
             if !send_batch(&shared, &job.stamp, &send, batch) {
                 break;
+            }
+            if complete {
+                // A mixed-clock sweep covers every receiver, but only another
+                // complete stable sweep can make all texels current at once.
+                if stable_clock && !wait_for_clock(&shared, &job) {
+                    break;
+                }
+                traversal.restart();
             }
             std::thread::yield_now();
         }
@@ -554,6 +712,8 @@ mod tests {
         RepairRequest {
             revision,
             geometry_epoch: 1,
+            clock_revision: revision,
+            clock_minute: revision,
             scene: Arc::new(TexturedScene::default()),
             instances: None,
             extra_sources: Arc::new(Vec::new()),
@@ -574,7 +734,14 @@ mod tests {
     }
 
     fn batch(job: &Job) -> RepairBatch {
-        sample_batch(job, &mut 0, || Duration::ZERO, || true, |_| Some([7; 4])).unwrap()
+        sample_batch(
+            job,
+            &mut Traversal::default(),
+            || Duration::ZERO,
+            || true,
+            |_| Some([7; 4]),
+        )
+        .unwrap()
     }
 
     #[test]
@@ -635,10 +802,10 @@ mod tests {
         let targets: Vec<_> = (0..300).map(|i| RepairTarget::Static(i * 2)).collect();
         queue.request(request(1, &targets));
         let job = take(&queue);
-        let mut cursor = 0;
+        let mut traversal = Traversal::default();
         let first = sample_batch(
             &job,
-            &mut cursor,
+            &mut traversal,
             || Duration::ZERO,
             || true,
             |_| Some([9; 4]),
@@ -656,7 +823,7 @@ mod tests {
         let elapsed = Cell::new(Duration::ZERO);
         let limited = sample_batch(
             &job,
-            &mut cursor,
+            &mut traversal,
             || elapsed.get(),
             || true,
             |_| {
@@ -670,7 +837,7 @@ mod tests {
         assert!(
             sample_batch(
                 &job,
-                &mut cursor,
+                &mut traversal,
                 || Duration::ZERO,
                 || !cancelled.get(),
                 |_| {
@@ -681,6 +848,116 @@ mod tests {
             .is_none(),
             "a cancellation during one trace discards its entire unpublished batch"
         );
+    }
+
+    #[test]
+    fn rapid_clock_updates_reach_the_tail_in_order_and_then_complete_a_stable_sweep() {
+        let (mut queue, send) = RepairQueue::channel();
+        let targets: Vec<_> = (0..300)
+            .map(RepairTarget::Static)
+            .chain((0..253).map(|vertex| RepairTarget::Chunk { id: 99, vertex }))
+            .collect();
+        let generation = queue.request(request(1, &targets));
+        let shared = queue.shared.clone();
+        let mut job = take(&queue);
+        let mut traversal = Traversal::default();
+        let mut sampled = Vec::new();
+        let mut clock_revision = 1;
+        let mut latest = job.request.light;
+        loop {
+            // Several clock updates between polls coalesce to their latest light.
+            for _ in 0..3 {
+                clock_revision += 1;
+                latest.sky = clock_revision as f32;
+                queue.update_light(clock_revision, clock_revision * 10, latest, None);
+            }
+            assert!(update_job(&queue.shared, &mut job));
+            assert_eq!(job.request.clock_revision, clock_revision);
+            assert_eq!(job.request.light.sky, latest.sky);
+            let used_revision = clock_revision;
+            let used_light = latest;
+            let result = sample_batch(
+                &job,
+                &mut traversal,
+                || Duration::ZERO,
+                || job.stamp.current(&shared),
+                |target| {
+                    sampled.push((target, used_revision));
+                    if sampled.len() == 1 {
+                        // A clock change during a batch changes neither its light
+                        // nor its admission. The next boundary applies the update.
+                        clock_revision += 1;
+                        latest.sky = clock_revision as f32;
+                        queue.update_light(clock_revision, clock_revision * 10, latest, None);
+                    }
+                    Some([used_light.sky as u8; 4])
+                },
+            )
+            .unwrap();
+            assert_eq!(result.generation, generation);
+            assert_eq!(result.clock_revision, used_revision);
+            assert_eq!(result.clock_minute, used_revision * 10);
+            assert_eq!(result.light.sky, used_light.sky);
+            assert!(result.processed <= BATCH_SAMPLES);
+            let complete = result.complete;
+            if complete {
+                assert!(!result.stable_clock);
+            }
+            send.try_send(result).unwrap();
+            assert!(
+                queue.poll().is_some(),
+                "older light remains valid under unchanged geometry"
+            );
+            if complete {
+                break;
+            }
+        }
+        assert_eq!(
+            sampled
+                .iter()
+                .map(|&(target, _)| target)
+                .collect::<Vec<_>>(),
+            targets
+        );
+        assert!(
+            sampled.last().unwrap().1 > sampled[0].1,
+            "tail uses later clock light without restarting"
+        );
+        assert!(job.stamp.current(&queue.shared));
+
+        // Once the clock stops, the next full ordered sweep has one light and
+        // can establish complete noon/night convergence without mixed texels.
+        traversal.restart();
+        let mut stable_targets = Vec::new();
+        loop {
+            assert!(update_job(&queue.shared, &mut job));
+            let result = sample_batch(
+                &job,
+                &mut traversal,
+                || Duration::ZERO,
+                || job.stamp.current(&shared),
+                |target| {
+                    stable_targets.push(target);
+                    Some([job.request.light.sky as u8; 4])
+                },
+            )
+            .unwrap();
+            assert!(result.stable_clock);
+            assert_eq!(result.clock_revision, clock_revision);
+            assert_eq!(result.clock_minute, clock_revision * 10);
+            assert_eq!(result.sweep, 1);
+            if result.complete {
+                break;
+            }
+        }
+        assert_eq!(stable_targets, targets);
+        // Structural replacement still rejects any result from this traversal.
+        let old = batch(&job);
+        queue.request(request(2, &[RepairTarget::Static(999)]));
+        assert!(!job.stamp.current(&queue.shared));
+        assert!(!update_job(&queue.shared, &mut job));
+        send.try_send(old).unwrap();
+        assert!(queue.poll().is_none());
     }
 
     #[test]
@@ -839,7 +1116,7 @@ mod tests {
             vertex_lights: None,
             motion_epoch: Arc::new(()),
         };
-        let lookup = ChunkLookup::new(Some(&frame), &[]);
+        let lookup = ChunkLookup::new(Some(frame.clone()), Arc::new(Vec::new()));
         let (vertex, foliage) = lookup.vertex(99, 1).unwrap();
         assert_eq!(vertex.pos, [6.0, 2.0, 3.0]);
         assert_eq!(vertex.uv, [0.8; 2]);
@@ -891,7 +1168,7 @@ mod tests {
             "appending sources does not mutate the retained base"
         );
         assert!(Arc::ptr_eq(&frame.motion_epoch, &resolved.motion_epoch));
-        let lookup = ChunkLookup::new(first.instances.as_ref(), &sources);
+        let lookup = ChunkLookup::new(first.instances.clone(), sources.clone());
         assert_eq!(lookup.vertex(99, 1).unwrap().0.pos, [5.0, 2.0, 3.0]);
         queue.request(first);
         let builds = Cell::new(0);

@@ -1,5 +1,6 @@
 //! Captures the production town clock and measures immutable sun blending.
-//! Usage: baked_light_capture OUTPUT_DIR [PAIRS] [TIMELAPSE_FRAMES] [--preflight-only]
+//! Usage: baked_light_capture OUTPUT_DIR [PAIRS] [TIMELAPSE_FRAMES]
+//! [--preflight-only] [--repair-hold-seconds SECONDS] [--blend-only | --skip-blend]
 //! Requires VERSE_KIT_PACK and VERSE_KIT_BAKE for exactly the current scene.
 
 use serde_json::json;
@@ -20,10 +21,28 @@ const REPAIR_HOLD_SECONDS: u64 = 180;
 
 type RepairDiagnostics = verse::zones::everglade::demolition::town::BakedRepairDiagnostics;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CaptureMode {
+    Full,
+    BlendOnly,
+    SkipBlend,
+}
+
+impl CaptureMode {
+    fn name(self) -> &'static str {
+        match self {
+            Self::Full => "full",
+            Self::BlendOnly => "blend-only",
+            Self::SkipBlend => "skip-blend",
+        }
+    }
+}
+
 fn main() -> Result<(), String> {
-    let args: Vec<_> = std::env::args().skip(1).collect();
-    let preflight_only = args.iter().any(|arg| arg == "--preflight-only");
-    let mut args = args.into_iter().filter(|arg| arg != "--preflight-only");
+    let command: Vec<_> = std::env::args().collect();
+    let (args, preflight_only, repair_hold_seconds, mode) =
+        capture_args(command.iter().skip(1).cloned())?;
+    let mut args = args.into_iter();
     let dir = PathBuf::from(args.next().ok_or("Expected an output directory")?);
     let pairs = number(args.next(), 128)?;
     let frames = number(args.next(), 1440)?;
@@ -40,6 +59,11 @@ fn main() -> Result<(), String> {
         .join("../..")
         .join(everglade_pack::PACK_DIRECTORY)
         .join(format!("{}.vtp", everglade_pack::PACK_SHA256));
+    let run = json!({"command":command,"mode":mode.name(),"preflight_only":preflight_only,
+        "repair_hold_seconds":repair_hold_seconds,"default_repair_hold_seconds":REPAIR_HOLD_SECONDS,
+        "source_commit":std::env::var("OPENAGENTS_CAPTURE_SOURCE_COMMIT").ok(),
+        "source_commit_origin":"Capture launcher; null when unspecified",
+        "binary":path_identity(&std::env::current_exe().map_err(|e| e.to_string())?)?});
     let inputs = json!({"base_pack":path_identity(&path)?,
         "kit":input_identity(everglade_pack::kit::LOCAL_ENV)?,
         "layers":input_identity(everglade_pack::kit_bake::LOCAL_ENV)?});
@@ -64,7 +88,7 @@ fn main() -> Result<(), String> {
                 "expected_vertices":layers.vertex_count(),"actual_vertices":merged.vertices.len(),
                 "actual_indices":merged.indices.len(),"actual_batches":merged.batches.len(),
                 "actual_materials":scene.materials.len(),"actual_images":scene.images.len(),
-                "inputs":inputs,"captured_before_simulation":true}),
+                "inputs":inputs,"run":run,"captured_before_simulation":true}),
         )?;
         return Err(format!(
             "Offline layers match scene {}, but the capture builds {digest}",
@@ -74,7 +98,7 @@ fn main() -> Result<(), String> {
     layers.validate()?;
     let preflight = json!({"schema":"openagents.verse-baked-light-preflight.v1",
         "verified":true,"scene":digest,"vertices":layers.vertex_count(),"bake_key":layers.bake_key,
-        "inputs":inputs,"captured_before_simulation":true});
+        "inputs":inputs,"run":run,"captured_before_simulation":true});
     write_json(&dir.join("preflight.json"), &preflight)?;
     if preflight_only {
         println!(
@@ -128,150 +152,186 @@ fn main() -> Result<(), String> {
     let adapter = on_renderer.adapter_info().clone();
     let phase_warmup = sky_warmup(on_renderer.quality());
     let mut captures = Vec::new();
-    for (name, hour) in [
-        ("dawn", 6.0),
-        ("noon", 12.0),
-        ("dusk", 18.0),
-        ("night", 0.0),
-        ("sun-08-before", 7.95),
-        ("sun-08-after", 8.05),
-        ("sun-12-before", 11.95),
-        ("sun-12-after", 12.05),
-        ("sun-1530-before", 15.45),
-        ("sun-1530-after", 15.55),
-        ("sun-1730-before", 17.45),
-        ("sun-1730-after", 17.55),
-    ] {
-        runtime.set_town_clock(running_clock(hour));
-        runtime.tick(&idle, 1.0 / 60.0);
-        let mut dynamic = runtime.dynamic_mesh();
-        dynamic
-            .neon
-            .as_mut()
-            .ok_or("Everglade has no light stage")?
-            .temporal_aa = false;
-        let view = runtime.view(WIDTH as f32 / HEIGHT as f32);
-        for _ in 0..phase_warmup {
-            on_renderer.measure(view, &dynamic, &ui)?;
-        }
-        let pixels = on_renderer.render(view, &dynamic, &ui)?;
-        let file = format!("{name}.png");
-        write_png(&dir.join(&file), &pixels)?;
-        captures.push(
+    let mut timelapse = Vec::new();
+    if mode != CaptureMode::BlendOnly {
+        for (name, hour) in [
+            ("dawn", 6.0),
+            ("noon", 12.0),
+            ("dusk", 18.0),
+            ("night", 0.0),
+            ("sun-08-before", 7.95),
+            ("sun-08-after", 8.05),
+            ("sun-12-before", 11.95),
+            ("sun-12-after", 12.05),
+            ("sun-1530-before", 15.45),
+            ("sun-1530-after", 15.55),
+            ("sun-1730-before", 17.45),
+            ("sun-1730-after", 17.55),
+        ] {
+            runtime.set_town_clock(running_clock(hour));
+            runtime.tick(&idle, 1.0 / 60.0);
+            let mut dynamic = runtime.dynamic_mesh();
+            dynamic
+                .neon
+                .as_mut()
+                .ok_or("Everglade has no light stage")?
+                .temporal_aa = false;
+            let view = runtime.view(WIDTH as f32 / HEIGHT as f32);
+            for _ in 0..phase_warmup {
+                on_renderer.measure(view, &dynamic, &ui)?;
+            }
+            let pixels = on_renderer.render(view, &dynamic, &ui)?;
+            let file = format!("{name}.png");
+            write_png(&dir.join(&file), &pixels)?;
+            captures.push(
             json!({"file":file,"requested_hour":hour,"sun":dynamic.neon.as_ref().unwrap().baked_sun,
             "sky_lux":dynamic.neon.as_ref().unwrap().baked_sky,"warmup_frames":phase_warmup}),
         );
+        }
+        let save_every = (frames / 48).max(1);
+        for frame in 0..frames {
+            let hour = 24.0 * frame as f64 / (frames - 1) as f64;
+            runtime.set_town_clock(running_clock(hour));
+            runtime.tick(&idle, 1.0 / 60.0);
+            let mut dynamic = runtime.dynamic_mesh();
+            dynamic
+                .neon
+                .as_mut()
+                .ok_or("Everglade has no light stage")?
+                .temporal_aa = false;
+            let view = runtime.view(WIDTH as f32 / HEIGHT as f32);
+            let file = if frame % save_every == 0 || frame + 1 == frames {
+                let name = format!("clock-{frame:04}.png");
+                let pixels = on_renderer.render(view, &dynamic, &ui)?;
+                write_png(&dir.join(&name), &pixels)?;
+                Some(name)
+            } else {
+                on_renderer.measure(view, &dynamic, &ui)?;
+                None
+            };
+            timelapse.push(json!({"frame":frame,"requested_hour":hour,"file":file,"sun":dynamic.neon.as_ref().unwrap().baked_sun,
+            "sky_lux":dynamic.neon.as_ref().unwrap().baked_sky}));
+        }
     }
-    let mut timelapse = Vec::new();
-    let save_every = (frames / 48).max(1);
-    for frame in 0..frames {
-        let hour = 24.0 * frame as f64 / (frames - 1) as f64;
-        runtime.set_town_clock(running_clock(hour));
+    let mut samples = Vec::new();
+    let paired_warmup = phase_warmup.next_multiple_of(2);
+    if mode != CaptureMode::SkipBlend {
+        runtime.set_town_clock(running_clock(9.0));
         runtime.tick(&idle, 1.0 / 60.0);
-        let mut dynamic = runtime.dynamic_mesh();
-        dynamic
-            .neon
+        let mut on = runtime.dynamic_mesh();
+        on.neon
             .as_mut()
             .ok_or("Everglade has no light stage")?
             .temporal_aa = false;
+        let mut off = on.clone();
+        off.neon.as_mut().unwrap().baked_sun = [0.0; 4];
         let view = runtime.view(WIDTH as f32 / HEIGHT as f32);
-        let file = if frame % save_every == 0 || frame + 1 == frames {
-            let name = format!("clock-{frame:04}.png");
-            let pixels = on_renderer.render(view, &dynamic, &ui)?;
-            write_png(&dir.join(&name), &pixels)?;
-            Some(name)
-        } else {
-            on_renderer.measure(view, &dynamic, &ui)?;
-            None
-        };
-        timelapse.push(json!({"frame":frame,"requested_hour":hour,"file":file,"sun":dynamic.neon.as_ref().unwrap().baked_sun,
-            "sky_lux":dynamic.neon.as_ref().unwrap().baked_sky}));
-    }
-    runtime.set_town_clock(running_clock(9.0));
-    runtime.tick(&idle, 1.0 / 60.0);
-    let mut on = runtime.dynamic_mesh();
-    on.neon
-        .as_mut()
-        .ok_or("Everglade has no light stage")?
-        .temporal_aa = false;
-    let mut off = on.clone();
-    off.neon.as_mut().unwrap().baked_sun = [0.0; 4];
-    let view = runtime.view(WIDTH as f32 / HEIGHT as f32);
-    // Give both variants the same first sky bake and exposure history;
-    // the timelapse renderer's previous sky must not enter the comparison.
-    on_renderer = verse::render::Offscreen::new(WIDTH, HEIGHT, &runtime.world.mesh, &atlas, air)?;
-    off_renderer = verse::render::Offscreen::new(WIDTH, HEIGHT, &runtime.world.mesh, &atlas, air)?;
-    replay_layers(&scene, &layers);
-    on_renderer.render(view, &on, &ui)?;
-    replay_layers(&scene, &layers);
-    off_renderer.render(view, &off, &ui)?;
-    let paired_warmup = phase_warmup.next_multiple_of(2);
-    let mut samples = Vec::new();
-    for pair in 0..pairs + paired_warmup {
-        let mut record = [(0.0, 0.0, None); 2];
-        for mode in [pair % 2, 1 - pair % 2] {
-            let (renderer, dynamic) = if mode == 0 {
-                (&mut off_renderer, &off)
-            } else {
-                (&mut on_renderer, &on)
-            };
-            renderer.render(view, dynamic, &ui)?;
-            let (encode, completion) = renderer.last_timing();
-            record[mode] = (encode, completion, renderer.last_gpu_ms());
-        }
-        if pair >= paired_warmup {
-            samples.push(json!({"pair":pair-paired_warmup,"off_first":pair%2==0,
+        // Give both variants the same first sky bake and exposure history;
+        // the timelapse renderer's previous sky must not enter the comparison.
+        on_renderer =
+            verse::render::Offscreen::new(WIDTH, HEIGHT, &runtime.world.mesh, &atlas, air)?;
+        off_renderer =
+            verse::render::Offscreen::new(WIDTH, HEIGHT, &runtime.world.mesh, &atlas, air)?;
+        replay_layers(&scene, &layers);
+        on_renderer.render(view, &on, &ui)?;
+        replay_layers(&scene, &layers);
+        off_renderer.render(view, &off, &ui)?;
+        for pair in 0..pairs + paired_warmup {
+            let mut record = [(0.0, 0.0, None); 2];
+            for mode in [pair % 2, 1 - pair % 2] {
+                let (renderer, dynamic) = if mode == 0 {
+                    (&mut off_renderer, &off)
+                } else {
+                    (&mut on_renderer, &on)
+                };
+                renderer.render(view, dynamic, &ui)?;
+                let (encode, completion) = renderer.last_timing();
+                record[mode] = (encode, completion, renderer.last_gpu_ms());
+            }
+            if pair >= paired_warmup {
+                samples.push(json!({"pair":pair-paired_warmup,"off_first":pair%2==0,
                 "off_encode_ms":record[0].0,"off_completion_ms":record[0].1,"off_gpu_ms":record[0].2,
                 "on_encode_ms":record[1].0,"on_completion_ms":record[1].1,"on_gpu_ms":record[1].2,
                 "frame_completion_increment_ms":(record[1].0+record[1].1)-(record[0].0+record[0].1)}));
+            }
         }
     }
-    let increments: Vec<_> = samples
-        .iter()
-        .map(|x| x["frame_completion_increment_ms"].as_f64().unwrap())
-        .collect();
-    let (mean, lower, upper) = mean_interval(&increments);
-    let mut report = json!({"schema":"openagents.verse-baked-light-capture.v1",
-        "resolution":[WIDTH,HEIGHT],"adapter":format!("{:?}",adapter),"quality":format!("{:?}",on_renderer.quality().tier),
-        "scene":digest,"vertices":layers.vertex_count(),"bake_key":layers.bake_key,
-        "inputs":inputs,"inputs_hashed_before_simulation":true,
-        "clock":"Unpinned production wall-clock adapter; solar weights, sky brightness and lamp fade use exact town time; sky shape keeps its scheduled cadence",
-        "phase_warmup_frames":phase_warmup,
-        "timelapse_method":{"frames":frames,"hours":24.0,"pixels":"Selected frames; all other frames complete rendering without pixel extraction",
-            "scheduled_sky_frames_per_step":(frames-1) as f64/360.0,
-            "scheduled_sky_warmup_frames":phase_warmup,
-            "sky_bake_can_finish_between_steps":(frames-1) as f64/360.0 >= phase_warmup as f64,
-            "limitation":"An accelerated timeline with too few frames per scheduled sky step can retain an older sky shape; exact brightness and sun weights still advance. Named phase images converge the sky bake."},
-        "temporal_aa":false,"captures":captures,"timelapse":timelapse,
-        "destruction":null,"destruction_status":"pending",
-        "measurement":{"pairs":pairs,"warmup_pairs":paired_warmup,"independent_renderers":true,"identical_bake_replayed":true,"fresh_same_state_renderers":true,
+    let measurement = if mode == CaptureMode::SkipBlend {
+        None
+    } else {
+        let increments: Vec<_> = samples
+            .iter()
+            .map(|x| x["frame_completion_increment_ms"].as_f64().unwrap())
+            .collect();
+        let (mean, lower, upper) = mean_interval(&increments);
+        Some(
+            json!({"pairs":pairs,"warmup_pairs":paired_warmup,"independent_renderers":true,"identical_bake_replayed":true,"fresh_same_state_renderers":true,
             "initial_seed_frames_per_variant":1,
             "off_first":pairs/2,"on_first":pairs/2,"readback":"Both variants read back every measured frame",
             "scope":"CPU fit, encode and submit plus serial completion wait, polling, mapping and pixel extraction; excludes PNG writing and simulation",
             "gpu_timestamps_supported":on_renderer.gpu_timestamps_available(),"gpu_timestamps_enabled":on_renderer.gpu_timestamps_enabled(),
             "invalid_gpu_durations":"null; wall completion is not GPU time","filtered_samples":0,
             "frame_completion_mean_increment_ms":mean,"approximate_95pct_block_interval_ms":[lower,upper],
-            "interval_method":"Eight contiguous equal-sized batches with balanced render order; Student t df7; all measured samples retained"},
+            "interval_method":"Eight contiguous equal-sized batches with balanced render order; Student t df7; all measured samples retained"}),
+        )
+    };
+    let mut report = json!({"schema":"openagents.verse-baked-light-capture.v1",
+        "resolution":[WIDTH,HEIGHT],"adapter":format!("{:?}",adapter),"quality":format!("{:?}",on_renderer.quality().tier),
+        "scene":digest,"vertices":layers.vertex_count(),"bake_key":layers.bake_key,
+        "inputs":inputs,"run":run,"inputs_hashed_before_simulation":true,
+        "clock":"Unpinned production wall-clock adapter; solar weights, sky brightness and lamp fade use exact town time; sky shape keeps its scheduled cadence",
+        "phase_warmup_frames":phase_warmup,
+        "named_phases_status":if mode == CaptureMode::BlendOnly {"skipped"} else {"complete"},
+        "timelapse_status":if mode == CaptureMode::BlendOnly {"skipped"} else {"complete"},
+        "timelapse_method":if mode == CaptureMode::BlendOnly {serde_json::Value::Null} else {json!({"frames":frames,"hours":24.0,"pixels":"Selected frames; all other frames complete rendering without pixel extraction",
+            "scheduled_sky_frames_per_step":(frames-1) as f64/360.0,
+            "scheduled_sky_warmup_frames":phase_warmup,
+            "sky_bake_can_finish_between_steps":(frames-1) as f64/360.0 >= phase_warmup as f64,
+            "limitation":"An accelerated timeline with too few frames per scheduled sky step can retain an older sky shape; exact brightness and sun weights still advance. Named phase images converge the sky bake."})},
+        "temporal_aa":false,"captures":captures,"timelapse":timelapse,
+        "destruction":null,"destruction_status":if mode == CaptureMode::BlendOnly {"skipped"} else {"pending"},
+        "measurement":measurement,"measurement_status":if mode == CaptureMode::SkipBlend {"skipped"} else {"complete"},
         "samples":samples});
     // Retain the completed clock and paired measurements if destruction fails.
     let report_path = dir.join("capture.json");
     write_json(&report_path, &report)?;
-    match destruction_capture(&mut runtime, &mut on_renderer, &ui, &dir) {
-        Ok(destruction) => {
-            report["destruction"] = destruction;
-            report["destruction_status"] = json!("complete");
-        }
-        Err(error) => {
-            report["destruction_status"] = json!("failed");
-            report["destruction_error"] = json!(error);
-            write_json(&report_path, &report)?;
-            return Err(error);
+    if mode != CaptureMode::BlendOnly {
+        match destruction_capture(
+            &mut runtime,
+            &mut on_renderer,
+            &ui,
+            &dir,
+            repair_hold_seconds,
+        ) {
+            Ok(destruction) => {
+                report["destruction"] = destruction;
+                report["destruction_status"] = json!("complete");
+            }
+            Err(error) => {
+                report["destruction_status"] = json!("failed");
+                report["destruction_error"] = json!(error);
+                write_json(&report_path, &report)?;
+                return Err(error);
+            }
         }
     }
     write_json(&report_path, &report)?;
-    println!(
-        "Baked blend frame-completion mean {mean:.3} ms; approximate 95% interval {lower:.3} to {upper:.3} ms"
-    );
+    if let Some(measurement) = &measurement {
+        println!(
+            "Baked blend frame-completion mean {:.3} ms; approximate 95% interval {:.3} to {:.3} ms",
+            measurement["frame_completion_mean_increment_ms"]
+                .as_f64()
+                .unwrap(),
+            measurement["approximate_95pct_block_interval_ms"][0]
+                .as_f64()
+                .unwrap(),
+            measurement["approximate_95pct_block_interval_ms"][1]
+                .as_f64()
+                .unwrap()
+        );
+    } else {
+        println!("Completed clock and repair capture; blend timing skipped");
+    }
     Ok(())
 }
 
@@ -280,6 +340,7 @@ fn destruction_capture(
     renderer: &mut verse::render::Offscreen,
     ui: &verse::ui::UiBatch,
     dir: &Path,
+    repair_hold_seconds: u64,
 ) -> Result<serde_json::Value, String> {
     use glam::Vec3;
     use verse::zones::everglade::demolition::meteor::Volley;
@@ -370,7 +431,14 @@ fn destruction_capture(
         return Err("The meteor capture did not break a baked kit building".into());
     }
     let after_swarm = repair_diagnostics(runtime)?;
-    let (noon_repair, noon_hold) = drain_repair(runtime, renderer, ui, dir, &repair_before)?;
+    let (noon_repair, noon_hold) = drain_repair(
+        runtime,
+        renderer,
+        ui,
+        dir,
+        &repair_before,
+        repair_hold_seconds,
+    )?;
     if noon_repair.completed_geometry_generations <= repair_before.completed_geometry_generations {
         write_json(
             &dir.join("repair-verification.json"),
@@ -387,7 +455,14 @@ fn destruction_capture(
     )?;
 
     runtime.set_town_clock(town_clock::Clock::DAYTIME.pinned(Some(0.0)));
-    let (night_repair, night_hold) = drain_repair(runtime, renderer, ui, dir, &noon_repair)?;
+    let (night_repair, night_hold) = drain_repair(
+        runtime,
+        renderer,
+        ui,
+        dir,
+        &noon_repair,
+        repair_hold_seconds,
+    )?;
     if night_repair.geometry_epoch != noon_repair.geometry_epoch
         || night_repair.completed_clock_generations <= noon_repair.completed_clock_generations
         || night_repair.clock_minute == noon_repair.clock_minute
@@ -517,7 +592,7 @@ fn verify_repair_health(dir: &Path, repair: &RepairDiagnostics) -> Result<(), St
 fn repair_ready(before: &RepairDiagnostics, repair: &RepairDiagnostics) -> bool {
     repair_healthy(repair)
         && repair.active
-        && repair.generation > before.generation
+        && (repair.generation > before.generation || repair.clock_revision > before.clock_revision)
         && repair.current_targets > 0
         && repair.current_complete
         && repair.current_backlog == 0
@@ -525,6 +600,9 @@ fn repair_ready(before: &RepairDiagnostics, repair: &RepairDiagnostics) -> bool 
         && repair.current_skipped == 0
         && repair.current_applied_vertices == repair.current_targets
         && repair.last_completed_generation == repair.generation
+        && repair.last_completed_clock_revision == repair.clock_revision
+        && repair.last_completed_clock_minute == repair.clock_minute
+        && !repair.current_mixed_clock
         && repair.completed_generations > before.completed_generations
         && repair.applied_batches > before.applied_batches
         && repair.delivered_vertices > before.delivered_vertices
@@ -538,13 +616,14 @@ fn drain_repair(
     ui: &verse::ui::UiBatch,
     dir: &Path,
     before: &RepairDiagnostics,
+    repair_hold_seconds: u64,
 ) -> Result<(RepairDiagnostics, serde_json::Value), String> {
     let started = std::time::Instant::now();
     let mut frames = 0;
     let mut progress = Vec::new();
     let mut repair = repair_diagnostics(runtime)?;
     verify_repair_health(dir, &repair)?;
-    while !repair_ready(before, &repair) && started.elapsed().as_secs() < REPAIR_HOLD_SECONDS {
+    while !repair_ready(before, &repair) && started.elapsed().as_secs() < repair_hold_seconds {
         poll_held_zone(runtime)?;
         let mut dynamic = runtime.dynamic_mesh();
         dynamic.neon.as_mut().unwrap().temporal_aa = false;
@@ -557,7 +636,8 @@ fn drain_repair(
         }
     }
     let hold = json!({"frames":frames,"wall_seconds":started.elapsed().as_secs_f64(),
-        "frame_limit":null,"wall_seconds_limit":REPAIR_HOLD_SECONDS,
+        "frame_limit":null,"wall_seconds_limit":repair_hold_seconds,"default_wall_seconds_limit":REPAIR_HOLD_SECONDS,
+        "production_latency_gate":false,
         "simulation_dt":0.0,"clock":"Pinned; no physics time advances",
         "method":"Production zone tick polls at most one selective batch per hold frame; each frame completes rendering without pixel extraction",
         "progress":progress});
@@ -579,6 +659,55 @@ fn sky_warmup(quality: verse_engine::quality::Quality) -> usize {
     let (size, samples) = quality.sky_cube();
     let cost = verse_engine::environment::Prefilter::new(size, samples).cost();
     (cost.div_ceil(verse::pbr::environment::GRADUAL_BUDGET) as usize + 1).max(WARMUP)
+}
+
+fn capture_args(
+    args: impl IntoIterator<Item = String>,
+) -> Result<(Vec<String>, bool, u64, CaptureMode), String> {
+    let mut args = args.into_iter();
+    let mut positional = Vec::new();
+    let mut preflight_only = false;
+    let mut hold = None;
+    let mut mode = CaptureMode::Full;
+    while let Some(argument) = args.next() {
+        match argument.as_str() {
+            "--preflight-only" => preflight_only = true,
+            "--blend-only" | "--skip-blend" => {
+                if mode != CaptureMode::Full {
+                    return Err("Choose only one of --blend-only and --skip-blend".into());
+                }
+                mode = if argument == "--blend-only" {
+                    CaptureMode::BlendOnly
+                } else {
+                    CaptureMode::SkipBlend
+                };
+            }
+            "--repair-hold-seconds" => {
+                if hold.is_some() {
+                    return Err("Repair hold seconds can be specified only once".into());
+                }
+                let value: u64 = args
+                    .next()
+                    .ok_or("Expected seconds after --repair-hold-seconds")?
+                    .parse()
+                    .map_err(|error: std::num::ParseIntError| error.to_string())?;
+                if value == 0 {
+                    return Err("Repair hold seconds must be positive".into());
+                }
+                hold = Some(value);
+            }
+            argument if argument.starts_with("--") => {
+                return Err(format!("Unexpected argument: {argument}"));
+            }
+            _ => positional.push(argument),
+        }
+    }
+    Ok((
+        positional,
+        preflight_only,
+        hold.unwrap_or(REPAIR_HOLD_SECONDS),
+        mode,
+    ))
 }
 
 fn number(value: Option<String>, default: usize) -> Result<usize, String> {
@@ -691,6 +820,10 @@ mod tests {
             current_applied_vertices: 5,
             current_complete: true,
             last_completed_generation: 8,
+            clock_revision: 2,
+            last_completed_clock_revision: 2,
+            clock_minute: Some(720),
+            last_completed_clock_minute: Some(720),
             completed_generations: 3,
             applied_batches: 5,
             delivered_vertices: 13,
@@ -699,6 +832,19 @@ mod tests {
             ..before.clone()
         };
         assert!(repair_ready(&before, &complete));
+        let mut clock_only = complete.clone();
+        clock_only.generation = before.generation;
+        clock_only.last_completed_generation = before.generation;
+        assert!(
+            repair_ready(&before, &clock_only),
+            "a full clock sweep retains its geometry generation"
+        );
+        let mut old_clock = complete.clone();
+        old_clock.last_completed_clock_revision -= 1;
+        assert!(!repair_ready(&before, &old_clock));
+        let mut mixed_clock = complete.clone();
+        mixed_clock.current_mixed_clock = true;
+        assert!(!repair_ready(&before, &mixed_clock));
         let mut skipped_target = complete.clone();
         skipped_target.current_skipped = 1;
         skipped_target.current_applied_vertices -= 1;
@@ -732,6 +878,56 @@ mod tests {
         rejected.rejected_chunk_vertices = 1;
         assert!(!repair_ready(&before, &rejected));
         assert!(!repair_ready(&before, &RepairDiagnostics::default()));
+    }
+
+    #[test]
+    fn explicit_repair_hold_preserves_the_default_and_records_long_diagnostics() {
+        let parse = |args: &[&str]| capture_args(args.iter().map(|arg| (*arg).to_string()));
+        assert_eq!(
+            parse(&["out"]).unwrap(),
+            (vec!["out".to_string()], false, 180, CaptureMode::Full)
+        );
+        assert_eq!(
+            parse(&[
+                "out",
+                "--repair-hold-seconds",
+                "600",
+                "16",
+                "2",
+                "--preflight-only"
+            ])
+            .unwrap(),
+            (
+                vec!["out".to_string(), "16".to_string(), "2".to_string()],
+                true,
+                600,
+                CaptureMode::Full
+            )
+        );
+        assert!(parse(&["out", "--repair-hold-seconds"]).is_err());
+        assert!(parse(&["out", "--repair-hold-seconds", "0"]).is_err());
+        assert!(
+            parse(&[
+                "out",
+                "--repair-hold-seconds",
+                "1",
+                "--repair-hold-seconds",
+                "600"
+            ])
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn capture_modes_are_explicit_and_mutually_exclusive() {
+        let parse = |flag: &str| {
+            capture_args(["out".to_string(), flag.to_string()])
+                .unwrap()
+                .3
+        };
+        assert_eq!(parse("--blend-only"), CaptureMode::BlendOnly);
+        assert_eq!(parse("--skip-blend"), CaptureMode::SkipBlend);
+        assert!(capture_args(["out", "--blend-only", "--skip-blend"].map(str::to_string)).is_err());
     }
 
     #[test]

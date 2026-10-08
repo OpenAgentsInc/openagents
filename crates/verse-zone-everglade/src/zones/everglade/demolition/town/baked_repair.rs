@@ -130,8 +130,8 @@ fn instance_id(town: &Town, span: &Span) -> Option<u64> {
 }
 
 /// Valid worker deliveries and applied texels, counted across all generations.
-/// Repeated repair of the same vertex counts again. Current progress belongs
-/// only to the active generation; cancelled deliveries never increase it.
+/// Repeated repair of the same vertex counts again. Sweep progress can mix
+/// clock revisions; completion requires a full sweep at the latest clock light.
 #[derive(Clone, Debug, Default, PartialEq, serde::Serialize)]
 pub struct BakedRepairDiagnostics {
     pub enabled: bool,
@@ -139,6 +139,13 @@ pub struct BakedRepairDiagnostics {
     pub generation: u64,
     pub geometry_epoch: u64,
     pub clock_minute: Option<u64>,
+    pub clock_revision: u64,
+    pub delivered_clock_minute: Option<u64>,
+    pub delivered_clock_revision: u64,
+    pub delivered_sun_direction: [f32; 3],
+    pub delivered_sun_lux: f32,
+    pub delivered_sky_lux: f32,
+    pub delivered_ground_lux: f32,
     pub sun_direction: [f32; 3],
     pub sun_lux: f32,
     pub sky_lux: f32,
@@ -159,6 +166,11 @@ pub struct BakedRepairDiagnostics {
     pub completed_geometry_generations: u64,
     pub completed_clock_generations: u64,
     pub last_completed_generation: u64,
+    pub last_completed_clock_revision: u64,
+    pub last_completed_clock_minute: Option<u64>,
+    pub completed_sweeps: u64,
+    pub current_sweep: u64,
+    pub current_mixed_clock: bool,
     pub current_geometry: bool,
     pub current_targets: usize,
     pub current_processed: usize,
@@ -182,6 +194,8 @@ pub(super) struct Repair {
     epoch: Option<Arc<()>>,
     minute: Option<u64>,
     revision: u64,
+    clock_revision: u64,
+    geometry_completed: bool,
     geometry_epoch: u64,
     generation: u64,
     targets: Arc<[RepairTarget]>,
@@ -207,6 +221,8 @@ impl Repair {
             epoch: None,
             minute: None,
             revision: 0,
+            clock_revision: 0,
+            geometry_completed: false,
             geometry_epoch: 0,
             generation: 0,
             targets: Arc::from([]),
@@ -230,6 +246,9 @@ impl Repair {
         self.diagnostics.current_applied_vertices = 0;
         self.diagnostics.current_backlog = 0;
         self.diagnostics.current_complete = false;
+        self.diagnostics.current_sweep = 0;
+        self.diagnostics.current_mixed_clock = false;
+        self.geometry_completed = false;
         self.diagnostics.error = None;
         self.affected_buildings = None;
         self.ground = Arc::new(Vec::new());
@@ -243,14 +262,7 @@ impl Repair {
     }
 
     fn refresh_ground(&mut self, town: &Town) {
-        let affected: std::collections::BTreeSet<_> = town
-            .wreck
-            .refs
-            .iter()
-            .enumerate()
-            .filter(|(piece, _)| town.wreck.site.relight(*piece))
-            .map(|(_, &(building, _))| building)
-            .collect();
+        let affected = town.wreck.relight_buildings();
         if self.affected_buildings.as_ref() == Some(&affected) {
             return;
         }
@@ -371,24 +383,35 @@ impl Repair {
             self.targets = targets.into();
             self.membership = members().collect();
         }
-        self.revision = self.revision.wrapping_add(1);
-        let generation = self.queue.request(RepairRequest {
-            revision: self.revision,
-            geometry_epoch: self.geometry_epoch,
-            scene: town.world.clone(),
-            instances: Some(snapshot.clone()),
-            extra_sources: self.sources.meshes.clone(),
-            targets: self.targets.clone(),
-            light,
-            settings: BakeSettings::new(Vec3::ZERO, Vec3::ONE, 1.0),
-            key: super::SEED,
-        });
+        self.clock_revision = self.clock_revision.wrapping_add(1);
+        let generation = if geometry {
+            self.revision = self.revision.wrapping_add(1);
+            self.geometry_completed = false;
+            self.queue.request(RepairRequest {
+                revision: self.revision,
+                geometry_epoch: self.geometry_epoch,
+                clock_revision: self.clock_revision,
+                clock_minute: minute,
+                scene: town.world.clone(),
+                instances: Some(snapshot.clone()),
+                extra_sources: self.sources.meshes.clone(),
+                targets: self.targets.clone(),
+                light,
+                settings: BakeSettings::new(Vec3::ZERO, Vec3::ONE, 1.0),
+                key: super::SEED,
+            })
+        } else {
+            self.queue
+                .update_light(self.clock_revision, minute, light, Some(snapshot.clone()));
+            self.generation
+        };
         self.generation = generation;
         let diagnostics = &mut self.diagnostics;
         diagnostics.active = true;
         diagnostics.generation = generation;
         diagnostics.geometry_epoch = self.geometry_epoch;
         diagnostics.clock_minute = Some(minute);
+        diagnostics.clock_revision = self.clock_revision;
         diagnostics.sun_direction = light.sun_dir.to_array();
         diagnostics.sun_lux = light.sun_illuminance;
         diagnostics.sky_lux = light.sky;
@@ -399,20 +422,24 @@ impl Repair {
         } else {
             diagnostics.clock_requests = diagnostics.clock_requests.saturating_add(1);
         }
-        diagnostics.current_geometry = geometry;
-        diagnostics.current_targets = self.targets.len();
-        diagnostics.current_processed = 0;
-        diagnostics.current_skipped = 0;
-        diagnostics.current_applied_vertices = 0;
-        diagnostics.current_backlog = self.targets.len();
+        if geometry {
+            diagnostics.current_geometry = true;
+            diagnostics.current_targets = self.targets.len();
+            diagnostics.current_sweep = 0;
+            diagnostics.current_mixed_clock = false;
+            diagnostics.current_processed = 0;
+            diagnostics.current_skipped = 0;
+            diagnostics.current_applied_vertices = 0;
+            diagnostics.current_backlog = self.targets.len();
+            diagnostics.error = None;
+            self.lights
+                .begin_with_sources(generation, &snapshot, &self.sources.meshes);
+            self.error = None;
+        }
         diagnostics.current_complete = self.targets.is_empty();
-        diagnostics.error = None;
-        self.lights
-            .begin_with_sources(generation, &snapshot, &self.sources.meshes);
         self.seen = Some(seen);
         self.epoch = Some(epoch);
         self.minute = Some(minute);
-        self.error = None;
     }
 
     fn poll(&mut self, town: &Town) {
@@ -424,6 +451,21 @@ impl Repair {
         }
         self.error = batch.error;
         let diagnostics = &mut self.diagnostics;
+        if batch.sweep != diagnostics.current_sweep {
+            diagnostics.current_sweep = batch.sweep;
+            diagnostics.current_geometry = !self.geometry_completed;
+            diagnostics.current_processed = 0;
+            diagnostics.current_skipped = 0;
+            diagnostics.current_applied_vertices = 0;
+            diagnostics.current_backlog = diagnostics.current_targets;
+        }
+        diagnostics.current_mixed_clock = !batch.stable_clock;
+        diagnostics.delivered_clock_revision = batch.clock_revision;
+        diagnostics.delivered_clock_minute = Some(batch.clock_minute);
+        diagnostics.delivered_sun_direction = batch.light.sun_dir.to_array();
+        diagnostics.delivered_sun_lux = batch.light.sun_illuminance;
+        diagnostics.delivered_sky_lux = batch.light.sky;
+        diagnostics.delivered_ground_lux = batch.light.ground;
         diagnostics.delivered_batches = diagnostics.delivered_batches.saturating_add(1);
         diagnostics.processed_vertices = diagnostics
             .processed_vertices
@@ -485,19 +527,33 @@ impl Repair {
         if applied > 0 {
             diagnostics.applied_batches = diagnostics.applied_batches.saturating_add(1);
         }
-        diagnostics.current_complete = batch.complete
+        let sweep_complete = batch.complete
             && self.error.is_none()
             && diagnostics.current_processed == diagnostics.current_targets
             && diagnostics
                 .current_applied_vertices
                 .saturating_add(diagnostics.current_skipped)
                 == diagnostics.current_processed;
-        if diagnostics.current_complete && diagnostics.current_targets > 0 {
+        if sweep_complete && diagnostics.current_targets > 0 {
+            diagnostics.completed_sweeps = diagnostics.completed_sweeps.saturating_add(1);
+        }
+        diagnostics.current_complete = sweep_complete
+            && diagnostics.current_skipped == 0
+            && diagnostics.current_applied_vertices == diagnostics.current_targets
+            && batch.stable_clock
+            && batch.clock_revision == self.clock_revision;
+        if diagnostics.current_complete
+            && diagnostics.current_targets > 0
+            && diagnostics.last_completed_clock_revision != batch.clock_revision
+        {
             diagnostics.completed_generations = diagnostics.completed_generations.saturating_add(1);
             diagnostics.last_completed_generation = batch.generation;
-            if diagnostics.current_geometry {
+            diagnostics.last_completed_clock_revision = batch.clock_revision;
+            diagnostics.last_completed_clock_minute = Some(batch.clock_minute);
+            if !self.geometry_completed {
                 diagnostics.completed_geometry_generations =
                     diagnostics.completed_geometry_generations.saturating_add(1);
+                self.geometry_completed = true;
             } else {
                 diagnostics.completed_clock_generations =
                     diagnostics.completed_clock_generations.saturating_add(1);
@@ -532,8 +588,9 @@ impl Town {
         self.baked_repair.is_some()
     }
 
-    /// Requests changed geometry or a new clock minute, then applies at most one
-    /// bounded batch. Moving occluders use the last requested pose snapshot;
+    /// Replaces changed geometry or coalesces the new clock light, then applies
+    /// at most one bounded batch. Clock changes retain the ordered target cursor.
+    /// Moving occluders use the last requested pose snapshot;
     /// the renderer's dynamic shadows follow their current poses each frame.
     pub fn poll_baked_repair(&mut self, light: BakeLight, minute: u64) {
         if let Some(repair) = &self.baked_repair {
@@ -752,6 +809,16 @@ mod tests {
             generation: repair.generation,
             revision: repair.revision,
             geometry_epoch: repair.geometry_epoch,
+            sweep: repair.diagnostics.current_sweep,
+            clock_revision: repair.clock_revision,
+            clock_minute: repair.minute.unwrap(),
+            light: BakeLight {
+                sun_dir: Vec3::from(repair.diagnostics.sun_direction),
+                sun_illuminance: repair.diagnostics.sun_lux,
+                sky: repair.diagnostics.sky_lux,
+                ground: repair.diagnostics.ground_lux,
+            },
+            stable_clock: true,
             patches: vec![
                 RepairPatch::Static {
                     first: 0,
@@ -815,7 +882,10 @@ mod tests {
         assert!(Arc::ptr_eq(&scene, &repair.sources.scene));
         assert!(Arc::ptr_eq(&targets, &repair.targets));
         assert_eq!(repair.geometry_epoch, epoch);
-        assert!(repair.generation > generation);
+        assert_eq!(
+            repair.generation, generation,
+            "clock updates retain geometry admission"
+        );
         drop(repair);
         let kept = town.instances(None).unwrap().vertex_lights.unwrap();
         assert!(
@@ -1121,6 +1191,18 @@ mod tests {
             ),
             (2, 3)
         );
+        assert_eq!(completed.completed_sweeps, 1);
+        assert_eq!(completed.completed_generations, 0);
+        assert_eq!(completed.current_backlog, 0);
+        assert!(
+            !completed.current_complete,
+            "a skipped target is not a current texel"
+        );
+        let mut retry = response(&town, [23; 4]);
+        retry.sweep = 1;
+        send.try_send(retry).unwrap();
+        town.poll_baked_repair(light(), 1);
+        let completed = town.baked_repair_diagnostics();
         assert_eq!(
             (
                 completed.completed_generations,
@@ -1128,10 +1210,8 @@ mod tests {
             ),
             (1, 1)
         );
-        assert_eq!(completed.current_backlog, 0);
         assert!(completed.current_complete);
         assert_eq!(completed.last_completed_generation, completed.generation);
-        send.try_send(response(&town, [99; 4])).unwrap();
         town.poll_baked_repair(light(), 2);
         let clock = town.baked_repair_diagnostics();
         assert_eq!(
@@ -1144,9 +1224,12 @@ mod tests {
         );
         assert_eq!(
             clock.delivered_batches, completed.delivered_batches,
-            "cancelled delivery receives no credit"
+            "a light update without delivery changes no applied counts"
         );
-        assert_eq!(clock.current_backlog, 6);
+        assert_eq!(
+            clock.current_backlog, 0,
+            "the last delivered sweep remains recorded"
+        );
         assert!(!clock.current_complete);
         town.restore();
         let restored = town.baked_repair_diagnostics();
@@ -1166,6 +1249,129 @@ mod tests {
     }
 
     #[test]
+    fn mixed_clock_coverage_is_not_reported_as_converged_until_a_complete_stable_sweep() {
+        let (mut town, send) = fixture();
+        town.poll_baked_repair(light(), 1);
+        let geometry = town.baked_repair_diagnostics().generation;
+        let mut old = response(&town, [11; 4]);
+        old.processed = 3;
+        old.complete = false;
+        old.patches
+            .retain(|patch| matches!(patch, RepairPatch::Static { .. }));
+        let old_revision = old.clock_revision;
+        send.try_send(old).unwrap();
+        let mut midnight = light();
+        midnight.sky = 1.0;
+        midnight.sun_illuminance = 0.0;
+        town.poll_baked_repair(midnight, 2);
+        let partial = town.baked_repair_diagnostics();
+        assert_eq!(partial.generation, geometry);
+        assert_eq!(
+            partial.current_processed, 3,
+            "buffered old-clock work is still geometry-valid"
+        );
+        assert_eq!(partial.delivered_clock_revision, old_revision);
+        assert_eq!(partial.delivered_clock_minute, Some(1));
+        assert_eq!(partial.clock_minute, Some(2));
+        assert!(!partial.current_complete);
+
+        let mut tail = response(&town, [22; 4]);
+        tail.processed = 3;
+        tail.stable_clock = false;
+        tail.patches
+            .retain(|patch| matches!(patch, RepairPatch::Chunk { .. }));
+        send.try_send(tail).unwrap();
+        town.poll_baked_repair(midnight, 2);
+        let mixed = town.baked_repair_diagnostics();
+        assert_eq!(mixed.current_processed, 6);
+        assert_eq!(mixed.current_backlog, 0);
+        assert_eq!(mixed.completed_sweeps, 1);
+        assert!(mixed.current_mixed_clock);
+        assert!(!mixed.current_complete);
+        assert_eq!(mixed.completed_generations, 0);
+        assert_eq!(mixed.delivered_sky_lux, midnight.sky);
+
+        let mut stable = response(&town, [33; 4]);
+        stable.sweep = 1;
+        send.try_send(stable).unwrap();
+        town.poll_baked_repair(midnight, 2);
+        let converged = town.baked_repair_diagnostics();
+        assert_eq!(converged.current_processed, converged.current_targets);
+        assert_eq!(
+            converged.current_applied_vertices,
+            converged.current_targets
+        );
+        assert_eq!(converged.current_skipped, 0);
+        assert!(converged.current_complete);
+        assert!(!converged.current_mixed_clock);
+        assert_eq!(converged.completed_geometry_generations, 1);
+        assert_eq!(
+            converged.last_completed_clock_revision,
+            converged.clock_revision
+        );
+        assert_eq!(converged.last_completed_clock_minute, Some(2));
+
+        town.poll_baked_repair(light(), 3);
+        let mut noon = response(&town, [44; 4]);
+        noon.sweep = 2;
+        send.try_send(noon).unwrap();
+        town.poll_baked_repair(light(), 3);
+        let latest = town.baked_repair_diagnostics();
+        assert_eq!(latest.generation, geometry);
+        assert_eq!(latest.completed_geometry_generations, 1);
+        assert_eq!(latest.completed_clock_generations, 1);
+        assert_eq!(latest.last_completed_clock_minute, Some(3));
+        assert!(latest.current_complete);
+    }
+
+    #[test]
+    fn frozen_missing_buildings_keep_ground_fallback_and_repair_targets_until_restore() {
+        let (mut town, _) = fixture();
+        town.poll_baked_repair(light(), 1);
+        let ground = town
+            .baked_repair
+            .as_ref()
+            .unwrap()
+            .lock()
+            .unwrap()
+            .ground
+            .clone();
+        assert!(!ground.is_empty());
+        town.wreck.let_go(0);
+        assert!(town.wreck.refs.is_empty());
+        assert!(town.wreck.site.pieces().is_empty());
+        assert!(town.wreck.frozen[&0].contains(&super::super::Frozen::Gone));
+        town.sync();
+        town.pose();
+        assert_eq!(
+            town.wreck.relight_buildings(),
+            std::collections::BTreeSet::from([0])
+        );
+        assert!(
+            !town.relight_fallback.lock().unwrap().is_empty(),
+            "immediate ground fallback survives eviction"
+        );
+        town.poll_baked_repair(light(), 2);
+        {
+            let repair = town.baked_repair.as_ref().unwrap().lock().unwrap();
+            assert_eq!(&*repair.ground, &*ground);
+            assert_eq!(repair.targets.len(), ground.len());
+            assert!(
+                repair
+                    .targets
+                    .iter()
+                    .all(|target| matches!(target, RepairTarget::Static(_)))
+            );
+        }
+        town.restore();
+        assert!(town.wreck.frozen.is_empty());
+        assert!(town.wreck.relight_buildings().is_empty());
+        assert!(town.relight_fallback.lock().unwrap().is_empty());
+        town.poll_baked_repair(light(), 2);
+        assert_eq!(town.baked_repair_diagnostics().current_targets, 0);
+    }
+
+    #[test]
     fn diagnostics_retain_errors_and_rejected_texels_across_replacement_requests() {
         let (mut town, send) = fixture();
         town.poll_baked_repair(light(), 1);
@@ -1182,7 +1388,7 @@ mod tests {
         assert_eq!(failed.completed_generations, 0);
         town.poll_baked_repair(light(), 2);
         let replaced = town.baked_repair_diagnostics();
-        assert!(replaced.error.is_none());
+        assert_eq!(replaced.error.as_deref(), Some("Test hierarchy failure"));
         assert_eq!(replaced.error_count, 1);
         let mut rejected = response(&town, [99; 4]);
         rejected.skipped = 5;
