@@ -25,6 +25,7 @@ pub mod draw;
 pub mod floaters;
 pub mod guests;
 pub mod hotbar;
+pub mod house_lod;
 pub mod layout;
 pub mod npcs;
 pub mod player;
