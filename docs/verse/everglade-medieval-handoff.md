@@ -132,10 +132,12 @@ unchanged.
   under `?frames`. The focused delivery test and WASM check pass.
   Browser validation correctly rejects the current scene after
   `7afd440fe8` moved the fountain earlier in the placement order.
-  Candidate `6452beb0c9` restores its published vertex order while keeping
-  the updated instance and collision metadata; validation is running.
-  Do not rebake to chase main. Reuse the existing artifact and check the
-  scene identity. Spatial tier reduction and budgets remain open.
+  The B3 worker has completed matching current-order layers, SHA-256
+  `fc5414a1bfef9e730f3d7d779e4447f12cc86d4e571042eec42518abb30ef7c2`,
+  51,684,139 bytes, from clean source `9967c94cef`. The temporary order
+  restoration was reverted; retain main's ordering and publish these
+  completed layers through the queue after validation. Do not rebake to
+  chase main. Queue regeneration is being changed to verified reuse only. Spatial tier reduction and budgets remain open.
   One 512 px kit pack
   serves every tier today (21,467,658 bytes to transfer, 60.5 MiB decoded),
   exceeding the web and phone soft budgets. Both tiers need B4.
