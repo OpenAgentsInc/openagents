@@ -511,7 +511,7 @@ struct RigidIndirect {
     runs: Vec<instanced::IndirectRun>,
     cells: Vec<textured::Batch>,
     motion: wgpu::Buffer,
-    motion_count: u32,
+    motion_runs: Vec<super::temporal::MotionRun>,
 }
 
 /// Textured static meshes on the GPU: merged cells and shared meshes
@@ -641,11 +641,9 @@ impl TexturedGpu {
             }
             indirect.runs = runs;
             indirect.cells = instanced::indirect_cells(&self.batches, &order);
-            let commands: Vec<_> = self
-                .motion_draws
-                .iter()
-                .map(|draw| draw.indirect())
-                .collect();
+            let (commands, runs) = super::temporal::indirect_motion(&self.motion_draws, |item| {
+                self.materials[self.batches[item].material].double_sided
+            });
             let bytes: &[u8] = bytemuck::cast_slice(&commands);
             if bytes.len() as u64 > indirect.motion.size() {
                 indirect.motion = device.create_buffer(&wgpu::BufferDescriptor {
@@ -658,7 +656,7 @@ impl TexturedGpu {
             if !bytes.is_empty() {
                 queue.write_buffer(&indirect.motion, 0, bytes);
             }
-            indirect.motion_count = commands.len() as u32;
+            indirect.motion_runs = runs;
         }
     }
 
@@ -678,20 +676,24 @@ impl TexturedGpu {
         Vec<super::temporal::MotionCommand<'_>>,
     ) {
         let commands = if let Some(indirect) = &self.rigid_indirect {
-            if indirect.motion_count == 0 {
-                Vec::new()
-            } else {
-                vec![super::temporal::MotionCommand::Indirect {
+            indirect
+                .motion_runs
+                .iter()
+                .map(|run| super::temporal::MotionCommand::Indirect {
                     buffer: &indirect.motion,
-                    first: 0,
-                    count: indirect.motion_count,
-                }]
-            }
+                    first: run.first,
+                    count: run.count,
+                    double_sided: run.double_sided,
+                })
+                .collect()
         } else {
             self.motion_draws
                 .iter()
                 .copied()
-                .map(super::temporal::MotionCommand::Indexed)
+                .map(|draw| super::temporal::MotionCommand::Indexed {
+                    double_sided: self.materials[self.batches[draw.item].material].double_sided,
+                    draw,
+                })
                 .collect()
         };
         (&self.vertices, &self.indices, &self.instances, commands)
@@ -2343,7 +2345,7 @@ impl Photo {
                     usage: wgpu::BufferUsages::INDIRECT | wgpu::BufferUsages::COPY_DST,
                     mapped_at_creation: false,
                 }),
-                motion_count: 0,
+                motion_runs: Vec::new(),
             });
         }
         gpu.write_instances(device, queue, frame);

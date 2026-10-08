@@ -45,7 +45,11 @@ fn rgb(value: vec3<f32>) -> vec3<f32> {
     let view_depth = min(abs(current_clip.w), 60000.0);
     var old_uv = vec2<f32>(previous.x * 0.5 / max(previous.w, 1e-7) + 0.5, 0.5 - previous.y * 0.5 / max(previous.w, 1e-7));
     var old_depth = min(abs(previous.w), 60000.0);
-    let object = textureLoad(motion, p, 0);
+    // Empty streams use camera reprojection without reading stale object motion.
+    var object = vec4<f32>(0.0);
+    if camera.settings.w > 0.5 {
+        object = textureLoad(motion, p, 0);
+    }
     if object.w > 0.5 {
         old_uv = uv + object.xy;
         old_depth = object.z;
