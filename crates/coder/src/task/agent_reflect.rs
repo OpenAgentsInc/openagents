@@ -106,6 +106,31 @@ pub trait Writer {
     fn write(&mut self, system: &str, prompt: &str) -> Result<Reply, String>;
 }
 
+/// One job on the shared-compute pool: `(system, prompt)` to a reply.
+pub type PoolAsk = Box<dyn FnMut(&str, &str) -> Result<Reply, String> + Send>;
+
+/// A writer that sends its low-risk text jobs to the shared-compute pool
+/// (`openagents pylon route on`) and falls back to the agent's own model
+/// when no pylon answers.
+pub struct PoolWriter {
+    pub pool: PoolAsk,
+    pub fallback: Option<Box<dyn Writer + Send>>,
+}
+
+impl Writer for PoolWriter {
+    fn write(&mut self, system: &str, prompt: &str) -> Result<Reply, String> {
+        match (self.pool)(system, prompt) {
+            Ok(reply) => Ok(reply),
+            Err(pool) => match self.fallback.as_mut() {
+                Some(fallback) => fallback.write(system, prompt),
+                None => Err(format!(
+                    "the pool didn't answer ({pool}), and no model is set up"
+                )),
+            },
+        }
+    }
+}
+
 /// Jev's answers for one insight.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Support {

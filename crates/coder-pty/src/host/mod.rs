@@ -2710,11 +2710,15 @@ fn key(principal: &str, request: &str) -> String {
 }
 
 /// The exact request content an idempotent retry must repeat.
+/// A request's retry identity: a digest, so the retry memory never retains
+/// what was typed (a sign-in code, a password) or any other request content.
 fn identity<T: serde::Serialize>(principal: &str, request: &T) -> String {
-    format!(
-        "{principal} {}",
-        serde_json::to_string(request).unwrap_or_default()
-    )
+    use sha2::{Digest, Sha256};
+    let mut hash = Sha256::new();
+    hash.update(principal.as_bytes());
+    hash.update([0]);
+    hash.update(serde_json::to_vec(request).unwrap_or_default());
+    format!("{:x}", hash.finalize())
 }
 
 /// Unix seconds from the system clock, which share expiry is measured in.
@@ -2722,4 +2726,27 @@ fn unix_now() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |since| since.as_secs())
+}
+
+#[cfg(test)]
+mod retention_tests {
+    use super::wire;
+
+    #[test]
+    fn retry_memory_keeps_no_typed_input() {
+        let typed = b"pasted-sign-in-code-4711".to_vec();
+        let terminal = wire::TerminalRef {
+            generation: "g".into(),
+            terminal: "t".into(),
+        };
+        let input = wire::Input::new("request-1", terminal, typed.clone());
+        let raw = serde_json::to_string(&input).unwrap();
+        let body = super::identity("device", &input);
+        // Only a fixed-size digest remains, never the request content.
+        assert_eq!(body.len(), 64);
+        assert!(body.bytes().all(|b| b.is_ascii_hexdigit()));
+        assert!(!raw.is_empty() && !body.contains(&raw));
+        assert_eq!(body, super::identity("device", &input));
+        assert_ne!(body, super::identity("other", &input));
+    }
 }

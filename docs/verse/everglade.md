@@ -348,10 +348,11 @@ Market Row, in the Lantern Quarter, the Knowledge, Foundry, and Creative
 Districts, and the first town around the Commons, with the plaza's
 fountain, stalls, and Main Street's lamps. The kit pack loads beside the
 Everglade pack from the OpenAgents web origin; without it the houses draw
-as committed proxies. The landmarks, Brownstone Row, the cabins in the
-woods, and the farm keep the models this section describes. The rest of
-this section describes the town as it stood before, and parts of it still
-hold for those buildings.
+as committed proxies. The landmarks, Brownstone Row, the round Music
+Hall, the smithy, the Boardwalk Cafés, the cabins in the woods, the
+beekeeper's hut, and the farm keep the models this section describes.
+The rest of this section describes the town as it stood before, and parts
+of it still hold for those buildings.
 
 The city's buildings are a table in `layout::city`. Most were the workshop's
 own kit pieces, one to three stories under round-tile roofs, painted in

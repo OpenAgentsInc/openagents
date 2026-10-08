@@ -1214,7 +1214,7 @@ impl Everglade {
             fx.particles.draw(&mut mesh.sprites);
         }
         if let Some(rainfall) = &self.rainfall {
-            rainfall.draw(&mut mesh.sprites);
+            rainfall.draw_covered(&mut mesh.sprites, eye, |p| self.solids.rain_open(p));
         }
         if let Some(yard) = &self.demolition {
             mesh.extend(&yard.mesh(player, eye, hold));
@@ -1547,7 +1547,16 @@ impl Everglade {
                 body.level += sky.rise as f32;
             }
             let immersed = swim.medium.wet();
-            self.drying.tick(dt, immersed, sky.weather.rain as f32);
+            let exposed = self.solids.rain_open(at.pos + Vec3::Y * 1.6);
+            self.drying.tick(
+                dt,
+                immersed,
+                if exposed {
+                    sky.weather.rain as f32
+                } else {
+                    0.0
+                },
+            );
             if self.drying.wet > 0.0 {
                 frame.rain.figure = [at.pos.x, at.pos.y, at.pos.z, self.drying.wet * 0.8];
             }
@@ -1563,7 +1572,7 @@ impl Everglade {
             }
             if let Some(rainfall) = &mut self.rainfall {
                 let forward = at.forward();
-                rainfall.tick(
+                rainfall.tick_covered(
                     dt,
                     at.pos + Vec3::Y * 1.6,
                     forward,
@@ -1576,6 +1585,7 @@ impl Everglade {
                     },
                     verse_world::social::everglade_water::surface,
                     &self.eaves,
+                    |p| self.solids.rain_open(p),
                 );
                 for source in &rainfall.sources {
                     frame.add_source(*source);

@@ -13,6 +13,8 @@ background = { path = "../background" }
 capability = { path = "../capability" }
 coder-boundary = { path = "../coder-boundary" }
 coder-host = { path = "../coder-host" }
+# Routing the agents' low-risk text jobs to the shared-compute pool.
+pylon = { path = "../pylon" }
 coder-delegate = { path = "../coder-delegate" }
 coder-lease = { path = "../coder-lease" }
 # OpenCode route models (`acp_client::opencode::Model`).

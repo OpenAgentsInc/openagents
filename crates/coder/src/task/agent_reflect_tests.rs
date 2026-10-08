@@ -22,6 +22,40 @@ impl Writer for Replies {
     }
 }
 
+#[test]
+fn a_pool_writer_asks_the_pool_first_and_falls_back_to_the_model() {
+    let mut answered = PoolWriter {
+        pool: Box::new(|system, prompt| {
+            Ok(Reply {
+                text: format!("{system}|{prompt}"),
+                model: "pylon:qwen".into(),
+                usd: Some(0.0),
+            })
+        }),
+        fallback: Some(Box::new(Replies(vec!["model".into()]))),
+    };
+    let reply = answered.write("s", "p").unwrap();
+    assert_eq!(reply.text, "s|p");
+    assert_eq!(reply.model, "pylon:qwen");
+
+    let mut silent = PoolWriter {
+        pool: Box::new(|_, _| Err("no fresh online pylon".into())),
+        fallback: Some(Box::new(Replies(vec!["model".into()]))),
+    };
+    assert_eq!(silent.write("s", "p").unwrap().text, "model");
+
+    let mut alone = PoolWriter {
+        pool: Box::new(|_, _| Err("no fresh online pylon".into())),
+        fallback: None,
+    };
+    assert!(
+        alone
+            .write("s", "p")
+            .unwrap_err()
+            .contains("no fresh online pylon")
+    );
+}
+
 /// Jev's answers by insight text; an unknown insight fails.
 struct Answers(BTreeMap<String, (f64, f64)>);
 

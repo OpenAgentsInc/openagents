@@ -95,7 +95,7 @@ struct Input {
     session: Option<String>,
 }
 
-fn reference(input: &str) -> Result<workbench::ResourceRef, SessionError> {
+pub(super) fn reference(input: &str) -> Result<workbench::ResourceRef, SessionError> {
     if input.len() > 8192 {
         return Err(SessionError::InvalidRequest);
     }

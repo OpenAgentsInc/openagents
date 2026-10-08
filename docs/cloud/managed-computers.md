@@ -5,7 +5,9 @@ Status: first web integration implemented and published to staging on October 8,
 The native integration uses existing admitted operator Cloud jobs. Prepared environment versions, service
 previews, scheduled wake, and general persistent-machine custody remain designed.
 [The glossary](../glossary.md) defines the terms and their implementation status.
-[Orbs research](../research/orbs.md) supplies the external reference; the
+[Orbs research](../research/orbs.md) supplies the external reference. The
+[OpenInspect study](../research/openinspect.md) adds source-reviewed lessons about
+durable custody, event completeness, and working-computer checkpoints. The
 [Cloud web specification](coder-cloud.md) and
 [repository onboarding contract](example-cursor-cloud-agent-onboarding/environment-onboarding.md)
 remain the native product requirements.

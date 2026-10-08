@@ -257,6 +257,26 @@ async fn both(
     (verdict(&artifact), verdict(&execution))
 }
 
+/// Like [`both`], for a request the device's client would not send itself
+/// (a grant or epoch it no longer holds): the client refuses it locally, so
+/// the artifact binding reaches the host over the raw session to see the
+/// host's own admission verdict.
+async fn both_forged(
+    fixture: &Fixture,
+    capability: &Capability,
+    device: &Enrolled,
+    prepare: impl Fn() -> Pending,
+) -> (String, String) {
+    let artifact = prepare();
+    let local = device.client.send(&artifact).await;
+    assert_eq!(verdict(&local), "refused Forbidden None");
+    let reply = fixture.artifact_reply(&device.secret, &artifact).await;
+    let artifact = device.client.verify_reply(&artifact, &reply, now());
+    let execution = prepare();
+    let execution = device.client.send_cj(capability, &execution).await;
+    (verdict(&artifact), verdict(&execution))
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn each_binding_gives_the_same_outcome_for_the_same_request() {
     let fixture = fixture().await;
@@ -288,12 +308,12 @@ async fn each_binding_gives_the_same_outcome_for_the_same_request() {
     let again = fixture.enroll(Rights::standard(), lost.secret).await;
     assert_eq!(again.access.grant.epoch, 1);
     let prepare = || forge(&again, &old_grant, 0, create());
-    let (artifact, execution) = both(&capability, &again, prepare).await;
+    let (artifact, execution) = both_forged(&fixture, &capability, &again, prepare).await;
     assert_eq!(artifact, "refused Revoked None");
     assert_eq!(execution, artifact);
     let new_grant = again.access.grant.grant.clone();
     let prepare = || forge(&again, &new_grant, 0, create());
-    let (artifact, execution) = both(&capability, &again, prepare).await;
+    let (artifact, execution) = both_forged(&fixture, &capability, &again, prepare).await;
     assert_eq!(artifact, "refused Stale None");
     assert_eq!(execution, artifact);
     assert_eq!(fixture.tasks.created().len(), 2);

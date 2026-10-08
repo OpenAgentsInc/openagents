@@ -175,6 +175,15 @@ fn allowed(operation: &Operation) -> bool {
             | "cloud.continue"
             | "cloud.cancel"
             | "cloud.follow"
+            | "studio.agent.ask"
+            | "studio.agent.answer"
+            | "studio.goal.submit"
+            | "studio.seat.message"
+            | "studio.seat.pause"
+            | "studio.seat.resume"
+            | "studio.seat.stop"
+            | "studio.decision.answer"
+            | "studio.merge.decide"
     )
 }
 

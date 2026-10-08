@@ -25,6 +25,7 @@ fn shader() -> String {
 @group(0) @binding(2) var water_tile: texture_2d<f32>;
 @group(0) @binding(3) var water_tile_sampler: sampler;
 @group(0) @binding(4) var water_waves: texture_2d_array<f32>;
+fn water_host_rain_open(world: vec3<f32>) -> f32 { return 1.0; }
 fn water_host_control() -> vec4<f32> { return vec4<f32>(0.0, 1.0, 1.0, 1.0); }
 fn water_host_sky(dir: vec3<f32>, level: f32) -> vec3<f32> { return vec3<f32>(0.0); }
 fn water_host_sun() -> vec4<f32> { return vec4<f32>(0.0); }

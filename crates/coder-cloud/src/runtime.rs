@@ -18,6 +18,8 @@ impl Credentials {
             if value.len() > 1024 * 1024 || value.contains('\0') {
                 return Err("A selected credential has an invalid value.".into());
             }
+            crate::claude::admit_name(name)?;
+            crate::claude::admit_value(&value)?;
             values.insert(name.clone(), value);
         }
         let mut secrets = Vec::new();
@@ -37,6 +39,11 @@ impl Credentials {
         use base64::Engine;
         if let Some(files) = value["files"].as_array() {
             for file in files {
+                if file["path"].as_str().is_some_and(crate::claude::login_path) {
+                    return Err(
+                        "A changed remote file is a Claude login. The artifact was refused.".into(),
+                    );
+                }
                 let bytes = base64::engine::general_purpose::STANDARD
                     .decode(
                         file["content"]
@@ -48,6 +55,12 @@ impl Credentials {
                     if bytes.windows(key.len()).any(|part| part == key.as_bytes()) {
                         return Err("A changed remote file contains a selected credential. The artifact was refused.".into());
                     }
+                }
+                if secret_screen::claude_login_in(&String::from_utf8_lossy(&bytes)) {
+                    return Err(
+                        "A changed remote file contains a Claude login. The artifact was refused."
+                            .into(),
+                    );
                 }
             }
         }
@@ -70,6 +83,11 @@ impl Credentials {
             Value::String(s) => {
                 for key in &self.secrets {
                     *s = s.replace(key, "[redacted]");
+                }
+                // A login the user made inside their computer never
+                // reaches evidence, ATIF, export, or logs.
+                if secret_screen::credential_in(s).is_some() {
+                    *s = secret_screen::redact(s);
                 }
             }
             Value::Array(a) => {
@@ -363,6 +381,42 @@ mod tests {
         assert!(credentials.sanitize_artifacts(&mut files).is_err());
         let mut safe = json!({"files":[{"content":base64::engine::general_purpose::STANDARD.encode(b"auth_mode chatgpt")}]});
         assert!(credentials.sanitize_artifacts(&mut safe).is_ok());
+    }
+    #[test]
+    fn claude_logins_are_never_injected_and_never_leave_in_evidence() {
+        use base64::Engine;
+        // Assembled at run time so no credential-shaped literal sits here.
+        let token = format!("sk-ant-oat01-{}", "z3".repeat(40));
+        assert!(
+            Credentials::from_names(&["CLAUDE_CODE_OAUTH_TOKEN".into()], |_| Some(token.clone()))
+                .is_err()
+        );
+        // A login value under any other name is refused as well.
+        assert!(
+            Credentials::from_names(&["CUSTOM_TOKEN".into()], |_| Some(token.clone())).is_err()
+        );
+        let document = format!(r#"{{"claudeAiOauth":{{"accessToken":"{token}"}}}}"#);
+        assert!(
+            Credentials::from_names(&["CUSTOM_JSON".into()], |_| Some(document.clone())).is_err()
+        );
+        let credentials = Credentials::default();
+        let mut trace =
+            json!({"steps":[{"text":format!("CLAUDE_CODE_OAUTH_TOKEN=opaque-login {token}")}]});
+        credentials.redact(&mut trace);
+        let text = trace.to_string();
+        assert!(
+            !text.contains("opaque-login") && !text.contains(&token),
+            "{text}"
+        );
+        let encode = |b: &[u8]| base64::engine::general_purpose::STANDARD.encode(b);
+        for files in [
+            json!({"files":[{"path":".claude/.credentials.json","content":encode(b"{}")}]}),
+            json!({"files":[{"path":"notes.txt","content":encode(document.as_bytes())}]}),
+        ] {
+            let mut files = files;
+            assert!(credentials.sanitize_artifacts(&mut files).is_err());
+        }
+        assert!(crate::workspace::validate_path("home/.claude/.credentials.json").is_err());
     }
     #[test]
     fn credentials_are_redacted_recursively_and_shell_quoted() {

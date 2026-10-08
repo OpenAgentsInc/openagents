@@ -18,7 +18,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 use crate::contracts::jcs;
-use crate::domain::{Event, RelaySigner, Tag};
+use crate::domain::{Event, MintedOwnerAttestation, RelaySigner, Tag, verify_owner_attestation};
 
 /// The beacon kind (addressable).
 pub const BEACON_KIND: u16 = 30_200;
@@ -546,6 +546,23 @@ impl Beacon {
 ///
 /// When the body breaks a rule or the signer is not the provider.
 pub fn beacon_event(signer: &RelaySigner, beacon: &Beacon) -> Result<Event, String> {
+    owned_beacon_event(signer, beacon, None)
+}
+
+/// Sign `beacon` as a `30200` event that carries `owner`, the NIP-OA
+/// `auth` tag by which the pylon's owner authorized this pylon key. The
+/// credential must verify on the signed event, so one minted for another
+/// key or with conditions this beacon breaks is refused here.
+///
+/// # Errors
+///
+/// When the body breaks a rule, the signer is not the provider, or the
+/// credential does not verify.
+pub fn owned_beacon_event(
+    signer: &RelaySigner,
+    beacon: &Beacon,
+    owner: Option<&MintedOwnerAttestation>,
+) -> Result<Event, String> {
     beacon.validate()?;
     if signer.pubkey() != beacon.provider {
         return Err("the beacon's provider must sign it".into());
@@ -557,7 +574,29 @@ pub fn beacon_event(signer: &RelaySigner, beacon: &Beacon) -> Result<Event, Stri
         Tag::new(vec!["x".into(), sha256_hex(content.as_bytes())]),
         Tag::new(vec!["expiration".into(), beacon.valid_until.to_string()]),
     ];
-    Ok(signer.sign(beacon.observed_at, BEACON_KIND, tags, content))
+    let mut tags = tags;
+    if let Some(owner) = owner {
+        tags.push(owner.tag());
+    }
+    let event = signer.sign(beacon.observed_at, BEACON_KIND, tags, content);
+    if owner.is_some() {
+        beacon_owner(&event)?;
+    }
+    Ok(event)
+}
+
+/// The verified NIP-OA owner of a `30200` event, or `None` when it carries
+/// no `auth` tag.
+///
+/// # Errors
+///
+/// When an `auth` tag is present and does not verify under NIP-OA: a bad
+/// signature, a credential for another key, more than one tag, or a
+/// condition the event breaks.
+pub fn beacon_owner(event: &Event) -> Result<Option<String>, String> {
+    Ok(verify_owner_attestation(event)
+        .map_err(|e| format!("NIP-OA owner tag refused: {e}"))?
+        .map(|attestation| attestation.owner_pubkey))
 }
 
 /// Verify a `30200` event and return its body. This checks the record, not
@@ -567,6 +606,16 @@ pub fn beacon_event(signer: &RelaySigner, beacon: &Beacon) -> Result<Event, Stri
 ///
 /// Names the first refusal from NIP-PYLON's Validation section.
 pub fn parse_beacon(event: &Event) -> Result<Beacon, String> {
+    parse_owned_beacon(event).map(|(beacon, _)| beacon)
+}
+
+/// Verify a `30200` event and return its body with its verified NIP-OA
+/// owner, when it names one.
+///
+/// # Errors
+///
+/// As [`parse_beacon`].
+pub fn parse_owned_beacon(event: &Event) -> Result<(Beacon, Option<String>), String> {
     let beacon: Beacon = envelope(event, BEACON_KIND, BEACON_MARKER)?;
     beacon.validate()?;
     if beacon.provider != event.pubkey {
@@ -578,12 +627,8 @@ pub fn parse_beacon(event: &Event) -> Result<Beacon, String> {
     if single_tag(event, "expiration")? != beacon.valid_until.to_string() {
         return Err("expiration differs from valid_until".into());
     }
-    if event.tag_values("auth").next().is_some() {
-        // NIP-OA owner binding is optional and not verified in this version;
-        // refuse rather than show an owner we did not check.
-        return Err("NIP-OA owner tags are not supported yet".into());
-    }
-    Ok(beacon)
+    let owner = beacon_owner(event)?;
+    Ok((beacon, owner))
 }
 
 /// How a reader judges a beacon against its own receipt time.
@@ -642,6 +687,17 @@ impl BeaconBook {
     #[must_use]
     pub fn get(&self, address: &str) -> Option<&(Event, Beacon)> {
         self.held.get(address)
+    }
+
+    /// Whether a receipt from `buyer` crediting the pylon at `address` is
+    /// self-dealt and never counts: the buyer is the pylon's provider, or
+    /// its verified NIP-OA owner per the held beacon.
+    #[must_use]
+    pub fn self_dealt(&self, buyer: &str, address: &str) -> bool {
+        let Some((event, beacon)) = self.held.get(address) else {
+            return false;
+        };
+        beacon.provider == buyer || beacon_owner(event).ok().flatten().as_deref() == Some(buyer)
     }
 }
 
@@ -820,8 +876,9 @@ pub fn compute_aggregate(
     // Beacons: the newest valid one per pylon that names the pool and is
     // fresh (sampled at or before, and valid at) the window's end.
     let mut book = BeaconBook::default();
+    let mut owners: BTreeMap<String, String> = BTreeMap::new();
     for event in inputs.beacons {
-        let Ok(beacon) = parse_beacon(event) else {
+        let Ok((beacon, owner)) = parse_owned_beacon(event) else {
             continue;
         };
         if !beacon.pools.iter().any(|p| p == &policy.pool)
@@ -833,7 +890,13 @@ pub fn compute_aggregate(
         {
             continue;
         }
-        book.offer(event.clone(), beacon);
+        let address = beacon.address();
+        if book.offer(event.clone(), beacon) {
+            match owner {
+                Some(owner) => owners.insert(address, owner),
+                None => owners.remove(&address),
+            };
+        }
     }
     let mut totals = Totals::default();
     let mut beacon_ids = Vec::new();
@@ -870,6 +933,12 @@ pub fn compute_aggregate(
         let Ok(receipt) = parse_receipt(event, None) else {
             continue;
         };
+        // A receipt from the provider or its NIP-OA owner never counts.
+        if receipt.buyer == receipt.provider
+            || owners.get(&receipt.address()) == Some(&receipt.buyer)
+        {
+            continue;
+        }
         if receipt.finished_at < window_.from
             || receipt.finished_at >= window_.to
             || !admitted.contains(&receipt.address())

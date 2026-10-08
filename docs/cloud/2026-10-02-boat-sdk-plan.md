@@ -242,6 +242,11 @@ against the spec with SHA-256 `9f5d55d6f722ada70109d32f804424c7514d896f7a8763338
 
   This solves the refresh-token problem the parent audit raises, but **Boat
   then holds custody of the owner's subscription tokens**.
+
+  > Note (October 8, 2026): Anthropic's terms forbid platforms from collecting,
+  > storing, or intermediating Claude.ai credentials for their users. This path
+  > may serve only the owner's own work on the owner's own plan, never customer
+  > Claude plans. See [Bring your own Claude](claude-code-byo.md).
 - **Webhooks.** At-least-once, signed (`X-Ascii-Signature`). Events cover
   ready, restored, error and archived.
 

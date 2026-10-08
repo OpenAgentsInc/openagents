@@ -658,9 +658,21 @@ refused in a test; captures `pylon-field-two-machines.png` and
 - While `openagents pylon ask` runs a job, the beam flows from the
   Wellspring to Alice's station, with a fork from the pylon serving it.
 
-Not yet: `coder host share` (the provider is a separate command, not part of
-the Coder host), the `background` lease, routing Coder's own delegated work
-to the pool, and NIP-OA owner tags.
+- `openagents host share on|off|status` (also `coder host share`) makes the
+  Coder host the pylon: the running host starts and stops the provider
+  from the setting. Each pool job takes a `pylon` lease at `background`
+  priority, and the pylon drains while the owner's work (a `quiet` lease or
+  any `owner` priority lease) needs the computer.
+- `openagents pylon link` adds the owner's NIP-OA `auth` tag to every
+  beacon; readers verify it, and the owner's and provider's own receipts
+  never count.
+
+- `openagents pylon route on [--pylon NPUB]` sends Alice's and the crew's
+  day plans to the pool as free jobs with receipts, falling back to the
+  agent's own model when no pylon answers. Off by default.
+
+The job is inference inside the Psionic process with no command execution, so
+`coder-boundary` has nothing to bound until execution jobs arrive.
 
 ### P2: checks and reputation
 

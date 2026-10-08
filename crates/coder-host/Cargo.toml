@@ -28,11 +28,15 @@ host = [
     "dep:security-framework",
     "dep:keyring",
     "dep:verse-private",
+    "dep:pylon",
 ]
 
 [dependencies]
 coder-host-wire = { path = "../coder-host-wire" }
 openagents-chat = { path = "../openagents-chat", optional = true }
+# Shared compute: `host share` and the pylon `serve` runs while it is on
+# (host feature only).
+pylon = { path = "../pylon", optional = true }
 # The background rules runner `serve` starts (the disk cleanup monitor).
 background = { path = "../background", optional = true }
 # The `coder-host:` layout of a connect code's invitation.

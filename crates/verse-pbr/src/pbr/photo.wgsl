@@ -149,6 +149,8 @@ struct Frame {
     weather: vec4<f32>,
     // A wet character: its feet (xyz) and how wet it is (w, 0 for none).
     weather_figure: vec4<f32>,
+    rain_matrix: mat4x4<f32>,
+    rain_params: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> f: Frame;
@@ -166,6 +168,16 @@ struct Frame {
 @group(0) @binding(12) var linear_repeat: sampler;
 // The daylight sky prefiltered by roughness, one GGX lobe per level.
 @group(0) @binding(13) var sky_cube: texture_cube<f32>;
+@group(0) @binding(14) var rain_depth: texture_depth_2d;
+
+// A straight-down comparison: tops stay wet, everything below stays dry.
+fn rain_open(world: vec3<f32>) -> f32 {
+    if f.rain_params.x < 0.5 { return 1.0; }
+    let c = f.rain_matrix * vec4<f32>(world, 1.0);
+    let uv = vec2<f32>(c.x * 0.5 + 0.5, 0.5 - c.y * 0.5);
+    if any(uv < vec2<f32>(0.0)) || any(uv >= vec2<f32>(1.0)) { return 1.0; }
+    return textureSampleCompareLevel(rain_depth, shadow_compare, uv, c.z - f.rain_params.y);
+}
 // The most recent adapted scene luminance, for display-referred guides.
 @group(1) @binding(0) var adapted: texture_2d<f32>;
 // The high tier's screen-space terms at full resolution (`pbr::screen`): red
@@ -854,7 +866,8 @@ fn shade(i: Shading) -> vec3<f32> {
     // the ground under its ice (`pbr::water`). The footprint is taken
     // before the per-fragment branch, as derivatives need.
     let wet_footprint = length(fwidth(i.world));
-    let wetness = max(water_wetness(i.world.xz), water_figure_wetness(i.world));
+    let exposure = rain_open(i.world);
+    let wetness = max(water_wetness(i.world.xz) * exposure, water_figure_wetness(i.world));
     if wetness > 0.0 {
         let up = geometric.y;
         // Rain reaches what is open to the sky: the baked sky fraction
@@ -873,7 +886,7 @@ fn shade(i: Shading) -> vec3<f32> {
         // of it as they fill: the weather's fill, or Create Water's rain.
         // Grass and leaves soak it up, so they pool on the plainer,
         // less saturated paths, paving, and bare ground.
-        let fill = max(f.weather.y, select(0.0, wetness, f.water_wet.w > 0.0));
+        let fill = max(f.weather.y * exposure, select(0.0, wetness, f.water_wet.w > 0.0));
         let flat = smoothstep(0.93, 0.99, up);
         let low = value_noise(vec3<f32>(i.world.xz * 0.8, 3.0));
         let peak = max(base.r, max(base.g, base.b));
@@ -884,7 +897,7 @@ fn shade(i: Shading) -> vec3<f32> {
         base = mix(base, base * 0.1, puddle);
         roughness = mix(roughness, 0.03, puddle);
         if puddle > 0.0 && f.weather.z > 0.0 {
-            let slope = water_rain_slope(i.world.xz, f.water_scatter.w, f.weather.z, wet_footprint);
+            let slope = water_rain_slope(i.world.xz, f.water_scatter.w, f.weather.z * exposure, wet_footprint);
             n = normalize(n + vec3<f32>(-slope.x, 0.0, -slope.y) * puddle);
         }
     }

@@ -19,6 +19,8 @@ use tower::ServiceExt;
 #[path = "../../../coder-control/src/tests/relay.rs"]
 mod task_relay;
 
+#[path = "agents_tests.rs"]
+mod agents;
 #[path = "control_tests.rs"]
 mod controls;
 
@@ -30,6 +32,8 @@ mod operator_tests;
 mod project_fixture;
 #[path = "project_tests.rs"]
 mod projects;
+#[path = "verse_tests.rs"]
+mod verse;
 #[path = "workbench_tests.rs"]
 mod workbench;
 
@@ -577,6 +581,18 @@ async fn resident_with_services(
     projects: bool,
     cloud: bool,
 ) -> Resident {
+    resident_with_inbox(fixture, rights, controls, projects, cloud, |inbox, _| inbox).await
+}
+
+/// A resident whose task owner `extend` completes, such as with workshop agents.
+async fn resident_with_inbox(
+    fixture: &mut Fixture,
+    rights: coder_access::Rights,
+    controls: bool,
+    projects: bool,
+    cloud: bool,
+    extend: impl FnOnce(coder::task::remote::Inbox, &std::path::Path) -> coder::task::remote::Inbox,
+) -> Resident {
     use coder_host::Tasks;
     let private = fixture
         .config
@@ -661,6 +677,7 @@ async fn resident_with_services(
             operator_fixture::operator(private, standing, &device_id, &host.workspaces).unwrap(),
         ));
     }
+    let inbox = extend(inbox, private);
     let running = coder_host::start(host, Arc::new(inbox)).await.unwrap();
     let secret = private.join("resident-device.key");
     let access_path = private.join("resident-device.access");

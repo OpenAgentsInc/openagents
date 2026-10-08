@@ -38,6 +38,8 @@ pub const USAGE: &str = "usage: openagents host COMMAND [OPTIONS]
   spend request|list|show ...   ask the owner's phone to pay (`openagents host spend help`)
   adopt [--keys DIR]  move a host set up the old way under the desktop app
   adopt detect        report whether there is such a host to move, changing nothing
+  share on|off|status share this computer's model with the pool as a pylon
+                      (`openagents host share help`)
   serve [--owner KEY] [--relay URL]... [--workspace LABEL=PATH]... [--listen ADDR]
         [--listen-websocket ADDR] [--allow-nonloopback]
         [--websocket-tls-cert FILE --websocket-tls-key FILE --websocket-name NAME]
@@ -135,6 +137,9 @@ pub async fn run(args: &[String], open_tasks: Box<OpenTasks>) -> u8 {
     }
     if command == "adopt" {
         return adopt(rest);
+    }
+    if command == "share" {
+        return crate::compute::command(rest);
     }
     let mut options = match Options::parse(rest) {
         Ok(options) => options,
@@ -947,6 +952,7 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
     #[cfg(unix)]
     if own_host {
         crate::background::start(&tasks_dir);
+        crate::compute::start();
     }
     if let Some(address) = running.iroh_addr() {
         eprintln!("openagents host: iroh endpoint {}", address.id);
@@ -998,6 +1004,7 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
     // A request being answered gets its answer first, such as the one
     // that changed the settings; no new one is taken.
     running.stop_taking_requests();
+    crate::compute::stop().await;
     if !running.drain(DRAIN).await {
         eprintln!(
             "openagents host: stopping with {} request(s) unanswered",

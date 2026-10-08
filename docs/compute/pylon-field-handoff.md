@@ -63,10 +63,12 @@ Issue #10921 stays open. Its acceptance and where each item stands:
 - Captures `pylon-field-two-machines.png` and `wellspring-live.png`: met.
   See [Capture paths](#capture-paths).
 
-Also still open from the P1 scope: `coder host share on|off|status`, the
-`pylon` lease resource at `background` priority, running the job inside
-`coder-boundary`, and NIP-OA owner tags on beacons. The web and phone
-builds leave the field dormant.
+October 8: `openagents host share on|off|status`, the `pylon` lease
+resource at `background` priority with draining while the owner's work
+needs the computer, and NIP-OA owner tags on beacons (`openagents pylon
+link`) landed, and `openagents pylon route on` sends Alice's and the
+crew's day plans to the pool as free jobs, falling back to their own
+model. The web and phone builds leave the field dormant.
 
 ## Run and test
 

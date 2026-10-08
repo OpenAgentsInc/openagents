@@ -46,6 +46,10 @@ struct Declared {
     device_secret: PathBuf,
     #[serde(default)]
     browser: Option<Browser>,
+    /// An operator-provisioned directory holding the host's admitted browser
+    /// chamber configuration (`chamber.json`) and its content.
+    #[serde(default)]
+    world: Option<PathBuf>,
 }
 
 /// Public transport hints for a separately enrolled page device.
@@ -75,6 +79,7 @@ pub struct Binding {
     files: [ProtectedFile; 2],
     browser: Option<Browser>,
     loopback: bool,
+    world: Option<super::verse::World>,
 }
 
 /// Operator-provisioned read bindings; account sign-in never creates one.
@@ -135,6 +140,15 @@ impl Hosts {
             .ok_or(SessionError::Forbidden)?;
         binding.admit(viewer)?;
         Ok(binding)
+    }
+
+    /// Find a binding by ID without account admission, for ticketed reads.
+    pub(crate) fn find(&self, id: &str) -> Result<&Binding, SessionError> {
+        self.config.check().map_err(|_| SessionError::Unavailable)?;
+        self.bindings
+            .iter()
+            .find(|b| b.id == id)
+            .ok_or(SessionError::Forbidden)
     }
 
     pub(crate) fn current<'a>(&'a self, viewer: &Viewer) -> Vec<&'a Binding> {
@@ -211,7 +225,17 @@ impl Binding {
                 .chain(browser.route.as_deref())
                 .any(|value| value.starts_with("ws://"))
         });
+        let world = match &declared.world {
+            Some(directory) => Some(super::verse::World::load(
+                directory,
+                &access.grant.host,
+                declared.host_generation,
+                local_observer,
+            )?),
+            None => None,
+        };
         let identity = digest(&serde_json::json!({
+            "world":world.as_ref().map(super::verse::World::identity),
             "binding":declared.id, "account":declared.account,
             "workspace":declared.workspace,"members_epoch":declared.members_epoch,
             "host":access.grant.host,"generation":declared.host_generation,
@@ -233,6 +257,7 @@ impl Binding {
             files: [access_file, secret_file],
             browser: declared.browser,
             loopback,
+            world,
         })
     }
 
@@ -268,6 +293,54 @@ impl Binding {
     }
     pub(crate) fn identity(&self) -> &str {
         &self.identity
+    }
+
+    pub(crate) fn account(&self) -> &str {
+        &self.account
+    }
+    pub(crate) fn account_workspace(&self) -> &str {
+        &self.workspace
+    }
+    pub(crate) fn members_epoch(&self) -> u64 {
+        self.members_epoch
+    }
+    /// Whether the resident route is a loopback channel rather than a relay.
+    pub(crate) fn direct(&self) -> bool {
+        matches!(self.route, Route::Local(_))
+    }
+    pub(crate) fn capabilities(&self) -> &[String] {
+        self.browser
+            .as_ref()
+            .map_or(&[], |browser| browser.capabilities.as_slice())
+    }
+
+    /// The configured world, without any account admission or right check.
+    pub(crate) fn declared_world(&self) -> Option<&super::verse::World> {
+        self.world.as_ref()
+    }
+
+    /// The admitted world for the current account: the native grant must
+    /// carry `world`, and the binding and its chamber file must be current.
+    pub(crate) fn world(&self, viewer: &Viewer) -> Result<&super::verse::World, SessionError> {
+        self.admit(viewer)?;
+        self.current_world()
+    }
+
+    /// The world for a credential-free content read, after the caller has
+    /// verified a ticket that binds this binding's account scope.
+    pub(crate) fn current_world(&self) -> Result<&super::verse::World, SessionError> {
+        if self.device.access().grant.expires_at <= now() {
+            return Err(SessionError::Forbidden);
+        }
+        for file in &self.files {
+            file.check().map_err(|_| SessionError::Unavailable)?;
+        }
+        let world = self.world.as_ref().ok_or(SessionError::Unavailable)?;
+        if !self.access().grant.rights.contains(Right::World) {
+            return Err(SessionError::Forbidden);
+        }
+        world.check()?;
+        Ok(world)
     }
 
     pub(crate) fn browser_config(
@@ -393,6 +466,12 @@ impl Binding {
                     | Operation::CloudList { .. }
                     | Operation::CloudRead { .. }
                     | Operation::CloudOriginal { .. }
+                    | Operation::ListAgents {}
+                    | Operation::ListAgentJobs { .. }
+                    | Operation::ListAgentMemory { .. }
+                    | Operation::StudioSnapshot {}
+                    | Operation::StudioUpdate { .. }
+                    | Operation::OpenReview { .. }
             )
         {
             return Err(SessionError::Forbidden);

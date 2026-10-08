@@ -59,7 +59,14 @@ pub fn validate_path(name: &str) -> Result<()> {
     if Path::new(name).components().any(|p| {
         matches!(
             p.as_os_str().to_str(),
-            Some(".git" | ".env" | "auth.json" | "credentials.json" | "google-services.json")
+            Some(
+                ".git"
+                    | ".env"
+                    | "auth.json"
+                    | "credentials.json"
+                    | ".credentials.json"
+                    | "google-services.json"
+            )
         )
     }) {
         return Err("Credential files and Git control files cannot be transferred.".into());
@@ -350,7 +357,7 @@ if (p/'workspace-input').exists():
  total=0
  for n in filter(None,names):
   name=n.decode();q=w/name
-  if any(x in {{'.git','.env','auth.json','credentials.json','google-services.json'}} for x in pathlib.PurePosixPath(name).parts):raise SystemExit('Credential artifact refused')
+  if any(x in {{'.git','.env','auth.json','credentials.json','.credentials.json','google-services.json'}} for x in pathlib.PurePosixPath(name).parts):raise SystemExit('Credential artifact refused')
   if q.is_file() and not q.is_symlink():
    data=q.read_bytes();total+=len(data)
    if total>16*1024*1024:raise SystemExit('Changed files exceed artifact limit')

@@ -55,6 +55,10 @@ keep_binaries=""
 # rust-toolchain.toml; this is only the fallback before the clone exists.
 RUST_TOOLCHAIN_DEFAULT="1.97.1"
 SCCACHE_VERSION="v0.18.0"
+# Claude Code is installed as published and never modified; this pin must
+# equal `coder_cloud::claude::VERSION` (a test checks it). Sign-in happens
+# later, by the user, inside their own computer (docs/cloud/claude-code-byo.md).
+CLAUDE_CODE_VERSION="2.1.295"
 NODE_MAJOR="24"
 # The packages the warm target covers. Every Coder run builds and tests some
 # of these; the rest of the workspace builds on top of their dependencies.
@@ -218,7 +222,11 @@ fi
 if [[ "$engines" == "true" ]]; then
   log engines begin
   as_root env PATH="/opt/node/bin:$PATH" npm install -g --prefix /usr/local --no-fund --no-audit --loglevel=error \
-    @openai/codex @anthropic-ai/claude-code >/dev/null
+    @openai/codex "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" >/dev/null
+  if ! /usr/local/bin/claude --version 2>/dev/null | grep -qF "$CLAUDE_CODE_VERSION"; then
+    echo "coder-host-setup: refusing: Claude Code is not the pinned $CLAUDE_CODE_VERSION" >&2
+    exit 3
+  fi
   # Grok Build installs per user into ~/.grok/bin.
   if [[ ! -x "$home/.grok/bin/grok" ]]; then
     as_user bash -c 'curl -fsSL https://x.ai/cli/install.sh | bash' >/dev/null

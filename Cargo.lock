@@ -2768,6 +2768,7 @@ dependencies = [
  "openrouter",
  "plugin",
  "private-fs",
+ "pylon",
  "ratatui",
  "rcgen",
  "receipts",
@@ -2899,6 +2900,7 @@ dependencies = [
  "coder-access",
  "coder-host",
  "libc",
+ "secret-screen",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -3084,6 +3086,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "coder-environment"
+version = "0.1.0"
+dependencies = [
+ "atif",
+ "boat",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+]
+
+[[package]]
 name = "coder-hands"
 version = "0.1.0"
 dependencies = [
@@ -3147,6 +3161,7 @@ dependencies = [
  "openagents-chat",
  "openagents-connect",
  "private-fs",
+ "pylon",
  "rustls",
  "secp256k1 0.31.1",
  "security-framework",
@@ -11673,6 +11688,7 @@ checksum = "d55d956fa96f5ec02be2e13af0e20391a5aa83d6a074e3ad368959d0fab299ea"
 name = "pylon"
 version = "0.1.0"
 dependencies = [
+ "coder-lease",
  "futures-util",
  "nostr",
  "nostr-transport",

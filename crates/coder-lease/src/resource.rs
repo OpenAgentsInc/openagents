@@ -32,6 +32,10 @@ pub enum Resource {
     Unreal,
     /// The Blender binary.
     Blender,
+    /// Shared-compute pool jobs this computer serves as a pylon, counted
+    /// in jobs. Pool jobs take it at `background` priority, so the owner's
+    /// own work goes first.
+    Pylon,
     /// A single-digest artifact, such as an asset pack (`artifact/<name>`).
     Artifact(String),
     /// A GitHub issue claim (`issue/<n>`).
@@ -54,6 +58,7 @@ impl Resource {
             "gpu" => Resource::Gpu,
             "unreal" => Resource::Unreal,
             "blender" => Resource::Blender,
+            "pylon" => Resource::Pylon,
             other => {
                 if let Some(artifact) = other.strip_prefix("artifact/") {
                     if !valid_name(artifact) {
@@ -83,7 +88,7 @@ impl Resource {
     #[must_use]
     pub fn shape(&self) -> Shape {
         match self {
-            Resource::Build | Resource::Memory | Resource::Disk => Shape::Counted,
+            Resource::Build | Resource::Memory | Resource::Disk | Resource::Pylon => Shape::Counted,
             _ => Shape::Exclusive,
         }
     }
@@ -95,14 +100,15 @@ impl Resource {
             Resource::Build => "slots",
             Resource::Memory => "GiB",
             Resource::Disk => "GB",
+            Resource::Pylon => "jobs",
             _ => "",
         }
     }
 }
 
 /// The resources with fixed names, in the order the help lists them.
-pub const NAMED: [&str; 9] = [
-    "build", "memory", "disk", "quiet", "screen", "browser", "gpu", "unreal", "blender",
+pub const NAMED: [&str; 10] = [
+    "build", "memory", "disk", "quiet", "screen", "browser", "gpu", "unreal", "blender", "pylon",
 ];
 
 pub(crate) fn valid_name(name: &str) -> bool {
@@ -127,6 +133,7 @@ impl fmt::Display for Resource {
             Resource::Gpu => f.write_str("gpu"),
             Resource::Unreal => f.write_str("unreal"),
             Resource::Blender => f.write_str("blender"),
+            Resource::Pylon => f.write_str("pylon"),
             Resource::Artifact(name) => write!(f, "artifact/{name}"),
             Resource::Issue(number) => write!(f, "issue/{number}"),
         }
@@ -149,6 +156,7 @@ mod tests {
         }
         assert_eq!(Resource::Build.shape(), Shape::Counted);
         assert_eq!(Resource::Disk.shape(), Shape::Counted);
+        assert_eq!(Resource::Pylon.shape(), Shape::Counted);
         assert_eq!(Resource::Quiet.shape(), Shape::Exclusive);
         assert_eq!(Resource::Issue(1).shape(), Shape::Exclusive);
         for bad in [

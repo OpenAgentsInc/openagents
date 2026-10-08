@@ -304,6 +304,35 @@ view and drafts. Even a prepared request rechecks its operator policy before
 revealing private action content. Original records are available in bounded
 chunks with downloads that preserve their exact bytes.
 
+## Alice and Agent Studio
+
+`/cloud/app/agents` links the current resident bindings. On
+`/cloud/app/hosts/{binding}/agents`, Observe reads the host's workshop agents
+and its Agent Studio snapshot. Each agent shows her key, attested, unattested,
+or expired owner attestation with the 14-day renewal warning, engine route,
+running step, waiting proposal, coding-task change, jobs, preferences, and day
+plan. The page states the current one-running, four-waiting host limit and that
+coding-task runs bypass her terminal-request budget meter. Configuration stays
+unavailable until a reviewed host operation exists.
+
+`/cloud/app/hosts/{binding}/agents/{agent}` adds standing jobs and memory. An
+enrolled browser with Operate chooses **Coding task** or **Terminal request**
+explicitly; the host's automatic mode is never sent. The request identity is
+fixed when the form renders. The control journal reuses the exact packet, and
+changed bytes under that identity conflict. The resident retains the signed
+reply, and the agent host keeps a durable ledger of request identity and exact
+content. A lost reply or restart therefore recovers the original result without
+queueing the work again.
+
+Studio controls carry the displayed stream and sequence. Before staging, the
+adapter reads `studio.update` from that point. A gap, restarted host stream, or
+changed decision or task refuses until a fresh snapshot. Decisions bind their
+native basis. Merge decisions bind the review's base, head commit, and tree.
+The adapter rereads the review and refuses a changed candidate. Merge is not
+offered for an unreadable change. The host refuses dirty, detached, or
+conflicting checkouts. Merge implies no deploy; any push appears only as the
+host's publication state.
+
 ## Granted native workbench
 
 Build `coder-browser-web` with `scripts/build-coder-browser-web.sh DIRECTORY`
@@ -334,6 +363,34 @@ cancel pending work and erase keys, drafts, and mounted private output. Closing
 the page detaches its viewer and leaves the PTY under the native host lifecycle.
 Retail customer tasks expose no shell. HTTP and insecure WebSockets are accepted
 only for explicit isolated loopback fixtures.
+
+## Verse connections
+
+`/cloud/app/verse` always shows three separate connections for each admitted
+host binding: World, Computer, and Private work. It needs no 3D view. Computer
+state comes from a current native observation check. Private work lists only
+the binding's Observe, Operate, Review, and Terminal rights; the `world` right is
+never one of them, and joining a world adds none. Public worlds (`/grid`,
+`/everglade`, `/druid`) stay linked and supply no host or Studio connection.
+
+To offer **Join**, add `world` to the binding: an absolute private directory
+(every containing directory `0700`, files `0600`) holding the browser
+`chamber.json` from [platform clients](../../docs/verse/platform-clients.md) and
+its pack, scene, and assets. Its `host` and `generation` must match the binding,
+and the binding's native grant must carry `world`. The host still admits only an
+enrolled character bound to the chamber's instance and content.
+`/cloud/app/hosts/{binding}/verse` issues a ten-minute world ticket and opens the
+existing `everglade-web` chamber renderer under `/cloud/world/{binding}/{ticket}/`
+(`--everglade` must be set). The renderer omits credentials, so its
+configuration and content reads are scoped by that ticket, which binds the
+session, account, workspace, membership epoch, and exact binding identity. A
+changed chamber configuration, binding, or expired grant refuses them. **Leave**
+returns to the connections page.
+
+`/cloud/app/verse/open?host=BINDING&resource=REF` resolves a station's
+[workbench reference](../../docs/terminal/workbench-resources.md) to the same app
+view: a terminal opens the workbench, a run opens its task, and other kinds show
+the exact reference without an action until their owner viewer lands.
 
 ## Task browser
 

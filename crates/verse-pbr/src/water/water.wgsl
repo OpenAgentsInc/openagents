@@ -849,7 +849,7 @@ fn water_normal(s: WaterFragment) -> WaterNormal {
         detail = vec3<f32>(detail.xy * rg, detail.z * rg * rg);
     }
     let field = water_ripple_field(s.rest);
-    let rain = water_rain_slope(s.rest, water.params.x, water.look.z, s.footprint);
+    let rain = water_rain_slope(s.rest, water.params.x, water.look.z * water_host_rain_open(s.world), s.footprint);
     slope += water.bodies[s.body].level_gradient.xy;
     slope = (slope + detail.xy + water_ripples(s.rest) + field.yz + rain + s.slope) * (1.0 - s.calm);
     o.n = normalize(vec3<f32>(-slope.x, 1.0 - squeeze_y * (1.0 - s.calm), -slope.y));

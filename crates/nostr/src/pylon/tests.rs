@@ -327,3 +327,81 @@ fn an_aggregate_counts_only_trusted_buyers() {
     assert_eq!(aggregate.totals.jobs.accepted, 0);
     assert_eq!(aggregate.inputs.receipts.digest, id_set_digest([]));
 }
+
+fn owner_credential(owner: u8, agent: &RelaySigner, conditions: &str) -> MintedOwnerAttestation {
+    let secret = secp256k1::SecretKey::from_byte_array([owner; 32]).unwrap();
+    crate::domain::mint_owner_attestation(&secret, agent.pubkey(), conditions).unwrap()
+}
+
+#[test]
+fn a_beacon_carries_a_verified_nip_oa_owner() {
+    let provider = signer(1);
+    let owner = signer(7);
+    let body = beacon(&provider, NOW);
+    let credential = owner_credential(7, &provider, "kind=30200");
+    let event = owned_beacon_event(&provider, &body, Some(&credential)).unwrap();
+    let (parsed, found) = parse_owned_beacon(&event).unwrap();
+    assert_eq!(parsed, body);
+    assert_eq!(found.as_deref(), Some(owner.pubkey()));
+    // A beacon without one is valid and shows no owner.
+    let plain = beacon_event(&provider, &body).unwrap();
+    assert_eq!(parse_owned_beacon(&plain).unwrap().1, None);
+
+    // A credential minted for another key does not sign for this pylon.
+    let stranger = owner_credential(7, &signer(2), "kind=30200");
+    assert!(owned_beacon_event(&provider, &body, Some(&stranger)).is_err());
+    let mut tags = plain.tags.clone();
+    tags.push(stranger.tag());
+    let borrowed = resign(&provider, &plain, plain.content.clone(), tags);
+    assert!(parse_beacon(&borrowed).unwrap_err().contains("NIP-OA"));
+
+    // A credential for another kind, or a forged owner, is refused.
+    let receipts_only = owner_credential(7, &provider, "kind=3201");
+    assert!(owned_beacon_event(&provider, &body, Some(&receipts_only)).is_err());
+    let mut forged = credential.clone();
+    forged.owner_pubkey = signer(8).pubkey().into();
+    let mut tags = plain.tags.clone();
+    tags.push(forged.tag());
+    assert!(parse_beacon(&resign(&provider, &plain, plain.content.clone(), tags)).is_err());
+
+    // Two auth tags are refused.
+    let mut tags = event.tags.clone();
+    tags.push(credential.tag());
+    assert!(parse_beacon(&resign(&provider, &event, event.content.clone(), tags)).is_err());
+}
+
+#[test]
+fn an_aggregate_never_counts_the_owners_receipts() {
+    let provider = signer(1);
+    let owner = signer(7);
+    let buyer = signer(3);
+    let to = 1_791_400_200;
+    let credential = owner_credential(7, &provider, "kind=30200");
+    let beacons = vec![
+        owned_beacon_event(&provider, &beacon(&provider, to - 30), Some(&credential)).unwrap(),
+    ];
+    let mut receipts = Vec::new();
+    for (i, who) in [&buyer, &owner, &provider].into_iter().enumerate() {
+        let body = receipt(who, &provider, &format!("{i:02x}").repeat(32), to - 10);
+        if let Ok(event) = receipt_event(who, &body, to - 10) {
+            receipts.push(event);
+        }
+    }
+    let inputs = AggregateInputs {
+        beacons: &beacons,
+        receipts: &receipts,
+    };
+    let window = Window {
+        from: to - 3_600,
+        to,
+    };
+    let policy = PoolPolicy::open("everglade", 12);
+    let aggregator = signer(9);
+    let aggregate = compute_aggregate(aggregator.pubkey(), &policy, window, &inputs, to).unwrap();
+    assert_eq!(aggregate.totals.jobs.accepted, 1);
+    let event = aggregate_event(&aggregator, &aggregate).unwrap();
+    assert_eq!(
+        verify_aggregate(&event, &policy, &inputs).unwrap(),
+        aggregate
+    );
+}

@@ -163,7 +163,7 @@ fn identifier(value: &str) -> bool {
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || b"_-".contains(&b))
 }
-fn task_id(value: &str) -> bool {
+pub(super) fn task_id(value: &str) -> bool {
     coder_access::studio::id(value).is_ok()
 }
 

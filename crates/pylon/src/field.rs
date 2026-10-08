@@ -73,6 +73,7 @@ impl RelayField {
                 continue;
             };
             if receipt.outcome == Outcome::Accepted
+                && !book.self_dealt(&receipt.buyer, &receipt.address())
                 && seen.insert((receipt.buyer.clone(), receipt.request.clone()))
             {
                 *jobs.entry(receipt.address()).or_default() += 1;
@@ -277,8 +278,11 @@ impl Live {
     #[must_use]
     pub fn pylons(&self, now: u64) -> Vec<Pylon> {
         let mut jobs: BTreeMap<&str, u64> = BTreeMap::new();
-        for counted in self.receipts.values() {
-            if counted.accepted && counted.finished_at + RECEIPT_WINDOW_SECS >= now {
+        for ((buyer, _), counted) in &self.receipts {
+            if counted.accepted
+                && counted.finished_at + RECEIPT_WINDOW_SECS >= now
+                && !self.book.self_dealt(buyer, &counted.address)
+            {
                 *jobs.entry(counted.address.as_str()).or_default() += 1;
             }
         }
@@ -322,8 +326,13 @@ impl Live {
         }
         let recent = self
             .receipts
-            .values()
-            .filter(|r| r.accepted && r.finished_at + RATE_SECS >= now && r.finished_at <= now)
+            .iter()
+            .filter(|((buyer, _), r)| {
+                r.accepted
+                    && r.finished_at + RATE_SECS >= now
+                    && r.finished_at <= now
+                    && !self.book.self_dealt(buyer, &r.address)
+            })
             .count();
         u32::try_from(recent).unwrap_or(u32::MAX)
     }

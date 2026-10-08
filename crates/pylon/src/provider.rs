@@ -14,9 +14,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use nostr::domain::Event;
+use nostr::domain::{Event, MintedOwnerAttestation};
 use nostr::pylon::{
-    BEACON_V, Beacon, Class, Family, Lane, Service, Slots, Status, Tier, beacon_event,
+    BEACON_V, Beacon, Class, Family, Lane, Service, Slots, Status, Tier, owned_beacon_event,
 };
 use serde_json::json;
 use tokio::sync::{Mutex, mpsc};
@@ -25,6 +25,7 @@ use tokio::time::timeout;
 use crate::engine::Engine;
 use crate::identity::Identity;
 use crate::job::{self, Refusal};
+use crate::lease::{Dedicated, Machine};
 use crate::now;
 use crate::relay::{self, Frame, LIFETIME};
 
@@ -48,6 +49,9 @@ pub struct Config {
     pub home: PathBuf,
     /// How long one job may run.
     pub job_timeout: Duration,
+    /// The NIP-OA credential by which the owner authorized this pylon key;
+    /// every beacon carries it.
+    pub owner: Option<MintedOwnerAttestation>,
 }
 
 impl Config {
@@ -70,6 +74,7 @@ impl Config {
             pools: vec!["everglade".into()],
             home,
             job_timeout: Duration::from_secs(90),
+            owner: None,
         }
     }
 
@@ -102,6 +107,8 @@ struct State {
     buckets: HashMap<String, Bucket>,
     healthy: bool,
     draining: bool,
+    /// The owner's work needs the machine, as last checked.
+    yielding: bool,
     counters: Counters,
 }
 
@@ -110,6 +117,7 @@ pub struct Provider {
     config: Config,
     identity: Identity,
     engine: Arc<dyn Engine>,
+    machine: Arc<dyn Machine>,
     generation: u64,
     since: u64,
     state: Mutex<State>,
@@ -132,6 +140,26 @@ impl Provider {
         identity: Identity,
         engine: Arc<dyn Engine>,
     ) -> Result<Arc<Self>, String> {
+        Self::on(config, identity, engine, Arc::new(Dedicated))
+    }
+
+    /// A provider that shares `machine` with its owner's work: each job
+    /// takes the machine's lease, and the pylon drains while the owner's
+    /// work needs it.
+    ///
+    /// # Errors
+    ///
+    /// As [`Provider::new`], and when the owner credential does not verify
+    /// for this pylon key.
+    pub fn on(
+        config: Config,
+        identity: Identity,
+        engine: Arc<dyn Engine>,
+        machine: Arc<dyn Machine>,
+    ) -> Result<Arc<Self>, String> {
+        if let Some(owner) = &config.owner {
+            crate::identity::check_owner(&identity, owner)?;
+        }
         std::fs::create_dir_all(&config.home).map_err(|e| e.to_string())?;
         let path = config.home.join(format!("{}.generation", config.pylon));
         let generation = std::fs::read_to_string(&path)
@@ -149,11 +177,13 @@ impl Provider {
                 buckets: HashMap::new(),
                 healthy: true,
                 draining: false,
+                yielding: false,
                 counters: Counters::default(),
             }),
             config,
             identity,
             engine,
+            machine,
             generation,
             since: now(),
             outbound,
@@ -176,7 +206,7 @@ impl Provider {
     /// The beacon as of now.
     pub async fn beacon(&self, status: Option<Status>) -> Beacon {
         let state = self.state.lock().await;
-        let status = status.unwrap_or(if state.draining || !state.healthy {
+        let status = status.unwrap_or(if state.draining || !state.healthy || state.yielding {
             Status::Draining
         } else {
             Status::Online
@@ -227,9 +257,10 @@ impl Provider {
         self.state.lock().await.draining = true;
         beacons.abort();
         sessions.abort();
-        let event = beacon_event(
+        let event = owned_beacon_event(
             self.identity.signer(),
             &self.beacon(Some(Status::Offline)).await,
+            self.config.owner.as_ref(),
         )?;
         match relay::connect(&self.config.relay, &self.identity, Duration::from_secs(10)).await {
             Ok(mut conn) => {
@@ -252,6 +283,11 @@ impl Provider {
                 self.state.lock().await.healthy = healthy;
                 checked = Instant::now();
             }
+            let machine = Arc::clone(&self.machine);
+            let yielding = tokio::task::spawn_blocking(move || machine.owner_busy())
+                .await
+                .unwrap_or(true);
+            self.state.lock().await.yielding = yielding;
             let beacon = self.beacon(None).await;
             let key = (beacon.status, beacon.slots.free);
             let due = match last {
@@ -263,7 +299,11 @@ impl Provider {
                 }
             };
             if due {
-                match beacon_event(self.identity.signer(), &beacon) {
+                match owned_beacon_event(
+                    self.identity.signer(),
+                    &beacon,
+                    self.config.owner.as_ref(),
+                ) {
                     Ok(event) => {
                         if self.outbound.send(event).await.is_err() {
                             return;
@@ -378,8 +418,23 @@ impl Provider {
                 state.seen.remove(&old);
             }
         }
-        let gate = self.gate(&event).await;
+        let mut gate = self.gate(&event).await;
         let took_slot = gate.is_ok();
+        // The machine's lease, held for the whole job.
+        let mut _lease = None;
+        if took_slot {
+            let machine = Arc::clone(&self.machine);
+            match tokio::task::spawn_blocking(move || machine.take()).await {
+                Ok(Ok(guard)) => _lease = Some(guard),
+                Ok(Err(_)) | Err(_) => {
+                    self.state.lock().await.yielding = true;
+                    let mut refusal =
+                        Refusal::new("rate_limited", "the owner's work needs this computer");
+                    refusal.retry_after_ms = Some(30_000);
+                    gate = Err(refusal);
+                }
+            }
+        }
         let request = match gate {
             Err(refusal) => Err(refusal),
             Ok(()) => match job::open(&self.identity, &event) {
@@ -487,7 +542,7 @@ impl Provider {
             return Err(refusal);
         }
         bucket.tokens -= 1.0;
-        if state.draining || !state.healthy || state.free == 0 {
+        if state.draining || !state.healthy || state.yielding || state.free == 0 {
             let mut refusal = Refusal::new("rate_limited", "no free slot");
             refusal.retry_after_ms = Some(2_000);
             return Err(refusal);
