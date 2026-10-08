@@ -106,6 +106,11 @@ fn reactive_history(uv: vec2<f32>) -> bool {
             }
         }
     }
+    // Do not create a conditioned halo at the current moving silhouette.
+    // Marking it nonretainable alone still changes this frame's ribbon color.
+    if history_reactive {
+        weight = 0.0;
+    }
     let conditioned = max(rgb(clamp(ycocg(sampled.rgb), lower, upper)), vec3<f32>(0.0));
     let speed = length((old_uv - uv) * camera.size.xy);
     // Fast debris keeps at most one frame's small contribution. Changes in
