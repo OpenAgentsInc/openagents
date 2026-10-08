@@ -70,6 +70,26 @@ def merge_materials(obj):
         face.material_index = index
 
 
+def restore_extrema(obj, low, high):
+    # Decimation weights are soft. If a roof extremum disappears, restore
+    # its actual span without changing UVs, materials, or the other axes.
+    for axis in range(3):
+        actual_low = min(v.co[axis] for v in obj.data.vertices)
+        actual_high = max(v.co[axis] for v in obj.data.vertices)
+        if max(abs(actual_low - low[axis]), abs(actual_high - high[axis])) <= 0.1:
+            continue
+        span = actual_high - actual_low
+        if span <= 1e-6:
+            raise RuntimeError("House decimation removes a silhouette axis")
+        for vertex in obj.data.vertices:
+            vertex.co[axis] = low[axis] + (vertex.co[axis] - actual_low) / span * (
+                high[axis] - low[axis])
+    for vertex in obj.data.vertices:
+        for axis in range(3):
+            vertex.co[axis] = min(high[axis], max(low[axis], vertex.co[axis]))
+    obj.data.update()
+
+
 def reduced(source, budget):
     obj = source.copy()
     obj.data = source.data.copy()
@@ -97,9 +117,7 @@ def reduced(source, budget):
         ratio *= 0.92
     if not 0 < triangles(obj) <= budget:
         raise RuntimeError(f"House reduction has {triangles(obj)} triangles, budget {budget}")
-    for v in obj.data.vertices:
-        for axis in range(3):
-            v.co[axis] = min(high[axis], max(low[axis], v.co[axis]))
+    restore_extrema(obj, low, high)
     modifier = obj.modifiers.new("Triangles", "TRIANGULATE")
     bpy.ops.object.modifier_apply(modifier=modifier.name)
     return obj
@@ -164,6 +182,19 @@ def verify_palette():
     assert rgba_bytes(pixels).reshape(-1).tolist()==[200,100,50,255]
     assert rgba_bytes(pixels*np.array([0.5,0.5,0.5,1])).reshape(-1).tolist()==[146,71,34,255]
     assert np.array_equal(factor,np.ones(4))
+
+
+def verify_extrema():
+    # This is the lost 0.132 m extremum seen in three real far houses.
+    mesh = bpy.data.meshes.new("Synthetic shortened silhouette")
+    positions = [(x, y, z) for x in [0.132, 4] for y in [0, 8] for z in [0, 12]]
+    mesh.from_pydata(positions, [], [])
+    obj = bpy.data.objects.new("Synthetic shortened silhouette", mesh)
+    restore_extrema(obj, np.array([0, 0, 0]), np.array([4, 8, 12]))
+    actual = np.array([v.co[:] for v in mesh.vertices])
+    np.testing.assert_allclose(actual.min(axis=0), [0, 0, 0], atol=1e-6)
+    np.testing.assert_allclose(actual.max(axis=0), [4, 8, 12], atol=1e-6)
+    np.testing.assert_allclose(actual[:, 1:], np.array(positions)[:, 1:], atol=1e-6)
 
 
 def png(path, linear):
@@ -274,8 +305,9 @@ def near_model(build, house):
 
 def main():
     verify_palette()
+    verify_extrema()
     if sys.argv[sys.argv.index("--")+1:]==["--self-test"]:
-        print("The synthetic atlas palette fixture passes")
+        print("The synthetic palette and silhouette fixtures pass")
         return
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("export", type=Path)

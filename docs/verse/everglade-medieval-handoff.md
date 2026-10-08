@@ -176,8 +176,25 @@ in 244 seconds and records all 65 houses with 10–12 actual near draws and
 3,156–11,988 triangles. The manifest has 65 unique recipes and SHA-256
 `6c035e6b195f0a960c988e05c39aa3e2b6ff49f9a6f6230dfb25b5a4d36deb15`.
 `house-check-p3-source-report.json` retains the extracted distance report.
-The 33 corrected atlas batches, actual all-house distance budgets, and
-post-gap coplanar report are still pending.
+All 33 corrected CPU atlas batches complete. `house-level-inventory.json`
+records 131 private models: market-hall near is 10,000 triangles in 12
+primitives; every middle model is 2,999–3,000 triangles in one primitive;
+every far model is 799–800 triangles in one primitive. The build has 61
+textures, including 33 shared 512 px atlases. Three far models lose a
+0.131907 m negative-Z roof extremum: `house-c1ceda6765b05298`,
+`house-e48501b0455065eb`, and `house-a06a4e4efaba17de`. The bounded generator
+correction fits actual vertex positions along that axis to its source span
+and leaves UVs and materials intact. Its synthetic failed-extremum fixture
+and reruns of batches 19, 25, and 29 remain pending. Other model hashes must
+stay identical. These are source-file counts, not final pack admission or
+distance-selected acceptance.
+
+The post-gap coplanar reports cover all 65 houses in
+`coplanar-p3-source-*.jsonl`: zero inter-piece recipe overlaps, and eight
+intra-mesh face-pair overlaps per house, about 0.0277 m², in the supplied
+roof-end wood/plaster seams. No exemption or suppression hides these seams;
+their visual assessment is pending. Actual all-house distance budgets,
+private pack admission, and captures remain open.
 
 The portable headless CPU runtime is Blender 4.5.14 LTS. Its official archive
 SHA-256 is `9ba871ff2ecd36526b77432745980b7e6664ecd0c7ca11c48849073dcfe06da3`.
