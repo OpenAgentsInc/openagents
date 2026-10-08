@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
-const USAGE: &str = "usage: openagents-web [--store DIRECTORY] [--listen ADDRESS] \
+const USAGE: &str = "usage: openagents-web [--store DIRECTORY] [--customer DIRECTORY] [--listen ADDRESS] \
 [--pay-host http://HOST:PORT] [--public-host HOST]... [--upstream http://HOST:PORT] \
 [--everglade DIRECTORY] [--components-build DIRECTORY] [--pilot-config PRIVATE_JSON]";
 
@@ -17,6 +17,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let value = arguments.next().ok_or(USAGE)?;
         match option.as_str() {
             "--store" => config.store = PathBuf::from(value),
+            "--customer" => config.customer = Some(PathBuf::from(value)),
             "--listen" => listen = value.parse().map_err(|_| USAGE)?,
             "--public-host" => config.public_hosts.push(value),
             "--pay-host" => pay_host = Some(value),

@@ -132,6 +132,19 @@ The source mirror can withhold newer records; fresh signed checkpoints and
 retained head knowledge cannot prove global completeness. Real team data rights,
 publication, and colleague delivery remain in `NEEDS_OWNER.md`.
 
+## Read your purchases in the browser
+
+`openagents-web --customer DIRECTORY` serves a read-only purchase browser at
+`http://127.0.0.1:4300/app/purchases` on the machine that holds the customer
+store. Each purchase shows the phase, release, payer node, price and fee
+bound, quote digest, approval digest, charge, settlement, and delivery that
+the installed `openagents plugin purchase` client recorded, and names the
+exact command that resumes it there. The browser never opens the store for
+writing, takes its lock, or reaches a wallet: quote, approve, invoke, cancel,
+and recover stay on the installed client, and reloading a page cannot pay or
+dispatch twice. Without `--customer`, the page says purchases are
+unavailable.
+
 ## Inspect a curated publisher or service
 
 On a Unix host, `openagents plugin discover --catalog FILE --mirror DIR --json`

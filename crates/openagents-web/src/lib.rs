@@ -21,6 +21,7 @@ mod markdown;
 mod pages;
 pub mod palette;
 pub mod pilot;
+mod purchases;
 mod tasks;
 pub mod upstream;
 mod wellknown;
@@ -47,6 +48,10 @@ const SITE_POLICY: &str = "default-src 'none'; style-src 'self'; font-src 'self'
 pub struct Config {
     /// The local task store `/app` reads. It is never created.
     pub store: PathBuf,
+    /// The customer store `/app/purchases` reads (`--customer DIRECTORY`).
+    /// Read only and never created; without it the page says purchases are
+    /// unavailable.
+    pub customer: Option<PathBuf>,
     /// The port the server listens on, for the local host check.
     pub port: u16,
     /// Host headers other than `127.0.0.1:PORT` and `localhost:PORT` that
@@ -87,6 +92,7 @@ impl Config {
     pub fn development(store: PathBuf) -> Self {
         Self {
             store,
+            customer: None,
             port: 4300,
             public_hosts: Vec::new(),
             backend: Arc::new(Development),
@@ -142,6 +148,7 @@ pub fn router(config: Config) -> Router {
         .route("/favicon.svg", get(favicon))
         .route("/favicon.ico", get(favicon))
         .merge(pages::routes())
+        .merge(purchases::routes())
         .merge(components::routes())
         .merge(pilot::routes())
         .merge(ask::routes())
