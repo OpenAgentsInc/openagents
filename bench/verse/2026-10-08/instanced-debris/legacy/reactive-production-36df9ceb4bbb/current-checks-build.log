@@ -1,0 +1,1936 @@
+warning: unreachable pattern
+    --> crates/coder-access/src/protocol.rs:1064:19
+     |
+1062 |                 | Self::ProposeHire { .. }
+     |                   ------------------------ matches all the relevant values
+1063 |                 | Self::DecideHire { .. }
+1064 |                 | Self::ProposeHire { .. }
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+     |
+     = note: `#[warn(unreachable_patterns)]` (part of `#[warn(unused)]`) on by default
+
+warning: unreachable pattern
+    --> crates/coder-access/src/protocol.rs:1065:19
+     |
+1063 |                 | Self::DecideHire { .. }
+     |                   ----------------------- matches all the relevant values
+1064 |                 | Self::ProposeHire { .. }
+1065 |                 | Self::DecideHire { .. }
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: unreachable pattern
+    --> crates/coder-access/src/protocol.rs:1087:19
+     |
+1085 |                 | Self::ProposeHire { .. }
+     |                   ------------------------ matches all the relevant values
+1086 |                 | Self::DecideHire { .. }
+1087 |                 | Self::ProposeHire { .. }
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: unreachable pattern
+    --> crates/coder-access/src/protocol.rs:1088:19
+     |
+1086 |                 | Self::DecideHire { .. }
+     |                   ----------------------- matches all the relevant values
+1087 |                 | Self::ProposeHire { .. }
+1088 |                 | Self::DecideHire { .. }
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: `coder-access` (lib) generated 4 warnings
+warning: method `movement_confirmations` is never used
+  --> crates/verse-world/src/play/framed_movement.rs:49:19
+   |
+ 8 | impl Game {
+   | --------- method in this implementation
+...
+49 |     pub(crate) fn movement_confirmations(&self, life: LifeId) -> Vec<crate::movement::Baseline> {
+   |                   ^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: multiple fields are never read
+   --> crates/verse-world/src/play/multiplayer.rs:134:5
+    |
+133 | pub(crate) struct PortablePlayer {
+    |                   -------------- fields in this struct
+134 |     definition: crate::content::Character,
+    |     ^^^^^^^^^^
+135 |     catalog_remaining: BTreeMap<u8, f32>,
+    |     ^^^^^^^^^^^^^^^^^
+136 |     dice: Option<crate::spells::Dice>,
+    |     ^^^^
+137 |     combat: crate::rules::transfer::Portable,
+    |     ^^^^^^
+138 |     controls: Controls,
+    |     ^^^^^^^^
+139 |     bow_remaining: f32,
+    |     ^^^^^^^^^^^^^
+140 |     time: f32,
+    |     ^^^^
+141 |     yaw: f32,
+    |     ^^^
+142 |     appearance: verse_engine::director::Actor,
+    |     ^^^^^^^^^^
+    |
+    = note: `PortablePlayer` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: methods `take_transfer_player`, `take_resident_player`, and `put_transfer_player` are never used
+   --> crates/verse-world/src/play/multiplayer.rs:145:19
+    |
+144 | impl Game {
+    | --------- methods in this implementation
+145 |     pub(crate) fn take_transfer_player(&mut self, actor: u64) -> Result<PortablePlayer, String> {
+    |                   ^^^^^^^^^^^^^^^^^^^^
+...
+154 |     pub(crate) fn take_resident_player(&mut self, actor: u64) -> Result<PortablePlayer, String> {
+    |                   ^^^^^^^^^^^^^^^^^^^^
+...
+284 |     pub(crate) fn put_transfer_player(
+    |                   ^^^^^^^^^^^^^^^^^^^
+
+warning: methods `account_spawn` and `migrate_content` are never used
+    --> crates/verse-world/src/play/multiplayer.rs:426:19
+     |
+ 332 | impl Game {
+     | --------- methods in this implementation
+...
+ 426 |     pub(crate) fn account_spawn(&self) -> Result<Vec3, String> {
+     |                   ^^^^^^^^^^^^^
+...
+1405 |     pub(crate) fn migrate_content(
+     |                   ^^^^^^^^^^^^^^^
+
+warning: method `live_hostiles` is never used
+    --> crates/verse-world/src/rules.rs:1124:19
+     |
+ 225 | impl Simulation {
+     | --------------- method in this implementation
+...
+1124 |     pub(crate) fn live_hostiles(&self) -> usize {
+     |                   ^^^^^^^^^^^^^
+
+warning: fields `state` and `elapsed` are never read
+ --> crates/verse-world/src/rules/transfer.rs:5:5
+  |
+4 | pub(crate) struct Portable {
+  |                   -------- fields in this struct
+5 |     state: PlayerState,
+  |     ^^^^^
+6 |     elapsed: f32,
+  |     ^^^^^^^
+  |
+  = note: `Portable` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: method `defeated` is never used
+ --> crates/verse-world/src/rules/transfer.rs:9:19
+  |
+8 | impl Portable {
+  | ------------- method in this implementation
+9 |     pub(crate) fn defeated(&self) -> bool {
+  |                   ^^^^^^^^
+
+warning: method `put_player` is never used
+  --> crates/verse-world/src/rules/transfer.rs:58:19
+   |
+13 | impl Simulation {
+   | --------------- method in this implementation
+...
+58 |     pub(crate) fn put_player(&mut self, id: u32, mut portable: Portable) -> Result<(), String> {
+   |                   ^^^^^^^^^^
+
+warning: methods `fork`, `committed_controls`, `principal`, and `refresh_binding` are never used
+   --> crates/verse-world/src/service/auth.rs:139:19
+    |
+136 | impl Gateway {
+    | ------------ methods in this implementation
+...
+139 |     pub(super) fn fork(&self) -> Self {
+    |                   ^^^^
+...
+251 |     pub(super) fn committed_controls(&self) -> BTreeMap<ConnectionId, super::wire::Control> {
+    |                   ^^^^^^^^^^^^^^^^^^
+...
+564 |     pub(super) fn principal(&self, connection: ConnectionId) -> Result<Principal, String> {
+    |                   ^^^^^^^^^
+...
+568 |     pub(super) fn refresh_binding(&mut self, connection: ConnectionId) -> Result<(), String> {
+    |                   ^^^^^^^^^^^^^^^
+
+warning: method `fork` is never used
+   --> crates/verse-world/src/service/replication.rs:206:19
+    |
+205 | impl Sender {
+    | ----------- method in this implementation
+206 |     pub(super) fn fork(&self) -> Self {
+    |                   ^^^^
+
+warning: method `history_roots` is never used
+   --> crates/verse-world/src/service/rewards.rs:184:31
+    |
+183 | impl Checkpoint {
+    | --------------- method in this implementation
+184 |     pub(in crate::service) fn history_roots(&self) -> Vec<Option<[u8; 32]>> {
+    |                               ^^^^^^^^^^^^^
+
+warning: methods `revision`, `history_capacity`, and `attach` are never used
+   --> crates/verse-world/src/service/rewards.rs:262:19
+    |
+232 | impl Ledger {
+    | ----------- methods in this implementation
+...
+262 |     pub(super) fn revision(&self) -> u64 {
+    |                   ^^^^^^^^
+...
+266 |     pub(super) fn history_capacity(&self) -> Result<bool, String> {
+    |                   ^^^^^^^^^^^^^^^^
+...
+272 |     pub(super) fn attach(&mut self, archive: history::History) -> Result<(), String> {
+    |                   ^^^^^^
+
+warning: multiple associated items are never used
+   --> crates/verse-world/src/service/rewards/history.rs:54:31
+    |
+ 53 | impl History {
+    | ------------ associated items in this implementation
+ 54 |     pub(in crate::service) fn open(path: &Path) -> Result<Self, String> {
+    |                               ^^^^
+...
+ 88 |     pub(in crate::service) fn temporary() -> Result<Self, String> {
+    |                               ^^^^^^^^^
+...
+104 |     pub(in crate::service) fn reachable(
+    |                               ^^^^^^^^^
+...
+139 |     pub(in crate::service) fn verify_node(&self, digest: [u8; 32]) -> Result<(), String> {
+    |                               ^^^^^^^^^^^
+...
+142 |     pub(super) fn same_directory(&self, other: &Self) -> bool {
+    |                   ^^^^^^^^^^^^^^
+...
+145 |     pub(in crate::service) fn defer_writes(&self) {
+    |                               ^^^^^^^^^^^^
+...
+148 |     pub(in crate::service) fn has_capacity(&self) -> Result<bool, String> {
+    |                               ^^^^^^^^^^^^
+...
+157 |     pub(in crate::service) fn synchronize(&self) -> Result<(), String> {
+    |                               ^^^^^^^^^^^
+
+warning: method `history_roots` is never used
+  --> crates/verse-world/src/service/rewards/books.rs:38:31
+   |
+37 | impl Book {
+   | --------- method in this implementation
+38 |     pub(in crate::service) fn history_roots(&self) -> [history::Root; 2] {
+   |                               ^^^^^^^^^^^^^
+
+warning: methods `realm_character`, `activate_books`, `register_book`, `take_book`, and `put_book` are never used
+   --> crates/verse-world/src/service/rewards/books.rs:43:31
+    |
+ 42 | impl Ledger {
+    | ----------- methods in this implementation
+ 43 |     pub(in crate::service) fn realm_character(&self, actor: u64) -> Option<u64> {
+    |                               ^^^^^^^^^^^^^^^
+...
+ 46 |     pub(in crate::service) fn activate_books(
+    |                               ^^^^^^^^^^^^^^
+...
+170 |     pub(in crate::service) fn register_book(
+    |                               ^^^^^^^^^^^^^
+...
+193 |     pub(in crate::service) fn take_book(
+    |                               ^^^^^^^^^
+...
+208 |     pub(in crate::service) fn put_book(
+    |                               ^^^^^^^^
+
+warning: field `owner` is never read
+   --> crates/verse-world/src/service/save.rs:110:16
+    |
+109 | pub(super) struct Prepared {
+    |                   -------- field in this struct
+110 |     pub(super) owner: [u8; 32],
+    |                ^^^^^
+
+warning: methods `instance` and `expanded` are never used
+   --> crates/verse-world/src/service/save.rs:168:19
+    |
+125 | impl Prepared {
+    | ------------- methods in this implementation
+...
+168 |     pub(super) fn instance(&self) -> u64 {
+    |                   ^^^^^^^^
+...
+182 |     pub(super) fn expanded(&self) -> Result<serde_json::Value, String> {
+    |                   ^^^^^^^^
+
+warning: function `count_world_encoding` is never used
+   --> crates/verse-world/src/service/save.rs:236:4
+    |
+236 | fn count_world_encoding(metadata_bytes: usize, world: &str) -> Result<usize, String> {
+    |    ^^^^^^^^^^^^^^^^^^^^
+
+warning: method `transfer_cooldowns` is never used
+  --> crates/verse-world/src/utilities.rs:58:19
+   |
+57 | impl Controls {
+   | ------------- method in this implementation
+58 |     pub(crate) fn transfer_cooldowns(&self, source_time: f32, destination_time: f32) -> Self {
+   |                   ^^^^^^^^^^^^^^^^^^
+
+warning: `verse-world` (lib) generated 19 warnings
+warning: unused `std::result::Result` in tuple element 1 that must be used
+    --> crates/verse-pbr/src/pbr/textured.rs:1445:13
+     |
+1445 |             checked.remove(0);
+     |             ^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+     = note: `#[warn(unused_must_use)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-pbr` (lib) generated 1 warning
+warning: `verse-pbr` (lib test) generated 1 warning (1 duplicate)
+   Compiling verse-zone-everglade v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-zone-everglade)
+warning: unused import: `self`
+ --> crates/verse-zone-everglade/src/zones/everglade/sales_floor.rs:4:14
+  |
+4 |     layout::{self, Board, agora},
+  |              ^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-zone-everglade` (lib) generated 1 warning (run `cargo fix --lib -p verse-zone-everglade` to apply 1 suggestion)
+warning: unused import: `super::super::demolition::meteor`
+   --> crates/verse-zone-everglade/src/zones/everglade/hotbar.rs:433:9
+    |
+433 |     use super::super::demolition::meteor;
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `self`
+ --> crates/verse-zone-everglade/src/zones/everglade/sales_floor.rs:4:14
+  |
+4 |     layout::{self, Board, agora},
+  |              ^^^^
+
+warning: unused variable: `top`
+   --> crates/verse-zone-everglade/src/zones/everglade/hotbar.rs:570:20
+    |
+570 |         let [left, top, width, _] = frame_of(PHONE, bottom, DEV_COUNT);
+    |                    ^^^ help: if this is intentional, prefix it with an underscore: `_top`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `hz`
+   --> crates/verse-zone-everglade/src/zones/everglade/layout/civic.rs:317:29
+    |
+317 |         let ([px, pz], [hx, hz]) = PLAZA;
+    |                             ^^ help: if this is intentional, prefix it with an underscore: `_hz`
+
+warning: `verse-zone-everglade` (lib test) generated 4 warnings (run `cargo fix --lib -p verse-zone-everglade --tests` to apply 4 suggestions)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 25.27s
+     Running unittests src/lib.rs (/Users/christopherdavid/work/openagents-target-agent0/debug/deps/physics-835cef6888ea2448)
+
+running 191 tests
+test body::tests::a_composite_of_two_bodies_uses_the_parallel_axis_theorem ... ok
+test character::tests::gravity_override_scales_descent_and_bounds_its_speed ... ok
+test character::tests::filled_box_spawn_and_teleport ... ok
+test character::tests::moving_platform_carries_and_removed_support_releases ... ok
+test character::tests::jump_is_blocked_without_headroom ... ok
+test character::tests::crowded_capsules_finish_recovery_before_movement ... ok
+test character::tests::endpoint_and_surface_recovery ... ok
+test clock::tests::a_long_frame_runs_the_cap_and_reports_the_rest ... ok
+test clock::tests::frames_become_whole_steps ... ok
+test collision::index_tests::oriented_margin_bounds_preserve_corner_contacts_from_sat ... ok
+test collision::index_tests::responding_queries_keep_fixed_sleeping_and_kinematic_pairs_in_exhaustive_order ... ok
+test body::tests::intermediate_axis_spin_flips_but_major_axis_spin_is_stable ... ok
+test body::tests::free_tumble_conserves_momentum_and_energy ... ok
+test character::tests::unresolvable_recovery_preserves_character_state ... ok
+test character::tests::airborne_motion_is_ballistic_and_landing_reports_the_fall ... ok
+test contact::warm_tests::cached_contact_axes_match_vector_impulses_and_keep_kinematic_motion ... ok
+test collision::index_tests::unchanged_geometry_is_cached_and_public_mutations_refresh_it ... ok
+test collision::index_tests::responding_queries_replay_exact_motion_through_sleep_scripted_wake_and_reset ... ok
+test contact::warm_tests::a_changing_normal_must_run_friction_again_and_other_motion_invalidates_convergence ... ok
+test contact::warm_tests::friction_extremes_preserve_unconditional_hypot_bits ... ok
+test contact::warm_tests::disjoint_motion_access_matches_indexed_rows_in_both_orders_and_keeps_alias_fallback ... ok
+test collision::index_tests::a_wide_floor_does_not_query_airborne_chunks_but_keeps_motion_contacts ... ok
+test contact::warm_tests::friction_interior_preserves_bits_and_boundaries_keep_hypot ... ok
+test contact::warm_tests::motion_revisions_track_actual_changes_in_every_impulse_path ... ok
+test contact::warm_tests::zero_friction_cone_matches_hypot_for_signed_zeros_and_finite_extremes ... ok
+test continuous::tests::caps_tangency_and_initial_overlap ... ok
+test broadphase::tests::visiting_intersections_reuses_scratch_and_keeps_original_traversal_and_candidates ... ok
+test continuous::tests::moving_actor_crosses_stationary_projectile ... ok
+test continuous::tests::relative_translation_preserves_contact_and_equal_motion_misses ... ok
+test contact::warm_tests::pair_index_preserves_nearest_point_and_ties_without_scanning_other_pairs ... ok
+test kinematic::tests::contact_allows_parallel_and_outward_motion_but_blocks_inward ... ok
+test contact::warm_tests::friction_scaled_boundaries_and_interior_match_hypot_exactly ... ok
+test kinematic::tests::fast_box_cannot_tunnel_through_a_thin_wall ... ok
+test kinematic::tests::slides_along_walls_and_stops_at_a_corner ... ok
+test collision::index_tests::scripted_motion_wakes_near_sleepers_without_enumerating_distant_pairs ... ok
+test lifetimes::tests::actor_retirement_keeps_generation_fences_without_live_collision ... ok
+test lifetimes::tests::checkpoint_and_invalid_updates_preserve_ownership ... ok
+test lifetimes::tests::death_masks_expiry_and_replacement_are_fenced ... ok
+test character::tests::ground_jump_land_and_ceiling ... ok
+test collision::index_tests::sparse_background_prunes_pairs_and_tracks_kind_changes_and_reused_leaves ... ok
+test modal::tests::critical_and_overdamped_modes_settle_without_overshoot ... ok
+test modal::tests::a_restored_mode_continues_bit_for_bit ... ok
+test modal::tests::free_ring_down_follows_the_exact_envelope ... ok
+test navigation::tests::refuses_bad_queries_and_reports_an_unreachable_target ... ok
+test ledger::tests::recorded_impulses_balance_and_unrecorded_ones_show ... ok
+test navigation::tests::routes_around_a_column_without_intersecting_it ... ok
+test oracle::tests::tank_into_panel_matches_genesis ... ignored, needs a Genesis trace from oracle/genesis_oracle.py
+test plume::tests::a_plate_across_the_axis_takes_the_dynamic_pressure ... ok
+test plume::tests::a_sphere_and_a_capsule_take_their_projected_area ... ok
+test plume::tests::an_enclosure_catches_the_whole_thrust ... ok
+test plume::tests::surfaces_behind_out_of_range_or_facing_away_are_left_alone ... ok
+test queries::capsule_contact_tests::capsule_queries_obey_pose_life_instance_layers_and_removal ... ok
+test queries::capsule_contact_tests::fast_capsules_stop_at_exact_contact_and_tangent_travel_is_free ... ok
+test queries::capsule_contact_tests::overlap_bounds_keep_contacts_within_narrow_phase_tolerance ... ok
+test queries::capsule_contact_tests::world_capsule_cache_tracks_pose_removal_and_reinsertion_and_prunes_distant_tests ... ok
+test modal::tests::a_step_load_rings_about_the_static_deflection ... ok
+test ledger::tests::a_coasting_system_keeps_its_momentum ... ok
+test modal::tests::any_step_length_is_stable_and_never_adds_energy ... ok
+test queries::profiling::tests::measurements_are_optional_bounded_and_count_failed_calls ... ok
+test queries::profiling::tests::scene_profiling_preserves_hits_and_observes_real_query_failures ... ok
+test queries::snapshot::blocking_cache_tests::nonblocking_changes_preserve_character_geometry_but_blockers_invalidate_it ... ok
+test queries::snapshot::tests::cached_pose_updates_reuse_meshes_and_replacement_is_atomic ... ok
+test queries::snapshot::tests::cached_capsule_pose_updates_and_shape_replacement_keep_queries_current ... ok
+test oracle::tests::scenes_round_trip_and_run_deterministically ... ok
+test queries::tests::capsule_stops_at_a_thin_triangle_wall_at_the_correct_time ... ok
+test queries::tests::life_instance_layer_and_usage_filters_are_independent ... ok
+test queries::snapshot::tests::regional_blockers_include_old_new_and_transformed_bounds ... ok
+test queries::snapshot::tests::rejects_foreign_duplicate_invalid_and_over_budget_geometry ... ok
+test queries::snapshot::tests::snapshot_round_trip_preserves_solid_boxes_meshes_capsules_and_poses ... ok
+test queries::tests::malformed_geometry_and_nonfinite_queries_are_refused ... ok
+test queries::tests::ramp_and_stair_queries_return_ground_height_and_surface_normals ... ok
+test queries::tests::rounded_edge_contacts_do_not_use_an_expanded_box_approximation ... ok
+test queries::tests::mesh_hierarchy_prunes_distant_geometry_and_preserves_source_triangle_ids ... ok
+test queries::tests::nearest_results_are_bounded_and_independent_of_collider_insertion_order ... ok
+test queries::tests::scene_clones_share_mesh_buffers_and_keep_collider_membership_independent ... ok
+test contact::warm_tests::exact_convergence_matches_all_iterations_with_coupled_contacts_and_joints ... ok
+test character::tests::recorded_three_capsules_use_a_bounded_atomic_motor_outcome ... ok
+test rope::tests::a_one_way_rope_leaves_its_bodies_alone ... ok
+test character::tests::thin_wall_and_slide ... ok
+test queries::index_tests::foreign_instances_and_distant_shapes_do_not_enter_local_candidates ... ok
+test character::tests::admitted_stair_and_tall_step ... ok
+test character::tests::a_calibrated_shove_slides_its_distance_and_a_wall_stops_it ... ok
+test solid::tests::a_segment_finds_its_point_nearest_a_solid ... ok
+test solid::tests::bounds_enclose_each_solid ... ok
+test solid::tests::distances_and_normals_point_out_of_each_solid ... ok
+test tests::a_grip_saturates_at_its_limit ... ok
+test rope::tests::a_restored_rope_continues_bit_for_bit ... ok
+test tests::a_force_on_a_sleeping_body_moves_it ... ok
+test tests::a_hard_weld_holds_under_impact ... ok
+test character::tests::walkable_slope_climbs_and_steep_slope_blocks ... ok
+test tests::a_hard_point_joint_holds_a_pendulum ... ok
+test rope::tests::a_taut_rope_lies_straight_along_its_anchors ... ok
+test rope::tests::a_slack_rope_curves_and_carries_a_whip_wave ... ok
+test tests::a_moving_kinematic_body_wakes_what_it_touches_or_holds ... ok
+test rope::tests::a_coupled_rope_conserves_momentum_with_its_bodies ... ok
+test tests::a_settled_body_sleeps_and_wakes_on_contact_force_or_joint ... ok
+test tests::a_small_stack_settles_and_stays ... ok
+test tests::box_on_box_manifold_through_a_scripted_sweep ... ok
+test tests::batch_removal_matches_individual_removal_and_wakes_joint_neighbors ... ok
+test tests::a_tether_catches_without_adding_energy ... ok
+test tests::a_spinning_tank_striking_a_panel_edge_takes_angular_impulse ... ok
+test tests::a_soft_grip_settles_critically_and_conserves_momentum ... ok
+test tests::debug_lines_show_contacts_and_joints ... ok
+test queries::index_tests::transformed_mixed_shapes_filters_limits_and_updates_match_exhaustive_queries ... ok
+test tests::filters_choose_which_pairs_touch ... ok
+test tests::fast_bodies_do_not_tunnel_through_thin_panels ... ok
+test tests::collisions_between_free_bodies_conserve_momentum ... ok
+test tests::contact_force_reads_weight_and_impacts ... ok
+test tests::raycasts_hit_each_shape_where_geometry_says ... ok
+test tests::removed_bodies_stop_interacting ... ok
+test rope::tests::a_wrapped_rope_restores_bit_for_bit ... ok
+test tests::a_slowly_drifting_body_never_sleeps ... ok
+test tests::the_imu_reads_thrust_free_fall_and_spin ... ok
+test thrusters::tests::an_infeasible_request_saturates_toward_it ... ok
+test rope::tests::a_taut_path_bends_only_where_a_solid_blocks_the_view ... ok
+test thrusters::tests::one_off_center_thruster_pushes_and_turns ... ok
+test thrusters::tests::pid_terms_add ... ok
+test thrusters::tests::pure_force_and_pure_torque_requests_are_met ... ok
+test thrusters::tests::small_requests_are_met_like_large_ones ... ok
+test tests::torsional_friction_resists_spin_up_to_its_limit ... ok
+test rope::tests::a_loose_end_drifts_and_the_reel_takes_it_in ... ok
+test walkable::tests::configuration_and_compilation_work_are_bounded ... ok
+test rope::tests::a_rope_swung_around_a_post_wraps_it ... ok
+test tests::a_settled_pile_sleeps_and_steps_cheaply ... ok
+test walkable::tests::blockers_replan_and_fence_reused_lives ... ok
+test walkable::tiled::tests::crowd_steering_is_instance_scoped_stable_and_bounded ... ok
+test tests::friction_holds_below_the_coulomb_limit_and_slips_past_it ... ok
+test character::tests::enclosed_four_capsules_recover_without_crossing_walls ... ok
+test walkable::tests::column_route_and_no_path_are_distinct_from_budget_refusal ... ok
+test walkable::tiled::tests::scheduler_bounds_failed_search_reservations_fairness_and_restore ... ok
+test walkable::tiled::tests::pinned_malformed_graph_is_refused_before_indexing ... ok
+test water::event::tests::a_surge_crosses_and_a_dam_turns_the_current ... ok
+test walkable::tiled::tests::transient_hard_wall_bounds_fence_compiled_edges_and_budget ... ok
+test rope::tests::a_hanging_rope_sags_without_gaining_energy ... ok
+test water::event::tests::an_event_follows_its_schedule ... ok
+test water::event::tests::clients_agree_whatever_order_events_arrive_in ... ok
+test water::event::tests::spell_effects_shape_level_and_current ... ok
+test water::event::tests::the_clock_counts_whole_steps ... ok
+test water::medium::tests::a_swimmer_climbs_onto_a_low_lip_only ... ok
+test walkable::tests::disconnected_layers_do_not_create_a_vertical_shortcut ... ok
+test water::medium::tests::a_swimmer_settles_dives_and_rises_back ... ok
+test water::medium::tests::depth_sets_the_medium ... ok
+test walkable::tiled::tests::local_source_edit_changes_only_overlapping_tile_identities ... ok
+test collision::index_tests::bounded_motion_matches_exhaustive_manifolds_after_moves_filters_and_removal ... ok
+test water::spectrum_tests::the_spectral_surface_is_deterministic_and_consistent ... ok
+test water::spectrum_tests::the_spectrum_has_its_published_shape ... ok
+test water::spectrum_tests::crests_sharpen ... ok
+test water::tests::a_plane_through_the_center_wets_exactly_half_of_every_shape ... ok
+test tests::tall_stacks_settle_and_sleep ... ok
+test collision::index_tests::indexed_steps_replay_exhaustive_state_through_wake_reuse_and_restore ... ok
+test walkable::tiled::tests::grounded_transition_refuses_gaps_and_changes_identity ... ok
+test water::tests::a_sample_at_tick_n_equals_stepping_from_tick_zero ... ok
+test walkable::tiled::tests::tile_seams_match_admitted_graph_and_pinned_round_trip ... ok
+test water::fft::tests::matches_the_direct_sum ... ok
+test tests::randomized_friction_obeys_the_coulomb_limit ... ok
+test tests::randomized_collisions_conserve_momentum ... ok
+test water::tests::caps_and_slices_match_their_closed_forms ... ok
+test water::tests::a_water_set_finds_the_same_water_as_testing_every_body ... ok
+test water::tests::generated_river_flow_is_divergence_free_and_carries_the_discharge ... ok
+test water::tests::snapped_frequencies_stay_near_deep_water_dispersion ... ok
+test water::tests::the_inverted_surface_lands_on_the_query_point_with_a_consistent_normal ... ok
+test water::weather::tests::a_pinned_state_overrides_the_schedule ... ok
+test water::weather::tests::blocks_follow_the_climate ... ok
+test water::weather::tests::climates_validate_and_states_parse ... ok
+test tests::randomized_joints_keep_their_invariants ... ok
+test water::tests::light_spheres_float_at_the_analytic_draft_and_heavy_ones_sink ... ok
+test water::tests::a_floating_body_sleeps_on_a_still_pond_but_not_on_waves ... ok
+test water::weather::tests::spell_weather_is_local_and_bounded_in_time ... ok
+test water::weather::tests::the_ground_wets_in_rain_and_dries_after ... ok
+test water::weather::tests::the_srd_effects_follow_rain_and_wind ... ok
+test water::weather::tests::storms_flash_and_clear_skies_do_not ... ok
+test water::weather::tests::transitions_blend_over_sixty_seconds ... ok
+test world::tests::a_restored_world_continues_bit_for_bit ... ok
+test world::tests::gravity_is_exact_in_velocity_and_static_bodies_stay ... ok
+test world::tests::interpolation_runs_from_the_previous_pose ... ok
+test world::tests::other_layout_versions_are_refused ... ok
+test water::tests::sinking_reaches_the_quadratic_drag_terminal_speed ... ok
+test water::tests::a_restored_world_in_water_continues_bit_for_bit ... ok
+test water::tests::scaled_buoyancy_floats_a_proxy_at_its_material_s_draft ... ok
+test water::tests::a_plank_floats_flat_and_rights_itself_after_a_push ... ok
+test water::tests::a_cube_of_half_water_density_settles_half_submerged ... ok
+test water::weather::tests::rising_water_is_bounded_and_deterministic ... ok
+test water::tests::the_momentum_ledger_balances_with_the_water_terms ... ok
+test water::tests::a_seeded_float_follows_the_river_round_the_bend_and_replays_exactly ... ok
+test water::weather::tests::two_clients_sample_the_same_weather_for_the_same_seed_and_tick ... ok
+test walkable::tests::slope_admission_uses_the_character_profile ... ok
+test walkable::tests::stairs_and_low_clearance ... ok
+test water::spectrum_tests::tiles_loop_and_reproduce ... ok
+test broadphase::tests::ordered_insertions_updates_removal_and_reuse_preserve_bounds_and_candidates ... ok
+test water::spectrum_tests::tile_variance_matches_the_spectrum_integral ... ok
+test plume::tests::the_lobe_carries_exactly_the_thrust ... ok
+
+test result: ok. 190 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 1.15s
+
+     Running unittests src/lib.rs (/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse_pbr-668a3d62c3c8b90e)
+
+running 195 tests
+test imported::gpu_timing::tests::native_timestamp_resolve_without_shadow_pass ... ignored, Requires a native GPU; proves unwritten shadow queries are not resolved
+test imported::gpu_timing::tests::native_timestamp_resolve_without_video_capture ... ignored, Requires a native GPU; run explicitly when diagnosing timestamp readback
+test imported::gpu_timing::tests::timestamp_units_and_invalid_order_are_explicit ... ok
+test imported::admission::tests::the_pose_block_fits_the_gles_uniform_limit ... ok
+test imported::gpu_timing::tests::invalid_sample_reasons_are_counted_and_examples_are_bounded ... ok
+test fx::sprite::tests::scene_density_zero_is_distinct_from_legacy_and_emitted_color ... ok
+test fx::sprite::tests::projected_ground_quads_skip_soft_fade_without_an_extra_vertex_field ... ok
+test fx::sprite::tests::lighting_samples_the_quad_center_even_when_a_tail_moves_it ... ok
+test imported::culling::tests::cube_faces_keep_crossing_bounds_and_reject_only_separated_geometry ... ok
+test imported::mip_tests::uploaded_roles_and_material_bindings_match_linear_light_and_mask_recipes ... ignored, requires a native GPU; uses generated assets and no display
+test imported::material_gpu::tests::lines_and_unlit_surfaces_keep_their_own_materials ... ok
+test imported::material_gpu::tests::shared_base_color_does_not_merge_distinct_materials ... ok
+test imported::tests::additive_instances_match_uniform_pixels_and_reduce_draws ... ignored, requires a GPU; compares additive batching with the uniform fallback
+test imported::material_gpu::tests::packing_preserves_factors_and_presence_flags ... ok
+test imported::tests::device_loss_preserves_actor_playback_without_surface_or_source_files ... ignored, requires a Vulkan adapter; device recovery uses only scratch assets
+test imported::shadow_cache::tests::face_keys_track_light_pose_caster_revision_and_removal ... ok
+test imported::material_gpu::tests::shared_source_has_separate_channel_and_effective_cutoff_variants ... ok
+test imported::shadow_cache::tests::exhaustion_refuses_without_relabeling_previous_pose ... ok
+test imported::shadow_cache::tests::pose_identity_and_eligibility_changes_remove_cached_casters ... ok
+test imported::lighting::tests::fog_packs_its_density_and_shape ... ok
+test imported::tests::corpse_grounding_ignores_world_translation_but_tracks_skin_and_basis_changes ... ok
+test imported::lighting::tests::all_cube_faces_look_outward_and_bad_lights_are_refused ... ok
+test imported::culling::tests::bone_bounds_contain_weighted_skinning_and_refuse_unsafe_culling ... ok
+test imported::lighting::tests::uniform_capacity_admits_all_slots_and_refuses_overflow ... ok
+test fx::sprite::ribbon_tests::connected_joints_share_edges_and_fit_the_sprite_budget ... ok
+test imported::lighting::tests::shadowed_lights_come_first_and_keep_their_flicker ... ok
+test mesh::tests::extending_reactive_geometry_preserves_its_triangle_addresses ... ok
+test pbr::baked_layers::tests::lamp_texels_keep_lux_within_their_step ... ok
+test fx::fire::tests::spectral_heat_has_finite_radiance_and_warms_from_red_to_white ... ok
+test pbr::baked_layers::tests::the_nearest_sun_adds_its_bounce_in_proportion_to_its_strength ... ok
+test pbr::bake::tests::a_sunlit_white_floor_lights_a_probe_from_below ... ok
+test pbr::bake::tests::of_two_coincident_faces_a_ray_meets_the_one_facing_it ... ok
+test pbr::bake::tests::a_ray_through_a_shared_edge_crosses_the_surface_once ... ok
+test pbr::bake::tests::a_corner_is_occluded_and_open_ground_is_not ... ok
+test mesh::tests::a_cube_has_twelve_edges_and_twelve_triangles ... ok
+test pbr::environment::tests::clouds_cover_more_of_the_sky_as_cover_grows ... ok
+test mesh::tests::cube_edges_are_unit_length ... ok
+test pbr::bake::tests::rays_hit_the_nearest_face_and_miss_open_space ... ok
+test pbr::environment::tests::dusk_glows_toward_a_low_sun ... ok
+test pbr::environment::tests::the_cpu_sky_matches_the_sky_pass_landmarks ... ok
+test pbr::gpu::tests::a_fixed_key_shadow_is_one_map_and_a_cascaded_one_follows_the_tier ... ok
+test pbr::gpu::tests::earthshine_at_l1_is_a_few_millionths_of_sunlight ... ok
+test pbr::gpu::tests::half_floats_round_trip_the_values_the_probes_hold ... ok
+test pbr::gpu::tests::lower_tiers_shade_fewer_lamps ... ok
+test pbr::gpu::tests::particle_comparison_controls_preserve_fire_settings ... ok
+test pbr::gpu::tests::a_portable_device_floor_does_not_hide_the_adapters_quality_ceiling ... ok
+test pbr::gpu::tests::offscreen_flashes_do_not_hide_a_visible_candidate_beyond_the_render_cap ... ok
+test pbr::gpu::tests::the_tier_sets_the_shadow_filter_and_material_detail_constants ... ok
+test pbr::gpu::tests::flash_priority_accounts_for_brightness_distance_and_visibility ... ok
+test pbr::gpu::tests::unused_flash_slots_return_to_permanent_lamps ... ok
+test pbr::gpu::tests::flashes_reserve_tier_slots_in_the_existing_lamp_uniform ... ok
+test pbr::environment::tests::the_sky_light_takes_the_keys_level_and_the_skys_gradient ... ok
+test pbr::instanced::tests::affine_bounds_match_transformed_corners_with_rotation_and_scale ... ok
+test pbr::instanced::tests::indirect_commands_keep_instance_offsets_ranges_and_actual_draw_costs ... ok
+test pbr::instanced::tests::indirect_culling_keeps_merged_bounds_and_nonzero_command_offsets ... ok
+test pbr::instanced::tests::geometry_reuploads_preserve_motion_exactly_and_epoch_changes_retire_reused_ids ... ok
+test pbr::instanced::tests::light_textures_stay_within_es_limits ... ok
+test pbr::instanced::tests::motion_splits_mixed_runs_and_omits_exact_stationary_poses ... ok
+test pbr::instanced::tests::octahedral_normals_round_trip_within_a_twentieth_of_a_degree ... ok
+test pbr::instanced::tests::a_mesh_placed_once_merges_and_a_mirrored_instance_keeps_its_front_faces ... ok
+test pbr::instanced::tests::opaque_caster_ranges_reduce_merged_cells_without_crossing_visibility_gaps ... ok
+test pbr::instanced::tests::repeated_meshes_upload_once_and_draw_as_runs_per_cell ... ok
+test pbr::instanced::tests::rigid_motion_uses_last_rendered_pose_across_multiple_or_no_ticks ... ok
+test pbr::instanced::tests::rigid_camera_order_only_removes_wholly_clipped_batches ... ok
+test pbr::instanced::tests::rigid_records_sort_by_mesh_and_stable_id_without_losing_previous_pose ... ok
+test pbr::gpu::tests::the_tier_gates_the_screen_space_passes ... ok
+test pbr::instanced::tests::rigid_validation_rejects_bad_frames_and_rechecks_mutated_sources ... ok
+test imported::tests::reload_motion_identity_ignores_source_paths_and_tracks_animation_changes ... ok
+test pbr::instanced::tests::seven_hundred_rigid_chunks_share_uploaded_vertices_and_one_draw ... ok
+test pbr::baked_layers::tests::layers_round_trip_through_their_file ... ok
+test pbr::instanced::tests::static_indirect_admission_matches_direct_draws_for_every_visibility_subset ... ok
+test pbr::screen::tests::the_uniform_carries_the_light_only_when_one_casts ... ok
+test pbr::sky::tests::epoch_and_j2000_are_the_published_julian_dates ... ok
+test pbr::screen::tests::a_corner_darkens_the_floor_at_the_wall_base ... ok
+test pbr::sky::tests::malformed_catalogues_are_refused ... ok
+test pbr::sky::tests::star_colors_run_from_blue_to_red_and_magnitudes_scale ... ok
+test pbr::sky::tests::the_celestial_basis_is_a_rotation_that_keeps_ecliptic_north_up ... ok
+test imported::flat::tests::odd_line_indices_are_refused ... ok
+test pbr::sky::tests::the_earth_is_past_the_september_equinox_at_the_epoch ... ok
+test pbr::sky::tests::the_sun_lies_in_the_scene_minus_z_direction_in_celestial_terms ... ok
+test pbr::temporal::reactive_tests::moving_reactive_geometry_cannot_leave_history_in_a_bright_trail ... ignored, Requires a native GPU; checks moving heads and exact visible MSAA samples
+test pbr::temporal::reactive_tests::reactive_history_rejection_matches_the_actual_bilinear_footprint ... ignored, Requires a native GPU; checks nonzero bilinear history taps
+test pbr::temporal::tests::empty_motion_keeps_camera_reprojection_with_stale_object_data ... ignored, Requires a native GPU; checks empty and clipped motion with retained object data
+test pbr::temporal::tests::hidden_motion_cannot_overwrite_the_visible_surface ... ignored, Requires a native GPU; checks visible and occluded moving surfaces
+test pbr::temporal::tests::motion_runs_keep_winding_policy_and_instance_order ... ok
+test pbr::temporal::tests::halton_samples_cover_a_pixel_and_repeat_after_eight_frames ... ok
+test pbr::temporal::tests::camera_reprojection_uses_the_previous_jittered_camera ... ok
+test pbr::temporal::tests::disable_time_rewind_pause_and_camera_cut_discard_history ... ok
+test pbr::instanced::tests::opaque_caster_ranges_preserve_admitted_index_and_instance_order ... ok
+test pbr::environment::tests::the_reflection_cube_holds_the_drawn_sky ... ok
+test pbr::temporal::tests::motion_admission_uses_the_rendered_jitter_and_preserves_uncertain_streams ... ok
+test pbr::temporal::tests::projection_jitter_moves_pixels_without_changing_depth ... ok
+test pbr::temporal::tests::temporal_history_respects_platform_and_tier_ceilings ... ok
+test pbr::tests::stages_draw_daylight_only_when_asked ... ok
+test pbr::tests::lamps_light_only_when_valid_and_flicker_within_bounds ... ok
+test pbr::textured::tests::a_cells_near_and_far_levels_draw_in_turn_with_hysteresis ... ok
+test pbr::textured::tests::a_mirroring_placement_keeps_front_faces_counterclockwise ... ok
+test pbr::textured::tests::blended_cells_draw_last_from_far_to_near ... ok
+test pbr::textured::tests::destruction_fallback_survives_late_bakes_and_restores_both_pristine_channels ... ok
+test pbr::screen::tests::a_flat_floor_is_unoccluded_and_casts_no_contact_shadow ... ok
+test pbr::textured::tests::detail_groups_merge_across_cells_keep_ranges_and_restore_after_far_damage ... ok
+test pbr::textured::tests::detail_groups_select_one_level_across_both_switches ... ok
+test pbr::textured::tests::double_sided_materials_draw_both_faces ... ok
+test pbr::textured::tests::emission_rides_in_the_material_uniform_and_is_bounded ... ok
+test pbr::textured::tests::frustum_culling_keeps_boxes_in_view_and_drops_boxes_behind ... ok
+test pbr::textured::tests::index_ranges_find_each_placements_triangles_in_the_merge ... ok
+test pbr::textured::tests::invalid_scenes_are_refused ... ok
+test pbr::textured::tests::mip_chains_skip_levels_above_the_device_limit ... ok
+test pbr::textured::tests::mips_average_color_in_linear_light ... ok
+test pbr::textured::tests::only_masked_cells_discard_and_only_blended_cells_skip_depth_and_shadows ... ok
+test pbr::textured::tests::placements_merge_into_cells_per_material ... ok
+test pbr::textured::tests::the_cutoff_keeps_alpha_at_or_above_it ... ok
+test pbr::textured::tests::rigid_frustum_admission_keeps_corners_near_planes_and_uncertain_bounds ... ok
+test pbr::textured::tests::masked_mips_keep_their_alpha_coverage_at_the_cutoff ... ok
+test pbr::textured_bake::tests::a_point_under_a_roof_is_occluded ... ok
+test pbr::textured::tests::oversized_mask_fitting_preserves_coverage_before_runtime_cooking ... ok
+test pbr::textured_bake::tests::a_white_wall_beside_sunlit_grass_turns_green ... ok
+test pbr::textured_bake::tests::a_leaf_card_occludes_partially_and_stays_lit ... ok
+test pbr::textured_bake::tests::open_ground_sees_the_whole_sky ... ok
+test pbr::textured_bake::tests::batched_probe_shade_matches_reference_vertex_bytes_and_follows_new_grid_and_light ... ok
+test pbr::textured_bake::tests::a_job_delivers_layers_baked_for_its_scene_instead_of_baking ... ok
+test pbr::textured_bake::tests::a_job_delivers_vertices_to_the_scene_and_probes_to_the_zone ... ok
+test pbr::textured_bake::tests::the_key_follows_the_sun_and_the_light_channel_round_trips ... ok
+test pbr::textured_bake::tests::probe_sampler_preserves_reference_bits_at_boundaries_truncated_grids_and_repeated_cells ... ok
+test pbr::textured_bake::tests::probes_darken_under_cover_and_characters_sample_them ... ok
+test streaming::tests::gpu_partial_uploads_draw_and_rebuild_without_source_files ... ignored, Explicit scratch GPU: partial image rows, both depth conventions, retained rebuild
+test visual_tests::indoor_and_outdoor_lighting_keep_the_character_readable ... ignored, Explicit native GPU and private scratch output; run once per VERSE_QUALITY tier
+test water::bake::tests::a_pond_bakes_depth_shore_and_its_edge ... ok
+test imported::instancing::tests::storage_shader_validates_and_reads_an_instance_index ... ok
+test water::bake::tests::a_river_bakes_its_level_and_current ... ok
+test water::bake::tests::the_shore_distance_is_the_exact_euclidean_distance ... ok
+test pbr::textured_bake::tests::a_scene_without_its_bake_data_renders_with_the_load_time_bake ... ok
+test streaming::tests::cooked_shader_validates_both_depth_conventions ... ok
+test pbr::screen::tests::the_screen_shader_validates_and_matches_its_uniform ... ok
+test pbr::textured_bake::tests::the_threaded_bake_matches_the_stepped_one ... ok
+test water::frame::tests::dry_quads_are_skipped_and_low_tiers_decimate ... ok
+test water::frame::tests::ripples_spread_and_fade ... ok
+test water::frame::tests::the_sea_reads_its_body_s_swell ... ok
+test pbr::temporal::tests::temporal_shaders_validate_for_one_and_four_sample_depth ... ok
+test water::frame::tests::the_surface_height_lies_on_the_displaced_surface ... ok
+test imported::instancing::tests::world_storage_shader_validates_independent_flat_pose_indices ... ok
+test imported::admission::tests::the_cut_scene_shader_declares_a_block_within_the_limit ... ok
+test water::clipmap::tests::tiers_draw_three_four_and_five_rings ... ok
+test water::ocean::tests::shoaling_and_the_breaker_limit ... ok
+test water::ocean::tests::slopes_follow_the_wind ... ok
+test water::clipmap::tests::the_morph_is_continuous_across_a_snap ... ok
+test imported::tests::textured_skin_shader_validates ... ok
+test water::preset::tests::presets_parse_and_jerlov_types_darken_in_order ... ok
+test water::field::tests::the_field_bakes_depth_shore_and_flow ... ok
+test water::rain::tests::characters_soak_in_water_and_dry_after ... ok
+test water::rain::tests::tiers_draw_less_and_keep_within_their_budgets ... ok
+test water::clipmap::tests::the_rings_meet_without_cracks ... ok
+test water::ripple::tests::a_mover_draws_a_kelvin_wedge ... ok
+test water::ripple::tests::a_pulse_spreads_as_a_ring_at_the_wave_speed ... ok
+test water::ripple::tests::scrolling_keeps_the_ripples_in_place ... ok
+test pbr::gpu::tests::sprite_center_lighting_translates_to_webgl2_within_texture_slots ... ok
+test water::ripple::tests::dry_cells_hold_still_and_foam_drifts_with_the_current ... ok
+test water::ripple::tests::the_iwave_kernel_is_the_vertical_derivative ... ok
+test water::screen::tests::low_copies_nothing_and_adds_no_target ... ok
+test water::screen::tests::medium_mirrors_at_half_size_and_high_at_full_with_a_march ... ok
+test water::screen::tests::mirror_depth_falls_with_distance_along_a_ray ... ok
+test water::screen::tests::targets_fit_the_specification_budgets_at_1080p ... ok
+test water::screen::tests::the_depth_copy_validates_for_one_and_four_samples ... ok
+test water::screen::tests::the_mirror_keeps_what_stands_above_the_plane_and_clips_what_lies_below ... ok
+test water::screen::tests::the_nearest_flat_body_in_view_is_mirrored ... ok
+test water::seas::tests::the_sea_states_parse_and_rise ... ok
+test pbr::environment::tests::a_gradual_change_bakes_over_frames_and_a_jump_at_once ... ok
+test water::terms::tests::fractions_of_a_tick_interpolate ... ok
+test water::terms::tests::the_mirror_matches_the_physics_surface ... ok
+test water::terms::tests::the_wind_sea_never_loops ... ok
+test water::under::tests::a_level_eye_at_the_surface_splits_the_view_at_its_middle ... ok
+test water::under::tests::a_pond_is_flat_and_a_stream_falls_along_its_course ... ok
+test water::under::tests::a_tilted_surface_tilts_the_line ... ok
+test pbr::gpu::tests::the_frame_uniform_matches_the_shader ... ok
+test water::under::tests::submersion_eases_toward_the_share_under ... ok
+test water::under::tests::sunlight_bends_toward_the_vertical_under_water ... ok
+test water::under::tests::the_list_holds_the_sea_first_and_the_nearest_bodies_within_the_tier ... ok
+test water::under::tests::the_split_follows_the_eye_through_the_surface ... ok
+test water::under::tests::caustic_waves_come_from_the_detail_band_and_average_one ... ok
+test water::tile::tests::the_tile_loops_and_keeps_its_lost_variance ... ok
+test pbr::textured::tests::files_that_pack_the_same_image_share_it_and_keep_their_emission ... ok
+test water::frame::tests::the_water_uniform_matches_the_shader ... ok
+test shading::tests::shared_shaders_validate ... ok
+test water::ripple::tests::sources_stay_within_each_tier_s_budget ... ok
+test water::ocean::tests::the_drawn_band_matches_the_physics_band ... ok
+test water::ocean::tests::a_new_sea_shows_its_whitecaps ... ok
+test water::ocean::tests::tiers_fill_their_layers_and_foam_persists ... ok
+test water::field::tests::pages_stream_within_the_budget ... ok
+test water::ripple::tests::a_mover_leaves_a_lasting_foam_trail ... ok
+test pbr::gpu::tests::bundled_sky_textures_decode_at_their_documented_sizes ... ok
+test imported::flat::tests::lines_take_their_tint_and_fade_into_the_fog ... ok
+test water::parity::the_shader_displacement_matches_the_physics_surface ... ok
+test pbr::textured::tests::the_quaternius_props_import_with_shared_trim_sheets ... ok
+test water::parity::the_shader_spectral_band_matches_the_physics_band ... ok
+test water::ripple::tests::the_field_settles_after_a_splash_on_every_tier ... ok
+
+test result: ok. 184 passed; 0 failed; 11 ignored; 0 measured; 0 filtered out; finished in 0.53s
+
+     Running unittests src/lib.rs (/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse_zone_everglade-b6e1f5b9e7fc4f58)
+
+running 292 tests
+test zones::everglade::boards::tests::the_ring_lights_whole_segments_for_progress ... ok
+test zones::everglade::baked::tests::baked_lamps_burn_at_night_and_rest_by_day ... ok
+test zones::everglade::compute::tests::heights_rise_by_tier_and_bands_count_tenfold_steps ... ok
+test zones::everglade::compute::tests::a_pylon_is_dim_while_idle_burns_while_busy_and_is_grey_when_unknown ... ok
+test zones::everglade::compute::tests::alice_works_only_while_her_seat_is_busy ... ok
+test zones::everglade::compute::tests::runes_burn_one_band_a_busy_slot_and_a_stream_runs_only_while_serving ... ok
+test zones::everglade::boards::tests::goal_text_wraps_between_words_into_the_board_alphabet ... ok
+test zones::everglade::boards::tests::each_shown_card_is_a_target_on_the_wall ... ok
+test zones::everglade::compute::tests::a_stale_or_future_sample_is_unknown_never_online ... ok
+test zones::everglade::compute::tests::merged_sources_keep_this_computer_first_and_name_the_shared_pool ... ok
+test zones::everglade::compute::tests::the_wellspring_brightens_with_capacity_churns_with_work_and_ripples_with_jobs ... ok
+test zones::everglade::demolition::carve::tests::a_lattice_cuts_a_building_into_story_high_blocks ... ok
+test zones::everglade::demolition::carve::tests::splitting_keeps_every_triangle_inside_one_cell_and_the_area_whole ... ok
+test zones::everglade::demolition::carve::tests::the_ground_and_plants_are_never_carved_but_walkways_are ... ok
+test zones::everglade::boards::tests::the_goal_board_faces_the_approach_and_shows_the_goal ... ok
+test zones::everglade::compute::tests::a_missing_lease_root_is_unknown_and_a_silent_source_goes_stale ... ok
+test zones::everglade::boards::tests::the_plan_board_shows_her_day_in_the_great_room ... ok
+test zones::everglade::compute::tests::the_capacity_book_names_a_well_per_provider ... ok
+test zones::everglade::demolition::chunks::tests::a_cut_through_a_wall_is_capped_in_its_material_around_a_window ... ok
+test zones::everglade::demolition::chunks::tests::clipping_a_triangle_keeps_the_part_on_one_side_with_its_attributes ... ok
+test production_tests::production_builds_never_enable_dev_destruction ... ok
+test zones::everglade::demolition::hotbar::tests::keys_and_slots_send_the_yard_intents ... ok
+test zones::everglade::demolition::hotbar::tests::each_slot_has_a_card_over_the_help ... ok
+test zones::everglade::compute::tests::no_leases_dims_the_pylon_and_stills_the_basin_and_a_build_lease_burns_and_churns ... ok
+test zones::everglade::demolition::meteor::impact_fx_tests::rock_history_exclusion_addresses_only_its_own_triangles ... ok
+test zones::everglade::demolition::relight::tests::an_exposed_interior_uses_current_cover_and_no_shadow_of_a_removed_roof ... ok
+test zones::everglade::demolition::relight::tests::breaking_a_block_invalidates_immediate_support_neighbors_and_reset_restores_them ... ok
+test zones::everglade::demolition::relight::tests::dense_cover_retains_the_strongest_boxes_independent_of_piece_order ... ok
+test zones::everglade::demolition::relight::tests::irrelevant_cell_boxes_cannot_hide_an_intact_roof_in_either_piece_order ... ok
+test zones::everglade::demolition::relight::tests::kit_neighbors_follow_vertical_walls_roof_spans_and_corner_posts ... ok
+test zones::everglade::demolition::site::rubble_tests::a_blast_releases_merged_rubble_without_duplicating_collision ... ok
+test zones::everglade::demolition::site::rubble_tests::a_newly_sleeping_dynamic_island_retires_every_supported_chunk ... ok
+test zones::everglade::demolition::site::rubble_tests::a_resting_contact_cycle_wakes_when_its_last_fixed_support_goes ... ok
+test zones::everglade::demolition::site::rubble_tests::an_awake_support_does_not_connect_frozen_rubble_to_the_ground ... ok
+test zones::everglade::demolition::site::rubble_tests::batch_chunk_expiry_matches_individual_expiry_and_releases_the_pile ... ok
+test zones::everglade::demolition::site::rubble_tests::merged_rubble_wakes_when_the_merged_chunk_under_it_expires ... ok
+test zones::everglade::demolition::site::rubble_tests::reactivated_rubble_waits_a_full_rest_interval_before_merging_again ... ok
+test zones::everglade::demolition::site::rubble_tests::rubble_on_an_intact_column_does_not_join_the_ground_batch ... ok
+test zones::everglade::demolition::site::rubble_tests::settled_rubble_keeps_exact_pose_and_collision_after_retiring_body ... ok
+test zones::everglade::demolition::meteor::impact_fx_tests::eight_events_start_once_and_reset_clears_every_layer ... ok
+test zones::everglade::demolition::meteor::impact_fx_tests::npc_impact_shake_uses_the_viewer_instead_of_the_caster ... ok
+test zones::everglade::demolition::site::sky_tests::a_toppling_top_whose_hinge_breaks_falls_free ... ok
+test zones::everglade::demolition::tests::a_hit_lowers_the_struck_pieces_hit_points ... ok
+test zones::everglade::demolition::tests::a_swing_at_nothing_misses ... ok
+test zones::everglade::compute::tests::the_wellspring_lights_a_real_lamp_only_near_and_only_with_capacity ... ok
+test zones::everglade::compute::tests::with_no_source_the_field_is_dormant ... ok
+test zones::everglade::compute::tests::the_tree_names_the_field_its_wellspring_and_each_pylon_site ... ok
+test zones::everglade::compute::tests::the_demo_pool_is_marked_and_shows_every_family_and_an_unknown_pylon ... ok
+test zones::everglade::demolition::tests::breaking_two_south_sections_leaves_the_roof_up ... ok
+test zones::everglade::demolition::tests::enough_hits_break_a_wall_into_chunks_that_fall_and_settle ... ok
+test zones::everglade::demolition::tests::meteor_swarm::cancelling_spends_nothing ... ok
+test zones::everglade::demolition::tests::a_wall_section_with_no_neighbours_left_topples_outward ... ok
+test zones::everglade::demolition::tests::debris_has_a_lifetime ... ok
+test zones::everglade::demolition::tests::meteor_swarm::targeting_clamps_to_the_spells_range ... ok
+test zones::everglade::demolition::tests::meteor_swarm::impacts_start_lights_at_the_particle_origin_and_reset_clears_them ... ok
+test zones::everglade::demolition::tests::meteor_swarm::thunderbolt_bursts_start_blue_direct_light ... ok
+test zones::everglade::demolition::tests::meteor_swarm::walking_and_jumping_through_the_cast_still_brings_the_meteors_down_where_aimed ... ok
+test zones::everglade::demolition::tests::only_standing_walls_and_posts_block_the_player ... ok
+test zones::everglade::compute::tests::the_field_stands_in_open_ground_by_the_stones_with_room_for_pylons ... ok
+test zones::everglade::compute::tests::a_job_in_flight_draws_the_beam_and_forks_from_the_pylon_serving_it ... ok
+test zones::everglade::compute::tests::the_beam_runs_to_alice_only_while_she_works ... ok
+test zones::everglade::compute::tests::the_field_keeps_to_its_glow_budget_even_busy_at_night_with_the_beam ... ok
+test zones::everglade::demolition::town::rubble::tests::new_source_meshes_preserve_cached_aggregate_ranges ... ok
+test zones::everglade::demolition::town::rubble::tests::pool_keeps_blended_chunks_separate_and_evicts_unused_sources_before_static_budget_overflow ... ok
+test zones::everglade::demolition::town::rubble::tests::regroup_and_geometry_eviction_keep_motion_identity_but_structural_reset_replaces_it ... ok
+test zones::everglade::demolition::town::rubble::tests::settled_probe_sampling_matches_moving_chunks_and_keeps_destruction_override ... ok
+test zones::everglade::demolition::town::rubble::tests::static_groups_preserve_geometry_uv_color_light_material_and_reflected_winding ... ok
+test zones::everglade::demolition::town::rubble::tests::unchanged_static_frames_reuse_scene_and_light_regrouping_does_not_pose_again ... ok
+test zones::everglade::demolition::town::rubble::tests::wake_expiry_and_structural_reset_remove_cached_geometry_and_keep_live_ids_distinct ... ok
+test zones::everglade::demolition::town::receivers::tests::spatial_membership_matches_exhaustive_shadow_receivers_for_every_affected_subset ... ok
+test zones::everglade::demolition::tests::meteor_swarm::casts_follow_each_other_at_once ... ok
+test zones::everglade::demolition::tests::rebuilding_restores_every_piece ... ok
+test zones::everglade::demolition::site::sky_tests::debris_frozen_on_a_column_falls_when_the_column_is_cut_out_from_under_it ... ok
+test zones::everglade::demolition::tests::knocking_out_an_eave_wall_drops_the_roof_onto_the_rest ... ok
+test zones::everglade::demolition::tests::meteor_swarm::a_strike_breaks_the_pieces_near_its_center_and_leaves_far_ones_standing ... ok
+test zones::everglade::demolition::tests::meteor_swarm::the_roof_falls_when_its_walls_are_destroyed ... ok
+test zones::everglade::demolition::site::sky_tests::debris_frozen_on_frozen_debris_falls_with_it ... ok
+test zones::everglade::demolition::town_tests::destruction_relights_standing_neighbors_and_ground_then_restores_the_exact_bake ... ok
+test zones::everglade::demolition::tests::the_yard_builds_from_the_pack_and_draws_with_the_character ... ok
+test zones::everglade::demolition::carve_tests::the_fountain_basin_turns_a_walker_aside ... ok
+test zones::everglade::demolition::carve_tests::a_closed_building_stops_a_walker_and_holds_up_a_lander ... ok
+test zones::everglade::demolition::carve_tests::an_open_gazebo_lets_a_walker_in_and_a_closed_door_does_not ... ok
+test zones::everglade::demolition::carve_tests::the_bandshell_stage_is_climbed_by_its_steps_and_its_shell_is_solid ... ok
+test zones::everglade::boats::tests::a_swimmer_climbs_in_and_a_second_player_takes_the_passenger_s_seat ... ok
+test zones::everglade::boats::tests::a_capsize_dumps_the_player_and_lily_pads_bob_as_a_boat_passes ... ok
+test zones::everglade::demolition::town::motion_tests::retained_house_resets_cpu_and_renderer_motion_without_dropping_meshes ... ok
+test zones::everglade::demolition::town_tests::aimed_from_the_civic_hall_s_roof_the_ring_lies_flat_on_it ... ok
+test zones::everglade::demolition::town_tests::stone_debris_sinks_and_timber_floats ... ok
+test zones::everglade::demolition::town_tests::every_building_the_layout_places_has_a_demolition_entry ... ok
+test zones::everglade::demolition::town_tests::a_meteor_strike_breaks_the_pieces_near_its_center ... ok
+test zones::everglade::demolition::town_tests::the_hammer_breaks_a_town_wall ... ok
+test zones::everglade::draw::tests::the_grass_texture_tiles_and_stays_near_its_mean ... ok
+test zones::everglade::boats::tests::a_player_boards_from_the_jetty_rows_across_lantern_pond_and_back_and_leaves_onto_the_jetty ... ok
+test zones::everglade::guests::tests::a_guest_draws_its_near_level_close_and_its_far_level_beyond ... ok
+test zones::everglade::demolition::town_tests::the_survey_maps_the_kit_buildings_and_carves_everything_else ... ok
+test zones::everglade::guests::tests::a_seated_guest_sits_at_the_reception_on_the_great_rooms_floor ... ok
+test zones::everglade::hotbar::tests::every_slot_has_a_name_and_one_sentence ... ok
+test zones::everglade::hotbar::tests::levitate_reaches_120_m_in_a_dev_build_and_18_m_in_prod ... ok
+test zones::everglade::hotbar::tests::the_bar_is_movement_and_utility_spells_on_keys_1_to_5 ... ok
+test zones::everglade::hotbar::tests::the_dev_bar_puts_meteor_swarm_thunderbolt_and_mega_thunderbolt_before_levitate ... ok
+test zones::everglade::hotbar::tests::the_dev_bar_and_its_cards_fit_a_phone_screen ... ok
+test zones::everglade::hotbar::tests::the_end_slots_cards_stay_on_a_phone_screen ... ok
+test zones::everglade::hotbar::tests::the_pointer_finds_each_slot_and_none_between_them ... ok
+test zones::everglade::house_lod::tests::custom_paint_retains_the_original_house_at_every_distance ... ok
+test zones::everglade::house_lod::tests::local_exports_preserve_facing_and_the_terrain_floor_baseline ... ok
+test zones::everglade::house_lod::tests::recipe_keys_ignore_location_but_preserve_the_selected_door_bays ... ok
+test zones::everglade::layout::agora::tests::every_station_is_reachable_from_the_door ... ok
+test zones::everglade::layout::agora::tests::the_bell_swings_when_rung_and_settles ... ok
+test zones::everglade::layout::agora::tests::the_entry_axis_stays_clear_from_the_forecourt_to_the_middle ... ok
+test zones::everglade::layout::agora::tests::the_hall_lights_only_near_it_and_inside_within_the_lamp_limit ... ok
+test zones::everglade::layout::agora::tests::the_hall_stands_on_flat_open_ground_off_every_road_facing_the_plaza ... ok
+test zones::everglade::layout::agora::tests::the_hall_the_house_and_the_civic_hall_never_light_past_the_limit ... ok
+test zones::everglade::demolition::town_tests::restoring_brings_every_building_back ... ok
+test zones::everglade::layout::belvedere::tests::the_belvedere_lights_only_near_it_on_its_lot ... ok
+test zones::everglade::layout::belvedere::tests::the_belvedere_stands_on_high_ground_at_the_west_trails_climb ... ok
+test zones::everglade::layout::belvedere::tests::the_walk_from_the_stair_into_the_loggia_stays_clear ... ok
+test zones::everglade::layout::belvedere::tests::nothing_else_stands_on_the_lot_and_no_tree_closes_the_view ... ok
+test zones::everglade::layout::civic::tests::the_entry_axis_stays_clear_from_the_street_to_the_middle ... ok
+test zones::everglade::layout::civic::tests::the_hall_and_the_owners_house_never_light_together_past_the_limit ... ok
+test zones::everglade::layout::civic::tests::the_hall_closes_main_streets_view_on_flat_ground_off_every_road ... ok
+test zones::everglade::layout::civic::tests::the_hall_lights_only_near_it_and_inside_within_the_lamp_limit ... ok
+test zones::everglade::layout::districts::tests::districts_have_names_and_most_have_buildings ... ok
+test zones::everglade::layout::districts::tests::every_building_has_a_district ... ok
+test zones::everglade::layout::districts::tests::every_doorway_and_front_has_a_district ... ok
+test zones::everglade::layout::districts::tests::every_generated_instance_has_a_district ... ok
+test zones::everglade::layout::agora::tests::nothing_else_stands_on_the_lot_and_no_tree_reaches_its_walls ... ok
+test zones::everglade::demolition::town_tests::rigid_debris_keeps_source_meshes_and_previous_transforms_between_frames ... ok
+test zones::everglade::layout::estate::tests::alice_works_inside_the_great_room_reachable_from_the_door ... ok
+test zones::everglade::layout::estate::tests::her_workstation_is_a_standing_desk ... ok
+test zones::everglade::layout::estate::tests::the_entry_axis_stays_clear_of_furniture ... ok
+test zones::everglade::layout::estate::tests::the_house_lights_only_near_it_nearest_first_within_the_lamp_limit ... ok
+test zones::everglade::layout::estate::tests::the_house_stands_on_flat_ground_off_every_road_with_its_door_open ... ok
+test zones::everglade::layout::estate::tests::the_player_can_walk_up_and_talk_to_her_across_her_workstation ... ok
+test zones::everglade::layout::estate::tests::the_reception_greets_arrivals_from_off_the_entry_walk ... ok
+test zones::everglade::layout::estate::tests::the_workstation_spot_holds_only_the_workstation_and_is_lit ... ok
+test zones::everglade::layout::kit_house::tests::an_eight_meter_front_is_a_four_and_a_two_meter_bay_between_corners ... ok
+test zones::everglade::layout::kit_house::tests::every_piece_is_a_kit_piece_on_the_lot ... ok
+test zones::everglade::layout::kit_house::tests::the_walls_are_open_at_the_door_and_the_floor_is_up_the_steps ... ok
+test zones::everglade::npcs::tests::alice_is_the_workshop_agents_body_not_a_creature_by_the_approach ... ok
+test zones::everglade::npcs::tests::each_outfit_has_its_own_form_and_the_coat_is_the_default ... ok
+test zones::everglade::player::tests::a_head_turns_toward_what_it_looks_at_within_its_reach ... ok
+test zones::everglade::player::tests::a_moving_seat_walks_or_runs_and_a_still_one_holds_its_posture ... ok
+test zones::everglade::player::tests::engine_clip_ids_avoid_the_fallback_and_held_clips ... ok
+test zones::everglade::player::tests::movement_state_picks_the_clip ... ok
+test zones::everglade::player::tests::a_spell_s_cast_draws_the_hand_back_and_up_then_throws_it_ahead ... ok
+test zones::everglade::player::tests::the_cast_draws_the_player_and_every_seat_as_one_figure ... ok
+test zones::everglade::player::tests::the_player_carries_the_sledgehammer_and_chops_with_both_hands ... ok
+test zones::everglade::pose::tests::a_typing_seat_stands_at_its_desk_with_its_hands_on_the_keys ... ok
+test zones::everglade::pose::tests::every_posture_moves_from_idle_and_loops ... ok
+test zones::everglade::layout::estate::tests::nothing_else_stands_on_the_lot ... ok
+test zones::everglade::player::tests::the_workshop_agent_draws_as_alice_and_stands_at_her_desk ... ok
+test zones::everglade::pose::tests::the_skeleton_is_found_by_its_shape ... ok
+test zones::everglade::sales_floor::tests::measured_records_and_written_props_do_not_claim_outbound_authority ... ok
+test zones::everglade::sales_floor::tests::missing_shared_and_failed_sources_clear_private_state_then_reconnect ... ok
+test zones::everglade::signals::tests::a_burst_plays_the_most_urgent_signal ... ok
+test zones::everglade::signals::tests::a_notice_names_the_change_and_clips_its_text ... ok
+test zones::everglade::sales_floor::tests::stalled_reads_expire_and_invalid_private_text_never_reaches_a_mesh ... ok
+test zones::everglade::signals::tests::a_signal_plays_once_per_change ... ok
+test zones::everglade::signals::tests::each_change_maps_to_its_signal ... ok
+test zones::everglade::signals::tests::the_badge_names_the_waiting_count_and_the_key ... ok
+test zones::everglade::signals::tests::the_summary_shows_the_newest_goal_under_way ... ok
+test zones::everglade::spells::motes::tests::more_of_the_glow_sits_on_the_edge_than_inside ... ok
+test zones::everglade::spells::motes::tests::particles_lift_off_climb_inside_and_gather_under_the_top ... ok
+test zones::everglade::spells::motes::tests::the_edge_band_draws_first_within_the_medium_budget ... ok
+test zones::everglade::spells::motes::tests::the_edge_band_hugs_the_circle_all_the_way_round_and_up ... ok
+test zones::everglade::spells::motes::tests::the_same_age_draws_the_same_frame_and_the_count_is_bounded ... ok
+test zones::everglade::spells::tests::a_wall_through_something_built_is_refused ... ok
+test zones::everglade::layout::civic::tests::nothing_else_stands_on_the_lot ... ok
+test zones::everglade::spells::tests::wall_of_stone_crumbles_after_its_lifetime_and_stops_blocking ... ok
+test zones::everglade::demolition::town_tests::untouched_buildings_stay_in_the_static_cells ... ok
+test zones::everglade::spells::tests::wind_wall_and_reverse_gravity_last_a_minute ... ok
+test zones::everglade::spells::tests::wind_wall_needs_level_ground ... ok
+test zones::everglade::studio::tests::a_bubble_wraps_its_text_between_words ... ok
+test zones::everglade::studio::tests::a_long_route_drops_its_prefix_on_the_plate_instead_of_its_last_letters ... ok
+test zones::everglade::studio::tests::a_nameplate_never_grows_past_its_screen_bound ... ok
+test zones::everglade::studio::tests::a_seat_at_its_desk_stands_out_of_the_players_camera_path ... ok
+test zones::everglade::studio::tests::a_seat_stands_at_its_own_desk_and_seats_share_other_stations ... ok
+test zones::everglade::studio::tests::each_activity_has_its_posture ... ok
+test zones::everglade::studio::tests::a_waiting_seat_walks_over_to_a_player_near_the_podium_and_back ... ok
+test zones::everglade::studio::tests::lettering_keeps_the_board_alphabet ... ok
+test zones::everglade::studio::tests::navigation_uses_only_the_source_snapshot_not_resident_seats ... ok
+test zones::everglade::studio::tests::seats_hold_their_posture_where_they_stand_and_walk_between ... ok
+test zones::everglade::studio::tests::seats_walk_to_their_station_and_skip_ahead_when_activity_outruns_them ... ok
+test zones::everglade::studio::tests::stations_open_their_panels ... ok
+test zones::everglade::studio::tests::the_hall_camera_sees_desk_nameplates_whole ... ok
+test zones::everglade::studio::tests::the_lead_asks_the_person_then_hands_a_worker_its_task ... ok
+test zones::everglade::studio::tests::the_mark_stands_over_the_seat_whose_decision_the_podium_answers_next ... ok
+test zones::everglade::studio::tests::the_workshop_agent_works_and_walks_in_the_owners_house ... ok
+test zones::everglade::studio::tests::the_world_draws_seats_lamps_beacons_and_live_boards ... ok
+test zones::everglade::studio::tests::viewers_of_a_hosted_instance_draw_the_authoritys_seats ... ok
+test zones::everglade::spells::tests::crumbled_chunks_fall_and_settle_on_the_ground ... ok
+test zones::everglade::tests::every_pond_is_open_to_walk_into_and_its_water_draws ... ok
+test zones::everglade::spells::tests::no_debris_is_left_after_the_fade ... ok
+test zones::everglade::spells::tests::the_cap_crumbles_the_oldest_wall ... ok
+test zones::everglade::tests::every_placement_names_an_admitted_model_and_stays_in_the_glade ... ok
+test zones::everglade::tests::a_hosted_instance_walks_the_pinned_packs_content_under_the_social_rules ... ok
+test zones::everglade::tests::prop_bounds_become_navigation_blockers ... ok
+test zones::everglade::demolition::town_tests::the_studio_breaks_and_comes_back ... ok
+test zones::everglade::draw::tests::the_dirt_edge_is_soft_and_inside_its_sheet ... ok
+test zones::everglade::tests::the_ground_is_flat_in_the_clearing_and_rises_gently_within_bounds ... ok
+test zones::everglade::time_of_day::tests::every_light_is_a_valid_stage ... ok
+test zones::everglade::time_of_day::tests::keyframes_run_in_order_through_the_day ... ok
+test zones::everglade::demolition::town_tests::through_a_blown_out_wall_the_aim_finds_the_far_walls_inner_face ... ok
+test zones::everglade::time_of_day::tests::late_morning_is_the_old_fixed_light ... ok
+test zones::everglade::time_of_day::tests::night_is_dim_but_playable_and_lamps_light ... ok
+test zones::everglade::time_of_day::tests::the_darkest_moment_stays_readable ... ok
+test zones::everglade::time_of_day::tests::the_light_changes_without_a_pop ... ok
+test zones::everglade::time_of_day::tests::the_light_holds_through_a_step ... ok
+test zones::everglade::time_of_day::tests::the_sun_rises_and_sets_on_the_clock ... ok
+test zones::everglade::tests::the_layout_stays_within_the_placed_triangle_budget ... ok
+test zones::everglade::townsfolk::tests::every_admitted_leg_routes_around_the_zone ... ok
+test zones::everglade::townsfolk::tests::every_embedded_file_parses ... ok
+test zones::everglade::townsfolk::tests::nameplates_of_villagers_standing_together_stand_apart_and_words_show_over_them ... ok
+test zones::everglade::townsfolk::tests::an_idle_running_day_says_nothing_and_asks_no_model ... ok
+test zones::everglade::townsfolk::tests::the_checked_in_town_admits_every_definition_by_digest ... ok
+test zones::everglade::townsfolk::tests::the_demo_villagers_meet_at_the_market_at_noon ... ok
+test zones::everglade::townsfolk::tests::someone_walks_in_every_five_minutes_of_the_waking_day ... ok
+test zones::everglade::townsfolk::tests::the_demo_rumor_starts_with_mira_and_reaches_tobin_and_wren_at_the_market ... ok
+test zones::everglade::draw::tests::the_ground_covers_the_square_on_the_heightfield_facing_up ... ok
+test zones::everglade::townsfolk::tests::villagers_walk_their_routed_legs_and_draw_near_the_player ... ok
+test zones::everglade::water::tests::a_held_breath_runs_out_then_exhaustion_defeats_the_swimmer_onto_the_bank ... ok
+test zones::everglade::water::tests::a_swimmer_climbs_out_on_a_shallow_bank_and_onto_a_low_lip_only ... ok
+test zones::everglade::water::tests::a_swimmer_in_the_plunge_pool_drifts_at_the_flow_fields_speed ... ok
+test zones::everglade::water::tests::a_swimmer_writes_its_wake_into_the_ripple_field_and_splashes_in_and_drips_out ... ok
+test zones::everglade::water::tests::diving_reaches_lantern_ponds_three_meter_bed_and_buoyancy_lifts_back ... ok
+test zones::everglade::water::tests::splashes_stay_within_each_tier_s_particle_budget ... ok
+test zones::everglade::water::tests::the_frame_carries_the_surface_over_the_eye_and_motes_under_it ... ok
+test zones::everglade::tests::the_town_player_wades_then_swims_into_every_pond_among_the_placements ... ok
+test zones::everglade::water::tests::wading_across_glade_run_goes_at_half_speed ... ok
+test zones::everglade::water::tests::walking_into_each_pond_wades_then_swims_with_no_bank_blocker ... ok
+test zones::everglade::weather::tests::a_pin_overrides_the_schedule_and_rain_wets_the_frame ... ok
+test zones::everglade::water::tests::the_water_bakes_over_the_carved_beds_and_draws_from_below_when_the_eye_is_in_it ... ok
+test zones::everglade::weather::tests::the_stage_darkens_under_cloud_and_thickens_in_fog ... ok
+test zones::everglade::weather::tests::rainfall_keeps_to_the_tier_budget ... ok
+test zones::everglade::tests::the_towns_creatures_live_by_the_water_the_trees_and_the_hives ... ok
+test zones::everglade::world_tree::tests::a_choice_walks_down_to_a_free_desk_the_agent_knows ... ok
+test zones::everglade::world_tree::tests::an_agent_that_never_entered_the_great_room_does_not_know_its_objects ... ok
+test zones::everglade::tests::the_towns_buildings_merge_and_repeated_models_draw_as_instances ... ok
+test zones::everglade::world_tree::tests::every_doorway_front_station_and_desk_maps_to_a_node ... ok
+test zones::everglade::world_tree::tests::object_states_follow_the_clock_and_the_studio ... ok
+test zones::everglade::demolition::town_tests::a_mega_thunderbolt_breaks_several_times_what_a_thunderbolt_does ... ok
+test zones::everglade_pack::compile::kit::tests::a_kit_pack_holds_only_kit_names ... ok
+test zones::everglade_pack::compile::kit::tests::a_sample_kit_pack_decodes_under_the_kit_limits ... ok
+test zones::everglade::world_tree::tests::the_world_tree_snapshot_is_current ... ok
+test zones::everglade_pack::compile::kit::tests::compiling_a_build_grades_its_images_and_names_far_levels ... ok
+test zones::everglade_pack::compile::kit::tests::house_atlases_keep_the_renderer_palette_without_a_second_grade ... ok
+test zones::everglade_pack::compile::kit::tests::the_kit_limits_refuse_a_larger_texture ... ok
+test zones::everglade_pack::compile::private::tests::a_form_only_pack_decodes_under_the_private_limits_only ... ok
+test zones::everglade_pack::compile::private::tests::compiling_needs_every_build_file ... ok
+test zones::everglade::world_tree::tests::the_digest_is_stable_and_changes_with_a_layout_table ... ok
+test zones::everglade_pack::kit::tests::a_kit_model_that_fits_replaces_its_proxy_and_one_that_does_not_is_refused ... ok
+test zones::everglade::unstick::tests::a_player_in_a_pit_is_moved_to_the_nearest_free_floor ... ok
+test zones::everglade_pack::kit::tests::no_kit_is_fetched_while_none_is_published ... ok
+test zones::everglade_pack::kit::tests::the_grade_lightens_saturates_and_softens_but_keeps_alpha ... ok
+test zones::everglade_pack::kit::tests::the_pieces_are_sorted_kit_names_with_real_boxes ... ok
+test zones::everglade_pack::kit::tests::the_recipe_builds_exactly_the_committed_pieces ... ok
+test zones::everglade_pack::kit::tests::far_levels_must_keep_to_the_same_piece_box ... ok
+test zones::everglade_pack::kit::tests::without_the_kit_every_piece_is_a_proxy_within_its_box ... ok
+test zones::everglade::demolition::town_tests::eviction_freezes_destruction_and_a_frozen_building_breaks_on ... ok
+test zones::everglade_pack::tests::a_body_longer_than_declared_or_its_budget_is_refused ... ok
+test zones::everglade_pack::private_assets::tests::a_grant_for_another_scheme_is_refused ... ok
+test zones::everglade_pack::tests::a_character_round_trips_and_is_bounded ... ok
+test zones::everglade_pack::private_assets::tests::an_unauthorized_reader_gets_nothing_and_no_cache_entry ... ok
+test zones::everglade_pack::tests::changed_sources_are_refused_by_digest ... ok
+test zones::everglade_pack::tests::committed_manifests_admit_only_base_color_sources_with_licenses ... ok
+test zones::everglade_pack::private_assets::tests::a_cached_pack_loads_without_the_broker_and_stays_private ... ok
+test zones::everglade_pack::tests::cache_install_is_verified_atomic_and_served_without_network ... ok
+test zones::everglade_pack::tests::manifests_must_pin_license_digests_and_transforms ... ok
+test zones::everglade_pack::tests::malformed_packs_are_refused_before_allocation ... ok
+test zones::everglade_pack::tests::only_https_sources_and_own_temp_names_are_used ... ok
+test zones::everglade_pack::tests::placeholder_pin_refuses_every_pack_until_published ... ok
+test zones::everglade_pack::tests::every_budget_is_enforced_by_the_compiler ... ok
+test zones::everglade_pack::tests::oversized_textures_are_downscaled_with_alpha_weighting ... ok
+test zones::everglade_pack::tests::quantized_vertices_stay_within_half_a_step_and_encode_again_identically ... ok
+test zones::everglade::demolition::town_tests::the_footbridge_s_planks_float_down_glade_run_and_lodge ... ok
+test zones::everglade_pack::tests::synthetic_sources_compile_deterministically_and_round_trip ... ok
+test zones::everglade_pack::tests::pruning_removes_only_named_history_and_stale_own_temps ... ok
+test zones::everglade_pack::tests::unadmitted_and_linked_files_are_refused ... ok
+test zones::everglade_pack::private_assets::tests::a_phone_rechecks_its_cache_with_the_broker ... ok
+test zones::everglade::unstick::tests::the_doorway_threshold_is_floor_and_the_portico_walks_into_the_great_room ... ok
+test zones::everglade::tests::the_world_is_ground_textured_placements_and_boards ... ok
+test zones::everglade::demolition::town_tests::the_solids_follow_the_collapse ... ok
+test zones::everglade::demolition::town_tests::a_kit_house_breaks_piece_by_piece_and_its_upper_story_falls_with_its_walls ... ok
+test zones::everglade::demolition::town_tests::a_small_geometry_budget_retires_the_oldest_debris_and_frees_the_pool ... ok
+test zones::everglade::demolition::town_tests::a_tall_building_cut_from_under_its_debris_leaves_nothing_in_the_air ... ok
+test zones::everglade::demolition::town_tests::the_caps_hold_under_repeated_casts ... ok
+test zones::everglade::demolition::town_tests::meteor_swarm_and_the_thunderbolt_break_the_new_buildings_and_r_restores_them ... ok
+test zones::everglade::unstick::tests::the_house_and_the_civic_hall_have_no_pits_and_every_floor_leads_back_out ... ok
+test zones::everglade::world_tree::tests::agora_stations_keep_individual_destinations_and_no_execution_affordance ... ok
+test zones::everglade::world_tree::tests::every_standing_point_routes_from_the_approach ... ok
+test zones::everglade::tests::the_whole_town_broken_stays_within_the_geometry_budget ... ok
+test zones::everglade_pack::tests::committed_sources_compile_within_budgets_to_the_pinned_pack ... ok
+
+test result: ok. 292 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 35.05s
+
+     Running unittests src/bin/verse_private/main.rs (/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse_private-a690994a801b0cc2)
+
+running 3 tests
+test tool::tests::arguments_parse_flags_and_refuse_unknown_ones ... ok
+test tool::tests::a_fab_listing_names_its_title_seller_and_ai_flag ... ok
+test tool::tests::locating_a_model_needs_exactly_one ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests physics
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests verse_pbr
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests verse_zone_everglade
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+warning: unreachable pattern
+    --> crates/coder-access/src/protocol.rs:1064:19
+     |
+1062 |                 | Self::ProposeHire { .. }
+     |                   ------------------------ matches all the relevant values
+1063 |                 | Self::DecideHire { .. }
+1064 |                 | Self::ProposeHire { .. }
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+     |
+     = note: `#[warn(unreachable_patterns)]` (part of `#[warn(unused)]`) on by default
+
+warning: unreachable pattern
+    --> crates/coder-access/src/protocol.rs:1065:19
+     |
+1063 |                 | Self::DecideHire { .. }
+     |                   ----------------------- matches all the relevant values
+1064 |                 | Self::ProposeHire { .. }
+1065 |                 | Self::DecideHire { .. }
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: unreachable pattern
+    --> crates/coder-access/src/protocol.rs:1087:19
+     |
+1085 |                 | Self::ProposeHire { .. }
+     |                   ------------------------ matches all the relevant values
+1086 |                 | Self::DecideHire { .. }
+1087 |                 | Self::ProposeHire { .. }
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: unreachable pattern
+    --> crates/coder-access/src/protocol.rs:1088:19
+     |
+1086 |                 | Self::DecideHire { .. }
+     |                   ----------------------- matches all the relevant values
+1087 |                 | Self::ProposeHire { .. }
+1088 |                 | Self::DecideHire { .. }
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: `coder-access` (lib) generated 4 warnings
+warning: unused `std::result::Result` in tuple element 1 that must be used
+    --> crates/verse-pbr/src/pbr/textured.rs:1445:13
+     |
+1445 |             checked.remove(0);
+     |             ^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+     = note: `#[warn(unused_must_use)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-pbr` (lib) generated 1 warning
+   Compiling coder v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/coder)
+   Compiling verse-host v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-host)
+warning: unused import: `self`
+ --> crates/verse-imported/src/imported/remote_window.rs:7:23
+  |
+7 |     chamber_session::{self, Note, Session, Stopped},
+  |                       ^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `glam::Vec3`
+  --> crates/verse-imported/src/imported/remote_window.rs:11:5
+   |
+11 | use glam::Vec3;
+   |     ^^^^^^^^^^
+
+warning: `verse-imported` (lib) generated 2 warnings (run `cargo fix --lib -p verse-imported` to apply 2 suggestions)
+   Compiling verse-zone-everglade v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-zone-everglade)
+   Compiling terminal-studio v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/terminal-studio)
+   Compiling verse-zone-grove v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-zone-grove)
+   Compiling verse-zone-water v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-zone-water)
+warning: type `sales::State` is more private than the item `retire_lead`
+   --> crates/coder/src/task/sales/claims/helpers.rs:9:1
+    |
+  9 | pub(crate) fn retire_lead(state: &mut super::super::State, lead: &str) {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ function `retire_lead` is reachable at visibility `pub(crate)`
+    |
+note: but type `sales::State` is only usable at visibility `pub(self)`
+   --> crates/coder/src/task/sales.rs:288:1
+    |
+288 | struct State {
+    | ^^^^^^^^^^^^
+    = note: `#[warn(private_interfaces)]` on by default
+
+warning: type `sales::agents::native::Native` is more private than the item `helpers::<impl sales::Store>::validate_sales_helper_artifacts_with_native`
+   --> crates/coder/src/task/sales/claims/helpers.rs:388:5
+    |
+388 | /     pub(crate) fn validate_sales_helper_artifacts_with_native(
+389 | |         &self,
+390 | |         lead: &str,
+391 | |         assignment: &str,
+...   |
+395 | |         native: &agents::native::Native,
+396 | |     ) -> Result<()> {
+    | |___________________^ method `helpers::<impl sales::Store>::validate_sales_helper_artifacts_with_native` is reachable at visibility `pub(crate)`
+    |
+note: but type `sales::agents::native::Native` is only usable at visibility `pub(in crate::task::sales)`
+   --> crates/coder/src/task/sales/agents/native.rs:7:1
+    |
+  7 | pub(in crate::task::sales) struct Native {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: method `validate_sales_helper_artifacts` is never used
+   --> crates/coder/src/task/sales/claims/helpers.rs:352:19
+    |
+165 | impl Store {
+    | ---------- method in this implementation
+...
+352 |     pub(crate) fn validate_sales_helper_artifacts(
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `sha256` is never used
+   --> crates/coder/src/task/sales/qualification.rs:181:8
+    |
+ 65 | impl MarkedSuite {
+    | ---------------- method in this implementation
+...
+181 |     fn sha256(&self) -> Result<String> {
+    |        ^^^^^^
+
+warning: `coder` (lib) generated 4 warnings
+warning: unused import: `self`
+ --> crates/verse-zone-everglade/src/zones/everglade/sales_floor.rs:4:14
+  |
+4 |     layout::{self, Board, agora},
+  |              ^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-zone-everglade` (lib) generated 1 warning (run `cargo fix --lib -p verse-zone-everglade` to apply 1 suggestion)
+   Compiling verse v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 45.47s
+     Running unittests src/lib.rs (/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse-0b4e64af6fea2a75)
+
+running 15 tests
+test render::pipelined_frames_keep_exact_selected_pixels_and_complete_every_index ... ignored, requires an offscreen GPU under the quiet lease
+test render::pass_timestamp_spans_reject_missing_errors_and_invalid_order ... ok
+test render::rigid_indirect_requires_execution_first_instance_and_native_multi_draw ... ok
+test render::tests::the_glow_budget_grows_by_tier_and_holds_spell_particles ... ok
+test render::tests::renderer_options_and_extents_are_bounded_before_gpu_work ... ok
+test render::tests::excess_glow_does_not_consume_required_geometry_admission ... ok
+test render::tests::scene_limits_accept_mobile_varyings_without_asking_for_unused_desktop_limits ... ok
+test render::completed_frame_ledger_rejects_missing_duplicate_and_wrong_callbacks ... ok
+test render::tests::material_cutoff_variants_are_reserved_before_texture_upload ... ok
+test render::tests::dynamic_buffers_grow_to_hold_the_full_bounded_crowd ... ok
+test render::tests::over_capacity_frames_are_trimmed_to_whole_primitives_instead_of_stopping ... ok
+test render::tests::an_over_budget_figure_is_dropped_for_the_frame_instead_of_stopping ... ok
+test render::tests::textured_frames::nearer_glass_composites_over_farther_glass ... ok
+test render::tests::textured_frames::only_double_sided_materials_show_their_back_faces ... ok
+test render::tests::textured_frames::masked_texels_below_the_cutoff_are_not_drawn ... ok
+
+test result: ok. 14 passed; 0 failed; 1 ignored; 0 measured; 407 filtered out; finished in 0.77s
+
+warning: unreachable pattern
+    --> crates/coder-access/src/protocol.rs:1064:19
+     |
+1062 |                 | Self::ProposeHire { .. }
+     |                   ------------------------ matches all the relevant values
+1063 |                 | Self::DecideHire { .. }
+1064 |                 | Self::ProposeHire { .. }
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+     |
+     = note: `#[warn(unreachable_patterns)]` (part of `#[warn(unused)]`) on by default
+
+warning: unreachable pattern
+    --> crates/coder-access/src/protocol.rs:1065:19
+     |
+1063 |                 | Self::DecideHire { .. }
+     |                   ----------------------- matches all the relevant values
+1064 |                 | Self::ProposeHire { .. }
+1065 |                 | Self::DecideHire { .. }
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: unreachable pattern
+    --> crates/coder-access/src/protocol.rs:1087:19
+     |
+1085 |                 | Self::ProposeHire { .. }
+     |                   ------------------------ matches all the relevant values
+1086 |                 | Self::DecideHire { .. }
+1087 |                 | Self::ProposeHire { .. }
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: unreachable pattern
+    --> crates/coder-access/src/protocol.rs:1088:19
+     |
+1086 |                 | Self::DecideHire { .. }
+     |                   ----------------------- matches all the relevant values
+1087 |                 | Self::ProposeHire { .. }
+1088 |                 | Self::DecideHire { .. }
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: `coder-access` (lib) generated 4 warnings
+warning: unused `std::result::Result` in tuple element 1 that must be used
+    --> crates/verse-pbr/src/pbr/textured.rs:1445:13
+     |
+1445 |             checked.remove(0);
+     |             ^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+     = note: `#[warn(unused_must_use)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-pbr` (lib) generated 1 warning
+   Compiling coder v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/coder)
+   Compiling verse-host v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-host)
+warning: unused import: `self`
+ --> crates/verse-imported/src/imported/remote_window.rs:7:23
+  |
+7 |     chamber_session::{self, Note, Session, Stopped},
+  |                       ^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `glam::Vec3`
+  --> crates/verse-imported/src/imported/remote_window.rs:11:5
+   |
+11 | use glam::Vec3;
+   |     ^^^^^^^^^^
+
+warning: `verse-imported` (lib) generated 2 warnings (run `cargo fix --lib -p verse-imported` to apply 2 suggestions)
+warning: type `sales::State` is more private than the item `retire_lead`
+   --> crates/coder/src/task/sales/claims/helpers.rs:9:1
+    |
+  9 | pub(crate) fn retire_lead(state: &mut super::super::State, lead: &str) {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ function `retire_lead` is reachable at visibility `pub(crate)`
+    |
+note: but type `sales::State` is only usable at visibility `pub(self)`
+   --> crates/coder/src/task/sales.rs:288:1
+    |
+288 | struct State {
+    | ^^^^^^^^^^^^
+    = note: `#[warn(private_interfaces)]` on by default
+
+warning: type `sales::agents::native::Native` is more private than the item `helpers::<impl sales::Store>::validate_sales_helper_artifacts_with_native`
+   --> crates/coder/src/task/sales/claims/helpers.rs:388:5
+    |
+388 | /     pub(crate) fn validate_sales_helper_artifacts_with_native(
+389 | |         &self,
+390 | |         lead: &str,
+391 | |         assignment: &str,
+...   |
+395 | |         native: &agents::native::Native,
+396 | |     ) -> Result<()> {
+    | |___________________^ method `helpers::<impl sales::Store>::validate_sales_helper_artifacts_with_native` is reachable at visibility `pub(crate)`
+    |
+note: but type `sales::agents::native::Native` is only usable at visibility `pub(in crate::task::sales)`
+   --> crates/coder/src/task/sales/agents/native.rs:7:1
+    |
+  7 | pub(in crate::task::sales) struct Native {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: method `validate_sales_helper_artifacts` is never used
+   --> crates/coder/src/task/sales/claims/helpers.rs:352:19
+    |
+165 | impl Store {
+    | ---------- method in this implementation
+...
+352 |     pub(crate) fn validate_sales_helper_artifacts(
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `sha256` is never used
+   --> crates/coder/src/task/sales/qualification.rs:181:8
+    |
+ 65 | impl MarkedSuite {
+    | ---------------- method in this implementation
+...
+181 |     fn sha256(&self) -> Result<String> {
+    |        ^^^^^^
+
+   Compiling verse-zone-everglade v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-zone-everglade)
+   Compiling terminal-studio v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/terminal-studio)
+warning: `coder` (lib) generated 4 warnings
+warning: unused import: `self`
+ --> crates/verse-zone-everglade/src/zones/everglade/sales_floor.rs:4:14
+  |
+4 |     layout::{self, Board, agora},
+  |              ^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+   Compiling verse-zone-grove v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-zone-grove)
+warning: `verse-zone-everglade` (lib) generated 1 warning (run `cargo fix --lib -p verse-zone-everglade` to apply 1 suggestion)
+   Compiling verse-zone-water v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-zone-water)
+   Compiling verse v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.42s
+     Running unittests src/lib.rs (/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse-0b4e64af6fea2a75)
+
+running 10 tests
+test gles_tests::variants_differ_only_where_gles_needs_them ... ok
+test gles_tests::an_unterminated_block_is_refused - should panic ... ok
+test gles_tests::the_engine_scene_shader_translates_to_glsl_es_300 ... ok
+test gles_tests::the_default_photo_shader_does_not_translate_to_glsl_es ... ok
+test gles_tests::textured_entries_translate_and_only_masked_entries_discard ... ok
+test gles_tests::sun_cascades_sample_a_depth_array_on_glsl_es ... ok
+test gles_tests::daylight_sky_validates_without_textures ... ok
+test gles_tests::the_sky_light_and_height_fog_translate_for_webgl2 ... ok
+test gles_tests::default_variants_are_valid_and_translate_to_metal ... ok
+test gles_tests::every_shader_translates_to_glsl_es_300 ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 412 filtered out; finished in 2.21s
+
+warning: unreachable pattern
+    --> crates/coder-access/src/protocol.rs:1064:19
+     |
+1062 |                 | Self::ProposeHire { .. }
+     |                   ------------------------ matches all the relevant values
+1063 |                 | Self::DecideHire { .. }
+1064 |                 | Self::ProposeHire { .. }
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+     |
+     = note: `#[warn(unreachable_patterns)]` (part of `#[warn(unused)]`) on by default
+
+warning: unreachable pattern
+    --> crates/coder-access/src/protocol.rs:1065:19
+     |
+1063 |                 | Self::DecideHire { .. }
+     |                   ----------------------- matches all the relevant values
+1064 |                 | Self::ProposeHire { .. }
+1065 |                 | Self::DecideHire { .. }
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: unreachable pattern
+    --> crates/coder-access/src/protocol.rs:1087:19
+     |
+1085 |                 | Self::ProposeHire { .. }
+     |                   ------------------------ matches all the relevant values
+1086 |                 | Self::DecideHire { .. }
+1087 |                 | Self::ProposeHire { .. }
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: unreachable pattern
+    --> crates/coder-access/src/protocol.rs:1088:19
+     |
+1086 |                 | Self::DecideHire { .. }
+     |                   ----------------------- matches all the relevant values
+1087 |                 | Self::ProposeHire { .. }
+1088 |                 | Self::DecideHire { .. }
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: `coder-access` (lib) generated 4 warnings
+warning: unused `std::result::Result` in tuple element 1 that must be used
+    --> crates/verse-pbr/src/pbr/textured.rs:1445:13
+     |
+1445 |             checked.remove(0);
+     |             ^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+     = note: `#[warn(unused_must_use)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-pbr` (lib) generated 1 warning
+warning: unused import: `self`
+ --> crates/verse-zone-everglade/src/zones/everglade/sales_floor.rs:4:14
+  |
+4 |     layout::{self, Board, agora},
+  |              ^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-zone-everglade` (lib) generated 1 warning (run `cargo fix --lib -p verse-zone-everglade` to apply 1 suggestion)
+   Compiling coder v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/coder)
+warning: type `sales::State` is more private than the item `retire_lead`
+   --> crates/coder/src/task/sales/claims/helpers.rs:9:1
+    |
+  9 | pub(crate) fn retire_lead(state: &mut super::super::State, lead: &str) {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ function `retire_lead` is reachable at visibility `pub(crate)`
+    |
+note: but type `sales::State` is only usable at visibility `pub(self)`
+   --> crates/coder/src/task/sales.rs:288:1
+    |
+288 | struct State {
+    | ^^^^^^^^^^^^
+    = note: `#[warn(private_interfaces)]` on by default
+
+warning: type `sales::agents::native::Native` is more private than the item `helpers::<impl sales::Store>::validate_sales_helper_artifacts_with_native`
+   --> crates/coder/src/task/sales/claims/helpers.rs:388:5
+    |
+388 | /     pub(crate) fn validate_sales_helper_artifacts_with_native(
+389 | |         &self,
+390 | |         lead: &str,
+391 | |         assignment: &str,
+...   |
+395 | |         native: &agents::native::Native,
+396 | |     ) -> Result<()> {
+    | |___________________^ method `helpers::<impl sales::Store>::validate_sales_helper_artifacts_with_native` is reachable at visibility `pub(crate)`
+    |
+note: but type `sales::agents::native::Native` is only usable at visibility `pub(in crate::task::sales)`
+   --> crates/coder/src/task/sales/agents/native.rs:7:1
+    |
+  7 | pub(in crate::task::sales) struct Native {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: method `validate_sales_helper_artifacts` is never used
+   --> crates/coder/src/task/sales/claims/helpers.rs:352:19
+    |
+165 | impl Store {
+    | ---------- method in this implementation
+...
+352 |     pub(crate) fn validate_sales_helper_artifacts(
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `sha256` is never used
+   --> crates/coder/src/task/sales/qualification.rs:181:8
+    |
+ 65 | impl MarkedSuite {
+    | ---------------- method in this implementation
+...
+181 |     fn sha256(&self) -> Result<String> {
+    |        ^^^^^^
+
+warning: `coder` (lib) generated 4 warnings
+   Compiling coder-mobile v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/coder-mobile)
+warning: unused import: `Transport`
+   --> crates/coder-mobile/src/studio_tests.rs:455:64
+    |
+455 |     use verse::zones::everglade::studio::live::{ControlSocket, Transport};
+    |                                                                ^^^^^^^^^
+    |
+    = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+   --> crates/coder-mobile/src/bare_presence_tests.rs:395:9
+    |
+395 |     let mut frame = |scene: &mut Scene, limit: Duration, done: fn(&Scene) -> bool| {
+    |         ----^^^^^
+    |         |
+    |         help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: field `dir` is never read
+   --> crates/coder-mobile/src/chamber.rs:116:9
+    |
+112 | pub(crate) struct Content {
+    |                   ------- field in this struct
+...
+116 |     pub dir: PathBuf,
+    |         ^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: variants `Legacy` and `Grid` are never constructed
+   --> crates/coder-mobile/src/verse_ffi.rs:184:5
+    |
+183 | pub(crate) enum Surface {
+    |                 ------- variants in this enum
+184 |     Legacy(Box<verse::render::Renderer>),
+    |     ^^^^^^
+185 |     Grid(Box<verse::grid_engine::GridEngine>),
+    |     ^^^^
+
+warning: function `engine_content` is never used
+   --> crates/coder-mobile/src/verse_ffi.rs:215:4
+    |
+215 | fn engine_content(scene: &Scene) -> Result<verse::grid_engine::Content, String> {
+    |    ^^^^^^^^^^^^^^
+
+warning: `coder-mobile` (lib test) generated 5 warnings (run `cargo fix --lib -p coder-mobile --tests` to apply 1 suggestion)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 50s
+     Running unittests src/lib.rs (/Users/christopherdavid/work/openagents-target-agent0/debug/deps/coder_mobile-5937c241fa881443)
+
+running 1 test
+test verse_app::bare_presence_tests::bare_world_players_see_each_other_move_and_pausing_stops_publishing ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 137 filtered out; finished in 15.61s
+
+warning: unreachable pattern
+    --> crates/coder-access/src/protocol.rs:1064:19
+     |
+1062 |                 | Self::ProposeHire { .. }
+     |                   ------------------------ matches all the relevant values
+1063 |                 | Self::DecideHire { .. }
+1064 |                 | Self::ProposeHire { .. }
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+     |
+     = note: `#[warn(unreachable_patterns)]` (part of `#[warn(unused)]`) on by default
+
+warning: unreachable pattern
+    --> crates/coder-access/src/protocol.rs:1065:19
+     |
+1063 |                 | Self::DecideHire { .. }
+     |                   ----------------------- matches all the relevant values
+1064 |                 | Self::ProposeHire { .. }
+1065 |                 | Self::DecideHire { .. }
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: unreachable pattern
+    --> crates/coder-access/src/protocol.rs:1087:19
+     |
+1085 |                 | Self::ProposeHire { .. }
+     |                   ------------------------ matches all the relevant values
+1086 |                 | Self::DecideHire { .. }
+1087 |                 | Self::ProposeHire { .. }
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: unreachable pattern
+    --> crates/coder-access/src/protocol.rs:1088:19
+     |
+1086 |                 | Self::DecideHire { .. }
+     |                   ----------------------- matches all the relevant values
+1087 |                 | Self::ProposeHire { .. }
+1088 |                 | Self::DecideHire { .. }
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: `coder-access` (lib) generated 4 warnings
+warning: unused `std::result::Result` in tuple element 1 that must be used
+    --> crates/verse-pbr/src/pbr/textured.rs:1445:13
+     |
+1445 |             checked.remove(0);
+     |             ^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+     = note: `#[warn(unused_must_use)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-pbr` (lib) generated 1 warning
+warning: type `sales::State` is more private than the item `retire_lead`
+   --> crates/coder/src/task/sales/claims/helpers.rs:9:1
+    |
+  9 | pub(crate) fn retire_lead(state: &mut super::super::State, lead: &str) {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ function `retire_lead` is reachable at visibility `pub(crate)`
+    |
+note: but type `sales::State` is only usable at visibility `pub(self)`
+   --> crates/coder/src/task/sales.rs:288:1
+    |
+288 | struct State {
+    | ^^^^^^^^^^^^
+    = note: `#[warn(private_interfaces)]` on by default
+
+warning: type `sales::agents::native::Native` is more private than the item `helpers::<impl sales::Store>::validate_sales_helper_artifacts_with_native`
+   --> crates/coder/src/task/sales/claims/helpers.rs:388:5
+    |
+388 | /     pub(crate) fn validate_sales_helper_artifacts_with_native(
+389 | |         &self,
+390 | |         lead: &str,
+391 | |         assignment: &str,
+...   |
+395 | |         native: &agents::native::Native,
+396 | |     ) -> Result<()> {
+    | |___________________^ method `helpers::<impl sales::Store>::validate_sales_helper_artifacts_with_native` is reachable at visibility `pub(crate)`
+    |
+note: but type `sales::agents::native::Native` is only usable at visibility `pub(in crate::task::sales)`
+   --> crates/coder/src/task/sales/agents/native.rs:7:1
+    |
+  7 | pub(in crate::task::sales) struct Native {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: method `validate_sales_helper_artifacts` is never used
+   --> crates/coder/src/task/sales/claims/helpers.rs:352:19
+    |
+165 | impl Store {
+    | ---------- method in this implementation
+...
+352 |     pub(crate) fn validate_sales_helper_artifacts(
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `sha256` is never used
+   --> crates/coder/src/task/sales/qualification.rs:181:8
+    |
+ 65 | impl MarkedSuite {
+    | ---------------- method in this implementation
+...
+181 |     fn sha256(&self) -> Result<String> {
+    |        ^^^^^^
+
+warning: `coder` (lib) generated 4 warnings
+warning: unused import: `self`
+ --> crates/verse-zone-everglade/src/zones/everglade/sales_floor.rs:4:14
+  |
+4 |     layout::{self, Board, agora},
+  |              ^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-zone-everglade` (lib) generated 1 warning (run `cargo fix --lib -p verse-zone-everglade` to apply 1 suggestion)
+warning: unused import: `self`
+ --> crates/verse-imported/src/imported/remote_window.rs:7:23
+  |
+7 |     chamber_session::{self, Note, Session, Stopped},
+  |                       ^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `glam::Vec3`
+  --> crates/verse-imported/src/imported/remote_window.rs:11:5
+   |
+11 | use glam::Vec3;
+   |     ^^^^^^^^^^
+
+warning: `verse-imported` (lib) generated 2 warnings (run `cargo fix --lib -p verse-imported` to apply 2 suggestions)
+   Compiling verse v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 22.03s
+     Running unittests examples/meteor_showcase_capture.rs (/Users/christopherdavid/work/openagents-target-agent0/debug/examples/meteor_showcase_capture-7b3195ed047fe10d)
+
+running 9 tests
+test tests::bounded_submission_keeps_diagnostics_and_dense_artifacts_serial ... ok
+test tests::rebuild_capture_selects_pristine_pixels_before_the_primary_render ... ok
+test tests::paired_mean_interval_retains_correlated_noise_and_every_frame ... ok
+test tests::timestamp_diagnostics_are_explicit_or_required_by_comparisons ... ok
+test tests::selective_readback_covers_every_saved_frame_and_retires_automatic_shots ... ok
+test tests::video_legacy_and_temporal_policies_read_every_frame ... ok
+test tests::paired_bake_deliveries_are_independent_and_match_each_revision ... ok
+test tests::cadence_retains_admission_and_tail_cost_without_estimating_overlap ... ok
+test tests::completion_budget_does_not_turn_invalid_gpu_queries_into_gpu_costs ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+warning: unreachable pattern
+    --> crates/coder-access/src/protocol.rs:1064:19
+     |
+1062 |                 | Self::ProposeHire { .. }
+     |                   ------------------------ matches all the relevant values
+1063 |                 | Self::DecideHire { .. }
+1064 |                 | Self::ProposeHire { .. }
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+     |
+     = note: `#[warn(unreachable_patterns)]` (part of `#[warn(unused)]`) on by default
+
+warning: unreachable pattern
+    --> crates/coder-access/src/protocol.rs:1065:19
+     |
+1063 |                 | Self::DecideHire { .. }
+     |                   ----------------------- matches all the relevant values
+1064 |                 | Self::ProposeHire { .. }
+1065 |                 | Self::DecideHire { .. }
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: unreachable pattern
+    --> crates/coder-access/src/protocol.rs:1087:19
+     |
+1085 |                 | Self::ProposeHire { .. }
+     |                   ------------------------ matches all the relevant values
+1086 |                 | Self::DecideHire { .. }
+1087 |                 | Self::ProposeHire { .. }
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: unreachable pattern
+    --> crates/coder-access/src/protocol.rs:1088:19
+     |
+1086 |                 | Self::DecideHire { .. }
+     |                   ----------------------- matches all the relevant values
+1087 |                 | Self::ProposeHire { .. }
+1088 |                 | Self::DecideHire { .. }
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: `coder-access` (lib) generated 4 warnings
+warning: unused `std::result::Result` in tuple element 1 that must be used
+    --> crates/verse-pbr/src/pbr/textured.rs:1445:13
+     |
+1445 |             checked.remove(0);
+     |             ^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+     = note: `#[warn(unused_must_use)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-pbr` (lib) generated 1 warning
+warning: type `sales::State` is more private than the item `retire_lead`
+   --> crates/coder/src/task/sales/claims/helpers.rs:9:1
+    |
+  9 | pub(crate) fn retire_lead(state: &mut super::super::State, lead: &str) {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ function `retire_lead` is reachable at visibility `pub(crate)`
+    |
+note: but type `sales::State` is only usable at visibility `pub(self)`
+   --> crates/coder/src/task/sales.rs:288:1
+    |
+288 | struct State {
+    | ^^^^^^^^^^^^
+    = note: `#[warn(private_interfaces)]` on by default
+
+warning: type `sales::agents::native::Native` is more private than the item `helpers::<impl sales::Store>::validate_sales_helper_artifacts_with_native`
+   --> crates/coder/src/task/sales/claims/helpers.rs:388:5
+    |
+388 | /     pub(crate) fn validate_sales_helper_artifacts_with_native(
+389 | |         &self,
+390 | |         lead: &str,
+391 | |         assignment: &str,
+...   |
+395 | |         native: &agents::native::Native,
+396 | |     ) -> Result<()> {
+    | |___________________^ method `helpers::<impl sales::Store>::validate_sales_helper_artifacts_with_native` is reachable at visibility `pub(crate)`
+    |
+note: but type `sales::agents::native::Native` is only usable at visibility `pub(in crate::task::sales)`
+   --> crates/coder/src/task/sales/agents/native.rs:7:1
+    |
+  7 | pub(in crate::task::sales) struct Native {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: method `validate_sales_helper_artifacts` is never used
+   --> crates/coder/src/task/sales/claims/helpers.rs:352:19
+    |
+165 | impl Store {
+    | ---------- method in this implementation
+...
+352 |     pub(crate) fn validate_sales_helper_artifacts(
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `sha256` is never used
+   --> crates/coder/src/task/sales/qualification.rs:181:8
+    |
+ 65 | impl MarkedSuite {
+    | ---------------- method in this implementation
+...
+181 |     fn sha256(&self) -> Result<String> {
+    |        ^^^^^^
+
+warning: `coder` (lib) generated 4 warnings
+warning: unused import: `self`
+ --> crates/verse-zone-everglade/src/zones/everglade/sales_floor.rs:4:14
+  |
+4 |     layout::{self, Board, agora},
+  |              ^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-zone-everglade` (lib) generated 1 warning (run `cargo fix --lib -p verse-zone-everglade` to apply 1 suggestion)
+warning: unused import: `self`
+ --> crates/verse-imported/src/imported/remote_window.rs:7:23
+  |
+7 |     chamber_session::{self, Note, Session, Stopped},
+  |                       ^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `glam::Vec3`
+  --> crates/verse-imported/src/imported/remote_window.rs:11:5
+   |
+11 | use glam::Vec3;
+   |     ^^^^^^^^^^
+
+warning: `verse-imported` (lib) generated 2 warnings (run `cargo fix --lib -p verse-imported` to apply 2 suggestions)
+   Compiling verse v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 14.61s
+warning: unreachable pattern
+    --> crates/coder-access/src/protocol.rs:1064:19
+     |
+1062 |                 | Self::ProposeHire { .. }
+     |                   ------------------------ matches all the relevant values
+1063 |                 | Self::DecideHire { .. }
+1064 |                 | Self::ProposeHire { .. }
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+     |
+     = note: `#[warn(unreachable_patterns)]` (part of `#[warn(unused)]`) on by default
+
+warning: unreachable pattern
+    --> crates/coder-access/src/protocol.rs:1065:19
+     |
+1063 |                 | Self::DecideHire { .. }
+     |                   ----------------------- matches all the relevant values
+1064 |                 | Self::ProposeHire { .. }
+1065 |                 | Self::DecideHire { .. }
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: unreachable pattern
+    --> crates/coder-access/src/protocol.rs:1087:19
+     |
+1085 |                 | Self::ProposeHire { .. }
+     |                   ------------------------ matches all the relevant values
+1086 |                 | Self::DecideHire { .. }
+1087 |                 | Self::ProposeHire { .. }
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: unreachable pattern
+    --> crates/coder-access/src/protocol.rs:1088:19
+     |
+1086 |                 | Self::DecideHire { .. }
+     |                   ----------------------- matches all the relevant values
+1087 |                 | Self::ProposeHire { .. }
+1088 |                 | Self::DecideHire { .. }
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: `coder-access` (lib) generated 4 warnings
+   Compiling verse-pbr v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-pbr)
+   Compiling acp-client v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/acp-client)
+   Compiling coder v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/coder)
+   Compiling verse-host v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-host)
+   Compiling microcoder-loop v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/microcoder-loop)
+   Compiling coder-delegate v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/coder-delegate)
+   Compiling verse-core v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-core)
+   Compiling verse-zone-crypt v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-zone-crypt)
+   Compiling verse-imported v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-imported)
+   Compiling verse-zone-lab v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-zone-lab)
+   Compiling verse-zone-lagrange v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-zone-lagrange)
+   Compiling verse-gym v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-gym)
+warning: unused `std::result::Result` in tuple element 1 that must be used
+    --> crates/verse-pbr/src/pbr/textured.rs:1445:13
+     |
+1445 |             checked.remove(0);
+     |             ^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+     = note: `#[warn(unused_must_use)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-pbr` (lib) generated 1 warning
+warning: unused import: `self`
+ --> crates/verse-imported/src/imported/remote_window.rs:7:23
+  |
+7 |     chamber_session::{self, Note, Session, Stopped},
+  |                       ^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `glam::Vec3`
+  --> crates/verse-imported/src/imported/remote_window.rs:11:5
+   |
+11 | use glam::Vec3;
+   |     ^^^^^^^^^^
+
+warning: `verse-imported` (lib) generated 2 warnings (run `cargo fix --lib -p verse-imported` to apply 2 suggestions)
+   Compiling verse-zone-everglade v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-zone-everglade)
+   Compiling terminal-studio v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/terminal-studio)
+   Compiling verse-zone-grove v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-zone-grove)
+   Compiling verse-zone-water v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-zone-water)
+   Compiling verse v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse)
+warning: unused import: `self`
+ --> crates/verse-zone-everglade/src/zones/everglade/sales_floor.rs:4:14
+  |
+4 |     layout::{self, Board, agora},
+  |              ^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-zone-everglade` (lib) generated 1 warning (run `cargo fix --lib -p verse-zone-everglade` to apply 1 suggestion)
+warning: type `sales::State` is more private than the item `retire_lead`
+   --> crates/coder/src/task/sales/claims/helpers.rs:9:1
+    |
+  9 | pub(crate) fn retire_lead(state: &mut super::super::State, lead: &str) {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ function `retire_lead` is reachable at visibility `pub(crate)`
+    |
+note: but type `sales::State` is only usable at visibility `pub(self)`
+   --> crates/coder/src/task/sales.rs:288:1
+    |
+288 | struct State {
+    | ^^^^^^^^^^^^
+    = note: `#[warn(private_interfaces)]` on by default
+
+warning: type `sales::agents::native::Native` is more private than the item `helpers::<impl sales::Store>::validate_sales_helper_artifacts_with_native`
+   --> crates/coder/src/task/sales/claims/helpers.rs:388:5
+    |
+388 | /     pub(crate) fn validate_sales_helper_artifacts_with_native(
+389 | |         &self,
+390 | |         lead: &str,
+391 | |         assignment: &str,
+...   |
+395 | |         native: &agents::native::Native,
+396 | |     ) -> Result<()> {
+    | |___________________^ method `helpers::<impl sales::Store>::validate_sales_helper_artifacts_with_native` is reachable at visibility `pub(crate)`
+    |
+note: but type `sales::agents::native::Native` is only usable at visibility `pub(in crate::task::sales)`
+   --> crates/coder/src/task/sales/agents/native.rs:7:1
+    |
+  7 | pub(in crate::task::sales) struct Native {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: method `validate_sales_helper_artifacts` is never used
+   --> crates/coder/src/task/sales/claims/helpers.rs:352:19
+    |
+165 | impl Store {
+    | ---------- method in this implementation
+...
+352 |     pub(crate) fn validate_sales_helper_artifacts(
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `sha256` is never used
+   --> crates/coder/src/task/sales/qualification.rs:181:8
+    |
+ 65 | impl MarkedSuite {
+    | ---------------- method in this implementation
+...
+181 |     fn sha256(&self) -> Result<String> {
+    |        ^^^^^^
+
+warning: `coder` (lib) generated 4 warnings
+    Finished `release` profile [optimized] target(s) in 1m 52s

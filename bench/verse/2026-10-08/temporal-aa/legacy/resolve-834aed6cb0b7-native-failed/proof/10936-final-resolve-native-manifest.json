@@ -1,0 +1,17 @@
+[
+  {
+    "source": "834aed6cb0b79c80fbd009c3caa51c78dba06628",
+    "command": [
+      "/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse_pbr-54cd3c83fbd60abf",
+      "pbr::gpu::reactive_lit_tests::photo_sprite_mrt_matches_color_and_rejects_hidden_or_covered_emission",
+      "--ignored",
+      "--exact",
+      "--test-threads=1"
+    ],
+    "test": "pbr::gpu::reactive_lit_tests::photo_sprite_mrt_matches_color_and_rejects_hidden_or_covered_emission",
+    "binary_sha256": "c52cebcad233c06aff157815f0b47d38b498df87a5b64482d8ba96c4b175d12b",
+    "start_unix": 1791496201.461186,
+    "exit": 101,
+    "end_unix": 1791496201.989335
+  }
+]

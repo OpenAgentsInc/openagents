@@ -1,0 +1,17 @@
+{
+  "base_pack": {
+    "path": "/Users/christopherdavid/.codex/worktrees/10907-budgeted-relight/openagents/assets/verse/everglade/a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f.vtp",
+    "bytes": 10636202,
+    "sha256": "a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f"
+  },
+  "kit": {
+    "path": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp",
+    "bytes": 21467658,
+    "sha256": "c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e"
+  },
+  "layers": {
+    "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/b2-verification/14ae7f75e9ce4f81483f6f44369753545cb2cab892177607438b3077ebbbae23.vlay",
+    "bytes": 51682623,
+    "sha256": "14ae7f75e9ce4f81483f6f44369753545cb2cab892177607438b3077ebbbae23"
+  }
+}

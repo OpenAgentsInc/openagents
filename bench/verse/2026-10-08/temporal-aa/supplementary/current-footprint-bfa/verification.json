@@ -1,0 +1,28 @@
+{
+  "schema": "openagents.verse.temporal-visual-attempt.v1",
+  "status": "visual_failed",
+  "source": "bfa66f3b07e8081d06bb084fa1e348d946684986",
+  "binary_sha256": "cc0377dc974ee3530884aee951de9b365c29b177567e83b7af8c0b42db3f587b",
+  "profile": "dev with optimized dependencies",
+  "features": [
+    "capture",
+    "temporal-diagnostics"
+  ],
+  "timing_acceptance_available": false,
+  "supersedes_top_level_acceptance": false,
+  "simulation_frames": 540,
+  "sequence_frames": [
+    464,
+    476
+  ],
+  "command_manifest": "proof/10936-current-footprint-manifest.json",
+  "gpu_receipt": "proof/10936-current-footprint-gpu.json",
+  "report": "capture.json",
+  "source_images": "source-images.json",
+  "observations": "audit/observations.json",
+  "limitations": [
+    "GPU-only run overlaps CPU work; additional snapshot/readbacks exclude timing acceptance",
+    "Display-normalized PNGs are quantized; no raw float equality or exact temporal duration claim",
+    "All original PNG identities remain in the inventory; selected full originals and native crops remain in Git"
+  ]
+}

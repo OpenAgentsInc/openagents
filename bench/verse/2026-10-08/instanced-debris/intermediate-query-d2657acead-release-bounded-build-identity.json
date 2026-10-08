@@ -1,0 +1,18 @@
+{
+  "source": "d2657acead9110c2ecd8b477386820a81bf5483f",
+  "profile": "release",
+  "binary_sha256": "dfe4abfca17ac593515a6cd4c5eb6fa93b614ebc394ea9ea8a79f5a61ac19025",
+  "build_arguments": [
+    "cargo",
+    "build",
+    "--release",
+    "-p",
+    "verse",
+    "--example",
+    "meteor_showcase_capture",
+    "--features",
+    "capture"
+  ],
+  "build_lease": "10937-query-release-build-lease.json",
+  "checks_log": "10937-query-release-build.log"
+}

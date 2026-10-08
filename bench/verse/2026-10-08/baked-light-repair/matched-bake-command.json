@@ -1,0 +1,36 @@
+{
+  "source": "9967c94cef19031ff91eac6d8cd222ab7c3024eb",
+  "profile": "dev with verse-bake and its ray/geometry dependencies optimized by pinned workspace profile",
+  "binary_sha256": "25f0fe598934ab9a9aca8ee8df1e5963a8a38b542be00627801cfdf957b335d5",
+  "capture_binary_sha256": "787dc57f5cd988a9a4c882ed04b13a709c8af2d13689427bde0f94e7782d20da",
+  "command": [
+    "/Users/christopherdavid/work/openagents-target-agent2/debug/verse-bake",
+    "--everglade",
+    "/Users/christopherdavid/.codex/worktrees/10907-budgeted-relight/openagents/assets/verse/everglade/a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f.vtp",
+    "--layers",
+    "--backend",
+    "cpu",
+    "--threads",
+    "12",
+    "--vertex-rays",
+    "128",
+    "--probe-rays",
+    "256",
+    "--bounces",
+    "2",
+    "--sun-rays",
+    "4",
+    "--seed",
+    "1592593228",
+    "--out",
+    "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-matched-bake"
+  ],
+  "environment": {
+    "VERSE_QUALITY": "high",
+    "VERSE_HOME": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-matched-bake-cache",
+    "VERSE_KIT_PACK": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp"
+  },
+  "start_unix": 1791482403.191008,
+  "exit": 0,
+  "end_unix": 1791482973.934447
+}

@@ -1,0 +1,51 @@
+{
+  "source": "51e1ab25192e95038edcee1f548355c11df5ff95",
+  "binary_sha256": "56850d5d26c594dfd9e2f51c3d0bb8ae13f0c23a15a1a2db4fc1072b693b01df",
+  "screenshots": {
+    "destruction-0360.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-receiver-inspection/destruction-0360.png",
+      "bytes": 2450366,
+      "sha256": "67c11c653be5dbdadf4512bd25b54c4028294d3ac90ca1c20d9c7b030189b284"
+    },
+    "destruction-0480.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-receiver-inspection/destruction-0480.png",
+      "bytes": 2392475,
+      "sha256": "088d257d2e79b47653117ec7e9c7c36811008ac1cefc41395f7fcaf676f9ecaa"
+    },
+    "destruction-0600.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-receiver-inspection/destruction-0600.png",
+      "bytes": 2425195,
+      "sha256": "deb53cf8f44f70cfb9b86afa69c00c6ce6b6c9d2f9f2f323f30fad407d4e42ed"
+    },
+    "destruction-0900-receivers.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-receiver-inspection/destruction-0900-receivers.png",
+      "bytes": 2589506,
+      "sha256": "bafbf014234c98c4df4133df0a0a73b7928f5dacb1f8b0be370d46f6df9ccbd2"
+    },
+    "destruction-0900.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-receiver-inspection/destruction-0900.png",
+      "bytes": 2586630,
+      "sha256": "b9362c700c432bfeb476ac9b69df9a5e1320753a2d0f71811764f7c33822ba01"
+    },
+    "destruction-pristine-receivers.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-receiver-inspection/destruction-pristine-receivers.png",
+      "bytes": 2214454,
+      "sha256": "b507ff131b7a9b218a1db127f0f6a1d674bf8d1aacdff2a375eb13c1a6ec1845"
+    },
+    "destruction-pristine.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-receiver-inspection/destruction-pristine.png",
+      "bytes": 2257960,
+      "sha256": "5c4785ceb80399a6d8abdc829769b7d130b9314887ca3ab95d3cf2212d2b7f94"
+    },
+    "destruction-restored-receivers.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-receiver-inspection/destruction-restored-receivers.png",
+      "bytes": 2568954,
+      "sha256": "78be2c6e28993d2e618fab1440123be9c4680b2f359d0fcc9401a5bab0612a49"
+    },
+    "destruction-restored.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-receiver-inspection/destruction-restored.png",
+      "bytes": 2606951,
+      "sha256": "ff0ab18e40d7e37e433aef2207f164c970e60eb8b4524ffbeff142d83c478bec"
+    }
+  }
+}

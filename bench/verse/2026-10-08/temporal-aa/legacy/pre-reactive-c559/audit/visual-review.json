@@ -1,0 +1,97 @@
+{
+  "schema": "openagents.verse.temporal-aa.visual-review.v1",
+  "source": "46cf41188b8067f10a08a2eb2a49466446b1760d",
+  "asset_sha256": "c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e",
+  "pixel_size": [
+    1920,
+    1080
+  ],
+  "fps": 60,
+  "method": "Matched on/off pairs from independent histories at the same simulation frame. PNG sheets use native-resolution source crops, TAA off left and on right. Pan/orbit lossless WebP uses 67 ms per frame, approximately four times slower than capture; no new renders were made. Meteor detail images use 4x nearest-neighbor enlargement of the exact crop; no filtering or synthesis is applied.",
+  "pan_orbit": {
+    "frames": [
+      120,
+      135
+    ],
+    "time_seconds": [
+      2,
+      2.25
+    ],
+    "camera_paths": [
+      "pan",
+      "orbit"
+    ],
+    "crops": {
+      "pan": [
+        720,
+        375,
+        1030,
+        490
+      ],
+      "orbit": [
+        590,
+        320,
+        960,
+        450
+      ]
+    },
+    "observations": [
+      "TAA smooths the visible pixel stepping along the roof ridge, diagonal eaves and thin window bars in both paths. Roof texture and timber detail are visibly softer.",
+      "The reviewed sequence shows no observed oscillating doubled house edge, halo or temporal trail. This is a short visual assessment rather than a numerical edge-crawl metric."
+    ]
+  },
+  "moving_debris": {
+    "frames": [
+      469,
+      484
+    ],
+    "time_seconds": [
+      7.816666666666666,
+      8.066666666666666
+    ],
+    "qualities": [
+      "high",
+      "medium"
+    ],
+    "camera_path": "director",
+    "crops": {
+      "debris": [
+        730,
+        275,
+        1420,
+        540
+      ],
+      "meteor": [
+        440,
+        225,
+        710,
+        430
+      ],
+      "meteor_detail": [
+        490,
+        260,
+        675,
+        430
+      ]
+    },
+    "observations": [
+      "Detached roof, wall, beam and window silhouettes change position across consecutive frames; no clearly separated multi-frame duplicate debris silhouette is visible in the reviewed High or Medium sheets.",
+      "The left meteor head moves rapidly through frames 469\u2013472. Magnified TAA-on frames 470\u2013472 show a head-shaped outline inside the emissive ribbon that is absent from TAA-off. A precise one-frame versus multi-frame persistence attribution is not established without matching its reprojected earlier position. The physical ribbon itself is present in both variants."
+    ],
+    "limits": [
+      "Fire, smoke, overlapping geometry and bloom hide faint or subpixel ghosts. These sixteen frames do not measure ghost length or cover all velocities, materials, disocclusions, camera cuts or gameplay views.",
+      "Saved capture metadata names the scripted camera path; exact resulting view matrices, including any camera shake, are not retained. Both renderers consume the identical current view/state in the paired method."
+    ],
+    "meteor_duration_acceptance": "unestablished; observed TAA-only head outline requires caution"
+  },
+  "source_frame_hashes": "audit/source-frame-hashes.json",
+  "source_review": {
+    "source": "46cf41188b8067f10a08a2eb2a49466446b1760d",
+    "observed_paths": [
+      "crates/verse-zone-everglade/src/zones/everglade/demolition/meteor.rs:1315",
+      "crates/verse-zone-everglade/src/zones/everglade/demolition/meteor.rs:1949",
+      "crates/verse/src/render.rs:3194"
+    ],
+    "inference": "Falling meteor rocks are drawn into a per-frame Mesh, while the TAA MotionDraw list is built from InstancedFigure buffers. This appears to leave meteor heads with camera-only reprojection, unlike instanced structural chunks; it is a plausible cause of the TAA-only outline."
+  }
+}

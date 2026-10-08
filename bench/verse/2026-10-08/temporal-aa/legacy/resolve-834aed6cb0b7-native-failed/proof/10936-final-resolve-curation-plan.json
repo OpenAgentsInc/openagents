@@ -1,0 +1,123 @@
+{
+  "source": "834aed6cb0b79c80fbd009c3caa51c78dba06628",
+  "assets": {
+    "kit": {
+      "path": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp",
+      "sha256": "c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e",
+      "bytes": 21467658
+    },
+    "base_pack": {
+      "path": "/Users/christopherdavid/.codex/worktrees/bb65/openagents/assets/verse/everglade/a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f.vtp",
+      "sha256": "a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f",
+      "bytes": 10636202
+    }
+  },
+  "cases": {
+    "high-dev": {
+      "manifest": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-resolve-high-dev-manifest.json",
+      "job": "10936-final-resolve-high-dev",
+      "prefix": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-resolve-high-dev",
+      "quiet_receipt": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-resolve-high-dev-quiet.json",
+      "gpu_receipt": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-resolve-high-dev-gpu.json",
+      "profile": "dev",
+      "binary_sha256": "21d2b5b23e67c22190a73270abb7f70b8bb718bc012277ecaf2481bdb6d68846"
+    },
+    "high-release": {
+      "manifest": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-resolve-high-release-manifest.json",
+      "job": "10936-final-resolve-high-release",
+      "prefix": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-resolve-high-release",
+      "quiet_receipt": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-resolve-high-release-quiet.json",
+      "gpu_receipt": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-resolve-high-release-gpu.json",
+      "profile": "release",
+      "binary_sha256": "2141765f539590db43442205d5857dcdc9f8ee8adb5fc75c62e68fd625c17ff7"
+    },
+    "high-paired": {
+      "manifest": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-resolve-high-paired-manifest.json",
+      "job": "10936-final-resolve-high-paired",
+      "prefix": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-resolve-high-paired",
+      "quiet_receipt": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-resolve-high-paired-quiet.json",
+      "gpu_receipt": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-resolve-high-paired-gpu.json",
+      "profile": "release",
+      "binary_sha256": "2141765f539590db43442205d5857dcdc9f8ee8adb5fc75c62e68fd625c17ff7"
+    },
+    "medium-paired": {
+      "manifest": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-resolve-medium-paired-manifest.json",
+      "job": "10936-final-resolve-medium-paired",
+      "prefix": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-resolve-medium-paired",
+      "quiet_receipt": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-resolve-medium-paired-quiet.json",
+      "gpu_receipt": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-resolve-medium-paired-gpu.json",
+      "profile": "release",
+      "binary_sha256": "2141765f539590db43442205d5857dcdc9f8ee8adb5fc75c62e68fd625c17ff7"
+    },
+    "pan-paired": {
+      "manifest": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-resolve-pan-paired-manifest.json",
+      "job": "10936-final-resolve-pan-paired",
+      "prefix": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-resolve-pan-paired",
+      "quiet_receipt": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-resolve-pan-paired-quiet.json",
+      "gpu_receipt": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-resolve-pan-paired-gpu.json",
+      "profile": "release",
+      "binary_sha256": "2141765f539590db43442205d5857dcdc9f8ee8adb5fc75c62e68fd625c17ff7"
+    },
+    "orbit-paired": {
+      "manifest": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-resolve-orbit-paired-manifest.json",
+      "job": "10936-final-resolve-orbit-paired",
+      "prefix": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-resolve-orbit-paired",
+      "quiet_receipt": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-resolve-orbit-paired-quiet.json",
+      "gpu_receipt": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-resolve-orbit-paired-gpu.json",
+      "profile": "release",
+      "binary_sha256": "2141765f539590db43442205d5857dcdc9f8ee8adb5fc75c62e68fd625c17ff7"
+    }
+  },
+  "proofs": {
+    "10936-final-resolve-runner.py": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-resolve-runner.py",
+    "10936-final-resolve-build-binding.json": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-resolve-build-binding.json",
+    "10936-final-resolve-high-dev.log": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-resolve-high-dev.log",
+    "10936-final-resolve-high-dev-check.json": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-resolve-high-dev-check.json",
+    "10936-final-resolve-high-release.log": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-resolve-high-release.log",
+    "10936-final-resolve-high-release-check.json": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-resolve-high-release-check.json",
+    "10936-final-resolve-high-paired.log": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-resolve-high-paired.log",
+    "10936-final-resolve-high-paired-check.json": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-resolve-high-paired-check.json",
+    "10936-final-resolve-medium-paired.log": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-resolve-medium-paired.log",
+    "10936-final-resolve-medium-paired-check.json": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-resolve-medium-paired-check.json",
+    "10936-final-resolve-pan-paired.log": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-resolve-pan-paired.log",
+    "10936-final-resolve-pan-paired-check.json": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-resolve-pan-paired-check.json",
+    "10936-final-resolve-orbit-paired.log": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-resolve-orbit-paired.log",
+    "10936-final-resolve-orbit-paired-check.json": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-resolve-orbit-paired-check.json",
+    "10936-final-resolve-dev-build.log": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-resolve-dev-build.log",
+    "10936-final-resolve-dev-build-lease.json": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-resolve-dev-build-lease.json",
+    "10936-final-resolve-release-build.log": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-resolve-release-build.log",
+    "10936-final-resolve-release-build-lease.json": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-resolve-release-build-lease.json"
+  },
+  "crops": {
+    "high-paired": [
+      480,
+      200,
+      900,
+      670
+    ],
+    "medium-paired": [
+      480,
+      200,
+      900,
+      670
+    ],
+    "pan-paired": [
+      700,
+      360,
+      1200,
+      740
+    ],
+    "orbit-paired": [
+      700,
+      360,
+      1200,
+      740
+    ]
+  },
+  "preparation_status": "pending_captures_and_case_receipts",
+  "acceptance": {
+    "visual": null,
+    "timing": null,
+    "promotion_authorized": false
+  }
+}

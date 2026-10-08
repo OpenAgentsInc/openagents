@@ -1,0 +1,150 @@
+{
+  "checked": 29,
+  "files": {
+    "reports/pan.json": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-pan-frustum-release-paired/capture.json",
+      "sha256": "a059516263b5efd8fa91a138b19c5c9934593a389f55f5cf4a749d250f355fed",
+      "identical": true
+    },
+    "reports/orbit.json": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-orbit-frustum-release-paired/capture.json",
+      "sha256": "470119c6dc8623b1c2c5ef287ae9b1094c50a3966c7eb68cf6e30e5404eee516",
+      "identical": true
+    },
+    "reports/high.json": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-high-frustum-release-paired/capture.json",
+      "sha256": "a514f1ffd215fa9d41f3fcceffa9d13a5ec4bfe969624cd6f170a351abd999aa",
+      "identical": true
+    },
+    "reports/medium.json": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-medium-frustum-full-release-paired/capture.json",
+      "sha256": "d0f67ae946212c478aa1a14d5ce8105715b48885effb533b489fdf1f3263ea85",
+      "identical": true
+    },
+    "reports/medium-short-8s.json": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-medium-frustum-release-paired/capture.json",
+      "sha256": "f8977468444db2d7ab4204c0068ecf249e46ed72b07ef0d7e2e85fe919d0bd33",
+      "identical": true
+    },
+    "selected/medium-ground-smoke-taa-on.png": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-medium-frustum-full-release-paired/ground-smoke-taa-on.png",
+      "sha256": "21c751b42f222fdf44ee920b8345278b48115dca0db2f5085089447f1d4002a0",
+      "identical": true
+    },
+    "selected/high-frame0484-taa-on.png": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-high-frustum-release-paired/frames/0484-taa-on.png",
+      "sha256": "5c0f79e888bffdf7ad742cb57985f5368513e8bd179552d3b38c0f1854ad7474",
+      "identical": true
+    },
+    "selected/high-ground-smoke-taa-off.png": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-high-frustum-release-paired/ground-smoke-taa-off.png",
+      "sha256": "ccd10eaa305a2056148b16e130285413e141543a5ea00676979e09364b475d48",
+      "identical": true
+    },
+    "selected/high-establishing-taa-on.png": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-high-frustum-release-paired/establishing-taa-on.png",
+      "sha256": "bc854ec666ec7f64d47dc87c5cc630f8846c857e7a6231a3ba2ca0302ce74963",
+      "identical": true
+    },
+    "selected/high-aftermath-taa-on.png": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-high-frustum-release-paired/aftermath-taa-on.png",
+      "sha256": "26de12d81efc92c778656ca4d38bf6fbc8b00c55e723a2c5249b785493a0598d",
+      "identical": true
+    },
+    "selected/high-ground-smoke-taa-on.png": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-high-frustum-release-paired/ground-smoke-taa-on.png",
+      "sha256": "e9a8cb4e0319d1c7459f89d78fb00871c279373d028639123bc38d325a80339d",
+      "identical": true
+    },
+    "selected/high-impact-taa-off.png": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-high-frustum-release-paired/impact-taa-off.png",
+      "sha256": "6dc68515da3f08019c9759f9f2ed297b0f29954e3ea1bd987a19199c80fc9fba",
+      "identical": true
+    },
+    "selected/medium-establishing-taa-on.png": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-medium-frustum-full-release-paired/establishing-taa-on.png",
+      "sha256": "c66bd1e4bf03b7b29b31d425c9870da0300587a20cf21a29f5e5c9d311645b27",
+      "identical": true
+    },
+    "selected/medium-ground-smoke-taa-off.png": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-medium-frustum-full-release-paired/ground-smoke-taa-off.png",
+      "sha256": "4c4d4494be242d10f1440f3aba1cb2785d564c11cf9a774b85a95a9d65a4bb88",
+      "identical": true
+    },
+    "selected/high-frame0484-taa-off.png": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-high-frustum-release-paired/frames/0484-taa-off.png",
+      "sha256": "0b494ec1d7d1bcc1b6cdf8ce121c16428888ed1ae9d6a727007bee68c6ded110",
+      "identical": true
+    },
+    "selected/high-aftermath-taa-off.png": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-high-frustum-release-paired/aftermath-taa-off.png",
+      "sha256": "2dd6c059ef056308f92e9c61dc93f4acafabf409cc731eea758187cc94269e4c",
+      "identical": true
+    },
+    "selected/medium-impact-taa-on.png": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-medium-frustum-full-release-paired/impact-taa-on.png",
+      "sha256": "3ef73824ae2ded6982f5ab23e009b246c27f2308ca45782ef1cf29125abb7857",
+      "identical": true
+    },
+    "selected/medium-frame0484-taa-off.png": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-medium-frustum-full-release-paired/frames/0484-taa-off.png",
+      "sha256": "783697d7e5a53b5e682aba760a4c70dfc6765b1256792eb78c314dbc3d775782",
+      "identical": true
+    },
+    "selected/medium-aftermath-taa-off.png": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-medium-frustum-full-release-paired/aftermath-taa-off.png",
+      "sha256": "3dac2d1b5fe78b423b0365b3c359a8fd71008cc5f07a59d821cb82e474ed6ffe",
+      "identical": true
+    },
+    "selected/orbit-frame0120-taa-off.png": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-orbit-frustum-release-paired/frames/0120-taa-off.png",
+      "sha256": "97393a349df975877dc28dcf269a76c3a75afa46e63ee2e9bcde8fa73374e511",
+      "identical": true
+    },
+    "selected/pan-frame0120-taa-on.png": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-pan-frustum-release-paired/frames/0120-taa-on.png",
+      "sha256": "b7fa3655a8a297e5ed8b8edf41beab4fb15cb44324fe02299d09d6d0249379f6",
+      "identical": true
+    },
+    "selected/medium-aftermath-taa-on.png": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-medium-frustum-full-release-paired/aftermath-taa-on.png",
+      "sha256": "824e4307a03d7a59381d5656c443fdd1b10570b8e2e94a380d09a6f00994b02f",
+      "identical": true
+    },
+    "selected/high-establishing-taa-off.png": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-high-frustum-release-paired/establishing-taa-off.png",
+      "sha256": "a348b90fdbea3daa1d977af69950b1350a5d2871268b95c7f4c2649b69726ebd",
+      "identical": true
+    },
+    "selected/pan-frame0120-taa-off.png": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-pan-frustum-release-paired/frames/0120-taa-off.png",
+      "sha256": "98d9954c7e3c3c5a9135a8e249260688ef1d5dc3efabb30642e158d6736a6b3a",
+      "identical": true
+    },
+    "selected/medium-frame0484-taa-on.png": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-medium-frustum-full-release-paired/frames/0484-taa-on.png",
+      "sha256": "474a398da95d8f2f8c5fcb7effa2c91d606a46e11b7e9e2ce57be4f10e286a24",
+      "identical": true
+    },
+    "selected/orbit-frame0120-taa-on.png": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-orbit-frustum-release-paired/frames/0120-taa-on.png",
+      "sha256": "c21239dd04bd3cddab8399c2a0a4ef7ca3c57f9bc74d0a9c8c660020e566d691",
+      "identical": true
+    },
+    "selected/high-impact-taa-on.png": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-high-frustum-release-paired/impact-taa-on.png",
+      "sha256": "9590e1b7943a9e1f90bc5abbe45d1f8fd1366ac78b214e18393d5cc6069b9297",
+      "identical": true
+    },
+    "selected/medium-impact-taa-off.png": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-medium-frustum-full-release-paired/impact-taa-off.png",
+      "sha256": "b8887310627bbb014045c569d56f81d87804b1ea0a6e3102e2777cdf5b52b3a3",
+      "identical": true
+    },
+    "selected/medium-establishing-taa-off.png": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-medium-frustum-full-release-paired/establishing-taa-off.png",
+      "sha256": "68ad91990f521ef051e283cf09fbc57eb7437c22eb3cf1601b3f7e79bbbf9428",
+      "identical": true
+    }
+  }
+}

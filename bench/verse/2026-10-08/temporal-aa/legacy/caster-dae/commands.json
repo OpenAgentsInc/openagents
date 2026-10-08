@@ -1,0 +1,164 @@
+[
+  {
+    "name": "10936-high-caster-release-paired",
+    "profile": "release",
+    "quality": "high",
+    "source": "8e13f4b01c6054fcec09c1e754272189daae49f6",
+    "build_command": [
+      "cargo",
+      "build",
+      "--release",
+      "-p",
+      "verse",
+      "--example",
+      "meteor_showcase_capture",
+      "--features",
+      "capture"
+    ],
+    "environment": {
+      "VERSE_QUALITY": "high",
+      "VERSE_KIT_UNPINNED": "1",
+      "VERSE_KIT_PACK": "/Users/christopherdavid/.openagents/verse/zones-cache/dae1612d4c22438a933c27b406c1e18fe134b13eab8eb5240ddcf5506ffb0b93.vtp"
+    },
+    "binary_sha256": "d8c594aeb82187c86c9a9685ad5fc05acf9a187d10e5a98b4df69c5a07d5989e",
+    "command": [
+      "/Users/christopherdavid/work/openagents-target-agent0/release/examples/meteor_showcase_capture",
+      "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-high-caster-release-paired",
+      "--live",
+      "--settle-light",
+      "--no-video",
+      "--seconds",
+      "16",
+      "--impact-frame",
+      "469",
+      "--smoke-frame",
+      "600",
+      "--compare-temporal-aa",
+      "--sequence",
+      "469:484"
+    ],
+    "start_unix": 1791478807.753484,
+    "exit": 0,
+    "end_unix": 1791478859.576919
+  },
+  {
+    "name": "10936-pan-caster-release-paired",
+    "profile": "release",
+    "quality": "high",
+    "source": "8e13f4b01c6054fcec09c1e754272189daae49f6",
+    "build_command": [
+      "cargo",
+      "build",
+      "--release",
+      "-p",
+      "verse",
+      "--example",
+      "meteor_showcase_capture",
+      "--features",
+      "capture"
+    ],
+    "environment": {
+      "VERSE_QUALITY": "high",
+      "VERSE_KIT_UNPINNED": "1",
+      "VERSE_KIT_PACK": "/Users/christopherdavid/.openagents/verse/zones-cache/dae1612d4c22438a933c27b406c1e18fe134b13eab8eb5240ddcf5506ffb0b93.vtp"
+    },
+    "binary_sha256": "d8c594aeb82187c86c9a9685ad5fc05acf9a187d10e5a98b4df69c5a07d5989e",
+    "command": [
+      "/Users/christopherdavid/work/openagents-target-agent0/release/examples/meteor_showcase_capture",
+      "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-pan-caster-release-paired",
+      "--live",
+      "--settle-light",
+      "--no-video",
+      "--seconds",
+      "8",
+      "--static-houses",
+      "--camera",
+      "pan",
+      "--compare-temporal-aa",
+      "--sequence",
+      "120:135"
+    ],
+    "start_unix": 1791478859.595086,
+    "exit": 0,
+    "end_unix": 1791478887.5451021
+  },
+  {
+    "name": "10936-orbit-caster-release-paired",
+    "profile": "release",
+    "quality": "high",
+    "source": "8e13f4b01c6054fcec09c1e754272189daae49f6",
+    "build_command": [
+      "cargo",
+      "build",
+      "--release",
+      "-p",
+      "verse",
+      "--example",
+      "meteor_showcase_capture",
+      "--features",
+      "capture"
+    ],
+    "environment": {
+      "VERSE_QUALITY": "high",
+      "VERSE_KIT_UNPINNED": "1",
+      "VERSE_KIT_PACK": "/Users/christopherdavid/.openagents/verse/zones-cache/dae1612d4c22438a933c27b406c1e18fe134b13eab8eb5240ddcf5506ffb0b93.vtp"
+    },
+    "binary_sha256": "d8c594aeb82187c86c9a9685ad5fc05acf9a187d10e5a98b4df69c5a07d5989e",
+    "command": [
+      "/Users/christopherdavid/work/openagents-target-agent0/release/examples/meteor_showcase_capture",
+      "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-orbit-caster-release-paired",
+      "--live",
+      "--settle-light",
+      "--no-video",
+      "--seconds",
+      "8",
+      "--static-houses",
+      "--camera",
+      "orbit",
+      "--compare-temporal-aa",
+      "--sequence",
+      "120:135"
+    ],
+    "start_unix": 1791478887.558314,
+    "exit": 0,
+    "end_unix": 1791478908.288241
+  },
+  {
+    "name": "10936-medium-caster-release-paired",
+    "profile": "release",
+    "quality": "medium",
+    "source": "8e13f4b01c6054fcec09c1e754272189daae49f6",
+    "build_command": [
+      "cargo",
+      "build",
+      "--release",
+      "-p",
+      "verse",
+      "--example",
+      "meteor_showcase_capture",
+      "--features",
+      "capture"
+    ],
+    "environment": {
+      "VERSE_QUALITY": "medium",
+      "VERSE_KIT_UNPINNED": "1",
+      "VERSE_KIT_PACK": "/Users/christopherdavid/.openagents/verse/zones-cache/dae1612d4c22438a933c27b406c1e18fe134b13eab8eb5240ddcf5506ffb0b93.vtp"
+    },
+    "binary_sha256": "d8c594aeb82187c86c9a9685ad5fc05acf9a187d10e5a98b4df69c5a07d5989e",
+    "command": [
+      "/Users/christopherdavid/work/openagents-target-agent0/release/examples/meteor_showcase_capture",
+      "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-medium-caster-release-paired",
+      "--live",
+      "--settle-light",
+      "--no-video",
+      "--seconds",
+      "8",
+      "--compare-temporal-aa",
+      "--sequence",
+      "360:375"
+    ],
+    "start_unix": 1791478908.301593,
+    "exit": 0,
+    "end_unix": 1791478932.0295959
+  }
+]

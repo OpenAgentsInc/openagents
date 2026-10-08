@@ -1,0 +1,224 @@
+{
+  "schema": "openagents.verse.root-visual-review.v1",
+  "source": "fb9a5fd280db673926cfd0d649f924da3091a24b",
+  "reviewed_unix": 1791498128.601923,
+  "reviewer": "root",
+  "status": "accepted_reviewed_regions",
+  "reviewed_images": [
+    {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-head-root-review.png",
+      "bytes": 562827,
+      "sha256": "2bb561e4eef4169de20bcded00e5c8872580ce1baec7a5648ab4ca362291b460"
+    },
+    {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-medium-head-root-review.png",
+      "bytes": 574214,
+      "sha256": "17d18812c1315b8621864c0266bda28678bfe9d7cdc53d93d39016a722aff7b2"
+    },
+    {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-pan-120-root-review.png",
+      "bytes": 1226029,
+      "sha256": "ffac7bc51ffb6a4d085f0bcd69adcc1295771593f651836e21cedbc188d27c48"
+    },
+    {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-pan-124-root-review.png",
+      "bytes": 1225699,
+      "sha256": "9cef1fb8acbd48ea75e04cfc4607cfaf7e5778d3a860b41d7e5d702c2233115a"
+    },
+    {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-pan-128-root-review.png",
+      "bytes": 1224390,
+      "sha256": "8a0f45d17795f3a278764a205a5a06298dfad808fb9c91697dbb963e5812bfe7"
+    },
+    {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-pan-132-root-review.png",
+      "bytes": 1225489,
+      "sha256": "f0935ed8f9e06f04cb790d798286aaed14f60bd477ea1eb5f0c270e178150a86"
+    },
+    {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-orbit-120-root-review.png",
+      "bytes": 1217551,
+      "sha256": "102bb1c56cc0db59ff676f7760bb5c9a6a9c821d8377ae7cff3f189536e7f0e5"
+    },
+    {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-orbit-roof-120-root-review.png",
+      "bytes": 1581831,
+      "sha256": "9406ae2c33e1f93eb14d7ef3b56eb3861fcd25f36df967db92a7dd9a21c58687"
+    },
+    {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-orbit-roof-124-root-review.png",
+      "bytes": 1581212,
+      "sha256": "09d22ea74fd80205dcab5249d9e522df640d648205f1cb7824f7be815f32b50a"
+    },
+    {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-orbit-roof-128-root-review.png",
+      "bytes": 1582376,
+      "sha256": "64bd191609299eec943b010047927a77050c58b96ba6cbfe6c920b148a621419"
+    },
+    {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-orbit-roof-132-root-review.png",
+      "bytes": 1584078,
+      "sha256": "352b79cdd6024f2da48a084eae365f0a8df8f9315cc0278a160d4acfac33d888"
+    },
+    {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-debris-467-root-review.png",
+      "bytes": 3309327,
+      "sha256": "cb6c991c4b9f758ee3fc843517e2ba296b4b70edf684e82e8c4b0820b078b2f1"
+    },
+    {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-debris-471-root-review.png",
+      "bytes": 3275868,
+      "sha256": "0aa3be00a8a73bca29a1aba24fa43d5e66480ac00d4bb3623cf443f2b9c16d57"
+    },
+    {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-paired/frames/0471-taa-on.png",
+      "bytes": 1800355,
+      "sha256": "3a095023fd7b719b3dc437b9df496cd251c0233e99092f415455f41e55c48867"
+    },
+    {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-release/aftermath.png",
+      "bytes": 1312300,
+      "sha256": "b797fd0a756981d012da577b1233449e672dc234c7bc2c0ab6a54166f97adbcb"
+    },
+    {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-release/restored.png",
+      "bytes": 1553167,
+      "sha256": "fd6e4bf8352864384a75d72063f34acb86e1b9823e75d9d844884a4ad2f0a360"
+    },
+    {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-pan-paired/frames/0120-taa-on.png",
+      "bytes": 1186160,
+      "sha256": "b7fa3655a8a297e5ed8b8edf41beab4fb15cb44324fe02299d09d6d0249379f6"
+    }
+  ],
+  "prepared_not_reviewed": [
+    {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-orbit-124-root-review.png",
+      "bytes": 1215192,
+      "sha256": "1aa600f01de6a332a9c2f36174d1c9acd0cedbacb8f0856a7ed30671a654f91f"
+    },
+    {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-orbit-128-root-review.png",
+      "bytes": 1213738,
+      "sha256": "b1d8411dbbadc456aed00c06a1165f9e7a4eea00c5304d6a771117689e050fba"
+    },
+    {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-orbit-132-root-review.png",
+      "bytes": 1210981,
+      "sha256": "5c3b8387afda8645fffc80b21120de9f07be3ecef7780d493501be0df3adc1c9"
+    }
+  ],
+  "scope": {
+    "head": {
+      "qualities": [
+        "high",
+        "medium"
+      ],
+      "frames": [
+        470,
+        471,
+        472,
+        473
+      ],
+      "crop": [
+        460,
+        230,
+        700,
+        455
+      ],
+      "display": "2x nearest-neighbor"
+    },
+    "debris": {
+      "quality": "high",
+      "frames": [
+        467,
+        468,
+        469,
+        470,
+        471,
+        472,
+        473,
+        474
+      ],
+      "crop": [
+        760,
+        280,
+        1430,
+        820
+      ],
+      "display": "native pixels"
+    },
+    "pan": {
+      "frames": [
+        120,
+        121,
+        122,
+        123,
+        124,
+        125,
+        126,
+        127,
+        128,
+        129,
+        130,
+        131,
+        132,
+        133,
+        134,
+        135
+      ],
+      "crop": [
+        700,
+        360,
+        1200,
+        740
+      ],
+      "display": "native pixels"
+    },
+    "orbit_roof": {
+      "frames": [
+        120,
+        121,
+        122,
+        123,
+        124,
+        125,
+        126,
+        127,
+        128,
+        129,
+        130,
+        131,
+        132,
+        133,
+        134,
+        135
+      ],
+      "crop": [
+        650,
+        240,
+        1250,
+        640
+      ],
+      "display": "native pixels"
+    }
+  },
+  "observations": [
+    "No detached TAA-only head outline is visible in the inspected High/Medium consecutive head pairs.",
+    "High structural debris matches the off silhouettes in the eight inspected consecutive pairs; no separated duplicate or multi-frame smear is observed.",
+    "Pan and orbit roof, timber, and window edges are steadier and visibly softer with TAA; no edge crawl is observed in these reviewed regions.",
+    "Fresh High aftermath and R views retain plausible receiver light and return the roof, walls, windows, and ground look; continuing clock/avatar state prevents an RGB equality claim."
+  ],
+  "limitations": [
+    "Manual review does not measure numerical edge-crawl amplitude or a global ghost length; bloom, fire, and smoke obscure some chunks.",
+    "The primary static crop contains the pan ridge but cuts the orbit ridge; the additional orbit-roof boards above supply that review.",
+    "Medium swarm/after wall-cost intervals fail the 1ms bound; the required cost gate is High only.",
+    "Serial wall completion is not GPU duration or presented-frame latency; bounded throughput has its own separate report."
+  ],
+  "acceptance": {
+    "pan_orbit_visual": true,
+    "fast_motion_visual": true,
+    "restore_visual": true,
+    "three_trial_high_wall_upper_under_1ms": true
+  }
+}

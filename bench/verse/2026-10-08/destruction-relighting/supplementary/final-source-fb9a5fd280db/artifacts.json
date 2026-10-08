@@ -1,0 +1,46 @@
+{
+  "README.md": {
+    "sha256": "20dfa7a4f6c685cda3a972db48c53cc61e99b49336420a39448af2bd7f802d17",
+    "bytes": 1266
+  },
+  "aftermath.png": {
+    "sha256": "b797fd0a756981d012da577b1233449e672dc234c7bc2c0ab6a54166f97adbcb",
+    "bytes": 1312300
+  },
+  "capture.json": {
+    "sha256": "0c64083803849f5a8a60454e809c92e61dd0e02f9680bd3592a6d6d14b48c4ba",
+    "bytes": 620975
+  },
+  "capture.log": {
+    "sha256": "952a2f974ae26f4a03a947e86f63b4a75196c53e10638e275732b4dcf5c5ddf0",
+    "bytes": 624987
+  },
+  "command-manifest.json": {
+    "sha256": "d702dbbce176bd82a112a63d81860a66a4477efcb0bb5ffebc1a53556ca1dc63",
+    "bytes": 4840
+  },
+  "frame-ledger.jsonl": {
+    "sha256": "f85cf9d8111c3842b2c3640f5d3745088835617100ff2b7e2a637c6225951da1",
+    "bytes": 451399
+  },
+  "gpu-lease.json": {
+    "sha256": "c643cce0d704d09a33dd64fdc835d7c0818348ef89b4a561a328b52b2f8e260f",
+    "bytes": 487
+  },
+  "pristine.png": {
+    "sha256": "e54fc1095b02e74eee6ca4b53acceb4044cbff0707474e8a1da5c54405c96439",
+    "bytes": 1549508
+  },
+  "quiet-lease.json": {
+    "sha256": "380604d75f53c3ce5ce676a119b896351b1170ba7402cd374d586ecf0591c857",
+    "bytes": 488
+  },
+  "restored.png": {
+    "sha256": "fd6e4bf8352864384a75d72063f34acb86e1b9823e75d9d844884a4ad2f0a360",
+    "bytes": 1553167
+  },
+  "verification.json": {
+    "sha256": "54851eea91accd780b59ee6af379c48ef9b656e9500288007c7c59d6304eb663",
+    "bytes": 5573
+  }
+}

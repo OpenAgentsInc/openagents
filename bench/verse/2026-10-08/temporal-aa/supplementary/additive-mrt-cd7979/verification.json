@@ -1,0 +1,44 @@
+{
+  "schema": "openagents.verse.temporal-visual-attempt.v1",
+  "status": "scoped_visual_diagnostic_pass",
+  "source": "cd7979bedbeab7a44d71cec857b942ab0f3ca8e1",
+  "binary_sha256": "3d9439652b28dbdc6a56188fe1db9d86f464794d14b445d56dee0ca383c07f83",
+  "profile": "dev with optimized dependencies",
+  "features": [
+    "capture",
+    "temporal-diagnostics"
+  ],
+  "timing_acceptance_available": false,
+  "supersedes_top_level_acceptance": false,
+  "simulation_frames": 540,
+  "sequence_frames": [
+    468,
+    474
+  ],
+  "command_manifest": "proof/10936-additive-mrt-manifest.json",
+  "gpu_receipt": "proof/10936-additive-mrt-gpu.json",
+  "report": "capture.json",
+  "source_images": "source-images.json",
+  "observations": "audit/current-footprint-differences.json",
+  "root_visual_review": {
+    "frames": [
+      471,
+      472
+    ],
+    "bounds": [
+      490,
+      260,
+      700,
+      455
+    ],
+    "detached_head_ghost_seen": false,
+    "verdict": "The previously detached head contour is absent in the reviewed region; fire pixels agree across incoming HDR, new history, and sharpened review stages."
+  },
+  "limitations": [
+    "GPU-only diagnostic; no quiet receipt or timing gate",
+    "Additional texture snapshots/readbacks and temporal-diagnostics feature differ from final capture-only builds",
+    "Mapped 8-bit equality does not establish equality of underlying HDR floats",
+    "A seven-frame diagnostic and scoped root review do not replace the final six-case visual and timing acceptance",
+    "Published kit selected locally; no cross-asset or cross-source speedup claim"
+  ]
+}

@@ -1,0 +1,5 @@
+The live source `51e1ab25192e95038edcee1f548355c11df5ff95` diagnostic still shows detached TAA-only contours at frames 471 and 472. Actual resolved coverage marks the visible heads, and every marked pixel has negative saved history alpha. The current camera exactly becomes the next previous camera across all 12 saved transitions. The detached contour also appears in the HDR scene after sharpening, outside the current reactive mask.
+
+This run establishes no timing gate: it uses a dev binary, overlapping CPU work, serial paired renders, and extra texture readbacks. [verification.json](verification.json) records the exact source, binary, camera and mask observations, and limitations; [capture.json](capture.json) retains all measurements, ranges, and matrices. [source-images.json](source-images.json) inventories all 13 original on/off pairs and all 39 marker/history/HDR images. Full masks and critical originals stay here; other originals remain in durable scratch with exact hashes.
+
+[Matched 470–472 sheet](audit/head-470-472.png). The sign masks do not retain numeric depth, so pixel overlap alone cannot establish exact reprojected contour age.

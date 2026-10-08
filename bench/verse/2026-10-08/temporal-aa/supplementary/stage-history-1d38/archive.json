@@ -1,0 +1,17 @@
+{
+  "schema": "openagents.verse.diagnostic-archive.v1",
+  "source": "1d38cf6812690967f814e9c24624e79fea03bc21",
+  "binary_sha256": "10378f92764a4d26391504fa5a7c754e4135bfb2a2832a3c86d9b1101a0ceb62",
+  "status": "visual_failed",
+  "raw_report": {
+    "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/capture.json",
+    "sha256": "9736682332f0bed929c8072ab494c7658fa28673aad85ae1eddb0e29dfc5b822",
+    "bytes": 697568
+  },
+  "original_pngs": 116,
+  "primary_rows": 540,
+  "diagnostic_rows": 13,
+  "paired_rows": 532,
+  "timing_acceptance_available": false,
+  "supersedes_top_level_acceptance": false
+}

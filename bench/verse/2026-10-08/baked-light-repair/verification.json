@@ -1,0 +1,1657 @@
+{
+  "schema": "openagents.verse.baked-light-repair-evidence.v1",
+  "issue": 10907,
+  "status": "verified_with_scoped_visual_and_blend_acceptance",
+  "tested_source_commit": "290c1590726189dbdabb5693125cfa0fbca8a779",
+  "asset_scope": {
+    "method": "Clock, blend, and historical runs use verified local overrides with VERSE_KIT_UNPINNED=1. The separate clear destruction run and published-pin preflight enforce updated published SHA pins against the selected local files with VERSE_KIT_UNPINNED removed. No automatic download/cache resolution is exercised.",
+    "published_pin_verified": true,
+    "published_pin_scope": "Selected local kit and VLAY only.",
+    "licensed_inputs_copied": false
+  },
+  "scene_identity_change": {
+    "commit": "7afd440fe81caaeb1609fbe857c8d5f15c4437a6",
+    "path": "crates/verse-zone-everglade/src/zones/everglade/layout/city.rs",
+    "cause": "The previous layout excluded PLAZA_FOUNTAIN from instances and appended kit/fountain. The current layout extends all instances in table order, changing first-encounter mesh, material, image, and merged-vertex ordering.",
+    "cross_platform_floating_point_cause": "unproven",
+    "published_preflight_failure": "published-preflight-failure.json"
+  },
+  "capture": {
+    "components": {
+      "clock": "completed_clock",
+      "blend": "continuation",
+      "destruction": "destruction_capture",
+      "receiver_inspection": "receiver_inspection"
+    },
+    "reports_merged": false,
+    "source_identity_scope": "Each raw report and command manifest retains its own source and binary identity."
+  },
+  "checks": {
+    "integrated": {
+      "source": "9967c94cef19031ff91eac6d8cd222ab7c3024eb",
+      "log": "integrated-checks-build.log",
+      "lease": "integrated-checks-build-lease.json",
+      "physics": {
+        "passed": 190,
+        "ignored": 1
+      },
+      "verse_pbr": {
+        "passed": 197,
+        "ignored": 11
+      },
+      "everglade": {
+        "passed": 313
+      },
+      "capture_example": {
+        "passed": 2
+      },
+      "command_limit": "The integrated log comes from a multi-package cargo test, capture-example tests, debug capture builds, and debug verse-bake build. No standalone original command ledger is available."
+    },
+    "supplementary_native": {
+      "source": "3e6406782163e2fe01e9beeef933dd1a39216169",
+      "identity": "supplementary-native-test-identity.json",
+      "logs": [
+        "supplementary-native-static-light.log",
+        "supplementary-native-rigid-light.log"
+      ],
+      "scope": "Earlier source validates native static and rigid light uploads. These results are not attributed to the full capture source."
+    },
+    "recorded_failure_checker": {
+      "command": [
+        "python3",
+        "check.py",
+        "--recorded-failures"
+      ],
+      "scope": "Artifact consistency and retained failure assertions; no repair, visual, or negligible-cost acceptance."
+    },
+    "current": {
+      "source": "f655bcc32c6df5a69ef278ba8a2e45e342178fab",
+      "physics": {
+        "passed": 190,
+        "ignored": 1
+      },
+      "verse_pbr": {
+        "passed": 198,
+        "ignored": 13
+      },
+      "everglade": {
+        "passed": 318
+      },
+      "verse_render": {
+        "passed": 14,
+        "ignored": 1
+      },
+      "verse_gles": {
+        "passed": 10
+      },
+      "capture_example": {
+        "passed": 4
+      },
+      "capture_debug_build": "passed",
+      "logs_and_leases": [
+        {
+          "log": "current-products-build.log",
+          "lease": "current-products-build-lease.json"
+        },
+        {
+          "log": "current-render-build.log",
+          "lease": "current-render-build-lease.json"
+        },
+        {
+          "log": "current-gles-build.log",
+          "lease": "current-gles-build-lease.json"
+        },
+        {
+          "log": "current-capture-tests-build.log",
+          "lease": "current-capture-tests-build-lease.json"
+        },
+        {
+          "log": "current-capture-build.log",
+          "lease": "current-capture-build-lease.json"
+        }
+      ],
+      "capture_command_script": "continuation-capture-build.sh",
+      "native_manifest": "current-native-manifest.json",
+      "native_gpu_lease": "current-native-gpu.json",
+      "native_tests_passed": 6,
+      "native_scope": "Functional native tests under a GPU lease; no timing claim.",
+      "preflight_manifest": "current-preflight-manifest.json",
+      "preflight": "current-preflight.json",
+      "published_pin_verified": false,
+      "command_ledger": "current-build-commands.json"
+    },
+    "published_capture_build": {
+      "source": "290c1590726189dbdabb5693125cfa0fbca8a779",
+      "features": [
+        "capture",
+        "dev-destruction"
+      ],
+      "test_log": "published-capture-tests.log",
+      "test_lease": "published-capture-tests-lease.json",
+      "build_log": "published-capture-build.log",
+      "build_lease": "published-capture-build-lease.json",
+      "status": "passed",
+      "binary_sha256": "57730fa84bcfc3cfccb3ecf5d0df8ebaaeb78f264e1f7857fa459b2c40d45996"
+    },
+    "published_native_light": {
+      "source": "340df670f658276c6074d33ec80ccdfc66dac7c3",
+      "manifest": "published-native-manifest.json",
+      "gpu_lease": "published-native-gpu-lease.json",
+      "runner": "published-native-runner.py",
+      "manifest_tests": 8,
+      "retained_light_tests": 2,
+      "logs": {
+        "pbr::gpu::baked_tests::static_light_patches_cross_rows_and_layers_and_survive_late_bakes_until_restore": "published-native-static-light.log",
+        "pbr::gpu::baked_tests::rigid_light_ranges_wrap_max_grow_rebind_and_restore_direct_ambient": "published-native-rigid-light.log"
+      },
+      "production_module_identity": {
+        "comparison_source": "290c1590726189dbdabb5693125cfa0fbca8a779",
+        "command": [
+          "git",
+          "diff",
+          "--name-only",
+          "340df670f658276c6074d33ec80ccdfc66dac7c3",
+          "290c1590726189dbdabb5693125cfa0fbca8a779",
+          "--",
+          "crates/verse-pbr"
+        ],
+        "changed_files": []
+      },
+      "scope": "Functional static and rigid light uploads only. The other six native tests have separate temporal evidence and do not establish TAA visual acceptance."
+    },
+    "published_cpu": {
+      "command_ledger": "published-check-commands.json",
+      "checks": [
+        {
+          "source": "97e8b2b0937d9641b6c8760b2e781579c5ba83a8",
+          "command": [
+            "cargo",
+            "test",
+            "-p",
+            "verse-pbr",
+            "-p",
+            "verse-zone-everglade"
+          ],
+          "log": "published-integration-products.log",
+          "build_lease": "published-integration-products-lease.json",
+          "results": {
+            "verse-pbr": {
+              "passed": 200,
+              "ignored": 13
+            },
+            "verse-zone-everglade": {
+              "passed": 318,
+              "ignored": 2
+            },
+            "verse-private": {
+              "passed": 3,
+              "ignored": 0
+            }
+          }
+        },
+        {
+          "source": "290c1590726189dbdabb5693125cfa0fbca8a779",
+          "command": [
+            "cargo",
+            "test",
+            "-p",
+            "verse",
+            "--lib",
+            "gles_tests"
+          ],
+          "log": "published-shader-translation.log",
+          "build_lease": "published-shader-translation-lease.json",
+          "results": {
+            "gles_tests": {
+              "passed": 10,
+              "ignored": 0
+            }
+          },
+          "scope": "The earlier wrong-package invocation matches zero tests and is not counted."
+        }
+      ],
+      "status": "passed"
+    },
+    "portable_fallback": {
+      "source": "eb8c50bd50ac5a25577251a881949a1d2ddf1f4c",
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "verse-zone-everglade"
+      ],
+      "log": "portable-fallback-tests.log",
+      "lease": "portable-fallback-tests-lease.json",
+      "passed": 319,
+      "ignored": 2,
+      "status": "passed_intermediate_source",
+      "wasm_command": [
+        "cargo",
+        "check",
+        "-p",
+        "verse-zone-everglade",
+        "--lib",
+        "--target",
+        "wasm32-unknown-unknown"
+      ],
+      "wasm_log": "portable-wasm-check.log",
+      "wasm_lease": "portable-wasm-check-lease.json",
+      "wasm_status": "passed_intermediate_source",
+      "later_guard_source": "f81352bf262dd7ea657b694159bcb228aef62d64",
+      "later_guard_checks": "passed_on_51e1ab2519",
+      "native_capture_scope": "The native destruction capture remains attributed to source 290. Later portable fallback and lazy-start changes do not relabel that capture."
+    },
+    "portable_guard": {
+      "source": "51e1ab25192e95038edcee1f548355c11df5ff95",
+      "command": [
+        "cargo",
+        "check",
+        "-p",
+        "verse-zone-everglade",
+        "--lib",
+        "--target",
+        "wasm32-unknown-unknown"
+      ],
+      "log": "portable-guard-wasm.log",
+      "lease": "portable-guard-wasm-lease.json",
+      "status": "passed",
+      "scope": "Wasm library compilation; no browser runtime claim."
+    },
+    "receiver_example": {
+      "source": "51e1ab25192e95038edcee1f548355c11df5ff95",
+      "log": "receiver-example-tests.log",
+      "lease": "receiver-example-tests-lease.json",
+      "passed": 4,
+      "status": "passed",
+      "command_provenance": "Exact Cargo arguments and source confirmed by parent tool history.",
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "verse",
+        "--example",
+        "baked_light_capture",
+        "--features",
+        "capture,dev-destruction"
+      ]
+    },
+    "receiver_example_build": {
+      "source": "51e1ab25192e95038edcee1f548355c11df5ff95",
+      "command": [
+        "cargo",
+        "build",
+        "-p",
+        "verse",
+        "--example",
+        "baked_light_capture",
+        "--features",
+        "capture,dev-destruction"
+      ],
+      "log": "receiver-example-build.log",
+      "lease": "receiver-example-build-lease.json",
+      "status": "passed",
+      "command_provenance": "Exact Cargo arguments and source confirmed by parent tool history."
+    }
+  },
+  "acceptance": {
+    "visual_quality": "pass_for_scoped_retained_views",
+    "negligible_cost": "pass",
+    "repair_diagnostics": "verified_diagnostic_600_second_limit",
+    "published_pin": "verified_for_selected_local_files",
+    "negligible_cost_scope": "The f655 blend-only serial wall-completion interval across all 128 paired samples. Selective worker cost and GPU duration are not measured by this comparison.",
+    "visual_quality_scope": "Root review of retained clock phases/boundaries, 290 noon/night/R originals, and the source51 particle-free frame900 visible ground/interior/rubble. Vegetation occludes some areas; exact boundary pixels remain unavailable at 08:00,15:30,17:30. No convergence or performance verdict is inferred from source51 inspection."
+  },
+  "raw_copy_map": {
+    "matched-bake-command.json": "10907-matched-bake-command.json",
+    "matched-bake-receipt.json": "10907-matched-bake/090f106f9c459f62f9cd67902a18531b7e00f9d15e292e0b60a0dd7b231b0b6b.layers.cpu.json",
+    "matched-bake.log": "10907-matched-bake.log",
+    "matched-bake.py": "10907-matched-bake.py",
+    "matched-bake-build-lease.json": "10907-matched-bake-build-lease.json",
+    "published-preflight-inputs.json": "10907-integrated-published-preflight/inputs.json",
+    "published-preflight-failure.json": "10907-integrated-published-preflight/preflight-failure.json",
+    "published-preflight.log": "10907-integrated-published-preflight.log",
+    "integrated-checks-build.log": "10907-integrated-checks-build.log",
+    "integrated-checks-build-lease.json": "10907-integrated-checks-build-lease.json",
+    "full-capture.py": "10907-full-capture.py",
+    "supplementary-native-static-light.log": "10907-layer-current-native-0.log",
+    "supplementary-native-rigid-light.log": "10907-layer-current-native-1.log",
+    "supplementary-native-quiet-lease.json": "10936-10938-frustum-quiet.json",
+    "supplementary-native-gpu-lease.json": "10936-10938-frustum-gpu.json",
+    "supplementary-checks-build.log": "10907-current-main-retry-build.log",
+    "supplementary-checks-build-lease.json": "10907-current-main-retry-build-lease.json",
+    "supplementary-scoped-fmt.log": "10907-scoped-fmt.log",
+    "historical-full-capture/noon.png": "10907-full-capture/noon.png",
+    "historical-full-capture/repair-verification.json": "10907-full-capture/repair-verification.json",
+    "historical-full-capture/destruction-pristine.png": "10907-full-capture/destruction-pristine.png",
+    "historical-full-capture/inputs.json": "10907-full-capture/inputs.json",
+    "historical-full-capture/dusk.png": "10907-full-capture/dusk.png",
+    "historical-full-capture/dawn.png": "10907-full-capture/dawn.png",
+    "historical-full-capture/preflight.json": "10907-full-capture/preflight.json",
+    "historical-full-capture/night.png": "10907-full-capture/night.png",
+    "historical-full-capture/destruction-0900.png": "10907-full-capture/destruction-0900.png",
+    "historical-full-capture/command-manifest.json": "10907-full-capture-manifest.json",
+    "historical-full-capture/capture.log": "10907-full-capture.log",
+    "historical-full-capture/quiet-lease.json": "10907-full-capture-quiet.json",
+    "historical-full-capture/gpu-lease.json": "10907-full-capture-gpu.json",
+    "historical-full-capture/capture.py": "10907-full-capture.py",
+    "historical-wall-capture/noon.png": "10907-full-wall-capture/noon.png",
+    "historical-wall-capture/repair-verification.json": "10907-full-wall-capture/repair-verification.json",
+    "historical-wall-capture/capture.json": "10907-full-wall-capture/capture.json",
+    "historical-wall-capture/destruction-pristine.png": "10907-full-wall-capture/destruction-pristine.png",
+    "historical-wall-capture/inputs.json": "10907-full-wall-capture/inputs.json",
+    "historical-wall-capture/dusk.png": "10907-full-wall-capture/dusk.png",
+    "historical-wall-capture/dawn.png": "10907-full-wall-capture/dawn.png",
+    "historical-wall-capture/preflight.json": "10907-full-wall-capture/preflight.json",
+    "historical-wall-capture/night.png": "10907-full-wall-capture/night.png",
+    "historical-wall-capture/destruction-0900.png": "10907-full-wall-capture/destruction-0900.png",
+    "historical-wall-capture/command-manifest.json": "10907-full-wall-capture-manifest.json",
+    "historical-wall-capture/capture.log": "10907-full-wall-capture.log",
+    "historical-wall-capture/capture.py": "10907-full-wall-capture.py",
+    "historical-wall-capture/quiet-lease.json": "10907-full-wall-capture-quiet.json",
+    "historical-wall-capture/gpu-lease.json": "10907-full-wall-capture-gpu.json",
+    "continuation-verify.py": "10907-continuation-verify.py",
+    "continuation-capture-build.sh": "10907-continuation-capture-build.sh",
+    "current-products-build.log": "10907-continuation-products-build.log",
+    "current-products-build-lease.json": "10907-continuation-products-build-lease.json",
+    "current-render-build.log": "10907-continuation-render-build.log",
+    "current-render-build-lease.json": "10907-continuation-render-build-lease.json",
+    "current-gles-build.log": "10907-continuation-gles-build.log",
+    "current-gles-build-lease.json": "10907-continuation-gles-build-lease.json",
+    "current-capture-tests-build.log": "10907-continuation-capture-tests-build.log",
+    "current-capture-tests-build-lease.json": "10907-continuation-capture-tests-build-lease.json",
+    "current-capture-build.log": "10907-continuation-capture-build.log",
+    "current-capture-build-lease.json": "10907-continuation-capture-build-lease.json",
+    "current-native-manifest.json": "10907-continuation-native-manifest.json",
+    "current-native-gpu.json": "10907-continuation-native-gpu.json",
+    "current-native-run.log": "10907-continuation-native-run.log",
+    "current-native-0.log": "10907-continuation-native-0.log",
+    "current-native-1.log": "10907-continuation-native-1.log",
+    "current-native-2.log": "10907-continuation-native-2.log",
+    "current-native-3.log": "10907-continuation-native-3.log",
+    "current-native-4.log": "10907-continuation-native-4.log",
+    "current-native-5.log": "10907-continuation-native-5.log",
+    "current-preflight-manifest.json": "10907-continuation-preflight-manifest.json",
+    "current-preflight.log": "10907-continuation-preflight.log",
+    "current-preflight-inputs.json": "10907-continuation-preflight/inputs.json",
+    "current-preflight.json": "10907-continuation-preflight/preflight.json",
+    "blend-capture.json": "10907-continuation-blend/capture.json",
+    "blend-inputs.json": "10907-continuation-blend/inputs.json",
+    "blend-preflight.json": "10907-continuation-blend/preflight.json",
+    "blend-capture-manifest.json": "10907-continuation-blend-manifest.json",
+    "blend-capture.log": "10907-continuation-blend.log",
+    "blend-quiet-lease.json": "10907-continuation-blend-quiet.json",
+    "blend-gpu-lease.json": "10907-continuation-blend-gpu.json",
+    "historical-continuation-full/capture.json": "10907-continuation-full/capture.json",
+    "historical-continuation-full/inputs.json": "10907-continuation-full/inputs.json",
+    "historical-continuation-full/preflight.json": "10907-continuation-full/preflight.json",
+    "historical-continuation-full/command-manifest.json": "10907-continuation-full-manifest.json",
+    "historical-continuation-full/capture.log": "10907-continuation-full.log",
+    "historical-continuation-full/gpu-lease.json": "10907-continuation-full-gpu.json",
+    "historical-continuation-full/capture.py": "10907-continuation-verify.py",
+    "historical-continuation-full/destruction-pristine.png": "10907-continuation-full/destruction-pristine.png",
+    "historical-continuation-full/destruction-0900.png": "10907-continuation-full/destruction-0900.png",
+    "historical-continuation-full/destruction-repaired-noon.png": "10907-continuation-full/destruction-repaired-noon.png",
+    "published-pin-preflight-manifest.json": "10907-published-default-preflight-manifest.json",
+    "published-pin-preflight.log": "10907-published-default-preflight.log",
+    "published-pin-inputs.json": "10907-published-default-preflight/inputs.json",
+    "published-pin-preflight.json": "10907-published-default-preflight/preflight.json",
+    "published-clear.py": "10907-published-clear.py",
+    "published-capture-build.log": "10907-clear-capture-build.log",
+    "published-capture-build-lease.json": "10907-clear-capture-build-lease.json",
+    "published-capture-tests.log": "10907-clear-capture-tests.log",
+    "published-capture-tests-lease.json": "10907-clear-capture-tests-lease.json",
+    "clock/dawn.png": "10907-continuation-full/dawn.png",
+    "clock/noon.png": "10907-continuation-full/noon.png",
+    "clock/dusk.png": "10907-continuation-full/dusk.png",
+    "clock/night.png": "10907-continuation-full/night.png",
+    "clock/sun-08-before.png": "10907-continuation-full/sun-08-before.png",
+    "clock/sun-08-after.png": "10907-continuation-full/sun-08-after.png",
+    "clock/sun-12-before.png": "10907-continuation-full/sun-12-before.png",
+    "clock/sun-12-after.png": "10907-continuation-full/sun-12-after.png",
+    "clock/sun-1530-before.png": "10907-continuation-full/sun-1530-before.png",
+    "clock/sun-1530-after.png": "10907-continuation-full/sun-1530-after.png",
+    "clock/sun-1730-before.png": "10907-continuation-full/sun-1730-before.png",
+    "clock/sun-1730-after.png": "10907-continuation-full/sun-1730-after.png",
+    "clock-preview.py": "10907-clock-preview.py",
+    "clock-preview-inputs.ffconcat": "10907-continuation-full-clock-preview-inputs.ffconcat",
+    "clear-capture/command-manifest.json": "10907-published-clear-manifest.json",
+    "clear-capture/capture.log": "10907-published-clear.log",
+    "clear-capture/gpu-lease.json": "10907-published-clear-gpu.json",
+    "clear-capture/runner.py": "10907-published-clear.py",
+    "clear-capture/capture.json": "10907-published-clear/capture.json",
+    "clear-capture/inputs.json": "10907-published-clear/inputs.json",
+    "clear-capture/preflight.json": "10907-published-clear/preflight.json",
+    "clear-capture/repair-verification.json": "10907-published-clear/repair-verification.json",
+    "clear-capture/repair-before-restore.json": "10907-published-clear/repair-before-restore.json",
+    "clear-capture/destruction-0360.png": "10907-published-clear/destruction-0360.png",
+    "clear-capture/destruction-0480.png": "10907-published-clear/destruction-0480.png",
+    "clear-capture/destruction-0600.png": "10907-published-clear/destruction-0600.png",
+    "clear-capture/destruction-0900.png": "10907-published-clear/destruction-0900.png",
+    "clear-capture/destruction-pristine.png": "10907-published-clear/destruction-pristine.png",
+    "clear-capture/destruction-repaired-night.png": "10907-published-clear/destruction-repaired-night.png",
+    "clear-capture/destruction-repaired-noon.png": "10907-published-clear/destruction-repaired-noon.png",
+    "clear-capture/destruction-restored.png": "10907-published-clear/destruction-restored.png",
+    "published-integration-products.log": "10907-published-integration-products.log",
+    "published-integration-products-lease.json": "10907-published-integration-products-lease.json",
+    "published-shader-translation.log": "10936-dependency-shader-translation.log",
+    "published-shader-translation-lease.json": "10936-dependency-shader-translation-lease.json",
+    "published-native-manifest.json": "10936-dependency-native-manifest.json",
+    "published-native-gpu-lease.json": "10936-dependency-native-gpu.json",
+    "published-native-runner.py": "10936-dependency-native.py",
+    "published-native-static-light.log": "10936-dependency-native-6.log",
+    "published-native-rigid-light.log": "10936-dependency-native-7.log",
+    "retain-clear-components.py": "10907-retain-clear-components.py",
+    "portable-fallback-tests.log": "10907-portable-fallback-tests.log",
+    "portable-fallback-tests-lease.json": "10907-portable-fallback-tests-lease.json",
+    "portable-wasm-check.log": "10907-portable-wasm-check.log",
+    "portable-wasm-check-lease.json": "10907-portable-wasm-check-lease.json",
+    "portable-guard-wasm.log": "10907-lazy-portable-wasm.log",
+    "portable-guard-wasm-lease.json": "10907-lazy-portable-wasm-lease.json",
+    "receiver-example-tests.log": "10907-receiver-example-tests.log",
+    "receiver-example-tests-lease.json": "10907-receiver-example-tests-lease.json",
+    "receiver-example-build.log": "10907-receiver-inspection-build.log",
+    "receiver-example-build-lease.json": "10907-receiver-inspection-build-lease.json",
+    "receiver-inspection/command-manifest.json": "10907-receiver-inspection-manifest.json",
+    "receiver-inspection/capture.log": "10907-receiver-inspection.log",
+    "receiver-inspection/gpu-lease.json": "10907-receiver-inspection-gpu.json",
+    "receiver-inspection/runner.py": "10907-receiver-inspection.py",
+    "receiver-inspection/capture.json": "10907-receiver-inspection/capture.json",
+    "receiver-inspection/inputs.json": "10907-receiver-inspection/inputs.json",
+    "receiver-inspection/preflight.json": "10907-receiver-inspection/preflight.json",
+    "receiver-inspection/receiver-inspection.json": "10907-receiver-inspection/receiver-inspection.json",
+    "receiver-inspection/receiver-inspection-before-restore.json": "10907-receiver-inspection/receiver-inspection-before-restore.json",
+    "receiver-inspection/destruction-0360.png": "10907-receiver-inspection/destruction-0360.png",
+    "receiver-inspection/destruction-0480.png": "10907-receiver-inspection/destruction-0480.png",
+    "receiver-inspection/destruction-0600.png": "10907-receiver-inspection/destruction-0600.png",
+    "receiver-inspection/destruction-0900-receivers.png": "10907-receiver-inspection/destruction-0900-receivers.png",
+    "receiver-inspection/destruction-0900.png": "10907-receiver-inspection/destruction-0900.png",
+    "receiver-inspection/destruction-pristine-receivers.png": "10907-receiver-inspection/destruction-pristine-receivers.png",
+    "receiver-inspection/destruction-pristine.png": "10907-receiver-inspection/destruction-pristine.png",
+    "receiver-inspection/destruction-restored-receivers.png": "10907-receiver-inspection/destruction-restored-receivers.png",
+    "receiver-inspection/destruction-restored.png": "10907-receiver-inspection/destruction-restored.png",
+    "retain-receiver-inspection.py": "10907-retain-receiver-inspection.py"
+  },
+  "historical_full_capture": {
+    "source": "9967c94cef19031ff91eac6d8cd222ab7c3024eb",
+    "manifest": "historical-full-capture/command-manifest.json",
+    "exit": 1,
+    "diagnostics": "historical-full-capture/repair-verification.json",
+    "reason": "Selective repair did not finish within the bounded hold",
+    "current_targets": 618035,
+    "current_processed": 203297,
+    "current_backlog": 414738,
+    "completed_geometry_generations": 0,
+    "applied_chunk_vertices": 0,
+    "hold_frames": 3600,
+    "hold_wall_seconds": 47.914597125,
+    "artifact_limit": "The 10,441 clock iterations and 128 pairs execute before destruction, but the report is written after destruction. This failed run retains PNGs and repair progress, not the missing raw clock and paired records. No records are reconstructed.",
+    "bound_limit": "The 3,600-frame capture bound permits fewer polls than the 4,829 ideal 128-target batches needed for 618,035 targets. It reaches that frame bound before the retained 180-second wall limit.",
+    "artifact_checks": {
+      "all_existing_output_files_retained": false,
+      "copies_match_raw_sha256": true,
+      "pngs_verified": 67,
+      "repair_progress_records": 120,
+      "quiet_and_gpu_held_whole_run": true,
+      "lease_coverage_matches_manifest": true,
+      "frame_bound_reached_before_wall_limit": true,
+      "raw_clock_and_pair_records_available": false,
+      "all_nonimage_output_files_retained": true,
+      "all_original_screenshots_in_durable_scratch": true,
+      "screenshot_sha256_size_path_inventory": true
+    },
+    "screenshot_inventory": "historical-screenshot-inventory.json",
+    "retained_original_pngs": [
+      "dawn.png",
+      "destruction-0900.png",
+      "destruction-pristine.png",
+      "dusk.png",
+      "night.png",
+      "noon.png"
+    ]
+  },
+  "historical_wall_capture": {
+    "source": "c08730c964a5bae38d3eaa6818213717202a35c7",
+    "manifest": "historical-wall-capture/command-manifest.json",
+    "exit": 1,
+    "report": "historical-wall-capture/capture.json",
+    "diagnostics": "historical-wall-capture/repair-verification.json",
+    "screenshot_inventory": "historical-wall-screenshot-inventory.json",
+    "retained_original_pngs": [
+      "dawn.png",
+      "destruction-0900.png",
+      "destruction-pristine.png",
+      "dusk.png",
+      "night.png",
+      "noon.png"
+    ],
+    "reason": "Selective repair did not finish within the bounded hold",
+    "current_targets": 618035,
+    "current_processed": 491660,
+    "current_backlog": 126375,
+    "hold_frames": 10221,
+    "hold_wall_seconds": 180.005574916,
+    "completed_generations": 0,
+    "applied_static_vertices": 465925,
+    "applied_chunk_vertices": 47625,
+    "clock_records": 10441,
+    "paired_samples": 128,
+    "mean_frame_completion_increment_ms": -0.02251732349395752,
+    "approximate_95pct_block_interval_ms": [
+      -0.16579034704174675,
+      0.12075570005383171
+    ],
+    "method": "All clock and paired metadata checkpoints before destruction. This repair hold retains the 180-second wall bound, a pinned clock, zero simulation time, and one production batch per frame. Worker completion is not achieved.",
+    "artifact_checks": {
+      "all_10441_clock_rows_retained": true,
+      "exact_clock_indices": true,
+      "all_128_pairs_retained": true,
+      "exact_pair_indices": true,
+      "balanced_render_order": true,
+      "no_filtered_pairs": true,
+      "paired_mean_and_interval_recomputed": true,
+      "retained_pngs_verified": 6,
+      "repair_progress_records_retained": 340,
+      "quiet_and_gpu_held_whole_run": true,
+      "lease_coverage_matches_manifest": true,
+      "repair_completion": false,
+      "gpu_valid_durations": 1
+    }
+  },
+  "latest_recorded_attempt": {
+    "source": "290c1590726189dbdabb5693125cfa0fbca8a779",
+    "manifest": "clear-capture/command-manifest.json",
+    "report": "clear-capture/capture.json",
+    "exit": 0,
+    "repair_status": "complete_under_explicit_600_second_diagnostic_bound",
+    "visual_quality": "pending_review"
+  },
+  "inventory_scope": "Every retained file except SHA256SUMS; all original scratch screenshot paths, sizes, and hashes remain in the screenshot inventories.",
+  "artifacts": {
+    "README.md": {
+      "sha256": "cb107fa8b301fa610ad9246fc4592c801d9eea0c5317aa5ce501ee14c4ad3753",
+      "bytes": 15797
+    },
+    "blend-capture-manifest.json": {
+      "sha256": "cbd3ca564d81e87edade7d461bb4f9ed3b672ac6f6e7695408ccb5293a5b532a",
+      "bytes": 1212
+    },
+    "blend-capture.json": {
+      "sha256": "43b66467a4e72f97db7c82c3311216269468059223de4b70557b3fa3bdabdfbe",
+      "bytes": 47338
+    },
+    "blend-capture.log": {
+      "sha256": "02a8ecbd548153fd1ca9e867e2ff58c10e0db572bb15e0f71716c249862d90cc",
+      "bytes": 142
+    },
+    "blend-gpu-lease.json": {
+      "sha256": "bd505206ece555c8ac668f46d13a6a7e4a34c195698094001a40fe29284cf59a",
+      "bytes": 486
+    },
+    "blend-inputs.json": {
+      "sha256": "64a363695b440dc25ed1d57b5e33a22c683de9691e7bd37e1c051b0b2d9ae050",
+      "bytes": 882
+    },
+    "blend-preflight.json": {
+      "sha256": "9d5621f508a9df25f774d260b7b2cd7349ef6c6caebf6f47c4041303c57b41ee",
+      "bytes": 2032
+    },
+    "blend-quiet-lease.json": {
+      "sha256": "c42cfa275c4f0bd6c6025765a1c745f46cc92a3b3c707dec47992dc93a2685d4",
+      "bytes": 493
+    },
+    "check.py": {
+      "sha256": "888435dc41e64df67a626fb8c3680ee1f3f934884d23893fc3e1ac78d8cc98b2",
+      "bytes": 35731
+    },
+    "clear-camera-crops.json": {
+      "sha256": "c0ce393abb6705cf786947323973b9a6368a814bb5d9ebfdcf77f0558493e1d0",
+      "bytes": 1711
+    },
+    "clear-camera-crops.png": {
+      "sha256": "d8ed35e195501b6047402acf6eac428303c6e1c78527b5783ba9e2033b7f967a",
+      "bytes": 2778632
+    },
+    "clear-camera-review.py": {
+      "sha256": "c95d471c615e57c57cb6a1fa073001697df5acaad2b5c992e3e896195dea7421",
+      "bytes": 1945
+    },
+    "clear-capture/capture.json": {
+      "sha256": "6f126e6eba7a5e8ff48297c6b708c072df34b1b2392a6176c30f3a2d6a217e21",
+      "bytes": 2956468
+    },
+    "clear-capture/capture.log": {
+      "sha256": "3b409ac5003e388568618ffb9c4d9281422cdae1479ada9f3f965228e8212d6b",
+      "bytes": 110
+    },
+    "clear-capture/command-manifest.json": {
+      "sha256": "13eebe6589535fb431dedbf4022b17bfde3ac70bf168280e2d39da17303e23fe",
+      "bytes": 1320
+    },
+    "clear-capture/destruction-0360.png": {
+      "sha256": "e41dfb965860181d4052f2b4d0fed37a9567e8fceca8db105d2c9d19db91b71a",
+      "bytes": 2755979
+    },
+    "clear-capture/destruction-0480.png": {
+      "sha256": "87ce301e74a11a36a62d133e93feeab947540935e67d7ec945a69376d318f094",
+      "bytes": 2652642
+    },
+    "clear-capture/destruction-0600.png": {
+      "sha256": "ce282fdc361ee41f027426ddab730bca355fc6edc3d495574307eef3af214279",
+      "bytes": 2697445
+    },
+    "clear-capture/destruction-0900.png": {
+      "sha256": "1b45fb279bb9c2a7b2cc380d2e904afc84180d5ec4f2500269dc3bda8fb7e150",
+      "bytes": 2701727
+    },
+    "clear-capture/destruction-pristine.png": {
+      "sha256": "263310b5f2e76a24bc9a887894c4aa10d91400828420edf583d4fe7c2ce495d8",
+      "bytes": 2682582
+    },
+    "clear-capture/destruction-repaired-night.png": {
+      "sha256": "41b3fe12e2d6c7cdfd1e335230ab6a578a1aaeca72dd29fee226cc986ed6f520",
+      "bytes": 2126411
+    },
+    "clear-capture/destruction-repaired-noon.png": {
+      "sha256": "b54522fc03f7f4f5a9022d2e4b8fa4b897d184e19cc6b3f1859de8916defb8c0",
+      "bytes": 2680190
+    },
+    "clear-capture/destruction-restored.png": {
+      "sha256": "ed3ebef7e0de926e0998098b9e21853e49963692a65500e8fcc70b91f54d860e",
+      "bytes": 2683952
+    },
+    "clear-capture/gpu-lease.json": {
+      "sha256": "aa281d2504b06d2d9f3a476743ddd02fb9678546932a089661ab5c6884853601",
+      "bytes": 485
+    },
+    "clear-capture/inputs.json": {
+      "sha256": "d802ac86e7dd9ee9801496b1318c4510d075f8b0ec69015010eb5518550bbbc7",
+      "bytes": 864
+    },
+    "clear-capture/preflight.json": {
+      "sha256": "e38bb978f4fb05afeb608a814c1638b6891e7e5b1edbaa6dd541ff65c661930c",
+      "bytes": 2067
+    },
+    "clear-capture/repair-before-restore.json": {
+      "sha256": "0971c599dfedfca64e7c1841c2dee2697f0175f3785cbe603833ad3dea3b4c5d",
+      "bytes": 2624698
+    },
+    "clear-capture/repair-verification.json": {
+      "sha256": "b6c3f4da7dd8976ff7f839b0a2887f4d09300bbcb7952e862e9492e85f6ca13f",
+      "bytes": 2627936
+    },
+    "clear-capture/runner.py": {
+      "sha256": "2e957efb470bc15e4de1467be4dc894fb67264bf27238a87991e1f0b4d4e5cb5",
+      "bytes": 2084
+    },
+    "clear-screenshot-inventory.json": {
+      "sha256": "2187bbd5c7957e463ca73e28ecb5af42280aedcdabba5f87348fec3bb5ab4989",
+      "bytes": 2551
+    },
+    "clock/dawn.png": {
+      "sha256": "1b5e0c39eb4664d1b84c643d0dfcd0c569b204ee1081f8bd286275ebc9cd86ce",
+      "bytes": 1261904
+    },
+    "clock/dusk.png": {
+      "sha256": "1afc01c0ca5acac81e882f86084db04c3ea3b854d8d664816e57f41847ba0881",
+      "bytes": 1327914
+    },
+    "clock/night.png": {
+      "sha256": "7215c6ef20a3390562fbeb7d33631865a861f834282b061b2f553caa4cfd5106",
+      "bytes": 1026406
+    },
+    "clock/noon.png": {
+      "sha256": "052b65a719056880428b314c48036737980d8e9d4690b26d12bbce254da7c7d5",
+      "bytes": 1648076
+    },
+    "clock/phase-contact-sheet.png": {
+      "sha256": "8aebe6c4595b21fa333472b03ad806c446a33cf0435c770ba42cdc164d99415f",
+      "bytes": 5286573
+    },
+    "clock/sun-08-after.png": {
+      "sha256": "613be04dc5a5b0c4e1ea02fc5facc3f251f49ebff7832ff88beeacbfb35d1320",
+      "bytes": 1587189
+    },
+    "clock/sun-08-before.png": {
+      "sha256": "79bc0bd59bc49bf03ddf445e7709ef764c8af8cc941618f9b885fb9328457430",
+      "bytes": 1580106
+    },
+    "clock/sun-08-boundary-crops.png": {
+      "sha256": "91bb199896621350d46c33bda028da997d87ec156202d9858ef976178fefdead",
+      "bytes": 773323
+    },
+    "clock/sun-12-after.png": {
+      "sha256": "13533b7f7ff53b7495013706af9df215c4139aa37c150b29d04148cb76f11469",
+      "bytes": 1648337
+    },
+    "clock/sun-12-before.png": {
+      "sha256": "66615271a6db51bad33a015f1bfcf8ce42833fe6d57d49c8f8cf31c56c7b2311",
+      "bytes": 1654547
+    },
+    "clock/sun-12-boundary-crops.png": {
+      "sha256": "572e6b9f2ba387c38de8b9e936a74e41fd43bdd48cf8b497cf0326ffcf09f7bd",
+      "bytes": 800812
+    },
+    "clock/sun-1530-after.png": {
+      "sha256": "cf9f09725e6f1dead2cda43385c988a25cd6ea504e4bc044a8ba6f8fd43b9095",
+      "bytes": 1604443
+    },
+    "clock/sun-1530-before.png": {
+      "sha256": "2fe924bccaf75942b87e26ad4f46d38ef2a06cffb4b3408ff535f8e1f84eb26e",
+      "bytes": 1605004
+    },
+    "clock/sun-1530-boundary-crops.png": {
+      "sha256": "9baa2f911dc6525a807d50004e0cb0e88ed71a41a9526c1cd79d32f991d7cc16",
+      "bytes": 779111
+    },
+    "clock/sun-1730-after.png": {
+      "sha256": "80f9da56e82d89f121ee0807ebc2fb006bfe99d4852d80dbfc56560c98821cca",
+      "bytes": 1431283
+    },
+    "clock/sun-1730-before.png": {
+      "sha256": "82bf9c24ddf89cd33e458ca0c36fb27e4846b93aab7736dfa1f0c491c80db14a",
+      "bytes": 1444643
+    },
+    "clock/sun-1730-boundary-crops.png": {
+      "sha256": "ad630e83dbbb178591abbfcef686fa3d71fc8714cd7938875085489ffbc533cd",
+      "bytes": 752864
+    },
+    "clock-preview-inputs.ffconcat": {
+      "sha256": "0d7374e9b6911092725d65d153857231cf9404e6c822968b8572d47bb9816b29",
+      "bytes": 7908
+    },
+    "clock-preview.json": {
+      "sha256": "4aa7904b30568757c8ccfffb063db3adbdabede54ab743dfd504fb0dc203c12e",
+      "bytes": 19652
+    },
+    "clock-preview.mp4": {
+      "sha256": "11ab6605b4838e7c6fd82612f042329318df7826ff79d7eccce0329aff313137",
+      "bytes": 647945
+    },
+    "clock-preview.py": {
+      "sha256": "06bba5306a1ea7d121aef4a44ea838cd93ae4891332700f232c00a634df186fb",
+      "bytes": 2710
+    },
+    "clock-records.jsonl": {
+      "sha256": "7f119f166182691883a8164da9b5079f60f68771df41d9aa920bbe8c67cc60b1",
+      "bytes": 1252115
+    },
+    "clock-review.json": {
+      "sha256": "0ef4551500d39477cee325b4760a03a10a653a4438b3ca1fd97a38ecc6c30535",
+      "bytes": 13223
+    },
+    "clock-review.py": {
+      "sha256": "d8f0ba5a9591f4df56a3756499006b6443716e4855b3142c4d9eda46a5f47718",
+      "bytes": 4621
+    },
+    "continuation-capture-build.sh": {
+      "sha256": "33db1a0fa5430197b7ded1ac2336b1496f8b212d2015a1a4d46a8418535a7b42",
+      "bytes": 994
+    },
+    "continuation-verify.py": {
+      "sha256": "a5e60ad61089ec35acbb040ca9417b71d283da1f009a2d73f67f3360e5f8e5f0",
+      "bytes": 3901
+    },
+    "current-build-commands.json": {
+      "sha256": "90f3419584d2bbca2ed5b7614197565dc6bf98b36c43262238ca70a84fbe3ae3",
+      "bytes": 5586
+    },
+    "current-capture-build-lease.json": {
+      "sha256": "55c37f6e368bf1dde88be2c46520945c54fc3dd54955431bd291d7b4ea7d8557",
+      "bytes": 663
+    },
+    "current-capture-build.log": {
+      "sha256": "3a84345f30f0c1818c0c279eb6da40ca3f9e585154655117961e56b720a17d24",
+      "bytes": 6364
+    },
+    "current-capture-tests-build-lease.json": {
+      "sha256": "7d0d4a3dd890157dd160a84aba8960037fd6af8dd95e28af45ce05dfca9bac95",
+      "bytes": 663
+    },
+    "current-capture-tests-build.log": {
+      "sha256": "8b7db1fbfab981dcd8c304baa288e5c0c07c9eb44a54277c278723d4bef1bb3c",
+      "bytes": 6982
+    },
+    "current-gles-build-lease.json": {
+      "sha256": "5efdd64fab94905405b70019b23a9d74bdfa53de66b528b858f8c6f21a0d55ae",
+      "bytes": 666
+    },
+    "current-gles-build.log": {
+      "sha256": "4bb5dc713153e685f628592ac1d27fa01d6829b45710aa8a7383558d9a5adc1a",
+      "bytes": 7366
+    },
+    "current-native-0.log": {
+      "sha256": "051d91c111bf22c610bf987e27e89ec6c9d94952f0498c4578d9fceccd00480f",
+      "bytes": 199
+    },
+    "current-native-1.log": {
+      "sha256": "57677e8385f4c8a42971232694c52438f7121a98060be4d2c665d6448dc4f048",
+      "bytes": 210
+    },
+    "current-native-2.log": {
+      "sha256": "bbbd70fae49f0db256d04ab22348943328555fd9b6118643ea2eccaafdfe32ff",
+      "bytes": 221
+    },
+    "current-native-3.log": {
+      "sha256": "ea06b886f54d9c5537c414237ebae3160d659e49ff6d33e7c8f0f699a97efc6e",
+      "bytes": 222
+    },
+    "current-native-4.log": {
+      "sha256": "1349bf5697badf0c4bd216a0a270069ebae3102aba61a4ff075893f1b3f6252b",
+      "bytes": 229
+    },
+    "current-native-5.log": {
+      "sha256": "918261c01a09475f412d681975b8932cc673d9a762f37f85de6d107e0ea43aac",
+      "bytes": 216
+    },
+    "current-native-gpu.json": {
+      "sha256": "1fb0f290b6159b6dead1c3d97abcee3e98922627f814cc82899d2e3903f2e8ed",
+      "bytes": 483
+    },
+    "current-native-manifest.json": {
+      "sha256": "20e9b2d04dee20eadf59148f8157cc5ffdedf63cb62a29d8e497078513477f79",
+      "bytes": 3797
+    },
+    "current-native-run.log": {
+      "sha256": "8020d8774db2b9086bff7c76f88246091a21f2cdba69e92d3c1296562379c3e4",
+      "bytes": 589
+    },
+    "current-preflight-inputs.json": {
+      "sha256": "64a363695b440dc25ed1d57b5e33a22c683de9691e7bd37e1c051b0b2d9ae050",
+      "bytes": 882
+    },
+    "current-preflight-manifest.json": {
+      "sha256": "53e550e5d25b928cc435c08179b681fb313f3cc7affcb5905c2745d39e8f34a5",
+      "bytes": 1220
+    },
+    "current-preflight.json": {
+      "sha256": "95a5845abaaa7c510d01b5904dd969bf902aa9f70ddfda4df68d6b62faafeb8f",
+      "bytes": 2033
+    },
+    "current-preflight.log": {
+      "sha256": "3e43805913fdfb958539c154fe22282eeca410343c10ae5992f4af1072b94750",
+      "bytes": 104
+    },
+    "current-products-build-lease.json": {
+      "sha256": "8624b5dcbaac8fd6245583dc2d13b7a0c53173bfbe95d9c7b9267ef4218a95a4",
+      "bytes": 668
+    },
+    "current-products-build.log": {
+      "sha256": "36f00327448f9b037d96e981f21cf55ff91e9fe96d0810d22cf16c4688887a91",
+      "bytes": 84177
+    },
+    "current-render-build-lease.json": {
+      "sha256": "b1415247e579c17212f30becf64115684058f101e5846d9b9ce52f6e2ed79877",
+      "bytes": 663
+    },
+    "current-render-build.log": {
+      "sha256": "2d6ef9613c315a4c4609cfb978ee38dc799bedc729365aeb9b2c58e7e82fe824",
+      "bytes": 10115
+    },
+    "full-capture.py": {
+      "sha256": "a0f791ef7a3ba8d98b6ecdf7bf0398497157c5bdb2cd14f963741fc621aed168",
+      "bytes": 1548
+    },
+    "historical-continuation-full/capture.json": {
+      "sha256": "667f5e5e9e8da5c84c9e1a48c54d31d79ff77e4a0da6f1f9c1c7da23391c3fde",
+      "bytes": 2229234
+    },
+    "historical-continuation-full/capture.log": {
+      "sha256": "44ea7e4c1f047a730a2916960fec94034d5d5b2dadfd6338d2a220d687fbeba1",
+      "bytes": 96
+    },
+    "historical-continuation-full/capture.py": {
+      "sha256": "a5e60ad61089ec35acbb040ca9417b71d283da1f009a2d73f67f3360e5f8e5f0",
+      "bytes": 3901
+    },
+    "historical-continuation-full/command-manifest.json": {
+      "sha256": "83f2bcb4336a0c81099d69130bbea7f27628c4ef038ac63ce265375d2ea79eb7",
+      "bytes": 1254
+    },
+    "historical-continuation-full/destruction-0900.png": {
+      "sha256": "1127e1718d8f1fafa828ebb3e9f1e056610920b8cbe920ca2727453861fd8f0c",
+      "bytes": 1175662
+    },
+    "historical-continuation-full/destruction-pristine.png": {
+      "sha256": "175ec54bebd7b273428c384129fcfa5ac2bf6064acd07684c348905e6336e31f",
+      "bytes": 1172609
+    },
+    "historical-continuation-full/destruction-repaired-noon.png": {
+      "sha256": "5b434f882765457f1996453fdd15d4297cd9ad1c728720d6570326d851b86386",
+      "bytes": 1159648
+    },
+    "historical-continuation-full/gpu-lease.json": {
+      "sha256": "a50e1e15fa93497e582ed70e4d079dc02557c9c729c4d24acc0e3eb8c4f9bdf3",
+      "bytes": 485
+    },
+    "historical-continuation-full/inputs.json": {
+      "sha256": "64a363695b440dc25ed1d57b5e33a22c683de9691e7bd37e1c051b0b2d9ae050",
+      "bytes": 882
+    },
+    "historical-continuation-full/preflight.json": {
+      "sha256": "d29cc7d6e4975bce2a14720657dc233be3ccbfae4ebcca4aa1b52a967d03b132",
+      "bytes": 2079
+    },
+    "historical-continuation-screenshot-inventory.json": {
+      "sha256": "a06b50c86464168bd5c6e1792fe00fbd89de5b242ea70b26c1f50b8fb2434ca8",
+      "bytes": 22140
+    },
+    "historical-full-capture/capture.log": {
+      "sha256": "24e59f3e1f20247375fbffb307ba52412f767fb5b59d6acf65d1a0bd691e2594",
+      "bytes": 157
+    },
+    "historical-full-capture/capture.py": {
+      "sha256": "a0f791ef7a3ba8d98b6ecdf7bf0398497157c5bdb2cd14f963741fc621aed168",
+      "bytes": 1548
+    },
+    "historical-full-capture/command-manifest.json": {
+      "sha256": "04cf1875261501598c50a52a66002452cc3bf4118959b97584bc46c9efde7151",
+      "bytes": 1105
+    },
+    "historical-full-capture/dawn.png": {
+      "sha256": "a561616b89b883604269a2d998ba5d4b5a03ad2ed7ab686359ea9a966dc29cf2",
+      "bytes": 1457371
+    },
+    "historical-full-capture/destruction-0900.png": {
+      "sha256": "a038fa0146ef64730b595007f02a837d7cc0ba983daa0c45cbbe190653cc2d0e",
+      "bytes": 1129523
+    },
+    "historical-full-capture/destruction-pristine.png": {
+      "sha256": "e6aa91d8875fbef1f5eca807a84e68e30ed8d39d1c0cd5a1fb001c3884951400",
+      "bytes": 1122827
+    },
+    "historical-full-capture/dusk.png": {
+      "sha256": "611e26a5dd8fcf07fa6dd6276a9f4323f7882fb81efa70a944d36f9854a6246d",
+      "bytes": 1536810
+    },
+    "historical-full-capture/gpu-lease.json": {
+      "sha256": "98f13ad5a3ab2a3545898ebd06d863e9bd0890c1bf4f9f6fdc7312151edae764",
+      "bytes": 484
+    },
+    "historical-full-capture/inputs.json": {
+      "sha256": "64a363695b440dc25ed1d57b5e33a22c683de9691e7bd37e1c051b0b2d9ae050",
+      "bytes": 882
+    },
+    "historical-full-capture/night.png": {
+      "sha256": "683f7e5e057e1a169dcf4221e0855c276b17b2095cc1adc4bd2c58b83141d01a",
+      "bytes": 1411736
+    },
+    "historical-full-capture/noon.png": {
+      "sha256": "fc7cc4a87a4fa23b46945f55201289b4c0bd8a3a8d23f5a6af5ec00b2985713a",
+      "bytes": 1988589
+    },
+    "historical-full-capture/preflight.json": {
+      "sha256": "0cde6823b9638c305e8f46f5351df6c99a4b174b280f3a84f4d355bf9eb348c1",
+      "bytes": 1229
+    },
+    "historical-full-capture/quiet-lease.json": {
+      "sha256": "d2b3dafc082443aea605f31a00edfffe956ceeb407074979129ecb6184d09165",
+      "bytes": 1264
+    },
+    "historical-full-capture/repair-verification.json": {
+      "sha256": "e5e4e5411b584c3219bb7a86e65e68f7a2ae2d89c018121a651a6b8ac8228b8a",
+      "bytes": 172020
+    },
+    "historical-screenshot-inventory.json": {
+      "sha256": "62a82fd784d9473e2ba225da38dd49be931f3a756ee1370123a26d0432442bdc",
+      "bytes": 21057
+    },
+    "historical-wall-capture/capture.json": {
+      "sha256": "5fed81f8dd1a0b7758010fd3e2a18ae7c09d4d2a85cfad29be082087f67c618f",
+      "bytes": 2272810
+    },
+    "historical-wall-capture/capture.log": {
+      "sha256": "84694d328ddbc271a6d89bd70b3531437054eb8e6f588641e40088f7caa23d18",
+      "bytes": 158
+    },
+    "historical-wall-capture/capture.py": {
+      "sha256": "dd0b296711af66bd038bd8d435d7112c791589091043185a36106ce887b0384d",
+      "bytes": 1563
+    },
+    "historical-wall-capture/command-manifest.json": {
+      "sha256": "0d5ea7be88ad5d87da08eaf1687969f014fffaffb0e2ab04d1e51012c6354896",
+      "bytes": 1109
+    },
+    "historical-wall-capture/dawn.png": {
+      "sha256": "4696b9adf8da79a84e66a046c0132d14dc87f56e6e9e4a143071018bd9a63bcc",
+      "bytes": 1344558
+    },
+    "historical-wall-capture/destruction-0900.png": {
+      "sha256": "83035a91eb601ea39f66e63a5a64a3f2de16044cd135b76c1d2f72049e2c95ab",
+      "bytes": 1050060
+    },
+    "historical-wall-capture/destruction-pristine.png": {
+      "sha256": "7b040ba781d0d59be5a4a0cf82b4f581a74a2f1c9e70e96504296d1cf3327235",
+      "bytes": 1044363
+    },
+    "historical-wall-capture/dusk.png": {
+      "sha256": "0c479155b22e5dcca565cf27b4833feaa85b03107aa1cf7fbe3db996f2f3ba5e",
+      "bytes": 1405854
+    },
+    "historical-wall-capture/gpu-lease.json": {
+      "sha256": "2d3224d1bab9aa25d1617b9ca92c36b9645ecdf90199b88ea3ae1702ad3149d6",
+      "bytes": 484
+    },
+    "historical-wall-capture/inputs.json": {
+      "sha256": "64a363695b440dc25ed1d57b5e33a22c683de9691e7bd37e1c051b0b2d9ae050",
+      "bytes": 882
+    },
+    "historical-wall-capture/night.png": {
+      "sha256": "df90fc3572738dac69560925dcf9fa9798220c0b5973f75abdd1be17be6f72bf",
+      "bytes": 1181267
+    },
+    "historical-wall-capture/noon.png": {
+      "sha256": "851f4ae83bdb35105f918aff87d169be29b6754aa7afd45977e5c0dafc21c57a",
+      "bytes": 1748531
+    },
+    "historical-wall-capture/preflight.json": {
+      "sha256": "0cde6823b9638c305e8f46f5351df6c99a4b174b280f3a84f4d355bf9eb348c1",
+      "bytes": 1229
+    },
+    "historical-wall-capture/quiet-lease.json": {
+      "sha256": "353ace09cffa383e8b05ababf9cda22676438783a3890e8233f95c6c9a9b3582",
+      "bytes": 1275
+    },
+    "historical-wall-capture/repair-verification.json": {
+      "sha256": "bde2cd15a65086ae4db1e0f763ceb5a13114d0866c2a111495795768eda968cd",
+      "bytes": 483607
+    },
+    "historical-wall-screenshot-inventory.json": {
+      "sha256": "c7b97a3cda4847a987fc7965b0c8cd14126df79f05d154b28790bb46a988c8f4",
+      "bytes": 21392
+    },
+    "integrated-checks-build-lease.json": {
+      "sha256": "a0cbb97fc1d2e29b6b2b1ae9c2c966bd05f7ac328a7b2edf56c45153f0a88609",
+      "bytes": 664
+    },
+    "integrated-checks-build.log": {
+      "sha256": "274a75e927a01cdcc3b706a37ffa3496544c1823bf2638d3fa278f0209dcb4be",
+      "bytes": 112674
+    },
+    "matched-bake-build-lease.json": {
+      "sha256": "ce1e0a47bf1337f0fc8e70828543ef957dbb637b9a86a03d979ded0fd8cc6945",
+      "bytes": 665
+    },
+    "matched-bake-command.json": {
+      "sha256": "207e9bee64f0168c938d0a72de4aa484433321fbeec4fd1e4a4ffc6e4fdb207a",
+      "bytes": 1398
+    },
+    "matched-bake-receipt.json": {
+      "sha256": "918bcabebd334eee9f05ced375d220250f64ec8be33af0d63ae9705af0fe979f",
+      "bytes": 2413
+    },
+    "matched-bake.log": {
+      "sha256": "78279c4858af434a54a048eee98b5db76de182b05f2437dd2aec5370b070c1ad",
+      "bytes": 2954
+    },
+    "matched-bake.py": {
+      "sha256": "35c780c3a8c345a1f6feed191083d5af4a5354ac9c7738e2fc4fb3340d151569",
+      "bytes": 2593
+    },
+    "paired-samples.jsonl": {
+      "sha256": "4b0544446ec022a3b63871b3aea72f799951aaad397f01f641ee6c68d729e89c",
+      "bytes": 33105
+    },
+    "portable-fallback-tests-lease.json": {
+      "sha256": "ecd82085dd6c6d0efc13469339db2cdd8928d88e9b9a7618e8128ec4c90aabec",
+      "bytes": 646
+    },
+    "portable-fallback-tests.log": {
+      "sha256": "1adc62b809398b900262cfcc58d3e4c52cd1ca1d21aa7046f0de3da73e8bf338",
+      "bytes": 49354
+    },
+    "portable-guard-wasm-lease.json": {
+      "sha256": "eb46c601959732539e41316119c568d25513fab01038b769fe98f02a2aa8a760",
+      "bytes": 649
+    },
+    "portable-guard-wasm.log": {
+      "sha256": "fbb60abb6309e5ba263f43783d0d96b1a15b6bb384723974c151e2b8b6311588",
+      "bytes": 21513
+    },
+    "portable-wasm-check-lease.json": {
+      "sha256": "ef9128ce0a9f39aa0609581afeefde7c423518bcc81bafcc706048755f83cf23",
+      "bytes": 649
+    },
+    "portable-wasm-check.log": {
+      "sha256": "035ebd5aa4b7d554adcea511e4a6befb80a26e9637d23a560785bde2f8195262",
+      "bytes": 28472
+    },
+    "published-capture-build-lease.json": {
+      "sha256": "ec8e832c7f3ea1fc83db5b9cd26eb51d6a67862fa17ebb4c7f4e31a21e7e2003",
+      "bytes": 645
+    },
+    "published-capture-build.log": {
+      "sha256": "25b2efc895b8636ea612e9222f5e59ec86b13eee38b3e62ea8b34665de5c8b74",
+      "bytes": 7810
+    },
+    "published-capture-tests-lease.json": {
+      "sha256": "b6cd741718ebd2e6cfb17073646989a9331fb4b883b119234f0b19a20fe0edf2",
+      "bytes": 645
+    },
+    "published-capture-tests.log": {
+      "sha256": "f0529ce1884339c572e49223469a6c9d2363427d9ab39ce07eecd0108eb96728",
+      "bytes": 9226
+    },
+    "published-check-commands.json": {
+      "sha256": "44632c8aca481d996fb8db236413271c5f62dddaeeab16dcd802b98d86adecbd",
+      "bytes": 1275
+    },
+    "published-clear.py": {
+      "sha256": "2e957efb470bc15e4de1467be4dc894fb67264bf27238a87991e1f0b4d4e5cb5",
+      "bytes": 2084
+    },
+    "published-integration-products-lease.json": {
+      "sha256": "ccaef554b17567fb72024210ee65c81be4da52d3aab6f3c1eae67577665a64bd",
+      "bytes": 644
+    },
+    "published-integration-products.log": {
+      "sha256": "66fb5720b8715f8ce012e482f06292ff98e54e4b91f0469e9956accc8da6c611",
+      "bytes": 68858
+    },
+    "published-native-gpu-lease.json": {
+      "sha256": "9a292ee5d540250dbd4546ff693fb81abdf58610815e7d7b66184a1d9e812a35",
+      "bytes": 483
+    },
+    "published-native-manifest.json": {
+      "sha256": "6c17d11a2e76f61769708a01bef5fbd93457a1b80e35644764b88c8623617619",
+      "bytes": 5094
+    },
+    "published-native-rigid-light.log": {
+      "sha256": "37a606b583c8345bbd215931f705c56c555d05e50cc8fe599cf17c6df441018e",
+      "bytes": 216
+    },
+    "published-native-runner.py": {
+      "sha256": "cfda946365271135632f13adb26228001058bfbf6d62193377435ef911f0e996",
+      "bytes": 1882
+    },
+    "published-native-static-light.log": {
+      "sha256": "8268e1dc3be421c4edcbfcdbec5db6f01bed5e14cd838c55855ecbce1c438335",
+      "bytes": 229
+    },
+    "published-pin-inputs.json": {
+      "sha256": "d802ac86e7dd9ee9801496b1318c4510d075f8b0ec69015010eb5518550bbbc7",
+      "bytes": 864
+    },
+    "published-pin-preflight-manifest.json": {
+      "sha256": "7d8b83a74110538a06806f2a3e7bbdad8cef55675e76aad6ba483c465c8bb76d",
+      "bytes": 1290
+    },
+    "published-pin-preflight.json": {
+      "sha256": "2522be9dbdf8a3d538c59a59e3f31b36f0c63879b8995afa8c8f71a47511e097",
+      "bytes": 2020
+    },
+    "published-pin-preflight.log": {
+      "sha256": "3e43805913fdfb958539c154fe22282eeca410343c10ae5992f4af1072b94750",
+      "bytes": 104
+    },
+    "published-preflight-failure.json": {
+      "sha256": "0313d9d2272f22af240fa2199164ad834f1f8a64cd1d9c95a0412dcf9d66d9b6",
+      "bytes": 1383
+    },
+    "published-preflight-inputs.json": {
+      "sha256": "dd11626a036dccc41adb7256d58477b02e14342543eee0cdecbffe4c49b6c439",
+      "bytes": 879
+    },
+    "published-preflight.log": {
+      "sha256": "6adfcc25be65fc1e9b80ba51494c5874d28f88e6fd0b9499c898e38dece91f3e",
+      "bytes": 190
+    },
+    "published-shader-translation-lease.json": {
+      "sha256": "0f7817eb37e2872ab2ec3d834d4b7f0fde195545ff28c36d193f9390eafb2a37",
+      "bytes": 645
+    },
+    "published-shader-translation.log": {
+      "sha256": "d392c912640f84d834b54c5fb3efd1dac1b97ac728075289c3db64a1f7599ea9",
+      "bytes": 8663
+    },
+    "receiver-camera-crops.json": {
+      "sha256": "751b0eee990be32edfb10e105a72094d0c1e4ba07b42c8ec802e8ace74c394bb",
+      "bytes": 1915
+    },
+    "receiver-camera-crops.png": {
+      "sha256": "0a3de625c800c991ade4257be2c60c11bb158973ed0632d6ac719355f1c3ea58",
+      "bytes": 2923575
+    },
+    "receiver-camera-review.py": {
+      "sha256": "3f5cfd569cb31f42b7f9475b6e424e13da770468269743f48fdda50b48ad962a",
+      "bytes": 2270
+    },
+    "receiver-example-build-lease.json": {
+      "sha256": "b61361da30d7de782c626421dbae6a47e024cf90cc5bc8d0fbb4fe93ebcc5fd6",
+      "bytes": 650
+    },
+    "receiver-example-build.log": {
+      "sha256": "529a3be27e197805f6c928e0fdc4db6d9f653be25692df55a67bf2304b1f51c2",
+      "bytes": 7362
+    },
+    "receiver-example-tests-lease.json": {
+      "sha256": "f17b2542dfe768b1e9fe2999566e9a4c9cbff5880494acc95e5af71aa5f3214a",
+      "bytes": 650
+    },
+    "receiver-example-tests.log": {
+      "sha256": "612875ab82aced55461f2a690104673e584f361f95e30bef3fa8e870617eeac1",
+      "bytes": 7490
+    },
+    "receiver-inspection/capture.json": {
+      "sha256": "182c7f344343ba9cedfb912a9bc6cfc5ecc5f9a5f468bca5966c6405b7bd1f53",
+      "bytes": 23094
+    },
+    "receiver-inspection/capture.log": {
+      "sha256": "ed7a0840850d5c80d114842972d6c637b7f058e32b31d97a3945169f46fd6739",
+      "bytes": 3174
+    },
+    "receiver-inspection/command-manifest.json": {
+      "sha256": "13e04c2ab12396dcd8efc25c546df80c9cdb0d30271339bba05f87f2fc0e6afa",
+      "bytes": 1292
+    },
+    "receiver-inspection/destruction-0360.png": {
+      "sha256": "67c11c653be5dbdadf4512bd25b54c4028294d3ac90ca1c20d9c7b030189b284",
+      "bytes": 2450366
+    },
+    "receiver-inspection/destruction-0480.png": {
+      "sha256": "088d257d2e79b47653117ec7e9c7c36811008ac1cefc41395f7fcaf676f9ecaa",
+      "bytes": 2392475
+    },
+    "receiver-inspection/destruction-0600.png": {
+      "sha256": "deb53cf8f44f70cfb9b86afa69c00c6ce6b6c9d2f9f2f323f30fad407d4e42ed",
+      "bytes": 2425195
+    },
+    "receiver-inspection/destruction-0900-receivers.png": {
+      "sha256": "bafbf014234c98c4df4133df0a0a73b7928f5dacb1f8b0be370d46f6df9ccbd2",
+      "bytes": 2589506
+    },
+    "receiver-inspection/destruction-0900.png": {
+      "sha256": "b9362c700c432bfeb476ac9b69df9a5e1320753a2d0f71811764f7c33822ba01",
+      "bytes": 2586630
+    },
+    "receiver-inspection/destruction-pristine-receivers.png": {
+      "sha256": "b507ff131b7a9b218a1db127f0f6a1d674bf8d1aacdff2a375eb13c1a6ec1845",
+      "bytes": 2214454
+    },
+    "receiver-inspection/destruction-pristine.png": {
+      "sha256": "5c4785ceb80399a6d8abdc829769b7d130b9314887ca3ab95d3cf2212d2b7f94",
+      "bytes": 2257960
+    },
+    "receiver-inspection/destruction-restored-receivers.png": {
+      "sha256": "78be2c6e28993d2e618fab1440123be9c4680b2f359d0fcc9401a5bab0612a49",
+      "bytes": 2568954
+    },
+    "receiver-inspection/destruction-restored.png": {
+      "sha256": "ff0ab18e40d7e37e433aef2207f164c970e60eb8b4524ffbeff142d83c478bec",
+      "bytes": 2606951
+    },
+    "receiver-inspection/gpu-lease.json": {
+      "sha256": "fc4ccb8f9f16269d8248b2efee848fb645db7ad53c2e6b2d98d403868c469bcf",
+      "bytes": 484
+    },
+    "receiver-inspection/inputs.json": {
+      "sha256": "d802ac86e7dd9ee9801496b1318c4510d075f8b0ec69015010eb5518550bbbc7",
+      "bytes": 864
+    },
+    "receiver-inspection/preflight.json": {
+      "sha256": "b6617bef2b0394e9d27c11912a0609bb5740b20604ed9ad708b7b0f97d7d46d0",
+      "bytes": 2043
+    },
+    "receiver-inspection/receiver-inspection-before-restore.json": {
+      "sha256": "ada27ea9db3afb522e5dd838cb6f24150787f044b42359545ed764349ba75268",
+      "bytes": 5886
+    },
+    "receiver-inspection/receiver-inspection.json": {
+      "sha256": "01f7963c3a4c00eba6fb0e17b0a1456e9feda35ef1cdd50fe825946fa0800b8b",
+      "bytes": 9249
+    },
+    "receiver-inspection/runner.py": {
+      "sha256": "d3d9dc4bd7ac50589039ef771b3db2b5c2d557335049ecea25579b4305232c5c",
+      "bytes": 2064
+    },
+    "receiver-inspection-diagnostics.jsonl": {
+      "sha256": "58bf0c92934d665fde1e1e02016b24e7498ceb68407d2cf955b7eb1ff189474b",
+      "bytes": 11371
+    },
+    "receiver-screenshot-inventory.json": {
+      "sha256": "40f351b9f0f4bca0c52d1fa4593495a35485e628d7010e749f797714513f5cf6",
+      "bytes": 2916
+    },
+    "repair-diagnostics.jsonl": {
+      "sha256": "21e42afd4195b11699da9887e4837405c1b5396e0ac15942536885b5e45a988c",
+      "bytes": 1738809
+    },
+    "retain-clear-components.py": {
+      "sha256": "d5663124b825e812815d2109e5d4240a4f75cabec86d5f55749be1ab9195067a",
+      "bytes": 5682
+    },
+    "retain-receiver-inspection.py": {
+      "sha256": "6b6c7bb278f0b61218535d40aa9d3c1539dea6f7abafc452692df215f99848d2",
+      "bytes": 4922
+    },
+    "supplementary-checks-build-lease.json": {
+      "sha256": "d2c2c3010167df6ae196e38c077189d75e0261a1ba962f500e5d727f43307772",
+      "bytes": 665
+    },
+    "supplementary-checks-build.log": {
+      "sha256": "308ca0ef41653b642cadcef5982ff08c704c2cfea7dcf002e39a7b360e905825",
+      "bytes": 85351
+    },
+    "supplementary-native-gpu-lease.json": {
+      "sha256": "9f6825e3ee74679e3cdaf59cbfd457c3a2f2d8f1a50ef47ead95a1d9b0dba5d6",
+      "bytes": 484
+    },
+    "supplementary-native-quiet-lease.json": {
+      "sha256": "260623ad435d1a6252fce74a72f3f4c7dae92fdf9c5d9255f11ff28570c62b73",
+      "bytes": 1286
+    },
+    "supplementary-native-rigid-light.log": {
+      "sha256": "c4b738245434496b93f21e554e613a4f4584dc914826f8423976e5b8b0be2efb",
+      "bytes": 216
+    },
+    "supplementary-native-static-light.log": {
+      "sha256": "3e67760555fda41ad889ac102d81afb4f30af32ceb50fc9f021086d17120e128",
+      "bytes": 229
+    },
+    "supplementary-native-test-identity.json": {
+      "sha256": "67ea67eedc55fc3324b8a8ae1341d8762b3daefecb9f7e1b6f85b5b549df79e9",
+      "bytes": 604
+    },
+    "supplementary-scoped-fmt.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    }
+  },
+  "continuation": {
+    "source": "f655bcc32c6df5a69ef278ba8a2e45e342178fab",
+    "binary_sha256": "24312b70d5bda08cc390c8fd82ad9011e551d631a307aebae9395e7d30b71d76",
+    "full_capture_status": "failed_at_rebuild",
+    "full_capture_prefix": "10907-continuation-full",
+    "full_gpu_lease_only": true,
+    "full_timing_claim": false,
+    "diagnostic_hold_seconds": 600,
+    "default_hold_seconds": 180,
+    "blend_report": "blend-capture.json",
+    "blend_manifest": "blend-capture-manifest.json",
+    "blend_quiet_lease": "blend-quiet-lease.json",
+    "blend_gpu_lease": "blend-gpu-lease.json",
+    "paired_samples": 128,
+    "mean_frame_completion_increment_ms": -0.010874032974243164,
+    "approximate_95pct_block_interval_ms": [
+      -0.2789311778007228,
+      0.25718311185223647
+    ],
+    "blend_acceptance": "pass",
+    "destruction_visual_review": {
+      "source": "f655bcc32c6df5a69ef278ba8a2e45e342178fab",
+      "status": "insufficient_visibility",
+      "images": [
+        "10907-continuation-full/destruction-pristine.png",
+        "10907-continuation-full/destruction-0900.png"
+      ],
+      "assessment": "Foreground foliage covers most of the target house, rubble, and contacts. These views cannot establish the absence of floating shadows or verify R lighting restoration.",
+      "acceptance": "pending_clear_view"
+    },
+    "blend_review": {
+      "reviewer": "root",
+      "status": "pass",
+      "paired_samples": 128,
+      "filtered_samples": 0,
+      "mean_wall_increment_ms": -0.010874032974243164,
+      "approximate_95pct_block_interval_ms": [
+        -0.2789311778007228,
+        0.25718311185223647
+      ],
+      "basis": "The upper interval bound is 0.257183 ms across every paired sample; the root review accepts negligible blend cost under the retained capture conditions.",
+      "gpu_duration_claim": false,
+      "selective_worker_cost_claim": false
+    }
+  },
+  "historical_continuation_full": {
+    "source": "f655bcc32c6df5a69ef278ba8a2e45e342178fab",
+    "binary_sha256": "24312b70d5bda08cc390c8fd82ad9011e551d631a307aebae9395e7d30b71d76",
+    "manifest": "historical-continuation-full/command-manifest.json",
+    "report": "historical-continuation-full/capture.json",
+    "log": "historical-continuation-full/capture.log",
+    "gpu_lease": "historical-continuation-full/gpu-lease.json",
+    "quiet_lease": null,
+    "exit": 1,
+    "error": "Everglade has no offensive spells",
+    "clock_records": 10441,
+    "clock_status": "complete",
+    "paired_samples": 0,
+    "measurement_status": "skipped",
+    "repair_acceptance": false,
+    "repair_diagnostics": "Unavailable: repair-verification.json and destruction diagnostics were not checkpointed before the rebuild error. PNG mtimes are not completion measurements.",
+    "original_screenshots": 69,
+    "retained_original_pngs": 3,
+    "screenshot_inventory": "historical-continuation-screenshot-inventory.json",
+    "visual_quality": "Insufficient visibility: foreground foliage covers the target house and contacts.",
+    "full_timing_claim": false,
+    "failure_scope": "Capture executable builds with capture only. The dev-destruction feature and runtime setup are absent, so the rebuild gate fails; this is not evidence of a repair-worker failure. Repair counters remain unavailable."
+  },
+  "published_pin_validation": {
+    "source": "290c1590726189dbdabb5693125cfa0fbca8a779",
+    "binary_sha256": "57730fa84bcfc3cfccb3ecf5d0df8ebaaeb78f264e1f7857fa459b2c40d45996",
+    "manifest": "published-pin-preflight-manifest.json",
+    "preflight": "published-pin-preflight.json",
+    "inputs": "published-pin-inputs.json",
+    "log": "published-pin-preflight.log",
+    "status": "verified",
+    "scope": "The selected local kit and VLAY are admitted with VERSE_KIT_UNPINNED removed, enforcing their published SHA pins. This does not exercise automatic download/cache resolution.",
+    "layers_sha256": "fc5414a1bfef9e730f3d7d779e4447f12cc86d4e571042eec42518abb30ef7c2",
+    "scene": "f55a1e76fca2e2b96af777e296549aa9b51776cadbcfff6eaf1c77a8ad83b2ab",
+    "features": [
+      "capture",
+      "dev-destruction"
+    ],
+    "captured_before_simulation": true
+  },
+  "completed_clock": {
+    "source": "f655bcc32c6df5a69ef278ba8a2e45e342178fab",
+    "binary_sha256": "24312b70d5bda08cc390c8fd82ad9011e551d631a307aebae9395e7d30b71d76",
+    "report": "historical-continuation-full/capture.json",
+    "status": "complete",
+    "containing_run_exit": 1,
+    "records": "clock-records.jsonl",
+    "clock_records": 10441,
+    "original_clock_pngs": 12,
+    "review": "clock-review.json",
+    "preview": "clock-preview.mp4",
+    "preview_metadata": "clock-preview.json",
+    "preview_lossy": true,
+    "saved_preview_frames": 50,
+    "phase_contact_sheet": "clock/phase-contact-sheet.png",
+    "boundary_crops": [
+      "clock/sun-08-boundary-crops.png",
+      "clock/sun-12-boundary-crops.png",
+      "clock/sun-1530-boundary-crops.png",
+      "clock/sun-1730-boundary-crops.png"
+    ],
+    "missing_exact_boundary_pixels": [
+      8.0,
+      15.5,
+      17.5
+    ],
+    "visual_quality": "reviewed_gradual_phase_and_boundary_changes",
+    "repair_acceptance": false,
+    "visual_review": {
+      "reviewer": "root",
+      "assessment": "Retained before/after boundary images and all recorded sun weights show gradual changes.",
+      "exact_boundary_pixel_gaps": [
+        8.0,
+        15.5,
+        17.5
+      ],
+      "scope": "The existing f655 clock evidence only; no new source or missing pixel is attributed to it."
+    }
+  },
+  "destruction_capture": {
+    "source": "290c1590726189dbdabb5693125cfa0fbca8a779",
+    "binary_sha256": "57730fa84bcfc3cfccb3ecf5d0df8ebaaeb78f264e1f7857fa459b2c40d45996",
+    "manifest": "clear-capture/command-manifest.json",
+    "report": "clear-capture/capture.json",
+    "inputs": "clear-capture/inputs.json",
+    "preflight": "clear-capture/preflight.json",
+    "repair_verification": "clear-capture/repair-verification.json",
+    "repair_before_restore": "clear-capture/repair-before-restore.json",
+    "gpu_lease": "clear-capture/gpu-lease.json",
+    "quiet_lease": null,
+    "timing_claim": false,
+    "features": [
+      "capture",
+      "dev-destruction"
+    ],
+    "mode": "destruction-only",
+    "clock_status": "skipped",
+    "measurement_status": "skipped",
+    "camera_eye": [
+      -30.0,
+      28.0,
+      35.0
+    ],
+    "camera_aim": [
+      0.0,
+      4.0,
+      6.0
+    ],
+    "player_ground_origin": [
+      -30.0,
+      0.0,
+      35.0
+    ],
+    "diagnostic_hold_seconds": 600,
+    "default_hold_seconds": 180,
+    "noon_hold_seconds": 227.121199542,
+    "night_hold_seconds": 378.709736417,
+    "diagnostic_completion": "verified",
+    "completion_within_default_bound": "not_claimed",
+    "selected_original_pngs": [
+      "destruction-0360.png",
+      "destruction-0480.png",
+      "destruction-0600.png",
+      "destruction-0900.png",
+      "destruction-pristine.png",
+      "destruction-repaired-night.png",
+      "destruction-repaired-noon.png",
+      "destruction-restored.png"
+    ],
+    "screenshot_inventory": "clear-screenshot-inventory.json",
+    "repair_diagnostic_records": 1324,
+    "visual_quality": "reviewed_with_smoke_limit",
+    "visual_review": {
+      "source": "290c1590726189dbdabb5693125cfa0fbca8a779",
+      "status": "reviewed_with_visibility_limits",
+      "images": [
+        "clear-capture/destruction-pristine.png",
+        "clear-capture/destruction-0900.png",
+        "clear-capture/destruction-repaired-noon.png",
+        "clear-capture/destruction-repaired-night.png",
+        "clear-capture/destruction-restored.png"
+      ],
+      "observations": [
+        "The raised camera exposes the target house and multiple separated roof and wall pieces.",
+        "Visible rubble and surrounding surfaces darken in the repaired night original.",
+        "R removes the visible debris and restores the intact house and noon illumination."
+      ],
+      "limitations": [
+        "Smoke masks central rubble contacts, so these images do not establish a comprehensive absence of floating shadows.",
+        "Pristine and restored images have continuing foliage, smoke, and clock history; no pixel-identity claim is made."
+      ],
+      "acceptance": "supplemented_by_source51_visible_receiver_review",
+      "crop_board": "clear-camera-crops.png",
+      "crop_metadata": "clear-camera-crops.json"
+    }
+  },
+  "artifact_inventory_scope": "artifacts covers every retained file except verification.json and SHA256SUMS. SHA256SUMS also covers verification.json.",
+  "receiver_inspection": {
+    "source": "51e1ab25192e95038edcee1f548355c11df5ff95",
+    "binary_sha256": "56850d5d26c594dfd9e2f51c3d0bb8ae13f0c23a15a1a2db4fc1072b693b01df",
+    "manifest": "receiver-inspection/command-manifest.json",
+    "report": "receiver-inspection/capture.json",
+    "inputs": "receiver-inspection/inputs.json",
+    "preflight": "receiver-inspection/preflight.json",
+    "inspection": "receiver-inspection/receiver-inspection.json",
+    "before_restore": "receiver-inspection/receiver-inspection-before-restore.json",
+    "gpu_lease": "receiver-inspection/gpu-lease.json",
+    "quiet_lease": null,
+    "timing_claim": false,
+    "mode": "receiver-inspection-only",
+    "selective_completion_status": "not_evaluated",
+    "selective_holds_status": "skipped",
+    "performance_status": "skipped",
+    "frames": 960,
+    "camera_eye": [
+      -30.0,
+      28.0,
+      35.0
+    ],
+    "camera_aim": [
+      0.0,
+      4.0,
+      6.0
+    ],
+    "player_ground_origin": [
+      -30.0,
+      0.0,
+      35.0
+    ],
+    "targets": [
+      [
+        0.0,
+        8.619999885559082,
+        6.0
+      ],
+      [
+        -8.0,
+        1.5,
+        11.0
+      ],
+      [
+        8.0,
+        1.5,
+        11.0
+      ],
+      [
+        0.0,
+        2.0,
+        11.0
+      ]
+    ],
+    "seeds": {
+      "swarm_default": "0x3E7E0125",
+      "town_geometry": "0x70E7D3B0"
+    },
+    "diagnostics": "receiver-inspection-diagnostics.jsonl",
+    "diagnostic_records": 9,
+    "screenshot_inventory": "receiver-screenshot-inventory.json",
+    "selected_original_pngs": [
+      "destruction-0360.png",
+      "destruction-0480.png",
+      "destruction-0600.png",
+      "destruction-0900-receivers.png",
+      "destruction-0900.png",
+      "destruction-pristine-receivers.png",
+      "destruction-pristine.png",
+      "destruction-restored-receivers.png",
+      "destruction-restored.png"
+    ],
+    "visual_quality": "pass_for_visible_ground_interior_and_rubble",
+    "visual_review": {
+      "reviewer": "root",
+      "status": "pass_for_scoped_visible_areas",
+      "source": "51e1ab25192e95038edcee1f548355c11df5ff95",
+      "images": [
+        "receiver-inspection/destruction-pristine-receivers.png",
+        "receiver-inspection/destruction-0900-receivers.png",
+        "receiver-inspection/destruction-restored-receivers.png"
+      ],
+      "assessment": "The same-state frame-900 receiver view exposes the removed central house, ground, interior, and rubble. No disconnected old wall or roof shadow is visible in those exposed areas. Pristine and R views restore the house geometry.",
+      "limits": "Vegetation still occludes part of the scene. The inspection skips selective holds and has verified=false, so this visual verdict does not establish worker convergence. Color differences reflect continuing weather and exposure; no pristine/R pixel identity is claimed.",
+      "selective_convergence_claim": false,
+      "performance_claim": false,
+      "crop_board": "receiver-camera-crops.png",
+      "crop_metadata": "receiver-camera-crops.json",
+      "root_review_board_reference": {
+        "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-receiver-inspection-review.png",
+        "sha256": "03afc7335800c204d8d5171b2c837077cb205ed4144d167d307c61aa78af6e22",
+        "bytes": 1780048,
+        "retention_scope": "Existing root-created board remains in durable scratch; the same originals and a native crop board remain in this evidence folder."
+      }
+    }
+  }
+}

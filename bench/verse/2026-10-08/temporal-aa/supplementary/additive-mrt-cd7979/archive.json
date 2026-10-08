@@ -1,0 +1,17 @@
+{
+  "schema": "openagents.verse.diagnostic-archive.v1",
+  "source": "cd7979bedbeab7a44d71cec857b942ab0f3ca8e1",
+  "binary_sha256": "3d9439652b28dbdc6a56188fe1db9d86f464794d14b445d56dee0ca383c07f83",
+  "status": "scoped_visual_diagnostic_pass",
+  "raw_report": {
+    "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-additive-mrt/capture.json",
+    "sha256": "1b5822344bf1dabafa809e0c49ca237014b6184267953b574a02d3cc6b579477",
+    "bytes": 376509
+  },
+  "original_pngs": 53,
+  "primary_rows": 540,
+  "diagnostic_rows": 7,
+  "paired_rows": 0,
+  "timing_acceptance_available": false,
+  "supersedes_top_level_acceptance": false
+}

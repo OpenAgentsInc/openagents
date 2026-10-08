@@ -1,0 +1,40 @@
+{
+  "source": null,
+  "assets": {
+    "kit": { "path": null, "sha256": null, "bytes": null },
+    "base_pack": { "path": null, "sha256": null, "bytes": null }
+  },
+  "cases": {
+    "high-dev": {
+      "manifest": null, "job": null, "prefix": null, "profile": "dev", "binary_sha256": null,
+      "quiet_receipt": null, "gpu_receipt": null
+    },
+    "high-release": {
+      "manifest": null, "job": null, "prefix": null, "profile": "release", "binary_sha256": null,
+      "quiet_receipt": null, "gpu_receipt": null
+    },
+    "high-paired": {
+      "manifest": null, "job": null, "prefix": null, "profile": "release", "binary_sha256": null,
+      "quiet_receipt": null, "gpu_receipt": null
+    },
+    "medium-paired": {
+      "manifest": null, "job": null, "prefix": null, "profile": "release", "binary_sha256": null,
+      "quiet_receipt": null, "gpu_receipt": null
+    },
+    "pan-paired": {
+      "manifest": null, "job": null, "prefix": null, "profile": "release", "binary_sha256": null,
+      "quiet_receipt": null, "gpu_receipt": null
+    },
+    "orbit-paired": {
+      "manifest": null, "job": null, "prefix": null, "profile": "release", "binary_sha256": null,
+      "quiet_receipt": null, "gpu_receipt": null
+    }
+  },
+  "proofs": {},
+  "crops": {
+    "high-paired": [480, 200, 900, 670],
+    "medium-paired": [480, 200, 900, 670],
+    "pan-paired": [750, 420, 1150, 780],
+    "orbit-paired": [750, 420, 1150, 780]
+  }
+}

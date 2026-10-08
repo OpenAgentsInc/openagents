@@ -1,0 +1,55 @@
+{
+  "source": "bfa66f3b07e8081d06bb084fa1e348d946684986",
+  "crop": [
+    490,
+    250,
+    820,
+    565
+  ],
+  "method": "Exact PNG byte comparisons after the same bounded HDR display transform. Quantized comparisons cannot recover original float differences. Raw source pixel positions do not establish reprojected age.",
+  "frames": [
+    {
+      "frame": 469,
+      "negative_pixels": 4510,
+      "negative_footprint_current_history_changed_pixels": 0,
+      "negative_footprint_max_display_byte_difference": 0
+    },
+    {
+      "frame": 470,
+      "negative_pixels": 4211,
+      "negative_footprint_current_history_changed_pixels": 0,
+      "negative_footprint_max_display_byte_difference": 0
+    },
+    {
+      "frame": 471,
+      "negative_pixels": 3122,
+      "negative_footprint_current_history_changed_pixels": 0,
+      "negative_footprint_max_display_byte_difference": 0,
+      "ghost_roi": [
+        558,
+        290,
+        620,
+        345
+      ],
+      "ghost_roi_current_negative_pixels": 0,
+      "ghost_roi_current_history_changed_pixels": 2386,
+      "ghost_roi_max_display_byte_difference": 77
+    },
+    {
+      "frame": 472,
+      "negative_pixels": 2958,
+      "negative_footprint_current_history_changed_pixels": 0,
+      "negative_footprint_max_display_byte_difference": 0,
+      "ghost_roi": [
+        580,
+        338,
+        645,
+        385
+      ],
+      "ghost_roi_current_negative_pixels": 0,
+      "ghost_roi_current_history_changed_pixels": 2356,
+      "ghost_roi_max_display_byte_difference": 100
+    }
+  ],
+  "visual": "Detached contour remains in AA-on frames 471 and 472, absent from AA-off/current pre-TAA. New history contains the contour before sharpening; no visual acceptance."
+}

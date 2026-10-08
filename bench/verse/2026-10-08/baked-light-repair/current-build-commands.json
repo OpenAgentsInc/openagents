@@ -1,0 +1,193 @@
+{
+  "schema": "openagents.verse.evidence-command-ledger.v1",
+  "commands": [
+    {
+      "name": "products",
+      "source": "f655bcc32c6df5a69ef278ba8a2e45e342178fab",
+      "cwd": "/Users/christopherdavid/.codex/worktrees/10907-budgeted-relight/openagents",
+      "environment": {
+        "CARGO_TARGET_DIR": "/Users/christopherdavid/work/openagents-target-agent2"
+      },
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "verse-pbr",
+        "-p",
+        "verse-zone-everglade",
+        "-p",
+        "physics"
+      ],
+      "lease_command": [
+        "openagents",
+        "lease",
+        "build",
+        "--keep-target-dir",
+        "--receipt",
+        "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-continuation-products-build-lease.json",
+        "--",
+        "cargo",
+        "test",
+        "-p",
+        "verse-pbr",
+        "-p",
+        "verse-zone-everglade",
+        "-p",
+        "physics"
+      ],
+      "retained_receipt": "current-products-build-lease.json",
+      "retained_log": "current-products-build.log",
+      "argv_origin": "Recorded execution history",
+      "exit": 0
+    },
+    {
+      "name": "render",
+      "source": "f655bcc32c6df5a69ef278ba8a2e45e342178fab",
+      "cwd": "/Users/christopherdavid/.codex/worktrees/10907-budgeted-relight/openagents",
+      "environment": {
+        "CARGO_TARGET_DIR": "/Users/christopherdavid/work/openagents-target-agent2"
+      },
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "verse",
+        "--lib",
+        "render::"
+      ],
+      "lease_command": [
+        "openagents",
+        "lease",
+        "build",
+        "--keep-target-dir",
+        "--receipt",
+        "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-continuation-render-build-lease.json",
+        "--",
+        "cargo",
+        "test",
+        "-p",
+        "verse",
+        "--lib",
+        "render::"
+      ],
+      "retained_receipt": "current-render-build-lease.json",
+      "retained_log": "current-render-build.log",
+      "argv_origin": "Recorded execution history",
+      "exit": 0
+    },
+    {
+      "name": "gles",
+      "source": "f655bcc32c6df5a69ef278ba8a2e45e342178fab",
+      "cwd": "/Users/christopherdavid/.codex/worktrees/10907-budgeted-relight/openagents",
+      "environment": {
+        "CARGO_TARGET_DIR": "/Users/christopherdavid/work/openagents-target-agent2"
+      },
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "verse",
+        "--lib",
+        "gles_tests::"
+      ],
+      "lease_command": [
+        "openagents",
+        "lease",
+        "build",
+        "--keep-target-dir",
+        "--receipt",
+        "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-continuation-gles-build-lease.json",
+        "--",
+        "cargo",
+        "test",
+        "-p",
+        "verse",
+        "--lib",
+        "gles_tests::"
+      ],
+      "retained_receipt": "current-gles-build-lease.json",
+      "retained_log": "current-gles-build.log",
+      "argv_origin": "continuation-capture-build.sh",
+      "exit": 0
+    },
+    {
+      "name": "capture-tests",
+      "source": "f655bcc32c6df5a69ef278ba8a2e45e342178fab",
+      "cwd": "/Users/christopherdavid/.codex/worktrees/10907-budgeted-relight/openagents",
+      "environment": {
+        "CARGO_TARGET_DIR": "/Users/christopherdavid/work/openagents-target-agent2"
+      },
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "verse",
+        "--example",
+        "baked_light_capture",
+        "--features",
+        "capture"
+      ],
+      "lease_command": [
+        "openagents",
+        "lease",
+        "build",
+        "--keep-target-dir",
+        "--receipt",
+        "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-continuation-capture-tests-build-lease.json",
+        "--",
+        "cargo",
+        "test",
+        "-p",
+        "verse",
+        "--example",
+        "baked_light_capture",
+        "--features",
+        "capture"
+      ],
+      "retained_receipt": "current-capture-tests-build-lease.json",
+      "retained_log": "current-capture-tests-build.log",
+      "argv_origin": "continuation-capture-build.sh",
+      "exit": 0
+    },
+    {
+      "name": "capture",
+      "source": "f655bcc32c6df5a69ef278ba8a2e45e342178fab",
+      "cwd": "/Users/christopherdavid/.codex/worktrees/10907-budgeted-relight/openagents",
+      "environment": {
+        "CARGO_TARGET_DIR": "/Users/christopherdavid/work/openagents-target-agent2"
+      },
+      "command": [
+        "cargo",
+        "build",
+        "-p",
+        "verse",
+        "--example",
+        "baked_light_capture",
+        "--features",
+        "capture"
+      ],
+      "lease_command": [
+        "openagents",
+        "lease",
+        "build",
+        "--keep-target-dir",
+        "--receipt",
+        "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-continuation-capture-build-lease.json",
+        "--",
+        "cargo",
+        "build",
+        "-p",
+        "verse",
+        "--example",
+        "baked_light_capture",
+        "--features",
+        "capture"
+      ],
+      "retained_receipt": "current-capture-build-lease.json",
+      "retained_log": "current-capture-build.log",
+      "argv_origin": "continuation-capture-build.sh",
+      "exit": 0
+    }
+  ],
+  "receipt_limit": "Build receipts retain the command name; this ledger retains the executed argv separately."
+}

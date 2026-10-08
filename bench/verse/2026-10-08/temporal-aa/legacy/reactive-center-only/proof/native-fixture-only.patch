@@ -1,0 +1,14 @@
+diff --git a/crates/verse-pbr/src/pbr/temporal_reactive_tests.rs b/crates/verse-pbr/src/pbr/temporal_reactive_tests.rs
+index 1ce4dd89a0..e8ff71967d 100644
+--- a/crates/verse-pbr/src/pbr/temporal_reactive_tests.rs
++++ b/crates/verse-pbr/src/pbr/temporal_reactive_tests.rs
+@@ -78,7 +78,8 @@ impl<'a> Fixture<'a> {
+         let targets = temporal.targets(device, &scene_view, &depth_view, [WIDTH, HEIGHT]);
+ 
+         // Exercise the production lit vertex shader, rather than duplicate its projection.
+-        let source = crate::shading::source(include_str!("photo.wgsl"));
++        let shared = crate::shading::source(include_str!("photo.wgsl"));
++        let source = verse_gfx::gles::wgsl(&shared, false);
+         let module = naga::front::wgsl::parse_str(&source).unwrap();
+         let mut layouter = naga::proc::Layouter::default();
+         layouter.update(module.to_ctx()).unwrap();

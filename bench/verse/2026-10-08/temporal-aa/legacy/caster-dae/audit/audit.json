@@ -1,0 +1,88 @@
+{
+  "schema": "openagents.verse-temporal-visual-audit.v1",
+  "method": "Matched off/on full views at first selected frame, followed by native-pixel crops of all 16 consecutive pairs; no product edits or rendering runs.",
+  "resolution": [
+    1920,
+    1080
+  ],
+  "fps": 60,
+  "quality": "High",
+  "pairing": "Capture metadata records independent warmed histories and exposure, one advance per identical simulation frame, alternating order, and identical bake deliveries forwarded before either render.",
+  "views": [
+    {
+      "folder": "10936-pan-caster-release-paired",
+      "camera": "pan",
+      "frames": [
+        120,
+        135
+      ],
+      "seconds": [
+        2.0,
+        2.25
+      ],
+      "static_houses": true,
+      "crop": [
+        700,
+        370,
+        1030,
+        455
+      ],
+      "evidence": "pan-roof-120-135.png",
+      "observation": "AA-on softens ridge tiles and eaves. House silhouette stays aligned across matched views, with less visible pixel stepping; no doubled edge observed."
+    },
+    {
+      "folder": "10936-orbit-caster-release-paired",
+      "camera": "orbit",
+      "frames": [
+        120,
+        135
+      ],
+      "seconds": [
+        2.0,
+        2.25
+      ],
+      "static_houses": true,
+      "crop": [
+        575,
+        310,
+        980,
+        420
+      ],
+      "evidence": "orbit-roof-120-135.png",
+      "observation": "AA-on softens roof detail while reducing the visible ridge/eave stair pattern. The changing oblique view shows no doubled house edge."
+    },
+    {
+      "folder": "10936-high-caster-release-paired",
+      "camera": "director",
+      "frames": [
+        469,
+        484
+      ],
+      "seconds": [
+        7.816666666666666,
+        8.066666666666666
+      ],
+      "static_houses": false,
+      "crop": [
+        170,
+        145,
+        730,
+        535
+      ],
+      "evidence": [
+        "debris-469-472.png",
+        "debris-473-476.png",
+        "debris-477-480.png",
+        "debris-481-484.png"
+      ],
+      "observation": "Detached roof, window, and wall silhouettes stay at their matched current positions. No obvious multi-frame debris duplicate or old meteor-head silhouette remains as the head crosses the view. The long emissive ribbon exists in both variants."
+    }
+  ],
+  "limitations": [
+    "Qualitative static inspection of short 16-frame intervals; this is not a numerical edge-crawl or temporal ghost-length metric.",
+    "Clear-sky debris crop and front/side house views do not cover every object, velocity, material, disocclusion, camera cut, or reset.",
+    "Bright fire, smoke, and very small objects can hide faint or subpixel ghosts.",
+    "These retained earlier-kit captures do not verify the forthcoming c559 production-kit captures.",
+    "This audit makes no render-time budget claim."
+  ]
+}

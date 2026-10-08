@@ -1,0 +1,961 @@
+   Compiling physics v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/physics)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.88s
+     Running unittests src/lib.rs (/Users/christopherdavid/work/openagents-target-agent0/debug/deps/physics-652c8adc74e00963)
+
+running 191 tests
+test body::tests::a_composite_of_two_bodies_uses_the_parallel_axis_theorem ... ok
+test character::tests::gravity_override_scales_descent_and_bounds_its_speed ... ok
+test character::tests::jump_is_blocked_without_headroom ... ok
+test character::tests::endpoint_and_surface_recovery ... ok
+test character::tests::crowded_capsules_finish_recovery_before_movement ... ok
+test character::tests::moving_platform_carries_and_removed_support_releases ... ok
+test character::tests::filled_box_spawn_and_teleport ... ok
+test clock::tests::a_long_frame_runs_the_cap_and_reports_the_rest ... ok
+test clock::tests::frames_become_whole_steps ... ok
+test collision::index_tests::oriented_margin_bounds_preserve_corner_contacts_from_sat ... ok
+test collision::index_tests::responding_queries_keep_fixed_sleeping_and_kinematic_pairs_in_exhaustive_order ... ok
+test body::tests::intermediate_axis_spin_flips_but_major_axis_spin_is_stable ... ok
+test character::tests::airborne_motion_is_ballistic_and_landing_reports_the_fall ... ok
+test character::tests::ground_jump_land_and_ceiling ... ok
+test contact::warm_tests::a_changing_normal_must_run_friction_again_and_other_motion_invalidates_convergence ... ok
+test character::tests::unresolvable_recovery_preserves_character_state ... ok
+test broadphase::tests::visiting_intersections_reuses_scratch_and_keeps_original_traversal_and_candidates ... ok
+test collision::index_tests::a_wide_floor_does_not_query_airborne_chunks_but_keeps_motion_contacts ... ok
+test collision::index_tests::responding_queries_replay_exact_motion_through_sleep_scripted_wake_and_reset ... ok
+test body::tests::free_tumble_conserves_momentum_and_energy ... ok
+test contact::warm_tests::cached_contact_axes_match_vector_impulses_and_keep_kinematic_motion ... ok
+test contact::warm_tests::friction_extremes_preserve_unconditional_hypot_bits ... ok
+test contact::warm_tests::friction_interior_preserves_bits_and_boundaries_keep_hypot ... ok
+test contact::warm_tests::disjoint_motion_access_matches_indexed_rows_in_both_orders_and_keeps_alias_fallback ... ok
+test contact::warm_tests::motion_revisions_track_actual_changes_in_every_impulse_path ... ok
+test collision::index_tests::unchanged_geometry_is_cached_and_public_mutations_refresh_it ... ok
+test contact::warm_tests::zero_friction_cone_matches_hypot_for_signed_zeros_and_finite_extremes ... ok
+test continuous::tests::caps_tangency_and_initial_overlap ... ok
+test continuous::tests::moving_actor_crosses_stationary_projectile ... ok
+test contact::warm_tests::friction_scaled_boundaries_and_interior_match_hypot_exactly ... ok
+test continuous::tests::relative_translation_preserves_contact_and_equal_motion_misses ... ok
+test kinematic::tests::contact_allows_parallel_and_outward_motion_but_blocks_inward ... ok
+test kinematic::tests::fast_box_cannot_tunnel_through_a_thin_wall ... ok
+test kinematic::tests::slides_along_walls_and_stops_at_a_corner ... ok
+test contact::warm_tests::pair_index_preserves_nearest_point_and_ties_without_scanning_other_pairs ... ok
+test lifetimes::tests::actor_retirement_keeps_generation_fences_without_live_collision ... ok
+test lifetimes::tests::checkpoint_and_invalid_updates_preserve_ownership ... ok
+test lifetimes::tests::death_masks_expiry_and_replacement_are_fenced ... ok
+test modal::tests::a_restored_mode_continues_bit_for_bit ... ok
+test modal::tests::critical_and_overdamped_modes_settle_without_overshoot ... ok
+test ledger::tests::recorded_impulses_balance_and_unrecorded_ones_show ... ok
+test modal::tests::free_ring_down_follows_the_exact_envelope ... ok
+test navigation::tests::refuses_bad_queries_and_reports_an_unreachable_target ... ok
+test character::tests::recorded_three_capsules_use_a_bounded_atomic_motor_outcome ... ok
+test navigation::tests::routes_around_a_column_without_intersecting_it ... ok
+test oracle::tests::tank_into_panel_matches_genesis ... ignored, needs a Genesis trace from oracle/genesis_oracle.py
+test plume::tests::a_plate_across_the_axis_takes_the_dynamic_pressure ... ok
+test plume::tests::a_sphere_and_a_capsule_take_their_projected_area ... ok
+test plume::tests::an_enclosure_catches_the_whole_thrust ... ok
+test modal::tests::a_step_load_rings_about_the_static_deflection ... ok
+test plume::tests::surfaces_behind_out_of_range_or_facing_away_are_left_alone ... ok
+test character::tests::thin_wall_and_slide ... ok
+test ledger::tests::a_coasting_system_keeps_its_momentum ... ok
+test queries::capsule_contact_tests::capsule_queries_obey_pose_life_instance_layers_and_removal ... ok
+test queries::capsule_contact_tests::fast_capsules_stop_at_exact_contact_and_tangent_travel_is_free ... ok
+test queries::capsule_contact_tests::overlap_bounds_keep_contacts_within_narrow_phase_tolerance ... ok
+test queries::capsule_contact_tests::world_capsule_cache_tracks_pose_removal_and_reinsertion_and_prunes_distant_tests ... ok
+test collision::index_tests::scripted_motion_wakes_near_sleepers_without_enumerating_distant_pairs ... ok
+test queries::profiling::tests::measurements_are_optional_bounded_and_count_failed_calls ... ok
+test modal::tests::any_step_length_is_stable_and_never_adds_energy ... ok
+test collision::index_tests::sparse_background_prunes_pairs_and_tracks_kind_changes_and_reused_leaves ... ok
+test queries::profiling::tests::scene_profiling_preserves_hits_and_observes_real_query_failures ... ok
+test queries::snapshot::blocking_cache_tests::nonblocking_changes_preserve_character_geometry_but_blockers_invalidate_it ... ok
+test queries::snapshot::tests::cached_capsule_pose_updates_and_shape_replacement_keep_queries_current ... ok
+test queries::snapshot::tests::regional_blockers_include_old_new_and_transformed_bounds ... ok
+test queries::snapshot::tests::cached_pose_updates_reuse_meshes_and_replacement_is_atomic ... ok
+test queries::snapshot::tests::rejects_foreign_duplicate_invalid_and_over_budget_geometry ... ok
+test queries::tests::life_instance_layer_and_usage_filters_are_independent ... ok
+test queries::tests::capsule_stops_at_a_thin_triangle_wall_at_the_correct_time ... ok
+test queries::tests::malformed_geometry_and_nonfinite_queries_are_refused ... ok
+test oracle::tests::scenes_round_trip_and_run_deterministically ... ok
+test queries::snapshot::tests::snapshot_round_trip_preserves_solid_boxes_meshes_capsules_and_poses ... ok
+test queries::tests::ramp_and_stair_queries_return_ground_height_and_surface_normals ... ok
+test queries::tests::nearest_results_are_bounded_and_independent_of_collider_insertion_order ... ok
+test queries::tests::rounded_edge_contacts_do_not_use_an_expanded_box_approximation ... ok
+test queries::tests::scene_clones_share_mesh_buffers_and_keep_collider_membership_independent ... ok
+test queries::tests::mesh_hierarchy_prunes_distant_geometry_and_preserves_source_triangle_ids ... ok
+test contact::warm_tests::exact_convergence_matches_all_iterations_with_coupled_contacts_and_joints ... ok
+test rope::tests::a_one_way_rope_leaves_its_bodies_alone ... ok
+test character::tests::admitted_stair_and_tall_step ... ok
+test queries::index_tests::foreign_instances_and_distant_shapes_do_not_enter_local_candidates ... ok
+test character::tests::a_calibrated_shove_slides_its_distance_and_a_wall_stops_it ... ok
+test character::tests::walkable_slope_climbs_and_steep_slope_blocks ... ok
+test solid::tests::a_segment_finds_its_point_nearest_a_solid ... ok
+test solid::tests::bounds_enclose_each_solid ... ok
+test solid::tests::distances_and_normals_point_out_of_each_solid ... ok
+test tests::a_grip_saturates_at_its_limit ... ok
+test tests::a_force_on_a_sleeping_body_moves_it ... ok
+test rope::tests::a_slack_rope_curves_and_carries_a_whip_wave ... ok
+test rope::tests::a_taut_rope_lies_straight_along_its_anchors ... ok
+test tests::a_hard_point_joint_holds_a_pendulum ... ok
+test tests::a_hard_weld_holds_under_impact ... ok
+test rope::tests::a_restored_rope_continues_bit_for_bit ... ok
+test tests::a_settled_body_sleeps_and_wakes_on_contact_force_or_joint ... ok
+test tests::a_small_stack_settles_and_stays ... ok
+test tests::a_spinning_tank_striking_a_panel_edge_takes_angular_impulse ... ok
+test tests::a_moving_kinematic_body_wakes_what_it_touches_or_holds ... ok
+test tests::a_tether_catches_without_adding_energy ... ok
+test tests::batch_removal_matches_individual_removal_and_wakes_joint_neighbors ... ok
+test tests::box_on_box_manifold_through_a_scripted_sweep ... ok
+test tests::a_soft_grip_settles_critically_and_conserves_momentum ... ok
+test rope::tests::a_coupled_rope_conserves_momentum_with_its_bodies ... ok
+test tests::collisions_between_free_bodies_conserve_momentum ... ok
+test tests::debug_lines_show_contacts_and_joints ... ok
+test rope::tests::a_wrapped_rope_restores_bit_for_bit ... ok
+test tests::filters_choose_which_pairs_touch ... ok
+test tests::contact_force_reads_weight_and_impacts ... ok
+test tests::fast_bodies_do_not_tunnel_through_thin_panels ... ok
+test tests::raycasts_hit_each_shape_where_geometry_says ... ok
+test tests::removed_bodies_stop_interacting ... ok
+test tests::a_slowly_drifting_body_never_sleeps ... ok
+test tests::the_imu_reads_thrust_free_fall_and_spin ... ok
+test queries::index_tests::transformed_mixed_shapes_filters_limits_and_updates_match_exhaustive_queries ... ok
+test rope::tests::a_taut_path_bends_only_where_a_solid_blocks_the_view ... ok
+test thrusters::tests::an_infeasible_request_saturates_toward_it ... ok
+test thrusters::tests::one_off_center_thruster_pushes_and_turns ... ok
+test thrusters::tests::pid_terms_add ... ok
+test thrusters::tests::pure_force_and_pure_torque_requests_are_met ... ok
+test character::tests::enclosed_four_capsules_recover_without_crossing_walls ... ok
+test thrusters::tests::small_requests_are_met_like_large_ones ... ok
+test walkable::tests::configuration_and_compilation_work_are_bounded ... ok
+test tests::torsional_friction_resists_spin_up_to_its_limit ... ok
+test walkable::tests::column_route_and_no_path_are_distinct_from_budget_refusal ... ok
+test walkable::tests::blockers_replan_and_fence_reused_lives ... ok
+test walkable::tiled::tests::crowd_steering_is_instance_scoped_stable_and_bounded ... ok
+test rope::tests::a_loose_end_drifts_and_the_reel_takes_it_in ... ok
+test tests::a_settled_pile_sleeps_and_steps_cheaply ... ok
+test tests::friction_holds_below_the_coulomb_limit_and_slips_past_it ... ok
+test walkable::tiled::tests::scheduler_bounds_failed_search_reservations_fairness_and_restore ... ok
+test rope::tests::a_rope_swung_around_a_post_wraps_it ... ok
+test walkable::tiled::tests::pinned_malformed_graph_is_refused_before_indexing ... ok
+test water::event::tests::a_surge_crosses_and_a_dam_turns_the_current ... ok
+test water::event::tests::an_event_follows_its_schedule ... ok
+test walkable::tiled::tests::local_source_edit_changes_only_overlapping_tile_identities ... ok
+test water::event::tests::clients_agree_whatever_order_events_arrive_in ... ok
+test water::event::tests::spell_effects_shape_level_and_current ... ok
+test water::event::tests::the_clock_counts_whole_steps ... ok
+test water::medium::tests::a_swimmer_climbs_onto_a_low_lip_only ... ok
+test walkable::tiled::tests::transient_hard_wall_bounds_fence_compiled_edges_and_budget ... ok
+test water::medium::tests::a_swimmer_settles_dives_and_rises_back ... ok
+test water::medium::tests::depth_sets_the_medium ... ok
+test walkable::tests::disconnected_layers_do_not_create_a_vertical_shortcut ... ok
+test rope::tests::a_hanging_rope_sags_without_gaining_energy ... ok
+test water::spectrum_tests::crests_sharpen ... ok
+test water::spectrum_tests::the_spectral_surface_is_deterministic_and_consistent ... ok
+test collision::index_tests::indexed_steps_replay_exhaustive_state_through_wake_reuse_and_restore ... ok
+test tests::randomized_collisions_conserve_momentum ... ok
+test walkable::tiled::tests::grounded_transition_refuses_gaps_and_changes_identity ... ok
+test water::tests::a_plane_through_the_center_wets_exactly_half_of_every_shape ... ok
+test water::spectrum_tests::the_spectrum_has_its_published_shape ... ok
+test water::tests::a_sample_at_tick_n_equals_stepping_from_tick_zero ... ok
+test water::fft::tests::matches_the_direct_sum ... ok
+test collision::index_tests::bounded_motion_matches_exhaustive_manifolds_after_moves_filters_and_removal ... ok
+test walkable::tiled::tests::tile_seams_match_admitted_graph_and_pinned_round_trip ... ok
+test water::tests::a_water_set_finds_the_same_water_as_testing_every_body ... ok
+test water::tests::caps_and_slices_match_their_closed_forms ... ok
+test tests::tall_stacks_settle_and_sleep ... ok
+test water::tests::generated_river_flow_is_divergence_free_and_carries_the_discharge ... ok
+test tests::randomized_joints_keep_their_invariants ... ok
+test water::tests::snapped_frequencies_stay_near_deep_water_dispersion ... ok
+test water::tests::the_inverted_surface_lands_on_the_query_point_with_a_consistent_normal ... ok
+test tests::randomized_friction_obeys_the_coulomb_limit ... ok
+test water::weather::tests::a_pinned_state_overrides_the_schedule ... ok
+test water::weather::tests::blocks_follow_the_climate ... ok
+test water::weather::tests::climates_validate_and_states_parse ... ok
+test water::tests::a_floating_body_sleeps_on_a_still_pond_but_not_on_waves ... ok
+test water::weather::tests::spell_weather_is_local_and_bounded_in_time ... ok
+test water::weather::tests::the_ground_wets_in_rain_and_dries_after ... ok
+test water::weather::tests::storms_flash_and_clear_skies_do_not ... ok
+test water::weather::tests::the_srd_effects_follow_rain_and_wind ... ok
+test water::weather::tests::transitions_blend_over_sixty_seconds ... ok
+test world::tests::a_restored_world_continues_bit_for_bit ... ok
+test world::tests::interpolation_runs_from_the_previous_pose ... ok
+test world::tests::gravity_is_exact_in_velocity_and_static_bodies_stay ... ok
+test water::tests::light_spheres_float_at_the_analytic_draft_and_heavy_ones_sink ... ok
+test water::tests::a_restored_world_in_water_continues_bit_for_bit ... ok
+test world::tests::other_layout_versions_are_refused ... ok
+test water::tests::sinking_reaches_the_quadratic_drag_terminal_speed ... ok
+test water::tests::a_plank_floats_flat_and_rights_itself_after_a_push ... ok
+test water::weather::tests::rising_water_is_bounded_and_deterministic ... ok
+test water::tests::scaled_buoyancy_floats_a_proxy_at_its_material_s_draft ... ok
+test water::tests::a_cube_of_half_water_density_settles_half_submerged ... ok
+test water::tests::the_momentum_ledger_balances_with_the_water_terms ... ok
+test water::tests::a_seeded_float_follows_the_river_round_the_bend_and_replays_exactly ... ok
+test water::weather::tests::two_clients_sample_the_same_weather_for_the_same_seed_and_tick ... ok
+test walkable::tests::slope_admission_uses_the_character_profile ... ok
+test walkable::tests::stairs_and_low_clearance ... ok
+test water::spectrum_tests::tiles_loop_and_reproduce ... ok
+test broadphase::tests::ordered_insertions_updates_removal_and_reuse_preserve_bounds_and_candidates ... ok
+test water::spectrum_tests::tile_variance_matches_the_spectrum_integral ... ok
+test plume::tests::the_lobe_carries_exactly_the_thrust ... ok
+
+test result: ok. 190 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 1.14s
+
+   Compiling proc-macro2 v1.0.107
+   Compiling unicode-ident v1.0.26
+   Compiling quote v1.0.47
+   Compiling libc v0.2.189
+   Compiling serde_core v1.0.229
+   Compiling serde v1.0.229
+   Compiling cfg-if v1.0.5
+   Compiling shlex v2.0.1
+   Compiling find-msvc-tools v0.1.13
+   Compiling memchr v2.8.3
+   Compiling allocator-api2 v0.2.21
+   Compiling bitflags v2.13.2
+   Compiling equivalent v1.0.2
+   Compiling foldhash v0.2.0
+   Compiling log v0.4.34
+   Compiling itoa v1.0.18
+   Compiling typenum v1.20.1
+   Compiling critical-section v1.2.0
+   Compiling portable-atomic v1.15.0
+   Compiling subtle v2.6.1
+   Compiling zmij v1.0.23
+   Compiling version_check v0.9.5
+   Compiling scopeguard v1.2.0
+   Compiling thiserror v2.0.20
+   Compiling parking_lot_core v0.9.12
+   Compiling syn v3.0.6
+   Compiling syn v2.0.119
+   Compiling jobserver v0.1.35
+   Compiling errno v0.3.14
+   Compiling pin-project-lite v0.2.17
+   Compiling cc v1.4.7
+   Compiling lock_api v0.4.14
+   Compiling generic-array v0.14.7
+   Compiling rand_core v0.10.1
+   Compiling signal-hook-registry v1.4.8
+   Compiling mio v1.2.3
+   Compiling hashbrown v0.17.1
+   Compiling serde_json v1.0.151
+   Compiling indexmap v2.14.2
+   Compiling crypto-common v0.1.7
+   Compiling bytes v1.12.1
+   Compiling futures-core v0.3.34
+   Compiling socket2 v0.6.5
+   Compiling cpufeatures v0.2.17
+   Compiling zerocopy v0.8.57
+   Compiling synstructure v0.14.0
+   Compiling block-buffer v0.10.4
+   Compiling digest v0.10.7
+   Compiling futures-sink v0.3.34
+   Compiling sha2 v0.10.9
+   Compiling stable_deref_trait v1.2.1
+   Compiling futures-channel v0.3.34
+   Compiling slab v0.4.12
+   Compiling zeroize_derive v1.5.0
+   Compiling zerocopy-derive v0.8.57
+   Compiling const-oid v0.10.2
+   Compiling serde_derive v1.0.229
+   Compiling thiserror-impl v2.0.20
+   Compiling tokio-macros v2.7.2
+   Compiling zeroize v1.9.0
+   Compiling zerofrom-derive v0.1.8
+   Compiling yoke-derive v0.8.3
+   Compiling futures-io v0.3.34
+   Compiling futures-macro v0.3.34
+   Compiling zerovec-derive v0.11.6
+   Compiling getrandom v0.4.3
+   Compiling zerofrom v0.1.8
+   Compiling futures-task v0.3.34
+   Compiling futures-util v0.3.34
+   Compiling yoke v0.8.3
+   Compiling displaydoc v0.2.7
+   Compiling hybrid-array v0.4.15
+   Compiling ring v0.17.14
+   Compiling zerovec v0.11.8
+   Compiling smallvec v1.16.1
+   Compiling crypto-common v0.2.2
+   Compiling once_cell v1.21.4
+   Compiling parking_lot v0.12.5
+   Compiling block-buffer v0.12.1
+   Compiling tokio v1.53.1
+   Compiling rustls-pki-types v1.15.1
+   Compiling libm v0.2.16
+   Compiling digest v0.11.3
+   Compiling tinystr v0.8.4
+   Compiling getrandom v0.2.17
+   Compiling writeable v0.6.4
+   Compiling litemap v0.8.3
+   Compiling untrusted v0.9.0
+   Compiling base64 v0.22.1
+   Compiling potential_utf v0.1.6
+   Compiling zerotrie v0.2.5
+   Compiling icu_locale_core v2.3.0
+   Compiling cpufeatures v0.3.1
+   Compiling icu_normalizer_data v2.3.0
+   Compiling icu_properties_data v2.3.0
+   Compiling utf8_iter v1.0.4
+   Compiling rustls v0.23.45
+   Compiling icu_collections v2.3.0
+   Compiling percent-encoding v2.3.2
+   Compiling icu_provider v2.3.1
+   Compiling http v1.5.0
+   Compiling icu_normalizer v2.3.0
+   Compiling pkg-config v0.3.34
+   Compiling icu_properties v2.3.0
+   Compiling getrandom v0.3.4
+   Compiling httparse v1.10.1
+   Compiling cfg_aliases v0.2.2
+   Compiling idna_adapter v1.2.2
+   Compiling form_urlencoded v1.2.2
+   Compiling sha2 v0.11.0
+   Compiling idna v1.1.0
+   Compiling crc32fast v1.5.2
+   Compiling rand_core v0.9.5
+   Compiling url v2.5.8
+   Compiling ppv-lite86 v0.2.21
+   Compiling rand_chacha v0.9.0
+   Compiling rand v0.9.5
+   Compiling webpki-roots v1.0.9
+   Compiling secp256k1-sys v0.11.0
+   Compiling tracing-core v0.1.36
+   Compiling tracing-attributes v0.1.31
+   Compiling tree-sitter-language v0.1.8
+   Compiling ryu v1.0.23
+   Compiling heck v0.5.0
+   Compiling tracing v0.1.44
+   Compiling hashbrown v0.16.1
+   Compiling ryu-js v1.0.3
+   Compiling chacha20 v0.10.2
+   Compiling rustls-webpki v0.103.15
+   Compiling simd-adler32 v0.3.10
+   Compiling objc2-encode v4.1.0
+   Compiling rand v0.10.2
+   Compiling adler2 v2.0.1
+   Compiling unicode-width v0.2.0
+   Compiling bytemuck_derive v1.12.1
+   Compiling miniz_oxide v0.9.1
+   Compiling bytemuck v1.25.2
+   Compiling tokio-util v0.7.19
+   Compiling rustversion v1.0.23
+   Compiling ipnet v2.12.2
+   Compiling flate2 v1.1.10
+   Compiling http-body v1.1.0
+   Compiling data-encoding v2.11.1
+   Compiling rustix v1.1.5
+   Compiling objc2 v0.6.4
+   Compiling tokio-rustls v0.26.5
+   Compiling sync_wrapper v1.0.2
+   Compiling try-lock v0.2.5
+   Compiling atomic-waker v1.1.2
+   Compiling tower-service v0.3.3
+   Compiling want v0.3.1
+   Compiling httpdate v1.0.3
+   Compiling arrayvec v0.7.8
+   Compiling hyper v1.11.1
+   Compiling unicode-segmentation v1.13.3
+   Compiling tower-layer v0.3.3
+   Compiling secp256k1 v0.31.1
+   Compiling hyper-util v0.1.20
+   Compiling tower v0.5.3
+   Compiling nostr v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/nostr)
+   Compiling convert_case v0.10.0
+   Compiling unicode-xid v0.2.6
+   Compiling derive_more-impl v2.1.1
+   Compiling hyper-rustls v0.27.9
+   Compiling tower-http v0.6.11
+   Compiling dispatch2 v0.3.1
+   Compiling block2 v0.6.2
+   Compiling http-body-util v0.1.5
+   Compiling fnv v1.0.7
+   Compiling objc2-core-foundation v0.3.2
+   Compiling autocfg v1.5.1
+   Compiling paper-mono v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/paper-mono)
+   Compiling num_threads v0.1.7
+   Compiling deranged v0.5.8
+   Compiling num-traits v0.2.19
+   Compiling powerfmt v0.2.0
+   Compiling derive_more v2.1.1
+   Compiling time-core v0.1.9
+   Compiling num-conv v0.2.2
+   Compiling time v0.3.55
+   Compiling onig_sys v69.9.3
+   Compiling sha1 v0.11.0
+   Compiling aho-corasick v1.1.5
+   Compiling regex-syntax v0.8.11
+   Compiling either v1.18.0
+   Compiling tungstenite v0.30.0
+   Compiling webpki-roots v0.26.11
+   Compiling base64 v0.23.1
+   Compiling regex-automata v0.4.18
+   Compiling same-file v1.0.6
+   Compiling walkdir v2.5.0
+   Compiling tokio-tungstenite v0.30.0
+   Compiling itertools v0.14.0
+   Compiling strum_macros v0.28.0
+   Compiling lru v0.18.4
+   Compiling serde_urlencoded v0.7.1
+   Compiling reqwest v0.12.28
+   Compiling fastrand v2.5.0
+   Compiling ident_case v1.0.1
+   Compiling strsim v0.11.1
+   Compiling semver v1.0.28
+   Compiling strum v0.28.0
+   Compiling darling_core v0.24.1
+   Compiling quick-xml v0.42.0
+   Compiling nostr-transport v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/nostr-transport)
+   Compiling core-foundation-sys v0.8.7
+   Compiling static_assertions v1.1.0
+   Compiling darling_macro v0.24.1
+   Compiling plist v1.10.1
+   Compiling castaway v0.2.4
+   Compiling atif v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/atif)
+   Compiling signal-hook v0.3.18
+   Compiling litrs v1.0.0
+   Compiling instability v0.3.13
+   Compiling unicode-truncate v2.0.1
+   Compiling document-features v0.2.12
+   Compiling compact_str v0.9.1
+   Compiling darling v0.24.1
+   Compiling regex v1.13.1
+   Compiling kasuari v0.4.12
+   Compiling indoc v2.0.7
+   Compiling linked-hash-map v0.5.6
+   Compiling yaml-rust v0.4.5
+   Compiling ratatui-core v0.1.2
+   Compiling bincode v1.3.3
+   Compiling bit-vec v0.8.0
+   Compiling bit-set v0.8.0
+   Compiling signal-hook-mio v0.2.5
+   Compiling tree-sitter v0.27.0
+   Compiling line-clipping v0.3.8
+   Compiling ratatui-widgets v0.3.2
+   Compiling onig v6.5.3
+   Compiling syntect v5.3.0
+   Compiling crossterm v0.29.0
+   Compiling fancy-regex v0.16.2
+   Compiling two-face v0.4.5
+   Compiling font-types v0.12.5
+   Compiling coder-history v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/coder-history)
+   Compiling tree-sitter-cpp v0.23.4
+   Compiling tree-sitter-go v0.25.0
+   Compiling tree-sitter-javascript v0.25.0
+   Compiling tree-sitter-json v0.24.8
+   Compiling tree-sitter-c v0.24.2
+   Compiling tree-sitter-python v0.25.0
+   Compiling tree-sitter-css v0.25.0
+   Compiling tree-sitter-bash v0.25.1
+   Compiling tree-sitter-html v0.23.2
+   Compiling tree-sitter-rust v0.24.2
+   Compiling tree-sitter-typescript v0.23.2
+   Compiling fsevent-sys v4.1.0
+   Compiling notify-types v2.1.0
+   Compiling streaming-iterator v0.1.9
+   Compiling notify v8.2.0
+   Compiling read-fonts v0.41.0
+   Compiling code-highlight v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/code-highlight)
+   Compiling ratatui-crossterm v0.1.2
+   Compiling ratatui-macros v0.7.2
+   Compiling qrcodegen v1.8.0
+   Compiling pulldown-cmark v0.13.4
+   Compiling is_ci v1.2.0
+   Compiling rustc-hash v2.1.3
+   Compiling supports-color v3.0.2
+   Compiling coder-connect v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/coder-connect)
+   Compiling ratatui v0.30.2
+   Compiling tree-sitter-highlight v0.27.0
+   Compiling anyhow v1.0.104
+   Compiling zeno v0.3.3
+   Compiling yazi v0.2.1
+   Compiling unicase v2.9.0
+   Compiling skrifa v0.44.0
+   Compiling swash v0.2.10
+   Compiling half v2.7.1
+   Compiling objc2-foundation v0.3.2
+   Compiling receipts v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/receipts)
+   Compiling cobs v0.3.0
+   Compiling postcard-derive v0.2.2
+   Compiling web-time v1.1.0
+   Compiling postcard v1.1.3
+   Compiling rust-native v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/rust-native)
+   Compiling coder-access v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/coder-access)
+   Compiling miniz_oxide v0.8.9
+   Compiling fdeflate v0.3.7
+   Compiling winnow v1.0.4
+   Compiling png v0.18.1
+   Compiling toml_parser v1.1.3+spec-1.1.0
+   Compiling coder-reach v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/coder-reach)
+   Compiling rustc_version v0.4.1
+   Compiling workbench v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/workbench)
+   Compiling toml_datetime v0.7.5+spec-1.1.0
+   Compiling serde_spanned v1.1.1
+   Compiling winnow v0.7.15
+   Compiling toml_writer v1.1.2+spec-1.1.0
+   Compiling tempfile v3.27.0
+   Compiling toml v0.9.12+spec-1.1.0
+   Compiling wasmtime-internal-core v48.0.5
+   Compiling jev v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/jev)
+   Compiling base64ct v1.8.3
+   Compiling pem-rfc7468 v1.0.0
+   Compiling spez v0.1.2
+   Compiling n0-error-macros v1.0.1
+   Compiling der v0.8.2
+   Compiling model-access v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/model-access)
+   Compiling n0-error v1.0.1
+   Compiling coder-boundary v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/coder-boundary)
+   Compiling core-foundation v0.10.1
+   Compiling xp-ledger v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/xp-ledger)
+   Compiling supervise v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/supervise)
+   Compiling n0-future v0.3.2
+   Compiling naga v29.0.4
+   Compiling uuid v1.26.1
+   Compiling pin-project-internal v1.1.13
+   Compiling inout v0.1.4
+   Compiling raw-window-handle v0.6.2
+   Compiling parking v2.2.1
+   Compiling spin v0.10.1
+   Compiling cranelift-srcgen v0.135.5
+   Compiling cordyceps v0.3.5
+   Compiling bit-vec v0.9.1
+   Compiling diatomic-waker v0.2.3
+   Compiling futures-buffered v0.2.13
+   Compiling bit-set v0.9.1
+   Compiling pin-project v1.1.13
+   Compiling cranelift-assembler-x64-meta v0.135.5
+   Compiling futures-lite v2.6.1
+   Compiling cipher v0.4.4
+   Compiling coder-ui v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/coder-ui)
+   Compiling spki v0.8.0
+   Compiling cranelift-bitset v0.135.5
+   Compiling curve25519-dalek v5.0.0
+   Compiling objc2-metal v0.3.2
+   Compiling security-framework-sys v2.17.0
+   Compiling codespan-reporting v0.13.1
+   Compiling universal-hash v0.5.1
+   Compiling glam v0.30.10
+   Compiling hexf-parse v0.2.1
+   Compiling base16ct v1.0.0
+   Compiling zune-core v0.5.3
+   Compiling rustc-hash v1.1.0
+   Compiling system-configuration-sys v0.6.0
+   Compiling opaque-debug v0.3.1
+   Compiling simdutf8 v0.1.5
+   Compiling polyval v0.6.2
+   Compiling objc2-quartz-core v0.3.2
+   Compiling zune-jpeg v0.5.15
+   Compiling serdect v0.4.3
+   Compiling security-framework v3.7.0
+   Compiling pkcs8 v0.11.0
+   Compiling wgpu-types v29.0.4
+   Compiling route-contract v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/route-contract)
+   Compiling wgpu-hal v29.0.4
+   Compiling noq-udp v1.3.0
+   Compiling pulley-macros v48.0.5
+   Compiling signature v3.0.0
+   Compiling ahash v0.8.12
+   Compiling toml_datetime v1.1.1+spec-1.1.0
+   Compiling weezl v0.1.12
+   Compiling fax v0.2.7
+   Compiling target-lexicon v0.13.5
+   Compiling pxfm v0.1.30
+   Compiling quick-error v2.0.1
+   Compiling objc-sys v0.3.5
+   Compiling tinyvec v1.13.3
+   Compiling leb128fmt v0.1.0
+   Compiling tiff v0.11.3
+   Compiling wgpu-naga-bridge v29.0.4
+   Compiling data-encoding-macro-internal v0.1.19
+   Compiling moxcms v0.8.1
+   Compiling toml_edit v0.25.13+spec-1.1.0
+   Compiling wasmparser v0.254.2
+   Compiling ed25519 v3.0.0
+   Compiling rustls-platform-verifier v0.7.1
+   Compiling physics v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/physics)
+   Compiling raw-window-metal v1.1.0
+   Compiling ghash v0.5.1
+   Compiling cranelift-entity v0.135.5
+   Compiling aes v0.8.4
+   Compiling ctr v0.9.2
+   Compiling gimli v0.33.0
+   Compiling wasmtime-internal-versioned-export-macros v48.0.5
+   Compiling aead v0.5.2
+   Compiling bumpalo v3.20.3
+   Compiling rtrb v0.4.0
+   Compiling vcpkg v0.2.15
+   Compiling n0-dns-resolver v0.1.0
+   Compiling profiling v1.0.18
+   Compiling byteorder-lite v0.1.0
+   Compiling cranelift-isle v0.135.5
+   Compiling verse-world v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-world)
+   Compiling image v0.25.10
+   Compiling libsqlite3-sys v0.28.0
+   Compiling verse-engine v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-engine)
+   Compiling aes-gcm v0.10.3
+   Compiling cranelift-bforest v0.135.5
+   Compiling system-configuration v0.8.0
+   Compiling ed25519-dalek v3.0.0
+   Compiling reqwest v0.13.5
+   Compiling pulley-interpreter v48.0.5
+   Compiling proc-macro-crate v3.5.0
+   Compiling data-encoding-macro v0.1.21
+   Compiling coder-pty v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/coder-pty)
+   Compiling objc2-security v0.3.2
+   Compiling wgpu-core v29.0.4
+   Compiling iroh-dns v1.3.0
+   Compiling noq v1.3.0
+   Compiling enum-assoc v1.4.1
+   Compiling blake3 v1.8.7
+   Compiling rand_pcg v0.10.2
+   Compiling simple-dns v0.12.0
+   Compiling lru-slab v0.1.3
+   Compiling object v0.39.1
+   Compiling identity-hash v0.1.0
+   Compiling cranelift-codegen-shared v0.135.5
+   Compiling sorted-index-buffer v0.2.1
+   Compiling netdev v0.46.3
+   Compiling noq-proto v1.3.0
+   Compiling cranelift-codegen-meta v0.135.5
+warning: unreachable pattern
+    --> crates/coder-access/src/protocol.rs:1064:19
+     |
+1062 |                 | Self::ProposeHire { .. }
+     |                   ------------------------ matches all the relevant values
+1063 |                 | Self::DecideHire { .. }
+1064 |                 | Self::ProposeHire { .. }
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+     |
+     = note: `#[warn(unreachable_patterns)]` (part of `#[warn(unused)]`) on by default
+
+warning: unreachable pattern
+    --> crates/coder-access/src/protocol.rs:1065:19
+     |
+1063 |                 | Self::DecideHire { .. }
+     |                   ----------------------- matches all the relevant values
+1064 |                 | Self::ProposeHire { .. }
+1065 |                 | Self::DecideHire { .. }
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: unreachable pattern
+    --> crates/coder-access/src/protocol.rs:1087:19
+     |
+1085 |                 | Self::ProposeHire { .. }
+     |                   ------------------------ matches all the relevant values
+1086 |                 | Self::DecideHire { .. }
+1087 |                 | Self::ProposeHire { .. }
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: unreachable pattern
+    --> crates/coder-access/src/protocol.rs:1088:19
+     |
+1086 |                 | Self::DecideHire { .. }
+     |                   ----------------------- matches all the relevant values
+1087 |                 | Self::ProposeHire { .. }
+1088 |                 | Self::DecideHire { .. }
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: `coder-access` (lib) generated 4 warnings
+   Compiling objc2-system-configuration v0.3.2
+   Compiling objc2 v0.5.2
+   Compiling iroh-base v1.3.0
+   Compiling num_enum_derive v0.7.6
+   Compiling hashbrown v0.14.5
+   Compiling wgpu-core-deps-apple v29.0.4
+   Compiling cranelift-assembler-x64 v0.135.5
+   Compiling acto v0.8.2
+   Compiling vte v0.15.0
+   Compiling arc-swap v1.9.2
+   Compiling tokio-stream v0.1.19
+   Compiling iroh-metrics-derive v1.0.1
+   Compiling wgpu v29.0.4
+   Compiling netwatch v0.19.3
+   Compiling iroh-relay v1.3.0
+   Compiling inflections v1.1.1
+   Compiling crossbeam-utils v0.8.23
+   Compiling sha1_smol v1.0.1
+   Compiling cpp_demangle v0.5.1
+   Compiling constant_time_eq v0.4.2
+   Compiling mac-addr v0.3.0
+   Compiling cranelift-codegen v0.135.5
+   Compiling tokio-websockets v0.13.3
+   Compiling gltf-derive v1.4.1
+   Compiling iroh-metrics v1.0.2
+   Compiling coder-vt v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/coder-vt)
+   Compiling num_enum v0.7.6
+   Compiling hashlink v0.9.1
+   Compiling block2 v0.5.1
+   Compiling wasm-encoder v0.254.2
+   Compiling n0-watcher v1.0.0
+   Compiling core-foundation v0.9.4
+   Compiling iroh v1.3.0
+   Compiling zstd-sys v2.1.0+zstd.1.5.7
+   Compiling coder-lease v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/coder-lease)
+   Compiling foreign-types-macros v0.2.4
+   Compiling serde_bytes v0.11.19
+   Compiling crossbeam-epoch v0.9.21
+   Compiling fallible-iterator v0.3.0
+   Compiling termcolor v1.4.1
+   Compiling dispatch v0.2.0
+   Compiling seize v0.5.1
+   Compiling foreign-types-shared v0.3.1
+   Compiling smol_str v0.1.24
+   Compiling arbitrary v1.4.2
+   Compiling bitflags v1.3.2
+   Compiling fallible-streaming-iterator v0.1.9
+   Compiling hex v0.4.3
+   Compiling cmov v0.5.4
+   Compiling cranelift-control v0.135.5
+   Compiling core-graphics-types v0.1.3
+   Compiling ctutils v0.4.2
+   Compiling foreign-types v0.5.0
+   Compiling papaya v0.2.5
+   Compiling objc2-foundation v0.2.2
+   Compiling wasmprinter v0.254.2
+   Compiling rusqlite v0.31.0
+   Compiling terminal-core v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/terminal-core)
+   Compiling gltf-json v1.4.1
+   Compiling regalloc2 v0.15.2
+   Compiling hickory-proto v0.26.3
+   Compiling playtest v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/playtest)
+   Compiling backon v1.6.0
+   Compiling winit v0.30.13
+   Compiling world-tree v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/world-tree)
+   Compiling byteorder v1.5.0
+   Compiling lazy_static v1.5.0
+   Compiling knowledge v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/knowledge)
+   Compiling wasmtime-internal-component-util v48.0.5
+   Compiling urlencoding v2.1.3
+   Compiling base64 v0.13.1
+   Compiling crossbeam-deque v0.8.8
+   Compiling rustc-demangle v0.1.28
+   Compiling wasmtime-environ v48.0.5
+   Compiling gltf v1.4.1
+   Compiling openagents-chat v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/openagents-chat)
+   Compiling swarm-discovery v0.6.3
+   Compiling verse-gfx v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-gfx)
+   Compiling objc2-app-kit v0.2.2
+   Compiling core-graphics v0.23.2
+   Compiling openrouter v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/openrouter)
+   Compiling codex-transport v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/codex-transport)
+   Compiling chrono v0.4.45
+   Compiling id-arena v2.3.0
+   Compiling smol_str v0.2.2
+   Compiling dpi v0.1.2
+   Compiling float-cmp v0.9.0
+   Compiling cursor-icon v1.2.0
+   Compiling zstd-safe v7.3.0
+   Compiling strict-num v0.1.1
+   Compiling wit-parser v0.254.2
+   Compiling pay-ledger v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/pay-ledger)
+   Compiling wasm-metadata v0.254.2
+   Compiling wasm-encoder v0.259.0
+   Compiling polycool v0.4.0
+   Compiling wasmtime-internal-unwinder v48.0.5
+   Compiling rayon-core v1.13.0
+   Compiling arrayref v0.3.9
+   Compiling tiny-skia-path v0.12.0
+   Compiling kurbo v0.13.1
+   Compiling wast v259.0.0
+   Compiling iroh-mdns-address-lookup v0.5.0
+   Compiling openagents-connect v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/openagents-connect)
+   Compiling wit-component v0.254.2
+   Compiling background v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/background)
+   Compiling coder-host-wire v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/coder-host-wire)
+   Compiling wasmtime-internal-jit-debug v48.0.5
+   Compiling wasmtime-internal-fiber v48.0.5
+   Compiling coder-service v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/coder-service)
+   Compiling verse-private v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-private)
+   Compiling encoding_rs v0.8.41
+   Compiling dirs-sys-next v0.1.2
+   Compiling fixedbitset v0.4.2
+   Compiling coder-link v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/coder-link)
+   Compiling wasmtime-internal-component-macro v48.0.5
+   Compiling wasmtime-internal-cache v48.0.5
+   Compiling pollster v0.4.0
+   Compiling wasmtime-internal-cranelift v48.0.5
+   Compiling siphasher v1.0.3
+   Compiling svgtypes v0.16.1
+   Compiling verse-pbr v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-pbr)
+   Compiling coder-host v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/coder-host)
+   Compiling petgraph v0.6.5
+   Compiling directories-next v2.0.0
+   Compiling wasmtime-internal-wit-bindgen v48.0.5
+   Compiling zstd v0.13.3
+   Compiling wat v1.259.0
+   Compiling cranelift-frontend v0.135.5
+   Compiling cranelift-native v0.135.5
+   Compiling verse-net v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-net)
+   Compiling wasmtime v48.0.5
+   Compiling debugid v0.8.0
+   Compiling jev-hosted v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/jev-hosted)
+   Compiling simplecss v0.2.2
+   Compiling roxmltree v0.21.1
+   Compiling ref-cast v1.0.27
+   Compiling mach2 v0.6.0
+   Compiling pico-args v0.5.0
+   Compiling imagesize v0.15.0
+   Compiling multiversion_no_op v1.0.0
+   Compiling data-url v0.3.2
+   Compiling usvg v0.48.1
+   Compiling wasm-compose v0.254.2
+   Compiling fxprof-processed-profile v0.8.1
+   Compiling verse-core v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-core)
+   Compiling rayon v1.12.0
+   Compiling tiny-skia v0.12.0
+   Compiling addr2line v0.26.1
+   Compiling wasmtime-internal-jit-icache-coherence v48.0.5
+   Compiling rgb v0.8.53
+   Compiling futures v0.3.34
+   Compiling ref-cast-impl v1.0.27
+   Compiling async-trait v0.1.92
+   Compiling serde_derive_internals v0.30.0
+   Compiling schemars_derive v1.2.2
+warning: unused `std::result::Result` in tuple element 1 that must be used
+    --> crates/verse-pbr/src/pbr/textured.rs:1445:13
+     |
+1445 |             checked.remove(0);
+     |             ^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+     = note: `#[warn(unused_must_use)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-pbr` (lib) generated 1 warning
+   Compiling resvg v0.48.1
+   Compiling gym v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/gym)
+   Compiling acp-client v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/acp-client)
+   Compiling bstr v1.13.1
+   Compiling dyn-clone v1.0.20
+   Compiling schemars v1.2.2
+   Compiling globset v0.4.20
+   Compiling coder-computers v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/coder-computers)
+   Compiling serde_path_to_error v0.1.20
+   Compiling memory-stream v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/memory-stream)
+   Compiling coder v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/coder)
+   Compiling jiff-core v0.1.1
+   Compiling plugin v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/plugin)
+   Compiling jiff v0.2.37
+   Compiling tenancy v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/tenancy)
+   Compiling ext-eval v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/ext-eval)
+   Compiling coder-delegate v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/coder-delegate)
+   Compiling verse-content v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-content)
+   Compiling ignore v0.4.33
+   Compiling microcoder-loop v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/microcoder-loop)
+   Compiling openagents-x402 v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/x402)
+   Compiling coder-terminal v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/coder-terminal)
+   Compiling capability v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/capability)
+   Compiling secret-screen v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/secret-screen)
+   Compiling openagents-deck v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/openagents-deck)
+   Compiling objc2-core-audio-types v0.3.2
+   Compiling town-clock v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/town-clock)
+   Compiling verse-zone-everglade v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-zone-everglade)
+   Compiling townsfolk v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/townsfolk)
+   Compiling objc2-core-audio v0.3.2
+   Compiling openagents-chat-app v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/openagents-chat-app)
+   Compiling pylon v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/pylon)
+   Compiling objc2-core-graphics v0.3.2
+   Compiling hmac v0.12.1
+   Compiling openagents-wallet v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/wallet)
+   Compiling objc2-app-kit v0.3.2
+   Compiling objc2-audio-toolbox v0.3.2
+   Compiling cpal v0.18.2
+   Compiling coreaudio-rs v0.14.2
+   Compiling arboard v3.6.1
+   Compiling retail-cloud v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/retail-cloud)
+   Compiling terminal-remote v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/terminal-remote)
+   Compiling verse-zone-crypt v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-zone-crypt)
+   Compiling contribution-workbench v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/contribution-workbench)
+   Compiling terminal-control v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/terminal-control)
+   Compiling verse-lagrange v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-lagrange)
+   Compiling accesskit v0.25.1
+   Compiling gym-bridge v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/gym-bridge)
+   Compiling gym-leaderboard v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/gym-leaderboard)
+   Compiling memmap2 v0.9.11
+   Compiling verse-host v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-host)
+   Compiling dasp_sample v0.11.0
+   Compiling terminal-gfx v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/terminal-gfx)
+   Compiling verse-gym v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-gym)
+   Compiling rust-native-desktop v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/rust-native-desktop)
+   Compiling terminal-studio v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/terminal-studio)
+   Compiling verse-zone-lagrange v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-zone-lagrange)
+   Compiling verse-zone-grove v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-zone-grove)
+   Compiling verse-imported v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-imported)
+   Compiling verse-zone-water v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-zone-water)
+   Compiling compute-workbench v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/compute-workbench)
+   Compiling verse-zone-lab v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-zone-lab)
+   Compiling yasna v0.6.0
+   Compiling rcgen v0.14.10
+   Compiling verse v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse)
+warning: unused import: `self`
+ --> crates/verse-imported/src/imported/remote_window.rs:7:23
+  |
+7 |     chamber_session::{self, Note, Session, Stopped},
+  |                       ^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `glam::Vec3`
+  --> crates/verse-imported/src/imported/remote_window.rs:11:5
+   |
+11 | use glam::Vec3;
+   |     ^^^^^^^^^^
+
+warning: `verse-imported` (lib) generated 2 warnings (run `cargo fix --lib -p verse-imported` to apply 2 suggestions)
+warning: unused import: `self`
+ --> crates/verse-zone-everglade/src/zones/everglade/sales_floor.rs:4:14
+  |
+4 |     layout::{self, Board, agora},
+  |              ^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-zone-everglade` (lib) generated 1 warning (run `cargo fix --lib -p verse-zone-everglade` to apply 1 suggestion)
+warning: type `sales::State` is more private than the item `retire_lead`
+   --> crates/coder/src/task/sales/claims/helpers.rs:9:1
+    |
+  9 | pub(crate) fn retire_lead(state: &mut super::super::State, lead: &str) {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ function `retire_lead` is reachable at visibility `pub(crate)`
+    |
+note: but type `sales::State` is only usable at visibility `pub(self)`
+   --> crates/coder/src/task/sales.rs:288:1
+    |
+288 | struct State {
+    | ^^^^^^^^^^^^
+    = note: `#[warn(private_interfaces)]` on by default
+
+warning: type `sales::agents::native::Native` is more private than the item `helpers::<impl sales::Store>::validate_sales_helper_artifacts_with_native`
+   --> crates/coder/src/task/sales/claims/helpers.rs:388:5
+    |
+388 | /     pub(crate) fn validate_sales_helper_artifacts_with_native(
+389 | |         &self,
+390 | |         lead: &str,
+391 | |         assignment: &str,
+...   |
+395 | |         native: &agents::native::Native,
+396 | |     ) -> Result<()> {
+    | |___________________^ method `helpers::<impl sales::Store>::validate_sales_helper_artifacts_with_native` is reachable at visibility `pub(crate)`
+    |
+note: but type `sales::agents::native::Native` is only usable at visibility `pub(in crate::task::sales)`
+   --> crates/coder/src/task/sales/agents/native.rs:7:1
+    |
+  7 | pub(in crate::task::sales) struct Native {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: method `validate_sales_helper_artifacts` is never used
+   --> crates/coder/src/task/sales/claims/helpers.rs:352:19
+    |
+165 | impl Store {
+    | ---------- method in this implementation
+...
+352 |     pub(crate) fn validate_sales_helper_artifacts(
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `sha256` is never used
+   --> crates/coder/src/task/sales/qualification.rs:181:8
+    |
+ 65 | impl MarkedSuite {
+    | ---------------- method in this implementation
+...
+181 |     fn sha256(&self) -> Result<String> {
+    |        ^^^^^^
+
+warning: `coder` (lib) generated 4 warnings
+    Finished `release` profile [optimized] target(s) in 6m 34s

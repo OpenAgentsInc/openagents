@@ -1,0 +1,259 @@
+{
+  "schema": "openagents.verse.temporal-aa.commands.v1",
+  "captures": [
+    {
+      "name": "10936-high-frustum-release-paired",
+      "profile": "release",
+      "quality": "high",
+      "source": "46cf41188b8067f10a08a2eb2a49466446b1760d",
+      "build_command": [
+        "cargo",
+        "build",
+        "--release",
+        "-p",
+        "verse",
+        "--example",
+        "meteor_showcase_capture",
+        "--features",
+        "capture"
+      ],
+      "environment": {
+        "VERSE_QUALITY": "high",
+        "VERSE_KIT_PACK": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp"
+      },
+      "binary_sha256": "ad715e26bc77a2a4935ee39ecdeab83205d6efd1860de5506a9302e29a90ab0f",
+      "command": [
+        "/Users/christopherdavid/work/openagents-target-agent0/release/examples/meteor_showcase_capture",
+        "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-high-frustum-release-paired",
+        "--live",
+        "--settle-light",
+        "--no-video",
+        "--seconds",
+        "16",
+        "--impact-frame",
+        "469",
+        "--smoke-frame",
+        "600",
+        "--compare-temporal-aa",
+        "--sequence",
+        "469:484"
+      ],
+      "start_unix": 1791481432.002521,
+      "exit": 0,
+      "end_unix": 1791481464.9366589
+    },
+    {
+      "name": "10936-pan-frustum-release-paired",
+      "profile": "release",
+      "quality": "high",
+      "source": "46cf41188b8067f10a08a2eb2a49466446b1760d",
+      "build_command": [
+        "cargo",
+        "build",
+        "--release",
+        "-p",
+        "verse",
+        "--example",
+        "meteor_showcase_capture",
+        "--features",
+        "capture"
+      ],
+      "environment": {
+        "VERSE_QUALITY": "high",
+        "VERSE_KIT_PACK": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp"
+      },
+      "binary_sha256": "ad715e26bc77a2a4935ee39ecdeab83205d6efd1860de5506a9302e29a90ab0f",
+      "command": [
+        "/Users/christopherdavid/work/openagents-target-agent0/release/examples/meteor_showcase_capture",
+        "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-pan-frustum-release-paired",
+        "--live",
+        "--settle-light",
+        "--no-video",
+        "--seconds",
+        "8",
+        "--static-houses",
+        "--camera",
+        "pan",
+        "--compare-temporal-aa",
+        "--sequence",
+        "120:135"
+      ],
+      "start_unix": 1791481464.958348,
+      "exit": 0,
+      "end_unix": 1791481484.629055
+    },
+    {
+      "name": "10936-orbit-frustum-release-paired",
+      "profile": "release",
+      "quality": "high",
+      "source": "46cf41188b8067f10a08a2eb2a49466446b1760d",
+      "build_command": [
+        "cargo",
+        "build",
+        "--release",
+        "-p",
+        "verse",
+        "--example",
+        "meteor_showcase_capture",
+        "--features",
+        "capture"
+      ],
+      "environment": {
+        "VERSE_QUALITY": "high",
+        "VERSE_KIT_PACK": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp"
+      },
+      "binary_sha256": "ad715e26bc77a2a4935ee39ecdeab83205d6efd1860de5506a9302e29a90ab0f",
+      "command": [
+        "/Users/christopherdavid/work/openagents-target-agent0/release/examples/meteor_showcase_capture",
+        "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-orbit-frustum-release-paired",
+        "--live",
+        "--settle-light",
+        "--no-video",
+        "--seconds",
+        "8",
+        "--static-houses",
+        "--camera",
+        "orbit",
+        "--compare-temporal-aa",
+        "--sequence",
+        "120:135"
+      ],
+      "start_unix": 1791481484.650573,
+      "exit": 0,
+      "end_unix": 1791481504.3310568
+    },
+    {
+      "name": "10936-medium-frustum-release-paired",
+      "profile": "release",
+      "quality": "medium",
+      "source": "46cf41188b8067f10a08a2eb2a49466446b1760d",
+      "build_command": [
+        "cargo",
+        "build",
+        "--release",
+        "-p",
+        "verse",
+        "--example",
+        "meteor_showcase_capture",
+        "--features",
+        "capture"
+      ],
+      "environment": {
+        "VERSE_QUALITY": "medium",
+        "VERSE_KIT_PACK": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp"
+      },
+      "binary_sha256": "ad715e26bc77a2a4935ee39ecdeab83205d6efd1860de5506a9302e29a90ab0f",
+      "command": [
+        "/Users/christopherdavid/work/openagents-target-agent0/release/examples/meteor_showcase_capture",
+        "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-medium-frustum-release-paired",
+        "--live",
+        "--settle-light",
+        "--no-video",
+        "--seconds",
+        "8",
+        "--compare-temporal-aa",
+        "--sequence",
+        "360:375"
+      ],
+      "start_unix": 1791481504.353193,
+      "exit": 0,
+      "end_unix": 1791481526.945051
+    },
+    {
+      "name": "10936-medium-frustum-full-release-paired",
+      "profile": "release",
+      "quality": "medium",
+      "source": "46cf41188b8067f10a08a2eb2a49466446b1760d",
+      "build_command": [
+        "cargo",
+        "build",
+        "--release",
+        "-p",
+        "verse",
+        "--example",
+        "meteor_showcase_capture",
+        "--features",
+        "capture"
+      ],
+      "environment": {
+        "VERSE_QUALITY": "medium",
+        "VERSE_KIT_PACK": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp"
+      },
+      "binary_sha256": "ad715e26bc77a2a4935ee39ecdeab83205d6efd1860de5506a9302e29a90ab0f",
+      "command": [
+        "/Users/christopherdavid/work/openagents-target-agent0/release/examples/meteor_showcase_capture",
+        "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-medium-frustum-full-release-paired",
+        "--live",
+        "--settle-light",
+        "--no-video",
+        "--seconds",
+        "16",
+        "--impact-frame",
+        "469",
+        "--smoke-frame",
+        "600",
+        "--compare-temporal-aa",
+        "--sequence",
+        "469:484"
+      ],
+      "start_unix": 1791481935.524628,
+      "exit": 0,
+      "end_unix": 1791481967.9661598
+    }
+  ],
+  "assets": {
+    "kit": {
+      "path": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp",
+      "sha256": "c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e",
+      "bytes": 21467658,
+      "matches_published_pin": true,
+      "unpinned_override": false
+    },
+    "base_pack": {
+      "path": "/Users/christopherdavid/.codex/worktrees/bb65/openagents/assets/verse/everglade/a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f.vtp",
+      "sha256": "a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f",
+      "bytes": 10636202
+    }
+  },
+  "native_tests": [
+    {
+      "name": "pbr::temporal::tests::hidden_motion_cannot_overwrite_the_visible_surface",
+      "command": [
+        "/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse_pbr-668a3d62c3c8b90e",
+        "pbr::temporal::tests::hidden_motion_cannot_overwrite_the_visible_surface",
+        "--ignored",
+        "--exact",
+        "--test-threads=1"
+      ],
+      "samples": [
+        1,
+        4
+      ],
+      "result": "passed",
+      "proof": "proof/native-occluded-motion.log"
+    },
+    {
+      "name": "pbr::temporal::tests::empty_motion_keeps_camera_reprojection_with_stale_object_data",
+      "command": [
+        "/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse_pbr-668a3d62c3c8b90e",
+        "pbr::temporal::tests::empty_motion_keeps_camera_reprojection_with_stale_object_data",
+        "--ignored",
+        "--exact",
+        "--test-threads=1"
+      ],
+      "samples": [
+        1
+      ],
+      "result": "passed",
+      "proof": "proof/native-empty-motion.log"
+    }
+  ],
+  "receipts": {
+    "quiet-receipt.json": "proof/quiet-receipt.json",
+    "gpu-lease.json": "proof/gpu-lease.json",
+    "medium-quiet-receipt.json": "proof/medium-quiet-receipt.json",
+    "medium-gpu-lease.json": "proof/medium-gpu-lease.json",
+    "build-lease.json": "proof/build-lease.json"
+  },
+  "recording": "Capture argv, environment, source and binary hashes were recorded by the root capture launcher; file hashes were checked again when retaining evidence. Targeted checks and native tests were run by root. Evidence preparation ran no Cargo or GPU commands."
+}

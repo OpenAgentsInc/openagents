@@ -1,0 +1,228 @@
+{
+  "schema": "openagents.verse.root-review-image-retention.v1",
+  "source": "fb9a5fd280db673926cfd0d649f924da3091a24b",
+  "reviewed_count": 17,
+  "retained_reviewed_boards": 13,
+  "prepared_not_reviewed_count": 3,
+  "images": {
+    "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-head-root-review.png": {
+      "file": "audit/root-review/10936-final-copy-high-head-root-review.png",
+      "sha256": "2bb561e4eef4169de20bcded00e5c8872580ce1baec7a5648ab4ca362291b460",
+      "bytes": 562827,
+      "reviewed": true
+    },
+    "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-medium-head-root-review.png": {
+      "file": "audit/root-review/10936-final-copy-medium-head-root-review.png",
+      "sha256": "17d18812c1315b8621864c0266bda28678bfe9d7cdc53d93d39016a722aff7b2",
+      "bytes": 574214,
+      "reviewed": true
+    },
+    "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-pan-120-root-review.png": {
+      "file": "audit/root-review/10936-final-copy-pan-120-root-review.png",
+      "sha256": "ffac7bc51ffb6a4d085f0bcd69adcc1295771593f651836e21cedbc188d27c48",
+      "bytes": 1226029,
+      "reviewed": true
+    },
+    "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-pan-124-root-review.png": {
+      "file": "audit/root-review/10936-final-copy-pan-124-root-review.png",
+      "sha256": "9cef1fb8acbd48ea75e04cfc4607cfaf7e5778d3a860b41d7e5d702c2233115a",
+      "bytes": 1225699,
+      "reviewed": true
+    },
+    "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-pan-128-root-review.png": {
+      "file": "audit/root-review/10936-final-copy-pan-128-root-review.png",
+      "sha256": "8a0f45d17795f3a278764a205a5a06298dfad808fb9c91697dbb963e5812bfe7",
+      "bytes": 1224390,
+      "reviewed": true
+    },
+    "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-pan-132-root-review.png": {
+      "file": "audit/root-review/10936-final-copy-pan-132-root-review.png",
+      "sha256": "f0935ed8f9e06f04cb790d798286aaed14f60bd477ea1eb5f0c270e178150a86",
+      "bytes": 1225489,
+      "reviewed": true
+    },
+    "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-orbit-120-root-review.png": {
+      "file": "audit/root-review/10936-final-copy-orbit-120-root-review.png",
+      "sha256": "102bb1c56cc0db59ff676f7760bb5c9a6a9c821d8377ae7cff3f189536e7f0e5",
+      "bytes": 1217551,
+      "reviewed": true
+    },
+    "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-orbit-roof-120-root-review.png": {
+      "file": "audit/root-review/10936-final-copy-orbit-roof-120-root-review.png",
+      "sha256": "9406ae2c33e1f93eb14d7ef3b56eb3861fcd25f36df967db92a7dd9a21c58687",
+      "bytes": 1581831,
+      "reviewed": true
+    },
+    "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-orbit-roof-124-root-review.png": {
+      "file": "audit/root-review/10936-final-copy-orbit-roof-124-root-review.png",
+      "sha256": "09d22ea74fd80205dcab5249d9e522df640d648205f1cb7824f7be815f32b50a",
+      "bytes": 1581212,
+      "reviewed": true
+    },
+    "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-orbit-roof-128-root-review.png": {
+      "file": "audit/root-review/10936-final-copy-orbit-roof-128-root-review.png",
+      "sha256": "64bd191609299eec943b010047927a77050c58b96ba6cbfe6c920b148a621419",
+      "bytes": 1582376,
+      "reviewed": true
+    },
+    "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-orbit-roof-132-root-review.png": {
+      "file": "audit/root-review/10936-final-copy-orbit-roof-132-root-review.png",
+      "sha256": "352b79cdd6024f2da48a084eae365f0a8df8f9315cc0278a160d4acfac33d888",
+      "bytes": 1584078,
+      "reviewed": true
+    },
+    "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-debris-467-root-review.png": {
+      "file": "audit/root-review/10936-final-copy-debris-467-root-review.png",
+      "sha256": "cb6c991c4b9f758ee3fc843517e2ba296b4b70edf684e82e8c4b0820b078b2f1",
+      "bytes": 3309327,
+      "reviewed": true
+    },
+    "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-debris-471-root-review.png": {
+      "file": "audit/root-review/10936-final-copy-debris-471-root-review.png",
+      "sha256": "0aa3be00a8a73bca29a1aba24fa43d5e66480ac00d4bb3623cf443f2b9c16d57",
+      "bytes": 3275868,
+      "reviewed": true
+    },
+    "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-paired/frames/0471-taa-on.png": {
+      "file": "selected/high-paired-0471-taa-on.png",
+      "sha256": "3a095023fd7b719b3dc437b9df496cd251c0233e99092f415455f41e55c48867",
+      "bytes": 1800355,
+      "reviewed": true
+    },
+    "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-release/aftermath.png": {
+      "file": "selected/high-release-aftermath.png",
+      "sha256": "b797fd0a756981d012da577b1233449e672dc234c7bc2c0ab6a54166f97adbcb",
+      "bytes": 1312300,
+      "reviewed": true
+    },
+    "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-release/restored.png": {
+      "file": "selected/high-release-restored.png",
+      "sha256": "fd6e4bf8352864384a75d72063f34acb86e1b9823e75d9d844884a4ad2f0a360",
+      "bytes": 1553167,
+      "reviewed": true
+    },
+    "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-pan-paired/frames/0120-taa-on.png": {
+      "file": "selected/pan-paired-0120-taa-on.png",
+      "sha256": "b7fa3655a8a297e5ed8b8edf41beab4fb15cb44324fe02299d09d6d0249379f6",
+      "bytes": 1186160,
+      "reviewed": true
+    },
+    "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-orbit-124-root-review.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-orbit-124-root-review.png",
+      "sha256": "1aa600f01de6a332a9c2f36174d1c9acd0cedbacb8f0856a7ed30671a654f91f",
+      "bytes": 1215192,
+      "storage": "durable_scratch",
+      "reviewed": false
+    },
+    "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-orbit-128-root-review.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-orbit-128-root-review.png",
+      "sha256": "b1d8411dbbadc456aed00c06a1165f9e7a4eea00c5304d6a771117689e050fba",
+      "bytes": 1213738,
+      "storage": "durable_scratch",
+      "reviewed": false
+    },
+    "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-orbit-132-root-review.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-orbit-132-root-review.png",
+      "sha256": "5c3b8387afda8645fffc80b21120de9f07be3ecef7780d493501be0df3adc1c9",
+      "bytes": 1210981,
+      "storage": "durable_scratch",
+      "reviewed": false
+    }
+  },
+  "method": {
+    "head": {
+      "qualities": [
+        "high",
+        "medium"
+      ],
+      "frames": [
+        470,
+        471,
+        472,
+        473
+      ],
+      "crop": [
+        460,
+        230,
+        700,
+        455
+      ],
+      "display": "2x nearest-neighbor"
+    },
+    "debris": {
+      "quality": "high",
+      "frames": [
+        467,
+        468,
+        469,
+        470,
+        471,
+        472,
+        473,
+        474
+      ],
+      "crop": [
+        760,
+        280,
+        1430,
+        820
+      ],
+      "display": "native pixels"
+    },
+    "pan": {
+      "frames": [
+        120,
+        121,
+        122,
+        123,
+        124,
+        125,
+        126,
+        127,
+        128,
+        129,
+        130,
+        131,
+        132,
+        133,
+        134,
+        135
+      ],
+      "crop": [
+        700,
+        360,
+        1200,
+        740
+      ],
+      "display": "native pixels"
+    },
+    "orbit_roof": {
+      "frames": [
+        120,
+        121,
+        122,
+        123,
+        124,
+        125,
+        126,
+        127,
+        128,
+        129,
+        130,
+        131,
+        132,
+        133,
+        134,
+        135
+      ],
+      "crop": [
+        650,
+        240,
+        1250,
+        640
+      ],
+      "display": "native pixels"
+    }
+  },
+  "limit": "The primary static crop includes the pan ridge but cuts the orbit ridge. Additional orbit-roof boards use [650,240,1250,640]; primary crop pixels remain unchanged."
+}

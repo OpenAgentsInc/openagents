@@ -1,0 +1,111 @@
+{
+  "schema": "openagents.verse.temporal-aa.visual-review.v2",
+  "source": "36df9ceb4bbb7fb0c7be30bd1c3538e0be78ab3e",
+  "asset_sha256": "c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e",
+  "pixel_size": [
+    1920,
+    1080
+  ],
+  "fps": 60,
+  "method": "Exact source crops; TAA off left/on right in labelled native-resolution sheets. Detail images are 4\u00d7 nearest-neighbor copies; no filtering or synthesis. Both histories receive the same simulation/view; exact camera matrices/poses are not retained.",
+  "retained_frames": {
+    "high": [
+      439,
+      484
+    ],
+    "medium": [
+      439,
+      484
+    ],
+    "pan": [
+      120,
+      135
+    ],
+    "orbit": [
+      120,
+      135
+    ]
+  },
+  "manually_reviewed_frames": {
+    "high": [
+      469,
+      470,
+      471,
+      472,
+      473,
+      474
+    ],
+    "medium": [
+      471
+    ],
+    "pan": [
+      120,
+      121,
+      122,
+      123,
+      132,
+      133,
+      134,
+      135
+    ],
+    "orbit": [
+      120,
+      121,
+      122,
+      123,
+      132,
+      133,
+      134,
+      135
+    ]
+  },
+  "source_frame_hashes": "audit/source-frame-hashes.json",
+  "pan_orbit": {
+    "observations": [
+      "TAA smooths roof ridge/eave/window pixel stepping in reviewed first/last four-frame groups; texture and thin timber details soften.",
+      "No clearly doubled or oscillating house edge observed in these reviewed groups; no numerical edge-crawl measure."
+    ]
+  },
+  "moving_debris": {
+    "observations": [
+      "Structural roof, beam and window silhouettes move through reviewed 471\u2013474 frames without a clearly separated duplicate; fire, smoke and overlapping geometry limit visibility."
+    ]
+  },
+  "reactive_meteor_head": {
+    "status": "unestablished",
+    "fresh_outline_images": [
+      "audit/high-head-detail-471-off.png",
+      "audit/high-head-detail-471-on.png",
+      "audit/high-head-detail-472-off.png",
+      "audit/high-head-detail-472-on.png",
+      "audit/medium-head-detail-471-on.png"
+    ],
+    "detail_crop": [
+      490,
+      260,
+      675,
+      430
+    ],
+    "observations": [
+      "High 471/472 and Medium 471 contain TAA-only detached head-shaped contours inside the emissive ribbon, absent in matched off images.",
+      "The High471 contour is approximately [550,290,620,345], separated from the current body approximately [645,377,695,435]; High472 contour approximately [580,338,645,385].",
+      "Body 469 approximately [565,274,612,338], body 470 approximately [607,331,649,390]. Camera shake/parallax and missing view matrices prevent exact prior-head reprojection or a strict one-versus-multiple-frame attribution.",
+      "The detached contour is too far from the current edge for current projection jitter alone. A retained earlier head/ribbon color contour with sharpening amplification is a plausible explanation, not a proved source attribution."
+    ]
+  },
+  "native_fixture_audit": {
+    "source": "df355b0cd1b45843b54aea40a6e6f3d665dfa237",
+    "production_source": "36df9ceb4bbb7fb0c7be30bd1c3538e0be78ab3e",
+    "differences": [
+      "Native scene writes one RGB rock pixel on a flat ORANGE background, with depth mostly 0.5 and screen motion6\u219210\u219214.",
+      "Native settings.z is 0; production sharpening is 0.15. Fixture does not reproduce HDR ribbon/glow composition.",
+      "Temporal history stores the resolve before sharpening/bloom, so sharpening can amplify a contour but is not itself fed back."
+    ]
+  },
+  "limits": [
+    "All 46 frames for three head tracks and debris remain in durable scratch with full image inventories; Git retains the matched assessment subset. The manual review covers the listed subset.",
+    "No exact camera/view/pose records, numerical ghost-length measure, or general all-material/velocity acceptance claim.",
+    "Bloom, physical ribbons, smoke and geometry overlap obscure faint/subpixel artifacts. No visual PASS is claimed."
+  ],
+  "retained_frames_storage": "Selected crops/images in Git; complete frame and generated-sheet inventories in image-inventory.json and source-frame-hashes.json point to durable scratch."
+}

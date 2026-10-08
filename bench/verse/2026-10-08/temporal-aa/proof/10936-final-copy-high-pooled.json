@@ -1,0 +1,236 @@
+{
+  "schema": "openagents.verse.temporal-replication-result.v1",
+  "source": "fb9a5fd280db673926cfd0d649f924da3091a24b",
+  "registered_protocol_sha256": "742856d803ff25aa38cf287f207ebda0c1803b0c1129198cad64397b5aa13cfc",
+  "runs": [
+    {
+      "stem": "10936-final-copy-high-paired",
+      "source": "fb9a5fd280db673926cfd0d649f924da3091a24b",
+      "binary_sha256": "d160221522b37289b3211486457e7981d96cfba22667db4d6afc1645ef1d9090",
+      "command": [
+        "/Users/christopherdavid/work/openagents-target-agent0/release/examples/meteor_showcase_capture",
+        "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-paired",
+        "--live",
+        "--settle-light",
+        "--no-video",
+        "--seconds",
+        "16",
+        "--impact-frame",
+        "469",
+        "--smoke-frame",
+        "600",
+        "--compare-temporal-aa",
+        "--sequence",
+        "439:484"
+      ],
+      "report_sha256": "19c5a711a089448f6e6e889aba767d015015f9f67120847be50c18f5b7f16129"
+    },
+    {
+      "stem": "10936-final-copy-high-replicate-2",
+      "source": "fb9a5fd280db673926cfd0d649f924da3091a24b",
+      "binary_sha256": "d160221522b37289b3211486457e7981d96cfba22667db4d6afc1645ef1d9090",
+      "command": [
+        "/Users/christopherdavid/work/openagents-target-agent0/release/examples/meteor_showcase_capture",
+        "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-replicate-2",
+        "--live",
+        "--settle-light",
+        "--no-video",
+        "--seconds",
+        "16",
+        "--impact-frame",
+        "469",
+        "--smoke-frame",
+        "600",
+        "--compare-temporal-aa",
+        "--sequence",
+        "439:484"
+      ],
+      "report_sha256": "39a8d77b6260ccf84dd9b1c9ebed348c5d28fd6e1c84b2ccec4b815e10926496"
+    },
+    {
+      "stem": "10936-final-copy-high-replicate-3",
+      "source": "fb9a5fd280db673926cfd0d649f924da3091a24b",
+      "binary_sha256": "d160221522b37289b3211486457e7981d96cfba22667db4d6afc1645ef1d9090",
+      "command": [
+        "/Users/christopherdavid/work/openagents-target-agent0/release/examples/meteor_showcase_capture",
+        "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-replicate-3",
+        "--live",
+        "--settle-light",
+        "--no-video",
+        "--seconds",
+        "16",
+        "--impact-frame",
+        "469",
+        "--smoke-frame",
+        "600",
+        "--compare-temporal-aa",
+        "--sequence",
+        "439:484"
+      ],
+      "report_sha256": "fd4a5c142735f7903dd73ba7ba315f70292491927ceefd9104ec1c392e1c50a7"
+    }
+  ],
+  "phases": {
+    "before": {
+      "samples_per_run": 322,
+      "all_retained_samples": 966,
+      "run_means_ms": [
+        0.5498644387499886,
+        0.7049673847530199,
+        0.7929313079170559
+      ],
+      "primary_run_mean_95pct_ci_ms": {
+        "mean": 0.6825877104733548,
+        "lower": 0.3768423450485293,
+        "upper": 0.9883330758981802,
+        "independent_runs": 3,
+        "degrees_of_freedom": 2,
+        "student_t_975": 4.303
+      },
+      "primary_upper_under_1ms": true,
+      "supplementary_balanced_block_ci_ms": {
+        "mean": 0.6825877104733548,
+        "lower": 0.5172905382577266,
+        "upper": 0.8478848826889829,
+        "blocks": 18,
+        "degrees_of_freedom": 17
+      },
+      "per_run_bounds_ms": [
+        {
+          "mean": 0.5498644387499886,
+          "lower": 0.09919597035638555,
+          "upper": 1.0005329071435916,
+          "samples": 322,
+          "blocks": 6,
+          "nominal_block_frames": 60
+        },
+        {
+          "mean": 0.7049673847530199,
+          "lower": 0.35628565831910236,
+          "upper": 1.0536491111869375,
+          "samples": 322,
+          "blocks": 6,
+          "nominal_block_frames": 60
+        },
+        {
+          "mean": 0.7929313079170559,
+          "lower": 0.5714494606436559,
+          "upper": 1.0144131551904558,
+          "samples": 322,
+          "blocks": 6,
+          "nominal_block_frames": 60
+        }
+      ],
+      "valid_gpu_pairs": 0,
+      "no_outliers_removed": true
+    },
+    "swarm": {
+      "samples_per_run": 360,
+      "all_retained_samples": 1080,
+      "run_means_ms": [
+        0.5016326559914484,
+        0.5924954295158387,
+        0.7596931841638354
+      ],
+      "primary_run_mean_95pct_ci_ms": {
+        "mean": 0.6179404232237075,
+        "lower": 0.29274449152524934,
+        "upper": 0.9431363549221656,
+        "independent_runs": 3,
+        "degrees_of_freedom": 2,
+        "student_t_975": 4.303
+      },
+      "primary_upper_under_1ms": true,
+      "supplementary_balanced_block_ci_ms": {
+        "mean": 0.6179404232237075,
+        "lower": 0.42864231925016283,
+        "upper": 0.8072385271972521,
+        "blocks": 18,
+        "degrees_of_freedom": 17
+      },
+      "per_run_bounds_ms": [
+        {
+          "mean": 0.5016326559914484,
+          "lower": 0.15025452782292448,
+          "upper": 0.8530107841599722,
+          "samples": 360,
+          "blocks": 6,
+          "nominal_block_frames": 60
+        },
+        {
+          "mean": 0.5924954295158387,
+          "lower": 0.2636110826871492,
+          "upper": 0.9213797763445282,
+          "samples": 360,
+          "blocks": 6,
+          "nominal_block_frames": 60
+        },
+        {
+          "mean": 0.7596931841638354,
+          "lower": 0.24420308759602527,
+          "upper": 1.2751832807316454,
+          "samples": 360,
+          "blocks": 6,
+          "nominal_block_frames": 60
+        }
+      ],
+      "valid_gpu_pairs": 0,
+      "no_outliers_removed": true
+    },
+    "after": {
+      "samples_per_run": 270,
+      "all_retained_samples": 810,
+      "run_means_ms": [
+        0.7410446193483141,
+        0.678457733436867,
+        0.8129625708968551
+      ],
+      "primary_run_mean_95pct_ci_ms": {
+        "mean": 0.7441549745606787,
+        "lower": 0.5769432596126336,
+        "upper": 0.9113666895087238,
+        "independent_runs": 3,
+        "degrees_of_freedom": 2,
+        "student_t_975": 4.303
+      },
+      "primary_upper_under_1ms": true,
+      "supplementary_balanced_block_ci_ms": {
+        "mean": 0.7441549745606787,
+        "lower": 0.637697768245733,
+        "upper": 0.8506121808756244,
+        "blocks": 15,
+        "degrees_of_freedom": 14
+      },
+      "per_run_bounds_ms": [
+        {
+          "mean": 0.7410446193483141,
+          "lower": 0.49057151536018057,
+          "upper": 0.9915177233364476,
+          "samples": 270,
+          "blocks": 5,
+          "nominal_block_frames": 60
+        },
+        {
+          "mean": 0.678457733436867,
+          "lower": 0.37766299872856496,
+          "upper": 0.9792524681451691,
+          "samples": 270,
+          "blocks": 5,
+          "nominal_block_frames": 60
+        },
+        {
+          "mean": 0.8129625708968551,
+          "lower": 0.6437341330233577,
+          "upper": 0.9821910087703525,
+          "samples": 270,
+          "blocks": 5,
+          "nominal_block_frames": 60
+        }
+      ],
+      "valid_gpu_pairs": 0,
+      "no_outliers_removed": true
+    }
+  },
+  "strict_high_1ms_gate_pass": true,
+  "method": "Fixed3 independent exact-command runs; primary Studentt df2 interval across equal-size per-phase run means. Single-run flags remain unchanged; all rows/outliers retained. Wall render completion includes encoding, submission, polling, mapping and readback; GPU duration is unavailable."
+}

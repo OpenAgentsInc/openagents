@@ -1,0 +1,46 @@
+{
+  "schema": "openagents.lease.placement-receipt.v1",
+  "class": "soak",
+  "asked": "local",
+  "place": "local",
+  "reason": "coder.placement runs soak here",
+  "commit": "c08730c964a5bae38d3eaa6818213717202a35c7",
+  "command": [
+    "openagents",
+    "lease",
+    "gpu",
+    "--priority",
+    "owner",
+    "--receipt",
+    "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture-gpu.json",
+    "--",
+    "python3",
+    "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture.py"
+  ],
+  "started_at_ms": 1791484345024,
+  "ended_at_ms": 1791484932634,
+  "exit": 1,
+  "leases": [
+    {
+      "schema": "openagents.lease.receipt.v1",
+      "id": "1791484345024-30012-0",
+      "resource": "quiet",
+      "amount": 1,
+      "holder": {
+        "session": "codex:01a119ae-8a0b-7850-9b7f-ca9fe5a3203b",
+        "agent": "codex",
+        "pid": 30012,
+        "command": "openagents"
+      },
+      "priority": "owner",
+      "nested": false,
+      "requested_at_ms": 1791484345024,
+      "acquired_at_ms": 1791484487863,
+      "released_at_ms": 1791484932598,
+      "wait_ms": 142839,
+      "held_ms": 444735,
+      "held_whole_run": true,
+      "exit": 1
+    }
+  ]
+}

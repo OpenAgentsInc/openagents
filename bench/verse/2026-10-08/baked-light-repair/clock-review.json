@@ -1,0 +1,505 @@
+{
+  "source": "f655bcc32c6df5a69ef278ba8a2e45e342178fab",
+  "binary_sha256": "24312b70d5bda08cc390c8fd82ad9011e551d631a307aebae9395e7d30b71d76",
+  "report": "historical-continuation-full/capture.json",
+  "clock_status": "complete",
+  "containing_run_exit": 1,
+  "containing_run_destruction_status": "failed",
+  "destruction_acceptance": false,
+  "source_resolution": [
+    1920,
+    1080
+  ],
+  "panels_rescaled": false,
+  "crop_xyxy": [
+    320,
+    180,
+    1120,
+    780
+  ],
+  "originals": {
+    "dawn.png": {
+      "metadata": {
+        "file": "dawn.png",
+        "requested_hour": 6.0,
+        "sun": [
+          1.0,
+          0.0,
+          0.0,
+          0.0003586436214391142
+        ],
+        "sky_lux": 200.07174682617188,
+        "warmup_frames": 24
+      },
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-continuation-full/dawn.png",
+      "sha256": "1b5e0c39eb4664d1b84c643d0dfcd0c569b204ee1081f8bd286275ebc9cd86ce",
+      "bytes": 1261904,
+      "retained_file": "clock/dawn.png"
+    },
+    "noon.png": {
+      "metadata": {
+        "file": "noon.png",
+        "requested_hour": 12.0,
+        "sun": [
+          2.0,
+          3.0,
+          0.0,
+          1.0
+        ],
+        "sky_lux": 1200.0,
+        "warmup_frames": 24
+      },
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-continuation-full/noon.png",
+      "sha256": "052b65a719056880428b314c48036737980d8e9d4690b26d12bbce254da7c7d5",
+      "bytes": 1648076,
+      "retained_file": "clock/noon.png"
+    },
+    "dusk.png": {
+      "metadata": {
+        "file": "dusk.png",
+        "requested_hour": 18.0,
+        "sun": [
+          4.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "sky_lux": 239.9934844970703,
+        "warmup_frames": 24
+      },
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-continuation-full/dusk.png",
+      "sha256": "1afc01c0ca5acac81e882f86084db04c3ea3b854d8d664816e57f41847ba0881",
+      "bytes": 1327914,
+      "retained_file": "clock/dusk.png"
+    },
+    "night.png": {
+      "metadata": {
+        "file": "night.png",
+        "requested_hour": 0.0,
+        "sun": [
+          4.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "sky_lux": 24.0,
+        "warmup_frames": 24
+      },
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-continuation-full/night.png",
+      "sha256": "7215c6ef20a3390562fbeb7d33631865a861f834282b061b2f553caa4cfd5106",
+      "bytes": 1026406,
+      "retained_file": "clock/night.png"
+    },
+    "sun-08-before.png": {
+      "metadata": {
+        "file": "sun-08-before.png",
+        "requested_hour": 7.95,
+        "sun": [
+          1.0,
+          0.0,
+          0.0,
+          0.8605196475982666
+        ],
+        "sky_lux": 835.726806640625,
+        "warmup_frames": 24
+      },
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-continuation-full/sun-08-before.png",
+      "sha256": "79bc0bd59bc49bf03ddf445e7709ef764c8af8cc941618f9b885fb9328457430",
+      "bytes": 1580106,
+      "retained_file": "clock/sun-08-before.png"
+    },
+    "sun-08-after.png": {
+      "metadata": {
+        "file": "sun-08-after.png",
+        "requested_hour": 8.05,
+        "sun": [
+          1.0,
+          2.0,
+          0.012533317320048809,
+          0.8682457208633423
+        ],
+        "sky_lux": 850.0196533203125,
+        "warmup_frames": 24
+      },
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-continuation-full/sun-08-after.png",
+      "sha256": "613be04dc5a5b0c4e1ea02fc5facc3f251f49ebff7832ff88beeacbfb35d1320",
+      "bytes": 1587189,
+      "retained_file": "clock/sun-08-after.png"
+    },
+    "sun-12-before.png": {
+      "metadata": {
+        "file": "sun-12-before.png",
+        "requested_hour": 11.95,
+        "sun": [
+          1.0,
+          2.0,
+          0.9875470995903015,
+          1.0
+        ],
+        "sky_lux": 1200.0,
+        "warmup_frames": 24
+      },
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-continuation-full/sun-12-before.png",
+      "sha256": "66615271a6db51bad33a015f1bfcf8ce42833fe6d57d49c8f8cf31c56c7b2311",
+      "bytes": 1654547,
+      "retained_file": "clock/sun-12-before.png"
+    },
+    "sun-12-after.png": {
+      "metadata": {
+        "file": "sun-12-after.png",
+        "requested_hour": 12.05,
+        "sun": [
+          2.0,
+          3.0,
+          0.014358468353748322,
+          1.0
+        ],
+        "sky_lux": 1200.0,
+        "warmup_frames": 24
+      },
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-continuation-full/sun-12-after.png",
+      "sha256": "13533b7f7ff53b7495013706af9df215c4139aa37c150b29d04148cb76f11469",
+      "bytes": 1648337,
+      "retained_file": "clock/sun-12-after.png"
+    },
+    "sun-1530-before.png": {
+      "metadata": {
+        "file": "sun-1530-before.png",
+        "requested_hour": 15.45,
+        "sun": [
+          2.0,
+          3.0,
+          0.9857243299484253,
+          0.9652400016784668
+        ],
+        "sky_lux": 1121.99853515625,
+        "warmup_frames": 24
+      },
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-continuation-full/sun-1530-before.png",
+      "sha256": "2fe924bccaf75942b87e26ad4f46d38ef2a06cffb4b3408ff535f8e1f84eb26e",
+      "bytes": 1605004,
+      "retained_file": "clock/sun-1530-before.png"
+    },
+    "sun-1530-after.png": {
+      "metadata": {
+        "file": "sun-1530-after.png",
+        "requested_hour": 15.55,
+        "sun": [
+          3.0,
+          4.0,
+          0.025022827088832855,
+          0.963325560092926
+        ],
+        "sky_lux": 1117.9962158203125,
+        "warmup_frames": 24
+      },
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-continuation-full/sun-1530-after.png",
+      "sha256": "cf9f09725e6f1dead2cda43385c988a25cd6ea504e4bc044a8ba6f8fd43b9095",
+      "bytes": 1604443,
+      "retained_file": "clock/sun-1530-after.png"
+    },
+    "sun-1730-before.png": {
+      "metadata": {
+        "file": "sun-1730-before.png",
+        "requested_hour": 17.45,
+        "sun": [
+          3.0,
+          4.0,
+          0.9750754237174988,
+          0.9039731025695801
+        ],
+        "sky_lux": 437.94549560546875,
+        "warmup_frames": 24
+      },
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-continuation-full/sun-1730-before.png",
+      "sha256": "82bf9c24ddf89cd33e458ca0c36fb27e4846b93aab7736dfa1f0c491c80db14a",
+      "bytes": 1444643,
+      "retained_file": "clock/sun-1730-before.png"
+    },
+    "sun-1730-after.png": {
+      "metadata": {
+        "file": "sun-1730-after.png",
+        "requested_hour": 17.55,
+        "sun": [
+          4.0,
+          0.0,
+          0.0,
+          0.8057588338851929
+        ],
+        "sky_lux": 401.9288635253906,
+        "warmup_frames": 24
+      },
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-continuation-full/sun-1730-after.png",
+      "sha256": "80f9da56e82d89f121ee0807ebc2fb006bfe99d4852d80dbfc56560c98821cca",
+      "bytes": 1431283,
+      "retained_file": "clock/sun-1730-after.png"
+    }
+  },
+  "boards": {
+    "clock/phase-contact-sheet.png": {
+      "resolution": [
+        3840,
+        2256
+      ],
+      "panels": [
+        {
+          "file": "clock/dawn.png",
+          "source_xyxy": [
+            0,
+            0,
+            1920,
+            1080
+          ],
+          "destination_xy": [
+            0,
+            48
+          ]
+        },
+        {
+          "file": "clock/noon.png",
+          "source_xyxy": [
+            0,
+            0,
+            1920,
+            1080
+          ],
+          "destination_xy": [
+            1920,
+            48
+          ]
+        },
+        {
+          "file": "clock/dusk.png",
+          "source_xyxy": [
+            0,
+            0,
+            1920,
+            1080
+          ],
+          "destination_xy": [
+            0,
+            1176
+          ]
+        },
+        {
+          "file": "clock/night.png",
+          "source_xyxy": [
+            0,
+            0,
+            1920,
+            1080
+          ],
+          "destination_xy": [
+            1920,
+            1176
+          ]
+        }
+      ],
+      "sha256": "8aebe6c4595b21fa333472b03ad806c446a33cf0435c770ba42cdc164d99415f",
+      "bytes": 5286573
+    },
+    "clock/sun-08-boundary-crops.png": {
+      "resolution": [
+        2400,
+        696
+      ],
+      "panels": [
+        {
+          "file": "clock/sun-08-before.png",
+          "requested_hour": 7.95,
+          "source_xyxy": [
+            320,
+            180,
+            1120,
+            780
+          ],
+          "destination_xy": [
+            0,
+            96
+          ]
+        },
+        {
+          "file": null,
+          "requested_hour": 8.0,
+          "destination_xy": [
+            800,
+            96
+          ],
+          "status": "missing_exact_boundary_pixels"
+        },
+        {
+          "file": "clock/sun-08-after.png",
+          "requested_hour": 8.05,
+          "source_xyxy": [
+            320,
+            180,
+            1120,
+            780
+          ],
+          "destination_xy": [
+            1600,
+            96
+          ]
+        }
+      ],
+      "sha256": "91bb199896621350d46c33bda028da997d87ec156202d9858ef976178fefdead",
+      "bytes": 773323
+    },
+    "clock/sun-12-boundary-crops.png": {
+      "resolution": [
+        2400,
+        696
+      ],
+      "panels": [
+        {
+          "file": "clock/sun-12-before.png",
+          "requested_hour": 11.95,
+          "source_xyxy": [
+            320,
+            180,
+            1120,
+            780
+          ],
+          "destination_xy": [
+            0,
+            96
+          ]
+        },
+        {
+          "file": "clock/noon.png",
+          "requested_hour": 12.0,
+          "source_xyxy": [
+            320,
+            180,
+            1120,
+            780
+          ],
+          "destination_xy": [
+            800,
+            96
+          ]
+        },
+        {
+          "file": "clock/sun-12-after.png",
+          "requested_hour": 12.05,
+          "source_xyxy": [
+            320,
+            180,
+            1120,
+            780
+          ],
+          "destination_xy": [
+            1600,
+            96
+          ]
+        }
+      ],
+      "sha256": "572e6b9f2ba387c38de8b9e936a74e41fd43bdd48cf8b497cf0326ffcf09f7bd",
+      "bytes": 800812
+    },
+    "clock/sun-1530-boundary-crops.png": {
+      "resolution": [
+        2400,
+        696
+      ],
+      "panels": [
+        {
+          "file": "clock/sun-1530-before.png",
+          "requested_hour": 15.45,
+          "source_xyxy": [
+            320,
+            180,
+            1120,
+            780
+          ],
+          "destination_xy": [
+            0,
+            96
+          ]
+        },
+        {
+          "file": null,
+          "requested_hour": 15.5,
+          "destination_xy": [
+            800,
+            96
+          ],
+          "status": "missing_exact_boundary_pixels"
+        },
+        {
+          "file": "clock/sun-1530-after.png",
+          "requested_hour": 15.55,
+          "source_xyxy": [
+            320,
+            180,
+            1120,
+            780
+          ],
+          "destination_xy": [
+            1600,
+            96
+          ]
+        }
+      ],
+      "sha256": "9baa2f911dc6525a807d50004e0cb0e88ed71a41a9526c1cd79d32f991d7cc16",
+      "bytes": 779111
+    },
+    "clock/sun-1730-boundary-crops.png": {
+      "resolution": [
+        2400,
+        696
+      ],
+      "panels": [
+        {
+          "file": "clock/sun-1730-before.png",
+          "requested_hour": 17.45,
+          "source_xyxy": [
+            320,
+            180,
+            1120,
+            780
+          ],
+          "destination_xy": [
+            0,
+            96
+          ]
+        },
+        {
+          "file": null,
+          "requested_hour": 17.5,
+          "destination_xy": [
+            800,
+            96
+          ],
+          "status": "missing_exact_boundary_pixels"
+        },
+        {
+          "file": "clock/sun-1730-after.png",
+          "requested_hour": 17.55,
+          "source_xyxy": [
+            320,
+            180,
+            1120,
+            780
+          ],
+          "destination_xy": [
+            1600,
+            96
+          ]
+        }
+      ],
+      "sha256": "ad630e83dbbb178591abbfcef686fa3d71fc8714cd7938875085489ffbc533cd",
+      "bytes": 752864
+    }
+  },
+  "boundary_pixel_gaps": [
+    8.0,
+    15.5,
+    17.5
+  ],
+  "native_pixel_copy_verification": {
+    "status": "verified",
+    "panels": 13,
+    "method": "Decode RGBA originals and PNG boards, then compare each source rectangle with its recorded destination rectangle byte for byte. Labels occupy separate strips."
+  }
+}

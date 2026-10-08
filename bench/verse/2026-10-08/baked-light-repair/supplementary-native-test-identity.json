@@ -1,0 +1,17 @@
+{
+  "source": "3e6406782163e2fe01e9beeef933dd1a39216169",
+  "test_binary": "/Users/christopherdavid/work/openagents-target-agent2/debug/deps/verse_pbr-668a3d62c3c8b90e",
+  "binary_sha256": "02253e48919049d3963d4c67eee72380a6401296ea14adff375a937508adb68e",
+  "test_logs": [
+    "supplementary-native-static-light.log",
+    "supplementary-native-rigid-light.log"
+  ],
+  "profile": "test",
+  "native_command_template": [
+    "/Users/christopherdavid/work/openagents-target-agent2/debug/deps/verse_pbr-668a3d62c3c8b90e",
+    "<exact test name>",
+    "--ignored",
+    "--exact",
+    "--test-threads=1"
+  ]
+}

@@ -1,0 +1,409 @@
+{
+  "schema": "openagents.verse.screenshot-inventory.v1",
+  "source": "c08730c964a5bae38d3eaa6818213717202a35c7",
+  "location": "Durable scratch; complete failed output remains here.",
+  "screenshots": {
+    "clock-0000.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/clock-0000.png",
+      "bytes": 1210647,
+      "sha256": "6bc326eb6286c6c16ac081bb29cf617f7156365854d87f09a7b6ce33c73bc666",
+      "retained_original": false
+    },
+    "clock-0217.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/clock-0217.png",
+      "bytes": 1198643,
+      "sha256": "800c931cb71136634faf704a2cb7e765f06bd2c81bb2790c6a1f59c8f39d07ac",
+      "retained_original": false
+    },
+    "clock-0434.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/clock-0434.png",
+      "bytes": 1182819,
+      "sha256": "84b11ea7fc9b9d3dcae391c996c4b3c049cf1cd5ee94881b67d9a7f5149c0070",
+      "retained_original": false
+    },
+    "clock-0651.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/clock-0651.png",
+      "bytes": 1192338,
+      "sha256": "e3975189d38b2d516d6b3e32fcc8c974bdfcef38d3b9b73337e0e4094ddd7557",
+      "retained_original": false
+    },
+    "clock-0868.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/clock-0868.png",
+      "bytes": 1187772,
+      "sha256": "fead253b360961b17086c772d2b8e0021738f4ffc063a136cfa09d8bbe2c0972",
+      "retained_original": false
+    },
+    "clock-10199.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/clock-10199.png",
+      "bytes": 1203169,
+      "sha256": "886b0d9ba777cb611edd6634478f1914421864f6f47a7fa576b214a487cc7b89",
+      "retained_original": false
+    },
+    "clock-10416.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/clock-10416.png",
+      "bytes": 1187858,
+      "sha256": "5d5584f08b04a048ca94fe226c7ecf398925ce45d12f2c1e648d46507f0af7db",
+      "retained_original": false
+    },
+    "clock-10440.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/clock-10440.png",
+      "bytes": 1181464,
+      "sha256": "42f9e2eddaa8284f9c210b66e4548231446bc4c88a323ec50fdb59c88a6b090b",
+      "retained_original": false
+    },
+    "clock-1085.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/clock-1085.png",
+      "bytes": 1178631,
+      "sha256": "443fe83ad286795ff0babb29a3e32919716ea7a66c9c4b9d7fe976659cf02670",
+      "retained_original": false
+    },
+    "clock-1302.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/clock-1302.png",
+      "bytes": 1173256,
+      "sha256": "dcdc44ddf31f78c1e747daf4f2544d245f5dd985e5fc208ca39692c65d294527",
+      "retained_original": false
+    },
+    "clock-1519.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/clock-1519.png",
+      "bytes": 1175985,
+      "sha256": "e6b6bbc54abb1ad516ee20e98c3e21bba537fda0a0e7d1e6d8cc98819248f28b",
+      "retained_original": false
+    },
+    "clock-1736.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/clock-1736.png",
+      "bytes": 1173268,
+      "sha256": "c4175c9a3ceb1c6a0d7876d188b13bae0356c8d6aba1e18466fd0f8e1319dad7",
+      "retained_original": false
+    },
+    "clock-1953.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/clock-1953.png",
+      "bytes": 1111033,
+      "sha256": "54aa255ec8d26a2e42489e2642b9322dbf2ad40fea0090d63004f77383559dad",
+      "retained_original": false
+    },
+    "clock-2170.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/clock-2170.png",
+      "bytes": 1220455,
+      "sha256": "d0037178e3b3448baa63f4ca27e5e6e74e2fcf5f76a18f848dbcd80f743d4522",
+      "retained_original": false
+    },
+    "clock-2387.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/clock-2387.png",
+      "bytes": 1247858,
+      "sha256": "6686a15e52eff746e54f6eea5ede49628ca6b74bd141c790d9326ad19e45e658",
+      "retained_original": false
+    },
+    "clock-2604.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/clock-2604.png",
+      "bytes": 1359211,
+      "sha256": "574e4ed59964b1df584005a0737f46df89058faa3be2494239a11963e3546624",
+      "retained_original": false
+    },
+    "clock-2821.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/clock-2821.png",
+      "bytes": 1551980,
+      "sha256": "c53f0bafdb910a5940c669dc39d9c5a46ac72894a9dde69470b418ec9dc79575",
+      "retained_original": false
+    },
+    "clock-3038.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/clock-3038.png",
+      "bytes": 1593651,
+      "sha256": "171fca8558b72a70b0511a3a0e9c1d305899c26f71ee9da31d73ff453a72a83d",
+      "retained_original": false
+    },
+    "clock-3255.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/clock-3255.png",
+      "bytes": 1624636,
+      "sha256": "d943a09a3a18eeda2d63d0e9283182f7c9cdb8dc197b0b890817f0cb4b40b5b7",
+      "retained_original": false
+    },
+    "clock-3472.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/clock-3472.png",
+      "bytes": 1689134,
+      "sha256": "358764453b42309e0190d877c3c93d3018144152491b9f90fc25f3fbb97ef3a8",
+      "retained_original": false
+    },
+    "clock-3689.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/clock-3689.png",
+      "bytes": 1706109,
+      "sha256": "8d90495fdd2783d39b53ba9926c2b7780ef057dc8e90fd7bc2aadba767656fcc",
+      "retained_original": false
+    },
+    "clock-3906.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/clock-3906.png",
+      "bytes": 1704351,
+      "sha256": "bfd1be3a48aea19a810d5935308e964ee23ec150ac9b020aaa7b840c7f2b217a",
+      "retained_original": false
+    },
+    "clock-4123.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/clock-4123.png",
+      "bytes": 1708070,
+      "sha256": "f69778c0fb454d703f20d1ae81b5bca3aa24906f148a15ee642b0cdbdba853b0",
+      "retained_original": false
+    },
+    "clock-4340.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/clock-4340.png",
+      "bytes": 1712583,
+      "sha256": "1ae626e9e1afb2c4d278c7587f694a70ebf5619ad96eedfaca1f3f9390e05a13",
+      "retained_original": false
+    },
+    "clock-4557.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/clock-4557.png",
+      "bytes": 1722022,
+      "sha256": "6aed3b88659138ee2ddbe924ee30d6aa88c600ca6806b053fc5ee8efffe20c83",
+      "retained_original": false
+    },
+    "clock-4774.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/clock-4774.png",
+      "bytes": 1727184,
+      "sha256": "2c616ee7b1d6049f21f6a634de38725ca0097332d8dd41dde740147c084194a5",
+      "retained_original": false
+    },
+    "clock-4991.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/clock-4991.png",
+      "bytes": 1769013,
+      "sha256": "05cccf2b4a4dd8d370281888486687bd2bcc70992dc1566f5b9a25d58ca6bcb3",
+      "retained_original": false
+    },
+    "clock-5208.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/clock-5208.png",
+      "bytes": 1754316,
+      "sha256": "b8f4669d0d565575b5dd931a0263b20b4f8e02712a57c8c4469863f1657385a3",
+      "retained_original": false
+    },
+    "clock-5425.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/clock-5425.png",
+      "bytes": 1741735,
+      "sha256": "958eddd95284eea552f791f8cbc28b69183c71d6cdd1e509af2effe7908a604a",
+      "retained_original": false
+    },
+    "clock-5642.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/clock-5642.png",
+      "bytes": 1752072,
+      "sha256": "b969cbef2bccfc619ddf2ffeec9332b0583e44a96542f235b14b0bdcc1516ff1",
+      "retained_original": false
+    },
+    "clock-5859.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/clock-5859.png",
+      "bytes": 1721819,
+      "sha256": "25a7416255b87517bebfe21691529d1c1e38d18eeaf3a6a501e1974a2db97c0a",
+      "retained_original": false
+    },
+    "clock-6076.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/clock-6076.png",
+      "bytes": 1707069,
+      "sha256": "85b4532ce45ffa82a20f72c73166f4e93708289425200bca38455570d0bab012",
+      "retained_original": false
+    },
+    "clock-6293.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/clock-6293.png",
+      "bytes": 1729940,
+      "sha256": "2d4454800e2ed839307dffd2a5941a909ac2fc90a31493dd02b52eb9c844d3a3",
+      "retained_original": false
+    },
+    "clock-6510.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/clock-6510.png",
+      "bytes": 1711114,
+      "sha256": "7d828f8d2916f925aedac333ee00b72f573f4b57714d395b198bf4c3e319b093",
+      "retained_original": false
+    },
+    "clock-6727.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/clock-6727.png",
+      "bytes": 1713172,
+      "sha256": "c112f99c4a9be3665558364a5184c32879031568788febf32f46d8d0e3bdee96",
+      "retained_original": false
+    },
+    "clock-6944.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/clock-6944.png",
+      "bytes": 1687213,
+      "sha256": "b0bc6a19f0a28ccad0eaaa5106dd79cbe326857f88fca0df38d923dab4fbf74c",
+      "retained_original": false
+    },
+    "clock-7161.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/clock-7161.png",
+      "bytes": 1658296,
+      "sha256": "553851c65b5b17c8bb20829796ac56206ce0bb7b1edf846c7a1d749f7b951359",
+      "retained_original": false
+    },
+    "clock-7378.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/clock-7378.png",
+      "bytes": 1611156,
+      "sha256": "50b7537991a254490cb63b81404b4a08474645596c79d622e954ce49a7dac89b",
+      "retained_original": false
+    },
+    "clock-7595.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/clock-7595.png",
+      "bytes": 1530723,
+      "sha256": "f7a68d37fc3089df062b5b53c7186236ba0f74676ad7e92191dba5612241e2f9",
+      "retained_original": false
+    },
+    "clock-7812.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/clock-7812.png",
+      "bytes": 1423812,
+      "sha256": "090096e210d6c40179b1a4bfa7bcc4a52d49d37743524140527623b7219de7b0",
+      "retained_original": false
+    },
+    "clock-8029.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/clock-8029.png",
+      "bytes": 1366993,
+      "sha256": "a760de44f89980ffdcd6eca38b1eef77997c61143901836abe98bf01382dad0c",
+      "retained_original": false
+    },
+    "clock-8246.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/clock-8246.png",
+      "bytes": 1241732,
+      "sha256": "c5947f3eba76230f1237ba1941eeccfe98b39521f307c63ecdc9f3ca0f95ae8a",
+      "retained_original": false
+    },
+    "clock-8463.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/clock-8463.png",
+      "bytes": 1194838,
+      "sha256": "d7e3f96e4e4defde7a353c4c22761f0569273edd8bea26823ec20cfb8b41f58b",
+      "retained_original": false
+    },
+    "clock-8680.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/clock-8680.png",
+      "bytes": 1098130,
+      "sha256": "2a92a0992c423a03be7b3a6d017780f5bbbd2359d5bfa54721462711c3e6dbdf",
+      "retained_original": false
+    },
+    "clock-8897.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/clock-8897.png",
+      "bytes": 1095158,
+      "sha256": "62ba113d039f685328ce8b9bf97437492ad76b19ad2fe6de0717e2fb9757649e",
+      "retained_original": false
+    },
+    "clock-9114.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/clock-9114.png",
+      "bytes": 1094823,
+      "sha256": "bb31b87d6dca48c81c11fc12bda4ad026b8953b969410cb800c90e396bb79749",
+      "retained_original": false
+    },
+    "clock-9331.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/clock-9331.png",
+      "bytes": 1134573,
+      "sha256": "5f23ec219c28a01d1036c60c2b0e40dd56cd42bc370f3e22168fd4285f7d357c",
+      "retained_original": false
+    },
+    "clock-9548.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/clock-9548.png",
+      "bytes": 1181097,
+      "sha256": "680a4d7eccf7de67b3ad0a9c730974dd9d6f32852fba65323b1a975c96d9ef9d",
+      "retained_original": false
+    },
+    "clock-9765.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/clock-9765.png",
+      "bytes": 1184268,
+      "sha256": "1d3e781967de320cb0216c6027a6185bb74127768ebaf61d74cb7e41b804cb25",
+      "retained_original": false
+    },
+    "clock-9982.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/clock-9982.png",
+      "bytes": 1191468,
+      "sha256": "34ff073f29e6c5a04f901e42ff839a777e7212c3cf48af0d831c6cd586a1dfff",
+      "retained_original": false
+    },
+    "dawn.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/dawn.png",
+      "bytes": 1344558,
+      "sha256": "4696b9adf8da79a84e66a046c0132d14dc87f56e6e9e4a143071018bd9a63bcc",
+      "retained_original": true
+    },
+    "destruction-0360.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/destruction-0360.png",
+      "bytes": 1123100,
+      "sha256": "0d8886600286a1cb17be9c1e9706aa6382ea037801f69f9a74665ff11c5340b1",
+      "retained_original": false
+    },
+    "destruction-0480.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/destruction-0480.png",
+      "bytes": 1080076,
+      "sha256": "619f3cb1222bd5c90cc85061dd4ad51be82513cdfec9f597af467a2bf6a33eb6",
+      "retained_original": false
+    },
+    "destruction-0600.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/destruction-0600.png",
+      "bytes": 1054779,
+      "sha256": "fe5f551b576789246b3142e2b25548530cfcbf06c469bd65a76b6f59abb4109d",
+      "retained_original": false
+    },
+    "destruction-0900.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/destruction-0900.png",
+      "bytes": 1050060,
+      "sha256": "83035a91eb601ea39f66e63a5a64a3f2de16044cd135b76c1d2f72049e2c95ab",
+      "retained_original": true
+    },
+    "destruction-pristine.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/destruction-pristine.png",
+      "bytes": 1044363,
+      "sha256": "7b040ba781d0d59be5a4a0cf82b4f581a74a2f1c9e70e96504296d1cf3327235",
+      "retained_original": true
+    },
+    "dusk.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/dusk.png",
+      "bytes": 1405854,
+      "sha256": "0c479155b22e5dcca565cf27b4833feaa85b03107aa1cf7fbe3db996f2f3ba5e",
+      "retained_original": true
+    },
+    "night.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/night.png",
+      "bytes": 1181267,
+      "sha256": "df90fc3572738dac69560925dcf9fa9798220c0b5973f75abdd1be17be6f72bf",
+      "retained_original": true
+    },
+    "noon.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/noon.png",
+      "bytes": 1748531,
+      "sha256": "851f4ae83bdb35105f918aff87d169be29b6754aa7afd45977e5c0dafc21c57a",
+      "retained_original": true
+    },
+    "sun-08-after.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/sun-08-after.png",
+      "bytes": 1701996,
+      "sha256": "f1693c368fc3d08cd7f38fe980d03bf913409d108dcfe73656f1e6eeb6f14ac1",
+      "retained_original": false
+    },
+    "sun-08-before.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/sun-08-before.png",
+      "bytes": 1689839,
+      "sha256": "91e0f430c4dcd10cee4e3be73b4bc28e0bdce231a8f4f9f32b48df11bdc797a6",
+      "retained_original": false
+    },
+    "sun-12-after.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/sun-12-after.png",
+      "bytes": 1747874,
+      "sha256": "fd3959cb9129eeacd9693658b827f0033558160036d7624a5dfb0f59452a9535",
+      "retained_original": false
+    },
+    "sun-12-before.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/sun-12-before.png",
+      "bytes": 1754831,
+      "sha256": "df3f70a3cc6b68f3f5a89a8ab4daf0055b337cb5e852f80223f49760bce83fd0",
+      "retained_original": false
+    },
+    "sun-1530-after.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/sun-1530-after.png",
+      "bytes": 1713263,
+      "sha256": "9a3d916132633db15dbbda7c2b7af1ae2b5964a63fe88eaed3525b0663617a08",
+      "retained_original": false
+    },
+    "sun-1530-before.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/sun-1530-before.png",
+      "bytes": 1713114,
+      "sha256": "d54afeff786a6739ee58e76ae6fd7482332721b0a8ff2786090f32796bf13ec2",
+      "retained_original": false
+    },
+    "sun-1730-after.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/sun-1730-after.png",
+      "bytes": 1519523,
+      "sha256": "bee211acce9422ff93b4c139ab18690802cde5debaa0e905fcda56ffeb1b9fb4",
+      "retained_original": false
+    },
+    "sun-1730-before.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-wall-capture/sun-1730-before.png",
+      "bytes": 1534213,
+      "sha256": "d4a4d2a50b4f98c1e35bb2402f7d127191cad194c6d61a9d0fb8c42230875817",
+      "retained_original": false
+    }
+  }
+}

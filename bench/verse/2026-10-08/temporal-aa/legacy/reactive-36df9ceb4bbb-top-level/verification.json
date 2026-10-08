@@ -1,0 +1,635 @@
+{
+  "schema": "openagents.verse.temporal-aa.v3",
+  "issue": 10936,
+  "status": "high_wall_budget_verified_visual_gate_unresolved",
+  "tested_source_commit": "36df9ceb4bbb7fb0c7be30bd1c3538e0be78ab3e",
+  "tested_binary_sha256": "3a852c752cabec9d7166ffd0b2e1e737a56f2748680cfc15b49d22c01795fee6",
+  "tested_binary": "meteor_showcase_capture",
+  "profile": "release",
+  "capture": {
+    "mode": "live",
+    "width": 1920,
+    "height": 1080,
+    "fps": 60,
+    "steps_per_frame": 1,
+    "adapter": {
+      "name": "Apple M5 Max",
+      "vendor": 0,
+      "device": 0,
+      "backend": "Metal",
+      "device_type": "IntegratedGpu"
+    },
+    "assets": {
+      "kit": {
+        "path": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp",
+        "sha256": "c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e",
+        "bytes": 21467658,
+        "matches_published_pin": true,
+        "unpinned_override": false
+      },
+      "base_pack": {
+        "path": "/Users/christopherdavid/.codex/worktrees/bb65/openagents/assets/verse/everglade/a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f.vtp",
+        "sha256": "a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f",
+        "bytes": 10636202
+      }
+    },
+    "light_settled_before_capture": true,
+    "temporal_aa_available": true,
+    "temporal_aa_enabled": true,
+    "comparison": "AA on/off retain independent histories/exposure and baked-light delivery slots. Each advances once per identical simulation frame, with alternating render order. Runtime light/lamp deliveries are forwarded before the pair; mid-pair arrivals wait. No toggling or repeated snapshot render enters measurements.",
+    "readback_policy": "All primary and baseline frames read pixels; the temporal comparison is serial diagnostics. These measurements do not represent the bounded in-flight primary renderer throughput used by the instanced-debris benchmark.",
+    "timing_scope": "Signed paired wall render-completion increments include CPU encode, submission, mapping, pixel readback, and polling. Every warmed frame enters the mean and spread. The approximate 95% mean interval uses contiguous, balanced batches of about one capture second and Student t bounds, retaining nearby-frame noise together; fewer than two batches yield no interval. Separate order counts and means expose order bias. The upper mean bound tests the 1 ms frame-time budget. These completion measurements do not measure GPU time.",
+    "gpu_timing": "Every paired GPU increment is null because at least one span is invalid. Rare one-sided valid spans and all raw ticks are retained in reports; they do not establish paired GPU cost. Wall completion measurements include CPU encode, submission, polling, mapping, and pixel readback; no GPU-duration or worst-frame claim follows.",
+    "frame_time_increment_budget_ms": 1.0
+  },
+  "results": {
+    "high": {
+      "report": "reports/high.json",
+      "capture_command": "10936-high-reactive-release-paired",
+      "source": "36df9ceb4bbb7fb0c7be30bd1c3538e0be78ab3e",
+      "binary_sha256": "3a852c752cabec9d7166ffd0b2e1e737a56f2748680cfc15b49d22c01795fee6",
+      "profile": "release",
+      "quality": "high",
+      "simulation_frames": 960,
+      "seconds": 16.0,
+      "camera_path": "director",
+      "static_houses": false,
+      "sequence_frames": [
+        439,
+        484
+      ],
+      "pixel_readback": {
+        "policy": "all_frames_temporal_comparison",
+        "primary_readback_count": 960,
+        "temporal_baseline_readback_count": 960
+      },
+      "phases": {
+        "before": {
+          "frames": 322,
+          "valid_gpu_frames": 0,
+          "invalid_gpu_frames": 322,
+          "gpu_increment_ms": null,
+          "mean_gpu_increment_ms": null,
+          "wall_render_completion_increment_ms": {
+            "p50": 0.12441706657409668,
+            "p99": 1.8703327178955078,
+            "max": 3.1362509727478027
+          },
+          "mean_wall_render_completion_increment_ms": 0.46740585565567017,
+          "wall_render_completion_mean_95pct_ci_ms": {
+            "mean": 0.467406007443896,
+            "lower": 0.25393965574490796,
+            "upper": 0.680872359142884,
+            "samples": 322,
+            "blocks": 6,
+            "nominal_block_frames": 60
+          },
+          "wall_mean_upper_95pct_under_1ms": true,
+          "off_first_frames": 161,
+          "on_first_frames": 161,
+          "off_first_mean_wall_increment_ms": 0.2880858778953552,
+          "on_first_mean_wall_increment_ms": 0.6467262506484985
+        },
+        "swarm": {
+          "frames": 360,
+          "valid_gpu_frames": 0,
+          "invalid_gpu_frames": 360,
+          "gpu_increment_ms": null,
+          "mean_gpu_increment_ms": null,
+          "wall_render_completion_increment_ms": {
+            "p50": 0.25441694259643555,
+            "p99": 7.460500717163086,
+            "max": 9.834790229797363
+          },
+          "mean_wall_render_completion_increment_ms": 0.6362084150314331,
+          "wall_render_completion_mean_95pct_ci_ms": {
+            "mean": 0.6362085964944627,
+            "lower": 0.5037994910271418,
+            "upper": 0.7686177019617836,
+            "samples": 360,
+            "blocks": 6,
+            "nominal_block_frames": 60
+          },
+          "wall_mean_upper_95pct_under_1ms": true,
+          "off_first_frames": 180,
+          "on_first_frames": 180,
+          "off_first_mean_wall_increment_ms": -0.2554242014884949,
+          "on_first_mean_wall_increment_ms": 1.5278416872024536
+        },
+        "after": {
+          "frames": 270,
+          "valid_gpu_frames": 0,
+          "invalid_gpu_frames": 270,
+          "gpu_increment_ms": null,
+          "mean_gpu_increment_ms": null,
+          "wall_render_completion_increment_ms": {
+            "p50": 0.25437498092651367,
+            "p99": 2.097085475921631,
+            "max": 5.9840006828308105
+          },
+          "mean_wall_render_completion_increment_ms": 0.5251125693321228,
+          "wall_render_completion_mean_95pct_ci_ms": {
+            "mean": 0.5251125088444463,
+            "lower": 0.2849973649669192,
+            "upper": 0.7652276527219734,
+            "samples": 270,
+            "blocks": 5,
+            "nominal_block_frames": 60
+          },
+          "wall_mean_upper_95pct_under_1ms": true,
+          "off_first_frames": 135,
+          "on_first_frames": 135,
+          "off_first_mean_wall_increment_ms": 0.32612571120262146,
+          "on_first_mean_wall_increment_ms": 0.7240992784500122
+        }
+      }
+    },
+    "medium": {
+      "report": "reports/medium.json",
+      "capture_command": "10936-medium-reactive-release-paired",
+      "source": "36df9ceb4bbb7fb0c7be30bd1c3538e0be78ab3e",
+      "binary_sha256": "3a852c752cabec9d7166ffd0b2e1e737a56f2748680cfc15b49d22c01795fee6",
+      "profile": "release",
+      "quality": "medium",
+      "simulation_frames": 960,
+      "seconds": 16.0,
+      "camera_path": "director",
+      "static_houses": false,
+      "sequence_frames": [
+        439,
+        484
+      ],
+      "pixel_readback": {
+        "policy": "all_frames_temporal_comparison",
+        "primary_readback_count": 960,
+        "temporal_baseline_readback_count": 960
+      },
+      "phases": {
+        "before": {
+          "frames": 322,
+          "valid_gpu_frames": 0,
+          "invalid_gpu_frames": 322,
+          "gpu_increment_ms": null,
+          "mean_gpu_increment_ms": null,
+          "wall_render_completion_increment_ms": {
+            "p50": 0.09629225730895996,
+            "p99": 2.1000843048095703,
+            "max": 3.1215415000915527
+          },
+          "mean_wall_render_completion_increment_ms": 0.4639114439487457,
+          "wall_render_completion_mean_95pct_ci_ms": {
+            "mean": 0.46391165441607835,
+            "lower": 0.3326826624451197,
+            "upper": 0.595140646387037,
+            "samples": 322,
+            "blocks": 6,
+            "nominal_block_frames": 60
+          },
+          "wall_mean_upper_95pct_under_1ms": true,
+          "off_first_frames": 161,
+          "on_first_frames": 161,
+          "off_first_mean_wall_increment_ms": 0.3079524040222168,
+          "on_first_mean_wall_increment_ms": 0.6198709011077881
+        },
+        "swarm": {
+          "frames": 360,
+          "valid_gpu_frames": 0,
+          "invalid_gpu_frames": 360,
+          "gpu_increment_ms": null,
+          "mean_gpu_increment_ms": null,
+          "wall_render_completion_increment_ms": {
+            "p50": 0.3307070732116699,
+            "p99": 6.466625690460205,
+            "max": 7.638084411621094
+          },
+          "mean_wall_render_completion_increment_ms": 0.8767314553260803,
+          "wall_render_completion_mean_95pct_ci_ms": {
+            "mean": 0.8767311476998859,
+            "lower": 0.448230542786402,
+            "upper": 1.3052317526133699,
+            "samples": 360,
+            "blocks": 6,
+            "nominal_block_frames": 60
+          },
+          "wall_mean_upper_95pct_under_1ms": false,
+          "off_first_frames": 180,
+          "on_first_frames": 180,
+          "off_first_mean_wall_increment_ms": 0.46225976943969727,
+          "on_first_mean_wall_increment_ms": 1.2912029027938843
+        },
+        "after": {
+          "frames": 270,
+          "valid_gpu_frames": 0,
+          "invalid_gpu_frames": 270,
+          "gpu_increment_ms": null,
+          "mean_gpu_increment_ms": null,
+          "wall_render_completion_increment_ms": {
+            "p50": 0.17408394813537598,
+            "p99": 1.9319591522216797,
+            "max": 3.178208351135254
+          },
+          "mean_wall_render_completion_increment_ms": 0.43715226650238037,
+          "wall_render_completion_mean_95pct_ci_ms": {
+            "mean": 0.437152451939053,
+            "lower": 0.2659990358504781,
+            "upper": 0.6083058680276279,
+            "samples": 270,
+            "blocks": 5,
+            "nominal_block_frames": 60
+          },
+          "wall_mean_upper_95pct_under_1ms": true,
+          "off_first_frames": 135,
+          "on_first_frames": 135,
+          "off_first_mean_wall_increment_ms": 0.33003535866737366,
+          "on_first_mean_wall_increment_ms": 0.5442695021629333
+        }
+      }
+    },
+    "pan": {
+      "report": "reports/pan.json",
+      "capture_command": "10936-pan-reactive-release-paired",
+      "source": "36df9ceb4bbb7fb0c7be30bd1c3538e0be78ab3e",
+      "binary_sha256": "3a852c752cabec9d7166ffd0b2e1e737a56f2748680cfc15b49d22c01795fee6",
+      "profile": "release",
+      "quality": "high",
+      "simulation_frames": 480,
+      "seconds": 8.0,
+      "camera_path": "pan",
+      "static_houses": true,
+      "sequence_frames": [
+        120,
+        135
+      ],
+      "pixel_readback": {
+        "policy": "all_frames_temporal_comparison",
+        "primary_readback_count": 480,
+        "temporal_baseline_readback_count": 480
+      },
+      "phases": {
+        "before": {
+          "frames": 472,
+          "valid_gpu_frames": 0,
+          "invalid_gpu_frames": 472,
+          "gpu_increment_ms": null,
+          "mean_gpu_increment_ms": null,
+          "wall_render_completion_increment_ms": {
+            "p50": 0.1410830020904541,
+            "p99": 4.772124290466309,
+            "max": 7.529709815979004
+          },
+          "mean_wall_render_completion_increment_ms": 0.5980195999145508,
+          "wall_render_completion_mean_95pct_ci_ms": {
+            "mean": 0.5980196920997005,
+            "lower": 0.49202535746855863,
+            "upper": 0.7040140267308423,
+            "samples": 472,
+            "blocks": 8,
+            "nominal_block_frames": 60
+          },
+          "wall_mean_upper_95pct_under_1ms": true,
+          "off_first_frames": 236,
+          "on_first_frames": 236,
+          "off_first_mean_wall_increment_ms": 0.44615793228149414,
+          "on_first_mean_wall_increment_ms": 0.7498812675476074
+        },
+        "swarm": {
+          "frames": 0,
+          "valid_gpu_frames": 0,
+          "invalid_gpu_frames": 0,
+          "gpu_increment_ms": null,
+          "mean_gpu_increment_ms": null,
+          "wall_render_completion_increment_ms": null,
+          "mean_wall_render_completion_increment_ms": null,
+          "wall_render_completion_mean_95pct_ci_ms": null,
+          "wall_mean_upper_95pct_under_1ms": null,
+          "off_first_frames": 0,
+          "on_first_frames": 0,
+          "off_first_mean_wall_increment_ms": null,
+          "on_first_mean_wall_increment_ms": null
+        },
+        "after": {
+          "frames": 0,
+          "valid_gpu_frames": 0,
+          "invalid_gpu_frames": 0,
+          "gpu_increment_ms": null,
+          "mean_gpu_increment_ms": null,
+          "wall_render_completion_increment_ms": null,
+          "mean_wall_render_completion_increment_ms": null,
+          "wall_render_completion_mean_95pct_ci_ms": null,
+          "wall_mean_upper_95pct_under_1ms": null,
+          "off_first_frames": 0,
+          "on_first_frames": 0,
+          "off_first_mean_wall_increment_ms": null,
+          "on_first_mean_wall_increment_ms": null
+        }
+      }
+    },
+    "orbit": {
+      "report": "reports/orbit.json",
+      "capture_command": "10936-orbit-reactive-release-paired",
+      "source": "36df9ceb4bbb7fb0c7be30bd1c3538e0be78ab3e",
+      "binary_sha256": "3a852c752cabec9d7166ffd0b2e1e737a56f2748680cfc15b49d22c01795fee6",
+      "profile": "release",
+      "quality": "high",
+      "simulation_frames": 480,
+      "seconds": 8.0,
+      "camera_path": "orbit",
+      "static_houses": true,
+      "sequence_frames": [
+        120,
+        135
+      ],
+      "pixel_readback": {
+        "policy": "all_frames_temporal_comparison",
+        "primary_readback_count": 480,
+        "temporal_baseline_readback_count": 480
+      },
+      "phases": {
+        "before": {
+          "frames": 472,
+          "valid_gpu_frames": 0,
+          "invalid_gpu_frames": 472,
+          "gpu_increment_ms": null,
+          "mean_gpu_increment_ms": null,
+          "wall_render_completion_increment_ms": {
+            "p50": 0.0838327407836914,
+            "p99": 2.8959157466888428,
+            "max": 7.995251178741455
+          },
+          "mean_wall_render_completion_increment_ms": 0.43220967054367065,
+          "wall_render_completion_mean_95pct_ci_ms": {
+            "mean": 0.43220971196384755,
+            "lower": 0.2520129584698032,
+            "upper": 0.6124064654578919,
+            "samples": 472,
+            "blocks": 8,
+            "nominal_block_frames": 60
+          },
+          "wall_mean_upper_95pct_under_1ms": true,
+          "off_first_frames": 236,
+          "on_first_frames": 236,
+          "off_first_mean_wall_increment_ms": 0.26409614086151123,
+          "on_first_mean_wall_increment_ms": 0.6003231406211853
+        },
+        "swarm": {
+          "frames": 0,
+          "valid_gpu_frames": 0,
+          "invalid_gpu_frames": 0,
+          "gpu_increment_ms": null,
+          "mean_gpu_increment_ms": null,
+          "wall_render_completion_increment_ms": null,
+          "mean_wall_render_completion_increment_ms": null,
+          "wall_render_completion_mean_95pct_ci_ms": null,
+          "wall_mean_upper_95pct_under_1ms": null,
+          "off_first_frames": 0,
+          "on_first_frames": 0,
+          "off_first_mean_wall_increment_ms": null,
+          "on_first_mean_wall_increment_ms": null
+        },
+        "after": {
+          "frames": 0,
+          "valid_gpu_frames": 0,
+          "invalid_gpu_frames": 0,
+          "gpu_increment_ms": null,
+          "mean_gpu_increment_ms": null,
+          "wall_render_completion_increment_ms": null,
+          "mean_wall_render_completion_increment_ms": null,
+          "wall_render_completion_mean_95pct_ci_ms": null,
+          "wall_mean_upper_95pct_under_1ms": null,
+          "off_first_frames": 0,
+          "on_first_frames": 0,
+          "off_first_mean_wall_increment_ms": null,
+          "on_first_mean_wall_increment_ms": null
+        }
+      }
+    }
+  },
+  "acceptance": {
+    "high_wall_mean_upper_95pct_under_1ms": true,
+    "medium_full_wall_mean_upper_95pct_under_1ms": false,
+    "pan_and_orbit_wall_mean_upper_95pct_under_1ms": true,
+    "all_qualities_wall_mean_upper_95pct_under_1ms": false,
+    "required_timing_gate": "High; upper approximate 95% mean interval below 1 ms in before/swarm/after",
+    "medium_limitation": "Swarm mean 0.876731 ms, upper 95% mean bound 1.305232 ms; weaker result retained without filtering or repeated trials",
+    "visual_review": "audit/visual-review.json",
+    "fast_debris": "No clearly separated duplicate in reviewed 471\u2013474 structural debris sheets; limited visual assessment",
+    "gpu_cost": "unavailable: every paired GPU increment null",
+    "worst_frame_cost": "not established; retained paired p99/max increments exceed 1 ms",
+    "meteor_fast_motion_ghost_duration": {
+      "status": "unestablished",
+      "required_source": "36df9ceb4bbb7fb0c7be30bd1c3538e0be78ab3e",
+      "historical_evidence_satisfies_gate": false,
+      "visual_review": "audit/visual-review.json",
+      "observation": "Fresh TAA-only detached head-shaped outlines remain inside the ribbon at High471/472 and Medium471; exact older-frame reprojection/duration is not recoverable from saved matrices because none are retained."
+    }
+  },
+  "native_tests": [
+    {
+      "name": "pbr::temporal::tests::hidden_motion_cannot_overwrite_the_visible_surface",
+      "command": [
+        "/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse_pbr-ec22d2725ec15267",
+        "pbr::temporal::tests::hidden_motion_cannot_overwrite_the_visible_surface",
+        "--ignored",
+        "--exact",
+        "--test-threads=1"
+      ],
+      "source": "df355b0cd1b45843b54aea40a6e6f3d665dfa237",
+      "binary_sha256": "23604df14cf3636ede320b964ba8755c1d9e49e672d49cf8c3ceaf1dc3873102",
+      "samples": [
+        1,
+        4
+      ],
+      "result": "passed",
+      "exit": 0,
+      "proof": "proof/native-0.log",
+      "covers_reactive_head": false,
+      "covers_occlusion": false
+    },
+    {
+      "name": "pbr::temporal::tests::empty_motion_keeps_camera_reprojection_with_stale_object_data",
+      "command": [
+        "/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse_pbr-ec22d2725ec15267",
+        "pbr::temporal::tests::empty_motion_keeps_camera_reprojection_with_stale_object_data",
+        "--ignored",
+        "--exact",
+        "--test-threads=1"
+      ],
+      "source": "df355b0cd1b45843b54aea40a6e6f3d665dfa237",
+      "binary_sha256": "23604df14cf3636ede320b964ba8755c1d9e49e672d49cf8c3ceaf1dc3873102",
+      "samples": [
+        1
+      ],
+      "result": "passed",
+      "exit": 0,
+      "proof": "proof/native-1.log",
+      "covers_reactive_head": false,
+      "covers_occlusion": false
+    },
+    {
+      "name": "pbr::temporal::reactive_tests::moving_reactive_geometry_cannot_leave_history_in_a_bright_trail",
+      "command": [
+        "/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse_pbr-ec22d2725ec15267",
+        "pbr::temporal::reactive_tests::moving_reactive_geometry_cannot_leave_history_in_a_bright_trail",
+        "--ignored",
+        "--exact",
+        "--test-threads=1"
+      ],
+      "source": "df355b0cd1b45843b54aea40a6e6f3d665dfa237",
+      "binary_sha256": "23604df14cf3636ede320b964ba8755c1d9e49e672d49cf8c3ceaf1dc3873102",
+      "samples": [
+        1,
+        4
+      ],
+      "result": "passed",
+      "exit": 0,
+      "proof": "proof/native-2.log",
+      "covers_reactive_head": true,
+      "covers_occlusion": true
+    },
+    {
+      "name": "pbr::temporal::reactive_tests::reactive_history_rejection_matches_the_actual_bilinear_footprint",
+      "command": [
+        "/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse_pbr-ec22d2725ec15267",
+        "pbr::temporal::reactive_tests::reactive_history_rejection_matches_the_actual_bilinear_footprint",
+        "--ignored",
+        "--exact",
+        "--test-threads=1"
+      ],
+      "source": "df355b0cd1b45843b54aea40a6e6f3d665dfa237",
+      "binary_sha256": "23604df14cf3636ede320b964ba8755c1d9e49e672d49cf8c3ceaf1dc3873102",
+      "samples": [
+        1,
+        4
+      ],
+      "result": "passed",
+      "exit": 0,
+      "proof": "proof/native-3.log",
+      "covers_reactive_head": true,
+      "covers_occlusion": false
+    }
+  ],
+  "checks": {
+    "source": "36df9ceb4bbb7fb0c7be30bd1c3538e0be78ab3e",
+    "proof": "proof/checks.log",
+    "physics": {
+      "passed": 190,
+      "ignored": 1
+    },
+    "verse_pbr": {
+      "passed": 184,
+      "ignored": 11
+    },
+    "verse_zone_everglade": {
+      "passed": 292
+    },
+    "capture_example": {
+      "passed": 9
+    },
+    "render": {
+      "passed": 14,
+      "ignored": 1
+    },
+    "gles": {
+      "passed": 10
+    },
+    "mobile_presence": {
+      "passed": 1
+    },
+    "debug_and_release_example_build": "passed",
+    "native_motion_regressions": "4 passed separately at the recorded native source"
+  },
+  "prior_attempts": {
+    "pre_reactive_c559": "legacy/pre-reactive-c559/verification.json",
+    "caster_dae": "legacy/caster-dae/verification.json",
+    "early_static_dae": "legacy/early-static-dae/verification.json"
+  },
+  "candidate_source_commit": "36df9ceb4bbb7fb0c7be30bd1c3538e0be78ab3e",
+  "historical_attempts": {
+    "pre_reactive_c559": {
+      "verification": "legacy/pre-reactive-c559/verification.json",
+      "commands": "legacy/pre-reactive-c559/commands.json",
+      "source": "46cf41188b8067f10a08a2eb2a49466446b1760d",
+      "binary_sha256": "ad715e26bc77a2a4935ee39ecdeab83205d6efd1860de5506a9302e29a90ab0f",
+      "status": "wall_budget_verified_visual_review_limited",
+      "unresolved_meteor_head": "TAA-only head-shaped outline in frames 470\u2013472; duration unestablished",
+      "fast_head_acceptance": false
+    },
+    "caster_dae": {
+      "verification": "legacy/caster-dae/verification.json",
+      "budget": "failed"
+    },
+    "early_static_dae": {
+      "verification": "legacy/early-static-dae/verification.json",
+      "coverage": "limited"
+    }
+  },
+  "preliminary_checks": {
+    "status": "failures_retained_final_checks_passed",
+    "proof": "proof/checks-initial-consumer-failure.log",
+    "lease": "proof/checks-initial-build-lease.json",
+    "physics": {
+      "passed": 190,
+      "ignored": 1
+    },
+    "verse_pbr": {
+      "passed": 184,
+      "ignored": 11
+    },
+    "verse_zone_everglade": {
+      "passed": 291
+    },
+    "consumer_failure": "Initial render consumer compilation failed E0502; the cheap buffer-handle borrow fix is in the final candidate and its retry is pending.",
+    "source": "eacc0848284f3124bdac7c4cbf83267f3dbecff5",
+    "retry_source": "3b52f7fe42050e0f52236c324016522f0b854cb2",
+    "retry_proof": "proof/checks-consumer-retry-failure.log",
+    "retry_lease": "proof/checks-consumer-retry-failure-lease.json",
+    "retry_render": {
+      "passed": 14,
+      "ignored": 1
+    },
+    "retry_gles": {
+      "passed": 10
+    },
+    "retry_failure": "coder-mobile studio_tests.rs:895 supplies seven arguments to the current eight-argument studio::git::prepare API (E0061). Native/capture build has not completed."
+  },
+  "native_provenance": {
+    "production_source": "36df9ceb4bbb7fb0c7be30bd1c3538e0be78ab3e",
+    "native_source": "df355b0cd1b45843b54aea40a6e6f3d665dfa237",
+    "native_binary_sha256": "23604df14cf3636ede320b964ba8755c1d9e49e672d49cf8c3ceaf1dc3873102",
+    "only_source_difference": "crates/verse-pbr/src/pbr/temporal_reactive_tests.rs: production WGSL preprocessing in the native harness",
+    "patch": "proof/native-fixture-only.patch",
+    "production_code_identical": true,
+    "parser_attempt0": "proof/native-attempt0/10936-reactive-native-manifest.json",
+    "parser_failure": "proof/native-attempt0/10936-reactive-native-2.log",
+    "scope_limit": "Native head fixture uses flat RGB color and zero sharpening; production uses HDR ribbons, bloom and 0.15 sharpening. Native results do not by themselves establish the live visual gate."
+  },
+  "capture_batch": {
+    "manifest": "proof/captures-manifest.json",
+    "jobs": 6,
+    "all_exit_zero": true,
+    "quiet_receipt": "proof/quiet-receipt.json",
+    "gpu_receipt": "proof/gpu-lease.json",
+    "image_processing_after_leases_released": true
+  },
+  "image_curation": {
+    "inventory": "image-inventory.json",
+    "source_frames": "audit/source-frame-hashes.json",
+    "policy": "Raw metrics, provenance, tests, failures, selected full-resolution views, and exact assessment crops remain in Git. Complete source sequences and redundant generated sheets remain in durable scratch with SHA-256 and size inventories."
+  },
+  "supplementary_attempts": {
+    "neighbor_dependency": {
+      "verification": "supplementary/neighbor-dependency-diagnostic/verification.json",
+      "source": "290c1590726189dbdabb5693125cfa0fbca8a779",
+      "status": "visual_failed",
+      "timing_acceptance_available": false,
+      "supersedes_top_level_acceptance": false
+    },
+    "live_marker_history": {
+      "verification": "supplementary/live-marker-history-51e1/verification.json",
+      "source": "51e1ab25192e95038edcee1f548355c11df5ff95",
+      "status": "visual_failed",
+      "timing_acceptance_available": false,
+      "supersedes_top_level_acceptance": false
+    }
+  }
+}

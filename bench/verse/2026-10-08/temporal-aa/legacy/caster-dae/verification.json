@@ -1,0 +1,210 @@
+{
+  "schema": "openagents.verse.temporal-aa.attempt.v1",
+  "status": "failed_high_wall_budget",
+  "source": "8e13f4b01c6054fcec09c1e754272189daae49f6",
+  "binary_sha256": "d8c594aeb82187c86c9a9685ad5fc05acf9a187d10e5a98b4df69c5a07d5989e",
+  "profile": "release",
+  "asset": "dae1612d4c22438a933c27b406c1e18fe134b13eab8eb5240ddcf5506ffb0b93",
+  "unpinned_override": true,
+  "limitations": "Reviewed DAE override; current published c559 kit was not tested in this attempt. High before, swarm and aftermath upper mean intervals exceeded 1 ms. No GPU duration is valid.",
+  "results": {
+    "pan": {
+      "before": {
+        "frames": 472,
+        "valid_gpu_frames": 0,
+        "invalid_gpu_frames": 472,
+        "gpu_increment_ms": null,
+        "mean_gpu_increment_ms": null,
+        "wall_render_completion_increment_ms": {
+          "p50": 0.10758376121520996,
+          "p99": 7.7736663818359375,
+          "max": 11.274126052856445
+        },
+        "mean_wall_render_completion_increment_ms": 0.25671622157096863,
+        "wall_render_completion_mean_95pct_ci_ms": {
+          "mean": 0.2567162437964294,
+          "lower": 0.143028731241876,
+          "upper": 0.37040375635098277,
+          "samples": 472,
+          "blocks": 8,
+          "nominal_block_frames": 60
+        },
+        "wall_mean_upper_95pct_under_1ms": true,
+        "off_first_frames": 236,
+        "on_first_frames": 236,
+        "off_first_mean_wall_increment_ms": -0.16559486091136932,
+        "on_first_mean_wall_increment_ms": 0.6790273785591125
+      }
+    },
+    "orbit": {
+      "before": {
+        "frames": 472,
+        "valid_gpu_frames": 0,
+        "invalid_gpu_frames": 472,
+        "gpu_increment_ms": null,
+        "mean_gpu_increment_ms": null,
+        "wall_render_completion_increment_ms": {
+          "p50": 0.09479188919067383,
+          "p99": 5.110541820526123,
+          "max": 8.232789993286133
+        },
+        "mean_wall_render_completion_increment_ms": 0.29029855132102966,
+        "wall_render_completion_mean_95pct_ci_ms": {
+          "mean": 0.2902985639491324,
+          "lower": 0.19758814451464363,
+          "upper": 0.38300898338362116,
+          "samples": 472,
+          "blocks": 8,
+          "nominal_block_frames": 60
+        },
+        "wall_mean_upper_95pct_under_1ms": true,
+        "off_first_frames": 236,
+        "on_first_frames": 236,
+        "off_first_mean_wall_increment_ms": -0.010443390347063541,
+        "on_first_mean_wall_increment_ms": 0.5910406112670898
+      }
+    },
+    "high": {
+      "before": {
+        "frames": 322,
+        "valid_gpu_frames": 2,
+        "invalid_gpu_frames": 320,
+        "gpu_increment_ms": {
+          "p50": 0.6163759231567383,
+          "p99": 0.6163759231567383,
+          "max": 0.6163759231567383
+        },
+        "mean_gpu_increment_ms": null,
+        "wall_render_completion_increment_ms": {
+          "p50": 1.3810434341430664,
+          "p99": 8.249789237976074,
+          "max": 10.940458297729492
+        },
+        "mean_wall_render_completion_increment_ms": 1.2102247476577759,
+        "wall_render_completion_mean_95pct_ci_ms": {
+          "mean": 1.2102248394711417,
+          "lower": 0.36537812297421945,
+          "upper": 2.055071555968064,
+          "samples": 322,
+          "blocks": 6,
+          "nominal_block_frames": 60
+        },
+        "wall_mean_upper_95pct_under_1ms": false,
+        "off_first_frames": 161,
+        "on_first_frames": 161,
+        "off_first_mean_wall_increment_ms": 0.8813924789428711,
+        "on_first_mean_wall_increment_ms": 1.5390567779541016
+      },
+      "swarm": {
+        "frames": 360,
+        "valid_gpu_frames": 2,
+        "invalid_gpu_frames": 358,
+        "gpu_increment_ms": {
+          "p50": 6.601875305175781,
+          "p99": 6.601875305175781,
+          "max": 6.601875305175781
+        },
+        "mean_gpu_increment_ms": null,
+        "wall_render_completion_increment_ms": {
+          "p50": 0.5385832786560059,
+          "p99": 10.008418083190918,
+          "max": 17.450956344604492
+        },
+        "mean_wall_render_completion_increment_ms": 0.933850109577179,
+        "wall_render_completion_mean_95pct_ci_ms": {
+          "mean": 0.9338503393861982,
+          "lower": 0.3763405889069168,
+          "upper": 1.4913600898654797,
+          "samples": 360,
+          "blocks": 6,
+          "nominal_block_frames": 60
+        },
+        "wall_mean_upper_95pct_under_1ms": false,
+        "off_first_frames": 180,
+        "on_first_frames": 180,
+        "off_first_mean_wall_increment_ms": 1.0620955228805542,
+        "on_first_mean_wall_increment_ms": 0.8056045770645142
+      },
+      "after": {
+        "frames": 270,
+        "valid_gpu_frames": 0,
+        "invalid_gpu_frames": 270,
+        "gpu_increment_ms": null,
+        "mean_gpu_increment_ms": null,
+        "wall_render_completion_increment_ms": {
+          "p50": 1.3586668968200684,
+          "p99": 9.318248748779297,
+          "max": 15.267583847045898
+        },
+        "mean_wall_render_completion_increment_ms": 0.9511059522628784,
+        "wall_render_completion_mean_95pct_ci_ms": {
+          "mean": 0.9511058613106057,
+          "lower": 0.4742742493573021,
+          "upper": 1.4279374732639094,
+          "samples": 270,
+          "blocks": 5,
+          "nominal_block_frames": 60
+        },
+        "wall_mean_upper_95pct_under_1ms": false,
+        "off_first_frames": 135,
+        "on_first_frames": 135,
+        "off_first_mean_wall_increment_ms": 2.321596384048462,
+        "on_first_mean_wall_increment_ms": -0.4193844199180603
+      }
+    },
+    "medium": {
+      "before": {
+        "frames": 322,
+        "valid_gpu_frames": 0,
+        "invalid_gpu_frames": 322,
+        "gpu_increment_ms": null,
+        "mean_gpu_increment_ms": null,
+        "wall_render_completion_increment_ms": {
+          "p50": 0.1509995460510254,
+          "p99": 2.6892082691192627,
+          "max": 6.025042533874512
+        },
+        "mean_wall_render_completion_increment_ms": 0.35448816418647766,
+        "wall_render_completion_mean_95pct_ci_ms": {
+          "mean": 0.3544881954696608,
+          "lower": 0.22759388175819614,
+          "upper": 0.48138250918112546,
+          "samples": 322,
+          "blocks": 6,
+          "nominal_block_frames": 60
+        },
+        "wall_mean_upper_95pct_under_1ms": true,
+        "off_first_frames": 161,
+        "on_first_frames": 161,
+        "off_first_mean_wall_increment_ms": 0.30527132749557495,
+        "on_first_mean_wall_increment_ms": 0.40370509028434753
+      },
+      "swarm": {
+        "frames": 150,
+        "valid_gpu_frames": 0,
+        "invalid_gpu_frames": 150,
+        "gpu_increment_ms": null,
+        "mean_gpu_increment_ms": null,
+        "wall_render_completion_increment_ms": {
+          "p50": 0.3293752670288086,
+          "p99": 6.248669624328613,
+          "max": 6.332499980926514
+        },
+        "mean_wall_render_completion_increment_ms": 0.6325564980506897,
+        "wall_render_completion_mean_95pct_ci_ms": {
+          "mean": 0.6325565791130066,
+          "lower": 0.145850479758869,
+          "upper": 1.1192626784671442,
+          "samples": 150,
+          "blocks": 3,
+          "nominal_block_frames": 60
+        },
+        "wall_mean_upper_95pct_under_1ms": false,
+        "off_first_frames": 75,
+        "on_first_frames": 75,
+        "off_first_mean_wall_increment_ms": 0.2964431643486023,
+        "on_first_mean_wall_increment_ms": 0.9686698317527771
+      }
+    }
+  }
+}

@@ -1,0 +1,546 @@
+openagents lease: waiting for build: a quiet lease is held or queued, so new builds wait: quiet held by codex:01a119ae-8a0b-7850-9b7f-ca9fe5a3203b (openagents pid 30012)
+warning: unreachable pattern
+    --> crates/coder-access/src/protocol.rs:1064:19
+     |
+1062 |                 | Self::ProposeHire { .. }
+     |                   ------------------------ matches all the relevant values
+1063 |                 | Self::DecideHire { .. }
+1064 |                 | Self::ProposeHire { .. }
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+     |
+     = note: `#[warn(unreachable_patterns)]` (part of `#[warn(unused)]`) on by default
+
+warning: unreachable pattern
+    --> crates/coder-access/src/protocol.rs:1065:19
+     |
+1063 |                 | Self::DecideHire { .. }
+     |                   ----------------------- matches all the relevant values
+1064 |                 | Self::ProposeHire { .. }
+1065 |                 | Self::DecideHire { .. }
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: unreachable pattern
+    --> crates/coder-access/src/protocol.rs:1087:19
+     |
+1085 |                 | Self::ProposeHire { .. }
+     |                   ------------------------ matches all the relevant values
+1086 |                 | Self::DecideHire { .. }
+1087 |                 | Self::ProposeHire { .. }
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: unreachable pattern
+    --> crates/coder-access/src/protocol.rs:1088:19
+     |
+1086 |                 | Self::DecideHire { .. }
+     |                   ----------------------- matches all the relevant values
+1087 |                 | Self::ProposeHire { .. }
+1088 |                 | Self::DecideHire { .. }
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: `coder-access` (lib) generated 4 warnings
+warning: unused `std::result::Result` in tuple element 1 that must be used
+    --> crates/verse-pbr/src/pbr/textured.rs:1445:13
+     |
+1445 |             checked.remove(0);
+     |             ^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+     = note: `#[warn(unused_must_use)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-pbr` (lib) generated 1 warning
+   Compiling coder v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/coder)
+   Compiling verse-host v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-host)
+warning: unused import: `self`
+ --> crates/verse-imported/src/imported/remote_window.rs:7:23
+  |
+7 |     chamber_session::{self, Note, Session, Stopped},
+  |                       ^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `glam::Vec3`
+  --> crates/verse-imported/src/imported/remote_window.rs:11:5
+   |
+11 | use glam::Vec3;
+   |     ^^^^^^^^^^
+
+warning: `verse-imported` (lib) generated 2 warnings (run `cargo fix --lib -p verse-imported` to apply 2 suggestions)
+   Compiling verse-zone-everglade v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-zone-everglade)
+   Compiling terminal-studio v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/terminal-studio)
+   Compiling verse-zone-grove v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-zone-grove)
+   Compiling verse-zone-water v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-zone-water)
+warning: type `sales::State` is more private than the item `retire_lead`
+   --> crates/coder/src/task/sales/claims/helpers.rs:9:1
+    |
+  9 | pub(crate) fn retire_lead(state: &mut super::super::State, lead: &str) {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ function `retire_lead` is reachable at visibility `pub(crate)`
+    |
+note: but type `sales::State` is only usable at visibility `pub(self)`
+   --> crates/coder/src/task/sales.rs:288:1
+    |
+288 | struct State {
+    | ^^^^^^^^^^^^
+    = note: `#[warn(private_interfaces)]` on by default
+
+warning: type `sales::agents::native::Native` is more private than the item `helpers::<impl sales::Store>::validate_sales_helper_artifacts_with_native`
+   --> crates/coder/src/task/sales/claims/helpers.rs:388:5
+    |
+388 | /     pub(crate) fn validate_sales_helper_artifacts_with_native(
+389 | |         &self,
+390 | |         lead: &str,
+391 | |         assignment: &str,
+...   |
+395 | |         native: &agents::native::Native,
+396 | |     ) -> Result<()> {
+    | |___________________^ method `helpers::<impl sales::Store>::validate_sales_helper_artifacts_with_native` is reachable at visibility `pub(crate)`
+    |
+note: but type `sales::agents::native::Native` is only usable at visibility `pub(in crate::task::sales)`
+   --> crates/coder/src/task/sales/agents/native.rs:7:1
+    |
+  7 | pub(in crate::task::sales) struct Native {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: method `validate_sales_helper_artifacts` is never used
+   --> crates/coder/src/task/sales/claims/helpers.rs:352:19
+    |
+165 | impl Store {
+    | ---------- method in this implementation
+...
+352 |     pub(crate) fn validate_sales_helper_artifacts(
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `sha256` is never used
+   --> crates/coder/src/task/sales/qualification.rs:181:8
+    |
+ 65 | impl MarkedSuite {
+    | ---------------- method in this implementation
+...
+181 |     fn sha256(&self) -> Result<String> {
+    |        ^^^^^^
+
+warning: `coder` (lib) generated 4 warnings
+warning: unused import: `self`
+ --> crates/verse-zone-everglade/src/zones/everglade/sales_floor.rs:4:14
+  |
+4 |     layout::{self, Board, agora},
+  |              ^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-zone-everglade` (lib) generated 1 warning (run `cargo fix --lib -p verse-zone-everglade` to apply 1 suggestion)
+   Compiling verse v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 39s
+     Running unittests src/lib.rs (/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse-0b4e64af6fea2a75)
+
+running 15 tests
+test render::pipelined_frames_keep_exact_selected_pixels_and_complete_every_index ... ignored, requires an offscreen GPU under the quiet lease
+test render::pass_timestamp_spans_reject_missing_errors_and_invalid_order ... ok
+test render::rigid_indirect_requires_execution_first_instance_and_native_multi_draw ... ok
+test render::tests::the_glow_budget_grows_by_tier_and_holds_spell_particles ... ok
+test render::tests::renderer_options_and_extents_are_bounded_before_gpu_work ... ok
+test render::tests::excess_glow_does_not_consume_required_geometry_admission ... ok
+test render::completed_frame_ledger_rejects_missing_duplicate_and_wrong_callbacks ... ok
+test render::tests::scene_limits_accept_mobile_varyings_without_asking_for_unused_desktop_limits ... ok
+test render::tests::material_cutoff_variants_are_reserved_before_texture_upload ... ok
+test render::tests::dynamic_buffers_grow_to_hold_the_full_bounded_crowd ... ok
+test render::tests::over_capacity_frames_are_trimmed_to_whole_primitives_instead_of_stopping ... ok
+test render::tests::an_over_budget_figure_is_dropped_for_the_frame_instead_of_stopping ... ok
+test render::tests::textured_frames::only_double_sided_materials_show_their_back_faces ... ok
+test render::tests::textured_frames::nearer_glass_composites_over_farther_glass ... ok
+test render::tests::textured_frames::masked_texels_below_the_cutoff_are_not_drawn ... ok
+
+test result: ok. 14 passed; 0 failed; 1 ignored; 0 measured; 407 filtered out; finished in 1.11s
+
+warning: unreachable pattern
+    --> crates/coder-access/src/protocol.rs:1064:19
+     |
+1062 |                 | Self::ProposeHire { .. }
+     |                   ------------------------ matches all the relevant values
+1063 |                 | Self::DecideHire { .. }
+1064 |                 | Self::ProposeHire { .. }
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+     |
+     = note: `#[warn(unreachable_patterns)]` (part of `#[warn(unused)]`) on by default
+
+warning: unreachable pattern
+    --> crates/coder-access/src/protocol.rs:1065:19
+     |
+1063 |                 | Self::DecideHire { .. }
+     |                   ----------------------- matches all the relevant values
+1064 |                 | Self::ProposeHire { .. }
+1065 |                 | Self::DecideHire { .. }
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: unreachable pattern
+    --> crates/coder-access/src/protocol.rs:1087:19
+     |
+1085 |                 | Self::ProposeHire { .. }
+     |                   ------------------------ matches all the relevant values
+1086 |                 | Self::DecideHire { .. }
+1087 |                 | Self::ProposeHire { .. }
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: unreachable pattern
+    --> crates/coder-access/src/protocol.rs:1088:19
+     |
+1086 |                 | Self::DecideHire { .. }
+     |                   ----------------------- matches all the relevant values
+1087 |                 | Self::ProposeHire { .. }
+1088 |                 | Self::DecideHire { .. }
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: `coder-access` (lib) generated 4 warnings
+warning: unused `std::result::Result` in tuple element 1 that must be used
+    --> crates/verse-pbr/src/pbr/textured.rs:1445:13
+     |
+1445 |             checked.remove(0);
+     |             ^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+     = note: `#[warn(unused_must_use)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-pbr` (lib) generated 1 warning
+   Compiling acp-client v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/acp-client)
+   Compiling coder v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/coder)
+   Compiling verse-host v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-host)
+warning: unused import: `self`
+ --> crates/verse-imported/src/imported/remote_window.rs:7:23
+  |
+7 |     chamber_session::{self, Note, Session, Stopped},
+  |                       ^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `glam::Vec3`
+  --> crates/verse-imported/src/imported/remote_window.rs:11:5
+   |
+11 | use glam::Vec3;
+   |     ^^^^^^^^^^
+
+warning: `verse-imported` (lib) generated 2 warnings (run `cargo fix --lib -p verse-imported` to apply 2 suggestions)
+   Compiling microcoder-loop v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/microcoder-loop)
+   Compiling coder-delegate v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/coder-delegate)
+   Compiling verse-zone-everglade v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-zone-everglade)
+   Compiling terminal-studio v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/terminal-studio)
+   Compiling verse-zone-grove v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-zone-grove)
+   Compiling verse-zone-water v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-zone-water)
+warning: type `sales::State` is more private than the item `retire_lead`
+   --> crates/coder/src/task/sales/claims/helpers.rs:9:1
+    |
+  9 | pub(crate) fn retire_lead(state: &mut super::super::State, lead: &str) {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ function `retire_lead` is reachable at visibility `pub(crate)`
+    |
+note: but type `sales::State` is only usable at visibility `pub(self)`
+   --> crates/coder/src/task/sales.rs:288:1
+    |
+288 | struct State {
+    | ^^^^^^^^^^^^
+    = note: `#[warn(private_interfaces)]` on by default
+
+warning: type `sales::agents::native::Native` is more private than the item `helpers::<impl sales::Store>::validate_sales_helper_artifacts_with_native`
+   --> crates/coder/src/task/sales/claims/helpers.rs:388:5
+    |
+388 | /     pub(crate) fn validate_sales_helper_artifacts_with_native(
+389 | |         &self,
+390 | |         lead: &str,
+391 | |         assignment: &str,
+...   |
+395 | |         native: &agents::native::Native,
+396 | |     ) -> Result<()> {
+    | |___________________^ method `helpers::<impl sales::Store>::validate_sales_helper_artifacts_with_native` is reachable at visibility `pub(crate)`
+    |
+note: but type `sales::agents::native::Native` is only usable at visibility `pub(in crate::task::sales)`
+   --> crates/coder/src/task/sales/agents/native.rs:7:1
+    |
+  7 | pub(in crate::task::sales) struct Native {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: method `validate_sales_helper_artifacts` is never used
+   --> crates/coder/src/task/sales/claims/helpers.rs:352:19
+    |
+165 | impl Store {
+    | ---------- method in this implementation
+...
+352 |     pub(crate) fn validate_sales_helper_artifacts(
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `sha256` is never used
+   --> crates/coder/src/task/sales/qualification.rs:181:8
+    |
+ 65 | impl MarkedSuite {
+    | ---------------- method in this implementation
+...
+181 |     fn sha256(&self) -> Result<String> {
+    |        ^^^^^^
+
+warning: `coder` (lib) generated 4 warnings
+warning: unused import: `self`
+ --> crates/verse-zone-everglade/src/zones/everglade/sales_floor.rs:4:14
+  |
+4 |     layout::{self, Board, agora},
+  |              ^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-zone-everglade` (lib) generated 1 warning (run `cargo fix --lib -p verse-zone-everglade` to apply 1 suggestion)
+   Compiling verse v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 06s
+     Running unittests src/lib.rs (/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse-0b4e64af6fea2a75)
+
+running 10 tests
+test gles_tests::an_unterminated_block_is_refused - should panic ... ok
+test gles_tests::variants_differ_only_where_gles_needs_them ... ok
+test gles_tests::the_engine_scene_shader_translates_to_glsl_es_300 ... ok
+test gles_tests::the_default_photo_shader_does_not_translate_to_glsl_es ... ok
+test gles_tests::sun_cascades_sample_a_depth_array_on_glsl_es ... ok
+test gles_tests::textured_entries_translate_and_only_masked_entries_discard ... ok
+test gles_tests::daylight_sky_validates_without_textures ... ok
+test gles_tests::the_sky_light_and_height_fog_translate_for_webgl2 ... ok
+test gles_tests::default_variants_are_valid_and_translate_to_metal ... ok
+test gles_tests::every_shader_translates_to_glsl_es_300 ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 412 filtered out; finished in 2.04s
+
+   Compiling atif v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/atif)
+   Compiling coder-history v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/coder-history)
+   Compiling rust-native v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/rust-native)
+   Compiling objc2-foundation v0.3.2
+   Compiling receipts v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/receipts)
+   Compiling xp-ledger v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/xp-ledger)
+   Compiling physics v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/physics)
+   Compiling objc2-metal v0.3.2
+   Compiling objc2-quartz-core v0.3.2
+   Compiling raw-window-metal v1.1.0
+   Compiling wgpu-hal v29.0.4
+   Compiling verse-engine v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-engine)
+   Compiling coder-connect v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/coder-connect)
+   Compiling jev v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/jev)
+   Compiling coder-access v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/coder-access)
+   Compiling model-access v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/model-access)
+   Compiling coder-ui v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/coder-ui)
+   Compiling wgpu-core-deps-apple v29.0.4
+   Compiling wgpu-core v29.0.4
+   Compiling image v0.25.10
+   Compiling verse-world v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-world)
+   Compiling coder-boundary v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/coder-boundary)
+   Compiling route-contract v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/route-contract)
+   Compiling wgpu v29.0.4
+   Compiling world-tree v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/world-tree)
+   Compiling gltf v1.4.1
+   Compiling coder-pty v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/coder-pty)
+   Compiling openagents-chat v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/openagents-chat)
+warning: unreachable pattern
+    --> crates/coder-access/src/protocol.rs:1064:19
+     |
+1062 |                 | Self::ProposeHire { .. }
+     |                   ------------------------ matches all the relevant values
+1063 |                 | Self::DecideHire { .. }
+1064 |                 | Self::ProposeHire { .. }
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+     |
+     = note: `#[warn(unreachable_patterns)]` (part of `#[warn(unused)]`) on by default
+
+warning: unreachable pattern
+    --> crates/coder-access/src/protocol.rs:1065:19
+     |
+1063 |                 | Self::DecideHire { .. }
+     |                   ----------------------- matches all the relevant values
+1064 |                 | Self::ProposeHire { .. }
+1065 |                 | Self::DecideHire { .. }
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: unreachable pattern
+    --> crates/coder-access/src/protocol.rs:1087:19
+     |
+1085 |                 | Self::ProposeHire { .. }
+     |                   ------------------------ matches all the relevant values
+1086 |                 | Self::DecideHire { .. }
+1087 |                 | Self::ProposeHire { .. }
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: unreachable pattern
+    --> crates/coder-access/src/protocol.rs:1088:19
+     |
+1086 |                 | Self::DecideHire { .. }
+     |                   ----------------------- matches all the relevant values
+1087 |                 | Self::ProposeHire { .. }
+1088 |                 | Self::DecideHire { .. }
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: `coder-access` (lib) generated 4 warnings
+   Compiling wasmtime-environ v48.0.5
+   Compiling openagents-connect v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/openagents-connect)
+   Compiling coder-vt v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/coder-vt)
+   Compiling verse-gfx v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-gfx)
+   Compiling verse-net v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-net)
+   Compiling verse-pbr v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-pbr)
+   Compiling cranelift-codegen v0.135.5
+   Compiling terminal-core v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/terminal-core)
+   Compiling verse-core v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-core)
+   Compiling knowledge v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/knowledge)
+   Compiling verse-content v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-content)
+   Compiling wasmtime-internal-unwinder v48.0.5
+   Compiling cranelift-native v0.135.5
+   Compiling cranelift-frontend v0.135.5
+   Compiling jev-hosted v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/jev-hosted)
+   Compiling townsfolk v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/townsfolk)
+   Compiling verse-zone-everglade v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-zone-everglade)
+   Compiling pay-ledger v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/pay-ledger)
+   Compiling wasmtime-internal-cranelift v48.0.5
+   Compiling wasmtime-internal-cache v48.0.5
+   Compiling wasmtime-internal-fiber v48.0.5
+   Compiling coder-host-wire v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/coder-host-wire)
+   Compiling background v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/background)
+   Compiling coder-service v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/coder-service)
+   Compiling wasmtime v48.0.5
+   Compiling coder-host v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/coder-host)
+   Compiling gym v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/gym)
+   Compiling plugin v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/plugin)
+   Compiling verse-zone-grove v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-zone-grove)
+   Compiling verse-lagrange v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-lagrange)
+   Compiling gym-bridge v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/gym-bridge)
+   Compiling gym-leaderboard v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/gym-leaderboard)
+   Compiling coder v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/coder)
+   Compiling verse-gym v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-gym)
+   Compiling verse-zone-lagrange v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-zone-lagrange)
+   Compiling verse-zone-water v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-zone-water)
+   Compiling coder-delegate v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/coder-delegate)
+   Compiling ext-eval v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/ext-eval)
+warning: unused `std::result::Result` in tuple element 1 that must be used
+    --> crates/verse-pbr/src/pbr/textured.rs:1445:13
+     |
+1445 |             checked.remove(0);
+     |             ^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+     = note: `#[warn(unused_must_use)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-pbr` (lib) generated 1 warning
+   Compiling microcoder-loop v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/microcoder-loop)
+   Compiling tenancy v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/tenancy)
+   Compiling coder-computers v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/coder-computers)
+   Compiling verse-imported v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-imported)
+   Compiling openagents-x402 v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/x402)
+   Compiling verse-zone-lab v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-zone-lab)
+   Compiling verse-zone-crypt v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse-zone-crypt)
+   Compiling terminal-control v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/terminal-control)
+   Compiling capability v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/capability)
+   Compiling coder-terminal v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/coder-terminal)
+   Compiling terminal-gfx v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/terminal-gfx)
+   Compiling verse v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/verse)
+   Compiling openagents-chat-app v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/openagents-chat-app)
+   Compiling push-gateway v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/push-gateway)
+warning: unused import: `self`
+ --> crates/verse-zone-everglade/src/zones/everglade/sales_floor.rs:4:14
+  |
+4 |     layout::{self, Board, agora},
+  |              ^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-zone-everglade` (lib) generated 1 warning (run `cargo fix --lib -p verse-zone-everglade` to apply 1 suggestion)
+warning: type `sales::State` is more private than the item `retire_lead`
+   --> crates/coder/src/task/sales/claims/helpers.rs:9:1
+    |
+  9 | pub(crate) fn retire_lead(state: &mut super::super::State, lead: &str) {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ function `retire_lead` is reachable at visibility `pub(crate)`
+    |
+note: but type `sales::State` is only usable at visibility `pub(self)`
+   --> crates/coder/src/task/sales.rs:288:1
+    |
+288 | struct State {
+    | ^^^^^^^^^^^^
+    = note: `#[warn(private_interfaces)]` on by default
+
+warning: type `sales::agents::native::Native` is more private than the item `helpers::<impl sales::Store>::validate_sales_helper_artifacts_with_native`
+   --> crates/coder/src/task/sales/claims/helpers.rs:388:5
+    |
+388 | /     pub(crate) fn validate_sales_helper_artifacts_with_native(
+389 | |         &self,
+390 | |         lead: &str,
+391 | |         assignment: &str,
+...   |
+395 | |         native: &agents::native::Native,
+396 | |     ) -> Result<()> {
+    | |___________________^ method `helpers::<impl sales::Store>::validate_sales_helper_artifacts_with_native` is reachable at visibility `pub(crate)`
+    |
+note: but type `sales::agents::native::Native` is only usable at visibility `pub(in crate::task::sales)`
+   --> crates/coder/src/task/sales/agents/native.rs:7:1
+    |
+  7 | pub(in crate::task::sales) struct Native {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: method `validate_sales_helper_artifacts` is never used
+   --> crates/coder/src/task/sales/claims/helpers.rs:352:19
+    |
+165 | impl Store {
+    | ---------- method in this implementation
+...
+352 |     pub(crate) fn validate_sales_helper_artifacts(
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `sha256` is never used
+   --> crates/coder/src/task/sales/qualification.rs:181:8
+    |
+ 65 | impl MarkedSuite {
+    | ---------------- method in this implementation
+...
+181 |     fn sha256(&self) -> Result<String> {
+    |        ^^^^^^
+
+warning: `coder` (lib) generated 4 warnings
+   Compiling coder-mobile v0.1.0 (/Users/christopherdavid/.codex/worktrees/bb65/openagents/crates/coder-mobile)
+error[E0061]: this function takes 8 arguments but 7 arguments were supplied
+   --> crates/coder-mobile/src/studio_tests.rs:895:24
+    |
+895 |           let worktree = coder::task::studio::git::prepare(
+    |  ________________________^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^-
+896 | |             &host.temp.path().join("worktrees"),
+897 | |             &host.store,
+898 | |             &host.checkout,
+...   |
+902 | |             None,
+903 | |         )
+    | |_________- argument #8 of type `std::option::Option<&str>` is missing
+    |
+note: function defined here
+   --> crates/coder/src/task/studio_git.rs:357:8
+    |
+357 | pub fn prepare(
+    |        ^^^^^^^
+help: provide the argument
+    |
+895 |         let worktree = coder::task::studio::git::prepare(
+...
+902 |             None,
+903 ~             /* std::option::Option<&str> */,
+904 ~         )
+    |
+
+warning: unused import: `Transport`
+   --> crates/coder-mobile/src/studio_tests.rs:455:64
+    |
+455 |     use verse::zones::everglade::studio::live::{ControlSocket, Transport};
+    |                                                                ^^^^^^^^^
+    |
+    = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+   --> crates/coder-mobile/src/bare_presence_tests.rs:395:9
+    |
+395 |     let mut frame = |scene: &mut Scene, limit: Duration, done: fn(&Scene) -> bool| {
+    |         ----^^^^^
+    |         |
+    |         help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+For more information about this error, try `rustc --explain E0061`.
+warning: `coder-mobile` (lib test) generated 2 warnings
+error: could not compile `coder-mobile` (lib test) due to 1 previous error; 2 warnings emitted

@@ -1,0 +1,227 @@
+{
+  "source_old": "36df9ceb4bbb7fb0c7be30bd1c3538e0be78ab3e",
+  "source_new": "290c1590726189dbdabb5693125cfa0fbca8a779",
+  "new_profile": "dev diagnostic, no timing gate",
+  "images": {
+    "old off/470": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-high-reactive-release-paired/frames/0470-taa-off.png",
+      "bytes": 1916236,
+      "sha256": "44f4036492d74ed266494f6157d50052a2f802095ce17db80c5f7253f24e030e",
+      "crop": [
+        490,
+        250,
+        820,
+        565
+      ]
+    },
+    "old on/470": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-high-reactive-release-paired/frames/0470-taa-on.png",
+      "bytes": 1781508,
+      "sha256": "3002c8a44cf18f6b7886d73d25a63ee8fe5fcd45e4dca6601b1db2ec6ca03736",
+      "crop": [
+        490,
+        250,
+        820,
+        565
+      ]
+    },
+    "new off/470": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-dependency-high-diagnostic/frames/0470-taa-off.png",
+      "bytes": 1916236,
+      "sha256": "44f4036492d74ed266494f6157d50052a2f802095ce17db80c5f7253f24e030e",
+      "crop": [
+        490,
+        250,
+        820,
+        565
+      ]
+    },
+    "new on/470": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-dependency-high-diagnostic/frames/0470-taa-on.png",
+      "bytes": 1781427,
+      "sha256": "e821da30e0d3522b8415f4d66cbbe9d51e12eef0451e7f1314d4a5d541a29c39",
+      "crop": [
+        490,
+        250,
+        820,
+        565
+      ]
+    },
+    "old off/471": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-high-reactive-release-paired/frames/0471-taa-off.png",
+      "bytes": 1911969,
+      "sha256": "965be40c25235bbc51c2c39c520b08920861041a3f7af9bb7d2fc2bf7001a6af",
+      "crop": [
+        490,
+        250,
+        820,
+        565
+      ]
+    },
+    "old on/471": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-high-reactive-release-paired/frames/0471-taa-on.png",
+      "bytes": 1778396,
+      "sha256": "81885ff2652d4aae524b8fe6caf0a04d504c6afcc7c88a578e437e7c2c09bc77",
+      "crop": [
+        490,
+        250,
+        820,
+        565
+      ]
+    },
+    "new off/471": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-dependency-high-diagnostic/frames/0471-taa-off.png",
+      "bytes": 1911969,
+      "sha256": "965be40c25235bbc51c2c39c520b08920861041a3f7af9bb7d2fc2bf7001a6af",
+      "crop": [
+        490,
+        250,
+        820,
+        565
+      ]
+    },
+    "new on/471": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-dependency-high-diagnostic/frames/0471-taa-on.png",
+      "bytes": 1778145,
+      "sha256": "0facf48a31c503dd7d4623ac3bcc5bbe9233eadd498ac4462c17006ae7f15864",
+      "crop": [
+        490,
+        250,
+        820,
+        565
+      ]
+    },
+    "old off/472": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-high-reactive-release-paired/frames/0472-taa-off.png",
+      "bytes": 1905940,
+      "sha256": "4df8fe5aadb3a946be7017fba89cf8e1c9e8e140f9761f39b83ef8a627c3f228",
+      "crop": [
+        490,
+        250,
+        820,
+        565
+      ]
+    },
+    "old on/472": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-high-reactive-release-paired/frames/0472-taa-on.png",
+      "bytes": 1767223,
+      "sha256": "5bb376e4c8d1f02ec121ab5b6dfba031479161f7d48b4c90a2ee2f3ce5689e20",
+      "crop": [
+        490,
+        250,
+        820,
+        565
+      ]
+    },
+    "new off/472": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-dependency-high-diagnostic/frames/0472-taa-off.png",
+      "bytes": 1905939,
+      "sha256": "6b760e868c59fcb577da28095b7219a33c6778d9646303f5ff54fe6fc986a619",
+      "crop": [
+        490,
+        250,
+        820,
+        565
+      ]
+    },
+    "new on/472": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-dependency-high-diagnostic/frames/0472-taa-on.png",
+      "bytes": 1767070,
+      "sha256": "9d0500b809424f398f97f162eab24904a0ab4f87970ceaaff1f883fa25d29b6c",
+      "crop": [
+        490,
+        250,
+        820,
+        565
+      ]
+    },
+    "old off/473": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-high-reactive-release-paired/frames/0473-taa-off.png",
+      "bytes": 1904281,
+      "sha256": "ff30b77334d17a408431e6712d909fd3ef38d38c0ac81a0e44b3a7a4472cc203",
+      "crop": [
+        490,
+        250,
+        820,
+        565
+      ]
+    },
+    "old on/473": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-high-reactive-release-paired/frames/0473-taa-on.png",
+      "bytes": 1762354,
+      "sha256": "3982804e47eb5e815fa9fde2bd54be8f926b1c71d6e5ea8d4cdc0bd7428a2f07",
+      "crop": [
+        490,
+        250,
+        820,
+        565
+      ]
+    },
+    "new off/473": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-dependency-high-diagnostic/frames/0473-taa-off.png",
+      "bytes": 1904281,
+      "sha256": "ff30b77334d17a408431e6712d909fd3ef38d38c0ac81a0e44b3a7a4472cc203",
+      "crop": [
+        490,
+        250,
+        820,
+        565
+      ]
+    },
+    "new on/473": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-dependency-high-diagnostic/frames/0473-taa-on.png",
+      "bytes": 1762174,
+      "sha256": "778e2061576a39bd3f01155dc40b7444aa3106d0b50d52f8e6e7ac14fa5bbc75",
+      "crop": [
+        490,
+        250,
+        820,
+        565
+      ]
+    },
+    "old off/474": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-high-reactive-release-paired/frames/0474-taa-off.png",
+      "bytes": 1896374,
+      "sha256": "5bec9cfc358bc889d3e3d063d07c1801b78ae34e233c91a31ad8a320a68770f1",
+      "crop": [
+        490,
+        250,
+        820,
+        565
+      ]
+    },
+    "old on/474": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-high-reactive-release-paired/frames/0474-taa-on.png",
+      "bytes": 1753540,
+      "sha256": "b403eddb69cd21cafc682c2932f73fe7b6dc7e62b749411eb0e268acd210d531",
+      "crop": [
+        490,
+        250,
+        820,
+        565
+      ]
+    },
+    "new off/474": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-dependency-high-diagnostic/frames/0474-taa-off.png",
+      "bytes": 1896374,
+      "sha256": "5bec9cfc358bc889d3e3d063d07c1801b78ae34e233c91a31ad8a320a68770f1",
+      "crop": [
+        490,
+        250,
+        820,
+        565
+      ]
+    },
+    "new on/474": {
+      "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-dependency-high-diagnostic/frames/0474-taa-on.png",
+      "bytes": 1753458,
+      "sha256": "723794c9b655b78c2b700c997d21622252c9d645504109aa6dadb3e23992590b",
+      "crop": [
+        490,
+        250,
+        820,
+        565
+      ]
+    }
+  }
+}

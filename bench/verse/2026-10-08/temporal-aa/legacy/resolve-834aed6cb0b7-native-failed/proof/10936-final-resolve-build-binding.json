@@ -1,0 +1,76 @@
+{
+  "schema": "openagents.verse.capture-build-binding.v1",
+  "source": "834aed6cb0b79c80fbd009c3caa51c78dba06628",
+  "cwd": "/Users/christopherdavid/.codex/worktrees/bb65/openagents",
+  "assets": {
+    "kit": {
+      "path": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp",
+      "sha256": "c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e",
+      "bytes": 21467658
+    },
+    "base_pack": {
+      "path": "/Users/christopherdavid/.codex/worktrees/bb65/openagents/assets/verse/everglade/a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f.vtp",
+      "sha256": "a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f",
+      "bytes": 10636202
+    }
+  },
+  "environment": {},
+  "builds": {
+    "dev": {
+      "source": "834aed6cb0b79c80fbd009c3caa51c78dba06628",
+      "profile": "dev",
+      "features": [
+        "capture"
+      ],
+      "command": [
+        "cargo",
+        "build",
+        "-p",
+        "verse",
+        "--example",
+        "meteor_showcase_capture",
+        "--features",
+        "capture"
+      ],
+      "start_unix": 1791495882.593,
+      "end_unix": 1791495950.129785,
+      "binary": {
+        "path": "/Users/christopherdavid/work/openagents-target-agent0/debug/examples/meteor_showcase_capture",
+        "sha256": "21d2b5b23e67c22190a73270abb7f70b8bb718bc012277ecaf2481bdb6d68846",
+        "bytes": 59408824
+      },
+      "build_log": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-resolve-dev-build.log",
+      "build_receipt": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-resolve-dev-build-lease.json",
+      "exit": 0
+    },
+    "release": {
+      "source": "834aed6cb0b79c80fbd009c3caa51c78dba06628",
+      "profile": "release",
+      "features": [
+        "capture"
+      ],
+      "command": [
+        "cargo",
+        "build",
+        "-p",
+        "verse",
+        "--example",
+        "meteor_showcase_capture",
+        "--features",
+        "capture",
+        "--release"
+      ],
+      "start_unix": 1791496039.506839,
+      "end_unix": 1791496137.3053792,
+      "binary": {
+        "path": "/Users/christopherdavid/work/openagents-target-agent0/release/examples/meteor_showcase_capture",
+        "sha256": "2141765f539590db43442205d5857dcdc9f8ee8adb5fc75c62e68fd625c17ff7",
+        "bytes": 26526672
+      },
+      "build_log": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-resolve-release-build.log",
+      "build_receipt": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-resolve-release-build-lease.json",
+      "exit": 0
+    }
+  },
+  "preparation_note": "The root fills the exact source, binary identity, build times, log path, and build receipt. This template does not establish a build or capture. The optional selected published fc5414 baked layer must be added to assets and VERSE_KIT_BAKE together; unpinned overrides are refused."
+}

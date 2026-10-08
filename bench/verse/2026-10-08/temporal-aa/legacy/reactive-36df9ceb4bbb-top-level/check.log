@@ -1,0 +1,6 @@
+SUPPLEMENTARY VISUAL FAIL RETAINED: eight native passes, 150 full-image identities, no timing gate
+LIVE DIAGNOSTIC FAIL RETAINED: 13 actual marker/history/HDR records, 65 original image identities, exact camera chronology, no timing gate
+IMAGE INVENTORY: 254 identities; 186 durable scratch images available and verified
+SOURCE INVENTORY: 248 exact frames; 248 scratch originals available and verified
+INTEGRITY PASS: 310 artifact hashes, 2848 reactive and 3320 pre-reactive paired samples, High wall gates, disclosed Medium result, native/check/lease proofs, and retained failures
+VISUAL UNRESOLVED: detached TAA-only meteor contours remain; no fast-head PASS

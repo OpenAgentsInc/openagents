@@ -1,0 +1,201 @@
+{
+  "schema": "openagents.verse.temporal-aa.v1",
+  "issue": 10936,
+  "status": "partial",
+  "tested_source_commit": "8a21f6fd169381dbc1afcd8d031d00999578eb89",
+  "tested_binary_sha256": "6a70ceb37f6b060aa3ef135151dd9dedb538a446ed9fd7bf9812afbea1cf30f8",
+  "tested_binary": "meteor_showcase_capture",
+  "capture": {
+    "quality": "high",
+    "effective_quality": "high",
+    "width": 1920,
+    "height": 1080,
+    "fps": 60,
+    "steps_per_frame": 1,
+    "adapter": {
+      "name": "Apple M5 Max",
+      "backend": "Metal",
+      "device_type": "IntegratedGpu"
+    },
+    "mode": "live",
+    "light_settled_before_capture": true,
+    "static_houses": true,
+    "asset_source": "Previously reviewed licensed DAE kit through the VERSE_KIT_PACK override. The current published kit pin was unavailable on this host and was not tested.",
+    "readback_policy": "Every primary and baseline frame reads pixels. These captures predate the selective-readback flag; the temporal comparison follows the original all-frame readback path.",
+    "timing_method": "Separate warmed renderers advance once per identical simulation frame and alternate order. Signed completion increments include CPU validation, fitting, encoding, submission, polling, mapping, pixel copy, and CPU pixel extraction. Every warmed paired sample enters the mean. Balanced contiguous batches of about one capture second and Student t bounds produce approximate 95% mean intervals; no outliers are filtered. Initial exposure warm-up is included in the first primary phase sample and excluded by the eight-frame paired warm-up.",
+    "gpu_timing": "The adapter advertises timestamp support, but every paired span is invalid. Raw ticks remain in the copied reports; GPU durations and GPU cost conclusions remain null. Wall completion intervals do not measure GPU time.",
+    "frame_time_increment_budget_ms": 1.0,
+    "lease_receipt": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-pan-orbit-lease.json",
+    "timing_interpretation": "The upper mean bounds fall below 1 ms for these static-house camera paths. They do not establish a 1 ms worst-frame or GPU bound. Paired p99 increments are 6.642 ms for pan and 5.310 ms for orbit; the reports retain these tails and residual order effects."
+  },
+  "camera_results": {
+    "pan": {
+      "report": "pan-capture.json",
+      "simulation_frames": 480,
+      "seconds": 8,
+      "paired_measurement_frames": 472,
+      "excluded_paired_warmup_frames": 8,
+      "scene": "Intact static houses. The phase is named before; no swarm or aftermath phase is measured.",
+      "explicit_impact_frame": 90,
+      "roof_review_frame": 120,
+      "roof_review_sequence": [
+        120,
+        135
+      ],
+      "mean_wall_render_completion_increment_ms": 0.3482530862092972,
+      "wall_render_completion_mean_95pct_ci_ms": {
+        "mean": 0.3482530862092972,
+        "lower": 0.10920214089940447,
+        "upper": 0.5873040315191899,
+        "samples": 472,
+        "blocks": 8,
+        "nominal_block_frames": 60
+      },
+      "upper_mean_bound_under_1ms": true,
+      "off_first_frames": 236,
+      "on_first_frames": 236,
+      "off_first_mean_wall_increment_ms": 0.0702844187617302,
+      "on_first_mean_wall_increment_ms": 0.6262215971946716,
+      "valid_gpu_frames": 0,
+      "invalid_gpu_frames": 472,
+      "mean_gpu_increment_ms": null,
+      "roof_images": [
+        "pan-frame0120-taa-off.png",
+        "pan-frame0120-taa-on.png"
+      ],
+      "roof_review": [
+        "pan-roof-window-120-127.png",
+        "pan-roof-window-128-135.png",
+        "pan-roof-window-4x-slow.webp"
+      ],
+      "paired_wall_completion_increment_ms": {
+        "p50": 0.08162617683410645,
+        "p99": 6.642039775848389,
+        "max": 9.184499740600586
+      }
+    },
+    "orbit": {
+      "report": "orbit-capture.json",
+      "simulation_frames": 480,
+      "seconds": 8,
+      "paired_measurement_frames": 472,
+      "excluded_paired_warmup_frames": 8,
+      "scene": "Intact static houses. The phase is named before; no swarm or aftermath phase is measured.",
+      "explicit_impact_frame": 90,
+      "roof_review_frame": 120,
+      "roof_review_sequence": [
+        120,
+        135
+      ],
+      "mean_wall_render_completion_increment_ms": 0.3624872148542081,
+      "wall_render_completion_mean_95pct_ci_ms": {
+        "mean": 0.3624872148542081,
+        "lower": 0.15002508590764083,
+        "upper": 0.5749493438007753,
+        "samples": 472,
+        "blocks": 8,
+        "nominal_block_frames": 60
+      },
+      "upper_mean_bound_under_1ms": true,
+      "off_first_frames": 236,
+      "on_first_frames": 236,
+      "off_first_mean_wall_increment_ms": 0.08814460039138794,
+      "on_first_mean_wall_increment_ms": 0.6368295550346375,
+      "valid_gpu_frames": 0,
+      "invalid_gpu_frames": 472,
+      "mean_gpu_increment_ms": null,
+      "roof_images": [
+        "orbit-frame0120-taa-off.png",
+        "orbit-frame0120-taa-on.png"
+      ],
+      "roof_review": [
+        "orbit-roof-window-120-127.png",
+        "orbit-roof-window-128-135.png",
+        "orbit-roof-window-4x-slow.webp"
+      ],
+      "paired_wall_completion_increment_ms": {
+        "p50": 0.07579231262207031,
+        "p99": 5.3102498054504395,
+        "max": 6.774043083190918
+      }
+    }
+  },
+  "visual_review": {
+    "source_frame_range": [
+      120,
+      135
+    ],
+    "method": "Contact sheets contain unscaled source crops with TAA off on the left and on on the right. Lossless WebP animations show the same source crops at 67 ms per frame, about four times slower than the 60 fps capture. They contain no new renders.",
+    "findings": [
+      "TAA visibly softens roof texture, timber detail, and window mullions in both camera paths.",
+      "The short slow-camera sequences show no observed doubled outlines, halos, or temporal trails.",
+      "Saved frame 120 supplies the roof review pair. The named impact images were explicitly selected at frame 90 and do not show destruction in these static-house runs."
+    ],
+    "limits": "This short review does not establish fast-debris smear duration or full-swarm performance."
+  },
+  "pending": {
+    "fast_debris_smear": {
+      "status": "pending",
+      "reason": "Requires review of consecutive fast-debris frames from the final destruction capture."
+    },
+    "full_swarm_frame_time_increment": {
+      "status": "pending",
+      "reason": "Requires final all-frame paired destruction capture with the swarm phase measured."
+    }
+  },
+  "artifacts": {
+    "pan-capture.json": {
+      "sha256": "0aa952c058abd19c48601dd2b16f734f18ca37c6d38dc3912db51527e219057a",
+      "bytes": 271468
+    },
+    "pan-frame0120-taa-off.png": {
+      "sha256": "e4853964df085f5b92a304b4c81a1f9055267b43d5508eb631dfeece1cd30988",
+      "bytes": 1392234
+    },
+    "pan-frame0120-taa-on.png": {
+      "sha256": "9a5275b2f5cd8de95d3371198a5f86832f63d273c17aec0f08ee7e37ae7c7d88",
+      "bytes": 1186244
+    },
+    "pan-roof-window-120-127.png": {
+      "sha256": "b25506c73678d265f07598ff1c91eae72dfc3f964ad8201f99e740a398336d6e",
+      "bytes": 868729
+    },
+    "pan-roof-window-128-135.png": {
+      "sha256": "08ac535a319a029a038c4c9671cbd266b5eacaa4da5b6d234c909f0f07276b40",
+      "bytes": 862014
+    },
+    "pan-roof-window-4x-slow.webp": {
+      "sha256": "bd0fee60941385b03f0ff170c0b4f3e5243dc412b89526236e715bc245329a90",
+      "bytes": 2685382
+    },
+    "orbit-capture.json": {
+      "sha256": "1907912b7ddb7dba8dc47c134746d7d54bdda120f297bf7c4ace6725a10ac7aa",
+      "bytes": 271491
+    },
+    "orbit-frame0120-taa-off.png": {
+      "sha256": "8bef020805853831d8c50c2a6d6001ce9025f79a2db479630377423264338d4e",
+      "bytes": 1481156
+    },
+    "orbit-frame0120-taa-on.png": {
+      "sha256": "30f3e901da974ecff906c8e17f3722d393b0b2609811e00310fa96d21f552ea7",
+      "bytes": 1278885
+    },
+    "orbit-roof-window-120-127.png": {
+      "sha256": "ce08daf683f8a64db492cdc477df83f6704377be67fe502c7a69c36517c895f6",
+      "bytes": 1130711
+    },
+    "orbit-roof-window-128-135.png": {
+      "sha256": "a751fabb28c8c1fce4cec305076e663b4621e274c2d0bc940841bc60b7d1ae19",
+      "bytes": 1127326
+    },
+    "orbit-roof-window-4x-slow.webp": {
+      "sha256": "1899aef9f29db89fa076bda03389c5fcdd91f1bd326431fa2b0d4251515848ca",
+      "bytes": 3422934
+    }
+  },
+  "artifact_checks": {
+    "copies_match_source_sha256": true,
+    "capture_reports_parse": true,
+    "paired_sample_counts_and_null_gpu_costs_match": true
+  }
+}

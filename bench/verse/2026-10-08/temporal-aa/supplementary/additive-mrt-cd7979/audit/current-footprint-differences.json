@@ -1,0 +1,75 @@
+{
+  "source": "cd7979bedbeab7a44d71cec857b942ab0f3ca8e1",
+  "purpose": "Actual incoming HDR versus new history over current negative-alpha footprint; diagnostic only, no timing claim",
+  "rows": [
+    {
+      "frame": 468,
+      "body_pixels": 4332,
+      "additive_fx_pixels": 233595,
+      "nonretainable_pixels": 252056,
+      "current_nonretainable_rgb_max_8bit_difference": 0,
+      "current_nonretainable_rgb_changed_pixels": 0
+    },
+    {
+      "frame": 469,
+      "body_pixels": 3988,
+      "additive_fx_pixels": 244016,
+      "nonretainable_pixels": 262623,
+      "current_nonretainable_rgb_max_8bit_difference": 0,
+      "current_nonretainable_rgb_changed_pixels": 0
+    },
+    {
+      "frame": 470,
+      "body_pixels": 3701,
+      "additive_fx_pixels": 223100,
+      "nonretainable_pixels": 242374,
+      "current_nonretainable_rgb_max_8bit_difference": 0,
+      "current_nonretainable_rgb_changed_pixels": 0
+    },
+    {
+      "frame": 471,
+      "body_pixels": 2770,
+      "additive_fx_pixels": 219046,
+      "nonretainable_pixels": 238354,
+      "current_nonretainable_rgb_max_8bit_difference": 0,
+      "current_nonretainable_rgb_changed_pixels": 0
+    },
+    {
+      "frame": 472,
+      "body_pixels": 2577,
+      "additive_fx_pixels": 222859,
+      "nonretainable_pixels": 242334,
+      "current_nonretainable_rgb_max_8bit_difference": 0,
+      "current_nonretainable_rgb_changed_pixels": 0
+    },
+    {
+      "frame": 473,
+      "body_pixels": 2450,
+      "additive_fx_pixels": 225322,
+      "nonretainable_pixels": 244448,
+      "current_nonretainable_rgb_max_8bit_difference": 0,
+      "current_nonretainable_rgb_changed_pixels": 0
+    },
+    {
+      "frame": 474,
+      "body_pixels": 2726,
+      "additive_fx_pixels": 215487,
+      "nonretainable_pixels": 234535,
+      "current_nonretainable_rgb_max_8bit_difference": 0,
+      "current_nonretainable_rgb_changed_pixels": 0
+    }
+  ],
+  "root_visual_review": {
+    "frames": [
+      471,
+      472
+    ],
+    "detached_head_ghost_seen": false,
+    "bounds": [
+      490,
+      260,
+      700,
+      455
+    ]
+  }
+}

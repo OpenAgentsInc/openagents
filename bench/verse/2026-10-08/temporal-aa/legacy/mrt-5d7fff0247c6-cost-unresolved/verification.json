@@ -1,0 +1,935 @@
+{
+  "schema": "openagents.verse.temporal-cost-attempt.v1",
+  "status": "performance_unresolved",
+  "source": "5d7fff0247c6fef70447fe96103838a39e38b4f8",
+  "acceptance": {
+    "strict_high_1ms_gate_pass": false,
+    "promotion_authorized": false,
+    "supersedes_top_level_acceptance": false
+  },
+  "original_six_cases": [
+    "high-dev",
+    "high-release",
+    "high-paired",
+    "medium-paired",
+    "pan-paired",
+    "orbit-paired"
+  ],
+  "additional_cases": [
+    "high-replicate-2",
+    "high-replicate-3"
+  ],
+  "registered_protocol": "proof/10936-final-MRT-replication-plan.json",
+  "pooled_result": "proof/10936-final-MRT-high-pooled.json",
+  "primary_interval": "Student t df2 across the three independent per-phase run means, with registered t=4.303; every upper bound must be below 1 ms.",
+  "primary_upper_bounds_ms": {
+    "before": 1.1158423659943812,
+    "swarm": 0.7586456340321429,
+    "after": 0.6738467059302837
+  },
+  "supplementary_interval_limitation": "The balanced-block interval remains supplementary. Its before upper0.8520136987 ms does not replace the registered primary upper1.11584236599 ms.",
+  "primary_rows": 6720,
+  "warmed_high_pairs": 2856,
+  "root_visual_review": {
+    "high_frame": 471,
+    "medium_frame": 472,
+    "detached_head_ghost_seen": false,
+    "review": "Reviewed native on/off pairs show matching current head and debris silhouettes in the inspected views.",
+    "static_frame": 120,
+    "static_tradeoff": "Expected TAA softening remains visible.",
+    "original_static_crop": [
+      750,
+      420,
+      1150,
+      780
+    ],
+    "crop_limitation": "The original static crop begins at y420 and excludes the roof ridge near y392. Its method remains unchanged; a future attempt uses a wider crop."
+  },
+  "reports": {
+    "high-dev": {
+      "file": "reports/high-dev.json",
+      "sha256": "6561c21d1614c300f12cf4fc92693773ee2fa7caf7d0993f2b5745ccc9e0fd5d",
+      "bytes": 619086
+    },
+    "high-release": {
+      "file": "reports/high-release.json",
+      "sha256": "3a02eb154c0373eeff2f0838b7caae88a25a8ba1db042047eea36a595c144a14",
+      "bytes": 619378
+    },
+    "high-paired": {
+      "file": "reports/high-paired.json",
+      "sha256": "a35239054e11c362fb70927015844db83080be91b07cc76773b8361cea01800c",
+      "bytes": 1156972
+    },
+    "medium-paired": {
+      "file": "reports/medium-paired.json",
+      "sha256": "7049fa12cd505a956c7959092b5e89811166cfd0a90ecf2a3c1d9bfe45fec51a",
+      "bytes": 1156797
+    },
+    "pan-paired": {
+      "file": "reports/pan-paired.json",
+      "sha256": "abd6c1cfbb700ea9ae81212cd74f24722dfe90b458e2ea829ece0d3c19d649a0",
+      "bytes": 581767
+    },
+    "orbit-paired": {
+      "file": "reports/orbit-paired.json",
+      "sha256": "f52a9607d7d88c6edf1b9489a779b13e38f6bb3bd6d2dbf588eac0f2e14de890",
+      "bytes": 582100
+    },
+    "high-replicate-2": {
+      "file": "reports/high-replicate-2.json",
+      "sha256": "3c80903988d224f5c2a2d956a2e71f1c71d9f175f29b7bb2492ab5760a7bb521",
+      "bytes": 1156770
+    },
+    "high-replicate-3": {
+      "file": "reports/high-replicate-3.json",
+      "sha256": "7a5c7d7f16580cb5781fb617cd9715913c9ef704c4fe8c6ad1b6fa5aead3d5b0",
+      "bytes": 1156598
+    }
+  },
+  "jobs": {
+    "high-dev": {
+      "prefix": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-high-dev",
+      "manifest": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-high-dev-manifest.json",
+      "log": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-high-dev.log",
+      "quiet_receipt": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-high-dev-quiet.json",
+      "gpu_receipt": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-high-dev-gpu.json",
+      "check": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-high-dev-check.json",
+      "job": "10936-final-MRT-high-dev",
+      "case": "high-dev",
+      "case_index": 0,
+      "schema": "openagents.verse.capture-job.v1",
+      "name": "10936-final-MRT-high-dev",
+      "source": "5d7fff0247c6fef70447fe96103838a39e38b4f8",
+      "source_binding_method": "Explicit CLI source and root-supplied build binding; no ambient HEAD lookup",
+      "profile": "dev",
+      "quality": "high",
+      "features": [
+        "capture"
+      ],
+      "binary": "/Users/christopherdavid/work/openagents-target-agent0/debug/examples/meteor_showcase_capture",
+      "binary_sha256": "a2b3570edecb7b2ee1192dac0689df26f61ad36a02fb8dddb124264ba721e3b1",
+      "binary_bytes": 59701400,
+      "build_binding": {
+        "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-build-binding.json",
+        "sha256": "a99e3e2c0394d65d95bb18182b260ff32a1cbde9cc1daa862a2b13bb9a6928fb",
+        "bytes": 3098
+      },
+      "build_command": [
+        "cargo",
+        "build",
+        "-p",
+        "verse",
+        "--example",
+        "meteor_showcase_capture",
+        "--features",
+        "capture"
+      ],
+      "build_receipt": {
+        "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-dev-build-lease.json",
+        "sha256": "98cca25307b59a0a58971da2b90868dacafab7ae0357bd84d0b1e68dd0cd5581",
+        "bytes": 648
+      },
+      "build_log": {
+        "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-dev-build.log",
+        "sha256": "2c415e1541d5ca057e70707b4ab4b12d4012d06db0c263ccdd3718df2c3c92e0",
+        "bytes": 10104
+      },
+      "command": [
+        "/Users/christopherdavid/work/openagents-target-agent0/debug/examples/meteor_showcase_capture",
+        "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-high-dev",
+        "--live",
+        "--settle-light",
+        "--no-video",
+        "--seconds",
+        "16",
+        "--impact-frame",
+        "469",
+        "--smoke-frame",
+        "600",
+        "--capture-rebuild"
+      ],
+      "cwd": "/Users/christopherdavid/.codex/worktrees/bb65/openagents",
+      "environment": {
+        "VERSE_QUALITY": "high",
+        "VERSE_KIT_PACK": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp",
+        "VERSE_KIT_BAKE": null,
+        "VERSE_HOME": null,
+        "VERSE_KIT_UNPINNED": null,
+        "VERSE_TEMPORAL_AA": null,
+        "OPENAGENTS_CAPTURE_SOURCE_COMMIT": "5d7fff0247c6fef70447fe96103838a39e38b4f8",
+        "OPENAGENTS_LEASES": "gpu,quiet",
+        "OPENAGENTS_LEASE_ID": "1791494836382-15595-0",
+        "OPENAGENTS_SCRATCH": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b",
+        "WGPU_BACKEND": null,
+        "WGPU_POWER_PREF": null,
+        "WGPU_TRACE": null
+      },
+      "removed_inherited_verse_environment_names": [],
+      "assets": {
+        "kit": {
+          "path": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp",
+          "sha256": "c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e",
+          "bytes": 21467658
+        },
+        "base_pack": {
+          "path": "/Users/christopherdavid/.codex/worktrees/bb65/openagents/assets/verse/everglade/a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f.vtp",
+          "sha256": "a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f",
+          "bytes": 10636202
+        }
+      },
+      "warning_diagnostics": null,
+      "warning_scan_pattern": "(?i)\\b(?:warning|warn|validation error|device lost|panic)\\b",
+      "start_unix": 1791494932.272386,
+      "end_unix": 1791494945.694141,
+      "exit": 0,
+      "acceptance": {
+        "visual": null,
+        "timing": null,
+        "promotion_authorized": false
+      }
+    },
+    "high-release": {
+      "prefix": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-high-release",
+      "manifest": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-high-release-manifest.json",
+      "log": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-high-release.log",
+      "quiet_receipt": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-high-release-quiet.json",
+      "gpu_receipt": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-high-release-gpu.json",
+      "check": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-high-release-check.json",
+      "job": "10936-final-MRT-high-release",
+      "case": "high-release",
+      "case_index": 1,
+      "schema": "openagents.verse.capture-job.v1",
+      "name": "10936-final-MRT-high-release",
+      "source": "5d7fff0247c6fef70447fe96103838a39e38b4f8",
+      "source_binding_method": "Explicit CLI source and root-supplied build binding; no ambient HEAD lookup",
+      "profile": "release",
+      "quality": "high",
+      "features": [
+        "capture"
+      ],
+      "binary": "/Users/christopherdavid/work/openagents-target-agent0/release/examples/meteor_showcase_capture",
+      "binary_sha256": "42b0843835da8ec49e55b5694f4a3b38793ae03bc844c56836f09195d1ce471d",
+      "binary_bytes": 26526288,
+      "build_binding": {
+        "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-build-binding.json",
+        "sha256": "a99e3e2c0394d65d95bb18182b260ff32a1cbde9cc1daa862a2b13bb9a6928fb",
+        "bytes": 3098
+      },
+      "build_command": [
+        "cargo",
+        "build",
+        "-p",
+        "verse",
+        "--example",
+        "meteor_showcase_capture",
+        "--features",
+        "capture",
+        "--release"
+      ],
+      "build_receipt": {
+        "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-release-build-lease.json",
+        "sha256": "45361ae10bffb16fbaa3a733dbae03e3cf87d7ab8b1336a7dd4e9f44e9148c70",
+        "bytes": 648
+      },
+      "build_log": {
+        "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-release-build.log",
+        "sha256": "38e64274a9e0224b791f2c67584920ce7d3f652dbb90cc4e6c7c7d0e9bc4ff14",
+        "bytes": 9784
+      },
+      "command": [
+        "/Users/christopherdavid/work/openagents-target-agent0/release/examples/meteor_showcase_capture",
+        "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-high-release",
+        "--live",
+        "--settle-light",
+        "--no-video",
+        "--seconds",
+        "16",
+        "--impact-frame",
+        "469",
+        "--smoke-frame",
+        "600",
+        "--capture-rebuild"
+      ],
+      "cwd": "/Users/christopherdavid/.codex/worktrees/bb65/openagents",
+      "environment": {
+        "VERSE_QUALITY": "high",
+        "VERSE_KIT_PACK": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp",
+        "VERSE_KIT_BAKE": null,
+        "VERSE_HOME": null,
+        "VERSE_KIT_UNPINNED": null,
+        "VERSE_TEMPORAL_AA": null,
+        "OPENAGENTS_CAPTURE_SOURCE_COMMIT": "5d7fff0247c6fef70447fe96103838a39e38b4f8",
+        "OPENAGENTS_LEASES": "gpu,quiet",
+        "OPENAGENTS_LEASE_ID": "1791494945876-23723-0",
+        "OPENAGENTS_SCRATCH": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b",
+        "WGPU_BACKEND": null,
+        "WGPU_POWER_PREF": null,
+        "WGPU_TRACE": null
+      },
+      "removed_inherited_verse_environment_names": [],
+      "assets": {
+        "kit": {
+          "path": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp",
+          "sha256": "c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e",
+          "bytes": 21467658
+        },
+        "base_pack": {
+          "path": "/Users/christopherdavid/.codex/worktrees/bb65/openagents/assets/verse/everglade/a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f.vtp",
+          "sha256": "a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f",
+          "bytes": 10636202
+        }
+      },
+      "warning_diagnostics": null,
+      "warning_scan_pattern": "(?i)\\b(?:warning|warn|validation error|device lost|panic)\\b",
+      "start_unix": 1791495017.1217349,
+      "end_unix": 1791495029.365491,
+      "exit": 0,
+      "acceptance": {
+        "visual": null,
+        "timing": null,
+        "promotion_authorized": false
+      }
+    },
+    "high-paired": {
+      "prefix": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-high-paired",
+      "manifest": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-high-paired-manifest.json",
+      "log": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-high-paired.log",
+      "quiet_receipt": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-high-paired-quiet.json",
+      "gpu_receipt": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-high-paired-gpu.json",
+      "check": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-high-paired-check.json",
+      "job": "10936-final-MRT-high-paired",
+      "case": "high-paired",
+      "case_index": 2,
+      "schema": "openagents.verse.capture-job.v1",
+      "name": "10936-final-MRT-high-paired",
+      "source": "5d7fff0247c6fef70447fe96103838a39e38b4f8",
+      "source_binding_method": "Explicit CLI source and root-supplied build binding; no ambient HEAD lookup",
+      "profile": "release",
+      "quality": "high",
+      "features": [
+        "capture"
+      ],
+      "binary": "/Users/christopherdavid/work/openagents-target-agent0/release/examples/meteor_showcase_capture",
+      "binary_sha256": "42b0843835da8ec49e55b5694f4a3b38793ae03bc844c56836f09195d1ce471d",
+      "binary_bytes": 26526288,
+      "build_binding": {
+        "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-build-binding.json",
+        "sha256": "a99e3e2c0394d65d95bb18182b260ff32a1cbde9cc1daa862a2b13bb9a6928fb",
+        "bytes": 3098
+      },
+      "build_command": [
+        "cargo",
+        "build",
+        "-p",
+        "verse",
+        "--example",
+        "meteor_showcase_capture",
+        "--features",
+        "capture",
+        "--release"
+      ],
+      "build_receipt": {
+        "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-release-build-lease.json",
+        "sha256": "45361ae10bffb16fbaa3a733dbae03e3cf87d7ab8b1336a7dd4e9f44e9148c70",
+        "bytes": 648
+      },
+      "build_log": {
+        "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-release-build.log",
+        "sha256": "38e64274a9e0224b791f2c67584920ce7d3f652dbb90cc4e6c7c7d0e9bc4ff14",
+        "bytes": 9784
+      },
+      "command": [
+        "/Users/christopherdavid/work/openagents-target-agent0/release/examples/meteor_showcase_capture",
+        "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-high-paired",
+        "--live",
+        "--settle-light",
+        "--no-video",
+        "--seconds",
+        "16",
+        "--impact-frame",
+        "469",
+        "--smoke-frame",
+        "600",
+        "--compare-temporal-aa",
+        "--sequence",
+        "439:484"
+      ],
+      "cwd": "/Users/christopherdavid/.codex/worktrees/bb65/openagents",
+      "environment": {
+        "VERSE_QUALITY": "high",
+        "VERSE_KIT_PACK": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp",
+        "VERSE_KIT_BAKE": null,
+        "VERSE_HOME": null,
+        "VERSE_KIT_UNPINNED": null,
+        "VERSE_TEMPORAL_AA": null,
+        "OPENAGENTS_CAPTURE_SOURCE_COMMIT": "5d7fff0247c6fef70447fe96103838a39e38b4f8",
+        "OPENAGENTS_LEASES": "gpu,quiet",
+        "OPENAGENTS_LEASE_ID": "1791495029511-29862-0",
+        "OPENAGENTS_SCRATCH": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b",
+        "WGPU_BACKEND": null,
+        "WGPU_POWER_PREF": null,
+        "WGPU_TRACE": null
+      },
+      "removed_inherited_verse_environment_names": [],
+      "assets": {
+        "kit": {
+          "path": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp",
+          "sha256": "c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e",
+          "bytes": 21467658
+        },
+        "base_pack": {
+          "path": "/Users/christopherdavid/.codex/worktrees/bb65/openagents/assets/verse/everglade/a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f.vtp",
+          "sha256": "a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f",
+          "bytes": 10636202
+        }
+      },
+      "warning_diagnostics": null,
+      "warning_scan_pattern": "(?i)\\b(?:warning|warn|validation error|device lost|panic)\\b",
+      "start_unix": 1791495029.566261,
+      "end_unix": 1791495090.697408,
+      "exit": 0,
+      "acceptance": {
+        "visual": null,
+        "timing": null,
+        "promotion_authorized": false
+      }
+    },
+    "medium-paired": {
+      "prefix": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-medium-paired",
+      "manifest": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-medium-paired-manifest.json",
+      "log": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-medium-paired.log",
+      "quiet_receipt": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-medium-paired-quiet.json",
+      "gpu_receipt": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-medium-paired-gpu.json",
+      "check": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-medium-paired-check.json",
+      "job": "10936-final-MRT-medium-paired",
+      "case": "medium-paired",
+      "case_index": 3,
+      "schema": "openagents.verse.capture-job.v1",
+      "name": "10936-final-MRT-medium-paired",
+      "source": "5d7fff0247c6fef70447fe96103838a39e38b4f8",
+      "source_binding_method": "Explicit CLI source and root-supplied build binding; no ambient HEAD lookup",
+      "profile": "release",
+      "quality": "medium",
+      "features": [
+        "capture"
+      ],
+      "binary": "/Users/christopherdavid/work/openagents-target-agent0/release/examples/meteor_showcase_capture",
+      "binary_sha256": "42b0843835da8ec49e55b5694f4a3b38793ae03bc844c56836f09195d1ce471d",
+      "binary_bytes": 26526288,
+      "build_binding": {
+        "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-build-binding.json",
+        "sha256": "a99e3e2c0394d65d95bb18182b260ff32a1cbde9cc1daa862a2b13bb9a6928fb",
+        "bytes": 3098
+      },
+      "build_command": [
+        "cargo",
+        "build",
+        "-p",
+        "verse",
+        "--example",
+        "meteor_showcase_capture",
+        "--features",
+        "capture",
+        "--release"
+      ],
+      "build_receipt": {
+        "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-release-build-lease.json",
+        "sha256": "45361ae10bffb16fbaa3a733dbae03e3cf87d7ab8b1336a7dd4e9f44e9148c70",
+        "bytes": 648
+      },
+      "build_log": {
+        "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-release-build.log",
+        "sha256": "38e64274a9e0224b791f2c67584920ce7d3f652dbb90cc4e6c7c7d0e9bc4ff14",
+        "bytes": 9784
+      },
+      "command": [
+        "/Users/christopherdavid/work/openagents-target-agent0/release/examples/meteor_showcase_capture",
+        "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-medium-paired",
+        "--live",
+        "--settle-light",
+        "--no-video",
+        "--seconds",
+        "16",
+        "--impact-frame",
+        "469",
+        "--smoke-frame",
+        "600",
+        "--compare-temporal-aa",
+        "--sequence",
+        "439:484"
+      ],
+      "cwd": "/Users/christopherdavid/.codex/worktrees/bb65/openagents",
+      "environment": {
+        "VERSE_QUALITY": "medium",
+        "VERSE_KIT_PACK": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp",
+        "VERSE_KIT_BAKE": null,
+        "VERSE_HOME": null,
+        "VERSE_KIT_UNPINNED": null,
+        "VERSE_TEMPORAL_AA": null,
+        "OPENAGENTS_CAPTURE_SOURCE_COMMIT": "5d7fff0247c6fef70447fe96103838a39e38b4f8",
+        "OPENAGENTS_LEASES": "gpu,quiet",
+        "OPENAGENTS_LEASE_ID": "1791495090898-34310-0",
+        "OPENAGENTS_SCRATCH": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b",
+        "WGPU_BACKEND": null,
+        "WGPU_POWER_PREF": null,
+        "WGPU_TRACE": null
+      },
+      "removed_inherited_verse_environment_names": [],
+      "assets": {
+        "kit": {
+          "path": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp",
+          "sha256": "c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e",
+          "bytes": 21467658
+        },
+        "base_pack": {
+          "path": "/Users/christopherdavid/.codex/worktrees/bb65/openagents/assets/verse/everglade/a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f.vtp",
+          "sha256": "a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f",
+          "bytes": 10636202
+        }
+      },
+      "warning_diagnostics": null,
+      "warning_scan_pattern": "(?i)\\b(?:warning|warn|validation error|device lost|panic)\\b",
+      "start_unix": 1791495090.9517498,
+      "end_unix": 1791495150.3514838,
+      "exit": 0,
+      "acceptance": {
+        "visual": null,
+        "timing": null,
+        "promotion_authorized": false
+      }
+    },
+    "pan-paired": {
+      "prefix": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-pan-paired",
+      "manifest": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-pan-paired-manifest.json",
+      "log": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-pan-paired.log",
+      "quiet_receipt": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-pan-paired-quiet.json",
+      "gpu_receipt": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-pan-paired-gpu.json",
+      "check": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-pan-paired-check.json",
+      "job": "10936-final-MRT-pan-paired",
+      "case": "pan-paired",
+      "case_index": 4,
+      "schema": "openagents.verse.capture-job.v1",
+      "name": "10936-final-MRT-pan-paired",
+      "source": "5d7fff0247c6fef70447fe96103838a39e38b4f8",
+      "source_binding_method": "Explicit CLI source and root-supplied build binding; no ambient HEAD lookup",
+      "profile": "release",
+      "quality": "high",
+      "features": [
+        "capture"
+      ],
+      "binary": "/Users/christopherdavid/work/openagents-target-agent0/release/examples/meteor_showcase_capture",
+      "binary_sha256": "42b0843835da8ec49e55b5694f4a3b38793ae03bc844c56836f09195d1ce471d",
+      "binary_bytes": 26526288,
+      "build_binding": {
+        "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-build-binding.json",
+        "sha256": "a99e3e2c0394d65d95bb18182b260ff32a1cbde9cc1daa862a2b13bb9a6928fb",
+        "bytes": 3098
+      },
+      "build_command": [
+        "cargo",
+        "build",
+        "-p",
+        "verse",
+        "--example",
+        "meteor_showcase_capture",
+        "--features",
+        "capture",
+        "--release"
+      ],
+      "build_receipt": {
+        "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-release-build-lease.json",
+        "sha256": "45361ae10bffb16fbaa3a733dbae03e3cf87d7ab8b1336a7dd4e9f44e9148c70",
+        "bytes": 648
+      },
+      "build_log": {
+        "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-release-build.log",
+        "sha256": "38e64274a9e0224b791f2c67584920ce7d3f652dbb90cc4e6c7c7d0e9bc4ff14",
+        "bytes": 9784
+      },
+      "command": [
+        "/Users/christopherdavid/work/openagents-target-agent0/release/examples/meteor_showcase_capture",
+        "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-pan-paired",
+        "--live",
+        "--settle-light",
+        "--no-video",
+        "--seconds",
+        "8",
+        "--compare-temporal-aa",
+        "--sequence",
+        "120:135",
+        "--static-houses",
+        "--camera",
+        "pan"
+      ],
+      "cwd": "/Users/christopherdavid/.codex/worktrees/bb65/openagents",
+      "environment": {
+        "VERSE_QUALITY": "high",
+        "VERSE_KIT_PACK": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp",
+        "VERSE_KIT_BAKE": null,
+        "VERSE_HOME": null,
+        "VERSE_KIT_UNPINNED": null,
+        "VERSE_TEMPORAL_AA": null,
+        "OPENAGENTS_CAPTURE_SOURCE_COMMIT": "5d7fff0247c6fef70447fe96103838a39e38b4f8",
+        "OPENAGENTS_LEASES": "gpu,quiet",
+        "OPENAGENTS_LEASE_ID": "1791495150794-38300-0",
+        "OPENAGENTS_SCRATCH": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b",
+        "WGPU_BACKEND": null,
+        "WGPU_POWER_PREF": null,
+        "WGPU_TRACE": null
+      },
+      "removed_inherited_verse_environment_names": [],
+      "assets": {
+        "kit": {
+          "path": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp",
+          "sha256": "c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e",
+          "bytes": 21467658
+        },
+        "base_pack": {
+          "path": "/Users/christopherdavid/.codex/worktrees/bb65/openagents/assets/verse/everglade/a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f.vtp",
+          "sha256": "a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f",
+          "bytes": 10636202
+        }
+      },
+      "warning_diagnostics": null,
+      "warning_scan_pattern": "(?i)\\b(?:warning|warn|validation error|device lost|panic)\\b",
+      "start_unix": 1791495150.851357,
+      "end_unix": 1791495170.181396,
+      "exit": 0,
+      "acceptance": {
+        "visual": null,
+        "timing": null,
+        "promotion_authorized": false
+      }
+    },
+    "orbit-paired": {
+      "prefix": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-orbit-paired",
+      "manifest": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-orbit-paired-manifest.json",
+      "log": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-orbit-paired.log",
+      "quiet_receipt": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-orbit-paired-quiet.json",
+      "gpu_receipt": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-orbit-paired-gpu.json",
+      "check": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-orbit-paired-check.json",
+      "job": "10936-final-MRT-orbit-paired",
+      "case": "orbit-paired",
+      "case_index": 5,
+      "schema": "openagents.verse.capture-job.v1",
+      "name": "10936-final-MRT-orbit-paired",
+      "source": "5d7fff0247c6fef70447fe96103838a39e38b4f8",
+      "source_binding_method": "Explicit CLI source and root-supplied build binding; no ambient HEAD lookup",
+      "profile": "release",
+      "quality": "high",
+      "features": [
+        "capture"
+      ],
+      "binary": "/Users/christopherdavid/work/openagents-target-agent0/release/examples/meteor_showcase_capture",
+      "binary_sha256": "42b0843835da8ec49e55b5694f4a3b38793ae03bc844c56836f09195d1ce471d",
+      "binary_bytes": 26526288,
+      "build_binding": {
+        "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-build-binding.json",
+        "sha256": "a99e3e2c0394d65d95bb18182b260ff32a1cbde9cc1daa862a2b13bb9a6928fb",
+        "bytes": 3098
+      },
+      "build_command": [
+        "cargo",
+        "build",
+        "-p",
+        "verse",
+        "--example",
+        "meteor_showcase_capture",
+        "--features",
+        "capture",
+        "--release"
+      ],
+      "build_receipt": {
+        "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-release-build-lease.json",
+        "sha256": "45361ae10bffb16fbaa3a733dbae03e3cf87d7ab8b1336a7dd4e9f44e9148c70",
+        "bytes": 648
+      },
+      "build_log": {
+        "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-release-build.log",
+        "sha256": "38e64274a9e0224b791f2c67584920ce7d3f652dbb90cc4e6c7c7d0e9bc4ff14",
+        "bytes": 9784
+      },
+      "command": [
+        "/Users/christopherdavid/work/openagents-target-agent0/release/examples/meteor_showcase_capture",
+        "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-orbit-paired",
+        "--live",
+        "--settle-light",
+        "--no-video",
+        "--seconds",
+        "8",
+        "--compare-temporal-aa",
+        "--sequence",
+        "120:135",
+        "--static-houses",
+        "--camera",
+        "orbit"
+      ],
+      "cwd": "/Users/christopherdavid/.codex/worktrees/bb65/openagents",
+      "environment": {
+        "VERSE_QUALITY": "high",
+        "VERSE_KIT_PACK": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp",
+        "VERSE_KIT_BAKE": null,
+        "VERSE_HOME": null,
+        "VERSE_KIT_UNPINNED": null,
+        "VERSE_TEMPORAL_AA": null,
+        "OPENAGENTS_CAPTURE_SOURCE_COMMIT": "5d7fff0247c6fef70447fe96103838a39e38b4f8",
+        "OPENAGENTS_LEASES": "gpu,quiet",
+        "OPENAGENTS_LEASE_ID": "1791495266100-46061-0",
+        "OPENAGENTS_SCRATCH": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b",
+        "WGPU_BACKEND": null,
+        "WGPU_POWER_PREF": null,
+        "WGPU_TRACE": null
+      },
+      "removed_inherited_verse_environment_names": [],
+      "assets": {
+        "kit": {
+          "path": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp",
+          "sha256": "c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e",
+          "bytes": 21467658
+        },
+        "base_pack": {
+          "path": "/Users/christopherdavid/.codex/worktrees/bb65/openagents/assets/verse/everglade/a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f.vtp",
+          "sha256": "a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f",
+          "bytes": 10636202
+        }
+      },
+      "warning_diagnostics": null,
+      "warning_scan_pattern": "(?i)\\b(?:warning|warn|validation error|device lost|panic)\\b",
+      "start_unix": 1791495266.163041,
+      "end_unix": 1791495286.135783,
+      "exit": 0,
+      "acceptance": {
+        "visual": null,
+        "timing": null,
+        "promotion_authorized": false
+      }
+    },
+    "high-replicate-2": {
+      "prefix": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-high-replicate-2",
+      "manifest": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-high-replicate-2-manifest.json",
+      "log": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-high-replicate-2.log",
+      "quiet_receipt": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-high-replicate-2-quiet.json",
+      "gpu_receipt": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-high-replicate-2-gpu.json",
+      "check": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-high-replicate-2-check.json",
+      "job": "10936-final-MRT-high-replicate-2",
+      "case": "high-paired",
+      "case_index": 2,
+      "schema": "openagents.verse.capture-job.v1",
+      "name": "10936-final-MRT-high-replicate-2",
+      "source": "5d7fff0247c6fef70447fe96103838a39e38b4f8",
+      "source_binding_method": "Explicit CLI source and root-supplied build binding; no ambient HEAD lookup",
+      "profile": "release",
+      "quality": "high",
+      "features": [
+        "capture"
+      ],
+      "binary": "/Users/christopherdavid/work/openagents-target-agent0/release/examples/meteor_showcase_capture",
+      "binary_sha256": "42b0843835da8ec49e55b5694f4a3b38793ae03bc844c56836f09195d1ce471d",
+      "binary_bytes": 26526288,
+      "build_binding": {
+        "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-build-binding.json",
+        "sha256": "a99e3e2c0394d65d95bb18182b260ff32a1cbde9cc1daa862a2b13bb9a6928fb",
+        "bytes": 3098
+      },
+      "build_command": [
+        "cargo",
+        "build",
+        "-p",
+        "verse",
+        "--example",
+        "meteor_showcase_capture",
+        "--features",
+        "capture",
+        "--release"
+      ],
+      "build_receipt": {
+        "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-release-build-lease.json",
+        "sha256": "45361ae10bffb16fbaa3a733dbae03e3cf87d7ab8b1336a7dd4e9f44e9148c70",
+        "bytes": 648
+      },
+      "build_log": {
+        "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-release-build.log",
+        "sha256": "38e64274a9e0224b791f2c67584920ce7d3f652dbb90cc4e6c7c7d0e9bc4ff14",
+        "bytes": 9784
+      },
+      "command": [
+        "/Users/christopherdavid/work/openagents-target-agent0/release/examples/meteor_showcase_capture",
+        "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-high-replicate-2",
+        "--live",
+        "--settle-light",
+        "--no-video",
+        "--seconds",
+        "16",
+        "--impact-frame",
+        "469",
+        "--smoke-frame",
+        "600",
+        "--compare-temporal-aa",
+        "--sequence",
+        "439:484"
+      ],
+      "cwd": "/Users/christopherdavid/.codex/worktrees/bb65/openagents",
+      "environment": {
+        "VERSE_QUALITY": "high",
+        "VERSE_KIT_PACK": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp",
+        "VERSE_KIT_BAKE": null,
+        "VERSE_HOME": null,
+        "VERSE_KIT_UNPINNED": null,
+        "VERSE_TEMPORAL_AA": null,
+        "OPENAGENTS_CAPTURE_SOURCE_COMMIT": "5d7fff0247c6fef70447fe96103838a39e38b4f8",
+        "OPENAGENTS_LEASES": "gpu,quiet",
+        "OPENAGENTS_LEASE_ID": "1791495312594-49146-0",
+        "OPENAGENTS_SCRATCH": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b",
+        "WGPU_BACKEND": null,
+        "WGPU_POWER_PREF": null,
+        "WGPU_TRACE": null
+      },
+      "removed_inherited_verse_environment_names": [],
+      "assets": {
+        "kit": {
+          "path": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp",
+          "sha256": "c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e",
+          "bytes": 21467658
+        },
+        "base_pack": {
+          "path": "/Users/christopherdavid/.codex/worktrees/bb65/openagents/assets/verse/everglade/a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f.vtp",
+          "sha256": "a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f",
+          "bytes": 10636202
+        }
+      },
+      "warning_diagnostics": null,
+      "warning_scan_pattern": "(?i)\\b(?:warning|warn|validation error|device lost|panic)\\b",
+      "start_unix": 1791495312.65126,
+      "end_unix": 1791495374.3958569,
+      "exit": 0,
+      "acceptance": {
+        "visual": null,
+        "timing": null,
+        "promotion_authorized": false
+      },
+      "replication_plan": {
+        "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-replication-plan.json",
+        "sha256": "c30afbff6839c773aa8082adc831dab45ec7f80908b6c6700f4f3746284b4fe7",
+        "bytes": 1543
+      }
+    },
+    "high-replicate-3": {
+      "prefix": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-high-replicate-3",
+      "manifest": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-high-replicate-3-manifest.json",
+      "log": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-high-replicate-3.log",
+      "quiet_receipt": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-high-replicate-3-quiet.json",
+      "gpu_receipt": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-high-replicate-3-gpu.json",
+      "check": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-high-replicate-3-check.json",
+      "job": "10936-final-MRT-high-replicate-3",
+      "case": "high-paired",
+      "case_index": 2,
+      "schema": "openagents.verse.capture-job.v1",
+      "name": "10936-final-MRT-high-replicate-3",
+      "source": "5d7fff0247c6fef70447fe96103838a39e38b4f8",
+      "source_binding_method": "Explicit CLI source and root-supplied build binding; no ambient HEAD lookup",
+      "profile": "release",
+      "quality": "high",
+      "features": [
+        "capture"
+      ],
+      "binary": "/Users/christopherdavid/work/openagents-target-agent0/release/examples/meteor_showcase_capture",
+      "binary_sha256": "42b0843835da8ec49e55b5694f4a3b38793ae03bc844c56836f09195d1ce471d",
+      "binary_bytes": 26526288,
+      "build_binding": {
+        "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-build-binding.json",
+        "sha256": "a99e3e2c0394d65d95bb18182b260ff32a1cbde9cc1daa862a2b13bb9a6928fb",
+        "bytes": 3098
+      },
+      "build_command": [
+        "cargo",
+        "build",
+        "-p",
+        "verse",
+        "--example",
+        "meteor_showcase_capture",
+        "--features",
+        "capture",
+        "--release"
+      ],
+      "build_receipt": {
+        "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-release-build-lease.json",
+        "sha256": "45361ae10bffb16fbaa3a733dbae03e3cf87d7ab8b1336a7dd4e9f44e9148c70",
+        "bytes": 648
+      },
+      "build_log": {
+        "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-release-build.log",
+        "sha256": "38e64274a9e0224b791f2c67584920ce7d3f652dbb90cc4e6c7c7d0e9bc4ff14",
+        "bytes": 9784
+      },
+      "command": [
+        "/Users/christopherdavid/work/openagents-target-agent0/release/examples/meteor_showcase_capture",
+        "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-high-replicate-3",
+        "--live",
+        "--settle-light",
+        "--no-video",
+        "--seconds",
+        "16",
+        "--impact-frame",
+        "469",
+        "--smoke-frame",
+        "600",
+        "--compare-temporal-aa",
+        "--sequence",
+        "439:484"
+      ],
+      "cwd": "/Users/christopherdavid/.codex/worktrees/bb65/openagents",
+      "environment": {
+        "VERSE_QUALITY": "high",
+        "VERSE_KIT_PACK": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp",
+        "VERSE_KIT_BAKE": null,
+        "VERSE_HOME": null,
+        "VERSE_KIT_UNPINNED": null,
+        "VERSE_TEMPORAL_AA": null,
+        "OPENAGENTS_CAPTURE_SOURCE_COMMIT": "5d7fff0247c6fef70447fe96103838a39e38b4f8",
+        "OPENAGENTS_LEASES": "gpu,quiet",
+        "OPENAGENTS_LEASE_ID": "1791495374561-53617-0",
+        "OPENAGENTS_SCRATCH": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b",
+        "WGPU_BACKEND": null,
+        "WGPU_POWER_PREF": null,
+        "WGPU_TRACE": null
+      },
+      "removed_inherited_verse_environment_names": [],
+      "assets": {
+        "kit": {
+          "path": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp",
+          "sha256": "c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e",
+          "bytes": 21467658
+        },
+        "base_pack": {
+          "path": "/Users/christopherdavid/.codex/worktrees/bb65/openagents/assets/verse/everglade/a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f.vtp",
+          "sha256": "a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f",
+          "bytes": 10636202
+        }
+      },
+      "warning_diagnostics": null,
+      "warning_scan_pattern": "(?i)\\b(?:warning|warn|validation error|device lost|panic)\\b",
+      "start_unix": 1791495374.617131,
+      "end_unix": 1791495435.0895429,
+      "exit": 0,
+      "acceptance": {
+        "visual": null,
+        "timing": null,
+        "promotion_authorized": false
+      },
+      "replication_plan": {
+        "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-replication-plan.json",
+        "sha256": "c30afbff6839c773aa8082adc831dab45ec7f80908b6c6700f4f3746284b4fe7",
+        "bytes": 1543
+      }
+    }
+  },
+  "source_images": "source-images.json",
+  "limits": [
+    "All primary rows, warmed paired rows, outliers, and original source PNG identities are retained; no best run is selected.",
+    "The two ordinary High runs pass the 16.7 ms debris p99 target, but this complete temporal attempt remains unpromoted because the registered strict cost gate is unmet.",
+    "The first Medium bounds remain unresolved and are not a High acceptance claim.",
+    "Completed offscreen wall intervals include encode, completion wait, mapping, and pixel readback; they do not measure GPU duration or presentation.",
+    "Raw reports, original crop methods, first-six stage metadata, and all three per-run confidence bounds remain unchanged."
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "status": "case_integrity_pass",
+  "case": "high-paired",
+  "simulation_frames": 960,
+  "last_simulation_frame": 959,
+  "phase_statistic_frames": 960,
+  "submission_policy": "serial_diagnostics",
+  "rebuild_capture": null,
+  "timing_scope": "The capture records the final primary drain before deferred artifact writes and R. R is an additional artifact render after the last simulation frame; it does not enter the primary frame ledger or phase statistics. The command wall interval includes setup, artifact writes, and R.",
+  "warning_diagnostics": null,
+  "acceptance": {
+    "visual": null,
+    "timing": null,
+    "promotion_authorized": false
+  },
+  "source": "5d7fff0247c6fef70447fe96103838a39e38b4f8",
+  "binary_sha256": "42b0843835da8ec49e55b5694f4a3b38793ae03bc844c56836f09195d1ce471d",
+  "leases": {
+    "gpu": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-high-replicate-2-gpu.json",
+      "sha256": "5f096ec2ee6303bb7e17a0a2d45613f8919ca6399558a8eb19af1b34c148f59c",
+      "bytes": 487
+    },
+    "quiet": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-high-replicate-2-quiet.json",
+      "sha256": "f874cf6b0c4ef118ff0764195c7df5c872845b79587ae23214fb4a30f9bccf5a",
+      "bytes": 486
+    }
+  },
+  "manifest": {
+    "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-high-replicate-2-manifest.json",
+    "sha256": "16cc7edbfa4357b88694bd9c6107305d41fc738ee3d55a7482ea2045bcecd1ba",
+    "bytes": 4897
+  },
+  "report": {
+    "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-high-replicate-2/capture.json",
+    "sha256": "3c80903988d224f5c2a2d956a2e71f1c71d9f175f29b7bb2492ab5760a7bb521",
+    "bytes": 1156770
+  }
+}

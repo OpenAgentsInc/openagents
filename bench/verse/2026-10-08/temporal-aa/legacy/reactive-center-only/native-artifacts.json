@@ -1,0 +1,54 @@
+{
+  "native-manifest.json": {
+    "bytes": 2257,
+    "sha256": "f095af14c419dc883cf6441e2477c2fab7eecb9768afbd4f5dc76136aff2f411"
+  },
+  "native-0.log": {
+    "bytes": 199,
+    "sha256": "a391901f1e80f0e26e0f1b59eb0b53114c2fdbf62f3327e247d2ff803ee2440a"
+  },
+  "native-1.log": {
+    "bytes": 210,
+    "sha256": "d4344307a1b201554e29061f5982a0f13b8b0a9aa421dbc7dd7752aacd0577f8"
+  },
+  "native-2.log": {
+    "bytes": 221,
+    "sha256": "763fc947f1b49120675ae8cf8e78efe24cc9ddb28e01f5c4be296ac8e85eff02"
+  },
+  "native-3.log": {
+    "bytes": 222,
+    "sha256": "a4bdf5e026de9b34368e2c42466e76474e6891798846d686e207ed674df05764"
+  },
+  "native-fixture-build.log": {
+    "bytes": 27744,
+    "sha256": "a2baba803721d30ad4fb9242d014ceca64528a8e5b3491a974cb4b85525b6a39"
+  },
+  "native-fixture-build-lease.json": {
+    "bytes": 645,
+    "sha256": "ca7f31c350312dfa88c3e2eb954ccac5829d770b126000c6612af5abadf71bb6"
+  },
+  "native-fixture-only.patch": {
+    "bytes": 891,
+    "sha256": "e5009e6be63a16d92f5ba22bd47a5d1ce3369defdbdb36feccdcdb81d1f7a74b"
+  },
+  "native-attempt0/10936-reactive-native-2.log": {
+    "bytes": 974,
+    "sha256": "b82d7da8d531c132622069d050a329f99c2db72022423ca5d1476b6121c43f65"
+  },
+  "native-attempt0/10936-reactive-native-0.log": {
+    "bytes": 199,
+    "sha256": "60d7a9e5929199eb9ff69b220bd639e88c2b246f3e8bd4eb83f203cc6aa2beac"
+  },
+  "native-attempt0/10936-reactive-native-1.log": {
+    "bytes": 210,
+    "sha256": "d9914b243dba14ea3bfc437847f9c5010059a1ed0b6af42b4468cd2b25386857"
+  },
+  "native-attempt0/10936-reactive-native-gpu.json": {
+    "bytes": 484,
+    "sha256": "cd07b1f21182f9799d7f0c8ff35f48b2ffdfa630eb16ca8c276b5ac15f45cd5d"
+  },
+  "native-attempt0/10936-reactive-native-manifest.json": {
+    "bytes": 1686,
+    "sha256": "ab165bca5e9984b5f80088660241806ca1b04d9fe22fea62bf6655c4bd66ceda"
+  }
+}

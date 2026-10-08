@@ -1,0 +1,114 @@
+{
+  "schema": "openagents.verse.temporal-visual-attempt.v1",
+  "issue": 10936,
+  "status": "visual_failed",
+  "timing_acceptance_available": false,
+  "source": "290c1590726189dbdabb5693125cfa0fbca8a779",
+  "binary_sha256": "84622de2cf06b09444ee0d0d46db5e5c6c1518d381f42e0cc40c286af7dbc380",
+  "profile": "dev with optimized dependencies",
+  "command_manifest": "proof/10936-dependency-high-diagnostic-manifest.json",
+  "capture_report": "capture.json",
+  "gpu_receipt": "proof/10936-dependency-diagnostic-gpu.json",
+  "native": {
+    "source": "340df670f658276c6074d33ec80ccdfc66dac7c3",
+    "binary_sha256": "fc8dc2e01d1d2b15737c8b0bd1d7bedfc1b156d4276d4cb96385ebf39c2f524a",
+    "tests": 8,
+    "passed": 8,
+    "manifest": "proof/10936-dependency-native-manifest.json",
+    "gpu_receipt": "proof/10936-dependency-native-gpu.json",
+    "scope": "These fixtures verify the conditioning dependency, bilinear rejection, physical faceted marker coverage, motion occlusion, and baked-light restoration. They do not establish the live fast-head visual gate."
+  },
+  "render_equivalence": "Production290 differs from native340 only in the B3 capture harness checkpoint; the temporal render code is identical. Full Photo::encode is not exercised by the eight native fixtures in this attempt.",
+  "assets": {
+    "kit": {
+      "path": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp",
+      "sha256": "c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e",
+      "bytes": 21467658,
+      "matches_published_pin": true,
+      "unpinned_override": false
+    },
+    "base_pack": {
+      "path": "/Users/christopherdavid/.codex/worktrees/bb65/openagents/assets/verse/everglade/a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f.vtp",
+      "sha256": "a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f",
+      "bytes": 10636202
+    }
+  },
+  "capture": {
+    "width": 1920,
+    "height": 1080,
+    "fps": 60,
+    "frames": 540,
+    "quality": "high",
+    "sequence": [
+      439,
+      484
+    ],
+    "mode": "live",
+    "paired_independent_aa_on_off": true,
+    "timing_scope": "GPU-only debug diagnostic with overlapping CPU work; no quiet receipt or latency acceptance. All recorded paired measurements and outliers remain in capture.json."
+  },
+  "visual": {
+    "result": "fail",
+    "reviewed_frames": [
+      470,
+      471,
+      472,
+      473,
+      474
+    ],
+    "crop": [
+      490,
+      250,
+      820,
+      565
+    ],
+    "matched_views": "Each new on/off image uses the same simulation and director camera frame. The sheets also retain the exact corresponding36df release views. New290 is a dev diagnostic; cross-attempt differences do not establish timing.",
+    "observations": [
+      {
+        "frame": 471,
+        "outline_bounds": [
+          558,
+          290,
+          620,
+          345
+        ],
+        "current_body_bounds": [
+          645,
+          377,
+          695,
+          435
+        ],
+        "observation": "A detached head-shaped contour remains inside the orange ribbon in TAA on. The matching off image lacks it while the current body has advanced down and right."
+      },
+      {
+        "frame": 472,
+        "outline_bounds": [
+          580,
+          338,
+          645,
+          385
+        ],
+        "observation": "The detached TAA-only contour remains visible in the next reviewed frame."
+      }
+    ],
+    "limits": "Saved pixels support a recurring detached contour; they do not prove its exact prior-frame age or distinguish lost production coverage from a later color leak. Actual R8 coverage, history alpha, and jittered camera diagnostics are pending.",
+    "sheets": [
+      "audit/head-470-472.png",
+      "audit/head-473-474.png"
+    ],
+    "native_crops": [
+      "audit/new-on-471.png",
+      "audit/new-off-471.png",
+      "audit/new-on-472.png",
+      "audit/new-off-472.png"
+    ],
+    "full_resolution": [
+      "selected/0471-taa-on.png",
+      "selected/0471-taa-off.png",
+      "selected/0472-taa-on.png",
+      "selected/0472-taa-off.png"
+    ],
+    "source_inventory": "source-images.json"
+  },
+  "supersedes_top_level_acceptance": false
+}

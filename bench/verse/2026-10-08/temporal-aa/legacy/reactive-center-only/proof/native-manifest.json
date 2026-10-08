@@ -1,0 +1,62 @@
+[
+  {
+    "name": "10936-reactive-native-0",
+    "source": "df355b0cd1b45843b54aea40a6e6f3d665dfa237",
+    "binary_sha256": "23604df14cf3636ede320b964ba8755c1d9e49e672d49cf8c3ceaf1dc3873102",
+    "command": [
+      "/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse_pbr-ec22d2725ec15267",
+      "pbr::temporal::tests::hidden_motion_cannot_overwrite_the_visible_surface",
+      "--ignored",
+      "--exact",
+      "--test-threads=1"
+    ],
+    "start_unix": 1791486297.573958,
+    "exit": 0,
+    "end_unix": 1791486298.003405
+  },
+  {
+    "name": "10936-reactive-native-1",
+    "source": "df355b0cd1b45843b54aea40a6e6f3d665dfa237",
+    "binary_sha256": "23604df14cf3636ede320b964ba8755c1d9e49e672d49cf8c3ceaf1dc3873102",
+    "command": [
+      "/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse_pbr-ec22d2725ec15267",
+      "pbr::temporal::tests::empty_motion_keeps_camera_reprojection_with_stale_object_data",
+      "--ignored",
+      "--exact",
+      "--test-threads=1"
+    ],
+    "start_unix": 1791486298.0205371,
+    "exit": 0,
+    "end_unix": 1791486298.256577
+  },
+  {
+    "name": "10936-reactive-native-2",
+    "source": "df355b0cd1b45843b54aea40a6e6f3d665dfa237",
+    "binary_sha256": "23604df14cf3636ede320b964ba8755c1d9e49e672d49cf8c3ceaf1dc3873102",
+    "command": [
+      "/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse_pbr-ec22d2725ec15267",
+      "pbr::temporal::reactive_tests::moving_reactive_geometry_cannot_leave_history_in_a_bright_trail",
+      "--ignored",
+      "--exact",
+      "--test-threads=1"
+    ],
+    "start_unix": 1791486298.274661,
+    "exit": 0,
+    "end_unix": 1791486298.775351
+  },
+  {
+    "name": "10936-reactive-native-3",
+    "source": "df355b0cd1b45843b54aea40a6e6f3d665dfa237",
+    "binary_sha256": "23604df14cf3636ede320b964ba8755c1d9e49e672d49cf8c3ceaf1dc3873102",
+    "command": [
+      "/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse_pbr-ec22d2725ec15267",
+      "pbr::temporal::reactive_tests::reactive_history_rejection_matches_the_actual_bilinear_footprint",
+      "--ignored",
+      "--exact",
+      "--test-threads=1"
+    ],
+    "start_unix": 1791486298.7930722,
+    "exit": 0,
+    "end_unix": 1791486299.104147
+  }
+]

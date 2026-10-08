@@ -1,0 +1,16 @@
+Running pbr::temporal::tests::hidden_motion_cannot_overwrite_the_visible_surface
+Running pbr::temporal::tests::empty_motion_keeps_camera_reprojection_with_stale_object_data
+Running pbr::temporal::reactive_tests::moving_reactive_geometry_cannot_leave_history_in_a_bright_trail
+Running pbr::temporal::reactive_tests::reactive_history_rejection_matches_the_actual_bilinear_footprint
+Starting 10937-high-reactive-dev
+Finished 10937-high-reactive-dev exit 0
+Starting 10937-high-reactive-release
+Finished 10937-high-reactive-release exit 0
+Starting 10936-high-reactive-release-paired
+Finished 10936-high-reactive-release-paired exit 0
+Starting 10936-medium-reactive-release-paired
+Finished 10936-medium-reactive-release-paired exit 0
+Starting 10936-pan-reactive-release-paired
+Finished 10936-pan-reactive-release-paired exit 0
+Starting 10936-orbit-reactive-release-paired
+Finished 10936-orbit-reactive-release-paired exit 0

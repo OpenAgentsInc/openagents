@@ -1,0 +1,72 @@
+{
+  "source": "290c1590726189dbdabb5693125cfa0fbca8a779",
+  "file": "clear-camera-crops.png",
+  "resolution": [
+    1440,
+    1536
+  ],
+  "panels_rescaled": false,
+  "source_pixels_verified": true,
+  "panels": [
+    {
+      "file": "clear-capture/destruction-pristine.png",
+      "sha256": "263310b5f2e76a24bc9a887894c4aa10d91400828420edf583d4fe7c2ce495d8",
+      "source_xyxy": [
+        620,
+        330,
+        1340,
+        1050
+      ],
+      "destination_xy": [
+        0,
+        48
+      ]
+    },
+    {
+      "file": "clear-capture/destruction-repaired-noon.png",
+      "sha256": "b54522fc03f7f4f5a9022d2e4b8fa4b897d184e19cc6b3f1859de8916defb8c0",
+      "source_xyxy": [
+        620,
+        330,
+        1340,
+        1050
+      ],
+      "destination_xy": [
+        720,
+        48
+      ]
+    },
+    {
+      "file": "clear-capture/destruction-repaired-night.png",
+      "sha256": "41b3fe12e2d6c7cdfd1e335230ab6a578a1aaeca72dd29fee226cc986ed6f520",
+      "source_xyxy": [
+        620,
+        330,
+        1340,
+        1050
+      ],
+      "destination_xy": [
+        0,
+        816
+      ]
+    },
+    {
+      "file": "clear-capture/destruction-restored.png",
+      "sha256": "ed3ebef7e0de926e0998098b9e21853e49963692a65500e8fcc70b91f54d860e",
+      "source_xyxy": [
+        620,
+        330,
+        1340,
+        1050
+      ],
+      "destination_xy": [
+        720,
+        816
+      ]
+    }
+  ],
+  "sha256": "d8ed35e195501b6047402acf6eac428303c6e1c78527b5783ba9e2033b7f967a",
+  "bytes": 2778632,
+  "visual_acceptance": "pending_review",
+  "limitations": "Smoke covers central rubble contacts. The panels do not establish a comprehensive absence of floating shadows or pristine/R pixel identity."
+}

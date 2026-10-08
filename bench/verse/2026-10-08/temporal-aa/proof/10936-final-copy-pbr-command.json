@@ -1,0 +1,28 @@
+{
+  "source": "fb9a5fd280db673926cfd0d649f924da3091a24b",
+  "cwd": "/Users/christopherdavid/.codex/worktrees/bb65/openagents",
+  "environment": {
+    "CARGO_TARGET_DIR": "/Users/christopherdavid/work/openagents-target-agent0",
+    "OPENAGENTS_BUILD_DISK_GB": "3"
+  },
+  "command": [
+    "openagents",
+    "lease",
+    "build",
+    "--keep-target-dir",
+    "--receipt",
+    "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-native-build-lease.json",
+    "--",
+    "cargo",
+    "test",
+    "-p",
+    "verse-pbr"
+  ],
+  "stdout_stderr_log": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-native-build.log",
+  "exit": 0,
+  "result": {
+    "passed": 210,
+    "ignored": 18
+  },
+  "binding_method": "Exact invocation recorded by root; corresponding original build receipt and log retained."
+}

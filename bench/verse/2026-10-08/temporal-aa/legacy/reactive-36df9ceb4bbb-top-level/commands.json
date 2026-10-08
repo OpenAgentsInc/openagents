@@ -1,0 +1,242 @@
+{
+  "schema": "openagents.verse.temporal-aa.commands.v2",
+  "captures": [
+    {
+      "name": "10936-high-reactive-release-paired",
+      "source": "36df9ceb4bbb7fb0c7be30bd1c3538e0be78ab3e",
+      "profile": "release",
+      "quality": "high",
+      "binary_sha256": "3a852c752cabec9d7166ffd0b2e1e737a56f2748680cfc15b49d22c01795fee6",
+      "command": [
+        "/Users/christopherdavid/work/openagents-target-agent0/release/examples/meteor_showcase_capture",
+        "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-high-reactive-release-paired",
+        "--live",
+        "--settle-light",
+        "--no-video",
+        "--seconds",
+        "16",
+        "--impact-frame",
+        "469",
+        "--smoke-frame",
+        "600",
+        "--compare-temporal-aa",
+        "--sequence",
+        "439:484"
+      ],
+      "environment": {
+        "VERSE_QUALITY": "high",
+        "VERSE_KIT_PACK": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp"
+      },
+      "start_unix": 1791486318.550283,
+      "exit": 0,
+      "end_unix": 1791486380.680554
+    },
+    {
+      "name": "10936-medium-reactive-release-paired",
+      "source": "36df9ceb4bbb7fb0c7be30bd1c3538e0be78ab3e",
+      "profile": "release",
+      "quality": "medium",
+      "binary_sha256": "3a852c752cabec9d7166ffd0b2e1e737a56f2748680cfc15b49d22c01795fee6",
+      "command": [
+        "/Users/christopherdavid/work/openagents-target-agent0/release/examples/meteor_showcase_capture",
+        "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-medium-reactive-release-paired",
+        "--live",
+        "--settle-light",
+        "--no-video",
+        "--seconds",
+        "16",
+        "--impact-frame",
+        "469",
+        "--smoke-frame",
+        "600",
+        "--compare-temporal-aa",
+        "--sequence",
+        "439:484"
+      ],
+      "environment": {
+        "VERSE_QUALITY": "medium",
+        "VERSE_KIT_PACK": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp"
+      },
+      "start_unix": 1791486380.6929789,
+      "exit": 0,
+      "end_unix": 1791486439.509262
+    },
+    {
+      "name": "10936-pan-reactive-release-paired",
+      "source": "36df9ceb4bbb7fb0c7be30bd1c3538e0be78ab3e",
+      "profile": "release",
+      "quality": "high",
+      "binary_sha256": "3a852c752cabec9d7166ffd0b2e1e737a56f2748680cfc15b49d22c01795fee6",
+      "command": [
+        "/Users/christopherdavid/work/openagents-target-agent0/release/examples/meteor_showcase_capture",
+        "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-pan-reactive-release-paired",
+        "--live",
+        "--settle-light",
+        "--no-video",
+        "--seconds",
+        "8",
+        "--static-houses",
+        "--camera",
+        "pan",
+        "--compare-temporal-aa",
+        "--sequence",
+        "120:135"
+      ],
+      "environment": {
+        "VERSE_QUALITY": "high",
+        "VERSE_KIT_PACK": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp"
+      },
+      "start_unix": 1791486439.520669,
+      "exit": 0,
+      "end_unix": 1791486458.768908
+    },
+    {
+      "name": "10936-orbit-reactive-release-paired",
+      "source": "36df9ceb4bbb7fb0c7be30bd1c3538e0be78ab3e",
+      "profile": "release",
+      "quality": "high",
+      "binary_sha256": "3a852c752cabec9d7166ffd0b2e1e737a56f2748680cfc15b49d22c01795fee6",
+      "command": [
+        "/Users/christopherdavid/work/openagents-target-agent0/release/examples/meteor_showcase_capture",
+        "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-orbit-reactive-release-paired",
+        "--live",
+        "--settle-light",
+        "--no-video",
+        "--seconds",
+        "8",
+        "--static-houses",
+        "--camera",
+        "orbit",
+        "--compare-temporal-aa",
+        "--sequence",
+        "120:135"
+      ],
+      "environment": {
+        "VERSE_QUALITY": "high",
+        "VERSE_KIT_PACK": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp"
+      },
+      "start_unix": 1791486458.780359,
+      "exit": 0,
+      "end_unix": 1791486478.719424
+    }
+  ],
+  "batch_manifest": "proof/captures-manifest.json",
+  "assets": {
+    "kit": {
+      "path": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp",
+      "sha256": "c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e",
+      "bytes": 21467658,
+      "matches_published_pin": true,
+      "unpinned_override": false
+    },
+    "base_pack": {
+      "path": "/Users/christopherdavid/.codex/worktrees/bb65/openagents/assets/verse/everglade/a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f.vtp",
+      "sha256": "a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f",
+      "bytes": 10636202
+    }
+  },
+  "native_tests": [
+    {
+      "name": "pbr::temporal::tests::hidden_motion_cannot_overwrite_the_visible_surface",
+      "command": [
+        "/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse_pbr-ec22d2725ec15267",
+        "pbr::temporal::tests::hidden_motion_cannot_overwrite_the_visible_surface",
+        "--ignored",
+        "--exact",
+        "--test-threads=1"
+      ],
+      "source": "df355b0cd1b45843b54aea40a6e6f3d665dfa237",
+      "binary_sha256": "23604df14cf3636ede320b964ba8755c1d9e49e672d49cf8c3ceaf1dc3873102",
+      "samples": [
+        1,
+        4
+      ],
+      "result": "passed",
+      "exit": 0,
+      "proof": "proof/native-0.log",
+      "covers_reactive_head": false,
+      "covers_occlusion": false
+    },
+    {
+      "name": "pbr::temporal::tests::empty_motion_keeps_camera_reprojection_with_stale_object_data",
+      "command": [
+        "/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse_pbr-ec22d2725ec15267",
+        "pbr::temporal::tests::empty_motion_keeps_camera_reprojection_with_stale_object_data",
+        "--ignored",
+        "--exact",
+        "--test-threads=1"
+      ],
+      "source": "df355b0cd1b45843b54aea40a6e6f3d665dfa237",
+      "binary_sha256": "23604df14cf3636ede320b964ba8755c1d9e49e672d49cf8c3ceaf1dc3873102",
+      "samples": [
+        1
+      ],
+      "result": "passed",
+      "exit": 0,
+      "proof": "proof/native-1.log",
+      "covers_reactive_head": false,
+      "covers_occlusion": false
+    },
+    {
+      "name": "pbr::temporal::reactive_tests::moving_reactive_geometry_cannot_leave_history_in_a_bright_trail",
+      "command": [
+        "/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse_pbr-ec22d2725ec15267",
+        "pbr::temporal::reactive_tests::moving_reactive_geometry_cannot_leave_history_in_a_bright_trail",
+        "--ignored",
+        "--exact",
+        "--test-threads=1"
+      ],
+      "source": "df355b0cd1b45843b54aea40a6e6f3d665dfa237",
+      "binary_sha256": "23604df14cf3636ede320b964ba8755c1d9e49e672d49cf8c3ceaf1dc3873102",
+      "samples": [
+        1,
+        4
+      ],
+      "result": "passed",
+      "exit": 0,
+      "proof": "proof/native-2.log",
+      "covers_reactive_head": true,
+      "covers_occlusion": true
+    },
+    {
+      "name": "pbr::temporal::reactive_tests::reactive_history_rejection_matches_the_actual_bilinear_footprint",
+      "command": [
+        "/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse_pbr-ec22d2725ec15267",
+        "pbr::temporal::reactive_tests::reactive_history_rejection_matches_the_actual_bilinear_footprint",
+        "--ignored",
+        "--exact",
+        "--test-threads=1"
+      ],
+      "source": "df355b0cd1b45843b54aea40a6e6f3d665dfa237",
+      "binary_sha256": "23604df14cf3636ede320b964ba8755c1d9e49e672d49cf8c3ceaf1dc3873102",
+      "samples": [
+        1,
+        4
+      ],
+      "result": "passed",
+      "exit": 0,
+      "proof": "proof/native-3.log",
+      "covers_reactive_head": true,
+      "covers_occlusion": false
+    }
+  ],
+  "native_provenance": {
+    "production_source": "36df9ceb4bbb7fb0c7be30bd1c3538e0be78ab3e",
+    "native_source": "df355b0cd1b45843b54aea40a6e6f3d665dfa237",
+    "native_binary_sha256": "23604df14cf3636ede320b964ba8755c1d9e49e672d49cf8c3ceaf1dc3873102",
+    "only_source_difference": "crates/verse-pbr/src/pbr/temporal_reactive_tests.rs: production WGSL preprocessing in the native harness",
+    "patch": "proof/native-fixture-only.patch",
+    "production_code_identical": true,
+    "parser_attempt0": "proof/native-attempt0/10936-reactive-native-manifest.json",
+    "parser_failure": "proof/native-attempt0/10936-reactive-native-2.log",
+    "scope_limit": "Native head fixture uses flat RGB color and zero sharpening; production uses HDR ribbons, bloom and 0.15 sharpening. Native results do not by themselves establish the live visual gate."
+  },
+  "receipts": {
+    "quiet": "proof/quiet-receipt.json",
+    "gpu": "proof/gpu-lease.json",
+    "build": "proof/build-lease.json",
+    "native_fixture_build": "proof/native-fixture-build-lease.json"
+  },
+  "historical_commands": "legacy/pre-reactive-c559/commands.json",
+  "recording": "Root launcher records exact source/binary/argv/environment and receipts. Raw paired samples and all outliers are retained. Image analysis starts only after all six jobs and both leases finish. No evidence preparation Cargo/GPU commands or source edits."
+}

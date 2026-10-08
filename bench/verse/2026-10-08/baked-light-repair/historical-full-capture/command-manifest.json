@@ -1,0 +1,21 @@
+{
+  "source": "9967c94cef19031ff91eac6d8cd222ab7c3024eb",
+  "profile": "dev with pinned workspace optimized dependencies",
+  "binary_sha256": "787dc57f5cd988a9a4c882ed04b13a709c8af2d13689427bde0f94e7782d20da",
+  "command": [
+    "/Users/christopherdavid/work/openagents-target-agent2/debug/examples/baked_light_capture",
+    "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-full-capture",
+    "128",
+    "10441"
+  ],
+  "environment": {
+    "VERSE_QUALITY": "high",
+    "VERSE_HOME": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-capture-cache",
+    "VERSE_KIT_PACK": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp",
+    "VERSE_KIT_BAKE": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-matched-bake/090f106f9c459f62f9cd67902a18531b7e00f9d15e292e0b60a0dd7b231b0b6b.vlay",
+    "VERSE_KIT_UNPINNED": "1"
+  },
+  "start_unix": 1791483492.348306,
+  "exit": 1,
+  "end_unix": 1791483827.9826932
+}

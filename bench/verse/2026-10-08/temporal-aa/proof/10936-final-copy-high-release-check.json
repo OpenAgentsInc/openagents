@@ -1,0 +1,127 @@
+{
+  "status": "case_integrity_pass",
+  "case": "high-release",
+  "simulation_frames": 960,
+  "last_simulation_frame": 959,
+  "phase_statistic_frames": 960,
+  "submission_policy": "bounded_two_frames",
+  "rebuild_capture": {
+    "pristine_image": "pristine.png",
+    "restored_image": "restored.png",
+    "pristine_frame": 0,
+    "restoration_frame": 960,
+    "after_simulation_frame": 959,
+    "simulation_seconds": 15.983333587646484,
+    "stage_time": 0.0,
+    "shot": {
+      "eye": [
+        -34.560752868652344,
+        8.5,
+        -69.30223083496094
+      ],
+      "target": [
+        -55.0,
+        7.5,
+        -7.0
+      ]
+    },
+    "pristine_view": {
+      "eye": [
+        -34.560752868652344,
+        8.5,
+        -69.30223083496094
+      ],
+      "view_proj": [
+        [
+          -0.9783461093902588,
+          -0.008701224811375141,
+          -0.31173041462898254,
+          -0.31168362498283386
+        ],
+        [
+          0.0,
+          1.830275058746338,
+          -0.01525155920535326,
+          -0.01524927094578743
+        ],
+        [
+          -0.32096216082572937,
+          0.026522783562541008,
+          0.9502061605453491,
+          0.9500635862350464
+        ],
+        [
+          -56.0557746887207,
+          -14.019970893859863,
+          54.9073600769043,
+          55.199119567871094
+        ]
+      ]
+    },
+    "restored_view": {
+      "eye": [
+        -34.560752868652344,
+        8.5,
+        -69.30223083496094
+      ],
+      "view_proj": [
+        [
+          -0.9783461093902588,
+          -0.008701224811375141,
+          -0.31173041462898254,
+          -0.31168362498283386
+        ],
+        [
+          0.0,
+          1.830275058746338,
+          -0.01525155920535326,
+          -0.01524927094578743
+        ],
+        [
+          -0.32096216082572937,
+          0.026522783562541008,
+          0.9502061605453491,
+          0.9500635862350464
+        ],
+        [
+          -56.0557746887207,
+          -14.019970893859863,
+          54.9073600769043,
+          55.199119567871094
+        ]
+      ]
+    },
+    "method": "Applies the same rebuild intent as R after the final simulation frame, then renders with the saved pristine camera and stage without advancing simulation. The runtime clock and character state continue; exact pristine bake restoration is checked by unit tests."
+  },
+  "timing_scope": "The capture records the final primary drain before deferred artifact writes and R. R is an additional artifact render after the last simulation frame; it does not enter the primary frame ledger or phase statistics. The command wall interval includes setup, artifact writes, and R.",
+  "warning_diagnostics": null,
+  "acceptance": {
+    "visual": null,
+    "timing": null,
+    "promotion_authorized": false
+  },
+  "source": "fb9a5fd280db673926cfd0d649f924da3091a24b",
+  "binary_sha256": "d160221522b37289b3211486457e7981d96cfba22667db4d6afc1645ef1d9090",
+  "leases": {
+    "gpu": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-release-gpu.json",
+      "sha256": "c643cce0d704d09a33dd64fdc835d7c0818348ef89b4a561a328b52b2f8e260f",
+      "bytes": 487
+    },
+    "quiet": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-release-quiet.json",
+      "sha256": "380604d75f53c3ce5ce676a119b896351b1170ba7402cd374d586ecf0591c857",
+      "bytes": 488
+    }
+  },
+  "manifest": {
+    "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-release-manifest.json",
+    "sha256": "d702dbbce176bd82a112a63d81860a66a4477efcb0bb5ffebc1a53556ca1dc63",
+    "bytes": 4840
+  },
+  "report": {
+    "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-release/capture.json",
+    "sha256": "0c64083803849f5a8a60454e809c92e61dd0e02f9680bd3592a6d6d14b48c4ba",
+    "bytes": 620975
+  }
+}

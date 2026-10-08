@@ -1,0 +1,161 @@
+{
+  "schema": "openagents.verse.saved-view-rebuild.v1",
+  "status": "root_visual_review_pending",
+  "source": "5d7fff0247c6fef70447fe96103838a39e38b4f8",
+  "profile": "release",
+  "features": [
+    "capture"
+  ],
+  "binary_sha256": "42b0843835da8ec49e55b5694f4a3b38793ae03bc844c56836f09195d1ce471d",
+  "manifest": {
+    "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-high-release-manifest.json",
+    "sha256": "d72174bf72b224cbfe8299d04acb62a2288db7f34f195819a35a51a7a748af71",
+    "bytes": 4557
+  },
+  "report": {
+    "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-high-release/capture.json",
+    "sha256": "3a02eb154c0373eeff2f0838b7caae88a25a8ba1db042047eea36a595c144a14",
+    "bytes": 619378
+  },
+  "images": {
+    "pristine": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-high-release/pristine.png",
+      "sha256": "e54fc1095b02e74eee6ca4b53acceb4044cbff0707474e8a1da5c54405c96439",
+      "bytes": 1549508
+    },
+    "restored": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-high-release/restored.png",
+      "sha256": "fd6e4bf8352864384a75d72063f34acb86e1b9823e75d9d844884a4ad2f0a360",
+      "bytes": 1553167
+    }
+  },
+  "rebuild_capture": {
+    "pristine_image": "pristine.png",
+    "restored_image": "restored.png",
+    "pristine_frame": 0,
+    "restoration_frame": 960,
+    "after_simulation_frame": 959,
+    "simulation_seconds": 15.983333587646484,
+    "stage_time": 0.0,
+    "shot": {
+      "eye": [
+        -34.560752868652344,
+        8.5,
+        -69.30223083496094
+      ],
+      "target": [
+        -55.0,
+        7.5,
+        -7.0
+      ]
+    },
+    "pristine_view": {
+      "eye": [
+        -34.560752868652344,
+        8.5,
+        -69.30223083496094
+      ],
+      "view_proj": [
+        [
+          -0.9783461093902588,
+          -0.008701224811375141,
+          -0.31173041462898254,
+          -0.31168362498283386
+        ],
+        [
+          0.0,
+          1.830275058746338,
+          -0.01525155920535326,
+          -0.01524927094578743
+        ],
+        [
+          -0.32096216082572937,
+          0.026522783562541008,
+          0.9502061605453491,
+          0.9500635862350464
+        ],
+        [
+          -56.0557746887207,
+          -14.019970893859863,
+          54.9073600769043,
+          55.199119567871094
+        ]
+      ]
+    },
+    "restored_view": {
+      "eye": [
+        -34.560752868652344,
+        8.5,
+        -69.30223083496094
+      ],
+      "view_proj": [
+        [
+          -0.9783461093902588,
+          -0.008701224811375141,
+          -0.31173041462898254,
+          -0.31168362498283386
+        ],
+        [
+          0.0,
+          1.830275058746338,
+          -0.01525155920535326,
+          -0.01524927094578743
+        ],
+        [
+          -0.32096216082572937,
+          0.026522783562541008,
+          0.9502061605453491,
+          0.9500635862350464
+        ],
+        [
+          -56.0557746887207,
+          -14.019970893859863,
+          54.9073600769043,
+          55.199119567871094
+        ]
+      ]
+    },
+    "method": "Applies the same rebuild intent as R after the final simulation frame, then renders with the saved pristine camera and stage without advancing simulation. The runtime clock and character state continue; exact pristine bake restoration is checked by unit tests."
+  },
+  "submission_frames": 960,
+  "completed_frames": 960,
+  "phase_statistic_frames": 960,
+  "phase_end": {
+    "frame": 959,
+    "rigid_instances": 545,
+    "awake_bodies": 0,
+    "sleeping_bodies": 118,
+    "merged_chunks": 391,
+    "contact_points": 2,
+    "warm_candidates": 4,
+    "static_parts": 674,
+    "static_groups": 148,
+    "static_vertices": 53550,
+    "static_transformed_vertices_cumulative": 53550,
+    "static_rebuilds_cumulative": 85
+  },
+  "leases": {
+    "gpu": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-high-release-gpu.json",
+      "sha256": "bbdfbc522c3e61085ad2effcdf5a21985dd6e6b5a817b9e90442d568ae4dae37",
+      "bytes": 487
+    },
+    "quiet": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-high-release-quiet.json",
+      "sha256": "5d21bb21c9d5f01a89735edfdda89257a5df9df092a069d3c93c4f08dd10d781",
+      "bytes": 490
+    }
+  },
+  "temporal_aa_enabled": true,
+  "limits": [
+    "Saved pristine view and stage are reused after R without a simulation step.",
+    "Clock and character state continue, so pristine/R pixel equality is not claimed.",
+    "R is artifact frame 960 after simulation frame 959 and does not enter the 960 primary frame rows or phase statistics.",
+    "This supplement adds a final-source R view; the source46cf matched AA-off controls retain their original source and scope.",
+    "Visual review is pending; no off/on control, GPU-duration, or selective-worker convergence claim is derived from this R pair."
+  ],
+  "acceptance": {
+    "visual": null,
+    "promotion_authorized": false
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "provenance": "Exact Cargo argv and source from the parent command history; retained leases record build coverage.",
+  "checks": [
+    {
+      "source": "97e8b2b0937d9641b6c8760b2e781579c5ba83a8",
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "verse-pbr",
+        "-p",
+        "verse-zone-everglade"
+      ],
+      "log": "published-integration-products.log",
+      "build_lease": "published-integration-products-lease.json",
+      "results": {
+        "verse-pbr": {
+          "passed": 200,
+          "ignored": 13
+        },
+        "verse-zone-everglade": {
+          "passed": 318,
+          "ignored": 2
+        },
+        "verse-private": {
+          "passed": 3,
+          "ignored": 0
+        }
+      }
+    },
+    {
+      "source": "290c1590726189dbdabb5693125cfa0fbca8a779",
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "verse",
+        "--lib",
+        "gles_tests"
+      ],
+      "log": "published-shader-translation.log",
+      "build_lease": "published-shader-translation-lease.json",
+      "results": {
+        "gles_tests": {
+          "passed": 10,
+          "ignored": 0
+        }
+      },
+      "scope": "The earlier wrong-package invocation matches zero tests and is not counted."
+    }
+  ]
+}

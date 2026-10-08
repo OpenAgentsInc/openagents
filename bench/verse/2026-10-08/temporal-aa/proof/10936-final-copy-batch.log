@@ -1,0 +1,40 @@
+Automatic compiler group paused
+Starting high-dev
+10936-final-copy-high-dev exit 0
+/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-dev-check.json
+{"case": "high-dev", "phase_p99_ms": {"before": 3.430332899093628, "swarm": 14.00333309173584, "after": 8.471875190734863}}
+Starting high-release
+openagents lease: waiting for quiet: quiet waits for 1 running build to finish; new builds wait behind it: build held by codex:01a119ab-cb4c-7331-b0dc-8ddce4fb09a0 (Blender pid 17998)
+10936-final-copy-high-release exit 0
+/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-release-check.json
+{"case": "high-release", "phase_p99_ms": {"before": 2.8966660499572754, "swarm": 10.806458473205566, "after": 6.399457931518555}}
+Starting high-paired
+10936-final-copy-high-paired exit 0
+/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-paired-check.json
+{"case": "high-paired", "phase_p99_ms": {"before": 8.271499633789062, "swarm": 31.943708419799805, "after": 12.714500427246094}, "taa_wall_95pct_upper_ms": {"before": 1.0005329071435916, "swarm": 0.8530107841599722, "after": 0.9915177233364476}}
+Starting medium-paired
+openagents lease: waiting for quiet: quiet waits for 1 running build to finish; new builds wait behind it: build held by codex:01a119ab-cb4c-7331-b0dc-8ddce4fb09a0 (Blender pid 21633)
+10936-final-copy-medium-paired exit 0
+/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-medium-paired-check.json
+{"case": "medium-paired", "phase_p99_ms": {"before": 8.668208122253418, "swarm": 19.17275047302246, "after": 16.249122619628906}, "taa_wall_95pct_upper_ms": {"before": 0.9504775326287314, "swarm": 1.4200698620700212, "after": 1.3358053326856132}}
+Starting pan-paired
+openagents lease: waiting for quiet: quiet waits for 1 running build to finish; new builds wait behind it: build held by codex:01a119ab-cb4c-7331-b0dc-8ddce4fb09a0 (Blender pid 32444)
+10936-final-copy-pan-paired exit 0
+/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-pan-paired-check.json
+{"case": "pan-paired", "phase_p99_ms": {"before": 12.802623748779297}, "taa_wall_95pct_upper_ms": {"before": 0.7279358380413682}}
+Starting orbit-paired
+10936-final-copy-orbit-paired exit 0
+/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-orbit-paired-check.json
+{"case": "orbit-paired", "phase_p99_ms": {"before": 13.136958122253418}, "taa_wall_95pct_upper_ms": {"before": 0.7166912555436411}}
+All six cases finished
+Starting fixed replicate 2
+openagents lease: waiting for quiet: quiet waits for 1 running build to finish; new builds wait behind it: build held by codex:01a119ab-cb4c-7331-b0dc-8ddce4fb09a0 (Blender pid 32436)
+10936-final-copy-high-replicate-2 exit 0
+/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-replicate-2-check.json
+Starting fixed replicate 3
+openagents lease: waiting for gpu: gpu is held: gpu held by codex:01a119ab-cb4c-7331-b0dc-8ddce4fb09a0 (Blender pid 42651)
+openagents lease: waiting for quiet: quiet waits for 1 running build to finish; new builds wait behind it: build held by codex:01a119ab-cb4c-7331-b0dc-8ddce4fb09a0 (cargo pid 44140)
+10936-final-copy-high-replicate-3 exit 0
+/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-replicate-3-check.json
+Both registered extra trials finished
+Automatic compiler group resumed

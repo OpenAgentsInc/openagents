@@ -1,0 +1,25 @@
+{
+  "schema": "openagents.verse-baked-light-preflight.v1",
+  "verified": true,
+  "scene": "f55a1e76fca2e2b96af777e296549aa9b51776cadbcfff6eaf1c77a8ad83b2ab",
+  "vertices": 4326184,
+  "bake_key": "090f106f9c459f62f9cd67902a18531b7e00f9d15e292e0b60a0dd7b231b0b6b",
+  "inputs": {
+    "base_pack": {
+      "path": "/Users/christopherdavid/.codex/worktrees/10907-budgeted-relight/openagents/assets/verse/everglade/a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f.vtp",
+      "bytes": 10636202,
+      "sha256": "a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f"
+    },
+    "kit": {
+      "path": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp",
+      "bytes": 21467658,
+      "sha256": "c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e"
+    },
+    "layers": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-matched-bake/090f106f9c459f62f9cd67902a18531b7e00f9d15e292e0b60a0dd7b231b0b6b.vlay",
+      "bytes": 51684139,
+      "sha256": "fc5414a1bfef9e730f3d7d779e4447f12cc86d4e571042eec42518abb30ef7c2"
+    }
+  },
+  "captured_before_simulation": true
+}

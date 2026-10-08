@@ -1,0 +1,37 @@
+{
+  "schema": "openagents.verse.temporal-staged.v1",
+  "status": "review_pending",
+  "source": "fb9a5fd280db673926cfd0d649f924da3091a24b",
+  "acceptance": {
+    "visual": null,
+    "timing": null,
+    "promotion_authorized": false
+  },
+  "reports": {
+    "high-dev": {
+      "file": "reports/high-dev.json",
+      "sha256": "f808b4cf8c8b270db4e86b6338c2ae409683c96caf6ec670b3a56eff860c1622"
+    },
+    "high-release": {
+      "file": "reports/high-release.json",
+      "sha256": "0c64083803849f5a8a60454e809c92e61dd0e02f9680bd3592a6d6d14b48c4ba"
+    },
+    "high-paired": {
+      "file": "reports/high-paired.json",
+      "sha256": "19c5a711a089448f6e6e889aba767d015015f9f67120847be50c18f5b7f16129"
+    },
+    "medium-paired": {
+      "file": "reports/medium-paired.json",
+      "sha256": "0c6f6357681e6b32c0456e7670c8870ac762400232ae982e001abdaa6bccc392"
+    },
+    "pan-paired": {
+      "file": "reports/pan-paired.json",
+      "sha256": "d871aed7a5e4983f1dcaf626db486d40c35bf7792f34c843404d8138737b36df"
+    },
+    "orbit-paired": {
+      "file": "reports/orbit-paired.json",
+      "sha256": "470d53579d9423b5be8f606eed8d4a8a7b32dd30066ef87694a8dd9f2d716735"
+    }
+  },
+  "note": "Raw reports retain every sample and outlier. Independent case leases finished before curation. No top-level acceptance is changed."
+}

@@ -1,0 +1,47 @@
+{
+  "schema": "openagents.verse-baked-light-preflight.v1",
+  "verified": true,
+  "scene": "f55a1e76fca2e2b96af777e296549aa9b51776cadbcfff6eaf1c77a8ad83b2ab",
+  "vertices": 4326184,
+  "bake_key": "090f106f9c459f62f9cd67902a18531b7e00f9d15e292e0b60a0dd7b231b0b6b",
+  "inputs": {
+    "base_pack": {
+      "path": "/Users/christopherdavid/.codex/worktrees/bb65/openagents/assets/verse/everglade/a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f.vtp",
+      "bytes": 10636202,
+      "sha256": "a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f"
+    },
+    "kit": {
+      "path": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp",
+      "bytes": 21467658,
+      "sha256": "c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e"
+    },
+    "layers": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-matched-bake/090f106f9c459f62f9cd67902a18531b7e00f9d15e292e0b60a0dd7b231b0b6b.vlay",
+      "bytes": 51684139,
+      "sha256": "fc5414a1bfef9e730f3d7d779e4447f12cc86d4e571042eec42518abb30ef7c2"
+    }
+  },
+  "run": {
+    "command": [
+      "/Users/christopherdavid/work/openagents-target-agent0/debug/examples/baked_light_capture",
+      "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-published-clear",
+      "128",
+      "2",
+      "--destruction-only",
+      "--repair-hold-seconds",
+      "600"
+    ],
+    "mode": "destruction-only",
+    "preflight_only": false,
+    "repair_hold_seconds": 600,
+    "default_repair_hold_seconds": 180,
+    "source_commit": "290c1590726189dbdabb5693125cfa0fbca8a779",
+    "source_commit_origin": "Capture launcher; null when unspecified",
+    "binary": {
+      "path": "/Users/christopherdavid/work/openagents-target-agent0/debug/examples/baked_light_capture",
+      "bytes": 60516984,
+      "sha256": "57730fa84bcfc3cfccb3ecf5d0df8ebaaeb78f264e1f7857fa459b2c40d45996"
+    }
+  },
+  "captured_before_simulation": true
+}

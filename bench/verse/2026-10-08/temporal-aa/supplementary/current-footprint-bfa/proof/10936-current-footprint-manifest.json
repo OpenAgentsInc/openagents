@@ -1,0 +1,35 @@
+{
+  "source": "bfa66f3b07e8081d06bb084fa1e348d946684986",
+  "profile": "dev with optimized dependencies",
+  "features": [
+    "capture",
+    "temporal-diagnostics"
+  ],
+  "binary_sha256": "cc0377dc974ee3530884aee951de9b365c29b177567e83b7af8c0b42db3f587b",
+  "command": [
+    "/Users/christopherdavid/work/openagents-target-agent0/debug/examples/meteor_showcase_capture",
+    "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-current-footprint",
+    "--live",
+    "--settle-light",
+    "--no-video",
+    "--seconds",
+    "9",
+    "--impact-frame",
+    "469",
+    "--smoke-frame",
+    "520",
+    "--compare-temporal-aa",
+    "--sequence",
+    "464:476",
+    "--temporal-diagnostics"
+  ],
+  "environment": {
+    "VERSE_QUALITY": "high",
+    "VERSE_KIT_PACK": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp",
+    "OPENAGENTS_CAPTURE_SOURCE_COMMIT": "bfa66f3b07e8081d06bb084fa1e348d946684986"
+  },
+  "purpose": "Actual live HDR before resolve, new history, and after sharpening; no timing gate",
+  "start_unix": 1791492932.4500322,
+  "exit": 0,
+  "end_unix": 1791493034.871168
+}

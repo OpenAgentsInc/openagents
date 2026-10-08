@@ -1,0 +1,152 @@
+[
+  {
+    "source": "55f1054effa6d764c94c3c237e491ec2ef24fef1",
+    "command": [
+      "/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse_pbr-54cd3c83fbd60abf",
+      "pbr::gpu::reactive_lit_tests::photo_encode_tracks_a_reactive_head_over_a_stationary_receiver_with_camera_motion",
+      "--ignored",
+      "--exact",
+      "--test-threads=1"
+    ],
+    "test": "pbr::gpu::reactive_lit_tests::photo_encode_tracks_a_reactive_head_over_a_stationary_receiver_with_camera_motion",
+    "binary_sha256": "d9ca94274018fb6aa2f1a42310f63d1592aa869540bba5677847a3cf56e9943e",
+    "start_unix": 1791493774.145241,
+    "exit": 0,
+    "end_unix": 1791493775.40367
+  },
+  {
+    "source": "55f1054effa6d764c94c3c237e491ec2ef24fef1",
+    "command": [
+      "/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse_pbr-54cd3c83fbd60abf",
+      "pbr::gpu::reactive_lit_tests::photo_encode_preserves_reactive_coverage_and_history_beside_an_hdr_ribbon",
+      "--ignored",
+      "--exact",
+      "--test-threads=1"
+    ],
+    "test": "pbr::gpu::reactive_lit_tests::photo_encode_preserves_reactive_coverage_and_history_beside_an_hdr_ribbon",
+    "binary_sha256": "d9ca94274018fb6aa2f1a42310f63d1592aa869540bba5677847a3cf56e9943e",
+    "start_unix": 1791493775.421858,
+    "exit": 0,
+    "end_unix": 1791493776.033601
+  },
+  {
+    "source": "55f1054effa6d764c94c3c237e491ec2ef24fef1",
+    "command": [
+      "/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse_pbr-54cd3c83fbd60abf",
+      "pbr::temporal::reactive_tests::a_reactive_head_cannot_seed_neighbor_history_through_color_conditioning",
+      "--ignored",
+      "--exact",
+      "--test-threads=1"
+    ],
+    "test": "pbr::temporal::reactive_tests::a_reactive_head_cannot_seed_neighbor_history_through_color_conditioning",
+    "binary_sha256": "d9ca94274018fb6aa2f1a42310f63d1592aa869540bba5677847a3cf56e9943e",
+    "start_unix": 1791493776.0540879,
+    "exit": 0,
+    "end_unix": 1791493776.7092721
+  },
+  {
+    "source": "55f1054effa6d764c94c3c237e491ec2ef24fef1",
+    "command": [
+      "/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse_pbr-54cd3c83fbd60abf",
+      "pbr::gpu::reactive_lit_tests::production_lit_projection_marks_every_visible_faceted_sample",
+      "--ignored",
+      "--exact",
+      "--test-threads=1"
+    ],
+    "test": "pbr::gpu::reactive_lit_tests::production_lit_projection_marks_every_visible_faceted_sample",
+    "binary_sha256": "d9ca94274018fb6aa2f1a42310f63d1592aa869540bba5677847a3cf56e9943e",
+    "start_unix": 1791493776.731738,
+    "exit": 0,
+    "end_unix": 1791493777.2659998
+  },
+  {
+    "source": "55f1054effa6d764c94c3c237e491ec2ef24fef1",
+    "command": [
+      "/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse_pbr-54cd3c83fbd60abf",
+      "pbr::temporal::tests::hidden_motion_cannot_overwrite_the_visible_surface",
+      "--ignored",
+      "--exact",
+      "--test-threads=1"
+    ],
+    "test": "pbr::temporal::tests::hidden_motion_cannot_overwrite_the_visible_surface",
+    "binary_sha256": "d9ca94274018fb6aa2f1a42310f63d1592aa869540bba5677847a3cf56e9943e",
+    "start_unix": 1791493777.284775,
+    "exit": 0,
+    "end_unix": 1791493777.6229389
+  },
+  {
+    "source": "55f1054effa6d764c94c3c237e491ec2ef24fef1",
+    "command": [
+      "/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse_pbr-54cd3c83fbd60abf",
+      "pbr::temporal::tests::empty_motion_keeps_camera_reprojection_with_stale_object_data",
+      "--ignored",
+      "--exact",
+      "--test-threads=1"
+    ],
+    "test": "pbr::temporal::tests::empty_motion_keeps_camera_reprojection_with_stale_object_data",
+    "binary_sha256": "d9ca94274018fb6aa2f1a42310f63d1592aa869540bba5677847a3cf56e9943e",
+    "start_unix": 1791493777.6407669,
+    "exit": 0,
+    "end_unix": 1791493777.930725
+  },
+  {
+    "source": "55f1054effa6d764c94c3c237e491ec2ef24fef1",
+    "command": [
+      "/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse_pbr-54cd3c83fbd60abf",
+      "pbr::temporal::reactive_tests::moving_reactive_geometry_cannot_leave_history_in_a_bright_trail",
+      "--ignored",
+      "--exact",
+      "--test-threads=1"
+    ],
+    "test": "pbr::temporal::reactive_tests::moving_reactive_geometry_cannot_leave_history_in_a_bright_trail",
+    "binary_sha256": "d9ca94274018fb6aa2f1a42310f63d1592aa869540bba5677847a3cf56e9943e",
+    "start_unix": 1791493777.9480672,
+    "exit": 0,
+    "end_unix": 1791493778.4203808
+  },
+  {
+    "source": "55f1054effa6d764c94c3c237e491ec2ef24fef1",
+    "command": [
+      "/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse_pbr-54cd3c83fbd60abf",
+      "pbr::temporal::reactive_tests::reactive_history_rejection_matches_the_actual_bilinear_footprint",
+      "--ignored",
+      "--exact",
+      "--test-threads=1"
+    ],
+    "test": "pbr::temporal::reactive_tests::reactive_history_rejection_matches_the_actual_bilinear_footprint",
+    "binary_sha256": "d9ca94274018fb6aa2f1a42310f63d1592aa869540bba5677847a3cf56e9943e",
+    "start_unix": 1791493778.437835,
+    "exit": 0,
+    "end_unix": 1791493778.7914822
+  },
+  {
+    "source": "55f1054effa6d764c94c3c237e491ec2ef24fef1",
+    "command": [
+      "/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse_pbr-54cd3c83fbd60abf",
+      "pbr::gpu::baked_tests::static_light_patches_cross_rows_and_layers_and_survive_late_bakes_until_restore",
+      "--ignored",
+      "--exact",
+      "--test-threads=1"
+    ],
+    "test": "pbr::gpu::baked_tests::static_light_patches_cross_rows_and_layers_and_survive_late_bakes_until_restore",
+    "binary_sha256": "d9ca94274018fb6aa2f1a42310f63d1592aa869540bba5677847a3cf56e9943e",
+    "start_unix": 1791493778.8093991,
+    "exit": 0,
+    "end_unix": 1791493779.1949272
+  },
+  {
+    "source": "55f1054effa6d764c94c3c237e491ec2ef24fef1",
+    "command": [
+      "/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse_pbr-54cd3c83fbd60abf",
+      "pbr::gpu::baked_tests::rigid_light_ranges_wrap_max_grow_rebind_and_restore_direct_ambient",
+      "--ignored",
+      "--exact",
+      "--test-threads=1"
+    ],
+    "test": "pbr::gpu::baked_tests::rigid_light_ranges_wrap_max_grow_rebind_and_restore_direct_ambient",
+    "binary_sha256": "d9ca94274018fb6aa2f1a42310f63d1592aa869540bba5677847a3cf56e9943e",
+    "start_unix": 1791493779.2136881,
+    "exit": 0,
+    "end_unix": 1791493779.575716
+  }
+]

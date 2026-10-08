@@ -1,0 +1,19 @@
+{
+  "schema": "openagents.verse.temporal-replication-plan.v1",
+  "registered_unix": 1791497248.3639538,
+  "runtime_source": "fb9a5fd280db673926cfd0d649f924da3091a24b",
+  "first_report": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-paired/capture.json",
+  "first_report_sha256": null,
+  "reason": "Validate the corrected zero-alpha MRT color path and deferred MSAA resolve with exactly three High trials declared before any timing result from this runtime.",
+  "additional_trials": 2,
+  "total_trials": 3,
+  "additional_prefixes": [
+    "10936-final-copy-high-replicate-2",
+    "10936-final-copy-high-replicate-3"
+  ],
+  "command_policy": "Same release binary, quality, assets, balanced on/off order,960frames, live settle-light compare-temporal-aa, all-frame readback and requested sequence439:484. Each independently GPU outer/quiet inner. No removed rows or outliers.",
+  "primary_interval": "For eachphase, mean of all three equal-size per-run means; Studentt97.5%=4.303df2 * sampleSD(runmeans)/sqrt(3). Upper bound must be<1ms in everyphase.",
+  "supplementary_interval": "The existing balanced~60-frame block method pooled over all runs, with no block crossing a run boundary. All per-run bounds remain unchanged.",
+  "stopping_rule": "Exactly three High trials, regardless of intermediate results. If the primary three-run confidence upper bound fails, do not accept or add further runs of this runtime.",
+  "known_first_results": false
+}

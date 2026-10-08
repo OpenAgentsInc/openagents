@@ -1,0 +1,1193 @@
+{
+  "schema": "openagents.verse.image-inventory.v1",
+  "images": {
+    "aftermath-taa-off.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/aftermath-taa-off.png",
+      "sha256": "8937dfe3b8ddab679b070a59aeb08e7e4532e415a1da28daa0a28ce25a39b3b6",
+      "bytes": 1907949,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "aftermath-taa-on.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/aftermath-taa-on.png",
+      "sha256": "6e3ebe14cd5c5f46ad35675c13b81a74b4c7731fe7ae7b2f9e886822ec0cca9f",
+      "bytes": 1897544,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "aftermath.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/aftermath.png",
+      "sha256": "6e3ebe14cd5c5f46ad35675c13b81a74b4c7731fe7ae7b2f9e886822ec0cca9f",
+      "bytes": 1897544,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "establishing-taa-off.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/establishing-taa-off.png",
+      "sha256": "a348b90fdbea3daa1d977af69950b1350a5d2871268b95c7f4c2649b69726ebd",
+      "bytes": 1490103,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "establishing-taa-on.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/establishing-taa-on.png",
+      "sha256": "bc854ec666ec7f64d47dc87c5cc630f8846c857e7a6231a3ba2ca0302ce74963",
+      "bytes": 1236456,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "establishing.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/establishing.png",
+      "sha256": "bc854ec666ec7f64d47dc87c5cc630f8846c857e7a6231a3ba2ca0302ce74963",
+      "bytes": 1236456,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "frames/0464-taa-off.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/frames/0464-taa-off.png",
+      "sha256": "6d88b2f16d9d560d37587f01f6938ad215d2ae2086b1675e789b678e68023aa4",
+      "bytes": 1885290,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "frames/0464-taa-on.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/frames/0464-taa-on.png",
+      "sha256": "3111a8da259b01ce37b2d855b2db437abe719990cc2d4cefa9b28d379d91f52f",
+      "bytes": 1742231,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "frames/0464.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/frames/0464.png",
+      "sha256": "3111a8da259b01ce37b2d855b2db437abe719990cc2d4cefa9b28d379d91f52f",
+      "bytes": 1742231,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "frames/0465-taa-off.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/frames/0465-taa-off.png",
+      "sha256": "dd1650c77628f9f06c837bd4db78518e92c13ca8466390e96bd17c71c5aeb6c1",
+      "bytes": 1893178,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "frames/0465-taa-on.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/frames/0465-taa-on.png",
+      "sha256": "9e11269faf045bdef2cf105e052301ef919a6146c86f7fabd0fb12d1bea5ce4e",
+      "bytes": 1756308,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "frames/0465.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/frames/0465.png",
+      "sha256": "9e11269faf045bdef2cf105e052301ef919a6146c86f7fabd0fb12d1bea5ce4e",
+      "bytes": 1756308,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "frames/0466-taa-off.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/frames/0466-taa-off.png",
+      "sha256": "f7acec8ff6bc013ee478c5f173d7d22a42e08b9b694a858b8f87e2b80ed8709e",
+      "bytes": 1900429,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "frames/0466-taa-on.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/frames/0466-taa-on.png",
+      "sha256": "08e90820fae6d0f42e7999bac718d7f93519c22b2ad1d312395d25df2cfdb334",
+      "bytes": 1765539,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "frames/0466.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/frames/0466.png",
+      "sha256": "08e90820fae6d0f42e7999bac718d7f93519c22b2ad1d312395d25df2cfdb334",
+      "bytes": 1765539,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "frames/0467-taa-off.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/frames/0467-taa-off.png",
+      "sha256": "fb808e02c011d306f1ff9c8cb84a3d8ca70eecf7bcdf86293181dbf9984deb67",
+      "bytes": 1911157,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "frames/0467-taa-on.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/frames/0467-taa-on.png",
+      "sha256": "9efdde0f20ec9473118b0e44966fd97048d660226fd5188d35c39482f96c72fa",
+      "bytes": 1768985,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "frames/0467.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/frames/0467.png",
+      "sha256": "9efdde0f20ec9473118b0e44966fd97048d660226fd5188d35c39482f96c72fa",
+      "bytes": 1768985,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "frames/0468-taa-off.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/frames/0468-taa-off.png",
+      "sha256": "af411830e1bf80c48c80889f9e840ef22afe1810a85c3a253a90525744331e49",
+      "bytes": 1915374,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "frames/0468-taa-on.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/frames/0468-taa-on.png",
+      "sha256": "c910f24a3d56ab4c9164fc28011efbccf74179c2ee52329f47bd88ebb57b8a5b",
+      "bytes": 1782457,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "frames/0468.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/frames/0468.png",
+      "sha256": "c910f24a3d56ab4c9164fc28011efbccf74179c2ee52329f47bd88ebb57b8a5b",
+      "bytes": 1782457,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "frames/0469-taa-off.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/frames/0469-taa-off.png",
+      "sha256": "6dc68515da3f08019c9759f9f2ed297b0f29954e3ea1bd987a19199c80fc9fba",
+      "bytes": 1918229,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "frames/0469-taa-on.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/frames/0469-taa-on.png",
+      "sha256": "d39e190063f5875e043ffb86f053e1bbd36fc91ef2307f8affce93feebedd067",
+      "bytes": 1783797,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "frames/0469.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/frames/0469.png",
+      "sha256": "d39e190063f5875e043ffb86f053e1bbd36fc91ef2307f8affce93feebedd067",
+      "bytes": 1783797,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "frames/0470-taa-off.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/frames/0470-taa-off.png",
+      "sha256": "4f43475342b06d4578e465d072ef30263a84ea57d360c5dc5a65a9b53b904973",
+      "bytes": 1916239,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "frames/0470-taa-on.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/frames/0470-taa-on.png",
+      "sha256": "e821da30e0d3522b8415f4d66cbbe9d51e12eef0451e7f1314d4a5d541a29c39",
+      "bytes": 1781427,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "frames/0470.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/frames/0470.png",
+      "sha256": "e821da30e0d3522b8415f4d66cbbe9d51e12eef0451e7f1314d4a5d541a29c39",
+      "bytes": 1781427,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "frames/0471-taa-off.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/frames/0471-taa-off.png",
+      "sha256": "965be40c25235bbc51c2c39c520b08920861041a3f7af9bb7d2fc2bf7001a6af",
+      "bytes": 1911969,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "git",
+      "file": "selected/0471-taa-off.png"
+    },
+    "frames/0471-taa-on.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/frames/0471-taa-on.png",
+      "sha256": "0facf48a31c503dd7d4623ac3bcc5bbe9233eadd498ac4462c17006ae7f15864",
+      "bytes": 1778145,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "git",
+      "file": "selected/0471-taa-on.png"
+    },
+    "frames/0471.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/frames/0471.png",
+      "sha256": "0facf48a31c503dd7d4623ac3bcc5bbe9233eadd498ac4462c17006ae7f15864",
+      "bytes": 1778145,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "frames/0472-taa-off.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/frames/0472-taa-off.png",
+      "sha256": "6b760e868c59fcb577da28095b7219a33c6778d9646303f5ff54fe6fc986a619",
+      "bytes": 1905939,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "frames/0472-taa-on.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/frames/0472-taa-on.png",
+      "sha256": "9d0500b809424f398f97f162eab24904a0ab4f87970ceaaff1f883fa25d29b6c",
+      "bytes": 1767070,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "frames/0472.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/frames/0472.png",
+      "sha256": "9d0500b809424f398f97f162eab24904a0ab4f87970ceaaff1f883fa25d29b6c",
+      "bytes": 1767070,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "frames/0473-taa-off.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/frames/0473-taa-off.png",
+      "sha256": "ff30b77334d17a408431e6712d909fd3ef38d38c0ac81a0e44b3a7a4472cc203",
+      "bytes": 1904281,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "frames/0473-taa-on.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/frames/0473-taa-on.png",
+      "sha256": "abfff3d19b340c2d54a644983c4a57362a97c8277250a2c3c62bfac2b1281181",
+      "bytes": 1762177,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "frames/0473.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/frames/0473.png",
+      "sha256": "abfff3d19b340c2d54a644983c4a57362a97c8277250a2c3c62bfac2b1281181",
+      "bytes": 1762177,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "frames/0474-taa-off.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/frames/0474-taa-off.png",
+      "sha256": "5bec9cfc358bc889d3e3d063d07c1801b78ae34e233c91a31ad8a320a68770f1",
+      "bytes": 1896374,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "frames/0474-taa-on.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/frames/0474-taa-on.png",
+      "sha256": "38b591e83e7e6ed5a04c2eaa41df756aec267308c68b3a8825f592260c8ca1e2",
+      "bytes": 1753460,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "frames/0474.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/frames/0474.png",
+      "sha256": "38b591e83e7e6ed5a04c2eaa41df756aec267308c68b3a8825f592260c8ca1e2",
+      "bytes": 1753460,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "frames/0475-taa-off.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/frames/0475-taa-off.png",
+      "sha256": "b2663451ef488616e822a1fdc5c930d30f49269d76a15e0bf5e05a865ddd399c",
+      "bytes": 1894300,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "frames/0475-taa-on.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/frames/0475-taa-on.png",
+      "sha256": "c2d8df86b3805f7630a377cc44e3e160cd1a900fcf252c6119996ad6dbc76579",
+      "bytes": 1738604,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "frames/0475.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/frames/0475.png",
+      "sha256": "c2d8df86b3805f7630a377cc44e3e160cd1a900fcf252c6119996ad6dbc76579",
+      "bytes": 1738604,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "frames/0476-taa-off.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/frames/0476-taa-off.png",
+      "sha256": "a90dcf3832dc8bc92bc935cb1579a0fd8c00adeb7476efca77bd859b7e0368c6",
+      "bytes": 1896986,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "frames/0476-taa-on.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/frames/0476-taa-on.png",
+      "sha256": "158f073b0403987f9d8e259dedfa11b7a56bf9389cf7d11a22ab1a75f0382468",
+      "bytes": 1733172,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "frames/0476.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/frames/0476.png",
+      "sha256": "158f073b0403987f9d8e259dedfa11b7a56bf9389cf7d11a22ab1a75f0382468",
+      "bytes": 1733172,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "ground-smoke-taa-off.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/ground-smoke-taa-off.png",
+      "sha256": "e338117d549b0eaeb090557d5cc904b09decca3f4bafb6ea8b11338196d185a4",
+      "bytes": 1862311,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "ground-smoke-taa-on.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/ground-smoke-taa-on.png",
+      "sha256": "e4e6f3b32c9863e0e7de97c5ee4cac9c1dbe2a5b2d0fa8fea1af1616f3d18e28",
+      "bytes": 1681046,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "ground-smoke.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/ground-smoke.png",
+      "sha256": "e4e6f3b32c9863e0e7de97c5ee4cac9c1dbe2a5b2d0fa8fea1af1616f3d18e28",
+      "bytes": 1681046,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "impact-taa-off.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/impact-taa-off.png",
+      "sha256": "6dc68515da3f08019c9759f9f2ed297b0f29954e3ea1bd987a19199c80fc9fba",
+      "bytes": 1918229,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "impact-taa-on.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/impact-taa-on.png",
+      "sha256": "d39e190063f5875e043ffb86f053e1bbd36fc91ef2307f8affce93feebedd067",
+      "bytes": 1783797,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "impact.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/impact.png",
+      "sha256": "d39e190063f5875e043ffb86f053e1bbd36fc91ef2307f8affce93feebedd067",
+      "bytes": 1783797,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "temporal-diagnostics/0464-hdr-before-temporal.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0464-hdr-before-temporal.png",
+      "sha256": "7fb7c94a7ac7f759b9ff01437f2930cfe0c4b8e92d431de92849b6319bc1fb5d",
+      "bytes": 1754417,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "temporal-diagnostics/0464-hdr-history.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0464-hdr-history.png",
+      "sha256": "88bb5cf3433c99fa72fac67c6e313f17e20426811ea78017bca1d3187d19bb05",
+      "bytes": 1573141,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "temporal-diagnostics/0464-hdr-scene.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0464-hdr-scene.png",
+      "sha256": "88f02585007e997dfebf2b09d7c6607e0c0a0cc28b9a97a5ebd9908cf06b64e3",
+      "bytes": 1633569,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "temporal-diagnostics/0464-history-reactive.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0464-history-reactive.png",
+      "sha256": "75cf22e85b6dde2fa3dc8a9126bfb25b6185eeaf953d74620698f031f7fdc8cd",
+      "bytes": 10887,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "git",
+      "file": "masks/0464-history-reactive.png"
+    },
+    "temporal-diagnostics/0464-marker.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0464-marker.png",
+      "sha256": "2b0875802fdfa15b3a193868b45797724105a6f9c9e691c2e9bb27d9c2fbda6a",
+      "bytes": 11310,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "git",
+      "file": "masks/0464-marker.png"
+    },
+    "temporal-diagnostics/0465-hdr-before-temporal.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0465-hdr-before-temporal.png",
+      "sha256": "9b3a3ec9c80a6fd3b1e2f7fb976a8efee09bb7ea7a44baa1edb329d3eca2ac41",
+      "bytes": 1765084,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "temporal-diagnostics/0465-hdr-history.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0465-hdr-history.png",
+      "sha256": "2695ac28a0b5440feaa44529c3c700fcaf240d195c1f521155824e5b1d6b60dd",
+      "bytes": 1587566,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "temporal-diagnostics/0465-hdr-scene.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0465-hdr-scene.png",
+      "sha256": "3076e37ef112641368f5aae4eb2ae8cfea548b87bcfb34ef9305b5e79f56e484",
+      "bytes": 1650009,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "temporal-diagnostics/0465-history-reactive.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0465-history-reactive.png",
+      "sha256": "52751a9474ee41de52d57431f98703180405eacd7e33219b0c887c7087b1a4a4",
+      "bytes": 11264,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "git",
+      "file": "masks/0465-history-reactive.png"
+    },
+    "temporal-diagnostics/0465-marker.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0465-marker.png",
+      "sha256": "0825e8b7878f5b7d340695e3a4943c574373bd734727eac15aa233f80c808209",
+      "bytes": 12236,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "git",
+      "file": "masks/0465-marker.png"
+    },
+    "temporal-diagnostics/0466-hdr-before-temporal.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0466-hdr-before-temporal.png",
+      "sha256": "65fb596b2f2192af852d54aadffde75708a010dff217b95d7b42c7e4c025525d",
+      "bytes": 1773351,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "temporal-diagnostics/0466-hdr-history.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0466-hdr-history.png",
+      "sha256": "19099f25012c12ea3449c4c07eea989bcfce2483c94676ded9ffb92d7ef9da22",
+      "bytes": 1598676,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "temporal-diagnostics/0466-hdr-scene.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0466-hdr-scene.png",
+      "sha256": "8b88edf3dc19c61d3e256ef0575e3a8e73a59504b6427483c62d62a70acdccbf",
+      "bytes": 1658906,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "temporal-diagnostics/0466-history-reactive.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0466-history-reactive.png",
+      "sha256": "dc7423cfe04fd44ee96a8e72b9333487b26f1f38233ad9b3bd824773a006e1e1",
+      "bytes": 11287,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "git",
+      "file": "masks/0466-history-reactive.png"
+    },
+    "temporal-diagnostics/0466-marker.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0466-marker.png",
+      "sha256": "bf9dd87903aa43d0014d949ba933fa4c225545ae4d3e70901d0e836dccea003c",
+      "bytes": 12176,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "git",
+      "file": "masks/0466-marker.png"
+    },
+    "temporal-diagnostics/0467-hdr-before-temporal.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0467-hdr-before-temporal.png",
+      "sha256": "1af2c3f515838ffc7895ed3ab6c1cee54e065f29414a6dd19e922e17be35fc57",
+      "bytes": 1783850,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "temporal-diagnostics/0467-hdr-history.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0467-hdr-history.png",
+      "sha256": "fcc4a07bb3e1f42e6b0bf2ca2a5a388ef8d30021c07385ed44af0394a46f1963",
+      "bytes": 1606085,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "temporal-diagnostics/0467-hdr-scene.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0467-hdr-scene.png",
+      "sha256": "1fa9482c03c22e56f52f04a3d57bec7788dd25518abab042216cb1c29d2f726f",
+      "bytes": 1663888,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "temporal-diagnostics/0467-history-reactive.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0467-history-reactive.png",
+      "sha256": "3566f3552d8b7c2829aee588c93ed5b9e0fbf633c57c62e5828dfbb3af068c68",
+      "bytes": 11226,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "git",
+      "file": "masks/0467-history-reactive.png"
+    },
+    "temporal-diagnostics/0467-marker.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0467-marker.png",
+      "sha256": "ed7ae438066dfe0cb9b9869fb3858a2445b90b55c263998d81649fc46bb28b4f",
+      "bytes": 12046,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "git",
+      "file": "masks/0467-marker.png"
+    },
+    "temporal-diagnostics/0468-hdr-before-temporal.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0468-hdr-before-temporal.png",
+      "sha256": "62de1f65098ba151a8a25594862e21adab2b03a2ccc727a6d1c385f5385e4725",
+      "bytes": 1789284,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "temporal-diagnostics/0468-hdr-history.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0468-hdr-history.png",
+      "sha256": "eb0e9e48095297d887e0260ce185ca20c1fa779707e30690482868d70dd1b257",
+      "bytes": 1614318,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "temporal-diagnostics/0468-hdr-scene.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0468-hdr-scene.png",
+      "sha256": "6011d864cf5d65ec92847fdd086bc62266f5ccfb66624567b9498a85268aaf9d",
+      "bytes": 1676708,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "temporal-diagnostics/0468-history-reactive.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0468-history-reactive.png",
+      "sha256": "52a31c81fb4e68b2d6244b934843d05e60da133983fb374832f0f6f071a64447",
+      "bytes": 11181,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "git",
+      "file": "masks/0468-history-reactive.png"
+    },
+    "temporal-diagnostics/0468-marker.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0468-marker.png",
+      "sha256": "ba04a988239044ebc4115bee5d598cc2d9370545536bc305a622fe4585a7436a",
+      "bytes": 12063,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "git",
+      "file": "masks/0468-marker.png"
+    },
+    "temporal-diagnostics/0469-hdr-before-temporal.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0469-hdr-before-temporal.png",
+      "sha256": "6e6a80fa05cc121880b9738a2d1019c9ffffb5de7edc7aedb00a09d38720b0b0",
+      "bytes": 1791239,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "temporal-diagnostics/0469-hdr-history.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0469-hdr-history.png",
+      "sha256": "b56ff47a4b38e0aefb016bbb5ebde66475159a175d2d01d87d12995e0f46cca1",
+      "bytes": 1615238,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "temporal-diagnostics/0469-hdr-scene.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0469-hdr-scene.png",
+      "sha256": "2d527d6c91e198109682c8e9452d2fca3228c0f8e284969d4ea49ebb9f710a1f",
+      "bytes": 1676590,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "temporal-diagnostics/0469-history-reactive.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0469-history-reactive.png",
+      "sha256": "275df66ea40df5aa60a5c20e597ee17aee1b7f0f2d3dbc88f5eecc0200290add",
+      "bytes": 11147,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "git",
+      "file": "masks/0469-history-reactive.png"
+    },
+    "temporal-diagnostics/0469-marker.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0469-marker.png",
+      "sha256": "ef440c3410dba3bac72b9e919f01348eefe705b7b8dfe630a0baf9d51d36f0af",
+      "bytes": 11945,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "git",
+      "file": "masks/0469-marker.png"
+    },
+    "temporal-diagnostics/0470-hdr-before-temporal.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0470-hdr-before-temporal.png",
+      "sha256": "9054a4d2600a4b7c3ad028e37203e8f29ecec9262a34d9866eb12c667ae4a05e",
+      "bytes": 1788004,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "temporal-diagnostics/0470-hdr-history.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0470-hdr-history.png",
+      "sha256": "c2d7f88af371b6e276128af2734392cbe00ffef1a5aa60caa3e44cd890e974cf",
+      "bytes": 1613012,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "temporal-diagnostics/0470-hdr-scene.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0470-hdr-scene.png",
+      "sha256": "ba9b2565a7184919893d3df5a7df0fde0ccdf69f6f8832e2e0a13f4f3b8f8dd1",
+      "bytes": 1674995,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "temporal-diagnostics/0470-history-reactive.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0470-history-reactive.png",
+      "sha256": "3004f55e4e840c8fbf382ed25ab8e255804e3d5a97b46b75ca22a990edbafb0e",
+      "bytes": 11143,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "git",
+      "file": "masks/0470-history-reactive.png"
+    },
+    "temporal-diagnostics/0470-marker.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0470-marker.png",
+      "sha256": "a1b6a830d6c14ede03625841b217c7282e71d1f7629749969c51637cc64abf62",
+      "bytes": 11916,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "git",
+      "file": "masks/0470-marker.png"
+    },
+    "temporal-diagnostics/0471-hdr-before-temporal.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0471-hdr-before-temporal.png",
+      "sha256": "f5deb0e38a8af98ab6982c682287ee13a1547cf9c602f7048fe19eef963c6ff0",
+      "bytes": 1785899,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "temporal-diagnostics/0471-hdr-history.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0471-hdr-history.png",
+      "sha256": "98344cc5018c4926805af30c0fb1f889a05e0f3c8a4a3383fb7025f4eb9bf772",
+      "bytes": 1610451,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "temporal-diagnostics/0471-hdr-scene.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0471-hdr-scene.png",
+      "sha256": "7ba8f541da872b26e9fcbbfd1466b43edc30a4e0446504a8d9467f0227d29af9",
+      "bytes": 1673522,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "temporal-diagnostics/0471-history-reactive.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0471-history-reactive.png",
+      "sha256": "35cbd3cc8ff3d6e51de2e7f9e8bde56ed7d4bf49e0b8d8a29285b8375aceecad",
+      "bytes": 10968,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "git",
+      "file": "masks/0471-history-reactive.png"
+    },
+    "temporal-diagnostics/0471-marker.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0471-marker.png",
+      "sha256": "e47e91da83e0046728959eeae7fb9bf0e48ac967ad4c71e1b7da1e7555c44d15",
+      "bytes": 11514,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "git",
+      "file": "masks/0471-marker.png"
+    },
+    "temporal-diagnostics/0472-hdr-before-temporal.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0472-hdr-before-temporal.png",
+      "sha256": "ba71e71493a0bd4646c6fc85683bcde46678eb5cae6b6db2f494215a68ef78a7",
+      "bytes": 1782198,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "temporal-diagnostics/0472-hdr-history.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0472-hdr-history.png",
+      "sha256": "e2a963f4f1429197a283fbd12e5e0a5e9bbfe7a272b803407f062908cdcc9b41",
+      "bytes": 1603852,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "temporal-diagnostics/0472-hdr-scene.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0472-hdr-scene.png",
+      "sha256": "5981f4b6c8be25fea3eb9475255cf620186d22b587e5385b839d1de49c21210d",
+      "bytes": 1668559,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "temporal-diagnostics/0472-history-reactive.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0472-history-reactive.png",
+      "sha256": "fbec27c9fba958d50825a3c8845a3f5664f9511cc98e8d4bd0254bbb6f596ca2",
+      "bytes": 10967,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "git",
+      "file": "masks/0472-history-reactive.png"
+    },
+    "temporal-diagnostics/0472-marker.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0472-marker.png",
+      "sha256": "483a0f4f0da66b6977bdc202ae094c8e5d259a3a6e6bfa6f401f5dab3ef6efe3",
+      "bytes": 11506,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "git",
+      "file": "masks/0472-marker.png"
+    },
+    "temporal-diagnostics/0473-hdr-before-temporal.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0473-hdr-before-temporal.png",
+      "sha256": "112e1eaa6639e7ef329d2a15ff82093683d19563055305bad9a01d5b70980710",
+      "bytes": 1781348,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "temporal-diagnostics/0473-hdr-history.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0473-hdr-history.png",
+      "sha256": "3219fd4bad755544573a9cf03c85f1af5002a9e02687c893bfc2e823e714d2dd",
+      "bytes": 1602686,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "temporal-diagnostics/0473-hdr-scene.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0473-hdr-scene.png",
+      "sha256": "1dff7cc803cadaebbd74d467b045cf72300f1728b35ba6274c500a914cd8dc9a",
+      "bytes": 1664431,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "temporal-diagnostics/0473-history-reactive.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0473-history-reactive.png",
+      "sha256": "574995530b0e87477d4d93d602fe54ba929764e61e2912e89012cc8fb803bb5d",
+      "bytes": 11016,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "git",
+      "file": "masks/0473-history-reactive.png"
+    },
+    "temporal-diagnostics/0473-marker.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0473-marker.png",
+      "sha256": "b4ecd65549eb810c756be0802153fae81550e0552ab1d59e63199aaeb3b94440",
+      "bytes": 11667,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "git",
+      "file": "masks/0473-marker.png"
+    },
+    "temporal-diagnostics/0474-hdr-before-temporal.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0474-hdr-before-temporal.png",
+      "sha256": "c31e4cbfe1c2115f3e31cd0a1b55dabfb6da4a3368b48431c7614e423aa43421",
+      "bytes": 1776903,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "temporal-diagnostics/0474-hdr-history.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0474-hdr-history.png",
+      "sha256": "1020b3f1809c0adf2569209b5b2e57472ce1d3605f7923d3a71218c264285db4",
+      "bytes": 1594950,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "temporal-diagnostics/0474-hdr-scene.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0474-hdr-scene.png",
+      "sha256": "ec9e2014d629f04fc3d99139e13dd9663d4205458eaa0552bf277f07e4ec568a",
+      "bytes": 1659204,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "temporal-diagnostics/0474-history-reactive.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0474-history-reactive.png",
+      "sha256": "c72ecfb51d5e528e25b37f4e4643a5a6e671c0c587c7dc7b54eea5a7306d3bc1",
+      "bytes": 11045,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "git",
+      "file": "masks/0474-history-reactive.png"
+    },
+    "temporal-diagnostics/0474-marker.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0474-marker.png",
+      "sha256": "605f2369e85faaf26df88915c12291ca10633703718ac6050e4a5019a120878b",
+      "bytes": 11588,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "git",
+      "file": "masks/0474-marker.png"
+    },
+    "temporal-diagnostics/0475-hdr-before-temporal.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0475-hdr-before-temporal.png",
+      "sha256": "9bbc3f09398b2bab8ccefcff909e15a41ac6cf1f72b78d85151d625169220126",
+      "bytes": 1775458,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "temporal-diagnostics/0475-hdr-history.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0475-hdr-history.png",
+      "sha256": "d8acd43a7901f9934e17863e4685f1518d987d9aca105ea45fa931ec972ca9ee",
+      "bytes": 1581954,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "temporal-diagnostics/0475-hdr-scene.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0475-hdr-scene.png",
+      "sha256": "e968e8dbaeb1c22b94944969eb32f19faf69c142a3a621ce54bcaa8686d7c62e",
+      "bytes": 1643036,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "temporal-diagnostics/0475-history-reactive.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0475-history-reactive.png",
+      "sha256": "36e4785ab63535eeb2115267b4e129015d4dbed41e05e6d3e325013386b5051c",
+      "bytes": 10918,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "git",
+      "file": "masks/0475-history-reactive.png"
+    },
+    "temporal-diagnostics/0475-marker.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0475-marker.png",
+      "sha256": "bda06d71239ad43f5e7da3d9ca879502ba4aa781e619768fc130aa9bd3c82c22",
+      "bytes": 11433,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "git",
+      "file": "masks/0475-marker.png"
+    },
+    "temporal-diagnostics/0476-hdr-before-temporal.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0476-hdr-before-temporal.png",
+      "sha256": "b6288558bc15dcffa005ed9f1e2365a9f3b2cb4a917de27807af3c7ef6939264",
+      "bytes": 1775004,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "temporal-diagnostics/0476-hdr-history.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0476-hdr-history.png",
+      "sha256": "1c82f3f82d1bba46495b4fff4db58b4c7c193090f7f82ad945eed192dfac4ba7",
+      "bytes": 1574301,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "temporal-diagnostics/0476-hdr-scene.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0476-hdr-scene.png",
+      "sha256": "bcb04cdbcb2989f4de0d054c69f613c9b299051b7e1694664de9b28135bcc0e2",
+      "bytes": 1637402,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "durable_scratch"
+    },
+    "temporal-diagnostics/0476-history-reactive.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0476-history-reactive.png",
+      "sha256": "dd0f77eebb9877c8ea54cc408f4c8aa064d85692b29569321ab8c19828cb5ebb",
+      "bytes": 10996,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "git",
+      "file": "masks/0476-history-reactive.png"
+    },
+    "temporal-diagnostics/0476-marker.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-stage-diagnostics/temporal-diagnostics/0476-marker.png",
+      "sha256": "4c43a432806f3500ad18ce7eb4a4a0a33a64c1cf23df38f4837747e6dcdf75da",
+      "bytes": 11528,
+      "pixels": [
+        1920,
+        1080
+      ],
+      "storage": "git",
+      "file": "masks/0476-marker.png"
+    }
+  }
+}

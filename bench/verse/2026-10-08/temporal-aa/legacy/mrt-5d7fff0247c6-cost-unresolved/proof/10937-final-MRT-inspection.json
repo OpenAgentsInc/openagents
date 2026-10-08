@@ -1,0 +1,291 @@
+{
+  "status": "review_pending",
+  "source": "5d7fff0247c6fef70447fe96103838a39e38b4f8",
+  "cases": {
+    "high-dev": {
+      "source": "5d7fff0247c6fef70447fe96103838a39e38b4f8",
+      "binary_sha256": "a2b3570edecb7b2ee1192dac0689df26f61ad36a02fb8dddb124264ba721e3b1",
+      "profile": "dev",
+      "manifest": {
+        "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-high-dev-manifest.json",
+        "sha256": "891be402639a87547527cbcbbfa75f1af0d7d0757390868ce7aecf7a4f3984d8",
+        "bytes": 4484
+      },
+      "report": {
+        "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-high-dev/capture.json",
+        "sha256": "6561c21d1614c300f12cf4fc92693773ee2fa7caf7d0993f2b5745ccc9e0fd5d",
+        "bytes": 619086
+      },
+      "leases": {
+        "gpu": {
+          "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-high-dev-gpu.json",
+          "sha256": "6d049fdfd71b2d6a11ac2182c391fb36ad3d63c55de420728aca6b6b953f2272",
+          "bytes": 488
+        },
+        "quiet": {
+          "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-high-dev-quiet.json",
+          "sha256": "3fbe6ec5dce7c6f7f72d2cd93d7b632684401fb2d87f1049287a11a6776c1f2b",
+          "bytes": 490
+        }
+      },
+      "computed_acceptance": {
+        "frame_p99_limit_ms": 16.7,
+        "swarm_p99_ms": 13.81137466430664,
+        "after_p99_ms": 8.36029052734375,
+        "swarm_pass": true,
+        "after_pass": true,
+        "timing_pass": true
+      },
+      "swarm_max_ms": 18.545957565307617,
+      "case_integrity": {
+        "status": "case_integrity_pass",
+        "case": "high-dev",
+        "simulation_frames": 960,
+        "last_simulation_frame": 959,
+        "phase_statistic_frames": 960,
+        "submission_policy": "bounded_two_frames",
+        "rebuild_capture": {
+          "pristine_image": "pristine.png",
+          "restored_image": "restored.png",
+          "pristine_frame": 0,
+          "restoration_frame": 960,
+          "after_simulation_frame": 959,
+          "simulation_seconds": 15.983333587646484,
+          "stage_time": 0.0,
+          "shot": {
+            "eye": [
+              -34.560752868652344,
+              8.5,
+              -69.30223083496094
+            ],
+            "target": [
+              -55.0,
+              7.5,
+              -7.0
+            ]
+          },
+          "pristine_view": {
+            "eye": [
+              -34.560752868652344,
+              8.5,
+              -69.30223083496094
+            ],
+            "view_proj": [
+              [
+                -0.9783461093902588,
+                -0.008701224811375141,
+                -0.31173041462898254,
+                -0.31168362498283386
+              ],
+              [
+                0.0,
+                1.830275058746338,
+                -0.01525155920535326,
+                -0.01524927094578743
+              ],
+              [
+                -0.32096216082572937,
+                0.026522783562541008,
+                0.9502061605453491,
+                0.9500635862350464
+              ],
+              [
+                -56.0557746887207,
+                -14.019970893859863,
+                54.9073600769043,
+                55.199119567871094
+              ]
+            ]
+          },
+          "restored_view": {
+            "eye": [
+              -34.560752868652344,
+              8.5,
+              -69.30223083496094
+            ],
+            "view_proj": [
+              [
+                -0.9783461093902588,
+                -0.008701224811375141,
+                -0.31173041462898254,
+                -0.31168362498283386
+              ],
+              [
+                0.0,
+                1.830275058746338,
+                -0.01525155920535326,
+                -0.01524927094578743
+              ],
+              [
+                -0.32096216082572937,
+                0.026522783562541008,
+                0.9502061605453491,
+                0.9500635862350464
+              ],
+              [
+                -56.0557746887207,
+                -14.019970893859863,
+                54.9073600769043,
+                55.199119567871094
+              ]
+            ]
+          },
+          "method": "Applies the same rebuild intent as R after the final simulation frame, then renders with the saved pristine camera and stage without advancing simulation. The runtime clock and character state continue; exact pristine bake restoration is checked by unit tests."
+        },
+        "timing_scope": "The capture records the final primary drain before deferred artifact writes and R. R is an additional artifact render after the last simulation frame; it does not enter the primary frame ledger or phase statistics. The command wall interval includes setup, artifact writes, and R.",
+        "warning_diagnostics": null,
+        "acceptance": {
+          "visual": null,
+          "timing": null,
+          "promotion_authorized": false
+        }
+      },
+      "root_visual_review": null,
+      "promotion_authorized": false
+    },
+    "high-release": {
+      "source": "5d7fff0247c6fef70447fe96103838a39e38b4f8",
+      "binary_sha256": "42b0843835da8ec49e55b5694f4a3b38793ae03bc844c56836f09195d1ce471d",
+      "profile": "release",
+      "manifest": {
+        "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-high-release-manifest.json",
+        "sha256": "d72174bf72b224cbfe8299d04acb62a2288db7f34f195819a35a51a7a748af71",
+        "bytes": 4557
+      },
+      "report": {
+        "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-high-release/capture.json",
+        "sha256": "3a02eb154c0373eeff2f0838b7caae88a25a8ba1db042047eea36a595c144a14",
+        "bytes": 619378
+      },
+      "leases": {
+        "gpu": {
+          "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-high-release-gpu.json",
+          "sha256": "bbdfbc522c3e61085ad2effcdf5a21985dd6e6b5a817b9e90442d568ae4dae37",
+          "bytes": 487
+        },
+        "quiet": {
+          "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-high-release-quiet.json",
+          "sha256": "5d21bb21c9d5f01a89735edfdda89257a5df9df092a069d3c93c4f08dd10d781",
+          "bytes": 490
+        }
+      },
+      "computed_acceptance": {
+        "frame_p99_limit_ms": 16.7,
+        "swarm_p99_ms": 12.388958930969238,
+        "after_p99_ms": 8.526290893554688,
+        "swarm_pass": true,
+        "after_pass": true,
+        "timing_pass": true
+      },
+      "swarm_max_ms": 15.675958633422852,
+      "case_integrity": {
+        "status": "case_integrity_pass",
+        "case": "high-release",
+        "simulation_frames": 960,
+        "last_simulation_frame": 959,
+        "phase_statistic_frames": 960,
+        "submission_policy": "bounded_two_frames",
+        "rebuild_capture": {
+          "pristine_image": "pristine.png",
+          "restored_image": "restored.png",
+          "pristine_frame": 0,
+          "restoration_frame": 960,
+          "after_simulation_frame": 959,
+          "simulation_seconds": 15.983333587646484,
+          "stage_time": 0.0,
+          "shot": {
+            "eye": [
+              -34.560752868652344,
+              8.5,
+              -69.30223083496094
+            ],
+            "target": [
+              -55.0,
+              7.5,
+              -7.0
+            ]
+          },
+          "pristine_view": {
+            "eye": [
+              -34.560752868652344,
+              8.5,
+              -69.30223083496094
+            ],
+            "view_proj": [
+              [
+                -0.9783461093902588,
+                -0.008701224811375141,
+                -0.31173041462898254,
+                -0.31168362498283386
+              ],
+              [
+                0.0,
+                1.830275058746338,
+                -0.01525155920535326,
+                -0.01524927094578743
+              ],
+              [
+                -0.32096216082572937,
+                0.026522783562541008,
+                0.9502061605453491,
+                0.9500635862350464
+              ],
+              [
+                -56.0557746887207,
+                -14.019970893859863,
+                54.9073600769043,
+                55.199119567871094
+              ]
+            ]
+          },
+          "restored_view": {
+            "eye": [
+              -34.560752868652344,
+              8.5,
+              -69.30223083496094
+            ],
+            "view_proj": [
+              [
+                -0.9783461093902588,
+                -0.008701224811375141,
+                -0.31173041462898254,
+                -0.31168362498283386
+              ],
+              [
+                0.0,
+                1.830275058746338,
+                -0.01525155920535326,
+                -0.01524927094578743
+              ],
+              [
+                -0.32096216082572937,
+                0.026522783562541008,
+                0.9502061605453491,
+                0.9500635862350464
+              ],
+              [
+                -56.0557746887207,
+                -14.019970893859863,
+                54.9073600769043,
+                55.199119567871094
+              ]
+            ]
+          },
+          "method": "Applies the same rebuild intent as R after the final simulation frame, then renders with the saved pristine camera and stage without advancing simulation. The runtime clock and character state continue; exact pristine bake restoration is checked by unit tests."
+        },
+        "timing_scope": "The capture records the final primary drain before deferred artifact writes and R. R is an additional artifact render after the last simulation frame; it does not enter the primary frame ledger or phase statistics. The command wall interval includes setup, artifact writes, and R.",
+        "warning_diagnostics": null,
+        "acceptance": {
+          "visual": null,
+          "timing": null,
+          "promotion_authorized": false
+        }
+      },
+      "root_visual_review": null,
+      "promotion_authorized": false
+    }
+  },
+  "promotion_authorized": false,
+  "acceptance_changed": false,
+  "note": "Per-case GPU/quiet receipts cover each exact command. All 960 primary rows and every outlier remain in the raw report. R follows primary frame 959 as artifact frame 960, outside phase statistics. A computed timing flag is not a final root visual verdict."
+}

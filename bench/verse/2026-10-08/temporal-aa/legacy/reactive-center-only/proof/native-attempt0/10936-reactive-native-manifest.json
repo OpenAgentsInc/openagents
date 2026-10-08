@@ -1,0 +1,47 @@
+[
+  {
+    "name": "10936-reactive-native-0",
+    "source": "36df9ceb4bbb7fb0c7be30bd1c3538e0be78ab3e",
+    "binary_sha256": "4f743c0c6a4bc96394240c5670a1b9e7ea807ea3dd61b3476edf15fa4383bdfc",
+    "command": [
+      "/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse_pbr-668a3d62c3c8b90e",
+      "pbr::temporal::tests::hidden_motion_cannot_overwrite_the_visible_surface",
+      "--ignored",
+      "--exact",
+      "--test-threads=1"
+    ],
+    "start_unix": 1791485899.707541,
+    "exit": 0,
+    "end_unix": 1791485900.634766
+  },
+  {
+    "name": "10936-reactive-native-1",
+    "source": "36df9ceb4bbb7fb0c7be30bd1c3538e0be78ab3e",
+    "binary_sha256": "4f743c0c6a4bc96394240c5670a1b9e7ea807ea3dd61b3476edf15fa4383bdfc",
+    "command": [
+      "/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse_pbr-668a3d62c3c8b90e",
+      "pbr::temporal::tests::empty_motion_keeps_camera_reprojection_with_stale_object_data",
+      "--ignored",
+      "--exact",
+      "--test-threads=1"
+    ],
+    "start_unix": 1791485900.653903,
+    "exit": 0,
+    "end_unix": 1791485901.000457
+  },
+  {
+    "name": "10936-reactive-native-2",
+    "source": "36df9ceb4bbb7fb0c7be30bd1c3538e0be78ab3e",
+    "binary_sha256": "4f743c0c6a4bc96394240c5670a1b9e7ea807ea3dd61b3476edf15fa4383bdfc",
+    "command": [
+      "/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse_pbr-668a3d62c3c8b90e",
+      "pbr::temporal::reactive_tests::moving_reactive_geometry_cannot_leave_history_in_a_bright_trail",
+      "--ignored",
+      "--exact",
+      "--test-threads=1"
+    ],
+    "start_unix": 1791485901.0191581,
+    "exit": 101,
+    "end_unix": 1791485901.263556
+  }
+]

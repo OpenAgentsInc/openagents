@@ -1,0 +1,21 @@
+{
+  "schema": "openagents.lease.receipt.v1",
+  "id": "1791475624105-35386-0",
+  "resource": "gpu",
+  "amount": 1,
+  "holder": {
+    "session": "codex:01a119ae-8a0b-7850-9b7f-ca9fe5a3203b",
+    "agent": "codex",
+    "pid": 35386,
+    "command": "sh"
+  },
+  "priority": "normal",
+  "nested": false,
+  "requested_at_ms": 1791475624105,
+  "acquired_at_ms": 1791475624105,
+  "released_at_ms": 1791475640332,
+  "wait_ms": 0,
+  "held_ms": 16227,
+  "held_whole_run": true,
+  "exit": 0
+}

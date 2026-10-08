@@ -1,0 +1,46 @@
+{
+  "schema": "openagents.lease.placement-receipt.v1",
+  "class": "soak",
+  "asked": "local",
+  "place": "local",
+  "reason": "coder.placement runs soak here",
+  "commit": "46cf41188b8067f10a08a2eb2a49466446b1760d",
+  "command": [
+    "openagents",
+    "lease",
+    "gpu",
+    "--priority",
+    "owner",
+    "--receipt",
+    "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-10938-frustum-gpu.json",
+    "--",
+    "python3",
+    "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-10938-frustum-native-and-captures.py"
+  ],
+  "started_at_ms": 1791481318880,
+  "ended_at_ms": 1791481548502,
+  "exit": 0,
+  "leases": [
+    {
+      "schema": "openagents.lease.receipt.v1",
+      "id": "1791481318880-31505-0",
+      "resource": "quiet",
+      "amount": 1,
+      "holder": {
+        "session": "codex:01a119ae-8a0b-7850-9b7f-ca9fe5a3203b",
+        "agent": "codex",
+        "pid": 31505,
+        "command": "openagents"
+      },
+      "priority": "owner",
+      "nested": false,
+      "requested_at_ms": 1791481318880,
+      "acquired_at_ms": 1791481409694,
+      "released_at_ms": 1791481548470,
+      "wait_ms": 90814,
+      "held_ms": 138776,
+      "held_whole_run": true,
+      "exit": 0
+    }
+  ]
+}

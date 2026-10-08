@@ -1,0 +1,18 @@
+
+running 1 test
+test pbr::temporal::reactive_tests::moving_reactive_geometry_cannot_leave_history_in_a_bright_trail ... FAILED
+
+failures:
+
+---- pbr::temporal::reactive_tests::moving_reactive_geometry_cannot_leave_history_in_a_bright_trail stdout ----
+
+thread 'pbr::temporal::reactive_tests::moving_reactive_geometry_cannot_leave_history_in_a_bright_trail' (12781512) panicked at crates/verse-pbr/src/pbr/temporal_reactive_tests.rs:82:60:
+called `Result::unwrap()` on an `Err` value: ParseError { message: "redefinition of `ndc`", labels: [(Span { start: 61071, end: 61074 }, "redefinition of `ndc`"), (Span { start: 61009, end: 61012 }, "previous definition of `ndc`")], notes: [] }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    pbr::temporal::reactive_tests::moving_reactive_geometry_cannot_leave_history_in_a_bright_trail
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 194 filtered out; finished in 0.24s
+

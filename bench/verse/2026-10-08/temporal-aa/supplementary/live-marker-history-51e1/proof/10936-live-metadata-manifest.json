@@ -1,0 +1,35 @@
+{
+  "source": "51e1ab25192e95038edcee1f548355c11df5ff95",
+  "profile": "dev with optimized dependencies",
+  "features": [
+    "capture",
+    "temporal-diagnostics"
+  ],
+  "binary_sha256": "f6e095ee3c6ff86bc9fff5134397160e8bff5ed3072ad0b83b3b31a7762a6321",
+  "command": [
+    "/Users/christopherdavid/work/openagents-target-agent0/debug/examples/meteor_showcase_capture",
+    "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-live-metadata",
+    "--live",
+    "--settle-light",
+    "--no-video",
+    "--seconds",
+    "9",
+    "--impact-frame",
+    "469",
+    "--smoke-frame",
+    "520",
+    "--compare-temporal-aa",
+    "--sequence",
+    "464:476",
+    "--temporal-diagnostics"
+  ],
+  "environment": {
+    "VERSE_QUALITY": "high",
+    "VERSE_KIT_PACK": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp",
+    "OPENAGENTS_CAPTURE_SOURCE_COMMIT": "51e1ab25192e95038edcee1f548355c11df5ff95"
+  },
+  "purpose": "Actual live marker/history readback; no timing gate",
+  "start_unix": 1791490886.2042408,
+  "exit": 0,
+  "end_unix": 1791490980.544199
+}

@@ -1,0 +1,8 @@
+Running pbr::temporal::reactive_tests::a_reactive_head_cannot_seed_neighbor_history_through_color_conditioning
+Running pbr::gpu::reactive_lit_tests::production_lit_projection_marks_every_visible_faceted_sample
+Running pbr::temporal::tests::hidden_motion_cannot_overwrite_the_visible_surface
+Running pbr::temporal::tests::empty_motion_keeps_camera_reprojection_with_stale_object_data
+Running pbr::temporal::reactive_tests::moving_reactive_geometry_cannot_leave_history_in_a_bright_trail
+Running pbr::temporal::reactive_tests::reactive_history_rejection_matches_the_actual_bilinear_footprint
+Running pbr::gpu::baked_tests::static_light_patches_cross_rows_and_layers_and_survive_late_bakes_until_restore
+Running pbr::gpu::baked_tests::rigid_light_ranges_wrap_max_grow_rebind_and_restore_direct_ambient

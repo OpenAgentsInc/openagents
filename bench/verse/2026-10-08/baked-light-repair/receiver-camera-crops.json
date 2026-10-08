@@ -1,0 +1,75 @@
+{
+  "source": "51e1ab25192e95038edcee1f548355c11df5ff95",
+  "file": "receiver-camera-crops.png",
+  "resolution": [
+    1440,
+    1536
+  ],
+  "panels_rescaled": false,
+  "source_pixels_verified": true,
+  "panels": [
+    {
+      "file": "receiver-inspection/destruction-pristine-receivers.png",
+      "sha256": "b507ff131b7a9b218a1db127f0f6a1d674bf8d1aacdff2a375eb13c1a6ec1845",
+      "source_xyxy": [
+        620,
+        330,
+        1340,
+        1050
+      ],
+      "destination_xy": [
+        0,
+        48
+      ]
+    },
+    {
+      "file": "receiver-inspection/destruction-0900.png",
+      "sha256": "b9362c700c432bfeb476ac9b69df9a5e1320753a2d0f71811764f7c33822ba01",
+      "source_xyxy": [
+        620,
+        330,
+        1340,
+        1050
+      ],
+      "destination_xy": [
+        720,
+        48
+      ]
+    },
+    {
+      "file": "receiver-inspection/destruction-0900-receivers.png",
+      "sha256": "bafbf014234c98c4df4133df0a0a73b7928f5dacb1f8b0be370d46f6df9ccbd2",
+      "source_xyxy": [
+        620,
+        330,
+        1340,
+        1050
+      ],
+      "destination_xy": [
+        0,
+        816
+      ]
+    },
+    {
+      "file": "receiver-inspection/destruction-restored-receivers.png",
+      "sha256": "78be2c6e28993d2e618fab1440123be9c4680b2f359d0fcc9401a5bab0612a49",
+      "source_xyxy": [
+        620,
+        330,
+        1340,
+        1050
+      ],
+      "destination_xy": [
+        720,
+        816
+      ]
+    }
+  ],
+  "sha256": "0a3de625c800c991ade4257be2c60c11bb158973ed0632d6ac719355f1c3ea58",
+  "bytes": 2923575,
+  "same_state_pair_frame": 900,
+  "simulation_ticks_between_pair": 0,
+  "selective_convergence_claim": false,
+  "performance_claim": false,
+  "scope": "Sprites, ribbons, and glow are removed only from copied meshes. Ordinary and receiver-copy frame-900 images share one simulation state. Pristine and R are separate states. Vegetation still occludes some contacts."
+}

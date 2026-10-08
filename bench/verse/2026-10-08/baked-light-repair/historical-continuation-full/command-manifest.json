@@ -1,0 +1,25 @@
+{
+  "source": "f655bcc32c6df5a69ef278ba8a2e45e342178fab",
+  "profile": "dev with pinned workspace optimized dependencies",
+  "binary_sha256": "24312b70d5bda08cc390c8fd82ad9011e551d631a307aebae9395e7d30b71d76",
+  "command": [
+    "/Users/christopherdavid/work/openagents-target-agent2/debug/examples/baked_light_capture",
+    "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-continuation-full",
+    "128",
+    "10441",
+    "--skip-blend",
+    "--repair-hold-seconds",
+    "600"
+  ],
+  "environment": {
+    "VERSE_QUALITY": "high",
+    "VERSE_HOME": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-capture-cache",
+    "VERSE_KIT_PACK": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp",
+    "VERSE_KIT_BAKE": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-matched-bake/090f106f9c459f62f9cd67902a18531b7e00f9d15e292e0b60a0dd7b231b0b6b.vlay",
+    "VERSE_KIT_UNPINNED": "1",
+    "OPENAGENTS_CAPTURE_SOURCE_COMMIT": "f655bcc32c6df5a69ef278ba8a2e45e342178fab"
+  },
+  "start_unix": 1791487154.856787,
+  "exit": 1,
+  "end_unix": 1791487804.4204092
+}

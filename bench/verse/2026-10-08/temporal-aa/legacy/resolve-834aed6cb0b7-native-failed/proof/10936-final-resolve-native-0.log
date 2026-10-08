@@ -1,0 +1,20 @@
+
+running 1 test
+test pbr::gpu::reactive_lit_tests::photo_sprite_mrt_matches_color_and_rejects_hidden_or_covered_emission ... FAILED
+
+failures:
+
+---- pbr::gpu::reactive_lit_tests::photo_sprite_mrt_matches_color_and_rejects_hidden_or_covered_emission stdout ----
+
+thread 'pbr::gpu::reactive_lit_tests::photo_sprite_mrt_matches_color_and_rejects_hidden_or_covered_emission' (14714444) panicked at crates/verse-pbr/src/pbr/gpu/reactive_lit_tests.rs:1293:17:
+assertion `left == right` failed: 4x zero alpha pixel 0: MRT must preserve the original scene color on a fresh history
+  left: [0.06262207, 0.06262207, 0.06262207, 1.0]
+ right: [0.0, 0.0, 0.0, 1.0]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    pbr::gpu::reactive_lit_tests::photo_sprite_mrt_matches_color_and_rejects_hidden_or_covered_emission
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 225 filtered out; finished in 0.52s
+

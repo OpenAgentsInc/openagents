@@ -1,0 +1,46 @@
+{
+  "source": "290c1590726189dbdabb5693125cfa0fbca8a779",
+  "binary_sha256": "57730fa84bcfc3cfccb3ecf5d0df8ebaaeb78f264e1f7857fa459b2c40d45996",
+  "screenshots": {
+    "destruction-0360.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-published-clear/destruction-0360.png",
+      "bytes": 2755979,
+      "sha256": "e41dfb965860181d4052f2b4d0fed37a9567e8fceca8db105d2c9d19db91b71a"
+    },
+    "destruction-0480.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-published-clear/destruction-0480.png",
+      "bytes": 2652642,
+      "sha256": "87ce301e74a11a36a62d133e93feeab947540935e67d7ec945a69376d318f094"
+    },
+    "destruction-0600.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-published-clear/destruction-0600.png",
+      "bytes": 2697445,
+      "sha256": "ce282fdc361ee41f027426ddab730bca355fc6edc3d495574307eef3af214279"
+    },
+    "destruction-0900.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-published-clear/destruction-0900.png",
+      "bytes": 2701727,
+      "sha256": "1b45fb279bb9c2a7b2cc380d2e904afc84180d5ec4f2500269dc3bda8fb7e150"
+    },
+    "destruction-pristine.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-published-clear/destruction-pristine.png",
+      "bytes": 2682582,
+      "sha256": "263310b5f2e76a24bc9a887894c4aa10d91400828420edf583d4fe7c2ce495d8"
+    },
+    "destruction-repaired-night.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-published-clear/destruction-repaired-night.png",
+      "bytes": 2126411,
+      "sha256": "41b3fe12e2d6c7cdfd1e335230ab6a578a1aaeca72dd29fee226cc986ed6f520"
+    },
+    "destruction-repaired-noon.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-published-clear/destruction-repaired-noon.png",
+      "bytes": 2680190,
+      "sha256": "b54522fc03f7f4f5a9022d2e4b8fa4b897d184e19cc6b3f1859de8916defb8c0"
+    },
+    "destruction-restored.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10907-published-clear/destruction-restored.png",
+      "bytes": 2683952,
+      "sha256": "ed3ebef7e0de926e0998098b9e21853e49963692a65500e8fcc70b91f54d860e"
+    }
+  }
+}

@@ -1,0 +1,118 @@
+{
+  "schema": "openagents.verse.temporal-visual-attempt.v1",
+  "issue": 10936,
+  "status": "visual_failed",
+  "timing_acceptance_available": false,
+  "supersedes_top_level_acceptance": false,
+  "source": "51e1ab25192e95038edcee1f548355c11df5ff95",
+  "binary_sha256": "f6e095ee3c6ff86bc9fff5134397160e8bff5ed3072ad0b83b3b31a7762a6321",
+  "profile": "dev with optimized dependencies",
+  "command_manifest": "proof/10936-live-metadata-manifest.json",
+  "gpu_receipt": "proof/10936-live-metadata-gpu.json",
+  "build_proof": "proof/10936-live-metadata-fixed-build.log",
+  "build_receipt": "proof/10936-live-metadata-fixed-build-lease.json",
+  "capture_report": "capture.json",
+  "source_images": "source-images.json",
+  "native_proof_note": "The merged native suite is source724f, with test-only water parity changes after source51. It does not establish the live visual gate. All original merged native manifests and logs retain their own identities.",
+  "capture": {
+    "width": 1920,
+    "height": 1080,
+    "fps": 60,
+    "frames": 540,
+    "quality": "high",
+    "sequence": [
+      464,
+      476
+    ],
+    "diagnostic_frames": 13,
+    "mode": "live",
+    "extra_texture_draws": 13,
+    "timing_scope": "GPU-only dev diagnostic with overlapping CPU work, serial paired renders and extra texture readbacks/PNG work. No quiet timing acceptance."
+  },
+  "observations": {
+    "actual_marker_admitted_every_frame": true,
+    "lit_vertices_each_frame": 2880,
+    "reactive_ranges_each_frame": 3,
+    "marked_pixels_with_retainable_history": 0,
+    "current_marker_tracks_visible_head": true,
+    "camera_previous_matches_prior_current_exactly": true,
+    "transitions_checked": 12,
+    "detached_contour_visible_in_on_and_hdr_at": [
+      471,
+      472
+    ],
+    "off_lacks_detached_contour": true,
+    "head_bounds": {
+      "470": {
+        "marker": [
+          606,
+          330,
+          648,
+          389
+        ],
+        "negative_history": [
+          605,
+          329,
+          649,
+          390
+        ]
+      },
+      "471": {
+        "marker": [
+          644,
+          378,
+          682,
+          434
+        ],
+        "negative_history": [
+          643,
+          377,
+          683,
+          435
+        ]
+      },
+      "472": {
+        "marker": [
+          687,
+          421,
+          722,
+          474
+        ],
+        "negative_history": [
+          686,
+          420,
+          723,
+          475
+        ]
+      }
+    },
+    "ghost_roi_overlap": [
+      {
+        "frame": 471,
+        "roi": [
+          558,
+          290,
+          620,
+          345
+        ],
+        "current_negative_pixels": 0,
+        "previous470_negative_pixels": 109,
+        "older469_negative_pixels": 1705
+      },
+      {
+        "frame": 472,
+        "roi": [
+          580,
+          338,
+          645,
+          385
+        ],
+        "current_negative_pixels": 0,
+        "previous471_negative_pixels": 0,
+        "older470_negative_pixels": 1627
+      }
+    ],
+    "limits": "The sign-mask export loses numeric depth; raw pixel overlaps do not prove world-space reprojection or exact contour age. The HDR scene is after sharpening. This attempt cannot distinguish an unmarked pre-TAA halo/shadow from later retained color; exact pre-TAA/current-history RGB is the next diagnostic."
+  },
+  "curation": "All13 original pairs and all39 diagnostic PNGs retain full SHA/size inventories. All26 full-resolution marker/history sign masks and critical471/472 original pairs/HDR images stay in Git, alongside native crops/contact sheets; remaining exact originals stay in durable scratch."
+}

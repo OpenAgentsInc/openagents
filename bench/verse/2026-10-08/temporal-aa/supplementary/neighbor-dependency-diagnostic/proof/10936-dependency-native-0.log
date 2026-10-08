@@ -1,0 +1,6 @@
+
+running 1 test
+test pbr::temporal::reactive_tests::a_reactive_head_cannot_seed_neighbor_history_through_color_conditioning ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 214 filtered out; finished in 0.78s
+

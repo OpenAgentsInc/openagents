@@ -1,0 +1,675 @@
+{
+  "schema": "openagents.verse.final-staged-review.v1",
+  "source": "fb9a5fd280db673926cfd0d649f924da3091a24b",
+  "status": "accepted_reviewed_regions",
+  "runs": {
+    "high-dev": {
+      "report": "reports/high-dev.json",
+      "report_sha256": "f808b4cf8c8b270db4e86b6338c2ae409683c96caf6ec670b3a56eff860c1622",
+      "manifest": "proof/high-dev-manifest.json",
+      "gpu_receipt": "proof/high-dev-gpu_receipt.json",
+      "quiet_receipt": "proof/high-dev-quiet_receipt.json",
+      "frame_ledger": "ledgers/high-dev-frame-ledger.jsonl"
+    },
+    "high-release": {
+      "report": "reports/high-release.json",
+      "report_sha256": "0c64083803849f5a8a60454e809c92e61dd0e02f9680bd3592a6d6d14b48c4ba",
+      "manifest": "proof/high-release-manifest.json",
+      "gpu_receipt": "proof/high-release-gpu_receipt.json",
+      "quiet_receipt": "proof/high-release-quiet_receipt.json",
+      "frame_ledger": "ledgers/high-release-frame-ledger.jsonl"
+    },
+    "high-paired": {
+      "report": "reports/high-paired.json",
+      "report_sha256": "19c5a711a089448f6e6e889aba767d015015f9f67120847be50c18f5b7f16129",
+      "manifest": "proof/high-paired-manifest.json",
+      "gpu_receipt": "proof/high-paired-gpu_receipt.json",
+      "quiet_receipt": "proof/high-paired-quiet_receipt.json",
+      "frame_ledger": "ledgers/high-paired-frame-ledger.jsonl",
+      "pair_ledger": "ledgers/high-paired-temporal-pairs.jsonl",
+      "original_phase_comparison": {
+        "before": {
+          "frames": 322,
+          "valid_gpu_frames": 0,
+          "invalid_gpu_frames": 322,
+          "gpu_increment_ms": null,
+          "mean_gpu_increment_ms": null,
+          "wall_render_completion_increment_ms": {
+            "p50": 0.15616679191589355,
+            "p99": 2.8945839405059814,
+            "max": 7.766874313354492
+          },
+          "mean_wall_render_completion_increment_ms": 0.5498643517494202,
+          "wall_render_completion_mean_95pct_ci_ms": {
+            "mean": 0.5498644387499886,
+            "lower": 0.09919597035638555,
+            "upper": 1.0005329071435916,
+            "samples": 322,
+            "blocks": 6,
+            "nominal_block_frames": 60
+          },
+          "wall_mean_upper_95pct_under_1ms": false,
+          "off_first_frames": 161,
+          "on_first_frames": 161,
+          "off_first_mean_wall_increment_ms": 0.4713497757911682,
+          "on_first_mean_wall_increment_ms": 0.628379225730896,
+          "encode_increment_ms": {
+            "p50": 0.05054211616516113,
+            "p99": 0.3577500581741333,
+            "max": 0.6633330583572388
+          },
+          "cpu_gpu_increment_ms": null,
+          "gpu_increment_under_1ms_p99": null,
+          "all_gpu_increments_under_1ms": null
+        },
+        "swarm": {
+          "frames": 360,
+          "valid_gpu_frames": 0,
+          "invalid_gpu_frames": 360,
+          "gpu_increment_ms": null,
+          "mean_gpu_increment_ms": null,
+          "wall_render_completion_increment_ms": {
+            "p50": 0.26170802116394043,
+            "p99": 9.288581848144531,
+            "max": 16.66766357421875
+          },
+          "mean_wall_render_completion_increment_ms": 0.5016324520111084,
+          "wall_render_completion_mean_95pct_ci_ms": {
+            "mean": 0.5016326559914484,
+            "lower": 0.15025452782292448,
+            "upper": 0.8530107841599722,
+            "samples": 360,
+            "blocks": 6,
+            "nominal_block_frames": 60
+          },
+          "wall_mean_upper_95pct_under_1ms": true,
+          "off_first_frames": 180,
+          "on_first_frames": 180,
+          "off_first_mean_wall_increment_ms": -0.44665420055389404,
+          "on_first_mean_wall_increment_ms": 1.4499198198318481,
+          "encode_increment_ms": {
+            "p50": 0.12820899486541748,
+            "p99": 2.988083839416504,
+            "max": 8.870290756225586
+          },
+          "cpu_gpu_increment_ms": null,
+          "gpu_increment_under_1ms_p99": null,
+          "all_gpu_increments_under_1ms": null
+        },
+        "after": {
+          "frames": 270,
+          "valid_gpu_frames": 0,
+          "invalid_gpu_frames": 270,
+          "gpu_increment_ms": null,
+          "mean_gpu_increment_ms": null,
+          "wall_render_completion_increment_ms": {
+            "p50": 0.5067505836486816,
+            "p99": 3.0432076454162598,
+            "max": 6.313000202178955
+          },
+          "mean_wall_render_completion_increment_ms": 0.7410446405410767,
+          "wall_render_completion_mean_95pct_ci_ms": {
+            "mean": 0.7410446193483141,
+            "lower": 0.49057151536018057,
+            "upper": 0.9915177233364476,
+            "samples": 270,
+            "blocks": 5,
+            "nominal_block_frames": 60
+          },
+          "wall_mean_upper_95pct_under_1ms": true,
+          "off_first_frames": 135,
+          "on_first_frames": 135,
+          "off_first_mean_wall_increment_ms": 0.5991467237472534,
+          "on_first_mean_wall_increment_ms": 0.8829428553581238,
+          "encode_increment_ms": {
+            "p50": 0.10245907306671143,
+            "p99": 0.7153749465942383,
+            "max": 1.6286673545837402
+          },
+          "cpu_gpu_increment_ms": null,
+          "gpu_increment_under_1ms_p99": null,
+          "all_gpu_increments_under_1ms": null
+        }
+      }
+    },
+    "medium-paired": {
+      "report": "reports/medium-paired.json",
+      "report_sha256": "0c6f6357681e6b32c0456e7670c8870ac762400232ae982e001abdaa6bccc392",
+      "manifest": "proof/medium-paired-manifest.json",
+      "gpu_receipt": "proof/medium-paired-gpu_receipt.json",
+      "quiet_receipt": "proof/medium-paired-quiet_receipt.json",
+      "frame_ledger": "ledgers/medium-paired-frame-ledger.jsonl",
+      "pair_ledger": "ledgers/medium-paired-temporal-pairs.jsonl",
+      "original_phase_comparison": {
+        "before": {
+          "frames": 322,
+          "valid_gpu_frames": 0,
+          "invalid_gpu_frames": 322,
+          "gpu_increment_ms": null,
+          "mean_gpu_increment_ms": null,
+          "wall_render_completion_increment_ms": {
+            "p50": 0.2292921543121338,
+            "p99": 2.744709014892578,
+            "max": 3.9731242656707764
+          },
+          "mean_wall_render_completion_increment_ms": 0.6245068311691284,
+          "wall_render_completion_mean_95pct_ci_ms": {
+            "mean": 0.6245068707821532,
+            "lower": 0.29853620893557503,
+            "upper": 0.9504775326287314,
+            "samples": 322,
+            "blocks": 6,
+            "nominal_block_frames": 60
+          },
+          "wall_mean_upper_95pct_under_1ms": true,
+          "off_first_frames": 161,
+          "on_first_frames": 161,
+          "off_first_mean_wall_increment_ms": 0.4357595145702362,
+          "on_first_mean_wall_increment_ms": 0.8132541179656982,
+          "encode_increment_ms": {
+            "p50": 0.04408299922943115,
+            "p99": 0.5009171366691589,
+            "max": 2.324875831604004
+          },
+          "cpu_gpu_increment_ms": null,
+          "gpu_increment_under_1ms_p99": null,
+          "all_gpu_increments_under_1ms": null
+        },
+        "swarm": {
+          "frames": 360,
+          "valid_gpu_frames": 0,
+          "invalid_gpu_frames": 360,
+          "gpu_increment_ms": null,
+          "mean_gpu_increment_ms": null,
+          "wall_render_completion_increment_ms": {
+            "p50": 1.2991666793823242,
+            "p99": 7.870083332061768,
+            "max": 10.42179012298584
+          },
+          "mean_wall_render_completion_increment_ms": 1.2273370027542114,
+          "wall_render_completion_mean_95pct_ci_ms": {
+            "mean": 1.2273370107014974,
+            "lower": 1.0346041593329736,
+            "upper": 1.4200698620700212,
+            "samples": 360,
+            "blocks": 6,
+            "nominal_block_frames": 60
+          },
+          "wall_mean_upper_95pct_under_1ms": false,
+          "off_first_frames": 180,
+          "on_first_frames": 180,
+          "off_first_mean_wall_increment_ms": 0.5985727310180664,
+          "on_first_mean_wall_increment_ms": 1.8561019897460938,
+          "encode_increment_ms": {
+            "p50": 0.17674994468688965,
+            "p99": 1.1733753681182861,
+            "max": 2.236208200454712
+          },
+          "cpu_gpu_increment_ms": null,
+          "gpu_increment_under_1ms_p99": null,
+          "all_gpu_increments_under_1ms": null
+        },
+        "after": {
+          "frames": 270,
+          "valid_gpu_frames": 0,
+          "invalid_gpu_frames": 270,
+          "gpu_increment_ms": null,
+          "mean_gpu_increment_ms": null,
+          "wall_render_completion_increment_ms": {
+            "p50": 1.120833396911621,
+            "p99": 4.544749736785889,
+            "max": 5.6027092933654785
+          },
+          "mean_wall_render_completion_increment_ms": 1.0478384494781494,
+          "wall_render_completion_mean_95pct_ci_ms": {
+            "mean": 1.0478385435210333,
+            "lower": 0.7598717543564535,
+            "upper": 1.3358053326856132,
+            "samples": 270,
+            "blocks": 5,
+            "nominal_block_frames": 60
+          },
+          "wall_mean_upper_95pct_under_1ms": false,
+          "off_first_frames": 135,
+          "on_first_frames": 135,
+          "off_first_mean_wall_increment_ms": 0.9839420914649963,
+          "on_first_mean_wall_increment_ms": 1.1117348670959473,
+          "encode_increment_ms": {
+            "p50": 0.1325840950012207,
+            "p99": 1.3103747367858887,
+            "max": 1.8894171714782715
+          },
+          "cpu_gpu_increment_ms": null,
+          "gpu_increment_under_1ms_p99": null,
+          "all_gpu_increments_under_1ms": null
+        }
+      }
+    },
+    "pan-paired": {
+      "report": "reports/pan-paired.json",
+      "report_sha256": "d871aed7a5e4983f1dcaf626db486d40c35bf7792f34c843404d8138737b36df",
+      "manifest": "proof/pan-paired-manifest.json",
+      "gpu_receipt": "proof/pan-paired-gpu_receipt.json",
+      "quiet_receipt": "proof/pan-paired-quiet_receipt.json",
+      "frame_ledger": "ledgers/pan-paired-frame-ledger.jsonl",
+      "pair_ledger": "ledgers/pan-paired-temporal-pairs.jsonl",
+      "original_phase_comparison": {
+        "before": {
+          "frames": 472,
+          "valid_gpu_frames": 0,
+          "invalid_gpu_frames": 472,
+          "gpu_increment_ms": null,
+          "mean_gpu_increment_ms": null,
+          "wall_render_completion_increment_ms": {
+            "p50": 0.299457311630249,
+            "p99": 5.419541358947754,
+            "max": 11.579957962036133
+          },
+          "mean_wall_render_completion_increment_ms": 0.5646872520446777,
+          "wall_render_completion_mean_95pct_ci_ms": {
+            "mean": 0.5646871681940757,
+            "lower": 0.40143849834678325,
+            "upper": 0.7279358380413682,
+            "samples": 472,
+            "blocks": 8,
+            "nominal_block_frames": 60
+          },
+          "wall_mean_upper_95pct_under_1ms": true,
+          "off_first_frames": 236,
+          "on_first_frames": 236,
+          "off_first_mean_wall_increment_ms": 0.4384910762310028,
+          "on_first_mean_wall_increment_ms": 0.690883219242096,
+          "encode_increment_ms": {
+            "p50": 0.043792009353637695,
+            "p99": 0.48891592025756836,
+            "max": 0.8133749961853027
+          },
+          "cpu_gpu_increment_ms": null,
+          "gpu_increment_under_1ms_p99": null,
+          "all_gpu_increments_under_1ms": null
+        },
+        "swarm": {
+          "frames": 0,
+          "valid_gpu_frames": 0,
+          "invalid_gpu_frames": 0,
+          "gpu_increment_ms": null,
+          "mean_gpu_increment_ms": null,
+          "wall_render_completion_increment_ms": null,
+          "mean_wall_render_completion_increment_ms": null,
+          "wall_render_completion_mean_95pct_ci_ms": null,
+          "wall_mean_upper_95pct_under_1ms": null,
+          "off_first_frames": 0,
+          "on_first_frames": 0,
+          "off_first_mean_wall_increment_ms": null,
+          "on_first_mean_wall_increment_ms": null,
+          "encode_increment_ms": null,
+          "cpu_gpu_increment_ms": null,
+          "gpu_increment_under_1ms_p99": null,
+          "all_gpu_increments_under_1ms": null
+        },
+        "after": {
+          "frames": 0,
+          "valid_gpu_frames": 0,
+          "invalid_gpu_frames": 0,
+          "gpu_increment_ms": null,
+          "mean_gpu_increment_ms": null,
+          "wall_render_completion_increment_ms": null,
+          "mean_wall_render_completion_increment_ms": null,
+          "wall_render_completion_mean_95pct_ci_ms": null,
+          "wall_mean_upper_95pct_under_1ms": null,
+          "off_first_frames": 0,
+          "on_first_frames": 0,
+          "off_first_mean_wall_increment_ms": null,
+          "on_first_mean_wall_increment_ms": null,
+          "encode_increment_ms": null,
+          "cpu_gpu_increment_ms": null,
+          "gpu_increment_under_1ms_p99": null,
+          "all_gpu_increments_under_1ms": null
+        }
+      }
+    },
+    "orbit-paired": {
+      "report": "reports/orbit-paired.json",
+      "report_sha256": "470d53579d9423b5be8f606eed8d4a8a7b32dd30066ef87694a8dd9f2d716735",
+      "manifest": "proof/orbit-paired-manifest.json",
+      "gpu_receipt": "proof/orbit-paired-gpu_receipt.json",
+      "quiet_receipt": "proof/orbit-paired-quiet_receipt.json",
+      "frame_ledger": "ledgers/orbit-paired-frame-ledger.jsonl",
+      "pair_ledger": "ledgers/orbit-paired-temporal-pairs.jsonl",
+      "original_phase_comparison": {
+        "before": {
+          "frames": 472,
+          "valid_gpu_frames": 1,
+          "invalid_gpu_frames": 471,
+          "gpu_increment_ms": {
+            "p50": 1.358667016029358,
+            "p99": 1.358667016029358,
+            "max": 1.358667016029358
+          },
+          "mean_gpu_increment_ms": null,
+          "wall_render_completion_increment_ms": {
+            "p50": 0.4817078113555908,
+            "p99": 5.186542510986328,
+            "max": 11.80674934387207
+          },
+          "mean_wall_render_completion_increment_ms": 0.5830584168434143,
+          "wall_render_completion_mean_95pct_ci_ms": {
+            "mean": 0.5830581622608637,
+            "lower": 0.4494250689780863,
+            "upper": 0.7166912555436411,
+            "samples": 472,
+            "blocks": 8,
+            "nominal_block_frames": 60
+          },
+          "wall_mean_upper_95pct_under_1ms": true,
+          "off_first_frames": 236,
+          "on_first_frames": 236,
+          "off_first_mean_wall_increment_ms": 0.3815668821334839,
+          "on_first_mean_wall_increment_ms": 0.7845497727394104,
+          "encode_increment_ms": {
+            "p50": 0.04400002956390381,
+            "p99": 0.5207090377807617,
+            "max": 1.0952091217041016
+          },
+          "cpu_gpu_increment_ms": {
+            "p50": 1.3299590349197388,
+            "p99": 1.3299590349197388,
+            "max": 1.3299590349197388
+          },
+          "gpu_increment_under_1ms_p99": null,
+          "all_gpu_increments_under_1ms": null
+        },
+        "swarm": {
+          "frames": 0,
+          "valid_gpu_frames": 0,
+          "invalid_gpu_frames": 0,
+          "gpu_increment_ms": null,
+          "mean_gpu_increment_ms": null,
+          "wall_render_completion_increment_ms": null,
+          "mean_wall_render_completion_increment_ms": null,
+          "wall_render_completion_mean_95pct_ci_ms": null,
+          "wall_mean_upper_95pct_under_1ms": null,
+          "off_first_frames": 0,
+          "on_first_frames": 0,
+          "off_first_mean_wall_increment_ms": null,
+          "on_first_mean_wall_increment_ms": null,
+          "encode_increment_ms": null,
+          "cpu_gpu_increment_ms": null,
+          "gpu_increment_under_1ms_p99": null,
+          "all_gpu_increments_under_1ms": null
+        },
+        "after": {
+          "frames": 0,
+          "valid_gpu_frames": 0,
+          "invalid_gpu_frames": 0,
+          "gpu_increment_ms": null,
+          "mean_gpu_increment_ms": null,
+          "wall_render_completion_increment_ms": null,
+          "mean_wall_render_completion_increment_ms": null,
+          "wall_render_completion_mean_95pct_ci_ms": null,
+          "wall_mean_upper_95pct_under_1ms": null,
+          "off_first_frames": 0,
+          "on_first_frames": 0,
+          "off_first_mean_wall_increment_ms": null,
+          "on_first_mean_wall_increment_ms": null,
+          "encode_increment_ms": null,
+          "cpu_gpu_increment_ms": null,
+          "gpu_increment_under_1ms_p99": null,
+          "all_gpu_increments_under_1ms": null
+        }
+      }
+    },
+    "high-replicate-2": {
+      "report": "proof/replication/high-replicate-2/capture.json",
+      "report_sha256": "39a8d77b6260ccf84dd9b1c9ebed348c5d28fd6e1c84b2ccec4b815e10926496",
+      "manifest": "proof/10936-final-copy-high-replicate-2-manifest.json",
+      "gpu_receipt": "proof/10936-final-copy-high-replicate-2-gpu.json",
+      "quiet_receipt": "proof/10936-final-copy-high-replicate-2-quiet.json",
+      "frame_ledger": "ledgers/high-replicate-2-frame-ledger.jsonl",
+      "pair_ledger": "ledgers/high-replicate-2-temporal-pairs.jsonl",
+      "original_phase_comparison": {
+        "before": {
+          "frames": 322,
+          "valid_gpu_frames": 0,
+          "invalid_gpu_frames": 322,
+          "gpu_increment_ms": null,
+          "mean_gpu_increment_ms": null,
+          "wall_render_completion_increment_ms": {
+            "p50": 0.7614591121673584,
+            "p99": 2.7286665439605713,
+            "max": 4.9874162673950195
+          },
+          "mean_wall_render_completion_increment_ms": 0.704967200756073,
+          "wall_render_completion_mean_95pct_ci_ms": {
+            "mean": 0.7049673847530199,
+            "lower": 0.35628565831910236,
+            "upper": 1.0536491111869375,
+            "samples": 322,
+            "blocks": 6,
+            "nominal_block_frames": 60
+          },
+          "wall_mean_upper_95pct_under_1ms": false,
+          "off_first_frames": 161,
+          "on_first_frames": 161,
+          "off_first_mean_wall_increment_ms": 0.6882635354995728,
+          "on_first_mean_wall_increment_ms": 0.721671462059021,
+          "encode_increment_ms": {
+            "p50": 0.046708106994628906,
+            "p99": 0.7175420522689819,
+            "max": 0.830875039100647
+          },
+          "cpu_gpu_increment_ms": null,
+          "gpu_increment_under_1ms_p99": null,
+          "all_gpu_increments_under_1ms": null
+        },
+        "swarm": {
+          "frames": 360,
+          "valid_gpu_frames": 0,
+          "invalid_gpu_frames": 360,
+          "gpu_increment_ms": null,
+          "mean_gpu_increment_ms": null,
+          "wall_render_completion_increment_ms": {
+            "p50": 0.39349961280822754,
+            "p99": 8.199708938598633,
+            "max": 11.842666625976562
+          },
+          "mean_wall_render_completion_increment_ms": 0.5924954414367676,
+          "wall_render_completion_mean_95pct_ci_ms": {
+            "mean": 0.5924954295158387,
+            "lower": 0.2636110826871492,
+            "upper": 0.9213797763445282,
+            "samples": 360,
+            "blocks": 6,
+            "nominal_block_frames": 60
+          },
+          "wall_mean_upper_95pct_under_1ms": true,
+          "off_first_frames": 180,
+          "on_first_frames": 180,
+          "off_first_mean_wall_increment_ms": -0.22513523697853088,
+          "on_first_mean_wall_increment_ms": 1.410125970840454,
+          "encode_increment_ms": {
+            "p50": 0.17770791053771973,
+            "p99": 1.604166030883789,
+            "max": 2.535583734512329
+          },
+          "cpu_gpu_increment_ms": null,
+          "gpu_increment_under_1ms_p99": null,
+          "all_gpu_increments_under_1ms": null
+        },
+        "after": {
+          "frames": 270,
+          "valid_gpu_frames": 0,
+          "invalid_gpu_frames": 270,
+          "gpu_increment_ms": null,
+          "mean_gpu_increment_ms": null,
+          "wall_render_completion_increment_ms": {
+            "p50": 0.4985830783843994,
+            "p99": 2.7971668243408203,
+            "max": 8.390625
+          },
+          "mean_wall_render_completion_increment_ms": 0.6784579157829285,
+          "wall_render_completion_mean_95pct_ci_ms": {
+            "mean": 0.678457733436867,
+            "lower": 0.37766299872856496,
+            "upper": 0.9792524681451691,
+            "samples": 270,
+            "blocks": 5,
+            "nominal_block_frames": 60
+          },
+          "wall_mean_upper_95pct_under_1ms": true,
+          "off_first_frames": 135,
+          "on_first_frames": 135,
+          "off_first_mean_wall_increment_ms": 0.6964833736419678,
+          "on_first_mean_wall_increment_ms": 0.6604320406913757,
+          "encode_increment_ms": {
+            "p50": 0.10054194927215576,
+            "p99": 0.7374577522277832,
+            "max": 1.2405829429626465
+          },
+          "cpu_gpu_increment_ms": null,
+          "gpu_increment_under_1ms_p99": null,
+          "all_gpu_increments_under_1ms": null
+        }
+      }
+    },
+    "high-replicate-3": {
+      "report": "proof/replication/high-replicate-3/capture.json",
+      "report_sha256": "fd4a5c142735f7903dd73ba7ba315f70292491927ceefd9104ec1c392e1c50a7",
+      "manifest": "proof/10936-final-copy-high-replicate-3-manifest.json",
+      "gpu_receipt": "proof/10936-final-copy-high-replicate-3-gpu.json",
+      "quiet_receipt": "proof/10936-final-copy-high-replicate-3-quiet.json",
+      "frame_ledger": "ledgers/high-replicate-3-frame-ledger.jsonl",
+      "pair_ledger": "ledgers/high-replicate-3-temporal-pairs.jsonl",
+      "original_phase_comparison": {
+        "before": {
+          "frames": 322,
+          "valid_gpu_frames": 0,
+          "invalid_gpu_frames": 322,
+          "gpu_increment_ms": null,
+          "mean_gpu_increment_ms": null,
+          "wall_render_completion_increment_ms": {
+            "p50": 0.7213752269744873,
+            "p99": 3.6915416717529297,
+            "max": 17.19750213623047
+          },
+          "mean_wall_render_completion_increment_ms": 0.7929311990737915,
+          "wall_render_completion_mean_95pct_ci_ms": {
+            "mean": 0.7929313079170559,
+            "lower": 0.5714494606436559,
+            "upper": 1.0144131551904558,
+            "samples": 322,
+            "blocks": 6,
+            "nominal_block_frames": 60
+          },
+          "wall_mean_upper_95pct_under_1ms": false,
+          "off_first_frames": 161,
+          "on_first_frames": 161,
+          "off_first_mean_wall_increment_ms": 0.7708339095115662,
+          "on_first_mean_wall_increment_ms": 0.8150286674499512,
+          "encode_increment_ms": {
+            "p50": 0.09816694259643555,
+            "p99": 0.9232499599456787,
+            "max": 1.128915786743164
+          },
+          "cpu_gpu_increment_ms": null,
+          "gpu_increment_under_1ms_p99": null,
+          "all_gpu_increments_under_1ms": null
+        },
+        "swarm": {
+          "frames": 360,
+          "valid_gpu_frames": 0,
+          "invalid_gpu_frames": 360,
+          "gpu_increment_ms": null,
+          "mean_gpu_increment_ms": null,
+          "wall_render_completion_increment_ms": {
+            "p50": 0.7028756141662598,
+            "p99": 11.943958282470703,
+            "max": 12.830041885375977
+          },
+          "mean_wall_render_completion_increment_ms": 0.7596932053565979,
+          "wall_render_completion_mean_95pct_ci_ms": {
+            "mean": 0.7596931841638354,
+            "lower": 0.24420308759602527,
+            "upper": 1.2751832807316454,
+            "samples": 360,
+            "blocks": 6,
+            "nominal_block_frames": 60
+          },
+          "wall_mean_upper_95pct_under_1ms": false,
+          "off_first_frames": 180,
+          "on_first_frames": 180,
+          "off_first_mean_wall_increment_ms": -0.30223238468170166,
+          "on_first_mean_wall_increment_ms": 1.8216190338134766,
+          "encode_increment_ms": {
+            "p50": 0.24100112915039062,
+            "p99": 3.297416925430298,
+            "max": 4.220292091369629
+          },
+          "cpu_gpu_increment_ms": null,
+          "gpu_increment_under_1ms_p99": null,
+          "all_gpu_increments_under_1ms": null
+        },
+        "after": {
+          "frames": 270,
+          "valid_gpu_frames": 0,
+          "invalid_gpu_frames": 270,
+          "gpu_increment_ms": null,
+          "mean_gpu_increment_ms": null,
+          "wall_render_completion_increment_ms": {
+            "p50": 0.507124662399292,
+            "p99": 5.355374813079834,
+            "max": 9.790166854858398
+          },
+          "mean_wall_render_completion_increment_ms": 0.8129626512527466,
+          "wall_render_completion_mean_95pct_ci_ms": {
+            "mean": 0.8129625708968551,
+            "lower": 0.6437341330233577,
+            "upper": 0.9821910087703525,
+            "samples": 270,
+            "blocks": 5,
+            "nominal_block_frames": 60
+          },
+          "wall_mean_upper_95pct_under_1ms": true,
+          "off_first_frames": 135,
+          "on_first_frames": 135,
+          "off_first_mean_wall_increment_ms": 0.7202393412590027,
+          "on_first_mean_wall_increment_ms": 0.9056857228279114,
+          "encode_increment_ms": {
+            "p50": 0.15800094604492188,
+            "p99": 1.4493741989135742,
+            "max": 1.7205419540405273
+          },
+          "cpu_gpu_increment_ms": null,
+          "gpu_increment_under_1ms_p99": null,
+          "all_gpu_increments_under_1ms": null
+        }
+      }
+    }
+  },
+  "primary_high_cost_result": {
+    "method": "Exactly three High trials registered before any capture; Student t df2 interval across three equal-size per-phase run means. Every raw single-run flag and bound remains unchanged.",
+    "registered_protocol": "proof/10936-final-copy-replication-plan.json",
+    "pooled_result": "proof/10936-final-copy-high-pooled.json",
+    "all_retained_pairs": 2856,
+    "upper_ms": {
+      "before": 0.9883330758981802,
+      "swarm": 0.9431363549221656,
+      "after": 0.9113666895087238
+    },
+    "scoped_cost_gate_pass": true
+  },
+  "limits": [
+    "The first individual High before-phase block upper bound is 1.00053 ms and remains failed. Other individual-run failures remain in the exact reports; the preregistered primary three-run criterion is judged separately.",
+    "Medium swarm and after upper bounds exceed 1 ms; the accepted cost criterion, if visually approved, applies to High.",
+    "Pan and orbit have only a nonempty before phase; their static-view bounds do not establish dynamic-phase performance.",
+    "The High cost trials have zero valid GPU pairs. Orbit marks one of472 pairs valid, but every phase GPU mean remains null; GPU-duration and presentation claims remain unavailable. Wall completion includes encode, submit, poll, map, and readback.",
+    "R is artifact frame960 after primary frame959, reuses the saved view without a simulation step, and is excluded from primary phase statistics. Clock and character state continue; pristine/R pixel identity is not claimed."
+  ],
+  "root_visual_verdict": {
+    "file": "proof/10936-final-copy-root-visual-review.json",
+    "sha256": "c400e5c3504a6fda4f2a079e1bbce451c2c3783671558aeeb22fe91b6b6e74f4",
+    "bytes": 8277
+  },
+  "current_acceptance_changed": true,
+  "promotion_authorized": true
+}

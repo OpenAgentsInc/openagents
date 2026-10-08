@@ -1,0 +1,92 @@
+[
+  {
+    "source": "f655bcc32c6df5a69ef278ba8a2e45e342178fab",
+    "test": "pbr::temporal::tests::hidden_motion_cannot_overwrite_the_visible_surface",
+    "command": [
+      "/Users/christopherdavid/work/openagents-target-agent2/debug/deps/verse_pbr-668a3d62c3c8b90e",
+      "pbr::temporal::tests::hidden_motion_cannot_overwrite_the_visible_surface",
+      "--ignored",
+      "--exact",
+      "--test-threads=1"
+    ],
+    "binary_sha256": "be77974d974c70c9c4fc6cbab52f8be72e7a808fdd848a332a34fea47cacee4f",
+    "start_unix": 1791486815.424938,
+    "exit": 0,
+    "end_unix": 1791486815.863468
+  },
+  {
+    "source": "f655bcc32c6df5a69ef278ba8a2e45e342178fab",
+    "test": "pbr::temporal::tests::empty_motion_keeps_camera_reprojection_with_stale_object_data",
+    "command": [
+      "/Users/christopherdavid/work/openagents-target-agent2/debug/deps/verse_pbr-668a3d62c3c8b90e",
+      "pbr::temporal::tests::empty_motion_keeps_camera_reprojection_with_stale_object_data",
+      "--ignored",
+      "--exact",
+      "--test-threads=1"
+    ],
+    "binary_sha256": "be77974d974c70c9c4fc6cbab52f8be72e7a808fdd848a332a34fea47cacee4f",
+    "start_unix": 1791486815.88097,
+    "exit": 0,
+    "end_unix": 1791486816.077952
+  },
+  {
+    "source": "f655bcc32c6df5a69ef278ba8a2e45e342178fab",
+    "test": "pbr::temporal::reactive_tests::moving_reactive_geometry_cannot_leave_history_in_a_bright_trail",
+    "command": [
+      "/Users/christopherdavid/work/openagents-target-agent2/debug/deps/verse_pbr-668a3d62c3c8b90e",
+      "pbr::temporal::reactive_tests::moving_reactive_geometry_cannot_leave_history_in_a_bright_trail",
+      "--ignored",
+      "--exact",
+      "--test-threads=1"
+    ],
+    "binary_sha256": "be77974d974c70c9c4fc6cbab52f8be72e7a808fdd848a332a34fea47cacee4f",
+    "start_unix": 1791486816.09538,
+    "exit": 0,
+    "end_unix": 1791486816.484714
+  },
+  {
+    "source": "f655bcc32c6df5a69ef278ba8a2e45e342178fab",
+    "test": "pbr::temporal::reactive_tests::reactive_history_rejection_matches_the_actual_bilinear_footprint",
+    "command": [
+      "/Users/christopherdavid/work/openagents-target-agent2/debug/deps/verse_pbr-668a3d62c3c8b90e",
+      "pbr::temporal::reactive_tests::reactive_history_rejection_matches_the_actual_bilinear_footprint",
+      "--ignored",
+      "--exact",
+      "--test-threads=1"
+    ],
+    "binary_sha256": "be77974d974c70c9c4fc6cbab52f8be72e7a808fdd848a332a34fea47cacee4f",
+    "start_unix": 1791486816.5023549,
+    "exit": 0,
+    "end_unix": 1791486816.726903
+  },
+  {
+    "source": "f655bcc32c6df5a69ef278ba8a2e45e342178fab",
+    "test": "pbr::gpu::baked_tests::static_light_patches_cross_rows_and_layers_and_survive_late_bakes_until_restore",
+    "command": [
+      "/Users/christopherdavid/work/openagents-target-agent2/debug/deps/verse_pbr-668a3d62c3c8b90e",
+      "pbr::gpu::baked_tests::static_light_patches_cross_rows_and_layers_and_survive_late_bakes_until_restore",
+      "--ignored",
+      "--exact",
+      "--test-threads=1"
+    ],
+    "binary_sha256": "be77974d974c70c9c4fc6cbab52f8be72e7a808fdd848a332a34fea47cacee4f",
+    "start_unix": 1791486816.744004,
+    "exit": 0,
+    "end_unix": 1791486817.054962
+  },
+  {
+    "source": "f655bcc32c6df5a69ef278ba8a2e45e342178fab",
+    "test": "pbr::gpu::baked_tests::rigid_light_ranges_wrap_max_grow_rebind_and_restore_direct_ambient",
+    "command": [
+      "/Users/christopherdavid/work/openagents-target-agent2/debug/deps/verse_pbr-668a3d62c3c8b90e",
+      "pbr::gpu::baked_tests::rigid_light_ranges_wrap_max_grow_rebind_and_restore_direct_ambient",
+      "--ignored",
+      "--exact",
+      "--test-threads=1"
+    ],
+    "binary_sha256": "be77974d974c70c9c4fc6cbab52f8be72e7a808fdd848a332a34fea47cacee4f",
+    "start_unix": 1791486817.0732968,
+    "exit": 0,
+    "end_unix": 1791486817.333708
+  }
+]

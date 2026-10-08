@@ -1,0 +1,104 @@
+{
+  "prefix": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-medium-paired",
+  "manifest": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-medium-paired-manifest.json",
+  "log": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-medium-paired.log",
+  "quiet_receipt": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-medium-paired-quiet.json",
+  "gpu_receipt": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-medium-paired-gpu.json",
+  "check": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-medium-paired-check.json",
+  "job": "10936-final-MRT-medium-paired",
+  "case": "medium-paired",
+  "case_index": 3,
+  "schema": "openagents.verse.capture-job.v1",
+  "name": "10936-final-MRT-medium-paired",
+  "source": "5d7fff0247c6fef70447fe96103838a39e38b4f8",
+  "source_binding_method": "Explicit CLI source and root-supplied build binding; no ambient HEAD lookup",
+  "profile": "release",
+  "quality": "medium",
+  "features": [
+    "capture"
+  ],
+  "binary": "/Users/christopherdavid/work/openagents-target-agent0/release/examples/meteor_showcase_capture",
+  "binary_sha256": "42b0843835da8ec49e55b5694f4a3b38793ae03bc844c56836f09195d1ce471d",
+  "binary_bytes": 26526288,
+  "build_binding": {
+    "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-build-binding.json",
+    "sha256": "a99e3e2c0394d65d95bb18182b260ff32a1cbde9cc1daa862a2b13bb9a6928fb",
+    "bytes": 3098
+  },
+  "build_command": [
+    "cargo",
+    "build",
+    "-p",
+    "verse",
+    "--example",
+    "meteor_showcase_capture",
+    "--features",
+    "capture",
+    "--release"
+  ],
+  "build_receipt": {
+    "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-release-build-lease.json",
+    "sha256": "45361ae10bffb16fbaa3a733dbae03e3cf87d7ab8b1336a7dd4e9f44e9148c70",
+    "bytes": 648
+  },
+  "build_log": {
+    "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-release-build.log",
+    "sha256": "38e64274a9e0224b791f2c67584920ce7d3f652dbb90cc4e6c7c7d0e9bc4ff14",
+    "bytes": 9784
+  },
+  "command": [
+    "/Users/christopherdavid/work/openagents-target-agent0/release/examples/meteor_showcase_capture",
+    "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-medium-paired",
+    "--live",
+    "--settle-light",
+    "--no-video",
+    "--seconds",
+    "16",
+    "--impact-frame",
+    "469",
+    "--smoke-frame",
+    "600",
+    "--compare-temporal-aa",
+    "--sequence",
+    "439:484"
+  ],
+  "cwd": "/Users/christopherdavid/.codex/worktrees/bb65/openagents",
+  "environment": {
+    "VERSE_QUALITY": "medium",
+    "VERSE_KIT_PACK": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp",
+    "VERSE_KIT_BAKE": null,
+    "VERSE_HOME": null,
+    "VERSE_KIT_UNPINNED": null,
+    "VERSE_TEMPORAL_AA": null,
+    "OPENAGENTS_CAPTURE_SOURCE_COMMIT": "5d7fff0247c6fef70447fe96103838a39e38b4f8",
+    "OPENAGENTS_LEASES": "gpu,quiet",
+    "OPENAGENTS_LEASE_ID": "1791495090898-34310-0",
+    "OPENAGENTS_SCRATCH": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b",
+    "WGPU_BACKEND": null,
+    "WGPU_POWER_PREF": null,
+    "WGPU_TRACE": null
+  },
+  "removed_inherited_verse_environment_names": [],
+  "assets": {
+    "kit": {
+      "path": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp",
+      "sha256": "c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e",
+      "bytes": 21467658
+    },
+    "base_pack": {
+      "path": "/Users/christopherdavid/.codex/worktrees/bb65/openagents/assets/verse/everglade/a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f.vtp",
+      "sha256": "a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f",
+      "bytes": 10636202
+    }
+  },
+  "warning_diagnostics": null,
+  "warning_scan_pattern": "(?i)\\b(?:warning|warn|validation error|device lost|panic)\\b",
+  "start_unix": 1791495090.9517498,
+  "end_unix": 1791495150.3514838,
+  "exit": 0,
+  "acceptance": {
+    "visual": null,
+    "timing": null,
+    "promotion_authorized": false
+  }
+}

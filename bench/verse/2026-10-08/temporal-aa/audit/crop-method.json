@@ -1,0 +1,29 @@
+{
+  "crops": {
+    "high-paired": [
+      480,
+      200,
+      900,
+      670
+    ],
+    "medium-paired": [
+      480,
+      200,
+      900,
+      670
+    ],
+    "pan-paired": [
+      700,
+      360,
+      1200,
+      740
+    ],
+    "orbit-paired": [
+      700,
+      360,
+      1200,
+      740
+    ]
+  },
+  "pixels": "Native PNG crops; off left, on right. GIFs are palette-quantized inspection aids slowed to 10 fps, not measurement inputs or pixel proofs."
+}

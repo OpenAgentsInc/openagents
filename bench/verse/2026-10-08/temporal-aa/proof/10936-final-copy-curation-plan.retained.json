@@ -1,0 +1,367 @@
+{
+  "source": "fb9a5fd280db673926cfd0d649f924da3091a24b",
+  "assets": {
+    "kit": {
+      "path": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp",
+      "sha256": "c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e",
+      "bytes": 21467658
+    },
+    "base_pack": {
+      "path": "/Users/christopherdavid/.codex/worktrees/bb65/openagents/assets/verse/everglade/a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f.vtp",
+      "sha256": "a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f",
+      "bytes": 10636202
+    }
+  },
+  "cases": {
+    "high-dev": {
+      "manifest": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-dev-manifest.json",
+      "job": "10936-final-copy-high-dev",
+      "prefix": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-dev",
+      "quiet_receipt": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-dev-quiet.json",
+      "gpu_receipt": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-dev-gpu.json",
+      "profile": "dev",
+      "binary_sha256": "b8929b247a759aae5c7f766cdcbfa08cb3653cfd5f6e70c54d2c30c0e201516b"
+    },
+    "high-release": {
+      "manifest": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-release-manifest.json",
+      "job": "10936-final-copy-high-release",
+      "prefix": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-release",
+      "quiet_receipt": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-release-quiet.json",
+      "gpu_receipt": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-release-gpu.json",
+      "profile": "release",
+      "binary_sha256": "d160221522b37289b3211486457e7981d96cfba22667db4d6afc1645ef1d9090"
+    },
+    "high-paired": {
+      "manifest": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-paired-manifest.json",
+      "job": "10936-final-copy-high-paired",
+      "prefix": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-paired",
+      "quiet_receipt": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-paired-quiet.json",
+      "gpu_receipt": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-paired-gpu.json",
+      "profile": "release",
+      "binary_sha256": "d160221522b37289b3211486457e7981d96cfba22667db4d6afc1645ef1d9090"
+    },
+    "medium-paired": {
+      "manifest": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-medium-paired-manifest.json",
+      "job": "10936-final-copy-medium-paired",
+      "prefix": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-medium-paired",
+      "quiet_receipt": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-medium-paired-quiet.json",
+      "gpu_receipt": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-medium-paired-gpu.json",
+      "profile": "release",
+      "binary_sha256": "d160221522b37289b3211486457e7981d96cfba22667db4d6afc1645ef1d9090"
+    },
+    "pan-paired": {
+      "manifest": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-pan-paired-manifest.json",
+      "job": "10936-final-copy-pan-paired",
+      "prefix": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-pan-paired",
+      "quiet_receipt": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-pan-paired-quiet.json",
+      "gpu_receipt": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-pan-paired-gpu.json",
+      "profile": "release",
+      "binary_sha256": "d160221522b37289b3211486457e7981d96cfba22667db4d6afc1645ef1d9090"
+    },
+    "orbit-paired": {
+      "manifest": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-orbit-paired-manifest.json",
+      "job": "10936-final-copy-orbit-paired",
+      "prefix": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-orbit-paired",
+      "quiet_receipt": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-orbit-paired-quiet.json",
+      "gpu_receipt": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-orbit-paired-gpu.json",
+      "profile": "release",
+      "binary_sha256": "d160221522b37289b3211486457e7981d96cfba22667db4d6afc1645ef1d9090"
+    }
+  },
+  "proofs": {
+    "10936-final-copy-runner.py": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-runner.py",
+    "10936-final-copy-build-binding.json": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-build-binding.json",
+    "10936-final-copy-high-dev.log": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-dev.log",
+    "10936-final-copy-high-dev-check.json": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-dev-check.json",
+    "10936-final-copy-high-release.log": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-release.log",
+    "10936-final-copy-high-release-check.json": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-release-check.json",
+    "10936-final-copy-high-paired.log": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-paired.log",
+    "10936-final-copy-high-paired-check.json": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-paired-check.json",
+    "10936-final-copy-medium-paired.log": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-medium-paired.log",
+    "10936-final-copy-medium-paired-check.json": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-medium-paired-check.json",
+    "10936-final-copy-pan-paired.log": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-pan-paired.log",
+    "10936-final-copy-pan-paired-check.json": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-pan-paired-check.json",
+    "10936-final-copy-orbit-paired.log": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-orbit-paired.log",
+    "10936-final-copy-orbit-paired-check.json": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-orbit-paired-check.json",
+    "10936-final-copy-dev-build.log": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-dev-build.log",
+    "10936-final-copy-dev-build-lease.json": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-dev-build-lease.json",
+    "10936-final-copy-release-build.log": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-release-build.log",
+    "10936-final-copy-release-build-lease.json": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-release-build-lease.json",
+    "10936-final-copy-check-provenance.json": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-check-provenance.json",
+    "10936-final-copy-native-0.log": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-native-0.log",
+    "10936-final-copy-native-1.log": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-native-1.log",
+    "10936-final-copy-native-10.log": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-native-10.log",
+    "10936-final-copy-native-2.log": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-native-2.log",
+    "10936-final-copy-native-3.log": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-native-3.log",
+    "10936-final-copy-native-4.log": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-native-4.log",
+    "10936-final-copy-native-5.log": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-native-5.log",
+    "10936-final-copy-native-6.log": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-native-6.log",
+    "10936-final-copy-native-7.log": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-native-7.log",
+    "10936-final-copy-native-8.log": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-native-8.log",
+    "10936-final-copy-native-9.log": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-native-9.log",
+    "10936-final-copy-native-build-lease.json": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-native-build-lease.json",
+    "10936-final-copy-native-build.log": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-native-build.log",
+    "10936-final-copy-native-gpu.json": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-native-gpu.json",
+    "10936-final-copy-native-manifest.json": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-native-manifest.json",
+    "10936-final-copy-native.py": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-native.py",
+    "10936-final-MRT-consumer-tests.json": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-consumer-tests.json",
+    "10936-final-MRT-consumer-tests-lease.json": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-consumer-tests-lease.json",
+    "10936-final-MRT-consumer-tests.py": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-consumer-tests.py",
+    "10936-final-MRT-cli-tests.log": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-cli-tests.log",
+    "10936-final-MRT-gles-tests.log": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-gles-tests.log",
+    "10936-final-MRT-render-tests.log": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-MRT-render-tests.log",
+    "historical-attempts/resolve-834aed6cb0b7-native-failed/README.md": "/Users/christopherdavid/.codex/worktrees/bb65/openagents/bench/verse/2026-10-08/temporal-aa/legacy/resolve-834aed6cb0b7-native-failed/README.md",
+    "historical-attempts/resolve-834aed6cb0b7-native-failed/verification.json": "/Users/christopherdavid/.codex/worktrees/bb65/openagents/bench/verse/2026-10-08/temporal-aa/legacy/resolve-834aed6cb0b7-native-failed/verification.json",
+    "historical-attempts/resolve-834aed6cb0b7-native-failed/artifacts.json": "/Users/christopherdavid/.codex/worktrees/bb65/openagents/bench/verse/2026-10-08/temporal-aa/legacy/resolve-834aed6cb0b7-native-failed/artifacts.json",
+    "historical-attempts/resolve-834aed6cb0b7-native-failed/SHA256SUMS": "/Users/christopherdavid/.codex/worktrees/bb65/openagents/bench/verse/2026-10-08/temporal-aa/legacy/resolve-834aed6cb0b7-native-failed/SHA256SUMS",
+    "historical-attempts/resolve-834aed6cb0b7-native-failed/check.py": "/Users/christopherdavid/.codex/worktrees/bb65/openagents/bench/verse/2026-10-08/temporal-aa/legacy/resolve-834aed6cb0b7-native-failed/check.py",
+    "historical-attempts/mrt-5d7fff0247c6-cost-unresolved/README.md": "/Users/christopherdavid/.codex/worktrees/bb65/openagents/bench/verse/2026-10-08/temporal-aa/legacy/mrt-5d7fff0247c6-cost-unresolved/README.md",
+    "historical-attempts/mrt-5d7fff0247c6-cost-unresolved/verification.json": "/Users/christopherdavid/.codex/worktrees/bb65/openagents/bench/verse/2026-10-08/temporal-aa/legacy/mrt-5d7fff0247c6-cost-unresolved/verification.json",
+    "historical-attempts/mrt-5d7fff0247c6-cost-unresolved/artifacts.json": "/Users/christopherdavid/.codex/worktrees/bb65/openagents/bench/verse/2026-10-08/temporal-aa/legacy/mrt-5d7fff0247c6-cost-unresolved/artifacts.json",
+    "historical-attempts/mrt-5d7fff0247c6-cost-unresolved/SHA256SUMS": "/Users/christopherdavid/.codex/worktrees/bb65/openagents/bench/verse/2026-10-08/temporal-aa/legacy/mrt-5d7fff0247c6-cost-unresolved/SHA256SUMS",
+    "historical-attempts/mrt-5d7fff0247c6-cost-unresolved/check.py": "/Users/christopherdavid/.codex/worktrees/bb65/openagents/bench/verse/2026-10-08/temporal-aa/legacy/mrt-5d7fff0247c6-cost-unresolved/check.py",
+    "10936-final-copy-replication-plan.json": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-replication-plan.json",
+    "10936-final-copy-replication-plan.template.json": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-replication-plan.template.json",
+    "10936-final-copy-register-replication.py": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-register-replication.py",
+    "10936-final-copy-high-pooled.json": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-pooled.json",
+    "10936-final-copy-pool.py": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-pool.py",
+    "10936-final-copy-all-cases.py": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-all-cases.py",
+    "10936-final-copy-replicate-cases.py": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-replicate-cases.py",
+    "10936-final-copy-replicate-2-runner.py": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-replicate-2-runner.py",
+    "10936-final-copy-replicate-3-runner.py": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-replicate-3-runner.py",
+    "10936-final-copy-batch.py": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-batch.py",
+    "10936-final-copy-batch.log": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-batch.log",
+    "10936-final-copy-background-build-pause.json": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-background-build-pause.json",
+    "10936-final-copy-proof-map.json": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-proof-map.json",
+    "10936-final-copy-build.py": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-build.py",
+    "10936-final-copy-high-replicate-2-manifest.json": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-replicate-2-manifest.json",
+    "10936-final-copy-high-replicate-2-quiet.json": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-replicate-2-quiet.json",
+    "10936-final-copy-high-replicate-2-gpu.json": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-replicate-2-gpu.json",
+    "10936-final-copy-high-replicate-2-check.json": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-replicate-2-check.json",
+    "10936-final-copy-high-replicate-2.log": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-replicate-2.log",
+    "replication/high-replicate-2/capture.json": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-replicate-2/capture.json",
+    "10936-final-copy-high-replicate-3-manifest.json": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-replicate-3-manifest.json",
+    "10936-final-copy-high-replicate-3-quiet.json": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-replicate-3-quiet.json",
+    "10936-final-copy-high-replicate-3-gpu.json": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-replicate-3-gpu.json",
+    "10936-final-copy-high-replicate-3-check.json": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-replicate-3-check.json",
+    "10936-final-copy-high-replicate-3.log": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-replicate-3.log",
+    "replication/high-replicate-3/capture.json": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-replicate-3/capture.json"
+  },
+  "crops": {
+    "high-paired": [
+      480,
+      200,
+      900,
+      670
+    ],
+    "medium-paired": [
+      480,
+      200,
+      900,
+      670
+    ],
+    "pan-paired": [
+      700,
+      360,
+      1200,
+      740
+    ],
+    "orbit-paired": [
+      700,
+      360,
+      1200,
+      740
+    ]
+  },
+  "check_provenance": {
+    "schema": "openagents.verse.final-check-provenance.v1",
+    "source": "fb9a5fd280db673926cfd0d649f924da3091a24b",
+    "current_pbr": {
+      "source": "fb9a5fd280db673926cfd0d649f924da3091a24b",
+      "passed": 210,
+      "failed": 0,
+      "ignored": 18,
+      "log": "10936-final-copy-native-build.log",
+      "build_lease": "10936-final-copy-native-build-lease.json",
+      "source_binding": "The root identifies this leased PBR build/test as the frozen fb9a source. The lease and log do not independently encode a complete Cargo argv; no original argv is fabricated."
+    },
+    "current_native": {
+      "source": "fb9a5fd280db673926cfd0d649f924da3091a24b",
+      "passed": 11,
+      "failed": 0,
+      "manifest": "10936-final-copy-native-manifest.json",
+      "gpu_lease": "10936-final-copy-native-gpu.json",
+      "binary_sha256": "036810826d3d0c24c6010da2501c4cfb82a7bab50b5c9081cb874883c05030d6",
+      "case_commands": [
+        [
+          "/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse_pbr-54cd3c83fbd60abf",
+          "pbr::gpu::reactive_lit_tests::photo_sprite_mrt_matches_color_and_rejects_hidden_or_covered_emission",
+          "--ignored",
+          "--exact",
+          "--test-threads=1"
+        ],
+        [
+          "/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse_pbr-54cd3c83fbd60abf",
+          "pbr::gpu::reactive_lit_tests::photo_encode_tracks_a_reactive_head_over_a_stationary_receiver_with_camera_motion",
+          "--ignored",
+          "--exact",
+          "--test-threads=1"
+        ],
+        [
+          "/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse_pbr-54cd3c83fbd60abf",
+          "pbr::gpu::reactive_lit_tests::photo_encode_preserves_reactive_coverage_and_history_beside_an_hdr_ribbon",
+          "--ignored",
+          "--exact",
+          "--test-threads=1"
+        ],
+        [
+          "/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse_pbr-54cd3c83fbd60abf",
+          "pbr::temporal::reactive_tests::a_reactive_head_cannot_seed_neighbor_history_through_color_conditioning",
+          "--ignored",
+          "--exact",
+          "--test-threads=1"
+        ],
+        [
+          "/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse_pbr-54cd3c83fbd60abf",
+          "pbr::gpu::reactive_lit_tests::production_lit_projection_marks_every_visible_faceted_sample",
+          "--ignored",
+          "--exact",
+          "--test-threads=1"
+        ],
+        [
+          "/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse_pbr-54cd3c83fbd60abf",
+          "pbr::temporal::tests::hidden_motion_cannot_overwrite_the_visible_surface",
+          "--ignored",
+          "--exact",
+          "--test-threads=1"
+        ],
+        [
+          "/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse_pbr-54cd3c83fbd60abf",
+          "pbr::temporal::tests::empty_motion_keeps_camera_reprojection_with_stale_object_data",
+          "--ignored",
+          "--exact",
+          "--test-threads=1"
+        ],
+        [
+          "/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse_pbr-54cd3c83fbd60abf",
+          "pbr::temporal::reactive_tests::moving_reactive_geometry_cannot_leave_history_in_a_bright_trail",
+          "--ignored",
+          "--exact",
+          "--test-threads=1"
+        ],
+        [
+          "/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse_pbr-54cd3c83fbd60abf",
+          "pbr::temporal::reactive_tests::reactive_history_rejection_matches_the_actual_bilinear_footprint",
+          "--ignored",
+          "--exact",
+          "--test-threads=1"
+        ],
+        [
+          "/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse_pbr-54cd3c83fbd60abf",
+          "pbr::gpu::baked_tests::static_light_patches_cross_rows_and_layers_and_survive_late_bakes_until_restore",
+          "--ignored",
+          "--exact",
+          "--test-threads=1"
+        ],
+        [
+          "/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse_pbr-54cd3c83fbd60abf",
+          "pbr::gpu::baked_tests::rigid_light_ranges_wrap_max_grow_rebind_and_restore_direct_ambient",
+          "--ignored",
+          "--exact",
+          "--test-threads=1"
+        ]
+      ]
+    },
+    "supplementary_consumer_checks": {
+      "source": "a3acb16a8482e77cc151799e4e16ce2aa8c1b6c0",
+      "scope": "Earlier exact-source consumer coverage; these logs are not attributed to the final fb9a capture builds.",
+      "manifest": "10936-final-MRT-consumer-tests.json",
+      "lease": "10936-final-MRT-consumer-tests-lease.json",
+      "commands": [
+        {
+          "source": "a3acb16a8482e77cc151799e4e16ce2aa8c1b6c0",
+          "label": "cli",
+          "command": [
+            "cargo",
+            "test",
+            "-p",
+            "verse",
+            "--example",
+            "meteor_showcase_capture",
+            "--features",
+            "capture"
+          ],
+          "start_unix": 1791494798.137315,
+          "exit": 0,
+          "end_unix": 1791494859.2482061
+        },
+        {
+          "source": "a3acb16a8482e77cc151799e4e16ce2aa8c1b6c0",
+          "label": "gles",
+          "command": [
+            "cargo",
+            "test",
+            "-p",
+            "verse",
+            "--lib",
+            "gles_tests"
+          ],
+          "start_unix": 1791494859.248523,
+          "exit": 0,
+          "end_unix": 1791494928.9498491
+        },
+        {
+          "source": "a3acb16a8482e77cc151799e4e16ce2aa8c1b6c0",
+          "label": "render",
+          "command": [
+            "cargo",
+            "test",
+            "-p",
+            "verse",
+            "--lib",
+            "render::"
+          ],
+          "start_unix": 1791494928.950171,
+          "exit": 0,
+          "end_unix": 1791494930.456904
+        }
+      ],
+      "results": {
+        "cli": {
+          "passed": 10,
+          "ignored": 0
+        },
+        "gles": {
+          "passed": 10,
+          "ignored": 0
+        },
+        "render": {
+          "passed": 14,
+          "ignored": 1
+        }
+      }
+    },
+    "historical_attempts": {
+      "5d7": {
+        "source": "5d7fff0247c6fef70447fe96103838a39e38b4f8",
+        "directory": "/Users/christopherdavid/.codex/worktrees/bb65/openagents/bench/verse/2026-10-08/temporal-aa/legacy/mrt-5d7fff0247c6-cost-unresolved",
+        "status": "performance_unresolved"
+      },
+      "834": {
+        "source": "834aed6cb0b79c80fbd009c3caa51c78dba06628",
+        "directory": "/Users/christopherdavid/.codex/worktrees/bb65/openagents/bench/verse/2026-10-08/temporal-aa/legacy/resolve-834aed6cb0b7-native-failed",
+        "status": "native_color_parity_failed_before_timing"
+      }
+    },
+    "ancestry_note": "c400946249 has no separate capture/build attempt; it is an ancestor of the failed 834 candidate.",
+    "capture_results_pending": true,
+    "performance_acceptance": null,
+    "visual_acceptance": null
+  },
+  "preparation_status": "pending_captures_and_case_receipts",
+  "acceptance": {
+    "visual": null,
+    "timing": null,
+    "promotion_authorized": false
+  }
+}

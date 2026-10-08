@@ -1,0 +1,185 @@
+{
+  "schema": "openagents.verse.final-check-provenance.v1",
+  "source": "fb9a5fd280db673926cfd0d649f924da3091a24b",
+  "current_pbr": {
+    "source": "fb9a5fd280db673926cfd0d649f924da3091a24b",
+    "passed": 210,
+    "failed": 0,
+    "ignored": 18,
+    "log": "10936-final-copy-native-build.log",
+    "build_lease": "10936-final-copy-native-build-lease.json",
+    "source_binding": "The root identifies this leased PBR build/test as the frozen fb9a source. The lease and log do not independently encode a complete Cargo argv; no original argv is fabricated."
+  },
+  "current_native": {
+    "source": "fb9a5fd280db673926cfd0d649f924da3091a24b",
+    "passed": 11,
+    "failed": 0,
+    "manifest": "10936-final-copy-native-manifest.json",
+    "gpu_lease": "10936-final-copy-native-gpu.json",
+    "binary_sha256": "036810826d3d0c24c6010da2501c4cfb82a7bab50b5c9081cb874883c05030d6",
+    "case_commands": [
+      [
+        "/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse_pbr-54cd3c83fbd60abf",
+        "pbr::gpu::reactive_lit_tests::photo_sprite_mrt_matches_color_and_rejects_hidden_or_covered_emission",
+        "--ignored",
+        "--exact",
+        "--test-threads=1"
+      ],
+      [
+        "/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse_pbr-54cd3c83fbd60abf",
+        "pbr::gpu::reactive_lit_tests::photo_encode_tracks_a_reactive_head_over_a_stationary_receiver_with_camera_motion",
+        "--ignored",
+        "--exact",
+        "--test-threads=1"
+      ],
+      [
+        "/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse_pbr-54cd3c83fbd60abf",
+        "pbr::gpu::reactive_lit_tests::photo_encode_preserves_reactive_coverage_and_history_beside_an_hdr_ribbon",
+        "--ignored",
+        "--exact",
+        "--test-threads=1"
+      ],
+      [
+        "/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse_pbr-54cd3c83fbd60abf",
+        "pbr::temporal::reactive_tests::a_reactive_head_cannot_seed_neighbor_history_through_color_conditioning",
+        "--ignored",
+        "--exact",
+        "--test-threads=1"
+      ],
+      [
+        "/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse_pbr-54cd3c83fbd60abf",
+        "pbr::gpu::reactive_lit_tests::production_lit_projection_marks_every_visible_faceted_sample",
+        "--ignored",
+        "--exact",
+        "--test-threads=1"
+      ],
+      [
+        "/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse_pbr-54cd3c83fbd60abf",
+        "pbr::temporal::tests::hidden_motion_cannot_overwrite_the_visible_surface",
+        "--ignored",
+        "--exact",
+        "--test-threads=1"
+      ],
+      [
+        "/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse_pbr-54cd3c83fbd60abf",
+        "pbr::temporal::tests::empty_motion_keeps_camera_reprojection_with_stale_object_data",
+        "--ignored",
+        "--exact",
+        "--test-threads=1"
+      ],
+      [
+        "/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse_pbr-54cd3c83fbd60abf",
+        "pbr::temporal::reactive_tests::moving_reactive_geometry_cannot_leave_history_in_a_bright_trail",
+        "--ignored",
+        "--exact",
+        "--test-threads=1"
+      ],
+      [
+        "/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse_pbr-54cd3c83fbd60abf",
+        "pbr::temporal::reactive_tests::reactive_history_rejection_matches_the_actual_bilinear_footprint",
+        "--ignored",
+        "--exact",
+        "--test-threads=1"
+      ],
+      [
+        "/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse_pbr-54cd3c83fbd60abf",
+        "pbr::gpu::baked_tests::static_light_patches_cross_rows_and_layers_and_survive_late_bakes_until_restore",
+        "--ignored",
+        "--exact",
+        "--test-threads=1"
+      ],
+      [
+        "/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse_pbr-54cd3c83fbd60abf",
+        "pbr::gpu::baked_tests::rigid_light_ranges_wrap_max_grow_rebind_and_restore_direct_ambient",
+        "--ignored",
+        "--exact",
+        "--test-threads=1"
+      ]
+    ]
+  },
+  "supplementary_consumer_checks": {
+    "source": "a3acb16a8482e77cc151799e4e16ce2aa8c1b6c0",
+    "scope": "Earlier exact-source consumer coverage; these logs are not attributed to the final fb9a capture builds.",
+    "manifest": "10936-final-MRT-consumer-tests.json",
+    "lease": "10936-final-MRT-consumer-tests-lease.json",
+    "commands": [
+      {
+        "source": "a3acb16a8482e77cc151799e4e16ce2aa8c1b6c0",
+        "label": "cli",
+        "command": [
+          "cargo",
+          "test",
+          "-p",
+          "verse",
+          "--example",
+          "meteor_showcase_capture",
+          "--features",
+          "capture"
+        ],
+        "start_unix": 1791494798.137315,
+        "exit": 0,
+        "end_unix": 1791494859.2482061
+      },
+      {
+        "source": "a3acb16a8482e77cc151799e4e16ce2aa8c1b6c0",
+        "label": "gles",
+        "command": [
+          "cargo",
+          "test",
+          "-p",
+          "verse",
+          "--lib",
+          "gles_tests"
+        ],
+        "start_unix": 1791494859.248523,
+        "exit": 0,
+        "end_unix": 1791494928.9498491
+      },
+      {
+        "source": "a3acb16a8482e77cc151799e4e16ce2aa8c1b6c0",
+        "label": "render",
+        "command": [
+          "cargo",
+          "test",
+          "-p",
+          "verse",
+          "--lib",
+          "render::"
+        ],
+        "start_unix": 1791494928.950171,
+        "exit": 0,
+        "end_unix": 1791494930.456904
+      }
+    ],
+    "results": {
+      "cli": {
+        "passed": 10,
+        "ignored": 0
+      },
+      "gles": {
+        "passed": 10,
+        "ignored": 0
+      },
+      "render": {
+        "passed": 14,
+        "ignored": 1
+      }
+    }
+  },
+  "historical_attempts": {
+    "5d7": {
+      "source": "5d7fff0247c6fef70447fe96103838a39e38b4f8",
+      "directory": "/Users/christopherdavid/.codex/worktrees/bb65/openagents/bench/verse/2026-10-08/temporal-aa/legacy/mrt-5d7fff0247c6-cost-unresolved",
+      "status": "performance_unresolved"
+    },
+    "834": {
+      "source": "834aed6cb0b79c80fbd009c3caa51c78dba06628",
+      "directory": "/Users/christopherdavid/.codex/worktrees/bb65/openagents/bench/verse/2026-10-08/temporal-aa/legacy/resolve-834aed6cb0b7-native-failed",
+      "status": "native_color_parity_failed_before_timing"
+    }
+  },
+  "ancestry_note": "c400946249 has no separate capture/build attempt; it is an ancestor of the failed 834 candidate.",
+  "capture_results_pending": true,
+  "performance_acceptance": null,
+  "visual_acceptance": null
+}

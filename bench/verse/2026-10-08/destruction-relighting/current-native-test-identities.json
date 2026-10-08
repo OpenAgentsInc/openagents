@@ -1,0 +1,36 @@
+[
+  {
+    "source": "46cf41188b8067f10a08a2eb2a49466446b1760d",
+    "test_binary": "/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse_pbr-668a3d62c3c8b90e",
+    "binary_sha256": "13afd85643f30463043a4ce11540907ac9f7636f1bea321c5b05e3b432ec3a41",
+    "test_logs": [
+      "current-native-hidden-motion.log",
+      "current-native-empty-motion.log"
+    ],
+    "profile": "test",
+    "native_command_template": [
+      "/Users/christopherdavid/work/openagents-target-agent0/debug/deps/verse_pbr-668a3d62c3c8b90e",
+      "<exact test name>",
+      "--ignored",
+      "--exact",
+      "--test-threads=1"
+    ]
+  },
+  {
+    "source": "3e6406782163e2fe01e9beeef933dd1a39216169",
+    "test_binary": "/Users/christopherdavid/work/openagents-target-agent2/debug/deps/verse_pbr-668a3d62c3c8b90e",
+    "binary_sha256": "02253e48919049d3963d4c67eee72380a6401296ea14adff375a937508adb68e",
+    "test_logs": [
+      "supplementary-b3-native-static-light.log",
+      "supplementary-b3-native-rigid-light.log"
+    ],
+    "profile": "test",
+    "native_command_template": [
+      "/Users/christopherdavid/work/openagents-target-agent2/debug/deps/verse_pbr-668a3d62c3c8b90e",
+      "<exact test name>",
+      "--ignored",
+      "--exact",
+      "--test-threads=1"
+    ]
+  }
+]

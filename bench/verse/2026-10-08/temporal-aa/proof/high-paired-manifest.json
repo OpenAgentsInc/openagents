@@ -1,0 +1,109 @@
+{
+  "prefix": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-paired",
+  "manifest": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-paired-manifest.json",
+  "log": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-paired.log",
+  "quiet_receipt": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-paired-quiet.json",
+  "gpu_receipt": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-paired-gpu.json",
+  "check": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-paired-check.json",
+  "job": "10936-final-copy-high-paired",
+  "case": "high-paired",
+  "case_index": 2,
+  "schema": "openagents.verse.capture-job.v1",
+  "name": "10936-final-copy-high-paired",
+  "source": "fb9a5fd280db673926cfd0d649f924da3091a24b",
+  "source_binding_method": "Explicit CLI source and root-supplied build binding; no ambient HEAD lookup",
+  "profile": "release",
+  "quality": "high",
+  "features": [
+    "capture"
+  ],
+  "binary": "/Users/christopherdavid/work/openagents-target-agent0/release/examples/meteor_showcase_capture",
+  "binary_sha256": "d160221522b37289b3211486457e7981d96cfba22667db4d6afc1645ef1d9090",
+  "binary_bytes": 26543776,
+  "build_binding": {
+    "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-build-binding.json",
+    "sha256": "381f1884f060a105b438fac35a344e647df3660700d41007035ff76bd9545089",
+    "bytes": 3105
+  },
+  "build_command": [
+    "cargo",
+    "build",
+    "-p",
+    "verse",
+    "--example",
+    "meteor_showcase_capture",
+    "--features",
+    "capture",
+    "--release"
+  ],
+  "build_receipt": {
+    "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-release-build-lease.json",
+    "sha256": "65c13c494a720980a2772896741a83a2a826006632e4101096c854d18bb2fe2c",
+    "bytes": 648
+  },
+  "build_log": {
+    "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-release-build.log",
+    "sha256": "bc3ca5e9d407ad4a792e2d46a516aa6e6067b51f1eb6d6c7d4b673d50f7cdfa1",
+    "bytes": 11327
+  },
+  "command": [
+    "/Users/christopherdavid/work/openagents-target-agent0/release/examples/meteor_showcase_capture",
+    "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-high-paired",
+    "--live",
+    "--settle-light",
+    "--no-video",
+    "--seconds",
+    "16",
+    "--impact-frame",
+    "469",
+    "--smoke-frame",
+    "600",
+    "--compare-temporal-aa",
+    "--sequence",
+    "439:484"
+  ],
+  "cwd": "/Users/christopherdavid/.codex/worktrees/bb65/openagents",
+  "environment": {
+    "VERSE_QUALITY": "high",
+    "VERSE_KIT_PACK": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp",
+    "VERSE_KIT_BAKE": null,
+    "VERSE_HOME": null,
+    "VERSE_KIT_UNPINNED": null,
+    "VERSE_TEMPORAL_AA": null,
+    "OPENAGENTS_CAPTURE_SOURCE_COMMIT": "fb9a5fd280db673926cfd0d649f924da3091a24b",
+    "OPENAGENTS_LEASES": "gpu,quiet",
+    "OPENAGENTS_LEASE_ID": "1791497409693-19601-0",
+    "OPENAGENTS_SCRATCH": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b",
+    "WGPU_BACKEND": null,
+    "WGPU_POWER_PREF": null,
+    "WGPU_TRACE": null
+  },
+  "removed_inherited_verse_environment_names": [],
+  "assets": {
+    "kit": {
+      "path": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp",
+      "sha256": "c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e",
+      "bytes": 21467658
+    },
+    "base_pack": {
+      "path": "/Users/christopherdavid/.codex/worktrees/bb65/openagents/assets/verse/everglade/a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f.vtp",
+      "sha256": "a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f",
+      "bytes": 10636202
+    }
+  },
+  "warning_diagnostics": null,
+  "warning_scan_pattern": "(?i)\\b(?:warning|warn|validation error|device lost|panic)\\b",
+  "start_unix": 1791497409.7488909,
+  "end_unix": 1791497487.051838,
+  "exit": 0,
+  "acceptance": {
+    "visual": null,
+    "timing": null,
+    "promotion_authorized": false
+  },
+  "replication_plan": {
+    "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-final-copy-replication-plan.json",
+    "sha256": "742856d803ff25aa38cf287f207ebda0c1803b0c1129198cad64397b5aa13cfc",
+    "bytes": 1510
+  }
+}

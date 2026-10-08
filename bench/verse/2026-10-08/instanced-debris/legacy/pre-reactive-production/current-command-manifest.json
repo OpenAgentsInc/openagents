@@ -1,0 +1,318 @@
+[
+  {
+    "name": "10937-high-frustum-dev",
+    "profile": "debug",
+    "quality": "high",
+    "source": "46cf41188b8067f10a08a2eb2a49466446b1760d",
+    "build_command": [
+      "cargo",
+      "build",
+      "-p",
+      "verse",
+      "--example",
+      "meteor_showcase_capture",
+      "--features",
+      "capture"
+    ],
+    "environment": {
+      "VERSE_QUALITY": "high",
+      "VERSE_KIT_PACK": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp"
+    },
+    "binary_sha256": "b7e3952302a2a477727ffe0b3b88795012cdb39c73fdb5f58b29272f9107100f",
+    "command": [
+      "/Users/christopherdavid/work/openagents-target-agent0/debug/examples/meteor_showcase_capture",
+      "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10937-high-frustum-dev",
+      "--live",
+      "--settle-light",
+      "--no-video",
+      "--seconds",
+      "16",
+      "--impact-frame",
+      "469",
+      "--smoke-frame",
+      "600"
+    ],
+    "start_unix": 1791481414.426018,
+    "exit": 0,
+    "end_unix": 1791481425.644553
+  },
+  {
+    "name": "10937-high-frustum-release",
+    "profile": "release",
+    "quality": "high",
+    "source": "46cf41188b8067f10a08a2eb2a49466446b1760d",
+    "build_command": [
+      "cargo",
+      "build",
+      "--release",
+      "-p",
+      "verse",
+      "--example",
+      "meteor_showcase_capture",
+      "--features",
+      "capture"
+    ],
+    "environment": {
+      "VERSE_QUALITY": "high",
+      "VERSE_KIT_PACK": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp"
+    },
+    "binary_sha256": "ad715e26bc77a2a4935ee39ecdeab83205d6efd1860de5506a9302e29a90ab0f",
+    "command": [
+      "/Users/christopherdavid/work/openagents-target-agent0/release/examples/meteor_showcase_capture",
+      "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10937-high-frustum-release",
+      "--live",
+      "--settle-light",
+      "--no-video",
+      "--seconds",
+      "16",
+      "--impact-frame",
+      "469",
+      "--smoke-frame",
+      "600"
+    ],
+    "start_unix": 1791481425.666652,
+    "exit": 0,
+    "end_unix": 1791481431.980507
+  },
+  {
+    "name": "10936-high-frustum-release-paired",
+    "profile": "release",
+    "quality": "high",
+    "source": "46cf41188b8067f10a08a2eb2a49466446b1760d",
+    "build_command": [
+      "cargo",
+      "build",
+      "--release",
+      "-p",
+      "verse",
+      "--example",
+      "meteor_showcase_capture",
+      "--features",
+      "capture"
+    ],
+    "environment": {
+      "VERSE_QUALITY": "high",
+      "VERSE_KIT_PACK": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp"
+    },
+    "binary_sha256": "ad715e26bc77a2a4935ee39ecdeab83205d6efd1860de5506a9302e29a90ab0f",
+    "command": [
+      "/Users/christopherdavid/work/openagents-target-agent0/release/examples/meteor_showcase_capture",
+      "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-high-frustum-release-paired",
+      "--live",
+      "--settle-light",
+      "--no-video",
+      "--seconds",
+      "16",
+      "--impact-frame",
+      "469",
+      "--smoke-frame",
+      "600",
+      "--compare-temporal-aa",
+      "--sequence",
+      "469:484"
+    ],
+    "start_unix": 1791481432.002521,
+    "exit": 0,
+    "end_unix": 1791481464.9366589
+  },
+  {
+    "name": "10936-pan-frustum-release-paired",
+    "profile": "release",
+    "quality": "high",
+    "source": "46cf41188b8067f10a08a2eb2a49466446b1760d",
+    "build_command": [
+      "cargo",
+      "build",
+      "--release",
+      "-p",
+      "verse",
+      "--example",
+      "meteor_showcase_capture",
+      "--features",
+      "capture"
+    ],
+    "environment": {
+      "VERSE_QUALITY": "high",
+      "VERSE_KIT_PACK": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp"
+    },
+    "binary_sha256": "ad715e26bc77a2a4935ee39ecdeab83205d6efd1860de5506a9302e29a90ab0f",
+    "command": [
+      "/Users/christopherdavid/work/openagents-target-agent0/release/examples/meteor_showcase_capture",
+      "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-pan-frustum-release-paired",
+      "--live",
+      "--settle-light",
+      "--no-video",
+      "--seconds",
+      "8",
+      "--static-houses",
+      "--camera",
+      "pan",
+      "--compare-temporal-aa",
+      "--sequence",
+      "120:135"
+    ],
+    "start_unix": 1791481464.958348,
+    "exit": 0,
+    "end_unix": 1791481484.629055
+  },
+  {
+    "name": "10936-orbit-frustum-release-paired",
+    "profile": "release",
+    "quality": "high",
+    "source": "46cf41188b8067f10a08a2eb2a49466446b1760d",
+    "build_command": [
+      "cargo",
+      "build",
+      "--release",
+      "-p",
+      "verse",
+      "--example",
+      "meteor_showcase_capture",
+      "--features",
+      "capture"
+    ],
+    "environment": {
+      "VERSE_QUALITY": "high",
+      "VERSE_KIT_PACK": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp"
+    },
+    "binary_sha256": "ad715e26bc77a2a4935ee39ecdeab83205d6efd1860de5506a9302e29a90ab0f",
+    "command": [
+      "/Users/christopherdavid/work/openagents-target-agent0/release/examples/meteor_showcase_capture",
+      "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-orbit-frustum-release-paired",
+      "--live",
+      "--settle-light",
+      "--no-video",
+      "--seconds",
+      "8",
+      "--static-houses",
+      "--camera",
+      "orbit",
+      "--compare-temporal-aa",
+      "--sequence",
+      "120:135"
+    ],
+    "start_unix": 1791481484.650573,
+    "exit": 0,
+    "end_unix": 1791481504.3310568
+  },
+  {
+    "name": "10936-medium-frustum-release-paired",
+    "profile": "release",
+    "quality": "medium",
+    "source": "46cf41188b8067f10a08a2eb2a49466446b1760d",
+    "build_command": [
+      "cargo",
+      "build",
+      "--release",
+      "-p",
+      "verse",
+      "--example",
+      "meteor_showcase_capture",
+      "--features",
+      "capture"
+    ],
+    "environment": {
+      "VERSE_QUALITY": "medium",
+      "VERSE_KIT_PACK": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp"
+    },
+    "binary_sha256": "ad715e26bc77a2a4935ee39ecdeab83205d6efd1860de5506a9302e29a90ab0f",
+    "command": [
+      "/Users/christopherdavid/work/openagents-target-agent0/release/examples/meteor_showcase_capture",
+      "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-medium-frustum-release-paired",
+      "--live",
+      "--settle-light",
+      "--no-video",
+      "--seconds",
+      "8",
+      "--compare-temporal-aa",
+      "--sequence",
+      "360:375"
+    ],
+    "start_unix": 1791481504.353193,
+    "exit": 0,
+    "end_unix": 1791481526.945051
+  },
+  {
+    "name": "10938-frustum-release-off",
+    "profile": "release",
+    "quality": "high",
+    "source": "46cf41188b8067f10a08a2eb2a49466446b1760d",
+    "build_command": [
+      "cargo",
+      "build",
+      "--release",
+      "-p",
+      "verse",
+      "--example",
+      "meteor_showcase_capture",
+      "--features",
+      "capture"
+    ],
+    "environment": {
+      "VERSE_QUALITY": "high",
+      "VERSE_KIT_PACK": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp"
+    },
+    "binary_sha256": "ad715e26bc77a2a4935ee39ecdeab83205d6efd1860de5506a9302e29a90ab0f",
+    "command": [
+      "/Users/christopherdavid/work/openagents-target-agent0/release/examples/meteor_showcase_capture",
+      "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10938-frustum-release-off",
+      "--live",
+      "--settle-light",
+      "--no-video",
+      "--seconds",
+      "16",
+      "--impact-frame",
+      "469",
+      "--smoke-frame",
+      "600",
+      "--serial-frames",
+      "--no-temporal-aa",
+      "--capture-rebuild",
+      "--no-destruction-relighting"
+    ],
+    "start_unix": 1791481526.967167,
+    "exit": 0,
+    "end_unix": 1791481537.056515
+  },
+  {
+    "name": "10938-frustum-release-on",
+    "profile": "release",
+    "quality": "high",
+    "source": "46cf41188b8067f10a08a2eb2a49466446b1760d",
+    "build_command": [
+      "cargo",
+      "build",
+      "--release",
+      "-p",
+      "verse",
+      "--example",
+      "meteor_showcase_capture",
+      "--features",
+      "capture"
+    ],
+    "environment": {
+      "VERSE_QUALITY": "high",
+      "VERSE_KIT_PACK": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp"
+    },
+    "binary_sha256": "ad715e26bc77a2a4935ee39ecdeab83205d6efd1860de5506a9302e29a90ab0f",
+    "command": [
+      "/Users/christopherdavid/work/openagents-target-agent0/release/examples/meteor_showcase_capture",
+      "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10938-frustum-release-on",
+      "--live",
+      "--settle-light",
+      "--no-video",
+      "--seconds",
+      "16",
+      "--impact-frame",
+      "469",
+      "--smoke-frame",
+      "600",
+      "--serial-frames",
+      "--no-temporal-aa",
+      "--capture-rebuild"
+    ],
+    "start_unix": 1791481537.078635,
+    "exit": 0,
+    "end_unix": 1791481548.434298
+  }
+]

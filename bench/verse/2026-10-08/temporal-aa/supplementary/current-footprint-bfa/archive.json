@@ -1,0 +1,17 @@
+{
+  "schema": "openagents.verse.diagnostic-archive.v1",
+  "source": "bfa66f3b07e8081d06bb084fa1e348d946684986",
+  "binary_sha256": "cc0377dc974ee3530884aee951de9b365c29b177567e83b7af8c0b42db3f587b",
+  "status": "visual_failed",
+  "raw_report": {
+    "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-current-footprint/capture.json",
+    "sha256": "4f30efd7f4f497d2cb00e49eaaf26a4552546b4ab05f7b51731941ec6e872536",
+    "bytes": 697804
+  },
+  "original_pngs": 116,
+  "primary_rows": 540,
+  "diagnostic_rows": 13,
+  "paired_rows": 532,
+  "timing_acceptance_available": false,
+  "supersedes_top_level_acceptance": false
+}

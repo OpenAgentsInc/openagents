@@ -1,0 +1,164 @@
+{
+  "schema": "openagents.verse.debris-prior-archive.v1",
+  "source": "36df9ceb4bbb7fb0c7be30bd1c3538e0be78ab3e",
+  "original_root": "/Users/christopherdavid/.codex/worktrees/bb65/openagents/bench/verse/2026-10-08/instanced-debris",
+  "copied_files": {
+    "README.md": {
+      "file": "original-README.md",
+      "sha256": "2f2609d47f42330f6a2780e39e060904a8924f7368e4e9ab81746c45ffefb7cb",
+      "bytes": 4651
+    },
+    "SHA256SUMS": {
+      "file": "original-SHA256SUMS",
+      "sha256": "5cb94b6c8ce30a7cb3af7a5bf8bd79b20797c31764331dd00ff832af5dd94e7a",
+      "bytes": 14126
+    },
+    "check.py": {
+      "file": "original-check.py",
+      "sha256": "96690e2c0b0c505f7aab9a1c24a1b5e75f96d36c93f8d13fc03f66024aab3280",
+      "bytes": 9021
+    },
+    "current-build-lease.json": {
+      "file": "current-build-lease.json",
+      "sha256": "8c86727f68ea36c31d0a8263a33d5db6bde303cda10bab039cd43aab1046ebcc",
+      "bytes": 642
+    },
+    "current-checks-build.log": {
+      "file": "current-checks-build.log",
+      "sha256": "29d74cf38f0cd0a43ad45a1071ea3dfda996463c4fa5ed9a825082d733475680",
+      "bytes": 118195
+    },
+    "current-checks.sh": {
+      "file": "current-checks.sh",
+      "sha256": "c3029fc6120d7a8219f765a5fc4325aa753f1a931eb964fd79e9216378773a1c",
+      "bytes": 504
+    },
+    "current-command-manifest.json": {
+      "file": "current-command-manifest.json",
+      "sha256": "593b71d526b1a4ed908116b536c37cba857442ace516c64a34d3eb8a6d51e7c9",
+      "bytes": 6038
+    },
+    "current-dev-aftermath.png": {
+      "file": "current-dev-aftermath.png",
+      "sha256": "26de12d81efc92c778656ca4d38bf6fbc8b00c55e723a2c5249b785493a0598d",
+      "bytes": 1312279
+    },
+    "current-dev-capture.json": {
+      "file": "current-dev-capture.json",
+      "sha256": "70693494f546cab59aa070f956492c4db4ef06d34fed03909bd4ee9787272d89",
+      "bytes": 616163
+    },
+    "current-dev-capture.log": {
+      "file": "current-dev-capture.log",
+      "sha256": "e68e1a48702e81fabbe9c0add184ca9228d160f651d695d5541d94f4dfe8bb66",
+      "bytes": 620173
+    },
+    "current-dev-establishing.png": {
+      "file": "current-dev-establishing.png",
+      "sha256": "bc854ec666ec7f64d47dc87c5cc630f8846c857e7a6231a3ba2ca0302ce74963",
+      "bytes": 1236456
+    },
+    "current-dev-frame-ledger.jsonl": {
+      "file": "current-dev-frame-ledger.jsonl",
+      "sha256": "1bee070c2271162ff42b51baad3cb57aa40335d4df2135801cbf5f50076c9093",
+      "bytes": 449896
+    },
+    "current-dev-ground-smoke.png": {
+      "file": "current-dev-ground-smoke.png",
+      "sha256": "e9a8cb4e0319d1c7459f89d78fb00871c279373d028639123bc38d325a80339d",
+      "bytes": 1432652
+    },
+    "current-dev-impact.png": {
+      "file": "current-dev-impact.png",
+      "sha256": "fa2cc0dfaca5a9b29e65b54d6324ae793cf9c1b24a6785bf4436d5ed257319a2",
+      "bytes": 1783924
+    },
+    "current-gpu-lease.json": {
+      "file": "current-gpu-lease.json",
+      "sha256": "a601d50a871ad9c31b017611b27f9a2ab037d0f13fb0b4d90c9fa975b285b0e9",
+      "bytes": 485
+    },
+    "current-native-and-captures.py": {
+      "file": "current-native-and-captures.py",
+      "sha256": "3253295555af3e6473ad4bc166017ea46de4709cefbe195beec2948a77bd9cdb",
+      "bytes": 3772
+    },
+    "current-quiet-lease.json": {
+      "file": "current-quiet-lease.json",
+      "sha256": "38fbb1b60019ccd4465ffcd77d3b815cc04f33cabd3e6c7c9bd94595a4e90fa9",
+      "bytes": 490
+    },
+    "current-release-aftermath.png": {
+      "file": "current-release-aftermath.png",
+      "sha256": "26de12d81efc92c778656ca4d38bf6fbc8b00c55e723a2c5249b785493a0598d",
+      "bytes": 1312279
+    },
+    "current-release-capture.json": {
+      "file": "current-release-capture.json",
+      "sha256": "b7fbbc505177a87d4622551d9e9164c68b68f14afbfa33743a1296e7cbb206d7",
+      "bytes": 616449
+    },
+    "current-release-capture.log": {
+      "file": "current-release-capture.log",
+      "sha256": "e820a57dd9a4cad15869c9fd38d42b7989703f9353e98c4eb7265db4262cdae8",
+      "bytes": 620457
+    },
+    "current-release-establishing.png": {
+      "file": "current-release-establishing.png",
+      "sha256": "bc854ec666ec7f64d47dc87c5cc630f8846c857e7a6231a3ba2ca0302ce74963",
+      "bytes": 1236456
+    },
+    "current-release-frame-ledger.jsonl": {
+      "file": "current-release-frame-ledger.jsonl",
+      "sha256": "6161e798d135001544e56d158fd024d47e2964c358c8320d87ba9c411e497193",
+      "bytes": 450170
+    },
+    "current-release-ground-smoke.png": {
+      "file": "current-release-ground-smoke.png",
+      "sha256": "e9a8cb4e0319d1c7459f89d78fb00871c279373d028639123bc38d325a80339d",
+      "bytes": 1432652
+    },
+    "current-release-impact.png": {
+      "file": "current-release-impact.png",
+      "sha256": "fa2cc0dfaca5a9b29e65b54d6324ae793cf9c1b24a6785bf4436d5ed257319a2",
+      "bytes": 1783924
+    },
+    "current-scoped-fmt.log": {
+      "file": "current-scoped-fmt.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "verification.json": {
+      "file": "original-verification.json",
+      "sha256": "605bb00f7d4ebd283fa03e47c6dba2f78325bf4fdfb269ca3548c522c2346655",
+      "bytes": 367126
+    }
+  },
+  "acceptance_at_archive": {
+    "frame_p99_limit_ms": 16.7,
+    "development": {
+      "frame_p99_limit_ms": 16.7,
+      "swarm_p99_ms": 14.256999969482422,
+      "after_p99_ms": 12.369125366210938,
+      "swarm_pass": true,
+      "after_pass": true,
+      "timing_pass": true
+    },
+    "release": {
+      "frame_p99_limit_ms": 16.7,
+      "swarm_p99_ms": 12.497542381286621,
+      "after_p99_ms": 6.872084140777588,
+      "swarm_pass": true,
+      "after_pass": true,
+      "timing_pass": true
+    },
+    "timing_pass": true,
+    "configured_chunk_ceiling": 700,
+    "observed_chunks_max": 509,
+    "current_cpu_debris_posed_vertices_max": 0,
+    "all_outliers_retained": true,
+    "development_swarm_max_ms": 18.23987579345703,
+    "scope": "Measured bounded offscreen throughput cadence; no GPU-duration, presentation, or input-latency budget claim."
+  },
+  "note": "This snapshot preserves the accepted current 36df attempt byte-for-byte. Older 46cf production and DAE history remain at the evidence root. The original verification, README, check script, and SHA inventory keep their original root-relative context and are explicitly named original-*; use the copied-files map to verify this subset."
+}

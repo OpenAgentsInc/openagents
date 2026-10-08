@@ -1,0 +1,10 @@
+{
+  "schema": "openagents.verse.capture-resource-pause.v1",
+  "source": "fb9a5fd280db673926cfd0d649f924da3091a24b",
+  "process_group": 55287,
+  "leader_command": "/bin/bash /Users/christopherdavid/.openagents/dev-host/checkout/scripts/desktop/dev-host.sh follow-build",
+  "reason": "Unleased automatic development-host compiler; suspend its build group only while the registered final capture batch runs. Running host is a separate process group.",
+  "pause_unix": 1791497383.080108,
+  "resume_unix": 1791497836.582305,
+  "batch_exit": 0
+}

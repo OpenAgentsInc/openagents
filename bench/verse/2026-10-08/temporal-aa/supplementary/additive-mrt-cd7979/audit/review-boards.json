@@ -1,0 +1,69 @@
+{
+  "source": "cd7979bedbeab7a44d71cec857b942ab0f3ca8e1",
+  "boards": {
+    "audit/469-stages.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-additive-mrt-stages-469.png",
+      "sha256": "45de96991ea8c6d2328724819874cbb265bbae6b283a0853cd2ed5792abecccd",
+      "bytes": 247678,
+      "pixels": [
+        1680,
+        430
+      ],
+      "crop_bounds_from_root_review": [
+        490,
+        260,
+        700,
+        455
+      ],
+      "method": "Root-created magnified review board, copied byte-for-byte; full original diagnostic PNGs and their identities are retained separately."
+    },
+    "audit/470-stages.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-additive-mrt-stages-470.png",
+      "sha256": "81dc3e3c72e882608efb13573acae1d504aa96da1d02b9145efe46427e7c0e58",
+      "bytes": 258944,
+      "pixels": [
+        1680,
+        430
+      ],
+      "crop_bounds_from_root_review": [
+        490,
+        260,
+        700,
+        455
+      ],
+      "method": "Root-created magnified review board, copied byte-for-byte; full original diagnostic PNGs and their identities are retained separately."
+    },
+    "audit/471-stages.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-additive-mrt-stages-471.png",
+      "sha256": "7a1cacefb1c2092cae997bdef9c0aa1dc84f9d48146e4c6dd8ceedd43f57a738",
+      "bytes": 258960,
+      "pixels": [
+        1680,
+        430
+      ],
+      "crop_bounds_from_root_review": [
+        490,
+        260,
+        700,
+        455
+      ],
+      "method": "Root-created magnified review board, copied byte-for-byte; full original diagnostic PNGs and their identities are retained separately."
+    },
+    "audit/472-stages.png": {
+      "path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-additive-mrt-stages-472.png",
+      "sha256": "a98804ce9bb6f2aff3277e6ec8cf82e27eca528e91cd0c28e3e34b8879b4fc0f",
+      "bytes": 257926,
+      "pixels": [
+        1680,
+        430
+      ],
+      "crop_bounds_from_root_review": [
+        490,
+        260,
+        700,
+        455
+      ],
+      "method": "Root-created magnified review board, copied byte-for-byte; full original diagnostic PNGs and their identities are retained separately."
+    }
+  }
+}

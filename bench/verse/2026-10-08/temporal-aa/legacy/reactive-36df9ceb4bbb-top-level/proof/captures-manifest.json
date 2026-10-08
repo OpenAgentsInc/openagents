@@ -1,0 +1,174 @@
+[
+  {
+    "name": "10937-high-reactive-dev",
+    "source": "36df9ceb4bbb7fb0c7be30bd1c3538e0be78ab3e",
+    "profile": "debug",
+    "quality": "high",
+    "binary_sha256": "a1bd54f6459c867a2a97a2ae6c6a8be28c136f96be81a256e9b095e2fe46e167",
+    "command": [
+      "/Users/christopherdavid/work/openagents-target-agent0/debug/examples/meteor_showcase_capture",
+      "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10937-high-reactive-dev",
+      "--live",
+      "--settle-light",
+      "--no-video",
+      "--seconds",
+      "16",
+      "--impact-frame",
+      "469",
+      "--smoke-frame",
+      "600"
+    ],
+    "environment": {
+      "VERSE_QUALITY": "high",
+      "VERSE_KIT_PACK": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp"
+    },
+    "start_unix": 1791486299.1414049,
+    "exit": 0,
+    "end_unix": 1791486311.552532
+  },
+  {
+    "name": "10937-high-reactive-release",
+    "source": "36df9ceb4bbb7fb0c7be30bd1c3538e0be78ab3e",
+    "profile": "release",
+    "quality": "high",
+    "binary_sha256": "3a852c752cabec9d7166ffd0b2e1e737a56f2748680cfc15b49d22c01795fee6",
+    "command": [
+      "/Users/christopherdavid/work/openagents-target-agent0/release/examples/meteor_showcase_capture",
+      "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10937-high-reactive-release",
+      "--live",
+      "--settle-light",
+      "--no-video",
+      "--seconds",
+      "16",
+      "--impact-frame",
+      "469",
+      "--smoke-frame",
+      "600"
+    ],
+    "environment": {
+      "VERSE_QUALITY": "high",
+      "VERSE_KIT_PACK": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp"
+    },
+    "start_unix": 1791486311.564831,
+    "exit": 0,
+    "end_unix": 1791486318.5372832
+  },
+  {
+    "name": "10936-high-reactive-release-paired",
+    "source": "36df9ceb4bbb7fb0c7be30bd1c3538e0be78ab3e",
+    "profile": "release",
+    "quality": "high",
+    "binary_sha256": "3a852c752cabec9d7166ffd0b2e1e737a56f2748680cfc15b49d22c01795fee6",
+    "command": [
+      "/Users/christopherdavid/work/openagents-target-agent0/release/examples/meteor_showcase_capture",
+      "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-high-reactive-release-paired",
+      "--live",
+      "--settle-light",
+      "--no-video",
+      "--seconds",
+      "16",
+      "--impact-frame",
+      "469",
+      "--smoke-frame",
+      "600",
+      "--compare-temporal-aa",
+      "--sequence",
+      "439:484"
+    ],
+    "environment": {
+      "VERSE_QUALITY": "high",
+      "VERSE_KIT_PACK": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp"
+    },
+    "start_unix": 1791486318.550283,
+    "exit": 0,
+    "end_unix": 1791486380.680554
+  },
+  {
+    "name": "10936-medium-reactive-release-paired",
+    "source": "36df9ceb4bbb7fb0c7be30bd1c3538e0be78ab3e",
+    "profile": "release",
+    "quality": "medium",
+    "binary_sha256": "3a852c752cabec9d7166ffd0b2e1e737a56f2748680cfc15b49d22c01795fee6",
+    "command": [
+      "/Users/christopherdavid/work/openagents-target-agent0/release/examples/meteor_showcase_capture",
+      "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-medium-reactive-release-paired",
+      "--live",
+      "--settle-light",
+      "--no-video",
+      "--seconds",
+      "16",
+      "--impact-frame",
+      "469",
+      "--smoke-frame",
+      "600",
+      "--compare-temporal-aa",
+      "--sequence",
+      "439:484"
+    ],
+    "environment": {
+      "VERSE_QUALITY": "medium",
+      "VERSE_KIT_PACK": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp"
+    },
+    "start_unix": 1791486380.6929789,
+    "exit": 0,
+    "end_unix": 1791486439.509262
+  },
+  {
+    "name": "10936-pan-reactive-release-paired",
+    "source": "36df9ceb4bbb7fb0c7be30bd1c3538e0be78ab3e",
+    "profile": "release",
+    "quality": "high",
+    "binary_sha256": "3a852c752cabec9d7166ffd0b2e1e737a56f2748680cfc15b49d22c01795fee6",
+    "command": [
+      "/Users/christopherdavid/work/openagents-target-agent0/release/examples/meteor_showcase_capture",
+      "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-pan-reactive-release-paired",
+      "--live",
+      "--settle-light",
+      "--no-video",
+      "--seconds",
+      "8",
+      "--static-houses",
+      "--camera",
+      "pan",
+      "--compare-temporal-aa",
+      "--sequence",
+      "120:135"
+    ],
+    "environment": {
+      "VERSE_QUALITY": "high",
+      "VERSE_KIT_PACK": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp"
+    },
+    "start_unix": 1791486439.520669,
+    "exit": 0,
+    "end_unix": 1791486458.768908
+  },
+  {
+    "name": "10936-orbit-reactive-release-paired",
+    "source": "36df9ceb4bbb7fb0c7be30bd1c3538e0be78ab3e",
+    "profile": "release",
+    "quality": "high",
+    "binary_sha256": "3a852c752cabec9d7166ffd0b2e1e737a56f2748680cfc15b49d22c01795fee6",
+    "command": [
+      "/Users/christopherdavid/work/openagents-target-agent0/release/examples/meteor_showcase_capture",
+      "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-8a0b-7850-9b7f-ca9fe5a3203b/10936-orbit-reactive-release-paired",
+      "--live",
+      "--settle-light",
+      "--no-video",
+      "--seconds",
+      "8",
+      "--static-houses",
+      "--camera",
+      "orbit",
+      "--compare-temporal-aa",
+      "--sequence",
+      "120:135"
+    ],
+    "environment": {
+      "VERSE_QUALITY": "high",
+      "VERSE_KIT_PACK": "/Users/christopherdavid/.openagents/verse/zones-cache/c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e.vtp"
+    },
+    "start_unix": 1791486458.780359,
+    "exit": 0,
+    "end_unix": 1791486478.719424
+  }
+]
