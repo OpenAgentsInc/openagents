@@ -701,7 +701,6 @@ impl Everglade {
     }
 
     /// Repairs use the current light; the load bake keeps its stable key.
-    #[cfg(any(not(target_arch = "wasm32"), test))]
     fn repair_light(&self) -> BakeLight {
         let key = self
             .look
@@ -1496,7 +1495,6 @@ impl Everglade {
         {
             self.probes = Some(Arc::new(probes));
         }
-        #[cfg(not(target_arch = "wasm32"))]
         if self.baked.as_ref().is_some_and(|baked| baked.active) {
             let light = self.repair_light();
             let minute =

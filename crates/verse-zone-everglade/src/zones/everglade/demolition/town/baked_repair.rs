@@ -566,15 +566,37 @@ impl Town {
     /// Enables immediate ambient fallback and selective vertex repair on one worker.
     ///
     /// # Errors
-    /// Returns a scene validation error or a worker startup error.
+    /// Returns a scene validation error or a worker startup error. Worker
+    /// startup failure retains immediate lighting for every sun direction.
     pub fn enable_baked_repair(&mut self, light: BakeLight) -> Result<(), String> {
+        self.enable_baked_repair_with(light, RepairQueue::new)
+    }
+
+    fn enable_baked_repair_with(
+        &mut self,
+        light: BakeLight,
+        start_worker: impl FnOnce() -> Result<RepairQueue, String>,
+    ) -> Result<(), String> {
         if self.baked_repair.is_some() {
             return Ok(());
         }
-        let queue = RepairQueue::new()?;
         self.invalidate_baked_repair();
         self.set_destruction_relighting(Some(light.sun_dir))?;
         self.pose();
+        let queue = match start_worker() {
+            Ok(queue) => queue,
+            Err(error) => {
+                // Without selective repair, keep every possible former sun
+                // shadow dynamic as the clock advances. Local openness is
+                // independent of the sun; build this membership only once.
+                self.relight_receivers = super::receivers::Index::all_directions(
+                    &self.relight_vertices,
+                    &self.wreck.buildings,
+                );
+                self.refresh_light();
+                return Err(error);
+            }
+        };
         let mut repair = Repair::new(queue, self);
         repair.refresh_ground(self);
         repair.publish_fallback(self);
@@ -835,6 +857,78 @@ mod tests {
             complete: true,
             error: None,
         }
+    }
+
+    #[test]
+    fn worker_startup_failure_keeps_clock_safe_fallback_until_restore() {
+        let (mut town, send) = fixture_options(1, true);
+        town.invalidate_baked_repair();
+        town.baked_repair = None;
+        drop(send);
+        town.set_destruction_relighting(None).unwrap();
+        town.pose();
+        assert!(!town.destruction_relighting());
+        assert!(town.world.baked.take_mask().unwrap().is_empty());
+        assert_eq!(town.world.baked.take().unwrap(), [[100; 4]; 6]);
+        let error = town
+            .enable_baked_repair_with(light(), || Err("worker unavailable".into()))
+            .unwrap_err();
+        assert_eq!(error, "worker unavailable");
+        assert!(town.destruction_relighting());
+        assert!(!town.baked_repair_enabled());
+        let diagnostics = town.baked_repair_diagnostics();
+        assert!(!diagnostics.enabled && !diagnostics.current_complete);
+        assert_eq!(town.world.baked.take_mask().unwrap(), [0, 1, 2, 3, 4, 5]);
+        let fallback = town.relight_fallback.lock().unwrap().clone();
+        assert_eq!(fallback.len(), 6);
+        let current = town.world.baked.take().unwrap();
+        for &(index, light) in fallback.iter() {
+            assert_eq!(current[index as usize], light);
+        }
+        let chunks = town.instances(None).unwrap();
+        assert!(chunks.vertex_lights.is_none());
+        assert!(
+            chunks
+                .instances
+                .iter()
+                .all(|instance| instance.light[3] > 0)
+        );
+
+        // These remote receivers were outside the admission light's shadow.
+        assert_eq!(
+            super::super::receivers::Index::new(
+                &town.relight_vertices,
+                &town.wreck.buildings,
+                Vec3::Y,
+            )
+            .affected([0]),
+            [0, 1, 2]
+        );
+        let mut later = light();
+        later.sun_dir = Vec3::new(-1.0, 0.01, 0.0).normalize();
+        let later_receivers = super::super::receivers::Index::new(
+            &town.relight_vertices,
+            &town.wreck.buildings,
+            later.sun_dir,
+        )
+        .affected([0]);
+        assert!(later_receivers.contains(&3));
+        town.poll_baked_repair(later, 2);
+        assert!(Arc::ptr_eq(
+            &fallback,
+            &town.relight_fallback.lock().unwrap()
+        ));
+        town.world.baked.deliver_lights(vec![[44; 4]; 6]);
+        town.world.baked.deliver_lamps(vec![[31; 4]; 6]);
+        assert_eq!(town.world.baked.take().unwrap(), current);
+        assert_eq!(town.world.baked.take_lamps().unwrap(), [[0; 4]; 6]);
+        assert!(town.world.baked.take_patches().is_empty());
+
+        town.restore();
+        assert!(town.world.baked.take_mask().unwrap().is_empty());
+        assert_eq!(town.world.baked.take().unwrap(), [[44; 4]; 6]);
+        assert_eq!(town.world.baked.take_lamps().unwrap(), [[31; 4]; 6]);
+        assert!(town.instances(None).is_none());
     }
 
     #[test]
