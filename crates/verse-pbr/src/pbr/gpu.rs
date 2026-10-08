@@ -1929,7 +1929,6 @@ impl Photo {
             ];
             water_screen::WaterScreen::new(
                 device,
-                water_plan,
                 water_screen::Parts {
                     module: &module,
                     constants: &mirror_constants,
