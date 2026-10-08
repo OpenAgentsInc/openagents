@@ -17,6 +17,8 @@ coder-access = { path = "../coder-access", default-features = false }
 coder-host = { path = "../coder-host", default-features = false }
 coder-demo-ui = { path = "../coder-demo-ui" }
 coder-ui = { path = "../coder-ui" }
+compute-workbench = { path = "../compute-workbench", features = ["client"] }
+retail-cloud = { path = "../retail-cloud" }
 rust-native = { path = "../rust-native" }
 rust-native-web = { path = "../rust-native-web" }
 route-contract = { path = "../route-contract" }
@@ -41,6 +43,10 @@ workbench = { path = "../workbench" }
 
 [dev-dependencies]
 atif = { path = "../atif" }
+openagents-wallet = { path = "../wallet", default-features = false }
+pay-ledger = { path = "../pay-ledger" }
+retail-qualify = { path = "../retail-qualify" }
+retail-service = { path = "../retail-service" }
 coder-cloud = { path = "../coder-cloud" }
 coder-project = { path = "../coder-project" }
 coder-pty = { path = "../coder-pty", default-features = false }

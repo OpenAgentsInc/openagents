@@ -4,10 +4,12 @@
 mod agents;
 pub(crate) mod composer;
 mod controls;
+pub mod custody;
 mod effects;
 pub mod hosts;
 mod operator;
 mod private;
+pub mod retail;
 pub mod session;
 #[cfg(test)]
 mod tests;
@@ -105,6 +107,7 @@ pub(crate) fn routes() -> Router<App> {
         .merge(workbench::routes())
         .merge(verse::routes())
         .merge(agents::routes())
+        .merge(retail::routes())
         .layer(DefaultBodyLimit::max(8192));
     for (_, slug, _) in SECTIONS {
         if !matches!(
@@ -468,6 +471,8 @@ fn workspace_shell(
             nav.push_str(&format!("<a href=\"/cloud/app/{slug}\">{label}</a>"));
         } else if slug == "workbench" && workbench::available(app, viewer) {
             nav.push_str("<a href=\"/cloud/app/workbench\">Workbench</a>");
+        } else if slug == "billing" && retail::available(app, viewer) {
+            nav.push_str("<a href=\"/cloud/app/billing/retail\">Billing</a>");
         } else if slug == "settings" {
             nav.push_str("<a href=\"/cloud/app/settings\">Settings</a>");
         } else if slug == "verse" {

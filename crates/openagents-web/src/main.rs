@@ -4,7 +4,7 @@ use std::path::PathBuf;
 const USAGE: &str = "usage: openagents-web [--store DIRECTORY] [--customer DIRECTORY] [--listen ADDRESS] \
 [--pay-host http://HOST:PORT] [--public-host HOST]... [--upstream http://HOST:PORT] \
 [--chat-store DIRECTORY | --chat-bucket BUCKET] [--chat-build DIRECTORY] [--everglade DIRECTORY] [--components-build DIRECTORY] [--cloud-build DIRECTORY] \
-[--cloud-config PRIVATE_JSON] [--cloud-hosts PRIVATE_JSON] [--pilot-config PRIVATE_JSON]";
+[--cloud-config PRIVATE_JSON] [--cloud-hosts PRIVATE_JSON] [--cloud-retail PRIVATE_JSON] [--pilot-config PRIVATE_JSON]";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -45,6 +45,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "--cloud-hosts" => {
                 config.cloud_hosts = Some(std::sync::Arc::new(
                     openagents_web::cloud::hosts::Hosts::load(std::path::Path::new(&value))?,
+                ));
+            }
+            "--cloud-retail" => {
+                config.cloud_retail = Some(std::sync::Arc::new(
+                    openagents_web::cloud::retail::Delegations::load(std::path::Path::new(&value))?,
                 ));
             }
             "--pilot-config" => {

@@ -340,12 +340,41 @@ impl Secret {
     fn read(path: &Path, max: u64) -> Result<Self> {
         let bytes = private::read(path, max)?;
         let s = String::from_utf8(bytes).map_err(|_| Error::Private("credential must be UTF-8"))?;
-        if s.is_empty() || s.bytes().any(|b| b.is_ascii_control()) {
+        let secret = Self(s);
+        if secret.0.is_empty() || secret.0.bytes().any(|b| b.is_ascii_control()) {
             return Err(Error::Private(
                 "credential must be nonempty without control characters",
             ));
         }
-        Ok(Self(s))
+        Ok(secret)
+    }
+}
+/// A customer's own provider key held in memory by another custody owner,
+/// such as the web adapter's vault. It never prints or serializes, and its
+/// bytes are zeroed on drop.
+pub struct ProviderKey(Secret);
+impl ProviderKey {
+    /// Admit nonempty UTF-8 of at most 8 KiB without control characters.
+    pub fn new(key: String) -> Result<Self> {
+        let secret = Secret(key);
+        if secret.0.is_empty()
+            || secret.0.len() > 8192
+            || secret.0.bytes().any(|b| b.is_ascii_control())
+        {
+            return Err(Error::Private(
+                "credential must be nonempty and bounded without control characters",
+            ));
+        }
+        Ok(Self(secret))
+    }
+    /// The SHA-256 a review binds; never the key itself.
+    pub fn digest(&self) -> String {
+        retail_cloud::sha256_hex(self.0.0.as_bytes())
+    }
+}
+impl std::fmt::Debug for ProviderKey {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.write_str("ProviderKey(redacted)")
     }
 }
 impl Drop for Secret {
@@ -549,8 +578,19 @@ impl Client {
         task: TaskRequest,
         provider_key: &Path,
     ) -> Result<Review> {
+        self.mutable()?;
+        let key = ProviderKey(Secret::read(provider_key, 8192)?);
+        self.quote_key(idempotency, task, &key)
+    }
+    /// [`Client::quote`] with a key another custody owner holds in memory.
+    pub fn quote_key(
+        &mut self,
+        idempotency: &str,
+        task: TaskRequest,
+        key: &ProviderKey,
+    ) -> Result<Review> {
         let account = self.authority(true)?;
-        let key = Secret::read(provider_key, 8192)?;
+        let key = &key.0;
         let key_digest = retail_cloud::sha256_hex(key.0.as_bytes());
         if let Some(pending) = self.state.reviews.get(idempotency) {
             if pending.review.offer.request != task
@@ -673,6 +713,18 @@ impl Client {
         provider_key: &Path,
         service_custody: bool,
     ) -> Result<Accepted> {
+        self.mutable()?;
+        let key = ProviderKey(Secret::read(provider_key, 8192)?);
+        self.confirm_key(review_digest, &key, service_custody)
+    }
+    /// [`Client::confirm`] with a key another custody owner holds in memory.
+    /// The same retained review digest and explicit custody consent apply.
+    pub fn confirm_key(
+        &mut self,
+        review_digest: &Digest,
+        key: &ProviderKey,
+        service_custody: bool,
+    ) -> Result<Accepted> {
         let account = self.authority(true)?;
         if !service_custody {
             return Err(Error::Refused(
@@ -709,7 +761,7 @@ impl Client {
                 "The reviewed commercial attribution changed.",
             ));
         }
-        let key = Secret::read(provider_key, 8192)?;
+        let key = &key.0;
         if retail_cloud::sha256_hex(key.0.as_bytes()) != review.provider_key_digest {
             return Err(Error::Refused("the reviewed customer key changed"));
         }

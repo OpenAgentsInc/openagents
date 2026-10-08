@@ -167,6 +167,7 @@ the `Host` headers `127.0.0.1:4300` and `localhost:4300`.
 | `--cloud-build DIRECTORY` | none | Rust/Wasm private-view lifecycle assets built by `scripts/build-coder-cloud-web.sh`. Private content waits for current account and resource standing before display. |
 | `--cloud-config PRIVATE_JSON` | none | Explicit account-service origin, public origin, and protected CSRF key. Native user sessions and current workspace membership scope each request. |
 | `--cloud-hosts PRIVATE_JSON` | none | Protected account/workspace/epoch bindings to host-signed Observe grants, device keys, and exact host routes and generations. No host enrollment or task effect comes from sign-in. |
+| `--cloud-retail PRIVATE_JSON` | none | Protected account/workspace/epoch delegations to the retail service through native `retail-client` configurations, plus a private site directory for key custody and request journals. No funding, quote, confirmation, or cancellation right comes from sign-in. |
 | `--everglade DIRECTORY` | none | The Everglade web build (`scripts/build-everglade-web.sh`'s output, `everglade_web.js` and `everglade_web_bg.wasm`) with the pinned pack under `pack/`, served at `/everglade`. Without it, `/everglade` says Everglade is unavailable. |
 | `--pilot-config PRIVATE_JSON` | none | Explicit task root and create-only intake credential. `/pilot` answers 404; POST intake stays available to the configured pipeline. |
 
@@ -391,6 +392,41 @@ returns to the connections page.
 [workbench reference](../../docs/terminal/workbench-resources.md) to the same app
 view: a terminal opens the workbench, a run opens its task, and other kinds show
 the exact reference without an action until their owner viewer lands.
+
+## Retail delegation
+
+`/cloud/app/billing/retail` reaches the [retail service](../../docs/cloud/retail-service.md)
+only through an operator-provisioned delegation. `--cloud-retail` names a
+private `openagents.cloud.retail-delegations.v1` file:
+
+```json
+{"schema":"openagents.cloud.retail-delegations.v1","directory":"/abs/private/site",
+ "delegations":[{"id":"alice-retail","account":"alice","workspace":"alice-personal",
+   "members_epoch":3,"client":"/abs/private/alice/client.json","read_only":false}]}
+```
+
+`client` is a native `openagents.compute-retail-client.v1` configuration (its
+endpoint, principal, bearer file, and state directory); every file is private
+and pinned, and a changed bearer, epoch, or configuration refuses. The server
+calls the service with that principal and no `Origin`, so the service keeps
+refusing browsers; the bearer never reaches the page. `read_only` narrows the
+principal to observation, and the service's current observe, spend, execute,
+and disclose rights are rechecked on every request.
+
+Funding, quotes, confirmations, and stop requests carry a request identity
+journaled under `directory/requests` before the native call. An exact retry,
+also after a site restart, recovers the original invoice or funded execution;
+other bytes under that identity conflict. A lost reply shows **Outcome
+unknown** with **Retry the same request**.
+
+The customer's own OpenAI key enters through a password field with explicit
+custody consent and is kept in `directory/custody` (`0600`), scoped to the
+account, workspace, epoch, and delegation. The page shows only its digest. It
+is released only to the exact quote and confirmation that reviewed that
+digest, and **Remove key from custody** zeroes and deletes it. The vault
+([`cloud::custody`](src/cloud/custody.rs)) is the shared custody class for a
+customer's own provider API keys; it refuses Claude.ai OAuth and
+`claude setup-token` values for every material.
 
 ## Task browser
 

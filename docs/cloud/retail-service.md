@@ -128,6 +128,15 @@ These client controls have synthetic binary/HTTP acceptance only. O3/O4/O8
 still gate real funds, TLS deployment, live provider cleanup, and installed
 customer acceptance.
 
+## Browser delegation
+
+The web app reaches this transport only through `openagents-web`'s retail
+delegation ([README](../../crates/openagents-web/README.md#retail-delegation)):
+an operator-provisioned native client per account, workspace, and membership
+epoch, called from the server without `Origin`. The browser `Origin` refusal
+above is unchanged. The customer's key passes from the site's scoped custody
+vault into the same `confirm` request as the native client's.
+
 ## Authorities
 
 [`retail_cloud::authority`](../../crates/retail-cloud/src/authority.rs)

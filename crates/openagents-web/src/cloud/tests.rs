@@ -32,6 +32,8 @@ mod operator_tests;
 mod project_fixture;
 #[path = "project_tests.rs"]
 mod projects;
+#[path = "retail_tests.rs"]
+mod retail_web;
 #[path = "verse_tests.rs"]
 mod verse;
 #[path = "workbench_tests.rs"]
