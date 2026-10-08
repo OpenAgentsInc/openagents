@@ -113,10 +113,11 @@ unchanged.
   output and receipt are preserved in the coordinator's private
   `b2-verification/` scratch directory. The private bucket copy has the
   matching length and MD5; captures and public delivery are not accepted yet.
-  The `kit_light_acceptance` helper and `uses_baked_light` accessor on the
-  verification branch are unverified; compile the filtered ignored test
-  and run it under remote quiet/GPU leases after the bake. Captures must
-  reject a mismatched scene and prove both offline and fallback paths.
+  The digest route test passes. The filtered release capture helper
+  compiles at `15fde52d61d2a9f8644974965956a100650c27af`; its frozen executable
+  is `e091be67860acdb6cf4b8595b4bd9d9862b0658c4fa34c16fab9b5b9ad588975`.
+  Scoped formatting and the headless supervisor check pass. Remote
+  quiet/GPU captures are running; visual acceptance remains pending.
   Upload, website delivery, and before/after Stoop Lane captures remain.
   The original second-UV lightmaps and denser lamp probes are still
   deferred in the plan; per-vertex results do not establish those checks.
