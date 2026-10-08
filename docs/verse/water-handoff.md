@@ -87,7 +87,7 @@ with `c8c9f7d02e`, which split the coast into C1 to C6.
 | Issue | Remaining work | Blocked by |
 | --- | --- | --- |
 | [#10919](https://github.com/OpenAgentsInc/openagents/issues/10919) Everglade pond reflections | Not started. Find why Everglade's ponds read as flat green from above (`everglade-water/lantern-above.png`) when the harness ponds (`water-screen/`) show reflection and refraction. Candidates: the preset, Fresnel at that angle, the bed color, the scene copy and mirror not running in Everglade, or Everglade's tier defaults. Fix it, commit before and after captures from the same viewpoints, and add a test that catches the cause. | Nothing |
-| [#10783](https://github.com/OpenAgentsInc/openagents/issues/10783) W11 measurement and budgets | In progress on `codex/water-w11-measurement`. Source and measurement harness checkpointed. Remote verification started; native desktop audio lacks `alsa.pc`, so use the capture consumer check and cover default features on the Mac later. The isolated Low `pond-noon` native measurement passes after retaining failed-case evidence; the remaining native views and browser measurements are pending. Measure per-tier GPU time, GPU memory, and CPU for water on the development Mac and on `everglade-web` with WebGPU and WebGL2; put device runs in `NEEDS_OWNER.md`. Replace the target budgets in [water.md](water.md#budgets-per-tier) with measured ones and set the constants and overrun behavior in `verse_engine::quality`. Known overruns: W10's floating-bodies view at 4.29 ms against High's 4 ms. | Nothing (W7 to W10 are closed) |
+| [#10783](https://github.com/OpenAgentsInc/openagents/issues/10783) W11 measurement and budgets | In progress on `codex/water-w11-measurement`. Source and measurement harness checkpointed. Remote verification started; native desktop audio lacks `alsa.pc`, so use the capture consumer check and cover default features on the Mac later. All 15 native pairs and eight browser cases are retained. Three native cases fail the old budgets; all four WebGPU captures are black despite startup success. WebGL2 captures render correctly. Acceptance and budget calibration remain pending. Measure per-tier GPU time, GPU memory, and CPU for water on the development Mac and on `everglade-web` with WebGPU and WebGL2; put device runs in `NEEDS_OWNER.md`. Replace the target budgets in [water.md](water.md#budgets-per-tier) with measured ones and set the constants and overrun behavior in `verse_engine::quality`. Known overruns: W10's floating-bodies view at 4.29 ms against High's 4 ms. | Nothing (W7 to W10 are closed) |
 | [#10784](https://github.com/OpenAgentsInc/openagents/issues/10784) umbrella | Close when W11 closes and [water.md](water.md) has the measured budgets. | #10783 |
 | [#10885](https://github.com/OpenAgentsInc/openagents/issues/10885) C1 zone shell | Not started. `ZoneId::Coast`, the plaza's west arch, generated terrain and bathymetry, the ocean with a tide, the harbor shelter mask, the estuary, spawn, and zone tests. Start from W10's coastal test scene, `verse_zone_water::coast`, and extend the bed to the horizon, as [coast.md](coast.md) says. | Nothing (W3, W4, and W10 are closed) |
 | [#10886](https://github.com/OpenAgentsInc/openagents/issues/10886) C2 kits and pack | Blender kits and the pinned coast pack, through `openagents artifact submit`. | C1 |
@@ -183,8 +183,9 @@ The fixed-view ignored raster test is `w11::water_w11_fixed_views` in
 `bench/verse/2026-10-08/water-w11/browser.py`; run it through
 `openagents browser run` against the candidate WASM output. It measures
 Low on WebGL2 and Medium on WebGPU; the browser platform does not admit
-High. The remaining measurements, budget updates in [water.md](water.md),
-and phone steps in `NEEDS_OWNER.md` are still pending. No issue has closed.
+High. Measurement collection is complete, but timestamp validity, WebGPU visual
+acceptance, budget updates in [water.md](water.md), and phone steps in
+`NEEDS_OWNER.md` are still pending. No issue has closed.
 Compile the browser candidate with the existing `presence_ui::tests` filter,
 `--lib --target wasm32-unknown-unknown --release --no-run --message-format=json`.
 `stage.py` selects its exact executable from Cargo's output and requires
@@ -263,10 +264,49 @@ The diagnostic record, command, inputs, log, and capture are retained under
 Mac scratch `w11-metrics-ba2deeb24fef40279638d3920361e7314795a9f4/native-low-pond-noon`.
 The capture SHA-256 is
 `76feb1e03ec83b7918415422f3276908cb7ac92b8cff3dde81fbf05abf6b9059`.
-The proposed next scope is the remaining 14 native tier/view pairs and the
-eight browser wet/dry cases, using these frozen application bytes. No new
-policy, compilation, or image job starts before the coordinator reviews
-the actual diagnostic data.
+The remaining 14 native pairs finish with 11 passing and three failing the
+old budget assertion: Low `pond-posts`, Low `waterline`, and Medium
+`pond-noon`. The Low failures have no completed timestamps in their final
+96 frames and only one post-warm observation. Medium `pond-noon` has two
+final-window observations averaging 3.354980 ms and removes no optics.
+Native steady main-thread CPU maxima across view means are 0.511746,
+1.423545, and 4.130679 ms for Low, Medium, and High. Worker CPU maxima
+across amortized view means are 0.024409, 0.045451, and 0.156164 ms.
+Declared peak GPU residency across every sampled frame is 2,313,316,
+31,572,988, and 53,938,548 bytes. Final residency can be lower after optics
+are removed; do not report it as the peak.
+All eight browser cases complete with successful startup and pinned
+responses. Chrome's profile and the finite loopback server are removed.
+Visual inspection finds all four WebGPU captures completely black; all
+four WebGL2 captures show their scenes. Browser harness success therefore
+does not satisfy visual acceptance. Both wet WebGPU cases report timestamp
+support but zero accepted samples. WebGL2 has no timestamp support.
+Water Lab main-thread elapsed means are 1.558953 ms on WebGPU and
+0.503994 ms on WebGL2; Lantern Pond means are 0.198624 and 0.042759 ms.
+These are elapsed intervals, not thread CPU clock readings. Waves run
+inline: each Water Lab interval completes 90 synthesis jobs, averaging
+0.597778 ms on WebGPU or 0.367778 ms on WebGL2; Pond completes none.
+Worker CPU remains absent as a separate browser thread measurement.
+The signed WebGPU wet-minus-dry fence differences are negative, so they
+are indeterminate estimates, not zero GPU cost. The positive WebGL2
+estimates are 0.774137 ms for Water Lab and 0.174902 ms for Pond.
+Low's timestamp probe splits the normally fused opaque, water, and blended
+work into passes with attachment load/store. Its timestamps measure that
+isolated diagnostic path. Requested pond cadence alone proves no removed
+work, because the pond has no spectral synthesis or admitted optics.
+The dated records, all raw samples compressed without asset bytes, source
+and artifact identities, lease receipts, exact browser orchestration diff,
+and visual audit are retained in
+[`frozen-732c49a582`](../../bench/verse/2026-10-08/water-w11/frozen-732c49a582/receipt.json).
+Captures remain in the corresponding Mac scratch folders.
+Before budget or product changes, distinguish readback failures from
+rejected timestamp intervals: the current decoder rejects `end <= start`
+for every masked pass, including ancillary passes. Investigate the black
+WebGPU captures separately from successful initialization and WebGL2
+rendering. Rebase carefully on current main before landing or a normal
+release build; scene-lit particle changes share `pbr/gpu.rs`, `photo.wgsl`,
+`pbr/mod.rs`, and Verse's renderer. No policy constants are calibrated,
+no production build starts, and #10783 remains open.
 
 The coordinator holds the team build token. Request a window before
 Cargo or measurement, use at most four jobs for W11, and preserve the

@@ -1,0 +1,723 @@
+{
+  "native_artifact": {
+    "source_sha": "ba2deeb24fef40279638d3920361e7314795a9f4",
+    "original_path": "/Users/christopherdavid/work/openagents-target-agent12/release/examples/water_capture-47c83a3ea48e2c11",
+    "sha256": "56ca95fb79b1af16a8484782fc648def5e68f787abf13eaec1c946e05e87f782",
+    "bytes": 8713584,
+    "cargo_json_sha256": "07d80b9fddff06b04fd24acc8b3e13b4100585aff6861590409afd4d7d656401",
+    "profile": {
+      "opt_level": "3",
+      "debuginfo": 0,
+      "debug_assertions": false,
+      "overflow_checks": false,
+      "test": true
+    },
+    "compiler_exit": 0,
+    "metadata_validation_exit": 0,
+    "test_filter": "w11::water_w11_fixed_views --ignored --exact --test-threads=1",
+    "fixtures": "synthetic; CPU waves and raster only",
+    "metrics_status": "approved single Low pond-noon diagnostic"
+  },
+  "wasm_artifact": {
+    "source_sha": "732c49a582474fa6e669716637d1e0b194d5e8ba",
+    "original_path": "/home/christopherdavid/work/openagents-target-agent12/wasm32-unknown-unknown/release/deps/everglade_web-480bd751b0f6d2cd.wasm",
+    "sha256": "3607ca45f60a574f546dbc6b211cc08e0e61814a8338d91e0ecaa5389668bf9e",
+    "bytes": 37428526,
+    "cargo_json_sha256": "7cb4408536eab62c153954e3654efabdbef3ffd2d9abc21e392e55ad760d4e06",
+    "profile": {
+      "opt_level": "3",
+      "debuginfo": 0,
+      "debug_assertions": false,
+      "overflow_checks": false,
+      "test": true
+    },
+    "compiler_exit": 0,
+    "metadata_validation_exit": 0,
+    "raw_browser_start_export": "start_cbdb254c44ef1eb6",
+    "raw_implicit_start": false,
+    "artifact_kind": "test-compiled benchmark; derive export-only input during staging",
+    "metrics_status": "pending fresh staging proof and coordinator measurement grant"
+  },
+  "browser_inputs": {
+    "source_sha": "732c49a582474fa6e669716637d1e0b194d5e8ba",
+    "artifact_kind": "test-compiled benchmark; export-only derivative",
+    "compiler_exit": 0,
+    "staging_validation_exit": 0,
+    "cargo_json": {
+      "sha256": "7cb4408536eab62c153954e3654efabdbef3ffd2d9abc21e392e55ad760d4e06",
+      "bytes": 322900
+    },
+    "compiler_profile": {
+      "opt_level": "3",
+      "debuginfo": 0,
+      "debug_assertions": false,
+      "overflow_checks": false,
+      "test": true
+    },
+    "compiler_artifact": {
+      "sha256": "3607ca45f60a574f546dbc6b211cc08e0e61814a8338d91e0ecaa5389668bf9e",
+      "bytes": 37428526,
+      "original_path": "/home/christopherdavid/work/openagents-target-agent12/wasm32-unknown-unknown/release/deps/everglade_web-480bd751b0f6d2cd.wasm",
+      "relocated_path": "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-08ea-73f2-9344-ec959f74a795/w11-wasm-732c49a582474fa6e669716637d1e0b194d5e8ba/original.wasm"
+    },
+    "prepared_artifact": {
+      "sha256": "0f29e4057aa3a2308dcc2345ed279cad907bbb110b3b264043b3b8f8f2abfd47",
+      "bytes": 37428518,
+      "removed_test_exports": [
+        "main"
+      ]
+    },
+    "transformation": "Remove only named Rust test-entry exports before normal wasm-bindgen pruning",
+    "wasm_bindgen": "0.2.128",
+    "app_start_verified": true,
+    "wasm": {
+      "sha256": "a72e5d191644a141e5427cdff9991996e0857d676c8c585437efe1157ef6f71f",
+      "bytes": 35712374,
+      "url": "/everglade_web_bg.wasm"
+    },
+    "glue": {
+      "sha256": "3f51cba6e8572710fa7bc120bfd18ed738d257920bf9df4a5bf530be004777fc",
+      "bytes": 151969,
+      "url": "/everglade_web.js"
+    },
+    "pack": {
+      "sha256": "a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f",
+      "bytes": 10636202,
+      "url": "/everglade/pack/a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f.vtp"
+    },
+    "kit": {
+      "sha256": "dae1612d4c22438a933c27b406c1e18fe134b13eab8eb5240ddcf5506ffb0b93",
+      "bytes": 10238689,
+      "url": "/everglade/kit/dae1612d4c22438a933c27b406c1e18fe134b13eab8eb5240ddcf5506ffb0b93.vtp"
+    },
+    "licensed_input_storage": "scratch only",
+    "raw_browser_start_export": "start_cbdb254c44ef1eb6",
+    "served_browser_start_exports": [
+      "start",
+      "__wbindgen_start"
+    ],
+    "startup": {
+      "app_function": 18200,
+      "startup_function": 25932,
+      "wrapper_calls": [
+        712,
+        18200
+      ],
+      "implicit_start": null,
+      "test_entry_exports": []
+    }
+  },
+  "browser_orchestration": {
+    "original_sha256": "4fe13cb36a318f9a6d75fd345abdc39dace4e498991a483929006017eab169f9",
+    "executed_sha256": "f01f684d6465de9cfa1fbf04a5b3e06ad722630a76e6dca6852d335b3c0c40ab",
+    "diff_sha256": "ab3797b0189e8e643cb99181f67068cda6b6e385412857a156d5a37e4bdeb08a",
+    "app_source": "732c49a582474fa6e669716637d1e0b194d5e8ba"
+  },
+  "scope": {
+    "app_source": "732c49a582474fa6e669716637d1e0b194d5e8ba",
+    "native_harness_source": "ba2deeb24fef40279638d3920361e7314795a9f4",
+    "low_gpu_probe": "enable_water_timing splits normally fused opaque/water/blended work into passes with attachment load/store. These isolated timestamps do not directly measure normal Low fused production rendering.",
+    "queue_fence_estimate": "Wet-minus-dry queue completion wall time is separate from native pass timestamps and browser GPU timestamps.",
+    "normal_low_gpu_policy": "No dedicated runtime water GPU timing/controller; CPU and declared-residency admission are active. Whole-frame quality fallback applies where available.",
+    "low_pond_transition": "Refresh1 to2 is a requested visual cadence change; the pond has no spectral jobs or admitted optics, so this receipt does not establish actual removed work or GPU-cost reduction.",
+    "sparse_timing": "Only completed timestamp observations count; unsupported and delayed missing values remain absent. Report sample counts with every aggregate."
+  },
+  "raw_records": [
+    {
+      "file": "native-high-open-storm.json.gz",
+      "original_sha256": "8adc6752a8e0f41583cab2a83824265767c9304d55f4614981084db4512bc528",
+      "original_bytes": 237001,
+      "gzip_sha256": "6295f053b5cf94c865f44d6b58371b36c3a2a1fada6a3d5a8ddc42e7be9c28b3",
+      "gzip_bytes": 12486
+    },
+    {
+      "file": "native-high-pond-noon.json.gz",
+      "original_sha256": "27797e1ec41d7a5dd971e52129b888d78d4de8600a4ee45530b909ef3b9095a7",
+      "original_bytes": 220603,
+      "gzip_sha256": "af52eb4daaa9d11862b06c4696d5bfc98cd4b2abb69d99934bf57d0d7f7d4087",
+      "gzip_bytes": 7829
+    },
+    {
+      "file": "native-high-pond-posts.json.gz",
+      "original_sha256": "531241636b2f055c78e7a4a597c3dfe703f61a3ad8765917451b5a1df7f3d24e",
+      "original_bytes": 221173,
+      "gzip_sha256": "92686917aeb8975c4f594297bf49fedc48d131e5239d3e5c004bb75a556f757c",
+      "gzip_bytes": 7906
+    },
+    {
+      "file": "native-high-under.json.gz",
+      "original_sha256": "a386e39858911b2d26247f686ad93504ab60fa148715d2dbe981783748191f12",
+      "original_bytes": 222964,
+      "gzip_sha256": "0cb640c63bcefb44cf85db3610d2b00f4ed981047159e0656007c1df14f236c5",
+      "gzip_bytes": 8127
+    },
+    {
+      "file": "native-high-waterline.json.gz",
+      "original_sha256": "7fb14c68d0c403864b1e67cf9b2d23aef894d0283b41f5532d88216bc19b4844",
+      "original_bytes": 222065,
+      "gzip_sha256": "77399fb39bd0919ecc4962d5422980af1d19a07a6c5ca05316d75af23d6bbf3e",
+      "gzip_bytes": 8016
+    },
+    {
+      "file": "native-low-open-storm.json.gz",
+      "original_sha256": "fd8c0fc3ef68d1d33c02598a711da8fd1164cb03b2bfdeb522def0f7e7188281",
+      "original_bytes": 235644,
+      "gzip_sha256": "80a02dd8c4aec098df9dfbf2bbbafa19b5a4cba4ab9918a688debab61a3e9950",
+      "gzip_bytes": 11227
+    },
+    {
+      "file": "native-low-pond-noon.json.gz",
+      "original_sha256": "a92812c64fa6eb0e01711f45b5c5ffa468bd1ac74049ed18dcab4f5415116890",
+      "original_bytes": 223378,
+      "gzip_sha256": "6635618b07419fa52ae390a25a0cc482eecd469f438c35099b73888944a661c4",
+      "gzip_bytes": 7510
+    },
+    {
+      "file": "native-low-pond-posts.json.gz",
+      "original_sha256": "5afbeb4dfcffc077aa2959445d261bb2787043f10e95ec1d0833437a8cd123ff",
+      "original_bytes": 219112,
+      "gzip_sha256": "37e8f961ef1c20d77fd662514af4f29249fc7e9e6a481f212fd77add5b7f2fd2",
+      "gzip_bytes": 6926
+    },
+    {
+      "file": "native-low-under.json.gz",
+      "original_sha256": "c1efbefaaac9a3f3ca37046cb48a79ef4ade168d9194ed46189965489aec1a6b",
+      "original_bytes": 220538,
+      "gzip_sha256": "185735d6d7e27995e35b888b5f1aaa640bd63162afae4278c5c050a6cb3c9cdf",
+      "gzip_bytes": 7302
+    },
+    {
+      "file": "native-low-waterline.json.gz",
+      "original_sha256": "ded8a29f8bec8e9379e7347af848a25f15dca43c056633b5735ab6a393a66d82",
+      "original_bytes": 218809,
+      "gzip_sha256": "cb8aa89f94663be38c165450708517b01a19e202dc4fabfdf8fc8907984cb4b1",
+      "gzip_bytes": 6831
+    },
+    {
+      "file": "native-medium-open-storm.json.gz",
+      "original_sha256": "3c34fa5e381262fabe6b420e87625beb510cc52dbe95bc141da68a60513a8b07",
+      "original_bytes": 237745,
+      "gzip_sha256": "78629fc6698f838c3049f117f535d31d08e844c68d56a844b58086d7bfc9e4c5",
+      "gzip_bytes": 12343
+    },
+    {
+      "file": "native-medium-pond-noon.json.gz",
+      "original_sha256": "ae4f8c9f34839fdf784b56a34ecd1ea1b55e82cdbbc2656e1df46e22f4844a31",
+      "original_bytes": 221896,
+      "gzip_sha256": "22898c8f9b18b5942d000445e8270bd6ff2e5ef0b392220373f340e2817c5aad",
+      "gzip_bytes": 7826
+    },
+    {
+      "file": "native-medium-pond-posts.json.gz",
+      "original_sha256": "1af92969e30a15a35de6499ab394d05479240b50465e2402c1ca4d6a3bf56f95",
+      "original_bytes": 222076,
+      "gzip_sha256": "c7751e811372b2561d5d208ac40a40b88b8c4b20b1a9c935a435f4b560e3dc9a",
+      "gzip_bytes": 7841
+    },
+    {
+      "file": "native-medium-under.json.gz",
+      "original_sha256": "cbd590b8776f5fbd3e315305579d39376f830b45a4e0d220200b5c5d8bbc7150",
+      "original_bytes": 222168,
+      "gzip_sha256": "c15200eb9624331511077636f42258be400589dca3d9a72a0506866dbbb64139",
+      "gzip_bytes": 7476
+    },
+    {
+      "file": "native-medium-waterline.json.gz",
+      "original_sha256": "ebfb19168b8de7402086900821a40a41e3e82d34d356596c09ca1695ee1b771d",
+      "original_bytes": 221286,
+      "gzip_sha256": "8539b5247ad0de2c214bb1df3c84648f393fb8d8caf68143b03716c5d27de3ed",
+      "gzip_bytes": 7525
+    },
+    {
+      "file": "browser.json.gz",
+      "original_sha256": "6b3be6165f4932d830e7c7136f2ae9375391a2aa8df807fe0e73d059eeff7458",
+      "original_bytes": 1734535,
+      "gzip_sha256": "c6495afdb5beebe7bfb8a71cdf716d24a2297b2633217b9f1445a43c93c58298",
+      "gzip_bytes": 22669
+    }
+  ],
+  "native_all_cases": 15,
+  "native_failed_assertions": [
+    "low/pond-posts",
+    "low/waterline",
+    "medium/pond-noon"
+  ],
+  "browser_visual_failures": [
+    "water-webgpu-dry",
+    "water-webgpu",
+    "everglade-webgpu-dry",
+    "everglade-webgpu"
+  ],
+  "policy_constants_calibrated": false,
+  "acceptance_complete": false,
+  "receipts": {
+    "w11-native-remaining-gpu.json": {
+      "schema": "openagents.lease.receipt.v1",
+      "id": "1791445924863-61400-0",
+      "resource": "gpu",
+      "amount": 1,
+      "holder": {
+        "session": "codex:01a119ae-08ea-73f2-9344-ec959f74a795",
+        "agent": "codex",
+        "pid": 61400,
+        "command": "python3"
+      },
+      "priority": "normal",
+      "nested": false,
+      "requested_at_ms": 1791445924863,
+      "acquired_at_ms": 1791445924864,
+      "released_at_ms": 1791446144809,
+      "wait_ms": 1,
+      "held_ms": 219945,
+      "held_whole_run": true,
+      "exit": 1
+    },
+    "w11-browser-browser.json": {
+      "schema": "openagents.lease.receipt.v1",
+      "id": "1791446194505-81014-0",
+      "resource": "browser",
+      "amount": 1,
+      "holder": {
+        "session": "codex:01a119ae-08ea-73f2-9344-ec959f74a795",
+        "agent": "codex",
+        "pid": 81014,
+        "command": "python3"
+      },
+      "priority": "normal",
+      "nested": false,
+      "requested_at_ms": 1791446194505,
+      "acquired_at_ms": 1791446194505,
+      "released_at_ms": 1791446414103,
+      "wait_ms": 0,
+      "held_ms": 219598,
+      "held_whole_run": true,
+      "exit": 0
+    },
+    "w11-browser-quiet.json": {
+      "schema": "openagents.lease.receipt.v1",
+      "id": "1791446194476-80967-0",
+      "resource": "quiet",
+      "amount": 1,
+      "holder": {
+        "session": "codex:01a119ae-08ea-73f2-9344-ec959f74a795",
+        "agent": "codex",
+        "pid": 80967,
+        "command": "openagents"
+      },
+      "priority": "normal",
+      "nested": false,
+      "requested_at_ms": 1791446194476,
+      "acquired_at_ms": 1791446194476,
+      "released_at_ms": 1791446414180,
+      "wait_ms": 0,
+      "held_ms": 219704,
+      "held_whole_run": true,
+      "exit": 0
+    },
+    "w11-native-remaining-quiet.json": {
+      "schema": "openagents.lease.receipt.v1",
+      "id": "1791445617342-16922-0",
+      "resource": "quiet",
+      "amount": 1,
+      "holder": {
+        "session": "codex:01a119ae-08ea-73f2-9344-ec959f74a795",
+        "agent": "codex",
+        "pid": 16922,
+        "command": "openagents"
+      },
+      "priority": "normal",
+      "nested": false,
+      "requested_at_ms": 1791445617342,
+      "acquired_at_ms": 1791445924836,
+      "released_at_ms": 1791446144850,
+      "wait_ms": 307494,
+      "held_ms": 220014,
+      "held_whole_run": true,
+      "exit": 1
+    },
+    "w11-low-diagnostic-gpu.json": {
+      "schema": "openagents.lease.receipt.v1",
+      "id": "1791445057249-83596-0",
+      "resource": "gpu",
+      "amount": 1,
+      "holder": {
+        "session": "codex:01a119ae-08ea-73f2-9344-ec959f74a795",
+        "agent": "codex",
+        "pid": 83596,
+        "command": "python3"
+      },
+      "priority": "normal",
+      "nested": false,
+      "requested_at_ms": 1791445057249,
+      "acquired_at_ms": 1791445057249,
+      "released_at_ms": 1791445073768,
+      "wait_ms": 0,
+      "held_ms": 16519,
+      "held_whole_run": true,
+      "exit": 0
+    },
+    "w11-low-diagnostic-quiet.json": {
+      "schema": "openagents.lease.receipt.v1",
+      "id": "1791445055389-83549-0",
+      "resource": "quiet",
+      "amount": 1,
+      "holder": {
+        "session": "codex:01a119ae-08ea-73f2-9344-ec959f74a795",
+        "agent": "codex",
+        "pid": 83549,
+        "command": "openagents"
+      },
+      "priority": "normal",
+      "nested": false,
+      "requested_at_ms": 1791445055389,
+      "acquired_at_ms": 1791445057230,
+      "released_at_ms": 1791445073788,
+      "wait_ms": 1841,
+      "held_ms": 16558,
+      "held_whole_run": true,
+      "exit": 0
+    },
+    "w11-browser-gpu.json": {
+      "schema": "openagents.lease.receipt.v1",
+      "id": "1791446194491-80994-0",
+      "resource": "gpu",
+      "amount": 1,
+      "holder": {
+        "session": "codex:01a119ae-08ea-73f2-9344-ec959f74a795",
+        "agent": "codex",
+        "pid": 80994,
+        "command": "openagents"
+      },
+      "priority": "normal",
+      "nested": false,
+      "requested_at_ms": 1791446194491,
+      "acquired_at_ms": 1791446194492,
+      "released_at_ms": 1791446414148,
+      "wait_ms": 1,
+      "held_ms": 219656,
+      "held_whole_run": true,
+      "exit": 0
+    }
+  },
+  "browser_run": {
+    "source_sha": "ba2deeb24fef40279638d3920361e7314795a9f4",
+    "worktree_sha": "73751adf7a3c4c2a688d356ecb0c7d1fa073e5d9",
+    "worktree_documentation_only_delta": [
+      "docs/verse/water-handoff.md"
+    ],
+    "command": [
+      "openagents",
+      "browser",
+      "run",
+      "--json",
+      "--",
+      "python3",
+      "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-08ea-73f2-9344-ec959f74a795/w11-browser-retain.py",
+      "http://127.0.0.1:53203",
+      "/Users/christopherdavid/.openagents/scratch/codex-01a119ae-08ea-73f2-9344-ec959f74a795/w11-metrics-ba2deeb24fef40279638d3920361e7314795a9f4/browser"
+    ],
+    "exit": 0,
+    "selected_case": null,
+    "started_at_unix_ms": 1791446194916,
+    "ended_at_unix_ms": 1791446414079,
+    "wrapper_sha256": "d46bc71a8224a75667deaf3f2904a10fd1a4bdfaf9187aaff70e5bb5ef41ea07"
+  },
+  "native_runs": [
+    {
+      "source_sha": "ba2deeb24fef40279638d3920361e7314795a9f4",
+      "worktree_sha": "73751adf7a3c4c2a688d356ecb0c7d1fa073e5d9",
+      "worktree_documentation_only_delta": [
+        "docs/verse/water-handoff.md"
+      ],
+      "command": [
+        "/Users/christopherdavid/work/openagents-target-agent12/release/examples/water_capture-47c83a3ea48e2c11",
+        "w11::water_w11_fixed_views",
+        "--ignored",
+        "--exact",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit": 0,
+      "selected_case": "high/open-storm",
+      "started_at_unix_ms": 1791446099168,
+      "ended_at_unix_ms": 1791446113784,
+      "wrapper_sha256": "d46bc71a8224a75667deaf3f2904a10fd1a4bdfaf9187aaff70e5bb5ef41ea07"
+    },
+    {
+      "source_sha": "ba2deeb24fef40279638d3920361e7314795a9f4",
+      "worktree_sha": "73751adf7a3c4c2a688d356ecb0c7d1fa073e5d9",
+      "worktree_documentation_only_delta": [
+        "docs/verse/water-handoff.md"
+      ],
+      "command": [
+        "/Users/christopherdavid/work/openagents-target-agent12/release/examples/water_capture-47c83a3ea48e2c11",
+        "w11::water_w11_fixed_views",
+        "--ignored",
+        "--exact",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit": 0,
+      "selected_case": "high/pond-noon",
+      "started_at_unix_ms": 1791446067981,
+      "ended_at_unix_ms": 1791446083588,
+      "wrapper_sha256": "d46bc71a8224a75667deaf3f2904a10fd1a4bdfaf9187aaff70e5bb5ef41ea07"
+    },
+    {
+      "source_sha": "ba2deeb24fef40279638d3920361e7314795a9f4",
+      "worktree_sha": "73751adf7a3c4c2a688d356ecb0c7d1fa073e5d9",
+      "worktree_documentation_only_delta": [
+        "docs/verse/water-handoff.md"
+      ],
+      "command": [
+        "/Users/christopherdavid/work/openagents-target-agent12/release/examples/water_capture-47c83a3ea48e2c11",
+        "w11::water_w11_fixed_views",
+        "--ignored",
+        "--exact",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit": 0,
+      "selected_case": "high/pond-posts",
+      "started_at_unix_ms": 1791446083935,
+      "ended_at_unix_ms": 1791446098844,
+      "wrapper_sha256": "d46bc71a8224a75667deaf3f2904a10fd1a4bdfaf9187aaff70e5bb5ef41ea07"
+    },
+    {
+      "source_sha": "ba2deeb24fef40279638d3920361e7314795a9f4",
+      "worktree_sha": "73751adf7a3c4c2a688d356ecb0c7d1fa073e5d9",
+      "worktree_documentation_only_delta": [
+        "docs/verse/water-handoff.md"
+      ],
+      "command": [
+        "/Users/christopherdavid/work/openagents-target-agent12/release/examples/water_capture-47c83a3ea48e2c11",
+        "w11::water_w11_fixed_views",
+        "--ignored",
+        "--exact",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit": 0,
+      "selected_case": "high/under",
+      "started_at_unix_ms": 1791446130170,
+      "ended_at_unix_ms": 1791446144803,
+      "wrapper_sha256": "d46bc71a8224a75667deaf3f2904a10fd1a4bdfaf9187aaff70e5bb5ef41ea07"
+    },
+    {
+      "source_sha": "ba2deeb24fef40279638d3920361e7314795a9f4",
+      "worktree_sha": "73751adf7a3c4c2a688d356ecb0c7d1fa073e5d9",
+      "worktree_documentation_only_delta": [
+        "docs/verse/water-handoff.md"
+      ],
+      "command": [
+        "/Users/christopherdavid/work/openagents-target-agent12/release/examples/water_capture-47c83a3ea48e2c11",
+        "w11::water_w11_fixed_views",
+        "--ignored",
+        "--exact",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit": 0,
+      "selected_case": "high/waterline",
+      "started_at_unix_ms": 1791446114429,
+      "ended_at_unix_ms": 1791446129513,
+      "wrapper_sha256": "d46bc71a8224a75667deaf3f2904a10fd1a4bdfaf9187aaff70e5bb5ef41ea07"
+    },
+    {
+      "source_sha": "ba2deeb24fef40279638d3920361e7314795a9f4",
+      "worktree_sha": "73751adf7a3c4c2a688d356ecb0c7d1fa073e5d9",
+      "worktree_documentation_only_delta": [
+        "docs/verse/water-handoff.md"
+      ],
+      "command": [
+        "/Users/christopherdavid/work/openagents-target-agent12/release/examples/water_capture-47c83a3ea48e2c11",
+        "w11::water_w11_fixed_views",
+        "--ignored",
+        "--exact",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit": 0,
+      "selected_case": "low/open-storm",
+      "started_at_unix_ms": 1791445941211,
+      "ended_at_unix_ms": 1791445956225,
+      "wrapper_sha256": "d46bc71a8224a75667deaf3f2904a10fd1a4bdfaf9187aaff70e5bb5ef41ea07"
+    },
+    {
+      "source_sha": "ba2deeb24fef40279638d3920361e7314795a9f4",
+      "command": [
+        "/Users/christopherdavid/work/openagents-target-agent12/release/examples/water_capture-47c83a3ea48e2c11",
+        "w11::water_w11_fixed_views",
+        "--ignored",
+        "--exact",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit": 0,
+      "selected_case": "low/pond-noon",
+      "started_at_unix_ms": 1791445058010,
+      "ended_at_unix_ms": 1791445073761,
+      "wrapper_sha256": "203a6230b38647a3787cbf2bfad969f2989460cc233cf8e1641503be5811ae5c"
+    },
+    {
+      "source_sha": "ba2deeb24fef40279638d3920361e7314795a9f4",
+      "worktree_sha": "73751adf7a3c4c2a688d356ecb0c7d1fa073e5d9",
+      "worktree_documentation_only_delta": [
+        "docs/verse/water-handoff.md"
+      ],
+      "command": [
+        "/Users/christopherdavid/work/openagents-target-agent12/release/examples/water_capture-47c83a3ea48e2c11",
+        "w11::water_w11_fixed_views",
+        "--ignored",
+        "--exact",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit": 101,
+      "selected_case": "low/pond-posts",
+      "started_at_unix_ms": 1791445925366,
+      "ended_at_unix_ms": 1791445940923,
+      "wrapper_sha256": "d46bc71a8224a75667deaf3f2904a10fd1a4bdfaf9187aaff70e5bb5ef41ea07"
+    },
+    {
+      "source_sha": "ba2deeb24fef40279638d3920361e7314795a9f4",
+      "worktree_sha": "73751adf7a3c4c2a688d356ecb0c7d1fa073e5d9",
+      "worktree_documentation_only_delta": [
+        "docs/verse/water-handoff.md"
+      ],
+      "command": [
+        "/Users/christopherdavid/work/openagents-target-agent12/release/examples/water_capture-47c83a3ea48e2c11",
+        "w11::water_w11_fixed_views",
+        "--ignored",
+        "--exact",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit": 0,
+      "selected_case": "low/under",
+      "started_at_unix_ms": 1791445972533,
+      "ended_at_unix_ms": 1791445987819,
+      "wrapper_sha256": "d46bc71a8224a75667deaf3f2904a10fd1a4bdfaf9187aaff70e5bb5ef41ea07"
+    },
+    {
+      "source_sha": "ba2deeb24fef40279638d3920361e7314795a9f4",
+      "worktree_sha": "73751adf7a3c4c2a688d356ecb0c7d1fa073e5d9",
+      "worktree_documentation_only_delta": [
+        "docs/verse/water-handoff.md"
+      ],
+      "command": [
+        "/Users/christopherdavid/work/openagents-target-agent12/release/examples/water_capture-47c83a3ea48e2c11",
+        "w11::water_w11_fixed_views",
+        "--ignored",
+        "--exact",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit": 101,
+      "selected_case": "low/waterline",
+      "started_at_unix_ms": 1791445956532,
+      "ended_at_unix_ms": 1791445972252,
+      "wrapper_sha256": "d46bc71a8224a75667deaf3f2904a10fd1a4bdfaf9187aaff70e5bb5ef41ea07"
+    },
+    {
+      "source_sha": "ba2deeb24fef40279638d3920361e7314795a9f4",
+      "worktree_sha": "73751adf7a3c4c2a688d356ecb0c7d1fa073e5d9",
+      "worktree_documentation_only_delta": [
+        "docs/verse/water-handoff.md"
+      ],
+      "command": [
+        "/Users/christopherdavid/work/openagents-target-agent12/release/examples/water_capture-47c83a3ea48e2c11",
+        "w11::water_w11_fixed_views",
+        "--ignored",
+        "--exact",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit": 0,
+      "selected_case": "medium/open-storm",
+      "started_at_unix_ms": 1791446021428,
+      "ended_at_unix_ms": 1791446036125,
+      "wrapper_sha256": "d46bc71a8224a75667deaf3f2904a10fd1a4bdfaf9187aaff70e5bb5ef41ea07"
+    },
+    {
+      "source_sha": "ba2deeb24fef40279638d3920361e7314795a9f4",
+      "worktree_sha": "73751adf7a3c4c2a688d356ecb0c7d1fa073e5d9",
+      "worktree_documentation_only_delta": [
+        "docs/verse/water-handoff.md"
+      ],
+      "command": [
+        "/Users/christopherdavid/work/openagents-target-agent12/release/examples/water_capture-47c83a3ea48e2c11",
+        "w11::water_w11_fixed_views",
+        "--ignored",
+        "--exact",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit": 101,
+      "selected_case": "medium/pond-noon",
+      "started_at_unix_ms": 1791445988124,
+      "ended_at_unix_ms": 1791446005723,
+      "wrapper_sha256": "d46bc71a8224a75667deaf3f2904a10fd1a4bdfaf9187aaff70e5bb5ef41ea07"
+    },
+    {
+      "source_sha": "ba2deeb24fef40279638d3920361e7314795a9f4",
+      "worktree_sha": "73751adf7a3c4c2a688d356ecb0c7d1fa073e5d9",
+      "worktree_documentation_only_delta": [
+        "docs/verse/water-handoff.md"
+      ],
+      "command": [
+        "/Users/christopherdavid/work/openagents-target-agent12/release/examples/water_capture-47c83a3ea48e2c11",
+        "w11::water_w11_fixed_views",
+        "--ignored",
+        "--exact",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit": 0,
+      "selected_case": "medium/pond-posts",
+      "started_at_unix_ms": 1791446006026,
+      "ended_at_unix_ms": 1791446021122,
+      "wrapper_sha256": "d46bc71a8224a75667deaf3f2904a10fd1a4bdfaf9187aaff70e5bb5ef41ea07"
+    },
+    {
+      "source_sha": "ba2deeb24fef40279638d3920361e7314795a9f4",
+      "worktree_sha": "73751adf7a3c4c2a688d356ecb0c7d1fa073e5d9",
+      "worktree_documentation_only_delta": [
+        "docs/verse/water-handoff.md"
+      ],
+      "command": [
+        "/Users/christopherdavid/work/openagents-target-agent12/release/examples/water_capture-47c83a3ea48e2c11",
+        "w11::water_w11_fixed_views",
+        "--ignored",
+        "--exact",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit": 0,
+      "selected_case": "medium/under",
+      "started_at_unix_ms": 1791446052219,
+      "ended_at_unix_ms": 1791446067312,
+      "wrapper_sha256": "d46bc71a8224a75667deaf3f2904a10fd1a4bdfaf9187aaff70e5bb5ef41ea07"
+    },
+    {
+      "source_sha": "ba2deeb24fef40279638d3920361e7314795a9f4",
+      "worktree_sha": "73751adf7a3c4c2a688d356ecb0c7d1fa073e5d9",
+      "worktree_documentation_only_delta": [
+        "docs/verse/water-handoff.md"
+      ],
+      "command": [
+        "/Users/christopherdavid/work/openagents-target-agent12/release/examples/water_capture-47c83a3ea48e2c11",
+        "w11::water_w11_fixed_views",
+        "--ignored",
+        "--exact",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit": 0,
+      "selected_case": "medium/waterline",
+      "started_at_unix_ms": 1791446036491,
+      "ended_at_unix_ms": 1791446051818,
+      "wrapper_sha256": "d46bc71a8224a75667deaf3f2904a10fd1a4bdfaf9187aaff70e5bb5ef41ea07"
+    }
+  ]
+}
