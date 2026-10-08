@@ -15887,6 +15887,7 @@ dependencies = [
  "glam",
  "gltf",
  "half",
+ "libc",
  "miniz_oxide 0.8.9",
  "naga",
  "physics",
