@@ -34,7 +34,12 @@ pub(crate) fn configured(p: &Profile) -> Result<Option<Arc<dyn Driver>>, String>
     // user's own API key, or else the login the user made inside their own
     // computer, which never passes through this profile.
     let engine_keys: &[&str] = if p.executor == crate::claude::ENGINE {
-        &[crate::claude::API_KEY]
+        &[
+            crate::claude::API_KEY,
+            crate::claude::BEDROCK,
+            crate::claude::VERTEX,
+            crate::claude::FOUNDRY,
+        ]
     } else {
         &["OPENAI_API_KEY", "OA_CODEX_AUTH"]
     };
@@ -133,11 +138,18 @@ pub(crate) fn qualified_identity(p: &Profile) -> bool {
                     })
             }
             // Claude Code never takes a claude.ai login from a profile
-            // (docs/cloud/claude-code-byo.md); only the user's own API key.
-            crate::claude::ENGINE => p
-                .credentials
-                .keys()
-                .all(|name| name == crate::claude::API_KEY || tools(name)),
+            // (docs/cloud/claude-code-byo.md); only the user's own API key
+            // or Bedrock/Vertex/Foundry credential (BYO-04), at most one.
+            crate::claude::ENGINE => {
+                p.credentials.keys().all(|name| {
+                    crate::claude::OwnCredential::from_name(name).is_some() || tools(name)
+                }) && p
+                    .credentials
+                    .keys()
+                    .filter(|name| crate::claude::OwnCredential::from_name(name).is_some())
+                    .count()
+                    <= 1
+            }
             _ => false,
         }
 }

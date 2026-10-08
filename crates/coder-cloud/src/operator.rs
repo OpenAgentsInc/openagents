@@ -1148,6 +1148,28 @@ impl Operator {
             self.start(&a.admission.profile.clone(), record, a);
             return Ok(accepted);
         }
+        if matches!(
+            op,
+            Operation::CloudSubmit { .. } | Operation::CloudContinue { .. }
+        ) && p.executor == crate::claude::ENGINE
+        {
+            // A Claude plan login runs one automated turn at a time; parallel
+            // work needs the user's own key or cloud credential (BYO-04).
+            let sign_in = crate::claude::sign_in(p.credentials.keys().map(String::as_str));
+            let active = store
+                .list()
+                .map_err(|_| Code::Unavailable)?
+                .iter()
+                .filter(|r| {
+                    r.id != job
+                        && !r.state.terminal()
+                        && self
+                            .job_admission(&r.id)
+                            .is_ok_and(|a| a.admission.profile == admission.profile)
+                })
+                .count();
+            crate::claude::admit_turns(sign_in, active, 1).map_err(|_| Code::Conflict)?;
+        }
         let lease = store.lease(&job).map_err(|_| Code::Conflict)?;
         let mut record = match op {
             Operation::CloudSubmit { intent } => {

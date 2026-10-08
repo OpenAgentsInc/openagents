@@ -20,6 +20,13 @@ impl Credentials {
             }
             crate::claude::admit_name(name)?;
             crate::claude::admit_value(&value)?;
+            // A user's own Bedrock, Vertex, or Foundry credential must keep
+            // its admitted shape so launch-time expansion cannot fail.
+            if let Some(class) = crate::claude::OwnCredential::from_name(name)
+                .filter(|c| *c != crate::claude::OwnCredential::AnthropicApiKey)
+            {
+                class.canonical(&value)?;
+            }
             values.insert(name.clone(), value);
         }
         let mut secrets = Vec::new();
@@ -69,11 +76,30 @@ impl Credentials {
         }
         Ok(())
     }
+    /// The launch environment. A user's own Bedrock, Vertex, or Foundry
+    /// credential name expands into the variables the unmodified Claude Code
+    /// binary reads; every other name passes through.
     pub fn environment(&self) -> BTreeMap<String, String> {
-        self.values.clone()
+        let mut out = BTreeMap::new();
+        for (name, value) in &self.values {
+            match crate::claude::OwnCredential::from_name(name)
+                .filter(|c| *c != crate::claude::OwnCredential::AnthropicApiKey)
+            {
+                // Admitted in `from_names`; expansion cannot fail here.
+                Some(class) => out.extend(class.environment(value).unwrap_or_default()),
+                None => {
+                    out.insert(name.clone(), value.clone());
+                }
+            }
+        }
+        out
+    }
+    /// Names only, for the sign-in class and admission.
+    pub fn names(&self) -> impl Iterator<Item = &str> {
+        self.values.keys().map(String::as_str)
     }
     pub fn shell(&self) -> String {
-        self.values
+        self.environment()
             .iter()
             .map(|(k, v)| format!("export {k}={}\n", boat::shell_quote(v)))
             .collect()
@@ -232,6 +258,8 @@ export PATH="$HOME/.local/bin:$HOME/.cargo/bin:/usr/local/bin:$PATH"
 export CODEX_HOME="/tmp/oa-coder-{job}/codex"
 if [ -f "/tmp/oa-coder-{job}.env" ]; then . "/tmp/oa-coder-{job}.env"; rm -f "/tmp/oa-coder-{job}.env"; fi
 unset OA_CODEX_AUTH
+if [ -n "${{{vertex}:-}}" ]; then printf '%s' "${vertex}" > "/tmp/oa-coder-{job}/vertex.json"; chmod 600 "/tmp/oa-coder-{job}/vertex.json"; export GOOGLE_APPLICATION_CREDENTIALS="/tmp/oa-coder-{job}/vertex.json"; fi
+unset {vertex}
 unset OPENAGENTS_CODER_EVENT_CHANNEL OPENAGENTS_CODER_MODEL_INPUT
 # Claude Code's own usage-limit and login notices, kept as typed records
 # in this computer for its sign-in status (BYO-02). No text is kept.
@@ -240,6 +268,7 @@ export OA_ENGINE_NOTICE_DIR="$HOME/.openagents/engine"
 export OA_CODER_CLOUD_CREDENTIAL_NAMES={credential_names}
 "$p" --json coder --in {workdir} --state "/tmp/oa-coder-{job}/state" delegate {agent} --task "$(cat "$d/task")" --session {session} > "$d/out" 2> "$d/err"
 rc=$?
+rm -f "/tmp/oa-coder-{job}/vertex.json"
 printf '%s' "$rc" > "$d/exit.writing"
 mv "$d/exit.writing" "$d/exit"
 exit "$rc"
@@ -247,6 +276,7 @@ exit "$rc"
         dir = boat::shell_quote(dir),
         workdir = boat::shell_quote(&workdir(record, dir)),
         job = record.id,
+        vertex = crate::claude::VERTEX_SERVICE_ACCOUNT,
         model_env = format!(
             "export CODER_CODEX_MODEL={}\nexport CODER_CODEX_REASONING={}\n",
             boat::shell_quote(record.spec.model.as_deref().unwrap_or("")),
@@ -434,6 +464,53 @@ mod tests {
             .unwrap();
         assert!(output.status.success());
         assert_eq!(output.stdout, b"secret'value");
+    }
+    #[test]
+    fn own_cloud_credentials_expand_by_name_and_redact_their_secrets() {
+        let bedrock = r#"{"region":"us-west-2","access_key_id":"AKIAFAKEBYO04","secret_access_key":"fake-bedrock-secret-value"}"#;
+        let c = Credentials::from_names(&[crate::claude::BEDROCK.into()], |_| Some(bedrock.into()))
+            .unwrap();
+        assert_eq!(
+            crate::claude::sign_in(c.names()),
+            crate::claude::SignIn::Own(crate::claude::OwnCredential::Bedrock)
+        );
+        let env = c.environment();
+        assert!(!env.contains_key(crate::claude::BEDROCK));
+        assert_eq!(env["AWS_ACCESS_KEY_ID"], "AKIAFAKEBYO04");
+        assert!(c.shell().contains("CLAUDE_CODE_USE_BEDROCK"));
+        let mut trace = json!({"text":"auth fake-bedrock-secret-value failed"});
+        c.redact(&mut trace);
+        assert!(!trace.to_string().contains("fake-bedrock-secret-value"));
+        // A malformed cloud document is refused before launch.
+        assert!(
+            Credentials::from_names(&[crate::claude::FOUNDRY.into()], |_| Some("{}".into()))
+                .is_err()
+        );
+        // Revocation: the name resolves to nothing at the next boot or turn.
+        assert!(Credentials::from_names(&[crate::claude::API_KEY.into()], |_| None).is_err());
+        let r = crate::Record::new(
+            "job1",
+            crate::Spec {
+                placement: crate::Placement::Boat,
+                mode: crate::Mode::Coder,
+                agent: "claude".into(),
+                task: "t".into(),
+                model: None,
+                reasoning: None,
+                cwd: "/w".into(),
+                timeout_seconds: 60,
+                size: "s".into(),
+                template: None,
+                credential_names: vec![crate::claude::VERTEX.into()],
+            },
+        )
+        .unwrap();
+        let script = launch_script(&r, "/home/user/.oa-coder/jobs/job1");
+        assert!(
+            script.contains("GOOGLE_APPLICATION_CREDENTIALS=\"/tmp/oa-coder-job1/vertex.json\"")
+        );
+        assert!(script.contains("unset OA_CLAUDE_VERTEX_SERVICE_ACCOUNT"));
+        assert!(script.contains("rm -f \"/tmp/oa-coder-job1/vertex.json\""));
     }
 }
 

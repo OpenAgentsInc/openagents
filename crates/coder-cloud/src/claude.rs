@@ -64,6 +64,256 @@ pub fn login_path(path: &str) -> bool {
     secret_screen::claude_login_path(path)
 }
 
+/// What a computer uses to reach Claude for its automated turns.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SignIn {
+    /// The user's own Claude plan, signed in inside their computer. Plans
+    /// get individual-use concurrency: one automated turn at a time.
+    PlanLogin,
+    /// The user's own API key or cloud credential (rule 8), billed to the
+    /// key owner. Parallel and fleet work require this class.
+    Own(OwnCredential),
+}
+
+/// The user's own credential classes OpenAgents may hold for that user's
+/// own computers (BYO-04). Each is carried under one credential name and
+/// expanded at launch into the variables the unmodified binary reads.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OwnCredential {
+    /// A raw Anthropic API key, carried as [`API_KEY`].
+    AnthropicApiKey,
+    /// `{"region", "access_key_id", "secret_access_key", "session_token"?}`
+    /// or `{"region", "bearer_token"}`, carried as [`BEDROCK`].
+    Bedrock,
+    /// `{"region", "project_id", "service_account": {...}}`, carried as
+    /// [`VERTEX`].
+    Vertex,
+    /// `{"resource", "api_key"}`, carried as [`FOUNDRY`].
+    Foundry,
+}
+
+/// Credential names for the cloud-provider classes. Their values are the
+/// canonical JSON documents [`OwnCredential::canonical`] returns.
+pub const BEDROCK: &str = "OA_CLAUDE_BEDROCK";
+pub const VERTEX: &str = "OA_CLAUDE_VERTEX";
+pub const FOUNDRY: &str = "OA_CLAUDE_FOUNDRY";
+/// Launch-time only: the Vertex service account, written to a private file
+/// outside the workspace for `GOOGLE_APPLICATION_CREDENTIALS`, then unset.
+pub const VERTEX_SERVICE_ACCOUNT: &str = "OA_CLAUDE_VERTEX_SERVICE_ACCOUNT";
+
+/// Shown wherever a user adds, sees, or relies on their own credential.
+pub const BILLING: &str = "Claude usage on your own API key or cloud credential bills to your own Anthropic or cloud account. OpenAgents never meters, pays for, or resells it; our charges cover only your computer.";
+
+/// Why a fan-out on a Claude plan login was refused.
+pub const PLAN_FAN_OUT_REFUSAL: &str = "Parallel Claude Code tasks need your own Anthropic API key or Bedrock, Vertex, or Foundry credential. A Claude plan runs one automated turn at a time. Add a key under Settings, Claude credential.";
+
+/// Why a second automated turn on a Claude plan login must wait.
+pub const PLAN_BUSY_REFUSAL: &str = "Your Claude plan already has an automated turn running; plans run one at a time. Wait for it to finish, or add your own Anthropic API key or cloud credential for parallel work.";
+
+/// Why an own-credential computer could not start a turn after revocation.
+pub const REVOKED_REFUSAL: &str = "Your Claude credential was removed, so this computer cannot start another Claude turn with it. Add a key again, or sign in to Claude inside the computer.";
+
+const SHAPE: &str = "Enter the credential in the shape shown for this provider.";
+
+/// A required (or optional) bounded string field; `token` fields also
+/// refuse whitespace.
+fn field(
+    document: &serde_json::Value,
+    name: &str,
+    required: bool,
+    token: bool,
+) -> crate::Result<Option<String>> {
+    match document.get(name) {
+        Some(serde_json::Value::String(s))
+            if !s.is_empty()
+                && s.len() <= 4096
+                && !s.chars().any(|c| c.is_control() && (token || c != '\n'))
+                && !(token && s.chars().any(char::is_whitespace)) =>
+        {
+            Ok(Some(s.clone()))
+        }
+        None if !required => Ok(None),
+        _ => Err(SHAPE.into()),
+    }
+}
+
+impl OwnCredential {
+    pub const ALL: [Self; 4] = [
+        Self::AnthropicApiKey,
+        Self::Bedrock,
+        Self::Vertex,
+        Self::Foundry,
+    ];
+
+    /// The credential name this class is carried under.
+    #[must_use]
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::AnthropicApiKey => API_KEY,
+            Self::Bedrock => BEDROCK,
+            Self::Vertex => VERTEX,
+            Self::Foundry => FOUNDRY,
+        }
+    }
+
+    #[must_use]
+    pub fn from_name(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|class| class.name() == name)
+    }
+
+    #[must_use]
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::AnthropicApiKey => "your own Anthropic API key",
+            Self::Bedrock => "your own Amazon Bedrock credential",
+            Self::Vertex => "your own Google Vertex AI credential",
+            Self::Foundry => "your own Microsoft Foundry credential",
+        }
+    }
+
+    /// Validate a submitted value and return the canonical stored form: the
+    /// trimmed key, or a compact JSON document with only the known fields.
+    ///
+    /// # Errors
+    /// When the value is malformed, oversized, or a claude.ai login.
+    pub fn canonical(self, value: &str) -> crate::Result<String> {
+        admit_value(value)?;
+        let value = value.trim();
+        if value.is_empty() || value.len() > 8192 {
+            return Err(SHAPE.into());
+        }
+        if self == Self::AnthropicApiKey {
+            if value.chars().any(|c| c.is_control() || c.is_whitespace()) {
+                return Err(SHAPE.into());
+            }
+            return Ok(value.into());
+        }
+        let d: serde_json::Value = serde_json::from_str(value).map_err(|_| SHAPE)?;
+        let mut out = serde_json::Map::new();
+        let mut put = |name: &str, required: bool| -> crate::Result<bool> {
+            Ok(match field(&d, name, required, true)? {
+                Some(value) => {
+                    out.insert(name.into(), value.into());
+                    true
+                }
+                None => false,
+            })
+        };
+        match self {
+            Self::AnthropicApiKey => {}
+            Self::Bedrock => {
+                put("region", true)?;
+                if put("bearer_token", false)? {
+                    if d.get("access_key_id").is_some() {
+                        return Err(SHAPE.into());
+                    }
+                } else {
+                    put("access_key_id", true)?;
+                    put("secret_access_key", true)?;
+                    put("session_token", false)?;
+                }
+            }
+            Self::Vertex => {
+                put("region", true)?;
+                put("project_id", true)?;
+                let account = d.get("service_account").ok_or(SHAPE)?;
+                if account.get("type").and_then(serde_json::Value::as_str)
+                    != Some("service_account")
+                {
+                    return Err(SHAPE.into());
+                }
+                field(account, "client_email", true, true)?;
+                field(account, "private_key", true, false)?;
+                out.insert("service_account".into(), account.clone());
+            }
+            Self::Foundry => {
+                put("resource", true)?;
+                put("api_key", true)?;
+            }
+        }
+        let text = serde_json::to_string(&out).map_err(|_| SHAPE)?;
+        if text.len() > 8192 {
+            return Err(SHAPE.into());
+        }
+        Ok(text)
+    }
+
+    /// The variables the unmodified Claude Code binary reads for this class.
+    ///
+    /// # Errors
+    /// When `value` is not a value [`Self::canonical`] accepts.
+    pub fn environment(
+        self,
+        value: &str,
+    ) -> crate::Result<std::collections::BTreeMap<String, String>> {
+        let canonical = self.canonical(value)?;
+        let mut out = std::collections::BTreeMap::new();
+        if self == Self::AnthropicApiKey {
+            out.insert(API_KEY.to_owned(), canonical);
+            return Ok(out);
+        }
+        let d: serde_json::Value = serde_json::from_str(&canonical).map_err(|_| SHAPE)?;
+        let mut put = |name: &str, value: Option<&str>| {
+            if let Some(value) = value {
+                out.insert(name.to_owned(), value.to_owned());
+            }
+        };
+        let get = |name: &str| d.get(name).and_then(serde_json::Value::as_str);
+        match self {
+            Self::AnthropicApiKey => {}
+            Self::Bedrock => {
+                put("CLAUDE_CODE_USE_BEDROCK", Some("1"));
+                put("AWS_REGION", get("region"));
+                put("AWS_BEARER_TOKEN_BEDROCK", get("bearer_token"));
+                put("AWS_ACCESS_KEY_ID", get("access_key_id"));
+                put("AWS_SECRET_ACCESS_KEY", get("secret_access_key"));
+                put("AWS_SESSION_TOKEN", get("session_token"));
+            }
+            Self::Vertex => {
+                put("CLAUDE_CODE_USE_VERTEX", Some("1"));
+                put("CLOUD_ML_REGION", get("region"));
+                put("ANTHROPIC_VERTEX_PROJECT_ID", get("project_id"));
+                put(
+                    VERTEX_SERVICE_ACCOUNT,
+                    Some(&d["service_account"].to_string()),
+                );
+            }
+            Self::Foundry => {
+                put("CLAUDE_CODE_USE_FOUNDRY", Some("1"));
+                put("ANTHROPIC_FOUNDRY_RESOURCE", get("resource"));
+                put("ANTHROPIC_FOUNDRY_API_KEY", get("api_key"));
+            }
+        }
+        Ok(out)
+    }
+}
+
+/// The sign-in class of a computer from its selected credential names.
+#[must_use]
+pub fn sign_in<'a>(names: impl IntoIterator<Item = &'a str>) -> SignIn {
+    names
+        .into_iter()
+        .find_map(OwnCredential::from_name)
+        .map_or(SignIn::PlanLogin, SignIn::Own)
+}
+
+/// Admit `requested` new automated Claude turns while `active` already run
+/// on the same plan login or credential.
+///
+/// # Errors
+/// On a plan login, a fan-out (`requested > 1`) is refused with a pointer to
+/// adding a key, and a second concurrent turn is refused until the first
+/// finishes. Own credentials are not limited here.
+pub fn admit_turns(sign_in: SignIn, active: usize, requested: usize) -> crate::Result<()> {
+    match sign_in {
+        SignIn::Own(_) => Ok(()),
+        SignIn::PlanLogin if requested > 1 => Err(PLAN_FAN_OUT_REFUSAL.into()),
+        SignIn::PlanLogin if active > 0 && requested > 0 => Err(PLAN_BUSY_REFUSAL.into()),
+        SignIn::PlanLogin => Ok(()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -91,5 +341,74 @@ mod tests {
         assert!(admit_value(&format!("sk-ant-api03-{}", "k2".repeat(40))).is_ok());
         assert!(login_path(".claude/.credentials.json"));
         assert!(!LABEL.contains("logo"));
+    }
+
+    #[test]
+    fn plan_logins_run_one_turn_and_refuse_fan_out() {
+        assert_eq!(sign_in(["GH_TOKEN"]), SignIn::PlanLogin);
+        assert_eq!(
+            sign_in(["GH_TOKEN", BEDROCK]),
+            SignIn::Own(OwnCredential::Bedrock)
+        );
+        assert!(admit_turns(SignIn::PlanLogin, 0, 1).is_ok());
+        assert_eq!(
+            admit_turns(SignIn::PlanLogin, 0, 4),
+            Err(PLAN_FAN_OUT_REFUSAL.into())
+        );
+        assert!(PLAN_FAN_OUT_REFUSAL.contains("Add a key"));
+        assert_eq!(
+            admit_turns(SignIn::PlanLogin, 1, 1),
+            Err(PLAN_BUSY_REFUSAL.into())
+        );
+        let own = SignIn::Own(OwnCredential::AnthropicApiKey);
+        assert!(admit_turns(own, 7, 16).is_ok());
+        assert!(BILLING.contains("your own Anthropic or cloud account"));
+    }
+
+    #[test]
+    fn own_credentials_canonicalize_and_expand_for_the_unmodified_binary() {
+        let key = format!("sk-ant-api03-{}", "f4".repeat(20));
+        let class = OwnCredential::AnthropicApiKey;
+        assert_eq!(class.canonical(&format!(" {key}\n")).unwrap(), key);
+        assert_eq!(class.environment(&key).unwrap()[API_KEY], key);
+        let login = format!("sk-ant-oat01-{}", "x1".repeat(40));
+        for class in OwnCredential::ALL {
+            assert_eq!(class.canonical(&login), Err(REFUSAL.into()));
+            assert_eq!(OwnCredential::from_name(class.name()), Some(class));
+            assert!(admit_name(class.name()).is_ok());
+        }
+
+        let bedrock = OwnCredential::Bedrock
+            .canonical(r#"{"region":"us-east-1","access_key_id":"AKIAFAKE","secret_access_key":"fake/secret","extra":"dropped"}"#)
+            .unwrap();
+        assert!(!bedrock.contains("extra"));
+        let env = OwnCredential::Bedrock.environment(&bedrock).unwrap();
+        assert_eq!(env["CLAUDE_CODE_USE_BEDROCK"], "1");
+        assert_eq!(env["AWS_SECRET_ACCESS_KEY"], "fake/secret");
+        assert!(!env.contains_key("AWS_SESSION_TOKEN"));
+        assert!(
+            OwnCredential::Bedrock
+                .canonical(r#"{"region":"us-east-1","access_key_id":"AKIAFAKE"}"#)
+                .is_err()
+        );
+
+        let vertex = OwnCredential::Vertex
+            .canonical(r#"{"region":"us-east5","project_id":"fake-project","service_account":{"type":"service_account","client_email":"a@fake.iam.gserviceaccount.com","private_key":"-----BEGIN PRIVATE KEY-----\nfake\n-----END PRIVATE KEY-----\n"}}"#)
+            .unwrap();
+        let env = OwnCredential::Vertex.environment(&vertex).unwrap();
+        assert_eq!(env["ANTHROPIC_VERTEX_PROJECT_ID"], "fake-project");
+        assert!(env[VERTEX_SERVICE_ACCOUNT].contains("service_account"));
+        assert!(
+            OwnCredential::Vertex
+                .canonical(r#"{"region":"us-east5","project_id":"p","service_account":{"type":"authorized_user"}}"#)
+                .is_err()
+        );
+
+        let foundry = OwnCredential::Foundry
+            .canonical(r#"{"resource":"fake-resource","api_key":"fake-foundry-key"}"#)
+            .unwrap();
+        let env = OwnCredential::Foundry.environment(&foundry).unwrap();
+        assert_eq!(env["ANTHROPIC_FOUNDRY_API_KEY"], "fake-foundry-key");
+        assert!(OwnCredential::Foundry.canonical("not json").is_err());
     }
 }

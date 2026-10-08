@@ -299,6 +299,9 @@ fn git(root: &Path, args: &[&str]) -> String {
     String::from_utf8(output.stdout).unwrap().trim().to_owned()
 }
 fn fixture(backend: Fake) -> Fixture {
+    fixture_with(backend, |_, _| {})
+}
+fn fixture_with(backend: Fake, edit: impl FnOnce(&Path, &mut Profile)) -> Fixture {
     let root = tempfile::tempdir().unwrap();
     let path = root.path().canonicalize().unwrap();
     let source = path.join("source");
@@ -349,6 +352,8 @@ fn fixture(backend: Fake) -> Fixture {
         credentials: BTreeMap::new(),
         adapter: Adapter::Unavailable,
     };
+    let mut profile = profile;
+    edit(&path, &mut profile);
     let policy = Policy {
         schema: "openagents.coder.cloud-operator.v1".into(),
         operators: vec![Assignment {
@@ -911,4 +916,44 @@ fn original_chunks_preserve_large_bytes_and_refuse_media_or_cursor_substitution(
     let path = store.root().join("first.artifacts/changes.patch");
     fs::remove_file(path).unwrap();
     assert_eq!(read(&f, "first").artifact_state, "damaged");
+}
+
+#[test]
+fn a_claude_plan_login_runs_one_turn_while_own_keys_run_in_parallel() {
+    let running = Fake {
+        running: true,
+        ..Fake::default()
+    };
+    let plan = fixture_with(running.clone(), |_, p| {
+        p.executor = crate::claude::ENGINE.into();
+    });
+    accepted(
+        plan.owner
+            .execute("first", &plan.principal, &submit(&plan))
+            .unwrap(),
+    );
+    assert_eq!(
+        plan.owner
+            .execute("second", &plan.principal, &submit(&plan)),
+        Err(Code::Conflict)
+    );
+    let keyed = fixture_with(running, |root, p| {
+        p.executor = crate::claude::ENGINE.into();
+        directory(&root.join("keys")).unwrap();
+        let key = root.join("keys/synthetic-anthropic-key");
+        write(&key, b"synthetic-own-api-key").unwrap();
+        p.credentials.insert(crate::claude::API_KEY.into(), key);
+    });
+    accepted(
+        keyed
+            .owner
+            .execute("first", &keyed.principal, &submit(&keyed))
+            .unwrap(),
+    );
+    accepted(
+        keyed
+            .owner
+            .execute("second", &keyed.principal, &submit(&keyed))
+            .unwrap(),
+    );
 }
