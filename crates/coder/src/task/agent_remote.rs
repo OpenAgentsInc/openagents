@@ -29,7 +29,9 @@ use std::process::Stdio;
 use std::time::{Duration, Instant};
 
 /// How long one remote call may take before the computer counts as away.
-const CALL_LIMIT: Duration = Duration::from_secs(60);
+/// Longer than the `--wait` the calls pass plus a call's own work, so the
+/// CLI's refusal reaches the lane instead of a silent kill.
+const CALL_LIMIT: Duration = Duration::from_secs(90);
 
 /// The phase a remote task is in, as the lane last read it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -252,10 +254,11 @@ impl Remote for Cli {
         self.exec(name, &["sh", "-c", &script])
             .map(|_| ())
             .map_err(|why| {
-                // The script exits 3 when the fetch fails and 1 when the
-                // base is absent — both mean the commit is not on the
-                // remote's `origin`; 2 is the clone refusing outright.
-                if why.contains("exited 3") || why.contains("exited 1") {
+                // The script's remote exits: 3 the fetch, 128 the absent
+                // base — both mean the commit is not on the remote's
+                // `origin`; 2 is the clone refusing. Every other failure
+                // is the exec itself: the computer's own words say why.
+                if why.contains("exited 3") || why.contains("exited 128") {
                     format!("the starting commit is not pushed, so {name} cannot fetch it")
                 } else {
                     why

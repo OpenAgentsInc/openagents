@@ -2558,7 +2558,7 @@ impl Agents {
             .unwrap_or_else(|| label.to_string());
         remote
             .ensure(name, &checkout, &origin, &base)
-            .map_err(|why| RemoteRefusal::Fail(why, "not pushed".into()))?;
+            .map_err(|why| unreachable(name, &why))?;
         let (goal, task) = studio
             .submit_remote(direct.clone(), name, now)
             .map_err(|why| {
@@ -2586,7 +2586,7 @@ impl Agents {
             Ok(remote_task) => remote_task,
             Err(why) => {
                 let _ = studio.fail_remote(&task, &why);
-                return Err(RemoteRefusal::Fail(why, "not created".into()));
+                return Err(unreachable(name, &why));
             }
         };
         let _ = studio.attach_remote_task(&task, &remote_task);
@@ -2640,14 +2640,20 @@ impl Agents {
             let phase = remote.phase(&work.computer, remote_task);
             match phase {
                 RemotePhase::Completed => {
-                    match remote
-                        .review(&work.computer, remote_task)
-                        .and_then(|review| {
-                            studio
-                                .land_remote(&work.task, &review.diff)
-                                .map(|_| ())
-                                .map_err(|why| why.to_string())
-                        }) {
+                    // A patch that cannot be read yet — the computer is in
+                    // a connecting window — is a look for the next tick,
+                    // not the task's end.
+                    let got = match remote.review(&work.computer, remote_task) {
+                        Ok(review) => Ok(review),
+                        Err(why) if away(&why) => continue,
+                        Err(why) => Err(why),
+                    };
+                    match got.and_then(|review| {
+                        studio
+                            .land_remote(&work.task, &review.diff)
+                            .map(|_| ())
+                            .map_err(|why| why.to_string())
+                    }) {
                         Ok(()) => {
                             let _ = store.append(&Entry::new(
                                 (self.clock)(),
@@ -3542,6 +3548,27 @@ enum ChangeStage {
 enum RemoteRefusal {
     Local(String),
     Fail(String, String),
+}
+
+/// Whether a remote-lane error is the computer being away, in its own
+/// words — the `computer` calls say "did not connect", "not connected",
+/// "unreachable", or "timed out" then.
+fn away(why: &str) -> bool {
+    let lower = why.to_lowercase();
+    ["did not connect", "not connected", "unreachable", "timed out"]
+        .iter()
+        .any(|mark| lower.contains(mark))
+}
+
+/// The refusal a remote lane step (`ensure`, `create`) answers with: a
+/// computer that cannot be reached falls back local (`Local`, where the
+/// request's words allow it); everything else is the step's own failure.
+fn unreachable(name: &str, why: &str) -> RemoteRefusal {
+    if away(why) {
+        RemoteRefusal::Local(format!("{name} is not connected ({why}), so I'm doing it here"))
+    } else {
+        RemoteRefusal::Fail(why.to_owned(), "remote".into())
+    }
 }
 
 /// `git -C dir ARGS`'s trimmed standard output, for the workspace reads a
