@@ -45,6 +45,8 @@ use verse_engine::lighting::{
 use verse_engine::quality::{Platform, Probe, Quality, ShadowFilter, Tier};
 use verse_engine::render_graph::{PhotoPass, PhotoPlan};
 
+#[cfg(test)]
+mod baked_tests;
 mod water_screen;
 
 pub const DEPTH: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
