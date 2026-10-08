@@ -18,6 +18,7 @@ use super::scene::Paint;
 use super::{HALL, PATH_HALF_WIDTH, RETURN_PORTAL, STATIONS, STRONGROOM, YARD, height, land};
 use crate::controller::Footprint;
 use glam::{Mat4, Quat, Vec3};
+use kit_house::{FLOOR_RISE, KitHouse, KitStyle};
 use std::f32::consts::{FRAC_PI_2, PI, TAU};
 use verse_world::social::everglade::DESK_SEATS;
 
@@ -410,34 +411,21 @@ pub fn fronts() -> Vec<(&'static str, [f32; 2])> {
         .collect()
 }
 
-/// Every closed building's doorway, the first town's ([`DOORS`]) and the
-/// city's: a point outside it on its walk and a point inside, m.
+/// Every closed building's doorway, the first town's kit houses'
+/// ([`first_town_houses`]) and the city's: a point outside it on its walk
+/// and a point inside, m.
 #[must_use]
 pub fn doors() -> Vec<(&'static str, [f32; 2], [f32; 2])> {
-    let mut out = DOORS.to_vec();
+    let mut out: Vec<_> = first_town_houses()
+        .iter()
+        .map(|h| {
+            let (outside, inside) = h.door_points();
+            (h.name, outside, inside)
+        })
+        .collect();
     out.extend(city::doors());
     out
 }
-
-/// Each closed building's doorway: a point outside it on its walk and a
-/// point inside, m. The straight line between them passes the doorway.
-pub const DOORS: [(&str, [f32; 2], [f32; 2]); 15] = [
-    ("cottage", [-15.5, 4.0], [-19.0, 4.0]),
-    ("reading room", [21.0, 8.5], [21.0, 12.0]),
-    ("bakery", [-25.0, 48.5], [-25.0, 52.0]),
-    ("cafe", [-9.0, 48.5], [-9.0, 52.0]),
-    ("bookshop", [7.0, 48.5], [7.0, 52.0]),
-    ("grocer", [23.0, 48.5], [23.0, 52.0]),
-    ("makers hall", [43.0, 36.5], [43.0, 33.0]),
-    ("server barn", [44.5, 0.0], [48.0, 0.0]),
-    ("old college", [39.0, -26.5], [39.0, -23.0]),
-    ("home 1", [-36.5, -16.0], [-40.0, -16.0]),
-    ("home 2", [-36.5, 0.0], [-40.0, 0.0]),
-    ("home 3", [-36.5, 16.0], [-40.0, 16.0]),
-    ("home 4", [-36.5, 32.0], [-40.0, 32.0]),
-    ("writing cabin", [-38.5, -40.0], [-42.0, -40.0]),
-    ("code cabin", [-23.0, -41.5], [-23.0, -45.0]),
-];
 
 /// The walked routes, as segments a player-wide body must pass along
 /// without touching a blocker: the approach from the return portal, the
@@ -683,6 +671,146 @@ pub const HOMES: [([f32; 2], [f32; 2]); 4] = [
 ];
 pub const CABINS: [([f32; 2], [f32; 2]); 2] =
     [([-44.0, -40.0], [4.0, 5.0]), ([-22.0, -48.0], [4.0, 5.0])];
+/// The first town's houses, rebuilt from the medieval kit
+/// (`docs/verse/everglade-medieval-refactor.md`, P7b): each one's name, lot,
+/// the wall its door is in, where its door opens (the walks and the
+/// villagers' places meet it there), and its style.
+pub const FIRST_TOWN_KIT: [(&str, ([f32; 2], [f32; 2]), city::Side, [f32; 2], KitStyle); 15] = [
+    (
+        "cottage",
+        COTTAGE,
+        city::Side::East,
+        [-17.0, 4.0],
+        KitStyle::Timber,
+    ),
+    (
+        "reading room",
+        READING_ROOM,
+        city::Side::South,
+        [21.0, 10.0],
+        KitStyle::Plaster,
+    ),
+    (
+        "bakery",
+        SHOPS[0],
+        city::Side::South,
+        [-25.0, 50.0],
+        KitStyle::Timber,
+    ),
+    (
+        "cafe",
+        SHOPS[1],
+        city::Side::South,
+        [-9.0, 50.0],
+        KitStyle::Plaster,
+    ),
+    (
+        "bookshop",
+        SHOPS[2],
+        city::Side::South,
+        [7.0, 50.0],
+        KitStyle::Plaster,
+    ),
+    (
+        "grocer",
+        SHOPS[3],
+        city::Side::South,
+        [23.0, 50.0],
+        KitStyle::Timber,
+    ),
+    (
+        "makers hall",
+        MAKERS_HALL,
+        city::Side::North,
+        [43.0, 35.0],
+        KitStyle::Timber,
+    ),
+    (
+        "server barn",
+        SERVER_BARN,
+        city::Side::West,
+        [46.0, 0.0],
+        KitStyle::Timber,
+    ),
+    (
+        "old college",
+        OLD_COLLEGE,
+        city::Side::South,
+        [39.0, -25.0],
+        KitStyle::Plaster,
+    ),
+    (
+        "home 1",
+        HOMES[0],
+        city::Side::East,
+        [-38.0, -16.0],
+        KitStyle::Timber,
+    ),
+    (
+        "home 2",
+        HOMES[1],
+        city::Side::East,
+        [-38.0, 0.0],
+        KitStyle::Plaster,
+    ),
+    (
+        "home 3",
+        HOMES[2],
+        city::Side::East,
+        [-38.0, 16.0],
+        KitStyle::Timber,
+    ),
+    (
+        "home 4",
+        HOMES[3],
+        city::Side::East,
+        [-38.0, 32.0],
+        KitStyle::Plaster,
+    ),
+    (
+        "writing cabin",
+        CABINS[0],
+        city::Side::East,
+        [-40.0, -40.0],
+        KitStyle::Timber,
+    ),
+    (
+        "code cabin",
+        CABINS[1],
+        city::Side::North,
+        [-23.0, -43.0],
+        KitStyle::Timber,
+    ),
+];
+
+/// The first town's kit houses ([`FIRST_TOWN_KIT`]).
+#[must_use]
+pub fn first_town_houses() -> Vec<KitHouse> {
+    FIRST_TOWN_KIT
+        .iter()
+        .map(|&(name, (center, [hx, hz]), door, at, style)| {
+            let (width, depth) = match door {
+                city::Side::South | city::Side::North => (2.0 * hx, 2.0 * hz),
+                city::Side::West | city::Side::East => (2.0 * hz, 2.0 * hx),
+            };
+            KitHouse {
+                name,
+                center,
+                width,
+                depth,
+                facing: door.outward(),
+                stories: 1,
+                style,
+                door_bay: 0,
+                door_at: Some(at),
+                seed: name
+                    .bytes()
+                    .fold(23u32, |h, c| h.wrapping_mul(31) ^ u32::from(c)),
+            }
+        })
+        .collect()
+}
+
 /// The commons' open bandstand, the community gardens, and the orchard.
 pub const BANDSHELL: ([f32; 2], [f32; 2]) = ([12.0, 32.0], [4.0, 5.0]);
 pub const GARDENS: ([f32; 2], [f32; 2]) = ([-22.0, 22.0], [6.0, 5.0]);
@@ -993,51 +1121,6 @@ fn hall(out: &mut Vec<Placement>) {
     );
 }
 
-/// A closed building on `rect` with `walls` listed south, north, west, east
-/// (each from west to east, or from south to north), a wood floor, an
-/// 8 x 10 round-tile roof with brick gables for every 8 m of its width,
-/// corner posts, and an optional chimney.
-fn house(
-    out: &mut Vec<Placement>,
-    rect: ([f32; 2], [f32; 2]),
-    walls: [&[Piece]; 4],
-    chimney: Option<[f32; 2]>,
-) {
-    let ([cx, cz], [hx, hz]) = rect;
-    let (west, east, south, north) = (cx - hx, cx + hx, cz - hz, cz + hz);
-    let [south_wall, north_wall, west_wall, east_wall] = walls;
-    for (i, piece) in south_wall.iter().enumerate() {
-        wall(out, *piece, [west + 1.0 + 2.0 * i as f32, south], SOUTH);
-    }
-    for (i, piece) in north_wall.iter().enumerate() {
-        wall(out, *piece, [west + 1.0 + 2.0 * i as f32, north], NORTH);
-    }
-    for (i, piece) in west_wall.iter().enumerate() {
-        wall(out, *piece, [west, south + 1.0 + 2.0 * i as f32], WEST);
-    }
-    for (i, piece) in east_wall.iter().enumerate() {
-        wall(out, *piece, [east, south + 1.0 + 2.0 * i as f32], EAST);
-    }
-    for corner in [[west, south], [east, south], [west, north], [east, north]] {
-        out.push(Placement::new(
-            "village/Corner_Exterior_Wood",
-            corner,
-            0.0,
-            Collision::None,
-        ));
-    }
-    for i in 0..(hx as i32) {
-        for j in 0..(hz as i32) {
-            let at = [west + 1.0 + 2.0 * i as f32, south + 1.0 + 2.0 * j as f32];
-            out.push(Placement::new("village/Floor_Brick", at, 0.0, Collision::None).lift(0.02));
-        }
-    }
-    roof(out, rect);
-    if let Some(at) = chimney {
-        out.push(Placement::new("village/Prop_Chimney", at, 0.0, Collision::None).lift(4.9));
-    }
-}
-
 /// An 8 x 10 round-tile roof for every 8 m of `rect`'s width, each with
 /// brick gables at its south and north ends.
 fn roof(out: &mut Vec<Placement>, rect: ([f32; 2], [f32; 2])) {
@@ -1068,29 +1151,9 @@ fn roof_at(out: &mut Vec<Placement>, rect: ([f32; 2], [f32; 2]), lift: f32) {
 
 /// The lane's three buildings.
 fn lane(out: &mut Vec<Placement>) {
-    use Piece::{Base, Door, Flat, Plain, Round, Timber};
-    // Stoop Lane cottage: its door faces the yard to the east, with a chimney.
-    house(
-        out,
-        COTTAGE,
-        [
-            &[Round, Plain, Plain, Round],
-            &[Plain, Flat, Flat, Plain],
-            &[Plain, Flat, Timber, Flat, Plain],
-            &[Round, Timber, Door, Timber, Round],
-        ],
-        Some([COTTAGE.0[0] - 2.0, COTTAGE.0[1] + 2.5]),
-    );
+    // The Stoop Lane cottage is a medieval kit house (`first_town_houses`);
+    // flowers either side of its door.
     let ([cx, cz], [hx, _]) = COTTAGE;
-    out.push(
-        Placement::new(
-            "village/Door_4_Round",
-            [cx + hx - 0.35, cz + 0.5],
-            0.0,
-            Collision::None,
-        )
-        .lift(0.02),
-    );
     out.push(Placement::new(
         "nature/Bush_Common_Flowers",
         [cx + hx + 1.4, cz - 3.0],
@@ -1142,29 +1205,7 @@ fn lane(out: &mut Vec<Placement>) {
     }
     out.push(Placement::new("props/Banner_2", [px - phx, pz], WEST, Collision::None).lift(0.6));
 
-    // Reading room: a brick-based timber hall with tall windows; its door
-    // faces south toward the strongroom and the yard.
-    house(
-        out,
-        READING_ROOM,
-        [
-            &[Base, Round, Door, Base],
-            &[Timber, Flat, Flat, Timber],
-            &[Base, Flat, Timber, Flat, Base],
-            &[Base, Round, Timber, Round, Base],
-        ],
-        None,
-    );
     let ([rx, rz], [_, rhz]) = READING_ROOM;
-    out.push(
-        Placement::new(
-            "village/Door_4_Round",
-            [rx + 1.0 - 0.5, rz - rhz + 0.35],
-            -FRAC_PI_2,
-            Collision::None,
-        )
-        .lift(0.02),
-    );
     out.push(Placement::new(
         "nature/Bush_Common",
         [rx - 3.0, rz - rhz - 1.4],
@@ -1176,6 +1217,11 @@ fn lane(out: &mut Vec<Placement>) {
 /// Shorthand for a placement that blocks by its bounds.
 fn prop(out: &mut Vec<Placement>, model: &'static str, at: [f32; 2], yaw: f32) {
     out.push(Placement::new(model, at, yaw, Collision::Bounds));
+}
+
+/// Furniture inside a kit house, on its floor, blocking by its bounds.
+fn furnish_in(out: &mut Vec<Placement>, model: &'static str, at: [f32; 2], yaw: f32) {
+    out.push(Placement::new(model, at, yaw, Collision::Bounds).lift(FLOOR_RISE));
 }
 
 /// Shorthand for ground cover or dressing that does not block.
@@ -1208,6 +1254,9 @@ fn wall_lantern(out: &mut Vec<Placement>, center: [f32; 2], outward: f32, along:
 /// commons, Main Street, the Creative District, the Foundry, the Knowledge
 /// District, Stoop Lane's homes, Walden Woods, the gardens, and the orchard.
 fn town(out: &mut Vec<Placement>) {
+    for house in first_town_houses() {
+        house.raise(out);
+    }
     commons(out);
     main_street(out);
     makers_hall(out);
@@ -1287,30 +1336,12 @@ fn commons(out: &mut Vec<Placement>) {
 /// Main Street: four shops on its north side (a bakery, a café, a bookshop,
 /// and a grocer), market stalls and benches on its south side.
 fn main_street(out: &mut Vec<Placement>) {
-    use Piece::{Base, Door, Flat, Plain, Round, Timber};
-    let fronts: [[Piece; 4]; 4] = [
-        [Round, Door, Timber, Round],
-        [Flat, Door, Flat, Timber],
-        [Round, Door, Round, Plain],
-        [Timber, Door, Flat, Round],
-    ];
-    for (k, (rect, front)) in SHOPS.iter().zip(fronts).enumerate() {
-        let chimney = (k % 2 == 0).then(|| [rect.0[0] + 2.0, rect.0[1] + 2.5]);
-        house(
-            out,
-            *rect,
-            [
-                &front,
-                &[Plain, Flat, Flat, Plain],
-                &[Base, Timber, Plain, Timber, Base],
-                &[Base, Round, Timber, Plain, Base],
-            ],
-            chimney,
-        );
+    // The shops are medieval kit houses (`first_town_houses`).
+    for (k, rect) in SHOPS.iter().enumerate() {
         let ([cx, cz], [_, hz]) = *rect;
         let south = cz - hz;
         // A counter inside, seen through the door.
-        prop(out, "props/Table_Large", [cx, cz + 2.6], 0.0);
+        furnish_in(out, "props/Table_Large", [cx, cz + 2.6], 0.0);
         // What each shop sets out by its door.
         match k {
             0 => {
@@ -1332,7 +1363,7 @@ fn main_street(out: &mut Vec<Placement>) {
                         0.4,
                         Collision::None,
                     )
-                    .lift(0.81),
+                    .lift(FLOOR_RISE + 0.81),
                 );
             }
             _ => {
@@ -1363,27 +1394,15 @@ fn main_street(out: &mut Vec<Placement>) {
 /// The Creative District's Makers' Hall: a long hall with double doors on
 /// Studio Road and workbenches, an anvil, and crates inside.
 fn makers_hall(out: &mut Vec<Placement>) {
-    use Piece::{Base, Door, Flat, Plain, Round, Timber};
-    house(
-        out,
-        MAKERS_HALL,
-        [
-            &[Base, Round, Timber, Round, Round, Timber, Round, Base],
-            &[Plain, Round, Timber, Door, Door, Timber, Round, Plain],
-            &[Base, Flat, Timber, Flat, Base],
-            &[Base, Flat, Timber, Flat, Base],
-        ],
-        Some([MAKERS_HALL.0[0] - 5.0, MAKERS_HALL.0[1] - 2.5]),
-    );
     let ([cx, cz], [_, hz]) = MAKERS_HALL;
     wall_lantern(out, [cx, cz + hz], NORTH, 0.0);
     for x in [cx - 5.0, cx + 5.0] {
-        prop(out, "props/Workbench", [x, cz - 2.6], 0.0);
-        prop(out, "props/Stool", [x, cz - 1.4], 0.0);
+        furnish_in(out, "props/Workbench", [x, cz - 2.6], 0.0);
+        furnish_in(out, "props/Stool", [x, cz - 1.4], 0.0);
     }
-    prop(out, "props/Anvil", [cx + 2.0, cz - 2.0], 0.3);
-    prop(out, "props/Table_Large", [cx - 2.4, cz - 2.8], 0.0);
-    prop(out, "village/Prop_Crate", [cx + 6.8, cz + 3.4], 0.2);
+    furnish_in(out, "props/Anvil", [cx + 2.0, cz - 2.0], 0.3);
+    furnish_in(out, "props/Table_Large", [cx - 2.4, cz - 2.8], 0.0);
+    furnish_in(out, "village/Prop_Crate", [cx + 6.8, cz + 3.4], 0.2);
     out.push(Placement::new(
         "nature/Bush_Common_Flowers",
         [cx - 9.6, cz + 3.0],
@@ -1395,21 +1414,9 @@ fn makers_hall(out: &mut Vec<Placement>) {
 /// The Foundry: the Server Barn, its racks of metal crates, and the fab
 /// yard's fenced bench, anvil, wagon, and stock.
 fn foundry(out: &mut Vec<Placement>) {
-    use Piece::{Base, Door, Timber};
-    house(
-        out,
-        SERVER_BARN,
-        [
-            &[Timber, Timber, Timber, Timber],
-            &[Timber, Base, Base, Timber],
-            &[Base, Timber, Door, Timber, Base],
-            &[Base, Timber, Timber, Timber, Base],
-        ],
-        Some([SERVER_BARN.0[0] + 2.0, SERVER_BARN.0[1] + 2.5]),
-    );
     let ([cx, cz], _) = SERVER_BARN;
     // The racks: metal crates stacked against the back wall.
-    prop(out, "props/Crate_Metal", [cx + 2.6, cz - 3.2], 0.0);
+    furnish_in(out, "props/Crate_Metal", [cx + 2.6, cz - 3.2], 0.0);
     out.push(
         Placement::new(
             "props/Crate_Metal",
@@ -1417,9 +1424,9 @@ fn foundry(out: &mut Vec<Placement>) {
             0.0,
             Collision::None,
         )
-        .lift(0.87),
+        .lift(FLOOR_RISE + 0.87),
     );
-    prop(out, "village/Prop_Crate", [cx + 2.6, cz + 3.2], 0.3);
+    furnish_in(out, "village/Prop_Crate", [cx + 2.6, cz + 3.2], 0.3);
     // The fab yard: a fence on three sides, open toward the barn.
     let ([fx, fz], [fhx, fhz]) = FAB_YARD;
     let (west, east, south) = (fx - fhx, fx + fhx, fz - fhz);
@@ -1448,24 +1455,12 @@ fn foundry(out: &mut Vec<Placement>) {
 /// The Knowledge District: the Stacks, the generated library up its steps
 /// (`generated`), and the Old College beside Library Way.
 fn knowledge(out: &mut Vec<Placement>) {
-    use Piece::{Base, Door, Flat, Round, Timber};
-    house(
-        out,
-        OLD_COLLEGE,
-        [
-            &[Base, Door, Round, Base],
-            &[Timber, Flat, Flat, Timber],
-            &[Base, Round, Timber, Round, Base],
-            &[Base, Flat, Timber, Flat, Base],
-        ],
-        Some([OLD_COLLEGE.0[0] + 2.0, OLD_COLLEGE.0[1] + 2.5]),
-    );
     let ([ox, oz], [_, ohz]) = OLD_COLLEGE;
-    prop(out, "props/Bookcase_2", [ox + 2.0, oz + ohz - 0.6], PI);
-    prop(
+    furnish_in(out, "props/Bookcase_2", [ox + 2.0, oz + ohz - 1.0], PI);
+    furnish_in(
         out,
         "props/CandleStick_Triple",
-        [ox - 2.6, oz + ohz - 0.5],
+        [ox - 2.6, oz + ohz - 1.0],
         PI,
     );
     out.push(Placement::new("village/Prop_Vine1", [ox - 4.1, oz], WEST, Collision::None).lift(2.8));
@@ -1474,25 +1469,8 @@ fn knowledge(out: &mut Vec<Placement>) {
 /// Stoop Lane: four homes facing the lane, each with a lantern by its door
 /// and a little garden.
 fn homes(out: &mut Vec<Placement>) {
-    use Piece::{Base, Door, Flat, Plain, Round, Timber};
-    let fronts: [[Piece; 5]; 4] = [
-        [Round, Timber, Door, Timber, Round],
-        [Flat, Plain, Door, Plain, Flat],
-        [Round, Plain, Door, Timber, Flat],
-        [Flat, Timber, Door, Plain, Round],
-    ];
-    for (k, (rect, front)) in HOMES.iter().zip(fronts).enumerate() {
-        house(
-            out,
-            *rect,
-            [
-                &[Plain, Flat, Flat, Plain],
-                &[Base, Round, Timber, Base],
-                &[Plain, Flat, Timber, Flat, Plain],
-                &front,
-            ],
-            Some([rect.0[0] - 2.0, rect.0[1] + 2.5]),
-        );
+    // The homes are medieval kit houses (`first_town_houses`).
+    for (k, rect) in HOMES.iter().enumerate() {
         let ([cx, cz], [hx, _]) = *rect;
         let door = [cx + hx, cz];
         wall_lantern(out, door, EAST, 1.6);
@@ -1525,29 +1503,6 @@ fn homes(out: &mut Vec<Placement>) {
 
 /// Walden Woods: two timber cabins among pines, with a bench and mushrooms.
 fn woods(out: &mut Vec<Placement>) {
-    use Piece::{Base, Door, Flat, Plain, Timber};
-    house(
-        out,
-        CABINS[0],
-        [
-            &[Timber, Flat, Timber, Plain],
-            &[Timber, Plain, Timber, Timber],
-            &[Timber, Plain, Flat, Plain, Timber],
-            &[Timber, Flat, Door, Timber, Timber],
-        ],
-        Some([CABINS[0].0[0] - 2.0, CABINS[0].0[1] - 2.5]),
-    );
-    house(
-        out,
-        CABINS[1],
-        [
-            &[Timber, Plain, Flat, Timber],
-            &[Base, Door, Flat, Timber],
-            &[Timber, Flat, Timber, Plain, Timber],
-            &[Timber, Plain, Flat, Timber, Timber],
-        ],
-        Some([CABINS[1].0[0] + 2.0, CABINS[1].0[1] - 2.5]),
-    );
     for (i, (model, at, scale)) in [
         (foliage::FIR.0, [-31.0, -48.0], 1.1),
         (foliage::FIR.0, [-38.0, -51.0], 1.2),

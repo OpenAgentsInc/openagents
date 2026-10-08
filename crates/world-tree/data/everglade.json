@@ -1,7 +1,7 @@
 {
   "schema": "openagents.verse-world-tree.v1",
   "zone": "everglade",
-  "digest": "sha256:49ae4a537ad92be89f559cc8b7b32f56f8ecb5f3e984842642525812f7758e1f",
+  "digest": "sha256:e39c4e5d9e5fe613066412935e03610e5cc52362e8f8f40f5b976ec2d03622fa",
   "nodes": [
     {
       "id": "everglade",
@@ -464,7 +464,7 @@
       "district": "main-street",
       "stand": [
         7.0,
-        48.5
+        47.5
       ],
       "source": "district:main-street"
     },
@@ -514,16 +514,16 @@
       "district": "main-street",
       "stand": [
         -25.0,
-        48.5
+        47.5
       ],
       "entry": [
         [
           -25.0,
-          48.5
+          47.5
         ],
         [
           -25.0,
-          52.0
+          52.5
         ]
       ],
       "affordances": [
@@ -540,7 +540,7 @@
       "district": "main-street",
       "stand": [
         -25.0,
-        48.5
+        47.5
       ],
       "facing": 0.0,
       "open": true,
@@ -553,16 +553,16 @@
       "district": "main-street",
       "stand": [
         7.0,
-        48.5
+        47.5
       ],
       "entry": [
         [
           7.0,
-          48.5
+          47.5
         ],
         [
           7.0,
-          52.0
+          52.5
         ]
       ],
       "affordances": [
@@ -579,7 +579,7 @@
       "district": "main-street",
       "stand": [
         7.0,
-        48.5
+        47.5
       ],
       "facing": 0.0,
       "open": true,
@@ -592,16 +592,16 @@
       "district": "main-street",
       "stand": [
         -9.0,
-        48.5
+        47.5
       ],
       "entry": [
         [
           -9.0,
-          48.5
+          47.5
         ],
         [
           -9.0,
-          52.0
+          52.5
         ]
       ],
       "affordances": [
@@ -618,7 +618,7 @@
       "district": "main-street",
       "stand": [
         -9.0,
-        48.5
+        47.5
       ],
       "facing": 0.0,
       "open": true,
@@ -1027,16 +1027,16 @@
       "district": "main-street",
       "stand": [
         23.0,
-        48.5
+        47.5
       ],
       "entry": [
         [
           23.0,
-          48.5
+          47.5
         ],
         [
           23.0,
-          52.0
+          52.5
         ]
       ],
       "affordances": [
@@ -1052,7 +1052,7 @@
       "district": "main-street",
       "stand": [
         23.0,
-        48.5
+        47.5
       ],
       "facing": 0.0,
       "open": true,
@@ -2699,16 +2699,16 @@
       "district": "creative-district",
       "stand": [
         43.0,
-        36.5
+        37.5
       ],
       "entry": [
         [
           43.0,
-          36.5
+          37.5
         ],
         [
           43.0,
-          33.0
+          32.5
         ]
       ],
       "affordances": [
@@ -2724,7 +2724,7 @@
       "district": "creative-district",
       "stand": [
         43.0,
-        36.5
+        37.5
       ],
       "facing": 3.14,
       "open": true,
@@ -2823,17 +2823,17 @@
       "kind": "building",
       "district": "foundry",
       "stand": [
-        44.5,
-        0.0
+        43.5,
+        -0.0
       ],
       "entry": [
         [
-          44.5,
-          0.0
+          43.5,
+          -0.0
         ],
         [
-          48.0,
-          0.0
+          48.5,
+          -0.0
         ]
       ],
       "affordances": [
@@ -2848,8 +2848,8 @@
       "object": "door",
       "district": "foundry",
       "stand": [
-        44.5,
-        0.0
+        43.5,
+        -0.0
       ],
       "facing": 1.57,
       "open": true,
@@ -3179,16 +3179,16 @@
       "district": "knowledge-district",
       "stand": [
         39.0,
-        -26.5
+        -27.5
       ],
       "entry": [
         [
           39.0,
-          -26.5
+          -27.5
         ],
         [
           39.0,
-          -23.0
+          -22.5
         ]
       ],
       "affordances": [
@@ -3204,7 +3204,7 @@
       "district": "knowledge-district",
       "stand": [
         39.0,
-        -26.5
+        -27.5
       ],
       "facing": 0.0,
       "open": true,
@@ -3566,16 +3566,16 @@
       "district": "knowledge-district",
       "stand": [
         21.0,
-        8.5
+        7.5
       ],
       "entry": [
         [
           21.0,
-          8.5
+          7.5
         ],
         [
           21.0,
-          12.0
+          12.5
         ]
       ],
       "affordances": [
@@ -3591,7 +3591,7 @@
       "district": "knowledge-district",
       "stand": [
         21.0,
-        8.5
+        7.5
       ],
       "facing": 0.0,
       "open": true,
@@ -3733,7 +3733,7 @@
       "kind": "district",
       "district": "stoop-lane",
       "stand": [
-        -36.5,
+        -35.5,
         16.0
       ],
       "source": "district:stoop-lane"
@@ -3744,16 +3744,16 @@
       "kind": "building",
       "district": "stoop-lane",
       "stand": [
-        -15.5,
+        -14.5,
         4.0
       ],
       "entry": [
         [
-          -15.5,
+          -14.5,
           4.0
         ],
         [
-          -19.0,
+          -19.5,
           4.0
         ]
       ],
@@ -3769,7 +3769,7 @@
       "object": "door",
       "district": "stoop-lane",
       "stand": [
-        -15.5,
+        -14.5,
         4.0
       ],
       "facing": -1.57,
@@ -3782,16 +3782,16 @@
       "kind": "building",
       "district": "stoop-lane",
       "stand": [
-        -36.5,
+        -35.5,
         -16.0
       ],
       "entry": [
         [
-          -36.5,
+          -35.5,
           -16.0
         ],
         [
-          -40.0,
+          -40.5,
           -16.0
         ]
       ],
@@ -3807,7 +3807,7 @@
       "object": "door",
       "district": "stoop-lane",
       "stand": [
-        -36.5,
+        -35.5,
         -16.0
       ],
       "facing": -1.57,
@@ -3820,17 +3820,17 @@
       "kind": "building",
       "district": "stoop-lane",
       "stand": [
-        -36.5,
-        0.0
+        -35.5,
+        -0.0
       ],
       "entry": [
         [
-          -36.5,
-          0.0
+          -35.5,
+          -0.0
         ],
         [
-          -40.0,
-          0.0
+          -40.5,
+          -0.0
         ]
       ],
       "affordances": [
@@ -3845,8 +3845,8 @@
       "object": "door",
       "district": "stoop-lane",
       "stand": [
-        -36.5,
-        0.0
+        -35.5,
+        -0.0
       ],
       "facing": -1.57,
       "open": true,
@@ -3858,16 +3858,16 @@
       "kind": "building",
       "district": "stoop-lane",
       "stand": [
-        -36.5,
+        -35.5,
         16.0
       ],
       "entry": [
         [
-          -36.5,
+          -35.5,
           16.0
         ],
         [
-          -40.0,
+          -40.5,
           16.0
         ]
       ],
@@ -3883,7 +3883,7 @@
       "object": "door",
       "district": "stoop-lane",
       "stand": [
-        -36.5,
+        -35.5,
         16.0
       ],
       "facing": -1.57,
@@ -3896,16 +3896,16 @@
       "kind": "building",
       "district": "stoop-lane",
       "stand": [
-        -36.5,
+        -35.5,
         32.0
       ],
       "entry": [
         [
-          -36.5,
+          -35.5,
           32.0
         ],
         [
-          -40.0,
+          -40.5,
           32.0
         ]
       ],
@@ -3921,7 +3921,7 @@
       "object": "door",
       "district": "stoop-lane",
       "stand": [
-        -36.5,
+        -35.5,
         32.0
       ],
       "facing": -1.57,
@@ -5056,16 +5056,16 @@
       "district": "walden-woods",
       "stand": [
         -23.0,
-        -41.5
+        -40.5
       ],
       "entry": [
         [
           -23.0,
-          -41.5
+          -40.5
         ],
         [
           -23.0,
-          -45.0
+          -45.5
         ]
       ],
       "affordances": [
@@ -5081,7 +5081,7 @@
       "district": "walden-woods",
       "stand": [
         -23.0,
-        -41.5
+        -40.5
       ],
       "facing": 3.14,
       "open": true,
@@ -5185,16 +5185,16 @@
       "kind": "building",
       "district": "walden-woods",
       "stand": [
-        -38.5,
+        -37.5,
         -40.0
       ],
       "entry": [
         [
-          -38.5,
+          -37.5,
           -40.0
         ],
         [
-          -42.0,
+          -42.5,
           -40.0
         ]
       ],
@@ -5210,7 +5210,7 @@
       "object": "door",
       "district": "walden-woods",
       "stand": [
-        -38.5,
+        -37.5,
         -40.0
       ],
       "facing": -1.57,

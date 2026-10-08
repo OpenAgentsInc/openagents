@@ -42,7 +42,7 @@ impl Side {
     const ALL: [Self; 4] = [Self::South, Self::North, Self::West, Self::East];
 
     /// The wall's outward heading, as the controller's yaw.
-    fn outward(self) -> f32 {
+    pub fn outward(self) -> f32 {
         match self {
             Self::South => SOUTH,
             Self::North => NORTH,
@@ -340,8 +340,10 @@ pub const BUILDINGS: [Building; 77] = [
 /// Market Row's z, m: the lane behind Main Street's far blocks.
 pub const MARKET_ROW: f32 = 74.5;
 
-/// The beekeeper's hut by the orchard.
-const BEEKEEPER: Building = building("beekeeper's hut", [-70.0, 77.0], 8.0, W, -80.0, 1, Timber);
+/// The beekeeper's hut by the orchard: the town's last house on the village
+/// kit's demolition rules, which the town's demolition tests break.
+pub const BEEKEEPER: Building =
+    building("beekeeper's hut", [-70.0, 77.0], 8.0, W, -80.0, 1, Timber);
 
 /// Every building, the table's and the beekeeper's hut.
 fn all() -> impl Iterator<Item = &'static Building> {
@@ -442,11 +444,6 @@ pub const STAND_INS: [StandIn; 28] = [
     stand_in("row house 5", "row house 5", &STONE_COTTAGE, 0.0),
     stand_in("row house 6", "row house 6", &GAMBREL_HOUSE, 0.0),
 ];
-
-/// A Market Row house in its own place.
-const fn row(building: &'static str, model: &'static Model) -> StandIn {
-    stand_in(building, building, model, 0.0)
-}
 
 /// A brownstone in `building`'s place, set back so its stoop stands on
 /// its own ground in front of the wall line.
@@ -584,6 +581,7 @@ fn kit_house(b: &Building) -> Option<KitHouse> {
         stories: b.stories,
         style,
         door_bay,
+        door_at: None,
         seed,
     })
 }

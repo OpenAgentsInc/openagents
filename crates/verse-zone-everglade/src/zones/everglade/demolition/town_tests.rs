@@ -5,7 +5,7 @@ use super::site::{Role, Status};
 use super::town::{Building, MAX_CHUNKS, MAX_LIVE, MAX_PIECES, Town};
 use crate::controller::PlayerController;
 use crate::pbr::textured::{IndexEdits, TexturedScene};
-use crate::zones::everglade::layout::{self, COTTAGE, READING_ROOM, SHOPS};
+use crate::zones::everglade::layout::{self, city::BEEKEEPER};
 use crate::zones::everglade::tests::{pack, world};
 use crate::zones::everglade::{HALL, height};
 use glam::Vec3;
@@ -41,6 +41,9 @@ fn building(town: &Town, rect: ([f32; 2], [f32; 2])) -> usize {
         })
         .expect("the survey found the building")
 }
+
+/// The beekeeper's hut, the town's village-kit house these tests break.
+const HUT: ([f32; 2], [f32; 2]) = BEEKEEPER.rect;
 
 /// A caster `back` meters south of `at`, facing it.
 fn caster(at: Vec3, back: f32) -> PlayerController {
@@ -92,10 +95,10 @@ fn the_survey_maps_the_kit_buildings_and_carves_everything_else() {
     let town = town();
     let buildings = town.buildings();
     let kit: Vec<&Building> = buildings.iter().filter(|b| !b.is_carved()).collect();
-    // The first town's houses and shops map onto the village kit's rules;
-    // the sixth round's lighter houses and the medieval kit's houses carve,
-    // the medieval kit's one piece a block.
-    assert!(kit.len() >= 10, "{} kit buildings", kit.len());
+    // The beekeeper's hut maps onto the village kit's rules; the sixth
+    // round's lighter houses and the medieval kit's houses carve, the
+    // medieval kit's one piece a block.
+    assert!(!kit.is_empty(), "no village kit building");
     // The workshop hall is the studio's, and breaks like the rest.
     let hall = building(&town, HALL);
     assert!(buildings[hall].destructible());
@@ -141,9 +144,21 @@ fn the_survey_maps_the_kit_buildings_and_carves_everything_else() {
     }
     // Storied city buildings are among them.
     assert!(buildings.iter().any(|b| b.destructible() && b.stories >= 2));
-    // The cottage, the reading room, and the shops are.
-    for rect in [COTTAGE, READING_ROOM, SHOPS[0]] {
-        assert!(buildings[building(&town, rect)].destructible());
+    // The hut is, and so are the first town's kit houses: the cottage, the
+    // reading room, and the shops.
+    assert!(buildings[building(&town, HUT)].destructible());
+    for house in layout::first_town_houses() {
+        let nearest = (0..buildings.len())
+            .min_by(|&a, &b| {
+                let d = |i: usize| {
+                    let ([cx, cz], _) = buildings[i].rect;
+                    (house.center[0] - cx).hypot(house.center[1] - cz)
+                };
+                d(a).total_cmp(&d(b))
+            })
+            .unwrap();
+        assert!(buildings[nearest].destructible(), "{}", house.name);
+        assert!(buildings[nearest].is_carved(), "{}", house.name);
     }
 }
 
@@ -163,12 +178,12 @@ fn untouched_buildings_stay_in_the_static_cells() {
 fn a_meteor_strike_breaks_the_pieces_near_its_center() {
     let scene = scene();
     let mut town = town_over(scene.clone());
-    let cottage = building(&town, COTTAGE);
-    let at = south_front(&town.buildings()[cottage]);
+    let hut = building(&town, HUT);
+    let at = south_front(&town.buildings()[hut]);
     let player = caster(at, 16.0);
     strike(&mut town, &player, at, 2.0);
-    assert!(town.raised().contains(&cottage));
-    let broken = pieces(&town, cottage)
+    assert!(town.raised().contains(&hut));
+    let broken = pieces(&town, hut)
         .into_iter()
         .filter(|&(i, status)| {
             status == Status::Broken && town.site().specs()[i].center.as_vec3().distance(at) < 3.5
@@ -229,8 +244,8 @@ fn the_studio_breaks_and_comes_back() {
 fn restoring_brings_every_building_back() {
     let scene = scene();
     let mut town = town_over(scene.clone());
-    let cottage = building(&town, COTTAGE);
-    let at = south_front(&town.buildings()[cottage]);
+    let hut = building(&town, HUT);
+    let at = south_front(&town.buildings()[hut]);
     let player = caster(at, 16.0);
     let first = {
         let mut fresh = self::town();
@@ -266,11 +281,11 @@ fn restoring_brings_every_building_back() {
 #[test]
 fn the_solids_follow_the_collapse() {
     let mut town = town();
-    let cottage = building(&town, COTTAGE);
-    let b = town.buildings()[cottage].clone();
+    let hut = building(&town, HUT);
+    let b = town.buildings()[hut].clone();
     let ([cx, cz], [hx, _]) = b.rect;
     let solids = |town: &mut Town| town.take_solids();
-    // Whole, the roof holds a levitating player over the cottage.
+    // Whole, the roof holds a levitating player over the hut.
     let mut whole = self::town();
     whole.restore();
     let first = solids(&mut whole).unwrap();
@@ -293,7 +308,7 @@ fn the_solids_follow_the_collapse() {
         3.0,
     );
     let after = solids(&mut town).expect("the solids changed");
-    let roof = pieces(&town, cottage)
+    let roof = pieces(&town, hut)
         .into_iter()
         .find(|&(i, _)| matches!(town.site().specs()[i].role, Role::Roof { .. }))
         .expect("the roof was raised");
@@ -302,20 +317,21 @@ fn the_solids_follow_the_collapse() {
         after.floor(cx + 1.0, cz, ground + 9.0) < ground + 3.0,
         "no roof is left to stand on"
     );
-    // The west wall's gap lets the player through.
+    // The east wall's gap lets the player through (the hut's door is in
+    // its west wall).
     let blocked = |s: &crate::zones::everglade::solids::Solids| {
         s.blocking(ground)
             .iter()
             .filter(|f| {
-                f.min[0] <= cx - hx + 0.3
-                    && f.max[0] >= cx - hx - 0.3
+                f.min[0] <= cx + hx + 0.3
+                    && f.max[0] >= cx + hx - 0.3
                     && f.min[1] <= cz
                     && f.max[1] >= cz
             })
             .count()
     };
-    assert!(blocked(&first) > 0, "the whole west wall blocks");
-    assert_eq!(blocked(&after), 0, "the broken west wall doesn't");
+    assert!(blocked(&first) > 0, "the whole east wall blocks");
+    assert_eq!(blocked(&after), 0, "the broken east wall doesn't");
 }
 
 #[test]
@@ -356,13 +372,13 @@ fn the_caps_hold_under_repeated_casts() {
 #[test]
 fn the_hammer_breaks_a_town_wall() {
     let mut town = town();
-    let cottage = building(&town, COTTAGE);
-    let at = south_front(&town.buildings()[cottage]);
+    let hut = building(&town, HUT);
+    let at = south_front(&town.buildings()[hut]);
     let mut player = caster(at, 1.0);
     player.yaw = 0.0;
     let mut swings = 0;
     while town.raised().is_empty()
-        || pieces(&town, cottage)
+        || pieces(&town, hut)
             .iter()
             .all(|&(_, s)| s == Status::Standing)
     {
@@ -371,15 +387,15 @@ fn the_hammer_breaks_a_town_wall() {
         swings += 1;
         assert!(swings < 12, "the hammer reaches the wall");
     }
-    assert!(town.raised().contains(&cottage));
+    assert!(town.raised().contains(&hut));
 }
 
-/// Breaks the cottage's south wall sections on the ground story within
-/// 2.5 m of its middle, and lets the town catch up. Returns the cottage.
-fn open_the_cottage(town: &mut Town, player: &PlayerController) -> usize {
+/// Breaks the hut's south wall sections on the ground story within
+/// 2.5 m of its middle, and lets the town catch up. Returns the hut.
+fn open_the_hut(town: &mut Town, player: &PlayerController) -> usize {
     use super::site::Side;
-    let cottage = building(town, COTTAGE);
-    let ([cx, cz], [_, hz]) = town.buildings()[cottage].rect;
+    let hut = building(town, HUT);
+    let ([cx, cz], [_, hz]) = town.buildings()[hut].rect;
     // A blast of no damage raises it into the rules.
     town.blast(
         Vec3::new(cx, height(cx, cz) + 1.0, cz - hz),
@@ -387,7 +403,7 @@ fn open_the_cottage(town: &mut Town, player: &PlayerController) -> usize {
         0,
         Vec3::NEG_Z,
     );
-    let doomed: Vec<usize> = pieces(town, cottage)
+    let doomed: Vec<usize> = pieces(town, hut)
         .into_iter()
         .map(|(i, _)| i)
         .filter(|&i| {
@@ -408,16 +424,16 @@ fn open_the_cottage(town: &mut Town, player: &PlayerController) -> usize {
         town.site_mut().damage(i, 100_000, at, glam::DVec3::Z);
     }
     run(town, player, 0.5);
-    cottage
+    hut
 }
 
 #[test]
 fn through_a_blown_out_wall_the_aim_finds_the_far_walls_inner_face() {
     let mut town = town();
-    let ([cx, cz], [_, hz]) = COTTAGE;
+    let ([cx, cz], [_, hz]) = HUT;
     let player = caster(Vec3::new(cx, 0.0, cz - hz), 10.0);
-    let cottage = open_the_cottage(&mut town, &player);
-    let base = town.buildings()[cottage].base;
+    let hut = open_the_hut(&mut town, &player);
+    let base = town.buildings()[hut].base;
     let eye = player.pos + Vec3::Y * 1.6;
     town.meteor_swarm(&player).unwrap();
     // Through the hole at the north wall, at chest height.
@@ -449,7 +465,7 @@ fn through_a_blown_out_wall_the_aim_finds_the_far_walls_inner_face() {
     assert!(town.confirm(&player));
     run(&mut town, &player, super::meteor::CAST + 2.5);
     let site = town.site();
-    let hurt = pieces(&town, cottage)
+    let hurt = pieces(&town, hut)
         .into_iter()
         .filter(|&(i, _)| {
             let (spec, piece) = (&site.specs()[i], &site.pieces()[i]);

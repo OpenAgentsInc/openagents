@@ -73,6 +73,10 @@ pub struct KitHouse {
     pub style: KitStyle,
     /// Which front bay, from the left seen from the street, holds the door.
     pub door_bay: usize,
+    /// Where the door should open, x and z, when it must meet a walk or a
+    /// place already laid out: the front's bays and the door's bay are then
+    /// the ones that put the opening nearest it, and `door_bay` is unused.
+    pub door_at: Option<[f32; 2]>,
     /// Varies the windows, framing, and chimney.
     pub seed: u32,
 }
@@ -173,15 +177,66 @@ impl KitHouse {
             .collect()
     }
 
+    /// The front's bays, left to right, and the door's among them.
+    fn front_plan(&self) -> (Vec<(f32, f32)>, usize) {
+        let Some(at) = self.door_at else {
+            let bays = Self::bays(self.width, noise(self.seed, 3) < 0.5);
+            let door = self.door_bay.min(bays.len() - 1);
+            return (bays, door);
+        };
+        // The target along the front, in the house's `u`.
+        let (s, c) = self.facing.sin_cos();
+        let (dx, dz) = (at[0] - self.center[0], at[1] - self.center[1]);
+        let target = dx * c - dz * s;
+        let mut best = (f32::INFINITY, Vec::new(), 0);
+        for bays in Self::layouts(self.width) {
+            for (k, &(offset, length)) in bays.iter().enumerate() {
+                let (a, b) = if length >= 4.0 { DOOR_4 } else { DOOR_2 };
+                let u = -self.width / 2.0 + offset + (a + b) / 2.0;
+                if (u - target).abs() < best.0 {
+                    best = ((u - target).abs(), bays.clone(), k);
+                }
+            }
+        }
+        (best.1, best.2)
+    }
+
+    /// The ways to fill a side of `length` with 4 m and 2 m bays between
+    /// its corners: the usual one with its 2 m bay at either end, and, where
+    /// two 2 m bays fit, one at each end, which centers a 4 m bay on a 10 m
+    /// side.
+    fn layouts(length: f32) -> Vec<Vec<(f32, f32)>> {
+        let mut out = vec![Self::bays(length, false), Self::bays(length, true)];
+        let inner = (length - 2.0).max(0.0);
+        let fours = (inner / 4.0).floor() as usize;
+        if fours >= 1 && (inner - 4.0 * fours as f32 - 0.0).abs() < 0.5 {
+            // 4 m bays only: trade one for a 2 m bay at each end.
+            let mut lengths = vec![2.0];
+            lengths.extend(std::iter::repeat_n(4.0, fours - 1));
+            lengths.push(2.0);
+            let mut at = 1.0;
+            out.push(
+                lengths
+                    .into_iter()
+                    .map(|l| {
+                        at += l;
+                        (at - l, l)
+                    })
+                    .collect(),
+            );
+        }
+        out
+    }
+
     /// The front's bays, left to right.
     fn front_bays(&self) -> Vec<(f32, f32)> {
-        Self::bays(self.width, noise(self.seed, 3) < 0.5)
+        self.front_plan().0
     }
 
     /// The door's bay on the front: its offset and length.
     fn door(&self) -> (f32, f32) {
-        let bays = self.front_bays();
-        bays[self.door_bay.min(bays.len() - 1)]
+        let (bays, door) = self.front_plan();
+        bays[door]
     }
 
     /// The door opening's middle along the front, in the house's `u`.
@@ -325,12 +380,13 @@ impl KitHouse {
     /// The wall piece of side `k`'s bay `b` on `story`.
     fn wall(&self, k: usize, story: u8, b: usize, length: f32) -> &'static str {
         let timber = self.style == KitStyle::Timber;
+        let door_bay = self.front_plan().1;
         let r = noise(
             self.seed.wrapping_mul(31) ^ (k as u32 * 7 + u32::from(story) * 3),
             b as u32,
         );
         if length < 4.0 {
-            if k == 0 && story == 0 && b == self.door_bay {
+            if k == 0 && story == 0 && b == door_bay {
                 return "kit/door-2";
             }
             return if timber {
@@ -339,7 +395,7 @@ impl KitHouse {
                 "kit/wall-2"
             };
         }
-        if k == 0 && story == 0 && b == self.door_bay {
+        if k == 0 && story == 0 && b == door_bay {
             return "kit/door-4";
         }
         // Fronts are mostly windows, sides half, backs a few.
@@ -548,6 +604,7 @@ mod tests {
             stories: 2,
             style: KitStyle::Timber,
             door_bay: 0,
+            door_at: None,
             seed: 7,
         }
     }
