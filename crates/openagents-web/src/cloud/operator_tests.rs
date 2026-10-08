@@ -135,6 +135,7 @@ async fn finished(fixture: &Fixture, id: &str) -> coder_cloud::Record {
         loop {
             if let Some(record) = jobs(fixture).into_iter().find(|record| record.id == id)
                 && record.state.terminal()
+                && record.cleanup_complete
             {
                 return record;
             }
