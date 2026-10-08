@@ -19,6 +19,10 @@ with the [Orbs research](../research/orbs.md), current native Cloud jobs, and th
 web composer. Its terms and implementation boundaries match the
 [glossary](../glossary.md#cloud-computers-and-repository-environments).
 
+The [OpenInspect source study](../research/openinspect.md) compares durable
+session ownership, provider checkpoints, tool capture, and collaboration with
+these existing Rust boundaries and the remaining environment work.
+
 ## Resident operator bridge
 
 The following command loads a separately admitted operator policy:
