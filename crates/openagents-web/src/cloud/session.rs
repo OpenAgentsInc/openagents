@@ -544,6 +544,110 @@ impl CloudSession {
         Ok(())
     }
 
+    /// A short path capability for one account's credential-free world
+    /// content reads. Browser world fetches omit cookies, so the ticket binds
+    /// the session, account scope, and exact binding identity instead.
+    pub(crate) fn world_ticket(
+        &self,
+        viewer: &Viewer,
+        binding: &str,
+        limit: u64,
+    ) -> Result<String> {
+        let Some(workspace) = &viewer.workspace else {
+            return Err(SessionError::Forbidden);
+        };
+        let observed = now();
+        let expires = (observed + WORLD_TICKET_SECONDS)
+            .min(viewer.expires_at)
+            .min(limit);
+        if expires <= observed {
+            return Err(SessionError::Forbidden);
+        }
+        let session = hex(&Sha256::digest(viewer.session_id.as_bytes())[..16]);
+        let mac = self.world_mac(
+            &session,
+            &viewer.account_id,
+            &workspace.id,
+            workspace.members_epoch,
+            binding,
+            expires,
+        );
+        Ok(format!(
+            "{expires}.{session}.{}",
+            URL_SAFE_NO_PAD.encode(mac)
+        ))
+    }
+
+    /// Verify a world ticket against the binding's own account scope.
+    pub(crate) fn verify_world_ticket(
+        &self,
+        ticket: &str,
+        account: &str,
+        workspace: &str,
+        members_epoch: u64,
+        binding: &str,
+    ) -> Result<()> {
+        if ticket.len() > 128 {
+            return Err(SessionError::Forbidden);
+        }
+        let mut parts = ticket.split('.');
+        let (Some(expires), Some(session), Some(signature), None) =
+            (parts.next(), parts.next(), parts.next(), parts.next())
+        else {
+            return Err(SessionError::Forbidden);
+        };
+        let expires: u64 = expires.parse().map_err(|_| SessionError::Forbidden)?;
+        let observed = now();
+        if expires <= observed
+            || expires > observed + WORLD_TICKET_SECONDS
+            || session.len() != 32
+            || !session
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        {
+            return Err(SessionError::Forbidden);
+        }
+        let signature = URL_SAFE_NO_PAD
+            .decode(signature)
+            .map_err(|_| SessionError::Forbidden)?;
+        let mut mac =
+            Hmac::<Sha256>::new_from_slice(&self.csrf_key).expect("HMAC accepts this key");
+        world_input(
+            &mut mac,
+            session,
+            account,
+            workspace,
+            members_epoch,
+            binding,
+            expires,
+        );
+        mac.verify_slice(&signature)
+            .map_err(|_| SessionError::Forbidden)
+    }
+
+    fn world_mac(
+        &self,
+        session: &str,
+        account: &str,
+        workspace: &str,
+        members_epoch: u64,
+        binding: &str,
+        expires: u64,
+    ) -> Vec<u8> {
+        let mut mac =
+            Hmac::<Sha256>::new_from_slice(&self.csrf_key).expect("HMAC accepts this key");
+        world_input(
+            &mut mac,
+            session,
+            account,
+            workspace,
+            members_epoch,
+            binding,
+            expires,
+        );
+        mac.finalize().into_bytes().to_vec()
+    }
+
     fn checked_ticket(
         &self,
         headers: &HeaderMap,
@@ -830,6 +934,32 @@ fn action(scope: &str, target: &str) -> Result<()> {
     }
     Ok(())
 }
+/// World tickets live only long enough to load and refresh one visit.
+const WORLD_TICKET_SECONDS: u64 = 600;
+
+fn world_input(
+    mac: &mut Hmac<Sha256>,
+    session: &str,
+    account: &str,
+    workspace: &str,
+    members_epoch: u64,
+    binding: &str,
+    expires: u64,
+) {
+    mac.update(b"openagents.cloud.world-ticket.v1\0");
+    for part in [
+        session,
+        account,
+        workspace,
+        &members_epoch.to_string(),
+        binding,
+        &expires.to_string(),
+    ] {
+        mac.update(part.as_bytes());
+        mac.update(b"\0");
+    }
+}
+
 pub(crate) fn now() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)

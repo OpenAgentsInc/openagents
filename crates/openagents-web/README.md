@@ -335,6 +335,34 @@ the page detaches its viewer and leaves the PTY under the native host lifecycle.
 Retail customer tasks expose no shell. HTTP and insecure WebSockets are accepted
 only for explicit isolated loopback fixtures.
 
+## Verse connections
+
+`/cloud/app/verse` always shows three separate connections for each admitted
+host binding: World, Computer, and Private work. It needs no 3D view. Computer
+state comes from a current native observation check. Private work lists only
+the binding's Observe, Operate, Review, and Terminal rights; the `world` right is
+never one of them, and joining a world adds none. Public worlds (`/grid`,
+`/everglade`, `/druid`) stay linked and supply no host or Studio connection.
+
+To offer **Join**, add `world` to the binding: an absolute private directory
+(every containing directory `0700`, files `0600`) holding the browser
+`chamber.json` from [platform clients](../../docs/verse/platform-clients.md) and
+its pack, scene, and assets. Its `host` and `generation` must match the binding,
+and the binding's native grant must carry `world`. The host still admits only an
+enrolled character bound to the chamber's instance and content.
+`/cloud/app/hosts/{binding}/verse` issues a ten-minute world ticket and opens the
+existing `everglade-web` chamber renderer under `/cloud/world/{binding}/{ticket}/`
+(`--everglade` must be set). The renderer omits credentials, so its
+configuration and content reads are scoped by that ticket, which binds the
+session, account, workspace, membership epoch, and exact binding identity. A
+changed chamber configuration, binding, or expired grant refuses them. **Leave**
+returns to the connections page.
+
+`/cloud/app/verse/open?host=BINDING&resource=REF` resolves a station's
+[workbench reference](../../docs/terminal/workbench-resources.md) to the same app
+view: a terminal opens the workbench, a run opens its task, and other kinds show
+the exact reference without an action until their owner viewer lands.
+
 ## Task browser
 
 The browser reads the same durable task store and paged ATIF view as

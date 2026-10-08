@@ -10,6 +10,7 @@ mod private;
 pub mod session;
 #[cfg(test)]
 mod tests;
+mod verse;
 mod work;
 mod workbench;
 
@@ -101,9 +102,10 @@ pub(crate) fn routes() -> Router<App> {
         .merge(controls::routes())
         .merge(operator::routes())
         .merge(workbench::routes())
+        .merge(verse::routes())
         .layer(DefaultBodyLimit::max(8192));
     for (_, slug, _) in SECTIONS {
-        if !matches!(slug, "computers" | "projects" | "workbench") {
+        if !matches!(slug, "computers" | "projects" | "workbench" | "verse") {
             router = router.route(&format!("/cloud/app/{slug}"), get(section));
         }
     }
@@ -458,6 +460,9 @@ fn workspace_shell(
             nav.push_str("<a href=\"/cloud/app/workbench\">Workbench</a>");
         } else if slug == "settings" {
             nav.push_str("<a href=\"/cloud/app/settings\">Settings</a>");
+        } else if slug == "verse" {
+            // Public worlds keep this page useful without any host connection.
+            nav.push_str("<a href=\"/cloud/app/verse\">Verse</a>");
         } else {
             nav.push_str(&format!(
                 "<span aria-disabled=\"true\" title=\"{}\">{} · Unavailable</span>",
@@ -490,7 +495,18 @@ fn workspace_shell(
                 "No current observe, operate, review, typist, or sales grant. Account sign-in grants none of these rights.",
             ),
         ] {
-            let (state, reason) = if configured && key == "computer" {
+            let world = app.config.cloud_hosts.as_ref().is_some_and(|hosts| {
+                hosts
+                    .current(viewer)
+                    .iter()
+                    .any(|binding| binding.declared_world().is_some())
+            });
+            let (state, reason) = if world && key == "world" {
+                (
+                    "Not checked",
+                    "A host world is configured for this workspace. Open Verse to check its admission and join. Joining grants no private-work right.",
+                )
+            } else if configured && key == "computer" {
                 (
                     "Not checked",
                     "This account has an explicit resident binding. Open Computers to verify the current native grant and resident generation.",
@@ -516,7 +532,7 @@ fn workspace_shell(
                 Err(response) => return response,
             }
         }
-        content.push_str("<p>No connected work to report. Costs, waiting tasks, outcomes, and unread counts are unavailable until their canonical owners are connected.</p><p><a href=\"/grid\">Open the Grid</a> · <a href=\"/components\">Explore shared components</a></p>");
+        content.push_str("<p>No connected work to report. Costs, waiting tasks, outcomes, and unread counts are unavailable until their canonical owners are connected.</p><p><a href=\"/cloud/app/verse\">Verse connections</a> · <a href=\"/grid\">Open the Grid</a> · <a href=\"/components\">Explore shared components</a></p>");
     } else if selected == "tasks" {
         content.push_str("<h2>Resident tasks</h2><p>Choose an explicitly bound resident host. Every task page checks current native Observe authority.</p><ul>");
         let bindings = app
