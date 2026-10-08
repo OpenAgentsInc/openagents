@@ -10,7 +10,7 @@
 //! [--particle-frame N] [--particle-repeats N] [--particle-every N]
 //! [--smoke-frame N]
 //! [--no-temporal-aa] [--compare-temporal-aa] [--camera director|pan|orbit]
-//! [--static-houses]
+//! [--static-houses] [--sequence FIRST:LAST]
 //!
 //! Installs the showcase from the committed, pinned Everglade pack as
 //! `verse --meteor-showcase` does, bakes its light, and renders it offscreen
@@ -83,6 +83,7 @@ struct Args {
     video: Option<PathBuf>,
     seconds: f32,
     every: Option<usize>,
+    sequence: Option<[usize; 2]>,
     /// Plays as the owner does: 60 frames a second, one step a frame, the
     /// light baking while it plays, and the player's own cast.
     live: bool,
@@ -485,6 +486,7 @@ fn args() -> Result<Args, String> {
         out,
         seconds: 12.5,
         every: None,
+        sequence: None,
         live: false,
         settle_light: false,
         no_flash_lights: false,
@@ -519,6 +521,20 @@ fn args() -> Result<Args, String> {
             "--no-temporal-aa" => args.no_temporal_aa = true,
             "--compare-temporal-aa" => args.compare_temporal_aa = true,
             "--static-houses" => args.static_houses = true,
+            "--sequence" => {
+                let range = value()?;
+                let (first, last) = range.split_once(':').ok_or("--sequence takes FIRST:LAST")?;
+                let first = first
+                    .parse::<usize>()
+                    .map_err(|_| "--sequence takes whole frame numbers")?;
+                let last = last
+                    .parse::<usize>()
+                    .map_err(|_| "--sequence takes whole frame numbers")?;
+                if first > last || last - first >= 120 {
+                    return Err("--sequence must contain 1 to 120 consecutive frames".into());
+                }
+                args.sequence = Some([first, last]);
+            }
             "--camera" => {
                 args.camera = match value()?.as_str() {
                     "director" => CameraPath::Director,
@@ -835,9 +851,7 @@ fn shot(path: CameraPath, t: f32) -> (Vec3, Vec3) {
 fn main() -> Result<(), String> {
     let args = args()?;
     std::fs::create_dir_all(&args.out).map_err(|e| format!("{}: {e}", args.out.display()))?;
-    if let Some(every) = args.every
-        && every > 0
-    {
+    if args.every.is_some_and(|every| every > 0) || args.sequence.is_some() {
         std::fs::create_dir_all(args.out.join("frames")).map_err(|e| e.to_string())?;
     }
     if std::env::var("VERSE_QUALITY").as_deref() != Ok("high") {
@@ -870,6 +884,9 @@ fn main() -> Result<(), String> {
     let fps = if args.live { 60.0 } else { FPS };
     let steps = if args.live { 1 } else { STEPS };
     let frames = (args.seconds * fps).round() as usize;
+    if args.sequence.is_some_and(|[_, last]| last >= frames) {
+        return Err("--sequence must be within the captured frame range".into());
+    }
     for (flag, frame) in [
         ("--impact-frame", args.impact_frame),
         ("--smoke-frame", args.smoke_frame),
@@ -1241,9 +1258,10 @@ fn main() -> Result<(), String> {
                 )?;
             }
         }
-        if let Some(every) = args.every
-            && every > 0
-            && k % every == 0
+        if args.every.is_some_and(|every| every > 0 && k % every == 0)
+            || args
+                .sequence
+                .is_some_and(|[first, last]| (first..=last).contains(&k))
         {
             write_png(
                 &args.out.join("frames").join(format!("{k:04}.png")),
@@ -1293,6 +1311,7 @@ fn main() -> Result<(), String> {
         "mode": if args.live { "live" } else { "film" },
         "camera_path": args.camera.name(),
         "static_houses": args.static_houses,
+        "sequence_frames": args.sequence,
         "width": WIDTH,
         "height": HEIGHT,
         "fps": fps,
