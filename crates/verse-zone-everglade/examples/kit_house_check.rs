@@ -201,21 +201,14 @@ fn run(output: PathBuf) -> Result<(), String> {
         .map(|(_, h)| h)
         .collect();
     houses.extend(layout::first_town_houses());
-    for (index, mut house) in houses.into_iter().enumerate() {
-        let (s, c) = house.facing.sin_cos();
-        let relative_door = house.door_at.map(|[x, z]| {
-            let (dx, dz) = (x - house.center[0], z - house.center[1]);
-            [dx * c - dz * s, dx * s + dz * c]
-        });
-        house.center = [0.0; 2];
-        house.facing = 0.0;
-        house.door_at = relative_door;
+    for (index, house) in houses.into_iter().enumerate() {
         let mut placements = Vec::new();
         house.raise(&mut placements);
         let (scene, _) = scene::build_painted(&pack, &placements, layout::paint)?;
         let merged = scene.merge()?;
         let levels: Vec<_> = [10.0, 50.0, 120.0].map(|distance| {
-            let eye = glam::Vec3::new(0.0, house.floor()+2.0, distance);
+            let [x, z] = house.world([0.0, distance]);
+            let eye = glam::Vec3::new(x, house.floor()+2.0, z);
             let batches: Vec<_> = merged.batches.iter().filter(|b| b.level.drawn_from(eye)).collect();
             json!({"distance":distance,"triangles":batches.iter().map(|b| u64::from(b.count/3)).sum::<u64>(),
                 "draws":batches.len(),"materials":batches.iter().map(|b| b.material).collect::<BTreeSet<_>>().len()})
@@ -224,7 +217,7 @@ fn run(output: PathBuf) -> Result<(), String> {
         export(&dir, &name, &scene, &placements)?;
         println!(
             "{}",
-            json!({"house":house.name,"file":format!("{name}.gltf"),"width":house.width,"depth":house.depth,"stories":house.stories,"levels":levels})
+            json!({"house":house.name,"file":format!("{name}.gltf"),"center":house.center,"facing":house.facing,"width":house.width,"depth":house.depth,"stories":house.stories,"levels":levels})
         );
     }
     Ok(())
