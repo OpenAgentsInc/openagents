@@ -9,6 +9,7 @@ pub mod bundled_settings;
 pub mod cloud;
 pub mod cloud_settings;
 pub mod cloud_tools;
+mod codex_usage;
 pub mod credentials;
 mod delegation_events;
 mod demo;
@@ -175,6 +176,7 @@ impl App {
             .iter()
             .position(|child| child.id == id)
             .unwrap_or_else(|| {
+                self.live.finish_partial();
                 self.live.entries.push(live::Entry::Delegation {
                     id: id.clone(),
                     name: name.clone(),
@@ -212,6 +214,7 @@ impl App {
         }
         let child = &mut self.delegations[index];
         match event {
+            bundled_runtime::RuntimeEvent::Tokens(tokens) => child.chat.tokens = tokens,
             bundled_runtime::RuntimeEvent::Text(text) => child.chat.partial.push_str(&text),
             bundled_runtime::RuntimeEvent::Model(model) => {
                 child.chat.partial_model = live::model_slug(&model)
@@ -235,7 +238,16 @@ impl App {
                                 .and_then(|usage| usage.get("total_tokens"))
                                 .and_then(serde_json::Value::as_u64)
                         })
-                        .unwrap_or(0);
+                        .or_else(|| {
+                            let usage = output.get("usage")?;
+                            Some(
+                                usage
+                                    .get("input_tokens")?
+                                    .as_u64()?
+                                    .saturating_add(usage.get("output_tokens")?.as_u64()?),
+                            )
+                        })
+                        .unwrap_or(child.chat.tokens);
                     if let Some(model) = output.get("model").and_then(serde_json::Value::as_str) {
                         child.chat.partial_model = live::model_slug(model);
                     }
@@ -1519,6 +1531,7 @@ impl App {
                     KeyCode::Esc => self.select_agent(None),
                     KeyCode::PageUp => self.scroll = self.scroll.saturating_sub(5),
                     KeyCode::PageDown => self.scroll = self.scroll.saturating_add(5),
+                    KeyCode::End if ctrl => self.scroll = u16::MAX,
                     KeyCode::Enter if key.modifiers.contains(KeyModifiers::ALT) => {
                         self.draft.insert("\n");
                     }

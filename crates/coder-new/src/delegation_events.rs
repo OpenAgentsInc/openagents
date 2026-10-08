@@ -236,6 +236,7 @@ pub(crate) fn decode(value: &Value, depth: usize) -> Option<RuntimeEvent> {
         },
         "delta" => RuntimeEvent::Text(word("text")?),
         "model" => RuntimeEvent::Model(word("model")?),
+        "usage" => RuntimeEvent::Tokens(value.get("tokens")?.as_u64()?),
         "tool" => RuntimeEvent::Tool {
             name: word("name")?,
             input: value.get("input")?.clone(),

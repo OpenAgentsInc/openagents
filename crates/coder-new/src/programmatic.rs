@@ -1386,6 +1386,7 @@ fn delegate(
             Ok(event) => {
                 emit(runtime_value(&event));
                 match event {
+                    RuntimeEvent::Tokens(tokens) => app.live.tokens = tokens,
                     RuntimeEvent::Text(text) => app.live.partial.push_str(&text),
                     RuntimeEvent::Model(model) => app.live.partial_model = Some(model),
                     RuntimeEvent::Tool {
@@ -1451,6 +1452,7 @@ fn delegate(
 
 fn runtime_value(event: &RuntimeEvent) -> Value {
     match event {
+        RuntimeEvent::Tokens(tokens) => json!({"event":"usage","tokens":tokens}),
         RuntimeEvent::Text(text) => json!({"event":"delta","text":text}),
         RuntimeEvent::Model(model) => json!({"event":"model","model":model}),
         RuntimeEvent::Tool {

@@ -460,7 +460,7 @@ fn run_with_provider(
                                 execution.redact(&mut output);
                                 event_callback(RuntimeEvent::Tool { name, input, output, running });
                             }
-                            RuntimeEvent::Delegation { .. } => event_callback(event),
+                            RuntimeEvent::Delegation { .. } | RuntimeEvent::Tokens(_) => event_callback(event),
                         }
                     };
                     let result = async {

@@ -97,6 +97,112 @@ fn begin_delegation(app: &mut App) {
 }
 
 #[test]
+fn live_delegation_appears_at_the_bottom_of_a_long_parent_transcript() {
+    let mut app = live_app();
+    app.live.busy = true;
+    app.live.entries.push(Entry::Assistant {
+        text: (0..60)
+            .map(|line| format!("Earlier line {line}\n\n"))
+            .collect(),
+        model: None,
+        elapsed_ms: None,
+    });
+    app.live.partial = "Handing the review to microcoder.".into();
+    app.scroll = u16::MAX;
+    draw(&mut app, 110, 24);
+
+    begin_delegation(&mut app);
+    assert!(app.live.partial.is_empty());
+    assert!(
+        matches!(app.live.entries[1], Entry::Assistant { ref text, .. }
+        if text == "Handing the review to microcoder.")
+    );
+    assert!(app.handle(Event::Key(KeyEvent::new(
+        KeyCode::End,
+        KeyModifiers::CONTROL
+    ))));
+    let buffer = draw(&mut app, 110, 24);
+    let text = canvas(&buffer);
+    assert!(text.contains("Delegate microcoder"));
+    assert!(text.contains("Review the fixture implementation · Running"));
+    assert!(text.contains("— tokens"));
+    delegation(&mut app, RuntimeEvent::Tokens(1_234));
+    assert!(canvas(&draw(&mut app, 110, 24)).contains("1.2k tokens"));
+
+    delegation(&mut app, RuntimeEvent::Text("Review in progress.".into()));
+    assert!(canvas(&draw(&mut app, 110, 24)).contains("Delegate microcoder"));
+    delegation(
+        &mut app,
+        tool(
+            "microcoder",
+            Value::Null,
+            json!({"reply":"Reviewed."}),
+            false,
+        ),
+    );
+    assert!(canvas(&draw(&mut app, 110, 24)).contains("Review the fixture implementation · Done"));
+    assert_eq!(app.delegations[0].chat.tokens, 1_234);
+}
+
+#[test]
+fn scrolled_transcript_shows_a_bottom_arrow() {
+    let mut app = live_app();
+    app.live.entries.push(Entry::Assistant {
+        text: (0..60)
+            .map(|line| format!("Earlier line {line}\n\n"))
+            .collect(),
+        model: None,
+        elapsed_ms: None,
+    });
+    app.scroll = 0;
+    assert!(canvas(&draw(&mut app, 110, 24)).contains('↓'));
+    assert!(app.handle(Event::Key(KeyEvent::new(
+        KeyCode::End,
+        KeyModifiers::CONTROL
+    ))));
+    assert!(!canvas(&draw(&mut app, 110, 24)).contains('↓'));
+}
+
+#[test]
+fn selected_subagent_header_shows_its_own_model_and_reasoning() {
+    let mut app = live_app();
+    app.live.busy = true;
+    begin_delegation(&mut app);
+    delegation(&mut app, RuntimeEvent::Model("openai/gpt-test:high".into()));
+    key(&mut app, KeyCode::Down);
+    let buffer = draw(&mut app, 110, 24);
+    assert!(row(&buffer, 1).contains("microcoder · openai/gpt-test:high"));
+    delegation(&mut app, RuntimeEvent::Text("Reviewed.".into()));
+    delegation(
+        &mut app,
+        tool(
+            "microcoder",
+            Value::Null,
+            json!({"reply":"Reviewed."}),
+            false,
+        ),
+    );
+    assert!(row(&draw(&mut app, 110, 24), 1).contains("microcoder · openai/gpt-test:high"));
+}
+
+#[test]
+fn delegation_completion_sums_usage_without_a_total() {
+    let mut app = live_app();
+    app.live.busy = true;
+    begin_delegation(&mut app);
+    delegation(
+        &mut app,
+        tool(
+            "acp_subagent",
+            Value::Null,
+            json!({"usage":{"input_tokens":1200,"output_tokens":34}}),
+            false,
+        ),
+    );
+    assert_eq!(app.delegations[0].chat.tokens, 1_234);
+}
+
+#[test]
 fn nested_cli_delegations_get_their_own_selectable_rows_and_retained_chats() {
     let mut app = live_app();
     app.live.busy = true;
