@@ -69,6 +69,12 @@ pub(crate) fn zone_cache(cache_directory: Option<&str>) -> Option<String> {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Config {
+    /// Whether the host mounts the computer HUD, which the iOS and Android
+    /// hosts send since the shared glyph grid (01700b2413). Accepted so the
+    /// world still starts; the HUD itself is driven by the world's packet.
+    #[serde(default)]
+    #[allow(dead_code)]
+    computer_hud: bool,
     width: u32,
     height: u32,
     scale: f32,
@@ -250,6 +256,54 @@ pub unsafe extern "C" fn openagents_verse_destroy(handle: *mut VerseHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Every key the iOS host (`VerseTab.swift`) and the Android host
+    /// (`VerseSurface.kt`) put in the creation configuration must parse:
+    /// `deny_unknown_fields` turns a new host key into a world that never
+    /// starts, as build 52 shipped with `computer_hud`.
+    #[test]
+    fn every_key_the_hosts_send_parses() {
+        let config = br#"{"computer_hud":true,"width":1179,"height":2556,"scale":3.0,"hdr":true,
+            "world_secret_hex":"0000000000000000000000000000000000000000000000000000000000000001",
+            "xp_preview":false,"gym_preview":false,"gym_code":"gym-connect:x",
+            "results_cache_directory":"/tmp","gym_notes":false,"display_name":"Owner",
+            "check_relay":"ws://127.0.0.1:7447"}"#;
+        assert!(serde_json::from_slice::<Config>(config).is_ok());
+        for host in [
+            include_str!("../../../bins/openagents-ios/host/App/VerseTab.swift"),
+            include_str!("../../../bins/openagents-android/host/app/src/main/java/com/openagents/app/VerseSurface.kt"),
+        ] {
+            for key in host_keys(host) {
+                assert!(
+                    std::str::from_utf8(config).unwrap().contains(&format!("\"{key}\"")),
+                    "a host sends `{key}`, which this test (and Config) must cover"
+                );
+            }
+        }
+    }
+
+    /// The configuration keys a host source sets: `configuration["KEY"]`
+    /// and `"KEY":` in the Swift literal, `config.put("KEY"` in Kotlin.
+    fn host_keys(source: &str) -> Vec<String> {
+        let mut keys = Vec::new();
+        for (open, close) in [("configuration[\"", "\"]"), ("config.put(\"", "\"")] {
+            for part in source.split(open).skip(1) {
+                if let Some(end) = part.find(close) {
+                    keys.push(part[..end].to_owned());
+                }
+            }
+        }
+        if let Some(start) = source.find("var configuration: [String: Any] = [") {
+            let literal = &source[start..];
+            let literal = &literal[..literal.find(']').unwrap_or(literal.len())];
+            for part in literal.split('"').skip(1).step_by(2) {
+                if literal.contains(&format!("\"{part}\":")) {
+                    keys.push(part.to_owned());
+                }
+            }
+        }
+        keys
+    }
 
     #[test]
     fn creation_refuses_a_missing_layer_and_invalid_configuration() {

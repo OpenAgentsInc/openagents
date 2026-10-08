@@ -5,7 +5,7 @@ downloads for seven platforms.
 
 ## Coder + OpenAgents CLI
 
-Coder 1.0.0-rc.4 is the new terminal UI. Its installer also installs the
+Coder 1.0.0-rc.5 is the new terminal UI. Its installer also installs the
 OpenAgents CLI and Microcoder, the companion commands Coder uses.
 
 On macOS and Linux:

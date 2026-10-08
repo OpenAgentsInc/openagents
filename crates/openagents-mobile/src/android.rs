@@ -132,6 +132,12 @@ pub(crate) fn respond(app: &mut App, request: &str) -> Result<Vec<u8>, BridgeErr
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct SurfaceConfig {
+    /// Whether the host mounts the computer HUD, which the iOS and Android
+    /// hosts send since the shared glyph grid (01700b2413). Accepted so the
+    /// world still starts; the HUD itself is driven by the world's packet.
+    #[serde(default)]
+    #[allow(dead_code)]
+    computer_hud: bool,
     pub(crate) width: u32,
     pub(crate) height: u32,
     pub(crate) scale: f32,
