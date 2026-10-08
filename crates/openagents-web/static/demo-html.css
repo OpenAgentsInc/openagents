@@ -1,9 +1,8 @@
 /* The synthetic chat shares the Coder Noir tokens from site.css. */
-@font-face{font-family:"Paper Mono";src:url('/fonts/PaperMono-Variable.woff2') format('woff2');font-weight:100 800;font-display:swap}
 #demo-root{height:100%;min-height:0;display:grid;grid-template-columns:264px minmax(0,1fr)}
 #demo-sidebar{min-height:0;overflow-y:auto;background:var(--noir-surface);border-right:1px solid var(--noir-stroke-subtle);padding:24px 16px;display:flex;flex-direction:column;gap:24px}
-.demo-brand{font-weight:700;text-decoration:none;font-size:16px;display:block;padding:0 8px}
-.demo-brand span{display:block;font-weight:400;font-size:12px;color:var(--noir-content-secondary);margin-top:4px}
+.demo-brand{font-family:var(--font-mono);font-weight:700;text-decoration:none;font-size:16px;display:block;padding:0 8px}
+.demo-brand span{font-family:var(--font-body);display:block;font-weight:400;font-size:12px;color:var(--noir-content-secondary);margin-top:4px}
 #demo-sidebar h2{font-size:11px;font-weight:400;color:var(--noir-content-secondary);margin:0 8px 10px;text-transform:uppercase;letter-spacing:.08em}
 .demo-chat{display:block;border:1px solid transparent;border-radius:8px;padding:10px 8px;margin-bottom:4px;text-decoration:none}
 .demo-chat:hover,.demo-chat[aria-current=page]{background:var(--noir-control-hover);border-color:var(--noir-stroke-subtle)}
@@ -31,7 +30,7 @@ main#demo-workspace{width:100%;padding:0;margin:0;min-height:0;display:flex;flex
 .demo-tool summary{display:flex;justify-content:space-between;gap:16px;list-style:none;padding:12px 14px}
 .demo-tool summary::before{content:'▸';color:var(--noir-content-secondary)}
 .demo-tool[open] summary::before{content:'▾'}
-.demo-tool-name{font-size:11px;overflow-wrap:anywhere;flex:1}
+.demo-tool-name{font-family:var(--font-mono);font-size:11px;overflow-wrap:anywhere;flex:1}
 .demo-tool-state{font-size:10px;color:var(--noir-content-secondary);flex:none}
 .demo-tool-body{padding:0 14px 14px}
 .demo-tool-body h3{font-size:10px;color:var(--noir-content-secondary);margin:10px 0 6px;font-weight:400}

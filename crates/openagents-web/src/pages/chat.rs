@@ -1060,7 +1060,7 @@ tw:bg-noir-surface-subtle tw:focus-within:border-noir-stroke\">\
 <textarea id=\"chat-input\" name=\"q\" rows=\"2\" maxlength=\"{MAX_CHARS}\" required autofocus \
 placeholder=\"Ask OpenAgents to build, fix bugs, explore\" \
 class=\"tw:block tw:flex-1 tw:w-full tw:min-h-[32px] tw:max-h-[360px] tw:m-0 tw:px-3 tw:py-3 \
-tw:border-0 tw:bg-transparent tw:resize-none tw:font-mono tw:text-sm \
+tw:border-0 tw:bg-transparent tw:resize-none tw:font-sans tw:text-sm \
 tw:text-noir-content tw:placeholder:text-noir-content-secondary tw:outline-none \
 tw:focus-visible:outline-none\"></textarea>\
 <div class=\"tw:flex tw:items-center tw:gap-3 tw:px-3 tw:py-3\">\

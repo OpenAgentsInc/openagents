@@ -1,9 +1,8 @@
-@font-face { font-family: 'Paper Mono'; src: url('/fonts/PaperMono-Variable.woff2') format('woff2'); font-weight: 100 800; font-display: swap; }
 html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: var(--noir-terminal-background); }
-#demo-root { width: 100%; height: 100%; display: grid; grid-template-columns: 260px minmax(0, 1fr); color: var(--noir-content); font: 13px/1.5 'Paper Mono', monospace; }
+#demo-root { width: 100%; height: 100%; display: grid; grid-template-columns: 260px minmax(0, 1fr); color: var(--noir-content); font: 13px/1.5 var(--font-body); }
 #demo-sidebar { box-sizing: border-box; min-height: 0; overflow-y: auto; padding: 26px 14px 18px; display: flex; flex-direction: column; gap: 30px; border-right: 1px solid var(--noir-stroke-subtle); background: var(--noir-surface-subtle); }
-.demo-brand { display: flex; flex-direction: column; gap: 3px; padding: 0 10px; color: var(--noir-content); font-size: 17px; font-weight: 650; text-decoration: none; }
-.demo-brand span { color: var(--noir-content-tertiary); font-size: 11px; font-weight: 400; }
+.demo-brand { font-family: var(--font-mono); display: flex; flex-direction: column; gap: 3px; padding: 0 10px; color: var(--noir-content); font-size: 17px; font-weight: 650; text-decoration: none; }
+.demo-brand span { font-family: var(--font-body); color: var(--noir-content-tertiary); font-size: 11px; font-weight: 400; }
 #demo-sidebar h2 { margin: 0 10px 12px; color: var(--noir-content-tertiary); font-size: 11px; font-weight: 500; }
 .demo-chat { box-sizing: border-box; display: flex; flex-direction: column; gap: 5px; width: 100%; margin: 3px 0; padding: 12px 10px; border: 1px solid transparent; border-radius: 5px; color: var(--noir-content-secondary); background: transparent; text-align: left; font: inherit; cursor: pointer; }
 .demo-chat:hover { background: var(--noir-control-hover); color: var(--noir-content); }
@@ -26,7 +25,7 @@ html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background:
 .demo-history-controls button:hover { background: var(--noir-control-hover); color: var(--noir-content); }
 .demo-chat:focus-visible, .demo-history-controls button:focus-visible, .demo-brand:focus-visible { outline: 2px solid var(--noir-content-secondary); outline-offset: 2px; }
 
-#demo-status { position: fixed; bottom: 0; left: 18px; margin: 0; padding: 4px 0; color: var(--noir-content-secondary); background: var(--noir-terminal-background); font: 12px 'Paper Mono', monospace; }
+#demo-status { position: fixed; bottom: 0; left: 18px; margin: 0; padding: 4px 0; color: var(--noir-content-secondary); background: var(--noir-terminal-background); font: 12px var(--font-body); }
 #demo-mount { width: 100%; flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden; }
 #demo-mount > .demo-grid, #demo-mount > .rn-view { flex: none; }
 #demo-mount > .rn-view { width: 100%; }
@@ -53,7 +52,7 @@ html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background:
 @media (max-width: 600px) {
   #demo-root { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
   #demo-sidebar { padding: 10px 12px; gap: 8px; border-right: 0; border-bottom: 1px solid var(--noir-stroke-subtle); overflow-x: auto; overflow-y: hidden; }
-  .demo-brand { font-size: 12px; padding: 0; }
+  .demo-brand { font-family: var(--font-mono); font-size: 12px; padding: 0; }
   .demo-brand span, #demo-sidebar h2, .demo-chat-detail, .demo-flow, .demo-disclosure { display: none; }
   #demo-sidebar nav { display: flex; gap: 4px; width: max-content; }
   .demo-chat { width: auto; flex: none; padding: 7px 9px; margin: 0; }

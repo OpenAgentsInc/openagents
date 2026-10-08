@@ -1,4 +1,4 @@
-//! Paper Mono, the one typeface every OpenAgents surface uses.
+//! Paper Mono for native surfaces, web monospace content, and the web logo.
 //!
 //! The font files live in `fonts/` beside the SIL Open Font License 1.1
 //! (`fonts/OFL.txt`). Rust surfaces read them from here: Rust Native shapes
@@ -7,8 +7,8 @@
 //! bundle the static weights from the same directory.
 //!
 //! Paper Mono has no italic, so italic text is drawn upright.
-//! `scripts/check-fonts.sh` fails when a surface names another family or
-//! tracks another font file.
+//! OpenAgents web pages use a bundled sans face for normal text.
+//! `scripts/check-fonts.sh` rejects fonts outside their admitted scopes.
 
 #![forbid(unsafe_code)]
 
@@ -51,8 +51,7 @@ pub fn font_face_inline() -> String {
 
 /// Standard base64 with padding.
 fn base64(bytes: &[u8]) -> String {
-    const ALPHABET: &[u8; 64] =
-        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
     for chunk in bytes.chunks(3) {
         let n = match chunk {

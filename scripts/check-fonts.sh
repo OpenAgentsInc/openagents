@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# Fails when a surface uses a typeface other than Paper Mono (#10904).
+# Checks Paper Mono on native surfaces and the web's scoped sans font.
 #
 # Two checks over the tracked files:
 #
-# 1. Every tracked font file is a Paper Mono face. The faces live in
-#    `crates/paper-mono/fonts/`; the phone hosts copy them at build time.
+# 1. Every tracked font file is a Paper Mono face or the restored variable
+#    Geist face at `crates/openagents-web/fonts/Geist.ttf`.
 # 2. No tracked surface file names another font family, a platform's system
-#    face, or a generic family other than `monospace`.
+#    face, or a generic family other than `monospace`. Only files under
+#    `crates/openagents-web/` may name Geist and its `sans-serif` fallback.
 #
 # Archives are out of scope: recorded evidence under `bench/`, the
 # transcript archive under `docs/transcripts/`, research notes, verification
@@ -40,9 +41,10 @@ failed=0
 # 1. Font files.
 fonts="$(git ls-files -- "${archive[@]}" \
   | grep -iE '\.(ttf|otf|ttc|woff2?|eot|dfont|pfb)$' \
-  | grep -vE '(^|/)PaperMono-[A-Za-z]+\.(ttf|woff2)$' || true)"
+  | grep -vE '(^|/)PaperMono-[A-Za-z]+\.(ttf|woff2)$' \
+  | grep -vFx 'crates/openagents-web/fonts/Geist.ttf' || true)"
 if [ -n "$fonts" ]; then
-  echo "check-fonts: a tracked font file is not Paper Mono:" >&2
+  echo "check-fonts: a tracked font file is not an admitted face:" >&2
   echo "$fonts" >&2
   failed=1
 fi
@@ -50,11 +52,11 @@ fi
 # 2. Family names in surface files: source, styles, markup, native layout
 # and build files, and current documentation.
 families=(
-  'InterVariable' 'FontFamily::(Inter|Geist)' '\bGeist\b' 'JetBrains ?Mono'
+  'InterVariable' 'FontFamily::(Inter|Geist)' '\bGeist[ -]?Mono\b' 'JetBrains ?Mono'
   'Fira ?(Mono|Code|Sans)' 'Cascadia' '\bSF ?(Mono|Pro)\b' 'SFMono' '\bMenlo\b'
   '\bMonaco\b' 'Consolas' 'Liberation (Mono|Sans|Serif)' 'DejaVu' 'Helvetica'
   '\bArial\b' 'Segoe UI' 'system-ui' 'ui-monospace' 'ui-sans-serif'
-  '-apple-system' 'BlinkMacSystemFont' 'sans-serif' '\bserif\b[;,"]'
+  '-apple-system' 'BlinkMacSystemFont' '(?<!sans-)\bserif\b[;,"]'
   '\bRoboto\b' 'Courier New' 'Times New Roman' '\bGeorgia\b' 'Iosevka' 'Terminus'
   'IBM Plex' 'Source Code Pro' 'Ubuntu Mono' 'Noto Sans Mono' 'Hack\b[ -]?Nerd'
   '"Inter"' "'Inter'" 'Inter,'
@@ -66,20 +68,25 @@ families=(
   'FontFamily\.(Monospace|Default|SansSerif|Serif|Cursive)'
 )
 pattern="$(IFS='|'; echo "${families[*]}")"
-hits="$(git grep -nIP "$pattern" -- \
+surfaces=(
   '*.rs' '*.css' '*.html' '*.js' '*.svg' '*.swift' '*.kt' '*.kts' '*.xml' \
-  '*.plist' '*.yml' '*.yaml' '*.nix' '*.ini' '*.conf' '*.sh' '*.h' '*.md' \
-  "${archive[@]}" \
+  '*.plist' '*.yml' '*.yaml' '*.nix' '*.ini' '*.conf' '*.sh' '*.h' '*.md'
+)
+hits="$( {
+  git grep -nIP "$pattern" -- "${surfaces[@]}" "${archive[@]}" || true
+  git grep -nIP '\bGeist\b|sans-serif' -- "${surfaces[@]}" \
+    "${archive[@]}" ':!crates/openagents-web/' || true
+} \
   | grep -v 'check-fonts: allow' \
   | grep -vE '^[^:]+/PaperMono\.(swift|kt):' || true)"
 if [ -n "$hits" ]; then
-  echo "check-fonts: a surface names a family other than Paper Mono:" >&2
+  echo "check-fonts: a surface names a family outside its admitted scope:" >&2
   echo "$hits" >&2
   failed=1
 fi
 
 if [ "$failed" -ne 0 ]; then
-  echo "check-fonts: use Paper Mono (crates/paper-mono) on every surface" >&2
+  echo "check-fonts: use Paper Mono; Geist sans is limited to openagents-web" >&2
   exit 1
 fi
-echo "check-fonts: every surface uses Paper Mono"
+echo "check-fonts: every surface uses its admitted fonts"
