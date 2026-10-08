@@ -666,6 +666,15 @@ A request is `openagents.host-request.v1`:
 | `task.list` | `observe` | `tasks` |
 | `task.read` | `observe` | `task` |
 | `task.original` | `observe` | `task_original` |
+| `project.list` | `observe` and current project policy | `project_list` |
+| `project.read` | `observe` and current project policy | `project_read` |
+| `project.original` | `observe` and current project policy | `project_original` |
+| `cloud.projects` | `observe` and current operator policy | `cloud_projects` |
+| `cloud.catalog` | `observe` and current operator policy | `cloud_catalog` |
+| `cloud.list` | `observe` and current operator policy | `cloud_list` |
+| `cloud.read` | `observe` and current operator policy | `cloud_read` |
+| `cloud.original` | `observe` and current operator policy | `cloud_original` |
+| `cloud.submit`, `cloud.continue`, `cloud.cancel`, `cloud.follow` | `operate` and current operator policy | `cloud_accepted` |
 | `task.steer` | `operate` | `dispatched` |
 | `task.cancel` | `operate` | `dispatched` |
 | `task.archive` | `operate` | `dispatched` |
@@ -1068,12 +1077,22 @@ again; the caller reads the canonical queue to reconcile it.
 its retained native result without dispatching an effect. It returns those
 references and `result`, either the original typed success or refusal, or null
 for an unknown or absent result. Task create, steer, cancel, exact command,
-exact queue edit, and publication results remain recoverable for 48 hours after
+exact queue edit, publication, and cloud effect results remain recoverable for 48 hours after
 the original request expires. The host checks the original signer, the same
 current original grant and epoch, and the original required right before
 revealing a result. A new recovery read never extends or replaces the effect's
 signed envelope. An `unavailable` refusal can still describe an uncertain
 effect; it does not prove that nothing changed.
+
+Project reads return `coder-access::project` evidence without running a
+supervisor. Cloud operations use `coder-access::cloud` DTOs: named native
+workspace, project, and profile aliases; exact source, profile, job revision,
+and attempt pins; and original source descriptors. Replies are at most 48 KiB,
+and original byte chunks are at most 16 KiB before base64 encoding. Every cloud
+read, effect, exact retry, and recovery checks the current operator policy in
+addition to the original host grant. `cloud.follow` reconciles the original
+provider task; only `cloud.continue` opens another turn. No operation grants
+retail spending or chooses ambient provider credentials.
 
 `task.queue` carries `{task, edit}` and lists or edits the task's held
 messages: queued messages, and emulated steers or messages sent now that
@@ -1177,7 +1196,7 @@ and act. Every operation, including an exact retry, repeats these checks.
 The idempotency key is the request ID. The host retains the signed reply of
 an admitted principal with the exact request event ID until the request
 expires. The exception is a read with no effect, `task.list`, `task.read`,
-`task.original`, `thread.list`, `thread.read`, and the studio reads: its reply is not retained, so a device that polls a streaming
+`task.original`, the project and cloud reads, `thread.list`, `thread.read`, and the studio reads: its reply is not retained, so a device that polls a streaming
 thread never fills the host's store, and an exact retry reads again and may
 answer newer content. An identical retry returns the retained bytes while the principal
 is still current. Different bytes under the same request ID refuse as

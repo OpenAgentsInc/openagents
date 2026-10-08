@@ -119,6 +119,9 @@ coder-ssh = { path = "../coder-ssh" }
 [target.'cfg(windows)'.dependencies]
 private-fs = { path = "../private-fs" }
 
+[target.'cfg(unix)'.dependencies.coder-project]
+path = "../coder-project"
+
 [dev-dependencies]
 commercial-accounts = { path = "../commercial-accounts" }
 hex = "0.4"

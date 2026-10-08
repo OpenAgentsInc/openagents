@@ -16,6 +16,7 @@ pub mod controller;
 pub mod discovery;
 pub mod github;
 pub mod gym_suite;
+pub mod observe;
 pub mod poll;
 pub mod reservations;
 pub mod semantics;

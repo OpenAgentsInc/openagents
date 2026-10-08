@@ -8,6 +8,29 @@ The `coder` binary exposes it as `coder host`. The
 [host serve guide](../../docs/coder/runtime/host-serve.md) covers setup and
 operation; this README covers the crate.
 
+## Native project and operator adapters
+
+`Tasks` delegates optional project observation and operator cloud work to
+`projects::Projects` and `cloud::Cloud`. `Inbox::with_projects` and
+`Inbox::with_cloud` register these owners. The CLI enables them with explicit
+`--project-observer` and `--cloud-operator` policy files; an unconfigured owner
+returns `unsupported`.
+
+`project.list`, `project.read`, and `project.original` read retained supervisor
+evidence without running its controller. `cloud.projects`, `cloud.catalog`,
+`cloud.list`, `cloud.read`, and `cloud.original` read operator-admitted profiles
+and canonical jobs. These operations require `observe`. Cloud submission,
+continuation, cancellation, and reconciliation require `operate`, exact source
+and profile pins, and the operator policy independently of the host grant.
+Every path also checks the host's configured workspace aliases.
+
+Cloud effects retain their original request identity and typed outcome.
+`request.operation` rechecks the original native grant and current operator
+admission before revealing that outcome. Workers use `cloud::authority` to
+recheck native standing outside the synchronous access-store lock. See the
+[resident operator policy](../../docs/cloud/README.md#resident-operator-bridge)
+for explicit provider configuration and uncertainty handling.
+
 ## What it composes
 
 | Profile | Crate | How the host uses it |

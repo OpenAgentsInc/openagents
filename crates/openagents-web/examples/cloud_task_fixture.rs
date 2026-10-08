@@ -4,6 +4,12 @@
 #[allow(dead_code)]
 #[path = "cloud_session_fixture.rs"]
 mod account_fixture;
+#[allow(dead_code)]
+#[path = "support/operator_fixture.rs"]
+mod operator_fixture;
+#[allow(dead_code)]
+#[path = "support/project_fixture.rs"]
+mod project_fixture;
 #[path = "../../coder-control/src/tests/relay.rs"]
 mod relay;
 
@@ -37,10 +43,10 @@ fn main() -> Result<(), String> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let worker = args.first().is_some_and(|arg| arg == "--synthetic-worker");
     let args = if worker { &args[1..] } else { &args[..] };
-    let (directory, build, listen, controls) = match args {
-        [directory, build, listen] => (directory, build, listen, false),
-        [directory, build, listen, mode] if mode == "controls" => (directory, build, listen, true),
-        _ => return Err("usage: cloud_task_fixture NEW_SCRATCH_DIRECTORY CLOUD_WASM_DIRECTORY 127.0.0.1:PORT [controls]".into()),
+    let (directory, build, listen, controls, services) = match args {
+        [directory, build, listen] => (directory, build, listen, false, false),
+        [directory, build, listen, mode] if mode == "controls" || mode == "services" => (directory, build, listen, true, mode == "services"),
+        _ => return Err("usage: cloud_task_fixture NEW_SCRATCH_DIRECTORY CLOUD_WASM_DIRECTORY 127.0.0.1:PORT [controls|services]".into()),
     };
     let directory = PathBuf::from(directory);
     if !directory.is_absolute() || !Path::new(build).is_absolute() {
@@ -86,10 +92,16 @@ fn main() -> Result<(), String> {
         .enable_all()
         .build()
         .map_err(|_| "fixture runtime failed")?
-        .block_on(serve(&directory, build, listen, controls))
+        .block_on(serve(&directory, build, listen, controls, services))
 }
 
-async fn serve(directory: &Path, build: &str, listen: &str, controls: bool) -> Result<(), String> {
+async fn serve(
+    directory: &Path,
+    build: &str,
+    listen: &str,
+    controls: bool,
+    services: bool,
+) -> Result<(), String> {
     let root = directory.join("resident-checkout");
     std::fs::create_dir(&root).map_err(|_| "synthetic checkout creation failed")?;
     let store = directory.join("resident-tasks");
@@ -241,6 +253,25 @@ async fn serve(directory: &Path, build: &str, listen: &str, controls: bool) -> R
     }
     let mut host = coder_host::config::Config::new(state, vec![relay_url], 7);
     host.policy = coder_access::RelayPolicy::LoopbackTest;
+    let inbox = if services {
+        let device_id = coder_access::protocol::pubkey(&device);
+        let projects = project_fixture::observer(directory, &device_id, &workspaces)?;
+        let check = coder_host::cloud::authority(authority)
+            .map_err(|_| "synthetic cloud standing failed")?;
+        let cloud = operator_fixture::operator(directory, check, &device_id, &workspaces)?;
+        println!(
+            "{}",
+            json!({"synthetic":true,"project_route":"/cloud/app/hosts/resident/projects","operator_route":"/cloud/app/hosts/resident/cloud","operator_project":operator_fixture::PROJECT,"operator_profile":operator_fixture::PROFILE})
+        );
+        Arc::new(
+            (*inbox)
+                .clone()
+                .with_projects(Arc::new(projects))
+                .with_cloud(Arc::new(cloud)),
+        )
+    } else {
+        inbox
+    };
     host.workspaces = workspaces;
     host.telemetry = false;
     let running = coder_host::start(host, inbox)

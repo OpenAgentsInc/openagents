@@ -22,6 +22,15 @@ mod task_relay;
 #[path = "control_tests.rs"]
 mod controls;
 
+#[path = "../../examples/support/operator_fixture.rs"]
+mod operator_fixture;
+#[path = "operator_tests.rs"]
+mod operator_tests;
+#[path = "../../examples/support/project_fixture.rs"]
+mod project_fixture;
+#[path = "project_tests.rs"]
+mod projects;
+
 const HOST: &str = "127.0.0.1:4300";
 const ORIGIN: &str = "http://127.0.0.1:4300";
 const CANARY: &str = "synthetic-native-private-canary";
@@ -449,6 +458,25 @@ async fn resident_with_controls(
     rights: coder_access::Rights,
     controls: bool,
 ) -> Resident {
+    resident_with_projects(fixture, rights, controls, false).await
+}
+
+async fn resident_with_projects(
+    fixture: &mut Fixture,
+    rights: coder_access::Rights,
+    controls: bool,
+    projects: bool,
+) -> Resident {
+    resident_with_services(fixture, rights, controls, projects, false).await
+}
+
+async fn resident_with_services(
+    fixture: &mut Fixture,
+    rights: coder_access::Rights,
+    controls: bool,
+    projects: bool,
+    cloud: bool,
+) -> Resident {
     use coder_host::Tasks;
     let private = fixture
         .config
@@ -460,12 +488,16 @@ async fn resident_with_controls(
     let root = private.join("resident-checkout");
     std::fs::create_dir(&root).unwrap();
     let workspaces = BTreeMap::from([("checkout".into(), root)]);
-    let inbox = Arc::new(
-        coder::task::remote::Inbox::new(private.join("resident-tasks"), workspaces.clone())
-            .with_settings(private.join("unused-resident-settings")),
-    );
     let device = secp256k1::SecretKey::new(&mut secp256k1::rand::rng());
     let device_id = coder_access::protocol::pubkey(&device);
+    let mut inbox =
+        coder::task::remote::Inbox::new(private.join("resident-tasks"), workspaces.clone())
+            .with_settings(private.join("unused-resident-settings"));
+    if projects {
+        inbox = inbox.with_projects(Arc::new(
+            project_fixture::observer(private, &device_id, &workspaces).unwrap(),
+        ));
+    }
     let task = "c".repeat(64);
     inbox
         .create(
@@ -519,7 +551,17 @@ async fn resident_with_controls(
     host.policy = coder_access::RelayPolicy::LoopbackTest;
     host.workspaces = workspaces;
     host.telemetry = false;
-    let running = coder_host::start(host, inbox).await.unwrap();
+    if cloud {
+        let standing = coder_host::cloud::authority(coder_access::host::Host::new(
+            private.join("resident-access"),
+            coder_access::RelayPolicy::LoopbackTest,
+        ))
+        .unwrap();
+        inbox = inbox.with_cloud(Arc::new(
+            operator_fixture::operator(private, standing, &device_id, &host.workspaces).unwrap(),
+        ));
+    }
+    let running = coder_host::start(host, Arc::new(inbox)).await.unwrap();
     let secret = private.join("resident-device.key");
     let access_path = private.join("resident-device.access");
     private_file(&secret, &device.secret_bytes());

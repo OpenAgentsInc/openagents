@@ -255,6 +255,77 @@ pub(crate) fn chat_invitation(config: &crate::config::Config) -> Result<(String,
 }
 
 impl Dispatch for Dispatcher {
+    fn cloud(
+        &mut self,
+        request: &str,
+        device: &str,
+        grant: Option<(&str, u64)>,
+        op: &Operation,
+    ) -> Result<coder_access::Outcome, Code> {
+        let workspace = match op {
+            Operation::CloudProjects { workspace } => workspace,
+            Operation::CloudCatalog { query } => &query.workspace,
+            Operation::CloudList { query } => &query.workspace,
+            Operation::CloudRead { query } => &query.workspace,
+            Operation::CloudOriginal { query } => &query.scope.workspace,
+            Operation::CloudSubmit { intent } => &intent.workspace,
+            Operation::CloudContinue { intent } => &intent.scope.workspace,
+            Operation::CloudCancel { intent } => &intent.scope.workspace,
+            Operation::CloudFollow { intent } => &intent.scope.workspace,
+            _ => return Err(Code::Unsupported),
+        };
+        if !self.shared.config.workspaces.contains_key(workspace) {
+            return Err(Code::Forbidden);
+        }
+        self.shared
+            .tasks
+            .cloud(request, &principal(device, grant), op)
+    }
+    fn cloud_admit_recovery(
+        &mut self,
+        device: &str,
+        admission: &coder_access::cloud::Admission,
+    ) -> Result<(), Code> {
+        if !self
+            .shared
+            .config
+            .workspaces
+            .contains_key(&admission.workspace)
+        {
+            return Err(Code::Forbidden);
+        }
+        self.shared.tasks.cloud_admit_recovery(device, admission)
+    }
+    fn project_list(
+        &mut self,
+        device: &str,
+        workspace: &str,
+    ) -> Result<coder_access::project::List, Code> {
+        if !self.shared.config.workspaces.contains_key(workspace) {
+            return Err(Code::Forbidden);
+        }
+        self.shared.tasks.project_list(device, workspace)
+    }
+    fn project_read(
+        &mut self,
+        device: &str,
+        query: &coder_access::project::Query,
+    ) -> Result<coder_access::project::Page, Code> {
+        if !self.shared.config.workspaces.contains_key(&query.workspace) {
+            return Err(Code::Forbidden);
+        }
+        self.shared.tasks.project_read(device, query)
+    }
+    fn project_original(
+        &mut self,
+        device: &str,
+        query: &coder_access::project::OriginalQuery,
+    ) -> Result<coder_access::project::Chunk, Code> {
+        if !self.shared.config.workspaces.contains_key(&query.workspace) {
+            return Err(Code::Forbidden);
+        }
+        self.shared.tasks.project_original(device, query)
+    }
     fn operate_snapshot(
         &mut self,
         owner: &str,

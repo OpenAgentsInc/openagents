@@ -60,6 +60,43 @@ pub struct OperatePrincipal {
 /// Supplies effects and disclosures from other profiles after admission.
 /// `request` is the idempotency key for every effect.
 pub trait Dispatch: Send {
+    fn cloud(
+        &mut self,
+        _request: &str,
+        _device: &str,
+        _grant: Option<(&str, u64)>,
+        _op: &Operation,
+    ) -> std::result::Result<Outcome, Code> {
+        Err(Code::Unsupported)
+    }
+    fn cloud_admit_recovery(
+        &mut self,
+        _device: &str,
+        _admission: &crate::cloud::Admission,
+    ) -> std::result::Result<(), Code> {
+        Err(Code::Unsupported)
+    }
+    fn project_list(
+        &mut self,
+        _device: &str,
+        _workspace: &str,
+    ) -> std::result::Result<crate::project::List, Code> {
+        Err(Code::Unsupported)
+    }
+    fn project_read(
+        &mut self,
+        _device: &str,
+        _query: &crate::project::Query,
+    ) -> std::result::Result<crate::project::Page, Code> {
+        Err(Code::Unsupported)
+    }
+    fn project_original(
+        &mut self,
+        _device: &str,
+        _query: &crate::project::OriginalQuery,
+    ) -> std::result::Result<crate::project::Chunk, Code> {
+        Err(Code::Unsupported)
+    }
     /// Supply current standing while this synchronous dispatch holds the access lock.
     /// An owner must not reopen that lock from a deferred-principal callback.
     fn operate_snapshot(&mut self, _owner: &str, _principals: Vec<OperatePrincipal>) {}
@@ -368,6 +405,8 @@ struct Recovery {
     epoch: Option<u64>,
     required: Right,
     until: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    cloud: Option<crate::cloud::Admission>,
 }
 
 impl Recovery {
@@ -379,12 +418,17 @@ impl Recovery {
                 | Operation::CancelTask { .. }
                 | Operation::CommandTaskAtRevision { .. }
                 | Operation::PublishTask { .. }
+                | Operation::CloudSubmit { .. }
+                | Operation::CloudContinue { .. }
+                | Operation::CloudCancel { .. }
+                | Operation::CloudFollow { .. }
         ) || matches!(&request.op, Operation::QueueTaskAtRevision { edit, .. } if !matches!(edit, QueueEdit::List {}));
         supported.then(|| Self {
             grant: request.grant.clone(),
             epoch: request.epoch,
             required: Right::Operate,
             until: request.expires_at.saturating_add(48 * 60 * 60),
+            cloud: crate::cloud::Admission::for_operation(&request.op),
         })
     }
 }
@@ -872,6 +916,21 @@ impl Host {
                         reply: Some(reply), ..
                     }) = &retained
                     {
+                        if let Some(admission) = crate::cloud::Admission::for_operation(&request.op)
+                        {
+                            if let Err(code) = dispatch.cloud_admit_recovery(&p.key, &admission) {
+                                return self.seal_reply(
+                                    &secret,
+                                    event,
+                                    &request,
+                                    refused(Error::new(
+                                        code,
+                                        "the operator cloud admission no longer holds",
+                                    )),
+                                    clock()?,
+                                );
+                            }
+                        }
                         // Authority was rechecked above; the retained bytes are current.
                         return Ok(reply.clone());
                     } else if !request.op.retains_reply() {
@@ -1105,6 +1164,14 @@ impl Host {
                     if !p.rights.contains(recovery.required) {
                         return Ok(Err(Error::missing(recovery.required)));
                     }
+                    if let Some(admission) = &recovery.cloud {
+                        if let Err(code) = dispatch.cloud_admit_recovery(&p.key, admission) {
+                            return Ok(Err(Error::new(
+                                code,
+                                "the operator cloud admission no longer holds",
+                            )));
+                        }
+                    }
                     match &record.reply {
                         Some(event) => {
                             let reply: Reply =
@@ -1141,6 +1208,73 @@ impl Host {
                     }),
                 &request.op,
             ),
+            Operation::ProjectList { workspace } => task_answer(
+                dispatch
+                    .project_list(&p.key, workspace)
+                    .map(|projects| Outcome::ProjectList { projects }),
+                &request.op,
+            ),
+            Operation::ProjectRead { query } => task_answer(
+                dispatch
+                    .project_read(&p.key, query)
+                    .map(|project| Outcome::ProjectRead {
+                        project: Box::new(project),
+                    }),
+                &request.op,
+            ),
+            Operation::ProjectOriginal { query } => task_answer(
+                dispatch
+                    .project_original(&p.key, query)
+                    .map(|chunk| Outcome::ProjectOriginal { chunk }),
+                &request.op,
+            ),
+            op @ (Operation::CloudProjects { .. }
+            | Operation::CloudCatalog { .. }
+            | Operation::CloudList { .. }
+            | Operation::CloudRead { .. }
+            | Operation::CloudOriginal { .. }
+            | Operation::CloudSubmit { .. }
+            | Operation::CloudContinue { .. }
+            | Operation::CloudCancel { .. }
+            | Operation::CloudFollow { .. }) => {
+                if !op.reads_only() {
+                    if book.replies.len() >= MAX_REPLIES {
+                        return fail(Code::Bounds, "retained reply limit reached");
+                    }
+                    book.replies.insert(
+                        request.request.clone(),
+                        Retained {
+                            request_event: origin.0.to_owned(),
+                            signer: origin.1.to_owned(),
+                            expires_at: request.expires_at,
+                            reply: None,
+                            recovery: Recovery::for_request(request),
+                        },
+                    );
+                    store.save(book)?;
+                }
+                task_answer(
+                    dispatch
+                        .cloud(
+                            &request.request,
+                            &p.key,
+                            p.grant.as_deref().zip(request.epoch),
+                            op,
+                        )
+                        .and_then(|outcome| {
+                            if let Outcome::CloudAccepted { accepted } = &outcome {
+                                if accepted.request != request.request
+                                    || (matches!(op, Operation::CloudSubmit { .. })
+                                        && accepted.scope.job != request.request)
+                                {
+                                    return Err(Code::Malformed);
+                                }
+                            }
+                            Ok(outcome)
+                        }),
+                    op,
+                )
+            }
             Operation::ReadTask { query } => task_answer(
                 dispatch.task_read(&p.key, query).map(|task| Outcome::Task {
                     task: Box::new(task),
@@ -1661,6 +1795,9 @@ impl Host {
         }
         for (id, retained) in &book.replies {
             if let Some(recovery) = &retained.recovery {
+                if let Some(admission) = &recovery.cloud {
+                    admission.validate()?;
+                }
                 if recovery.required != Right::Operate
                     || recovery.until != retained.expires_at.saturating_add(48 * 60 * 60)
                     || recovery.grant.is_some() != recovery.epoch.is_some()

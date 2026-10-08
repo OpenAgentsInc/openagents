@@ -12,6 +12,8 @@ use std::{
 
 pub mod boat_backend;
 pub mod gce_backend;
+pub mod operator;
+mod operator_adapters;
 pub mod pool;
 pub mod runtime;
 pub mod workspace;
@@ -246,20 +248,89 @@ impl Store {
     }
     /// Cancellation is independent of the driver's writer lock.
     pub fn cancel(&self, id: &str) -> Result<()> {
-        let path = self.path(id)?.with_extension("cancel");
+        let record_path = self.path(id)?;
+        let _snapshot = snapshot_lock(&record_path)?;
+        let path = record_path.with_extension("cancel");
         let record = self.read(id)?;
         if record.cleanup_complete {
             return Ok(());
         }
         regular_or_missing(&path)?;
+        if path.exists() {
+            return Ok(());
+        }
         private_options()
-            .create(true)
+            .create_new(true)
             .write(true)
-            .truncate(true)
             .open(path)
             .and_then(|f| f.sync_all())
             .map_err(|_| "Cannot request remote cancellation.".into())
     }
+    /// Request cancellation only if the canonical record still matches the
+    /// reviewed snapshot. This short fence also serializes every record save.
+    pub fn cancel_exact(&self, id: &str, expected_digest: &str) -> Result<()> {
+        self.cancel_exact_evidence(id, expected_digest, &Value::Null)
+    }
+    pub fn cancel_exact_evidence(
+        &self,
+        id: &str,
+        expected_digest: &str,
+        evidence: &Value,
+    ) -> Result<()> {
+        let path = self.path(id)?;
+        let _snapshot = snapshot_lock(&path)?;
+        let bytes = workspace::read_bounded(&path, MAX_RECORD_BYTES)?;
+        if workspace::digest(&bytes) != expected_digest {
+            return Err("The cloud job snapshot changed before cancellation.".into());
+        }
+        let bytes = serde_json::to_vec(evidence)
+            .map_err(|_| "Cannot encode cloud cancellation evidence.")?;
+        if bytes.len() > 16 * 1024 {
+            return Err("Cloud cancellation evidence exceeds its limit.".into());
+        }
+        let marker = path.with_extension("cancel");
+        regular_or_missing(&marker)?;
+        if marker.exists() {
+            let original = workspace::read_bounded(&marker, 16 * 1024)?;
+            if evidence.is_null() || original == bytes {
+                return Ok(());
+            }
+            return Err("The cloud cancellation evidence already names another request.".into());
+        }
+        private_options()
+            .create_new(true)
+            .write(true)
+            .open(marker)
+            .and_then(|mut f| f.write_all(&bytes).and_then(|_| f.sync_all()))
+            .map_err(|_| "Cannot retain cloud cancellation evidence.".into())
+    }
+    pub fn cancellation_requested(&self, id: &str) -> Result<bool> {
+        let path = self.path(id)?.with_extension("cancel");
+        regular_or_missing(&path)?;
+        Ok(path.exists())
+    }
+    pub fn cancellation_evidence(&self, id: &str) -> Result<Option<Vec<u8>>> {
+        let path = self.path(id)?.with_extension("cancel");
+        regular_or_missing(&path)?;
+        if path.exists() {
+            workspace::read_bounded(&path, 16 * 1024).map(Some)
+        } else {
+            Ok(None)
+        }
+    }
+}
+fn snapshot_lock(path: &Path) -> Result<File> {
+    let lock = path.with_extension("snapshot.lock");
+    regular_or_missing(&lock)?;
+    let file = private_options()
+        .create(true)
+        .read(true)
+        .write(true)
+        .open(lock)
+        .map_err(|_| "Cannot open the cloud snapshot fence.")?;
+    file.lock()
+        .map_err(|_| "Cannot hold the cloud snapshot fence.")?;
+    Ok(file)
 }
 impl Lease {
     pub fn read(&self, id: &str) -> Result<Record> {
@@ -302,6 +373,7 @@ impl Lease {
         self.path.with_extension("cancel").exists()
     }
     pub fn save(&self, record: &Record) -> Result<()> {
+        let _snapshot = snapshot_lock(&self.path)?;
         validate_id(&record.id)?;
         if self.path.file_stem().and_then(|v| v.to_str()) != Some(&record.id) {
             return Err("Remote job identity mismatch.".into());

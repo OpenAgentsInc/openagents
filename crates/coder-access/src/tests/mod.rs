@@ -12,6 +12,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::mpsc;
 
+mod cloud;
 mod flows;
 #[path = "../../../coder-control/src/tests/relay.rs"]
 mod relay;

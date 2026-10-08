@@ -53,12 +53,24 @@ pub struct Inbox {
     /// The workshop agents this host answers for
     /// (`docs/verse/workshop-agent.md`).
     agents: Option<Arc<super::agent_host::Agents>>,
+    cloud: Option<Arc<dyn coder_host::cloud::Cloud>>,
+    projects: Option<Arc<dyn coder_host::projects::Projects>>,
 }
 
 /// The most engine preferences an inbox holds for creates not yet made.
 const MAX_PREFERENCES: usize = 64;
 
 impl Inbox {
+    #[must_use]
+    pub fn with_cloud(mut self, cloud: Arc<dyn coder_host::cloud::Cloud>) -> Self {
+        self.cloud = Some(cloud);
+        self
+    }
+    #[must_use]
+    pub fn with_projects(mut self, projects: Arc<dyn coder_host::projects::Projects>) -> Self {
+        self.projects = Some(projects);
+        self
+    }
     /// An inbox over the task store at `store`. `workspaces` maps the labels
     /// a device may name to their roots; a device never sends a path.
     #[must_use]
@@ -74,6 +86,8 @@ impl Inbox {
             preferences: Arc::new(std::sync::Mutex::new(BTreeMap::new())),
             settings: None,
             agents: None,
+            cloud: None,
+            projects: None,
         }
     }
 
@@ -482,6 +496,57 @@ fn local_queue_edit(edit: &QueueEdit) -> super::commands::QueueEdit {
 }
 
 impl Tasks for Inbox {
+    fn cloud(
+        &self,
+        request: &str,
+        principal: &Principal,
+        op: &Operation,
+    ) -> Result<coder_host::access::Outcome, Code> {
+        self.cloud
+            .as_ref()
+            .ok_or(Code::Unsupported)?
+            .execute(request, principal, op)
+    }
+    fn cloud_admit_recovery(
+        &self,
+        device: &str,
+        admission: &coder_host::access::cloud::Admission,
+    ) -> Result<(), Code> {
+        self.cloud
+            .as_ref()
+            .ok_or(Code::Unsupported)?
+            .admit_recovery(device, admission)
+    }
+    fn project_list(
+        &self,
+        device: &str,
+        workspace: &str,
+    ) -> Result<coder_host::access::project::List, Code> {
+        self.projects
+            .as_ref()
+            .ok_or(Code::Unsupported)?
+            .list(device, workspace)
+    }
+    fn project_read(
+        &self,
+        device: &str,
+        query: &coder_host::access::project::Query,
+    ) -> Result<coder_host::access::project::Page, Code> {
+        self.projects
+            .as_ref()
+            .ok_or(Code::Unsupported)?
+            .read(device, query)
+    }
+    fn project_original(
+        &self,
+        device: &str,
+        query: &coder_host::access::project::OriginalQuery,
+    ) -> Result<coder_host::access::project::Chunk, Code> {
+        self.projects
+            .as_ref()
+            .ok_or(Code::Unsupported)?
+            .original(device, query)
+    }
     fn task_list(
         &self,
         query: &coder_host::access::task_read::ListQuery,

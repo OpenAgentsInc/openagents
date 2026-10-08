@@ -553,6 +553,32 @@ pub struct TaskQueue {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", deny_unknown_fields)]
 pub enum Operation {
+    #[serde(rename = "cloud.projects")]
+    CloudProjects { workspace: String },
+    #[serde(rename = "project.list")]
+    ProjectList { workspace: String },
+    #[serde(rename = "project.read")]
+    ProjectRead { query: crate::project::Query },
+    #[serde(rename = "project.original")]
+    ProjectOriginal {
+        query: crate::project::OriginalQuery,
+    },
+    #[serde(rename = "cloud.catalog")]
+    CloudCatalog { query: crate::cloud::CatalogQuery },
+    #[serde(rename = "cloud.list")]
+    CloudList { query: crate::cloud::ListQuery },
+    #[serde(rename = "cloud.read")]
+    CloudRead { query: crate::cloud::ReadQuery },
+    #[serde(rename = "cloud.original")]
+    CloudOriginal { query: crate::cloud::OriginalQuery },
+    #[serde(rename = "cloud.submit")]
+    CloudSubmit { intent: crate::cloud::Submit },
+    #[serde(rename = "cloud.continue")]
+    CloudContinue { intent: crate::cloud::Continue },
+    #[serde(rename = "cloud.cancel")]
+    CloudCancel { intent: crate::cloud::Cancel },
+    #[serde(rename = "cloud.follow")]
+    CloudFollow { intent: crate::cloud::Follow },
     #[serde(rename = "enroll.redeem")]
     Redeem {
         invitation: String,
@@ -977,6 +1003,14 @@ impl Operation {
         matches!(
             self,
             Self::RequestOperation { .. }
+                | Self::CloudProjects { .. }
+                | Self::ProjectList { .. }
+                | Self::ProjectRead { .. }
+                | Self::ProjectOriginal { .. }
+                | Self::CloudCatalog { .. }
+                | Self::CloudList { .. }
+                | Self::CloudRead { .. }
+                | Self::CloudOriginal { .. }
                 | Self::QueueTaskAtRevision {
                     edit: QueueEdit::List {},
                     ..
@@ -1087,6 +1121,18 @@ impl Operation {
         matches!(
             self,
             Self::CreateTask { .. }
+                | Self::CloudProjects { .. }
+                | Self::ProjectList { .. }
+                | Self::ProjectRead { .. }
+                | Self::ProjectOriginal { .. }
+                | Self::CloudCatalog { .. }
+                | Self::CloudList { .. }
+                | Self::CloudRead { .. }
+                | Self::CloudOriginal { .. }
+                | Self::CloudSubmit { .. }
+                | Self::CloudContinue { .. }
+                | Self::CloudCancel { .. }
+                | Self::CloudFollow { .. }
                 | Self::ListTasks { .. }
                 | Self::ReadTask { .. }
                 | Self::ReadTaskOriginal { .. }
@@ -1134,6 +1180,18 @@ impl Operation {
     }
     pub fn name(&self) -> &'static str {
         match self {
+            Self::CloudProjects { .. } => "cloud.projects",
+            Self::ProjectList { .. } => "project.list",
+            Self::ProjectRead { .. } => "project.read",
+            Self::ProjectOriginal { .. } => "project.original",
+            Self::CloudCatalog { .. } => "cloud.catalog",
+            Self::CloudList { .. } => "cloud.list",
+            Self::CloudRead { .. } => "cloud.read",
+            Self::CloudOriginal { .. } => "cloud.original",
+            Self::CloudSubmit { .. } => "cloud.submit",
+            Self::CloudContinue { .. } => "cloud.continue",
+            Self::CloudCancel { .. } => "cloud.cancel",
+            Self::CloudFollow { .. } => "cloud.follow",
             Self::Redeem { .. } => "enroll.redeem",
             Self::Approve { .. } => "enroll.approve",
             Self::Deny { .. } => "enroll.deny",
@@ -1227,6 +1285,14 @@ impl Operation {
             | Self::Revoke { .. } => Some(Right::AccessAdmin),
             Self::ListDevices {} => Some(Right::AccessRead),
             Self::InviteChats {}
+            | Self::CloudProjects { .. }
+            | Self::ProjectList { .. }
+            | Self::ProjectRead { .. }
+            | Self::ProjectOriginal { .. }
+            | Self::CloudCatalog { .. }
+            | Self::CloudList { .. }
+            | Self::CloudRead { .. }
+            | Self::CloudOriginal { .. }
             | Self::RequestOperation { .. }
             | Self::ListTasks { .. }
             | Self::ReadTask { .. }
@@ -1250,6 +1316,10 @@ impl Operation {
             | Self::AgentLog { .. }
             | Self::ListAgentWorkspaces {} => Some(Right::Observe),
             Self::CreateTask { .. }
+            | Self::CloudSubmit { .. }
+            | Self::CloudContinue { .. }
+            | Self::CloudCancel { .. }
+            | Self::CloudFollow { .. }
             | Self::SteerTask { .. }
             | Self::CancelTask { .. }
             | Self::ArchiveTask { .. }
@@ -1301,6 +1371,18 @@ impl Operation {
     }
     pub fn validate(&self) -> Result<()> {
         match self {
+            Self::CloudProjects { workspace } => crate::cloud::alias(workspace)?,
+            Self::ProjectList { workspace } => crate::cloud::alias(workspace)?,
+            Self::ProjectRead { query } => query.validate()?,
+            Self::ProjectOriginal { query } => query.validate()?,
+            Self::CloudCatalog { query } => query.validate()?,
+            Self::CloudList { query } => query.validate()?,
+            Self::CloudRead { query } => query.validate()?,
+            Self::CloudOriginal { query } => query.validate()?,
+            Self::CloudSubmit { intent } => intent.validate()?,
+            Self::CloudContinue { intent } => intent.validate()?,
+            Self::CloudCancel { intent } => intent.validate()?,
+            Self::CloudFollow { intent } => intent.validate()?,
             Self::RequestOperation {
                 request,
                 request_event,
@@ -1706,6 +1788,33 @@ pub struct Receipt {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Outcome {
+    CloudProjects {
+        projects: crate::cloud::Projects,
+    },
+    ProjectList {
+        projects: crate::project::List,
+    },
+    ProjectRead {
+        project: Box<crate::project::Page>,
+    },
+    ProjectOriginal {
+        chunk: crate::project::Chunk,
+    },
+    CloudCatalog {
+        catalog: crate::cloud::Catalog,
+    },
+    CloudList {
+        jobs: crate::cloud::List,
+    },
+    CloudRead {
+        job: Box<crate::cloud::Job>,
+    },
+    CloudOriginal {
+        chunk: crate::cloud::OriginalChunk,
+    },
+    CloudAccepted {
+        accepted: crate::cloud::Accepted,
+    },
     Granted {
         authorization: Box<Event>,
     },
@@ -1870,7 +1979,30 @@ impl Outcome {
     /// # Errors
     /// Refuses a list over its bounds, unsorted, or with a bad label.
     pub fn validate(&self) -> Result<()> {
+        if matches!(
+            self,
+            Self::ProjectList { .. }
+                | Self::ProjectRead { .. }
+                | Self::ProjectOriginal { .. }
+                | Self::CloudProjects { .. }
+                | Self::CloudCatalog { .. }
+                | Self::CloudList { .. }
+                | Self::CloudRead { .. }
+                | Self::CloudOriginal { .. }
+                | Self::CloudAccepted { .. }
+        ) {
+            crate::task_read::bounded(self, crate::cloud::MAX_REPLY_BYTES)?;
+        }
         match self {
+            Self::CloudProjects { projects } => projects.validate()?,
+            Self::ProjectList { projects } => projects.validate()?,
+            Self::ProjectRead { project } => project.validate()?,
+            Self::ProjectOriginal { chunk } => chunk.validate()?,
+            Self::CloudCatalog { catalog } => catalog.validate()?,
+            Self::CloudList { jobs } => jobs.validate()?,
+            Self::CloudRead { job } => job.validate()?,
+            Self::CloudOriginal { chunk } => chunk.validate()?,
+            Self::CloudAccepted { accepted } => accepted.validate()?,
             Self::Tasks { tasks } => tasks.validate()?,
             Self::Task { task } => task.validate()?,
             Self::TaskOriginal { original } => original.validate()?,
@@ -1896,6 +2028,7 @@ impl Outcome {
                         if matches!(
                             outcome,
                             Self::Dispatched { .. }
+                                | Self::CloudAccepted { .. }
                                 | Self::QueueAtRevision { .. }
                                 | Self::Published { .. }
                         ) =>
@@ -2060,6 +2193,64 @@ impl Outcome {
     /// Whether this outcome is the one the operation can produce.
     pub fn answers(&self, op: &Operation) -> bool {
         match (op, self) {
+            (Operation::CloudProjects { workspace }, Self::CloudProjects { projects }) => {
+                *workspace == projects.workspace
+            }
+            (Operation::ProjectList { workspace }, Self::ProjectList { projects }) => {
+                projects.workspace == *workspace
+            }
+            (Operation::ProjectRead { query }, Self::ProjectRead { project }) => {
+                project.answers(query)
+            }
+            (Operation::ProjectOriginal { query }, Self::ProjectOriginal { chunk }) => {
+                chunk.answers(query)
+            }
+            (Operation::CloudCatalog { query }, Self::CloudCatalog { catalog }) => {
+                catalog.answers(query)
+            }
+            (Operation::CloudList { query }, Self::CloudList { jobs }) => jobs.answers(query),
+            (Operation::CloudRead { query }, Self::CloudRead { job }) => job.answers(query),
+            (Operation::CloudOriginal { query }, Self::CloudOriginal { chunk }) => {
+                chunk.answers(query)
+            }
+            (Operation::CloudSubmit { intent }, Self::CloudAccepted { accepted }) => {
+                accepted.action == "submit"
+                    && accepted.scope.workspace == intent.workspace
+                    && accepted.scope.project == intent.project
+                    && accepted.scope.profile == intent.profile
+                    && accepted.scope.profile_revision == intent.profile_revision
+                    && accepted.scope.source_digest == intent.source_digest
+            }
+            (Operation::CloudContinue { intent }, Self::CloudAccepted { accepted }) => {
+                accepted.action == "continue"
+                    && accepted.scope.workspace == intent.scope.workspace
+                    && accepted.scope.project == intent.scope.project
+                    && accepted.scope.job == intent.scope.job
+                    && accepted.scope.profile == intent.scope.profile
+                    && accepted.scope.profile_revision == intent.scope.profile_revision
+                    && accepted.scope.source_digest == intent.scope.source_digest
+                    && accepted.scope.attempt == intent.scope.attempt.saturating_add(1)
+            }
+            (Operation::CloudCancel { intent }, Self::CloudAccepted { accepted }) => {
+                accepted.action == "cancel"
+                    && accepted.scope.workspace == intent.scope.workspace
+                    && accepted.scope.project == intent.scope.project
+                    && accepted.scope.job == intent.scope.job
+                    && accepted.scope.profile == intent.scope.profile
+                    && accepted.scope.profile_revision == intent.scope.profile_revision
+                    && accepted.scope.source_digest == intent.scope.source_digest
+                    && accepted.scope.attempt == intent.scope.attempt
+            }
+            (Operation::CloudFollow { intent }, Self::CloudAccepted { accepted }) => {
+                accepted.action == "follow"
+                    && accepted.scope.workspace == intent.scope.workspace
+                    && accepted.scope.project == intent.scope.project
+                    && accepted.scope.job == intent.scope.job
+                    && accepted.scope.profile == intent.scope.profile
+                    && accepted.scope.profile_revision == intent.scope.profile_revision
+                    && accepted.scope.source_digest == intent.scope.source_digest
+                    && accepted.scope.attempt == intent.scope.attempt
+            }
             (
                 Operation::RequestOperation {
                     request,

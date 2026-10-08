@@ -255,6 +255,42 @@ pub struct TerminalBinding {
 ///
 /// Implementations return promptly and never call back into the host.
 pub trait Tasks: Send + Sync {
+    fn cloud(
+        &self,
+        _request: &str,
+        _principal: &Principal,
+        _op: &Operation,
+    ) -> Result<coder_access::Outcome, Code> {
+        Err(Code::Unsupported)
+    }
+    fn cloud_admit_recovery(
+        &self,
+        _device: &str,
+        _admission: &coder_access::cloud::Admission,
+    ) -> Result<(), Code> {
+        Err(Code::Unsupported)
+    }
+    fn project_list(
+        &self,
+        _device: &str,
+        _workspace: &str,
+    ) -> Result<coder_access::project::List, Code> {
+        Err(Code::Unsupported)
+    }
+    fn project_read(
+        &self,
+        _device: &str,
+        _query: &coder_access::project::Query,
+    ) -> Result<coder_access::project::Page, Code> {
+        Err(Code::Unsupported)
+    }
+    fn project_original(
+        &self,
+        _device: &str,
+        _query: &coder_access::project::OriginalQuery,
+    ) -> Result<coder_access::project::Chunk, Code> {
+        Err(Code::Unsupported)
+    }
     /// Read the canonical task list under the owner's admitted workspace label.
     /// Observe admission does not replace the task owner's disclosure checks.
     fn task_list(

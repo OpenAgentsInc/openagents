@@ -11,11 +11,13 @@ pub mod agent;
 pub mod cj;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod client;
+pub mod cloud;
 pub mod crew;
 pub mod day_plan;
 #[cfg(feature = "host")]
 pub mod host;
 pub mod media;
+pub mod project;
 pub mod protocol;
 pub mod review;
 pub mod rights;

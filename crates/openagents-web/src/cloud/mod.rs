@@ -4,6 +4,7 @@
 mod controls;
 mod effects;
 pub mod hosts;
+mod operator;
 mod private;
 pub mod session;
 #[cfg(test)]
@@ -96,9 +97,10 @@ pub(crate) fn routes() -> Router<App> {
         .route("/cloud/app/tasks/{id}", get(work::task_alias))
         .merge(work::routes())
         .merge(controls::routes())
+        .merge(operator::routes())
         .layer(DefaultBodyLimit::max(8192));
     for (_, slug, _) in SECTIONS {
-        if slug != "computers" {
+        if !matches!(slug, "computers" | "projects") {
             router = router.route(&format!("/cloud/app/{slug}"), get(section));
         }
     }
@@ -422,7 +424,7 @@ fn workspace_shell(
     };
     let mut nav = String::from("<a href=\"/cloud/app\">Overview</a>");
     for (label, slug, reason) in SECTIONS {
-        if matches!(slug, "tasks" | "computers")
+        if matches!(slug, "tasks" | "computers" | "projects")
             && app
                 .config
                 .cloud_hosts

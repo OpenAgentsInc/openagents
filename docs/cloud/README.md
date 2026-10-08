@@ -8,6 +8,63 @@ The [Coder Cloud and openagents.com specification](coder-cloud.md) defines the
 proposed Rust web workspace, connected Verse and delegation views, and customer,
 team, billing, and sales interfaces over the existing domain owners.
 
+## Resident operator bridge
+
+The following command loads a separately admitted operator policy:
+
+```sh
+openagents host serve --state /absolute/private/access --root /absolute/private/host \
+  --cloud-operator /absolute/private/operator.json
+```
+
+The file has mode `0600`, its
+containing directory has mode `0700`, and neither path contains symlinks.
+The policy maps a native device to workspace, project, and executor profile
+aliases. Host `observe` and `operate` grants still apply to each request.
+
+The policy uses this schema; paths name explicitly selected native files:
+
+```json
+{
+  "schema": "openagents.coder.cloud-operator.v1",
+  "operators": [{"device": "<64 hex public key>", "workspace": "checkout", "project": "engineering", "profiles": ["review"]}],
+  "profiles": {
+    "review": {
+      "workspace": "checkout", "project": "engineering", "cwd": "/absolute/repository",
+      "source_revision": "<40 hex Git commit>", "source_digest": "sha256:<64 hex>",
+      "paths": [], "include": [], "pool": "review-pool", "placement": "boat", "mode": "coder",
+      "executor": "codex", "model": null, "reasoning": null, "max_timeout_seconds": 600,
+      "size": "small", "template": null, "credentials": {}, "adapter": {"kind": "unavailable"}
+    }
+  }
+}
+```
+
+Compute `source_digest` with `coder_cloud::workspace::source_identity`. A Boat
+adapter requires `kind: "boat"`, an explicit `origin`, and a private `token_file`.
+A GCE adapter requires `kind: "gce"`, `pool_file`, `gcloud_binary`,
+`config_directory`, `credential_file`, and the admitted `hosts`. It refuses
+integrated mode. Credential names map to private files in `credentials`.
+Real adapters currently qualify only executor `codex` in mode `coder`, with a
+nonempty, explicitly selected `OPENAI_API_KEY` or `OA_CODEX_AUTH` file. The latter
+must contain a JSON object; configuring it does not verify a provider login.
+`GH_TOKEN` and `GITHUB_TOKEN` are the only additional admitted credential
+names. GCE commands start with a clean remote environment, and the Coder
+runtime uses a separate `CODEX_HOME` for each job. Other real executor modes
+remain unavailable until their remote login isolation is qualified. An injected
+synthetic backend has separate admission and never contacts a provider.
+Changed source, policy, pool, or credential pins refuse stale work; changed
+adapter profiles require a host reload. This bridge never selects ambient
+provider logins or establishes retail spending rights.
+
+Reads preserve canonical jobs and original byte chunks. Submission, continuation,
+cancellation, and reconciliation require a reviewed native request. Repeating
+that request returns its retained result, and reconciliation follows the
+original provider task without submitting a replacement. Provider and cleanup
+uncertainty remain visible until the native owner records a result.
+
+## Existing cloud lanes
+
 The [terminal workbench roadmap](../terminal/workbench-roadmap.md#paid-openagents-cloud-computers-and-credits)
 adds a proposed paid OpenAgents cloud-computer option inside Verse and the
 other clients. Purchased credits require shared funding, quotes,

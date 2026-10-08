@@ -28,6 +28,7 @@ pub mod background;
 #[cfg(feature = "host")]
 pub mod cli;
 pub mod client;
+pub mod cloud;
 #[cfg(feature = "host")]
 pub mod config;
 #[cfg(feature = "host")]
@@ -39,6 +40,7 @@ pub mod generation;
 pub mod mailbox;
 pub mod message;
 pub mod nudge;
+pub mod projects;
 #[cfg(feature = "host")]
 mod publish;
 #[cfg(feature = "host")]

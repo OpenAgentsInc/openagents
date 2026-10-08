@@ -119,6 +119,34 @@ fn changes(
     let fingerprint=digest(&serde_json::to_vec(&json!({"patch":base64::engine::general_purpose::STANDARD.encode(&patch),"included":files})).unwrap());
     Ok((patch, files, fingerprint))
 }
+/// Read the exact configured source revision and selected local changes.
+/// This does not create a cloud job, transfer files, or write repository state.
+pub fn source_identity(
+    cwd: &Path,
+    revision: &str,
+    paths: &[String],
+    names: &[String],
+) -> Result<String> {
+    if revision.len() != 40 || !revision.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err("The operator source must pin an exact Git commit.".into());
+    }
+    let root = String::from_utf8(git(cwd, &["rev-parse", "--show-toplevel"])?)
+        .map_err(|_| "Invalid operator source.")?;
+    let root = Path::new(root.trim());
+    let head = String::from_utf8(git(root, &["rev-parse", "HEAD"])?)
+        .map_err(|_| "Invalid operator source revision.")?;
+    if head.trim() != revision {
+        return Err("The operator source revision changed.".into());
+    }
+    let (_, _, changes) = changes(root, revision, paths, names)?;
+    Ok(format!(
+        "sha256:{}",
+        digest(
+            &serde_json::to_vec(&json!({"revision":revision,"changes":changes}))
+                .map_err(|_| "Cannot encode operator source identity.")?
+        )
+    ))
+}
 pub fn capture(
     lease: &Lease,
     cwd: &Path,

@@ -162,6 +162,36 @@ unknown; an expired packet requires observation rather than redispatch.
 Request journals contain private operation content and must remain private.
 The browser keeps no credential, prompt, or action in persistent storage.
 
+## Projects and operator Cloud jobs
+
+`/cloud/app/projects` links the current resident bindings. Project pages use
+the resident's separately configured `--project-observer PRIVATE_JSON` policy
+over retained `coder-project` supervisor records. Reads preserve native claims,
+dependency IDs, capacity, review pressure, exclusions, and worktree evidence;
+they never open a scheduler writer or start issue work. Missing goal, tracker,
+provider-reset, or build-wait evidence remains unknown. Snapshot-pinned pages
+and original byte chunks refuse a changed source.
+
+Operator jobs use the resident's `--cloud-operator PRIVATE_JSON` policy over
+`coder-cloud`. It admits exact devices, workspaces, projects, source revisions,
+pools, executor profiles, and credential names. The browser can choose only
+the admitted aliases. Native configuration supplies source paths, provider
+endpoints, and credential files. Native retail admission remains separate.
+
+Profile forms and existing job pages stage submit, continue, stop, or reconcile
+requests in the same private control journal. Confirmation dispatches the
+original packet; repeated confirmation recovers its original job identity.
+Ordinary reads never drive the worker. Requested and served models, usage,
+retained artifacts, cancellation, and cleanup retain independent evidence;
+missing delivery, publication, and cost remain unknown. Continuation requires
+the native owner's terminal-state and cleanup admission.
+
+Private pages pin the original bounded native projection and current policy.
+Policy, source, membership, grant, or enrollment changes retire the mounted
+view and drafts. Even a prepared request rechecks its operator policy before
+revealing private action content. Original records are available in bounded
+chunks with downloads that preserve their exact bytes.
+
 ## Task browser
 
 The browser reads the same durable task store and paged ATIF view as

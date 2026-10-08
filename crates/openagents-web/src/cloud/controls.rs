@@ -55,16 +55,16 @@ pub(super) fn routes() -> Router<App> {
         .layer(DefaultBodyLimit::max(64 * 1024))
 }
 
-struct Context<'a> {
-    app: &'a App,
-    service: &'a CloudSession,
-    viewer: Viewer,
-    hosts: &'a Hosts,
-    binding: &'a Binding,
-    scope: Value,
+pub(super) struct Context<'a> {
+    pub(super) app: &'a App,
+    pub(super) service: &'a CloudSession,
+    pub(super) viewer: Viewer,
+    pub(super) hosts: &'a Hosts,
+    pub(super) binding: &'a Binding,
+    pub(super) scope: Value,
 }
 
-async fn admitted<'a>(
+pub(super) async fn admitted<'a>(
     app: &'a App,
     headers: &HeaderMap,
     id: &str,
@@ -89,7 +89,7 @@ async fn admitted<'a>(
 }
 
 impl Context<'_> {
-    async fn current(&self, headers: &HeaderMap) -> Result<(), Response> {
+    pub(super) async fn current(&self, headers: &HeaderMap) -> Result<(), Response> {
         let current = self.service.authenticate(headers).await.map_err(refused)?;
         let binding = self
             .hosts
@@ -101,7 +101,7 @@ impl Context<'_> {
         Ok(())
     }
 
-    async fn probe(&self, headers: &HeaderMap) -> Result<(), Response> {
+    pub(super) async fn probe(&self, headers: &HeaderMap) -> Result<(), Response> {
         let query = ListQuery {
             workspace: self.binding.workspace().into(),
             cursor: None,
@@ -123,13 +123,13 @@ impl Context<'_> {
         self.current(headers).await
     }
 
-    fn book(&self) -> Result<&super::effects::Effects, Response> {
+    pub(super) fn book(&self) -> Result<&super::effects::Effects, Response> {
         self.hosts
             .effects(&self.viewer, self.binding.id())
             .map_err(refused)
     }
 
-    fn enrolled(&self) -> Result<(), Response> {
+    pub(super) fn enrolled(&self) -> Result<(), Response> {
         if !self
             .book()?
             .enrolled(&self.scope, self.binding.identity())
@@ -140,7 +140,12 @@ impl Context<'_> {
         Ok(())
     }
 
-    fn csrf(&self, headers: &HeaderMap, action: &str, target: &str) -> Result<String, Response> {
+    pub(super) fn csrf(
+        &self,
+        headers: &HeaderMap,
+        action: &str,
+        target: &str,
+    ) -> Result<String, Response> {
         self.service
             .csrf(
                 headers,
@@ -151,7 +156,7 @@ impl Context<'_> {
             .map_err(refused)
     }
 
-    fn verify(
+    pub(super) fn verify(
         &self,
         headers: &HeaderMap,
         token: &str,
@@ -169,7 +174,7 @@ impl Context<'_> {
             .map_err(refused)
     }
 
-    fn page(&self, headers: &HeaderMap, content: &str, resource: Value) -> Response {
+    pub(super) fn page(&self, headers: &HeaderMap, content: &str, resource: Value) -> Response {
         workspace_shell(
             self.app,
             headers,
@@ -181,7 +186,7 @@ impl Context<'_> {
         )
     }
 
-    fn resource(
+    pub(super) fn resource(
         &self,
         snapshot: Option<&Snapshot>,
         page: Option<&Page>,
@@ -205,7 +210,7 @@ impl Context<'_> {
         }
     }
 
-    async fn task(&self, headers: &HeaderMap, id: &str) -> Result<Page, Response> {
+    pub(super) async fn task(&self, headers: &HeaderMap, id: &str) -> Result<Page, Response> {
         let query = PageQuery {
             workspace: self.binding.workspace().into(),
             task: id.into(),
@@ -245,7 +250,7 @@ impl Context<'_> {
     }
 }
 
-fn digest(value: &Value) -> String {
+pub(super) fn digest(value: &Value) -> String {
     format!(
         "sha256:{}",
         Sha256::digest(value.to_string().as_bytes())
@@ -255,11 +260,13 @@ fn digest(value: &Value) -> String {
     )
 }
 
-fn show(view: &rust_native::View<control::ControlIntent>) -> Result<String, Response> {
+pub(super) fn show<I: serde::Serialize + Clone>(
+    view: &rust_native::View<I>,
+) -> Result<String, Response> {
     rust_native_web::render_view(view).map_err(|_| refused(SessionError::Conflict))
 }
 
-fn submit(key: &str, label: &str, enabled: bool) -> Result<String, Response> {
+pub(super) fn submit(key: &str, label: &str, enabled: bool) -> Result<String, Response> {
     // This validated view contains one application-owned submit intent. Native
     // form submission provides the transport; no browser effect handler exists.
     Ok(show(&control::submit(
@@ -274,7 +281,7 @@ fn submit(key: &str, label: &str, enabled: bool) -> Result<String, Response> {
     .replace("type=\"button\"", "type=\"submit\""))
 }
 
-fn hidden(name: &str, value: &str) -> String {
+pub(super) fn hidden(name: &str, value: &str) -> String {
     format!(
         "<input type=\"hidden\" name=\"{}\" value=\"{}\">",
         escape(name),
@@ -282,7 +289,7 @@ fn hidden(name: &str, value: &str) -> String {
     )
 }
 
-fn link(binding: &Binding) -> String {
+pub(super) fn link(binding: &Binding) -> String {
     format!(
         "<p><a href=\"/cloud/app/hosts/{}\">Computer connection</a> · <a href=\"/cloud/app/hosts/{}/tasks\">Resident tasks</a></p>",
         escape(binding.id()),
@@ -465,11 +472,11 @@ fn form_basis(page: &Page, id: &str, issued: u64) -> String {
     digest(&json!({"request":id,"issued_at":issued,"task":page.scope}))
 }
 
-fn request_url(binding: &Binding, request: &str) -> String {
+pub(super) fn request_url(binding: &Binding, request: &str) -> String {
     format!("/cloud/app/hosts/{}/requests/{request}", binding.id())
 }
 
-async fn staged(
+pub(super) async fn staged(
     context: &Context<'_>,
     headers: &HeaderMap,
     id: &str,
@@ -1038,6 +1045,9 @@ async fn recover_request(
     headers: &HeaderMap,
     snapshot: Snapshot,
 ) -> Result<Snapshot, Response> {
+    super::operator::admit_action(context.binding, &context.viewer, &snapshot.action)
+        .await
+        .map_err(refused)?;
     let book = context.book()?;
     let recovery = Operation::RequestOperation {
         request: snapshot.id.clone(),
@@ -1169,6 +1179,27 @@ fn receipt_page(context: &Context<'_>, headers: &HeaderMap, snapshot: &Snapshot)
         content.push_str(&format!("<p>{reason} No redispatch is admitted. Reconcile this original request through the resident task owner before reviewing any separate action.</p>"));
     }
     content.push_str(&link(context.binding));
+    if let Some(Outcome::CloudAccepted { accepted }) = &snapshot.outcome {
+        content.push_str(&format!(
+            "<p><a href=\"{}\">Inspect the canonical Cloud job and cleanup evidence</a></p>",
+            super::operator::job_url(context.binding.id(), &accepted.scope)
+        ));
+    } else if let Operation::CloudSubmit { intent } = &snapshot.action {
+        content.push_str(&format!("<p><a href=\"/cloud/app/hosts/{}/cloud/{}/jobs/{}\">Inspect the original Cloud creation identity</a></p>", escape(context.binding.id()), escape(&intent.project), escape(&snapshot.id)));
+    } else {
+        let scope = match &snapshot.action {
+            Operation::CloudContinue { intent } => Some(&intent.scope),
+            Operation::CloudCancel { intent } => Some(&intent.scope),
+            Operation::CloudFollow { intent } => Some(&intent.scope),
+            _ => None,
+        };
+        if let Some(scope) = scope {
+            content.push_str(&format!(
+                "<p><a href=\"{}\">Inspect the original Cloud job</a></p>",
+                super::operator::job_url(context.binding.id(), scope)
+            ));
+        }
+    }
     if let Some(task) = action_task(&snapshot.action) {
         content.push_str(&format!(
             "<p><a href=\"/cloud/app/hosts/{}/tasks/{}\">Inspect the canonical task</a></p>",
@@ -1222,6 +1253,11 @@ async fn confirm(
         return r;
     }
     let context_ref = &context;
+    if let Err(error) =
+        super::operator::admit_action(context.binding, &context.viewer, &snapshot.action).await
+    {
+        return refused(error);
+    }
     let request_headers = &headers;
     let binding_id = &id;
     let result = book
@@ -1233,6 +1269,7 @@ async fn confirm(
             if context_ref.hosts.control_scope(&current, binding) != context_ref.scope {
                 return Err(SessionError::Conflict);
             }
+            super::operator::admit_action(binding, &current, &pending.request.op).await?;
             let answer = binding.send(&current, &pending).await?;
             Ok(answer)
         })

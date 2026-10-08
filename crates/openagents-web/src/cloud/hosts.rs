@@ -336,6 +336,14 @@ impl Binding {
                     | Operation::ListWorkspaces {}
                     | Operation::ReviewTask { .. }
                     | Operation::RequestOperation { .. }
+                    | Operation::ProjectList { .. }
+                    | Operation::ProjectRead { .. }
+                    | Operation::ProjectOriginal { .. }
+                    | Operation::CloudProjects { .. }
+                    | Operation::CloudCatalog { .. }
+                    | Operation::CloudList { .. }
+                    | Operation::CloudRead { .. }
+                    | Operation::CloudOriginal { .. }
             )
         {
             return Err(SessionError::Forbidden);

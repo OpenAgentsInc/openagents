@@ -171,6 +171,10 @@ fn allowed(operation: &Operation) -> bool {
             | "task.command.at_revision"
             | "task.queue.at_revision"
             | "task.publish"
+            | "cloud.submit"
+            | "cloud.continue"
+            | "cloud.cancel"
+            | "cloud.follow"
     )
 }
 

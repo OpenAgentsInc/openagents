@@ -43,6 +43,7 @@ mod ext_eval;
 mod ext_eval_init;
 mod ext_run;
 mod gym;
+mod host_observers;
 mod hosts;
 mod issue;
 mod jev_judge;
@@ -485,6 +486,14 @@ pub fn runtime() -> tokio::runtime::Runtime {
 }
 
 async fn host(arguments: &[String]) -> u8 {
+    let observers = match host_observers::Options::take(arguments) {
+        Ok(options) => options,
+        Err(why) => {
+            eprintln!("openagents host: {why}");
+            return EXIT_FAILURE;
+        }
+    };
+    let arguments = &observers.arguments;
     // The host root, as `coder host` reads it: `--root DIR`, else
     // ~/.openagents/host. The workshop agents live there.
     let root = arguments
@@ -498,6 +507,33 @@ async fn host(arguments: &[String]) -> u8 {
     let open = Box::new(
         move |store: &Path, workspaces: &std::collections::BTreeMap<String, std::path::PathBuf>| {
             let mut inbox = coder::task::remote::Inbox::new(store, workspaces.clone());
+            #[cfg(unix)]
+            if let Some(path) = &observers.projects {
+                let observer = coder_project::observe::Observer::load(path, workspaces)?;
+                inbox = inbox.with_projects(std::sync::Arc::new(observer));
+            }
+            #[cfg(unix)]
+            if let Some(path) = &observers.cloud {
+                let state = observers
+                    .state
+                    .as_ref()
+                    .ok_or("operator cloud needs an explicit access state directory")?;
+                let root = observers
+                    .root
+                    .as_ref()
+                    .ok_or("operator cloud needs an explicit host root directory")?;
+                let authority = coder_host::cloud::authority(coder_access::host::Host::new(
+                    state,
+                    observers.policy,
+                ))
+                .map_err(|_| "operator cloud authority is unavailable")?;
+                let operator = coder_cloud::operator::Operator::load(
+                    path,
+                    &root.join("cloud-operator"),
+                    authority,
+                )?;
+                inbox = inbox.with_cloud(std::sync::Arc::new(operator));
+            }
             if let Some(root) = root.clone() {
                 inbox = inbox.with_agents(coder::task::agent_host::Agents::new(
                     root,

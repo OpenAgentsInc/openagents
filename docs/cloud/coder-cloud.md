@@ -624,7 +624,7 @@ web implementation:
 | WEB-02 | [#10949](https://github.com/OpenAgentsInc/openagents/issues/10949) | Implemented: native sessions and the authenticated workspace shell; explicit account-service configuration, current membership, and Rust/Wasm private-view cleanup. |
 | WEB-03 | [#10950](https://github.com/OpenAgentsInc/openagents/issues/10950) | Implemented: bounded canonical resident task, child-reference, evidence, and original byte reads under current Observe authority, with Rust/Wasm source and grant cleanup. |
 | WEB-04 | [#10951](https://github.com/OpenAgentsInc/openagents/issues/10951) | Implemented: explicit server-custody review, original signed requests, native revision and queue fences, and sealed-result recovery for granted task controls. |
-| WEB-05 | [#10952](https://github.com/OpenAgentsInc/openagents/issues/10952) | Projects and operator Cloud jobs through resident owners. |
+| WEB-05 | [#10952](https://github.com/OpenAgentsInc/openagents/issues/10952) | Implemented: separately admitted resident project snapshots and operator Cloud jobs, original byte reads, source-pinned views, and reviewed native submit, continue, stop, and reconciliation requests. |
 | WEB-06 | [#10953](https://github.com/OpenAgentsInc/openagents/issues/10953) | Granted browser terminals and canonical workbench navigation. |
 | WEB-07 | [#10954](https://github.com/OpenAgentsInc/openagents/issues/10954) | Visible Verse connections and associated work links. |
 | WEB-08 | [#10955](https://github.com/OpenAgentsInc/openagents/issues/10955) | Alice and Studio observation, exact decisions, and safe request recovery. |

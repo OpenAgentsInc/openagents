@@ -2049,3 +2049,13 @@ current membership and grant revocation, native lost-reply recovery, and
 candidate changes on that origin. Review resident auto-start and publication
 policy separately. Synthetic checks enroll only an isolated fixture device;
 they activate no owner's executor, publication, wallet, or commercial lane.
+
+## Qualify project and operator Cloud web views (#10952)
+
+Configure explicit protected resident project-observer and Cloud-operator
+policies for the selected native device and workspace. Approve source commits,
+pools, executor/model policy, credential-name allowlists, and server custody
+before using real providers. Qualify HTTPS policy removal, source changes,
+revocation, duplicate confirmation, original-job recovery, cancellation, and
+cleanup on the deployed origin. Scratch provider fixtures establish no real
+capacity, retail authority, delivery, publication, or commercial activation.

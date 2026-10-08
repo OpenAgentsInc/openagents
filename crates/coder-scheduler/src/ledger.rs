@@ -126,6 +126,39 @@ struct Document {
     tasks: BTreeMap<String, TaskRecord>,
 }
 
+/// An unchanged retained ledger document. Parsing never recovers active work.
+#[derive(Clone, Debug)]
+pub struct Retained {
+    pub run: String,
+    pub sequence: u64,
+    pub records: BTreeMap<String, TaskRecord>,
+}
+
+/// Read already retained bytes without acquiring a writer, creating state, or
+/// performing crash recovery. The caller admits and protects the source file.
+pub fn retained(bytes: &[u8]) -> Result<Retained, LedgerError> {
+    if bytes.len() > 16 * 1024 * 1024 {
+        return Err(LedgerError::Corrupt(
+            "retained ledger exceeds its bound".into(),
+        ));
+    }
+    let document: Document = serde_json::from_slice(bytes)
+        .map_err(|_| LedgerError::Corrupt("retained ledger is invalid".into()))?;
+    if document.v != SCHEMA {
+        return Err(LedgerError::UnknownSchema("unsupported".into()));
+    }
+    if document.run.is_empty() || document.run.len() > 128 || document.tasks.len() > 4096 {
+        return Err(LedgerError::Corrupt(
+            "retained ledger identity is invalid".into(),
+        ));
+    }
+    Ok(Retained {
+        run: document.run,
+        sequence: document.sequence,
+        records: document.tasks,
+    })
+}
+
 /// What went wrong with the ledger itself or a transition it checked.
 #[derive(Debug)]
 pub enum LedgerError {
@@ -747,6 +780,21 @@ mod tests {
     use super::*;
     use crate::catalog::{Catalog, Footprint, Task};
     use crate::resources::Resources;
+
+    #[test]
+    fn retained_reader_preserves_active_claims_without_recovery() {
+        let bytes=serde_json::to_vec(&serde_json::json!({"v":SCHEMA,"run":"retained-run","sequence":4,"next_attempt":2,"tasks":{"held":{"status":"active","owner":"other-owner","attempt":"retained-run-1","task_digest":"sha256:original","attempts":1}}})).unwrap();
+        let parsed = retained(&bytes).unwrap();
+        assert_eq!(parsed.sequence, 4);
+        assert_eq!(parsed.records["held"].status, Status::Active);
+        assert_eq!(parsed.records["held"].owner, "other-owner");
+        assert_eq!(parsed.records["held"].attempt, "retained-run-1");
+        let failure = retained(b"synthetic-secret-canary")
+            .unwrap_err()
+            .to_string();
+        assert!(!failure.contains("synthetic-secret-canary"));
+        assert!(retained(&vec![b' '; 16 * 1024 * 1024 + 1]).is_err());
+    }
 
     #[cfg(unix)]
     #[test]

@@ -185,6 +185,18 @@ enum Pin {
     Control {
         control: ControlPin,
     },
+    OwnerRead {
+        read: OwnerReadPin,
+        control: Option<ControlPin>,
+    },
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct OwnerReadPin {
+    /// Checked against the closed project and operator observation operations.
+    operation: Operation,
+    expected_digest: String,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -250,6 +262,9 @@ fn pin_identity(binding: &Binding, pin: &Pin, viewer: &Viewer) -> String {
             json!({"kind":"original","scope":query.scope,"original":query.original})
         }
         Pin::Control { control } => json!({"kind":"control","control":control}),
+        Pin::OwnerRead { read, control } => {
+            json!({"kind":"owner_read","read":read,"control":control})
+        }
     };
     identity(
         binding,
@@ -264,6 +279,140 @@ fn resource(binding: &Binding, pin: &Pin, viewer: &Viewer) -> Result<Value, Sess
         return Err(SessionError::InvalidRequest);
     }
     Ok(json!({"endpoint":endpoint,"identity":pin_identity(binding,pin,viewer)}))
+}
+
+fn owner_workspace(operation: &Operation) -> Result<&str, SessionError> {
+    match operation {
+        Operation::ProjectList { workspace } => Ok(workspace),
+        Operation::ProjectRead { query } => Ok(&query.workspace),
+        Operation::ProjectOriginal { query } => Ok(&query.workspace),
+        Operation::CloudProjects { workspace } => Ok(workspace),
+        Operation::CloudCatalog { query } => Ok(&query.workspace),
+        Operation::CloudList { query } => Ok(&query.workspace),
+        Operation::CloudRead { query } => Ok(&query.workspace),
+        Operation::CloudOriginal { query } => Ok(&query.scope.workspace),
+        _ => Err(SessionError::InvalidRequest),
+    }
+}
+
+fn owner_digest(operation: &Operation, outcome: &Outcome) -> Result<String, SessionError> {
+    owner_workspace(operation)?;
+    if operation.validate().is_err() || outcome.validate().is_err() || !outcome.answers(operation) {
+        return Err(SessionError::Conflict);
+    }
+    Ok(metadata_digest(&json!(outcome)))
+}
+
+/// Pin one original native project or operator read without copying its body
+/// into a URL. An effectful page also pins the current browser enrollment.
+pub(super) fn owner_resource(
+    binding: &Binding,
+    viewer: &Viewer,
+    hosts: Option<&Hosts>,
+    operation: &Operation,
+    outcome: &Outcome,
+) -> Result<Value, SessionError> {
+    if owner_workspace(operation)? != binding.workspace() {
+        return Err(SessionError::InvalidRequest);
+    }
+    owner_digest(operation, outcome)?;
+    let mut operation = operation.clone();
+    match (&mut operation, outcome) {
+        (Operation::ProjectRead { query }, Outcome::ProjectRead { project }) => {
+            query.snapshot = Some(project.snapshot_digest.clone());
+        }
+        (Operation::CloudRead { query }, Outcome::CloudRead { job }) => {
+            query.revision = Some(job.scope.revision.clone());
+        }
+        _ => {}
+    }
+    let expected_digest = owner_digest(&operation, outcome)?;
+    let control = hosts
+        .map(|hosts| -> Result<ControlPin, SessionError> {
+            let scope = hosts.control_scope(viewer, binding);
+            let enrolled = hosts
+                .effects(viewer, binding.id())?
+                .enrolled(&scope, binding.identity())?;
+            Ok(ControlPin {
+                scope_digest: metadata_digest(&scope),
+                enrolled,
+                request: None,
+                task: None,
+                queue_digest: None,
+                review: None,
+            })
+        })
+        .transpose()?;
+    resource(
+        binding,
+        &Pin::OwnerRead {
+            read: OwnerReadPin {
+                operation,
+                expected_digest,
+            },
+            control,
+        },
+        viewer,
+    )
+}
+
+async fn owner_standing(
+    app: &App,
+    headers: &HeaderMap,
+    service: &CloudSession,
+    binding: &Binding,
+    viewer: &Viewer,
+    pin: &Pin,
+    original: &OwnerReadPin,
+    control: Option<&ControlPin>,
+) -> Result<Response, Response> {
+    if owner_workspace(&original.operation).map_err(refused)? != binding.workspace()
+        || original.operation.validate().is_err()
+        || coder_access::cloud::digest(&original.expected_digest).is_err()
+        || matches!(&original.operation, Operation::ProjectRead { query } if query.snapshot.is_none())
+        || matches!(&original.operation, Operation::CloudRead { query } if query.revision.is_none())
+    {
+        return Err(refused(SessionError::InvalidRequest));
+    }
+    let hosts = control
+        .map(|control| {
+            if control.request.is_some()
+                || control.task.is_some()
+                || control.queue_digest.is_some()
+                || control.review.is_some()
+            {
+                return Err(refused(SessionError::InvalidRequest));
+            }
+            let hosts = app
+                .config
+                .cloud_hosts
+                .as_deref()
+                .ok_or_else(|| refused(SessionError::Unavailable))?;
+            check_control(hosts, binding, viewer, control).map_err(refused)?;
+            Ok(hosts)
+        })
+        .transpose()?;
+    let result = read(
+        service,
+        headers,
+        binding,
+        viewer,
+        original.operation.clone(),
+    )
+    .await?;
+    if owner_digest(&original.operation, &result).map_err(refused)? != original.expected_digest {
+        return Err(refused(SessionError::Conflict));
+    }
+    let current = service.authenticate(headers).await.map_err(refused)?;
+    if authority_value(&current) != authority_value(viewer) {
+        return Err(refused(SessionError::Conflict));
+    }
+    if let (Some(hosts), Some(control)) = (hosts, control) {
+        check_control(hosts, binding, &current, control).map_err(refused)?;
+    }
+    Ok(protect(
+        Json(json!({"active":true,"identity":pin_identity(binding,pin,&current)})).into_response(),
+    ))
 }
 
 /// Bind a control page to current enrollment and original native evidence.
@@ -473,6 +622,11 @@ async fn control_standing(
         let snapshot = hosts
             .effects(viewer, binding.id())
             .and_then(|book| book.lookup(&scope, &request.id))
+            .map_err(refused)?;
+        // A reviewed packet can precede the native request book. Its private
+        // projection still requires current operator source and profile policy.
+        super::operator::admit_action(binding, viewer, &snapshot.action)
+            .await
             .map_err(refused)?;
         let operation = Operation::RequestOperation {
             request: request.id.clone(),
@@ -1103,6 +1257,22 @@ async fn standing(
             Ok(response) | Err(response) => response,
         };
     }
+    if let Pin::OwnerRead { read, control } = &pin {
+        return match owner_standing(
+            &app,
+            &headers,
+            service,
+            binding,
+            &viewer,
+            &pin,
+            read,
+            control.as_ref(),
+        )
+        .await
+        {
+            Ok(response) | Err(response) => response,
+        };
+    }
     let operation = match &pin {
         Pin::List {} => Operation::ListTasks {
             query: ListQuery {
@@ -1136,6 +1306,7 @@ async fn standing(
             }
         }
         Pin::Control { .. } => return refused(SessionError::InvalidRequest),
+        Pin::OwnerRead { .. } => return refused(SessionError::InvalidRequest),
     };
     let result = match read(service, &headers, binding, &viewer, operation).await {
         Ok(v) => v,
@@ -1169,6 +1340,114 @@ async fn standing(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn owner_pins_are_closed_reads_and_keep_original_job_bodies_out_of_urls() {
+        let digest = format!("sha256:{}", "a".repeat(64));
+        let scope = coder_access::cloud::Scope {
+            workspace: "checkout".into(),
+            project: "explicit-project".into(),
+            job: "original-job".into(),
+            revision: digest.clone(),
+            attempt: 1,
+            profile: "explicit-profile".into(),
+            profile_revision: digest.clone(),
+            source_digest: digest,
+        };
+        let operation = Operation::CloudRead {
+            query: coder_access::cloud::ReadQuery {
+                workspace: scope.workspace.clone(),
+                project: scope.project.clone(),
+                job: scope.job.clone(),
+                revision: Some(scope.revision.clone()),
+            },
+        };
+        let job = coder_access::cloud::Job {
+            scope,
+            state: "completed".into(),
+            placement: "boat".into(),
+            mode: "coder".into(),
+            executor: "original-executor".into(),
+            model: Some("requested-model".into()),
+            served_model: None,
+            pool: "admitted-pool".into(),
+            prompt: "Private request for person@example.invalid".into(),
+            prompt_omitted: false,
+            credential_names: vec!["PRIVATE_CREDENTIAL_NAME".into()],
+            remote_task: None,
+            continuation: "unknown".into(),
+            cancellation: "requested".into(),
+            cleanup: "unknown".into(),
+            artifact_state: "unknown".into(),
+            usage: None,
+            error: None,
+            details_omitted: false,
+            originals: Vec::new(),
+        };
+        let outcome = Outcome::CloudRead {
+            job: Box::new(job.clone()),
+        };
+        let expected_digest = owner_digest(&operation, &outcome).unwrap();
+        let pin = Pin::OwnerRead {
+            read: OwnerReadPin {
+                operation: operation.clone(),
+                expected_digest: expected_digest.clone(),
+            },
+            control: None,
+        };
+        let encoded = encode(&pin).unwrap();
+        let decoded = URL_SAFE_NO_PAD.decode(encoded).unwrap();
+        let text = std::str::from_utf8(&decoded).unwrap();
+        for private in [
+            "Private request",
+            "person@example.invalid",
+            "PRIVATE_CREDENTIAL_NAME",
+            "requested-model",
+        ] {
+            assert!(!text.contains(private));
+        }
+        let mut changed = job;
+        changed.served_model = Some("explicitly-recorded-served-model".into());
+        let changed = Outcome::CloudRead {
+            job: Box::new(changed),
+        };
+        assert_ne!(owner_digest(&operation, &changed).unwrap(), expected_digest);
+        assert!(owner_workspace(&snapshot().action).is_err());
+        assert!(owner_digest(&snapshot().action, &outcome).is_err());
+    }
+
+    #[test]
+    fn owner_projection_pins_reject_scope_or_visible_metadata_substitution() {
+        let digest = format!("sha256:{}", "a".repeat(64));
+        let operation = Operation::ProjectList {
+            workspace: "checkout".into(),
+        };
+        let projects = coder_access::project::List {
+            workspace: "checkout".into(),
+            rows: vec![coder_access::project::Row {
+                id: "explicit-project".into(),
+                label: "Original project label".into(),
+                snapshot_digest: digest,
+                goals_state: "unknown".into(),
+            }],
+        };
+        let expected = owner_digest(
+            &operation,
+            &Outcome::ProjectList {
+                projects: projects.clone(),
+            },
+        )
+        .unwrap();
+        let mut changed = projects.clone();
+        changed.rows[0].label = "Changed label".into();
+        assert_ne!(
+            owner_digest(&operation, &Outcome::ProjectList { projects: changed }).unwrap(),
+            expected
+        );
+        let mut changed = projects;
+        changed.workspace = "another-workspace".into();
+        assert!(owner_digest(&operation, &Outcome::ProjectList { projects: changed }).is_err());
+    }
 
     fn snapshot() -> super::super::effects::Snapshot {
         super::super::effects::Snapshot {

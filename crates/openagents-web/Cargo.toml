@@ -37,6 +37,10 @@ tokio = { version = "1", features = ["fs", "io-util", "macros", "net", "rt-multi
 url = "2"
 
 [dev-dependencies]
+atif = { path = "../atif" }
+coder-cloud = { path = "../coder-cloud" }
+coder-project = { path = "../coder-project" }
+coder-scheduler = { path = "../coder-scheduler" }
 nostr = { path = "../nostr" }
 tempfile = "3"
 tower = { version = "0.5", features = ["util"] }
