@@ -262,8 +262,9 @@ impl Inputs {
 }
 
 /// The digest of every entry in `snapshot`, in name order, and the handle
-/// table.
-fn snapshot_digest(snapshot: &Snapshot, handles: &BTreeMap<String, String>) -> String {
+/// table: the `snapshot` field of an invocation receipt.
+#[must_use]
+pub fn snapshot_digest(snapshot: &Snapshot, handles: &BTreeMap<String, String>) -> String {
     let entries: Vec<Value> = snapshot
         .entries()
         .map(|(name, entry)| {

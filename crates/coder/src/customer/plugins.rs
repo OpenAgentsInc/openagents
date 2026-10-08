@@ -21,6 +21,35 @@ pub struct Packet {
     pub operation: String,
     pub profile: String,
     pub limits: Value,
+    /// Digest of the snapshot the guest is granted: the empty snapshot, or
+    /// the caller's supplied files.
+    #[serde(default = "empty_snapshot")]
+    pub snapshot: String,
+}
+/// The receipt digest of an empty snapshot with no handles.
+pub fn empty_snapshot() -> String {
+    plugin::snapshot_digest(
+        &plugin::Snapshot::default(),
+        &std::collections::BTreeMap::new(),
+    )
+}
+/// The body a plugin request sends: the quote digest, the supplied text,
+/// the supplied snapshot files when there are any, and the recovery
+/// commitment.
+pub fn request_body(
+    quote: &front::Quote,
+    request: &str,
+    files: &std::collections::BTreeMap<String, String>,
+    recovery_authorization: Option<&str>,
+) -> Vec<u8> {
+    let mut body = json!({"quote_digest":execution::quote_digest(quote),"request":request});
+    if !files.is_empty() {
+        body["snapshot"] = json!({"v": plugin::SUPPLIED_SNAPSHOT, "files": files});
+    }
+    if let Some(authorization) = recovery_authorization {
+        body["recovery_authorization"] = json!(authorization);
+    }
+    serde_json::to_vec(&body).expect("plugin request serializes")
 }
 /// A fresh native read identity from the selected credential and service.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -54,12 +83,19 @@ pub struct Offer {
 }
 impl Offer {
     pub fn body(&self, request: &str) -> Vec<u8> {
-        let mut body =
-            json!({"quote_digest":execution::quote_digest(&self.quote),"request":request});
-        if let Some(authorization) = &self.recovery_authorization {
-            body["recovery_authorization"] = json!(authorization);
-        }
-        serde_json::to_vec(&body).expect("plugin request serializes")
+        self.body_with(request, &std::collections::BTreeMap::new())
+    }
+    pub fn body_with(
+        &self,
+        request: &str,
+        files: &std::collections::BTreeMap<String, String>,
+    ) -> Vec<u8> {
+        request_body(
+            &self.quote,
+            request,
+            files,
+            self.recovery_authorization.as_deref(),
+        )
     }
     pub fn digest(&self) -> String {
         digest_request(&serde_json::to_value(self).expect("plugin offer serializes"))
@@ -69,7 +105,13 @@ impl Offer {
             .as_str()
             .unwrap_or_default()
     }
-    fn validate(&self, request: &str, selected: &Selection, now: u64) -> Result<()> {
+    fn validate(
+        &self,
+        request: &str,
+        files: &std::collections::BTreeMap<String, String>,
+        selected: &Selection,
+        now: u64,
+    ) -> Result<()> {
         let url = reqwest::Url::parse(&self.url).map_err(|_| "Invalid plugin resource.")?;
         let sum = self
             .quote
@@ -129,6 +171,10 @@ impl Offer {
             || !matches!(self.packet.profile.as_str(), "pure" | "snapshot-read")
             || self.packet.module.len() != 71
             || self.packet.input.len() != 71
+            || self.packet.snapshot.len() != 71
+            || files.len() > plugin::SUPPLIED_ENTRIES
+            || files.values().map(String::len).sum::<usize>() > 64 * 1024
+            || (files.is_empty()) != (self.packet.snapshot == empty_snapshot())
             || now >= self.expires_at_ms
             || self
                 .recovery_authorization
@@ -138,7 +184,7 @@ impl Offer {
             return Err("Plugin offer changes its exact resource, release, packet, total, payer, or expiry.".into());
         }
         let hash = binding_hash(
-            &http_binding("POST", &self.url, &self.body(request), &[])
+            &http_binding("POST", &self.url, &self.body_with(request, files), &[])
                 .map_err(|_| "Invalid plugin request binding.")?,
         )
         .map_err(|_| "Invalid plugin request hash.")?;
@@ -234,7 +280,7 @@ impl Store {
             .as_ref()
             .ok_or("Original plugin approval is absent.")?;
         validate_approval(approval, &p.offer, &p.selection, now)?;
-        p.offer.validate(&p.request, &p.selection, now)?;
+        p.offer.validate(&p.request, &p.files, &p.selection, now)?;
         task::verify_same_file(&path, &file)
             .map_err(|_| "Buyer approval changed during admission.")?;
         let current = std::fs::symlink_metadata(root).map_err(|_| "Buyer directory changed.")?;
@@ -274,6 +320,8 @@ pub(super) struct Purchase {
     selection: Selection,
     offer: Offer,
     request: String,
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    files: std::collections::BTreeMap<String, String>,
     created_at_ms: u64,
     approval: Option<Approval>,
     phase: Phase,
@@ -365,6 +413,7 @@ pub(super) fn check(book: &Book) -> Result<()> {
             || p.offer
                 .validate(
                     &p.request,
+                    &p.files,
                     &p.selection,
                     p.offer.expires_at_ms.saturating_sub(1),
                 )
@@ -461,8 +510,7 @@ fn check_result(offer: &Offer, charge: &Charge, result: &Value) -> Result<()> {
         || !receipt.required
         || receipt.to_json()["profile"] != offer.packet.profile
         || receipt.to_json()["limits"] != offer.packet.limits
-        || receipt.snapshot
-            != plugin::digest(plugin::canonical(&json!({"entries":[],"handles":{}})).as_bytes())
+        || receipt.snapshot != offer.packet.snapshot
         || receipt.outcome
             != (plugin::Outcome::Value {
                 status: result["status"].as_str().unwrap_or_default().into(),
@@ -549,6 +597,29 @@ impl Store {
         now: u64,
         secret: Option<String>,
     ) -> Result<View> {
+        self.quote_plugin_supplied(
+            id,
+            offer,
+            request,
+            std::collections::BTreeMap::new(),
+            current,
+            now,
+            secret,
+        )
+    }
+    /// Quote a purchase whose request also supplies the snapshot `files` the
+    /// guest reads; the offer's packet must already digest them.
+    #[allow(clippy::too_many_arguments)]
+    pub fn quote_plugin_supplied(
+        &mut self,
+        id: &str,
+        offer: Offer,
+        request: String,
+        files: std::collections::BTreeMap<String, String>,
+        current: Selection,
+        now: u64,
+        secret: Option<String>,
+    ) -> Result<View> {
         if current.context.team_policy.is_some() {
             return Err("This workspace has an active team policy; paid plugin execution is not a qualified route. Original financial recovery remains available.".into());
         }
@@ -583,7 +654,7 @@ impl Store {
         {
             return Err("Plugin quote needs current customer rights, a fresh identity, and resolved payer liability.".into());
         }
-        offer.validate(&request, &current, now)?;
+        offer.validate(&request, &files, &current, now)?;
         let mut next = self.book.clone();
         next.plugin_purchases.insert(
             id.into(),
@@ -591,6 +662,7 @@ impl Store {
                 selection: current,
                 offer,
                 request,
+                files,
                 created_at_ms: now,
                 approval: None,
                 phase: Phase::Quoted,
@@ -640,7 +712,7 @@ impl Store {
         {
             return Err("Approve the exact reviewed plugin quote with its original customer and payer, once.".into());
         }
-        p.offer.validate(&p.request, current, now)?;
+        p.offer.validate(&p.request, &p.files, current, now)?;
         let a = Approval {
             quote: q,
             approved_at_ms: now,
@@ -705,14 +777,14 @@ impl Store {
         {
             return Err("Plugin purchase is unapproved, changed, or already attempted; it cannot pay again.".into());
         }
-        p.offer.validate(&p.request, current, now)?;
+        p.offer.validate(&p.request, &p.files, current, now)?;
         validate_approval(
             p.approval.as_ref().ok_or("Missing plugin approval.")?,
             &p.offer,
             current,
             now,
         )?;
-        let result = (p.offer.clone(), p.offer.body(&p.request));
+        let result = (p.offer.clone(), p.offer.body_with(&p.request, &p.files));
         let mut next = self.book.clone();
         next.plugin_purchases.get_mut(id).unwrap().phase = Phase::Paying;
         self.persist(next)?;
@@ -720,6 +792,10 @@ impl Store {
     }
     pub fn plugin_request(&self, id: &str) -> Result<&str> {
         Ok(&self.plugin(id)?.request)
+    }
+    /// The snapshot files the purchase's request supplied, if any.
+    pub fn plugin_files(&self, id: &str) -> Result<&std::collections::BTreeMap<String, String>> {
+        Ok(&self.plugin(id)?.files)
     }
     /// The caller authenticates the original customer before beginning payment.
     pub fn plugin_invocation_authorization(
@@ -893,7 +969,7 @@ impl Store {
         }
         // A reviewed rotation may read the original result. It cannot change
         // the historical principal, alias, offer, or once-only payment fence.
-        Ok((p.offer.clone(), p.offer.body(&p.request), p.recovery_secret.clone().ok_or("This older purchase has no private recovery authorization; retain its receipt for support.")?))
+        Ok((p.offer.clone(), p.offer.body_with(&p.request, &p.files), p.recovery_secret.clone().ok_or("This older purchase has no private recovery authorization; retain its receipt for support.")?))
     }
     /// Authenticate native reads even after canonical linkage is retired or revoked.
     pub async fn plugin_native_reader(&self, id: &str) -> Result<NativeReader> {
@@ -949,7 +1025,7 @@ impl Store {
         {
             return Err("Recovery needs current native read authentication, the original source, and exact resident binding.".into());
         }
-        Ok((p.offer.clone(), p.offer.body(&p.request), p.recovery_secret.clone().ok_or("This older purchase has no private recovery authorization; retain its receipt for support.")?))
+        Ok((p.offer.clone(), p.offer.body_with(&p.request, &p.files), p.recovery_secret.clone().ok_or("This older purchase has no private recovery authorization; retain its receipt for support.")?))
     }
     /// An exact resident lookup can recover a lost payment acknowledgment. It never pays.
     pub fn plugin_recovered_charge(

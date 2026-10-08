@@ -40,7 +40,73 @@ pub struct Snapshot {
     entries: BTreeMap<String, Entry>,
 }
 
+/// The version of a snapshot a caller supplies with its request: named
+/// UTF-8 texts, nothing captured from a workspace.
+pub const SUPPLIED_SNAPSHOT: &str = "openagents.plugin.supplied-snapshot.v1";
+/// The most entries a supplied snapshot may carry.
+pub const SUPPLIED_ENTRIES: usize = 8;
+/// The observation version every supplied entry records.
+pub const SUPPLIED_VERSION: &str = "supplied";
+
 impl Snapshot {
+    /// A snapshot of caller-supplied texts, one complete file per entry.
+    ///
+    /// `names` are the entries the guest declared it reads; `files` must
+    /// name exactly those, each a text, and together stay within
+    /// `read_bytes` and [`SUPPLIED_ENTRIES`].
+    ///
+    /// # Errors
+    ///
+    /// Returns the first bound the supplied files break, as a sentence.
+    pub fn supplied(
+        names: &[String],
+        files: &BTreeMap<String, String>,
+        read_bytes: usize,
+    ) -> Result<Self, String> {
+        if names.is_empty() {
+            return Err("the guest reads no supplied file".into());
+        }
+        if names.len() > SUPPLIED_ENTRIES {
+            return Err(format!(
+                "the guest declares more than {SUPPLIED_ENTRIES} supplied files"
+            ));
+        }
+        let declared: std::collections::BTreeSet<&str> = names.iter().map(String::as_str).collect();
+        if declared.len() != names.len() {
+            return Err("the guest declares a supplied file twice".into());
+        }
+        let given: std::collections::BTreeSet<&str> = files.keys().map(String::as_str).collect();
+        if given != declared {
+            let mut want: Vec<&str> = declared.iter().copied().collect();
+            want.sort_unstable();
+            return Err(format!(
+                "the request must supply exactly these files: {}",
+                want.join(", ")
+            ));
+        }
+        let mut total = 0usize;
+        let mut snapshot = Self::default();
+        for (name, text) in files {
+            total = total.saturating_add(text.len());
+            if total > read_bytes {
+                return Err(format!(
+                    "the supplied files exceed the guest's {read_bytes}-byte read ceiling"
+                ));
+            }
+            snapshot
+                .insert(
+                    name,
+                    Entry::File {
+                        bytes: text.as_bytes().to_vec(),
+                        version: SUPPLIED_VERSION.into(),
+                        complete: true,
+                    },
+                )
+                .map_err(|_| format!("the supplied file name {name:?} is not a logical name"))?;
+        }
+        Ok(snapshot)
+    }
+
     /// Insert `entry` under `name`.
     ///
     /// # Errors
@@ -352,5 +418,36 @@ mod tests {
             "partial capture"
         );
         assert_eq!(derivative(bytes, *complete, false).unwrap(), b"hello");
+    }
+}
+
+#[cfg(test)]
+mod supplied_tests {
+    use super::*;
+
+    fn files(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
+        pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn supplied_snapshots_hold_exactly_the_declared_texts_within_bounds() {
+        let names = vec!["meeting.md".to_string()];
+        let ok = Snapshot::supplied(&names, &files(&[("meeting.md", "hello")]), 5).unwrap();
+        assert!(matches!(
+            ok.get("meeting.md"),
+            Some(Entry::File { complete: true, version, bytes }) if version == SUPPLIED_VERSION && bytes == b"hello"
+        ));
+        assert!(Snapshot::supplied(&names, &files(&[("meeting.md", "hello!")]), 5).is_err());
+        assert!(Snapshot::supplied(&names, &files(&[("other.md", "x")]), 5).is_err());
+        assert!(Snapshot::supplied(&names, &files(&[]), 5).is_err());
+        assert!(Snapshot::supplied(&[], &files(&[]), 5).is_err());
+        assert!(Snapshot::supplied(&["../x".into()], &files(&[("../x", "x")]), 5).is_err());
+        let many: Vec<String> = (0..=SUPPLIED_ENTRIES).map(|i| format!("f{i}")).collect();
+        let given: BTreeMap<String, String> =
+            many.iter().map(|n| (n.clone(), String::new())).collect();
+        assert!(Snapshot::supplied(&many, &given, 5).is_err());
     }
 }

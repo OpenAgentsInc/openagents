@@ -16,7 +16,7 @@ use openagents_x402::{
     wire,
 };
 use serde_json::{Value, json};
-use std::{path::Path, time::Duration};
+use std::{collections::BTreeMap, path::Path, time::Duration};
 
 fn now() -> u64 {
     openagents_x402::unix_now().saturating_mul(1000)
@@ -37,6 +37,7 @@ fn parse(words: &[String]) -> Result<Args, String> {
             "purchase",
             "plugin",
             "input",
+            "file",
             "wallet-home",
             "max-msat",
             "max-fee-msat",
@@ -115,13 +116,21 @@ fn source(root: &Path, offer: &Offer) -> pay_plugin::RegistrySource {
         root.join("plugin-blobs"),
     )
 }
-fn packet(resolved: &Resolved, request: &str) -> Result<Packet, String> {
+fn packet(
+    resolved: &Resolved,
+    request: &str,
+    files: &BTreeMap<String, String>,
+) -> Result<Packet, String> {
     let p = &resolved.packet;
     let input = match &p.request_key {
         Some(k) => plugin::scope::with_request(&p.input, k, request)?,
         None => p.input.clone(),
     };
+    let snapshot = p
+        .snapshot(files)
+        .map_err(|why| format!("Supplied files do not match the signed release: {why}."))?;
     Ok(Packet {
+        snapshot: plugin::snapshot_digest(&snapshot, &BTreeMap::new()),
         module: plugin::digest(&p.wasm),
         input: plugin::digest(plugin::canonical(&input).as_bytes()),
         operation: p.operation.clone(),
@@ -274,7 +283,12 @@ fn preview(transport: &dyn Transport, url: &str) -> Result<Quote, String> {
     }
     Ok(quote)
 }
-fn resolved(source: &dyn PluginSource, offer: &Offer, request: &str) -> Result<Packet, String> {
+fn resolved(
+    source: &dyn PluginSource,
+    offer: &Offer,
+    request: &str,
+    files: &BTreeMap<String, String>,
+) -> Result<Packet, String> {
     let id = offer
         .quote
         .plugin
@@ -287,7 +301,24 @@ fn resolved(source: &dyn PluginSource, offer: &Offer, request: &str) -> Result<P
     {
         return Err("Signed plugin release or author terms changed; review a new purchase.".into());
     }
-    packet(&r, request)
+    packet(&r, request, files)
+}
+/// `NAME=PATH` options: the snapshot entries the request supplies, read
+/// from private files, each at most the 32 KiB a request text may be.
+fn supplied_files(a: &Args) -> Result<BTreeMap<String, String>, String> {
+    let mut files = BTreeMap::new();
+    for option in a.options("file") {
+        let (name, path) = option
+            .split_once('=')
+            .filter(|(name, path)| !name.is_empty() && !path.is_empty())
+            .ok_or("Each --file is NAME=PATH.")?;
+        let text = String::from_utf8(Store::private_input(Path::new(path), 32 * 1024)?)
+            .map_err(|_| "Supplied files must be UTF-8 text.")?;
+        if files.insert(name.to_owned(), text).is_some() {
+            return Err("Each supplied file name appears once.".into());
+        }
+    }
+    Ok(files)
 }
 fn execute(a: &Args) -> Result<View, String> {
     let root = Path::new(required(a, "root")?);
@@ -317,6 +348,7 @@ fn execute(a: &Args) -> Result<View, String> {
             32 * 1024,
         )?)
         .map_err(|_| "Plugin notes must be UTF-8 text.")?;
+        let files = supplied_files(a)?;
         let (_, payer) = resident(Path::new(required(a, "wallet-home")?))?;
         let max_msat = a.number::<u64>("max-msat", 0)?;
         let max_fee_msat = a.number::<u64>("max-fee-msat", 0)?;
@@ -352,6 +384,7 @@ fn execute(a: &Args) -> Result<View, String> {
                 operation: String::new(),
                 profile: String::new(),
                 limits: Value::Null,
+                snapshot: String::new(),
             },
             payer,
             max_msat,
@@ -375,11 +408,11 @@ fn execute(a: &Args) -> Result<View, String> {
         if offer.quote.plugin.as_deref() != Some(plugin) {
             return Err("Preview identifies another plugin.".into());
         }
-        offer.packet = resolved(&source(root, &offer), &offer, &request)?;
+        offer.packet = resolved(&source(root, &offer), &offer, &request, &files)?;
         if offer.quote.price_msat > max_msat {
             return Err("Plugin total exceeds the approved maximum; no invoice was paid.".into());
         }
-        let body = offer.body(&request);
+        let body = offer.body_with(&request, &files);
         offer.request_hash = binding_hash(
             &http_binding("POST", &offer.url, &body, &[])
                 .map_err(|_| "Invalid exact plugin binding.")?,
@@ -442,7 +475,7 @@ fn execute(a: &Args) -> Result<View, String> {
                 mode: binding.mode(),
             });
         }
-        return store.quote_plugin_with_recovery(id, offer, request, current, at, Some(secret));
+        return store.quote_plugin_supplied(id, offer, request, files, current, at, Some(secret));
     }
     let view = store.plugin_view(id)?;
     // Refuse a retry before opening even the payment transport.
@@ -480,8 +513,9 @@ fn execute(a: &Args) -> Result<View, String> {
         );
     }
     let supplied = store.plugin_request(id)?.to_owned();
+    let files = store.plugin_files(id)?.clone();
     let source = source(root, &view.offer);
-    let packet = resolved(&source, &view.offer, &supplied)?;
+    let packet = resolved(&source, &view.offer, &supplied, &files)?;
     if packet != view.offer.packet || preview(&transport, &view.offer.url)? != view.offer.quote {
         return Err(
             "Plugin release, packet, or price changed; review and approve a new purchase.".into(),

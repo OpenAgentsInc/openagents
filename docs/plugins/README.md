@@ -145,6 +145,23 @@ and recover stay on the installed client, and reloading a page cannot pay or
 dispatch twice. Without `--customer`, the page says purchases are
 unavailable.
 
+## Buy a step that reads files you supply
+
+A paid release may declare, in its program's `module.read`, up to eight
+logical file names its `snapshot-read` guest reads. To buy such a step,
+supply exactly those files with the request: `openagents plugin purchase
+quote ... --input FILE --file meeting.md=PATH`, then `approve` and `invoke`
+as for any purchase. The client sends the files as UTF-8 text in the request
+body (`snapshot.v = openagents.plugin.supplied-snapshot.v1`), the quote and
+approval digests cover them, and the invocation receipt's `snapshot` field is
+the digest of that supplied snapshot. The guest sees nothing but those bytes:
+no workspace, capability, network, process, or wallet. A missing, extra,
+renamed, or oversized file, a release that declares no names, or a release
+with any broader grant is refused before payment. Releases that read nothing
+keep their empty snapshot and their existing terms.
+`plugins/meeting-followup` is the example release; its fixture is
+`plugins/meeting-followup/examples/meeting.md`.
+
 ## Inspect a curated publisher or service
 
 On a Unix host, `openagents plugin discover --catalog FILE --mirror DIR --json`

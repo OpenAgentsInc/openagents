@@ -14,11 +14,19 @@
 //! The executor runs the pinned release's packet once through
 //! `plugin::invoke_with_receipt`: no workspace, no network, no host
 //! effects. A `pure` guest gets the packet only; a `snapshot-read` guest
-//! (such as `explain-error`) runs with an empty snapshot, so it reads
-//! nothing but the request it was sent. A plugin whose program is anything
-//! but one module step, or that requires capabilities, is refused with
-//! `plugin_not_invocable` before a price is quoted, so it can never be
-//! sold.
+//! that declares no `read` entries (such as `explain-error`) runs with an
+//! empty snapshot, so it reads nothing but the request it was sent. A
+//! `snapshot-read` guest that declares `read` entries (such as
+//! `meeting-followup`) runs the supplied-snapshot profile
+//! (`plugin::SUPPLIED_SNAPSHOT`): the caller sends exactly those entries as
+//! texts under `snapshot.files` in the JSON body, bounded by the release's
+//! `read_bytes` ceiling and `plugin::SUPPLIED_ENTRIES`, and the guest reads
+//! nothing else. The files are part of the signed request, so the quote,
+//! the approval, and the invocation receipt's `snapshot` digest all bind
+//! them; a missing, extra, or oversized file is refused before a price is
+//! quoted. A plugin whose program is anything but one module step, or that
+//! requires capabilities, is refused with `plugin_not_invocable` before a
+//! price is quoted, so it can never be sold.
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
@@ -45,6 +53,50 @@ pub(crate) struct Packet {
     pub input: Value,
     pub request_key: Option<String>,
     pub limits: plugin::Limits,
+    /// Snapshot entries the guest declared it reads; the caller supplies
+    /// exactly these. Empty for the one-guest envelope.
+    pub supplied: Vec<String>,
+}
+
+impl Packet {
+    /// The snapshot `files` grant this packet, or why they can't.
+    pub(crate) fn snapshot(
+        &self,
+        files: &BTreeMap<String, String>,
+    ) -> Result<plugin::Snapshot, String> {
+        if self.supplied.is_empty() {
+            if files.is_empty() {
+                return Ok(plugin::Snapshot::default());
+            }
+            return Err("this guest reads no supplied files; the supplied-snapshot profile is unavailable for it".into());
+        }
+        plugin::Snapshot::supplied(&self.supplied, files, self.limits.read_bytes)
+    }
+}
+
+/// The supplied files in an approved request body: `snapshot.files`, a
+/// text per entry name, under the pinned snapshot version.
+pub(crate) fn supplied_files(body: &Value) -> Result<BTreeMap<String, String>, String> {
+    let Some(snapshot) = body.get("snapshot") else {
+        return Ok(BTreeMap::new());
+    };
+    if snapshot["v"] != plugin::SUPPLIED_SNAPSHOT {
+        return Err(format!(
+            "the request's snapshot must be {}; other snapshot profiles are unavailable",
+            plugin::SUPPLIED_SNAPSHOT
+        ));
+    }
+    let files = snapshot["files"]
+        .as_object()
+        .ok_or("the request's snapshot.files must be an object of texts")?;
+    files
+        .iter()
+        .map(|(name, text)| {
+            text.as_str()
+                .map(|t| (name.clone(), t.to_owned()))
+                .ok_or_else(|| format!("the supplied file {name:?} is not a text"))
+        })
+        .collect()
 }
 
 /// A published plugin, resolved and pinned to one release.
@@ -121,13 +173,24 @@ pub(crate) fn packet_from_program(program: &Value) -> Result<Packet, Unpriced> {
     let name = step["name"].as_str().unwrap_or_default();
     let binding = &program["binding"]["steps"][name];
     let module = &binding["module"];
-    if binding["bounds"]["captured_input"] == true
-        || module["read"]
-            .as_array()
-            .is_some_and(|paths| !paths.is_empty())
-    {
+    let supplied: Vec<String> = match &module["read"] {
+        Value::Null => vec![],
+        Value::Array(paths) => paths
+            .iter()
+            .map(|p| p.as_str().filter(|s| !s.is_empty()).map(str::to_owned))
+            .collect::<Option<_>>()
+            .ok_or_else(|| not_invocable("the guest's read entries must be names"))?,
+        _ => return Err(not_invocable("the guest's read entries are malformed")),
+    };
+    if supplied.len() > plugin::SUPPLIED_ENTRIES {
+        return Err(not_invocable(format!(
+            "the guest reads more than {} entries; this route supplies at most that many",
+            plugin::SUPPLIED_ENTRIES
+        )));
+    }
+    if binding["bounds"]["captured_input"] == true && supplied.is_empty() {
         return Err(not_invocable(
-            "the guest requires a captured workspace; this route supplies only the request and an empty snapshot",
+            "the guest requires a captured workspace but names no entries; this route supplies only named texts",
         ));
     }
     let wasm = module["bytes_base64"]
@@ -180,7 +243,7 @@ pub(crate) fn packet_from_program(program: &Value) -> Result<Packet, Unpriced> {
             .as_object()
             .ok_or_else(|| not_invocable("guest bounds must be an object"))?
         {
-            if key == "captured_input" && value == false {
+            if key == "captured_input" && value.is_boolean() {
                 continue;
             }
             let ceiling = value
@@ -229,6 +292,7 @@ pub(crate) fn packet_from_program(program: &Value) -> Result<Packet, Unpriced> {
         input,
         request_key,
         limits,
+        supplied,
     })
 }
 
@@ -263,13 +327,19 @@ impl Invoke {
         let resolved = self.source.resolve(id)?;
         if let Ok(body) = serde_json::from_slice::<Value>(&call.request.body)
             && body.get("quote_digest").is_some()
-            && !body["request"].is_string()
         {
-            return Err(refused(
-                400,
-                "plugin_input_invalid",
-                "the approved plugin request must contain its supplied text in request",
-            ));
+            if !body["request"].is_string() {
+                return Err(refused(
+                    400,
+                    "plugin_input_invalid",
+                    "the approved plugin request must contain its supplied text in request",
+                ));
+            }
+            let files = supplied_files(&body)
+                .and_then(|files| resolved.packet.snapshot(&files).map(|_| ()));
+            if let Err(why) = files {
+                return Err(refused(400, "plugin_input_invalid", why));
+            }
         }
         let price = self
             .endpoint_msat
@@ -319,7 +389,13 @@ impl RouteExecutor for Invoke {
         let request = body["request"]
             .as_str()
             .ok_or("the approved request contains no supplied text")?;
-        let ran = run(&resolved, request, call.payment_hash.unwrap_or("unpaid"))?;
+        let files = supplied_files(&body)?;
+        let ran = run(
+            &resolved,
+            request,
+            &files,
+            call.payment_hash.unwrap_or("unpaid"),
+        )?;
         Ok(Served {
             body: ran.to_string().into_bytes(),
             content_type: Some("application/json".into()),
@@ -327,10 +403,16 @@ impl RouteExecutor for Invoke {
     }
 }
 
-/// Run `resolved`'s guest once on `request`, with no grant beyond the
-/// packet, and return its value and receipt.
-pub(crate) fn run(resolved: &Resolved, request: &str, invocation: &str) -> Result<Value, String> {
+/// Run `resolved`'s guest once on `request` and the supplied `files`, with
+/// no grant beyond the packet, and return its value and receipt.
+pub(crate) fn run(
+    resolved: &Resolved,
+    request: &str,
+    files: &BTreeMap<String, String>,
+    invocation: &str,
+) -> Result<Value, String> {
     let packet = &resolved.packet;
+    let snapshot = packet.snapshot(files)?;
     let input = match &packet.request_key {
         Some(key) => plugin::scope::with_request(&packet.input, key, request)?,
         None => packet.input.clone(),
@@ -341,7 +423,7 @@ pub(crate) fn run(resolved: &Resolved, request: &str, invocation: &str) -> Resul
         invocation,
         operation: &packet.operation,
         input: &input,
-        snapshot: &plugin::Snapshot::default(),
+        snapshot: &snapshot,
         handles: &BTreeMap::new(),
         limits: packet.limits,
         cancelled: Arc::new(AtomicBool::new(false)),
@@ -937,13 +1019,22 @@ pub(crate) mod tests {
             "plugin_not_invocable"
         );
 
-        let captured = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugins/meeting-followup");
+        let supplied = packet(&meeting_followup_dir()).unwrap();
+        assert_eq!(supplied.supplied, vec!["meeting.md".to_string()]);
+        assert_eq!(supplied.profile, plugin::Profile::SnapshotRead);
+        let mut captured_unnamed: Value = serde_json::from_str(
+            &std::fs::read_to_string(meeting_followup_dir().join("programs/meeting-followup.json"))
+                .unwrap(),
+        )
+        .unwrap();
+        captured_unnamed["binding"]["steps"]["action_items"]["module"]["read"] = json!([]);
+        let unnamed = packet(package_with_program(&captured_unnamed, "meeting-followup").path())
+            .err()
+            .unwrap();
         assert!(
-            packet(&captured)
-                .err()
-                .unwrap()
-                .message
-                .contains("captured workspace")
+            unnamed.message.contains("captured workspace"),
+            "{}",
+            unnamed.message
         );
 
         let mut substituted = explain.clone();
@@ -1007,5 +1098,218 @@ pub(crate) mod tests {
             bad("id = \"a\"\npath = \"/a\"\nprice_sats = 1\ncommand = [\"x\"]\nblossom = \"https://b\"")
                 .contains("blossom")
         );
+    }
+
+    fn meeting_followup_dir() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugins/meeting-followup")
+    }
+
+    fn package_with_program(program: &Value, name: &str) -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        let source: Value = serde_json::from_str(
+            &std::fs::read_to_string(meeting_followup_dir().join("package.json")).unwrap(),
+        )
+        .unwrap();
+        let mut package = source;
+        let text = serde_json::to_string_pretty(program).unwrap();
+        package["program"]["digest"] = json!(coder::package::digest(&text));
+        std::fs::create_dir_all(dir.path().join("programs")).unwrap();
+        std::fs::write(dir.path().join("package.json"), package.to_string()).unwrap();
+        std::fs::write(dir.path().join(format!("programs/{name}.json")), &text).unwrap();
+        dir
+    }
+
+    const FOLLOWUP: &str = "meeting-followup";
+
+    fn meeting_followup(fee_msat: u64) -> Arc<Resolved> {
+        Arc::new(Resolved {
+            id: FOLLOWUP.into(),
+            release: "0.1.0".into(),
+            author: AUTHOR.into(),
+            fee_msat,
+            packet: packet(&meeting_followup_dir()).unwrap(),
+        })
+    }
+
+    fn meeting() -> &'static str {
+        include_str!("../../../plugins/meeting-followup/examples/meeting.md")
+    }
+
+    fn supplied_body(
+        front: &Front<FileReplayStore>,
+        target: &str,
+        files: Value,
+    ) -> (Response, String) {
+        let probe =
+            json!({"request": "{}", "snapshot": {"v": plugin::SUPPLIED_SNAPSHOT, "files": files}});
+        let (preview, _) = front.handle(&post(target, &probe.to_string(), vec![]), NOW);
+        let body = json_body(&preview);
+        let mut full = probe;
+        full["quote_digest"] = body["quote_digest"].clone();
+        (preview, full.to_string())
+    }
+
+    fn paid(
+        front: &Front<FileReplayStore>,
+        receiver: &FakeReceiver,
+        target: &str,
+        input: &str,
+    ) -> (Response, String) {
+        let (challenge, _) = front.handle(&post(target, input, vec![]), NOW);
+        assert_eq!(
+            challenge.status,
+            402,
+            "{}",
+            String::from_utf8_lossy(&challenge.body)
+        );
+        let required =
+            decode_payment_required(header(&challenge, PAYMENT_REQUIRED).unwrap()).unwrap();
+        let accepted = required.accepts[0].clone();
+        let invoice = accepted.extra["invoice"].as_str().unwrap().to_string();
+        let mut proof = Map::new();
+        proof.insert("preimage".into(), json!(receiver.pay(&invoice)));
+        let signature = openagents_x402::wire::encode_header(&PaymentPayload {
+            x402_version: 2,
+            resource: None,
+            accepted,
+            payload: proof,
+            extensions: None,
+        })
+        .unwrap();
+        let (response, _) = front.handle(
+            &post(
+                target,
+                input,
+                vec![(PAYMENT_SIGNATURE.into(), signature.clone())],
+            ),
+            NOW,
+        );
+        (response, signature)
+    }
+
+    #[test]
+    fn a_supplied_snapshot_guest_reads_exactly_the_named_texts_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let receiver = Arc::new(FakeReceiver {
+            counter: AtomicU64::new(0),
+            preimages: Mutex::new(HashMap::new()),
+        });
+        let sink = Arc::new(LedgerSink::in_memory());
+        let front = front_with(
+            dir.path(),
+            receiver.clone(),
+            sink,
+            Arc::new(OnePlugin(meeting_followup(1_000))),
+        );
+        let target = format!("/v1/plugins/{FOLLOWUP}/invoke");
+
+        // No snapshot at all: refused before a price, as an input error.
+        let (none, event) = front.handle(&post(&target, r#"{"request":"{}"}"#, vec![]), NOW);
+        assert_eq!(none.status, 409);
+        let (none, _) = front.handle(
+            &post(
+                &target,
+                &json!({"quote_digest": json_body(&none)["quote_digest"], "request": "{}"})
+                    .to_string(),
+                vec![],
+            ),
+            NOW,
+        );
+        assert_eq!(none.status, 400, "{}", String::from_utf8_lossy(&none.body));
+        assert!(String::from_utf8_lossy(&none.body).contains("meeting.md"));
+        assert_ne!(event.outcome, "executed");
+
+        // A wrong name, an extra name, a non-text, or an oversized file: refused.
+        for files in [
+            json!({"notes.md": meeting()}),
+            json!({"meeting.md": meeting(), "extra.md": "x"}),
+            json!({"meeting.md": 7}),
+            json!({"meeting.md": "a".repeat(65_537)}),
+        ] {
+            let (_, input) = supplied_body(&front, &target, files);
+            let (refusal, _) = front.handle(&post(&target, &input, vec![]), NOW);
+            assert_eq!(
+                refusal.status,
+                400,
+                "{}",
+                String::from_utf8_lossy(&refusal.body)
+            );
+        }
+        // Another snapshot version is unavailable.
+        let other = json!({"quote_digest": "", "request": "{}", "snapshot": {"v": "other", "files": {"meeting.md": meeting()}}});
+        let (refusal, _) = front.handle(&post(&target, &other.to_string(), vec![]), NOW);
+        assert_eq!(refusal.status, 400);
+        assert!(String::from_utf8_lossy(&refusal.body).contains(plugin::SUPPLIED_SNAPSHOT));
+
+        // Exactly the declared file: priced, paid once, executed, and the
+        // receipt binds the supplied snapshot rather than the empty one.
+        let (preview, input) = supplied_body(&front, &target, json!({"meeting.md": meeting()}));
+        assert_eq!(
+            preview.status,
+            409,
+            "{}",
+            String::from_utf8_lossy(&preview.body)
+        );
+        let (ran, signature) = paid(&front, &receiver, &target, &input);
+        assert_eq!(ran.status, 200, "{}", String::from_utf8_lossy(&ran.body));
+        let ran = json_body(&ran);
+        assert_eq!(ran["status"], "ok");
+        assert_eq!(ran["receipt"]["profile"], "snapshot-read");
+        let mut files = BTreeMap::new();
+        files.insert("meeting.md".to_string(), meeting().to_string());
+        let snapshot = plugin::Snapshot::supplied(&["meeting.md".into()], &files, 65_536).unwrap();
+        assert_eq!(
+            ran["receipt"]["snapshot"],
+            json!(plugin::snapshot_digest(&snapshot, &BTreeMap::new()))
+        );
+        assert_ne!(
+            ran["receipt"]["snapshot"],
+            json!(plugin::snapshot_digest(
+                &plugin::Snapshot::default(),
+                &BTreeMap::new()
+            ))
+        );
+        assert!(
+            ran["value"].to_string().contains("source_line") || !ran["value"].is_null(),
+            "{}",
+            ran["value"]
+        );
+
+        // Replaying the spent proof is refused: no second charge, no second run.
+        let (again, event) = front.handle(
+            &post(&target, &input, vec![(PAYMENT_SIGNATURE.into(), signature)]),
+            NOW,
+        );
+        assert_eq!(
+            again.status,
+            402,
+            "{}",
+            String::from_utf8_lossy(&again.body)
+        );
+        assert_ne!(event.outcome, "executed");
+    }
+
+    #[test]
+    fn the_one_guest_release_gains_no_supplied_snapshot() {
+        let dir = tempfile::tempdir().unwrap();
+        let receiver = Arc::new(FakeReceiver {
+            counter: AtomicU64::new(0),
+            preimages: Mutex::new(HashMap::new()),
+        });
+        let front = front(dir.path(), receiver, Arc::new(LedgerSink::in_memory()));
+        let target = format!("/v1/plugins/{ID}/invoke");
+        let (_, input) = supplied_body(&front, &target, json!({"meeting.md": meeting()}));
+        let (refusal, _) = front.handle(&post(&target, &input, vec![]), NOW);
+        assert_eq!(
+            refusal.status,
+            400,
+            "{}",
+            String::from_utf8_lossy(&refusal.body)
+        );
+        assert!(String::from_utf8_lossy(&refusal.body).contains("unavailable"));
+        // Without files the existing envelope is unchanged.
+        let plain = approved(&front, &target, ERROR);
+        let (challenge, _) = front.handle(&post(&target, &plain, vec![]), NOW);
+        assert_eq!(challenge.status, 402);
     }
 }

@@ -19,6 +19,9 @@ pub use engine::{
 };
 pub use replay::{
     ENGINE, EXACT_REPLAY, InvocationReceipt, Outcome, RECEIPT_SCHEMA, Replay, canonical,
-    invoke_with_receipt, replay,
+    invoke_with_receipt, replay, snapshot_digest,
 };
-pub use snapshot::{Entry, Snapshot, decode_base64, derivative, encode_base64};
+pub use snapshot::{
+    Entry, SUPPLIED_ENTRIES, SUPPLIED_SNAPSHOT, SUPPLIED_VERSION, Snapshot, decode_base64,
+    derivative, encode_base64,
+};
