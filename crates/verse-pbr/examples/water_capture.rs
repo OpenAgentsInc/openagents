@@ -919,11 +919,25 @@ fn physical_sampled(
         wait()?;
         pixels = read(gpu, &texture, frame(photo))?;
         photo.submitted();
+    } else if sampled {
+        // Use actual 60 Hz frame intervals so a busy worker cannot appear
+        // cheaper merely because display frames were submitted in bursts.
+        // Keep the queue fence separate and exclude the cadence sleep.
+        let interval = std::time::Duration::from_secs_f64(1.0 / 60.0);
+        for index in 0..360 {
+            let frame_started = Instant::now();
+            let encoder = frame(photo);
+            let submitted = Instant::now();
+            gpu.queue.submit([encoder.finish()]);
+            photo.submitted();
+            wait()?;
+            if index >= 120 { times.push(submitted.elapsed().as_secs_f64() * 1e3); }
+            std::thread::sleep(interval.saturating_sub(frame_started.elapsed()));
+        }
     } else {
-        // Frames submitted back to back and waited on once a batch, so the
-        // time is the GPU's throughput rather than one submission's
-        // latency.
-        for round in 0..=if sampled { 35 } else { ROUNDS } {
+        // The retained capture bench measures throughput, separately from
+        // W11's paced completed-job measurements.
+        for round in 0..=ROUNDS {
             let started = Instant::now();
             for _ in 0..BATCH {
                 let encoder = frame(photo);
@@ -1437,7 +1451,9 @@ mod w11 {
                 ["pond-noon", "pond-posts", "open-storm", "waterline", "under"].contains(&v.name)) {
                 let mut photo = Photo::new(&gpu.device, &gpu.queue, capability(tier), wgpu::TextureFormat::Rgba8UnormSrgb).unwrap();
                 let mut dry_photo = Photo::new(&gpu.device, &gpu.queue, capability(tier), wgpu::TextureFormat::Rgba8UnormSrgb).unwrap();
-                let (_, dry_fence_ms, _, _) = physical(&gpu, &mut dry_photo, tier, &spec, Wet::Dry, BUDGET_SIZE).unwrap();
+                let mut dry_samples = Vec::new();
+                let (_, dry_fence_ms, _, _) = physical_sampled(&gpu, &mut dry_photo, tier, &spec, Wet::Dry,
+                    BUDGET_SIZE, Some(&mut dry_samples)).unwrap();
                 let mut samples = Vec::new();
                 let (_, fence_ms, _, bytes) = physical_sampled(&gpu, &mut photo, tier, &spec, Wet::Tier,
                     BUDGET_SIZE, Some(&mut samples)).unwrap();
@@ -1472,7 +1488,8 @@ mod w11 {
                 let filename = format!("native-{}-{}.png", tier_name(tier), spec.name);
                 png(&directory.join(&filename), &wet).unwrap();
                 records.push(json!({"tier":tier_name(tier),"view":spec.name,"adapter":gpu.adapter,
-                    "size":BUDGET_SIZE,"timing":"native pass timestamps when valid; queue fence is separately labeled",
+                    "size":BUDGET_SIZE,"cadence_hz":60,"steady_frames":steady.len(),
+                    "timing":"paced native pass timestamps when valid; submit-to-fence wall time excludes cadence sleep",
                     "gpu_ms":gpu_ms,"gpu_passes_ms":["mirror","opaque (excluded)","color and depth copies","surface"],
                     "gpu_bytes":bytes,"main_ms":main,"worker_ms":worker,
                     "main_cpu_clock":last.main_cpu_ms.is_some(),"worker_cpu_clock":last.worker_cpu_supported,
