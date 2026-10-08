@@ -105,6 +105,8 @@ struct Frame {
     /// x lamp count; y the scale from emitted luminance to the shaded
     /// signal (the key's exposure on a neon stage, 1 in space).
     lamp_params: [f32; 4],
+    /// One-based sun indices, second weight, and sun/sky strength.
+    baked_sun: [f32; 4],
     /// Per lamp: position and range (m), then pre-exposed color times
     /// candela.
     lamps: [[f32; 4]; 2 * super::MAX_LAMPS],
@@ -530,6 +532,7 @@ pub struct TexturedGpu {
     /// The baked lamp light, in the light texture's layout once a lamp
     /// layer arrives, and one texel wide before.
     lamps: wgpu::Texture,
+    suns: wgpu::Texture,
     light_group: wgpu::BindGroup,
     light_rows: u32,
     texels: usize,
@@ -750,6 +753,17 @@ impl TexturedGpu {
         queue: &wgpu::Queue,
         lights: impl Iterator<Item = [u8; 4]>,
     ) {
+        Self::write_texels_at(texture, count, layer_rows, queue, lights, 0);
+    }
+
+    fn write_texels_at(
+        texture: &wgpu::Texture,
+        count: usize,
+        layer_rows: u32,
+        queue: &wgpu::Queue,
+        lights: impl Iterator<Item = [u8; 4]>,
+        layer_offset: u32,
+    ) {
         let size = texture.size();
         // Only the rows the lights fill change.
         let rows = (count as u64).div_ceil(u64::from(size.width)).max(1) as u32;
@@ -757,7 +771,7 @@ impl TexturedGpu {
         for (texel, light) in texels.chunks_exact_mut(4).zip(lights) {
             texel.copy_from_slice(&light);
         }
-        for layer in 0..size.depth_or_array_layers {
+        for layer in 0..size.depth_or_array_layers - layer_offset {
             let first = layer * layer_rows;
             if first >= rows {
                 break;
@@ -771,7 +785,7 @@ impl TexturedGpu {
                     origin: wgpu::Origin3d {
                         x: 0,
                         y: 0,
-                        z: layer,
+                        z: layer + layer_offset,
                     },
                     aspect: wgpu::TextureAspect::All,
                 },
@@ -1538,7 +1552,7 @@ impl Photo {
         };
         let light_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("verse textured light"),
-            entries: &[light_entry(2), light_entry(7)],
+            entries: &[light_entry(2), light_entry(7), light_entry(8)],
         });
         // Group 1 holds the guides' adapted luminance, which the pass binds
         // for the legacy faces anyway; textured shaders do not read it.
@@ -2391,7 +2405,7 @@ impl Photo {
                 size.height,
                 size.depth_or_array_layers,
             );
-            gpu.light_group = self.light_group(device, &gpu.light, &gpu.lamps);
+            gpu.light_group = self.light_group(device, &gpu.light, &gpu.lamps, &gpu.suns);
         }
         TexturedGpu::write_texels(
             &gpu.lamps,
@@ -2402,12 +2416,150 @@ impl Photo {
         );
     }
 
-    /// The bind group of a light texture and a lamp texture.
+    /// Uploads immutable sunlight once, followed by a zeroed damage mask.
+    pub fn write_textured_layers(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        gpu: &mut TexturedGpu,
+        layers: &super::baked_layers::Layers,
+    ) {
+        if layers.vertex_count() != gpu.texels || gpu.figure {
+            return;
+        }
+        let size = gpu.light.size();
+        let depth = size.depth_or_array_layers;
+        gpu.suns = light_texture(
+            device,
+            "verse textured sun layers",
+            size.width,
+            size.height,
+            depth * (layers.suns.len() as u32 + 1),
+        );
+        for (i, sun) in layers.suns.iter().enumerate() {
+            TexturedGpu::write_texels_at(
+                &gpu.suns,
+                gpu.texels,
+                gpu.light_rows,
+                queue,
+                sun.vertices.iter().copied(),
+                i as u32 * depth,
+            );
+        }
+        TexturedGpu::write_texels_at(
+            &gpu.suns,
+            gpu.texels,
+            gpu.light_rows,
+            queue,
+            std::iter::repeat([0; 4]),
+            layers.suns.len() as u32 * depth,
+        );
+        gpu.light_group = self.light_group(device, &gpu.light, &gpu.lamps, &gpu.suns);
+    }
+
+    /// Applies the current fallback mask after a layer or fallback delivery.
+    pub fn write_textured_mask(&self, queue: &wgpu::Queue, gpu: &TexturedGpu, indices: &[u32]) {
+        if gpu.suns.width() != instanced::LIGHT_WIDTH || gpu.figure {
+            return;
+        }
+        let offset = gpu.suns.size().depth_or_array_layers - gpu.light.size().depth_or_array_layers;
+        let mut mask = vec![[0; 4]; gpu.texels];
+        for &index in indices {
+            if let Some(texel) = mask.get_mut(index as usize) {
+                texel[3] = 255;
+            }
+        }
+        TexturedGpu::write_texels_at(
+            &gpu.suns,
+            gpu.texels,
+            gpu.light_rows,
+            queue,
+            mask.into_iter(),
+            offset,
+        );
+    }
+
+    /// Updates damaged vertices and their mask without rewriting the town.
+    pub fn write_textured_patches(
+        &self,
+        queue: &wgpu::Queue,
+        gpu: &TexturedGpu,
+        patches: &[textured::LightPatch],
+    ) {
+        if gpu.figure {
+            return;
+        }
+        let depth = gpu.light.size().depth_or_array_layers;
+        let mask_offset = (gpu.suns.width() == instanced::LIGHT_WIDTH)
+            .then(|| gpu.suns.size().depth_or_array_layers - depth);
+        for patch in patches {
+            let mut first = patch.first;
+            for lights in patch.lights.chunks(instanced::LIGHT_WIDTH as usize) {
+                // A row boundary may split a patch even when it fits a row.
+                let mut used = 0;
+                while used < lights.len() && (first as usize) < gpu.texels {
+                    let x = first % instanced::LIGHT_WIDTH;
+                    let count = (lights.len() - used)
+                        .min((instanced::LIGHT_WIDTH - x) as usize)
+                        .min(gpu.texels - first as usize);
+                    let row = first / instanced::LIGHT_WIDTH;
+                    let origin = wgpu::Origin3d {
+                        x,
+                        y: row % gpu.light_rows,
+                        z: row / gpu.light_rows,
+                    };
+                    let extent = wgpu::Extent3d {
+                        width: count as u32,
+                        height: 1,
+                        depth_or_array_layers: 1,
+                    };
+                    let layout = wgpu::TexelCopyBufferLayout {
+                        offset: 0,
+                        bytes_per_row: None,
+                        rows_per_image: None,
+                    };
+                    queue.write_texture(
+                        wgpu::TexelCopyTextureInfo {
+                            texture: &gpu.light,
+                            mip_level: 0,
+                            origin,
+                            aspect: wgpu::TextureAspect::All,
+                        },
+                        bytemuck::cast_slice(&lights[used..used + count]),
+                        layout,
+                        extent,
+                    );
+                    if let Some(mask_offset) = mask_offset {
+                        let mask = vec![[0, 0, 0, if patch.dynamic { 255u8 } else { 0 }]; count];
+                        queue.write_texture(
+                            wgpu::TexelCopyTextureInfo {
+                                texture: &gpu.suns,
+                                mip_level: 0,
+                                origin: wgpu::Origin3d {
+                                    z: origin.z + mask_offset,
+                                    ..origin
+                                },
+                                aspect: wgpu::TextureAspect::All,
+                            },
+                            bytemuck::cast_slice(&mask),
+                            layout,
+                            extent,
+                        );
+                    }
+                    first += count as u32;
+                    used += count;
+                }
+            }
+        }
+    }
+
+    /// The bind group of sky, lamps, sunlight, and the damage mask.
     fn light_group(
         &self,
         device: &wgpu::Device,
         light: &wgpu::Texture,
         lamps: &wgpu::Texture,
+        suns: &wgpu::Texture,
     ) -> wgpu::BindGroup {
         let view = |texture: &wgpu::Texture| {
             texture.create_view(&wgpu::TextureViewDescriptor {
@@ -2415,7 +2567,7 @@ impl Photo {
                 ..Default::default()
             })
         };
-        let (light, lamps) = (view(light), view(lamps));
+        let (light, lamps, suns) = (view(light), view(lamps), view(suns));
         device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("verse textured light"),
             layout: &self.light_layout,
@@ -2427,6 +2579,10 @@ impl Photo {
                 wgpu::BindGroupEntry {
                     binding: 7,
                     resource: wgpu::BindingResource::TextureView(&lamps),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 8,
+                    resource: wgpu::BindingResource::TextureView(&suns),
                 },
             ],
         })
@@ -2561,7 +2717,8 @@ impl Photo {
             layers,
         );
         let lamps = light_texture(device, "verse textured no lamps", 1, 1, 2);
-        let light_group = self.light_group(device, &light, &lamps);
+        let suns = light_texture(device, "verse textured no suns", 1, 1, 2);
+        let light_group = self.light_group(device, &light, &lamps, &suns);
         let gpu = TexturedGpu {
             vertices: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("verse textured vertices"),
@@ -2585,6 +2742,7 @@ impl Photo {
             groups,
             light,
             lamps,
+            suns,
             light_group,
             light_rows,
             texels: prepared.lights.len(),
@@ -3055,6 +3213,7 @@ impl Photo {
             }),
             params: [camera.star_gain, sky.time, pixel_angle, 1.0],
             lamp_params: [0.0, 1.0, 0.0, 0.0],
+            baked_sun: [0.0; 4],
             metering: [
                 0.18,
                 2f32.powf(camera.ev100 - camera.ev_max),
@@ -3601,6 +3760,15 @@ impl Photo {
                 0.0
             };
             uniform.lamp_params = [0.0, exposure, baked_lamps, 0.0];
+            let sun = neon
+                .baked_sun
+                .map(|value| if value.is_finite() { value } else { 0.0 });
+            uniform.baked_sun = [
+                sun[0].clamp(0.0, super::baked_layers::MAX_SUNS as f32),
+                sun[1].clamp(0.0, super::baked_layers::MAX_SUNS as f32),
+                sun[2].clamp(0.0, 1.0),
+                sun[3].clamp(0.0, 16.0),
+            ];
             self.last_lighting.selected_points =
                 uniform.set_lamps(neon, view, self.capability.quality.tier, exposure);
             uniform.probe_origin = probes.origin.extend(probes.cell).to_array();
@@ -4830,7 +4998,7 @@ mod tests {
     }
 
     #[test]
-    fn sprite_center_lighting_translates_to_webgl2_within_texture_slots() {
+    fn scene_lighting_translates_to_webgl2_within_texture_slots() {
         use naga::back::glsl;
         let shared = crate::shading::source(include_str!("photo.wgsl"));
         let source = verse_gfx::gles::wgsl(&shared, true);
@@ -4871,78 +5039,96 @@ mod tests {
             binding_map,
             zero_initialize_workgroup_memory: true,
         };
-        let mut textures = std::collections::BTreeSet::new();
-        let mut texture_units = std::collections::BTreeSet::new();
-        for (entry, stage) in [
-            ("vs_sprite", naga::ShaderStage::Vertex),
-            ("fs_sprite", naga::ShaderStage::Fragment),
+        for (vertex, fragment) in [
+            ("vs_sprite", "fs_sprite"),
+            ("vs_textured", "fs_textured"),
+            ("vs_textured", "fs_textured_masked"),
+            ("vs_textured", "fs_textured_blend"),
         ] {
-            let index = module
-                .entry_points
-                .iter()
-                .position(|point| point.name == entry)
-                .unwrap();
-            for (handle, var) in module.global_variables.iter() {
-                if !info.get_entry_point(index)[handle].is_empty()
-                    && matches!(module.types[var.ty].inner, naga::TypeInner::Image { .. })
-                {
-                    textures.insert(var.name.clone().unwrap());
+            let mut textures = std::collections::BTreeSet::new();
+            let mut texture_units = std::collections::BTreeSet::new();
+            for (entry, stage) in [
+                (vertex, naga::ShaderStage::Vertex),
+                (fragment, naga::ShaderStage::Fragment),
+            ] {
+                let index = module
+                    .entry_points
+                    .iter()
+                    .position(|point| point.name == entry)
+                    .unwrap();
+                for (handle, var) in module.global_variables.iter() {
+                    if !info.get_entry_point(index)[handle].is_empty()
+                        && matches!(module.types[var.ty].inner, naga::TypeInner::Image { .. })
+                    {
+                        textures.insert(var.name.clone().unwrap());
+                    }
                 }
+                let (processed, validated) = naga::back::pipeline_constants::process_overrides(
+                    &module,
+                    &info,
+                    Some((stage, entry)),
+                    &Default::default(),
+                )
+                .unwrap();
+                let pipeline = glsl::PipelineOptions {
+                    shader_stage: stage,
+                    entry_point: entry.into(),
+                    multiview: None,
+                };
+                let mut out = String::new();
+                let reflection = glsl::Writer::new(
+                    &mut out,
+                    &processed,
+                    &validated,
+                    &options,
+                    &pipeline,
+                    naga::proc::BoundsCheckPolicies::default(),
+                )
+                .unwrap()
+                .write()
+                .unwrap();
+                for mapping in reflection.texture_mapping.values() {
+                    texture_units.insert((
+                        processed.global_variables[mapping.texture]
+                            .name
+                            .clone()
+                            .unwrap(),
+                        mapping.sampler.map(|sampler| {
+                            processed.global_variables[sampler].name.clone().unwrap()
+                        }),
+                    ));
+                }
+                assert!(!out.contains("#extension"), "{entry} requires an extension");
             }
-            let (processed, validated) = naga::back::pipeline_constants::process_overrides(
-                &module,
-                &info,
-                Some((stage, entry)),
-                &Default::default(),
-            )
-            .unwrap();
-            let pipeline = glsl::PipelineOptions {
-                shader_stage: stage,
-                entry_point: entry.into(),
-                multiview: None,
+            let required: &[&str] = if vertex == "vs_sprite" {
+                &[
+                    "shadow_map",
+                    "probe_r",
+                    "probe_g",
+                    "probe_b",
+                    "fx_scene_depth",
+                ]
+            } else {
+                &[
+                    "shadow_map",
+                    "light_map",
+                    "lamp_map",
+                    "sun_map",
+                    "base_color",
+                ]
             };
-            let mut out = String::new();
-            let reflection = glsl::Writer::new(
-                &mut out,
-                &processed,
-                &validated,
-                &options,
-                &pipeline,
-                naga::proc::BoundsCheckPolicies::default(),
-            )
-            .unwrap()
-            .write()
-            .unwrap();
-            for mapping in reflection.texture_mapping.values() {
-                texture_units.insert((
-                    processed.global_variables[mapping.texture]
-                        .name
-                        .clone()
-                        .unwrap(),
-                    mapping
-                        .sampler
-                        .map(|sampler| processed.global_variables[sampler].name.clone().unwrap()),
-                ));
+            for &required in required {
+                assert!(
+                    textures.contains(required),
+                    "{vertex}/{fragment} needs {required}"
+                );
             }
-            assert!(!out.contains("#extension"), "{entry} requires an extension");
-        }
-        for required in [
-            "shadow_map",
-            "probe_r",
-            "probe_g",
-            "probe_b",
-            "fx_scene_depth",
-        ] {
             assert!(
-                textures.contains(required),
-                "sprite lighting/fade needs {required}"
+                texture_units.len() <= 16,
+                "{vertex}/{fragment} uses {} GLES texture units: {texture_units:?}",
+                texture_units.len()
             );
         }
-        assert!(
-            texture_units.len() <= 16,
-            "sprite program uses {} GLES texture units: {texture_units:?}",
-            texture_units.len()
-        );
     }
 
     #[test]

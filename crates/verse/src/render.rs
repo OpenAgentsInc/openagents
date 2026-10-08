@@ -3090,15 +3090,30 @@ impl Scene {
         // A finished bake replaces the light channel; the merge order is the
         // bake's own. Baked layers may deliver again when the sun moves to
         // another baked direction, and may bring lamp light.
-        let (baked, lamps) = match (&self.textured, &self.textured_baked) {
-            (Some(_), Some(slot)) => (slot.take(), slot.take_lamps()),
-            _ => (None, None),
+        let (baked, lamps, layers, mask, patches) = match (&self.textured, &self.textured_baked) {
+            (Some(_), Some(slot)) => (
+                slot.take(),
+                slot.take_lamps(),
+                slot.take_layers(),
+                slot.take_mask(),
+                slot.take_patches(),
+            ),
+            _ => (None, None, None, None, Vec::new()),
         };
         if let (Some(gpu), Some(lights)) = (&self.textured, baked) {
             gpu.write_baked(queue, &lights);
         }
         if let (Some(gpu), Some(lamps)) = (&mut self.textured, lamps) {
             photo.write_textured_lamps(device, queue, gpu, &lamps);
+        }
+        if let (Some(gpu), Some(layers)) = (&mut self.textured, layers) {
+            photo.write_textured_layers(device, queue, gpu, &layers);
+        }
+        if let (Some(gpu), Some(mask)) = (&self.textured, mask) {
+            photo.write_textured_mask(queue, gpu, &mask);
+        }
+        if let Some(gpu) = &self.textured {
+            photo.write_textured_patches(queue, gpu, &patches);
         }
         if let Some(figure) = &dynamic.figure {
             if self

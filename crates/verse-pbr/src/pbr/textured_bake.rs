@@ -969,7 +969,7 @@ fn surface(
 pub struct LayerChoice {
     pub layers: Arc<super::baked_layers::Layers>,
     /// The sun direction whose bounce joins the sky's, if any.
-    pub sun: Option<usize>,
+    pub sun: super::baked_layers::SunBlend,
     /// How strongly, as [`super::baked_layers::Layers::sun_ratio`] gives.
     pub ratio: f32,
 }
@@ -993,9 +993,10 @@ impl LayerChoice {
         }
         self.layers.validate()?;
         Ok(Layered {
-            lights: self.layers.lights(self.sun, self.ratio),
+            lights: self.layers.sky.clone(),
             lamps: self.layers.lamp_texels(),
-            probes: self.layers.probes(self.sun, self.ratio),
+            probes: self.layers.blended_probes(self.sun, self.ratio),
+            layers: self.layers.clone(),
         })
     }
 }
@@ -1008,6 +1009,7 @@ pub struct Layered {
     /// The lamp texture's texels, in the same order.
     pub lamps: Vec<[u8; 4]>,
     pub probes: AmbientProbes,
+    pub layers: Arc<super::baked_layers::Layers>,
 }
 
 /// What a finished job produced.
@@ -1179,6 +1181,7 @@ impl BakeJob {
                 self.layered = true;
                 self.slot.deliver_lights(layered.lights);
                 self.slot.deliver_lamps(layered.lamps);
+                self.slot.deliver_layers(layered.layers);
                 Some(layered.probes)
             }
         }
@@ -1590,12 +1593,16 @@ mod tests {
         let scene = Arc::new(scene);
         let choice = LayerChoice {
             layers: layers.clone(),
-            sun: Some(0),
+            sun: super::super::baked_layers::SunBlend {
+                first: Some(0),
+                ..Default::default()
+            },
             ratio: 1.0,
         };
         let mut job = BakeJob::start_layered(scene.clone(), LIGHT, settings(), 1, Some(choice));
         let probes = finish(&mut job).unwrap();
         assert!(job.layered());
+        assert!(Arc::ptr_eq(&scene.baked.take_layers().unwrap(), &layers));
         assert_eq!(probes.grid.data[0][0], 100.0);
         assert_eq!(scene.baked.take().unwrap(), layers.sky);
         let lamps = scene.baked.take_lamps().unwrap();
@@ -1614,7 +1621,10 @@ mod tests {
         for layers in [None, Some(stale)] {
             let choice = layers.map(|layers| LayerChoice {
                 layers: Arc::new(layers),
-                sun: Some(0),
+                sun: super::super::baked_layers::SunBlend {
+                    first: Some(0),
+                    ..Default::default()
+                },
                 ratio: 1.0,
             });
             let mut job = BakeJob::start_layered(scene.clone(), LIGHT, settings(), 2, choice);

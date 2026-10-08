@@ -317,6 +317,9 @@ pub struct Neon {
     /// How brightly a textured scene's baked lamp layer burns, 0 for off to 1
     /// for as baked ([`baked_layers`]), such as from dusk to dawn.
     pub baked_lamps: f32,
+    /// Baked sun interpolation: one-based layer indices, second weight, and
+    /// sun/sky strength. Zero indices disable baked sunlight.
+    pub baked_sun: [f32; 4],
     /// The output pass's grade.
     pub grade: Grade,
     /// The key and rim lights' linear colors, multiplied with their lux:
@@ -542,6 +545,7 @@ impl Neon {
             soft_particles: true,
             temporal_aa: true,
             baked_lamps: 0.0,
+            baked_sun: [0.0; 4],
             grade: Grade::STAGE,
             key_color: [1.0; 3],
             rim_color: [1.0; 3],
