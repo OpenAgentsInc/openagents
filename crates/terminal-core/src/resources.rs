@@ -16,14 +16,15 @@ use workbench::{
 use crate::Application;
 use crate::layout::PaneId;
 
-/// A fresh instance ID: a digest of the process, the time, and a counter,
-/// distinct for every mount this process starts.
+/// A fresh instance ID from the mount's time and counter, and its native process
+/// when available. The ID distinguishes mounts; it grants no authority.
 pub(crate) fn instance() -> String {
     static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let mut digest = Sha256::new();
+    #[cfg(not(target_arch = "wasm32"))]
     digest.update(std::process::id().to_le_bytes());
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
+    let now = web_time::SystemTime::now()
+        .duration_since(web_time::UNIX_EPOCH)
         .unwrap_or_default();
     digest.update(now.as_nanos().to_le_bytes());
     digest.update(

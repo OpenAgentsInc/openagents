@@ -1,0 +1,42 @@
+[package]
+name = "coder-browser-web"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "A page-memory host terminal workbench with the shared Rust renderer."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+coder-browser = { path = "../coder-browser" }
+coder-access = { path = "../coder-access", default-features = false }
+coder-host-wire = { path = "../coder-host-wire" }
+coder-pty = { path = "../coder-pty", default-features = false }
+terminal-core = { path = "../terminal-core" }
+terminal-gfx = { path = "../terminal-gfx", default-features = false }
+verse-gfx = { path = "../verse-gfx", default-features = false }
+workbench = { path = "../workbench" }
+workbench-session = { path = "../workbench-session" }
+coder-ui = { path = "../coder-ui" }
+rust-native = { path = "../rust-native" }
+rust-native-web = { path = "../rust-native-web" }
+serde_json = "1"
+futures-util = "0.3"
+gloo-timers = { version = "0.3", features = ["futures"] }
+wgpu = { version = "29.0.4", features = ["webgl"] }
+bytemuck = "1.25"
+raw-window-handle = "0.6"
+wasm-bindgen = "0.2.128"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+web-sys = { version = "0.3", features = [
+    "Window", "Document", "Element", "Node", "NodeList", "Event", "EventTarget",
+    "HtmlElement", "HtmlInputElement", "HtmlTextAreaElement", "HtmlButtonElement",
+    "HtmlCanvasElement", "KeyboardEvent", "CompositionEvent", "InputEvent",
+    "PointerEvent", "WheelEvent", "Navigator", "Clipboard", "Location",
+] }
+
+[lints]
+workspace = true

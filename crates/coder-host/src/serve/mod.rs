@@ -429,6 +429,24 @@ impl Running {
         self.shared.pty.terminals()
     }
 
+    /// The features served by the current terminal owner.
+    #[must_use]
+    pub fn terminal_features(&self) -> coder_pty::ext::Features {
+        coder_pty::ext::Features {
+            sessions: true,
+            ..self.shared.pty.features()
+        }
+    }
+
+    /// Read the owned shell's actual directory for an explicit local proposal.
+    /// This grants no input; the owner rechecks the prompt before any decision.
+    pub fn terminal_proposal_binding(
+        &self,
+        terminal: &coder_pty::wire::TerminalRef,
+    ) -> std::result::Result<coder_pty::proposal::Binding, coder_pty::wire::Refusal> {
+        self.shared.pty.proposal_binding(terminal)
+    }
+
     /// The grant store this host serves from.
     #[must_use]
     pub fn authority(&self) -> &Arc<Authority> {
@@ -702,6 +720,14 @@ fn reach_events(shared: &Shared, device: &str, now: u64) -> Result<Vec<nostr::do
                 .tasks
                 .capabilities()
                 .into_iter()
+                .chain(
+                    shared
+                        .pty
+                        .features()
+                        .capabilities()
+                        .into_iter()
+                        .map(str::to_owned),
+                )
                 .chain(
                     shared
                         .engines

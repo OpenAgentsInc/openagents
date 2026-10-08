@@ -14,6 +14,7 @@ use secp256k1::SecretKey;
 use std::{collections::VecDeque, time::Duration};
 use tokio::io::{AsyncRead, AsyncWrite};
 
+pub mod pairing;
 pub mod workbench;
 
 #[cfg(target_arch = "wasm32")]
@@ -81,6 +82,65 @@ impl Admission {
     }
     pub fn host(&self) -> &str {
         &self.access.grant.host
+    }
+    /// The public key the host granted. The secret never leaves this admission.
+    pub fn device(&self) -> &str {
+        &self.access.grant.device
+    }
+    pub fn expires_at(&self) -> u64 {
+        self.access.grant.expires_at
+    }
+    pub fn features(&self) -> coder_pty::ext::Features {
+        self.features
+    }
+    /// Check page-memory authority even when the transport is idle.
+    pub fn current(&self, now: u64) -> bool {
+        now < self.access.grant.expires_at
+            && matches!(self.state, State::Ready | State::Unknown | State::Behind)
+            && self.access.verify(&self.secret, now, self.policy).is_ok()
+            && self.access.grant.rights.contains(Right::Terminal)
+    }
+    pub fn can_observe(&self, now: u64) -> bool {
+        self.current(now) && self.access.grant.rights.contains(Right::Observe)
+    }
+    /// Prepare an owned bounded read before releasing the mount's state borrow.
+    pub fn prepare_thread(
+        &self,
+        thread: &str,
+        before: Option<u64>,
+        now: u64,
+    ) -> Result<ThreadRead> {
+        if !self.can_observe(now) {
+            return Err(Error::NotAdmitted);
+        }
+        let client = coder_access::client::Client::device_at(
+            self.access.clone(),
+            self.secret,
+            self.policy,
+            now,
+        )
+        .map_err(|_| Error::NotAdmitted)?;
+        let pending = client
+            .prepare(
+                coder_access::protocol::Operation::ReadThread {
+                    thread: thread.into(),
+                    before,
+                },
+                now,
+            )
+            .map_err(|_| Error::Malformed)?;
+        let admission = Self::new(
+            self.secret,
+            self.access.clone(),
+            self.policy,
+            self.generation,
+            now,
+        )?;
+        Ok(ThreadRead {
+            admission,
+            client,
+            pending,
+        })
     }
     pub fn generation(&self) -> u64 {
         self.generation
@@ -346,6 +406,10 @@ fn incoming_size(item: &Incoming) -> usize {
 /// Relay carriage provides signed artifacts, never a grant or an input queue.
 #[allow(async_fn_in_trait)]
 pub trait Relay {
+    /// Drain a complete event already received while waiting for a command reply.
+    fn take_event(&mut self) -> Result<Option<Event>> {
+        Ok(None)
+    }
     async fn subscribe(&mut self, _host: &str, _recipient: &str, _attachment: &str) -> Result<()> {
         Err(Error::Disconnected)
     }
@@ -424,15 +488,27 @@ impl<R: Relay> Relayed<R> {
         self.admission.result(&result);
         Ok(result)
     }
+    pub fn take_incoming(&mut self, now: u64) -> Result<Option<Incoming>> {
+        if !self.admission.current(now) {
+            self.admission.revoke();
+            return Err(Error::NotAdmitted);
+        }
+        self.relay
+            .take_event()?
+            .map(|event| self.decode_incoming(event, now))
+            .transpose()
+    }
     pub async fn next(&mut self, now: u64) -> Result<Incoming> {
+        if let Some(incoming) = self.take_incoming(now)? {
+            return Ok(incoming);
+        }
         if self.admission.state != State::Ready {
             return Err(Error::Disconnected);
         }
-        self.admission
-            .access
-            .verify(&self.admission.secret, now, self.admission.policy)
-            .map_err(|_| Error::NotAdmitted)?;
         let event = self.relay.next().await?;
+        self.decode_incoming(event, now)
+    }
+    fn decode_incoming(&self, event: Event, now: u64) -> Result<Incoming> {
         let mailbox = self.attachment.as_ref().ok_or(Error::Disconnected)?;
         if event.tag_values("h").collect::<Vec<_>>() != [mailbox.as_str()] {
             return Err(Error::Malformed);
@@ -487,3 +563,41 @@ mod tests;
 #[cfg(target_arch = "wasm32")]
 pub use coder_reach::browser as reach_socket;
 pub use coder_reach::new_id as new_request_id;
+
+impl Drop for Admission {
+    fn drop(&mut self) {
+        self.secret.non_secure_erase();
+    }
+}
+
+/// An opaque original thread read. Dropping it erases its page-memory key copies.
+pub struct ThreadRead {
+    pub(crate) admission: Admission,
+    pub(crate) client: coder_access::client::Client,
+    pub(crate) pending: coder_access::client::Pending,
+}
+
+impl ThreadRead {
+    fn verify(&self, event: &Event, now: u64) -> Result<coder_access::thread::ThreadPage> {
+        if !self.admission.can_observe(now) {
+            return Err(Error::NotAdmitted);
+        }
+        let coder_access::protocol::Outcome::Thread { thread } = self
+            .client
+            .verify_reply(&self.pending, event, now)
+            .map_err(|_| Error::NotAdmitted)?
+        else {
+            return Err(Error::Malformed);
+        };
+        let coder_access::protocol::Operation::ReadThread { before, .. } = &self.pending.request.op
+        else {
+            return Err(Error::Malformed);
+        };
+        if thread.start.saturating_add(thread.turns.len() as u64)
+            != before.unwrap_or(thread.total).min(thread.total)
+        {
+            return Err(Error::Stale);
+        }
+        Ok(*thread)
+    }
+}

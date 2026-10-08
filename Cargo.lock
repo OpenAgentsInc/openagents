@@ -2841,12 +2841,42 @@ dependencies = [
  "js-sys",
  "nostr",
  "secp256k1 0.31.1",
+ "serde",
  "serde_json",
  "terminal-core",
  "tokio",
+ "url",
  "wasm-bindgen",
  "web-sys",
  "web-time",
+]
+
+[[package]]
+name = "coder-browser-web"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "coder-access",
+ "coder-browser",
+ "coder-host-wire",
+ "coder-pty",
+ "coder-ui",
+ "futures-util",
+ "gloo-timers",
+ "js-sys",
+ "raw-window-handle",
+ "rust-native",
+ "rust-native-web",
+ "serde_json",
+ "terminal-core",
+ "terminal-gfx",
+ "verse-gfx",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+ "wgpu",
+ "workbench",
+ "workbench-session",
 ]
 
 [[package]]
@@ -10245,6 +10275,7 @@ dependencies = [
  "coder-cloud",
  "coder-host",
  "coder-project",
+ "coder-pty",
  "coder-scheduler",
  "coder-ui",
  "discovery",
@@ -10271,6 +10302,7 @@ dependencies = [
  "tokio-tungstenite 0.30.0",
  "tower 0.5.3",
  "url",
+ "workbench",
 ]
 
 [[package]]

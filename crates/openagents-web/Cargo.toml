@@ -35,11 +35,13 @@ secp256k1 = { version = "0.31.1", features = ["rand"] }
 sha2 = "0.10"
 tokio = { version = "1", features = ["fs", "io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
 url = "2"
+workbench = { path = "../workbench" }
 
 [dev-dependencies]
 atif = { path = "../atif" }
 coder-cloud = { path = "../coder-cloud" }
 coder-project = { path = "../coder-project" }
+coder-pty = { path = "../coder-pty", default-features = false }
 coder-scheduler = { path = "../coder-scheduler" }
 nostr = { path = "../nostr" }
 tempfile = "3"

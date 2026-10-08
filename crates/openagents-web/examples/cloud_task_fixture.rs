@@ -12,6 +12,12 @@ mod operator_fixture;
 mod project_fixture;
 #[path = "../../coder-control/src/tests/relay.rs"]
 mod relay;
+#[allow(dead_code)]
+#[path = "support/terminal_fixture.rs"]
+mod terminal_fixture;
+#[allow(dead_code)]
+#[path = "support/thread_fixture.rs"]
+mod thread_fixture;
 
 use coder_host::Tasks;
 use serde_json::json;
@@ -43,10 +49,10 @@ fn main() -> Result<(), String> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let worker = args.first().is_some_and(|arg| arg == "--synthetic-worker");
     let args = if worker { &args[1..] } else { &args[..] };
-    let (directory, build, listen, controls, services) = match args {
-        [directory, build, listen] => (directory, build, listen, false, false),
-        [directory, build, listen, mode] if mode == "controls" || mode == "services" => (directory, build, listen, true, mode == "services"),
-        _ => return Err("usage: cloud_task_fixture NEW_SCRATCH_DIRECTORY CLOUD_WASM_DIRECTORY 127.0.0.1:PORT [controls|services]".into()),
+    let (directory, build, listen, controls, services, terminal) = match args {
+        [directory, build, listen] => (directory, build, listen, false, false, false),
+        [directory, build, listen, mode] if mode == "controls" || mode == "services" || mode == "terminal" => (directory, build, listen, true, mode == "services", mode == "terminal"),
+        _ => return Err("usage: cloud_task_fixture NEW_SCRATCH_DIRECTORY CLOUD_WASM_DIRECTORY 127.0.0.1:PORT [controls|services|terminal]".into()),
     };
     let directory = PathBuf::from(directory);
     if !directory.is_absolute() || !Path::new(build).is_absolute() {
@@ -67,7 +73,13 @@ fn main() -> Result<(), String> {
         )
         .arg("--synthetic-worker")
         .args(args)
+        .env_clear()
+        .env("PATH", "/usr/bin:/bin:/usr/sbin:/sbin")
         .env("HOME", &home)
+        .envs(
+            std::env::var_os("CLOUD_FIXTURE_COMPONENTS_BUILD")
+                .map(|path| ("CLOUD_FIXTURE_COMPONENTS_BUILD", path)),
+        )
         .env_remove("OPENAGENTS_HOST_READY_FILE")
         .env_remove("OPENAGENTS_HOST_VERSION")
         .status()
@@ -92,7 +104,9 @@ fn main() -> Result<(), String> {
         .enable_all()
         .build()
         .map_err(|_| "fixture runtime failed")?
-        .block_on(serve(&directory, build, listen, controls, services))
+        .block_on(serve(
+            &directory, build, listen, controls, services, terminal,
+        ))
 }
 
 async fn serve(
@@ -101,6 +115,7 @@ async fn serve(
     listen: &str,
     controls: bool,
     services: bool,
+    terminal: bool,
 ) -> Result<(), String> {
     let root = directory.join("resident-checkout");
     std::fs::create_dir(&root).map_err(|_| "synthetic checkout creation failed")?;
@@ -251,7 +266,7 @@ async fn serve(
             json!({"synthetic":true,"control_task":inert,"control_route":format!("/cloud/app/hosts/resident/tasks/{inert}/actions")})
         );
     }
-    let mut host = coder_host::config::Config::new(state, vec![relay_url], 7);
+    let mut host = coder_host::config::Config::new(state, vec![relay_url.clone()], 7);
     host.policy = coder_access::RelayPolicy::LoopbackTest;
     let inbox = if services {
         let device_id = coder_access::protocol::pubkey(&device);
@@ -274,9 +289,33 @@ async fn serve(
     };
     host.workspaces = workspaces;
     host.telemetry = false;
+    let thread = if terminal {
+        terminal_fixture::configure(&mut host, directory)?;
+        Some(thread_fixture::configure(&mut host, directory)?)
+    } else {
+        None
+    };
     let running = coder_host::start(host, inbox)
         .await
         .map_err(|_| "synthetic resident host failed")?;
+    if let Some(fixture) = &thread {
+        thread_fixture::verify(directory, &running, &relay_url, fixture.thread).await?;
+    }
+    let terminal = if terminal {
+        Some(
+            terminal_fixture::seed(
+                directory,
+                &running,
+                &relay_url,
+                "checkout",
+                &task,
+                thread.as_ref().map(|fixture| fixture.thread),
+            )
+            .await?,
+        )
+    } else {
+        None
+    };
     let secret = directory.join("resident-device.key");
     let access_path = directory.join("resident-device.access");
     private_file(&secret, &device.secret_bytes())?;
@@ -286,6 +325,14 @@ async fn serve(
     )?;
     let hosts = directory.join("hosts.json");
     let mut document = json!({"schema":"openagents.cloud.host-bindings.v1","bindings":[{"id":"resident","account":"alice","workspace":"alice-personal","members_epoch":3,"host_workspace":"checkout","host_generation":7,"route":format!("tcp://{}",running.local_addr()),"access_file":access_path,"device_secret":secret}]});
+    if let Some(terminal) = &terminal {
+        document["bindings"][0]["browser"] =
+            json!({"route":terminal.route,"capabilities":terminal.capabilities});
+        println!(
+            "{}",
+            json!({"synthetic":true,"workbench_route":"/cloud/app/hosts/resident/workbench","invitation_file":terminal.invitation_file,"session":terminal.session,"terminal":terminal.terminal})
+        );
+    }
     if controls {
         let journal = directory.join("browser-controls");
         std::fs::create_dir(&journal).map_err(|_| "synthetic control journal creation failed")?;

@@ -9,7 +9,6 @@ use std::fmt;
 pub mod agent;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod cj;
-#[cfg(not(target_arch = "wasm32"))]
 pub mod client;
 pub mod cloud;
 pub mod crew;
@@ -28,7 +27,6 @@ pub mod task_read;
 pub mod thread;
 pub mod wallet_link;
 
-#[cfg(not(target_arch = "wasm32"))]
 pub use client::{Client, Pending};
 pub use coder_connect::RelayPolicy;
 pub use protocol::{Access, CommandAction, Enrollment, Grant, Operation, Outcome, TaskCommand};

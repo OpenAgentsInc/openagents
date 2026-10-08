@@ -2116,3 +2116,15 @@ it builds no outbound call. Before activation:
   list, and retention before enabling it.
 - Wire the chosen meeting medium's native audio glue to `voice_turn`; the
   session stores speech and transcripts as untrusted data only.
+## Qualify granted Cloud browser terminals (#10953)
+
+Provision an explicit HTTPS account binding, secure native relay/direct routes,
+and a separately issued browser host invitation before enabling real terminals.
+Review the native host-wide Terminal right and independent Observe right for
+retained thread reads; a selected account workspace does not narrow those
+rights. Qualify revocation, grant expiry, host restart, hidden-page cleanup,
+fresh enrollment after route loss, and PTY survival after detach on the deployed
+origin. Check physical IME, gesture clipboard denial, keyboard accessories,
+glyph coverage, and WebGPU/WebGL2 behavior on supported devices. Scratch hosts,
+synthetic grants, and retained fixture threads activate no owner's executor,
+retail shell, commercial lane, or wallet.

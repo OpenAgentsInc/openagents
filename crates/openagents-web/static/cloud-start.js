@@ -2,7 +2,13 @@ try {
   const { default: init, start } = await import('/cloud/assets/coder_cloud_web.js');
   await init();
   start();
+  if (document.getElementById('cloud-workbench-config')) {
+    const terminal = await import('/cloud/assets/coder_browser_web.js');
+    await terminal.default();
+    await terminal.start();
+  }
 } catch {
+  document.dispatchEvent(new Event('openagents-cloud-retired'));
   for (const input of document.querySelectorAll('.cloud input[type=password]')) {
     input.value = '';
     input.defaultValue = '';

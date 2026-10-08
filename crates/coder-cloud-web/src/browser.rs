@@ -195,6 +195,10 @@ impl Runtime {
     fn retire(&self) {
         self.privacy.borrow_mut().retire();
         self.resource.borrow_mut().take();
+        let _ = self.private.remove_attribute("data-cloud-privacy-ready");
+        if let Ok(event) = Event::new("openagents-cloud-retired") {
+            let _ = self.document.dispatch_event(&event);
+        }
         if let Some(controller) = self.pending.borrow_mut().take() {
             controller.abort();
         }
@@ -258,6 +262,10 @@ impl Runtime {
             if !self.revealed.replace(true) {
                 if self.private.remove_attribute("hidden").is_err()
                     || self.resume.set_attribute("hidden", "").is_err()
+                    || self
+                        .private
+                        .set_attribute("data-cloud-privacy-ready", "")
+                        .is_err()
                 {
                     self.retire();
                     return;

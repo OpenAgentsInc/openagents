@@ -142,7 +142,7 @@ fn identity(binding: &Binding, pin: &Value) -> String {
     )
 }
 
-fn authority_value(viewer: &Viewer) -> Value {
+pub(super) fn authority_value(viewer: &Viewer) -> Value {
     let mut authority = standing_value(viewer);
     authority
         .as_object_mut()
@@ -188,6 +188,9 @@ enum Pin {
     OwnerRead {
         read: OwnerReadPin,
         control: Option<ControlPin>,
+    },
+    Workbench {
+        configuration_digest: String,
     },
 }
 
@@ -265,6 +268,9 @@ fn pin_identity(binding: &Binding, pin: &Pin, viewer: &Viewer) -> String {
         Pin::OwnerRead { read, control } => {
             json!({"kind":"owner_read","read":read,"control":control})
         }
+        Pin::Workbench {
+            configuration_digest,
+        } => json!({"kind":"workbench","configuration_digest":configuration_digest}),
     };
     identity(
         binding,
@@ -685,6 +691,20 @@ async fn control_standing(
 
 pub(super) fn list_resource(binding: &Binding, viewer: &Viewer) -> Result<Value, SessionError> {
     resource(binding, &Pin::List {}, viewer)
+}
+
+pub(super) fn workbench_resource(
+    binding: &Binding,
+    viewer: &Viewer,
+    configuration_digest: String,
+) -> Result<Value, SessionError> {
+    resource(
+        binding,
+        &Pin::Workbench {
+            configuration_digest,
+        },
+        viewer,
+    )
 }
 
 pub(super) fn task_resource(
@@ -1273,6 +1293,33 @@ async fn standing(
             Ok(response) | Err(response) => response,
         };
     }
+    if let Pin::Workbench {
+        configuration_digest,
+    } = &pin
+    {
+        if !super::workbench::assets_ready(&app) {
+            return refused(SessionError::Unavailable);
+        }
+        if super::workbench::configuration_digest(binding, &viewer).as_ref()
+            != Ok(configuration_digest)
+        {
+            return refused(SessionError::Conflict);
+        }
+        if let Err(error) = super::workbench::qualify(binding, &viewer).await {
+            return refused(error);
+        }
+        let current = match service.authenticate(&headers).await {
+            Ok(value) => value,
+            Err(error) => return refused(error),
+        };
+        if authority_value(&current) != authority_value(&viewer) {
+            return refused(SessionError::Conflict);
+        }
+        return protect(
+            Json(json!({"active":true,"identity":pin_identity(binding,&pin,&current)}))
+                .into_response(),
+        );
+    }
     let operation = match &pin {
         Pin::List {} => Operation::ListTasks {
             query: ListQuery {
@@ -1307,6 +1354,7 @@ async fn standing(
         }
         Pin::Control { .. } => return refused(SessionError::InvalidRequest),
         Pin::OwnerRead { .. } => return refused(SessionError::InvalidRequest),
+        Pin::Workbench { .. } => return refused(SessionError::InvalidRequest),
     };
     let result = match read(service, &headers, binding, &viewer, operation).await {
         Ok(v) => v,

@@ -192,6 +192,37 @@ view and drafts. Even a prepared request rechecks its operator policy before
 revealing private action content. Original records are available in bounded
 chunks with downloads that preserve their exact bytes.
 
+## Granted native workbench
+
+Build `coder-browser-web` with `scripts/build-coder-browser-web.sh DIRECTORY`
+into the same `--cloud-build` directory as the Cloud privacy adapter. Add
+`browser` to an explicitly admitted host binding, with an optional secure
+WebSocket `route` and the native host's `capabilities`. The binding's existing
+signed access record supplies the relay identity. These public connection pins
+grant no terminal rights and expose no server device key.
+
+`/cloud/app/workbench` links configured native hosts. On
+`/cloud/app/hosts/{binding}/workbench`, the browser creates a fresh page-memory
+device key and redeems a separately issued native host invitation. Its Terminal
+right is host-wide; the account workspace is navigation context. An additional
+Observe right permits the original retained native thread reader. Sign-in and
+the BFF's own device grant do not enroll the browser.
+
+The Rust mount reads existing native saved sessions and preserves their original
+work references, member states, pane identity, and revisions. It mounts the
+shared `terminal-core` and `terminal-gfx` renderer through WebGPU or WebGL2,
+with readable text and keyboard accessories when needed. Watch attachments
+remain read-only; only the current typist can input or resize. Exact native
+proposals retain their command, directory, context, and revision before review.
+IME commits once, and clipboard controls require a gesture.
+
+Route loss drops input without replay, clears private terminal state, and
+requires fresh enrollment and a retained snapshot. Hidden or retired pages
+cancel pending work and erase keys, drafts, and mounted private output. Closing
+the page detaches its viewer and leaves the PTY under the native host lifecycle.
+Retail customer tasks expose no shell. HTTP and insecure WebSockets are accepted
+only for explicit isolated loopback fixtures.
+
 ## Task browser
 
 The browser reads the same durable task store and paged ATIF view as

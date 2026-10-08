@@ -28,6 +28,7 @@ struct IO {
     typist: bool,
     interactive: bool,
     uses_typist: bool,
+    snapshot_ready: bool,
     resize: Option<wire::Size>,
     opened: bool,
     outbound: Option<TermRequest>,
@@ -48,7 +49,10 @@ impl IO {
                     ..
                 })
         );
-        if self.state != State::Ready || (!self.typist && !read) || self.outbound.is_some() {
+        if self.state != State::Ready
+            || (!read && (!self.typist || !self.interactive))
+            || self.outbound.is_some()
+        {
             return false;
         }
         self.outbound = Some(request);
@@ -189,6 +193,7 @@ impl Workbench {
             typist: mode == Mode::Interact && !features.typist,
             interactive: mode == Mode::Interact,
             uses_typist: features.typist,
+            snapshot_ready: !features.snapshot,
             resize: None,
             opened: false,
             outbound: None,
@@ -231,7 +236,7 @@ impl Workbench {
     }
     pub fn can_type(&self) -> bool {
         let io = self.io.lock().unwrap();
-        io.state == State::Ready && io.typist
+        io.state == State::Ready && io.typist && io.interactive
     }
     pub fn share_status(&self) -> &'static str {
         if self.features.shares {
@@ -244,15 +249,28 @@ impl Workbench {
         self.io.lock().unwrap().outbound.take()
     }
     pub fn result(&mut self, result: &TerminalResult) {
-        let mut io = self.io.lock().unwrap();
-        io.state = match result.reason {
-            Some(wire::Reason::Revoked | wire::Reason::NotAdmitted) => State::Revoked,
-            Some(wire::Reason::Lost | wire::Reason::Stale) => State::Stale,
-            _ => State::Ready,
-        };
-        if result.reason == Some(wire::Reason::NotTypist) {
-            io.typist = false;
+        if self.retired() {
+            return;
         }
+        let retired = match result.reason {
+            Some(wire::Reason::Revoked | wire::Reason::NotAdmitted) => Some(State::Revoked),
+            Some(wire::Reason::Lost | wire::Reason::Stale) => Some(State::Stale),
+            _ => None,
+        };
+        if let Some(state) = retired {
+            self.retire(state);
+            return;
+        }
+        if result.reason == Some(wire::Reason::NotTypist) {
+            self.io.lock().unwrap().typist = false;
+            self.clear_input();
+        }
+        let mut io = self.io.lock().unwrap();
+        io.state = if io.snapshot_ready {
+            State::Ready
+        } else {
+            State::Behind
+        };
         let resize = io.resize.take();
         if result.status != wire::Status::Refused {
             if let Some(size) = resize {
@@ -268,14 +286,74 @@ impl Workbench {
             _ => {}
         }
     }
-    pub fn disconnect(&mut self) {
-        let mut io = self.io.lock().unwrap();
-        io.state = State::Disconnected;
-        io.outbound = None;
-        io.typist = false;
+    fn retired(&self) -> bool {
+        matches!(
+            self.state(),
+            State::Disconnected | State::Revoked | State::Stale
+        )
+    }
+    fn clear_input(&mut self) {
+        {
+            let mut io = self.io.lock().unwrap();
+            io.outbound = None;
+            io.resize = None;
+            io.clipboard = None;
+        }
+        self.composing = false;
+        self.core.paste_hold = None;
+        self.core.smart.pending = None;
+        self.core.prefix = false;
+        self.core.mods = Default::default();
+        self.core.copied = None;
+    }
+    /// Remove private terminal state without closing the native PTY.
+    pub fn retire(&mut self, state: State) {
+        self.clear_input();
+        let (terminal, rows, cols) = {
+            let mut io = self.io.lock().unwrap();
+            io.state = if matches!(state, State::Disconnected | State::Revoked | State::Stale) {
+                state
+            } else {
+                State::Disconnected
+            };
+            io.typist = false;
+            io.snapshot_ready = false;
+            io.incoming.clear();
+            io.bytes = 0;
+            io.opened = false;
+            let size = self
+                .core
+                .focused_pane()
+                .map(|p| (p.session.vt.rows(), p.session.vt.cols()))
+                .unwrap_or((24, 80));
+            (io.terminal.clone(), size.0, size.1)
+        };
+        let mut core = Application::new(Sessions(Arc::new(Remote(self.io.clone()))));
+        core.cell = self.core.cell;
+        core.area = self.core.area;
+        core.new_tab(&Program::Shell);
+        core.open = true;
+        core.focused = false;
+        core.paper.on = false;
+        self.core = core;
+        self.io.lock().unwrap().state =
+            if matches!(state, State::Disconnected | State::Revoked | State::Stale) {
+                state
+            } else {
+                State::Disconnected
+            };
+        self.state = TerminalState::new(terminal.clone(), rows, cols);
+        self.restore = coder_vt::Restore::new(5000);
+        self.records =
+            coder_pty::ext::Assembler::new(coder_pty::ext::StreamKind::Snapshot, terminal);
         self.proposals = None;
+        self.blocks.clear();
+        self.session = None;
         self.notice =
             Some("Connection lost. Reattach and read the current host state before typing.".into());
+    }
+    pub fn disconnect(&mut self) {
+        self.retire(State::Disconnected);
     }
     pub fn input(&mut self, text: &str) {
         if self.can_type() && !self.composing {
@@ -283,7 +361,7 @@ impl Workbench {
         }
     }
     pub fn composition(&mut self, active: bool) {
-        self.composing = active;
+        self.composing = active && self.can_type();
     }
     pub fn commit_composition(&mut self, text: &str) {
         self.composing = false;
@@ -397,6 +475,9 @@ impl Workbench {
         }
     }
     pub fn incoming(&mut self, incoming: Incoming) -> Result<()> {
+        if self.retired() {
+            return Err(Error::Disconnected);
+        }
         match incoming {
             Incoming::Frame(frame) => {
                 if frame.attachment != self.io.lock().unwrap().attachment {
@@ -420,13 +501,22 @@ impl Workbench {
                         if let Some(pane) = self.core.focused_pane() {
                             pane.session.vt.resize(size.rows.into(), size.cols.into());
                         }
-                        let mut io = self.io.lock().unwrap();
-                        io.typist = typist.as_ref() == Some(&io.attachment);
+                        let lost = {
+                            let mut io = self.io.lock().unwrap();
+                            io.typist = io.interactive && typist.as_ref() == Some(&io.attachment);
+                            !io.typist
+                        };
+                        if lost {
+                            self.clear_input();
+                        }
                     }
                     Applied::Gap { .. } | Applied::Behind { .. } => {
                         self.notice =
                             Some("Output gap. Reattach with a current screen snapshot.".into());
-                        self.io.lock().unwrap().state = State::Behind;
+                        self.clear_input();
+                        let mut io = self.io.lock().unwrap();
+                        io.snapshot_ready = false;
+                        io.state = State::Behind;
                     }
                     Applied::Detached(_) => self.disconnect(),
                     Applied::Exit(_) => {
@@ -478,7 +568,9 @@ impl Workbench {
                     )
                     .starting_after(binding.through);
                 }
-                self.io.lock().unwrap().state = State::Ready;
+                let mut io = self.io.lock().unwrap();
+                io.snapshot_ready = true;
+                io.state = State::Ready;
             }
         }
         Ok(())
@@ -511,6 +603,120 @@ mod tests {
                 ..Features::ALL
             },
         )
+    }
+    fn typist(model: &mut Workbench, value: Option<String>) {
+        let terminal = model.io.lock().unwrap().terminal.clone();
+        model
+            .incoming(Incoming::Frame(wire::Frame::new(
+                terminal,
+                "c".repeat(64),
+                Body::Typist {
+                    typist: value,
+                    size: wire::Size::new(24, 80),
+                },
+            )))
+            .unwrap();
+    }
+    #[test]
+    fn watch_remains_read_only_even_when_frame_names_its_attachment() {
+        let mut m = model(Mode::Observe);
+        typist(&mut m, Some("c".repeat(64)));
+        assert!(!m.can_type());
+        m.input("ignored");
+        m.resize(30, 90);
+        m.core.send(b"bypass");
+        assert!(m.dispatch().is_none());
+    }
+    #[test]
+    fn typist_loss_clears_pending_input_and_keeps_authorized_watch_output() {
+        let mut m = model(Mode::Interact);
+        m.core
+            .focused_pane()
+            .unwrap()
+            .session
+            .vt
+            .feed(b"permitted watch");
+        m.input("pending");
+        m.composing = true;
+        m.core.copied = Some("private clipboard".into());
+        typist(&mut m, Some("d".repeat(64)));
+        assert!(!m.can_type());
+        assert!(m.dispatch().is_none());
+        assert!(!m.composing);
+        assert!(m.clipboard().is_none());
+        assert!(
+            m.core
+                .focused_pane()
+                .unwrap()
+                .session
+                .vt
+                .text()
+                .contains("permitted watch")
+        );
+    }
+    #[test]
+    fn retirement_erases_private_state_and_rejects_late_callbacks() {
+        let mut m = model(Mode::Interact);
+        m.core
+            .focused_pane()
+            .unwrap()
+            .session
+            .vt
+            .feed(b"\x1b[?1049hprivate grid");
+        m.input("pending");
+        m.composing = true;
+        m.core.copied = Some("private clipboard".into());
+        m.proposals = Some(Page {
+            entries: vec![],
+            more: false,
+        });
+        m.retire(State::Revoked);
+        assert_eq!(m.state(), State::Revoked);
+        assert!(!m.can_type());
+        assert!(m.dispatch().is_none());
+        assert!(!m.composing);
+        assert!(m.clipboard().is_none());
+        assert!(m.proposals.is_none() && m.blocks.is_empty() && m.session.is_none());
+        let vt = &m.core.focused_pane().unwrap().session.vt;
+        assert!(!vt.alternate_screen());
+        assert!(!vt.text().contains("private grid"));
+        let terminal = m.io.lock().unwrap().terminal.clone();
+        assert_eq!(
+            m.incoming(Incoming::Frame(wire::Frame::new(
+                terminal,
+                "c".repeat(64),
+                Body::Typist {
+                    typist: Some("c".repeat(64)),
+                    size: wire::Size::new(24, 80)
+                }
+            ))),
+            Err(Error::Disconnected)
+        );
+        m.result(&TerminalResult::from_outcome(
+            "e".repeat(64),
+            Ok((wire::Status::Accepted, Value::Done)),
+        ));
+        assert_eq!(m.state(), State::Revoked);
+        assert!(!m.can_type());
+    }
+    #[test]
+    fn command_reply_does_not_replace_required_initial_snapshot() {
+        let mut m = Workbench::new(
+            TerminalRef {
+                generation: "a".repeat(64),
+                terminal: "b".repeat(64),
+            },
+            "c".repeat(64),
+            Mode::Interact,
+            wire::Size::new(24, 80),
+            Features::ALL,
+        );
+        m.result(&TerminalResult::from_outcome(
+            "e".repeat(64),
+            Ok((wire::Status::Accepted, Value::Done)),
+        ));
+        assert_eq!(m.state(), State::Behind);
+        assert!(!m.can_type());
     }
     #[test]
     fn watch_revoked_and_disconnected_input_is_never_queued() {

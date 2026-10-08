@@ -10,6 +10,7 @@ pub mod session;
 #[cfg(test)]
 mod tests;
 mod work;
+mod workbench;
 
 use axum::Router;
 use axum::extract::rejection::FormRejection;
@@ -98,9 +99,10 @@ pub(crate) fn routes() -> Router<App> {
         .merge(work::routes())
         .merge(controls::routes())
         .merge(operator::routes())
+        .merge(workbench::routes())
         .layer(DefaultBodyLimit::max(8192));
     for (_, slug, _) in SECTIONS {
-        if !matches!(slug, "computers" | "projects") {
+        if !matches!(slug, "computers" | "projects" | "workbench") {
             router = router.route(&format!("/cloud/app/{slug}"), get(section));
         }
     }
@@ -432,6 +434,8 @@ fn workspace_shell(
                 .is_some_and(|hosts| !hosts.current(viewer).is_empty())
         {
             nav.push_str(&format!("<a href=\"/cloud/app/{slug}\">{label}</a>"));
+        } else if slug == "workbench" && workbench::available(app, viewer) {
+            nav.push_str("<a href=\"/cloud/app/workbench\">Workbench</a>");
         } else if slug == "settings" {
             nav.push_str("<a href=\"/cloud/app/settings\">Settings</a>");
         } else {
@@ -573,14 +577,17 @@ async fn asset(State(app): State<App>, Path(file): Path<String>) -> Response {
             "text/javascript; charset=utf-8",
             include_bytes!("../../static/cloud-start.js").to_vec(),
         ),
-        "coder_cloud_web.js" | "coder_cloud_web_bg.wasm" => {
+        "coder_cloud_web.js"
+        | "coder_cloud_web_bg.wasm"
+        | "coder_browser_web.js"
+        | "coder_browser_web_bg.wasm" => {
             let Some(dir) = &app.config.cloud_build else {
                 return StatusCode::NOT_FOUND.into_response();
             };
             let Ok(bytes) = tokio::fs::read(dir.join(&file)).await else {
                 return StatusCode::NOT_FOUND.into_response();
             };
-            if bytes.len() > 16 * 1024 * 1024 {
+            if bytes.len() > 64 * 1024 * 1024 {
                 return StatusCode::NOT_FOUND.into_response();
             }
             (

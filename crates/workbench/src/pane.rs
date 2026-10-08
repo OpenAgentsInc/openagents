@@ -401,19 +401,45 @@ impl Panes {
     /// # Errors
     /// A subject that does not fit the kind.
     pub fn resolve(&self, pane: PaneKind, subject: &Subject) -> Result<PaneDescriptor, Refusal> {
+        self.resolve_with(pane, subject, false)
+    }
+
+    /// Describes a resource only through an adapter registered for its exact owner.
+    /// A missing owner adapter shows a label, without a global command or link.
+    pub fn resolve_for_host(
+        &self,
+        pane: PaneKind,
+        subject: &Subject,
+    ) -> Result<PaneDescriptor, Refusal> {
+        self.resolve_with(pane, subject, true)
+    }
+
+    fn resolve_with(
+        &self,
+        pane: PaneKind,
+        subject: &Subject,
+        owner_only: bool,
+    ) -> Result<PaneDescriptor, Refusal> {
         subject.check(pane)?;
         let Some(adapter) = self
             .host_adapters
             .iter()
             .find(|(host, adapter)| host == subject.host() && adapter.kind() == pane)
             .map(|(_, adapter)| adapter)
-            .or_else(|| self.adapters.iter().find(|adapter| adapter.kind() == pane))
+            .or_else(|| {
+                (!owner_only)
+                    .then(|| self.adapters.iter().find(|adapter| adapter.kind() == pane))
+                    .flatten()
+            })
         else {
-            let view = self
-                .fallbacks
-                .iter()
-                .find(|(kind, _)| *kind == pane)
-                .map_or(View::Label, |(_, view)| view.for_subject(subject.id()));
+            let view = if owner_only {
+                View::Label
+            } else {
+                self.fallbacks
+                    .iter()
+                    .find(|(kind, _)| *kind == pane)
+                    .map_or(View::Label, |(_, view)| view.for_subject(subject.id()))
+            };
             return Ok(descriptor(
                 pane,
                 subject,

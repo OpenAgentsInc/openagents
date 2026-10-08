@@ -30,6 +30,8 @@ mod operator_tests;
 mod project_fixture;
 #[path = "project_tests.rs"]
 mod projects;
+#[path = "workbench_tests.rs"]
+mod workbench;
 
 const HOST: &str = "127.0.0.1:4300";
 const ORIGIN: &str = "http://127.0.0.1:4300";

@@ -6,7 +6,9 @@ use coder_connect::RelayPolicy;
 use nostr::domain::Event;
 use secp256k1::SecretKey;
 use serde::{Deserialize, Serialize};
+#[cfg(not(target_arch = "wasm32"))]
 use serde_json::json;
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::Duration;
 pub mod tasks;
 
@@ -29,7 +31,16 @@ pub struct Client {
 impl Client {
     /// A device client. Verification is offline; the host still checks revocation.
     pub fn device(access: Access, secret: SecretKey, policy: RelayPolicy) -> Result<Self> {
-        access.verify(&secret, unix_time()?, policy)?;
+        Self::device_at(access, secret, policy, unix_time()?)
+    }
+    /// Verify a device grant with the caller's clock, without opening a transport.
+    pub fn device_at(
+        access: Access,
+        secret: SecretKey,
+        policy: RelayPolicy,
+        now: u64,
+    ) -> Result<Self> {
+        access.verify(&secret, now, policy)?;
         Ok(Self {
             host: access.grant.host.clone(),
             relay: access.grant.relay.clone(),
@@ -145,11 +156,13 @@ impl Client {
         }
         Ok(())
     }
+    #[cfg(not(target_arch = "wasm32"))]
     pub async fn send(&self, pending: &Pending) -> Result<Outcome> {
         self.validate_pending(pending, unix_time()?)?;
         let event = exchange(&self.relay, &self.secret, pending, &self.host, self.policy).await?;
         self.verify_reply(pending, &event, unix_time()?)
     }
+    #[cfg(not(target_arch = "wasm32"))]
     pub async fn call(&self, op: Operation) -> Result<Outcome> {
         let pending = self.prepare(op, unix_time()?)?;
         self.send(&pending).await
@@ -207,6 +220,7 @@ fn verify_reply(
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 async fn exchange(
     relay: &str,
     secret: &SecretKey,
@@ -272,6 +286,45 @@ pub fn prepare_redeem(
     )?;
     Ok(Pending { request, event })
 }
+/// Verify the original redemption packet before opening its host reply.
+pub fn validate_redeem(
+    invitation: &HostInvitation,
+    pending: &Pending,
+    secret: &SecretKey,
+    now: u64,
+    policy: RelayPolicy,
+) -> Result<()> {
+    let inner = &invitation.0;
+    fresh(inner.issued_at, inner.expires_at, now)?;
+    let original: Request = open(
+        &pending.event,
+        secret,
+        &pubkey(secret),
+        &inner.host,
+        REQUEST,
+    )?;
+    original.validate(policy)?;
+    fresh(original.issued_at, original.expires_at, now)?;
+    if original != pending.request
+        || original.host != inner.host
+        || original.relay != inner.relay
+        || original.grant.is_some()
+        || original.epoch.is_some()
+        || original.expires_at > inner.expires_at
+        || original.op
+            != (Operation::Redeem {
+                invitation: inner.id.clone(),
+                capability: inner.capability().into(),
+            })
+        || pending.event.tag_values("h").collect::<Vec<_>>() != [original.request.as_str()]
+    {
+        return fail(
+            Code::Forbidden,
+            "redemption does not match this invitation and device",
+        );
+    }
+    Ok(())
+}
 /// Check the host's signed reply and return the device's access record.
 pub fn finish_redeem(
     invitation: &HostInvitation,
@@ -281,6 +334,7 @@ pub fn finish_redeem(
     now: u64,
     policy: RelayPolicy,
 ) -> Result<Access> {
+    validate_redeem(invitation, pending, secret, now, policy)?;
     let Outcome::Granted { authorization } =
         verify_reply(secret, invitation.host(), pending, event, now)?
     else {
@@ -288,6 +342,11 @@ pub fn finish_redeem(
     };
     let access =
         Access::from_authorization(*authorization, secret, invitation.host(), now, policy)?;
+    if access.grant.origin.kind != OriginKind::Invitation
+        || access.grant.origin.id != invitation.id()
+    {
+        return fail(Code::Forbidden, "grant origin differs from the invitation");
+    }
     if access.grant.relay != invitation.relay() {
         return fail(Code::Forbidden, "grant relay differs from the invitation");
     }
@@ -295,6 +354,7 @@ pub fn finish_redeem(
 }
 /// Redeem a host invitation with this device's protected key. Save the result
 /// only on success; a failure leaves any existing access unchanged.
+#[cfg(not(target_arch = "wasm32"))]
 pub async fn redeem(code: &str, secret: &SecretKey, policy: RelayPolicy) -> Result<Access> {
     let invitation = HostInvitation::parse(code, unix_time()?, policy)?;
     let pending = prepare_redeem(&invitation, secret, unix_time()?, policy)?;
@@ -364,6 +424,7 @@ pub fn open_enrollment(
     })
 }
 /// Fetch current enrollment requests a pinned host addressed to this key.
+#[cfg(not(target_arch = "wasm32"))]
 pub async fn pending_enrollments(
     relay: &str,
     secret: &SecretKey,
@@ -502,5 +563,11 @@ mod pending_tests {
             client.validate_pending(&changed, now).unwrap_err().code,
             Code::Forbidden
         );
+    }
+}
+
+impl Drop for Client {
+    fn drop(&mut self) {
+        self.secret.non_secure_erase();
     }
 }

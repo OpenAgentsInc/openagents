@@ -625,7 +625,7 @@ web implementation:
 | WEB-03 | [#10950](https://github.com/OpenAgentsInc/openagents/issues/10950) | Implemented: bounded canonical resident task, child-reference, evidence, and original byte reads under current Observe authority, with Rust/Wasm source and grant cleanup. |
 | WEB-04 | [#10951](https://github.com/OpenAgentsInc/openagents/issues/10951) | Implemented: explicit server-custody review, original signed requests, native revision and queue fences, and sealed-result recovery for granted task controls. |
 | WEB-05 | [#10952](https://github.com/OpenAgentsInc/openagents/issues/10952) | Implemented: separately admitted resident project snapshots and operator Cloud jobs, original byte reads, source-pinned views, and reviewed native submit, continue, stop, and reconciliation requests. |
-| WEB-06 | [#10953](https://github.com/OpenAgentsInc/openagents/issues/10953) | Granted browser terminals and canonical workbench navigation. |
+| WEB-06 | [#10953](https://github.com/OpenAgentsInc/openagents/issues/10953) | Implemented: separate page-memory native enrollment, shared GPU terminal with current typist and snapshot gates, original saved-session and retained-thread navigation, exact native proposals, and privacy retirement; isolated browser flows pass. Real-device qualification remains in `NEEDS_OWNER.md`. |
 | WEB-07 | [#10954](https://github.com/OpenAgentsInc/openagents/issues/10954) | Visible Verse connections and associated work links. |
 | WEB-08 | [#10955](https://github.com/OpenAgentsInc/openagents/issues/10955) | Alice and Studio observation, exact decisions, and safe request recovery. |
 | WEB-09 | [#10956](https://github.com/OpenAgentsInc/openagents/issues/10956) | Scoped retail browser delegation and credential custody. |
@@ -638,9 +638,9 @@ web implementation:
 | WEB-16 | [#10962](https://github.com/OpenAgentsInc/openagents/issues/10962) | Partners, referrals, earnings, and payout views. |
 | WEB-17 | [#10963](https://github.com/OpenAgentsInc/openagents/issues/10963) | Browser packaging, reconnect acceptance, and activation record. |
 
-WEB-10 uses the existing additional-client issue REV-44 instead of duplicating
-its retail browser scope. Alice #10929–#10931 and conditional commercial issues
-keep their existing claims; this roadmap does not take over that work.
+WEB-10 extends the completed local read-only REV-44 surface with the authenticated
+Cloud purchase flow. Alice #10929–#10931 and conditional commercial issues keep
+their existing claims; this roadmap does not take over that work.
 
 All slices support empty, denied, unavailable, stale, failed, cancelled, and
 reconciliation states. Essential workflows work without a 3D renderer. Qualify

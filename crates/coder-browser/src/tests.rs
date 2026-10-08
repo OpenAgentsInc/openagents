@@ -265,3 +265,67 @@ async fn relay_frames_preserve_explicit_gaps_and_bind_generation_attachment_and_
         ));
     }
 }
+
+#[test]
+fn idle_expiry_and_thread_read_authority_are_separate() {
+    let a = admission(Right::Terminal, 7);
+    assert!(a.current(499));
+    assert!(!a.current(500));
+    assert_eq!(a.expires_at(), 500);
+    assert_eq!(a.device(), coder_reach::pubkey(&key(4)));
+    assert!(matches!(
+        a.prepare_thread(&"a".repeat(32), None, 100),
+        Err(Error::NotAdmitted)
+    ));
+    let mut a = admission(Right::Terminal, 7);
+    a.access.grant.rights = Rights::new([Right::Terminal, Right::Observe]).unwrap();
+    // Changing the unsigned projection never changes the host-signed authority.
+    assert!(matches!(
+        a.prepare_thread(&"a".repeat(32), None, 100),
+        Err(Error::NotAdmitted)
+    ));
+}
+
+struct QueuedEvent(Option<Event>);
+impl Relay for QueuedEvent {
+    fn take_event(&mut self) -> Result<Option<Event>> {
+        Ok(self.0.take())
+    }
+    async fn exchange(&mut self, _: &Event, _: &str, _: &str, _: u64) -> Result<Event> {
+        Err(Error::Unknown)
+    }
+}
+#[test]
+fn queued_role_loss_is_verified_before_input_can_be_enabled() {
+    let a = admission(Right::Terminal, 7);
+    let attachment = "e".repeat(64);
+    let frame = coder_pty::wire::Frame::new(
+        TerminalRef {
+            generation: terminal_generation(a.host(), 7),
+            terminal: "d".repeat(64),
+        },
+        attachment.clone(),
+        coder_pty::wire::Body::Typist {
+            typist: Some("f".repeat(64)),
+            size: coder_pty::wire::Size::new(24, 80),
+        },
+    );
+    let event = artifact::seal(
+        &frame,
+        coder_pty::wire::FRAME,
+        &key(3),
+        a.device(),
+        &attachment,
+        100,
+        160,
+    )
+    .unwrap();
+    let mut link = Relayed::new(a, QueuedEvent(Some(event)));
+    link.attachment = Some(attachment);
+    let Incoming::Frame(current) = link.take_incoming(110).unwrap().unwrap() else {
+        panic!()
+    };
+    assert_eq!(current, frame);
+    assert!(link.take_incoming(110).unwrap().is_none());
+    assert!(matches!(link.take_incoming(500), Err(Error::NotAdmitted)));
+}

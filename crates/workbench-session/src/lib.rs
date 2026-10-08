@@ -4,6 +4,8 @@ use coder_pty::ext::{Layout, Member, SessionRecord};
 use serde::{Deserialize, Serialize};
 use workbench::{Host, Kind, ResourceRef};
 
+pub mod projection;
+
 pub const SCHEMA: &str = "openagents.workbench-session.v1";
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

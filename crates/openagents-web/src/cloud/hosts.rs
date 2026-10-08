@@ -44,6 +44,16 @@ struct Declared {
     route: String,
     access_file: PathBuf,
     device_secret: PathBuf,
+    #[serde(default)]
+    browser: Option<Browser>,
+}
+
+/// Public transport hints for a separately enrolled page device.
+#[derive(Clone, Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+struct Browser {
+    route: Option<String>,
+    capabilities: Vec<String>,
 }
 
 enum Route {
@@ -63,6 +73,8 @@ pub struct Binding {
     route: Route,
     device: Arc<Device>,
     files: [ProtectedFile; 2],
+    browser: Option<Browser>,
+    loopback: bool,
 }
 
 /// Operator-provisioned read bindings; account sign-in never creates one.
@@ -190,12 +202,22 @@ impl Binding {
         if !access.grant.rights.contains(Right::Observe) {
             return Err(UNAVAILABLE.into());
         }
+        let local_observer = matches!(route, Route::Local(_));
+        if let Some(browser) = &declared.browser {
+            browser.validate(&access.grant.relay, local_observer)?;
+        }
+        let loopback = declared.browser.as_ref().is_some_and(|browser| {
+            std::iter::once(access.grant.relay.as_str())
+                .chain(browser.route.as_deref())
+                .any(|value| value.starts_with("ws://"))
+        });
         let identity = digest(&serde_json::json!({
             "binding":declared.id, "account":declared.account,
             "workspace":declared.workspace,"members_epoch":declared.members_epoch,
             "host":access.grant.host,"generation":declared.host_generation,
             "host_workspace":declared.host_workspace,"device":access.grant.device,
-            "grant":access.grant.grant,"epoch":access.grant.epoch
+            "grant":access.grant.grant,"epoch":access.grant.epoch,
+            "browser":declared.browser
         }));
         let device = Device::new(access, secret, policy).map_err(|_| UNAVAILABLE)?;
         Ok(Self {
@@ -209,6 +231,8 @@ impl Binding {
             route,
             device: Arc::new(device),
             files: [access_file, secret_file],
+            browser: declared.browser,
+            loopback,
         })
     }
 
@@ -244,6 +268,31 @@ impl Binding {
     }
     pub(crate) fn identity(&self) -> &str {
         &self.identity
+    }
+
+    pub(crate) fn browser_config(
+        &self,
+        viewer: &Viewer,
+    ) -> Result<serde_json::Value, SessionError> {
+        self.admit(viewer)?;
+        let browser = self.browser.as_ref().ok_or(SessionError::Unavailable)?;
+        Ok(serde_json::json!({
+            "host":self.host(),"generation":self.generation(),
+            "workspace":self.workspace(),"relay":self.device.relay(),
+            "route":browser.route,"capabilities":browser.capabilities,
+            "loopback":self.loopback
+        }))
+    }
+
+    pub(crate) fn browser_origins(&self) -> Vec<String> {
+        let Some(browser) = &self.browser else {
+            return Vec::new();
+        };
+        std::iter::once(self.device.relay())
+            .chain(browser.route.as_deref())
+            .filter_map(|value| url::Url::parse(value).ok())
+            .map(|url| url.origin().ascii_serialization())
+            .collect()
     }
 
     pub(crate) fn access(&self) -> &Access {
@@ -390,6 +439,52 @@ fn valid_id(value: &str) -> bool {
         && value
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || b"_-".contains(&b))
+}
+
+impl Browser {
+    fn validate(&self, relay: &str, loopback: bool) -> Result<(), String> {
+        browser_url(relay, loopback)?;
+        if let Some(route) = &self.route {
+            browser_url(route, loopback)?;
+        }
+        if self.capabilities.len() > 32
+            || self.capabilities.iter().enumerate().any(|(index, value)| {
+                value.is_empty()
+                    || value.len() > 128
+                    || !value
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || b"._-:".contains(&b))
+                    || self.capabilities[..index].contains(value)
+            })
+        {
+            return Err(UNAVAILABLE.into());
+        }
+        Ok(())
+    }
+}
+
+fn browser_url(value: &str, loopback: bool) -> Result<(), String> {
+    let url = url::Url::parse(value).map_err(|_| UNAVAILABLE)?;
+    let local = url.host_str().is_some_and(|host| {
+        host.trim_matches(['[', ']'])
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|ip| ip.is_loopback())
+    });
+    if value.len() > 2048
+        || url.host_str().is_none()
+        || !(url.scheme() == "wss" || loopback && local && url.scheme() == "ws")
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+        || url.path() != "/"
+        || value
+            .bytes()
+            .any(|b| b.is_ascii_control() || b.is_ascii_whitespace())
+    {
+        return Err(UNAVAILABLE.into());
+    }
+    Ok(())
 }
 
 fn scope_id(value: &str) -> bool {

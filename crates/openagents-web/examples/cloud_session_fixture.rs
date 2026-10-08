@@ -208,6 +208,7 @@ pub async fn serve(
     config.port = address.port();
     config.cloud = Some(Arc::new(CloudSession::load(&path)?));
     config.cloud_build = Some(build);
+    config.components_build = std::env::var_os("CLOUD_FIXTURE_COMPONENTS_BUILD").map(PathBuf::from);
     config.cloud_hosts = hosts
         .map(|path| openagents_web::cloud::hosts::Hosts::load(FilePath::new(path)))
         .transpose()?
