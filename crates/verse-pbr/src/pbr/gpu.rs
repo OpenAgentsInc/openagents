@@ -2037,7 +2037,10 @@ impl Photo {
             water_copies: true,
             water_policy: verse_engine::quality::WaterPolicy::new(capability.quality.tier),
             water_measurements: Default::default(),
-            water_timer: None,
+            // Medium and High already split water from the opaque scene.
+            // Low keeps its fused pass unless diagnostics enable a probe.
+            water_timer: if capability.quality.tier == verse_engine::quality::Tier::Low { None }
+                else { crate::water::timing::Timer::new(device, queue) },
             water_slot: None,
             water_mask: 0,
             water_surface_bytes: 0,
@@ -2665,8 +2668,9 @@ impl Photo {
     #[must_use]
     pub fn water_measurements(&self) -> crate::water::timing::Measurements { self.water_measurements }
 
-    /// Enable per-pass timestamps for fixed-view diagnostics. Low keeps
-    /// its fused scene pass unless a supported timing probe is enabled.
+    /// Enable per-pass timestamps for fixed-view diagnostics on Low too.
+    /// Medium and High sample continuously when the device supports it.
+    /// Low keeps its fused pass unless a supported probe is enabled.
     pub fn enable_water_timing(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
         self.water_timer = crate::water::timing::Timer::new(device, queue);
     }

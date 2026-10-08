@@ -1938,6 +1938,7 @@ impl Offscreen {
                     ui,
                 );
                 queue.submit([encoder.finish()]);
+                if let Some(photo) = &mut self.scene.photo { photo.submitted(); }
             }
         }
         self.settled = true;
@@ -1990,6 +1991,7 @@ impl Offscreen {
             );
         }
         queue.submit([encoder.finish()]);
+        if let Some(photo) = &mut self.scene.photo { photo.submitted(); }
         let submitted = std::time::Instant::now();
 
         let slice = self.readback.slice(..);

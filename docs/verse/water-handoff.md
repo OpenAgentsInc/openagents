@@ -116,8 +116,12 @@ techniques to take from Tidewater (MIT). Each is assigned to an issue:
 The source checkpoint adds CPU-built box mips, vertex sampling at the
 clipmap spacing, slope-aware reflection darkening, conservative clipmap
 block culling, owned-resource accounting, and a sustained-overrun policy.
-GPU timestamps have delayed readback slots; unsupported APIs keep GPU time
-absent. Queue-fence estimates remain separate. Native CPU clocks measure
+GPU timestamps have delayed readback slots and run continuously on supported
+Medium and High physical renderers. Normal Low keeps its fused pass; its
+isolated GPU probe is diagnostic only. Low and unsupported APIs keep
+runtime water GPU time absent and rely on whole-frame quality fallback
+where available; water residency and CPU admission remain active.
+Queue-fence estimates remain separate. Native CPU clocks measure
 thread CPU time. Worker cost counts completed synthesis jobs over the
 measurement interval, including superseded results; per-job duration is
 reported separately. Missing GPU results neither advance nor reset the
