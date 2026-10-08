@@ -67,7 +67,7 @@ the original October 7 plan.
 | Decisions recorded | #10903 | `46a89d3587` | Done |
 | P1: export and archive | #10894 | `89328cdd2a` | Closed; vendor archive uploaded October 7 |
 | P2: kit pack, loader, proxies | #10895 | `8f6136a533`, first repin `ea39fa5cf2` | Closed |
-| P3: materials and levels | #10896 | grade in `0a44257462`, tooling `50dca3b658` | Open: far levels and coplanar check |
+| P3: materials and levels | #10896 | grade in `0a44257462`, tooling `50dca3b658` | Open: house levels, private compilation, and visual acceptance |
 | P4: kit houses and breaking | #10897 | `0a44257462` | Closed |
 | P5: Stoop Lane | #10898 | `0a44257462`, `ea39fa5cf2` | Closed |
 | P6: Main Street, the plaza, Market Row | #10899 | `611df73ca7`, repin `6b37d8ee57` | Closed |
@@ -91,20 +91,31 @@ unchanged.
 ## What's open
 
 - **P3 (#10896).** Claimed on October 8 on `codex/everglade-p3`.
-  Source preparation adds private prop far-level generation, checks far
-  admission against the near piece's box, and exports the actual Rust house
-  recipes with per-distance budgets for coplanar analysis. These changes
-  await formatting, focused tests, private compilation, and captures.
-  The current renderer has only an 80 m near/far switch; verify the plan
-  budgets for all three house levels before treating P3 as complete.
-  Two pieces remain. First, far levels: the kit pack has
-  no `lod/kit.<id>` models. The compiler accepts `<id>.far.gltf`, so the
-  build script needs to write decimated far levels for the heavy pieces:
-  the fountain (7,752 triangles), the lamps (2,976), and the stalls and
-  carts. Second, the coplanar check: run `scripts/blender/coplanar.py`
-  over a built house (bands over walls, floors over plinth tops) and fix
-  the recipe in `layout/kit_house.rs`, not the pieces. Also compare a
-  merged house with the demo's, side by side.
+  The canonical report covers all 65 houses: 3,156–11,988 triangles,
+  26–70 selected draws, and 10–12 materials at each of 10, 50, and 120 m.
+  The market hall alone exceeds the near triangle budget. The renderer
+  checkpoint `f41cc66779` groups original house submissions at one anchor,
+  keeps their destruction ranges and actual world bounds, and selects one
+  distance level with shared hysteresis. Its two focused regressions pass,
+  including discontinuous jumps, damage at far distance, repeated range
+  edits, and restore. Three layout and walking tests pass after 3 mm gaps
+  separate floor/plinth and band/wall finish faces. The headless Verse
+  consumer check passes; the default check stops on the remote runtime's
+  missing ALSA development metadata.
+  Public integration checkpoint `d5f04dc475` adds optional canonical house
+  levels and damage fallback; it is unformatted and unverified. No P3
+  artifact or main commit has landed. Private CPU decimation produces
+  awning/cart/fountain/lamp/stall far levels of 127/255/800/192/256
+  triangles, within budgets and with exact original bounds. Seven focused
+  kit-admission tests pass. Those private models still need compilation
+  and admission in the real pack.
+  Remaining acceptance: private middle/far house shells and shared atlases,
+  market-hall near reduction without removing visible interiors, actual
+  selected batches within 10,000/3,000/800 triangles and 12/5/1 draws,
+  post-gap coplanar checks, demo comparison, grade captures, and one house
+  at 10/50/120 m. The initial coplanar scan finds genuine floor/band recipe
+  overlaps and two tiny roof-end material seams inside licensed meshes;
+  assess those seams visually rather than claiming zero failures.
 - **B2 (#10906).** Its issue holds what its subagent landed and what
   remains.
 - **B3 (#10907).** Checkpoint `a2f4bbf7d3` on `codex/everglade-b3` holds
@@ -116,6 +127,27 @@ unchanged.
   serves every tier today (10.2 MB to transfer, about 28 MiB decoded),
   which is over the phone's 8 MiB transfer budget. A phone tier is part of
   B4.
+
+## P3 checkpoint inputs
+
+Keep licensed inputs and captures outside Git. The verified private kit is
+`dae1612d4c22438a933c27b406c1e18fe134b13eab8eb5240ddcf5506ffb0b93`
+(10,238,689 bytes). On `coderos-4080`, the stable source checkout is
+`~/.openagents/scratch/process-2159833/medieval-p3-tools/source`; its warm
+Cargo target is `~/work/openagents-target-agent11`. The same toolbox keeps
+`house-check-actual.log`, the 65 canonical exports in `house-check-actual/`,
+`coplanar-house-00.log`, `coplanar-houses-01-04.log`, `far-clamped.log`, and
+`far-inspection-clamped.jsonl`. Private `export/`, `kit-build/`, and `packs/`
+remain under `~/.openagents/verse/private/medieval-town/`.
+
+The portable headless CPU runtime is Blender 4.5.14 LTS. Its official archive
+SHA-256 is `9ba871ff2ecd36526b77432745980b7e6664ecd0c7ca11c48849073dcfe06da3`.
+The toolbox's `blender-cpu` wrapper supplies read-only Nix libraries and
+bounds workers to four. House export is the filtered ignored
+`export_private_house_acceptance` example test in `kit_house_check`:
+precompile it under the build lease, then execute its test binary with
+`VERSE_KIT_PACK` and `VERSE_KIT_HOUSE_OUTPUT` pointing outside the repository.
+Do not run GPU compute, ray tracing, or bake regeneration on the Mac.
 
 ## Commands
 
