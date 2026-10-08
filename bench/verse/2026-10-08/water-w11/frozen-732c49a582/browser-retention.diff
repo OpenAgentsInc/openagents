@@ -1,0 +1,79 @@
+--- browser.py@73751adf7a
++++ scratch/w11-browser-retain.py
+@@ -13,6 +13,7 @@
+ import time
+ import urllib.request
+ 
++sys.path.insert(0, '/Users/christopherdavid/.openagents/scratch/codex-01a119ae-08ea-73f2-9344-ec959f74a795/water-w11/bench/verse/2026-10-08/water-w11')
+ from cdp import Cdp
+ 
+ origin, destination = sys.argv[1], Path(sys.argv[2])
+@@ -180,17 +181,60 @@
+               'inline_synthesis':True, 'capture':image.name,
+               'capture_sha256':hashlib.sha256(image.read_bytes()).hexdigest()}
+     page.call('Page.close')
++    page.s.close()
+     return result
+ 
++
++ORIGINAL_HARNESS_HASH = '4fe13cb36a318f9a6d75fd345abdc39dace4e498991a483929006017eab169f9'
++
++# Preserve a failed case and close its GPU tab before the next case.
++def failed(mode, zone, dry, error):
++    tag = f'{zone}-{mode}' + ('-dry' if dry else '')
++    row = {'case':tag, 'mode':mode, 'success':False,
++           'failed_at_utc':datetime.now(timezone.utc).isoformat(),
++           'failure_type':type(error).__name__, 'failure':str(error)[:32000]}
++    trace = error.__traceback__
++    page = None
++    while trace:
++        if trace.tb_frame.f_code.co_name == 'run':
++            values = trace.tb_frame.f_locals
++            page = values.get('page')
++            for key in ['admission','probe','network','samples','elapsed','measured_at','query']:
++                if key in values: row[key] = values[key]
++        trace = trace.tb_next
++    if page:
++        try:
++            row['probe_at_failure'] = page.eval('({probe:window.__waterFence,status:document.querySelector("#everglade-status")?.textContent,size:[document.querySelector("canvas")?.width,document.querySelector("canvas")?.height]})')['result'].get('value')
++            screenshot = page.call('Page.captureScreenshot', {'format':'png'})
++            image = destination / (tag+'-failed.png')
++            image.write_bytes(base64.b64decode(screenshot['data']))
++            row['capture'] = image.name
++            row['capture_sha256'] = hashlib.sha256(image.read_bytes()).hexdigest()
++        except Exception as capture_error:
++            row['evidence_error'] = str(capture_error)[:2000]
++        row['console'] = console(page)
++        row['responses'] = [{'url':event['params']['response']['url'], 'status':event['params']['response']['status']} for event in page.events if event['method']=='Network.responseReceived']
++        try: page.call('Page.close')
++        except Exception: pass
++        finally: page.s.close()
++    return row
+ 
+ results = []
+ for zone in ['water', 'everglade']:
+     for mode in ['webgpu', 'webgl2']:
+-        dry = run(mode, zone, True)
+-        wet = run(mode, zone, False)
+-        wet['queue_fence_water_ms_estimate'] = max(0, wet['queue_fence_frame_ms_estimate']['mean']
+-                                                 - dry['queue_fence_frame_ms_estimate']['mean'])
+-        results += [dry, wet]
+-        (destination / 'browser.json').write_text(json.dumps(results, indent=2) + '\n')
+-        print(json.dumps({key:wet[key] for key in ['case','gpu_ms','main_ms','worker_ms','gpu_bytes',
+-              'queue_fence_water_ms_estimate']}), flush=True)
++        pair = []
++        for dry in [True, False]:
++            try:
++                row = run(mode, zone, dry)
++                row['success'] = True
++            except Exception as error:
++                row = failed(mode, zone, dry, error)
++            results.append(row); pair.append(row)
++            (destination / 'browser.json').write_text(json.dumps(results,indent=2)+'\n')
++            print(json.dumps({k:row[k] for k in ['case','success','failure','gpu_ms','main_ms','gpu_bytes'] if k in row}),flush=True)
++        dry, wet = pair
++        if dry['success'] and wet['success']:
++            wet['queue_fence_water_ms_estimate'] = max(0, wet['queue_fence_frame_ms_estimate']['mean']-dry['queue_fence_frame_ms_estimate']['mean'])
++        (destination / 'browser.json').write_text(json.dumps(results,indent=2)+'\n')
++Path(destination/'harness.json').write_text(json.dumps({'original_harness_sha256':ORIGINAL_HARNESS_HASH,'executed_harness_sha256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),'original_source':'73751adf7a3c4c2a688d356ecb0c7d1fa073e5d9','transformation':'Bounded per-case failure retention, failed-tab closure, successful socket closure; successful measurements unchanged.'},indent=2)+'\n')
++sys.exit(any(not row['success'] for row in results))

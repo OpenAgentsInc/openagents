@@ -1,0 +1,1695 @@
+[
+  {
+    "tier": "high",
+    "view": "open-storm",
+    "adapter": "Apple M5 Max (Metal)",
+    "measured_at_unix_ms": 1791446113724,
+    "size": [
+      1920,
+      1080
+    ],
+    "cadence_hz": 60,
+    "steady_frames": 96,
+    "timing": "paced native pass timestamps when valid; submit-to-fence wall time excludes cadence sleep",
+    "gpu_timestamp_scope": "mirror, color/depth copies, and surface passes; shared opaque underwater shading and implicit queue texture uploads are not isolated",
+    "gpu_ms": {
+      "count": 3,
+      "mean": 1.761278,
+      "p95": 1.779459,
+      "max": 2.057875
+    },
+    "gpu_passes_ms": [
+      "mirror",
+      "opaque (excluded)",
+      "color and depth copies",
+      "surface"
+    ],
+    "gpu_bytes": 8319348,
+    "main_ms": {
+      "count": 96,
+      "mean": 4.130679135416659,
+      "p95": 5.4282499999999345,
+      "max": 7.0542499999996835
+    },
+    "worker_ms": {
+      "count": 96,
+      "mean": 0.15616404166666717,
+      "p95": 1.1835409999999975,
+      "max": 1.915957999999984
+    },
+    "main_cpu_clock": true,
+    "worker_cpu_clock": true,
+    "completed_jobs": 12,
+    "completed_synthesis_ms": 14.994749999999943,
+    "mean_completed_job_elapsed_ms": 1.2495624999999952,
+    "mean_completed_job_cpu_ms": 1.2493123333333376,
+    "observed_last_job_elapsed_ms": {
+      "count": 12,
+      "mean": 1.2495625,
+      "p95": 1.6820419999999998,
+      "max": 1.915625
+    },
+    "observed_last_job_cpu_ms": {
+      "count": 12,
+      "mean": 1.2493123333333405,
+      "p95": 1.68179200000003,
+      "max": 1.9159579999999892
+    },
+    "queue_fence_frame_ms_fastest": 6.378542,
+    "queue_fence_water_ms_estimate": 0.0,
+    "last": {
+      "gpu": null,
+      "gpu_timestamps": true,
+      "gpu_bytes": 8319348,
+      "main_ms": 3.754917,
+      "main_cpu_ms": 3.7546259999999165,
+      "synthesis_ms": 1.184084,
+      "synthesis_cpu_ms": 1.183540999999991,
+      "completed_jobs": 1,
+      "completed_synthesis_ms": 1.1840840000000026,
+      "worker_ms": 1.1835409999999975,
+      "worker_cpu_supported": true,
+      "worker_bytes": 4864680,
+      "ripple_cpu_bytes": 524612,
+      "inline_synthesis": false,
+      "refresh_every": 8,
+      "copies": false,
+      "mirror": false,
+      "ssr": false,
+      "effects_reduced": true
+    },
+    "within_budget": false,
+    "effects_reduced": true,
+    "water_changed_pixels": 0.5559095293209877,
+    "capture": "native-high-open-storm.png",
+    "capture_sha256": "db07c3ba1b2493ec43f6f0768dc38c9d159c27f6a8845a5a3bfc3cc4f9fb4e60",
+    "completed_gpu_observations": 19,
+    "post_warm_gpu_observations": 11,
+    "transitions": [
+      {
+        "display_frame": 1,
+        "refresh_every": 1,
+        "copies": true,
+        "mirror": false,
+        "ssr": true,
+        "effects_reduced": false
+      },
+      {
+        "display_frame": 129,
+        "refresh_every": 2,
+        "copies": false,
+        "mirror": false,
+        "ssr": false,
+        "effects_reduced": true
+      },
+      {
+        "display_frame": 197,
+        "refresh_every": 4,
+        "copies": false,
+        "mirror": false,
+        "ssr": false,
+        "effects_reduced": true
+      },
+      {
+        "display_frame": 265,
+        "refresh_every": 8,
+        "copies": false,
+        "mirror": false,
+        "ssr": false,
+        "effects_reduced": true
+      }
+    ],
+    "case_exit": 0,
+    "peak_gpu_bytes": 53938548,
+    "peak_cpu_storage_bytes": 5389292
+  },
+  {
+    "tier": "high",
+    "view": "pond-noon",
+    "adapter": "Apple M5 Max (Metal)",
+    "measured_at_unix_ms": 1791446083545,
+    "size": [
+      1920,
+      1080
+    ],
+    "cadence_hz": 60,
+    "steady_frames": 96,
+    "timing": "paced native pass timestamps when valid; submit-to-fence wall time excludes cadence sleep",
+    "gpu_timestamp_scope": "mirror, color/depth copies, and surface passes; shared opaque underwater shading and implicit queue texture uploads are not isolated",
+    "gpu_ms": {
+      "count": 2,
+      "mean": 1.8376040000000002,
+      "p95": 1.517708,
+      "max": 2.1575
+    },
+    "gpu_passes_ms": [
+      "mirror",
+      "opaque (excluded)",
+      "color and depth copies",
+      "surface"
+    ],
+    "gpu_bytes": 3544108,
+    "main_ms": {
+      "count": 96,
+      "mean": 1.0968740729166744,
+      "p95": 2.1991669999999885,
+      "max": 2.2446659999998246
+    },
+    "worker_ms": {
+      "count": 96,
+      "mean": 0.0,
+      "p95": 0.0,
+      "max": 0.0
+    },
+    "main_cpu_clock": true,
+    "worker_cpu_clock": true,
+    "completed_jobs": 0,
+    "completed_synthesis_ms": 0.0,
+    "mean_completed_job_elapsed_ms": null,
+    "mean_completed_job_cpu_ms": null,
+    "observed_last_job_elapsed_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "observed_last_job_cpu_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "queue_fence_frame_ms_fastest": 6.4353750000000005,
+    "queue_fence_water_ms_estimate": 1.531625,
+    "last": {
+      "gpu": null,
+      "gpu_timestamps": true,
+      "gpu_bytes": 3544108,
+      "main_ms": 0.20074999999999998,
+      "main_cpu_ms": 0.20020900000008623,
+      "synthesis_ms": 0.0,
+      "synthesis_cpu_ms": null,
+      "completed_jobs": 0,
+      "completed_synthesis_ms": 0.0,
+      "worker_ms": 0.0,
+      "worker_cpu_supported": true,
+      "worker_bytes": 0,
+      "ripple_cpu_bytes": 524612,
+      "inline_synthesis": false,
+      "refresh_every": 8,
+      "copies": false,
+      "mirror": false,
+      "ssr": false,
+      "effects_reduced": true
+    },
+    "within_budget": false,
+    "effects_reduced": true,
+    "water_changed_pixels": 0.4222159529320988,
+    "capture": "native-high-pond-noon.png",
+    "capture_sha256": "a6cfda5b41cae99ce53cf9a23d957393ab4fa61e9ca3ab67bfc84f42da81d44e",
+    "completed_gpu_observations": 12,
+    "post_warm_gpu_observations": 8,
+    "transitions": [
+      {
+        "display_frame": 1,
+        "refresh_every": 1,
+        "copies": true,
+        "mirror": true,
+        "ssr": true,
+        "effects_reduced": false
+      },
+      {
+        "display_frame": 129,
+        "refresh_every": 2,
+        "copies": false,
+        "mirror": false,
+        "ssr": false,
+        "effects_reduced": true
+      },
+      {
+        "display_frame": 197,
+        "refresh_every": 4,
+        "copies": false,
+        "mirror": false,
+        "ssr": false,
+        "effects_reduced": true
+      },
+      {
+        "display_frame": 265,
+        "refresh_every": 8,
+        "copies": false,
+        "mirror": false,
+        "ssr": false,
+        "effects_reduced": true
+      }
+    ],
+    "case_exit": 0,
+    "peak_gpu_bytes": 49163308,
+    "peak_cpu_storage_bytes": 524612
+  },
+  {
+    "tier": "high",
+    "view": "pond-posts",
+    "adapter": "Apple M5 Max (Metal)",
+    "measured_at_unix_ms": 1791446098799,
+    "size": [
+      1920,
+      1080
+    ],
+    "cadence_hz": 60,
+    "steady_frames": 96,
+    "timing": "paced native pass timestamps when valid; submit-to-fence wall time excludes cadence sleep",
+    "gpu_timestamp_scope": "mirror, color/depth copies, and surface passes; shared opaque underwater shading and implicit queue texture uploads are not isolated",
+    "gpu_ms": {
+      "count": 6,
+      "mean": 3.021778,
+      "p95": 3.25325,
+      "max": 3.724459
+    },
+    "gpu_passes_ms": [
+      "mirror",
+      "opaque (excluded)",
+      "color and depth copies",
+      "surface"
+    ],
+    "gpu_bytes": 3544108,
+    "main_ms": {
+      "count": 96,
+      "mean": 1.115915322916673,
+      "p95": 2.1915419999997994,
+      "max": 2.207500000000209
+    },
+    "worker_ms": {
+      "count": 96,
+      "mean": 0.0,
+      "p95": 0.0,
+      "max": 0.0
+    },
+    "main_cpu_clock": true,
+    "worker_cpu_clock": true,
+    "completed_jobs": 0,
+    "completed_synthesis_ms": 0.0,
+    "mean_completed_job_elapsed_ms": null,
+    "mean_completed_job_cpu_ms": null,
+    "observed_last_job_elapsed_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "observed_last_job_cpu_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "queue_fence_frame_ms_fastest": 7.490333,
+    "queue_fence_water_ms_estimate": 2.4602499999999994,
+    "last": {
+      "gpu": null,
+      "gpu_timestamps": true,
+      "gpu_bytes": 3544108,
+      "main_ms": 0.19537600000000002,
+      "main_cpu_ms": 0.19499999999993634,
+      "synthesis_ms": 0.0,
+      "synthesis_cpu_ms": null,
+      "completed_jobs": 0,
+      "completed_synthesis_ms": 0.0,
+      "worker_ms": 0.0,
+      "worker_cpu_supported": true,
+      "worker_bytes": 0,
+      "ripple_cpu_bytes": 524612,
+      "inline_synthesis": false,
+      "refresh_every": 8,
+      "copies": false,
+      "mirror": false,
+      "ssr": false,
+      "effects_reduced": true
+    },
+    "within_budget": false,
+    "effects_reduced": true,
+    "water_changed_pixels": 0.41401186342592594,
+    "capture": "native-high-pond-posts.png",
+    "capture_sha256": "6035a92c221d3bb0a64c82c1d56d0afe7d4c180dd296aa81d2545a209068cc1d",
+    "completed_gpu_observations": 16,
+    "post_warm_gpu_observations": 12,
+    "transitions": [
+      {
+        "display_frame": 1,
+        "refresh_every": 1,
+        "copies": true,
+        "mirror": true,
+        "ssr": true,
+        "effects_reduced": false
+      },
+      {
+        "display_frame": 129,
+        "refresh_every": 2,
+        "copies": false,
+        "mirror": false,
+        "ssr": false,
+        "effects_reduced": true
+      },
+      {
+        "display_frame": 197,
+        "refresh_every": 4,
+        "copies": false,
+        "mirror": false,
+        "ssr": false,
+        "effects_reduced": true
+      },
+      {
+        "display_frame": 265,
+        "refresh_every": 8,
+        "copies": false,
+        "mirror": false,
+        "ssr": false,
+        "effects_reduced": true
+      }
+    ],
+    "case_exit": 0,
+    "peak_gpu_bytes": 49163308,
+    "peak_cpu_storage_bytes": 524612
+  },
+  {
+    "tier": "high",
+    "view": "under",
+    "adapter": "Apple M5 Max (Metal)",
+    "measured_at_unix_ms": 1791446144787,
+    "size": [
+      1920,
+      1080
+    ],
+    "cadence_hz": 60,
+    "steady_frames": 96,
+    "timing": "paced native pass timestamps when valid; submit-to-fence wall time excludes cadence sleep",
+    "gpu_timestamp_scope": "mirror, color/depth copies, and surface passes; shared opaque underwater shading and implicit queue texture uploads are not isolated",
+    "gpu_ms": {
+      "count": 5,
+      "mean": 1.3731168,
+      "p95": 1.911959,
+      "max": 2.473459
+    },
+    "gpu_passes_ms": [
+      "mirror",
+      "opaque (excluded)",
+      "color and depth copies",
+      "surface"
+    ],
+    "gpu_bytes": 3544108,
+    "main_ms": {
+      "count": 96,
+      "mean": 1.0710055833333338,
+      "p95": 2.24804099999983,
+      "max": 2.34112499999992
+    },
+    "worker_ms": {
+      "count": 96,
+      "mean": 0.0,
+      "p95": 0.0,
+      "max": 0.0
+    },
+    "main_cpu_clock": true,
+    "worker_cpu_clock": true,
+    "completed_jobs": 0,
+    "completed_synthesis_ms": 0.0,
+    "mean_completed_job_elapsed_ms": null,
+    "mean_completed_job_cpu_ms": null,
+    "observed_last_job_elapsed_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "observed_last_job_cpu_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "queue_fence_frame_ms_fastest": 4.974374999999999,
+    "queue_fence_water_ms_estimate": 0.0,
+    "last": {
+      "gpu": null,
+      "gpu_timestamps": true,
+      "gpu_bytes": 3544108,
+      "main_ms": 0.17637399999999998,
+      "main_cpu_ms": 0.1755839999998443,
+      "synthesis_ms": 0.0,
+      "synthesis_cpu_ms": null,
+      "completed_jobs": 0,
+      "completed_synthesis_ms": 0.0,
+      "worker_ms": 0.0,
+      "worker_cpu_supported": true,
+      "worker_bytes": 0,
+      "ripple_cpu_bytes": 524612,
+      "inline_synthesis": false,
+      "refresh_every": 8,
+      "copies": false,
+      "mirror": false,
+      "ssr": false,
+      "effects_reduced": true
+    },
+    "within_budget": false,
+    "effects_reduced": true,
+    "water_changed_pixels": 1.0,
+    "capture": "native-high-under.png",
+    "capture_sha256": "d76c1581c1e93f5642916314ce67b0557879def5c93fd9912f5b5dab2f9dfa1e",
+    "completed_gpu_observations": 25,
+    "post_warm_gpu_observations": 13,
+    "transitions": [
+      {
+        "display_frame": 1,
+        "refresh_every": 1,
+        "copies": true,
+        "mirror": false,
+        "ssr": true,
+        "effects_reduced": false
+      },
+      {
+        "display_frame": 129,
+        "refresh_every": 2,
+        "copies": false,
+        "mirror": false,
+        "ssr": false,
+        "effects_reduced": true
+      },
+      {
+        "display_frame": 197,
+        "refresh_every": 4,
+        "copies": false,
+        "mirror": false,
+        "ssr": false,
+        "effects_reduced": true
+      },
+      {
+        "display_frame": 265,
+        "refresh_every": 8,
+        "copies": false,
+        "mirror": false,
+        "ssr": false,
+        "effects_reduced": true
+      }
+    ],
+    "case_exit": 0,
+    "peak_gpu_bytes": 49163308,
+    "peak_cpu_storage_bytes": 524612
+  },
+  {
+    "tier": "high",
+    "view": "waterline",
+    "adapter": "Apple M5 Max (Metal)",
+    "measured_at_unix_ms": 1791446129475,
+    "size": [
+      1920,
+      1080
+    ],
+    "cadence_hz": 60,
+    "steady_frames": 96,
+    "timing": "paced native pass timestamps when valid; submit-to-fence wall time excludes cadence sleep",
+    "gpu_timestamp_scope": "mirror, color/depth copies, and surface passes; shared opaque underwater shading and implicit queue texture uploads are not isolated",
+    "gpu_ms": {
+      "count": 8,
+      "mean": 4.08598425,
+      "p95": 4.569542,
+      "max": 4.963125
+    },
+    "gpu_passes_ms": [
+      "mirror",
+      "opaque (excluded)",
+      "color and depth copies",
+      "surface"
+    ],
+    "gpu_bytes": 3544108,
+    "main_ms": {
+      "count": 96,
+      "mean": 1.0498476250000053,
+      "p95": 2.213959000000159,
+      "max": 2.2877079999998386
+    },
+    "worker_ms": {
+      "count": 96,
+      "mean": 0.0,
+      "p95": 0.0,
+      "max": 0.0
+    },
+    "main_cpu_clock": true,
+    "worker_cpu_clock": true,
+    "completed_jobs": 0,
+    "completed_synthesis_ms": 0.0,
+    "mean_completed_job_elapsed_ms": null,
+    "mean_completed_job_cpu_ms": null,
+    "observed_last_job_elapsed_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "observed_last_job_cpu_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "queue_fence_frame_ms_fastest": 6.124334,
+    "queue_fence_water_ms_estimate": 0.1773750000000005,
+    "last": {
+      "gpu": {
+        "frame": 359,
+        "pass_ms": [
+          null,
+          1.437375,
+          null,
+          3.632583
+        ],
+        "water_ms": 3.632583
+      },
+      "gpu_timestamps": true,
+      "gpu_bytes": 3544108,
+      "main_ms": 0.241791,
+      "main_cpu_ms": 0.2265410000002248,
+      "synthesis_ms": 0.0,
+      "synthesis_cpu_ms": null,
+      "completed_jobs": 0,
+      "completed_synthesis_ms": 0.0,
+      "worker_ms": 0.0,
+      "worker_cpu_supported": true,
+      "worker_bytes": 0,
+      "ripple_cpu_bytes": 524612,
+      "inline_synthesis": false,
+      "refresh_every": 8,
+      "copies": false,
+      "mirror": false,
+      "ssr": false,
+      "effects_reduced": true
+    },
+    "within_budget": false,
+    "effects_reduced": true,
+    "water_changed_pixels": 0.5171836419753086,
+    "capture": "native-high-waterline.png",
+    "capture_sha256": "f226cd6fe6024fdb809d700255f58dc8176c8ecdb568c61e53b97e490f196290",
+    "completed_gpu_observations": 20,
+    "post_warm_gpu_observations": 13,
+    "transitions": [
+      {
+        "display_frame": 1,
+        "refresh_every": 1,
+        "copies": true,
+        "mirror": false,
+        "ssr": true,
+        "effects_reduced": false
+      },
+      {
+        "display_frame": 129,
+        "refresh_every": 2,
+        "copies": false,
+        "mirror": false,
+        "ssr": false,
+        "effects_reduced": true
+      },
+      {
+        "display_frame": 197,
+        "refresh_every": 4,
+        "copies": false,
+        "mirror": false,
+        "ssr": false,
+        "effects_reduced": true
+      },
+      {
+        "display_frame": 265,
+        "refresh_every": 8,
+        "copies": false,
+        "mirror": false,
+        "ssr": false,
+        "effects_reduced": true
+      }
+    ],
+    "case_exit": 0,
+    "peak_gpu_bytes": 49163308,
+    "peak_cpu_storage_bytes": 524612
+  },
+  {
+    "tier": "low",
+    "view": "open-storm",
+    "adapter": "Apple M5 Max (Metal)",
+    "measured_at_unix_ms": 1791445956198,
+    "size": [
+      1920,
+      1080
+    ],
+    "cadence_hz": 60,
+    "steady_frames": 96,
+    "timing": "paced native pass timestamps when valid; submit-to-fence wall time excludes cadence sleep",
+    "gpu_timestamp_scope": "mirror, color/depth copies, and surface passes; shared opaque underwater shading and implicit queue texture uploads are not isolated",
+    "gpu_ms": {
+      "count": 8,
+      "mean": 1.9055832499999998,
+      "p95": 2.102708,
+      "max": 2.388709
+    },
+    "gpu_passes_ms": [
+      "mirror",
+      "opaque (excluded)",
+      "color and depth copies",
+      "surface"
+    ],
+    "gpu_bytes": 2313316,
+    "main_ms": {
+      "count": 96,
+      "mean": 0.5117456770833329,
+      "p95": 0.80437500000005,
+      "max": 1.0652499999999918
+    },
+    "worker_ms": {
+      "count": 96,
+      "mean": 0.024409270833333534,
+      "p95": 0.173125,
+      "max": 0.31625000000000364
+    },
+    "main_cpu_clock": true,
+    "worker_cpu_clock": true,
+    "completed_jobs": 12,
+    "completed_synthesis_ms": 2.342376000000004,
+    "mean_completed_job_elapsed_ms": 0.19519800000000032,
+    "mean_completed_job_cpu_ms": 0.19527416666666828,
+    "observed_last_job_elapsed_ms": {
+      "count": 12,
+      "mean": 0.19519799999999998,
+      "p95": 0.305209,
+      "max": 0.316417
+    },
+    "observed_last_job_cpu_ms": {
+      "count": 12,
+      "mean": 0.1952741666666681,
+      "p95": 0.3050410000000028,
+      "max": 0.3162500000000037
+    },
+    "queue_fence_frame_ms_fastest": 6.268542,
+    "queue_fence_water_ms_estimate": 1.7067499999999995,
+    "last": {
+      "gpu": null,
+      "gpu_timestamps": true,
+      "gpu_bytes": 2313316,
+      "main_ms": 0.338334,
+      "main_cpu_ms": 0.33808299999998326,
+      "synthesis_ms": 0.172708,
+      "synthesis_cpu_ms": 0.17291600000000074,
+      "completed_jobs": 1,
+      "completed_synthesis_ms": 0.17270799999999872,
+      "worker_ms": 0.17291600000000107,
+      "worker_cpu_supported": true,
+      "worker_bytes": 827704,
+      "ripple_cpu_bytes": 131072,
+      "inline_synthesis": false,
+      "refresh_every": 8,
+      "copies": false,
+      "mirror": false,
+      "ssr": false,
+      "effects_reduced": true
+    },
+    "within_budget": false,
+    "effects_reduced": true,
+    "water_changed_pixels": 0.5439776234567901,
+    "capture": "native-low-open-storm.png",
+    "capture_sha256": "1c9980092e05798f56d8f86f5f503e417182e73fdf0f61521dcdc508c71daa66",
+    "completed_gpu_observations": 13,
+    "post_warm_gpu_observations": 11,
+    "transitions": [
+      {
+        "display_frame": 1,
+        "refresh_every": 1,
+        "copies": false,
+        "mirror": false,
+        "ssr": false,
+        "effects_reduced": false
+      },
+      {
+        "display_frame": 129,
+        "refresh_every": 2,
+        "copies": false,
+        "mirror": false,
+        "ssr": false,
+        "effects_reduced": true
+      },
+      {
+        "display_frame": 197,
+        "refresh_every": 4,
+        "copies": false,
+        "mirror": false,
+        "ssr": false,
+        "effects_reduced": true
+      },
+      {
+        "display_frame": 265,
+        "refresh_every": 8,
+        "copies": false,
+        "mirror": false,
+        "ssr": false,
+        "effects_reduced": true
+      }
+    ],
+    "case_exit": 0,
+    "peak_gpu_bytes": 2313316,
+    "peak_cpu_storage_bytes": 958776
+  },
+  {
+    "tier": "low",
+    "view": "pond-noon",
+    "adapter": "Apple M5 Max (Metal)",
+    "measured_at_unix_ms": 1791445073701,
+    "size": [
+      1920,
+      1080
+    ],
+    "cadence_hz": 60,
+    "steady_frames": 96,
+    "timing": "paced native pass timestamps when valid; submit-to-fence wall time excludes cadence sleep",
+    "gpu_timestamp_scope": "mirror, color/depth copies, and surface passes; shared opaque underwater shading and implicit queue texture uploads are not isolated",
+    "gpu_ms": {
+      "count": 5,
+      "mean": 2.3698166,
+      "p95": 2.469958,
+      "max": 2.554583
+    },
+    "gpu_passes_ms": [
+      "mirror",
+      "opaque (excluded)",
+      "color and depth copies",
+      "surface"
+    ],
+    "gpu_bytes": 989164,
+    "main_ms": {
+      "count": 96,
+      "mean": 0.1776770104166611,
+      "p95": 0.23129199999993943,
+      "max": 0.2718330000000151
+    },
+    "worker_ms": {
+      "count": 96,
+      "mean": 0.0,
+      "p95": 0.0,
+      "max": 0.0
+    },
+    "main_cpu_clock": true,
+    "worker_cpu_clock": true,
+    "completed_jobs": 0,
+    "completed_synthesis_ms": 0.0,
+    "mean_completed_job_elapsed_ms": null,
+    "mean_completed_job_cpu_ms": null,
+    "observed_last_job_elapsed_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "observed_last_job_cpu_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "queue_fence_frame_ms_fastest": 5.881959,
+    "queue_fence_water_ms_estimate": 3.045376,
+    "last": {
+      "gpu": null,
+      "gpu_timestamps": true,
+      "gpu_bytes": 989164,
+      "main_ms": 0.12925,
+      "main_cpu_ms": 0.12891700000000128,
+      "synthesis_ms": 0.0,
+      "synthesis_cpu_ms": null,
+      "completed_jobs": 0,
+      "completed_synthesis_ms": 0.0,
+      "worker_ms": 0.0,
+      "worker_cpu_supported": true,
+      "worker_bytes": 0,
+      "ripple_cpu_bytes": 131072,
+      "inline_synthesis": false,
+      "refresh_every": 2,
+      "copies": false,
+      "mirror": false,
+      "ssr": false,
+      "effects_reduced": true
+    },
+    "within_budget": false,
+    "effects_reduced": true,
+    "water_changed_pixels": 0.4209003665123457,
+    "capture": "native-low-pond-noon.png",
+    "capture_sha256": "76feb1e03ec83b7918415422f3276908cb7ac92b8cff3dde81fbf05abf6b9059",
+    "completed_gpu_observations": 27,
+    "post_warm_gpu_observations": 17,
+    "transitions": [
+      {
+        "display_frame": 1,
+        "refresh_every": 1,
+        "copies": false,
+        "mirror": false,
+        "ssr": false,
+        "effects_reduced": false
+      },
+      {
+        "display_frame": 170,
+        "refresh_every": 2,
+        "copies": false,
+        "mirror": false,
+        "ssr": false,
+        "effects_reduced": true
+      }
+    ],
+    "case_exit": 0,
+    "peak_gpu_bytes": 989164,
+    "peak_cpu_storage_bytes": 131072
+  },
+  {
+    "tier": "low",
+    "view": "pond-posts",
+    "adapter": "Apple M5 Max (Metal)",
+    "measured_at_unix_ms": 1791445940876,
+    "size": [
+      1920,
+      1080
+    ],
+    "cadence_hz": 60,
+    "steady_frames": 96,
+    "timing": "paced native pass timestamps when valid; submit-to-fence wall time excludes cadence sleep",
+    "gpu_timestamp_scope": "mirror, color/depth copies, and surface passes; shared opaque underwater shading and implicit queue texture uploads are not isolated",
+    "gpu_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "gpu_passes_ms": [
+      "mirror",
+      "opaque (excluded)",
+      "color and depth copies",
+      "surface"
+    ],
+    "gpu_bytes": 989164,
+    "main_ms": {
+      "count": 96,
+      "mean": 0.16848003125000233,
+      "p95": 0.20987500000001091,
+      "max": 0.2675410000000511
+    },
+    "worker_ms": {
+      "count": 96,
+      "mean": 0.0,
+      "p95": 0.0,
+      "max": 0.0
+    },
+    "main_cpu_clock": true,
+    "worker_cpu_clock": true,
+    "completed_jobs": 0,
+    "completed_synthesis_ms": 0.0,
+    "mean_completed_job_elapsed_ms": null,
+    "mean_completed_job_cpu_ms": null,
+    "observed_last_job_elapsed_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "observed_last_job_cpu_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "queue_fence_frame_ms_fastest": 5.907500000000001,
+    "queue_fence_water_ms_estimate": 2.797875000000001,
+    "last": {
+      "gpu": null,
+      "gpu_timestamps": true,
+      "gpu_bytes": 989164,
+      "main_ms": 0.161583,
+      "main_cpu_ms": 0.16095900000004804,
+      "synthesis_ms": 0.0,
+      "synthesis_cpu_ms": null,
+      "completed_jobs": 0,
+      "completed_synthesis_ms": 0.0,
+      "worker_ms": 0.0,
+      "worker_cpu_supported": true,
+      "worker_bytes": 0,
+      "ripple_cpu_bytes": 131072,
+      "inline_synthesis": false,
+      "refresh_every": 1,
+      "copies": false,
+      "mirror": false,
+      "ssr": false,
+      "effects_reduced": false
+    },
+    "within_budget": false,
+    "effects_reduced": false,
+    "water_changed_pixels": 0.4109963348765432,
+    "capture": "native-low-pond-posts.png",
+    "capture_sha256": "404f262c8cb19a924c29780283c0b93aa28e78f807fb1c59c313a9708269eeeb",
+    "completed_gpu_observations": 2,
+    "post_warm_gpu_observations": 1,
+    "transitions": [
+      {
+        "display_frame": 1,
+        "refresh_every": 1,
+        "copies": false,
+        "mirror": false,
+        "ssr": false,
+        "effects_reduced": false
+      }
+    ],
+    "case_exit": 101,
+    "peak_gpu_bytes": 989164,
+    "peak_cpu_storage_bytes": 131072
+  },
+  {
+    "tier": "low",
+    "view": "under",
+    "adapter": "Apple M5 Max (Metal)",
+    "measured_at_unix_ms": 1791445987773,
+    "size": [
+      1920,
+      1080
+    ],
+    "cadence_hz": 60,
+    "steady_frames": 96,
+    "timing": "paced native pass timestamps when valid; submit-to-fence wall time excludes cadence sleep",
+    "gpu_timestamp_scope": "mirror, color/depth copies, and surface passes; shared opaque underwater shading and implicit queue texture uploads are not isolated",
+    "gpu_ms": {
+      "count": 4,
+      "mean": 1.3481772500000002,
+      "p95": 1.461209,
+      "max": 1.518334
+    },
+    "gpu_passes_ms": [
+      "mirror",
+      "opaque (excluded)",
+      "color and depth copies",
+      "surface"
+    ],
+    "gpu_bytes": 989164,
+    "main_ms": {
+      "count": 96,
+      "mean": 0.25205867708332735,
+      "p95": 0.28474900000003345,
+      "max": 0.31933299999991505
+    },
+    "worker_ms": {
+      "count": 96,
+      "mean": 0.0,
+      "p95": 0.0,
+      "max": 0.0
+    },
+    "main_cpu_clock": true,
+    "worker_cpu_clock": true,
+    "completed_jobs": 0,
+    "completed_synthesis_ms": 0.0,
+    "mean_completed_job_elapsed_ms": null,
+    "mean_completed_job_cpu_ms": null,
+    "observed_last_job_elapsed_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "observed_last_job_cpu_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "queue_fence_frame_ms_fastest": 4.4477079999999996,
+    "queue_fence_water_ms_estimate": 1.6817909999999996,
+    "last": {
+      "gpu": null,
+      "gpu_timestamps": true,
+      "gpu_bytes": 989164,
+      "main_ms": 0.285041,
+      "main_cpu_ms": 0.28408299999989595,
+      "synthesis_ms": 0.0,
+      "synthesis_cpu_ms": null,
+      "completed_jobs": 0,
+      "completed_synthesis_ms": 0.0,
+      "worker_ms": 0.0,
+      "worker_cpu_supported": true,
+      "worker_bytes": 0,
+      "ripple_cpu_bytes": 131072,
+      "inline_synthesis": false,
+      "refresh_every": 1,
+      "copies": false,
+      "mirror": false,
+      "ssr": false,
+      "effects_reduced": false
+    },
+    "within_budget": true,
+    "effects_reduced": false,
+    "water_changed_pixels": 1.0,
+    "capture": "native-low-under.png",
+    "capture_sha256": "e5e437581eeb2099e01ca519d1052c89a32312561c547493134669c56e0c6603",
+    "completed_gpu_observations": 10,
+    "post_warm_gpu_observations": 8,
+    "transitions": [
+      {
+        "display_frame": 1,
+        "refresh_every": 1,
+        "copies": false,
+        "mirror": false,
+        "ssr": false,
+        "effects_reduced": false
+      }
+    ],
+    "case_exit": 0,
+    "peak_gpu_bytes": 989164,
+    "peak_cpu_storage_bytes": 131072
+  },
+  {
+    "tier": "low",
+    "view": "waterline",
+    "adapter": "Apple M5 Max (Metal)",
+    "measured_at_unix_ms": 1791445972233,
+    "size": [
+      1920,
+      1080
+    ],
+    "cadence_hz": 60,
+    "steady_frames": 96,
+    "timing": "paced native pass timestamps when valid; submit-to-fence wall time excludes cadence sleep",
+    "gpu_timestamp_scope": "mirror, color/depth copies, and surface passes; shared opaque underwater shading and implicit queue texture uploads are not isolated",
+    "gpu_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "gpu_passes_ms": [
+      "mirror",
+      "opaque (excluded)",
+      "color and depth copies",
+      "surface"
+    ],
+    "gpu_bytes": 989164,
+    "main_ms": {
+      "count": 96,
+      "mean": 0.22632895833333735,
+      "p95": 0.2723750000000109,
+      "max": 0.2981250000000273
+    },
+    "worker_ms": {
+      "count": 96,
+      "mean": 0.0,
+      "p95": 0.0,
+      "max": 0.0
+    },
+    "main_cpu_clock": true,
+    "worker_cpu_clock": true,
+    "completed_jobs": 0,
+    "completed_synthesis_ms": 0.0,
+    "mean_completed_job_elapsed_ms": null,
+    "mean_completed_job_cpu_ms": null,
+    "observed_last_job_elapsed_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "observed_last_job_cpu_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "queue_fence_frame_ms_fastest": 4.4582500000000005,
+    "queue_fence_water_ms_estimate": 1.6900410000000003,
+    "last": {
+      "gpu": null,
+      "gpu_timestamps": true,
+      "gpu_bytes": 989164,
+      "main_ms": 0.262626,
+      "main_cpu_ms": 0.2509579999999687,
+      "synthesis_ms": 0.0,
+      "synthesis_cpu_ms": null,
+      "completed_jobs": 0,
+      "completed_synthesis_ms": 0.0,
+      "worker_ms": 0.0,
+      "worker_cpu_supported": true,
+      "worker_bytes": 0,
+      "ripple_cpu_bytes": 131072,
+      "inline_synthesis": false,
+      "refresh_every": 1,
+      "copies": false,
+      "mirror": false,
+      "ssr": false,
+      "effects_reduced": false
+    },
+    "within_budget": false,
+    "effects_reduced": false,
+    "water_changed_pixels": 0.5102121913580246,
+    "capture": "native-low-waterline.png",
+    "capture_sha256": "860b8efb9c57be6f68927944b13ed8c53fbe1bf9137aaa60f62b313b87eb82da",
+    "completed_gpu_observations": 1,
+    "post_warm_gpu_observations": 1,
+    "transitions": [
+      {
+        "display_frame": 1,
+        "refresh_every": 1,
+        "copies": false,
+        "mirror": false,
+        "ssr": false,
+        "effects_reduced": false
+      }
+    ],
+    "case_exit": 101,
+    "peak_gpu_bytes": 989164,
+    "peak_cpu_storage_bytes": 131072
+  },
+  {
+    "tier": "medium",
+    "view": "open-storm",
+    "adapter": "Apple M5 Max (Metal)",
+    "measured_at_unix_ms": 1791446036088,
+    "size": [
+      1920,
+      1080
+    ],
+    "cadence_hz": 60,
+    "steady_frames": 96,
+    "timing": "paced native pass timestamps when valid; submit-to-fence wall time excludes cadence sleep",
+    "gpu_timestamp_scope": "mirror, color/depth copies, and surface passes; shared opaque underwater shading and implicit queue texture uploads are not isolated",
+    "gpu_ms": {
+      "count": 7,
+      "mean": 1.7402861428571426,
+      "p95": 2.5125,
+      "max": 2.525167
+    },
+    "gpu_passes_ms": [
+      "mirror",
+      "opaque (excluded)",
+      "color and depth copies",
+      "surface"
+    ],
+    "gpu_bytes": 4616188,
+    "main_ms": {
+      "count": 96,
+      "mean": 1.4235446770833373,
+      "p95": 1.7276259999998729,
+      "max": 1.8280839999997625
+    },
+    "worker_ms": {
+      "count": 96,
+      "mean": 0.0454505520833333,
+      "p95": 0.381,
+      "max": 0.3945420000000013
+    },
+    "main_cpu_clock": true,
+    "worker_cpu_clock": true,
+    "completed_jobs": 12,
+    "completed_synthesis_ms": 4.361501000000004,
+    "mean_completed_job_elapsed_ms": 0.363458416666667,
+    "mean_completed_job_cpu_ms": 0.3636044166666665,
+    "observed_last_job_elapsed_ms": {
+      "count": 12,
+      "mean": 0.3634584166666666,
+      "p95": 0.394208,
+      "max": 0.39441699999999996
+    },
+    "observed_last_job_cpu_ms": {
+      "count": 12,
+      "mean": 0.3636044166666655,
+      "p95": 0.39416699999999594,
+      "max": 0.3945420000000013
+    },
+    "queue_fence_frame_ms_fastest": 6.8700410000000005,
+    "queue_fence_water_ms_estimate": 0.0,
+    "last": {
+      "gpu": null,
+      "gpu_timestamps": true,
+      "gpu_bytes": 4616188,
+      "main_ms": 1.7205840000000001,
+      "main_cpu_ms": 1.7196660000001884,
+      "synthesis_ms": 0.387709,
+      "synthesis_cpu_ms": 0.3879170000000016,
+      "completed_jobs": 1,
+      "completed_synthesis_ms": 0.3877090000000026,
+      "worker_ms": 0.3879170000000013,
+      "worker_cpu_supported": true,
+      "worker_bytes": 1199216,
+      "ripple_cpu_bytes": 131072,
+      "inline_synthesis": false,
+      "refresh_every": 8,
+      "copies": false,
+      "mirror": false,
+      "ssr": false,
+      "effects_reduced": true
+    },
+    "within_budget": false,
+    "effects_reduced": true,
+    "water_changed_pixels": 0.5559148341049382,
+    "capture": "native-medium-open-storm.png",
+    "capture_sha256": "55c7d84587049e47025efedb5758daeb0316ca2f0d5cf6406ccf649a2fee0bc7",
+    "completed_gpu_observations": 21,
+    "post_warm_gpu_observations": 11,
+    "transitions": [
+      {
+        "display_frame": 1,
+        "refresh_every": 1,
+        "copies": true,
+        "mirror": false,
+        "ssr": false,
+        "effects_reduced": false
+      },
+      {
+        "display_frame": 129,
+        "refresh_every": 2,
+        "copies": false,
+        "mirror": false,
+        "ssr": false,
+        "effects_reduced": true
+      },
+      {
+        "display_frame": 197,
+        "refresh_every": 4,
+        "copies": false,
+        "mirror": false,
+        "ssr": false,
+        "effects_reduced": true
+      },
+      {
+        "display_frame": 265,
+        "refresh_every": 8,
+        "copies": false,
+        "mirror": false,
+        "ssr": false,
+        "effects_reduced": true
+      }
+    ],
+    "case_exit": 0,
+    "peak_gpu_bytes": 31572988,
+    "peak_cpu_storage_bytes": 1330288
+  },
+  {
+    "tier": "medium",
+    "view": "pond-noon",
+    "adapter": "Apple M5 Max (Metal)",
+    "measured_at_unix_ms": 1791446005682,
+    "size": [
+      1920,
+      1080
+    ],
+    "cadence_hz": 60,
+    "steady_frames": 96,
+    "timing": "paced native pass timestamps when valid; submit-to-fence wall time excludes cadence sleep",
+    "gpu_timestamp_scope": "mirror, color/depth copies, and surface passes; shared opaque underwater shading and implicit queue texture uploads are not isolated",
+    "gpu_ms": {
+      "count": 2,
+      "mean": 3.3549795000000002,
+      "p95": 3.328209,
+      "max": 3.3817500000000003
+    },
+    "gpu_passes_ms": [
+      "mirror",
+      "opaque (excluded)",
+      "color and depth copies",
+      "surface"
+    ],
+    "gpu_bytes": 28855068,
+    "main_ms": {
+      "count": 96,
+      "mean": 0.2858788958333207,
+      "p95": 0.3084989999999834,
+      "max": 0.428501000000324
+    },
+    "worker_ms": {
+      "count": 96,
+      "mean": 0.0,
+      "p95": 0.0,
+      "max": 0.0
+    },
+    "main_cpu_clock": true,
+    "worker_cpu_clock": true,
+    "completed_jobs": 0,
+    "completed_synthesis_ms": 0.0,
+    "mean_completed_job_elapsed_ms": null,
+    "mean_completed_job_cpu_ms": null,
+    "observed_last_job_elapsed_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "observed_last_job_cpu_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "queue_fence_frame_ms_fastest": 6.872625,
+    "queue_fence_water_ms_estimate": 1.8636670000000004,
+    "last": {
+      "gpu": null,
+      "gpu_timestamps": true,
+      "gpu_bytes": 28855068,
+      "main_ms": 0.382668,
+      "main_cpu_ms": 0.3084989999999834,
+      "synthesis_ms": 0.0,
+      "synthesis_cpu_ms": null,
+      "completed_jobs": 0,
+      "completed_synthesis_ms": 0.0,
+      "worker_ms": 0.0,
+      "worker_cpu_supported": true,
+      "worker_bytes": 0,
+      "ripple_cpu_bytes": 131072,
+      "inline_synthesis": false,
+      "refresh_every": 1,
+      "copies": true,
+      "mirror": true,
+      "ssr": false,
+      "effects_reduced": false
+    },
+    "within_budget": false,
+    "effects_reduced": false,
+    "water_changed_pixels": 0.4218648726851852,
+    "capture": "native-medium-pond-noon.png",
+    "capture_sha256": "253fe0dc553581a52e0dae404559766ba124867b38f56243cf34ccf3e7f0e9e3",
+    "completed_gpu_observations": 18,
+    "post_warm_gpu_observations": 10,
+    "transitions": [
+      {
+        "display_frame": 1,
+        "refresh_every": 1,
+        "copies": true,
+        "mirror": true,
+        "ssr": false,
+        "effects_reduced": false
+      }
+    ],
+    "case_exit": 101,
+    "peak_gpu_bytes": 28855068,
+    "peak_cpu_storage_bytes": 131072
+  },
+  {
+    "tier": "medium",
+    "view": "pond-posts",
+    "adapter": "Apple M5 Max (Metal)",
+    "measured_at_unix_ms": 1791446021053,
+    "size": [
+      1920,
+      1080
+    ],
+    "cadence_hz": 60,
+    "steady_frames": 96,
+    "timing": "paced native pass timestamps when valid; submit-to-fence wall time excludes cadence sleep",
+    "gpu_timestamp_scope": "mirror, color/depth copies, and surface passes; shared opaque underwater shading and implicit queue texture uploads are not isolated",
+    "gpu_ms": {
+      "count": 4,
+      "mean": 3.070271,
+      "p95": 3.04525,
+      "max": 3.550709
+    },
+    "gpu_passes_ms": [
+      "mirror",
+      "opaque (excluded)",
+      "color and depth copies",
+      "surface"
+    ],
+    "gpu_bytes": 22634280,
+    "main_ms": {
+      "count": 96,
+      "mean": 0.20864884374998618,
+      "p95": 0.2671260000001894,
+      "max": 0.3127910000000611
+    },
+    "worker_ms": {
+      "count": 96,
+      "mean": 0.0,
+      "p95": 0.0,
+      "max": 0.0
+    },
+    "main_cpu_clock": true,
+    "worker_cpu_clock": true,
+    "completed_jobs": 0,
+    "completed_synthesis_ms": 0.0,
+    "mean_completed_job_elapsed_ms": null,
+    "mean_completed_job_cpu_ms": null,
+    "observed_last_job_elapsed_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "observed_last_job_cpu_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "queue_fence_frame_ms_fastest": 5.44975,
+    "queue_fence_water_ms_estimate": 0.8792079999999993,
+    "last": {
+      "gpu": null,
+      "gpu_timestamps": true,
+      "gpu_bytes": 22634280,
+      "main_ms": 0.206459,
+      "main_cpu_ms": 0.20549899999991794,
+      "synthesis_ms": 0.0,
+      "synthesis_cpu_ms": null,
+      "completed_jobs": 0,
+      "completed_synthesis_ms": 0.0,
+      "worker_ms": 0.0,
+      "worker_cpu_supported": true,
+      "worker_bytes": 0,
+      "ripple_cpu_bytes": 131072,
+      "inline_synthesis": false,
+      "refresh_every": 1,
+      "copies": true,
+      "mirror": false,
+      "ssr": false,
+      "effects_reduced": true
+    },
+    "within_budget": false,
+    "effects_reduced": true,
+    "water_changed_pixels": 0.4144994212962963,
+    "capture": "native-medium-pond-posts.png",
+    "capture_sha256": "432391e4d64106cfc289ce50a0d93270d134a2879b2b8267052ac389f2de4130",
+    "completed_gpu_observations": 20,
+    "post_warm_gpu_observations": 16,
+    "transitions": [
+      {
+        "display_frame": 1,
+        "refresh_every": 1,
+        "copies": true,
+        "mirror": true,
+        "ssr": false,
+        "effects_reduced": false
+      },
+      {
+        "display_frame": 243,
+        "refresh_every": 1,
+        "copies": true,
+        "mirror": false,
+        "ssr": false,
+        "effects_reduced": true
+      }
+    ],
+    "case_exit": 0,
+    "peak_gpu_bytes": 28855068,
+    "peak_cpu_storage_bytes": 131072
+  },
+  {
+    "tier": "medium",
+    "view": "under",
+    "adapter": "Apple M5 Max (Metal)",
+    "measured_at_unix_ms": 1791446067265,
+    "size": [
+      1920,
+      1080
+    ],
+    "cadence_hz": 60,
+    "steady_frames": 96,
+    "timing": "paced native pass timestamps when valid; submit-to-fence wall time excludes cadence sleep",
+    "gpu_timestamp_scope": "mirror, color/depth copies, and surface passes; shared opaque underwater shading and implicit queue texture uploads are not isolated",
+    "gpu_ms": {
+      "count": 2,
+      "mean": 1.9390420000000002,
+      "p95": 1.689709,
+      "max": 2.188375
+    },
+    "gpu_passes_ms": [
+      "mirror",
+      "opaque (excluded)",
+      "color and depth copies",
+      "surface"
+    ],
+    "gpu_bytes": 28855068,
+    "main_ms": {
+      "count": 96,
+      "mean": 0.15360700000000213,
+      "p95": 0.17616599999996652,
+      "max": 0.18287499999996726
+    },
+    "worker_ms": {
+      "count": 96,
+      "mean": 0.0,
+      "p95": 0.0,
+      "max": 0.0
+    },
+    "main_cpu_clock": true,
+    "worker_cpu_clock": true,
+    "completed_jobs": 0,
+    "completed_synthesis_ms": 0.0,
+    "mean_completed_job_elapsed_ms": null,
+    "mean_completed_job_cpu_ms": null,
+    "observed_last_job_elapsed_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "observed_last_job_cpu_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "queue_fence_frame_ms_fastest": 4.458083,
+    "queue_fence_water_ms_estimate": 0.18924900000000022,
+    "last": {
+      "gpu": null,
+      "gpu_timestamps": true,
+      "gpu_bytes": 28855068,
+      "main_ms": 0.14812499999999998,
+      "main_cpu_ms": 0.14766599999995833,
+      "synthesis_ms": 0.0,
+      "synthesis_cpu_ms": null,
+      "completed_jobs": 0,
+      "completed_synthesis_ms": 0.0,
+      "worker_ms": 0.0,
+      "worker_cpu_supported": true,
+      "worker_bytes": 0,
+      "ripple_cpu_bytes": 131072,
+      "inline_synthesis": false,
+      "refresh_every": 1,
+      "copies": true,
+      "mirror": false,
+      "ssr": false,
+      "effects_reduced": false
+    },
+    "within_budget": true,
+    "effects_reduced": false,
+    "water_changed_pixels": 1.0,
+    "capture": "native-medium-under.png",
+    "capture_sha256": "be62d11a011251b4f46a35d75dd34a44eccdc2562aadb67a5f517b756e76fcbd",
+    "completed_gpu_observations": 16,
+    "post_warm_gpu_observations": 9,
+    "transitions": [
+      {
+        "display_frame": 1,
+        "refresh_every": 1,
+        "copies": true,
+        "mirror": false,
+        "ssr": false,
+        "effects_reduced": false
+      }
+    ],
+    "case_exit": 0,
+    "peak_gpu_bytes": 28855068,
+    "peak_cpu_storage_bytes": 131072
+  },
+  {
+    "tier": "medium",
+    "view": "waterline",
+    "adapter": "Apple M5 Max (Metal)",
+    "measured_at_unix_ms": 1791446051782,
+    "size": [
+      1920,
+      1080
+    ],
+    "cadence_hz": 60,
+    "steady_frames": 96,
+    "timing": "paced native pass timestamps when valid; submit-to-fence wall time excludes cadence sleep",
+    "gpu_timestamp_scope": "mirror, color/depth copies, and surface passes; shared opaque underwater shading and implicit queue texture uploads are not isolated",
+    "gpu_ms": {
+      "count": 5,
+      "mean": 2.1350833999999996,
+      "p95": 2.4830419999999997,
+      "max": 2.724167
+    },
+    "gpu_passes_ms": [
+      "mirror",
+      "opaque (excluded)",
+      "color and depth copies",
+      "surface"
+    ],
+    "gpu_bytes": 28855068,
+    "main_ms": {
+      "count": 96,
+      "mean": 0.14800268750000592,
+      "p95": 0.17487500000004275,
+      "max": 0.2621240000000853
+    },
+    "worker_ms": {
+      "count": 96,
+      "mean": 0.0,
+      "p95": 0.0,
+      "max": 0.0
+    },
+    "main_cpu_clock": true,
+    "worker_cpu_clock": true,
+    "completed_jobs": 0,
+    "completed_synthesis_ms": 0.0,
+    "mean_completed_job_elapsed_ms": null,
+    "mean_completed_job_cpu_ms": null,
+    "observed_last_job_elapsed_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "observed_last_job_cpu_ms": {
+      "count": 0,
+      "mean": null,
+      "p95": null,
+      "max": null
+    },
+    "queue_fence_frame_ms_fastest": 3.820166,
+    "queue_fence_water_ms_estimate": 0.0,
+    "last": {
+      "gpu": null,
+      "gpu_timestamps": true,
+      "gpu_bytes": 28855068,
+      "main_ms": 0.155583,
+      "main_cpu_ms": 0.1552079999999023,
+      "synthesis_ms": 0.0,
+      "synthesis_cpu_ms": null,
+      "completed_jobs": 0,
+      "completed_synthesis_ms": 0.0,
+      "worker_ms": 0.0,
+      "worker_cpu_supported": true,
+      "worker_bytes": 0,
+      "ripple_cpu_bytes": 131072,
+      "inline_synthesis": false,
+      "refresh_every": 1,
+      "copies": true,
+      "mirror": false,
+      "ssr": false,
+      "effects_reduced": false
+    },
+    "within_budget": true,
+    "effects_reduced": false,
+    "water_changed_pixels": 0.515288387345679,
+    "capture": "native-medium-waterline.png",
+    "capture_sha256": "458d1a6c37430255dc1f49c5740e381d52da971ac797d4c260fb02162a27a4a0",
+    "completed_gpu_observations": 12,
+    "post_warm_gpu_observations": 8,
+    "transitions": [
+      {
+        "display_frame": 1,
+        "refresh_every": 1,
+        "copies": true,
+        "mirror": false,
+        "ssr": false,
+        "effects_reduced": false
+      }
+    ],
+    "case_exit": 0,
+    "peak_gpu_bytes": 28855068,
+    "peak_cpu_storage_bytes": 131072
+  }
+]
