@@ -1546,12 +1546,15 @@ mod w11 {
                 let worker_ms = steady.iter().map(|s| s.worker_ms).sum::<f64>();
                 let budget = verse_engine::quality::WaterBudget::of(tier);
                 let reduced = last.effects_reduced;
-                let fence_water_ms = (fence_ms - dry_fence_ms).max(0.0);
-                let gpu_cost = gpu_ms["mean"].as_f64().unwrap_or(fence_water_ms);
-                let within = bytes <= budget.gpu_bytes
-                    && main["mean"].as_f64().unwrap_or(0.0) <= budget.main_ms
-                    && worker["mean"].as_f64().unwrap_or(0.0) <= budget.worker_ms
-                    && gpu_cost <= budget.gpu_ms;
+                let fence_water_ms = fence_ms - dry_fence_ms;
+                // A queue-fence difference is not a substitute for a missing
+                // timestamp. Keep budget admission unknown without GPU data.
+                let within = gpu_ms["mean"].as_f64().map(|gpu_cost| {
+                    bytes <= budget.gpu_bytes
+                        && main["mean"].as_f64().unwrap_or(0.0) <= budget.main_ms
+                        && worker["mean"].as_f64().unwrap_or(0.0) <= budget.worker_ms
+                        && gpu_cost <= budget.gpu_ms
+                });
                 let share = changed(&wet, &dry);
                 let filename = format!("native-{}-{}.png", tier_name(tier), spec.name);
                 png_at(&directory.join(&filename), &wet, BUDGET_SIZE).unwrap();
@@ -1560,7 +1563,9 @@ mod w11 {
                     "size":BUDGET_SIZE,"cadence_hz":60,"steady_frames":steady.len(),
                     "timing":"paced native pass timestamps when valid; submit-to-fence wall time excludes cadence sleep",
                     "gpu_timestamp_scope":"mirror, color/depth copies, and surface passes; shared opaque underwater shading and implicit queue texture uploads are not isolated",
-                    "gpu_ms":gpu_ms,"gpu_passes_ms":["mirror","opaque (excluded)","color and depth copies","surface"],
+                    "gpu_ms":gpu_ms,"gpu_valid_samples":gpu_samples.len(),
+                    "gpu_sample_fraction":gpu_samples.len() as f64 / steady.len() as f64,
+                    "gpu_passes_ms":["mirror","opaque (excluded)","color and depth copies","surface"],
                     "gpu_bytes":bytes,"main_ms":main,"worker_ms":worker,
                     "main_cpu_clock":last.main_cpu_ms.is_some(),"worker_cpu_clock":last.worker_cpu_supported,
                     "completed_jobs":jobs,"completed_synthesis_ms":synthesis_ms,
@@ -1585,7 +1590,13 @@ mod w11 {
                     spec.name
                 );
                 assert!(
-                    within || reduced,
+                    !last.gpu_timestamps || gpu_samples.len() >= steady.len() / 2,
+                    "{} {} needs GPU samples from at least half its steady frames",
+                    tier_name(tier),
+                    spec.name
+                );
+                assert!(
+                    within == Some(true) || reduced || !last.gpu_timestamps,
                     "{} {} admits cost or reduces effects",
                     tier_name(tier),
                     spec.name
