@@ -31,13 +31,31 @@ pub enum Material {
     OpenAiApiKey,
     /// The customer's own Anthropic API key, billed to the customer.
     AnthropicApiKey,
+    /// The customer's own Amazon Bedrock credential (BYO-04).
+    BedrockCredential,
+    /// The customer's own Google Vertex AI service account (BYO-04).
+    VertexCredential,
+    /// The customer's own Microsoft Foundry credential (BYO-04).
+    FoundryCredential,
 }
 
 impl Material {
     pub fn label(self) -> &'static str {
+        match self.claude() {
+            Some(class) => class.label(),
+            None => "your own OpenAI API key",
+        }
+    }
+
+    /// The Claude Code credential class this material carries, if any.
+    pub fn claude(self) -> Option<coder_cloud::claude::OwnCredential> {
+        use coder_cloud::claude::OwnCredential;
         match self {
-            Self::OpenAiApiKey => "your own OpenAI API key",
-            Self::AnthropicApiKey => "your own Anthropic API key",
+            Self::OpenAiApiKey => None,
+            Self::AnthropicApiKey => Some(OwnCredential::AnthropicApiKey),
+            Self::BedrockCredential => Some(OwnCredential::Bedrock),
+            Self::VertexCredential => Some(OwnCredential::Vertex),
+            Self::FoundryCredential => Some(OwnCredential::Foundry),
         }
     }
 }
@@ -103,6 +121,29 @@ impl Key {
                 .any(|c| c.is_control() || c.is_whitespace())
             // Claude.ai OAuth and `claude setup-token` values: never collected.
             || text.starts_with("sk-ant-oat")
+        {
+            return Err(CustodyError::Invalid);
+        }
+        Ok(key)
+    }
+    /// Validate `value` for `material`. A Claude Code class is stored in its
+    /// canonical form (a key, or a compact JSON document whose private-key
+    /// text may hold spaces); every class refuses Claude.ai logins.
+    pub fn for_material(material: Material, value: String) -> Result<Self, CustodyError> {
+        let Some(class) = material.claude() else {
+            return Self::new(value);
+        };
+        // The submitted bytes are zeroed when `submitted` drops.
+        let submitted = Self(value);
+        let key = Self(
+            class
+                .canonical(&submitted.0)
+                .map_err(|_| CustodyError::Invalid)?,
+        );
+        if key.0.is_empty()
+            || key.0.len() > KEY_MAX
+            || key.0.chars().any(char::is_control)
+            || key.0.starts_with("sk-ant-oat")
         {
             return Err(CustodyError::Invalid);
         }

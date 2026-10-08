@@ -110,6 +110,32 @@ October 8, 2026. Recheck both before each availability decision.
   Renew Claude sign-in, which reuses BYO-01's sign-in terminal; the native
   terminal client shows the same summary once when the person must act.
 
+## Implemented (BYO-04, #11011)
+
+- `coder_cloud::claude::OwnCredential` defines the user's own credential
+  classes: an Anthropic API key (`ANTHROPIC_API_KEY`), and Bedrock, Vertex,
+  and Foundry documents (`OA_CLAUDE_BEDROCK`, `OA_CLAUDE_VERTEX`,
+  `OA_CLAUDE_FOUNDRY`). Each is validated to a canonical shape, refuses
+  claude.ai logins, and expands at launch into the variables the unmodified
+  binary reads (`CLAUDE_CODE_USE_BEDROCK`, `AWS_*`, `CLAUDE_CODE_USE_VERTEX`
+  with a private per-job service-account file removed after the run,
+  `CLAUDE_CODE_USE_FOUNDRY`, `ANTHROPIC_FOUNDRY_*`). Values are redacted from
+  traces and refused in artifacts like every selected credential.
+- `coder_cloud::claude::admit_turns` is the concurrency rule: a plan login
+  admits one automated turn at a time and refuses a fan-out with a pointer to
+  adding a key; an own credential is not limited. The Coder operator applies
+  it to every Claude submit and continue on a profile without an own
+  credential. BYO-03 builds its scheduling on this rule.
+- `openagents_web::cloud::byo` keeps the credential in the shared WEB-09
+  custody vault under subject `byo:computers`, scoped to the account,
+  workspace, and membership epoch, with explicit consent, digest-only status,
+  and one current credential. `Computers::credentials` releases it fresh for
+  each boot or automated turn (never into a checkpoint, image, export, or
+  evidence); removal erases the entry, so running computers lose it at their
+  next start or turn and future computers never see it. The page is
+  `/cloud/app/settings/claude` (enabled by `--cloud-byo PRIVATE_DIR`) and
+  states that usage bills to the user's own Anthropic or cloud account.
+
 ## Existing docs this supersedes
 
 - `2026-10-02-boat-sdk-plan.md` describes connecting Claude Pro or Max on Boat's

@@ -96,6 +96,9 @@ pub struct Config {
     pub cloud_build: Option<PathBuf>,
     /// Explicit account/workspace delegations to the retail service.
     pub cloud_retail: Option<Arc<cloud::retail::Delegations>>,
+    /// Private custody of users' own Claude credentials for their own
+    /// computers (BYO-04); absence leaves the page unavailable.
+    pub cloud_byo: Option<Arc<cloud::byo::Computers>>,
     /// Optional create-only capability into the host-private sales pipeline.
     /// Without owner-accepted terms, the proposed offer has no intake form.
     pub pilot: Option<Arc<pilot::Intake>>,
@@ -124,6 +127,7 @@ impl Config {
             cloud_hosts: None,
             cloud_build: None,
             cloud_retail: None,
+            cloud_byo: None,
             pilot: None,
         }
     }

@@ -2,6 +2,7 @@
 //! site, local task browser, and separately granted services remain distinct.
 
 mod agents;
+pub mod byo;
 pub(crate) mod composer;
 mod controls;
 pub mod custody;
@@ -108,6 +109,7 @@ pub(crate) fn routes() -> Router<App> {
         .merge(verse::routes())
         .merge(agents::routes())
         .merge(retail::routes())
+        .merge(byo::routes())
         .layer(DefaultBodyLimit::max(8192));
     for (_, slug, _) in SECTIONS {
         if !matches!(
@@ -570,6 +572,9 @@ fn workspace_shell(
         content.push_str("</ul>");
     } else if selected == "settings" {
         content.push_str("<h2>Account and sessions</h2><p>This is your current native session. The selected native account API does not offer browser session enumeration or recovery-token issuance. Use the native account owner's recovery and credential controls; recovery, rotation, and revoked membership fence this browser on its next standing check.</p><h2>Integrations and sync</h2><p>Host enrollment, provider custody, notifications, private-memory sync, and disclosure are unavailable until separately admitted. Signing in enables none of them.</p>");
+        if byo::available(app) {
+            content.push_str("<h2>Claude credential</h2><p>Add your own Anthropic API key or Bedrock, Vertex, or Foundry credential for your own computers and parallel Claude Code tasks. Usage bills to your own Anthropic or cloud account. <a href=\"/cloud/app/settings/claude\">Manage Claude credential</a></p>");
+        }
     } else if let Some((label, _, reason)) = SECTIONS.iter().find(|(_, slug, _)| *slug == selected)
     {
         content = format!("<h2>{label} · Unavailable</h2><p>{}</p>", escape(reason));
