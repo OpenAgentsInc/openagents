@@ -113,12 +113,21 @@ unchanged.
   output and receipt are preserved in the coordinator's private
   `b2-verification/` scratch directory. The private bucket copy has the
   matching length and MD5; captures and public delivery are not accepted yet.
-  The digest route test passes. The filtered release capture helper
-  compiles at `15fde52d61d2a9f8644974965956a100650c27af`; its frozen executable
-  is `e091be67860acdb6cf4b8595b4bd9d9862b0658c4fa34c16fab9b5b9ad588975`.
-  Scoped formatting and the headless supervisor check pass. Remote
-  quiet/GPU captures are running; visual acceptance remains pending.
-  Upload, website delivery, and before/after Stoop Lane captures remain.
+  Both digest-route tests pass, including a streamed 33 MiB file.
+  The first staged revision, `coder-web-b2-ca7de5879e-20261008165703`,
+  has zero traffic: its buffered 51.7 MB download returns HTTP 500 at
+  Cloud Run's 32 MiB limit. The streaming correction passes locally on
+  `coderos-4080`; publish a replacement image before moving traffic.
+  Four noon/night layered/fallback captures pass at source
+  `7d84e4e19d2d7fa6cc06961d363bdb338ef6d1c2`; the frozen executable is
+  `8fe1ad2584bea6c3719efb6a2ac1f6e51174cb40fe1cb128aa87c9abdf42a0b3`.
+  Reports prove the NVIDIA adapter, matching scene, active layers, and
+  night lamp intensity 1.0. Fifteen PNGs and reports remain under the
+  coordinator's private `b2-verification/captures/`. Night lamp differences
+  are subtle at the townhouse doorway; these are not chart-seam evidence.
+  Earlier captures with a stale staged frame remain separately under
+  `captures-before-frame-refresh/`. Public delivery and cold-cache native
+  download verification remain pending.
   The original second-UV lightmaps and denser lamp probes are still
   deferred in the plan; per-vertex results do not establish those checks.
 - **B3 (#10907).** Checkpoint `a2f4bbf7d3` on `codex/everglade-b3` holds
