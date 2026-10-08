@@ -702,6 +702,7 @@ impl Store {
         }
         let now = (self.clock)();
         let mut next = self.state.clone();
+        let outbox_expired = next.outbox.expire(now);
         let expired = next
             .leads
             .values()
@@ -714,7 +715,7 @@ impl Store {
             }
         }
         // Revoked/expired permission stops qualification and cancels proposed handoffs.
-        let mut changed = !expired.is_empty();
+        let mut changed = !expired.is_empty() || outbox_expired;
         changed |= next.expenses.recover(&self.dir, now)?;
         changed |= next.training.recover(&self.dir)?;
         changed |= next.qualification.recover(&self.dir)?;

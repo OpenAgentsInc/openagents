@@ -89,6 +89,7 @@ pub struct Subject {
     pub reserved_business_day: u64,
     pub reservation_id: String,
     pub created_at: u64,
+    pub retain_until: u64,
 }
 impl Subject {
     pub fn sha256(&self) -> Result<String> {
@@ -143,6 +144,7 @@ pub struct Record {
     #[serde(default)]
     pub model_reservation_reference: Option<String>,
     pub created_at: u64,
+    pub retain_until: u64,
     pub decision: Option<Decision>,
     pub phase: Phase,
     pub count_consumed: bool,
@@ -357,6 +359,7 @@ impl Book {
                     || subject.proposal.kind != record.kind
                     || actor(&subject.proposal.message) != record.actor
                     || subject.mime_sha256 != record.mime_sha256
+                    || subject.retain_until != record.retain_until
                     || subject.created_at != record.created_at
                     || subject.reserved_business_day != record.business_day
                     || subject.proposal.message.expires_at != record.expires_at
@@ -421,6 +424,22 @@ impl Book {
                 record.phase = Phase::Invalidated;
             }
         }
+    }
+    pub(super) fn expire(&mut self, now: u64) -> bool {
+        let mut changed = false;
+        for record in self
+            .records
+            .values_mut()
+            .filter(|r| r.subject.is_some() && r.retain_until <= now)
+        {
+            record.subject = None;
+            record.minimized_at = Some(now);
+            if record.phase.outstanding() {
+                record.phase = Phase::Invalidated;
+            }
+            changed = true;
+        }
+        changed
     }
     pub(super) fn obligations(&self, lead: &str) -> Vec<privacy::Obligation> {
         self.records
@@ -786,6 +805,7 @@ impl Store {
         self.refresh()?;
         self.admin(access)?;
         if self.state.outbox.paused
+            || subject.retain_until <= (self.clock)()
             || subject.controller_epoch != self.state.outbox.epoch
             || agents::business_day((self.clock)())? != subject.reserved_business_day
         {
@@ -904,6 +924,14 @@ impl Store {
         }
         let created_at = (self.clock)();
         let mime = mime(self, &prepared, &proposal, created_at)?;
+        let retain_until = self
+            .state
+            .leads
+            .get(&proposal.message.lead)
+            .ok_or("outbox original retention source is unavailable")?
+            .details
+            .data
+            .retain_until;
         let subject = Subject {
             schema: SUBJECT_SCHEMA.into(),
             proposal: proposal.clone(),
@@ -918,6 +946,7 @@ impl Store {
             reserved_business_day: day,
             reservation_id: random_token(),
             created_at,
+            retain_until,
         };
         if mode == Mode::Live {
             self.outbox_live_activation(&subject)?;
@@ -940,6 +969,7 @@ impl Store {
                 maximum_cost_microusd: proposal.maximum_cost_microusd,
                 model_reservation_reference: proposal.model_reservation_reference.clone(),
                 created_at: at,
+                retain_until,
                 decision: None,
                 phase: Phase::Proposed,
                 count_consumed: false,

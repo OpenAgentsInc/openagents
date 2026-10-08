@@ -2314,3 +2314,38 @@ fn outbox_reads_and_idempotent_results_refuse_later_known_credentials() {
         super::super::outbox::Phase::Proposed
     );
 }
+
+#[test]
+fn outbox_original_payload_retention_is_not_extended_by_current_lead_retention() {
+    use super::super::outbox::*;
+    let mut f = Fixture::new();
+    let (_, keys, message) = email_fixture(&mut f);
+    let subject = f
+        .store
+        .propose_sales_outbox(
+            &f.owner,
+            outbox_proposal(message, "original-retention"),
+            &keys,
+        )
+        .unwrap();
+    outbox_decide(&mut f, &keys, &subject, true).unwrap();
+    let original = subject.retain_until;
+    let mut next = f.store.state.clone();
+    next.leads
+        .get_mut(&f.lead)
+        .unwrap()
+        .details
+        .data
+        .retain_until = original + 1000;
+    f.store.persist(next).unwrap();
+    assert!(!f.store.state.outbox.expire(original - 1));
+    assert!(f.store.state.outbox.expire(original));
+    let row = &f.store.state.outbox.records[&subject.proposal.id];
+    assert!(row.subject.is_none());
+    assert_eq!(row.phase, Phase::Invalidated);
+    assert!(!row.count_consumed);
+    assert_eq!(row.subject_sha256, subject.sha256().unwrap());
+    assert_eq!(row.mime_sha256, subject.mime_sha256);
+    assert_eq!(row.retain_until, original);
+    assert!(f.store.state.leads[&f.lead].details.data.retain_until > original);
+}
