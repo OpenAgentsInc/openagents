@@ -96,7 +96,7 @@ so a submitted branch can't change the commands that check it.
 | `pin` | Optional. The source `file` whose `lines` (line prefixes) hold the pin, and the `history` list that keeps earlier digests. |
 | `message` | The repin commit's subject. `{changes}` becomes the summaries. |
 
-The registry has four entries:
+The registry has five entries:
 
 - `everglade-pack` runs
   `cargo run --release -p verse --example everglade_pack -- assets/verse/everglade`
@@ -108,6 +108,12 @@ The registry has four entries:
   and the `the_pinned_pack_is_what_the_sources_compile_to` test in `verse`
   to check. It pins `assets/verse/grid/pack.json` and the white texel
   beside it.
+- `coast-pack` compiles the original admitted coast sources with the
+  `coast_pack` example's filtered test, then runs the coast library tests.
+  It retains `assets/verse/coast/*.vtp` and `pack.json`, and updates the
+  digest, length, and embedded file in `verse-zone-coast/src/pack.rs`.
+  Its compiler does not load the generated file, so it can create the first
+  pin. It never starts a lighting bake.
 - `everglade-kit` runs `scripts/unreal/medieval_kit_build.py` and the
   `everglade_kit` example in `verse-zone-everglade` to regenerate, and the
   example with `--check` to check. The kit pack is licensed, so the entry

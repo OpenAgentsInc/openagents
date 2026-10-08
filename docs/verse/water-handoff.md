@@ -424,6 +424,9 @@ Budget calibration and the refreshed browser check remain pending.
 
 ## C2 completion (October 8)
 
+Landed through the `coast-pack` artifact queue in `d98c5c653b49`
+(source commit `ddb84b4f33`). Issue #10886 is closed.
+
 C2 (#10886) supplies 36 original static models at three detail levels,
 four animated wildlife rigs, and two analytic sprite sheets. All geometry
 and textures are original Reference-mode work. No licensed content or
