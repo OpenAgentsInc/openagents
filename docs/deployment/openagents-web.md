@@ -451,3 +451,40 @@ tag, `/`, `/grid`, `/everglade`, `/druid`, and `/api/stats` answered
 200, headless Chrome drew Everglade on WebGPU and WebGL2 (`?gl`), and the
 Grove still cast, before traffic moved. Rollback:
 `--to-revisions coder-web-ba484fcf52=100`.
+
+## 2026-10-07: medieval kit deploy
+
+Revision `coder-web-d3f3ad546c-20261008043217` serves 100% of production
+traffic after P9 lands and its final Verse and Everglade tests pass. It was
+first staged under the `new` tag with no production traffic; the preceding
+revision `coder-web-docs-c6415404e8-20261007003942` is the rollback.
+It uses the requested existing image `openagents/openagents-web:d3f3ad546c`,
+from commit `d3f3ad546cff031f58b2b63eb9b62bf29d9a2fb0`, pinned to image digest
+`sha256:fa564ef756f3f42de88f76dbbc0310064a17bf28ff1c17398f9c2b2ff3ea323f`.
+Artifact Registry records its creation at `2026-10-08T03:39:18Z`; no matching
+Cloud Build receipt was found, and this deployment runs no new build.
+
+The revision was applied as `chris@openagents.com` from the live export,
+with only its name, the web image, and the zero-traffic `new` tag changed.
+The `coder-serve` image, secrets, pay host environment, VPC annotations,
+service account, volumes, concurrency, and timeout are preserved, and
+`CODER_CHAT_SYNC` is quoted as `'on'`.
+
+All 25 HTTP checks pass on the tag and production: public pages, pairing and association
+files, discovery, installers, CSS, loader, wasm, and both packs. The kit at
+`/everglade/kit/dae1612d4c22438a933c27b406c1e18fe134b13eab8eb5240ddcf5506ffb0b93.vtp`
+returns `200`, exactly 10,238,689 bytes, and the matching SHA-256 digest.
+Offscreen Chrome renders the medieval town and hotbar on WebGPU and forced
+WebGL2 on both the tag and production. The font `/fonts/PaperMono-Variable.woff2` returns `404` on both the
+tag and the preceding production revision; rendering succeeds with the
+fallback font.
+
+This requested image predates P9 and serves the earlier public pack
+`367da275afc505543d77841dd4f44efafbb6d784b783a17742985b13ce922fb7`
+(12,303,751 bytes; size and digest verified). A later build must include
+P9's cleaned public pack and any subsequent kit or tier changes.
+Evidence stays outside git in
+`/Users/christopherdavid/.openagents/scratch/codex-01a119ae-08ea-73f2-9344-ec959f74a795/`.
+Both `candidate/` and `production/` contain `http-checks.json`,
+`browser-checks.json`, `everglade-webgpu.png`, and `everglade-webgl2.png`.
+Rollback: `gcloud run services update-traffic coder --region us-central1 --project openagentsgemini --to-revisions coder-web-docs-c6415404e8-20261007003942=100`.
