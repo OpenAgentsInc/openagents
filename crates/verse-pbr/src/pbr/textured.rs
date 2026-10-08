@@ -1397,8 +1397,17 @@ pub struct DynamicInstance {
 pub struct InstancedFigure {
     pub scene: std::sync::Arc<TexturedScene>,
     pub instances: std::sync::Arc<Vec<DynamicInstance>>,
+    /// Selective per-vertex lighting, absent for ordinary chunk ambient.
+    pub vertex_lights: Option<VertexLightStream>,
     /// Shared across geometry changes; replace when instance IDs can be reused.
     pub motion_epoch: std::sync::Arc<()>,
+}
+
+/// Immutable light texels, with one range per stable rigid instance ID.
+#[derive(Clone, Debug)]
+pub struct VertexLightStream {
+    pub texels: std::sync::Arc<Vec<[u8; 4]>>,
+    pub ranges: std::sync::Arc<BTreeMap<u64, u32>>,
 }
 
 impl InstancedFigure {
@@ -1420,6 +1429,21 @@ impl InstancedFigure {
                 })
             {
                 return Err("rigid instance has an invalid mesh, ID, or transform".into());
+            }
+            if let Some(stream) = &self.vertex_lights
+                && let Some(&base) = stream.ranges.get(&instance.id)
+            {
+                let count: usize = self.scene.meshes[instance.mesh]
+                    .primitives
+                    .iter()
+                    .map(|p| p.vertices.len())
+                    .sum();
+                if (base as usize)
+                    .checked_add(count)
+                    .is_none_or(|end| end > stream.texels.len())
+                {
+                    return Err("rigid vertex light range exceeds its texels".into());
+                }
             }
         }
         Ok(())

@@ -174,6 +174,7 @@ impl Cache {
             id -= 1;
         }
         InstancedFigure {
+            vertex_lights: None,
             scene: self.scene.clone(),
             instances: Arc::new(instances),
             motion_epoch: self.motion_epoch.clone(),
