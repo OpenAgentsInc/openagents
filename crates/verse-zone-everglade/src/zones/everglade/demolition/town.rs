@@ -58,7 +58,7 @@ use crate::pbr::textured::{
     DynamicInstance, Figure, IndexRange, InstancedFigure, Primitive, TexturedMesh, TexturedScene,
     TexturedVertex, UNBAKED,
 };
-use crate::pbr::textured_bake::{AmbientProbes, encode};
+use crate::pbr::textured_bake::{AmbientProbes, BakeLight, encode};
 use crate::zones::everglade::floaters::{FLOAT, Floater, Painter};
 use crate::zones::everglade::height;
 use crate::zones::everglade::layout::{self, Placement};
@@ -72,8 +72,11 @@ use std::sync::{Arc, Mutex};
 use verse_world::social::columns::Columns;
 use verse_world::social::sight::Sight;
 
+mod baked_repair;
 mod receivers;
 mod rubble;
+mod vertex_lights;
+pub use baked_repair::BakedRepairDiagnostics;
 pub use rubble::MergeStats;
 
 /// Whether this build runs on a browser or a phone, whose budgets are
@@ -537,6 +540,20 @@ impl Wreck {
         });
         self.revision += 1;
         true
+    }
+
+    /// Buildings whose absent pieces invalidate pristine ground light, including
+    /// damage retained after their pieces leave the live simulation.
+    fn relight_buildings(&self) -> BTreeSet<usize> {
+        self.refs
+            .iter()
+            .enumerate()
+            .filter(|(piece, _)| self.site.relight(*piece))
+            .map(|(_, &(building, _))| building)
+            .chain(self.frozen.iter().filter_map(|(&building, pieces)| {
+                pieces.contains(&Frozen::Gone).then_some(building)
+            }))
+            .collect()
     }
 
     /// Takes `building` out of the rules. Damage it took stays: broken and
@@ -1023,6 +1040,8 @@ pub struct Town {
     relight_vertices: Vec<TexturedVertex>,
     relight_receivers: receivers::Index,
     relight_seen: (u64, u64),
+    relight_fallback: Mutex<Arc<Vec<(u32, [u8; 4])>>>,
+    baked_repair: Option<Mutex<baked_repair::Repair>>,
     /// The solids without any building, the solids now, and whether they
     /// changed.
     base: Solids,
@@ -1392,6 +1411,8 @@ impl Town {
             relight_vertices: Vec::new(),
             relight_receivers: receivers::Index::default(),
             relight_seen: (u64::MAX, u64::MAX),
+            relight_fallback: Mutex::new(Arc::new(Vec::new())),
+            baked_repair: None,
             current: base.clone(),
             base,
             solids: None,
@@ -1728,6 +1749,7 @@ impl Town {
     /// Stands every building whole in the static cells again and ends the
     /// spell's meteors and marks.
     pub fn restore(&mut self) {
+        self.invalidate_baked_repair();
         let lifted: Vec<usize> = self.wreck.lifted.iter().map(|l| l.building).collect();
         for building in lifted {
             self.wreck.let_go(building);
@@ -1987,6 +2009,9 @@ impl Town {
     /// Brings the drawn pieces, the hidden placements, and the solids up
     /// to the rules.
     fn sync(&mut self) {
+        if self.wreck.revision != self.seen.0 {
+            self.invalidate_baked_repair();
+        }
         let site = &self.wreck.site;
         // How each site piece looks.
         self.looks = self
@@ -2137,17 +2162,10 @@ impl Town {
     /// estimate; current shadow passes account for it each frame.
     fn refresh_light(&self) {
         if self.relight_sun.is_none() {
-            self.world.baked.set_fallback(Vec::new());
+            self.set_relight_fallback(Vec::new());
             return;
         }
-        let affected: BTreeSet<usize> = self
-            .wreck
-            .refs
-            .iter()
-            .enumerate()
-            .filter(|(i, _)| self.wreck.site.relight(*i))
-            .map(|(_, &(building, _))| building)
-            .collect();
+        let affected = self.wreck.relight_buildings();
         let field = LocalOcclusion::new(&self.wreck.site);
         let mut fallback = Vec::new();
         for index in self.relight_receivers.affected(affected) {
@@ -2156,7 +2174,7 @@ impl Town {
             let open = field.sample(point, Vec3::from(vertex.normal), None);
             fallback.push((index, encode(Vec3::splat(open), open)));
         }
-        self.world.baked.set_fallback(fallback);
+        self.set_relight_fallback(fallback);
     }
 
     /// How many spans the chunks `live` keeps of the site pieces `drawn`
@@ -2441,13 +2459,20 @@ impl Town {
                 }
             })
             .collect();
-        Some(
-            self.pool
-                .scene
+        let mut cache = self
+            .pool
+            .scene
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut frame = cache.frame(instances, &parts);
+        if let Some(repair) = &self.baked_repair {
+            frame.vertex_lights = repair
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .frame(instances, &parts),
-        )
+                .lights
+                .stream(&frame, cache.light_members());
+        }
+        Some(frame)
     }
 
     /// The hammer in hand as `hold` holds it, cracks on damaged walls,

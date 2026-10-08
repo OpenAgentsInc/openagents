@@ -77,6 +77,14 @@ struct Batch {
     mesh: usize,
 }
 
+/// One individual chunk's vertex range in a settled aggregate mesh.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct LightMember {
+    pub id: u64,
+    pub mesh: usize,
+    pub vertices: Range<usize>,
+}
+
 pub(super) struct Cache {
     pub scene: Arc<TexturedScene>,
     motion_epoch: Arc<()>,
@@ -101,12 +109,24 @@ impl Cache {
         }
     }
 
+    pub fn motion_epoch(&self) -> Arc<()> {
+        self.motion_epoch.clone()
+    }
+
     pub fn held(&self) -> usize {
         vertices(&self.scene.meshes)
     }
 
     pub fn source_vertices(&self) -> usize {
         vertices(&self.scene.meshes[..self.sources])
+    }
+
+    pub fn light_members(&self) -> impl Iterator<Item = LightMember> + '_ {
+        self.members.iter().map(|(&id, member)| LightMember {
+            id,
+            mesh: member.mesh,
+            vertices: member.vertices.clone(),
+        })
     }
 
     pub fn add_source(&mut self, mesh: TexturedMesh) -> usize {
@@ -174,6 +194,7 @@ impl Cache {
             id -= 1;
         }
         InstancedFigure {
+            vertex_lights: None,
             scene: self.scene.clone(),
             instances: Arc::new(instances),
             motion_epoch: self.motion_epoch.clone(),

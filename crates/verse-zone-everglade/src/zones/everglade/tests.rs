@@ -7,6 +7,76 @@ use crate::{
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
+#[test]
+fn selective_repair_follows_exact_clock_and_current_look_without_changing_the_load_bake_key() {
+    let pack = ZonePack {
+        textures: Vec::new(),
+        materials: Vec::new(),
+        models: Vec::new(),
+        character: None,
+        forms: Vec::new(),
+    };
+    let player = PlayerController::new(Vec3::ZERO, 0.0);
+    let mut zone =
+        Everglade::with_solids(&pack, &player, solids::Solids::over(|_, _| 0.0)).unwrap();
+    let load = BakeLight::from_key(&zone.key());
+    zone.set_clock(town_clock::Clock::DAYTIME.pinned(Some(12.0)));
+    let noon = zone.repair_light();
+    assert_eq!(
+        noon,
+        BakeLight::from_key(&zone.stage(0.0).neon.unwrap().key.unwrap())
+    );
+    zone.set_clock(town_clock::Clock::DAYTIME.pinned(Some(0.0)));
+    let night = zone.repair_light();
+    assert_ne!(noon.sun_dir, night.sun_dir);
+    assert!(noon.sun_illuminance > night.sun_illuminance * 10.0);
+    assert!(noon.sky > night.sky * 10.0);
+    assert!(noon.ground > night.ground * 10.0);
+    assert_eq!(BakeLight::from_key(&zone.key()), load);
+
+    zone.clock = town_clock::Clock {
+        pinned_second: None,
+        mode: town_clock::Mode::WallClock {
+            utc_offset_minutes: 0,
+        },
+        ..town_clock::Clock::DAYTIME
+    };
+    zone.now = town_clock::TownTime::at_hour(0, 9.0);
+    zone.light = time_of_day::Light::at(zone.now);
+    let first = zone.repair_light();
+    zone.now = town_clock::TownTime::at_hour(0, 9.0 + 3.0 / 60.0);
+    assert_eq!(zone.light, time_of_day::Light::at(zone.now));
+    let next = zone.repair_light();
+    assert_ne!(
+        first.sun_dir, next.sun_dir,
+        "repairs move between sky steps"
+    );
+    assert_eq!(
+        next,
+        BakeLight::from_key(
+            &time_of_day::Light::at_hours(9.0 + 3.0 / 60.0).key(Everglade::afternoon())
+        )
+    );
+
+    fn look(time: f32) -> Neon {
+        Neon {
+            key: Some(time_of_day::Light::at_hours(time).key(Everglade::afternoon())),
+            ..Neon::plaza(time)
+        }
+    }
+    zone.set_look(look);
+    zone.elapsed = 15.0;
+    assert_eq!(
+        zone.repair_light(),
+        BakeLight::from_key(&look(15.0).key.unwrap())
+    );
+    assert_eq!(
+        BakeLight::from_key(&zone.key()),
+        BakeLight::from_key(&look(0.0).key.unwrap())
+    );
+    assert_ne!(zone.repair_light(), BakeLight::from_key(&zone.key()));
+}
+
 /// The committed, pinned pack.
 fn pack_path() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))

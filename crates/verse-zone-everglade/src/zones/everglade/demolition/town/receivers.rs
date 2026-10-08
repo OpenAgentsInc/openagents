@@ -52,6 +52,38 @@ fn cell(value: f32) -> i32 {
 
 impl Index {
     pub fn new(vertices: &[TexturedVertex], buildings: &[Building], sun: Vec3) -> Self {
+        Self::with_bounds(
+            vertices,
+            buildings.iter().map(|building| Bounds::new(building, sun)),
+        )
+    }
+
+    /// Encloses every normalized sun direction under the shadow's 0.05
+    /// elevation clamp. B3 retains this membership throughout the day.
+    pub fn all_directions(vertices: &[TexturedVertex], buildings: &[Building]) -> Self {
+        Self::with_bounds(
+            vertices,
+            buildings.iter().map(|building| {
+                let ([x, z], [hx, hz]) = building.rect;
+                let reach = (building.top - building.base).max(0.0) / 0.05;
+                Bounds {
+                    lo: Vec3::new(
+                        x - hx - reach - REACH,
+                        building.base,
+                        z - hz - reach - REACH,
+                    ),
+                    hi: Vec3::new(
+                        x + hx + reach + REACH,
+                        building.base,
+                        z + hz + reach + REACH,
+                    ),
+                    ceiling: building.base + 0.25,
+                }
+            }),
+        )
+    }
+
+    fn with_bounds(vertices: &[TexturedVertex], bounds: impl IntoIterator<Item = Bounds>) -> Self {
         let mut grid: BTreeMap<(i32, i32), Vec<u32>> = BTreeMap::new();
         for (index, vertex) in vertices.iter().enumerate() {
             grid.entry((cell(vertex.pos[0]), cell(vertex.pos[2])))
@@ -59,10 +91,9 @@ impl Index {
                 .push(index as u32);
         }
         Self {
-            buildings: buildings
-                .iter()
-                .map(|building| {
-                    let bounds = Bounds::new(building, sun);
+            buildings: bounds
+                .into_iter()
+                .map(|bounds| {
                     let lo = (cell(bounds.lo.x), cell(bounds.lo.z));
                     let hi = (cell(bounds.hi.x), cell(bounds.hi.z));
                     let mut indices = Vec::new();
@@ -215,6 +246,74 @@ mod tests {
                 index.affected([1, 0, 1]),
                 exhaustive(&vertices, &buildings, sun, 3)
             );
+        }
+    }
+    #[test]
+    fn all_direction_membership_contains_fixed_sun_receivers_at_shadow_boundaries() {
+        let buildings = [
+            building(([1.0, -2.0], [2.0, 3.0]), 1.0, 3.0),
+            building(([-3.0, 4.0], [1.0, 2.0]), -1.0, 1.0),
+        ];
+        let mut vertices = Vec::new();
+        for building in &buildings {
+            let ([x, z], [hx, hz]) = building.rect;
+            let reach = (building.top - building.base).max(0.0) / 0.05;
+            for px in [x - hx - reach - REACH, x, x + hx + reach + REACH] {
+                for pz in [z - hz - reach - REACH, z, z + hz + reach + REACH] {
+                    for py in [
+                        building.base,
+                        building.base + 0.25,
+                        f32::from_bits((building.base + 0.25).to_bits() + 1),
+                    ] {
+                        vertices.push(TexturedVertex::new(
+                            Vec3::new(px, py, pz),
+                            Vec3::Y,
+                            [0.0; 2],
+                        ));
+                    }
+                }
+            }
+        }
+        let index = Index::all_directions(&vertices, &buildings);
+        for mask in 0..1 << buildings.len() {
+            let affected = || (0..buildings.len()).filter(|i| mask & (1 << i) != 0);
+            let all = index.affected(affected());
+            let expected: Vec<_> = vertices
+                .iter()
+                .enumerate()
+                .filter_map(|(i, vertex)| {
+                    affected()
+                        .any(|b| {
+                            let building = &buildings[b];
+                            let ([x, z], [hx, hz]) = building.rect;
+                            let reach = (building.top - building.base).max(0.0) / 0.05;
+                            let p = Vec3::from(vertex.pos);
+                            p.y <= building.base + 0.25
+                                && p.x >= x - hx - reach - REACH
+                                && p.x <= x + hx + reach + REACH
+                                && p.z >= z - hz - reach - REACH
+                                && p.z <= z + hz + reach + REACH
+                        })
+                        .then_some(i as u32)
+                })
+                .collect();
+            assert_eq!(all, expected);
+            for sun in [
+                Vec3::X,
+                -Vec3::X,
+                Vec3::Z,
+                -Vec3::Z,
+                Vec3::Y,
+                Vec3::new(1.0, 0.01, 0.7).normalize(),
+                Vec3::new(-0.6, -0.2, 1.0).normalize(),
+            ] {
+                for fixed in Index::new(&vertices, &buildings, sun).affected(affected()) {
+                    assert!(
+                        all.binary_search(&fixed).is_ok(),
+                        "fixed sun receiver remains a day-cycle target"
+                    );
+                }
+            }
         }
     }
 }

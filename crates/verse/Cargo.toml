@@ -242,6 +242,10 @@ name = "everglade_capture"
 required-features = ["capture"]
 
 [[example]]
+name = "baked_light_capture"
+required-features = ["capture"]
+
+[[example]]
 name = "render_scale"
 required-features = ["capture"]
 

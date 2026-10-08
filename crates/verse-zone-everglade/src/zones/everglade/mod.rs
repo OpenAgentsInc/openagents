@@ -176,6 +176,8 @@ pub struct Everglade {
     /// The town's offline-baked light layers, when it has them
     /// ([`baked`]).
     baked: Option<baked::BakedLight>,
+    /// Worker startup is attempted once when the verified offline bake arrives.
+    repair_attempted: bool,
     /// Blocks another zone's rules add to the spells' own, such as the
     /// Grove's training dummies, each a footprint and its top, m.
     extra_blocks: Vec<(crate::controller::Footprint, f32)>,
@@ -355,6 +357,7 @@ impl Everglade {
             bake: None,
             probes: None,
             baked: None,
+            repair_attempted: false,
             extra_blocks: Vec::new(),
             demolition: None,
             town: None,
@@ -697,6 +700,19 @@ impl Everglade {
             .unwrap_or_else(Self::afternoon)
     }
 
+    /// Repairs use the current light; the load bake keeps its stable key.
+    #[cfg(any(not(target_arch = "wasm32"), test))]
+    fn repair_light(&self) -> BakeLight {
+        let key = self
+            .look
+            .and_then(|look| look(self.elapsed).key)
+            .unwrap_or_else(|| {
+                baked::clock_light(self.light, self.now, self.clock.pinned_hour().is_some())
+                    .key(Self::afternoon())
+            });
+        BakeLight::from_key(&key)
+    }
+
     /// The afternoon light: a warm sun from behind the approach that casts
     /// shadows over the clearing, a cool rim, and sky and ground fill.
     fn afternoon() -> Key {
@@ -749,6 +765,7 @@ impl Everglade {
         self.baked = choice
             .as_ref()
             .map(|choice| baked::BakedLight::new(choice, scene.clone()));
+        self.repair_attempted = false;
         self.bake = Some(BakeJob::start_layered(scene, light, settings, key, choice));
         self.probes = None;
     }
@@ -782,6 +799,14 @@ impl Everglade {
             neon.height_fog = air.height_fog;
         }
         neon.baked_lamps = self.baked_lamps();
+        if let Some(baked) = &self.baked {
+            let light =
+                baked::clock_light(self.light, self.now, self.clock.pinned_hour().is_some());
+            neon.baked_sun = baked.sun(&light);
+            if baked.active {
+                neon.baked_sky = Some(light.sky_lux);
+            }
+        }
         Mesh {
             neon: Some(neon),
             ..Mesh::default()
@@ -1471,12 +1496,36 @@ impl Everglade {
         {
             self.probes = Some(Arc::new(probes));
         }
+        #[cfg(not(target_arch = "wasm32"))]
+        if self.baked.as_ref().is_some_and(|baked| baked.active) {
+            let light = self.repair_light();
+            let minute =
+                self.now
+                    .day
+                    .saturating_mul(1440)
+                    .saturating_add((self.now.second / 60.0).floor() as i64) as u64;
+            if let Some(town) = &mut self.town {
+                if !self.repair_attempted {
+                    self.repair_attempted = true;
+                    if let Err(error) = town.enable_baked_repair(light) {
+                        eprintln!("verse: Could not start baked town light repair: {error}");
+                    }
+                }
+                if town.baked_repair_enabled() {
+                    town.poll_baked_repair(light, minute);
+                }
+            }
+        }
     }
 
     /// How brightly the baked lamp layer burns now: zero without one.
     fn baked_lamps(&self) -> f32 {
         if self.baked.as_ref().is_some_and(|b| b.active) {
-            baked::lamp_intensity(&self.light)
+            baked::lamp_intensity(&baked::clock_light(
+                self.light,
+                self.now,
+                self.clock.pinned_hour().is_some(),
+            ))
         } else {
             0.0
         }

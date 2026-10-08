@@ -631,6 +631,18 @@ struct Delivery {
     /// Local ambient overrides in the existing merged light layout. The
     /// pristine channels stay intact for restoration and later deliveries.
     fallback: Vec<(u32, [u8; 4])>,
+    layers: Option<std::sync::Arc<super::baked_layers::Layers>>,
+    mask_pending: bool,
+    repaired: std::collections::BTreeMap<u32, [u8; 4]>,
+    patches: Vec<LightPatch>,
+}
+
+/// A contiguous light edit. Dynamic edits bypass the offline sun and lamps.
+#[derive(Clone, Debug, PartialEq)]
+pub struct LightPatch {
+    pub first: u32,
+    pub lights: Vec<[u8; 4]>,
+    pub dynamic: bool,
 }
 
 impl BakedVertices {
@@ -669,8 +681,79 @@ impl BakedVertices {
             return;
         }
         slot.fallback = fallback;
+        slot.mask_pending = true;
         slot.lights_pending = true;
         slot.lamps_pending = true;
+    }
+
+    /// Delivers immutable sunlight for interpolation by the renderer.
+    pub fn deliver_layers(&self, layers: std::sync::Arc<super::baked_layers::Layers>) {
+        let mut slot = self.lock();
+        slot.layers = Some(layers);
+        slot.mask_pending = true;
+    }
+
+    /// Retains selective repairs across later full-scene bake deliveries.
+    /// A nondynamic patch restores its pristine sky texels and lamp light.
+    pub fn deliver_patches(&self, patches: impl IntoIterator<Item = LightPatch>) {
+        let mut slot = self.lock();
+        for mut patch in patches {
+            for (offset, light) in patch.lights.iter_mut().enumerate() {
+                let Some(index) = patch.first.checked_add(offset as u32) else {
+                    break;
+                };
+                if patch.dynamic {
+                    slot.repaired.insert(index, *light);
+                } else {
+                    slot.repaired.remove(&index);
+                    // Removing a repair retains an immediate fallback at
+                    // the same vertex until that fallback is also cleared.
+                    if let Some((_, fallback)) = slot.fallback.iter().find(|(i, _)| *i == index) {
+                        *light = *fallback;
+                    }
+                    slot.mask_pending = true;
+                    slot.lamps_pending = true;
+                }
+            }
+            slot.patches.push(patch);
+        }
+    }
+
+    /// Discards queued repairs and restores the retained pristine planes.
+    /// Invalidate the repair worker before calling this during restoration.
+    /// Immediate fallbacks remain active until `set_fallback` clears them.
+    pub fn clear_repairs(&self) {
+        let mut slot = self.lock();
+        slot.repaired.clear();
+        slot.patches.clear();
+        slot.mask_pending = true;
+        slot.lights_pending = slot.lights.is_some();
+        slot.lamps_pending = slot.lamps.is_some();
+    }
+
+    #[must_use]
+    pub fn take_layers(&self) -> Option<std::sync::Arc<super::baked_layers::Layers>> {
+        self.lock().layers.take()
+    }
+
+    /// The complete mask after layer upload or an immediate fallback change.
+    #[must_use]
+    pub fn take_mask(&self) -> Option<Vec<u32>> {
+        let mut slot = self.lock();
+        std::mem::take(&mut slot.mask_pending).then(|| {
+            slot.fallback
+                .iter()
+                .map(|(i, _)| *i)
+                .chain(slot.repaired.keys().copied())
+                .collect::<std::collections::BTreeSet<_>>()
+                .into_iter()
+                .collect()
+        })
+    }
+
+    #[must_use]
+    pub fn take_patches(&self) -> Vec<LightPatch> {
+        std::mem::take(&mut self.lock().patches)
     }
 
     /// Takes the delivered light channel, if a bake has delivered one since
@@ -687,6 +770,11 @@ impl BakedVertices {
                 *texel = light;
             }
         }
+        for (&index, &light) in &slot.repaired {
+            if let Some(texel) = lights.get_mut(index as usize) {
+                *texel = light;
+            }
+        }
         Some(lights)
     }
 
@@ -699,6 +787,11 @@ impl BakedVertices {
         }
         let mut lamps = slot.lamps.clone()?;
         for &(index, _) in &slot.fallback {
+            if let Some(texel) = lamps.get_mut(index as usize) {
+                *texel = [0; 4];
+            }
+        }
+        for &index in slot.repaired.keys() {
             if let Some(texel) = lamps.get_mut(index as usize) {
                 *texel = [0; 4];
             }
@@ -1397,8 +1490,17 @@ pub struct DynamicInstance {
 pub struct InstancedFigure {
     pub scene: std::sync::Arc<TexturedScene>,
     pub instances: std::sync::Arc<Vec<DynamicInstance>>,
+    /// Selective per-vertex lighting, absent for ordinary chunk ambient.
+    pub vertex_lights: Option<VertexLightStream>,
     /// Shared across geometry changes; replace when instance IDs can be reused.
     pub motion_epoch: std::sync::Arc<()>,
+}
+
+/// Immutable light texels, with one range per stable rigid instance ID.
+#[derive(Clone, Debug)]
+pub struct VertexLightStream {
+    pub texels: std::sync::Arc<Vec<[u8; 4]>>,
+    pub ranges: std::sync::Arc<BTreeMap<u64, u32>>,
 }
 
 impl InstancedFigure {
@@ -1420,6 +1522,21 @@ impl InstancedFigure {
                 })
             {
                 return Err("rigid instance has an invalid mesh, ID, or transform".into());
+            }
+            if let Some(stream) = &self.vertex_lights
+                && let Some(&base) = stream.ranges.get(&instance.id)
+            {
+                let count: usize = self.scene.meshes[instance.mesh]
+                    .primitives
+                    .iter()
+                    .map(|p| p.vertices.len())
+                    .sum();
+                if (base as usize)
+                    .checked_add(count)
+                    .is_none_or(|end| end > stream.texels.len())
+                {
+                    return Err("rigid vertex light range exceeds its texels".into());
+                }
             }
         }
         Ok(())
@@ -2017,6 +2134,97 @@ mod tests {
                 .level
                 .drawn_with_fallback(false, &scene.edits.group_fallbacks())
         );
+    }
+
+    #[test]
+    fn partial_repairs_survive_late_bakes_and_restore_without_repairing_other_vertices() {
+        let slot = BakedVertices::default();
+        let pristine = vec![[30, 40, 50, 255]; 4];
+        let lamps = vec![[90, 80, 70, 120]; 4];
+        let repair = [100, 110, 120, 255];
+        slot.deliver_patches([LightPatch {
+            first: 1,
+            lights: vec![repair],
+            dynamic: true,
+        }]);
+        slot.deliver_lights(pristine.clone());
+        slot.deliver_lamps(lamps.clone());
+        let mut expected = pristine.clone();
+        expected[1] = repair;
+        assert_eq!(slot.take().unwrap(), expected);
+        let mut expected_lamps = lamps.clone();
+        expected_lamps[1] = [0; 4];
+        assert_eq!(slot.take_lamps().unwrap(), expected_lamps);
+        assert_eq!(
+            slot.take_patches(),
+            vec![LightPatch {
+                first: 1,
+                lights: vec![repair],
+                dynamic: true
+            }]
+        );
+        slot.set_fallback(vec![(2, repair)]);
+        assert_eq!(slot.take_mask().unwrap(), vec![1, 2]);
+        slot.set_fallback(Vec::new());
+        slot.deliver_patches([LightPatch {
+            first: 1,
+            lights: vec![pristine[1]],
+            dynamic: false,
+        }]);
+        assert_eq!(slot.take_mask().unwrap(), Vec::<u32>::new());
+        slot.deliver_lights(pristine.clone());
+        slot.deliver_lamps(lamps.clone());
+        assert_eq!(slot.take().unwrap(), pristine);
+        assert_eq!(slot.take_lamps().unwrap(), lamps);
+        assert!(!slot.take_patches()[0].dynamic);
+    }
+
+    #[test]
+    fn restoring_before_a_queued_repair_cannot_resurrect_stale_lighting() {
+        let slot = BakedVertices::default();
+        let pristine = vec![[30, 40, 50, 255]; 4];
+        let lamps = vec![[90, 80, 70, 120]; 4];
+        let fallback = [100, 110, 120, 255];
+        slot.deliver_lights(pristine.clone());
+        slot.deliver_lamps(lamps.clone());
+        slot.set_fallback(vec![(2, fallback)]);
+        slot.deliver_patches([LightPatch {
+            first: 1,
+            lights: vec![fallback],
+            dynamic: true,
+        }]);
+        assert_ne!(slot.take().unwrap(), pristine);
+        assert_ne!(slot.take_lamps().unwrap(), lamps);
+        slot.clear_repairs();
+        assert!(
+            slot.take_patches().is_empty(),
+            "discard an unrendered old repair"
+        );
+        assert_eq!(slot.take_mask().unwrap(), [2]);
+        let mut with_fallback = pristine.clone();
+        with_fallback[2] = fallback;
+        assert_eq!(slot.take().unwrap(), with_fallback);
+        slot.set_fallback(Vec::new());
+        assert_eq!(slot.take().unwrap(), pristine);
+        assert_eq!(slot.take_lamps().unwrap(), lamps);
+        assert!(slot.take_mask().unwrap().is_empty());
+        assert!(slot.take_patches().is_empty());
+    }
+
+    #[test]
+    fn removing_one_repair_keeps_its_remaining_immediate_fallback() {
+        let slot = BakedVertices::default();
+        let fallback = [100, 110, 120, 255];
+        slot.set_fallback(vec![(1, fallback)]);
+        slot.deliver_lamps(vec![[90, 80, 70, 120]; 3]);
+        slot.deliver_patches([LightPatch {
+            first: 1,
+            lights: vec![[30, 40, 50, 255]],
+            dynamic: false,
+        }]);
+        assert_eq!(slot.take_patches()[0].lights, [fallback]);
+        assert_eq!(slot.take_mask().unwrap(), [1]);
+        assert_eq!(slot.take_lamps().unwrap()[1], [0; 4]);
     }
 
     #[test]

@@ -439,21 +439,58 @@ impl BakeGeometry {
     ///
     /// Returns the scene's validation error.
     pub fn new(scene: &TexturedScene) -> Result<Self, String> {
-        let merged = scene.merge()?;
+        Self::from_scene(scene, false)
+    }
+
+    /// Reads the current index edits and original-piece detail fallbacks.
+    /// Removed triangles no longer occlude the repaired light.
+    pub fn new_current(scene: &TexturedScene) -> Result<Self, String> {
+        Self::from_scene(scene, true)
+    }
+
+    fn from_scene(scene: &TexturedScene, current: bool) -> Result<Self, String> {
+        let mut merged = scene.merge()?;
+        let fallbacks = if current {
+            let (ranges, _) = scene.edits.since(0);
+            for (first, indices) in ranges {
+                let start = first as usize;
+                let Some(destination) = merged.indices.get_mut(start..start + indices.len()) else {
+                    return Err("light repair index edit exceeds the merged scene".into());
+                };
+                destination.copy_from_slice(&indices);
+            }
+            scene.edits.group_fallbacks()
+        } else {
+            Default::default()
+        };
         let mut foliage = vec![false; merged.vertices.len()];
         let mut far = vec![false; merged.vertices.len()];
         let mut occluders = Vec::with_capacity(merged.indices.len() / 3);
         let mut corners_of = Vec::with_capacity(merged.indices.len() / 3);
         let mut emitters = Vec::new();
         for batch in &merged.batches {
+            let original = matches!(batch.level, Level::Group { group, level, fallback, .. }
+                if current && fallbacks.contains(&group) && level == fallback);
+            if matches!(batch.level, Level::Group { group, level, fallback, .. }
+                if current && fallbacks.contains(&group) && level != fallback)
+            {
+                continue;
+            }
             let material = &scene.materials[batch.material];
             let masked = matches!(material.alpha, AlphaMode::Mask { .. });
-            let distant = matches!(
-                batch.level,
-                Level::Far { .. } | Level::Group { level: 1..=3, .. }
-            );
+            let distant = !original
+                && matches!(
+                    batch.level,
+                    Level::Far { .. } | Level::Group { level: 1..=3, .. }
+                );
             let range = batch.first as usize..(batch.first + batch.count) as usize;
             for triangle in merged.indices[range].chunks_exact(3) {
+                if triangle[0] == triangle[1]
+                    || triangle[1] == triangle[2]
+                    || triangle[0] == triangle[2]
+                {
+                    continue;
+                }
                 let corners =
                     [triangle[0], triangle[1], triangle[2]].map(|i| &merged.vertices[i as usize]);
                 if masked {
@@ -467,7 +504,7 @@ impl BakeGeometry {
                     }
                     continue;
                 }
-                let (albedo, opacity) = surface(scene, material, corners);
+                let (albedo, opacity) = surface(scene, material, corners, [1.0; 4]);
                 if material.emissive > 0.0 {
                     emitters.push(Emitter {
                         corners: corners.map(|v| Vec3::from(v.pos)),
@@ -491,6 +528,53 @@ impl BakeGeometry {
             corners: corners_of,
             emitters,
         })
+    }
+
+    /// Includes the current rigid pieces that replace hidden static geometry.
+    /// This transformation runs once for a repair snapshot, never per frame.
+    pub fn append_instances(&mut self, frame: &super::textured::InstancedFigure) {
+        for instance in frame.instances.iter() {
+            let mesh = &frame.scene.meshes[instance.mesh];
+            let normal = instance.current.inverse().transpose();
+            for primitive in &mesh.primitives {
+                let material = &frame.scene.materials[primitive.material];
+                for triangle in primitive.indices.chunks_exact(3) {
+                    if triangle[0] == triangle[1]
+                        || triangle[1] == triangle[2]
+                        || triangle[0] == triangle[2]
+                    {
+                        continue;
+                    }
+                    let corners = [triangle[0], triangle[1], triangle[2]].map(|i| {
+                        let mut vertex = primitive.vertices[i as usize];
+                        vertex.pos = instance
+                            .current
+                            .transform_point3(Vec3::from(vertex.pos))
+                            .to_array();
+                        vertex.normal = normal
+                            .transform_vector3(Vec3::from(vertex.normal))
+                            .normalize_or(Vec3::Y)
+                            .to_array();
+                        vertex
+                    });
+                    let (albedo, opacity) =
+                        surface(&frame.scene, material, corners.each_ref(), instance.color);
+                    self.occluders.push(Occluder {
+                        corners: corners.map(|v| Vec3::from(v.pos)),
+                        normal: corners.iter().map(|v| Vec3::from(v.normal)).sum::<Vec3>(),
+                        albedo,
+                        opacity,
+                    });
+                    self.corners.push([u32::MAX; 3]);
+                    if material.emissive > 0.0 {
+                        self.emitters.push(Emitter {
+                            corners: corners.map(|v| Vec3::from(v.pos)),
+                            luminance: albedo * material.emissive,
+                        });
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -527,13 +611,37 @@ impl SceneBaker {
         settings: BakeSettings,
         key: u64,
     ) -> Result<Self, String> {
+        Self::from_geometry(BakeGeometry::new(scene)?, light, settings, key)
+    }
+
+    /// Builds the hierarchy for current edited geometry on a repair worker.
+    pub fn for_repair(
+        scene: &TexturedScene,
+        instances: Option<&super::textured::InstancedFigure>,
+        light: BakeLight,
+        settings: BakeSettings,
+        key: u64,
+    ) -> Result<Self, String> {
+        let mut geometry = BakeGeometry::new_current(scene)?;
+        if let Some(instances) = instances {
+            geometry.append_instances(instances);
+        }
+        Self::from_geometry(geometry, light, settings, key)
+    }
+
+    fn from_geometry(
+        geometry: BakeGeometry,
+        light: BakeLight,
+        settings: BakeSettings,
+        key: u64,
+    ) -> Result<Self, String> {
         let BakeGeometry {
             vertices,
             foliage,
             far,
             occluders,
             ..
-        } = BakeGeometry::new(scene)?;
+        } = geometry;
         let rays = settings.vertex_rays.max(1);
         let probe_rays = settings.probe_rays.max(1);
         let dims = settings.dims();
@@ -689,6 +797,37 @@ impl SceneBaker {
         self.ambient_off(p, n, BIAS)
     }
 
+    /// Updates illumination without rebuilding the geometry hierarchy.
+    pub fn set_light(&mut self, light: BakeLight) {
+        self.light = BakeLight {
+            sun_dir: light.sun_dir.normalize_or(Vec3::Y),
+            ..light
+        };
+    }
+
+    /// Samples only one original merged vertex for a selective repair.
+    #[must_use]
+    pub fn vertex_light(&self, index: usize) -> Option<[u8; 4]> {
+        (index < self.vertices.len()).then(|| self.bake_vertex(index))
+    }
+
+    /// Samples a changed rigid vertex in world space under the current geometry.
+    #[must_use]
+    pub fn surface_light(&self, vertex: &TexturedVertex, foliage: bool) -> [u8; 4] {
+        let p = Vec3::from(vertex.pos);
+        let n = Vec3::from(vertex.normal);
+        let (front, front_open) = self.ambient_off(p, n, BIAS);
+        if foliage {
+            let (back, back_open) = self.ambient_off(p, -n, BIAS);
+            encode(
+                ((front + back) * 0.5).max(Vec3::splat(FOLIAGE_FLOOR)),
+                (front_open + back_open) * 0.5,
+            )
+        } else {
+            encode(front, front_open)
+        }
+    }
+
     /// [`Self::ambient_at`] with rays starting `bias` off the surface.
     fn ambient_off(&self, p: Vec3, n: Vec3, bias: f32) -> (Vec3, f32) {
         let Some(n) = n.try_normalize() else {
@@ -802,11 +941,12 @@ impl SceneBaker {
 }
 
 /// The albedo and opacity of a triangle, sampled from its material's image,
-/// factor, and vertex colors at [`SAMPLES`].
+/// factor, vertex colors, and instance tint at [`SAMPLES`].
 fn surface(
     scene: &TexturedScene,
     material: &TexturedMaterial,
     corners: [&TexturedVertex; 3],
+    instance_color: [f32; 4],
 ) -> (Vec3, f32) {
     let table = srgb_to_linear();
     let image = material.image.and_then(|i| scene.images.get(i));
@@ -814,7 +954,7 @@ fn surface(
         material.base_color[0],
         material.base_color[1],
         material.base_color[2],
-    );
+    ) * Vec3::from_slice(&instance_color[..3]);
     let (mut kept, mut kept_color, mut all_color, mut alpha_sum) =
         (0usize, Vec3::ZERO, Vec3::ZERO, 0.0f32);
     for w in SAMPLES {
@@ -849,7 +989,7 @@ fn surface(
             _ => (Vec3::ONE, 1.0),
         };
         let color = texel * factor * tint;
-        let alpha = texel_alpha * material.base_color[3] * tint_alpha;
+        let alpha = texel_alpha * material.base_color[3] * tint_alpha * instance_color[3];
         all_color += color;
         alpha_sum += alpha;
         if material.alpha.keeps(alpha) {
@@ -881,7 +1021,7 @@ pub struct LayerChoice {
     pub compatibility: Option<Arc<super::baked_layers::SceneCompatibility>>,
     pub layers: Arc<super::baked_layers::Layers>,
     /// The sun direction whose bounce joins the sky's, if any.
-    pub sun: Option<usize>,
+    pub sun: super::baked_layers::SunBlend,
     /// How strongly, as [`super::baked_layers::Layers::sun_ratio`] gives.
     pub ratio: f32,
 }
@@ -911,9 +1051,10 @@ impl LayerChoice {
         }
         self.layers.validate()?;
         Ok(Layered {
-            lights: self.layers.lights(self.sun, self.ratio),
+            lights: self.layers.sky.clone(),
             lamps: self.layers.lamp_texels(),
-            probes: self.layers.probes(self.sun, self.ratio),
+            probes: self.layers.blended_probes(self.sun, self.ratio),
+            layers: self.layers.clone(),
         })
     }
 }
@@ -926,6 +1067,7 @@ pub struct Layered {
     /// The lamp texture's texels, in the same order.
     pub lamps: Vec<[u8; 4]>,
     pub probes: AmbientProbes,
+    pub layers: Arc<super::baked_layers::Layers>,
 }
 
 /// What a finished job produced.
@@ -1111,6 +1253,7 @@ impl BakeJob {
                 self.layered = true;
                 self.slot.deliver_lights(layered.lights);
                 self.slot.deliver_lamps(layered.lamps);
+                self.slot.deliver_layers(layered.layers);
                 Some(layered.probes)
             }
         }
@@ -1237,6 +1380,194 @@ mod tests {
         // Out from under the roof the sky opens again.
         let (_, outside) = baker.ambient_at(Vec3::new(15.0, 0.0, 0.0), Vec3::Y);
         assert!(outside > 0.9, "{outside}");
+    }
+
+    #[test]
+    fn selective_repair_uses_removed_roof_indices_and_keeps_original_vertex_ids() {
+        let mut scene = TexturedScene::default();
+        ground(&mut scene, [0.3; 3]);
+        let roof = material(&mut scene, [0.5; 3], AlphaMode::Opaque);
+        add(
+            &mut scene,
+            quad(Vec3::Y * 2.0, Vec3::X * 4.0, Vec3::Z * 4.0, -Vec3::Y, roof),
+        );
+        let merged = scene.merge().unwrap();
+        let roof_batch = merged
+            .batches
+            .iter()
+            .find(|batch| batch.material == roof)
+            .unwrap();
+        scene
+            .edits
+            .write(roof_batch.first, vec![0; roof_batch.count as usize]);
+        let original = baker(&scene);
+        let repaired = SceneBaker::for_repair(&scene, None, LIGHT, settings(), 2).unwrap();
+        assert!(original.ambient_at(Vec3::ZERO, Vec3::Y).1 < 0.3);
+        assert!(repaired.ambient_at(Vec3::ZERO, Vec3::Y).1 > 0.99);
+        let geometry = BakeGeometry::new_current(&scene).unwrap();
+        assert_eq!(geometry.vertices, merged.vertices);
+        assert_eq!(geometry.occluders.len(), 2);
+        assert!(repaired.vertex_light(merged.vertices.len()).is_none());
+        let ground_index = merged
+            .vertices
+            .iter()
+            .position(|v| v.normal == Vec3::Y.to_array())
+            .unwrap();
+        assert_eq!(
+            repaired.vertex_light(ground_index).unwrap(),
+            repaired.surface_light(&merged.vertices[ground_index], false)
+        );
+    }
+
+    #[test]
+    fn repair_occlusion_uses_the_original_piece_detail_fallback() {
+        use super::super::textured::{Detail, DetailGroup};
+        let mut scene = TexturedScene::default();
+        let roof = material(&mut scene, [0.5; 3], AlphaMode::Opaque);
+        scene.detail_groups.push(DetailGroup {
+            anchor: [0.0; 2],
+            switches: [10.0, 20.0],
+            fallback: 3,
+        });
+        for (level, y) in [(0, 7.0), (3, 2.0)] {
+            let mesh = scene.add_mesh(quad(
+                Vec3::Y * y,
+                Vec3::X * 4.0,
+                Vec3::Z * 4.0,
+                -Vec3::Y,
+                roof,
+            ));
+            scene.place_detail(mesh, Mat4::IDENTITY, Detail::Group { group: 0, level });
+        }
+        scene.edits.set_group_fallbacks([0].into_iter().collect());
+        let geometry = BakeGeometry::new_current(&scene).unwrap();
+        assert_eq!(geometry.occluders.len(), 2);
+        assert!(
+            geometry
+                .occluders
+                .iter()
+                .all(|o| o.corners.iter().all(|p| p.y == 2.0))
+        );
+        assert!(!geometry.far.iter().any(|&far| far));
+    }
+
+    #[test]
+    fn rigid_repair_keeps_float_tint_and_world_space_masked_surfaces() {
+        use super::super::textured::{DynamicInstance, InstancedFigure};
+
+        let mut scene = TexturedScene::default();
+        let image = scene.add_image(BaseColorImage {
+            name: "tinted repair card".into(),
+            width: 1,
+            height: 1,
+            rgba: vec![255, 255, 255, 204],
+        });
+        let material = scene.add_material(TexturedMaterial {
+            image: Some(image),
+            base_color: [0.8, 0.6, 0.4, 0.9],
+            alpha: AlphaMode::Mask { cutoff: 0.45 },
+            double_sided: true,
+            emissive: 3.0,
+            ..TexturedMaterial::default()
+        });
+        let normal = Vec3::new(1.0, 1.0, 1.0).normalize();
+        let vertices: Vec<_> = [
+            Vec3::ZERO,
+            Vec3::new(1.0, -1.0, 0.0),
+            Vec3::new(1.0, 0.0, -1.0),
+        ]
+        .map(|point| {
+            let mut vertex = TexturedVertex::new(point, normal, [0.0; 2]);
+            vertex.color = [128, 192, 64, 170];
+            vertex
+        })
+        .into();
+        let mesh = scene.add_mesh(TexturedMesh {
+            primitives: vec![Primitive {
+                vertices: vertices.clone(),
+                indices: vec![0, 1, 2],
+                material,
+            }],
+        });
+        let transform = Mat4::from_translation(Vec3::new(7.0, 3.0, -2.0))
+            * Mat4::from_rotation_y(0.3)
+            * Mat4::from_scale(Vec3::new(2.0, 3.0, 0.5));
+        let color = [0.123_456_7, 0.432_198_7, 0.876_543_2, 0.987_65];
+        let mut frame = InstancedFigure {
+            scene: Arc::new(scene),
+            instances: Arc::new(vec![DynamicInstance {
+                id: 9,
+                mesh,
+                current: transform,
+                previous: transform,
+                color,
+                light: UNBAKED,
+                settled: false,
+            }]),
+            vertex_lights: None,
+            motion_epoch: Arc::new(()),
+        };
+        let mut geometry = BakeGeometry::new(&TexturedScene::default()).unwrap();
+        geometry.append_instances(&frame);
+        let triangle = &geometry.occluders[0];
+        assert_eq!(triangle.opacity, MASK_MAX_OPACITY);
+        let expected = Vec3::new(
+            0.8 * (128.0 / 255.0) * color[0],
+            0.6 * (192.0 / 255.0) * color[1],
+            0.4 * (64.0 / 255.0) * color[2],
+        );
+        assert!((triangle.albedo - expected).abs().max_element() < 1e-7);
+        assert!(
+            (geometry.emitters[0].luminance - expected * 3.0)
+                .abs()
+                .max_element()
+                < 1e-7
+        );
+        for (actual, vertex) in triangle.corners.iter().zip(&vertices) {
+            assert!((*actual - transform.transform_point3(vertex.pos.into())).length() < 1e-6);
+        }
+        let expected_normal = transform
+            .inverse()
+            .transpose()
+            .transform_vector3(normal)
+            .normalize()
+            * 3.0;
+        assert!((triangle.normal - expected_normal).length() < 1e-6);
+        assert_eq!(geometry.corners, [[u32::MAX; 3]]);
+
+        let mut neutral = frame.clone();
+        Arc::make_mut(&mut neutral.instances)[0].color = [1.0; 4];
+        let mut static_scene = (*frame.scene).clone();
+        static_scene.place(mesh, transform);
+        let static_geometry = BakeGeometry::new(&static_scene).unwrap();
+        let mut neutral_geometry = BakeGeometry::new(&TexturedScene::default()).unwrap();
+        neutral_geometry.append_instances(&neutral);
+        assert_eq!(
+            neutral_geometry.occluders[0].albedo,
+            static_geometry.occluders[0].albedo
+        );
+        assert_eq!(
+            neutral_geometry.occluders[0].opacity,
+            static_geometry.occluders[0].opacity
+        );
+
+        // Float alpha must reach the material cutoff before mask coverage.
+        Arc::make_mut(&mut frame.instances)[0].color[3] = 0.4;
+        let mut faded = BakeGeometry::new(&TexturedScene::default()).unwrap();
+        faded.append_instances(&frame);
+        assert_eq!(faded.occluders[0].opacity, 0.0);
+        assert_eq!(faded.occluders[0].albedo, triangle.albedo);
+
+        // Blended coverage uses the same tint; opaque coverage ignores alpha.
+        Arc::make_mut(&mut frame.scene).materials[material].alpha = AlphaMode::Blend;
+        let mut blended = BakeGeometry::new(&TexturedScene::default()).unwrap();
+        blended.append_instances(&frame);
+        let expected_alpha = (204.0 / 255.0) * 0.9 * (170.0 / 255.0) * 0.4;
+        assert!((blended.occluders[0].opacity - expected_alpha).abs() < 1e-7);
+        Arc::make_mut(&mut frame.scene).materials[material].alpha = AlphaMode::Opaque;
+        let mut opaque = BakeGeometry::new(&TexturedScene::default()).unwrap();
+        opaque.append_instances(&frame);
+        assert_eq!(opaque.occluders[0].opacity, 1.0);
     }
 
     #[test]
@@ -1665,12 +1996,16 @@ mod tests {
         let choice = LayerChoice {
             compatibility: None,
             layers: layers.clone(),
-            sun: Some(0),
+            sun: super::super::baked_layers::SunBlend {
+                first: Some(0),
+                ..Default::default()
+            },
             ratio: 1.0,
         };
         let mut job = BakeJob::start_layered(scene.clone(), LIGHT, settings(), 1, Some(choice));
         let probes = finish(&mut job).unwrap();
         assert!(job.layered());
+        assert!(Arc::ptr_eq(&scene.baked.take_layers().unwrap(), &layers));
         assert_eq!(probes.grid.data[0][0], 100.0);
         assert_eq!(scene.baked.take().unwrap(), layers.sky);
         let lamps = scene.baked.take_lamps().unwrap();
@@ -1726,7 +2061,10 @@ mod tests {
             let choice = layers.map(|layers| LayerChoice {
                 compatibility: None,
                 layers: Arc::new(layers),
-                sun: Some(0),
+                sun: super::super::baked_layers::SunBlend {
+                    first: Some(0),
+                    ..Default::default()
+                },
                 ratio: 1.0,
             });
             let mut job = BakeJob::start_layered(scene.clone(), LIGHT, settings(), 2, choice);

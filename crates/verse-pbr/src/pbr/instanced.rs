@@ -165,7 +165,13 @@ impl Instance {
             p.z_axis.to_array(),
         ];
         record.color = instance.color;
-        record.ambient = u32::from_le_bytes(instance.light);
+        // Alpha zero is unbaked; its ignored RGB bytes cannot alias the
+        // selective range flag stored in the unused ambient override.
+        record.ambient = if instance.light[3] == 0 {
+            0
+        } else {
+            u32::from_le_bytes(instance.light)
+        };
         record.pad = [instance.id as u32, (instance.id >> 32) as u32];
         record
     }
@@ -258,6 +264,16 @@ pub fn rigid_frame(
     meshes: &[Vec<Batch>],
     instances: &[textured::DynamicInstance],
 ) -> (Vec<Instance>, Vec<Batch>) {
+    rigid_frame_lit(meshes, instances, &[], None)
+}
+
+/// Adds optional per-instance vertex ranges while sharing the same geometry.
+pub fn rigid_frame_lit(
+    meshes: &[Vec<Batch>],
+    instances: &[textured::DynamicInstance],
+    vertex_offsets: &[u32],
+    lights: Option<&textured::VertexLightStream>,
+) -> (Vec<Instance>, Vec<Batch>) {
     let mut order: Vec<usize> = (0..instances.len()).collect();
     order.sort_by_key(|&i| (instances[i].mesh, instances[i].id));
     let mut records = Vec::with_capacity(order.len());
@@ -270,11 +286,18 @@ pub fn rigid_frame(
             to += 1;
         }
         let first = records.len() as u32;
-        records.extend(
-            order[from..to]
-                .iter()
-                .map(|&i| Instance::dynamic(&instances[i])),
-        );
+        records.extend(order[from..to].iter().map(|&i| {
+            let instance = &instances[i];
+            let mut record = Instance::dynamic(instance);
+            if let Some(stream) = lights
+                && let Some(&base) = stream.ranges.get(&instance.id)
+                && let Some(&offset) = vertex_offsets.get(instance.mesh)
+            {
+                record.light = base.wrapping_sub(offset);
+                record.ambient = 1;
+            }
+            record
+        }));
         if let Some(parts) = meshes.get(mesh) {
             batches.extend(parts.iter().map(|part| {
                 let mut min = Vec3::splat(f32::INFINITY);
@@ -1577,6 +1600,7 @@ mod tests {
         scene.add_material(TexturedMaterial::default());
         scene.add_mesh(tree());
         let mut figure = textured::InstancedFigure {
+            vertex_lights: None,
             motion_epoch: Arc::new(()),
             scene: std::sync::Arc::new(scene),
             instances: std::sync::Arc::new(vec![textured::DynamicInstance {
@@ -1699,6 +1723,31 @@ mod tests {
         let (a, b) = (list(runs[0]), list(runs[1]));
         assert_eq!(a, [b[0], b[2], b[1]]);
         assert_eq!(runs[0].level, Level::Always);
+    }
+
+    #[test]
+    fn rigid_vertex_light_ranges_keep_wrapped_bases_and_direct_ambient_distinct() {
+        let instance = textured::DynamicInstance {
+            id: 7,
+            mesh: 0,
+            current: Mat4::IDENTITY,
+            previous: Mat4::IDENTITY,
+            color: [1.0; 4],
+            light: [1, 0, 0, 0],
+            settled: false,
+        };
+        let stream = textured::VertexLightStream {
+            texels: std::sync::Arc::new(vec![[100, 110, 120, 200]; 3]),
+            ranges: std::sync::Arc::new([(7, 0)].into_iter().collect()),
+        };
+        let (lit, _) = rigid_frame_lit(&[vec![]], &[instance], &[1], Some(&stream));
+        assert_eq!(lit[0].light, u32::MAX);
+        assert_eq!(lit[0].light.wrapping_add(1), 0);
+        assert_eq!(lit[0].ambient, 1);
+        let (direct, _) = rigid_frame(&[vec![]], &[instance]);
+        assert_eq!(direct[0].light, u32::MAX);
+        assert_eq!(direct[0].ambient, 0);
+        assert_eq!(lit[0].pad, direct[0].pad);
     }
 
     #[test]

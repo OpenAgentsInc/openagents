@@ -258,6 +258,10 @@ impl SkyBaker {
         })
     }
 
+    fn published_level(&self) -> Option<f32> {
+        self.built.map(|(inputs, _, _)| inputs.level)
+    }
+
     /// Whether a gradual bake is under way.
     #[must_use]
     pub fn baking(&self) -> bool {
@@ -273,6 +277,8 @@ pub struct SkyLightGpu {
     pub sh: [[f32; 4]; 9],
     /// The cube's last level, which roughness 1 reads.
     pub max_lod: f32,
+    /// Pre-exposed sky irradiance of the published SH and reflection cube.
+    pub level: f32,
     baker: SkyBaker,
 }
 
@@ -288,6 +294,7 @@ impl SkyLightGpu {
             view: upload(device, queue, &black),
             sh: [[0.0; 4]; 9],
             max_lod: 0.0,
+            level: 0.0,
             baker: SkyBaker::default(),
         }
     }
@@ -315,6 +322,7 @@ impl SkyLightGpu {
         self.view = upload(device, queue, &light.cube);
         self.sh = light.sh.uniform();
         self.max_lod = light.cube.levels.len().saturating_sub(1) as f32;
+        self.level = self.baker.published_level().unwrap_or(0.0);
         true
     }
 }
@@ -491,6 +499,31 @@ mod tests {
         let away = Vec3::new(-sun.x, 0.6, -sun.z).normalize();
         let (a, b) = (air(&dusk, sun, away), air(&day, sun, away));
         assert!((a - b).abs().max_element() < 0.12, "{a} {b}");
+    }
+
+    #[test]
+    fn published_sky_level_waits_for_the_matching_sh_and_cube() {
+        let first = glade();
+        let mut baker = SkyBaker::default();
+        assert_eq!(baker.published_level(), None);
+        assert!(baker.step(&first, 8, 8, true, 1).is_some());
+        assert_eq!(baker.published_level(), Some(first.level));
+        let next = SkyInputs {
+            level: first.level * 0.6,
+            ..first
+        };
+        assert!(baker.step(&next, 8, 8, true, 1).is_none());
+        assert!(baker.baking());
+        assert_eq!(baker.published_level(), Some(first.level));
+        let latest = SkyInputs {
+            level: first.level * 0.8,
+            ..first
+        };
+        assert!(baker.step(&latest, 8, 8, true, 1).is_none());
+        assert_eq!(baker.published_level(), Some(first.level));
+        assert!(baker.step(&latest, 8, 8, true, u64::MAX).is_some());
+        assert_eq!(baker.published_level(), Some(latest.level));
+        assert!(!baker.baking());
     }
 
     /// A town clock's step: the Sun a degree further on.
