@@ -92,52 +92,22 @@ unchanged.
 
 - **P3 (#10896).** Checkpointed on October 8 on `codex/everglade-p3`;
   the claim is released and the board returns to Todo for the usage stop.
-  CPU acceptance at `c17428fc30` passes for all 65 actual canonical houses:
-  near has 3,156–10,000 triangles and 10–12 selected draws, middle has
-  2,999–3,000 triangles and one draw, and far has 799–800 triangles and
-  one draw. The real private pack compiles and admits every piece and
-  required house level. The regenerated 65-house coplanar scan and the
-  reduced market-hall near model have zero failures without exemptions.
-  Visual acceptance, composed current-main checks, artifact publication,
-  upload, and deployment remain open.
-  The initial canonical report covers all 65 houses: 3,156–11,988 triangles,
-  26–70 selected draws, and 10–12 materials at each of 10, 50, and 120 m.
-  The current-source export reduces actual near submissions to 10–12 draws
-  for all 65 houses. The market hall alone exceeds the near triangle budget.
-  Middle and far still select original pieces until their private models
-  are generated and admitted. The renderer
-  checkpoint `f41cc66779` groups original house submissions at one anchor,
-  keeps their destruction ranges and actual world bounds, and selects one
-  distance level with shared hysteresis. Its two focused regressions pass,
-  including discontinuous jumps, damage at far distance, repeated range
-  edits, and restore. Three layout and walking tests pass after 3 mm gaps
-  separate floor/plinth and band/wall finish faces. The headless Verse
-  consumer check passes; the default check stops on the remote runtime's
-  missing ALSA development metadata.
-  Public integration checkpoint `3314ae5773` adds optional canonical house
-  levels, damage fallback, inverse-transform exports, and a private CPU
-  atlas builder. Formatting, three house-transform/paint tests, five kit
-  compiler tests, seven admission tests, and the filtered house-export
-  precompile pass. The CPU palette fixture verifies sRGB decode, an exact
-  color round trip, and linear half-intensity tinting. Atlases retain the
-  renderer's grade and tints once. Custom caller paint keeps original
-  pieces at every distance. No P3
-  artifact or main commit has landed. Private CPU decimation produces
-  awning/cart/fountain/lamp/stall far levels of 127/255/800/192/256
-  triangles, within budgets and with exact original bounds. Seven focused
-  kit-admission tests pass. The CPU market-hall pilot retains all original
-  parts and produces 10,000 near triangles in 12 primitives, 3,000 middle
-  triangles, and 800 far triangles. Both pilots preserve bounds within
-  0.3 mm. These are generator checks; normalized pack admission and visual
-  acceptance remain pending.
-  Remaining visual acceptance: market-hall interiors and reduced roof
-  silhouettes, the same exported demo actor comparison, grade captures,
-  and one canonical house at 10/50/120 m, including far damage and restore.
-  The initial coplanar scan finds genuine floor/band recipe
-  overlaps and two tiny roof-end wood-trim material seams inside licensed meshes.
-  The bounded derived finish prototype passes the unmodified detector for
-  both roof-end pieces; the regenerated 65-house scan also passes.
-  Real captures remain required.
+  All 65 actual houses pass strict selected budgets: near 3,156–10,000
+  triangles/10–12 draws, middle 2,999–3,000/one, and far 799–800/one.
+  The real candidate pack admits all 53 pieces, five prop far models, and
+  131 house models. Every house and the reduced market-hall near model
+  pass the unchanged coplanar detector without exemptions. Focused
+  transform/paint, compiler/admission, selector/damage/restore, and walking
+  checks pass; the rebased headless consumer check also passes. Six
+  source-bound geometry/LOD captures are accepted: cabin at horizontal
+  10/50/120 m and market exterior/gable/interior. Near favors the roof;
+  interior lighting and rain remain limitations. Remaining acceptance is
+  the same exported demo actor before/after merge and grade, grade captures,
+  far damage/repeated damage/restore captures, and any reviewed near facade
+  supplement. Rebase and check integration against current main before
+  artifact-queue publication, private upload, and dependent deployment.
+  No P3 artifact or main commit has landed. Exact source/input/candidate
+  identities, captures, limitations, and resume commands follow below.
 - **B2 (#10906).** Its issue holds what its subagent landed and what
   remains.
 - **B3 (#10907).** Checkpoint `a2f4bbf7d3` on `codex/everglade-b3` holds
@@ -172,7 +142,22 @@ demo actor before/after merge and grade, and report the canonical gap.
 Private `export/`, `kit-build/`, and `packs/`
 remain under `~/.openagents/verse/private/medieval-town/`.
 
-The verified source is `3314ae5773a09aab3d160b84874d9f90a1e61e0b`.
+Historical stages are retained for provenance; their admission and budget
+failures are resolved by the final CPU reports and candidate acceptance
+below. `house-check-actual.log` first measures 3,156–11,988 triangles,
+26–70 draws, and 10–12 materials at every distance. Renderer checkpoint
+`f41cc66779` reduces original near submissions to 10–12 and passes two
+selector/destruction regressions plus three layout/walking tests. At that
+stage the market hall exceeds 10,000 triangles and middle/far still use
+original pieces. Integration `3314ae5773` adds private levels, editable
+fallback ranges, inverse transforms, and atlases; three transform/paint,
+five compiler, and seven admission tests pass, with a passing palette
+fixture. Initial prop far exports have 127/255/800/192/256 triangles for
+awning/cart/fountain/lamp/stall. The market pilot has 10,000/3,000/800
+triangles with all original parts. Its normalized admission is pending
+at that historical stage and passes in the later complete candidate.
+
+The historical export source is `3314ae5773a09aab3d160b84874d9f90a1e61e0b`.
 `raw-kit-p3-identities.txt` records recipe SHA-256
 `fd798e88b6425306b72b7952df099e2e3c7b4a2a887715936553d4093eadd78e`,
 export-manifest SHA-256
@@ -203,8 +188,8 @@ source bounds. Only the three far glTF/bin pairs change; 289 other files
 stay byte-identical. UVs, materials, and indices stay unchanged, with a
 maximum real vertex displacement of 0.131907 m. Exact pre/post boxes are in
 `house-extrema-receipt.json`; `house-level-inventory-corrected.json` passes.
-These are source-file counts, not final pack admission or
-distance-selected acceptance.
+These historical source-file counts precede the final pack admission and
+distance-selected acceptance recorded below.
 
 The post-gap coplanar reports cover all 65 houses in
 `coplanar-p3-source-*.jsonl`: zero inter-piece recipe overlaps, and eight
@@ -212,7 +197,9 @@ intra-mesh face-pair overlaps per house, about 0.0277 m², in the supplied
 roof-end `T_trim_wood_01_BC`/`T_trim_wood_02_BC` seams. The exact raw-piece
 inspection in `coplanar-roof-input.log` corrects the earlier wood/plaster
 label. No exemption or suppression hides these seams;
-their correction and visual assessment are pending. The bounded prototype
+correction and visual assessment are pending at that historical stage.
+The subsequent CPU reports and accepted gable capture resolve the geometry
+gap. The bounded prototype
 offsets only `MI_trim_wood_02_01` by +3 mm X before mirroring in the two
 derived roof-end exports. Recipe offsets are limited to 5 mm; original
 vendor GLBs remain untouched. Three synthetic tests pass, including the
@@ -436,8 +423,9 @@ for example to compare grades.
 - **Stories.** A story is 4.5 m floor to floor (a 4 m wall and the kit's
   0.5 m band), on a plinth sunk 1.25 m, so the floor is 0.75 m up the
   steps.
-- **Breaking.** Kit pieces are carved one block each and merge into the
-  static cells; they don't draw as instances.
+- **Breaking.** Kit pieces are carved one block each. The P3 checkpoint
+  groups intact house submissions and retains editable per-piece ranges
+  for damage fallback and restore; those pieces do not draw as instances.
 - **Test edits.** The tall-ruin test lets a chunk lodge up to 4.5 m high
   in a rubble heap, up from 3 m. The instancing test counts merged kit
   pieces separately. The far-level count dropped from more than 600 to
