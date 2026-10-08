@@ -1,0 +1,14 @@
+{
+  "schema": "openagents.artifact.v1",
+  "name": "coast-pack",
+  "description": "The original coast models, compiled from admitted public sources with retained content-addressed files.",
+  "regenerate": "cargo test --release -p verse-zone-everglade --example coast_pack compile_coast_pack -- --ignored --nocapture",
+  "check": "cargo test --release -p verse-zone-coast --lib",
+  "build_lease": true,
+  "pinned": ["assets/verse/coast/*.vtp", "assets/verse/coast/pack.json"],
+  "pin": {
+    "file": "crates/verse-zone-coast/src/pack.rs",
+    "lines": ["pub const SHA256: &str = ", "pub const BYTES: u64 = ", "const BUNDLED: &[u8] = "]
+  },
+  "message": "Repin the coast pack with {changes}"
+}
