@@ -151,6 +151,7 @@ fn verified() -> Environment {
         &e,
         v(V::Passed {
             evidence_digest: d('9'),
+            evidence: crate::evidence::EvidenceStatus::Complete,
         }),
     );
     e
@@ -294,6 +295,7 @@ fn a_recipe_edit_stales_an_unsaved_build_and_saved_versions_never_change() {
         &e2,
         v(V::Passed {
             evidence_digest: d('8'),
+            evidence: crate::evidence::EvidenceStatus::CompleteWithRedactions,
         }),
     );
     let (e2, _) = step(&e2, save("req-s2b", "verify-2", 2));
@@ -624,4 +626,62 @@ fn reads_have_no_side_effects() {
     store.list().unwrap();
     assert_eq!(store.read("env-2"), Err(StoreError::NotFound));
     assert_eq!(listing(&root), before);
+}
+
+#[test]
+fn incomplete_evidence_never_passes_verification_or_saves_a_version() {
+    use crate::evidence::{CallIdentity, EvidenceStatus, Recorder, Redactor, StreamName};
+    let tmp = tempfile::tempdir().unwrap();
+    // A verifier whose output overran its evidence budget.
+    let mut r =
+        Recorder::create(tmp.path().join("ev"), "ev-v1", None, Redactor::new(), 64).unwrap();
+    let call = CallIdentity {
+        id: "check-1".into(),
+        parent: None,
+        run: run("job-v1"),
+        tool: "shell".into(),
+        request: None,
+        operation: None,
+    };
+    r.start_call(call, &serde_json::json!({}), 1).unwrap();
+    r.output("check-1", StreamName::Stdout, &[b'y'; 200])
+        .unwrap();
+    r.observe_boat(
+        "check-1",
+        &boat::CommandFrame::Exit {
+            exit_code: Some(0),
+            success: true,
+            timed_out: false,
+        },
+        2,
+    )
+    .unwrap();
+    let sealed = r.finish(3).unwrap();
+    assert_eq!(sealed.status, EvidenceStatus::Incomplete);
+
+    let e = env();
+    let (e, _) = step(&e, start_build("req-b1", 1));
+    let b = build("build-1");
+    let (e, _) = step(&e, b(B::Linked { run: run("job-b1") }));
+    let (e, _) = step(&e, b(B::ImageReady { image: image('1') }));
+    let (e, _) = step(&e, start_verify("req-v1", "build-1"));
+    let v = verify("verify-1");
+    let (e, _) = step(&e, v(V::Linked { run: run("job-v1") }));
+    let (e, effect) = step(&e, v(sealed.passed()));
+    assert_eq!(
+        effect,
+        Effect::VerificationObserved {
+            verification_id: "verify-1".into(),
+            state: VerificationState::Incomplete,
+        }
+    );
+    let attempt = e.verification("verify-1").unwrap();
+    assert_eq!(
+        attempt.evidence_digest.as_deref(),
+        Some(sealed.digest.as_str())
+    );
+    assert_eq!(
+        refuse(&e, save("req-s1", "verify-1", 1)),
+        Refusal::NotPassed("verify-1".into())
+    );
 }

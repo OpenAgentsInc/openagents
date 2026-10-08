@@ -3088,6 +3088,8 @@ dependencies = [
 name = "coder-environment"
 version = "0.1.0"
 dependencies = [
+ "atif",
+ "boat",
  "serde",
  "serde_json",
  "sha2 0.10.9",

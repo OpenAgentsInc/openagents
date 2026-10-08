@@ -77,13 +77,29 @@ pub enum BuildObservation {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum VerificationObservation {
-    Linked { run: RunLink },
-    Progress { state: VerificationState },
-    Passed { evidence_digest: String },
-    Failed { reason: String },
-    Incomplete { reason: String },
+    Linked {
+        run: RunLink,
+    },
+    Progress {
+        state: VerificationState,
+    },
+    /// The checks passed. `evidence` is the sealed status of the evidence
+    /// manifest `evidence_digest` names ([`crate::evidence::Sealed`]); only
+    /// complete evidence lets the verification pass and a version save.
+    Passed {
+        evidence_digest: String,
+        evidence: crate::evidence::EvidenceStatus,
+    },
+    Failed {
+        reason: String,
+    },
+    Incomplete {
+        reason: String,
+    },
     Cancelled,
-    Unknown { reason: String },
+    Unknown {
+        reason: String,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -644,21 +660,39 @@ fn observe_verification(
             }
             Next::To(*state, None)
         }
-        VerificationObservation::Passed { evidence_digest } => {
+        VerificationObservation::Passed {
+            evidence_digest,
+            evidence,
+        } => {
             if !valid_digest(evidence_digest) {
                 return Err(Refusal::Invalid(
                     "A passed verdict needs its evidence digest.",
                 ));
             }
-            if v.state == VerificationState::Passed
-                && v.evidence_digest.as_deref() != Some(evidence_digest)
-            {
-                return Err(Refusal::Terminal(verification_id.into()));
+            if !evidence.complete() {
+                // Passing checks with incomplete evidence is an explicit
+                // incomplete result: it never passes, so it never saves.
+                if !v.state.terminal() {
+                    v.evidence_digest = Some(evidence_digest.clone());
+                }
+                Next::To(
+                    VerificationState::Incomplete,
+                    Some(
+                        "The checks passed, but their evidence is incomplete; a version needs complete evidence."
+                            .into(),
+                    ),
+                )
+            } else {
+                if v.state == VerificationState::Passed
+                    && v.evidence_digest.as_deref() != Some(evidence_digest)
+                {
+                    return Err(Refusal::Terminal(verification_id.into()));
+                }
+                if !v.state.terminal() {
+                    v.evidence_digest = Some(evidence_digest.clone());
+                }
+                Next::To(VerificationState::Passed, None)
             }
-            if !v.state.terminal() {
-                v.evidence_digest = Some(evidence_digest.clone());
-            }
-            Next::To(VerificationState::Passed, None)
         }
         VerificationObservation::Failed { reason: r } => {
             Next::To(VerificationState::Failed, Some(reason(r)?))

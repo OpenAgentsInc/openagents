@@ -8,14 +8,17 @@
 //! the state survives restart. See
 //! `docs/cloud/example-cursor-cloud-agent-onboarding/environment-onboarding.md`.
 //!
-//! This crate owns records and their transitions only. Execution, provider
-//! machines, source materialization, and evidence stay in `coder-cloud`,
-//! `boat`, and `atif`; attempts link to their runs by identity.
+//! This crate owns records, their transitions, and the evidence record a
+//! verification cites ([`evidence`]: complete, redacted command capture fed
+//! from Boat frames and linked into ATIF). Execution, provider machines, and
+//! source materialization stay in `coder-cloud` and `boat`; attempts link to
+//! their runs by identity.
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 
+pub mod evidence;
 pub mod store;
 pub mod transition;
 

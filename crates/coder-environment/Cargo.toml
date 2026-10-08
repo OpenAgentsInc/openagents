@@ -4,9 +4,11 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
-description = "Repository environment records: draft recipes, immutable versions, build and verifier links, and their state machine."
+description = "Repository environment records: draft recipes, immutable versions, build and verifier links, their state machine, and complete redacted command evidence."
 
 [dependencies]
+atif = { path = "../atif" }
+boat = { path = "../boat" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
