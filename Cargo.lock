@@ -3098,6 +3098,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "coder-environment-setup"
+version = "0.1.0"
+dependencies = [
+ "coder-cloud",
+ "coder-environment",
+ "coder-working-computer",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "coder-hands"
 version = "0.1.0"
 dependencies = [
@@ -3479,6 +3492,7 @@ version = "0.1.0"
 name = "coder-working-computer"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "boat",
  "coder-cloud",
  "coder-environment",

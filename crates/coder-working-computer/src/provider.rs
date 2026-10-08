@@ -4,9 +4,97 @@
 //! The trait deliberately has no operation that reads files out of a
 //! computer or checkpoint: OpenAgents services cannot read a user's sign-ins
 //! through it.
+//!
+//! [`Commands`] adds identified, at-most-once commands for a dedicated
+//! environment setup computer. It returns a command's own output streams,
+//! never arbitrary files.
 
 use crate::{Checkpoint, Computer, ServiceDecl};
 use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, BTreeSet};
+
+/// One command, identified before it is started. The provider runs a given
+/// `id` at most once on a resource: repeating a start with the same `id`
+/// never runs the command again, so a lost start reply can be retried
+/// safely after a read reports it [`CommandProgress::Absent`].
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CommandSpec {
+    pub id: String,
+    /// Exact shell text, run with `sh -c`.
+    pub command: String,
+    /// Source-relative working directory.
+    pub cwd: String,
+    /// The only computer credentials this command may see, by name. Every
+    /// other selected credential is removed from its environment.
+    pub credential_names: BTreeSet<String>,
+    /// Additional non-secret environment (for example ephemeral Git auth
+    /// configuration that names a credential variable, never its value).
+    pub env: BTreeMap<String, String>,
+    pub timeout_seconds: u64,
+    /// Digest of everything above; a read reports it back so a reconciled
+    /// command is proven to be this one.
+    pub digest: String,
+}
+
+/// Bytes of each output stream already delivered.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CommandCursor {
+    pub stdout: u64,
+    pub stderr: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "state", rename_all = "snake_case", deny_unknown_fields)]
+pub enum CommandProgress {
+    /// No command with this identity ever started on the resource.
+    Absent,
+    Running,
+    Exited {
+        code: i64,
+    },
+    /// The process is gone without a recorded exit (machine stopped or
+    /// restarted underneath it).
+    Lost,
+}
+
+/// One read of a command: its state first, then output from the cursor.
+/// When `progress` is `Exited`, the bytes are the end of the output.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CommandRead {
+    pub progress: CommandProgress,
+    /// The spec digest the provider retained for this identity.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub digest: Option<String>,
+    pub stdout: Vec<u8>,
+    pub stderr: Vec<u8>,
+}
+
+/// Identified commands on a provider resource.
+#[allow(async_fn_in_trait)]
+pub trait Commands: Provider {
+    /// Start `spec` detached; returns the provider operation.
+    async fn start_command(
+        &self,
+        computer: &Computer,
+        resource: &str,
+        spec: &CommandSpec,
+    ) -> Outcome<String>;
+    /// Read a command's state and its output from `cursor`, at most
+    /// `max_bytes` of each stream.
+    async fn read_command(
+        &self,
+        computer: &Computer,
+        resource: &str,
+        id: &str,
+        cursor: CommandCursor,
+        max_bytes: u64,
+    ) -> Outcome<CommandRead>;
+    /// Signal a command and every process it started.
+    async fn stop_command(&self, computer: &Computer, resource: &str, id: &str) -> Outcome<String>;
+}
 
 /// The result of one provider effect.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -137,7 +225,50 @@ pub mod fake {
         pub meter_running: bool,
         pub stop: Option<String>,
         pub latest_snapshot: Option<String>,
+        /// Identified commands by id.
+        pub processes: BTreeMap<String, FakeProcess>,
     }
+
+    /// One identified command on a fake machine.
+    #[derive(Clone, Debug, Default)]
+    pub struct FakeProcess {
+        pub spec: Option<CommandSpec>,
+        /// The process environment the command saw.
+        pub env: BTreeMap<String, String>,
+        pub stdout: Vec<u8>,
+        pub stderr: Vec<u8>,
+        pub exit: Option<i64>,
+        pub lost: bool,
+        /// How many times the command body actually ran.
+        pub runs: u32,
+    }
+
+    /// What a scripted command does when it runs.
+    #[derive(Clone, Debug, Default)]
+    pub struct FakeRun {
+        pub stdout: String,
+        pub stderr: String,
+        /// `None` keeps it running until [`FakeProvider::finish_command`]
+        /// or a stop.
+        pub exit: Option<i64>,
+    }
+    impl FakeRun {
+        pub fn exit(code: i64, stdout: &str, stderr: &str) -> Self {
+            Self {
+                stdout: stdout.into(),
+                stderr: stderr.into(),
+                exit: Some(code),
+            }
+        }
+    }
+
+    /// Scripts command behavior: the spec, the environment the command
+    /// sees, and the machine's files (which it may change).
+    pub type Handler = Box<
+        dyn Fn(&CommandSpec, &BTreeMap<String, String>, &mut BTreeMap<String, String>) -> FakeRun
+            + Send
+            + Sync,
+    >;
 
     #[derive(Default)]
     pub struct State {
@@ -158,6 +289,7 @@ pub mod fake {
         pub credential_values: BTreeMap<String, String>,
         /// Whether a checkpoint stops the resource, like Boat.
         pub checkpoint_stops: bool,
+        handler: Mutex<Option<Handler>>,
     }
 
     impl FakeProvider {
@@ -166,7 +298,32 @@ pub mod fake {
                 state: Mutex::new(State::default()),
                 credential_values,
                 checkpoint_stops,
+                handler: Mutex::new(None),
             }
+        }
+        /// Script what identified commands do.
+        pub fn on_command(&self, handler: Handler) {
+            *self.handler.lock().unwrap() = Some(handler);
+        }
+        /// Finish a still-running command with more output.
+        pub fn finish_command(&self, resource: &str, id: &str, code: i64, stdout: &str) {
+            let mut s = self.state.lock().unwrap();
+            let p = s
+                .machines
+                .get_mut(resource)
+                .and_then(|m| m.processes.get_mut(id))
+                .expect("process");
+            p.stdout.extend_from_slice(stdout.as_bytes());
+            p.exit = Some(code);
+        }
+        pub fn process(&self, resource: &str, id: &str) -> Option<FakeProcess> {
+            self.state
+                .lock()
+                .unwrap()
+                .machines
+                .get(resource)
+                .and_then(|m| m.processes.get(id))
+                .cloned()
         }
         pub fn inject(&self, op: &'static str, how: Inject) {
             self.state
@@ -281,6 +438,10 @@ pub mod fake {
                 m.env.clear();
                 m.services.clear();
                 m.stop = None;
+                // Processes do not survive a stop.
+                for p in m.processes.values_mut().filter(|p| p.exit.is_none()) {
+                    p.lost = true;
+                }
                 Outcome::done(format!("resumed:{r}"))
             });
             Self::finish(inject, || out)
@@ -441,6 +602,115 @@ pub mod fake {
                 }),
             };
             drop(s);
+            Self::finish(inject, || out)
+        }
+    }
+
+    impl Commands for FakeProvider {
+        async fn start_command(
+            &self,
+            _c: &Computer,
+            resource: &str,
+            spec: &CommandSpec,
+        ) -> Outcome<String> {
+            let inject = self.begin("command_start");
+            if matches!(inject, Some(Inject::Failed | Inject::Unknown)) {
+                return Self::finish(inject, || unreachable_outcome());
+            }
+            let handler = self.handler.lock().unwrap();
+            let out = self.with_machine(resource, |s, r| {
+                let m = s.machines.get_mut(r).unwrap();
+                if !m.running {
+                    return Outcome::failed("not running");
+                }
+                if m.processes.contains_key(&spec.id) {
+                    // At most once per identity.
+                    return Outcome::done(format!("process:{}", spec.id));
+                }
+                let mut env: BTreeMap<String, String> = m
+                    .env
+                    .iter()
+                    .filter(|(k, _)| spec.credential_names.contains(*k))
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect();
+                env.extend(spec.env.clone());
+                let run = match handler.as_ref() {
+                    Some(h) => h(spec, &env, &mut m.files),
+                    None => FakeRun::exit(0, "", ""),
+                };
+                m.processes.insert(
+                    spec.id.clone(),
+                    FakeProcess {
+                        spec: Some(spec.clone()),
+                        env,
+                        stdout: run.stdout.into_bytes(),
+                        stderr: run.stderr.into_bytes(),
+                        exit: run.exit,
+                        lost: false,
+                        runs: 1,
+                    },
+                );
+                Outcome::done(format!("process:{}", spec.id))
+            });
+            drop(handler);
+            Self::finish(inject, || out)
+        }
+        async fn read_command(
+            &self,
+            _c: &Computer,
+            resource: &str,
+            id: &str,
+            cursor: CommandCursor,
+            max_bytes: u64,
+        ) -> Outcome<CommandRead> {
+            let inject = self.begin("command_read");
+            if matches!(inject, Some(Inject::Failed | Inject::Unknown)) {
+                return Self::finish(inject, || unreachable_outcome());
+            }
+            let out = self.with_machine(resource, |s, r| {
+                let m = &s.machines[r];
+                let Some(p) = m.processes.get(id) else {
+                    return Outcome::done(CommandRead {
+                        progress: CommandProgress::Absent,
+                        digest: None,
+                        stdout: vec![],
+                        stderr: vec![],
+                    });
+                };
+                let slice = |bytes: &[u8], from: u64| {
+                    let from = (from as usize).min(bytes.len());
+                    let to = (from + max_bytes as usize).min(bytes.len());
+                    bytes[from..to].to_vec()
+                };
+                let progress = match p.exit {
+                    Some(code) => CommandProgress::Exited { code },
+                    None if p.lost || !m.running => CommandProgress::Lost,
+                    None => CommandProgress::Running,
+                };
+                Outcome::done(CommandRead {
+                    progress,
+                    digest: p.spec.as_ref().map(|s| s.digest.clone()),
+                    stdout: slice(&p.stdout, cursor.stdout),
+                    stderr: slice(&p.stderr, cursor.stderr),
+                })
+            });
+            Self::finish(inject, || out)
+        }
+        async fn stop_command(&self, _c: &Computer, resource: &str, id: &str) -> Outcome<String> {
+            let inject = self.begin("command_stop");
+            if matches!(inject, Some(Inject::Failed | Inject::Unknown)) {
+                return Self::finish(inject, || unreachable_outcome());
+            }
+            let out = self.with_machine(resource, |s, r| {
+                match s.machines.get_mut(r).unwrap().processes.get_mut(id) {
+                    None => Outcome::done("absent".into()),
+                    Some(p) if p.exit.is_some() => Outcome::done("exited".into()),
+                    Some(p) => {
+                        p.exit = Some(143);
+                        Outcome::done("stopped".into())
+                    }
+                }
+            });
             Self::finish(inject, || out)
         }
     }

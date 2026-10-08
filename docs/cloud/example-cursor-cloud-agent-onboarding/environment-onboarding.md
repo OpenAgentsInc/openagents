@@ -517,6 +517,18 @@ checks for its owner. Documentation review does not require the Rust release gat
 | ENV-09 | Optional dedicated GCE image adapter. | One isolated builder; pinned image identity; new boot verifier; no shared-pool installation; delete/storage/usage reconciliation; equivalent evidence. |
 | ENV-10 | Optional customer environment contract and retail integration. | Reviewed new contract/price/retention/credential/authority class; #10956/#10970 transport; fake-funding/recovery checks; owner-funded lane qualification before availability. |
 
+ENV-03 lives in [`crates/coder-environment-setup`](../../../crates/coder-environment-setup/src/lib.rs).
+A setup session runs on its own computer
+(`coder_working_computer::Purpose::EnvironmentSetup`) through the CMP-01
+driver and provider, plus that provider's identified, at-most-once
+`Commands` (Boat: a `mkdir`-claimed wrapper that keeps its own output, pid,
+spec digest, and exit). Its tools are inspect, recipe update (through the
+ENV-01 draft fence), command start/poll/reconcile/stop, install run (bound to
+one recipe revision and digest), steer, await input, end, cancel, and
+cleanup. Git auth is per-process `GIT_CONFIG_*` naming the credential
+variable; no token reaches `.git/config`. Every tool call goes through the
+ENV-02a recorder. Qualification against real Boat is part of ENV-08.
+
 Proposed blocker edges are ENV-02 → ENV-01; ENV-03 → ENV-01/02;
 ENV-04 → ENV-01/02/03; ENV-05 → ENV-04; ENV-06 → ENV-05;
 ENV-07 → ENV-01/02/06 and the completed web foundations; and

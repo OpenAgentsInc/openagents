@@ -115,6 +115,23 @@ pub struct BaseLink {
     pub version: String,
 }
 
+/// What a computer is for. A setup computer is dedicated to one environment
+/// setup session: it never serves a chat, and a chat computer never runs a
+/// setup session (`docs/cloud/example-cursor-cloud-agent-onboarding/environment-onboarding.md`).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum Purpose {
+    #[default]
+    Chat,
+    /// The `chat` field holds the setup session identity.
+    EnvironmentSetup { environment: String },
+}
+impl Purpose {
+    pub fn is_chat(&self) -> bool {
+        matches!(self, Self::Chat)
+    }
+}
+
 /// How a declared service proves readiness. A reachable port alone is not
 /// application readiness, so an HTTP rule names a path.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -283,6 +300,8 @@ pub struct Computer {
     pub updated_ms: u64,
     pub owner: Principal,
     pub chat: String,
+    #[serde(default, skip_serializing_if = "Purpose::is_chat")]
+    pub purpose: Purpose,
     pub project: ProjectLink,
     pub source: SourcePin,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -416,6 +435,7 @@ impl Computer {
             updated_ms: now_ms,
             owner: spec.owner,
             chat: spec.chat,
+            purpose: Purpose::Chat,
             project: spec.project,
             source: spec.source,
             base: spec.base,
@@ -430,6 +450,21 @@ impl Computer {
             boots: vec![],
             checkpoints: vec![],
             deletion: None,
+        };
+        c.validate()?;
+        Ok(c)
+    }
+
+    /// A computer dedicated to one environment setup session (`spec.chat`
+    /// names the session). It starts from no saved environment version and
+    /// runs no declared services.
+    pub fn for_setup(spec: Spec, environment: &str, now_ms: u64) -> Result<Self, &'static str> {
+        if spec.base.is_some() || !spec.services.is_empty() {
+            return Err("A setup computer starts from its pinned base and declares no services.");
+        }
+        let mut c = Self::new(spec, now_ms)?;
+        c.purpose = Purpose::EnvironmentSetup {
+            environment: environment.into(),
         };
         c.validate()?;
         Ok(c)
@@ -458,6 +493,11 @@ impl Computer {
         }
         if !valid_id(&self.size) {
             return Err("The computer size is invalid.");
+        }
+        if let Purpose::EnvironmentSetup { environment } = &self.purpose
+            && (!valid_id(environment) || self.base.is_some() || !self.services.is_empty())
+        {
+            return Err("A setup computer is invalid.");
         }
         if self.credential_names.len() > 32
             || !self
@@ -555,6 +595,7 @@ impl Computer {
     pub fn preserves_history_of(&self, next: &Computer) -> bool {
         next.id == self.id
             && next.owner == self.owner
+            && next.purpose == self.purpose
             && next.created_ms == self.created_ms
             && next.creates.len() >= self.creates.len()
             && next.boots.len() >= self.boots.len()

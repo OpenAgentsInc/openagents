@@ -68,6 +68,15 @@ pub struct Profile {
     pub credentials: BTreeMap<String, PathBuf>,
     pub adapter: Adapter,
 }
+impl Profile {
+    /// Whether this profile is an admitted Coder engine identity: Coder
+    /// mode, a qualified engine, and only that engine's credential names
+    /// plus GitHub tool tokens. Other owners (environment setup) reuse this
+    /// admission instead of restating it.
+    pub fn qualified_coder_identity(&self) -> bool {
+        crate::operator_adapters::qualified_identity(self)
+    }
+}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Policy {

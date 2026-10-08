@@ -15,11 +15,128 @@
 //! Errors: a definite 4xx from a mutation is `Failed`; transport loss,
 //! deadlines, and 5xx are `Unknown`, and a 404 on reads means gone.
 
-use crate::provider::{CheckpointEvidence, Inspection, Meter, Outcome, Provider};
+//!
+//! Identified commands ([`Commands`]): Boat commands carry no idempotency
+//! key and are never retried, so each command runs inside a wrapper that
+//! claims `COMMAND_DIR/<id>` with `mkdir` (at most once per identity),
+//! keeps its own stdout, stderr, pid, spec digest, and exit code there, and
+//! removes every selected credential the command did not name from its
+//! environment. Reads report state first and then output from a byte
+//! cursor, so a lost start reply reconciles by identity instead of by
+//! running the command again.
+
+use crate::provider::{
+    CheckpointEvidence, CommandCursor, CommandProgress, CommandRead, CommandSpec, Commands,
+    Inspection, Meter, Outcome, Provider,
+};
 use crate::{Checkpoint, Computer, Health, ServiceDecl};
+use base64::Engine;
 use boat::{Client, Nullable, WaitOptions, models::*, shell_quote};
 use coder_cloud::runtime::Credentials;
 use std::time::Duration;
+
+/// Where identified commands keep their records inside the sandbox.
+pub const COMMAND_DIR: &str = "/tmp/oa-commands";
+/// The wrapper's exit code when the identity was already claimed.
+pub const ALREADY_CLAIMED: i32 = 97;
+
+fn join_dir(workdir: &str, cwd: &str) -> String {
+    if cwd == "." {
+        workdir.to_owned()
+    } else {
+        format!("{workdir}/{cwd}")
+    }
+}
+
+/// The detached wrapper for one identified command. `unset` lists the
+/// selected credentials this command did not name.
+pub fn command_script(root: &str, workdir: &str, spec: &CommandSpec, unset: &[&str]) -> String {
+    let d = shell_quote(&format!("{root}/{}", spec.id));
+    let mut env = vec!["env".to_owned()];
+    env.extend(unset.iter().map(|n| format!("-u {n}")));
+    env.extend(
+        spec.env
+            .iter()
+            .map(|(k, v)| format!("{k}={}", shell_quote(v))),
+    );
+    format!(
+        "mkdir -p {root} && mkdir {d} 2>/dev/null || exit {ALREADY_CLAIMED}\n\
+         printf %s {digest} > {d}/spec\n\
+         cd {cwd} || {{ echo 126 > {d}/exit.tmp; mv {d}/exit.tmp {d}/exit; exit 126; }}\n\
+         {env} sh -c {command} </dev/null >{d}/stdout 2>{d}/stderr &\n\
+         echo $! > {d}/pid\n\
+         wait $!\n\
+         code=$?\n\
+         echo $code > {d}/exit.tmp && mv {d}/exit.tmp {d}/exit\n\
+         exit $code",
+        root = shell_quote(root),
+        digest = shell_quote(&spec.digest),
+        cwd = shell_quote(&join_dir(workdir, &spec.cwd)),
+        env = env.join(" "),
+        command = shell_quote(&spec.command),
+    )
+}
+
+/// A read-only probe: state line, spec digest line, then base64 stdout
+/// and stderr from the cursor. State is read before output, so an `exit`
+/// state means the output that follows is final.
+pub fn read_script(root: &str, id: &str, cursor: CommandCursor, max_bytes: u64) -> String {
+    let d = shell_quote(&format!("{root}/{id}"));
+    format!(
+        "d={d}\n\
+         if [ ! -d \"$d\" ]; then echo absent; echo; echo; echo; exit 0; fi\n\
+         if [ -f \"$d/exit\" ]; then echo \"exit $(cat \"$d/exit\")\"\n\
+         elif [ ! -f \"$d/pid\" ]; then echo running\n\
+         elif kill -0 \"$(cat \"$d/pid\")\" 2>/dev/null; then echo running\n\
+         else sleep 1; if [ -f \"$d/exit\" ]; then echo \"exit $(cat \"$d/exit\")\"; else echo lost; fi; fi\n\
+         cat \"$d/spec\" 2>/dev/null; echo\n\
+         for s in stdout:{o} stderr:{e}; do f=\"$d/${{s%%:*}}\"; n=${{s##*:}}; \
+         if [ -f \"$f\" ]; then tail -c +$((n+1)) \"$f\" | head -c {max_bytes} | base64 | tr -d '\\n'; fi; echo; done",
+        o = cursor.stdout,
+        e = cursor.stderr,
+    )
+}
+
+/// Parse [`read_script`] output.
+pub fn parse_read(stdout: &str) -> Result<CommandRead, &'static str> {
+    let mut lines = stdout.split('\n');
+    let state = lines.next().unwrap_or_default().trim();
+    let digest = lines.next().unwrap_or_default().trim();
+    let decode = |line: Option<&str>| {
+        base64::engine::general_purpose::STANDARD
+            .decode(line.unwrap_or_default().trim())
+            .map_err(|_| "The command output did not decode.")
+    };
+    let stdout = decode(lines.next())?;
+    let stderr = decode(lines.next())?;
+    let progress = match state {
+        "absent" => CommandProgress::Absent,
+        "running" => CommandProgress::Running,
+        "lost" => CommandProgress::Lost,
+        _ => match state.strip_prefix("exit ").map(|c| c.trim().parse::<i64>()) {
+            Some(Ok(code)) => CommandProgress::Exited { code },
+            _ => return Err("The command state is not recognized."),
+        },
+    };
+    Ok(CommandRead {
+        progress,
+        digest: (!digest.is_empty()).then(|| digest.to_owned()),
+        stdout,
+        stderr,
+    })
+}
+
+/// Signal a command's process tree; the wrapper then records exit 143.
+pub fn stop_script(root: &str, id: &str) -> String {
+    let d = shell_quote(&format!("{root}/{id}"));
+    format!(
+        "d={d}\n\
+         if [ -f \"$d/exit\" ]; then echo exited; exit 0; fi\n\
+         if [ ! -f \"$d/pid\" ]; then echo absent; exit 0; fi\n\
+         t() {{ echo \"$1\"; for c in $(pgrep -P \"$1\"); do t \"$c\"; done; }}\n\
+         p=$(cat \"$d/pid\"); kill -s TERM $(t \"$p\") 2>/dev/null; echo stopped"
+    )
+}
 
 pub struct BoatProvider {
     pub client: Client,
@@ -407,5 +524,92 @@ impl Provider for BoatProvider {
             stop,
             latest_snapshot: latest,
         })
+    }
+}
+
+impl BoatProvider {
+    /// One short synchronous read-only command; its stdout when it exits 0.
+    async fn probe(&self, id: &str, command: String) -> Result<Option<String>, boat::Error> {
+        let reply = self
+            .client
+            .command(&CommandParams {
+                sandbox_id: id.into(),
+                body: CommandRequest {
+                    command,
+                    timeout_seconds: Some(30),
+                    ..Default::default()
+                },
+                ..Default::default()
+            })
+            .await?;
+        Ok(match reply {
+            CommandResponseBody::Finished(r) if r.success && r.exit_code == Some(0) => {
+                Some(r.stdout)
+            }
+            _ => None,
+        })
+    }
+}
+
+impl Commands for BoatProvider {
+    async fn start_command(
+        &self,
+        c: &Computer,
+        resource: &str,
+        spec: &CommandSpec,
+    ) -> Outcome<String> {
+        let unset: Vec<&str> = c
+            .credential_names
+            .iter()
+            .filter(|n| !spec.credential_names.contains(*n))
+            .map(String::as_str)
+            .collect();
+        let script = command_script(COMMAND_DIR, &self.workdir, spec, &unset);
+        match self
+            .client
+            .exec_detached(
+                resource,
+                CommandRequest {
+                    command: script,
+                    timeout_seconds: Some(spec.timeout_seconds.max(1) as i64),
+                    ..Default::default()
+                },
+            )
+            .await
+        {
+            Ok(started) => Outcome::done(format!("boat-process:{}", started.process_id)),
+            Err(e) => mutation("start command", e),
+        }
+    }
+
+    async fn read_command(
+        &self,
+        _c: &Computer,
+        resource: &str,
+        id: &str,
+        cursor: CommandCursor,
+        max_bytes: u64,
+    ) -> Outcome<CommandRead> {
+        let max = max_bytes.clamp(1, boat::follow::FOLLOW_CHUNK_BYTES);
+        match self
+            .probe(resource, read_script(COMMAND_DIR, id, cursor, max))
+            .await
+        {
+            Ok(Some(text)) => match parse_read(&text) {
+                Ok(read) => Outcome::done(read),
+                Err(m) => Outcome::unknown(m),
+            },
+            Ok(None) => Outcome::unknown("the command read did not finish"),
+            Err(e) if status(&e) == Some(404) => Outcome::failed("the sandbox is gone"),
+            Err(e) => Outcome::unknown(format!("read command: {e}")),
+        }
+    }
+
+    async fn stop_command(&self, _c: &Computer, resource: &str, id: &str) -> Outcome<String> {
+        match self.probe(resource, stop_script(COMMAND_DIR, id)).await {
+            Ok(Some(text)) => Outcome::done(text.trim().to_owned()),
+            Ok(None) => Outcome::unknown("the stop command did not finish"),
+            Err(e) => mutation("stop command", e),
+        }
     }
 }

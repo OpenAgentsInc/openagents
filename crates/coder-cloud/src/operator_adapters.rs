@@ -120,7 +120,7 @@ pub(crate) fn configured(p: &Profile) -> Result<Option<Arc<dyn Driver>>, String>
         }
     }
 }
-fn qualified_identity(p: &Profile) -> bool {
+pub(crate) fn qualified_identity(p: &Profile) -> bool {
     let tools = |name: &str| matches!(name, "GH_TOKEN" | "GITHUB_TOKEN");
     p.mode == crate::Mode::Coder
         && match p.executor.as_str() {
