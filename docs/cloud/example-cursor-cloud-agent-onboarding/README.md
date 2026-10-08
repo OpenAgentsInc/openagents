@@ -21,6 +21,12 @@ environment build was a draft when it ran.
 See [the complete analysis](cursor-agent-complete-record.md) for the timeline,
 commands, results, limitations, and evidence index.
 
+The [ordered tool ledger](cursor-environment-onboarding-tool-sequence.md)
+and [workflow analysis](cursor-environment-onboarding-analysis.md) reconstruct
+the exact sequence from these files. The proposed
+[OpenAgents onboarding process](environment-onboarding.md) maps it to existing
+native infrastructure and specifies the missing environment lifecycle.
+
 ## Transcript completeness
 
 The saved files provide a detailed record, but they are not a complete

@@ -11,10 +11,10 @@ The agent prepared and tested a draft Cursor Cloud Agent environment for `OpenAg
 
 The Cursor HTML exports add UI-level details missing from the small v0 conversation response: the setup prompt, visible `AGENTS.md` diff, draft branch and pull request, and environment panel state. The 10:47 AM export says the environment is saved. A subsequent read-only `GET /v1/environments?limit=100` confirmed environment `7ce2f49e-c32a-11f1-bb68-864e54d14197` is listed as a saved personal environment, updated at 10:38:37 AM CT.
 
-Two requested outcomes remain incomplete in the recorded run:
+The recorded result has two distinct qualifications:
 
 - **The environment was saved after the run.** The final report asked for Save; the 10:47 export says it was saved, and the current List Environments API confirms the saved environment exists. The build log still says warming was skipped because the build itself was a draft.
-- **No application was started and no application-level end-to-end flow was demonstrated.** The fresh-agent check confirms there was no start script and that no server was started. The evidence proves package installation, Cargo fetches, focused tests, and build reproducibility, not a running product workflow.
+- **No application was started and no application-level end-to-end flow was demonstrated.** The fresh-agent check confirms there was no start script and that no server was started. The evidence supports package installation, Cargo fetches, focused tests, and a fresh restore of the built environment. It does not establish clean-base reproducibility or a running product workflow.
 
 The repository guidance was committed and pushed on a feature branch, and the HTML export shows draft PR #10979. The evidence does not show the PR merged.
 
@@ -29,18 +29,24 @@ The target repository was `OpenAgentsInc/openagents`.
 ## Timeline
 
 Times below are Central Daylight Time (UTC−05:00) unless marked UTC.
+The [ordered tool ledger](cursor-environment-onboarding-tool-sequence.md)
+records exact call times and original-response links; the
+[workflow analysis](cursor-environment-onboarding-analysis.md) explains the
+build's internal stages and the proposed OpenAgents port.
 
 | Time | Event | Evidence |
 | --- | --- | --- |
-| 10:11:06 AM | The run started. Cursor reported no linked environment; egress was unrestricted and the repository was `github.com/OpenAgentsInc/openagents`. | Run metadata and `environment-info` tool result |
-| 10:11–10:20 AM | The agent inspected `rust-toolchain.toml`, `Dockerfile`, `verification.md`, `README.md`, workspace manifests, setup scripts, and Rust verification guidance. It found Rust 1.97.1 active from the repository toolchain, while OpenSSL development metadata and some native tools were missing. | HTML transcript and run stream |
-| 10:20–10:24 AM | The agent wrote an idempotent `cloud-agent-install.sh`. Its first version attempted to fetch both Cargo workspaces. Root fetch succeeded; the separate phone workspace fetch failed because `--locked` would require changing `crates/openagents-mobile/Cargo.lock`. The agent revised the script to fetch only the root workspace and recorded the phone-workspace limitation. | `edit_file` tool outputs, terminal output, final script |
-| 10:24–10:29 AM | The agent ran the installer, checked tool versions and system capacity, and launched offline tests for `atif` and `coder-lease` plus a targeted Nostr test. The HTML export at 10:29 AM shows the setup UI, code changes, and a draft PR panel. | HTML export and run stream |
-| 10:29–10:33 AM | The agent collected test results, ran `cargo fmt --check`, and recorded test logs as Cursor artifacts. It added Cloud Agent-specific instructions to `AGENTS.md`. | Tool outputs and downloaded artifacts |
-| 10:33 AM | Commit `71c16fbba8` was created and pushed to `cursor/cloud-agent-env-notes-58b0`. The branch was used for draft PR #10979, “Describe the Cloud Agent toolchain.” | Git command output and HTML export |
+| 10:11:06 AM | The run started. The 10:13:24 environment-info read later reported no linked environment, unrestricted egress, and repository `github.com/OpenAgentsInc/openagents`. | Run metadata and `environment-info` tool result |
+| 10:13:07–10:15:17 AM | The agent discovered tool schemas and inspected `rust-toolchain.toml`, `Dockerfile`, `verification.md`, `README.md`, workspace manifests, setup scripts, and Rust verification guidance. It found Rust 1.97.1 active from the repository toolchain, while OpenSSL development metadata and some native tools were missing. | Run stream |
+| 10:16:08–10:18:56 AM | The agent wrote and ran `cloud-agent-install.sh`. Its first version attempted to fetch both Cargo workspaces. Root fetch succeeded; the separate phone workspace fetch failed because `--locked` would require changing `crates/openagents-mobile/Cargo.lock`. The agent revised the script to fetch only the root workspace. | `edit_file` tool outputs, terminal output, final script |
+| 10:19:18–10:21:33 AM | The agent ran the revised installer twice and checked versions. | Run stream and install artifact |
+| 10:21:45–10:26:09 AM | The agent launched offline tests for `atif` and `coder-lease`, ran the targeted Nostr test, collected results, checked formatting, and copied test logs to Cursor artifacts. | Tool outputs and downloaded artifacts |
+| 10:26:26–10:26:46 AM | The agent added Cloud Agent-specific instructions to `AGENTS.md`, created/pushed commit `71c16fbba8` on `cursor/cloud-agent-env-notes-58b0`, and requested draft PR #10979, “Describe the Cloud Agent toolchain.” GitHub confirms the PR's creation time; the Cursor PR tool response is absent. | Git command output, HTML, and GitHub cross-check |
+| 10:26:55–10:30:58 AM | Cursor captured the explored machine; snapshot readiness changed from creating to ready. | Snapshot and status tool responses |
 | 10:31–10:35 AM | Cursor built draft environment `bld-20261008-26522d23-d3aa-427c-b6f2-3fc6ffbabdb8` under environment ID `7ce2f49e-c32a-11f1-bb68-864e54d14197`. Install exited 0, the snapshot became ready, and the build succeeded. Warming was skipped because the build was a draft. | Environment build logs and build status tool output |
 | 10:36–10:37 AM | A fresh Cloud Agent verified the build: the pinned toolchain and native tools were present, root offline fetch exited 0, the corrupt lease-table test passed, `/tmp/cursor/start-user/` was absent, and no server was started. | Verification subagent transcript |
 | 10:38:19 AM | The parent run finished and returned its final report. It said the environment was ready to save and asked the user to click **Save**. | Final `result` and run status |
+| 10:38:37 AM | The saved-environment record has this update time. The later 10:47 HTML says the environment is saved. | Saved-environment API and HTML export |
 
 ## Environment changes
 
