@@ -171,8 +171,9 @@ fn main() -> Result<(), String> {
     on_renderer.render(view, &on, &ui)?;
     replay_layers(&scene, &layers);
     off_renderer.render(view, &off, &ui)?;
+    let paired_warmup = phase_warmup.next_multiple_of(2);
     let mut samples = Vec::new();
-    for pair in 0..pairs + WARMUP {
+    for pair in 0..pairs + paired_warmup {
         let mut record = [(0.0, 0.0, None); 2];
         for mode in [pair % 2, 1 - pair % 2] {
             let (renderer, dynamic) = if mode == 0 {
@@ -184,8 +185,8 @@ fn main() -> Result<(), String> {
             let (encode, completion) = renderer.last_timing();
             record[mode] = (encode, completion, renderer.last_gpu_ms());
         }
-        if pair >= WARMUP {
-            samples.push(json!({"pair":pair-WARMUP,"off_first":pair%2==0,
+        if pair >= paired_warmup {
+            samples.push(json!({"pair":pair-paired_warmup,"off_first":pair%2==0,
                 "off_encode_ms":record[0].0,"off_completion_ms":record[0].1,"off_gpu_ms":record[0].2,
                 "on_encode_ms":record[1].0,"on_completion_ms":record[1].1,"on_gpu_ms":record[1].2,
                 "frame_completion_increment_ms":(record[1].0+record[1].1)-(record[0].0+record[0].1)}));
@@ -196,6 +197,7 @@ fn main() -> Result<(), String> {
         .map(|x| x["frame_completion_increment_ms"].as_f64().unwrap())
         .collect();
     let (mean, lower, upper) = mean_interval(&increments);
+    let destruction = destruction_capture(&mut runtime, &mut on_renderer, &ui, &dir)?;
     let report = json!({"schema":"openagents.verse-baked-light-capture.v1",
         "resolution":[WIDTH,HEIGHT],"adapter":format!("{:?}",adapter),"quality":format!("{:?}",on_renderer.quality().tier),
         "scene":digest,"vertices":layers.vertex_count(),"bake_key":layers.bake_key,
@@ -208,7 +210,8 @@ fn main() -> Result<(), String> {
             "sky_bake_can_finish_between_steps":(frames-1) as f64/360.0 >= phase_warmup as f64,
             "limitation":"An accelerated timeline with too few frames per scheduled sky step can retain an older sky shape; exact brightness and sun weights still advance. Named phase images converge the sky bake."},
         "temporal_aa":false,"captures":captures,"timelapse":timelapse,
-        "measurement":{"pairs":pairs,"warmup_pairs":WARMUP,"independent_renderers":true,"identical_bake_replayed":true,"fresh_same_state_renderers":true,
+        "destruction":destruction,
+        "measurement":{"pairs":pairs,"warmup_pairs":paired_warmup,"independent_renderers":true,"identical_bake_replayed":true,"fresh_same_state_renderers":true,
             "initial_seed_frames_per_variant":1,
             "off_first":pairs/2,"on_first":pairs/2,"readback":"Both variants read back every measured frame",
             "scope":"CPU fit, encode and submit plus serial completion wait, polling, mapping and pixel extraction; excludes PNG writing and simulation",
@@ -226,6 +229,119 @@ fn main() -> Result<(), String> {
         "Baked blend frame-completion mean {mean:.3} ms; approximate 95% interval {lower:.3} to {upper:.3} ms"
     );
     Ok(())
+}
+
+fn destruction_capture(
+    runtime: &mut WorldRuntime,
+    renderer: &mut verse::render::Offscreen,
+    ui: &verse::ui::UiBatch,
+    dir: &Path,
+) -> Result<serde_json::Value, String> {
+    use glam::Vec3;
+    use verse::zones::everglade::demolition::meteor::Volley;
+    runtime.set_town_clock(town_clock::Clock::DAYTIME.pinned(Some(12.0)));
+    let building = runtime
+        .everglade_zone_mut()
+        .and_then(|z| z.town())
+        .ok_or("The baked town has no demolition state")?
+        .buildings()
+        .iter()
+        .filter(|b| b.destructible() && !b.is_carved())
+        .min_by(|a, b| {
+            let distance = |b: &verse::zones::everglade::demolition::town::Building| {
+                (b.rect.0[0] + 42.0).powi(2) + (b.rect.0[1] - 16.0).powi(2)
+            };
+            distance(a).total_cmp(&distance(b))
+        })
+        .cloned()
+        .ok_or("The baked town has no destructible kit building")?;
+    let ([x, z], [hx, hz]) = building.rect;
+    let aim = Vec3::new(x, building.base, z);
+    let eye = Vec3::new(x - hx - 22.0, building.base + 8.0, z + hz + 24.0);
+    runtime.set_spawn(eye.with_y(building.base), 0.0)?;
+    runtime.set_shot(Some((eye, aim + Vec3::Y * 4.0)));
+    let idle = InputState::default();
+    runtime.tick(&idle, 1.0 / 60.0);
+    let mut dynamic = runtime.dynamic_mesh();
+    dynamic.neon.as_mut().unwrap().temporal_aa = false;
+    let view = runtime.view(WIDTH as f32 / HEIGHT as f32);
+    for _ in 0..sky_warmup(renderer.quality()) {
+        renderer.measure(view, &dynamic, ui)?;
+    }
+    write_png(
+        &dir.join("destruction-pristine.png"),
+        &renderer.render(view, &dynamic, ui)?,
+    )?;
+    let targets = vec![
+        Vec3::new(x, building.top - 0.5, z),
+        Vec3::new(x - hx, building.base + 1.5, z + hz),
+        Vec3::new(x + hx, building.base + 1.5, z + hz),
+        Vec3::new(x, building.base + 2.0, z + hz),
+    ];
+    runtime
+        .everglade_zone_mut()
+        .and_then(|zone| zone.town_mut())
+        .ok_or("The baked town disappeared")?
+        .start_showcase(
+            eye.with_y(building.base),
+            aim,
+            targets,
+            Volley::SHOWCASE,
+            0.5,
+            600.0,
+        );
+    let mut captures = Vec::new();
+    let mut relit_max = 0;
+    let mut hidden_max = 0;
+    for frame in 0..960 {
+        runtime.tick(&idle, 1.0 / 60.0);
+        let mut dynamic = runtime.dynamic_mesh();
+        dynamic.neon.as_mut().unwrap().temporal_aa = false;
+        let view = runtime.view(WIDTH as f32 / HEIGHT as f32);
+        let town = runtime
+            .everglade_zone_mut()
+            .and_then(|zone| zone.town())
+            .unwrap();
+        let relit = town
+            .site()
+            .pieces()
+            .iter()
+            .filter(|piece| piece.relight)
+            .count();
+        relit_max = relit_max.max(relit);
+        hidden_max = hidden_max.max(town.hidden());
+        if [360, 480, 600, 900].contains(&frame) {
+            let file = format!("destruction-{frame:04}.png");
+            write_png(&dir.join(&file), &renderer.render(view, &dynamic, ui)?)?;
+            captures.push(json!({"frame":frame,"file":file,"relit_pieces":relit,"hidden_placements":town.hidden(),"chunks":town.profile().chunks}));
+        } else {
+            renderer.measure(view, &dynamic, ui)?;
+        }
+    }
+    if relit_max == 0 || hidden_max == 0 {
+        return Err("The meteor capture did not break a baked kit building".into());
+    }
+    runtime.zone_intent(verse::zones::Intent::Rebuild)?;
+    let town = runtime
+        .everglade_zone_mut()
+        .and_then(|zone| zone.town())
+        .unwrap();
+    let pristine = town.hidden() == 0 && town.site().pieces().iter().all(|piece| !piece.relight);
+    if !pristine {
+        return Err("Restore did not reset the town's fallback state".into());
+    }
+    let mut dynamic = runtime.dynamic_mesh();
+    dynamic.neon.as_mut().unwrap().temporal_aa = false;
+    write_png(
+        &dir.join("destruction-restored.png"),
+        &renderer.render(runtime.view(WIDTH as f32 / HEIGHT as f32), &dynamic, ui)?,
+    )?;
+    Ok(
+        json!({"building_center":[x,z],"building_is_kit":true,"frames":960,"fps":60,
+        "pristine":"destruction-pristine.png","restored":"destruction-restored.png",
+        "relit_pieces_max":relit_max,"hidden_placements_max":hidden_max,"restore_fallback_reset":pristine,
+        "captures":captures,"timing":"Diagnostic serial rendering; separate blend comparison supplies frame cost"}),
+    )
 }
 
 fn sky_warmup(quality: verse_engine::quality::Quality) -> usize {
