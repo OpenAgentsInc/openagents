@@ -651,6 +651,10 @@ impl OceanGpu {
         self.plan
     }
 
+    /// Whether synthesis executes inline rather than on a worker thread.
+    #[must_use]
+    pub fn inline_synthesis(&self) -> bool { matches!(self.worker, Worker::Inline(_)) }
+
     /// The texture's bytes on the GPU, the ripple layer's included.
     #[must_use]
     pub fn bytes(&self) -> u64 {
