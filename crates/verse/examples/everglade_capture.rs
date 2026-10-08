@@ -317,12 +317,20 @@ fn capture(output: PathBuf, view: String, frame: Option<usize>) -> Result<(), St
         None
     };
     let idle = InputState::default();
+    #[cfg(feature = "desktop")]
     let workshop = match view.split_once(':') {
         Some((how @ ("alice" | "alice-door" | "alice-walk" | "alice-board"), files)) => {
             Some(alice(&mut runtime, how, files, &idle)?)
         }
         _ => None,
     };
+    #[cfg(not(feature = "desktop"))]
+    if matches!(
+        view.split_once(':'),
+        Some(("alice" | "alice-door" | "alice-walk" | "alice-board", _))
+    ) {
+        return Err("Alice's workshop views require the desktop feature".into());
+    }
     if view.starts_with("reverse") {
         reverse(&mut runtime, &view, &idle)?;
     }
@@ -396,6 +404,7 @@ fn capture(output: PathBuf, view: String, frame: Option<usize>) -> Result<(), St
             );
         }
     }
+    #[cfg(feature = "desktop")]
     if let Some(workshop) = &workshop {
         // Her desk panel, anchored over the hotbar as the app draws it.
         let size = [1280.0, 800.0];
@@ -730,6 +739,7 @@ fn studio(_: &mut WorldRuntime, _: &str, _: Option<usize>) -> Result<(), String>
 ///   the west wall, from a view whose `plan` the board shows.
 /// - `alice-walk:FROM,TO`: from the door, a moment after the answer in TO
 ///   sends her from where FROM put her, so she is on her way.
+#[cfg(feature = "desktop")]
 fn alice(
     runtime: &mut WorldRuntime,
     how: &str,
