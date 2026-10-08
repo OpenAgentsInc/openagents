@@ -1,0 +1,162 @@
+{
+  "source": "f176dfa0c8",
+  "executable": {
+    "source": "f9ad77960a80b845b9219269859f0e61edc8f2b2",
+    "patch_sha256": "18bf28ae9ecfc3f915482499464f5358ce17bf2b741b7544cce33a69a361c671",
+    "original": "/Users/christopherdavid/work/openagents-target-agent12/release/examples/water_capture-b7841181516e5388",
+    "sha256": "5e7854158082a4697fab175c6073a71fb2270f211b160eb94873c493b958552b"
+  },
+  "cases": [
+    {
+      "case": "low-pond-posts",
+      "gpu_valid_samples": 96,
+      "files": {
+        "low-pond-posts-native.json.gz": "1aebc8f811c127eb84ee8543a9b9c35b5a2f4fd2d95209292ad3c5c7c5e0b6a6",
+        "low-pond-posts-run.log.gz": "50b1cca83ed81d5924930b510cdb10e968cba0e87d761d782c00828838e41167",
+        "low-pond-posts-quiet.json.gz": "604f43fc8d455c45ee251c33fd58b1a64a23bf55e91da6e27508207376ddd0ea",
+        "low-pond-posts-gpu.json.gz": "aa15fdc38d5863e46b135c433823b115b7ca60b95acdf890e0938967474bd9bb"
+      }
+    },
+    {
+      "case": "high-open-storm",
+      "gpu_valid_samples": 96,
+      "files": {
+        "high-open-storm-native.json.gz": "397f7cf429489a62edc62decd2a5eb7dd6278a99c588cc69ecca924593c98244",
+        "high-open-storm-run.log.gz": "53f613c62c90270d0a11b5e5beb62d5541c9025be0b055bf9efb21ed3a0e4631",
+        "high-open-storm-quiet.json.gz": "0acded9fdaf60847ee2e25f420f2f9c29a78d08a552ba3fa1aef0b4a2c864c7a",
+        "high-open-storm-gpu.json.gz": "367718a511477902de3292802a45fdf9439b8fdaeed159633f6f7ffb2c303355"
+      }
+    },
+    {
+      "case": "high-pond-noon",
+      "gpu_valid_samples": 96,
+      "files": {
+        "high-pond-noon-native.json.gz": "7e18ae4c0b3a37c45cf770a5a797fb1f7e9d28f2faa442db3df6afb17e7d2c5e",
+        "high-pond-noon-run.log.gz": "9ad228ff5b4bb239cb3feb325d3a0b38e6ce90e9c90b429d50a9c9fe15d6cb98",
+        "high-pond-noon-quiet.json.gz": "7257179ea21d3f0bead2ba22d25ac509dcd47ca944abd088bc2cafbce361076d",
+        "high-pond-noon-gpu.json.gz": "69ac3a231663dcaa2a5627887d8fe16c9cee5f579d990f26d16d3c2846289f2a"
+      }
+    },
+    {
+      "case": "high-pond-posts",
+      "gpu_valid_samples": 96,
+      "files": {
+        "high-pond-posts-native.json.gz": "3cb62566c7dc6e53941bfe2c63f657522ded6263a16f2fcaa7065869d917903e",
+        "high-pond-posts-run.log.gz": "e429c1600c3d31e7047c7b351ccc186e349ace10a0d82e12a11af146f0a4d62c",
+        "high-pond-posts-quiet.json.gz": "334a84db307404484be949f8528ad8870da96e3f617a7588645f9501c735070a",
+        "high-pond-posts-gpu.json.gz": "136889ae9c982346af6f86bbcdcd62757cc0b56f07503689e94c139590832e1d"
+      }
+    },
+    {
+      "case": "high-under",
+      "gpu_valid_samples": 96,
+      "files": {
+        "high-under-native.json.gz": "666cd4eed3c4dc513510c52f07a7e61d74ed0a947b45210ea6909091f2ac7e01",
+        "high-under-run.log.gz": "d3cab7e1d30686396904f3aebebb64793570fbc82e2e97daaa455e54f8233dc8",
+        "high-under-quiet.json.gz": "f9f7be52e10489d704c4ac1fb49399017699017fcc26370cb64714b5bf2bbe6f",
+        "high-under-gpu.json.gz": "d31100d5c4ca0832623f720ba1c5878c06e01237e7ceb67cabf28bfe974a4a41"
+      }
+    },
+    {
+      "case": "high-waterline",
+      "gpu_valid_samples": 96,
+      "files": {
+        "high-waterline-native.json.gz": "7fd59217164e3a8c81ad1c59dcfed3e8abee836ec1ec93df5dc473f7af054f20",
+        "high-waterline-run.log.gz": "270d88b605bfd40d03f1f9ff87e9d63b0b2d072d03c2f83744ccd2a7e46515f5",
+        "high-waterline-quiet.json.gz": "43ddb5d361d59342bb68cd88ff16088496674b4bf31eefe67ca94b1113e4085a",
+        "high-waterline-gpu.json.gz": "12e95dad8670d180306f0df8644b9fd01e79b25eaa665868443943ff60949378"
+      }
+    },
+    {
+      "case": "low-open-storm",
+      "gpu_valid_samples": 96,
+      "files": {
+        "low-open-storm-native.json.gz": "5cd4bebad47cf335e047735d2bc81bf2ea13cb2b14e4d6869d3657ff3329c084",
+        "low-open-storm-run.log.gz": "e1f08f25ab5f1eb2591014c05d8de11a7dcc73468c5c7b6588d9d22e71f280de",
+        "low-open-storm-quiet.json.gz": "9e45029eccc3e1f3d23a6bd90f56c505a0405a8e5d84c0bc621c9ac0c4bbdea5",
+        "low-open-storm-gpu.json.gz": "0aa292997b13187f3eb11370a6a926749a3b1ee1f361ca122bbb02a5f2871bc0"
+      }
+    },
+    {
+      "case": "low-pond-noon",
+      "gpu_valid_samples": 96,
+      "files": {
+        "low-pond-noon-native.json.gz": "739a0a6e5d8d3f059de6a3cef4a465c29980492a978f5a8aa32eba40c41d96e3",
+        "low-pond-noon-run.log.gz": "dcbbaae8ddd233e0fcb34e8296161538663146833b778c5ce208c9a8c8ec3730",
+        "low-pond-noon-quiet.json.gz": "03dea97b206ad0ed3fe7bfd657e1c8cff2277cf815b9382689dbeee0e7d43aa6",
+        "low-pond-noon-gpu.json.gz": "4dda3a98fdd9805d28cf7d41855318b74361539141b1b89af39ed61855ebc105"
+      }
+    },
+    {
+      "case": "low-under",
+      "gpu_valid_samples": 96,
+      "files": {
+        "low-under-native.json.gz": "fb65f65b44bb7178ed74d5a6c06527d0e1c58b0ae28efe4162dd0439680da50a",
+        "low-under-run.log.gz": "e5a5e4c267e386297a2b4800b7ba4678807e26075e0972c4b0ffdd843ba5fd28",
+        "low-under-quiet.json.gz": "4f978ae5db2b82f037218acf27c729d64b88bcc2bb99d6bf897795bd170ee823",
+        "low-under-gpu.json.gz": "aeed5bef22468fddb0271c5e63f5190f7150b9594f44a9bcc519208695d45fe6"
+      }
+    },
+    {
+      "case": "low-waterline",
+      "gpu_valid_samples": 96,
+      "files": {
+        "low-waterline-native.json.gz": "44a3a164f232ffa4743fc8d43f9b4f09b568f71cc496d194c3cfb6d0122c1315",
+        "low-waterline-run.log.gz": "b3f30a0d2818e82fd4a5e8629e6d5802df7a107f6d21d7f75773423f98a71a1d",
+        "low-waterline-quiet.json.gz": "f94c793669f59d98d1e1b1b576011455e1cb5104bd3a111699df4270df8e911b",
+        "low-waterline-gpu.json.gz": "52dba4af73d1c75a9d897f7799cccb6f0811074a02237328958b423083af97e6"
+      }
+    },
+    {
+      "case": "medium-open-storm",
+      "gpu_valid_samples": 96,
+      "files": {
+        "medium-open-storm-native.json.gz": "68e2b8f9a959aace20efd2109d2de9a58e9e22ed2a13cd31abab0b8315e38d03",
+        "medium-open-storm-run.log.gz": "abe899935a58b2408ae6bc4f61b862aeb8e14b476a5cfce8242dd89cc720834a",
+        "medium-open-storm-quiet.json.gz": "6d329e81518c0a6741ad2216c77c0d2ff9f7b86e9e21b75d3f557683706c0bab",
+        "medium-open-storm-gpu.json.gz": "c730da882726ffcbd1f025f358e25c56da1d8fd7c43c7ec563d4e1ce12667e4a"
+      }
+    },
+    {
+      "case": "medium-pond-noon",
+      "gpu_valid_samples": 96,
+      "files": {
+        "medium-pond-noon-native.json.gz": "923dbe3078c9186ac82e8766c58e901dbdabc0957385a5ee5f0ae45f950cef30",
+        "medium-pond-noon-run.log.gz": "59052007d92044456a0556936e477fca6debc4938c21ff389c398ea4e4da5572",
+        "medium-pond-noon-quiet.json.gz": "5dd07915359ffbc618b96a21c90ac89c56740dbf779450a46d7dc168e1870d31",
+        "medium-pond-noon-gpu.json.gz": "eecb01130ad9f2a2ce448409e5d2bc84944da9723fc1f33749f871e86a203053"
+      }
+    },
+    {
+      "case": "medium-pond-posts",
+      "gpu_valid_samples": 96,
+      "files": {
+        "medium-pond-posts-native.json.gz": "f5177a97a354649c176b0f68344fb30ecc635970530cb84eb6ee2b7ab078f4f9",
+        "medium-pond-posts-run.log.gz": "e2da004434171f6d873b33f2437630634e6b825cf2c194658f1a0f97eecb7293",
+        "medium-pond-posts-quiet.json.gz": "f1d142b7d05f285aeba0809393d04b78f1cdd2c5df9f831ad27689a9998f5587",
+        "medium-pond-posts-gpu.json.gz": "37272c4aa136ddbee90bfd0f9057990fe95a3b249b06b4b79c871f1c6f66d4d5"
+      }
+    },
+    {
+      "case": "medium-under",
+      "gpu_valid_samples": 96,
+      "files": {
+        "medium-under-native.json.gz": "09db050fc1a7b07d08bbd6719652986bdfdd66f4c61330b9c296b3deb6210a23",
+        "medium-under-run.log.gz": "35aeb450953e6527b1c90f302c1d78b9dadcbaabe8475b6d63e9e37b71b898ac",
+        "medium-under-quiet.json.gz": "a87c516b569976d1967df8e40f113af3244357da7f2856d8b981f79ce5a54425",
+        "medium-under-gpu.json.gz": "49760b17d177ec1469c42594e67963ad532ec2dcb6d1b81b49807c5291df5c10"
+      }
+    },
+    {
+      "case": "medium-waterline",
+      "gpu_valid_samples": 96,
+      "files": {
+        "medium-waterline-native.json.gz": "2576843a6f0251d64126976a9d10f9679245088a34bcdda2156fb764f9323425",
+        "medium-waterline-run.log.gz": "8834423e2ce93a5a3a3469bb300c290db8b5e65e24442b17b7f303e879f3b66f",
+        "medium-waterline-quiet.json.gz": "fa7ef55a92636ed204ad187f96aafe9f2cddd59ba4f7b2728361ae3e7d19b90c",
+        "medium-waterline-gpu.json.gz": "dd7c0be589465264fc5cf3fc61e9d607730d92b3ea752d5c83682ec1a7f78a4b"
+      }
+    }
+  ],
+  "images": "private scratch only"
+}
