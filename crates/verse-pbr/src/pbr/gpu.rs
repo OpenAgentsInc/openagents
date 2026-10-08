@@ -2704,7 +2704,7 @@ impl Photo {
         self.water_slot = slot;
         self.water_mask = 0;
         self.water_measurements = crate::water::timing::Measurements {
-            gpu, gpu_timestamps: self.water_timer.is_some(), inline_synthesis: cfg!(target_arch = "wasm32"),
+            gpu, gpu_timestamps: self.water_timer.is_some(), inline_synthesis: self.ocean.inline_synthesis(),
             ..Default::default()
         };
         match stage {
@@ -3657,8 +3657,8 @@ impl Photo {
             self.water_measurements.completed_synthesis_ms = (self.ocean.completed_micros - completed_before.1).max(0.0) / 1000.0;
             let worker_cpu_ms = self.ocean.completed_cpu_micros.zip(completed_before.2)
                 .map(|(after,before)| (after-before).max(0.0) / 1000.0);
-            self.water_measurements.worker_cpu_supported = worker_cpu_ms.is_some();
-            self.water_measurements.worker_ms = if cfg!(target_arch = "wasm32") { 0.0 }
+            self.water_measurements.worker_cpu_supported = !self.ocean.inline_synthesis() && worker_cpu_ms.is_some();
+            self.water_measurements.worker_ms = if self.ocean.inline_synthesis() { 0.0 }
                 else { worker_cpu_ms.unwrap_or(self.water_measurements.completed_synthesis_ms) };
             self.water_measurements.worker_bytes = self.ocean.worker_bytes;
             self.water_measurements.ripple_cpu_bytes = self.ocean.ripples.heap_bytes();
