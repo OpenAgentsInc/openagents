@@ -8,6 +8,9 @@ pub(super) const USAGE: &str =
     "usage: openagents sales outbox COMMAND --root DIR --credential FILE [--json]
   view                          Read the owner's exact approval subjects and attempt states.
   batch-qualification [--mode live|fixture]
+  standing-qualification [--mode live|fixture]
+                                Measured reviewed-batch operation (REV-73). Meeting it grants nothing;
+                                apply grant_standing or revoke_standing to bind one invited thread.
                                 Measure level-0 operation for a reviewed batch. Meeting it grants nothing.
   propose --input FILE --mailbox-key FILE
                                 Reserve counts and freeze recipient, content, and authority.
@@ -70,6 +73,7 @@ pub(super) fn run(output: &Output, words: &[String]) -> u8 {
         let allowed: &[&str] = match command {
             "view" => &[],
             "batch-qualification" => &["mode"],
+            "standing-qualification" => &["mode"],
             "propose" | "apply" => &["input", "mailbox-key"],
             "fixture" => &["proposal", "subject-sha256", "input", "mailbox-key"],
             "dispatch" => &["proposal", "subject-sha256", "mailbox-key"],
@@ -90,12 +94,18 @@ pub(super) fn run(output: &Output, words: &[String]) -> u8 {
         if command == "view" {
             return store.sales_outbox_view(&access);
         }
-        if command == "batch-qualification" {
+        if command == "batch-qualification" || command == "standing-qualification" {
             let mode = match args.option("mode").unwrap_or("live") {
                 "live" => outbox::Mode::Live,
                 "fixture" => outbox::Mode::Fixture,
                 _ => return Err("outbox batch mode is live or fixture".into()),
             };
+            if command == "standing-qualification" {
+                let qualification = store.outbox_standing_qualification(&access, mode)?;
+                return Ok(
+                    json!({"qualification_sha256":qualification.sha256()?,"qualification":qualification,"outbound_authority":false}),
+                );
+            }
             let qualification = store.outbox_batch_qualification(&access, mode)?;
             return Ok(
                 json!({"qualification_sha256":qualification.sha256()?,"qualification":qualification,"outbound_authority":false}),

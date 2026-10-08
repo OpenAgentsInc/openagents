@@ -2672,3 +2672,291 @@ fn outbox_batch_items_consume_once_and_revocation_pause_and_size_stay_bounded() 
         "a complaint resets trust until correction and restart"
     );
 }
+
+#[test]
+fn outbox_standing_follow_up_is_disabled_until_an_exact_invited_thread_grant() {
+    use super::super::{
+        email::Delivery,
+        outbox::{standing::*, *},
+        replies,
+    };
+    const WEEK: u64 = 604_800;
+    let mut f = Fixture::new();
+    let (_, keys, message) = email_fixture(&mut f);
+    batch_history(&mut f, 100);
+    assert!(!f.store.state.outbox.standing.enabled(now()));
+    let q = f
+        .store
+        .outbox_standing_qualification(&f.owner, Mode::Fixture)
+        .unwrap();
+    assert!(
+        !q.eligible && !q.automatic_promotion,
+        "no delivered batch yet"
+    );
+    // Original first message, accepted, then marked delivered as the floor's
+    // reconciliation would. The lead's retained source must outlive the policy.
+    let mut first = outbox_proposal(message.clone(), "standing-original");
+    first.kind = MessageKind::FirstMessage;
+    let original = f
+        .store
+        .propose_sales_outbox(&f.owner, first, &keys)
+        .unwrap();
+    batch_grant(&mut f, &keys, "one", std::slice::from_ref(&original), true).unwrap();
+    let cancel = std::sync::atomic::AtomicBool::new(false);
+    let mut transport = outbox_transport(&original, Delivery::Accepted);
+    f.store
+        .dispatch_sales_outbox_fixture(
+            &f.owner,
+            "standing-original",
+            &original.sha256().unwrap(),
+            &keys,
+            &mut transport,
+            &cancel,
+        )
+        .unwrap();
+    let mut next = f.store.state.clone();
+    let row = next.outbox.records.get_mut("standing-original").unwrap();
+    row.phase = Phase::Delivered;
+    next.leads
+        .get_mut(&f.lead)
+        .unwrap()
+        .details
+        .data
+        .retain_until = now() + 10 * WEEK;
+    f.store.persist(next).unwrap();
+    // The longer retention is a new admission scope the owner records again.
+    let source = f.store.state.leads[&f.lead].clone();
+    let readmit = super::super::privacy::Command {
+        schema: super::super::privacy::COMMAND_SCHEMA.into(),
+        id: "business-contact-retained".into(),
+        expected_revision: f.store.state.privacy.revision,
+        operation: super::super::privacy::Operation::Admit {
+            admission: super::super::privacy::Admission {
+                lead: f.lead.clone(),
+                expected_lead_revision: source.revision,
+                customer: source.details.account.clone(),
+                jurisdiction: "US".into(),
+                source_kind: super::super::privacy::SourceKind::GivenBusinessRole,
+                permission_kind: super::super::privacy::PermissionKind::AcceptedIntroduction,
+                source_sha256: digest(source.source.as_bytes()),
+                permission_reference_sha256: digest(source.details.permission.reference.as_bytes()),
+                owner_reference: "operator verified requested private business introduction".into(),
+                aliases: vec![source.contact.clone()],
+            },
+        },
+    };
+    f.store
+        .apply_sales_privacy(&f.owner, &serde_json::to_vec(&readmit).unwrap())
+        .unwrap();
+    let row = f.store.state.outbox.records["standing-original"].clone();
+    let thread = replies::Thread {
+        proposal: row.id.clone(),
+        subject_sha256: row.subject_sha256.clone(),
+        mime_sha256: row.mime_sha256.clone(),
+        attempt: row.attempt.clone().unwrap(),
+    };
+    let input = replies::Input {
+        schema: replies::SCHEMA.into(),
+        id: "invite".into(),
+        provenance: replies::Provenance::Fixture,
+        provider_message_sha256: digest(b"invite"),
+        provider_attempt_sha256: digest(b"attempt:invite"),
+        config_sha256: message.config_sha256.clone(),
+        sender: message.recipient.clone(),
+        recipient: "operator@fixture.invalid".into(),
+        thread: Some(thread.clone()),
+        provider_state: replies::ProviderState::Reply,
+        quoted_text: "Interesting, send me more next month.".into(),
+        attachments: vec![],
+        reported_at: now(),
+    };
+    let reply = f.store.ingest_sales_reply(&f.owner, input).unwrap();
+    let q = f
+        .store
+        .outbox_standing_qualification(&f.owner, Mode::Fixture)
+        .unwrap();
+    assert!(q.eligible && q.delivered_batches == 1 && !q.enabled);
+    let lead = f.lead.clone();
+    let policy = |id: &str, invitation: &str, q: &Qualification| Policy {
+        schema: POLICY_SCHEMA.into(),
+        id: id.into(),
+        mode: Mode::Fixture,
+        lead: lead.clone(),
+        recipient: message.recipient.clone(),
+        config_sha256: message.config_sha256.clone(),
+        template: message.template.clone(),
+        invitation: invitation.into(),
+        spacing_secs: WEEK,
+        max_attempts: 2,
+        maximum_cost_microusd: outbox_proposal(message.clone(), "probe").maximum_cost_microusd,
+        expires_at: now() + 5 * WEEK,
+        qualification_sha256: q.sha256().unwrap(),
+        owner_review_sha256: "8".repeat(64),
+    };
+    assert!(
+        batch_apply(
+            &mut f,
+            &keys,
+            "unreviewed",
+            Operation::GrantStanding {
+                policy: policy("p-unreviewed", "invite", &q)
+            }
+        )
+        .is_err(),
+        "an unreviewed reply is no invitation"
+    );
+    f.store
+        .review_sales_reply(
+            &f.owner,
+            &reply.id,
+            &reply.input_sha256,
+            f.store.state.replies.revision,
+            replies::Label::Interested,
+            &"a".repeat(64),
+        )
+        .unwrap();
+    let mut stale = policy("p-stale", "invite", &q);
+    stale.qualification_sha256 = "9".repeat(64);
+    assert!(
+        batch_apply(
+            &mut f,
+            &keys,
+            "stale",
+            Operation::GrantStanding { policy: stale }
+        )
+        .is_err()
+    );
+    batch_apply(
+        &mut f,
+        &keys,
+        "grant",
+        Operation::GrantStanding {
+            policy: policy("p-1", "invite", &q),
+        },
+    )
+    .unwrap();
+    assert!(f.store.state.outbox.standing.enabled(now()));
+    assert!(
+        batch_apply(
+            &mut f,
+            &keys,
+            "second-thread-policy",
+            Operation::GrantStanding {
+                policy: policy("p-2", "invite", &q)
+            }
+        )
+        .is_err(),
+        "one active policy per thread"
+    );
+    // A follow-up under the policy is approved without a per-item decision but
+    // still must satisfy the canonical follow-up plan at dispatch.
+    let mut follow = outbox_proposal(message.clone(), "standing-f1");
+    follow.kind = MessageKind::FollowUp;
+    let mut wrong = follow.clone();
+    wrong.kind = MessageKind::Reply;
+    assert!(
+        f.store
+            .outbox_standing_follow_up(&f.owner, "p-1", wrong, &keys)
+            .is_err()
+    );
+    let mut attached = follow.clone();
+    attached.attachments.push(Attachment {
+        filename: "deck.pdf".into(),
+        media_type: "application/pdf".into(),
+        path: "deck.pdf".into(),
+        sha256: "5".repeat(64),
+        bytes: 1,
+    });
+    assert!(
+        f.store
+            .outbox_standing_follow_up(&f.owner, "p-1", attached, &keys)
+            .is_err()
+    );
+    assert!(
+        f.store
+            .outbox_standing_follow_up(&f.owner, "p-1", follow.clone(), &keys)
+            .is_err(),
+        "a standing follow-up still needs the canonical follow-up plan"
+    );
+    let plan = replies::FollowUp {
+        lead: f.lead.clone(),
+        mode: Mode::Fixture,
+        index: 1,
+        original_observed_at: now() - WEEK,
+        not_before: now(),
+        retain_until: now() + 10 * WEEK,
+        thread: thread.clone(),
+    };
+    f.store
+        .state
+        .replies
+        .follow_ups
+        .insert(plan.sha256().unwrap(), plan.clone());
+    f.store.state.replies.check().unwrap();
+    follow.follow_up_reference = Some(plan.artifact().unwrap());
+    let subject = f
+        .store
+        .outbox_standing_follow_up(&f.owner, "p-1", follow.clone(), &keys)
+        .unwrap();
+    assert_eq!(
+        f.store.state.outbox.records["standing-f1"].phase,
+        Phase::Approved
+    );
+    let mut again = follow.clone();
+    again.id = "standing-f2".into();
+    assert!(
+        f.store
+            .outbox_standing_follow_up(&f.owner, "p-1", again.clone(), &keys)
+            .is_err(),
+        "the open attempt blocks a second send"
+    );
+    let mut transport = outbox_transport(&subject, Delivery::Accepted);
+    f.store
+        .dispatch_sales_outbox_fixture(
+            &f.owner,
+            "standing-f1",
+            &subject.sha256().unwrap(),
+            &keys,
+            &mut transport,
+            &cancel,
+        )
+        .unwrap();
+    assert_eq!(transport.calls, 1);
+    assert_eq!(
+        f.store.state.outbox.records["standing-f1"].phase,
+        Phase::Accepted
+    );
+    assert!(
+        f.store
+            .outbox_standing_follow_up(&f.owner, "p-1", again, &keys)
+            .is_err(),
+        "wall-clock spacing since the last attempt"
+    );
+    batch_apply(
+        &mut f,
+        &keys,
+        "revoke",
+        Operation::RevokeStanding {
+            policy: "p-1".into(),
+            reference_sha256: "7".repeat(64),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        f.store.state.outbox.standing.policies["p-1"].phase,
+        PolicyPhase::Revoked
+    );
+    assert_eq!(
+        f.store.state.outbox.records["standing-f1"].phase,
+        Phase::Accepted,
+        "revocation never rewrites a consumed attempt"
+    );
+    assert!(!f.store.state.outbox.standing.enabled(now()));
+    let root = f.dir.path().join("host");
+    drop(f.store);
+    let store = Store::open(&root).unwrap();
+    assert_eq!(
+        store.state.outbox.standing.policies["p-1"].attempts, 1,
+        "restart keeps attempts and revocation"
+    );
+}

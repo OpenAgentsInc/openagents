@@ -1938,3 +1938,14 @@ Code is complete: `grant_batch`, `revoke_batch`, `raise_batch`, and
   toward a live grant.
 - Read every item of the first five batches and grant each batch against
   the exact qualification digest. Nothing promotes on its own.
+
+## REV-73 standing follow-ups (#10880)
+
+Code is complete and disabled: `grant_standing`, `revoke_standing`, and
+`openagents sales outbox standing-qualification`. Owner steps:
+
+- Operate at least one fully delivered reviewed batch (REV-66) on live
+  history before any policy can qualify.
+- Choose the invited-thread cohort and grant each policy separately against
+  the exact qualification digest, naming the reviewed inviting reply. No
+  batch grant, measurement, or elapsed time enables a policy on its own.
