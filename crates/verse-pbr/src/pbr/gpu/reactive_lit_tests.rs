@@ -1196,7 +1196,7 @@ fn photo_sprite_mrt_matches_color_and_rejects_hidden_or_covered_emission() {
                         ..Default::default()
                     });
                     pass.set_pipeline(&photo.pipelines.sprites);
-                    pass.set_bind_group(0, &photo.scene_group, &[]);
+                    pass.set_bind_group(0, &photo.sprite_scene_group, &[]);
                     pass.set_bind_group(1, &targets.guide_groups[0], &[]);
                     pass.set_bind_group(2, &photo.empty_group, &[]);
                     pass.set_bind_group(3, &targets.fx_group, &[]);

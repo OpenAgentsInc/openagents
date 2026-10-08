@@ -4023,8 +4023,8 @@ impl Photo {
     }
 
     /// Cache static cover by snapped camera cell and uploaded geometry edits.
-    /// Destruction index edits invalidate the map. Exclude figures: neither
-    /// avatars nor falling debris are permanent sky cover.
+    /// Rigid cover redraws while its transforms can change. Figures do not
+    /// provide structural cover.
     fn encode_rain(
         &mut self,
         queue: &wgpu::Queue,
@@ -4039,10 +4039,11 @@ impl Photo {
         frame.rain_matrix = matrix.to_cols_array_2d();
         frame.rain_params = [1.0, 0.08 / 512.0, 0.0, 0.0];
         let key = (matrix.to_cols_array(), static_identity(world));
-        if self.rain_key == Some(key) {
+        let rigid_cover = world.instances.is_some_and(|gpu| !gpu.batches.is_empty());
+        if !rigid_cover && self.rain_key == Some(key) {
             return;
         }
-        self.rain_key = Some(key);
+        self.rain_key = (!rigid_cover).then_some(key);
         self.water_mask |= 16;
         let mut copy = *frame;
         copy.light = matrix.to_cols_array_2d();
@@ -4074,7 +4075,7 @@ impl Photo {
                 &self.pipelines.textured_shadow_masked,
             ],
             [world.lit, (&self.dynamic_lit.buffer, 0)],
-            [world.textured, None],
+            [world.textured, None, world.instances],
             &keep,
         );
     }
@@ -5209,7 +5210,7 @@ impl Photo {
                 .as_ref()
                 .expect("temporal sprite pipeline"),
         );
-        pass.set_bind_group(0, &self.scene_group, &[]);
+        pass.set_bind_group(0, &self.sprite_scene_group, &[]);
         pass.set_bind_group(1, &targets.guide_groups[guides], &[]);
         pass.set_bind_group(2, &self.empty_group, &[]);
         pass.set_bind_group(3, fx_group, &[]);
