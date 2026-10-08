@@ -113,6 +113,9 @@ pub struct Options {
     pub grove: bool,
     /// Open the standalone castle bombardment zone.
     pub meteor_stress_test: bool,
+    /// Open the Meteor Showcase, two kit houses under an eight-meteor
+    /// swarm (`verse --meteor-showcase`).
+    pub meteor_showcase: bool,
     /// Open straight into the crypt lab once the window shows (`verse
     /// --crypt`).
     pub crypt: bool,
@@ -192,6 +195,7 @@ impl Default for Options {
             everglade: false,
             grove: false,
             meteor_stress_test: false,
+            meteor_showcase: false,
             crypt: false,
             water_lab: false,
             demolition: false,
@@ -2302,6 +2306,8 @@ impl App {
     fn open_everglade(&mut self, zone: zones::ZoneId) {
         let entered = if zone == zones::ZoneId::MeteorStressTest {
             self.runtime.enter_meteor_stress_test()
+        } else if zone == zones::ZoneId::MeteorShowcase {
+            self.runtime.enter_meteor_showcase()
         } else if zone == zones::ZoneId::Grove {
             self.runtime.enter_grove()
         } else if zone == zones::ZoneId::Crypt {
@@ -2980,7 +2986,10 @@ impl App {
     fn in_bare_everglade(&self) -> bool {
         matches!(
             self.runtime.zone,
-            zones::ZoneId::Everglade | zones::ZoneId::Crypt | zones::ZoneId::MeteorStressTest
+            zones::ZoneId::Everglade
+                | zones::ZoneId::Crypt
+                | zones::ZoneId::MeteorStressTest
+                | zones::ZoneId::MeteorShowcase
         ) && self.runtime.zone_load_state() == zones::LoadState::Idle
     }
 
@@ -5148,6 +5157,10 @@ impl ApplicationHandler for App {
         // `--grove` likewise, through the same pending load.
         if std::mem::take(&mut self.connection_options.meteor_stress_test) {
             self.everglade_pending = Some(zones::ZoneId::MeteorStressTest);
+            self.open_pending_everglade();
+        }
+        if std::mem::take(&mut self.connection_options.meteor_showcase) {
+            self.everglade_pending = Some(zones::ZoneId::MeteorShowcase);
             self.open_pending_everglade();
         }
         if std::mem::take(&mut self.connection_options.grove) {

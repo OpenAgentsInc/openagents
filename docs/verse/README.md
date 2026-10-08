@@ -672,3 +672,13 @@ The castle uses the Grove’s concrete tower kit, with five NPCs continuously
 casting Meteor Swarm at its walls and turrets. Press **6** and click a surface
 to cast your own swarm, **R** to rebuild, or **1** to levitate. The castle
 rebuilds every three minutes; Meteor Swarm is on key `1`. This zone runs offline.
+
+Run `verse --meteor-showcase` to open the Meteor Showcase: two three-story
+houses from the medieval kit on an open lot at golden hour. A caster west of
+the houses calls down an eight-meteor swarm, each meteor on its own arc, and
+the houses break apart piece by piece. Press **R** to rebuild them; the caster
+casts again after each rebuild. Your own Meteor Swarm casts the same eight
+arcs. `cargo run --release -p verse --example meteor_showcase_capture -- DIR`
+records it at 1920 by 1080 and 30 frames a second; set `VERSE_QUALITY=high`,
+and set `VERSE_KIT_PACK` to the licensed kit pack to draw it in place of the
+committed proxies.

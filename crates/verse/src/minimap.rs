@@ -297,6 +297,20 @@ impl MapHud {
                 })
                 .into_iter()
                 .collect(),
+            crate::zones::ZoneId::MeteorShowcase => vec![
+                Landmark {
+                    id: "houses",
+                    label: "Kit houses",
+                    x: crate::zones::meteor_showcase::LOT[0],
+                    z: crate::zones::meteor_showcase::LOT[1],
+                },
+                Landmark {
+                    id: "return",
+                    label: "Plaza portal",
+                    x: crate::zones::meteor_showcase::RETURN_PORTAL.x,
+                    z: crate::zones::meteor_showcase::RETURN_PORTAL.z,
+                },
+            ],
             crate::zones::ZoneId::MeteorStressTest => vec![
                 Landmark {
                     id: "castle",

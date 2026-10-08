@@ -1,0 +1,41 @@
+# An arcing meteor's burning head, for Meteor Swarm's wide volleys
+# (`Volley::spread`): a hot core glowing through the fire that rolls off
+# the rock, dimmer and tighter than the spell's own head so the rock shows
+# through it. Moved with the meteor (`Particles::place`); stopped when it
+# lands. The axis points back along the flight.
+description = "The hot core and rolling fire around an arcing meteor's rock."
+
+# The core's glow, re-emitted every few frames and carried with the meteor.
+[[emitter]]
+name = "core"
+sheet = "sparks"
+frames = [1, 1]
+animate = "random"
+luminance = 40.0
+rate = 40.0
+life = [0.08, 0.1]
+inherit = 1.0
+size = [0.9, 1.1]
+scale = [0.9, 1.0, 1.1]
+color = [1.0, 0.76, 0.48]
+alpha = [0.85, 0.65, 0.0]
+priority = 9
+
+# Fire tongues that roll off the rock and stream behind it.
+[[emitter]]
+name = "fire"
+sheet = "fireball"
+frames = [0, 9]
+animate = "life"
+luminance = 24.0
+rate = 90.0
+life = [0.18, 0.3]
+inherit = 0.8
+spread = 60.0
+speed = [1.5, 3.5]
+size = [0.65, 0.95]
+scale = [0.6, 1.1, 1.4]
+color = [[1.0, 0.92, 0.75], [1.0, 0.6, 0.25], [1.0, 0.32, 0.08]]
+alpha = [1.0, 0.85, 0.0]
+spin = [-3.0, 3.0]
+priority = 8

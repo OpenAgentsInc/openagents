@@ -25,7 +25,7 @@ macro_rules! effect {
 
 /// The effect files, by name. A new effect is a new TOML file and a line
 /// here.
-pub const SOURCES: [(&str, &str); 79] = [
+pub const SOURCES: [(&str, &str); 82] = [
     effect!("water_sleet"),
     effect!("water_entry_splash"),
     effect!("water_droplets"),
@@ -46,6 +46,9 @@ pub const SOURCES: [(&str, &str); 79] = [
     effect!("meteor_head"),
     effect!("meteor_trail"),
     effect!("meteor_explosion"),
+    effect!("meteor_arc_head"),
+    effect!("meteor_arc_trail"),
+    effect!("meteor_smolder"),
     effect!("cast_embers"),
     effect!("scorch_embers"),
     effect!("debris_dust"),

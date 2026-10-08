@@ -194,6 +194,12 @@ pub struct Everglade {
     /// its stage at a time, whose key also lights the bake. Everglade's
     /// own afternoon without it.
     look: Option<fn(f32) -> Neon>,
+    /// The stage's bloom in place of the glade's own, such as the Meteor
+    /// Showcase's stronger glow around fire.
+    bloom: Option<f32>,
+    /// Where the haze starts and where it closes, m, in place of the
+    /// glade's own, such as the Meteor Showcase's clearer air.
+    fog: Option<(f32, f32)>,
     /// The town clock the sky follows ([`time_of_day`]).
     clock: town_clock::Clock,
     /// Town time at the last tick, and the light it gives.
@@ -348,6 +354,8 @@ impl Everglade {
             figure_scene: None,
             smoke: None,
             look: None,
+            bloom: None,
+            fog: None,
             wildlife: None,
             guests: Vec::new(),
             clock: town_clock::Clock::DAYTIME,
@@ -405,6 +413,10 @@ impl Everglade {
     /// Returns a message when the pack lacks a placed model.
     pub fn start_town(&mut self, pack: &ZonePack, scene: Arc<TexturedScene>) -> Result<(), String> {
         let mut town = demolition::town::Town::new(pack, &layout::placements(), scene)?;
+        // The dev bar's Meteor Swarm calls down the showcase's eight arcs.
+        if hotbar::DEV_DESTRUCTION {
+            town.set_volley(demolition::meteor::Volley::SHOWCASE);
+        }
         town.set_track(
             self.cast
                 .as_ref()
@@ -629,6 +641,21 @@ impl Everglade {
         Ok(())
     }
 
+    /// Sets where the haze starts and where it closes, m, in place of the
+    /// glade's own, for a zone with clearer air.
+    pub fn set_fog(&mut self, start: f32, end: f32) {
+        let start = start.clamp(1.0, 2_000.0);
+        self.fog = Some((start, end.clamp(start + 1.0, 4_000.0)));
+        self.rendered = self.stage(self.elapsed);
+    }
+
+    /// Sets the stage's bloom, the glow that bright fire spreads into what
+    /// surrounds it, in place of the glade's own.
+    pub fn set_bloom(&mut self, bloom: f32) {
+        self.bloom = Some(bloom.clamp(0.0, 0.3));
+        self.rendered = self.stage(self.elapsed);
+    }
+
     /// Lights these placements with `look`'s stage instead of Everglade's
     /// afternoon, before the light is baked.
     pub fn set_look(&mut self, look: fn(f32) -> Neon) {
@@ -712,6 +739,15 @@ impl Everglade {
         if let (None, Some(sky)) = (self.look, &self.sky) {
             weather::weather_stage(&mut neon, &sky.weather);
         }
+        if let Some(bloom) = self.bloom {
+            neon.bloom = bloom;
+        }
+        if self.look.is_none() && self.fog.is_some() {
+            let air = self.atmosphere();
+            neon.fog_start = air.fog_start;
+            neon.fog_end = air.fog_end;
+            neon.height_fog = air.height_fog;
+        }
         Mesh {
             neon: Some(neon),
             ..Mesh::default()
@@ -762,10 +798,25 @@ impl Everglade {
         air
     }
 
+    /// The zone's air with the town clock pinned at `hour`, as a zone that
+    /// pins it declares its atmosphere.
+    #[must_use]
+    pub fn air_at(hour: f32) -> super::Atmosphere {
+        Self::air(&time_of_day::Light::at_hours(hour))
+    }
+
     /// The zone's air now, which follows the town clock.
     #[must_use]
     pub fn atmosphere(&self) -> super::Atmosphere {
-        Self::air(&self.light)
+        let mut air = Self::air(&self.light);
+        if let Some((start, end)) = self.fog {
+            air.fog_start = start;
+            air.fog_end = end;
+            if let Some(fog) = air.height_fog.as_mut() {
+                fog.start = start;
+            }
+        }
+        air
     }
 
     /// Sets the town clock the sky follows, such as one with its hour

@@ -1050,7 +1050,25 @@ impl Site {
             chunk.vel = body.vel + omega.cross(pos - body.pos) + kick + spread;
             chunk.omega = DVec3::new(self.unit(), self.unit(), self.unit())
                 * if k > 0.0 { 2.0 + 8.0 * k } else { 2.0 };
+            // A chunk of a sunk footing that lies wholly under the ground
+            // stays buried: under the slab, nothing would hold it up.
+            let ground = self.ground_under(pos);
+            // How far the turned box reaches up and down from its middle.
+            let turn = glam::DMat3::from_quat(orientation);
+            let reach = turn.x_axis.y.abs() * cuboid.half.x
+                + turn.y_axis.y.abs() * cuboid.half.y
+                + turn.z_axis.y.abs() * cuboid.half.z;
+            let buried = ground.is_some_and(|g| pos.y + reach < g + 0.02);
             let chunk_id = self.add_chunk(chunk, &cuboid);
+            if buried {
+                self.remove_chunk(chunk_id);
+                chunks.push(Chunk {
+                    body: chunk_id,
+                    until: time,
+                    gone: true,
+                });
+                continue;
+            }
             if matches!(push, Push::From { .. }) {
                 self.throw(chunk_id);
             }
@@ -1074,6 +1092,24 @@ impl Site {
         self.revision += 1;
         self.unsettled = true;
         self.cap_chunks();
+    }
+
+    /// The top of the ground the site holds up at `at`, m: the slab or a
+    /// floor over it, or `None` over water, whose bed lies lower.
+    fn ground_under(&self, at: DVec3) -> Option<f64> {
+        let over = |&(center, half): &(DVec3, DVec3)| {
+            (at.x - center.x).abs() <= half.x && (at.z - center.z).abs() <= half.z
+        };
+        if self.beds.iter().any(over) {
+            return None;
+        }
+        Some(
+            self.floors
+                .iter()
+                .filter(|f| over(f))
+                .map(|&(center, half)| center.y + half.y)
+                .fold(0.0, f64::max),
+        )
     }
 
     /// Removes the oldest chunks past the cap ([`MAX_CHUNKS`] unless set).

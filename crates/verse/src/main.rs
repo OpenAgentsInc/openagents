@@ -33,6 +33,8 @@
 //! the podium, and merge decisions from the merge station.
 //! `--grove` opens straight into the Grove, the druid training field.
 //! `--meteor-stress-test` opens an offline castle with five meteor casters.
+//! `--meteor-showcase` opens two medieval kit houses at golden hour, where a
+//! caster calls an eight-meteor swarm down on them; `R` rebuilds them.
 //! `--crypt` opens straight into the crypt lab, a candlelit laboratory hall;
 //! `F` at its door returns to the plaza. `--crypt-fight` opens the cultist
 //! fight in the great crypt in a window of its own, played alone with the
@@ -315,6 +317,10 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<(Option<Shot>, Option
             "--grove" => options.grove = true,
             "--meteor-stress-test" => {
                 options.meteor_stress_test = true;
+                options.relay = None;
+            }
+            "--meteor-showcase" => {
+                options.meteor_showcase = true;
                 options.relay = None;
             }
             "--crypt" => options.crypt = true,

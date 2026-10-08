@@ -14,6 +14,15 @@
 //! the spectacle) fall one after another on points spread through the
 //! circle, slanting in from the caster's side as the SRD solver's do.
 //!
+//! A [`Volley`] sets how many meteors a cast calls down, how widely their
+//! arcs fan across the sky, how wide the circle is, and how big they are.
+//! The spell's own volley is [`Volley::SPELL`]. A wider fan, such as the
+//! Meteor Showcase's and Everglade's dev bar's [`Volley::SHOWCASE`], sends
+//! each meteor in on a curved arc of its own, with its own heading, angle
+//! of descent, and moment, as a burning rock trailing fire, dark smoke,
+//! and embers ([`Swarm::set_volley`]). A staged caster can also choose
+//! where each meteor lands ([`Swarm::set_targets`]).
+//!
 //! Each meteor detonates on the first piece it reaches, or on the ground.
 //! Its explosion deals the spell's 20d6 Fire and 20d6 Bludgeoning, rolled
 //! once per cast behind the scenes, to every piece within [`BLAST`] m,
@@ -56,8 +65,7 @@ use super::site::{Blow, Target};
 use crate::controller::PlayerController;
 use crate::fx::{Handle, Particles, Spawn};
 use crate::mesh::{Mesh, Vertex};
-use crate::pbr::GlowVertex;
-use crate::zones::everglade::draw::shade;
+use crate::pbr::{GlowVertex, LitVertex};
 use crate::zones::everglade::height;
 use glam::Vec3;
 use std::f32::consts::TAU;
@@ -127,6 +135,96 @@ pub const MEGA_BLAST: f32 = BOLT_BLAST * 1.71;
 pub const MEGA_THROW: f32 = 22.0;
 /// Its damage to structures: 100d10, five times the Thunderbolt's.
 pub const MEGA_DICE: (u32, u32) = (100, 10);
+
+/// How many meteors one cast calls down, how widely their arcs fan across
+/// the sky, and how big they are. The spell's own volley, [`Volley::SPELL`],
+/// sends [`METEORS`] meteors in from one side on straight slants; a wider
+/// fan, such as the Meteor Showcase's eight ([`Volley::SHOWCASE`]), brings
+/// each one in on its own curved arc: its own heading, its own angle of
+/// descent, and its own moment.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Volley {
+    /// Meteors a cast calls down.
+    pub count: usize,
+    /// How widely the meteors' headings fan around the way the caster
+    /// faces the circle, radians. Zero sends them all in on one slant.
+    pub spread: f32,
+    /// The circle's radius on the ground, m.
+    pub area: f32,
+    /// A meteor's size against the spell's own: its rock, its fire, its
+    /// blast's reach, and its fireball all scale with it.
+    pub size: f32,
+}
+
+impl Volley {
+    /// The spell as the SRD's solver casts it, with two meteors more.
+    pub const SPELL: Self = Self {
+        count: METEORS,
+        spread: 0.0,
+        area: AREA,
+        size: 1.0,
+    };
+    /// Eight large meteors fanned across 130 degrees of sky, for the
+    /// Meteor Showcase and Everglade's dev bar.
+    pub const SHOWCASE: Self = Self {
+        count: 8,
+        spread: 2.3,
+        area: 11.0,
+        size: 1.3,
+    };
+    /// Most meteors one cast may call down.
+    pub const MOST: usize = 16;
+
+    /// This volley within its bounds: one to [`Self::MOST`] meteors, a
+    /// fan of at most a full turn, and a size from half to twice the
+    /// spell's.
+    #[must_use]
+    pub fn bounded(self) -> Self {
+        Self {
+            count: self.count.clamp(1, Self::MOST),
+            spread: if self.spread.is_finite() {
+                self.spread.clamp(0.0, TAU)
+            } else {
+                0.0
+            },
+            area: if self.area.is_finite() {
+                self.area.clamp(1.0, 40.0)
+            } else {
+                AREA
+            },
+            size: if self.size.is_finite() {
+                self.size.clamp(0.5, 2.0)
+            } else {
+                1.0
+            },
+        }
+    }
+
+    /// Whether the meteors come in on arcs of their own rather than one
+    /// slant.
+    #[must_use]
+    pub fn arcs(&self) -> bool {
+        self.spread > 0.0
+    }
+}
+
+/// The height an arcing meteor sets out from over where it lands, m, and
+/// how long it takes to come down a [`ARC_REFERENCE`] m arc, s.
+const ARC_HEIGHT: f32 = 80.0;
+const ARC_FALL: f32 = 1.35;
+const ARC_REFERENCE: f32 = 100.0;
+/// The steepest and the shallowest an arc comes down, radians from level.
+const ARC_STEEP: f32 = 0.98;
+const ARC_SHALLOW: f32 = 0.5;
+/// How far an arc bows up from the straight line between its ends, and
+/// sideways at most, as a fraction of its length.
+const ARC_BOW: f32 = 0.045;
+const ARC_SWAY: f32 = 0.03;
+/// How hard an arcing meteor's blast throws debris against the spell's.
+const ARC_THROW: f32 = 0.7;
+/// Seconds between arcing meteors, and the most one is held back further.
+const ARC_STAGGER: f32 = 0.17;
+const ARC_JITTER: f32 = 0.12;
 
 /// What the targeting calls down.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -336,6 +434,15 @@ struct Meteor {
     start: Vec3,
     end: Vec3,
     t: f32,
+    /// How long it takes to come down, s.
+    fall: f32,
+    /// How far its path bows from the straight line at its middle, m: up
+    /// and to one side for an arc, zero for a slant.
+    bow: Vec3,
+    /// Its size against the spell's own ([`Volley::size`]).
+    size: f32,
+    /// Varies its rock's shape and tumble.
+    seed: u32,
     /// Its burning head and its trail, once it is falling.
     fire: Option<[Handle; 2]>,
     /// The outward normal of the wall it was sent at, or zero.
@@ -344,15 +451,27 @@ struct Meteor {
 
 impl Meteor {
     fn at(&self, t: f32) -> Vec3 {
-        // It speeds up as it falls.
-        let x = (t / FALL).clamp(0.0, 1.0);
-        self.start + (self.end - self.start) * (0.55 * x + 0.45 * x * x)
+        // It speeds up as it falls, along a line bowed at its middle.
+        let x = (t / self.fall).clamp(0.0, 1.0);
+        self.start
+            + (self.end - self.start) * (0.55 * x + 0.45 * x * x)
+            + self.bow * (4.0 * x * (1.0 - x))
     }
 
     /// Its velocity at `t`, m/s.
     fn velocity(&self, t: f32) -> Vec3 {
-        let x = (t / FALL).clamp(0.0, 1.0);
-        (self.end - self.start) * (0.55 + 0.9 * x) / FALL
+        let x = (t / self.fall).clamp(0.0, 1.0);
+        ((self.end - self.start) * (0.55 + 0.9 * x) + self.bow * (4.0 - 8.0 * x)) / self.fall
+    }
+
+    /// Whether it comes in on an arc of its own ([`Volley::arcs`]).
+    fn arcs(&self) -> bool {
+        self.bow != Vec3::ZERO
+    }
+
+    /// Whether it is in the air now.
+    fn flying(&self) -> bool {
+        (0.0..self.fall).contains(&self.t)
     }
 }
 
@@ -406,6 +525,14 @@ pub struct Swarm {
     shake: f32,
     clock: f32,
     rng: u32,
+    /// How many meteors a cast calls down and how they come in.
+    volley: Volley,
+    /// Where the next cast's meteors land instead of points spread through
+    /// its circle, when a caster chose them.
+    targets: Vec<Vec3>,
+    /// Whether the targeting ring shows where the strike falls, and the
+    /// fire gathers over it; without it the fire gathers over the caster.
+    telegraph: bool,
 }
 
 impl Default for Swarm {
@@ -431,6 +558,9 @@ impl Default for Swarm {
             shake: 0.0,
             clock: 0.0,
             rng: 0x3E7E_0125,
+            volley: Volley::SPELL,
+            targets: Vec::new(),
+            telegraph: true,
         }
     }
 }
@@ -442,9 +572,72 @@ impl Swarm {
     }
 
     /// Refills the mana, clears the cooldown, and ends every cast, meteor,
-    /// and mark, as the yard's rebuild does.
+    /// and mark, as the yard's rebuild does. The volley stays.
     pub fn reset(&mut self) {
+        let (volley, telegraph) = (self.volley, self.telegraph);
         *self = Self::default();
+        self.volley = volley;
+        self.telegraph = telegraph;
+    }
+
+    /// Whether the targeting ring shows where the strike falls and the
+    /// fire gathers over it, as it does for the player; a staged caster's
+    /// fire gathers over its own hands instead.
+    pub fn set_telegraph(&mut self, telegraph: bool) {
+        self.telegraph = telegraph;
+    }
+
+    /// Sets how many meteors each cast from now on calls down and how they
+    /// come in, within [`Volley::bounded`].
+    pub fn set_volley(&mut self, volley: Volley) {
+        self.volley = volley.bounded();
+    }
+
+    /// How many meteors a cast calls down and how they come in.
+    #[must_use]
+    pub fn volley(&self) -> Volley {
+        self.volley
+    }
+
+    /// Lands the next cast's meteors on `targets`, one each in turn, in
+    /// place of points spread through its circle: a caster that picks
+    /// walls and roofs. The cast that releases them spends them.
+    pub fn set_targets(&mut self, targets: Vec<Vec3>) {
+        self.targets = targets;
+    }
+
+    /// The meteors in the air: where each one set out, where it is now,
+    /// and where it is headed, for tests and captures.
+    #[must_use]
+    pub fn flights(&self) -> Vec<(Vec3, Vec3, Vec3)> {
+        self.meteors
+            .iter()
+            .map(|m| (m.start, m.at(m.t.max(0.0)), m.end))
+            .collect()
+    }
+
+    /// Each meteor of the last cast still to land: its heading over the
+    /// ground, radians, its angle of descent from level as it sets out,
+    /// radians, and how long until it sets out, s.
+    #[must_use]
+    pub fn arcs(&self) -> Vec<(f32, f32, f32)> {
+        self.meteors
+            .iter()
+            .map(|m| {
+                let v = m.velocity(0.0);
+                let level = Vec3::new(v.x, 0.0, v.z).length();
+                (v.x.atan2(v.z), (-v.y).atan2(level), -m.t)
+            })
+            .collect()
+    }
+
+    /// The radius of the ring `strike` draws on `wall` or the ground, m.
+    fn ring_area(&self, strike: Strike, wall: bool) -> f32 {
+        if strike == Strike::Meteors && !wall {
+            self.volley.area
+        } else {
+            strike.area(wall)
+        }
     }
 
     /// Enters targeting, or leaves it when already in it.
@@ -679,14 +872,13 @@ impl Swarm {
             // Sampled finely enough that a fast meteor can't pass through
             // a wall or the roof between frames.
             let steps = ((b - a).length() / 0.25).ceil().max(1.0) as usize;
+            let radius = METEOR_RADIUS * meteor.size;
             let hit = (1..=steps)
                 .map(|i| a + (b - a) * (i as f32 / steps as f32))
-                .find(|p| {
-                    p.y <= height(p.x, p.z) + METEOR_RADIUS || site.touches(*p, METEOR_RADIUS)
-                });
+                .find(|p| p.y <= height(p.x, p.z) + radius || site.touches(*p, radius));
             match hit {
                 Some(p) => landed.push((index, p)),
-                None if meteor.t >= FALL => landed.push((index, b)),
+                None if meteor.t >= meteor.fall => landed.push((index, b)),
                 None => {}
             }
             // Its fire follows it, trailing back along its flight.
@@ -694,11 +886,18 @@ impl Swarm {
             let back = -velocity.normalize_or(Vec3::NEG_Y);
             match meteor.fire {
                 None => {
+                    // A bigger meteor burns bigger; its trail keeps the
+                    // spell's width, so eight of them still read apart.
                     let spawn = Spawn::at(b).moving(velocity).along(back);
+                    let (head, trail) = if meteor.arcs() {
+                        ("meteor_arc_head", "meteor_arc_trail")
+                    } else {
+                        ("meteor_head", "meteor_trail")
+                    };
                     meteor.fire = self
                         .fx
-                        .start("meteor_head", spawn)
-                        .zip(self.fx.start("meteor_trail", spawn))
+                        .start(head, spawn.scaled(meteor.size))
+                        .zip(self.fx.start(trail, spawn))
                         .map(|(head, trail)| [head, trail]);
                 }
                 Some(fire) => {
@@ -714,8 +913,8 @@ impl Swarm {
             }
         }
         for &(index, at) in &landed {
-            let face = self.meteors[index].face;
-            blows.extend(self.explode(at, face, site));
+            let meteor = self.meteors[index];
+            blows.extend(self.explode(at, meteor.face, meteor.size, meteor.arcs(), site));
         }
         let gone: Vec<usize> = landed.iter().map(|&(i, _)| i).collect();
         let mut index = 0;
@@ -739,6 +938,12 @@ impl Swarm {
         self.cooldown = COOLDOWN;
         self.idle = 0.0;
         self.damage = Damage::roll(&mut |sides| site.roll(sides) as u32);
+        // A caster that chose its walls and roofs sends one meteor at each.
+        let targets = std::mem::take(&mut self.targets);
+        if !targets.is_empty() {
+            self.release_arcs(&targets, aim, from);
+            return;
+        }
         if aim.wall() {
             self.release_on_wall(aim, site);
             return;
@@ -750,14 +955,16 @@ impl Swarm {
             * Vec3::new(at.x - from.x, 0.0, at.z - from.z).normalize_or(Vec3::Z);
         let slant = (srd::SLANT_DEGREES as f32).to_radians().tan() * HEIGHT;
         let turn = self.unit() * TAU;
-        let mut points: Vec<Vec3> = (0..METEORS)
+        let Volley { count, area, .. } = self.volley;
+        let ring = (count - 1).max(1) as f32;
+        let mut points: Vec<Vec3> = (0..count)
             .map(|i| {
                 let (angle, r) = if i == 0 {
                     (self.unit() * TAU, 0.6 * self.unit().abs())
                 } else {
                     (
-                        turn + TAU * (i - 1) as f32 / (METEORS - 1) as f32 + 0.35 * self.unit(),
-                        AREA * (0.42 + 0.14 * self.unit()),
+                        turn + TAU * (i - 1) as f32 / ring + 0.35 * self.unit(),
+                        area * (0.42 + 0.14 * self.unit()),
                     )
                 };
                 Vec3::new(at.x + angle.cos() * r, at.y, at.z + angle.sin() * r)
@@ -769,6 +976,14 @@ impl Swarm {
             points.swap(i, j);
         }
         points.rotate_left(1);
+        if self.volley.arcs() {
+            let ends: Vec<Vec3> = points
+                .iter()
+                .map(|p| Vec3::new(p.x, height(p.x, p.z), p.z))
+                .collect();
+            self.release_arcs(&ends, aim, from);
+            return;
+        }
         let sky = Vec3::Y * HEIGHT - away * slant;
         let paths: Vec<(Vec3, Vec3)> = if blocked(&*site, aim, at + sky, at) {
             // A floor under a roof: in along the targeting ray.
@@ -796,13 +1011,15 @@ impl Swarm {
     fn release_on_wall(&mut self, aim: Aim, site: &mut dyn Target) {
         let (u, v) = aim.across();
         let turn = self.unit() * TAU;
-        let mut points: Vec<Vec3> = (0..METEORS)
+        let count = self.volley.count;
+        let ring = (count - 1).max(1) as f32;
+        let mut points: Vec<Vec3> = (0..count)
             .map(|i| {
                 let (angle, r) = if i == 0 {
                     (self.unit() * TAU, 0.3 * self.unit().abs())
                 } else {
                     (
-                        turn + TAU * (i - 1) as f32 / (METEORS - 1) as f32 + 0.35 * self.unit(),
+                        turn + TAU * (i - 1) as f32 / ring + 0.35 * self.unit(),
                         WALL_AREA * (0.45 + 0.15 * self.unit()),
                     )
                 };
@@ -835,6 +1052,7 @@ impl Swarm {
     /// another; `face` is the outward normal of the wall they were sent at,
     /// or zero.
     fn launch(&mut self, paths: &[(Vec3, Vec3)], face: Vec3) {
+        let size = self.volley.size;
         self.meteors = paths
             .iter()
             .enumerate()
@@ -842,10 +1060,73 @@ impl Swarm {
                 start,
                 end,
                 t: -(i as f32) * STAGGER,
+                fall: FALL,
+                bow: Vec3::ZERO,
+                size,
+                seed: i as u32,
                 fire: None,
                 face,
             })
             .collect();
+    }
+
+    /// Sends a meteor at each of `ends` on an arc of its own: the headings
+    /// fan [`Volley::spread`] across the sky around the way from `from` to
+    /// the circle at `aim`, each comes down at its own angle from its own
+    /// height, bowed up as a thrown stone's path is and a little to one
+    /// side, and each sets out at its own moment. A meteor bursts on the
+    /// first piece in its way; past its end it keeps on to the ground, so
+    /// one sent at a wall an earlier blast took still lands.
+    fn release_arcs(&mut self, ends: &[Vec3], aim: Aim, from: Vec3) {
+        let away = Vec3::new(aim.at.x - from.x, 0.0, aim.at.z - from.z).normalize_or(Vec3::Z);
+        let heading = away.x.atan2(away.z);
+        let n = ends.len();
+        // Each meteor takes a slot in the fan, shuffled, so meteors that
+        // set out one after another come from apart in the sky.
+        let mut slots: Vec<usize> = (0..n).collect();
+        for i in (1..n).rev() {
+            let j = self.next() as usize % (i + 1);
+            slots.swap(i, j);
+        }
+        let Volley { spread, size, .. } = self.volley;
+        let mut meteors = Vec::with_capacity(n);
+        for (i, &target) in ends.iter().enumerate() {
+            let place = if n > 1 {
+                slots[i] as f32 / (n - 1) as f32 - 0.5
+            } else {
+                0.0
+            };
+            let yaw = heading + spread * place + 0.08 * self.unit();
+            let dir = Vec3::new(yaw.sin(), 0.0, yaw.cos());
+            let descent = ARC_SHALLOW + (ARC_STEEP - ARC_SHALLOW) * (0.5 + 0.5 * self.unit());
+            let rise = ARC_HEIGHT * (0.9 + 0.15 * self.unit());
+            let start = target - dir * (rise / descent.tan()) + Vec3::Y * rise;
+            // On past the target to the ground.
+            let down = (target - start).normalize_or(Vec3::NEG_Y);
+            let over = target.y - height(target.x, target.z);
+            let end = if down.y < -0.05 && over > 0.0 {
+                target + down * (over / -down.y)
+            } else {
+                target
+            };
+            let length = start.distance(end);
+            let side = Vec3::Y.cross(dir).normalize_or(Vec3::X);
+            let bow = Vec3::Y * length * ARC_BOW * (1.0 + 0.3 * self.unit())
+                + side * length * ARC_SWAY * self.unit();
+            let wait = i as f32 * ARC_STAGGER + ARC_JITTER * (0.5 + 0.5 * self.unit());
+            meteors.push(Meteor {
+                start,
+                end,
+                t: -wait,
+                fall: ARC_FALL * (length / ARC_REFERENCE).sqrt(),
+                bow,
+                size,
+                seed: self.next(),
+                fire: None,
+                face: Vec3::ZERO,
+            });
+        }
+        self.meteors = meteors;
     }
 
     /// The thunderbolt's cast completes: its damage is rolled and the bolt
@@ -935,33 +1216,58 @@ impl Swarm {
 
     /// One meteor detonates at `at`: the site takes the blast, and the
     /// fire, sparks, scorch, and shake begin.
-    fn explode(&mut self, at: Vec3, face: Vec3, site: &mut dyn Target) -> Vec<Blow> {
+    fn explode(
+        &mut self,
+        at: Vec3,
+        face: Vec3,
+        size: f32,
+        arc: bool,
+        site: &mut dyn Target,
+    ) -> Vec<Blow> {
         let ground = height(at.x, at.z);
         // On a wall the blast's heart sits just off its face.
         let at = at + face * 0.5;
         let center = Vec3::new(at.x, at.y.max(ground + 0.4), at.z);
-        let blows = site.explode_facing(center, BLAST, self.damage.total(), THROW, face);
+        let blast = BLAST * size;
+        // An arc's eight blasts land on one house after another, each
+        // throwing what the last one loosened, so each throws softer.
+        let throw = if arc { THROW * ARC_THROW } else { THROW };
+        let blows = site.explode_facing(center, blast, self.damage.total(), throw, face);
         let seed = self.next();
-        self.fx.start("meteor_explosion", Spawn::at(center));
+        self.fx
+            .start("meteor_explosion", Spawn::at(center).scaled(size));
         self.impacts.push(Impact {
             at: center,
             normal: if face == Vec3::ZERO { Vec3::Y } else { face },
             strike: Strike::Meteors,
-            radius: BLAST,
+            radius: blast,
         });
-        self.shake = (self.shake + 0.55).min(1.0);
+        self.shake = (self.shake + 0.55 * size).min(1.0);
+        if arc {
+            // Smoke keeps climbing from the ruin under it.
+            let under = Vec3::new(center.x, ground + 0.3, center.z);
+            self.fx
+                .start("meteor_smolder", Spawn::at(under).scaled(size));
+        }
         if center.y - ground > 1.5 {
             // High on a wall: embers where it burst, no mark on the ground.
-            self.fx.start("scorch_embers", Spawn::at(center));
+            // An arc's ruin smolders from the ground instead, since the
+            // wall it burst on soon falls.
+            if !arc {
+                self.fx
+                    .start("scorch_embers", Spawn::at(center).scaled(size));
+            }
             return blows;
         }
         let floor = Vec3::new(center.x, ground, center.z);
-        self.fx
-            .start("scorch_embers", Spawn::at(floor + Vec3::Y * 0.08));
+        self.fx.start(
+            "scorch_embers",
+            Spawn::at(floor + Vec3::Y * 0.08).scaled(size),
+        );
         if self.scorches.len() >= MAX_SCORCHES {
             self.scorches.remove(0);
         }
-        let radius = BLAST * (0.75 + 0.15 * self.unit());
+        let radius = blast * (0.75 + 0.15 * self.unit());
         self.scorches.push(Scorch {
             at: Vec3::new(center.x, ground, center.z),
             radius,
@@ -982,17 +1288,17 @@ impl Swarm {
     pub fn draw_over(&self, mesh: &mut Mesh, eye: Vec3, surface: &dyn Fn(f32, f32) -> f32) {
         let glow = &mut mesh.glow;
         let pulse = 0.75 + 0.25 * (self.clock * 6.0).sin();
-        if let Some(aim) = self.aimed() {
-            let area = self.strike.area(aim.wall());
+        if let Some(aim) = self.aimed().filter(|_| self.telegraph) {
+            let area = self.ring_area(self.strike, aim.wall());
             ring(glow, aim, area, pulse, self.clock, self.strike, surface);
         }
-        if let Some(cast) = self.casting {
+        if let Some(cast) = self.casting.filter(|_| self.telegraph) {
             let k = (cast.elapsed / cast.strike.cast()).clamp(0.0, 1.0);
             let quick = 0.7 + 0.3 * (self.clock * (8.0 + 14.0 * k)).sin();
             ring(
                 glow,
                 cast.aim,
-                cast.strike.area(cast.aim.wall()),
+                self.ring_area(cast.strike, cast.aim.wall()),
                 quick * (1.0 + 1.5 * k),
                 self.clock,
                 cast.strike,
@@ -1007,7 +1313,7 @@ impl Swarm {
         }
         self.fx.draw(&mut mesh.sprites);
         for meteor in self.meteors.iter().filter(|m| m.t > 0.0) {
-            rock(mesh, meteor.at(meteor.t), self.clock);
+            rock(mesh, meteor, self.clock);
         }
         if let Some(cast) = self.casting
             && cast.strike.lightning()
@@ -1036,27 +1342,33 @@ impl Swarm {
                 );
             }
         } else if let Some(cast) = self.casting {
-            // The meteors gather high over the circle while the cast runs.
+            // The meteors gather high over the circle while the cast runs,
+            // or over the caster's raised hands.
             let k = (cast.elapsed / CAST).clamp(0.0, 1.0);
             let glow = &mut mesh.glow;
-            let above = cast.aim.at + Vec3::Y * 12.0;
+            let (above, reach) = if self.telegraph {
+                (cast.aim.at + Vec3::Y * 12.0, 1.0)
+            } else {
+                (cast.from + Vec3::Y * 3.2, 0.45)
+            };
             // One ember for each meteor, circling closer as the cast
             // completes, under a faint halo.
             blob(
                 glow,
                 above,
-                1.0 + 3.0 * k,
+                (1.0 + 3.0 * k) * reach,
                 tint(RED, FIRE_LUMINANCE * 0.15 * k),
                 eye,
             );
-            for i in 0..METEORS {
-                let angle = TAU * i as f32 / METEORS as f32 + self.clock * (1.0 + 2.0 * k);
-                let r = 3.5 - 2.0 * k;
+            let count = self.volley.count;
+            for i in 0..count {
+                let angle = TAU * i as f32 / count as f32 + self.clock * (1.0 + 2.0 * k);
+                let r = (3.5 - 2.0 * k) * reach;
                 let at = above + Vec3::new(angle.cos() * r, 0.0, angle.sin() * r);
                 blob(
                     glow,
                     at,
-                    0.25 + 0.5 * k,
+                    (0.25 + 0.5 * k) * reach.sqrt(),
                     tint(YELLOW, FIRE_LUMINANCE * 0.8 * k),
                     eye,
                 );
@@ -1535,32 +1847,127 @@ fn scorch_mark(mesh: &mut Mesh, scorch: &Scorch) {
     }
 }
 
-/// The meteor's rock: a rough tumbling octahedron.
-fn rock(mesh: &mut Mesh, at: Vec3, clock: f32) {
-    let (s, c) = (clock * 5.0).sin_cos();
-    let x = Vec3::new(c, s * 0.3, s) * METEOR_RADIUS;
-    let y = Vec3::new(-s * 0.3, 1.0, 0.2).normalize() * METEOR_RADIUS * 0.9;
-    let z = x.cross(y).normalize() * METEOR_RADIUS * 1.1;
-    let points = [at + x, at - x, at + y, at - y, at + z, at - z];
-    for (a, b, cc) in [
-        (0, 2, 4),
-        (4, 2, 1),
-        (1, 2, 5),
-        (5, 2, 0),
-        (0, 4, 3),
-        (4, 1, 3),
-        (1, 5, 3),
-        (5, 0, 3),
-    ] {
-        let color = shade(ROCK, points[a], points[b], points[cc]);
-        for p in [points[a], points[b], points[cc]] {
-            mesh.faces.push(Vertex {
+/// The meteor's rock: a lumpy boulder of chipped faces, charred dark, that
+/// tumbles as it flies, its size and shape its own.
+fn rock(mesh: &mut Mesh, meteor: &Meteor, clock: f32) {
+    let at = meteor.at(meteor.t);
+    let radius = METEOR_RADIUS * meteor.size;
+    let seed = meteor.seed;
+    let axis = Vec3::new(
+        noise(seed, 1) - 0.5,
+        noise(seed, 2) - 0.5,
+        noise(seed, 3) - 0.5,
+    )
+    .normalize_or(Vec3::X);
+    let turn = glam::Quat::from_axis_angle(axis, clock * (3.0 + 4.0 * noise(seed, 4)));
+    // Two or three broad swells and a finer roughness, from the seed.
+    let swells: [(Vec3, f32, f32, f32); 3] = std::array::from_fn(|k| {
+        let k = k as u32 * 10;
+        let dir = Vec3::new(
+            noise(seed, 20 + k) - 0.5,
+            noise(seed, 21 + k) - 0.5,
+            noise(seed, 22 + k) - 0.5,
+        )
+        .normalize_or(Vec3::Y);
+        let frequency = [2.2, 3.6, 6.5][k as usize / 10];
+        let amount = [0.2, 0.11, 0.05][k as usize / 10];
+        (dir, frequency, amount, noise(seed, 23 + k) * TAU)
+    });
+    let shape = |d: Vec3| {
+        let lump: f32 = swells
+            .iter()
+            .map(|&(dir, f, a, phase)| a * (d.dot(dir) * f + phase).sin())
+            .sum();
+        // A little longer than it is wide.
+        let stretch = Vec3::new(1.0, 0.86, 1.08);
+        at + turn * (d * stretch * (1.0 + lump)) * radius
+    };
+    let (points, triangles) = boulder();
+    let placed: Vec<Vec3> = points.iter().map(|&d| shape(d)).collect();
+    for &[a, b, c] in triangles {
+        let (pa, pb, pc) = (placed[a], placed[b], placed[c]);
+        let normal = (pb - pa).cross(pc - pa).normalize_or(Vec3::Y);
+        let tangent = (pb - pa).normalize_or(Vec3::X);
+        // Charred rock, a shade lighter on some faces.
+        let shade = 0.75 + 0.5 * noise(seed, 100 + a as u32);
+        let color = ROCK.map(|v| v * 0.35 * shade);
+        for (p, d) in [(pa, points[a]), (pb, points[b]), (pc, points[c])] {
+            mesh.lit.push(LitVertex {
                 pos: p.to_array(),
+                normal: normal.to_array(),
+                tangent: tangent.to_array(),
+                local: (d * radius).to_array(),
                 color,
-                fog: 1.0,
+                params: [0.0, 0.92, 0.0, 1.0],
             });
         }
     }
+}
+
+/// A unit sphere of chipped faces: an icosahedron split twice, its points
+/// and its triangles, counterclockwise from outside.
+fn boulder() -> &'static (Vec<Vec3>, Vec<[usize; 3]>) {
+    static BOULDER: std::sync::OnceLock<(Vec<Vec3>, Vec<[usize; 3]>)> = std::sync::OnceLock::new();
+    BOULDER.get_or_init(|| {
+        let t = (1.0 + 5.0_f32.sqrt()) / 2.0;
+        let mut points: Vec<Vec3> = [
+            [-1.0, t, 0.0],
+            [1.0, t, 0.0],
+            [-1.0, -t, 0.0],
+            [1.0, -t, 0.0],
+            [0.0, -1.0, t],
+            [0.0, 1.0, t],
+            [0.0, -1.0, -t],
+            [0.0, 1.0, -t],
+            [t, 0.0, -1.0],
+            [t, 0.0, 1.0],
+            [-t, 0.0, -1.0],
+            [-t, 0.0, 1.0],
+        ]
+        .into_iter()
+        .map(|p| Vec3::from_array(p).normalize())
+        .collect();
+        let mut triangles: Vec<[usize; 3]> = vec![
+            [0, 11, 5],
+            [0, 5, 1],
+            [0, 1, 7],
+            [0, 7, 10],
+            [0, 10, 11],
+            [1, 5, 9],
+            [5, 11, 4],
+            [11, 10, 2],
+            [10, 7, 6],
+            [7, 1, 8],
+            [3, 9, 4],
+            [3, 4, 2],
+            [3, 2, 6],
+            [3, 6, 8],
+            [3, 8, 9],
+            [4, 9, 5],
+            [2, 4, 11],
+            [6, 2, 10],
+            [8, 6, 7],
+            [9, 8, 1],
+        ];
+        for _ in 0..2 {
+            let mut middles = std::collections::BTreeMap::new();
+            let mut middle = |a: usize, b: usize, points: &mut Vec<Vec3>| {
+                *middles.entry((a.min(b), a.max(b))).or_insert_with(|| {
+                    points.push(((points[a] + points[b]) * 0.5).normalize());
+                    points.len() - 1
+                })
+            };
+            let mut finer = Vec::with_capacity(triangles.len() * 4);
+            for [a, b, c] in triangles {
+                let ab = middle(a, b, &mut points);
+                let bc = middle(b, c, &mut points);
+                let ca = middle(c, a, &mut points);
+                finer.extend([[a, ab, ca], [b, bc, ab], [c, ca, bc], [ab, bc, ca]]);
+            }
+            triangles = finer;
+        }
+        (points, triangles)
+    })
 }
 
 /// `color` at `luminance`.
@@ -1661,7 +2068,7 @@ impl Swarm {
                 progress: (casting.elapsed / casting.strike.cast()).clamp(0.0, 1.0),
             });
         }
-        for meteor in self.meteors.iter().filter(|m| (0.0..FALL).contains(&m.t)) {
+        for meteor in self.meteors.iter().filter(|m| m.flying()) {
             out.push(Glow::Meteor {
                 at: meteor.at(meteor.t),
             });

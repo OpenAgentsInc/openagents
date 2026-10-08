@@ -30,6 +30,9 @@ mod grove_tests;
 mod grove_tower_tests;
 #[cfg(test)]
 mod lab_tests;
+pub mod meteor_showcase;
+#[cfg(test)]
+mod meteor_showcase_tests;
 pub mod meteor_stress;
 pub mod operators;
 mod runtime;
@@ -82,9 +85,13 @@ pub enum ZoneId {
     MeteorStressTest,
     /// The Water Lab's cove ([`water`]), walked as Everglade's character.
     WaterLab,
+    /// Two kit houses under an eight-meteor swarm at golden hour
+    /// ([`meteor_showcase`], `verse --meteor-showcase`). No arch leads
+    /// here.
+    MeteorShowcase,
 }
 impl ZoneId {
-    pub const ALL: [Self; 8] = [
+    pub const ALL: [Self; 9] = [
         Self::Plaza,
         Self::Lagrange1,
         Self::PhysicsLab,
@@ -93,7 +100,15 @@ impl ZoneId {
         Self::Crypt,
         Self::MeteorStressTest,
         Self::WaterLab,
+        Self::MeteorShowcase,
     ];
+
+    /// Whether this zone is one of the standalone Meteor Swarm stages: the
+    /// stress test's castle or the showcase's houses.
+    #[must_use]
+    pub const fn meteor_stage(self) -> bool {
+        matches!(self, Self::MeteorStressTest | Self::MeteorShowcase)
+    }
 
     /// The zone a command line names, by world identifier or label
     /// (`everglade`, `lagrange-1`, `physics-lab`, `plaza`).
@@ -118,6 +133,7 @@ impl ZoneId {
             Self::Crypt => "verse-crypt",
             Self::MeteorStressTest => "verse-meteor-stress-test",
             Self::WaterLab => "verse-water-lab",
+            Self::MeteorShowcase => "verse-meteor-showcase",
         }
     }
     pub const fn label(self) -> &'static str {
@@ -130,6 +146,7 @@ impl ZoneId {
             Self::Crypt => "Crypt",
             Self::MeteorStressTest => "Meteor Stress Test",
             Self::WaterLab => "Water Lab",
+            Self::MeteorShowcase => "Meteor Showcase",
         }
     }
     pub const fn half_extent(self) -> f32 {
@@ -137,7 +154,9 @@ impl ZoneId {
             Self::Plaza => crate::world::HALF,
             Self::Lagrange1 => 150.0,
             Self::PhysicsLab => lab::HALF_EXTENT,
-            Self::Everglade | Self::Grove | Self::MeteorStressTest => everglade::HALF_EXTENT,
+            Self::Everglade | Self::Grove | Self::MeteorStressTest | Self::MeteorShowcase => {
+                everglade::HALF_EXTENT
+            }
             Self::Crypt => crypt::HALF_EXTENT,
             Self::WaterLab => water::HALF_EXTENT,
         }
@@ -173,6 +192,7 @@ impl ZoneId {
             // The heavy door is the way out; it draws no arch.
             Self::Crypt => vec![(Self::Plaza, crypt::DOOR)],
             Self::MeteorStressTest => vec![(Self::Plaza, meteor_stress::RETURN_PORTAL)],
+            Self::MeteorShowcase => vec![(Self::Plaza, meteor_showcase::RETURN_PORTAL)],
             // The lantern at the head of the beach is the way out; it
             // draws no arch.
             Self::WaterLab => vec![(Self::Plaza, water::EXIT)],
@@ -189,6 +209,7 @@ impl ZoneId {
             Self::Crypt => "CRYPT",
             Self::MeteorStressTest => "METEOR STRESS TEST",
             Self::WaterLab => "WATER LAB",
+            Self::MeteorShowcase => "METEOR SHOWCASE",
         }
     }
 }
@@ -225,6 +246,8 @@ pub fn atmosphere(zone: ZoneId) -> Atmosphere {
         ZoneId::Everglade => everglade::ATMOSPHERE,
         // The Grove's dusk haze, glowing toward the low Sun.
         ZoneId::Grove | ZoneId::MeteorStressTest => grove::light::ATMOSPHERE,
+        // Everglade's haze in the low Sun's color.
+        ZoneId::MeteorShowcase => meteor_showcase::atmosphere(),
         // The cove's warm sea haze.
         ZoneId::WaterLab => Atmosphere {
             color: water::sea::HAZE,
@@ -458,7 +481,9 @@ pub(crate) fn arch(
         ZoneId::Plaza => crate::palette::amber(Intensity::Half),
         ZoneId::Lagrange1 => [0.35, 0.7, 1.0],
         ZoneId::PhysicsLab => [0.3, 0.85, 1.0],
-        ZoneId::Everglade | ZoneId::Grove | ZoneId::MeteorStressTest => [0.95, 0.85, 0.4],
+        ZoneId::Everglade | ZoneId::Grove | ZoneId::MeteorStressTest | ZoneId::MeteorShowcase => {
+            [0.95, 0.85, 0.4]
+        }
         ZoneId::Crypt => [1.0, 0.56, 0.24],
         ZoneId::WaterLab => [0.35, 0.8, 1.0],
     };

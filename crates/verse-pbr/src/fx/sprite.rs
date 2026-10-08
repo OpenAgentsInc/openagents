@@ -59,14 +59,15 @@ pub struct SpriteVertex {
 }
 
 /// Sprites a frame draws at `tier`; the rest are dropped by priority and
-/// size. Each is six 60-byte vertices, so the high tier's 1536 cost about
-/// 550 KB a frame.
+/// size. Each is six 60-byte vertices, so the high tier's 2048, enough for
+/// an eight-meteor swarm's trails and blasts together, cost about 740 KB a
+/// frame.
 #[must_use]
 pub fn budget(tier: Tier) -> usize {
     match tier {
         Tier::Low => 160,
         Tier::Medium => 768,
-        Tier::High => 1536,
+        Tier::High => 2048,
     }
 }
 

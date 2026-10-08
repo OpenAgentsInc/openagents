@@ -402,9 +402,16 @@ pub fn columns(pack: &ZonePack, placement: &Placement) -> Result<Option<Arc<Colu
 /// The chunks of cell `cell` of a carved `placement` whose model `split`
 /// holds, in the body frame `frame` (a pose without scale, the block's body
 /// in the world): its triangles cut into up to eight chunks with a box
-/// each, capped where a cut crosses them.
+/// each, capped where a cut crosses them. A medieval kit piece may break
+/// finer, into up to `shards` chunks along each side longer than 2.6 m.
 #[must_use]
-pub fn cut_cell(split: &Split, placement: &Placement, cell: u32, frame: Mat4) -> Vec<ChunkMesh> {
+pub fn cut_cell(
+    split: &Split,
+    placement: &Placement,
+    cell: u32,
+    frame: Mat4,
+    shards: usize,
+) -> Vec<ChunkMesh> {
     let to_body = frame.inverse() * placement.transform();
     let rotate = Mat4::from_quat(to_body.to_scale_rotation_translation().1);
     let triangles: Vec<Triangle> = split
@@ -435,7 +442,16 @@ pub fn cut_cell(split: &Split, placement: &Placement, cell: u32, frame: Mat4) ->
             |(lo, hi), p| (lo.min(p), hi.max(p)),
         );
     let extent = hi - lo;
-    let grid = [0, 1, 2].map(|a| if extent[a] > 1.2 { 2 } else { 1 });
+    let fine = shards >= 3 && placement.model.starts_with("kit/");
+    let grid = [0, 1, 2].map(|a| {
+        if fine && extent[a] > 2.6 {
+            3
+        } else if extent[a] > 1.2 {
+            2
+        } else {
+            1
+        }
+    });
     let region = Cut {
         side: None,
         frame: glam::Quat::IDENTITY,

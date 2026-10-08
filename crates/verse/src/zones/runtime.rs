@@ -124,6 +124,8 @@ impl WorldRuntime {
             Some(everglade_pack::LoadEvent::Ready(pack)) => {
                 if self.zone_state.destination == ZoneId::MeteorStressTest {
                     self.install_meteor_stress_test(&pack);
+                } else if self.zone_state.destination == ZoneId::MeteorShowcase {
+                    self.install_meteor_showcase(&pack);
                 } else if self.zone_state.destination == ZoneId::Grove {
                     self.install_grove(&pack);
                 } else if self.zone_state.destination == ZoneId::Crypt {
@@ -329,6 +331,50 @@ impl WorldRuntime {
         self.camera = crate::camera::FollowCamera::default();
         self.camera.pitch = -0.2;
         self.camera.distance = 6.0;
+    }
+
+    /// Installs the Meteor Showcase: two kit houses at golden hour and a
+    /// caster who calls an eight-meteor swarm down on them
+    /// ([`super::meteor_showcase`]).
+    pub fn install_meteor_showcase(&mut self, pack: &everglade_pack::ZonePack) {
+        use super::meteor_showcase as showcase;
+        if self.is_hosted() || !self.is_plaza() {
+            return;
+        }
+        let mut spawn = self.player;
+        spawn.pos = showcase::SPAWN;
+        spawn.yaw = 0.0;
+        let (world, glade) = match showcase::build(pack, &spawn) {
+            Ok(built) => built,
+            Err(error) => {
+                self.zone_load_failed(&error);
+                return;
+            }
+        };
+        self.zone_state.plaza_pose = Some((self.player.pos, self.player.yaw));
+        self.world = world;
+        self.zone_state.everglade = Some(glade);
+        self.zone = ZoneId::MeteorShowcase;
+        self.zone_state.loading = LoadState::Idle;
+        self.zone_state.error = None;
+        self.zone_state.progress = 1.0;
+        self.zone_revision = self.zone_revision.saturating_add(1);
+        // Facing north up the path, at the houses.
+        let _ = self.set_spawn(showcase::SPAWN, 0.0);
+        self.player
+            .set_surface_height(super::everglade::land(self.player.pos.x, self.player.pos.z));
+        self.camera = crate::camera::FollowCamera::default();
+        self.camera.pitch = -0.1;
+        self.camera.distance = 7.0;
+    }
+
+    /// Loads the Meteor Showcase from the plaza.
+    pub fn enter_meteor_showcase(&mut self) -> Result<(), String> {
+        if !self.is_plaza() || self.zone_loading() {
+            return Err("Meteor Showcase enters only from the plaza".into());
+        }
+        self.zone_state.destination = ZoneId::MeteorShowcase;
+        self.start_zone_load(ZoneId::MeteorShowcase)
     }
 
     /// Loads the standalone meteor stress test from the plaza.
@@ -1140,7 +1186,7 @@ impl WorldRuntime {
     #[must_use]
     pub fn everglade_hotbar_order(&self) -> Vec<usize> {
         use super::everglade::hotbar::{COUNT, DEV_ORDER, in_order};
-        if self.zone == ZoneId::MeteorStressTest {
+        if self.zone.meteor_stage() {
             vec![5, 1, 2, 3, 4, 0, 8]
         } else if self.everglade_destruction() {
             DEV_ORDER.to_vec()
@@ -1181,7 +1227,7 @@ impl WorldRuntime {
         // The crypt is walked with Everglade's bar.
         if !matches!(
             self.zone,
-            ZoneId::Everglade | ZoneId::Crypt | ZoneId::MeteorStressTest
+            ZoneId::Everglade | ZoneId::Crypt | ZoneId::MeteorStressTest | ZoneId::MeteorShowcase
         ) {
             return None;
         }
@@ -1308,7 +1354,10 @@ impl WorldRuntime {
     /// outside the town.
     #[must_use]
     pub fn everglade_wreckage(&self) -> Option<[usize; 3]> {
-        if !matches!(self.zone, ZoneId::Everglade | ZoneId::MeteorStressTest) {
+        if !matches!(
+            self.zone,
+            ZoneId::Everglade | ZoneId::MeteorStressTest | ZoneId::MeteorShowcase
+        ) {
             return None;
         }
         let town = self.zone_state.everglade.as_ref()?.town()?;
@@ -1382,7 +1431,7 @@ impl WorldRuntime {
     fn breaks_things(&self) -> bool {
         matches!(
             self.zone,
-            ZoneId::Everglade | ZoneId::Grove | ZoneId::MeteorStressTest
+            ZoneId::Everglade | ZoneId::Grove | ZoneId::MeteorStressTest | ZoneId::MeteorShowcase
         )
     }
 
@@ -1393,7 +1442,7 @@ impl WorldRuntime {
     /// still break; the player just has no offensive spell there.
     fn casts_destruction(&self) -> bool {
         match self.zone {
-            ZoneId::Grove | ZoneId::MeteorStressTest => true,
+            ZoneId::Grove | ZoneId::MeteorStressTest | ZoneId::MeteorShowcase => true,
             ZoneId::Everglade => self.in_demolition() || self.dev_destruction(),
             _ => false,
         }
@@ -1404,7 +1453,7 @@ impl WorldRuntime {
     /// [`Self::dev_destruction`] is on.
     fn everglade_destruction(&self) -> bool {
         match self.zone {
-            ZoneId::MeteorStressTest => true,
+            ZoneId::MeteorStressTest | ZoneId::MeteorShowcase => true,
             ZoneId::Everglade => self.dev_destruction(),
             _ => false,
         }
@@ -1735,6 +1784,20 @@ impl WorldRuntime {
             format!(
                 "Meteor Stress Test · {} casters · {} meteors in flight · 1: cast · R: rebuild · automatic rebuild every 3 min",
                 counts[0], counts[1]
+            )
+        } else if self.zone == ZoneId::MeteorShowcase {
+            add("meteor_swarm", "Meteor Swarm", Intent::MeteorSwarm, true);
+            add("rebuild", "Rebuild houses", Intent::Rebuild, true);
+            add("levitate", "Levitate", Intent::Levitate, true);
+            add("return", self.return_label(), Intent::Return, true);
+            let flying = self
+                .zone_state
+                .everglade
+                .as_ref()
+                .and_then(Everglade::town)
+                .map_or(0, |town| town.bombardment()[1]);
+            format!(
+                "Meteor Showcase · {flying} meteors in flight · 1: cast eight · R: rebuild · the caster casts again after each rebuild"
             )
         } else if let Some(lab) = &self.zone_state.water {
             add("jump", "Jump", Intent::Jump, !self.player.airborne());
@@ -2070,6 +2133,7 @@ impl WorldRuntime {
                 | ZoneId::Grove
                 | ZoneId::Crypt
                 | ZoneId::MeteorStressTest
+                | ZoneId::MeteorShowcase
                 | ZoneId::WaterLab
         ) {
             return Err("This zone has no pack to load".into());
@@ -2267,7 +2331,7 @@ impl WorldRuntime {
     /// Everglade's air under its town clock, while the player is in
     /// Everglade itself rather than a zone built on it.
     pub(crate) fn everglade_atmosphere(&self) -> Option<crate::zones::Atmosphere> {
-        (self.zone == ZoneId::Everglade)
+        matches!(self.zone, ZoneId::Everglade | ZoneId::MeteorShowcase)
             .then_some(self.zone_state.everglade.as_ref())
             .flatten()
             .map(Everglade::atmosphere)
@@ -2622,6 +2686,10 @@ impl WorldRuntime {
         } else if self.zone == ZoneId::MeteorStressTest {
             if let Some(glade) = &mut state.everglade {
                 glade.tick(dt, &self.player, &super::meteor_stress::figures());
+            }
+        } else if self.zone == ZoneId::MeteorShowcase {
+            if let Some(glade) = &mut state.everglade {
+                glade.tick(dt, &self.player, &super::meteor_showcase::figures());
             }
         } else if let Some(everglade) = &mut state.everglade {
             // The seats move first, so the characters pose where they stand.

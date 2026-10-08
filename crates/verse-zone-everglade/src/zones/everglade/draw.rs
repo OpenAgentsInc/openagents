@@ -166,9 +166,44 @@ pub(super) fn ground(scene: &mut TexturedScene) {
 /// is set. With `dirt` the ground is Everglade's own, with its ponds and
 /// stream carved; without it, as for the Grove, it is the uncarved land.
 pub fn ground_with(scene: &mut TexturedScene, dirt: bool) {
+    lay(scene, dirt, &[]);
+}
+
+/// Adds the uncarved land's grass to `scene`, as [`ground_with`] does
+/// without the dirt, with `paths` worn into it: each a polyline of trodden
+/// dirt [`LOT_PATH`] m wide, whose cells draw finer so its edges read.
+pub fn ground_with_paths(scene: &mut TexturedScene, paths: &[Vec<[f32; 2]>]) {
+    lay(scene, false, paths);
+}
+
+/// Where a lot's path is whole dirt and where its edge has faded into the
+/// grass, m from its middle.
+pub const LOT_PATH: (f32, f32) = (0.8, 1.7);
+
+/// The distance from `(x, z)` to the nearest of `paths`, m.
+fn path_distance(paths: &[Vec<[f32; 2]>], x: f32, z: f32) -> f32 {
+    paths
+        .iter()
+        .flat_map(|p| p.windows(2))
+        .map(|w| super::layout::segment_distance(w[0], w[1], x, z))
+        .fold(f32::INFINITY, f32::min)
+}
+
+fn lay(scene: &mut TexturedScene, dirt: bool, paths: &[Vec<[f32; 2]>]) {
     let ground: fn(f32, f32) -> f32 = if dirt { height } else { land };
-    let empty = std::collections::BTreeSet::new();
-    let carved = if dirt { carved_cells() } else { &empty };
+    let mut near_paths = std::collections::BTreeSet::new();
+    if !paths.is_empty() {
+        for i in 0..CELLS {
+            for j in 0..CELLS {
+                let [x, z] = grid_point(i, j);
+                let middle = path_distance(paths, x + CELL / 2.0, z + CELL / 2.0);
+                if middle < LOT_PATH.1 + CELL {
+                    near_paths.insert((i, j));
+                }
+            }
+        }
+    }
+    let carved = if dirt { carved_cells() } else { &near_paths };
     let grass_image = scene.add_image(grass_image());
     let grass = scene.add_material(TexturedMaterial {
         image: Some(grass_image),
@@ -176,7 +211,10 @@ pub fn ground_with(scene: &mut TexturedScene, dirt: bool) {
         ..TexturedMaterial::default()
     });
     let grass_attributes = |p: Vec3| {
-        let tint = grass_tint(p.x, p.z);
+        let mut tint = grass_tint(p.x, p.z);
+        if !paths.is_empty() {
+            tint = trodden(tint, path_distance(paths, p.x, p.z), p);
+        }
         (
             [p.x / GRASS_REPEAT, p.z / GRASS_REPEAT],
             if dirt { mud(tint, p) } else { tint },
@@ -418,6 +456,22 @@ fn grass_tint(x: f32, z: f32) -> [u8; 4] {
         let albedo = albedo + (straw - albedo) * dry * 0.9 * (1.0 - t);
         let albedo = albedo + (PATH[i] * 0.75 - albedo) * worn;
         unorm(albedo / DETAIL_MEAN)
+    });
+    [rgb[0], rgb[1], rgb[2], 255]
+}
+
+/// `tint` worn to a lot path's dirt `d` m from the path's middle, with a
+/// little of the grass's own variation left in it.
+fn trodden(tint: [u8; 4], d: f32, p: Vec3) -> [u8; 4] {
+    let worn = 1.0 - ((d - LOT_PATH.0) / (LOT_PATH.1 - LOT_PATH.0)).clamp(0.0, 1.0);
+    if worn <= 0.0 {
+        return tint;
+    }
+    let worn = smoothstep(worn);
+    let grit = 0.85 + 0.3 * value_noise(p.x * 0.9, p.z * 0.9, 1 << 12, 79);
+    let rgb: [u8; 3] = std::array::from_fn(|i| {
+        let grass = f32::from(tint[i]) / 255.0;
+        unorm(grass + (PATH[i] * grit / DETAIL_MEAN - grass) * worn)
     });
     [rgb[0], rgb[1], rgb[2], 255]
 }

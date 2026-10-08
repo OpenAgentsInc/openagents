@@ -131,6 +131,9 @@ pub struct WorldRuntime {
     /// Seconds the Grid robots have patrolled and danced
     /// ([`crate::grid_robot::patroller`]).
     robot_clock: f64,
+    /// A director's camera in place of the follow camera, for a capture:
+    /// its eye and the point it looks at ([`Self::set_shot`]).
+    shot: Option<(Vec3, Vec3)>,
 }
 
 impl Default for WorldRuntime {
@@ -165,6 +168,7 @@ impl WorldRuntime {
             avatars: Vec::new(),
             trace_ghost: None,
             robot_clock: 0.0,
+            shot: None,
         }
     }
 
@@ -274,6 +278,7 @@ impl WorldRuntime {
                 crate::zones::ZoneId::Everglade
                     | crate::zones::ZoneId::Crypt
                     | crate::zones::ZoneId::MeteorStressTest
+                    | crate::zones::ZoneId::MeteorShowcase
                     | crate::zones::ZoneId::WaterLab
             )
     }
@@ -542,6 +547,16 @@ impl WorldRuntime {
         }
     }
 
+    /// Looks from `eye` at `target` in place of the follow camera, as a
+    /// capture's director does, until it is set to `None`. Everything that
+    /// faces the camera, such as a glow or a nameplate, faces this eye, and
+    /// Meteor Swarm's blasts still shake it.
+    pub fn set_shot(&mut self, shot: Option<(Vec3, Vec3)>) {
+        self.shot = shot.filter(|(eye, target)| {
+            eye.is_finite() && target.is_finite() && eye.distance(*target) > 0.01
+        });
+    }
+
     #[must_use]
     pub fn view(&self, aspect: f32) -> View {
         let aspect = if aspect.is_finite() {
@@ -549,18 +564,39 @@ impl WorldRuntime {
         } else {
             1.0
         };
+        if let Some((eye, target)) = self.shot {
+            // A blast jolts the eye and, more, where it looks, so the shake
+            // reads in a wide shot as well as a close one.
+            let shake = match self.zone {
+                crate::zones::ZoneId::Everglade
+                | crate::zones::ZoneId::MeteorStressTest
+                | crate::zones::ZoneId::MeteorShowcase => self.demolition_shake(),
+                _ => Vec3::ZERO,
+            };
+            let eye = eye + shake;
+            let ground = crate::zones::everglade::land(eye.x, eye.z) + 0.3;
+            let eye = Vec3::new(eye.x, eye.y.max(ground), eye.z);
+            let look = target + shake * (1.0 + 0.04 * eye.distance(target));
+            let view = glam::Mat4::look_at_rh(eye, look, Vec3::Y);
+            let proj =
+                glam::Mat4::perspective_rh(crate::camera::FOV_Y, aspect, 0.3, crate::camera::FAR);
+            return View {
+                view_proj: proj * view,
+                eye,
+            };
+        }
         // One camera-collision step for every zone: the eye stops short of
         // the zone's solids (`zones::sight`).
         let mut framing = self.framing();
         // Meteor Swarm's blasts and a Thunderwave shake the camera.
         framing.eye += match self.zone {
             crate::zones::ZoneId::Grove => self.grove_shake(),
-            crate::zones::ZoneId::Everglade | crate::zones::ZoneId::MeteorStressTest => {
-                self.demolition_shake()
-            }
+            crate::zones::ZoneId::Everglade
+            | crate::zones::ZoneId::MeteorStressTest
+            | crate::zones::ZoneId::MeteorShowcase => self.demolition_shake(),
             _ => Vec3::ZERO,
         };
-        if self.zone == crate::zones::ZoneId::MeteorStressTest {
+        if self.zone.meteor_stage() {
             // Simultaneous impacts must not shake the low camera below terrain.
             framing.eye.y = framing
                 .eye
@@ -613,6 +649,7 @@ impl WorldRuntime {
                     | crate::zones::ZoneId::Grove
                     | crate::zones::ZoneId::Crypt
                     | crate::zones::ZoneId::MeteorStressTest
+                    | crate::zones::ZoneId::MeteorShowcase
                     | crate::zones::ZoneId::WaterLab
             )
     }

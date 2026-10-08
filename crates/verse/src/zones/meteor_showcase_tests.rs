@@ -1,0 +1,221 @@
+//! The Meteor Showcase through the world runtime: its flag and no arch,
+//! the caster's eight arcs breaking both houses, the debris at rest, the
+//! rebuild, and the walk up the path ([`super::meteor_showcase`]).
+
+use super::meteor_showcase::{self as showcase, DELAY, HOUR, RETURN_PORTAL, houses};
+use super::{Everglade, ZoneId, everglade, everglade_pack};
+use crate::{controller::InputState, runtime::WorldRuntime, zones::Intent};
+use everglade::demolition::meteor::CAST;
+use everglade::demolition::{site::Status, town::Town};
+use glam::Vec3;
+use std::f32::consts::{PI, TAU};
+use std::path::Path;
+
+const DT: f32 = 1.0 / 60.0;
+
+fn installed() -> WorldRuntime {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join(everglade_pack::PACK_DIRECTORY)
+        .join(format!(
+            "{}.{}",
+            everglade_pack::PACK_SHA256,
+            everglade_pack::PACK_EXTENSION
+        ));
+    let pack = everglade_pack::ZonePack::load_local(&path).unwrap();
+    let mut runtime = WorldRuntime::new();
+    runtime.install_meteor_showcase(&pack);
+    assert_eq!(runtime.zone, ZoneId::MeteorShowcase);
+    runtime
+}
+
+fn town(runtime: &WorldRuntime) -> &Town {
+    runtime
+        .zone_state
+        .everglade
+        .as_ref()
+        .and_then(Everglade::town)
+        .expect("the showcase has its houses' demolition")
+}
+
+fn run(runtime: &mut WorldRuntime, seconds: f32) {
+    for _ in 0..(seconds / DT).round() as usize {
+        runtime.tick(&InputState::default(), DT);
+    }
+}
+
+/// The town building each house is.
+fn buildings(town: &Town) -> [usize; 2] {
+    houses().map(|house| {
+        let distance = |i: usize| {
+            let ([cx, cz], _) = town.buildings()[i].rect;
+            (house.center[0] - cx).hypot(house.center[1] - cz)
+        };
+        let index = (0..town.buildings().len())
+            .min_by(|&a, &b| distance(a).total_cmp(&distance(b)))
+            .expect("the lot has buildings");
+        assert!(
+            distance(index) < 3.0,
+            "{} is one building: the nearest stands {} m off",
+            house.name,
+            distance(index)
+        );
+        index
+    })
+}
+
+/// How many of `building`'s pieces stand, and how many it has.
+fn standing(town: &Town, building: usize) -> (usize, usize) {
+    let site = town.site();
+    let mine: Vec<_> = site
+        .specs()
+        .iter()
+        .zip(site.pieces())
+        .filter(|(spec, _)| spec.building == building)
+        .collect();
+    let up = mine
+        .iter()
+        .filter(|(_, piece)| piece.status == Status::Standing)
+        .count();
+    (up, mine.len())
+}
+
+#[test]
+fn the_showcase_is_reached_by_its_flag_and_no_arch() {
+    assert_eq!(
+        ZoneId::from_name("meteor showcase"),
+        Some(ZoneId::MeteorShowcase)
+    );
+    assert_eq!(
+        ZoneId::from_name("verse-meteor-showcase"),
+        Some(ZoneId::MeteorShowcase)
+    );
+    for zone in ZoneId::ALL {
+        assert!(
+            zone.portals()
+                .iter()
+                .all(|(to, _)| *to != ZoneId::MeteorShowcase),
+            "{} has an arch to the showcase",
+            zone.label()
+        );
+    }
+    assert_eq!(
+        ZoneId::MeteorShowcase.portals(),
+        vec![(ZoneId::Plaza, RETURN_PORTAL)]
+    );
+    assert!(ZoneId::MeteorShowcase.meteor_stage());
+}
+
+#[test]
+fn eight_meteors_on_distinct_arcs_break_both_houses_and_the_debris_rests() {
+    let mut runtime = installed();
+    let glade = runtime.zone_state.everglade.as_ref().unwrap();
+    assert_eq!(glade.clock().pinned_hour(), Some(HOUR));
+    let houses = buildings(town(&runtime));
+    assert_ne!(houses[0], houses[1]);
+    for building in houses {
+        assert!(town(&runtime).buildings()[building].destructible());
+    }
+    assert_eq!(town(&runtime).bombardment(), [1, 0]);
+    // The cast gathers, then all eight set out on arcs of their own.
+    run(&mut runtime, DELAY + CAST + 0.05);
+    let arcs = town(&runtime).casters()[0].arcs();
+    assert_eq!(arcs.len(), 8, "{arcs:?}");
+    for (i, a) in arcs.iter().enumerate() {
+        // None comes straight down.
+        assert!(a.1 < 1.15 && a.1 > 0.2, "meteor {i} descends at {}", a.1);
+        for b in &arcs[i + 1..] {
+            let turn = (a.0 - b.0 + PI).rem_euclid(TAU) - PI;
+            assert!(
+                turn.abs() > 0.05 || (a.1 - b.1).abs() > 0.05,
+                "two meteors share an arc: {a:?} {b:?}"
+            );
+            assert!((a.2 - b.2).abs() > 0.02, "two meteors set out together");
+        }
+    }
+    let headings: Vec<f32> = arcs.iter().map(|a| a.0).collect();
+    let spread = headings.iter().copied().fold(f32::MIN, f32::max)
+        - headings.iter().copied().fold(f32::MAX, f32::min);
+    assert!(spread > 1.2, "the arcs fan only {spread} radians");
+    let descents: Vec<f32> = arcs.iter().map(|a| a.1).collect();
+    let range = descents.iter().copied().fold(f32::MIN, f32::max)
+        - descents.iter().copied().fold(f32::MAX, f32::min);
+    assert!(range > 0.15, "the arcs descend alike: {descents:?}");
+    // They land, and both houses come apart.
+    let mut flying = 0;
+    for _ in 0..(5.0 / DT) as usize {
+        runtime.tick(&InputState::default(), DT);
+        flying = flying.max(town(&runtime).bombardment()[1]);
+        let eye = runtime.view(16.0 / 9.0).eye;
+        assert!(eye.y >= everglade::land(eye.x, eye.z) + 0.25);
+    }
+    assert_eq!(flying, 8);
+    assert_eq!(town(&runtime).bombardment()[1], 0, "every meteor landed");
+    run(&mut runtime, 10.0);
+    let town_now = town(&runtime);
+    for (building, house) in houses.into_iter().zip(showcase::houses()) {
+        let (up, all) = standing(town_now, building);
+        assert!(
+            up * 2 < all,
+            "{}: {up} of {all} pieces still stand",
+            house.name
+        );
+    }
+    // What fell lies on the ground: nothing under it, nothing still
+    // sliding.
+    let site = town_now.site();
+    let mut resting = 0;
+    for (body, _) in site.chunk_bodies() {
+        let (at, velocity) = site.body_motion(body);
+        assert!(at.y > -0.05, "a chunk sank to {}", at.y);
+        assert!(velocity.length() < 2.0, "a chunk still moves at {velocity}");
+        resting += 1;
+    }
+    for piece in site.pieces() {
+        if piece.status == Status::Loose {
+            let (at, velocity) = site.body_motion(piece.body);
+            assert!(at.y > -1.3, "a loose piece sank to {}", at.y);
+            assert!(velocity.length() < 2.0, "a loose piece still moves");
+        }
+    }
+    assert!(resting > 0, "the houses left debris");
+    // The caster waits for the rebuild, and casts again after it.
+    runtime.zone_intent(Intent::Rebuild).unwrap();
+    for building in houses {
+        let (up, all) = standing(town(&runtime), building);
+        assert_eq!(up, all);
+    }
+    run(&mut runtime, DELAY + CAST + 0.5);
+    assert!(
+        town(&runtime).bombardment()[1] > 0,
+        "the caster casts again"
+    );
+}
+
+#[test]
+fn the_player_walks_up_the_path_to_a_door() {
+    let mut runtime = installed();
+    let [west, _] = houses();
+    let (outside, _) = west.door_points();
+    let mut closest = f32::INFINITY;
+    for _ in 0..(30.0 / DT) as usize {
+        let at = runtime.player.pos;
+        let to = Vec3::new(outside[0] - at.x, 0.0, outside[1] - at.z);
+        if to.length() < 0.6 {
+            break;
+        }
+        runtime.player.yaw = to.x.atan2(to.z);
+        let input = InputState {
+            forward: true,
+            ..InputState::default()
+        };
+        runtime.tick(&input, DT);
+        let p = runtime.player.pos;
+        assert!(
+            p.y >= everglade::land(p.x, p.z) - 0.01,
+            "below ground at {p}"
+        );
+        closest = closest.min((p.x - outside[0]).hypot(p.z - outside[1]));
+    }
+    assert!(closest < 1.0, "the walk stopped {closest} m from the door");
+}

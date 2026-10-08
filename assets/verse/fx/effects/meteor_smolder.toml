@@ -1,0 +1,43 @@
+# What a ruin breathes out after an arcing meteor's blast: smoke that
+# keeps climbing from where it burst for several seconds, thinning and
+# settling as it rises, and a few embers glowing in the rubble.
+description = "Smoke climbing from a fresh ruin for several seconds, and embers in the rubble."
+
+[[emitter]]
+name = "smoke"
+sheet = "smoke"
+animate = "life"
+blend = "alpha"
+light = "lit"
+delay = 1.0
+rate = 4.0
+duration = 10.0
+life = [4.5, 6.5]
+shape = "disc"
+radius = 2.5
+speed = [0.5, 1.1]
+gravity = 0.45
+drag = 0.45
+size = [1.3, 1.9]
+scale = [[0.0, 0.6], [0.5, 1.8], [1.0, 2.8]]
+color = [[0.0, [0.22, 0.2, 0.19]], [1.0, [0.44, 0.43, 0.42]]]
+alpha = [[0.0, 0.0], [0.15, 0.5], [0.7, 0.3], [1.0, 0.0]]
+spin = [-0.3, 0.3]
+priority = 3
+
+[[emitter]]
+name = "embers"
+sheet = "sparks"
+frames = [1, 1]
+animate = "random"
+luminance = 16.0
+delay = 0.8
+rate = 5.0
+duration = 7.0
+life = [1.0, 2.0]
+shape = "disc"
+radius = 2.6
+size = [0.2, 0.4]
+color = [1.0, 0.45, 0.12]
+alpha = [0.0, 1.0, 0.0]
+priority = 2

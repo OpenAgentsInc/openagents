@@ -262,9 +262,33 @@ struct Lifted {
     hit: f32,
 }
 
+/// How the town's debris lasts and how finely its kit pieces break.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Debris {
+    /// Most chunks alive at once.
+    pub chunks: usize,
+    /// How long a chunk lasts, s.
+    pub lifetime: f64,
+    /// Most chunks a medieval kit piece breaks into along each of its
+    /// sides: 2, or 3 for a finer break.
+    pub shards: usize,
+}
+
+impl Debris {
+    /// The town's own: [`MAX_CHUNKS`] chunks that last the site's
+    /// [`super::site::DEBRIS_LIFETIME`].
+    pub const TOWN: Self = Self {
+        chunks: MAX_CHUNKS,
+        lifetime: super::site::DEBRIS_LIFETIME,
+        shards: 2,
+    };
+}
+
 /// The town's buildings and the rules over the raised ones: what the
 /// hammer and the spell act on.
 struct Wreck {
+    /// How the debris lasts and how finely kit pieces break.
+    debris: Debris,
     buildings: Vec<Building>,
     /// Floors under the buildings that stand above the flat ground, each
     /// a box's center and half extents.
@@ -293,7 +317,7 @@ struct Wreck {
 }
 
 impl Wreck {
-    fn empty_site(floors: &[(DVec3, DVec3)], water: bool) -> Site {
+    fn empty_site(floors: &[(DVec3, DVec3)], water: bool, debris: Debris) -> Site {
         let mut site = Site::new(Vec::new(), SEED);
         site.set_ground(GROUND, floors.to_vec());
         if water {
@@ -303,7 +327,8 @@ impl Wreck {
             );
         }
         site.retain(|_| true);
-        site.set_max_chunks(MAX_CHUNKS);
+        site.set_max_chunks(debris.chunks);
+        site.set_debris_lifetime(debris.lifetime);
         site
     }
 
@@ -353,6 +378,7 @@ impl Wreck {
                 &self.placements[placement],
                 cell,
                 piece.draft.placement,
+                self.debris.shards,
             );
             cut.push((k, meshes));
         }
@@ -720,6 +746,19 @@ struct Bombardier {
     swarm: Swarm,
     due: f32,
     target: usize,
+    /// A set piece: one cast at chosen points, rather than a cast every
+    /// few seconds at the nearest building.
+    plan: Option<Plan>,
+}
+
+/// A caster's one cast, as the Meteor Showcase stages it: the circle it
+/// aims at, where each of its meteors lands, and how long after the town
+/// stands whole it begins.
+#[derive(Clone, Debug)]
+struct Plan {
+    aim: Vec3,
+    targets: Vec<Vec3>,
+    delay: f32,
 }
 
 /// Everglade's destructible town: its buildings, the rules over the raised
@@ -752,7 +791,12 @@ pub struct Town {
     wield: f32,
     swarm: Swarm,
     bombardiers: Vec<Bombardier>,
+    /// How long the bombarded buildings stand broken before they rebuild,
+    /// s.
+    rebuild_every: f32,
     rebuild: f32,
+    /// Whether blows float their damage numbers.
+    numbers: bool,
     floaters: Vec<Floater>,
     clock: f32,
 }
@@ -1008,7 +1052,8 @@ impl Town {
         let mut town = Self {
             wreck: Wreck {
                 buildings,
-                site: Wreck::empty_site(&floors, everglade),
+                debris: Debris::TOWN,
+                site: Wreck::empty_site(&floors, everglade, Debris::TOWN),
                 floors,
                 refs: Vec::new(),
                 lifted: Vec::new(),
@@ -1036,7 +1081,9 @@ impl Town {
             wield: 0.0,
             swarm: Swarm::default(),
             bombardiers: Vec::new(),
+            rebuild_every: 180.0,
             rebuild: 180.0,
+            numbers: true,
             floaters: Vec::new(),
             clock: 0.0,
         };
@@ -1187,9 +1234,71 @@ impl Town {
                 swarm: Swarm::default(),
                 due: 1.0 + i as f32 * 0.6,
                 target: i,
+                plan: None,
             })
             .collect();
+        self.rebuild_every = 180.0;
         self.rebuild = 180.0;
+    }
+
+    /// Stands a caster at `caster` who, `delay` seconds after the town
+    /// stands whole, casts Meteor Swarm once with `volley` on the circle at
+    /// `aim`, its meteors landing on `targets` in turn, as the Meteor
+    /// Showcase stages it. The town rebuilds `rebuild` seconds after it
+    /// stood whole, and the caster casts again.
+    pub fn start_showcase(
+        &mut self,
+        caster: Vec3,
+        aim: Vec3,
+        targets: Vec<Vec3>,
+        volley: meteor::Volley,
+        delay: f32,
+        rebuild: f32,
+    ) {
+        let mut swarm = Swarm::default();
+        swarm.set_volley(volley);
+        // The cast gathers over the caster rather than ringing the houses.
+        swarm.set_telegraph(false);
+        let toward = aim - caster;
+        self.bombardiers = vec![Bombardier {
+            player: PlayerController::new(caster, toward.x.atan2(toward.z)),
+            swarm,
+            due: delay,
+            target: 0,
+            plan: Some(Plan {
+                aim,
+                targets,
+                delay,
+            }),
+        }];
+        self.rebuild_every = rebuild;
+        self.rebuild = rebuild;
+    }
+
+    /// Sets how the debris lasts and how finely kit pieces break, before
+    /// anything breaks: the Meteor Showcase keeps every fragment of its
+    /// two houses for minutes rather than the town's few seconds.
+    pub fn set_debris(&mut self, debris: Debris) {
+        let debris = Debris {
+            chunks: debris.chunks.clamp(1, 4096),
+            lifetime: debris.lifetime.clamp(0.0, 3600.0),
+            shards: debris.shards.clamp(1, 3),
+        };
+        self.wreck.debris = debris;
+        self.wreck.site.set_max_chunks(debris.chunks);
+        self.wreck.site.set_debris_lifetime(debris.lifetime);
+    }
+
+    /// Sets how many meteors the player's Meteor Swarm calls down and how
+    /// they come in ([`meteor::Volley`]).
+    pub fn set_volley(&mut self, volley: meteor::Volley) {
+        self.swarm.set_volley(volley);
+    }
+
+    /// The casters' spells, for tests and captures.
+    #[must_use]
+    pub fn casters(&self) -> Vec<&Swarm> {
+        self.bombardiers.iter().map(|b| &b.swarm).collect()
     }
 
     /// Where the camera is this frame, shaken by the meteors' blasts.
@@ -1197,6 +1306,16 @@ impl Town {
     pub fn shake(&self) -> Vec3 {
         if self.bombardiers.is_empty() {
             return self.swarm.shake();
+        }
+        if self.bombardiers.iter().any(|b| b.plan.is_some()) {
+            // One staged volley shakes the camera as the player's own does.
+            return self
+                .bombardiers
+                .iter()
+                .fold(self.swarm.shake(), |shake, caster| {
+                    shake + caster.swarm.shake()
+                })
+                .clamp(Vec3::splat(-0.3), Vec3::splat(0.3));
         }
         self.bombardiers
             .iter()
@@ -1223,13 +1342,17 @@ impl Town {
         for building in lifted {
             self.wreck.let_go(building);
         }
-        self.wreck.site = Wreck::empty_site(&self.wreck.floors, self.wreck.water);
+        self.wreck.site =
+            Wreck::empty_site(&self.wreck.floors, self.wreck.water, self.wreck.debris);
         self.wreck.refs.clear();
         self.swarm.reset();
-        self.rebuild = 180.0;
+        self.rebuild = self.rebuild_every;
         for (i, caster) in self.bombardiers.iter_mut().enumerate() {
             caster.swarm.reset();
-            caster.due = 1.0 + i as f32 * 0.6;
+            caster.due = caster
+                .plan
+                .as_ref()
+                .map_or(1.0 + i as f32 * 0.6, |plan| plan.delay);
         }
         self.floaters.clear();
         self.sync();
@@ -1251,8 +1374,20 @@ impl Town {
         blows
     }
 
+    /// Whether blows float their damage numbers, as they do unless a
+    /// staged scene turns them off.
+    pub fn set_numbers(&mut self, numbers: bool) {
+        self.numbers = numbers;
+        if !numbers {
+            self.floaters.clear();
+        }
+    }
+
     /// Floats the hardest of `blows`' numbers.
     fn number(&mut self, blows: &[Blow]) {
+        if !self.numbers {
+            return;
+        }
         let mut blows = blows.to_vec();
         blows.sort_by(|a, b| b.damage.cmp(&a.damage));
         for blow in blows.iter().take(8) {
@@ -1300,7 +1435,17 @@ impl Town {
         let mut npc_blows = Vec::new();
         for caster in &mut self.bombardiers {
             caster.due -= dt;
-            if caster.due <= 0.0 && !caster.swarm.casting() {
+            if let Some(plan) = &caster.plan {
+                if caster.due <= 0.0 && !caster.swarm.casting() {
+                    caster.swarm.set_targets(plan.targets.clone());
+                    if caster.swarm.target_with(Strike::Meteors).is_ok() {
+                        caster.swarm.aim_at(plan.aim, &caster.player);
+                        caster.swarm.confirm(&caster.player);
+                    }
+                    // Once, until the town rebuilds.
+                    caster.due = f32::INFINITY;
+                }
+            } else if caster.due <= 0.0 && !caster.swarm.casting() {
                 let targets: Vec<_> = self
                     .wreck
                     .buildings
