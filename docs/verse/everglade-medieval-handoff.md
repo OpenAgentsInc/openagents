@@ -45,19 +45,20 @@ is dark and shows the existing rain-through-ceiling limitation.
 The private candidate pack has digest
 `c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e`,
 21,467,658 bytes, and 63,438,848 decoded texture bytes. It is unpublished;
-the larger decoded footprint also needs B4's phone-tier review. P3 still
-needs matching exported-demo and grade comparisons, first and repeated
-damage plus `R` restoration checks, fresh-main integration, and
-`openagents artifact submit everglade-kit`, followed by the private upload
-and web deploy. Do not repin directly or commit licensed files.
+the larger decoded footprint also needs B4's tier review. Capture source
+`b903f52e2b` completes the matching demo/grade and far damage/restore
+acceptance below. Fresh scoped checks and the web consumer check pass.
+Publication still requires `openagents artifact submit everglade-kit`,
+the private upload, and a dependent web deploy. Do not repin directly or
+commit licensed files.
 
 B2 (#10906) has code in `0e0d8afd37` but remains open for verification
 and publication. B3 (#10907) has an unverified source checkpoint on
 [`codex/everglade-b3`](https://github.com/OpenAgentsInc/openagents/tree/codex/everglade-b3),
 commit `a2f4bbf7d3`; no bake, check, or capture ran for that checkpoint.
-B4 (#10908) and umbrella #10903 remain open. This run stops new assignments
-at 89 percent shared usage; active work saves resumable checkpoints.
-Recheck each issue and claim before resuming. The sections below retain
+B4 (#10908) and umbrella #10903 remain open. New delegation remains
+stopped; the coordinator resumes P3 directly after a fresh claim audit.
+Recheck each issue and claim before starting its work. The sections below retain
 the original October 7 plan.
 
 ## What landed
@@ -91,7 +92,7 @@ unchanged.
 ## What's open
 
 - **P3 (#10896).** Checkpointed on October 8 on `codex/everglade-p3`;
-  the claim is released and the board returns to Todo for the usage stop.
+  the coordinator holds its claim and the board is In progress.
   All 65 actual houses pass strict selected budgets: near 3,156–10,000
   triangles/10–12 draws, middle 2,999–3,000/one, and far 799–800/one.
   The real candidate pack admits all 53 pieces, five prop far models, and
@@ -101,11 +102,10 @@ unchanged.
   checks pass; the rebased headless consumer check also passes. Six
   source-bound geometry/LOD captures are accepted: cabin at horizontal
   10/50/120 m and market exterior/gable/interior. Near favors the roof;
-  interior lighting and rain remain limitations. Remaining acceptance is
-  the same exported demo actor before/after merge and grade, grade captures,
-  far damage/repeated damage/restore captures, and any reviewed near facade
-  supplement. Rebase and check integration against current main before
-  artifact-queue publication, private upload, and dependent deployment.
+  interior lighting and rain remain limitations. The matching exported-demo
+  and grade views and first/repeated far damage plus restoration pass at
+  `b903f52e2b`. Rebase on current main before artifact-queue publication,
+  private upload, and dependent deployment.
   No P3 artifact or main commit has landed. Exact source/input/candidate
   identities, captures, limitations, and resume commands follow below.
 - **B2 (#10906).** Its issue holds what its subagent landed and what
@@ -298,13 +298,48 @@ The remote directory is
 The Mac copy, including receipts, is
 `/Users/christopherdavid/.openagents/scratch/codex-01a119ad-8a81-7882-9d04-97d83523f0c8/p3-tools/p3-raster/`.
 No P3 artifact submission, repin, upload, deployment, or main landing has run.
-Remaining acceptance is the accurately labeled same exported demo actor
-before/after merge and grade, matching grade captures, far damage/repeated
-damage/restore captures, and any reviewed near facade supplement. Then
-rebase onto current main, preserve independent changes, obtain focused
-composition checks, and submit through `everglade-kit` before private upload
-and the dependent web deploy. The claim is released for the usage stop;
-these are resumable steps, not an external blocker or owner-only work.
+The remaining work is current-main integration, `everglade-kit` submission,
+private upload, and dependent deployment. The coordinator holds the claim.
+
+### Completed demo, grade, and far damage acceptance
+
+Capture source `b903f52e2b833f345930cd19e0d0c98106264231` uses the
+original exported `BP_residential_house_15`: 87 visible components and
+their original transforms and material overrides. The base-color conversion
+produces 12 materials and 19,633 triangles. The actual Rust merge preserves
+bounds, triangles, and every matching rendered pixel (maximum delta zero).
+These are exported Unreal demo inputs rendered by Verse, not Unreal-engine
+screenshots; the canonical-house composition gap described above remains.
+Applying the real kit grade changes 903,274 rendered channels while keeping
+the camera and geometry fixed.
+
+The 120 m cabin inspection uses one persistent GPU renderer and the actual
+`Town` damage and `R` restoration paths. Before damage it submits one
+800-triangle scene draw. First and repeated damage hide 15 and 20 pieces,
+respectively, activate the original-piece fallback, and change the captured
+pixels. Restoration clears every hidden piece and fallback and reproduces
+the original far-house PNG exactly. This studio inspection moves fog beyond
+120 m so it can show the model; it does not measure gameplay atmosphere.
+The earlier 110 m studio-fog attempt is retained as rejected blank evidence.
+
+The immutable capture executable has SHA-256
+`9958ce2523e0ceb0b2954dbac940b1704816b94f2a3399135b2a0a2660629329`.
+The demo report is `3bee5bd80bd79d2480159736143e50ec91da9225558b6f8dc15d288da44ef4a0`;
+the damage report is `733e33fbf7ba4d491559fbf0a3bc4790923d116fca7128581a1550a806aab1b8`.
+Both remote directories are in the same toolbox:
+`p3-final-demo/captures-b903f52e2b83/` and
+`p3-final-damage/captures-b903f52e2b83/`. The owner's local copies are
+`/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/p3-visual/accepted-demo/`
+and `accepted-damage/`. Every PNG has a hash in its private receipt.
+The original/merged demo, grade views, and all four damage views are inspected.
+No licensed captures or geometry enter Git.
+
+Fresh leased checks pass: three house-recipe tests, seven compiler tests,
+seven kit admission tests, two group selector/damage/restore tests, scoped
+formatting, a headless capture compile, and the wasm32 web consumer check.
+Logs remain in `p3-final-checks-64c25fecb1/`; the formatting-only successor
+matches the checked source. The web consumer reports existing unused-import
+and dead-field warnings. No broad gate or unrelated test suite ran.
 
 Resume only after a fresh claim/status audit and coordinator resource window.
 The retained private helper checks the immutable executable and candidate
