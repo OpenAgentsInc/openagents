@@ -1,6 +1,5 @@
-//! The homepage: what OpenAgents is, one link to `/download`, and a
-//! composer that starts a chat at `/chat/{uuid}`. The Grid's screenshot
-//! is on `/docs/the-grid`.
+//! The homepage: a composer that starts a chat at `/chat/{uuid}`. The
+//! header links `/download`; the Grid's screenshot is on `/docs/the-grid`.
 
 use axum::Router;
 use axum::extract::State;
@@ -24,24 +23,16 @@ fn credit(cents: Option<u64>) -> Option<String> {
     }
 }
 
-/// The intro: what OpenAgents is, the credit a new account starts with
-/// when the service gives one, and the way in.
-fn intro(credit: Option<&str>) -> String {
-    let mut out = String::from(
-        "<section class=\"intro\"><h1>OpenAgents</h1>\
-<p class=\"lede\">Chat with OpenAgents on your phone and your computer. Its agents work on \
-your own machines, and Coder is the one that writes code.</p>",
-    );
-    if let Some(credit) = credit {
-        out.push_str(&format!(
-            "<p>Every new account starts with {} of credit.</p>",
-            escape(credit)
-        ));
-    }
-    out.push_str(
-        "<p><a class=\"button\" href=\"/download\">[ Download OpenAgents ]</a></p></section>",
-    );
-    out
+/// The credit a new account starts with, when the service gives one.
+fn credit_line(credit: Option<&str>) -> String {
+    credit
+        .map(|credit| {
+            format!(
+                "<p>Every new account starts with {} of credit.</p>",
+                escape(credit)
+            )
+        })
+        .unwrap_or_default()
 }
 
 async fn home(State(app): State<App>) -> Response {
@@ -51,7 +42,7 @@ async fn home(State(app): State<App>) -> Response {
         None,
         &format!(
             "{}{}",
-            intro(credit.as_deref()),
+            credit_line(credit.as_deref()),
             super::chat::composer("/chat", "Start a chat")
         ),
     );
@@ -73,7 +64,7 @@ mod tests {
         assert_eq!(credit(Some(5)).as_deref(), Some("$0.05"));
         assert_eq!(credit(Some(0)), None);
         assert_eq!(credit(None), None);
-        assert!(intro(Some("$25")).contains("Every new account starts with $25 of credit."));
-        assert!(!intro(None).contains("credit"));
+        assert!(credit_line(Some("$25")).contains("Every new account starts with $25 of credit."));
+        assert!(credit_line(None).is_empty());
     }
 }

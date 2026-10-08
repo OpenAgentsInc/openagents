@@ -177,7 +177,7 @@ tw:active:bg-noir-stroke-subtle\">{content}{}</button>",
 }
 
 /// The homepage and chat composer: the repository, branch, and environment
-/// pickers, then a 640 by 195 pixel card holding the text box and its
+/// pickers, then a 640 by 155 pixel card holding the text box and its
 /// toolbar. Only the text box and the send button do anything yet.
 pub(crate) fn composer(action: &str, label: &str) -> String {
     let pickers = format!(
@@ -198,12 +198,12 @@ tw:hover:bg-noir-stroke-subtle tw:hover:text-noir-content tw:active:bg-noir-stro
 <form id=\"chat-form\" action=\"{action}\" method=\"post\">\
 <div class=\"tw:flex tw:items-center tw:gap-2 tw:min-h-8 tw:px-1.5 tw:pb-1.5\">{pickers}</div>\
 <div id=\"chat-card\" class=\"chat-composer-card tw:relative tw:flex tw:flex-col tw:overflow-hidden \
-tw:w-full tw:h-[195px] tw:rounded-xl tw:cursor-text tw:border tw:border-noir-stroke-subtle \
+tw:w-full tw:h-[155px] tw:rounded-xl tw:cursor-text tw:border tw:border-noir-stroke-subtle \
 tw:bg-noir-surface-subtle tw:focus-within:border-noir-stroke\">\
 <label class=\"unseen\" for=\"chat-input\">Message</label>\
-<textarea id=\"chat-input\" name=\"q\" rows=\"4\" maxlength=\"{MAX_CHARS}\" required autofocus \
+<textarea id=\"chat-input\" name=\"q\" rows=\"2\" maxlength=\"{MAX_CHARS}\" required autofocus \
 placeholder=\"Ask OpenAgents to build, fix bugs, explore\" \
-class=\"tw:block tw:flex-1 tw:w-full tw:min-h-[72px] tw:max-h-[400px] tw:m-0 tw:px-3 tw:py-3 \
+class=\"tw:block tw:flex-1 tw:w-full tw:min-h-[32px] tw:max-h-[360px] tw:m-0 tw:px-3 tw:py-3 \
 tw:border-0 tw:bg-transparent tw:resize-none tw:font-mono tw:text-sm \
 tw:text-noir-content tw:placeholder:text-noir-content-secondary tw:outline-none \
 tw:focus-visible:outline-none\"></textarea>\

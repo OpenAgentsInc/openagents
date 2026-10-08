@@ -224,7 +224,11 @@ async fn the_homepage_links_one_download_page_and_starts_a_chat() {
     let root = tempfile::tempdir().unwrap();
     let site = router(config(root.path().into()));
     let (_, home) = get(site.clone(), "/").await;
-    assert!(home.contains("<a class=\"button\" href=\"/download\">[ Download OpenAgents ]</a>"));
+    assert!(
+        home.contains("<a href=\"/download\">Download</a>"),
+        "the header links /download"
+    );
+    assert!(!home.contains("[ Download OpenAgents ]") && !home.contains("<h1>OpenAgents</h1>"));
     assert!(!home.contains("/install"), "every link says /download");
     assert!(!home.contains(".dmg"), "downloads live on /download");
     assert!(!home.contains("curl ") && !home.contains("irm "));
@@ -261,14 +265,14 @@ async fn the_composer_card_is_styled_by_the_served_tailwind_utilities() {
     let (_, home) = get(site.clone(), "/").await;
     assert!(home.contains("<link rel=\"stylesheet\" href=\"/static/tailwind.css\">"));
     assert!(home.contains("chat-composer-card"));
-    assert!(home.contains("tw:w-full tw:h-[195px]"));
+    assert!(home.contains("tw:w-full tw:h-[155px]"));
     assert!(home.contains("tw:max-w-[640px]"));
     assert!(home.contains("placeholder=\"Ask OpenAgents to build, fix bugs, explore\""));
     assert!(home.contains("<button type=\"submit\" aria-label=\"Send\""));
     let (status, headers, css) = get_with(site, "/static/tailwind.css", LOCAL).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(headers[header::CONTENT_TYPE], "text/css; charset=utf-8");
-    assert!(css.contains(".tw\\:h-\\[195px\\]{height:195px}"), "{css}");
+    assert!(css.contains(".tw\\:h-\\[155px\\]{height:155px}"), "{css}");
     assert!(
         css.contains(".tw\\:max-w-\\[640px\\]{max-width:640px}"),
         "{css}"

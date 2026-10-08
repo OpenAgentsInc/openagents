@@ -61,7 +61,7 @@ main:focus{outline:none}
 .error{color:var(--noir-danger);border-left:2px solid var(--noir-danger);padding-left:1ch}
 .notice{border:1px dashed var(--noir-stroke);padding:.75rem 2ch;color:var(--noir-content);margin:0 0 1.5rem}
 
-/* The homepage: the intro, then the composer. */
+/* A page's intro: its heading and lede. */
 .intro{margin:0 0 2rem}
 .intro h1{font-size:2rem;margin:0 0 .75rem}
 .lede{color:var(--noir-content);font-size:1.1rem;max-width:60ch}
