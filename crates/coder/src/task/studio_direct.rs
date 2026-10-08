@@ -75,6 +75,7 @@ impl Studio {
         &mut self,
         direct: Direct,
         computer: &str,
+        base: &str,
         now: u64,
     ) -> Result<(String, String), Error> {
         let Some(worktrees) = self.worktrees.clone() else {
@@ -100,6 +101,7 @@ impl Studio {
             &task_id,
             &title,
             Some("devin"),
+            Some(base),
         )
         .map_err(|message| Error::Tasks(super::super::Error::Io(std::io::Error::other(message))))?;
         let item = &mut self.state.goals[index].plan[0];

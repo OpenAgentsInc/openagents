@@ -2534,9 +2534,13 @@ impl Agents {
         remote
             .ready(name)
             .map_err(|why| RemoteRefusal::Local(format!("{why}, so I'm doing it here")))?;
-        let base = git_line(path, &["rev-parse", "HEAD"]).map_err(|why| {
+        // A remote clone can only fetch what `origin` published: the
+        // checkout's own commit when a remote branch contains it, else the
+        // pushed default head (`origin/HEAD`) — the local worktree bases
+        // on the same commit so the returned patch lands cleanly.
+        let base = pushed_base(path).map_err(|why| {
             RemoteRefusal::Fail(
-                format!("I can't read the checkout's commit: {why}"),
+                format!("I can't read the checkout's pushed commit: {why}"),
                 "no base".into(),
             )
         })?;
@@ -2560,7 +2564,7 @@ impl Agents {
             .ensure(name, &checkout, &origin, &base)
             .map_err(|why| unreachable(name, &why))?;
         let (goal, task) = studio
-            .submit_remote(direct.clone(), name, now)
+            .submit_remote(direct.clone(), name, &base, now)
             .map_err(|why| {
                 RemoteRefusal::Fail(
                     format!("The studio refused the task: {why}"),
@@ -3569,6 +3573,21 @@ fn unreachable(name: &str, why: &str) -> RemoteRefusal {
     } else {
         RemoteRefusal::Fail(why.to_owned(), "remote".into())
     }
+}
+
+/// The commit a remote task may start from in `dir`'s repository: `HEAD`
+/// when a remote-tracking branch contains it, else `origin/HEAD` — a
+/// commit `origin` cannot have is a commit a remote computer cannot fetch
+/// (#10930).
+fn pushed_base(dir: &Path) -> Result<String, String> {
+    let head = git_line(dir, &["rev-parse", "HEAD"])?;
+    if !git_line(dir, &["branch", "-r", "--contains", &head])
+        .unwrap_or_default()
+        .is_empty()
+    {
+        return Ok(head);
+    }
+    git_line(dir, &["rev-parse", "origin/HEAD^{commit}"])
 }
 
 /// `git -C dir ARGS`'s trimmed standard output, for the workspace reads a

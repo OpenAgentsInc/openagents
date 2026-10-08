@@ -1651,6 +1651,7 @@ impl Studio {
                         &slot.task_id,
                         &title,
                         Some(seat.route.provider.as_str()),
+                        None,
                     )
                     .map_err(|message| {
                         Error::Tasks(super::Error::Io(std::io::Error::other(message)))

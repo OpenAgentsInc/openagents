@@ -201,14 +201,23 @@ impl Cli {
             if ran.status.success() {
                 Ok(String::from_utf8_lossy(&ran.stdout).into_owned())
             } else {
-                // `exec`'s exit is the remote command's; the error names it
-                // so a caller classifies the code, never the script text.
+                // `exec`'s exit is the remote command's; the remote's own
+                // output lands on stdout, stderr holds the CLI's words —
+                // report whichever names the refusal.
                 let error = String::from_utf8_lossy(&ran.stderr);
+                let out = String::from_utf8_lossy(&ran.stdout);
+                let detail = if error.trim().is_empty() {
+                    let tail = out.trim().lines().rev().take(4).collect::<Vec<_>>();
+                    tail.into_iter().rev().collect::<Vec<_>>()
+                } else {
+                    error.trim().lines().collect::<Vec<_>>()
+                }
+                .join(" ");
                 Err(format!(
                     "{name}'s `{}` exited {}: {}",
                     words[0],
                     ran.status.code().unwrap_or(-1),
-                    error.trim()
+                    detail
                 ))
             }
         })
@@ -259,7 +268,7 @@ impl Remote for Cli {
                 // `origin`; 2 is the clone refusing. Every other failure
                 // is the exec itself: the computer's own words say why.
                 if why.contains("exited 3") || why.contains("exited 128") {
-                    format!("the starting commit is not pushed, so {name} cannot fetch it")
+                    format!("the starting commit is not pushed ({why}), so {name} cannot fetch it")
                 } else {
                     why
                 }

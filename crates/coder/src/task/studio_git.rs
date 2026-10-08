@@ -362,6 +362,7 @@ pub fn prepare(
     task: &str,
     title: &str,
     requested: Option<&str>,
+    base: Option<&str>,
 ) -> Result<PathBuf, String> {
     if let Some(record) = local::record(store, task) {
         return Ok(PathBuf::from(record.worktree));
@@ -378,7 +379,8 @@ pub fn prepare(
         // A release a crash interrupted made it; nothing ran in it yet.
         out(&path, &["rev-parse", "--verify", "HEAD^{commit}"])?
     } else {
-        let base = out(&top, &["rev-parse", "--verify", "HEAD^{commit}"])
+        let start = base.unwrap_or("HEAD");
+        let base = out(&top, &["rev-parse", "--verify", &format!("{start}^{{commit}}")])
             .map_err(|why| format!("the checkout has no commit to start from: {why}"))?;
         let name = branch(seat, task, title);
         // `-B`: a branch an interrupted release left is this task's own.
