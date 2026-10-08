@@ -520,7 +520,8 @@ mod tests {
         assert_eq!(
             computers
                 .credentials(&alice, OwnCredential::AnthropicApiKey, 12)
-                .err().unwrap(),
+                .err()
+                .unwrap(),
             claude::REVOKED_REFUSAL
         );
         let env = computers
@@ -536,7 +537,8 @@ mod tests {
         assert_eq!(
             computers
                 .credentials(&alice, OwnCredential::Bedrock, 13)
-                .err().unwrap(),
+                .err()
+                .unwrap(),
             claude::REVOKED_REFUSAL
         );
         assert_eq!(computers.sign_in(&alice, 13).unwrap(), SignIn::PlanLogin);
