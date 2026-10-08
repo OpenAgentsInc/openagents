@@ -773,6 +773,10 @@ fn line(view: &wire::AgentView) -> String {
     )
 }
 
+fn proposed_line(pending: &wire::Proposal) -> String {
+    format!("PROPOSED: {} ({})", pending.command, pending.why)
+}
+
 fn list(output: &Output, root: &Path, args: &Args) -> Result<(), Fail> {
     let (agents, live) = agents(root, args)?;
     let value = json!({"agents": agents.agents, "host": live});
@@ -837,10 +841,7 @@ fn show(output: &Output, root: &Path, name: &str, args: &Args, now: u64) -> Resu
         if let Some(view) = &view {
             text.push(line(view));
             if let Some(pending) = &view.pending {
-                text.push(format!(
-                    "PROPOSED: {} ({}) -- openagents agent answer {name} confirm|reject",
-                    pending.command, pending.why
-                ));
+                text.push(proposed_line(pending));
             }
             if let Some(change) = &view.change {
                 text.push(format!("change: task {} ({})", change.task, change.stage));
@@ -977,10 +978,7 @@ fn ask(output: &Output, name: &str, text: &str, args: &Args) -> Result<(), Fail>
                 && proposed != Some(pending.step)
             {
                 proposed = Some(pending.step);
-                println!(
-                    "PROPOSED: {} ({}) -- openagents agent answer {name} confirm|reject",
-                    pending.command, pending.why
-                );
+                println!("{}", proposed_line(pending));
             }
         }
         if !view.busy && view.service.requests > before {
@@ -1990,6 +1988,19 @@ mod tests {
     fn args(words: &[&str]) -> Args {
         let words: Vec<String> = words.iter().map(|w| (*w).to_string()).collect();
         Args::parse(&words, SWITCHES).unwrap()
+    }
+
+    #[test]
+    fn proposed_line_has_command_and_reason_without_hint() {
+        let pending = wire::Proposal {
+            step: 1,
+            command: "cargo test -p openagents-cli".into(),
+            why: "runs tests".into(),
+        };
+        assert_eq!(
+            proposed_line(&pending),
+            "PROPOSED: cargo test -p openagents-cli (runs tests)"
+        );
     }
 
     #[test]
