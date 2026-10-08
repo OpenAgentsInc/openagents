@@ -220,6 +220,19 @@ Original JSON, artifact identity, and separate compile and validation
 exits are retained under remote scratch `w11-wasm-1f2b900f04c43f8b6dd2b5d1765b1c0e06c2de4f`
 and Mac scratch `w11-wasm-startup-proof-1f2b900f04c43f8b6dd2b5d1765b1c0e06c2de4f`.
 Compile fresh artifacts after the focused tier regressions pass.
+At the rebased checkpoint `732c49a582474fa6e669716637d1e0b194d5e8ba`,
+the focused engine and PBR water tests pass (6 and 55), the explicit wasm32
+check passes, and both release filtered `--no-run` artifacts compile.
+Matched glue and source input identities pass staging verification.
+The first native raster measurement fails Low's `pond-noon` acceptance
+(`within_budget || effects_reduced`). It has no GPU validation crash.
+The harness wrote evidence after assertions, so that view's timing data
+was lost; logs and the original executable identity remain in Mac scratch
+`w11-metrics-732c49a582474fa6e669716637d1e0b194d5e8ba/native`.
+The harness now saves each record before assertions and accepts
+`WATER_W11_CASE=low/pond-noon` for a bounded diagnostic run. Compile that
+focused release example again under the coordinator's token, then retain
+the actual values before choosing a policy or budget correction.
 
 The coordinator holds the team build token. Request a window before
 Cargo or measurement, use at most four jobs for W11, and preserve the
