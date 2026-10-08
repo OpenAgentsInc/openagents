@@ -172,7 +172,7 @@ fn water_shoal(k: f32, depth: f32) -> f32 {
 // The Gerstner displacement (xyz, m) of rest point `p0` of body `b`, and how
 // tightly the waves squeeze the surface there (w, crests near one). Each
 // amplitude is scaled by `scale` and the shallow-water factor.
-fn water_gerstner(b: u32, p0: vec2<f32>, depth: f32, scale: f32, spacing: f32) -> vec4<f32> {
+fn water_gerstner(b: u32, p0: vec2<f32>, depth: f32, scale: f32) -> vec4<f32> {
     var d = vec3<f32>(0.0);
     var squeeze = 0.0;
     let count = i32(water.bodies[b].params.x);
