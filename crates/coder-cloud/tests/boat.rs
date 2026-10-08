@@ -113,6 +113,8 @@ async fn integrated_agent_keeps_exact_selection_redacts_output_and_confirms_stop
     assert_eq!(seen[11].method, "GET");
 }
 
+// The launch script runs on Linux boat hosts: it needs `flock(1)` and `/proc`.
+#[cfg(target_os = "linux")]
 #[test]
 fn headless_launch_runs_once_and_retains_ndjson_with_the_selected_model() {
     use std::os::unix::fs::PermissionsExt;

@@ -201,6 +201,8 @@ async fn revoked_epochs_refuse_execution_and_host_loss_is_confirmed_without_repl
     );
     lost.cleanup(&r).await.unwrap();
 }
+// `setsid(1)` is util-linux; the pool hosts this models are Linux.
+#[cfg(target_os = "linux")]
 #[test]
 fn cancellation_confirms_the_remote_process_group_is_gone() {
     use std::process::Command;

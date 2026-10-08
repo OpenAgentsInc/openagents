@@ -48,9 +48,9 @@ fn record(root: &Path) -> Record {
 }
 #[test]
 fn dirty_and_admitted_untracked_files_round_trip_without_copying_other_files() {
-    let source = tempfile::tempdir().unwrap();
-    let local = tempfile::tempdir().unwrap();
-    let remote = tempfile::tempdir().unwrap();
+    let source = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
+    let local = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
+    let remote = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
     git(source.path(), &["init", "-q"]);
     fs::write(source.path().join("tracked.txt"), "baseline\n").unwrap();
     fs::write(source.path().join("other.txt"), "unselected\n").unwrap();
@@ -153,8 +153,8 @@ fn dirty_and_admitted_untracked_files_round_trip_without_copying_other_files() {
 }
 #[test]
 fn transfer_rejects_unsafe_paths_credentials_and_changed_input() {
-    let source = tempfile::tempdir().unwrap();
-    let local = tempfile::tempdir().unwrap();
+    let source = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
+    let local = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
     git(source.path(), &["init", "-q"]);
     fs::write(source.path().join("tracked"), "fixture").unwrap();
     git(source.path(), &["add", "."]);

@@ -488,7 +488,7 @@ oa_install() {
   fi
   mkdir -p "$HOME/.oa-pool/bin"
   for b in openagents microcoder coder-cloud-runtime runtime.json rev; do
-    ln -sfn "$installed/$b" "$HOME/.oa-pool/bin/$b.next" && mv -Tf "$HOME/.oa-pool/bin/$b.next" "$HOME/.oa-pool/bin/$b" || return 3
+    ln -sfn "$installed/$b" "$HOME/.oa-pool/bin/$b.next" && mv -f "$HOME/.oa-pool/bin/$b.next" "$HOME/.oa-pool/bin/$b" || return 3
   done
 }
 oa_build() {
