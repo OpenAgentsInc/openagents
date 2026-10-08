@@ -913,9 +913,18 @@ pub struct PhotoTargets {
     /// The particles' group 3 with the depth copy for their soft fade.
     fx_group: wgpu::BindGroup,
     temporal: Option<super::temporal::Targets>,
+    #[cfg(feature = "diagnostics")]
+    temporal_snapshot: Option<TemporalSceneSnapshot>,
     water_bytes: u64,
     water_plan: crate::water::screen::Plan,
     water_effects: verse_engine::quality::WaterEffects,
+}
+
+#[cfg(feature = "diagnostics")]
+struct TemporalSceneSnapshot {
+    texture: wgpu::Texture,
+    view: wgpu::TextureView,
+    captured: bool,
 }
 
 /// Read-only textures and jittered cameras from the last enabled temporal resolve.
@@ -926,6 +935,8 @@ pub struct TemporalDiagnosticViews<'a> {
     pub marker_current: bool,
     pub history: &'a wgpu::TextureView,
     pub scene: &'a wgpu::TextureView,
+    /// The resolved scene copied before temporal resolve, when requested.
+    pub before_temporal: Option<&'a wgpu::TextureView>,
     pub current: [[f32; 4]; 4],
     pub previous: [[f32; 4]; 4],
 }
@@ -943,9 +954,48 @@ impl PhotoTargets {
             marker_current: temporal.reactive_written,
             history: temporal.history_view(),
             scene: &self.scene,
+            before_temporal: self
+                .temporal_snapshot
+                .as_ref()
+                .filter(|s| s.captured)
+                .map(|s| &s.view),
             current,
             previous,
         })
+    }
+
+    /// Requests a resolved HDR snapshot before the next temporal resolve.
+    /// Only requested frames allocate and copy this diagnostic texture.
+    #[cfg(feature = "diagnostics")]
+    pub fn set_temporal_diagnostic_snapshot(&mut self, device: &wgpu::Device, enabled: bool) {
+        if !enabled || self.temporal.is_none() {
+            self.temporal_snapshot = None;
+            return;
+        }
+        if let Some(snapshot) = &mut self.temporal_snapshot {
+            snapshot.captured = false;
+            return;
+        }
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("verse scene before temporal resolve"),
+            size: wgpu::Extent3d {
+                width: self.size[0],
+                height: self.size[1],
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: self.scene_texture.format(),
+            usage: wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+        let view = texture.create_view(&Default::default());
+        self.temporal_snapshot = Some(TemporalSceneSnapshot {
+            texture,
+            view,
+            captured: false,
+        });
     }
 
     /// Whether this view can retain temporal history on its adapter and tier.
@@ -3216,7 +3266,7 @@ impl Photo {
             height,
             1,
             1,
-            if copies {
+            if copies || cfg!(feature = "diagnostics") {
                 sampled | wgpu::TextureUsages::COPY_SRC
             } else {
                 sampled
@@ -3329,6 +3379,8 @@ impl Photo {
             water_group,
             fx_group,
             temporal,
+            #[cfg(feature = "diagnostics")]
+            temporal_snapshot: None,
         }
     }
 
@@ -4868,6 +4920,23 @@ impl Photo {
         reactive: Option<super::temporal::ReactiveLit<'_>>,
     ) {
         if let (Some(temporal), Some(history)) = (&self.temporal, &mut targets.temporal) {
+            #[cfg(feature = "diagnostics")]
+            if let Some(snapshot) = &mut targets.temporal_snapshot {
+                snapshot.captured = history.enabled;
+                if history.enabled {
+                    // The color pass has already resolved MSAA. Preserve this
+                    // single-sample scene before temporal sharpening overwrites it.
+                    encoder.copy_texture_to_texture(
+                        targets.scene_texture.as_image_copy(),
+                        snapshot.texture.as_image_copy(),
+                        wgpu::Extent3d {
+                            width: targets.size[0],
+                            height: targets.size[1],
+                            depth_or_array_layers: 1,
+                        },
+                    );
+                }
+            }
             temporal.encode(queue, encoder, &targets.scene, history, motions, reactive);
         }
     }
