@@ -183,6 +183,14 @@ impl Timer {
                         u64::from_ne_bytes(bytes[i * 8..i * 8 + 8].try_into().unwrap())
                     });
                     let value = sample(*frame, ticks, *mask, self.period);
+                    #[cfg(feature = "diagnostics")]
+                    if *frame <= 16 {
+                        eprintln!(
+                            "water timestamps: frame={frame} mask={mask} period={} ticks={ticks:?} valid={}",
+                            self.period,
+                            value.is_some()
+                        );
+                    }
                     if value
                         .is_some_and(|v| latest.is_none_or(|old: GpuSample| v.frame > old.frame))
                     {
@@ -220,8 +228,22 @@ impl Timer {
         let Some(slot) = slot.map(|i| &self.slots[i]) else {
             return;
         };
-        encoder.resolve_query_set(&slot.query, 0..8, &slot.resolve, 0);
-        encoder.copy_buffer_to_buffer(&slot.resolve, 0, &slot.readback, 0, 64);
+        // An unwritten query can stall Vulkan or invalidate Metal readback.
+        // Every resolve starts at the required 256-byte alignment; copy each
+        // written pair to its own position before reusing the resolve buffer.
+        for pass in 0..4 {
+            if mask & (1 << pass) == 0 {
+                continue;
+            }
+            encoder.resolve_query_set(&slot.query, pass * 2..pass * 2 + 2, &slot.resolve, 0);
+            encoder.copy_buffer_to_buffer(
+                &slot.resolve,
+                0,
+                &slot.readback,
+                u64::from(pass) * 16,
+                16,
+            );
+        }
     }
     pub fn submitted(&mut self, slot: Option<usize>, mask: u8) {
         if mask & 8 == 0 {
