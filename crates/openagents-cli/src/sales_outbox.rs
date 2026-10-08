@@ -7,10 +7,16 @@ use std::{io::Read, path::Path, sync::atomic::AtomicBool};
 pub(super) const USAGE: &str =
     "usage: openagents sales outbox COMMAND --root DIR --credential FILE [--json]
   view                          Read the owner's exact approval subjects and attempt states.
+  batch-qualification [--mode live|fixture]
+                                Measure level-0 operation for a reviewed batch. Meeting it grants nothing.
   propose --input FILE --mailbox-key FILE
                                 Reserve counts and freeze recipient, content, and authority.
   apply --input FILE [--mailbox-key FILE]
                                 Approve an exact subject, record owner sends, pause, or review restart.
+                                Also grant_batch, revoke_batch, and raise_batch (REV-66): a grant lists
+                                up to five exact proposed subjects from one template version, the
+                                current qualification digest, every item's read receipt in the first
+                                five batches, and a bounded expiry.
   fixture --proposal ID --subject-sha256 SHA --input FILE --mailbox-key FILE
                                 Consume one fixture approval with bounded synthetic evidence.
   dispatch --proposal ID --subject-sha256 SHA --mailbox-key FILE
@@ -63,6 +69,7 @@ pub(super) fn run(output: &Output, words: &[String]) -> u8 {
         let command = args.positional()[0].as_str();
         let allowed: &[&str] = match command {
             "view" => &[],
+            "batch-qualification" => &["mode"],
             "propose" | "apply" => &["input", "mailbox-key"],
             "fixture" => &["proposal", "subject-sha256", "input", "mailbox-key"],
             "dispatch" => &["proposal", "subject-sha256", "mailbox-key"],
@@ -82,6 +89,17 @@ pub(super) fn run(output: &Output, words: &[String]) -> u8 {
         )?))?)?;
         if command == "view" {
             return store.sales_outbox_view(&access);
+        }
+        if command == "batch-qualification" {
+            let mode = match args.option("mode").unwrap_or("live") {
+                "live" => outbox::Mode::Live,
+                "fixture" => outbox::Mode::Fixture,
+                _ => return Err("outbox batch mode is live or fixture".into()),
+            };
+            let qualification = store.outbox_batch_qualification(&access, mode)?;
+            return Ok(
+                json!({"qualification_sha256":qualification.sha256()?,"qualification":qualification,"outbound_authority":false}),
+            );
         }
         let keys: Box<dyn email::MailboxCredentials> =
             if let Some(path) = args.option("mailbox-key") {

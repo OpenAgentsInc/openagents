@@ -1927,3 +1927,14 @@ Owner steps:
   period, and payout rail (O7). Until then `Limits` stays all-false and no
   brief or draft may promise earnings.
 - Name the growth owner recorded in each binding.
+
+## REV-66 reviewed batches (#10873)
+
+Code is complete: `grant_batch`, `revoke_batch`, `raise_batch`, and
+`openagents sales outbox batch-qualification`. Owner steps:
+
+- Run four real clean weeks at level 0 with at least 100 delivered live
+  messages across 25 permissioned contacts; fixture history never counts
+  toward a live grant.
+- Read every item of the first five batches and grant each batch against
+  the exact qualification digest. Nothing promotes on its own.

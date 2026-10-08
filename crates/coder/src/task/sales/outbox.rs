@@ -5,6 +5,8 @@ use base64::{Engine, engine::general_purpose::STANDARD};
 use serde_json::Value;
 use std::sync::atomic::AtomicBool;
 
+pub mod batch;
+
 pub const PROPOSAL_SCHEMA: &str = "openagents.sales.outbox-proposal.v1";
 pub const SUBJECT_SCHEMA: &str = "openagents.sales.outbox-subject.v1";
 pub const COMMAND_SCHEMA: &str = "openagents.sales.outbox-command.v1";
@@ -211,6 +213,8 @@ pub struct Projection {
     pub reconciliations_are_delivery_evidence: bool,
     pub outbound_authority: bool,
     pub capabilities: Vec<Capability>,
+    #[serde(default)]
+    pub batches: batch::Book,
 }
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -268,6 +272,8 @@ pub(super) struct Book {
     pub cap: u32,
     pub cap_started_at: u64,
     pub paused: bool,
+    #[serde(default)]
+    pub batches: batch::Book,
     commands: BTreeMap<String, (String, String, u64)>,
 }
 impl Book {
@@ -281,6 +287,7 @@ impl Book {
         {
             return Err("outbox history or cap exceeds its bound".into());
         }
+        self.batches.check()?;
         for (id, entry) in &self.reconciliations {
             super::id(id)?;
             super::id(&entry.owner)?;
@@ -542,6 +549,17 @@ pub enum Operation {
     RaiseCap {
         cap: u32,
         operating_week_sha256: String,
+        owner_review_sha256: String,
+    },
+    GrantBatch {
+        grant: batch::Grant,
+    },
+    RevokeBatch {
+        grant: String,
+        reference_sha256: String,
+    },
+    RaiseBatch {
+        size: u32,
         owner_review_sha256: String,
     },
 }
@@ -1237,6 +1255,7 @@ impl Store {
             )?;
         }
         Ok(Projection {
+            batches: self.state.outbox.batches.clone(),
             schema: PROJECTION_SCHEMA.into(),
             revision: self.state.outbox.revision,
             controller_epoch: self.state.outbox.epoch,
@@ -1481,6 +1500,7 @@ impl Store {
                         },
                     );
                     next.outbox.paused = true;
+                    next.outbox.batches.reset(now);
                     next.outbox.epoch = next
                         .outbox
                         .epoch
@@ -1504,6 +1524,7 @@ impl Store {
                     },
                 );
                 next.outbox.paused = true;
+                next.outbox.batches.reset(now);
                 next.outbox.epoch = next
                     .outbox
                     .epoch
@@ -1580,6 +1601,17 @@ impl Store {
                     .checked_add(1)
                     .ok_or("outbox epoch overflow")?;
             }
+            Operation::GrantBatch { grant } => {
+                next = self.outbox_grant_batch(access, grant, keys, now)?;
+            }
+            Operation::RevokeBatch {
+                grant,
+                reference_sha256,
+            } => batch::revoke(&mut next, &grant, reference_sha256, now)?,
+            Operation::RaiseBatch {
+                size,
+                owner_review_sha256,
+            } => batch::raise(&mut next, size, &owner_review_sha256, now)?,
             Operation::RaiseCap {
                 cap,
                 operating_week_sha256,
@@ -1682,6 +1714,7 @@ impl Store {
         {
             return Err("outbox dispatch requires one exact unconsumed owner decision".into());
         }
+        self.outbox_batch_current(id, subject_sha256, (self.clock)())?;
         let subject = row.subject.ok_or("outbox original subject was minimized")?;
         let (prepared, mime) = self.outbox_current(access, &subject, keys)?;
         let policy = self.email_policy(&subject.proposal.message.policy_sha256, (self.clock)())?;
@@ -1782,6 +1815,7 @@ impl Store {
                 },
             );
             next.outbox.paused = true;
+            next.outbox.batches.reset((self.clock)());
             next.outbox.epoch = next
                 .outbox
                 .epoch
