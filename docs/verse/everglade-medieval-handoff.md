@@ -91,9 +91,12 @@ unchanged.
 ## What's open
 
 - **P3 (#10896).** Claimed on October 8 on `codex/everglade-p3`.
-  The canonical report covers all 65 houses: 3,156–11,988 triangles,
+  The initial canonical report covers all 65 houses: 3,156–11,988 triangles,
   26–70 selected draws, and 10–12 materials at each of 10, 50, and 120 m.
-  The market hall alone exceeds the near triangle budget. The renderer
+  The current-source export reduces actual near submissions to 10–12 draws
+  for all 65 houses. The market hall alone exceeds the near triangle budget.
+  Middle and far still select original pieces until their private models
+  are generated and admitted. The renderer
   checkpoint `f41cc66779` groups original house submissions at one anchor,
   keeps their destruction ranges and actual world bounds, and selects one
   distance level with shared hysteresis. Its two focused regressions pass,
@@ -168,8 +171,13 @@ and build-report SHA-256
 `5362a674915f8cbabdd2503a6a12e874b7cfb2630eaa0ffb556fa3b2b9cea2cc`.
 `raw-kit-p3.log` confirms 53 pieces, zero skips, and 28 textures. The approved
 compiled export writes `house-check-p3-source/` and its log, including a
-normalized recipe manifest for the corrected CPU atlas batches. The actual
-all-house distance budgets and post-gap coplanar report are still pending.
+normalized recipe manifest for the corrected CPU atlas batches. It passes
+in 244 seconds and records all 65 houses with 10–12 actual near draws and
+3,156–11,988 triangles. The manifest has 65 unique recipes and SHA-256
+`6c035e6b195f0a960c988e05c39aa3e2b6ff49f9a6f6230dfb25b5a4d36deb15`.
+`house-check-p3-source-report.json` retains the extracted distance report.
+The 33 corrected atlas batches, actual all-house distance budgets, and
+post-gap coplanar report are still pending.
 
 The portable headless CPU runtime is Blender 4.5.14 LTS. Its official archive
 SHA-256 is `9ba871ff2ecd36526b77432745980b7e6664ecd0c7ca11c48849073dcfe06da3`.
