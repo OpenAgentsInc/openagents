@@ -130,6 +130,16 @@ pub async fn ask(buyer: &Identity, ask: &Ask) -> Result<Answer, String> {
     conn.send(json!(["REQ", "answer", filter])).await?;
     let sent_at_unix = now();
     let sent = Instant::now();
+    // Verse draws the beam to Alice's station while this mark stands; it
+    // drops however the job ends.
+    let in_flight = crate::inflight::Mark::new(
+        &ask.home,
+        &crate::inflight::Job {
+            request: request.id.clone(),
+            pylon: beacon.address(),
+            started_at: sent_at_unix,
+        },
+    );
     conn.send(json!(["EVENT", request])).await?;
 
     let mut contact_ms = None;
@@ -197,6 +207,7 @@ pub async fn ask(buyer: &Identity, ask: &Ask) -> Result<Answer, String> {
     if text.is_none() && error.is_none() {
         error = Some(format!("no answer within {} s", ask.wait.as_secs()));
     }
+    drop(in_flight);
 
     let tokens = usage
         .as_ref()

@@ -1,7 +1,7 @@
 {
   "schema": "openagents.verse-world-tree.v1",
   "zone": "everglade",
-  "digest": "sha256:e39c4e5d9e5fe613066412935e03610e5cc52362e8f8f40f5b976ec2d03622fa",
+  "digest": "sha256:c51274841a37f76ee49963394730a18f16260e34b5c672d353ff380495dbb8d7",
   "nodes": [
     {
       "id": "everglade",
@@ -5491,7 +5491,7 @@
       "district": "wilds",
       "stand": [
         -28.48,
-        140.49
+        139.74
       ],
       "facing": 0.0,
       "source": "pylon-field:wellspring"

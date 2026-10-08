@@ -17,9 +17,7 @@ To run your own from a checkout on the box, use `scripts/pylon-psionic.sh
 setup` and `start --allow <your npub>` (`docs/compute/pylon.md`); delete
 `~/work/pylon-p1` afterward (about 20 GB with build output). The owner
 decided on 2026-10-07 that pylon traffic, test jobs included, uses the
-production relay. Still waiting: the P1
-captures (`pylon-field-two-machines.png`, `wellspring-live.png`), which wait
-for P0's field in Everglade.
+production relay.
 
 ## Cloud BYOK credentials (#10917)
 

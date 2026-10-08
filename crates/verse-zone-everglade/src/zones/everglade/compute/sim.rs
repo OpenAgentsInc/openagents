@@ -71,6 +71,10 @@ impl ComputeSource for Sim {
             rate: 60 + (phase % 4) as u32 * 90,
             pool: "demo".into(),
             demo: true,
+            // One of the demo jobs is this computer's, on the GPU tower, and the
+            // demo aggregate recomputes, so the beam and the rim both show.
+            in_flight: vec!["demo:pylon-1".into()],
+            verified: true,
         }
     }
 }

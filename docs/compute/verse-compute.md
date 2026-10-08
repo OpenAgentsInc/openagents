@@ -650,10 +650,17 @@ refused in a test; captures `pylon-field-two-machines.png` and
 - Pylon traffic, test jobs included, uses the production relay
   (owner's decision, 2026-10-07).
 
+- Verse's desktop build draws the relay's pylons beside this computer's
+  (`zones::everglade::compute::relay`, feature `pylon-relay`): a background
+  subscription that verifies every beacon, receipt, and aggregate, shows a
+  stale beacon as unknown, and drives the Wellspring's ripples from a valid
+  aggregate. The web and phones leave the field dormant.
+- While `openagents pylon ask` runs a job, the beam flows from the
+  Wellspring to Alice's station, with a fork from the pylon serving it.
+
 Not yet: `coder host share` (the provider is a separate command, not part of
-the Coder host), the `background` lease, Alice's routing to the pool, Verse
-drawing `RelayField` (P0's field is still in progress), NIP-OA owner tags,
-and the two captures.
+the Coder host), the `background` lease, routing Coder's own delegated work
+to the pool, and NIP-OA owner tags.
 
 ### P2: checks and reputation
 

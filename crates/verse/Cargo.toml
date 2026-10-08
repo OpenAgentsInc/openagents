@@ -8,7 +8,10 @@ publish.workspace = true
 
 [features]
 default = ["desktop"]
-desktop = ["dep:winit", "dep:arboard", "verse-zone-everglade/desktop", "model-host", "xp-host", "replay-host", "capture", "panels", "studio-host", "imported-desktop", "terminal", "crypt", "crypt-fight"]
+desktop = ["dep:winit", "dep:arboard", "verse-zone-everglade/desktop", "model-host", "xp-host", "replay-host", "capture", "panels", "studio-host", "imported-desktop", "terminal", "crypt", "crypt-fight", "pylon-relay"]
+# Everglade's Pylon Field from the relay's NIP-PYLON beacons beside this
+# computer's own pylon (`zones::everglade::compute::relay`). Native only.
+pylon-relay = ["verse-zone-everglade/pylon-relay"]
 model-host = ["dep:coder", "dep:coder-delegate", "verse-zone-everglade/model-host"]
 xp-host = ["dep:xp-ledger", "verse-net/xp"]
 replay-host = ["dep:gym", "dep:knowledge"]

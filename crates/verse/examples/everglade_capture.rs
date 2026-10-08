@@ -53,9 +53,14 @@
 //!   picks the field's source: `idle` (this example's own empty lease
 //!   table), `busy` (the same table with one build lease the example
 //!   holds), `unknown` (a lease root that doesn't exist), `demo` (the
-//!   labeled DEMO pool), or `dormant` (no source, as on the web). With
+//!   labeled DEMO pool), `dormant` (no source, as on the web), or `live`
+//!   (the desktop's field: this computer's real lease table, read only,
+//!   beside the relay's pylons from their verified beacons; it waits for
+//!   the relay, and `VERSE_CAPTURE_COMPUTE_WAIT` naming `busy`, `job`, or
+//!   both waits for a busy relay pylon or a job in flight). With
 //!   `VERSE_CAPTURE_ALICE_WORKING` set, Alice's seat is running at her
-//!   workstation, so the beam runs to it. No real lease table is read.
+//!   workstation, so the beam runs to it. Only `live` reads the real lease
+//!   table.
 //! - `studio-atrium`: inside the gate, at the goal board, with the goal
 //!   bar and its waiting badge over the view.
 //! - `studio-yard`, `studio-hall`, and `studio-atrium`: views of a running
@@ -450,6 +455,7 @@ fn compute(
         zones::everglade::compute::local::unified_memory(),
     );
     let source: Option<Box<dyn zones::everglade::compute::ComputeSource>> = match how.as_str() {
+        "live" => live_compute()?,
         "dormant" => None,
         "demo" => Some(Box::new(Sim)),
         "unknown" => Some(Box::new(LocalSource::new(
@@ -469,7 +475,7 @@ fn compute(
         }
         other => {
             return Err(format!(
-                "VERSE_CAPTURE_COMPUTE is idle, busy, unknown, demo, or dormant, got {other}"
+                "VERSE_CAPTURE_COMPUTE is live, idle, busy, unknown, demo, or dormant, got {other}"
             ));
         }
     };
@@ -498,6 +504,73 @@ fn compute(
     };
     runtime.set_compute_source(source);
     Ok(Some((dir, lease)))
+}
+
+/// The desktop's field for `VERSE_CAPTURE_COMPUTE=live`: this computer
+/// from its real lease table, read without changing it, beside the relay's
+/// pylons from their verified beacons. Waits until the relay subscription
+/// has caught up, and while `VERSE_CAPTURE_COMPUTE_WAIT` names `busy`, until a
+/// relay pylon is busy, and `job`, until one of this computer's jobs is in flight, for at
+/// most `VERSE_CAPTURE_COMPUTE_TIMEOUT` seconds (90 by default). Prints
+/// what the relay showed.
+#[cfg(feature = "pylon-relay")]
+fn live_compute() -> Result<Option<Box<dyn zones::everglade::compute::ComputeSource>>, String> {
+    use zones::everglade::compute::{
+        ComputeSource, Merged, local::LocalSource, relay::RelaySource,
+    };
+    let local = LocalSource::from_env()?;
+    let mut relay = RelaySource::from_env().ok_or("VERSE_PYLON_RELAY is off")?;
+    let wait = std::env::var("VERSE_CAPTURE_COMPUTE_WAIT").unwrap_or_default();
+    let (busy, job) = (wait.contains("busy"), wait.contains("job"));
+    let timeout = std::env::var("VERSE_CAPTURE_COMPUTE_TIMEOUT")
+        .ok()
+        .and_then(|t| t.parse::<u64>().ok())
+        .unwrap_or(90);
+    let started = std::time::Instant::now();
+    loop {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs());
+        let sample = relay.sample(now);
+        let ready = relay.synced()
+            && (!busy || sample.pylons.iter().any(|p| p.busy > 0))
+            && (!job || !sample.in_flight.is_empty());
+        if ready || started.elapsed().as_secs() >= timeout {
+            for p in &sample.pylons {
+                println!(
+                    "relay pylon {} ({}): {:?}, {} of {} busy, {} jobs, observed {} s ago",
+                    p.label,
+                    p.id,
+                    p.status,
+                    p.busy,
+                    p.total,
+                    p.jobs,
+                    now.saturating_sub(p.observed_at)
+                );
+            }
+            println!(
+                "relay synced {}, rate {} a minute, aggregate recomputed {}, jobs in flight {:?}",
+                relay.synced(),
+                sample.rate,
+                sample.verified,
+                sample.in_flight
+            );
+            if !ready {
+                return Err(format!("the relay field wasn't ready within {timeout} s"));
+            }
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(250));
+    }
+    Ok(Some(Box::new(Merged(vec![
+        Box::new(local),
+        Box::new(relay),
+    ]))))
+}
+
+#[cfg(not(feature = "pylon-relay"))]
+fn live_compute() -> Result<Option<Box<dyn zones::everglade::compute::ComputeSource>>, String> {
+    Err("VERSE_CAPTURE_COMPUTE=live needs the pylon-relay feature".into())
 }
 
 /// The aerial camera's eye and target: `overhead`'s, or

@@ -113,8 +113,19 @@ matches.
 `pylon` world state: status (`unknown` when stale), family, tier, busy and
 total slots, accepted receipt-backed jobs from the last 24 hours, and
 uptime. `pylon::field::glowing` says whether a pylon is serving right now.
-`openagents pylon status --json` prints the same states. Verse's Pylon Field
-reads this source; see the P1 notes in [verse-compute](verse-compute.md#p1-presence-and-free-jobs-over-nostr).
+`openagents pylon status --json` prints the same states.
+
+Verse subscribes instead of polling: `RelayField::watch` holds one
+subscription to the pool's beacons, the last 24 hours of receipts, and its
+aggregates, reconnects when a connection ends, and feeds `field::Live`,
+which keeps only records that verify (at most 256 pylons and 16,384
+receipts). A valid aggregate sets the pool's job rate; one that recomputes
+from the records held lights the Wellspring's rim. While `ask` waits for an
+answer it leaves a mark under `<home>/inflight/` naming the pylon, never the
+prompt, which Verse reads to draw the beam to Alice's station. Verse's
+desktop build shows this source beside the computer's own pylon
+(`VERSE_PYLON_RELAY` names another relay, or `off`); see the P1 notes in
+[verse-compute](verse-compute.md#p1-presence-and-free-jobs-over-nostr).
 
 ## Limits in P1
 

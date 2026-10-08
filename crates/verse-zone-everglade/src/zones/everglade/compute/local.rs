@@ -200,6 +200,7 @@ impl ComputeSource for LocalSource {
             rate,
             pool: "local".into(),
             demo: false,
+            ..Sample::default()
         }
     }
 }

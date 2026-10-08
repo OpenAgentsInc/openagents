@@ -16,6 +16,7 @@ pub mod client;
 pub mod engine;
 pub mod field;
 pub mod identity;
+pub mod inflight;
 pub mod job;
 pub mod pool;
 pub mod provider;

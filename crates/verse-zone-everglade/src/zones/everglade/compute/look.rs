@@ -37,7 +37,21 @@ pub struct PylonLook {
     pub bands: u32,
     /// Moss up the base, 0 to 1, from uptime.
     pub moss: f32,
+    /// Carved rune bands up the shaft: one per slot, at most
+    /// [`MAX_RUNES`].
+    pub runes: u32,
+    /// The bands that burn: one per busy slot.
+    pub lit_runes: u32,
+    /// How bright the unlit bands glow while online, 0 to 1: a faint
+    /// standby light, none when it isn't online.
+    pub standby: f32,
+    /// The stream of light along the ground to the basin, 0 to 1: the busy
+    /// share of the slots while it serves, else zero.
+    pub stream: f32,
 }
+
+/// The most rune bands a pylon wears.
+pub const MAX_RUNES: u32 = 4;
 
 /// The most bands a pylon wears: a million jobs.
 pub const MAX_BANDS: u32 = 7;
@@ -111,6 +125,27 @@ pub fn pylon(state: &State) -> Option<PylonLook> {
         unknown: *status == PylonStatus::Unknown,
         bands: bands(*jobs),
         moss: uptime.map_or(0.0, |u| (u as f32 / MOSS_FULL as f32).min(1.0)),
+        runes: (*total).clamp(1, MAX_RUNES),
+        // A band per busy slot, spread over the bands when there are more
+        // slots than bands.
+        lit_runes: match status {
+            PylonStatus::Online | PylonStatus::Draining if working => {
+                let bands = (*total).clamp(1, MAX_RUNES);
+                (busy * bands).div_ceil(*total).min(bands)
+            }
+            _ => 0,
+        },
+        standby: match status {
+            PylonStatus::Online => 0.3,
+            PylonStatus::Draining => 0.15,
+            PylonStatus::Offline | PylonStatus::Unknown => 0.0,
+        },
+        stream: match status {
+            PylonStatus::Online | PylonStatus::Draining if working => {
+                (*busy as f32 / *total as f32).min(1.0)
+            }
+            _ => 0.0,
+        },
     })
 }
 
@@ -125,7 +160,15 @@ pub struct WellLook {
     pub ripples: f32,
     /// The rim is lit only for a recomputed pool aggregate.
     pub rim: bool,
+    /// Shafts of light rising from the pool: more with more capacity.
+    pub shafts: u32,
+    /// Motes rising from the pool: more with more busy slots.
+    pub motes: u32,
 }
+
+/// The most shafts and motes the pool sends up.
+pub const MAX_SHAFTS: u32 = 5;
+pub const MAX_MOTES: u32 = 18;
 
 /// Slots that light the pool fully.
 pub const FULL_SLOTS: u32 = 16;
@@ -140,6 +183,8 @@ pub fn wellspring(state: Option<&State>) -> WellLook {
         churn: 0.0,
         ripples: 0.0,
         rim: false,
+        shafts: 0,
+        motes: 0,
     };
     let Some(State::Wellspring {
         busy,
@@ -157,11 +202,15 @@ pub fn wellspring(state: Option<&State>) -> WellLook {
             ..still
         };
     }
+    let brightness = 0.3 + 0.7 * (*total as f32 / FULL_SLOTS as f32).min(1.0);
+    let churn = (*busy as f32 / *total as f32).min(1.0);
     WellLook {
-        brightness: 0.3 + 0.7 * (*total as f32 / FULL_SLOTS as f32).min(1.0),
-        churn: (*busy as f32 / *total as f32).min(1.0),
+        brightness,
+        churn,
         ripples: (*rate as f32 / 60.0).min(MAX_RIPPLES),
         rim: *verified,
+        shafts: 1 + ((MAX_SHAFTS - 1) as f32 * (brightness - 0.3) / 0.7).round() as u32,
+        motes: (MAX_MOTES as f32 * churn).round() as u32,
     }
 }
 

@@ -1134,13 +1134,25 @@ impl App {
         runtime.set_studio_notice(options.studio_notice.clone());
         // Everglade's Pylon Field: the labeled demo pool, or this computer
         // from its lease table and capacity book, read without changing
-        // them. Tests never read the real home.
+        // them, beside the relay's pylons from their verified beacons
+        // (`VERSE_PYLON_RELAY=off` leaves those out). Tests never read the
+        // real home or reach a relay.
         if options.pylon_sim {
             runtime.set_compute_source(Some(Box::new(crate::zones::everglade::compute::sim::Sim)));
         } else if cfg!(not(test))
             && let Ok(local) = crate::zones::everglade::compute::local::LocalSource::from_env()
         {
-            runtime.set_compute_source(Some(Box::new(local)));
+            #[allow(unused_mut)]
+            let mut sources: Vec<
+                Box<dyn crate::zones::everglade::compute::ComputeSource>,
+            > = vec![Box::new(local)];
+            #[cfg(feature = "pylon-relay")]
+            if let Some(relay) = crate::zones::everglade::compute::relay::RelaySource::from_env() {
+                sources.push(Box::new(relay));
+            }
+            runtime.set_compute_source(Some(Box::new(crate::zones::everglade::compute::Merged(
+                sources,
+            ))));
         }
         #[cfg(feature = "remote-chamber")]
         let hosted = match &options.chamber {

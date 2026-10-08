@@ -5,6 +5,7 @@
 
 use std::collections::BTreeSet;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use futures_util::{SinkExt, StreamExt};
@@ -12,7 +13,7 @@ use nostr::domain::{Event, EventClass, Filter};
 use nostr::pylon::{PoolPolicy, parse_receipt};
 use pylon::client::{self, Ask};
 use pylon::engine::Echo;
-use pylon::field::RelayField;
+use pylon::field::{Live, RelayField};
 use pylon::identity::Identity;
 use pylon::pool;
 use pylon::provider::{Config, Provider};
@@ -236,10 +237,57 @@ async fn a_free_job_runs_end_to_end_and_the_pool_counts_it() {
         .await
         .unwrap();
     assert_eq!(verified, aggregate);
+    // Every job's in-flight mark is gone once it ended.
+    assert!(pylon::inflight::read(home.path(), pylon::now()).is_empty());
 
-    // Stopping publishes an offline beacon.
+    // A live subscription shows the same pylon and jobs, and recomputes
+    // the aggregate.
+    let live = Arc::new(std::sync::Mutex::new(Live::new(Some("everglade"))));
+    let stop = Arc::new(AtomicBool::new(false));
+    let watcher = {
+        let (live, stop, url) = (Arc::clone(&live), Arc::clone(&stop), url.clone());
+        tokio::spawn(async move {
+            RelayField::new(&url, Some("everglade"), Identity::generate())
+                .watch(&live, &stop)
+                .await;
+        })
+    };
+    let seen = |check: fn(&Live) -> bool| {
+        let live = Arc::clone(&live);
+        async move {
+            for _ in 0..100 {
+                if check(&live.lock().unwrap()) {
+                    return;
+                }
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+            panic!(
+                "the live field never showed it: {:?}",
+                live.lock().unwrap().error
+            );
+        }
+    };
+    seen(|l| l.synced).await;
+    {
+        let l = live.lock().unwrap();
+        let pylons = l.pylons(pylon::now());
+        assert_eq!(pylons.len(), 1);
+        assert_eq!(pylons[0].state.status, "online");
+        assert_eq!(pylons[0].state.jobs, 2);
+        let (held, recomputed) = l.aggregate(pylon::now()).unwrap();
+        assert_eq!(held.totals.jobs.accepted, 2);
+        assert!(recomputed);
+    }
+
+    // Stopping publishes an offline beacon, which the live field sees
+    // without polling. A beacon sampled in the same second as the one held
+    // doesn't replace it, so the stop waits for the clock to turn.
+    tokio::time::sleep(Duration::from_millis(1_100)).await;
     stop_tx.send(()).unwrap();
     running.await.unwrap().unwrap();
     let states = field.poll().await.unwrap();
     assert_eq!(states[0].status, "offline");
+    seen(|l| l.pylons(pylon::now())[0].state.status == "offline").await;
+    stop.store(true, Ordering::Relaxed);
+    watcher.await.unwrap();
 }

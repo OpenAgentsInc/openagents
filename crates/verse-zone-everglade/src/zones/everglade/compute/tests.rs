@@ -263,10 +263,10 @@ fn with_no_source_the_field_is_dormant() {
     // Nothing glows, and no beam even while Alice works.
     let site = pylon_field::site().expect("the woods have the field");
     let eye = Vec3::new(site.center[0], 3.0, site.center[1] - 12.0);
-    assert!(field.mesh(eye, true).glow.is_empty());
-    assert!(field.mesh(eye, false).glow.is_empty());
+    assert!(field.mesh(eye, true, 0.0).glow.is_empty());
+    assert!(field.mesh(eye, false, 0.0).glow.is_empty());
     assert!(
-        !field.mesh(eye, false).faces.is_empty(),
+        !field.mesh(eye, false, 0.0).faces.is_empty(),
         "the basin's stone"
     );
     assert!(
@@ -287,14 +287,14 @@ fn the_beam_runs_to_alice_only_while_she_works() {
     field.tick(0.0, NOW);
     let site = pylon_field::site().unwrap();
     let eye = Vec3::new(site.center[0], 3.0, site.center[1] - 12.0);
-    let quiet = field.mesh(eye, false).glow.len();
-    let working = field.mesh(eye, true).glow.len();
+    let quiet = field.mesh(eye, false, 0.0).glow.len();
+    let working = field.mesh(eye, true, 0.0).glow.len();
     // Six vertices a quad, and the beam is dozens of quads.
     assert!(working >= quiet + 6 * 40, "{quiet} -> {working}");
     // The beam reaches her workstation in the owner's house.
     let to = draw::alice_station();
     let near = field
-        .mesh(Vec3::new(to.x, to.y + 10.0, to.z - 10.0), true)
+        .mesh(Vec3::new(to.x, to.y + 10.0, to.z - 10.0), true, 0.0)
         .glow
         .iter()
         .any(|v| Vec3::from(v.pos).distance(to) < 1.5);
@@ -448,4 +448,243 @@ fn the_tree_names_the_field_its_wellspring_and_each_pylon_site() {
         states["everglade/wilds/pylon-field/wellspring"],
         State::Wellspring { online: 1, .. }
     ));
+}
+
+/// A GPU pylon from the relay, at `busy` of 2 slots.
+fn remote(busy: u32) -> PylonSample {
+    PylonSample {
+        id: "30200:ab:studio-4080".into(),
+        label: "studio-4080".into(),
+        family: Family::Gpu,
+        tier: Tier::Medium,
+        memory_gb: 16,
+        status: PylonStatus::Online,
+        busy,
+        total: 2,
+        jobs: 12,
+        uptime: Some(3_600),
+        observed_at: NOW,
+        owner: false,
+    }
+}
+
+#[test]
+fn runes_burn_one_band_a_busy_slot_and_a_stream_runs_only_while_serving() {
+    let look_at = |busy, status| {
+        let mut p = remote(busy);
+        p.status = status;
+        look::pylon(&project(&p, NOW)).unwrap()
+    };
+    let idle = look_at(0, PylonStatus::Online);
+    assert_eq!((idle.runes, idle.lit_runes, idle.stream), (2, 0, 0.0));
+    assert!(idle.standby > 0.0);
+    let one = look_at(1, PylonStatus::Online);
+    assert_eq!((one.lit_runes, one.stream), (1, 0.5));
+    let full = look_at(2, PylonStatus::Online);
+    assert_eq!((full.lit_runes, full.stream), (2, 1.0));
+    for dark in [PylonStatus::Offline, PylonStatus::Unknown] {
+        let d = look_at(2, dark);
+        assert_eq!((d.lit_runes, d.stream, d.standby), (0, 0.0, 0.0));
+    }
+    // Eight slots share four bands; one busy slot still lights one.
+    let mut big = remote(1);
+    big.total = 8;
+    let big = look::pylon(&project(&big, NOW)).unwrap();
+    assert_eq!((big.runes, big.lit_runes), (look::MAX_RUNES, 1));
+    // The pool's motes follow its busy slots and its shafts its capacity.
+    let still = look::wellspring(Some(&State::Wellspring {
+        pool: "everglade".into(),
+        online: 1,
+        busy: 0,
+        total: 2,
+        rate: 0,
+        verified: false,
+    }));
+    assert_eq!(still.motes, 0);
+    assert!(still.shafts >= 1);
+}
+
+#[test]
+fn a_job_in_flight_draws_the_beam_and_forks_from_the_pylon_serving_it() {
+    let with = |in_flight: Vec<String>| Sample {
+        pylons: vec![sample(PylonStatus::Online, 0, NOW), remote(1)],
+        pool: "everglade".into(),
+        in_flight,
+        ..Sample::default()
+    };
+    let site = pylon_field::site().unwrap();
+    let eye = Vec3::new(site.center[0], 3.0, site.center[1] - 12.0);
+    let mut quiet = Compute::with_source(Box::new(Fixed(with(Vec::new()))));
+    quiet.tick(0.0, NOW);
+    let mut busy = Compute::with_source(Box::new(Fixed(with(vec!["30200:ab:studio-4080".into()]))));
+    busy.tick(0.0, NOW);
+    // No studio seat works, yet the job draws the beam to Alice's station.
+    let to = draw::alice_station();
+    let far_eye = Vec3::new(to.x, to.y + 10.0, to.z - 10.0);
+    let reaches = |c: &Compute| {
+        c.mesh(far_eye, false, 0.0)
+            .glow
+            .iter()
+            .any(|v| Vec3::from(v.pos).distance(to) < 1.5)
+    };
+    assert!(reaches(&busy) && !reaches(&quiet));
+    // The fork leaves the 4080's site, the second, not this computer's.
+    assert_eq!(
+        draw::forks(site, busy.sample(), busy.pylon_states(), false),
+        vec![1]
+    );
+    assert!(draw::forks(site, quiet.sample(), quiet.pylon_states(), false).is_empty());
+    assert!(busy.mesh(eye, false, 0.0).glow.len() > quiet.mesh(eye, false, 0.0).glow.len());
+    // The inspect card says so.
+    let card = busy.inspect(site.sites[1]).unwrap();
+    assert!(card.contains("studio-4080"), "{card}");
+    assert!(card.contains("Running a job from this computer"), "{card}");
+}
+
+#[test]
+fn merged_sources_keep_this_computer_first_and_name_the_shared_pool() {
+    let mut merged = Merged(vec![
+        Box::new(Fixed(Sample {
+            pylons: vec![sample(PylonStatus::Online, 0, NOW)],
+            wells: vec![WellSample {
+                provider: "codex".into(),
+                capacity: true,
+                until: None,
+            }],
+            rate: 1,
+            pool: "local".into(),
+            ..Sample::default()
+        })),
+        Box::new(Fixed(Sample {
+            pylons: vec![remote(2)],
+            rate: 3,
+            pool: "everglade".into(),
+            in_flight: vec!["30200:ab:studio-4080".into()],
+            verified: true,
+            ..Sample::default()
+        })),
+    ]);
+    let s = merged.sample(NOW);
+    assert_eq!(s.pylons[0].id, "local:this-computer");
+    assert_eq!(s.pylons[1].label, "studio-4080");
+    assert_eq!((s.rate, s.wells.len(), s.in_flight.len()), (4, 1, 1));
+    assert_eq!(s.pool, "everglade");
+    assert!(s.verified && !s.demo);
+    // The verified aggregate lights the rim.
+    let states: Vec<State> = s.pylons.iter().map(|p| project(p, NOW)).collect();
+    let well = wellspring(&s, &states).unwrap();
+    assert!(look::wellspring(Some(&well)).rim);
+}
+
+#[test]
+fn the_field_keeps_to_its_glow_budget_even_busy_at_night_with_the_beam() {
+    let site = pylon_field::site().unwrap();
+    let mut field = Compute::with_source(Box::new(Sim));
+    field.tick(0.0, NOW);
+    for eye in [
+        Vec3::new(site.center[0] + 6.0, 4.0, site.center[1] - 6.0),
+        Vec3::new(site.center[0], 30.0, site.center[1] - 60.0),
+    ] {
+        for night in [0.0, 1.0] {
+            let mesh = field.mesh(eye, true, night);
+            assert!(
+                mesh.glow.len() <= draw::FIELD_QUADS * 6,
+                "{}",
+                mesh.glow.len()
+            );
+            assert!(
+                mesh.glow
+                    .iter()
+                    .all(|v| v.radiance.iter().all(|c| c.is_finite()))
+            );
+        }
+    }
+    // The real two-machine field with a job in flight fits the low tier's
+    // whole budget of 256 glow quads with room to spare.
+    let mut two = Compute::with_source(Box::new(Fixed(Sample {
+        pylons: vec![sample(PylonStatus::Online, 1, NOW), remote(1)],
+        pool: "everglade".into(),
+        rate: 2,
+        in_flight: vec!["30200:ab:studio-4080".into()],
+        ..Sample::default()
+    })));
+    two.tick(0.0, NOW);
+    let eye = Vec3::new(site.center[0] + 6.0, 4.0, site.center[1] - 6.0);
+    let quads = two.mesh(eye, false, 1.0).glow.len() / 6;
+    assert!(quads < 256, "{quads} quads");
+}
+
+#[test]
+fn the_wellspring_lights_a_real_lamp_only_near_and_only_with_capacity() {
+    let site = pylon_field::site().unwrap();
+    let near = Vec3::new(site.center[0], 0.0, site.center[1] - 8.0);
+    let lit = |c: &Compute, at| {
+        let mut neon = crate::pbr::Neon::plaza(0.0);
+        c.light(&mut neon, at);
+        neon.lamps.iter().filter(|l| l.lit()).count()
+    };
+    let dormant = Compute::default();
+    assert_eq!(lit(&dormant, near), 0);
+    let mut busy = Compute::with_source(Box::new(Fixed(Sample {
+        pylons: vec![remote(1)],
+        pool: "everglade".into(),
+        ..Sample::default()
+    })));
+    busy.tick(0.0, NOW);
+    // The basin's lamp and the serving crystal's.
+    assert_eq!(lit(&busy, near), 2);
+    assert_eq!(lit(&busy, near + Vec3::new(0.0, 0.0, -200.0)), 0);
+}
+
+#[cfg(feature = "pylon-relay")]
+#[test]
+fn a_relay_pylon_samples_from_its_verified_beacon_and_turns_unknown_when_stale() {
+    use nostr::domain::RelaySigner;
+    use nostr::pylon as np;
+    let provider = RelaySigner::from_secret_hex(&"01".repeat(32)).unwrap();
+    let beacon = np::Beacon {
+        v: np::BEACON_V.into(),
+        requires: Vec::new(),
+        meta: None,
+        provider: provider.pubkey().into(),
+        pylon: "studio-4080".into(),
+        label: "studio-4080".into(),
+        status: np::Status::Online,
+        generation: 1,
+        since: NOW - 600,
+        observed_at: NOW,
+        valid_until: NOW + 240,
+        class: np::Class {
+            family: np::Family::Gpu,
+            tier: np::Tier::Medium,
+            memory_gb: 16,
+        },
+        slots: np::Slots { total: 2, free: 1 },
+        services: vec![np::Service {
+            capability: format!("{}:pylon/text-generation", provider.pubkey()),
+            model: "qwen3.5-0.8b-q8_0".into(),
+            lanes: vec![np::Lane::CjConversation],
+            offering: None,
+            price_hint_msat: None,
+        }],
+        settlement: vec!["free-v1".into()],
+        pools: vec!["everglade".into()],
+    };
+    let mut live = pylon::field::Live::new(Some("everglade"));
+    assert!(live.offer(np::beacon_event(&provider, &beacon).unwrap(), NOW));
+    let fresh = super::relay::sample(live.pylons(NOW).remove(0));
+    assert_eq!(fresh.family, Family::Gpu);
+    assert_eq!(
+        (fresh.status, fresh.busy, fresh.total),
+        (PylonStatus::Online, 1, 2)
+    );
+    assert_eq!(fresh.uptime, Some(600));
+    let look = look::pylon(&project(&fresh, NOW)).unwrap();
+    assert_eq!(look.shape, Shape::Obelisk);
+    assert!(look.burns && look.lit_runes == 1);
+    // Past the beacon's validity the pylon is unknown and dark.
+    let stale = super::relay::sample(live.pylons(NOW + 241).remove(0));
+    assert_eq!(stale.status, PylonStatus::Unknown);
+    let dark = look::pylon(&project(&stale, NOW + 241)).unwrap();
+    assert!(dark.unknown && dark.glow == 0.0 && dark.lit_runes == 0);
 }

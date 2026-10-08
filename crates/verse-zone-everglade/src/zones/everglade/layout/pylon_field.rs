@@ -11,10 +11,11 @@ use std::sync::OnceLock;
 
 /// The standing stones' ring, m from the middle.
 pub const STONES: f32 = 5.5;
-/// The Wellspring's basin: its outer radius, m.
-pub const BASIN: f32 = 1.7;
+/// The Wellspring's basin: its rim's outer radius, m. Its stepped plinth
+/// reaches half a meter further.
+pub const BASIN: f32 = 2.6;
 /// The ring the capacity book's wells stand on, inside the stones, m.
-pub const WELLS: f32 = 3.4;
+pub const WELLS: f32 = 4.2;
 /// How many wells the field has room for.
 pub const MAX_WELLS: usize = 6;
 /// The ring the pylon sites stand on, m from the middle.
@@ -59,7 +60,7 @@ impl Field {
     #[must_use]
     pub fn basin_stand(&self) -> ([f32; 2], f32) {
         let [cx, cz] = self.center;
-        ([cx, cz - (BASIN + 1.0)], 0.0)
+        ([cx, cz - (BASIN + 0.85)], 0.0)
     }
 
     /// Where an agent stands to be in the field: inside the stones on the

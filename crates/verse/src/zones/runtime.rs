@@ -2806,7 +2806,17 @@ impl WorldRuntime {
                     self.zone_state.studio.view(),
                     crate::zones::everglade::studio::WORKSHOP_AGENT,
                 );
-                mesh.extend(&self.zone_state.compute.mesh(eye, alice));
+                mesh.extend(
+                    &self
+                        .zone_state
+                        .compute
+                        .mesh(eye, alice, everglade.light().night),
+                );
+                // The basin's and the serving crystals' lamps, near the
+                // field: they light the stones and the ground at night.
+                if let Some(neon) = mesh.neon.as_mut() {
+                    self.zone_state.compute.light(neon, self.player.pos);
+                }
             }
         }
         mesh

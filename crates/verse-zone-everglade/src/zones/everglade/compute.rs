@@ -17,6 +17,10 @@
 //!   table and receipts (`coder_lease::observe`) and the provider capacity
 //!   book. Verse's desktop installs it; the web and the phones install
 //!   nothing, so their field shows no pylons and a dim, still basin.
+//! - [`relay::RelaySource`] (native, feature `pylon-relay`): every pylon
+//!   whose NIP-PYLON beacon verifies on the relay, and this computer's jobs
+//!   in flight on them (P1). The desktop shows it beside the local source
+//!   through [`Merged`].
 //! - [`sim::Sim`]: a labeled **DEMO** pool for captures (`verse
 //!   --pylon-sim`).
 //!
@@ -24,12 +28,14 @@
 //! failed shows **unknown**, never online ([`project`]); with no sample
 //! there is no pylon; with no pylons the Wellspring is dim and still; and
 //! a beam runs to Alice's workstation only while her studio seat is
-//! working.
+//! working or one of this computer's pylon jobs is in flight.
 
 pub mod draw;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod local;
 pub mod look;
+#[cfg(all(feature = "pylon-relay", not(target_arch = "wasm32")))]
+pub mod relay;
 pub mod sim;
 #[cfg(test)]
 mod tests;
@@ -101,12 +107,45 @@ pub struct Sample {
     pub pool: String,
     /// Demonstration data, drawn with the **DEMO** mark.
     pub demo: bool,
+    /// The pylons running one of this computer's jobs now, by
+    /// [`PylonSample::id`], one entry a job: what draws the beam to
+    /// Alice's station.
+    pub in_flight: Vec<String>,
+    /// The pool's newest aggregate recomputed from the records the source
+    /// holds, which lights the basin's rim.
+    pub verified: bool,
 }
 
 /// Where a field's pylons and wells come from.
 pub trait ComputeSource: Send {
     /// What the source knows at `now`, Unix seconds.
     fn sample(&mut self, now: u64) -> Sample;
+}
+
+/// Several sources as one field, such as this computer beside the relay's
+/// pylons: each source's pylons in order, so the first source's take the
+/// first sites; every well, job in flight, and job a minute; the first
+/// pool that isn't this computer's own; and a rim lit when any source
+/// recomputed its pool's aggregate.
+pub struct Merged(pub Vec<Box<dyn ComputeSource>>);
+
+impl ComputeSource for Merged {
+    fn sample(&mut self, now: u64) -> Sample {
+        let mut out = Sample::default();
+        for source in &mut self.0 {
+            let one = source.sample(now);
+            out.pylons.extend(one.pylons);
+            out.wells.extend(one.wells);
+            out.rate = out.rate.saturating_add(one.rate);
+            out.in_flight.extend(one.in_flight);
+            out.verified |= one.verified;
+            out.demo |= one.demo;
+            if out.pool.is_empty() || (out.pool == "local" && !one.pool.is_empty()) {
+                out.pool = one.pool;
+            }
+        }
+        out
+    }
 }
 
 /// `pylon`'s state at `now`, Unix seconds: its status, unless its sample
@@ -140,7 +179,8 @@ pub fn project(pylon: &PylonSample, now: u64) -> State {
 
 /// The Wellspring's state from the pylons' projected states: `None` when
 /// the source knows no pylon. Only online and draining pylons count, and
-/// the local pool is never verified, since no aggregate was recomputed.
+/// the pool is verified only when the source recomputed its aggregate,
+/// which the local pool never has.
 #[must_use]
 pub fn wellspring(sample: &Sample, pylons: &[State]) -> Option<State> {
     if pylons.is_empty() {
@@ -166,7 +206,7 @@ pub fn wellspring(sample: &Sample, pylons: &[State]) -> Option<State> {
         busy,
         total,
         rate: if online > 0 { sample.rate } else { 0 },
-        verified: false,
+        verified: sample.verified,
     })
 }
 
@@ -334,7 +374,13 @@ pub fn inspect(
         let (Some(p), Some(state)) = (sample.pylons.get(i), pylons.get(i)) else {
             return Some("Pylon Field\nAn empty pylon site: no machine here".into());
         };
-        return Some(format!("{demo}{}", look::describe_pylon(p, state)));
+        let jobs = sample.in_flight.iter().filter(|id| **id == p.id).count();
+        let mine = match jobs {
+            0 => String::new(),
+            1 => "\nRunning a job from this computer".into(),
+            n => format!("\nRunning {n} jobs from this computer"),
+        };
+        return Some(format!("{demo}{}{mine}", look::describe_pylon(p, state)));
     }
     for (i, w) in sample.wells.iter().enumerate() {
         if (field.well(i)[0] - at[0]).hypot(field.well(i)[1] - at[1]) <= 1.0 {

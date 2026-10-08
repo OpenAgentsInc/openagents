@@ -957,6 +957,27 @@ pub fn aggregate_event(signer: &RelaySigner, aggregate: &PoolAggregate) -> Resul
     Ok(signer.sign(aggregate.generated_at, POOL_KIND, tags, content))
 }
 
+/// Verify a `30201` event's signature, envelope, and body, and return the
+/// body. This doesn't recompute the totals; see [`verify_aggregate`].
+///
+/// # Errors
+///
+/// Names the first refusal from NIP-PYLON's Validation section.
+pub fn parse_aggregate(event: &Event) -> Result<PoolAggregate, String> {
+    let claimed: PoolAggregate = envelope(event, POOL_KIND, POOL_MARKER)?;
+    claimed.validate()?;
+    if claimed.aggregator != event.pubkey {
+        return Err("aggregate aggregator is not the signer".into());
+    }
+    if single_tag(event, "d")? != claimed.pool {
+        return Err("`d` tag differs from the pool".into());
+    }
+    if single_tag(event, "expiration")? != claimed.valid_until.to_string() {
+        return Err("expiration differs from valid_until".into());
+    }
+    Ok(claimed)
+}
+
 /// Verify a `30201` event and recompute it from `inputs` under `policy`.
 /// Any difference in the policy digest, the input digests, the totals, or
 /// the rate refuses the aggregate.
@@ -969,17 +990,7 @@ pub fn verify_aggregate(
     policy: &PoolPolicy,
     inputs: &AggregateInputs<'_>,
 ) -> Result<PoolAggregate, String> {
-    let claimed: PoolAggregate = envelope(event, POOL_KIND, POOL_MARKER)?;
-    claimed.validate()?;
-    if claimed.aggregator != event.pubkey {
-        return Err("aggregate aggregator is not the signer".into());
-    }
-    if single_tag(event, "d")? != claimed.pool {
-        return Err("`d` tag differs from the pool".into());
-    }
-    if single_tag(event, "expiration")? != claimed.valid_until.to_string() {
-        return Err("expiration differs from valid_until".into());
-    }
+    let claimed = parse_aggregate(event)?;
     let recomputed = compute_aggregate(
         &claimed.aggregator,
         policy,
