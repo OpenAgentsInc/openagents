@@ -294,6 +294,8 @@ fn with_everglade(root: &std::path::Path) -> (Config, String) {
     std::fs::write(build.join("notes.txt"), "not served").unwrap();
     let pack = format!("{}.vtp", "ab".repeat(32));
     std::fs::write(build.join("pack").join(&pack), b"VTP pack bytes").unwrap();
+    std::fs::create_dir_all(build.join("kit")).unwrap();
+    std::fs::write(build.join("kit").join(&pack), b"VTP kit bytes").unwrap();
     std::fs::write(root.join("secret.js"), "outside the build").unwrap();
     let mut config = config(root.join("tasks"));
     config.everglade = Some(build);
@@ -379,6 +381,8 @@ async fn the_everglade_page_serves_the_web_build_and_its_pack() {
     assert!(wasm.starts_with(b"\0asm"));
     let (_, _, bytes) = get_bytes(router(config.clone()), &format!("/everglade/pack/{pack}")).await;
     assert_eq!(bytes, b"VTP pack bytes");
+    let (_, _, bytes) = get_bytes(router(config.clone()), &format!("/everglade/kit/{pack}")).await;
+    assert_eq!(bytes, b"VTP kit bytes");
 
     // Other files, other names, and every way out of the directory are 404.
     let other_pack = format!("/everglade/pack/{}.vtp", "cd".repeat(32));
@@ -392,6 +396,8 @@ async fn the_everglade_page_serves_the_web_build_and_its_pack() {
         "/everglade/pack/notes.txt",
         "/everglade/pack/..%2F..%2Fsecret.js",
         "/everglade/pack/a/b.vtp",
+        "/everglade/kit/notes.txt",
+        "/everglade/kit/..%2F..%2Fsecret.js",
         other_pack.as_str(),
         upper_pack.as_str(),
     ] {

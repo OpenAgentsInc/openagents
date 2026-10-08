@@ -1105,6 +1105,9 @@ impl App {
         runtime.agent = agent;
         runtime.doors = doors;
         runtime.configure_zone_cache(crate::identity::home().join("zones-cache"));
+        // The medieval kit pack downloads from the web origin once and stays
+        // in the cache by its digest; tests never reach the network.
+        runtime.download_zone_kit(!cfg!(test));
         // The owner's private characters in Everglade, from placements in
         // Verse's home (docs/verse/private-assets.md). Tests never read the
         // real home.

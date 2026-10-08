@@ -39,6 +39,21 @@ copy's `Content` directory (2.4 GB) and the export's `digests.json` to
 `gs://openagentsgemini-verse-private-assets/vendor/medieval-town/`. The
 export itself is done and deterministic.
 
+The same login uploads the kit pack every client fetches (#10901). Copy
+the pinned pack, `KIT_SHA256` in
+`crates/verse-zone-everglade/src/zones/everglade_pack/kit.rs`, from
+`~/.openagents/verse/private/medieval-town/packs/<KIT_SHA256>.vtp` to
+`gs://openagentsgemini-verse-private-assets/packs/`, and give the Cloud
+Build service account read access to that prefix, so
+`crates/openagents-web/cloudbuild.yaml` copies it into the image. Then
+build and deploy the website (`docs/deployment/openagents-web.md`), and
+check `https://openagents.com/everglade/kit/<KIT_SHA256>.vtp` returns the
+pack. On the reference laptop, open `/everglade?frames` and confirm about
+60 frames per second on Stoop Lane and Main Street; on a phone, open
+Everglade and confirm the town draws the kit and holds its frame rate.
+Each later repin of the kit pack needs the same upload before the next
+web deploy.
+
 ## Admit the villagers' fuller days (town clock)
 
 The town clock now runs by default. On it, a daylight town hour is 4.25

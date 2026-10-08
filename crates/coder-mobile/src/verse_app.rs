@@ -1024,6 +1024,9 @@ impl Scene {
                 return Err("The zone cache requires an absolute native cache path".into());
             }
             world.configure_zone_cache(directory.into());
+            // The medieval kit pack downloads from the web origin once and
+            // stays in the cache by its digest.
+            world.download_zone_kit(true);
         }
         // The bare world's only text is players' tags over the world, so
         // its font is rasterized at the screen's pixel scale. Everglade's

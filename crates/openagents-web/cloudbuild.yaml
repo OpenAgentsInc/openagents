@@ -7,6 +7,22 @@
 #
 # See docs/deployment/openagents-web.md for the deploy and the rollback.
 steps:
+  # The pinned medieval kit pack (KIT_SHA256 in
+  # crates/verse-zone-everglade/src/zones/everglade_pack/kit.rs), from the
+  # private bucket into the build context, so /everglade/kit/ serves it.
+  # It never enters the repository. Without it the web build draws the
+  # kit's committed proxies.
+  - name: gcr.io/cloud-builders/gcloud
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        sha="$$(sed -n 's/^pub const KIT_SHA256: &str = "\([0-9a-f]*\)";$$/\1/p' crates/verse-zone-everglade/src/zones/everglade_pack/kit.rs)"
+        mkdir -p crates/openagents-web/kit
+        if [ -n "$$sha" ]; then
+          gcloud storage cp "gs://openagentsgemini-verse-private-assets/packs/$$sha.vtp" crates/openagents-web/kit/ \
+            || echo "the kit pack $$sha is not in the bucket; the web build draws proxies"
+        fi
   - name: gcr.io/cloud-builders/docker
     args:
       - build

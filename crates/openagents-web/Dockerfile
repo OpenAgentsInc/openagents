@@ -16,7 +16,9 @@ RUN cargo build --locked --release -p openagents-web --bin openagents-web \
 # wasm32 target, wasm-bindgen-cli at the wasm-bindgen version Cargo.lock
 # pins (the CLI refuses a module built by another version), then
 # scripts/build-everglade-web.sh, which writes the JS glue and the wasm into
-# the directory it's given. The pinned pack goes under pack/.
+# the directory it's given. The pinned pack goes under pack/, and the
+# medieval kit pack, when cloudbuild.yaml's first step fetched it from the
+# private bucket into crates/openagents-web/kit/, under kit/.
 FROM rust:1.97.1-slim-trixie AS everglade
 
 RUN apt-get update \
@@ -36,8 +38,10 @@ RUN scripts/build-everglade-web.sh /build/everglade \
     && test -f /build/everglade/everglade_web.js \
     && test -f /build/everglade/everglade_web_bg.wasm \
     && gzip -9 -k /build/everglade/everglade_web.js /build/everglade/everglade_web_bg.wasm \
-    && mkdir -p /build/everglade/pack \
-    && cp assets/verse/everglade/*.vtp /build/everglade/pack/
+    && mkdir -p /build/everglade/pack /build/everglade/kit \
+    && cp assets/verse/everglade/*.vtp /build/everglade/pack/ \
+    && find crates/openagents-web/kit -maxdepth 1 -name '*.vtp' \
+        -exec cp {} /build/everglade/kit/ \; 2>/dev/null || true
 
 FROM debian:13-slim
 

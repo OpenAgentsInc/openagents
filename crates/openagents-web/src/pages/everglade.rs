@@ -10,11 +10,16 @@
 //! DIR/everglade_web.js          wasm-bindgen's `--target web` glue
 //! DIR/everglade_web_bg.wasm     the module
 //! DIR/pack/<PACK_SHA256>.vtp    the pinned pack from assets/verse/everglade/
+//! DIR/kit/<KIT_SHA256>.vtp      the medieval kit pack, from the private
+//!                               bucket at build time, when it's there
 //! ```
 //!
 //! `/everglade/{file}` serves any `.js` or `.wasm` file directly in `DIR`,
-//! and `/everglade/pack/{sha}.vtp` any digest-named pack in `DIR/pack`,
-//! with a year's immutable cache. Without the directory, or without the
+//! `/everglade/pack/{sha}.vtp` any digest-named pack in `DIR/pack`, and
+//! `/everglade/kit/{sha}.vtp` any digest-named kit pack in `DIR/kit`, with
+//! a year's immutable cache. Every client fetches the kit pack here
+//! (`docs/verse/everglade-medieval-refactor.md`); without it, Everglade
+//! draws the kit's committed proxies. Without the directory, or without the
 //! glue module in it, the page says Everglade is unavailable and runs no
 //! script.
 //!
@@ -86,6 +91,7 @@ pub(crate) fn routes() -> Router<App> {
         .route("/grid", get(grid))
         .route("/everglade/{file}", get(build_file))
         .route("/everglade/pack/{file}", get(pack_file))
+        .route("/everglade/kit/{file}", get(kit_file))
 }
 
 /// The build directory, when it holds the glue module and the wasm.
@@ -285,6 +291,24 @@ async fn pack_file(State(app): State<App>, UrlPath(file): UrlPath<String>) -> Re
     }
     serve(
         directory.join(PACK_DIRECTORY).join(&file),
+        "application/octet-stream",
+        PACK_CACHE,
+    )
+    .await
+}
+
+/// The medieval kit pack's directory under the build directory.
+const KIT_DIRECTORY: &str = "kit";
+
+async fn kit_file(State(app): State<App>, UrlPath(file): UrlPath<String>) -> Response {
+    let Some(directory) = app.config.everglade.as_deref() else {
+        return crate::not_found().await;
+    };
+    if !pack_name(&file) {
+        return crate::not_found().await;
+    }
+    serve(
+        directory.join(KIT_DIRECTORY).join(&file),
         "application/octet-stream",
         PACK_CACHE,
     )

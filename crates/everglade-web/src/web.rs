@@ -344,8 +344,9 @@ async fn run() -> Result<(), String> {
         status("Opening the Grove…");
         runtime.install_grove_bytes(&bytes)?;
     } else {
+        let kit = download_kit(&window).await;
         status("Opening Everglade…");
-        runtime.install_everglade_bytes(&bytes)?;
+        runtime.install_everglade_bytes_with_kit(&bytes, kit.as_deref())?;
     }
     // The page opens no studio panel, on a keyboard or a touchscreen.
     runtime.interact_hint = verse::runtime::InteractHint::None;
@@ -529,12 +530,38 @@ async fn download(window: &Window) -> Result<Vec<u8>, String> {
         everglade_pack::PACK_SHA256,
         everglade_pack::PACK_EXTENSION
     );
-    let total = everglade_pack::PACK_BYTES;
+    fetch_pinned(window, &url, everglade_pack::PACK_BYTES).await
+}
+
+/// Fetches the pinned medieval kit pack from this origin,
+/// `/everglade/kit/<KIT_SHA256>.vtp`, when one is pinned. The runtime
+/// checks its length and digest; without it the town draws the kit's
+/// committed proxies, so a failure here only logs.
+async fn download_kit(window: &Window) -> Option<Vec<u8>> {
+    use everglade_pack::kit::{KIT_BYTES, KIT_SHA256};
+    if KIT_BYTES == 0 {
+        return None;
+    }
+    let url = format!("/everglade/kit/{KIT_SHA256}.vtp");
+    match fetch_pinned(window, &url, KIT_BYTES).await {
+        Ok(bytes) => Some(bytes),
+        Err(error) => {
+            web_sys::console::warn_1(&JsValue::from_str(&format!(
+                "Everglade draws the kit's proxies: {error}"
+            )));
+            None
+        }
+    }
+}
+
+/// Fetches `url` from this origin with progress, without credentials or
+/// redirects, bounded by its pinned length `total`.
+async fn fetch_pinned(window: &Window, url: &str, total: u64) -> Result<Vec<u8>, String> {
     progress(0, total);
     let init = RequestInit::new();
     init.set_redirect(RequestRedirect::Error);
     init.set_credentials(RequestCredentials::Omit);
-    let response: Response = JsFuture::from(window.fetch_with_str_and_init(&url, &init))
+    let response: Response = JsFuture::from(window.fetch_with_str_and_init(url, &init))
         .await
         .map_err(|_| "the pack download could not connect".to_owned())?
         .dyn_into()

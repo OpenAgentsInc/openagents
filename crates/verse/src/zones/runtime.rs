@@ -74,6 +74,16 @@ impl WorldRuntime {
         self.zone_cancel_loading();
         self.zone_state.everglade_loader = Some(everglade_pack::Loader::new(path));
     }
+    /// Whether an Everglade entry downloads the pinned medieval kit pack
+    /// from the OpenAgents web origin when the cache lacks it
+    /// (`everglade_pack::kit`). Off by default, so tests never reach the
+    /// network; a desktop or phone build turns it on. Without the kit the
+    /// town draws its committed proxies.
+    pub fn download_zone_kit(&mut self, download: bool) {
+        if let Some(loader) = &mut self.zone_state.everglade_loader {
+            loader.download_kit(download);
+        }
+    }
     pub fn is_plaza(&self) -> bool {
         self.zone == ZoneId::Plaza
     }
@@ -259,7 +269,26 @@ impl WorldRuntime {
     /// browser's own download. The bytes must be the pinned pack: their
     /// length and SHA-256 are checked before anything is decoded.
     pub fn install_everglade_bytes(&mut self, bytes: &[u8]) -> Result<(), String> {
-        let pack = everglade_pack::ZonePack::decode_pinned(bytes)?;
+        self.install_everglade_bytes_with_kit(bytes, None)
+    }
+    /// [`Self::install_everglade_bytes`], with the medieval kit pack's
+    /// bytes when the caller fetched them too. The kit must be the pinned
+    /// kit pack; without it, or when it fails its checks, the town draws
+    /// its committed proxies.
+    pub fn install_everglade_bytes_with_kit(
+        &mut self,
+        bytes: &[u8],
+        kit: Option<&[u8]>,
+    ) -> Result<(), String> {
+        let mut pack = everglade_pack::ZonePack::decode_pinned(bytes)?;
+        if let Some(kit) = kit {
+            match everglade_pack::kit::decode_pinned(kit) {
+                Ok(pieces) => {
+                    everglade_pack::kit::install(&mut pack, Some(&pieces));
+                }
+                Err(error) => eprintln!("verse: Everglade draws the kit's proxies: {error}"),
+            }
+        }
         self.install_everglade(&pack);
         if self.zone == ZoneId::Everglade {
             Ok(())

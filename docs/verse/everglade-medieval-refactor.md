@@ -522,6 +522,15 @@ kit pack loaded and without it, saved outside the repository.
   laptop within its page-work budget; a phone within its tier's budgets;
   a web build without the kit falls back.
 - Captures: the web page's Everglade, and the phone's.
+- As built: `cloudbuild.yaml` copies the pinned kit pack from the private
+  bucket into the image, and the site serves it at
+  `/everglade/kit/<KIT_SHA256>.vtp`. The browser fetches it beside the
+  Everglade pack and installs it if its length and digest match; the
+  desktop and the phone fetch the same URL once and keep it in the zone
+  cache by digest. Any failure draws the proxies. One pack serves every
+  tier for now: its images are 512 px, 10.2 MB to transfer and about
+  28 MiB decoded, within the web's budget but over the phone's 8 MiB
+  transfer; a smaller phone tier is left for B4.
 
 ### P9: Cleanup
 

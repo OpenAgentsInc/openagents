@@ -32,3 +32,5 @@ private-assets.json
 # here. The readme is the only tracked file.
 /scratch/*
 !/scratch/README.md
+# The licensed medieval kit pack, fetched into the web build context only.
+/crates/openagents-web/kit/
