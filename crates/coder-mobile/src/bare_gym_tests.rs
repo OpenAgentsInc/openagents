@@ -155,7 +155,7 @@ fn without_the_native_panel_the_board_never_opens() {
 #[test]
 fn the_native_json_path_carries_the_grids_board() {
     let mut handle = VerseHandle {
-        scene: preview(),
+        scene: Box::new(preview()),
         renderer: None,
         rendered_zone_revision: 0,
         rendered_chamber_revision: 0,

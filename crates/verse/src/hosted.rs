@@ -30,7 +30,7 @@ impl WorldRuntime {
             .ok_or("Zone revision exhausted")?;
         self.zone_cancel_loading();
         self.stop_local_studio();
-        self.zone_state = crate::zones::State::default();
+        *self.zone_state = crate::zones::State::default();
         self.cancel_navigation();
         self.ball = None;
         self.zone = match profile.zone {

@@ -17,7 +17,11 @@ const LOTS: i32 = 10;
 pub use verse_core::world::World;
 
 /// Builds the world.
+///
+/// `#[inline(never)]` keeps this frame out of its callers' on the creation
+/// path, whose frames must stay small (#10928).
 #[must_use]
+#[inline(never)]
 pub fn build() -> World {
     let mut world = World::default();
     ground(&mut world.mesh);
@@ -49,7 +53,10 @@ pub fn build() -> World {
 /// Builds the bare world: the plaza's ground grid and the Gym standing on
 /// it at [`GymSite::GRID`], in the neutral palette. Only the Gym's low walls
 /// block walking.
+///
+/// `#[inline(never)]` as on [`build`].
 #[must_use]
+#[inline(never)]
 pub fn bare() -> World {
     let mut world = World::default();
     ground(&mut world.mesh);

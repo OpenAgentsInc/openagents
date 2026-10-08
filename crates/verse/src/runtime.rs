@@ -108,7 +108,10 @@ pub struct WorldRuntime {
     pub doors: Doors,
     pub zone: crate::zones::ZoneId,
     pub zone_revision: u64,
-    pub(crate) zone_state: crate::zones::State,
+    /// Boxed so the creation path's frames stay small: the zone states sum
+    /// to tens of kilobytes, and a by-value chain of them overflowed a
+    /// phone's main-thread stack mounting the world (#10928).
+    pub(crate) zone_state: Box<crate::zones::State>,
     pub(crate) navigation: Navigation,
     /// The bare world: the plaza grid alone, with no objects, companion,
     /// portals, or interactions, drawn in the neutral palette.
@@ -143,9 +146,11 @@ impl Default for WorldRuntime {
 }
 
 impl WorldRuntime {
-    #[must_use]
-    pub fn new() -> Self {
-        let world = world::build();
+    /// The shared construction behind [`Self::new`], [`Self::bare`], and
+    /// [`Self::unoccupied`]. `#[inline(never)]` keeps this frame — the
+    /// largest on the creation path — out of its callers (#10928).
+    #[inline(never)]
+    fn with_world(world: World, bare: bool, unoccupied: bool, interact_hint: InteractHint) -> Self {
         let player = PlayerController::new(world::SPAWN, 0.0);
         let agent = Agent::new(&player);
         Self {
@@ -159,17 +164,23 @@ impl WorldRuntime {
             doors: Doors::default(),
             zone: crate::zones::ZoneId::Plaza,
             zone_revision: 0,
-            zone_state: crate::zones::State::default(),
+            zone_state: Box::new(crate::zones::State::default()),
             navigation: Navigation::default(),
-            bare: false,
-            interact_hint: InteractHint::Key,
-            unoccupied: false,
+            bare,
+            interact_hint,
+            unoccupied,
             ball: None,
             avatars: Vec::new(),
             trace_ghost: None,
             robot_clock: 0.0,
             shot: None,
         }
+    }
+
+    #[must_use]
+    #[inline(never)]
+    pub fn new() -> Self {
+        Self::with_world(world::build(), false, false, InteractHint::Key)
     }
 
     pub fn is_hosted(&self) -> bool {
@@ -188,6 +199,7 @@ impl WorldRuntime {
     /// and the Gym at [`world::GymSite::GRID`]. It has no computer, doors,
     /// companion, or tapped portals.
     #[must_use]
+    #[inline(never)]
     pub fn bare() -> Self {
         let mut world = world::bare();
         // The Grid is the pinned engine pack: what the player cannot walk
@@ -195,16 +207,10 @@ impl WorldRuntime {
         if let Ok(pack) = crate::grid_pack::embedded() {
             world.blockers = crate::grid_pack::blockers(&pack);
         }
-        Self {
-            world,
-            bare: true,
-            // The OpenAgents app's Grid opens no studio panel.
-            interact_hint: InteractHint::None,
-            // The ball, the blocks (cubes and dominoes), and the pedestal are off
-            // for now (owner, 2026-10-01): the Grid keeps only the Gym.
-            // ball: Some(Box::default()),
-            ..Self::new()
-        }
+        // The OpenAgents app's Grid opens no studio panel. The ball, the
+        // blocks (cubes and dominoes), and the pedestal are off for now
+        // (owner, 2026-10-01): the Grid keeps only the Gym.
+        Self::with_world(world, true, false, InteractHint::None)
     }
 
     /// The bare world with nobody playing in it here: a spectator's view of
@@ -213,10 +219,9 @@ impl WorldRuntime {
     /// with player input.
     #[must_use]
     pub fn unoccupied() -> Self {
-        Self {
-            unoccupied: true,
-            ..Self::bare()
-        }
+        let mut runtime = Self::bare();
+        runtime.unoccupied = true;
+        runtime
     }
 
     #[must_use]

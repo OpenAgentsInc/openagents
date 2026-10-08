@@ -12,6 +12,33 @@ use std::ptr;
 /// 512 KiB view bound) with its input request and QR code.
 const MAX_REQUEST_BYTES: usize = 640 * 1024;
 
+/// The stack the scene's creation runs on. `Scene::new` builds the world by
+/// value through frames that total near a megabyte, which overflowed a
+/// phone's main-thread stack when the Verse tab mounted (#10928). The
+/// renderer still opens on the calling main thread, which owns the layer.
+const CREATE_STACK_BYTES: usize = 64 << 20;
+
+/// Runs `build` on a dedicated `verse-create` thread with a
+/// [`CREATE_STACK_BYTES`] stack and hands its boxed result back to the
+/// calling thread. A panic in `build` resumes here, so the FFI boundary's
+/// `catch_unwind` still reports it.
+pub(crate) fn create_scene(
+    build: impl FnOnce() -> Result<Box<Scene>, String> + Send,
+) -> Result<Box<Scene>, String> {
+    std::thread::scope(|scope| {
+        match std::thread::Builder::new()
+            .name("verse-create".into())
+            .stack_size(CREATE_STACK_BYTES)
+            .spawn_scoped(scope, build)
+        {
+            Ok(joined) => joined
+                .join()
+                .unwrap_or_else(|payload| std::panic::resume_unwind(payload)),
+            Err(error) => Err(format!("Cannot start the world build thread: {error}")),
+        }
+    })
+}
+
 /// Avatar presence for the bare world: the protected world identity and,
 /// optionally, a relay other than the public plaza relay.
 pub struct BarePresence {
@@ -138,7 +165,10 @@ pub(crate) fn bare_config_with_gym(
 
 /// A mounted Verse world and its renderer.
 pub struct VerseHandle {
-    pub(crate) scene: Scene,
+    /// Boxed so the handle and every frame that carries it stay small: the
+    /// scene is tens of kilobytes, and moving it by value through the
+    /// creation path overflowed a phone's main-thread stack (#10928).
+    pub(crate) scene: Box<Scene>,
     pub(crate) renderer: Option<Surface>,
     pub(crate) rendered_zone_revision: u64,
     /// The chamber content the engine holds; 0 while it holds the Grid.
@@ -240,12 +270,8 @@ pub unsafe extern "C" fn coder_verse_create(
         return ptr::null_mut();
     }
     CREATE_ERROR.with(|error| *error.borrow_mut() = None);
-    let result = catch_unwind(AssertUnwindSafe(|| {
-        let config: Config =
-            serde_json::from_slice(unsafe { std::slice::from_raw_parts(bytes, len) })
-                .map_err(|_| "Invalid native Verse configuration".to_owned())?;
-        let scene = Scene::new(config)?;
-        create_renderer(layer, scene)
+    let result = catch_unwind(AssertUnwindSafe(|| unsafe {
+        coder_verse_create_inner(layer, bytes, len)
     }));
     match result {
         Ok(Ok(handle)) => Box::into_raw(Box::new(handle)),
@@ -260,8 +286,23 @@ pub unsafe extern "C" fn coder_verse_create(
     }
 }
 
+/// `coder_verse_create`'s body, `#[inline(never)]` so the world build's
+/// frames never join the FFI frame (#10928).
+#[inline(never)]
+unsafe fn coder_verse_create_inner(
+    layer: *mut c_void,
+    bytes: *const u8,
+    len: usize,
+) -> Result<VerseHandle, String> {
+    let config: Config = serde_json::from_slice(unsafe { std::slice::from_raw_parts(bytes, len) })
+        .map_err(|_| "Invalid native Verse configuration".to_owned())?;
+    let scene = create_scene(move || Scene::new(config).map(Box::new))?;
+    create_renderer(layer, scene)
+}
+
 #[cfg(target_os = "ios")]
-fn create_renderer(layer: *mut c_void, scene: Scene) -> Result<VerseHandle, String> {
+#[inline(never)]
+fn create_renderer(layer: *mut c_void, scene: Box<Scene>) -> Result<VerseHandle, String> {
     let mut handle = VerseHandle {
         scene,
         renderer: None,
@@ -276,6 +317,7 @@ fn create_renderer(layer: *mut c_void, scene: Scene) -> Result<VerseHandle, Stri
 #[cfg(target_os = "ios")]
 impl VerseHandle {
     /// Opens the renderer the scene's zone needs on the retained layer.
+    #[inline(never)]
     fn open_renderer(&mut self) -> Result<(), String> {
         let viewport = self.scene.lifecycle.viewport();
         let width = viewport.width().max(1);
@@ -323,7 +365,8 @@ impl VerseHandle {
 /// On Android, `layer` is an acquired `ANativeWindow` that the caller keeps
 /// until the handle is dropped or detached.
 #[cfg(target_os = "android")]
-fn create_renderer(layer: *mut c_void, scene: Scene) -> Result<VerseHandle, String> {
+#[inline(never)]
+fn create_renderer(layer: *mut c_void, scene: Box<Scene>) -> Result<VerseHandle, String> {
     let viewport = scene.lifecycle.viewport();
     let mut handle = VerseHandle {
         scene,
@@ -338,7 +381,8 @@ fn create_renderer(layer: *mut c_void, scene: Scene) -> Result<VerseHandle, Stri
 }
 
 #[cfg(not(any(target_os = "ios", target_os = "android")))]
-fn create_renderer(_layer: *mut c_void, _scene: Scene) -> Result<VerseHandle, String> {
+#[inline(never)]
+fn create_renderer(_layer: *mut c_void, _scene: Box<Scene>) -> Result<VerseHandle, String> {
     Err("Metal native surfaces require an iOS host".into())
 }
 
@@ -378,6 +422,7 @@ impl VerseHandle {
     }
 
     /// Opens the renderer the scene's zone needs on the retained window.
+    #[inline(never)]
     fn open_renderer(&mut self, width: u32, height: u32) -> Result<(), String> {
         self.renderer = None;
         // SAFETY: the caller keeps the window alive past the renderer.
@@ -510,16 +555,19 @@ impl VerseHandle {
             .or_else(|| gym.zone_cache_directory.clone())
             .filter(|directory| std::path::Path::new(directory).is_absolute())
             .map(std::path::PathBuf::from);
-        let mut scene = Scene::new(bare_config_with_gym(
-            width, height, scale, hdr, presence, gym,
-        ))?;
-        scene.set_blocklist_directory(blocklist);
-        scene.gym_panel = panel;
-        scene.results_panel = results_panel;
-        scene.evals_panel = evals_panel;
-        if check_relay.is_some() {
-            scene.relay = check_relay;
-        }
+        let scene = create_scene(move || {
+            let mut scene = Scene::new(bare_config_with_gym(
+                width, height, scale, hdr, presence, gym,
+            ))?;
+            scene.set_blocklist_directory(blocklist);
+            scene.gym_panel = panel;
+            scene.results_panel = results_panel;
+            scene.evals_panel = evals_panel;
+            if let Some(relay) = check_relay {
+                scene.relay = Some(relay);
+            }
+            Ok(Box::new(scene))
+        })?;
         create_renderer(layer, scene)
     }
 
@@ -850,7 +898,7 @@ mod tests {
         ))
         .unwrap();
         let mut handle = VerseHandle {
-            scene,
+            scene: Box::new(scene),
             renderer: None,
             rendered_zone_revision: 0,
             rendered_chamber_revision: 0,
@@ -894,7 +942,7 @@ mod tests {
         })
         .unwrap();
         let mut handle = VerseHandle {
-            scene,
+            scene: Box::new(scene),
             renderer: None,
             rendered_zone_revision: 0,
             rendered_chamber_revision: 0,
@@ -948,5 +996,37 @@ mod tests {
         assert_eq!(after["frames_presented"], before["frames_presented"]);
         assert_eq!(after["motion_needed"], false);
         assert_eq!(after["gym_active"], false);
+    }
+
+    /// The world build fits a small stack. Until #10928 it ran on the main
+    /// thread — one megabyte on a phone — and overflowed it mounting the
+    /// Verse tab. It now runs on the `verse-create` thread
+    /// ([`create_scene`]), but its frames must stay well under a megabyte
+    /// anyway, which this bounds by building on a small-stack thread. The
+    /// bound is on the shipping profile: debug frames run several times
+    /// larger, so the debug run keeps a wider margin.
+    #[test]
+    fn the_world_build_fits_a_small_stack() {
+        let stack = if cfg!(debug_assertions) {
+            16 << 20
+        } else {
+            512 << 10
+        };
+        std::thread::Builder::new()
+            .name("verse-create-check".into())
+            .stack_size(stack)
+            .spawn(|| {
+                for bare in [true, false] {
+                    let config = Config {
+                        bare,
+                        synthetic: true,
+                        ..bare_config(64, 64, 1.0, false, None)
+                    };
+                    std::hint::black_box(Scene::new(config).map(Box::new)).unwrap();
+                }
+            })
+            .unwrap()
+            .join()
+            .unwrap();
     }
 }

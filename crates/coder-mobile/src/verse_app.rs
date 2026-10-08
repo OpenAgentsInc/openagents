@@ -812,7 +812,9 @@ pub(crate) struct Scene {
     /// The host asked for an extended-range surface (read by the iOS mount).
     #[cfg_attr(not(target_os = "ios"), allow(dead_code))]
     pub hdr_requested: bool,
-    pub world: WorldRuntime,
+    /// Boxed so a scene moves through the creation path as a pointer: the
+    /// world's frames overflowed a phone's main-thread stack (#10928).
+    pub world: Box<WorldRuntime>,
     pub atlas: verse::ui::Atlas,
     map: verse::minimap::MapHud,
     map_error: Option<String>,
@@ -957,6 +959,9 @@ enum ChamberHit {
 }
 
 impl Scene {
+    /// `#[inline(never)]` keeps this frame out of its callers'; the creation
+    /// path's frames must stay small (#10928).
+    #[inline(never)]
     pub fn new(config: Config) -> Result<Self, String> {
         let secret = config
             .secret_hex
@@ -999,9 +1004,9 @@ impl Scene {
             return Err("The Gym preview requires synthetic mode".into());
         }
         let mut world = if config.bare {
-            WorldRuntime::bare()
+            Box::new(WorldRuntime::bare())
         } else {
-            let mut world = WorldRuntime::new();
+            let mut world = Box::new(WorldRuntime::new());
             // A phone opens a station's panel with the zone panel's button.
             world.interact_hint = verse::runtime::InteractHint::Tap;
             // Everglade's town clock runs as on the desktop, so a phone and
@@ -4158,6 +4163,7 @@ mod studio_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
+
     fn scene() -> Scene {
         Scene::new(Config {
             secret_hex: "11".repeat(32),

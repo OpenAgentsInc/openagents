@@ -153,49 +153,8 @@ pub unsafe extern "C" fn openagents_verse_create(
     if layer.is_null() || bytes.is_null() || len == 0 || len > MAX_CONFIG_BYTES {
         return ptr::null_mut();
     }
-    let result = catch_unwind(AssertUnwindSafe(|| {
-        let bytes = unsafe { std::slice::from_raw_parts(bytes, len) };
-        let config: Config = serde_json::from_slice(bytes)
-            .map_err(|_| "Invalid native Verse configuration".to_owned())?;
-        let presence = config.presence()?;
-        if config
-            .gym_code
-            .as_ref()
-            .is_some_and(|code| code.len() > 65_536)
-        {
-            return Err("The Gym connection exceeds its size limit".to_owned());
-        }
-        let gym = BareGym {
-            code: config.gym_code,
-            preview: config.gym_preview && cfg!(debug_assertions),
-            panel: true,
-            results_panel: true,
-            results_base: config.results_base.filter(|_| cfg!(debug_assertions)),
-            results_cache_directory: config.results_cache_directory.clone(),
-            xp_preview: config.xp_preview && cfg!(debug_assertions),
-            evals_panel: true,
-            notes: config.gym_notes,
-            check_relay: config.check_relay.filter(|_| cfg!(debug_assertions)),
-            zone_cache_directory: zone_cache(config.results_cache_directory.as_deref()),
-            // The block list lives beside the zone packs.
-            blocklist_directory: None,
-        };
-        let world = presence.is_some();
-        let mut handle = unsafe {
-            VerseHandle::create_bare_with_gym(
-                layer,
-                config.width,
-                config.height,
-                config.scale,
-                config.hdr,
-                presence,
-                gym,
-            )
-        }?;
-        // The owner's private characters in Everglade, from the app's
-        // private Verse directory (`crate::verse_private`).
-        crate::verse_private::mount(&mut handle, world);
-        Ok(handle)
+    let result = catch_unwind(AssertUnwindSafe(|| unsafe {
+        openagents_verse_create_inner(layer, bytes, len)
     }));
     match result {
         Ok(Ok(handle)) => Box::into_raw(Box::new(handle)),
@@ -208,6 +167,62 @@ pub unsafe extern "C" fn openagents_verse_create(
             ptr::null_mut()
         }
     }
+}
+
+/// `openagents_verse_create`'s body, `#[inline(never)]` so the world build's
+/// frames never join the FFI frame: they overflowed a phone's main-thread
+/// stack (#10928).
+///
+/// # Safety
+/// As `openagents_verse_create`.
+#[inline(never)]
+unsafe fn openagents_verse_create_inner(
+    layer: *mut c_void,
+    bytes: *const u8,
+    len: usize,
+) -> Result<VerseHandle, String> {
+    let bytes = unsafe { std::slice::from_raw_parts(bytes, len) };
+    let config: Config = serde_json::from_slice(bytes)
+        .map_err(|_| "Invalid native Verse configuration".to_owned())?;
+    let presence = config.presence()?;
+    if config
+        .gym_code
+        .as_ref()
+        .is_some_and(|code| code.len() > 65_536)
+    {
+        return Err("The Gym connection exceeds its size limit".to_owned());
+    }
+    let gym = BareGym {
+        code: config.gym_code,
+        preview: config.gym_preview && cfg!(debug_assertions),
+        panel: true,
+        results_panel: true,
+        results_base: config.results_base.filter(|_| cfg!(debug_assertions)),
+        results_cache_directory: config.results_cache_directory.clone(),
+        xp_preview: config.xp_preview && cfg!(debug_assertions),
+        evals_panel: true,
+        notes: config.gym_notes,
+        check_relay: config.check_relay.filter(|_| cfg!(debug_assertions)),
+        zone_cache_directory: zone_cache(config.results_cache_directory.as_deref()),
+        // The block list lives beside the zone packs.
+        blocklist_directory: None,
+    };
+    let world = presence.is_some();
+    let mut handle = unsafe {
+        VerseHandle::create_bare_with_gym(
+            layer,
+            config.width,
+            config.height,
+            config.scale,
+            config.hdr,
+            presence,
+            gym,
+        )
+    }?;
+    // The owner's private characters in Everglade, from the app's
+    // private Verse directory (`crate::verse_private`).
+    crate::verse_private::mount(&mut handle, world);
+    Ok(handle)
 }
 
 /// Why the last `openagents_verse_create` on this thread failed, as UTF-8.
@@ -271,11 +286,15 @@ mod tests {
         assert!(serde_json::from_slice::<Config>(config).is_ok());
         for host in [
             include_str!("../../../bins/openagents-ios/host/App/VerseTab.swift"),
-            include_str!("../../../bins/openagents-android/host/app/src/main/java/com/openagents/app/VerseSurface.kt"),
+            include_str!(
+                "../../../bins/openagents-android/host/app/src/main/java/com/openagents/app/VerseSurface.kt"
+            ),
         ] {
             for key in host_keys(host) {
                 assert!(
-                    std::str::from_utf8(config).unwrap().contains(&format!("\"{key}\"")),
+                    std::str::from_utf8(config)
+                        .unwrap()
+                        .contains(&format!("\"{key}\"")),
                     "a host sends `{key}`, which this test (and Config) must cover"
                 );
             }

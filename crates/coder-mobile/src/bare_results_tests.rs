@@ -192,7 +192,7 @@ fn without_the_native_panel_the_results_board_never_opens_or_loads() {
 #[test]
 fn the_native_json_path_carries_the_results_screens_under_the_packet_cap() {
     let mut handle = VerseHandle {
-        scene: scene(true),
+        scene: Box::new(scene(true)),
         renderer: None,
         rendered_zone_revision: 0,
         rendered_chamber_revision: 0,

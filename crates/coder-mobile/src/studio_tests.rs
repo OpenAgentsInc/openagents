@@ -388,7 +388,7 @@ fn pausing_or_leaving_everglade_drops_the_panel() {
 #[test]
 fn the_native_json_path_carries_the_studio_view() {
     let mut handle = VerseHandle {
-        scene: in_everglade(station("task_wall")),
+        scene: Box::new(in_everglade(station("task_wall"))),
         renderer: None,
         rendered_zone_revision: 0,
         rendered_chamber_revision: 0,

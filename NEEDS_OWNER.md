@@ -1,3 +1,14 @@
+## Ship a TestFlight build and open the Verse tab on the iPhone (#10928)
+
+The build 53 crash — a main-thread stack overflow the moment the Verse tab
+mounted — is fixed on main: the world now builds on a dedicated
+`verse-create` thread with a large stack, and the scene returns to the main
+thread boxed, so the creation path's frames stay under 32 KB each. The only
+remaining acceptance step is on hardware: ship the next TestFlight build
+(`scripts/release/testflight.sh start`, then `wait`), install it on the
+iPhone 17 Pro Max that logged `OpenAgents-2026-10-07-222458.ips`, and open
+the Verse tab — the Grid should render instead of crashing.
+
 ## The RTX 4080 pylon is running (#10921)
 
 `coderos-4080` serves Qwen3.5 0.8B through Psionic on CUDA as the pylon

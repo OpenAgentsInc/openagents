@@ -271,7 +271,8 @@ pub extern "system" fn Java_com_openagents_coder_CoderNative_createVerse<'local>
                     height: config.height,
                     scale: config.scale,
                 };
-                let scene = Scene::new(config)?;
+                let scene =
+                    crate::verse_ffi::create_scene(move || Scene::new(config).map(Box::new))?;
                 let mut verse = AndroidVerse {
                     handle: VerseHandle {
                         scene,
