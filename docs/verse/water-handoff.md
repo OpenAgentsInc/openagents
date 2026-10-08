@@ -132,6 +132,12 @@ they do not render a smaller viewport that could re-enable dropped optics.
 Pass timestamps isolate mirror, color and depth copies, and surface work.
 Shared opaque underwater shading and implicit queue texture uploads are
 covered only by the separate wet-minus-dry fence estimate.
+The first GPU degradation skips optics absent from its tier: Medium drops
+its mirror because it has no SSR; Low's diagnostic probe lowers visual
+cadence because it has no optical targets. The reduction receipt compares
+actual admitted plans or cadence, so a flag change alone cannot satisfy
+acceptance. These focused regressions and refreshed artifacts are pending;
+normal Low and unsupported runtime GPU timing remain absent.
 
 Resume from `codex/water-w11-measurement`; acceptance is still pending.
 The first remote native check compiled the edited physics, engine, and
@@ -150,8 +156,9 @@ and GLES variants, the explicit wasm32 consumer recheck passed, and the
 filtered `water_capture` example compiled with `--no-run`. That compilation
 found only an obsolete capture extent helper, which is removed. The remote
 has no `wasm-bindgen` command; use the Mac's matched 0.2.128 CLI after
-copying the exact compiler artifact. The Mac quiet soak still prevents
-local builds and measurements.
+copying the exact compiler artifact. The terminal's hour soak passed;
+local compilation and measurement still require the coordinator's next
+window after the terminal and P3 verification commands.
 Preserve the remote Cargo JSON and artifact record. `stage.py` accepts an
 explicit relocated artifact and the remote record with its original
 Linux path, source SHA, SHA-256, byte count, and Cargo JSON digest. It
@@ -172,18 +179,39 @@ High. Measurements, captures, budget updates in [water.md](water.md), and
 phone steps in `NEEDS_OWNER.md` are still pending. No issue has closed.
 Compile the browser candidate with the existing `presence_ui::tests` filter,
 `--lib --target wasm32-unknown-unknown --release --no-run --message-format=json`.
-`stage.py` selects its exact executable from Cargo's output, checks that
-matched `wasm-bindgen` 0.2.128 retains the app's start export and removes
-the Rust test harness entry, and records source, WASM, glue, and input
-digests. It stages only in scratch. The browser check requires the
+`stage.py` selects its exact executable from Cargo's output and requires
+the descriptor-backed raw browser start export. The original compiler
+artifact and JSON remain unchanged. Staging removes only named Rust
+test-entry exports from a derived input, records its digest, and runs
+matched `wasm-bindgen` 0.2.128. It checks that normal glue's initializer
+calls a wrapper that reaches the app start, and that the served module
+has no implicit start or exported test entry. The receipt labels this as
+a test-compiled benchmark derivative; production uses the repository's
+normal release image build. `everglade-web` has no runtime substitutions
+under `cfg(test)`; its only guarded section contains presence UI tests.
+Staging records source, WASM, glue, and input digests in scratch. The browser check requires the
 physical renderer's admitted tier and successful pinned pack responses.
 The private kit input is
 `~/.openagents/verse/private/medieval-town/packs/dae1612d4c22438a933c27b406c1e18fe134b13eab8eb5240ddcf5506ffb0b93.vtp`
 (10,238,689 bytes). The public source pack is
 `a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f`
 (10,636,202 bytes). Recheck both pins if the source is rebased; keep all
-licensed input bytes outside Git. Actual artifact and page checks have
-not run yet.
+licensed input bytes outside Git. Page checks have not run yet.
+The remote release WASM compile at
+`1f2b900f04c43f8b6dd2b5d1765b1c0e06c2de4f` exited `0`; the original
+artifact is 37,429,880 bytes with SHA-256
+`19a54249ce99bb2b1482398a0b065265d36489d2a7e198b9de77d32ac5761d21`.
+The initial validation wrapper exited `1` because it expected an
+unsalted raw start symbol. Corrected descriptor validation exited `0`.
+That artifact is obsolete for metrics after the tier-policy correction.
+Startup-only proof removed the `main` export, then verified that the
+generated wrapper initializes externrefs and calls the actual app start
+once. Its served digest is
+`2e8a1ac90697175a3628d142e585fbd254a82a9836e0cb7400c0ffe3c6c42584`.
+Original JSON, artifact identity, and separate compile and validation
+exits are retained under remote scratch `w11-wasm-1f2b900f04c43f8b6dd2b5d1765b1c0e06c2de4f`
+and Mac scratch `w11-wasm-startup-proof-1f2b900f04c43f8b6dd2b5d1765b1c0e06c2de4f`.
+Compile fresh artifacts after the focused tier regressions pass.
 
 The coordinator holds the team build token. Request a window before
 Cargo or measurement, use at most four jobs for W11, and preserve the

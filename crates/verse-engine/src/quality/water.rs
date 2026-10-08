@@ -104,6 +104,7 @@ pub struct WaterLoad {
 /// Creating a new renderer resets the policy; recovery does not flap optics.
 #[derive(Clone, Debug)]
 pub struct WaterPolicy {
+    tier: Tier,
     budget: WaterBudget,
     effects: WaterEffects,
     frames: u32,
@@ -118,6 +119,7 @@ impl WaterPolicy {
     #[must_use]
     pub fn new(tier: Tier) -> Self {
         Self {
+            tier,
             budget: WaterBudget::of(tier),
             effects: WaterEffects::Full,
             frames: 0,
@@ -181,7 +183,15 @@ impl WaterPolicy {
             self.effects = if cpu_due {
                 self.effects.max(WaterEffects::NoCopies).less()
             } else {
-                self.effects.less()
+                // Low admits no optical targets; Medium has no SSR. Skip
+                // those states so a reduction changes an available effect.
+                self.effects
+                    .max(match self.tier {
+                        Tier::Low => WaterEffects::NoCopies,
+                        Tier::Medium => WaterEffects::NoSsr,
+                        Tier::High => WaterEffects::Full,
+                    })
+                    .less()
             };
             self.cpu_over = 0;
             self.gpu_over = 0;

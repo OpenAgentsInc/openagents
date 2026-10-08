@@ -304,6 +304,40 @@ mod tests {
         assert_eq!(low.uniform(true), [0.0; 4]);
     }
 
+    fn first_gpu_reduction(tier: Tier) -> verse_engine::quality::WaterEffects {
+        use verse_engine::quality::{WaterLoad, WaterPolicy};
+        let mut policy = WaterPolicy::new(tier);
+        let load = WaterLoad {
+            gpu_ms: Some(policy.budget().gpu_ms + 1.0),
+            ..WaterLoad::default()
+        };
+        for _ in 0..128 {
+            policy.observe(load);
+        }
+        policy.effects()
+    }
+
+    #[test]
+    fn medium_gpu_overrun_drops_its_mirror_instead_of_absent_ssr() {
+        let before = Plan::of(Tier::Medium);
+        assert_eq!(before.ssr_steps, 0);
+        let after = before.with_effects(first_gpu_reduction(Tier::Medium));
+        assert!(before.mirror_divisor > 0);
+        assert_eq!(after.mirror_divisor, 0);
+        assert!(after.copies);
+        assert_ne!(before, after);
+    }
+
+    #[test]
+    fn low_diagnostic_gpu_overrun_reduces_actual_visual_cadence() {
+        // Normal Low has no GPU timing signal. Its isolated diagnostic
+        // can reduce cadence, since this tier admits no optical targets.
+        let before = Plan::of(Tier::Low);
+        let effects = first_gpu_reduction(Tier::Low);
+        assert_eq!(before, before.with_effects(effects));
+        assert!(effects.refresh_every() > 1);
+    }
+
     #[test]
     fn medium_mirrors_at_half_size_and_high_at_full_with_a_march() {
         let medium = Plan::of(Tier::Medium);
