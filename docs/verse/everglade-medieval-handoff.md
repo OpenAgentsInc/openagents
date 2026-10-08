@@ -67,7 +67,7 @@ the original October 7 plan.
 | Decisions recorded | #10903 | `46a89d3587` | Done |
 | P1: export and archive | #10894 | `89328cdd2a` | Closed; vendor archive uploaded October 7 |
 | P2: kit pack, loader, proxies | #10895 | `8f6136a533`, first repin `ea39fa5cf2` | Closed |
-| P3: materials and levels | #10896 | grade in `0a44257462`, tooling `50dca3b658` | Open: house levels, private compilation, and visual acceptance |
+| P3: materials and levels | #10896 | grade in `0a44257462`, tooling `50dca3b658` | CPU acceptance passes; visual acceptance and publication remain open |
 | P4: kit houses and breaking | #10897 | `0a44257462` | Closed |
 | P5: Stoop Lane | #10898 | `0a44257462`, `ea39fa5cf2` | Closed |
 | P6: Main Street, the plaza, Market Row | #10899 | `611df73ca7`, repin `6b37d8ee57` | Closed |
@@ -251,15 +251,35 @@ middle 2,999–3,000/one, and far 799–800/one. Use the raw-source manifest in
 `house-check-p3-roof/` for regeneration; the integrated report already
 selects the reduced near model and is not a generator input.
 
-The source checkout and private data remain frozen at `c17428fc30` through
-this CPU acceptance. Before further Cargo or GPU work, rebase the public
-feature branch on current `origin/main`, preserve the scene-lit particle
-changes and `NEEDS_OWNER.md`, and obtain the coordinator's next build
-window. Remaining jobs are protected candidate-pack output and capture
-precompiles, a composed headless Verse consumer check, actual roof/interior,
-grade, same-demo-actor, and 10/50/120 m raster captures, then acceptance
-review and the artifact queue, private upload, and dependent deploy. No
-P3 GPU capture, artifact submission, repin, upload, or main landing has run.
+Private generation remains frozen at `c17428fc30`. The public feature
+branch is rebased onto `2c6af8ad347f80b2e9f950445ee9adacd734db51`; it preserves
+the scene-lit particle changes and `NEEDS_OWNER.md`. Source
+`1d38e17a75ba88f77a585d628d49a46641325329` passes scoped formatting and the
+composed headless Verse consumer check in 13.71 seconds. Its Cargo JSON
+SHA-256 is `67fca990da0724378b691dfca0af630218596fe2626a6f48183285ffcf31fa68`.
+The strict checker option `VERSE_KIT_HOUSE_VERIFY=1` writes protected
+candidate pack bytes and `candidate.json` without changing the pin. Its
+filtered no-run passes in 45.22 seconds at source `2b8eade165`; executable
+SHA-256 is `e1c17be0b155103d73ddf47acba0a2372e99bf2a06b0931158019d00afc79bac`
+and Cargo JSON SHA-256 is
+`9fa9841aa9cfc92b2fcad89ac09abec7e5e5774acbf66067c9ca153d7e7986a4`.
+The existing capture example has an ignored, environment-driven wrapper
+that requires a private output directory. Its first headless no-run
+exposes desktop-only Alice workshop references; `1d38e17a75` gates only
+those capture paths and preserves desktop behavior. The repaired no-run
+passes in 5.15 seconds; executable SHA-256 is
+`2abadd71e5e2af581a4bfc7377efdc68b8c386a8f2de21359a74afab22d6b60d`
+and Cargo JSON SHA-256 is
+`0ac05bd77dfcc54b60a6a14a35136c034d9ac840f74b7eac9a09d4224f645059`.
+The toolbox retains `p3-candidate-no-run*`, `p3-capture-no-run*` (including
+the failed attempt), and `p3-composed-headless-check*` with full commands,
+logs, and executable paths. The team Cargo slot is released after this
+batch. Remaining jobs are one compiled CPU candidate-output run, actual
+roof/interior, grade, same-demo-actor, and 10/50/120 m raster captures,
+far damage/restore evidence, then acceptance review and the artifact queue,
+private upload, and dependent deploy. Obtain a separate coordinator window
+before those steps. No P3 GPU capture, artifact submission, repin, upload,
+or main landing has run.
 
 The portable headless CPU runtime is Blender 4.5.14 LTS. Its official archive
 SHA-256 is `9ba871ff2ecd36526b77432745980b7e6664ecd0c7ca11c48849073dcfe06da3`.
