@@ -1,11 +1,9 @@
-//! The Coder terminal: one white ladder, four intensities, and the composer.
+//! The Coder terminal: the Coder Noir ladder, four intensities, and the composer.
 //!
 //! The crate builds on Coder's shared application theme and owns terminal facilities:
 //!
 //! - [`Intensity`] re-exports Coder's four-step brightness scale over a
-//!   single white hue.
-//!   Tone — faintest to brightest — carries every distinction the UI needs;
-//!   hue does not vary.
+//!   shared content palette.
 //! - [`Ladder`] maps an [`Intensity`] to a concrete color for the terminal at
 //!   hand: exact RGB when truecolor is available, the nearest cube entry under
 //!   a 256-color palette, and dim text when color is off.

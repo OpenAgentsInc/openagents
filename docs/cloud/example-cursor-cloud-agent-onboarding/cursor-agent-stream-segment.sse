@@ -1,0 +1,5670 @@
+event: status
+data: {"runId":"run-7b90ddb0-9d8b-43cb-870a-22fdd0e4fd31","status":"RUNNING"}
+
+id: 1791473878040-0
+event: thinking
+data: {"text":"\n\nI will link the Fresh"}
+
+id: 1791473878040-0
+event: interaction_update
+data: {"type":"thinking-delta","text":"\n\nI will link the Fresh"}
+
+id: 1791473878043-0
+event: interaction_update
+data: {"type":"token-delta","tokens":6}
+
+id: 1791473878105-0
+event: thinking
+data: {"text":" Cloud Agent verification"}
+
+id: 1791473878105-0
+event: interaction_update
+data: {"type":"thinking-delta","text":" Cloud Agent verification"}
+
+id: 1791473878108-0
+event: interaction_update
+data: {"type":"token-delta","tokens":6}
+
+id: 1791473878177-0
+event: thinking
+data: {"text":" result using its ID."}
+
+id: 1791473878177-0
+event: interaction_update
+data: {"type":"thinking-delta","text":" result using its ID."}
+
+id: 1791473878179-0
+event: interaction_update
+data: {"type":"token-delta","tokens":6}
+
+id: 1791473888124-0
+event: thinking
+data: {"text":"\n\nThe link will use "}
+
+id: 1791473888124-0
+event: interaction_update
+data: {"type":"thinking-delta","text":"\n\nThe link will use "}
+
+id: 1791473888127-0
+event: interaction_update
+data: {"type":"token-delta","tokens":5}
+
+id: 1791473888131-0
+event: thinking
+data: {"text":"a descriptive label "}
+
+id: 1791473888131-0
+event: interaction_update
+data: {"type":"thinking-delta","text":"a descriptive label "}
+
+id: 1791473888136-0
+event: interaction_update
+data: {"type":"token-delta","tokens":5}
+
+id: 1791473888139-0
+event: thinking
+data: {"text":"like [Build verification](id)"}
+
+id: 1791473888139-0
+event: interaction_update
+data: {"type":"thinking-delta","text":"like [Build verification](id)"}
+
+id: 1791473888143-0
+event: interaction_update
+data: {"type":"token-delta","tokens":7}
+
+id: 1791473888155-0
+event: thinking
+data: {"text":" rather than a generic"}
+
+id: 1791473888155-0
+event: interaction_update
+data: {"type":"thinking-delta","text":" rather than a generic"}
+
+id: 1791473888158-0
+event: interaction_update
+data: {"type":"token-delta","tokens":5}
+
+id: 1791473888160-0
+event: thinking
+data: {"text":" placeholder.\n\nThe workspace"}
+
+id: 1791473888160-0
+event: interaction_update
+data: {"type":"thinking-delta","text":" placeholder.\n\nThe workspace"}
+
+id: 1791473888163-0
+event: interaction_update
+data: {"type":"token-delta","tokens":7}
+
+id: 1791473888166-0
+event: thinking
+data: {"text":" is Rust 1.97.1 with"}
+
+id: 1791473888166-0
+event: interaction_update
+data: {"type":"thinking-delta","text":" is Rust 1.97.1 with"}
+
+id: 1791473888169-0
+event: interaction_update
+data: {"type":"token-delta","tokens":5}
+
+id: 1791473888172-0
+event: thinking
+data: {"text":" no existing Cloud Agent"}
+
+id: 1791473888172-0
+event: interaction_update
+data: {"type":"thinking-delta","text":" no existing Cloud Agent"}
+
+id: 1791473888175-0
+event: interaction_update
+data: {"type":"token-delta","tokens":6}
+
+id: 1791473888178-0
+event: thinking
+data: {"text":" environment. Native"}
+
+id: 1791473888178-0
+event: interaction_update
+data: {"type":"thinking-delta","text":" environment. Native"}
+
+id: 1791473888182-0
+event: interaction_update
+data: {"type":"token-delta","tokens":5}
+
+id: 1791473888185-0
+event: thinking
+data: {"text":" build packages were"}
+
+id: 1791473888185-0
+event: interaction_update
+data: {"type":"thinking-delta","text":" build packages were"}
+
+id: 1791473888189-0
+event: interaction_update
+data: {"type":"token-delta","tokens":5}
+
+id: 1791473888198-0
+event: thinking
+data: {"text":" installed and the root"}
+
+id: 1791473888198-0
+event: interaction_update
+data: {"type":"thinking-delta","text":" installed and the root"}
+
+id: 1791473888200-0
+event: interaction_update
+data: {"type":"token-delta","tokens":6}
+
+id: 1791473888203-0
+event: thinking
+data: {"text":" workspace crates fetched."}
+
+id: 1791473888203-0
+event: interaction_update
+data: {"type":"thinking-delta","text":" workspace crates fetched."}
+
+id: 1791473888207-0
+event: interaction_update
+data: {"type":"token-delta","tokens":7}
+
+id: 1791473888210-0
+event: thinking
+data: {"text":" Local tests ran for"}
+
+id: 1791473888210-0
+event: interaction_update
+data: {"type":"thinking-delta","text":" Local tests ran for"}
+
+id: 1791473888213-0
+event: interaction_update
+data: {"type":"token-delta","tokens":5}
+
+id: 1791473888215-0
+event: thinking
+data: {"text":" atif, coder-lease, "}
+
+id: 1791473888215-0
+event: interaction_update
+data: {"type":"thinking-delta","text":" atif, coder-lease, "}
+
+id: 1791473888218-0
+event: interaction_update
+data: {"type":"token-delta","tokens":5}
+
+id: 1791473888221-0
+event: thinking
+data: {"text":"and a Nostr signature."}
+
+id: 1791473888221-0
+event: interaction_update
+data: {"type":"thinking-delta","text":"and a Nostr signature."}
+
+id: 1791473888223-0
+event: interaction_update
+data: {"type":"token-delta","tokens":5}
+
+id: 1791473888226-0
+event: thinking
+data: {"text":"\n\nThe VM was snapshotted"}
+
+id: 1791473888226-0
+event: interaction_update
+data: {"type":"thinking-delta","text":"\n\nThe VM was snapshotted"}
+
+id: 1791473888229-0
+event: interaction_update
+data: {"type":"token-delta","tokens":6}
+
+id: 1791473888232-0
+event: thinking
+data: {"text":" and verified in a fresh"}
+
+id: 1791473888232-0
+event: interaction_update
+data: {"type":"thinking-delta","text":" and verified in a fresh"}
+
+id: 1791473888236-0
+event: interaction_update
+data: {"type":"token-delta","tokens":6}
+
+id: 1791473888239-0
+event: thinking
+data: {"text":" agent. The validation"}
+
+id: 1791473888239-0
+event: interaction_update
+data: {"type":"thinking-delta","text":" agent. The validation"}
+
+id: 1791473888248-0
+event: interaction_update
+data: {"type":"token-delta","tokens":6}
+
+id: 1791473888308-0
+event: thinking
+data: {"text":" table shows:\n\n- ATIF"}
+
+id: 1791473888308-0
+event: interaction_update
+data: {"type":"thinking-delta","text":" table shows:\n\n- ATIF"}
+
+id: 1791473888312-0
+event: interaction_update
+data: {"type":"token-delta","tokens":5}
+
+id: 1791473888315-0
+event: thinking
+data: {"text":" trajectory tests: 56"}
+
+id: 1791473888315-0
+event: interaction_update
+data: {"type":"thinking-delta","text":" trajectory tests: 56"}
+
+id: 1791473888318-0
+event: interaction_update
+data: {"type":"token-delta","tokens":5}
+
+id: 1791473888321-0
+event: thinking
+data: {"text":" library tests plus "}
+
+id: 1791473888321-0
+event: interaction_update
+data: {"type":"thinking-delta","text":" library tests plus "}
+
+id: 1791473888325-0
+event: interaction_update
+data: {"type":"token-delta","tokens":5}
+
+id: 1791473888328-0
+event: thinking
+data: {"text":"related suites passed"}
+
+id: 1791473888328-0
+event: interaction_update
+data: {"type":"thinking-delta","text":"related suites passed"}
+
+id: 1791473888331-0
+event: interaction_update
+data: {"type":"token-delta","tokens":5}
+
+id: 1791473888334-0
+event: thinking
+data: {"text":"\n- Lease broker: 66 "}
+
+id: 1791473888334-0
+event: interaction_update
+data: {"type":"thinking-delta","text":"\n- Lease broker: 66 "}
+
+id: 1791473888337-0
+event: interaction_update
+data: {"type":"token-delta","tokens":5}
+
+id: 1791473888340-0
+event: thinking
+data: {"text":"library tests, holder"}
+
+id: 1791473888340-0
+event: interaction_update
+data: {"type":"thinking-delta","text":"library tests, holder"}
+
+id: 1791473888344-0
+event: interaction_update
+data: {"type":"token-delta","tokens":6}
+
+id: 1791473888351-0
+event: thinking
+data: {"text":" recovery, and the cargo"}
+
+id: 1791473888351-0
+event: interaction_update
+data: {"type":"thinking-delta","text":" recovery, and the cargo"}
+
+id: 1791473888408-0
+event: interaction_update
+data: {"type":"token-delta","tokens":6}
+
+id: 1791473888411-0
+event: thinking
+data: {"text":" shim passed\n- Nostr"}
+
+id: 1791473888411-0
+event: interaction_update
+data: {"type":"thinking-delta","text":" shim passed\n- Nostr"}
+
+id: 1791473888415-0
+event: interaction_update
+data: {"type":"token-delta","tokens":5}
+
+id: 1791473888418-0
+event: thinking
+data: {"text":" signed agreement: free_agreement_requires_both_signatures_exact_terms_and_confirmation"}
+
+id: 1791473888418-0
+event: interaction_update
+data: {"type":"thinking-delta","text":" signed agreement: free_agreement_requires_both_signatures_exact_terms_and_confirmation"}
+
+id: 1791473888421-0
+event: interaction_update
+data: {"type":"token-delta","tokens":21}
+
+id: 1791473888424-0
+event: thinking
+data: {"text":" passed\n- cargo fmt:"}
+
+id: 1791473888424-0
+event: interaction_update
+data: {"type":"thinking-delta","text":" passed\n- cargo fmt:"}
+
+id: 1791473888427-0
+event: interaction_update
+data: {"type":"token-delta","tokens":5}
+
+id: 1791473888430-0
+event: thinking
+data: {"text":" atif, coder-lease, "}
+
+id: 1791473888430-0
+event: interaction_update
+data: {"type":"thinking-delta","text":" atif, coder-lease, "}
+
+id: 1791473888433-0
+event: interaction_update
+data: {"type":"token-delta","tokens":5}
+
+id: 1791473888436-0
+event: thinking
+data: {"text":"and nostr checked clean"}
+
+id: 1791473888436-0
+event: interaction_update
+data: {"type":"thinking-delta","text":"and nostr checked clean"}
+
+id: 1791473888440-0
+event: interaction_update
+data: {"type":"token-delta","tokens":6}
+
+id: 1791473888443-0
+event: thinking
+data: {"text":"\n- Install idempotence:"}
+
+id: 1791473888443-0
+event: interaction_update
+data: {"type":"thinking-delta","text":"\n- Install idempotence:"}
+
+id: 1791473888446-0
+event: interaction_update
+data: {"type":"token-delta","tokens":6}
+
+id: 1791473888458-0
+event: thinking
+data: {"text":" passed twice"}
+
+id: 1791473888458-0
+event: interaction_update
+data: {"type":"thinking-delta","text":" passed twice"}
+
+id: 1791473888461-0
+event: interaction_update
+data: {"type":"token-delta","tokens":3}
+
+id: 1791473888465-0
+event: thinking
+data: {"text":"\n\nThe fresh agent environment includes Rust 1.97.1, protoc, OpenSSL, SQLite, and bubblewrap. Offline fetch exited cleanly. The coder-lease corrupt-table test passed.\n\nATIF yielded 56 library tests plus 3 suite tests and 1 doctest. Coder-lease yielded 66 library tests plus 2 suite tests and 5 shim tests.\n\nAn AGENTS.md note will follow the template. Snapshot internals will be omitted per the template constraints."}
+
+id: 1791473888465-0
+event: interaction_update
+data: {"type":"thinking-delta","text":"\n\nThe fresh agent environment includes Rust 1.97.1, protoc, OpenSSL, SQLite, and bubblewrap. Offline fetch exited cleanly. The coder-lease corrupt-table test passed.\n\nATIF yielded 56 library tests plus 3 suite tests and 1 doctest. Coder-lease yielded 66 library tests plus 2 suite tests and 5 shim tests.\n\nAn AGENTS.md note will follow the template. Snapshot internals will be omitted per the template constraints."}
+
+id: 1791473888468-0
+event: interaction_update
+data: {"type":"token-delta","tokens":104}
+
+id: 1791473888471-0
+event: thinking
+data: {"text":"\n\nThe phone workspace lockfile limitation will be noted as a repository issue rather than a failed check. The environment is ready."}
+
+id: 1791473888471-0
+event: interaction_update
+data: {"type":"thinking-delta","text":"\n\nThe phone workspace lockfile limitation will be noted as a repository issue rather than a failed check. The environment is ready."}
+
+id: 1791473888474-0
+event: interaction_update
+data: {"type":"token-delta","tokens":32}
+
+id: 1791473888477-0
+event: interaction_update
+data: {"type":"thinking-completed","thinkingDurationMs":11731}
+
+id: 1791473888482-0
+event: assistant
+data: {"text":"Open"}
+
+id: 1791473888482-0
+event: interaction_update
+data: {"type":"text-delta","text":"Open"}
+
+id: 1791473888485-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473888488-0
+event: assistant
+data: {"text":"Agents"}
+
+id: 1791473888488-0
+event: interaction_update
+data: {"type":"text-delta","text":"Agents"}
+
+id: 1791473888491-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473888495-0
+event: assistant
+data: {"text":"’s"}
+
+id: 1791473888495-0
+event: interaction_update
+data: {"type":"text-delta","text":"’s"}
+
+id: 1791473888499-0
+event: assistant
+data: {"text":" Cloud"}
+
+id: 1791473888499-0
+event: interaction_update
+data: {"type":"text-delta","text":" Cloud"}
+
+id: 1791473888502-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473888509-0
+event: assistant
+data: {"text":" Agent"}
+
+id: 1791473888509-0
+event: interaction_update
+data: {"type":"text-delta","text":" Agent"}
+
+id: 1791473888511-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473888515-0
+event: assistant
+data: {"text":" environment"}
+
+id: 1791473888515-0
+event: interaction_update
+data: {"type":"text-delta","text":" environment"}
+
+id: 1791473888519-0
+event: interaction_update
+data: {"type":"token-delta","tokens":3}
+
+id: 1791473888523-0
+event: assistant
+data: {"text":" is"}
+
+id: 1791473888523-0
+event: interaction_update
+data: {"type":"text-delta","text":" is"}
+
+id: 1791473888526-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473888530-0
+event: assistant
+data: {"text":" tested"}
+
+id: 1791473888530-0
+event: interaction_update
+data: {"type":"text-delta","text":" tested"}
+
+id: 1791473888537-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473888541-0
+event: assistant
+data: {"text":" and"}
+
+id: 1791473888541-0
+event: interaction_update
+data: {"type":"text-delta","text":" and"}
+
+id: 1791473888544-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473888547-0
+event: assistant
+data: {"text":" ready"}
+
+id: 1791473888547-0
+event: interaction_update
+data: {"type":"text-delta","text":" ready"}
+
+id: 1791473888550-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473888554-0
+event: assistant
+data: {"text":" to"}
+
+id: 1791473888554-0
+event: interaction_update
+data: {"type":"text-delta","text":" to"}
+
+id: 1791473888557-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889076-0
+event: assistant
+data: {"text":" save"}
+
+id: 1791473889076-0
+event: interaction_update
+data: {"type":"text-delta","text":" save"}
+
+id: 1791473889085-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889092-0
+event: assistant
+data: {"text":".\n\n"}
+
+id: 1791473889092-0
+event: interaction_update
+data: {"type":"text-delta","text":".\n\n"}
+
+id: 1791473889095-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889099-0
+event: assistant
+data: {"text":"**"}
+
+id: 1791473889099-0
+event: interaction_update
+data: {"type":"text-delta","text":"**"}
+
+id: 1791473889105-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889109-0
+event: assistant
+data: {"text":"What"}
+
+id: 1791473889109-0
+event: interaction_update
+data: {"type":"text-delta","text":"What"}
+
+id: 1791473889116-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889120-0
+event: assistant
+data: {"text":" was"}
+
+id: 1791473889120-0
+event: interaction_update
+data: {"type":"text-delta","text":" was"}
+
+id: 1791473889141-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889148-0
+event: assistant
+data: {"text":" done"}
+
+id: 1791473889148-0
+event: interaction_update
+data: {"type":"text-delta","text":" done"}
+
+id: 1791473889151-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889154-0
+event: assistant
+data: {"text":"**"}
+
+id: 1791473889154-0
+event: interaction_update
+data: {"type":"text-delta","text":"**"}
+
+id: 1791473889157-0
+event: assistant
+data: {"text":"\n"}
+
+id: 1791473889157-0
+event: interaction_update
+data: {"type":"text-delta","text":"\n"}
+
+id: 1791473889171-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889175-0
+event: assistant
+data: {"text":"-"}
+
+id: 1791473889175-0
+event: interaction_update
+data: {"type":"text-delta","text":"-"}
+
+id: 1791473889178-0
+event: assistant
+data: {"text":" Mapped"}
+
+id: 1791473889178-0
+event: interaction_update
+data: {"type":"text-delta","text":" Mapped"}
+
+id: 1791473889181-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473889185-0
+event: assistant
+data: {"text":" the"}
+
+id: 1791473889185-0
+event: interaction_update
+data: {"type":"text-delta","text":" the"}
+
+id: 1791473889187-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889191-0
+event: assistant
+data: {"text":" workspace"}
+
+id: 1791473889191-0
+event: interaction_update
+data: {"type":"text-delta","text":" workspace"}
+
+id: 1791473889194-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473889197-0
+event: assistant
+data: {"text":" to"}
+
+id: 1791473889197-0
+event: interaction_update
+data: {"type":"text-delta","text":" to"}
+
+id: 1791473889200-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889207-0
+event: assistant
+data: {"text":" the"}
+
+id: 1791473889207-0
+event: interaction_update
+data: {"type":"text-delta","text":" the"}
+
+id: 1791473889216-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889222-0
+event: assistant
+data: {"text":" pinned"}
+
+id: 1791473889222-0
+event: interaction_update
+data: {"type":"text-delta","text":" pinned"}
+
+id: 1791473889227-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473889237-0
+event: assistant
+data: {"text":" Rust"}
+
+id: 1791473889237-0
+event: interaction_update
+data: {"type":"text-delta","text":" Rust"}
+
+id: 1791473889240-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889244-0
+event: assistant
+data: {"text":" "}
+
+id: 1791473889244-0
+event: interaction_update
+data: {"type":"text-delta","text":" "}
+
+id: 1791473889247-0
+event: assistant
+data: {"text":"1"}
+
+id: 1791473889247-0
+event: interaction_update
+data: {"type":"text-delta","text":"1"}
+
+id: 1791473889251-0
+event: assistant
+data: {"text":"."}
+
+id: 1791473889251-0
+event: interaction_update
+data: {"type":"text-delta","text":"."}
+
+id: 1791473889254-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889258-0
+event: assistant
+data: {"text":"97"}
+
+id: 1791473889258-0
+event: interaction_update
+data: {"type":"text-delta","text":"97"}
+
+id: 1791473889261-0
+event: assistant
+data: {"text":"."}
+
+id: 1791473889261-0
+event: interaction_update
+data: {"type":"text-delta","text":"."}
+
+id: 1791473889265-0
+event: assistant
+data: {"text":"1"}
+
+id: 1791473889265-0
+event: interaction_update
+data: {"type":"text-delta","text":"1"}
+
+id: 1791473889268-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889276-0
+event: assistant
+data: {"text":" toolchain"}
+
+id: 1791473889276-0
+event: interaction_update
+data: {"type":"text-delta","text":" toolchain"}
+
+id: 1791473889280-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473889284-0
+event: assistant
+data: {"text":" and"}
+
+id: 1791473889284-0
+event: interaction_update
+data: {"type":"text-delta","text":" and"}
+
+id: 1791473889290-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889293-0
+event: assistant
+data: {"text":" the"}
+
+id: 1791473889293-0
+event: interaction_update
+data: {"type":"text-delta","text":" the"}
+
+id: 1791473889296-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889300-0
+event: assistant
+data: {"text":" day"}
+
+id: 1791473889300-0
+event: interaction_update
+data: {"type":"text-delta","text":" day"}
+
+id: 1791473889316-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889320-0
+event: assistant
+data: {"text":"-"}
+
+id: 1791473889320-0
+event: interaction_update
+data: {"type":"text-delta","text":"-"}
+
+id: 1791473889323-0
+event: assistant
+data: {"text":"to"}
+
+id: 1791473889323-0
+event: interaction_update
+data: {"type":"text-delta","text":"to"}
+
+id: 1791473889326-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889330-0
+event: assistant
+data: {"text":"-"}
+
+id: 1791473889330-0
+event: interaction_update
+data: {"type":"text-delta","text":"-"}
+
+id: 1791473889334-0
+event: assistant
+data: {"text":"day"}
+
+id: 1791473889334-0
+event: interaction_update
+data: {"type":"text-delta","text":"day"}
+
+id: 1791473889337-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889340-0
+event: assistant
+data: {"text":" `"}
+
+id: 1791473889340-0
+event: interaction_update
+data: {"type":"text-delta","text":" `"}
+
+id: 1791473889345-0
+event: assistant
+data: {"text":"cargo"}
+
+id: 1791473889345-0
+event: interaction_update
+data: {"type":"text-delta","text":"cargo"}
+
+id: 1791473889348-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473889351-0
+event: assistant
+data: {"text":" test"}
+
+id: 1791473889351-0
+event: interaction_update
+data: {"type":"text-delta","text":" test"}
+
+id: 1791473889354-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889357-0
+event: assistant
+data: {"text":" -"}
+
+id: 1791473889357-0
+event: interaction_update
+data: {"type":"text-delta","text":" -"}
+
+id: 1791473889361-0
+event: assistant
+data: {"text":"p"}
+
+id: 1791473889361-0
+event: interaction_update
+data: {"type":"text-delta","text":"p"}
+
+id: 1791473889364-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889367-0
+event: assistant
+data: {"text":"`"}
+
+id: 1791473889367-0
+event: interaction_update
+data: {"type":"text-delta","text":"`"}
+
+id: 1791473889370-0
+event: assistant
+data: {"text":" plus"}
+
+id: 1791473889370-0
+event: interaction_update
+data: {"type":"text-delta","text":" plus"}
+
+id: 1791473889373-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889377-0
+event: assistant
+data: {"text":" `"}
+
+id: 1791473889377-0
+event: interaction_update
+data: {"type":"text-delta","text":" `"}
+
+id: 1791473889379-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889383-0
+event: assistant
+data: {"text":"cargo"}
+
+id: 1791473889383-0
+event: interaction_update
+data: {"type":"text-delta","text":"cargo"}
+
+id: 1791473889387-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889390-0
+event: assistant
+data: {"text":" fmt"}
+
+id: 1791473889390-0
+event: interaction_update
+data: {"type":"text-delta","text":" fmt"}
+
+id: 1791473889393-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889396-0
+event: assistant
+data: {"text":"`"}
+
+id: 1791473889396-0
+event: interaction_update
+data: {"type":"text-delta","text":"`"}
+
+id: 1791473889400-0
+event: assistant
+data: {"text":" flow"}
+
+id: 1791473889400-0
+event: interaction_update
+data: {"type":"text-delta","text":" flow"}
+
+id: 1791473889403-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889406-0
+event: assistant
+data: {"text":".\n"}
+
+id: 1791473889406-0
+event: interaction_update
+data: {"type":"text-delta","text":".\n"}
+
+id: 1791473889409-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889413-0
+event: assistant
+data: {"text":"-"}
+
+id: 1791473889413-0
+event: interaction_update
+data: {"type":"text-delta","text":"-"}
+
+id: 1791473889416-0
+event: assistant
+data: {"text":" Inst"}
+
+id: 1791473889416-0
+event: interaction_update
+data: {"type":"text-delta","text":" Inst"}
+
+id: 1791473889419-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889422-0
+event: assistant
+data: {"text":"alled"}
+
+id: 1791473889422-0
+event: interaction_update
+data: {"type":"text-delta","text":"alled"}
+
+id: 1791473889426-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473889430-0
+event: assistant
+data: {"text":" the"}
+
+id: 1791473889430-0
+event: interaction_update
+data: {"type":"text-delta","text":" the"}
+
+id: 1791473889433-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889436-0
+event: assistant
+data: {"text":" native"}
+
+id: 1791473889436-0
+event: interaction_update
+data: {"type":"text-delta","text":" native"}
+
+id: 1791473889439-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889443-0
+event: assistant
+data: {"text":" build"}
+
+id: 1791473889443-0
+event: interaction_update
+data: {"type":"text-delta","text":" build"}
+
+id: 1791473889447-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473889450-0
+event: assistant
+data: {"text":" packages"}
+
+id: 1791473889450-0
+event: interaction_update
+data: {"type":"text-delta","text":" packages"}
+
+id: 1791473889453-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473889457-0
+event: assistant
+data: {"text":" (`"}
+
+id: 1791473889457-0
+event: interaction_update
+data: {"type":"text-delta","text":" (`"}
+
+id: 1791473889460-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889463-0
+event: assistant
+data: {"text":"pro"}
+
+id: 1791473889463-0
+event: interaction_update
+data: {"type":"text-delta","text":"pro"}
+
+id: 1791473889466-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889470-0
+event: assistant
+data: {"text":"toc"}
+
+id: 1791473889470-0
+event: interaction_update
+data: {"type":"text-delta","text":"toc"}
+
+id: 1791473889473-0
+event: assistant
+data: {"text":"`,"}
+
+id: 1791473889473-0
+event: interaction_update
+data: {"type":"text-delta","text":"`,"}
+
+id: 1791473889476-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889479-0
+event: assistant
+data: {"text":" Open"}
+
+id: 1791473889479-0
+event: interaction_update
+data: {"type":"text-delta","text":" Open"}
+
+id: 1791473889483-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889487-0
+event: assistant
+data: {"text":"SSL"}
+
+id: 1791473889487-0
+event: interaction_update
+data: {"type":"text-delta","text":"SSL"}
+
+id: 1791473889490-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889494-0
+event: assistant
+data: {"text":","}
+
+id: 1791473889494-0
+event: interaction_update
+data: {"type":"text-delta","text":","}
+
+id: 1791473889497-0
+event: assistant
+data: {"text":" SQ"}
+
+id: 1791473889497-0
+event: interaction_update
+data: {"type":"text-delta","text":" SQ"}
+
+id: 1791473889500-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889503-0
+event: assistant
+data: {"text":"Lite"}
+
+id: 1791473889503-0
+event: interaction_update
+data: {"type":"text-delta","text":"Lite"}
+
+id: 1791473889506-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889510-0
+event: assistant
+data: {"text":","}
+
+id: 1791473889510-0
+event: interaction_update
+data: {"type":"text-delta","text":","}
+
+id: 1791473889513-0
+event: assistant
+data: {"text":" lib"}
+
+id: 1791473889513-0
+event: interaction_update
+data: {"type":"text-delta","text":" lib"}
+
+id: 1791473889516-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889519-0
+event: assistant
+data: {"text":"clang"}
+
+id: 1791473889519-0
+event: interaction_update
+data: {"type":"text-delta","text":"clang"}
+
+id: 1791473889522-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889526-0
+event: assistant
+data: {"text":","}
+
+id: 1791473889526-0
+event: interaction_update
+data: {"type":"text-delta","text":","}
+
+id: 1791473889529-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889532-0
+event: assistant
+data: {"text":" `"}
+
+id: 1791473889532-0
+event: interaction_update
+data: {"type":"text-delta","text":" `"}
+
+id: 1791473889536-0
+event: assistant
+data: {"text":"bubble"}
+
+id: 1791473889536-0
+event: interaction_update
+data: {"type":"text-delta","text":"bubble"}
+
+id: 1791473889539-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473889543-0
+event: assistant
+data: {"text":"wrap"}
+
+id: 1791473889543-0
+event: interaction_update
+data: {"type":"text-delta","text":"wrap"}
+
+id: 1791473889547-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889559-0
+event: assistant
+data: {"text":"`)"}
+
+id: 1791473889559-0
+event: interaction_update
+data: {"type":"text-delta","text":"`)"}
+
+id: 1791473889563-0
+event: assistant
+data: {"text":" and"}
+
+id: 1791473889563-0
+event: interaction_update
+data: {"type":"text-delta","text":" and"}
+
+id: 1791473889566-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889573-0
+event: assistant
+data: {"text":" fetched"}
+
+id: 1791473889573-0
+event: interaction_update
+data: {"type":"text-delta","text":" fetched"}
+
+id: 1791473889579-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473889583-0
+event: assistant
+data: {"text":" the"}
+
+id: 1791473889583-0
+event: interaction_update
+data: {"type":"text-delta","text":" the"}
+
+id: 1791473889586-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889603-0
+event: assistant
+data: {"text":" root"}
+
+id: 1791473889603-0
+event: interaction_update
+data: {"type":"text-delta","text":" root"}
+
+id: 1791473889606-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889611-0
+event: assistant
+data: {"text":" workspace"}
+
+id: 1791473889611-0
+event: interaction_update
+data: {"type":"text-delta","text":" workspace"}
+
+id: 1791473889614-0
+event: interaction_update
+data: {"type":"token-delta","tokens":3}
+
+id: 1791473889618-0
+event: assistant
+data: {"text":" crates"}
+
+id: 1791473889618-0
+event: interaction_update
+data: {"type":"text-delta","text":" crates"}
+
+id: 1791473889621-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473889625-0
+event: assistant
+data: {"text":".\n"}
+
+id: 1791473889625-0
+event: interaction_update
+data: {"type":"text-delta","text":".\n"}
+
+id: 1791473889629-0
+event: assistant
+data: {"text":"-"}
+
+id: 1791473889629-0
+event: interaction_update
+data: {"type":"text-delta","text":"-"}
+
+id: 1791473889633-0
+event: assistant
+data: {"text":" Ran"}
+
+id: 1791473889633-0
+event: interaction_update
+data: {"type":"text-delta","text":" Ran"}
+
+id: 1791473889636-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889640-0
+event: assistant
+data: {"text":" trajectory"}
+
+id: 1791473889640-0
+event: interaction_update
+data: {"type":"text-delta","text":" trajectory"}
+
+id: 1791473889643-0
+event: interaction_update
+data: {"type":"token-delta","tokens":3}
+
+id: 1791473889646-0
+event: assistant
+data: {"text":","}
+
+id: 1791473889646-0
+event: interaction_update
+data: {"type":"text-delta","text":","}
+
+id: 1791473889652-0
+event: assistant
+data: {"text":" lease"}
+
+id: 1791473889652-0
+event: interaction_update
+data: {"type":"text-delta","text":" lease"}
+
+id: 1791473889655-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473889660-0
+event: assistant
+data: {"text":"-"}
+
+id: 1791473889660-0
+event: interaction_update
+data: {"type":"text-delta","text":"-"}
+
+id: 1791473889663-0
+event: assistant
+data: {"text":"broker"}
+
+id: 1791473889663-0
+event: interaction_update
+data: {"type":"text-delta","text":"broker"}
+
+id: 1791473889666-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473889670-0
+event: assistant
+data: {"text":","}
+
+id: 1791473889670-0
+event: interaction_update
+data: {"type":"text-delta","text":","}
+
+id: 1791473889673-0
+event: assistant
+data: {"text":" and"}
+
+id: 1791473889673-0
+event: interaction_update
+data: {"type":"text-delta","text":" and"}
+
+id: 1791473889676-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889680-0
+event: assistant
+data: {"text":" No"}
+
+id: 1791473889680-0
+event: interaction_update
+data: {"type":"text-delta","text":" No"}
+
+id: 1791473889683-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889686-0
+event: assistant
+data: {"text":"str"}
+
+id: 1791473889686-0
+event: interaction_update
+data: {"type":"text-delta","text":"str"}
+
+id: 1791473889690-0
+event: assistant
+data: {"text":" signature"}
+
+id: 1791473889690-0
+event: interaction_update
+data: {"type":"text-delta","text":" signature"}
+
+id: 1791473889693-0
+event: interaction_update
+data: {"type":"token-delta","tokens":3}
+
+id: 1791473889696-0
+event: assistant
+data: {"text":" tests"}
+
+id: 1791473889696-0
+event: interaction_update
+data: {"type":"text-delta","text":" tests"}
+
+id: 1791473889700-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889704-0
+event: assistant
+data: {"text":" on"}
+
+id: 1791473889704-0
+event: interaction_update
+data: {"type":"text-delta","text":" on"}
+
+id: 1791473889707-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889710-0
+event: assistant
+data: {"text":" this"}
+
+id: 1791473889710-0
+event: interaction_update
+data: {"type":"text-delta","text":" this"}
+
+id: 1791473889713-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889717-0
+event: assistant
+data: {"text":" machine"}
+
+id: 1791473889717-0
+event: interaction_update
+data: {"type":"text-delta","text":" machine"}
+
+id: 1791473889720-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473889723-0
+event: assistant
+data: {"text":".\n"}
+
+id: 1791473889723-0
+event: interaction_update
+data: {"type":"text-delta","text":".\n"}
+
+id: 1791473889726-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889730-0
+event: assistant
+data: {"text":"-"}
+
+id: 1791473889730-0
+event: interaction_update
+data: {"type":"text-delta","text":"-"}
+
+id: 1791473889733-0
+event: assistant
+data: {"text":" Snap"}
+
+id: 1791473889733-0
+event: interaction_update
+data: {"type":"text-delta","text":" Snap"}
+
+id: 1791473889736-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889740-0
+event: assistant
+data: {"text":"sh"}
+
+id: 1791473889740-0
+event: interaction_update
+data: {"type":"text-delta","text":"sh"}
+
+id: 1791473889743-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889747-0
+event: assistant
+data: {"text":"otted"}
+
+id: 1791473889747-0
+event: interaction_update
+data: {"type":"text-delta","text":"otted"}
+
+id: 1791473889751-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889755-0
+event: assistant
+data: {"text":" that"}
+
+id: 1791473889755-0
+event: interaction_update
+data: {"type":"text-delta","text":" that"}
+
+id: 1791473889773-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889778-0
+event: assistant
+data: {"text":" disk"}
+
+id: 1791473889778-0
+event: interaction_update
+data: {"type":"text-delta","text":" disk"}
+
+id: 1791473889781-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473889785-0
+event: assistant
+data: {"text":","}
+
+id: 1791473889785-0
+event: interaction_update
+data: {"type":"text-delta","text":","}
+
+id: 1791473889788-0
+event: assistant
+data: {"text":" built"}
+
+id: 1791473889788-0
+event: interaction_update
+data: {"type":"text-delta","text":" built"}
+
+id: 1791473889792-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889796-0
+event: assistant
+data: {"text":" it"}
+
+id: 1791473889796-0
+event: interaction_update
+data: {"type":"text-delta","text":" it"}
+
+id: 1791473889799-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889802-0
+event: assistant
+data: {"text":","}
+
+id: 1791473889802-0
+event: interaction_update
+data: {"type":"text-delta","text":","}
+
+id: 1791473889805-0
+event: assistant
+data: {"text":" and"}
+
+id: 1791473889805-0
+event: interaction_update
+data: {"type":"text-delta","text":" and"}
+
+id: 1791473889808-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889812-0
+event: assistant
+data: {"text":" confirmed"}
+
+id: 1791473889812-0
+event: interaction_update
+data: {"type":"text-delta","text":" confirmed"}
+
+id: 1791473889815-0
+event: interaction_update
+data: {"type":"token-delta","tokens":3}
+
+id: 1791473889818-0
+event: assistant
+data: {"text":" the"}
+
+id: 1791473889818-0
+event: interaction_update
+data: {"type":"text-delta","text":" the"}
+
+id: 1791473889821-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889824-0
+event: assistant
+data: {"text":" same"}
+
+id: 1791473889824-0
+event: interaction_update
+data: {"type":"text-delta","text":" same"}
+
+id: 1791473889827-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889831-0
+event: assistant
+data: {"text":" toolchain"}
+
+id: 1791473889831-0
+event: interaction_update
+data: {"type":"text-delta","text":" toolchain"}
+
+id: 1791473889834-0
+event: interaction_update
+data: {"type":"token-delta","tokens":3}
+
+id: 1791473889837-0
+event: assistant
+data: {"text":" in"}
+
+id: 1791473889837-0
+event: interaction_update
+data: {"type":"text-delta","text":" in"}
+
+id: 1791473889840-0
+event: assistant
+data: {"text":" a"}
+
+id: 1791473889840-0
+event: interaction_update
+data: {"type":"text-delta","text":" a"}
+
+id: 1791473889843-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889847-0
+event: assistant
+data: {"text":" fresh"}
+
+id: 1791473889847-0
+event: interaction_update
+data: {"type":"text-delta","text":" fresh"}
+
+id: 1791473889850-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889859-0
+event: assistant
+data: {"text":" Cloud"}
+
+id: 1791473889859-0
+event: interaction_update
+data: {"type":"text-delta","text":" Cloud"}
+
+id: 1791473889901-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473889905-0
+event: assistant
+data: {"text":" Agent"}
+
+id: 1791473889905-0
+event: interaction_update
+data: {"type":"text-delta","text":" Agent"}
+
+id: 1791473889908-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889912-0
+event: assistant
+data: {"text":".\n\n"}
+
+id: 1791473889912-0
+event: interaction_update
+data: {"type":"text-delta","text":".\n\n"}
+
+id: 1791473889915-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889919-0
+event: assistant
+data: {"text":"####"}
+
+id: 1791473889919-0
+event: interaction_update
+data: {"type":"text-delta","text":"####"}
+
+id: 1791473889922-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889926-0
+event: assistant
+data: {"text":" Validation"}
+
+id: 1791473889926-0
+event: interaction_update
+data: {"type":"text-delta","text":" Validation"}
+
+id: 1791473889929-0
+event: interaction_update
+data: {"type":"token-delta","tokens":3}
+
+id: 1791473889935-0
+event: assistant
+data: {"text":"\n"}
+
+id: 1791473889935-0
+event: interaction_update
+data: {"type":"text-delta","text":"\n"}
+
+id: 1791473889938-0
+event: assistant
+data: {"text":"|"}
+
+id: 1791473889938-0
+event: interaction_update
+data: {"type":"text-delta","text":"|"}
+
+id: 1791473889942-0
+event: assistant
+data: {"text":" Check"}
+
+id: 1791473889942-0
+event: interaction_update
+data: {"type":"text-delta","text":" Check"}
+
+id: 1791473889945-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473889949-0
+event: assistant
+data: {"text":" |"}
+
+id: 1791473889949-0
+event: interaction_update
+data: {"type":"text-delta","text":" |"}
+
+id: 1791473889953-0
+event: assistant
+data: {"text":" Result"}
+
+id: 1791473889953-0
+event: interaction_update
+data: {"type":"text-delta","text":" Result"}
+
+id: 1791473889956-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473889959-0
+event: assistant
+data: {"text":" |\n"}
+
+id: 1791473889959-0
+event: interaction_update
+data: {"type":"text-delta","text":" |\n"}
+
+id: 1791473889962-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889965-0
+event: assistant
+data: {"text":"|"}
+
+id: 1791473889965-0
+event: interaction_update
+data: {"type":"text-delta","text":"|"}
+
+id: 1791473889969-0
+event: assistant
+data: {"text":" ---"}
+
+id: 1791473889969-0
+event: interaction_update
+data: {"type":"text-delta","text":" ---"}
+
+id: 1791473889972-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889976-0
+event: assistant
+data: {"text":" |"}
+
+id: 1791473889976-0
+event: interaction_update
+data: {"type":"text-delta","text":" |"}
+
+id: 1791473889979-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889982-0
+event: assistant
+data: {"text":" ---"}
+
+id: 1791473889982-0
+event: interaction_update
+data: {"type":"text-delta","text":" ---"}
+
+id: 1791473889985-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889988-0
+event: assistant
+data: {"text":" |\n"}
+
+id: 1791473889988-0
+event: interaction_update
+data: {"type":"text-delta","text":" |\n"}
+
+id: 1791473889992-0
+event: assistant
+data: {"text":"|"}
+
+id: 1791473889992-0
+event: interaction_update
+data: {"type":"text-delta","text":"|"}
+
+id: 1791473889995-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473889999-0
+event: assistant
+data: {"text":" AT"}
+
+id: 1791473889999-0
+event: interaction_update
+data: {"type":"text-delta","text":" AT"}
+
+id: 1791473890017-0
+event: assistant
+data: {"text":"IF"}
+
+id: 1791473890017-0
+event: interaction_update
+data: {"type":"text-delta","text":"IF"}
+
+id: 1791473890022-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890025-0
+event: assistant
+data: {"text":" trajectory"}
+
+id: 1791473890025-0
+event: interaction_update
+data: {"type":"text-delta","text":" trajectory"}
+
+id: 1791473890029-0
+event: interaction_update
+data: {"type":"token-delta","tokens":3}
+
+id: 1791473890032-0
+event: assistant
+data: {"text":" documents"}
+
+id: 1791473890032-0
+event: interaction_update
+data: {"type":"text-delta","text":" documents"}
+
+id: 1791473890036-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473890040-0
+event: assistant
+data: {"text":" |"}
+
+id: 1791473890040-0
+event: interaction_update
+data: {"type":"text-delta","text":" |"}
+
+id: 1791473890043-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890046-0
+event: assistant
+data: {"text":" "}
+
+id: 1791473890046-0
+event: interaction_update
+data: {"type":"text-delta","text":" "}
+
+id: 1791473890050-0
+event: assistant
+data: {"text":"56"}
+
+id: 1791473890050-0
+event: interaction_update
+data: {"type":"text-delta","text":"56"}
+
+id: 1791473890056-0
+event: assistant
+data: {"text":" library"}
+
+id: 1791473890056-0
+event: interaction_update
+data: {"type":"text-delta","text":" library"}
+
+id: 1791473890059-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473890063-0
+event: assistant
+data: {"text":" tests"}
+
+id: 1791473890063-0
+event: interaction_update
+data: {"type":"text-delta","text":" tests"}
+
+id: 1791473890066-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473890070-0
+event: assistant
+data: {"text":","}
+
+id: 1791473890070-0
+event: interaction_update
+data: {"type":"text-delta","text":","}
+
+id: 1791473890079-0
+event: assistant
+data: {"text":" "}
+
+id: 1791473890079-0
+event: interaction_update
+data: {"type":"text-delta","text":" "}
+
+id: 1791473890089-0
+event: assistant
+data: {"text":"3"}
+
+id: 1791473890089-0
+event: interaction_update
+data: {"type":"text-delta","text":"3"}
+
+id: 1791473890147-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890151-0
+event: assistant
+data: {"text":" integration"}
+
+id: 1791473890151-0
+event: interaction_update
+data: {"type":"text-delta","text":" integration"}
+
+id: 1791473890155-0
+event: interaction_update
+data: {"type":"token-delta","tokens":3}
+
+id: 1791473890160-0
+event: assistant
+data: {"text":" tests"}
+
+id: 1791473890160-0
+event: interaction_update
+data: {"type":"text-delta","text":" tests"}
+
+id: 1791473890163-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890167-0
+event: assistant
+data: {"text":","}
+
+id: 1791473890167-0
+event: interaction_update
+data: {"type":"text-delta","text":","}
+
+id: 1791473890171-0
+event: assistant
+data: {"text":" and"}
+
+id: 1791473890171-0
+event: interaction_update
+data: {"type":"text-delta","text":" and"}
+
+id: 1791473890174-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890178-0
+event: assistant
+data: {"text":" "}
+
+id: 1791473890178-0
+event: interaction_update
+data: {"type":"text-delta","text":" "}
+
+id: 1791473890182-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890188-0
+event: assistant
+data: {"text":"1"}
+
+id: 1791473890188-0
+event: interaction_update
+data: {"type":"text-delta","text":"1"}
+
+id: 1791473890244-0
+event: assistant
+data: {"text":" doct"}
+
+id: 1791473890244-0
+event: interaction_update
+data: {"type":"text-delta","text":" doct"}
+
+id: 1791473890247-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890251-0
+event: assistant
+data: {"text":"est"}
+
+id: 1791473890251-0
+event: interaction_update
+data: {"type":"text-delta","text":"est"}
+
+id: 1791473890256-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890260-0
+event: assistant
+data: {"text":" passed"}
+
+id: 1791473890260-0
+event: interaction_update
+data: {"type":"text-delta","text":" passed"}
+
+id: 1791473890263-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473890267-0
+event: assistant
+data: {"text":" |\n"}
+
+id: 1791473890267-0
+event: interaction_update
+data: {"type":"text-delta","text":" |\n"}
+
+id: 1791473890271-0
+event: assistant
+data: {"text":"|"}
+
+id: 1791473890271-0
+event: interaction_update
+data: {"type":"text-delta","text":"|"}
+
+id: 1791473890273-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890277-0
+event: assistant
+data: {"text":" Lease"}
+
+id: 1791473890277-0
+event: interaction_update
+data: {"type":"text-delta","text":" Lease"}
+
+id: 1791473890280-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890284-0
+event: assistant
+data: {"text":" broker"}
+
+id: 1791473890284-0
+event: interaction_update
+data: {"type":"text-delta","text":" broker"}
+
+id: 1791473890288-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473890292-0
+event: assistant
+data: {"text":" |"}
+
+id: 1791473890292-0
+event: interaction_update
+data: {"type":"text-delta","text":" |"}
+
+id: 1791473890296-0
+event: assistant
+data: {"text":" "}
+
+id: 1791473890296-0
+event: interaction_update
+data: {"type":"text-delta","text":" "}
+
+id: 1791473890299-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890303-0
+event: assistant
+data: {"text":"66"}
+
+id: 1791473890303-0
+event: interaction_update
+data: {"type":"text-delta","text":"66"}
+
+id: 1791473890307-0
+event: assistant
+data: {"text":" library"}
+
+id: 1791473890307-0
+event: interaction_update
+data: {"type":"text-delta","text":" library"}
+
+id: 1791473890310-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473890314-0
+event: assistant
+data: {"text":" tests"}
+
+id: 1791473890314-0
+event: interaction_update
+data: {"type":"text-delta","text":" tests"}
+
+id: 1791473890317-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473890321-0
+event: assistant
+data: {"text":","}
+
+id: 1791473890321-0
+event: interaction_update
+data: {"type":"text-delta","text":","}
+
+id: 1791473890325-0
+event: assistant
+data: {"text":" holder"}
+
+id: 1791473890325-0
+event: interaction_update
+data: {"type":"text-delta","text":" holder"}
+
+id: 1791473890328-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473890333-0
+event: assistant
+data: {"text":" recovery"}
+
+id: 1791473890333-0
+event: interaction_update
+data: {"type":"text-delta","text":" recovery"}
+
+id: 1791473890336-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473890341-0
+event: assistant
+data: {"text":","}
+
+id: 1791473890341-0
+event: interaction_update
+data: {"type":"text-delta","text":","}
+
+id: 1791473890345-0
+event: assistant
+data: {"text":" and"}
+
+id: 1791473890345-0
+event: interaction_update
+data: {"type":"text-delta","text":" and"}
+
+id: 1791473890349-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890353-0
+event: assistant
+data: {"text":" "}
+
+id: 1791473890353-0
+event: interaction_update
+data: {"type":"text-delta","text":" "}
+
+id: 1791473890357-0
+event: assistant
+data: {"text":"5"}
+
+id: 1791473890357-0
+event: interaction_update
+data: {"type":"text-delta","text":"5"}
+
+id: 1791473890360-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890364-0
+event: assistant
+data: {"text":" cargo"}
+
+id: 1791473890364-0
+event: interaction_update
+data: {"type":"text-delta","text":" cargo"}
+
+id: 1791473890368-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890371-0
+event: assistant
+data: {"text":"-"}
+
+id: 1791473890371-0
+event: interaction_update
+data: {"type":"text-delta","text":"-"}
+
+id: 1791473890376-0
+event: assistant
+data: {"text":"shim"}
+
+id: 1791473890376-0
+event: interaction_update
+data: {"type":"text-delta","text":"shim"}
+
+id: 1791473890379-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890384-0
+event: assistant
+data: {"text":" tests"}
+
+id: 1791473890384-0
+event: interaction_update
+data: {"type":"text-delta","text":" tests"}
+
+id: 1791473890387-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473890390-0
+event: assistant
+data: {"text":" passed"}
+
+id: 1791473890390-0
+event: interaction_update
+data: {"type":"text-delta","text":" passed"}
+
+id: 1791473890393-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473890397-0
+event: assistant
+data: {"text":" |\n"}
+
+id: 1791473890397-0
+event: interaction_update
+data: {"type":"text-delta","text":" |\n"}
+
+id: 1791473890401-0
+event: assistant
+data: {"text":"|"}
+
+id: 1791473890401-0
+event: interaction_update
+data: {"type":"text-delta","text":"|"}
+
+id: 1791473890404-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890408-0
+event: assistant
+data: {"text":" No"}
+
+id: 1791473890408-0
+event: interaction_update
+data: {"type":"text-delta","text":" No"}
+
+id: 1791473890412-0
+event: assistant
+data: {"text":"str"}
+
+id: 1791473890412-0
+event: interaction_update
+data: {"type":"text-delta","text":"str"}
+
+id: 1791473890415-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890419-0
+event: assistant
+data: {"text":" signed"}
+
+id: 1791473890419-0
+event: interaction_update
+data: {"type":"text-delta","text":" signed"}
+
+id: 1791473890422-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473890426-0
+event: assistant
+data: {"text":" agreement"}
+
+id: 1791473890426-0
+event: interaction_update
+data: {"type":"text-delta","text":" agreement"}
+
+id: 1791473890429-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473890432-0
+event: assistant
+data: {"text":" |"}
+
+id: 1791473890432-0
+event: interaction_update
+data: {"type":"text-delta","text":" |"}
+
+id: 1791473890437-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890441-0
+event: assistant
+data: {"text":" `"}
+
+id: 1791473890441-0
+event: interaction_update
+data: {"type":"text-delta","text":" `"}
+
+id: 1791473890444-0
+event: assistant
+data: {"text":"free"}
+
+id: 1791473890444-0
+event: interaction_update
+data: {"type":"text-delta","text":"free"}
+
+id: 1791473890448-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890452-0
+event: assistant
+data: {"text":"_"}
+
+id: 1791473890452-0
+event: interaction_update
+data: {"type":"text-delta","text":"_"}
+
+id: 1791473890455-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890460-0
+event: assistant
+data: {"text":"agreement"}
+
+id: 1791473890460-0
+event: interaction_update
+data: {"type":"text-delta","text":"agreement"}
+
+id: 1791473890463-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473890467-0
+event: assistant
+data: {"text":"_"}
+
+id: 1791473890467-0
+event: interaction_update
+data: {"type":"text-delta","text":"_"}
+
+id: 1791473890471-0
+event: assistant
+data: {"text":"requires"}
+
+id: 1791473890471-0
+event: interaction_update
+data: {"type":"text-delta","text":"requires"}
+
+id: 1791473890475-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473890480-0
+event: assistant
+data: {"text":"_"}
+
+id: 1791473890480-0
+event: interaction_update
+data: {"type":"text-delta","text":"_"}
+
+id: 1791473890484-0
+event: assistant
+data: {"text":"both"}
+
+id: 1791473890484-0
+event: interaction_update
+data: {"type":"text-delta","text":"both"}
+
+id: 1791473890488-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890493-0
+event: assistant
+data: {"text":"_"}
+
+id: 1791473890493-0
+event: interaction_update
+data: {"type":"text-delta","text":"_"}
+
+id: 1791473890498-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890501-0
+event: assistant
+data: {"text":"signatures"}
+
+id: 1791473890501-0
+event: interaction_update
+data: {"type":"text-delta","text":"signatures"}
+
+id: 1791473890505-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473890509-0
+event: assistant
+data: {"text":"_"}
+
+id: 1791473890509-0
+event: interaction_update
+data: {"type":"text-delta","text":"_"}
+
+id: 1791473890515-0
+event: assistant
+data: {"text":"exact"}
+
+id: 1791473890515-0
+event: interaction_update
+data: {"type":"text-delta","text":"exact"}
+
+id: 1791473890518-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473890521-0
+event: assistant
+data: {"text":"_"}
+
+id: 1791473890521-0
+event: interaction_update
+data: {"type":"text-delta","text":"_"}
+
+id: 1791473890525-0
+event: assistant
+data: {"text":"terms"}
+
+id: 1791473890525-0
+event: interaction_update
+data: {"type":"text-delta","text":"terms"}
+
+id: 1791473890528-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890532-0
+event: assistant
+data: {"text":"_"}
+
+id: 1791473890532-0
+event: interaction_update
+data: {"type":"text-delta","text":"_"}
+
+id: 1791473890537-0
+event: assistant
+data: {"text":"and"}
+
+id: 1791473890537-0
+event: interaction_update
+data: {"type":"text-delta","text":"and"}
+
+id: 1791473890540-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890544-0
+event: assistant
+data: {"text":"_"}
+
+id: 1791473890544-0
+event: interaction_update
+data: {"type":"text-delta","text":"_"}
+
+id: 1791473890547-0
+event: assistant
+data: {"text":"confirmation"}
+
+id: 1791473890547-0
+event: interaction_update
+data: {"type":"text-delta","text":"confirmation"}
+
+id: 1791473890550-0
+event: interaction_update
+data: {"type":"token-delta","tokens":3}
+
+id: 1791473890554-0
+event: assistant
+data: {"text":"`"}
+
+id: 1791473890554-0
+event: interaction_update
+data: {"type":"text-delta","text":"`"}
+
+id: 1791473890557-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890562-0
+event: assistant
+data: {"text":" passed"}
+
+id: 1791473890562-0
+event: interaction_update
+data: {"type":"text-delta","text":" passed"}
+
+id: 1791473890566-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890579-0
+event: assistant
+data: {"text":" |\n"}
+
+id: 1791473890579-0
+event: interaction_update
+data: {"type":"text-delta","text":" |\n"}
+
+id: 1791473890582-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890585-0
+event: assistant
+data: {"text":"|"}
+
+id: 1791473890585-0
+event: interaction_update
+data: {"type":"text-delta","text":"|"}
+
+id: 1791473890588-0
+event: assistant
+data: {"text":" `"}
+
+id: 1791473890588-0
+event: interaction_update
+data: {"type":"text-delta","text":" `"}
+
+id: 1791473890593-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890597-0
+event: assistant
+data: {"text":"cargo"}
+
+id: 1791473890597-0
+event: interaction_update
+data: {"type":"text-delta","text":"cargo"}
+
+id: 1791473890601-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890605-0
+event: assistant
+data: {"text":" fmt"}
+
+id: 1791473890605-0
+event: interaction_update
+data: {"type":"text-delta","text":" fmt"}
+
+id: 1791473890608-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890612-0
+event: assistant
+data: {"text":"`"}
+
+id: 1791473890612-0
+event: interaction_update
+data: {"type":"text-delta","text":"`"}
+
+id: 1791473890616-0
+event: assistant
+data: {"text":" for"}
+
+id: 1791473890616-0
+event: interaction_update
+data: {"type":"text-delta","text":" for"}
+
+id: 1791473890619-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890623-0
+event: assistant
+data: {"text":" those"}
+
+id: 1791473890623-0
+event: interaction_update
+data: {"type":"text-delta","text":" those"}
+
+id: 1791473890626-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473890630-0
+event: assistant
+data: {"text":" crates"}
+
+id: 1791473890630-0
+event: interaction_update
+data: {"type":"text-delta","text":" crates"}
+
+id: 1791473890633-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473890637-0
+event: assistant
+data: {"text":" |"}
+
+id: 1791473890637-0
+event: interaction_update
+data: {"type":"text-delta","text":" |"}
+
+id: 1791473890641-0
+event: assistant
+data: {"text":" Clean"}
+
+id: 1791473890641-0
+event: interaction_update
+data: {"type":"text-delta","text":" Clean"}
+
+id: 1791473890644-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473890648-0
+event: assistant
+data: {"text":" |\n"}
+
+id: 1791473890648-0
+event: interaction_update
+data: {"type":"text-delta","text":" |\n"}
+
+id: 1791473890651-0
+event: assistant
+data: {"text":"|"}
+
+id: 1791473890651-0
+event: interaction_update
+data: {"type":"text-delta","text":"|"}
+
+id: 1791473890654-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890658-0
+event: assistant
+data: {"text":" Install"}
+
+id: 1791473890658-0
+event: interaction_update
+data: {"type":"text-delta","text":" Install"}
+
+id: 1791473890661-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473890664-0
+event: assistant
+data: {"text":" idem"}
+
+id: 1791473890664-0
+event: interaction_update
+data: {"type":"text-delta","text":" idem"}
+
+id: 1791473890667-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890672-0
+event: assistant
+data: {"text":"pot"}
+
+id: 1791473890672-0
+event: interaction_update
+data: {"type":"text-delta","text":"pot"}
+
+id: 1791473890675-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890679-0
+event: assistant
+data: {"text":"ence"}
+
+id: 1791473890679-0
+event: interaction_update
+data: {"type":"text-delta","text":"ence"}
+
+id: 1791473890682-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890686-0
+event: assistant
+data: {"text":" |"}
+
+id: 1791473890686-0
+event: interaction_update
+data: {"type":"text-delta","text":" |"}
+
+id: 1791473890690-0
+event: assistant
+data: {"text":" Passed"}
+
+id: 1791473890690-0
+event: interaction_update
+data: {"type":"text-delta","text":" Passed"}
+
+id: 1791473890693-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473890696-0
+event: assistant
+data: {"text":" twice"}
+
+id: 1791473890696-0
+event: interaction_update
+data: {"type":"text-delta","text":" twice"}
+
+id: 1791473890700-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890704-0
+event: assistant
+data: {"text":" |\n"}
+
+id: 1791473890704-0
+event: interaction_update
+data: {"type":"text-delta","text":" |\n"}
+
+id: 1791473890707-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890712-0
+event: assistant
+data: {"text":"|"}
+
+id: 1791473890712-0
+event: interaction_update
+data: {"type":"text-delta","text":"|"}
+
+id: 1791473890716-0
+event: assistant
+data: {"text":" Fresh"}
+
+id: 1791473890716-0
+event: interaction_update
+data: {"type":"text-delta","text":" Fresh"}
+
+id: 1791473890719-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473890724-0
+event: assistant
+data: {"text":" Cloud"}
+
+id: 1791473890724-0
+event: interaction_update
+data: {"type":"text-delta","text":" Cloud"}
+
+id: 1791473890727-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890731-0
+event: assistant
+data: {"text":" Agent"}
+
+id: 1791473890731-0
+event: interaction_update
+data: {"type":"text-delta","text":" Agent"}
+
+id: 1791473890734-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473890737-0
+event: assistant
+data: {"text":" |"}
+
+id: 1791473890737-0
+event: interaction_update
+data: {"type":"text-delta","text":" |"}
+
+id: 1791473890741-0
+event: assistant
+data: {"text":" ["}
+
+id: 1791473890741-0
+event: interaction_update
+data: {"type":"text-delta","text":" ["}
+
+id: 1791473890744-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890748-0
+event: assistant
+data: {"text":"Build"}
+
+id: 1791473890748-0
+event: interaction_update
+data: {"type":"text-delta","text":"Build"}
+
+id: 1791473890751-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890755-0
+event: assistant
+data: {"text":" verification"}
+
+id: 1791473890755-0
+event: interaction_update
+data: {"type":"text-delta","text":" verification"}
+
+id: 1791473890758-0
+event: interaction_update
+data: {"type":"token-delta","tokens":3}
+
+id: 1791473890763-0
+event: assistant
+data: {"text":"]"}
+
+id: 1791473890763-0
+event: interaction_update
+data: {"type":"text-delta","text":"]"}
+
+id: 1791473890766-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890769-0
+event: assistant
+data: {"text":"("}
+
+id: 1791473890769-0
+event: interaction_update
+data: {"type":"text-delta","text":"("}
+
+id: 1791473890773-0
+event: assistant
+data: {"text":"bc"}
+
+id: 1791473890773-0
+event: interaction_update
+data: {"type":"text-delta","text":"bc"}
+
+id: 1791473890777-0
+event: assistant
+data: {"text":"-"}
+
+id: 1791473890777-0
+event: interaction_update
+data: {"type":"text-delta","text":"-"}
+
+id: 1791473890780-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890783-0
+event: assistant
+data: {"text":"3"}
+
+id: 1791473890783-0
+event: interaction_update
+data: {"type":"text-delta","text":"3"}
+
+id: 1791473890787-0
+event: assistant
+data: {"text":"a"}
+
+id: 1791473890787-0
+event: interaction_update
+data: {"type":"text-delta","text":"a"}
+
+id: 1791473890791-0
+event: assistant
+data: {"text":"906"}
+
+id: 1791473890791-0
+event: interaction_update
+data: {"type":"text-delta","text":"906"}
+
+id: 1791473890794-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890799-0
+event: assistant
+data: {"text":"01"}
+
+id: 1791473890799-0
+event: interaction_update
+data: {"type":"text-delta","text":"01"}
+
+id: 1791473890803-0
+event: assistant
+data: {"text":"a"}
+
+id: 1791473890803-0
+event: interaction_update
+data: {"type":"text-delta","text":"a"}
+
+id: 1791473890807-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890810-0
+event: assistant
+data: {"text":"-"}
+
+id: 1791473890810-0
+event: interaction_update
+data: {"type":"text-delta","text":"-"}
+
+id: 1791473890815-0
+event: assistant
+data: {"text":"d"}
+
+id: 1791473890815-0
+event: interaction_update
+data: {"type":"text-delta","text":"d"}
+
+id: 1791473890818-0
+event: assistant
+data: {"text":"753"}
+
+id: 1791473890818-0
+event: interaction_update
+data: {"type":"text-delta","text":"753"}
+
+id: 1791473890821-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890826-0
+event: assistant
+data: {"text":"-"}
+
+id: 1791473890826-0
+event: interaction_update
+data: {"type":"text-delta","text":"-"}
+
+id: 1791473890830-0
+event: assistant
+data: {"text":"5"}
+
+id: 1791473890830-0
+event: interaction_update
+data: {"type":"text-delta","text":"5"}
+
+id: 1791473890834-0
+event: assistant
+data: {"text":"a"}
+
+id: 1791473890834-0
+event: interaction_update
+data: {"type":"text-delta","text":"a"}
+
+id: 1791473890838-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890842-0
+event: assistant
+data: {"text":"94"}
+
+id: 1791473890842-0
+event: interaction_update
+data: {"type":"text-delta","text":"94"}
+
+id: 1791473890846-0
+event: assistant
+data: {"text":"-"}
+
+id: 1791473890846-0
+event: interaction_update
+data: {"type":"text-delta","text":"-"}
+
+id: 1791473890850-0
+event: assistant
+data: {"text":"8"}
+
+id: 1791473890850-0
+event: interaction_update
+data: {"type":"text-delta","text":"8"}
+
+id: 1791473890854-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890858-0
+event: assistant
+data: {"text":"be"}
+
+id: 1791473890858-0
+event: interaction_update
+data: {"type":"text-delta","text":"be"}
+
+id: 1791473890862-0
+event: assistant
+data: {"text":"4"}
+
+id: 1791473890862-0
+event: interaction_update
+data: {"type":"text-delta","text":"4"}
+
+id: 1791473890867-0
+event: assistant
+data: {"text":"-"}
+
+id: 1791473890867-0
+event: interaction_update
+data: {"type":"text-delta","text":"-"}
+
+id: 1791473890871-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890876-0
+event: assistant
+data: {"text":"6"}
+
+id: 1791473890876-0
+event: interaction_update
+data: {"type":"text-delta","text":"6"}
+
+id: 1791473890880-0
+event: assistant
+data: {"text":"fb"}
+
+id: 1791473890880-0
+event: interaction_update
+data: {"type":"text-delta","text":"fb"}
+
+id: 1791473890884-0
+event: assistant
+data: {"text":"84"}
+
+id: 1791473890884-0
+event: interaction_update
+data: {"type":"text-delta","text":"84"}
+
+id: 1791473890888-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890891-0
+event: assistant
+data: {"text":"b"}
+
+id: 1791473890891-0
+event: interaction_update
+data: {"type":"text-delta","text":"b"}
+
+id: 1791473890895-0
+event: assistant
+data: {"text":"da"}
+
+id: 1791473890895-0
+event: interaction_update
+data: {"type":"text-delta","text":"da"}
+
+id: 1791473890898-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890903-0
+event: assistant
+data: {"text":"627"}
+
+id: 1791473890903-0
+event: interaction_update
+data: {"type":"text-delta","text":"627"}
+
+id: 1791473890908-0
+event: assistant
+data: {"text":"9"}
+
+id: 1791473890908-0
+event: interaction_update
+data: {"type":"text-delta","text":"9"}
+
+id: 1791473890911-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890915-0
+event: assistant
+data: {"text":")"}
+
+id: 1791473890915-0
+event: interaction_update
+data: {"type":"text-delta","text":")"}
+
+id: 1791473890919-0
+event: assistant
+data: {"text":" bo"}
+
+id: 1791473890919-0
+event: interaction_update
+data: {"type":"text-delta","text":" bo"}
+
+id: 1791473890922-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890927-0
+event: assistant
+data: {"text":"oted"}
+
+id: 1791473890927-0
+event: interaction_update
+data: {"type":"text-delta","text":"oted"}
+
+id: 1791473890931-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890935-0
+event: assistant
+data: {"text":" from"}
+
+id: 1791473890935-0
+event: interaction_update
+data: {"type":"text-delta","text":" from"}
+
+id: 1791473890938-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890942-0
+event: assistant
+data: {"text":" `"}
+
+id: 1791473890942-0
+event: interaction_update
+data: {"type":"text-delta","text":" `"}
+
+id: 1791473890946-0
+event: assistant
+data: {"text":"bld"}
+
+id: 1791473890946-0
+event: interaction_update
+data: {"type":"text-delta","text":"bld"}
+
+id: 1791473890949-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890955-0
+event: assistant
+data: {"text":"-"}
+
+id: 1791473890955-0
+event: interaction_update
+data: {"type":"text-delta","text":"-"}
+
+id: 1791473890959-0
+event: assistant
+data: {"text":"202"}
+
+id: 1791473890959-0
+event: interaction_update
+data: {"type":"text-delta","text":"202"}
+
+id: 1791473890963-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890968-0
+event: assistant
+data: {"text":"610"}
+
+id: 1791473890968-0
+event: interaction_update
+data: {"type":"text-delta","text":"610"}
+
+id: 1791473890972-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890976-0
+event: assistant
+data: {"text":"08"}
+
+id: 1791473890976-0
+event: interaction_update
+data: {"type":"text-delta","text":"08"}
+
+id: 1791473890980-0
+event: assistant
+data: {"text":"-"}
+
+id: 1791473890980-0
+event: interaction_update
+data: {"type":"text-delta","text":"-"}
+
+id: 1791473890984-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890988-0
+event: assistant
+data: {"text":"265"}
+
+id: 1791473890988-0
+event: interaction_update
+data: {"type":"text-delta","text":"265"}
+
+id: 1791473890992-0
+event: assistant
+data: {"text":"22"}
+
+id: 1791473890992-0
+event: interaction_update
+data: {"type":"text-delta","text":"22"}
+
+id: 1791473890995-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473890999-0
+event: assistant
+data: {"text":"d"}
+
+id: 1791473890999-0
+event: interaction_update
+data: {"type":"text-delta","text":"d"}
+
+id: 1791473891010-0
+event: assistant
+data: {"text":"23"}
+
+id: 1791473891010-0
+event: interaction_update
+data: {"type":"text-delta","text":"23"}
+
+id: 1791473895247-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473895274-0
+event: assistant
+data: {"text":"-"}
+
+id: 1791473895274-0
+event: interaction_update
+data: {"type":"text-delta","text":"-"}
+
+id: 1791473895308-0
+event: assistant
+data: {"text":"d"}
+
+id: 1791473895308-0
+event: interaction_update
+data: {"type":"text-delta","text":"d"}
+
+id: 1791473895332-0
+event: assistant
+data: {"text":"3"}
+
+id: 1791473895332-0
+event: interaction_update
+data: {"type":"text-delta","text":"3"}
+
+id: 1791473895372-0
+event: assistant
+data: {"text":"aa"}
+
+id: 1791473895372-0
+event: interaction_update
+data: {"type":"text-delta","text":"aa"}
+
+id: 1791473895377-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473895404-0
+event: assistant
+data: {"text":"-"}
+
+id: 1791473895404-0
+event: interaction_update
+data: {"type":"text-delta","text":"-"}
+
+id: 1791473895407-0
+event: assistant
+data: {"text":"427"}
+
+id: 1791473895407-0
+event: interaction_update
+data: {"type":"text-delta","text":"427"}
+
+id: 1791473895418-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473895422-0
+event: assistant
+data: {"text":"c"}
+
+id: 1791473895422-0
+event: interaction_update
+data: {"type":"text-delta","text":"c"}
+
+id: 1791473895425-0
+event: assistant
+data: {"text":"-"}
+
+id: 1791473895425-0
+event: interaction_update
+data: {"type":"text-delta","text":"-"}
+
+id: 1791473895429-0
+event: assistant
+data: {"text":"b"}
+
+id: 1791473895429-0
+event: interaction_update
+data: {"type":"text-delta","text":"b"}
+
+id: 1791473895432-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473895435-0
+event: assistant
+data: {"text":"6"}
+
+id: 1791473895435-0
+event: interaction_update
+data: {"type":"text-delta","text":"6"}
+
+id: 1791473895438-0
+event: assistant
+data: {"text":"f"}
+
+id: 1791473895438-0
+event: interaction_update
+data: {"type":"text-delta","text":"f"}
+
+id: 1791473895442-0
+event: assistant
+data: {"text":"2"}
+
+id: 1791473895442-0
+event: interaction_update
+data: {"type":"text-delta","text":"2"}
+
+id: 1791473895445-0
+event: assistant
+data: {"text":"-"}
+
+id: 1791473895445-0
+event: interaction_update
+data: {"type":"text-delta","text":"-"}
+
+id: 1791473895456-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473895466-0
+event: assistant
+data: {"text":"3"}
+
+id: 1791473895466-0
+event: interaction_update
+data: {"type":"text-delta","text":"3"}
+
+id: 1791473895473-0
+event: assistant
+data: {"text":"fc"}
+
+id: 1791473895473-0
+event: interaction_update
+data: {"type":"text-delta","text":"fc"}
+
+id: 1791473895477-0
+event: assistant
+data: {"text":"6"}
+
+id: 1791473895477-0
+event: interaction_update
+data: {"type":"text-delta","text":"6"}
+
+id: 1791473895480-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473895485-0
+event: assistant
+data: {"text":"ff"}
+
+id: 1791473895485-0
+event: interaction_update
+data: {"type":"text-delta","text":"ff"}
+
+id: 1791473895489-0
+event: assistant
+data: {"text":"bab"}
+
+id: 1791473895489-0
+event: interaction_update
+data: {"type":"text-delta","text":"bab"}
+
+id: 1791473895492-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473895496-0
+event: assistant
+data: {"text":"db"}
+
+id: 1791473895496-0
+event: interaction_update
+data: {"type":"text-delta","text":"db"}
+
+id: 1791473895499-0
+event: assistant
+data: {"text":"8"}
+
+id: 1791473895499-0
+event: interaction_update
+data: {"type":"text-delta","text":"8"}
+
+id: 1791473895502-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473895505-0
+event: assistant
+data: {"text":"`:"}
+
+id: 1791473895505-0
+event: interaction_update
+data: {"type":"text-delta","text":"`:"}
+
+id: 1791473895511-0
+event: assistant
+data: {"text":" Rust"}
+
+id: 1791473895511-0
+event: interaction_update
+data: {"type":"text-delta","text":" Rust"}
+
+id: 1791473895523-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473895531-0
+event: assistant
+data: {"text":" "}
+
+id: 1791473895531-0
+event: interaction_update
+data: {"type":"text-delta","text":" "}
+
+id: 1791473895543-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473895546-0
+event: assistant
+data: {"text":"1"}
+
+id: 1791473895546-0
+event: interaction_update
+data: {"type":"text-delta","text":"1"}
+
+id: 1791473895549-0
+event: assistant
+data: {"text":"."}
+
+id: 1791473895549-0
+event: interaction_update
+data: {"type":"text-delta","text":"."}
+
+id: 1791473895553-0
+event: assistant
+data: {"text":"97"}
+
+id: 1791473895553-0
+event: interaction_update
+data: {"type":"text-delta","text":"97"}
+
+id: 1791473895558-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473895561-0
+event: assistant
+data: {"text":"."}
+
+id: 1791473895561-0
+event: interaction_update
+data: {"type":"text-delta","text":"."}
+
+id: 1791473895569-0
+event: assistant
+data: {"text":"1"}
+
+id: 1791473895569-0
+event: interaction_update
+data: {"type":"text-delta","text":"1"}
+
+id: 1791473895626-0
+event: assistant
+data: {"text":","}
+
+id: 1791473895626-0
+event: interaction_update
+data: {"type":"text-delta","text":","}
+
+id: 1791473895634-0
+event: assistant
+data: {"text":" rust"}
+
+id: 1791473895634-0
+event: interaction_update
+data: {"type":"text-delta","text":" rust"}
+
+id: 1791473895637-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473895641-0
+event: assistant
+data: {"text":"fmt"}
+
+id: 1791473895641-0
+event: interaction_update
+data: {"type":"text-delta","text":"fmt"}
+
+id: 1791473895644-0
+event: assistant
+data: {"text":","}
+
+id: 1791473895644-0
+event: interaction_update
+data: {"type":"text-delta","text":","}
+
+id: 1791473895647-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473895672-0
+event: assistant
+data: {"text":" Clip"}
+
+id: 1791473895672-0
+event: interaction_update
+data: {"type":"text-delta","text":" Clip"}
+
+id: 1791473895733-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473895741-0
+event: assistant
+data: {"text":"py"}
+
+id: 1791473895741-0
+event: interaction_update
+data: {"type":"text-delta","text":"py"}
+
+id: 1791473895744-0
+event: assistant
+data: {"text":","}
+
+id: 1791473895744-0
+event: interaction_update
+data: {"type":"text-delta","text":","}
+
+id: 1791473895749-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473895753-0
+event: assistant
+data: {"text":" Python"}
+
+id: 1791473895753-0
+event: interaction_update
+data: {"type":"text-delta","text":" Python"}
+
+id: 1791473895756-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473895764-0
+event: assistant
+data: {"text":" "}
+
+id: 1791473895764-0
+event: interaction_update
+data: {"type":"text-delta","text":" "}
+
+id: 1791473895768-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473895772-0
+event: assistant
+data: {"text":"3"}
+
+id: 1791473895772-0
+event: interaction_update
+data: {"type":"text-delta","text":"3"}
+
+id: 1791473895776-0
+event: assistant
+data: {"text":"."}
+
+id: 1791473895776-0
+event: interaction_update
+data: {"type":"text-delta","text":"."}
+
+id: 1791473895780-0
+event: assistant
+data: {"text":"12"}
+
+id: 1791473895780-0
+event: interaction_update
+data: {"type":"text-delta","text":"12"}
+
+id: 1791473895782-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473895786-0
+event: assistant
+data: {"text":"."}
+
+id: 1791473895786-0
+event: interaction_update
+data: {"type":"text-delta","text":"."}
+
+id: 1791473895797-0
+event: assistant
+data: {"text":"3"}
+
+id: 1791473895797-0
+event: interaction_update
+data: {"type":"text-delta","text":"3"}
+
+id: 1791473895801-0
+event: assistant
+data: {"text":","}
+
+id: 1791473895801-0
+event: interaction_update
+data: {"type":"text-delta","text":","}
+
+id: 1791473895807-0
+event: assistant
+data: {"text":" pro"}
+
+id: 1791473895807-0
+event: interaction_update
+data: {"type":"text-delta","text":" pro"}
+
+id: 1791473895810-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473895818-0
+event: assistant
+data: {"text":"toc"}
+
+id: 1791473895818-0
+event: interaction_update
+data: {"type":"text-delta","text":"toc"}
+
+id: 1791473895820-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473895825-0
+event: assistant
+data: {"text":" "}
+
+id: 1791473895825-0
+event: interaction_update
+data: {"type":"text-delta","text":" "}
+
+id: 1791473895829-0
+event: assistant
+data: {"text":"3"}
+
+id: 1791473895829-0
+event: interaction_update
+data: {"type":"text-delta","text":"3"}
+
+id: 1791473895833-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473895850-0
+event: assistant
+data: {"text":"."}
+
+id: 1791473895850-0
+event: interaction_update
+data: {"type":"text-delta","text":"."}
+
+id: 1791473895858-0
+event: assistant
+data: {"text":"21"}
+
+id: 1791473895858-0
+event: interaction_update
+data: {"type":"text-delta","text":"21"}
+
+id: 1791473895862-0
+event: assistant
+data: {"text":"."}
+
+id: 1791473895862-0
+event: interaction_update
+data: {"type":"text-delta","text":"."}
+
+id: 1791473895865-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473895870-0
+event: assistant
+data: {"text":"12"}
+
+id: 1791473895870-0
+event: interaction_update
+data: {"type":"text-delta","text":"12"}
+
+id: 1791473895891-0
+event: assistant
+data: {"text":","}
+
+id: 1791473895891-0
+event: interaction_update
+data: {"type":"text-delta","text":","}
+
+id: 1791473895905-0
+event: assistant
+data: {"text":" Open"}
+
+id: 1791473895905-0
+event: interaction_update
+data: {"type":"text-delta","text":" Open"}
+
+id: 1791473895915-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473895919-0
+event: assistant
+data: {"text":"SSL"}
+
+id: 1791473895919-0
+event: interaction_update
+data: {"type":"text-delta","text":"SSL"}
+
+id: 1791473895927-0
+event: assistant
+data: {"text":" "}
+
+id: 1791473895927-0
+event: interaction_update
+data: {"type":"text-delta","text":" "}
+
+id: 1791473895931-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473896062-0
+event: assistant
+data: {"text":"3"}
+
+id: 1791473896062-0
+event: interaction_update
+data: {"type":"text-delta","text":"3"}
+
+id: 1791473896078-0
+event: assistant
+data: {"text":"."}
+
+id: 1791473896078-0
+event: interaction_update
+data: {"type":"text-delta","text":"."}
+
+id: 1791473896083-0
+event: assistant
+data: {"text":"0"}
+
+id: 1791473896083-0
+event: interaction_update
+data: {"type":"text-delta","text":"0"}
+
+id: 1791473896090-0
+event: assistant
+data: {"text":"."}
+
+id: 1791473896090-0
+event: interaction_update
+data: {"type":"text-delta","text":"."}
+
+id: 1791473896149-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473896156-0
+event: assistant
+data: {"text":"13"}
+
+id: 1791473896156-0
+event: interaction_update
+data: {"type":"text-delta","text":"13"}
+
+id: 1791473896162-0
+event: assistant
+data: {"text":","}
+
+id: 1791473896162-0
+event: interaction_update
+data: {"type":"text-delta","text":","}
+
+id: 1791473896165-0
+event: assistant
+data: {"text":" SQ"}
+
+id: 1791473896165-0
+event: interaction_update
+data: {"type":"text-delta","text":" SQ"}
+
+id: 1791473896170-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473896173-0
+event: assistant
+data: {"text":"Lite"}
+
+id: 1791473896173-0
+event: interaction_update
+data: {"type":"text-delta","text":"Lite"}
+
+id: 1791473896176-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473896182-0
+event: assistant
+data: {"text":" "}
+
+id: 1791473896182-0
+event: interaction_update
+data: {"type":"text-delta","text":" "}
+
+id: 1791473896186-0
+event: assistant
+data: {"text":"3"}
+
+id: 1791473896186-0
+event: interaction_update
+data: {"type":"text-delta","text":"3"}
+
+id: 1791473896189-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473896192-0
+event: assistant
+data: {"text":"."}
+
+id: 1791473896192-0
+event: interaction_update
+data: {"type":"text-delta","text":"."}
+
+id: 1791473896197-0
+event: assistant
+data: {"text":"45"}
+
+id: 1791473896197-0
+event: interaction_update
+data: {"type":"text-delta","text":"45"}
+
+id: 1791473896201-0
+event: assistant
+data: {"text":"."}
+
+id: 1791473896201-0
+event: interaction_update
+data: {"type":"text-delta","text":"."}
+
+id: 1791473896206-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473896210-0
+event: assistant
+data: {"text":"1"}
+
+id: 1791473896210-0
+event: interaction_update
+data: {"type":"text-delta","text":"1"}
+
+id: 1791473896228-0
+event: assistant
+data: {"text":","}
+
+id: 1791473896228-0
+event: interaction_update
+data: {"type":"text-delta","text":","}
+
+id: 1791473896232-0
+event: assistant
+data: {"text":" bubble"}
+
+id: 1791473896232-0
+event: interaction_update
+data: {"type":"text-delta","text":" bubble"}
+
+id: 1791473896235-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473896243-0
+event: assistant
+data: {"text":"wrap"}
+
+id: 1791473896243-0
+event: interaction_update
+data: {"type":"text-delta","text":"wrap"}
+
+id: 1791473896278-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473896283-0
+event: assistant
+data: {"text":" "}
+
+id: 1791473896283-0
+event: interaction_update
+data: {"type":"text-delta","text":" "}
+
+id: 1791473896287-0
+event: assistant
+data: {"text":"0"}
+
+id: 1791473896287-0
+event: interaction_update
+data: {"type":"text-delta","text":"0"}
+
+id: 1791473896291-0
+event: assistant
+data: {"text":"."}
+
+id: 1791473896291-0
+event: interaction_update
+data: {"type":"text-delta","text":"."}
+
+id: 1791473896295-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473896299-0
+event: assistant
+data: {"text":"9"}
+
+id: 1791473896299-0
+event: interaction_update
+data: {"type":"text-delta","text":"9"}
+
+id: 1791473896303-0
+event: assistant
+data: {"text":"."}
+
+id: 1791473896303-0
+event: interaction_update
+data: {"type":"text-delta","text":"."}
+
+id: 1791473896307-0
+event: assistant
+data: {"text":"0"}
+
+id: 1791473896307-0
+event: interaction_update
+data: {"type":"text-delta","text":"0"}
+
+id: 1791473896311-0
+event: assistant
+data: {"text":";"}
+
+id: 1791473896311-0
+event: interaction_update
+data: {"type":"text-delta","text":";"}
+
+id: 1791473896334-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473896338-0
+event: assistant
+data: {"text":" `"}
+
+id: 1791473896338-0
+event: interaction_update
+data: {"type":"text-delta","text":" `"}
+
+id: 1791473896343-0
+event: assistant
+data: {"text":"cargo"}
+
+id: 1791473896343-0
+event: interaction_update
+data: {"type":"text-delta","text":"cargo"}
+
+id: 1791473896347-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473896351-0
+event: assistant
+data: {"text":" fetch"}
+
+id: 1791473896351-0
+event: interaction_update
+data: {"type":"text-delta","text":" fetch"}
+
+id: 1791473896357-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473896366-0
+event: assistant
+data: {"text":" --"}
+
+id: 1791473896366-0
+event: interaction_update
+data: {"type":"text-delta","text":" --"}
+
+id: 1791473896370-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473896375-0
+event: assistant
+data: {"text":"locked"}
+
+id: 1791473896375-0
+event: interaction_update
+data: {"type":"text-delta","text":"locked"}
+
+id: 1791473896481-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473896543-0
+event: assistant
+data: {"text":" --"}
+
+id: 1791473896543-0
+event: interaction_update
+data: {"type":"text-delta","text":" --"}
+
+id: 1791473896547-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473896551-0
+event: assistant
+data: {"text":"offline"}
+
+id: 1791473896551-0
+event: interaction_update
+data: {"type":"text-delta","text":"offline"}
+
+id: 1791473896555-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473896558-0
+event: assistant
+data: {"text":"`"}
+
+id: 1791473896558-0
+event: interaction_update
+data: {"type":"text-delta","text":"`"}
+
+id: 1791473896562-0
+event: assistant
+data: {"text":" exited"}
+
+id: 1791473896562-0
+event: interaction_update
+data: {"type":"text-delta","text":" exited"}
+
+id: 1791473896565-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473896569-0
+event: assistant
+data: {"text":" "}
+
+id: 1791473896569-0
+event: interaction_update
+data: {"type":"text-delta","text":" "}
+
+id: 1791473896574-0
+event: assistant
+data: {"text":"0"}
+
+id: 1791473896574-0
+event: interaction_update
+data: {"type":"text-delta","text":"0"}
+
+id: 1791473896602-0
+event: assistant
+data: {"text":";"}
+
+id: 1791473896602-0
+event: interaction_update
+data: {"type":"text-delta","text":";"}
+
+id: 1791473896624-0
+event: assistant
+data: {"text":" the"}
+
+id: 1791473896624-0
+event: interaction_update
+data: {"type":"text-delta","text":" the"}
+
+id: 1791473896724-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473896828-0
+event: assistant
+data: {"text":" corrupt"}
+
+id: 1791473896828-0
+event: interaction_update
+data: {"type":"text-delta","text":" corrupt"}
+
+id: 1791473896837-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473896840-0
+event: assistant
+data: {"text":" lease"}
+
+id: 1791473896840-0
+event: interaction_update
+data: {"type":"text-delta","text":" lease"}
+
+id: 1791473896843-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473896847-0
+event: assistant
+data: {"text":"-"}
+
+id: 1791473896847-0
+event: interaction_update
+data: {"type":"text-delta","text":"-"}
+
+id: 1791473896850-0
+event: assistant
+data: {"text":"table"}
+
+id: 1791473896850-0
+event: interaction_update
+data: {"type":"text-delta","text":"table"}
+
+id: 1791473896853-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473896856-0
+event: assistant
+data: {"text":" test"}
+
+id: 1791473896856-0
+event: interaction_update
+data: {"type":"text-delta","text":" test"}
+
+id: 1791473896860-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473896864-0
+event: assistant
+data: {"text":" passed"}
+
+id: 1791473896864-0
+event: interaction_update
+data: {"type":"text-delta","text":" passed"}
+
+id: 1791473896904-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473897018-0
+event: assistant
+data: {"text":" |\n\n"}
+
+id: 1791473897018-0
+event: interaction_update
+data: {"type":"text-delta","text":" |\n\n"}
+
+id: 1791473897066-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473897074-0
+event: assistant
+data: {"text":"####"}
+
+id: 1791473897074-0
+event: interaction_update
+data: {"type":"text-delta","text":"####"}
+
+id: 1791473897077-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473897081-0
+event: assistant
+data: {"text":" Action"}
+
+id: 1791473897081-0
+event: interaction_update
+data: {"type":"text-delta","text":" Action"}
+
+id: 1791473897098-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473897102-0
+event: assistant
+data: {"text":" required"}
+
+id: 1791473897102-0
+event: interaction_update
+data: {"type":"text-delta","text":" required"}
+
+id: 1791473897110-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473897115-0
+event: assistant
+data: {"text":"\n"}
+
+id: 1791473897115-0
+event: interaction_update
+data: {"type":"text-delta","text":"\n"}
+
+id: 1791473897165-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473897209-0
+event: assistant
+data: {"text":"**"}
+
+id: 1791473897209-0
+event: interaction_update
+data: {"type":"text-delta","text":"**"}
+
+id: 1791473897241-0
+event: assistant
+data: {"text":"Click"}
+
+id: 1791473897241-0
+event: interaction_update
+data: {"type":"text-delta","text":"Click"}
+
+id: 1791473897249-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473897312-0
+event: assistant
+data: {"text":" Save"}
+
+id: 1791473897312-0
+event: interaction_update
+data: {"type":"text-delta","text":" Save"}
+
+id: 1791473897328-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473897347-0
+event: assistant
+data: {"text":" in"}
+
+id: 1791473897347-0
+event: interaction_update
+data: {"type":"text-delta","text":" in"}
+
+id: 1791473897359-0
+event: assistant
+data: {"text":" the"}
+
+id: 1791473897359-0
+event: interaction_update
+data: {"type":"text-delta","text":" the"}
+
+id: 1791473897366-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473897402-0
+event: assistant
+data: {"text":" Environment"}
+
+id: 1791473897402-0
+event: interaction_update
+data: {"type":"text-delta","text":" Environment"}
+
+id: 1791473897411-0
+event: interaction_update
+data: {"type":"token-delta","tokens":3}
+
+id: 1791473897418-0
+event: assistant
+data: {"text":" panel"}
+
+id: 1791473897418-0
+event: interaction_update
+data: {"type":"text-delta","text":" panel"}
+
+id: 1791473897459-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473897560-0
+event: assistant
+data: {"text":" on"}
+
+id: 1791473897560-0
+event: interaction_update
+data: {"type":"text-delta","text":" on"}
+
+id: 1791473897575-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473897579-0
+event: assistant
+data: {"text":" the"}
+
+id: 1791473897579-0
+event: interaction_update
+data: {"type":"text-delta","text":" the"}
+
+id: 1791473897582-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473897585-0
+event: assistant
+data: {"text":" right"}
+
+id: 1791473897585-0
+event: interaction_update
+data: {"type":"text-delta","text":" right"}
+
+id: 1791473897589-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473897592-0
+event: assistant
+data: {"text":".**"}
+
+id: 1791473897592-0
+event: interaction_update
+data: {"type":"text-delta","text":".**"}
+
+id: 1791473897595-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473897598-0
+event: assistant
+data: {"text":"\n\n"}
+
+id: 1791473897598-0
+event: interaction_update
+data: {"type":"text-delta","text":"\n\n"}
+
+id: 1791473897601-0
+event: assistant
+data: {"text":"This"}
+
+id: 1791473897601-0
+event: interaction_update
+data: {"type":"text-delta","text":"This"}
+
+id: 1791473897603-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473897606-0
+event: assistant
+data: {"text":" makes"}
+
+id: 1791473897606-0
+event: interaction_update
+data: {"type":"text-delta","text":" makes"}
+
+id: 1791473897609-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473897612-0
+event: assistant
+data: {"text":" the"}
+
+id: 1791473897612-0
+event: interaction_update
+data: {"type":"text-delta","text":" the"}
+
+id: 1791473897615-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473897621-0
+event: assistant
+data: {"text":" tested"}
+
+id: 1791473897621-0
+event: interaction_update
+data: {"type":"text-delta","text":" tested"}
+
+id: 1791473897676-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473897679-0
+event: assistant
+data: {"text":" setup"}
+
+id: 1791473897679-0
+event: interaction_update
+data: {"type":"text-delta","text":" setup"}
+
+id: 1791473897683-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473897698-0
+event: assistant
+data: {"text":" available"}
+
+id: 1791473897698-0
+event: interaction_update
+data: {"type":"text-delta","text":" available"}
+
+id: 1791473897700-0
+event: interaction_update
+data: {"type":"token-delta","tokens":3}
+
+id: 1791473897703-0
+event: assistant
+data: {"text":" to"}
+
+id: 1791473897703-0
+event: interaction_update
+data: {"type":"text-delta","text":" to"}
+
+id: 1791473897707-0
+event: assistant
+data: {"text":" future"}
+
+id: 1791473897707-0
+event: interaction_update
+data: {"type":"text-delta","text":" future"}
+
+id: 1791473897709-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473897714-0
+event: assistant
+data: {"text":" Cloud"}
+
+id: 1791473897714-0
+event: interaction_update
+data: {"type":"text-delta","text":" Cloud"}
+
+id: 1791473897717-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473897720-0
+event: assistant
+data: {"text":" Agents"}
+
+id: 1791473897720-0
+event: interaction_update
+data: {"type":"text-delta","text":" Agents"}
+
+id: 1791473897723-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473897736-0
+event: assistant
+data: {"text":"."}
+
+id: 1791473897736-0
+event: interaction_update
+data: {"type":"text-delta","text":"."}
+
+id: 1791473897747-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473897753-0
+event: assistant
+data: {"text":" Nothing"}
+
+id: 1791473897753-0
+event: interaction_update
+data: {"type":"text-delta","text":" Nothing"}
+
+id: 1791473897756-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473897759-0
+event: assistant
+data: {"text":" else"}
+
+id: 1791473897759-0
+event: interaction_update
+data: {"type":"text-delta","text":" else"}
+
+id: 1791473897762-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473897767-0
+event: assistant
+data: {"text":" is"}
+
+id: 1791473897767-0
+event: interaction_update
+data: {"type":"text-delta","text":" is"}
+
+id: 1791473897770-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473897775-0
+event: assistant
+data: {"text":" required"}
+
+id: 1791473897775-0
+event: interaction_update
+data: {"type":"text-delta","text":" required"}
+
+id: 1791473897779-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473897786-0
+event: assistant
+data: {"text":".\n\n"}
+
+id: 1791473897786-0
+event: interaction_update
+data: {"type":"text-delta","text":".\n\n"}
+
+id: 1791473897791-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473897796-0
+event: assistant
+data: {"text":"`"}
+
+id: 1791473897796-0
+event: interaction_update
+data: {"type":"text-delta","text":"`"}
+
+id: 1791473897800-0
+event: assistant
+data: {"text":"AG"}
+
+id: 1791473897800-0
+event: interaction_update
+data: {"type":"text-delta","text":"AG"}
+
+id: 1791473897803-0
+event: assistant
+data: {"text":"ENTS"}
+
+id: 1791473897803-0
+event: interaction_update
+data: {"type":"text-delta","text":"ENTS"}
+
+id: 1791473897806-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473897809-0
+event: assistant
+data: {"text":".md"}
+
+id: 1791473897809-0
+event: interaction_update
+data: {"type":"text-delta","text":".md"}
+
+id: 1791473897812-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473897815-0
+event: assistant
+data: {"text":"`"}
+
+id: 1791473897815-0
+event: interaction_update
+data: {"type":"text-delta","text":"`"}
+
+id: 1791473897819-0
+event: assistant
+data: {"text":" now"}
+
+id: 1791473897819-0
+event: interaction_update
+data: {"type":"text-delta","text":" now"}
+
+id: 1791473897822-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473897825-0
+event: assistant
+data: {"text":" records"}
+
+id: 1791473897825-0
+event: interaction_update
+data: {"type":"text-delta","text":" records"}
+
+id: 1791473897828-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473897832-0
+event: assistant
+data: {"text":" the"}
+
+id: 1791473897832-0
+event: interaction_update
+data: {"type":"text-delta","text":" the"}
+
+id: 1791473897836-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473897839-0
+event: assistant
+data: {"text":" Cloud"}
+
+id: 1791473897839-0
+event: interaction_update
+data: {"type":"text-delta","text":" Cloud"}
+
+id: 1791473897842-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473897845-0
+event: assistant
+data: {"text":" Agent"}
+
+id: 1791473897845-0
+event: interaction_update
+data: {"type":"text-delta","text":" Agent"}
+
+id: 1791473897849-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473897852-0
+event: assistant
+data: {"text":" toolchain"}
+
+id: 1791473897852-0
+event: interaction_update
+data: {"type":"text-delta","text":" toolchain"}
+
+id: 1791473897855-0
+event: interaction_update
+data: {"type":"token-delta","tokens":3}
+
+id: 1791473897860-0
+event: assistant
+data: {"text":","}
+
+id: 1791473897860-0
+event: interaction_update
+data: {"type":"text-delta","text":","}
+
+id: 1791473897863-0
+event: assistant
+data: {"text":" the"}
+
+id: 1791473897863-0
+event: interaction_update
+data: {"type":"text-delta","text":" the"}
+
+id: 1791473897866-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473897870-0
+event: assistant
+data: {"text":" `"}
+
+id: 1791473897870-0
+event: interaction_update
+data: {"type":"text-delta","text":" `"}
+
+id: 1791473897873-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473897878-0
+event: assistant
+data: {"text":"~/"}
+
+id: 1791473897878-0
+event: interaction_update
+data: {"type":"text-delta","text":"~/"}
+
+id: 1791473897881-0
+event: assistant
+data: {"text":"work"}
+
+id: 1791473897881-0
+event: interaction_update
+data: {"type":"text-delta","text":"work"}
+
+id: 1791473897885-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473897889-0
+event: assistant
+data: {"text":"/"}
+
+id: 1791473897889-0
+event: interaction_update
+data: {"type":"text-delta","text":"/"}
+
+id: 1791473897893-0
+event: assistant
+data: {"text":"open"}
+
+id: 1791473897893-0
+event: interaction_update
+data: {"type":"text-delta","text":"open"}
+
+id: 1791473897896-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473897900-0
+event: assistant
+data: {"text":"agents"}
+
+id: 1791473897900-0
+event: interaction_update
+data: {"type":"text-delta","text":"agents"}
+
+id: 1791473897904-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473897907-0
+event: assistant
+data: {"text":"-"}
+
+id: 1791473897907-0
+event: interaction_update
+data: {"type":"text-delta","text":"-"}
+
+id: 1791473897916-0
+event: assistant
+data: {"text":"target"}
+
+id: 1791473897916-0
+event: interaction_update
+data: {"type":"text-delta","text":"target"}
+
+id: 1791473897976-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473897979-0
+event: assistant
+data: {"text":"-"}
+
+id: 1791473897979-0
+event: interaction_update
+data: {"type":"text-delta","text":"-"}
+
+id: 1791473897984-0
+event: assistant
+data: {"text":"agent"}
+
+id: 1791473897984-0
+event: interaction_update
+data: {"type":"text-delta","text":"agent"}
+
+id: 1791473897987-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473897991-0
+event: assistant
+data: {"text":"N"}
+
+id: 1791473897991-0
+event: interaction_update
+data: {"type":"text-delta","text":"N"}
+
+id: 1791473897997-0
+event: assistant
+data: {"text":"`"}
+
+id: 1791473897997-0
+event: interaction_update
+data: {"type":"text-delta","text":"`"}
+
+id: 1791473898000-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473898011-0
+event: assistant
+data: {"text":" output"}
+
+id: 1791473898011-0
+event: interaction_update
+data: {"type":"text-delta","text":" output"}
+
+id: 1791473898015-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473898021-0
+event: assistant
+data: {"text":" directory"}
+
+id: 1791473898021-0
+event: interaction_update
+data: {"type":"text-delta","text":" directory"}
+
+id: 1791473898078-0
+event: interaction_update
+data: {"type":"token-delta","tokens":3}
+
+id: 1791473898083-0
+event: assistant
+data: {"text":","}
+
+id: 1791473898083-0
+event: interaction_update
+data: {"type":"text-delta","text":","}
+
+id: 1791473898088-0
+event: assistant
+data: {"text":" and"}
+
+id: 1791473898088-0
+event: interaction_update
+data: {"type":"text-delta","text":" and"}
+
+id: 1791473898092-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473898096-0
+event: assistant
+data: {"text":" `"}
+
+id: 1791473898096-0
+event: interaction_update
+data: {"type":"text-delta","text":" `"}
+
+id: 1791473898099-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473898103-0
+event: assistant
+data: {"text":"C"}
+
+id: 1791473898103-0
+event: interaction_update
+data: {"type":"text-delta","text":"C"}
+
+id: 1791473898107-0
+event: assistant
+data: {"text":"ARGO"}
+
+id: 1791473898107-0
+event: interaction_update
+data: {"type":"text-delta","text":"ARGO"}
+
+id: 1791473898111-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473898114-0
+event: assistant
+data: {"text":"_"}
+
+id: 1791473898114-0
+event: interaction_update
+data: {"type":"text-delta","text":"_"}
+
+id: 1791473898117-0
+event: assistant
+data: {"text":"BUILD"}
+
+id: 1791473898117-0
+event: interaction_update
+data: {"type":"text-delta","text":"BUILD"}
+
+id: 1791473898120-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473898124-0
+event: assistant
+data: {"text":"_"}
+
+id: 1791473898124-0
+event: interaction_update
+data: {"type":"text-delta","text":"_"}
+
+id: 1791473898127-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473898130-0
+event: assistant
+data: {"text":"JOB"}
+
+id: 1791473898130-0
+event: interaction_update
+data: {"type":"text-delta","text":"JOB"}
+
+id: 1791473898133-0
+event: assistant
+data: {"text":"S"}
+
+id: 1791473898133-0
+event: interaction_update
+data: {"type":"text-delta","text":"S"}
+
+id: 1791473898136-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473898140-0
+event: assistant
+data: {"text":"="}
+
+id: 1791473898140-0
+event: interaction_update
+data: {"type":"text-delta","text":"="}
+
+id: 1791473898143-0
+event: assistant
+data: {"text":"2"}
+
+id: 1791473898143-0
+event: interaction_update
+data: {"type":"text-delta","text":"2"}
+
+id: 1791473898147-0
+event: assistant
+data: {"text":"`"}
+
+id: 1791473898147-0
+event: interaction_update
+data: {"type":"text-delta","text":"`"}
+
+id: 1791473898151-0
+event: assistant
+data: {"text":" for"}
+
+id: 1791473898151-0
+event: interaction_update
+data: {"type":"text-delta","text":" for"}
+
+id: 1791473898154-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473898157-0
+event: assistant
+data: {"text":" large"}
+
+id: 1791473898157-0
+event: interaction_update
+data: {"type":"text-delta","text":" large"}
+
+id: 1791473898160-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473898163-0
+event: assistant
+data: {"text":" crates"}
+
+id: 1791473898163-0
+event: interaction_update
+data: {"type":"text-delta","text":" crates"}
+
+id: 1791473898166-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473898169-0
+event: assistant
+data: {"text":"."}
+
+id: 1791473898169-0
+event: interaction_update
+data: {"type":"text-delta","text":"."}
+
+id: 1791473898173-0
+event: assistant
+data: {"text":" Merg"}
+
+id: 1791473898173-0
+event: interaction_update
+data: {"type":"text-delta","text":" Merg"}
+
+id: 1791473898175-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473898179-0
+event: assistant
+data: {"text":"ing"}
+
+id: 1791473898179-0
+event: interaction_update
+data: {"type":"text-delta","text":"ing"}
+
+id: 1791473898181-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473898184-0
+event: assistant
+data: {"text":" that"}
+
+id: 1791473898184-0
+event: interaction_update
+data: {"type":"text-delta","text":" that"}
+
+id: 1791473898187-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473898191-0
+event: assistant
+data: {"text":" change"}
+
+id: 1791473898191-0
+event: interaction_update
+data: {"type":"text-delta","text":" change"}
+
+id: 1791473898193-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473898197-0
+event: assistant
+data: {"text":" preserves"}
+
+id: 1791473898197-0
+event: interaction_update
+data: {"type":"text-delta","text":" preserves"}
+
+id: 1791473898200-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473898204-0
+event: assistant
+data: {"text":" the"}
+
+id: 1791473898204-0
+event: interaction_update
+data: {"type":"text-delta","text":" the"}
+
+id: 1791473898207-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473898210-0
+event: assistant
+data: {"text":" guidance"}
+
+id: 1791473898210-0
+event: interaction_update
+data: {"type":"text-delta","text":" guidance"}
+
+id: 1791473898214-0
+event: interaction_update
+data: {"type":"token-delta","tokens":3}
+
+id: 1791473898218-0
+event: assistant
+data: {"text":" for"}
+
+id: 1791473898218-0
+event: interaction_update
+data: {"type":"text-delta","text":" for"}
+
+id: 1791473898221-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473898225-0
+event: assistant
+data: {"text":" future"}
+
+id: 1791473898225-0
+event: interaction_update
+data: {"type":"text-delta","text":" future"}
+
+id: 1791473898228-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473898231-0
+event: assistant
+data: {"text":" agents"}
+
+id: 1791473898231-0
+event: interaction_update
+data: {"type":"text-delta","text":" agents"}
+
+id: 1791473898234-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473898237-0
+event: assistant
+data: {"text":"."}
+
+id: 1791473898237-0
+event: interaction_update
+data: {"type":"text-delta","text":"."}
+
+id: 1791473898241-0
+event: assistant
+data: {"text":" The"}
+
+id: 1791473898241-0
+event: interaction_update
+data: {"type":"text-delta","text":" The"}
+
+id: 1791473898244-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473898247-0
+event: assistant
+data: {"text":" phone"}
+
+id: 1791473898247-0
+event: interaction_update
+data: {"type":"text-delta","text":" phone"}
+
+id: 1791473898250-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473898254-0
+event: assistant
+data: {"text":" workspace"}
+
+id: 1791473898254-0
+event: interaction_update
+data: {"type":"text-delta","text":" workspace"}
+
+id: 1791473898257-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473898260-0
+event: assistant
+data: {"text":" lock"}
+
+id: 1791473898260-0
+event: interaction_update
+data: {"type":"text-delta","text":" lock"}
+
+id: 1791473898264-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473898272-0
+event: assistant
+data: {"text":" file"}
+
+id: 1791473898272-0
+event: interaction_update
+data: {"type":"text-delta","text":" file"}
+
+id: 1791473898330-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473898333-0
+event: assistant
+data: {"text":" still"}
+
+id: 1791473898333-0
+event: interaction_update
+data: {"type":"text-delta","text":" still"}
+
+id: 1791473898336-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473898340-0
+event: assistant
+data: {"text":" does"}
+
+id: 1791473898340-0
+event: interaction_update
+data: {"type":"text-delta","text":" does"}
+
+id: 1791473898343-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473898351-0
+event: assistant
+data: {"text":" not"}
+
+id: 1791473898351-0
+event: interaction_update
+data: {"type":"text-delta","text":" not"}
+
+id: 1791473898355-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473898359-0
+event: assistant
+data: {"text":" resolve"}
+
+id: 1791473898359-0
+event: interaction_update
+data: {"type":"text-delta","text":" resolve"}
+
+id: 1791473898361-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473898365-0
+event: assistant
+data: {"text":" with"}
+
+id: 1791473898365-0
+event: interaction_update
+data: {"type":"text-delta","text":" with"}
+
+id: 1791473898372-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473898431-0
+event: assistant
+data: {"text":" `"}
+
+id: 1791473898431-0
+event: interaction_update
+data: {"type":"text-delta","text":" `"}
+
+id: 1791473898436-0
+event: assistant
+data: {"text":"cargo"}
+
+id: 1791473898436-0
+event: interaction_update
+data: {"type":"text-delta","text":"cargo"}
+
+id: 1791473898439-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473898443-0
+event: assistant
+data: {"text":" fetch"}
+
+id: 1791473898443-0
+event: interaction_update
+data: {"type":"text-delta","text":" fetch"}
+
+id: 1791473898446-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473898450-0
+event: assistant
+data: {"text":" --"}
+
+id: 1791473898450-0
+event: interaction_update
+data: {"type":"text-delta","text":" --"}
+
+id: 1791473898453-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473898457-0
+event: assistant
+data: {"text":"locked"}
+
+id: 1791473898457-0
+event: interaction_update
+data: {"type":"text-delta","text":"locked"}
+
+id: 1791473898460-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473898463-0
+event: assistant
+data: {"text":"`,"}
+
+id: 1791473898463-0
+event: interaction_update
+data: {"type":"text-delta","text":"`,"}
+
+id: 1791473898466-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473898470-0
+event: assistant
+data: {"text":" and"}
+
+id: 1791473898470-0
+event: interaction_update
+data: {"type":"text-delta","text":" and"}
+
+id: 1791473898474-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473898477-0
+event: assistant
+data: {"text":" relay"}
+
+id: 1791473898477-0
+event: interaction_update
+data: {"type":"text-delta","text":" relay"}
+
+id: 1791473898480-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473898483-0
+event: assistant
+data: {"text":" release"}
+
+id: 1791473898483-0
+event: interaction_update
+data: {"type":"text-delta","text":" release"}
+
+id: 1791473898486-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473898489-0
+event: assistant
+data: {"text":" checks"}
+
+id: 1791473898489-0
+event: interaction_update
+data: {"type":"text-delta","text":" checks"}
+
+id: 1791473898492-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473898496-0
+event: assistant
+data: {"text":" still"}
+
+id: 1791473898496-0
+event: interaction_update
+data: {"type":"text-delta","text":" still"}
+
+id: 1791473898499-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473898503-0
+event: assistant
+data: {"text":" need"}
+
+id: 1791473898503-0
+event: interaction_update
+data: {"type":"text-delta","text":" need"}
+
+id: 1791473898506-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473898511-0
+event: assistant
+data: {"text":" Postgre"}
+
+id: 1791473898511-0
+event: interaction_update
+data: {"type":"text-delta","text":" Postgre"}
+
+id: 1791473898514-0
+event: interaction_update
+data: {"type":"token-delta","tokens":2}
+
+id: 1791473898518-0
+event: assistant
+data: {"text":"SQL"}
+
+id: 1791473898518-0
+event: interaction_update
+data: {"type":"text-delta","text":"SQL"}
+
+id: 1791473898522-0
+event: interaction_update
+data: {"type":"token-delta","tokens":1}
+
+id: 1791473898526-0
+event: assistant
+data: {"text":"."}
+
+id: 1791473898526-0
+event: interaction_update
+data: {"type":"text-delta","text":"."}
+
+id: 1791473898770-0
+event: interaction_update
+data: {"type":"turn-ended"}
+
+id: 1791473898780-0
+event: interaction_update
+data: {"type":"step-completed","stepId":5053,"stepDurationMs":23353}
+
+event: status
+data: {"runId":"run-7b90ddb0-9d8b-43cb-870a-22fdd0e4fd31","status":"FINISHED"}
+
+id: 1791473902242-0
+event: result
+data: {"runId":"run-7b90ddb0-9d8b-43cb-870a-22fdd0e4fd31","status":"FINISHED","text":"OpenAgents’s Cloud Agent environment is tested and ready to save.\n\n**What was done**\n- Mapped the workspace to the pinned Rust 1.97.1 toolchain and the day-to-day `cargo test -p` plus `cargo fmt` flow.\n- Installed the native build packages (`protoc`, OpenSSL, SQLite, libclang, `bubblewrap`) and fetched the root workspace crates.\n- Ran trajectory, lease-broker, and Nostr signature tests on this machine.\n- Snapshotted that disk, built it, and confirmed the same toolchain in a fresh Cloud Agent.\n\n#### Validation\n| Check | Result |\n| --- | --- |\n| ATIF trajectory documents | 56 library tests, 3 integration tests, and 1 doctest passed |\n| Lease broker | 66 library tests, holder recovery, and 5 cargo-shim tests passed |\n| Nostr signed agreement | `free_agreement_requires_both_signatures_exact_terms_and_confirmation` passed |\n| `cargo fmt` for those crates | Clean |\n| Install idempotence | Passed twice |\n| Fresh Cloud Agent | [Build verification](bc-3a90601a-d753-5a94-8be4-6fb84bda6279) booted from `bld-20261008-26522d23-d3aa-427c-b6f2-3fc6ffbabdb8`: Rust 1.97.1, rustfmt, Clippy, Python 3.12.3, protoc 3.21.12, OpenSSL 3.0.13, SQLite 3.45.1, bubblewrap 0.9.0; `cargo fetch --locked --offline` exited 0; the corrupt lease-table test passed |\n\n#### Action required\n**Click Save in the Environment panel on the right.**\n\nThis makes the tested setup available to future Cloud Agents. Nothing else is required.\n\n`AGENTS.md` now records the Cloud Agent toolchain, the `~/work/openagents-target-agentN` output directory, and `CARGO_BUILD_JOBS=2` for large crates. Merging that change preserves the guidance for future agents. The phone workspace lock file still does not resolve with `cargo fetch --locked`, and relay release checks still need PostgreSQL.","durationMs":1632874,"git":{"branches":[{"repoUrl":"github.com/OpenAgentsInc/openagents","branch":"cursor/cloud-agent-env-notes-58b0","prUrl":"https://github.com/OpenAgentsInc/openagents/pull/10979"}]}}
+
+id: 1791473902242-0
+event: done
+data: {}
+

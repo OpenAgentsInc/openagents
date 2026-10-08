@@ -56,7 +56,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         return;
     }
     let (draft, cursor) = app.draft.wrapped(terminal_width.saturating_sub(3));
-    let rail_height = if app.mode == Mode::Demo {
+    let rail_height = if app.mode == Mode::Demo && !app.onboarding {
         DEMOS.len().min(usize::from(area.height.saturating_sub(6))) as u16
     } else {
         0
@@ -99,7 +99,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         },
         &draft,
         cursor,
-        app.selected_agent.is_none(),
+        app.selected_agent.is_none() && !app.onboarding,
         app.model_picker.is_none(),
         &app.plugins,
         (app.mode == Mode::Live && !(app.plugins.enabled && app.plugins.key_configured))
@@ -113,7 +113,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
 }
 
 fn agent_rail(frame: &mut Frame, area: Rect, app: &App) {
-    if app.mode != Mode::Demo {
+    if app.mode != Mode::Demo || app.onboarding {
         return;
     }
     let agents: Vec<_> = DEMOS
@@ -270,8 +270,12 @@ pub(crate) fn truncate(text: &str, width: u16) -> String {
 
 fn header_view(frame: &mut Frame, area: Rect, app: &App) {
     let agent = if app.screen == Screen::Conversation && app.mode == Mode::Demo {
-        app.selected_agent
-            .and_then(|index| DEMOS.get(index).map(|agent| agent.name))
+        if app.onboarding {
+            Some(crate::onboarding::DEMO.name)
+        } else {
+            app.selected_agent
+                .and_then(|index| DEMOS.get(index).map(|agent| agent.name))
+        }
     } else {
         None
     };
@@ -300,7 +304,11 @@ fn context_view(frame: &mut Frame, area: Rect, app: &App) {
         .and_then(|name| name.to_str())
         .unwrap_or("openagents");
     let branch = app.branch.as_deref().unwrap_or("main");
-    let suffix = format!(" / {branch}");
+    let suffix = if app.mode == Mode::Demo && app.onboarding {
+        format!(" / {branch} / environment setup")
+    } else {
+        format!(" / {branch}")
+    };
     let suffix_width = suffix.width().min(usize::from(u16::MAX)) as u16;
     let spans = if suffix_width < area.width {
         vec![
@@ -344,8 +352,13 @@ fn prompt(text: &str, width: u16) -> Vec<Line<'static>> {
 fn wrap_display(lines: Vec<Line<'static>>, width: u16) -> Vec<Line<'static>> {
     let mut rows = Vec::new();
     for line in lines {
-        for range in coder_ui::components::wrap_ranges(&line.to_string(), usize::from(width).max(1))
-        {
+        // Display removes newlines; byte ranges must use the original span contents.
+        let text = line
+            .spans
+            .iter()
+            .map(|span| span.content.as_ref())
+            .collect::<String>();
+        for range in coder_ui::components::wrap_ranges(&text, usize::from(width).max(1)) {
             let mut offset = 0;
             let spans = line
                 .spans
@@ -374,38 +387,43 @@ fn wrap_display(lines: Vec<Line<'static>>, width: u16) -> Vec<Line<'static>> {
     rows
 }
 
+fn demo_messages(messages: &[DemoMessage], animation_frame: u8, width: u16) -> Vec<Line<'static>> {
+    let mut lines = Vec::new();
+    for (index, message) in messages.iter().enumerate() {
+        match message {
+            DemoMessage::User(text) => lines.extend(prompt(text, width)),
+            DemoMessage::Tool(call) => lines.extend(wrap_display(
+                tool_lines(call, animation_frame, width),
+                width,
+            )),
+            DemoMessage::Plugin(call) => {
+                lines.extend(wrap_display(plugin_lines(call, animation_frame), width));
+            }
+            DemoMessage::Assistant(text) => lines.extend(message_body(text, width)),
+        }
+        let grouped = matches!(message, DemoMessage::Tool(_) | DemoMessage::Plugin(_))
+            && matches!(
+                messages.get(index + 1),
+                Some(DemoMessage::Tool(_) | DemoMessage::Plugin(_))
+            );
+        if !grouped {
+            lines.push(Line::default());
+        }
+    }
+    lines
+}
+
 fn conversation(frame: &mut Frame, area: Rect, app: &mut App) {
     let mut lines = if app.mode != Mode::Demo {
         Vec::new()
+    } else if app.onboarding {
+        demo_messages(
+            crate::onboarding::DEMO.conversation,
+            app.animation_frame,
+            area.width,
+        )
     } else if let Some(agent) = app.selected_agent.and_then(|index| DEMOS.get(index)) {
-        let mut lines = Vec::new();
-        for (index, message) in agent.conversation.iter().enumerate() {
-            match message {
-                DemoMessage::User(text) => lines.extend(prompt(text, area.width)),
-                DemoMessage::Tool(call) => {
-                    lines.extend(wrap_display(
-                        tool_lines(call, app.animation_frame, area.width),
-                        area.width,
-                    ));
-                }
-                DemoMessage::Plugin(call) => lines.extend(wrap_display(
-                    plugin_lines(call, app.animation_frame),
-                    area.width,
-                )),
-                DemoMessage::Assistant(text) => {
-                    lines.extend(message_body(text, area.width));
-                }
-            }
-            let grouped = matches!(message, DemoMessage::Tool(_) | DemoMessage::Plugin(_))
-                && matches!(
-                    agent.conversation.get(index + 1),
-                    Some(DemoMessage::Tool(_) | DemoMessage::Plugin(_))
-                );
-            if !grouped {
-                lines.push(Line::default());
-            }
-        }
-        lines
+        demo_messages(agent.conversation, app.animation_frame, area.width)
     } else {
         let mut lines = prompt("Review the terminal with four agents.", area.width);
         lines.push(Line::default());

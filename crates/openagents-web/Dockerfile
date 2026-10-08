@@ -38,10 +38,14 @@ RUN scripts/build-everglade-web.sh /build/everglade \
     && test -f /build/everglade/everglade_web.js \
     && test -f /build/everglade/everglade_web_bg.wasm \
     && gzip -9 -k /build/everglade/everglade_web.js /build/everglade/everglade_web_bg.wasm \
-    && mkdir -p /build/everglade/pack /build/everglade/kit \
+    && mkdir -p /build/everglade/pack /build/everglade/kit/bake \
     && cp assets/verse/everglade/*.vtp /build/everglade/pack/ \
-    && find crates/openagents-web/kit -maxdepth 1 -name '*.vtp' \
-        -exec cp {} /build/everglade/kit/ \; 2>/dev/null || true
+    && if [ -d crates/openagents-web/kit ]; then \
+        find crates/openagents-web/kit -maxdepth 1 -name '*.vtp' \
+            -exec cp {} /build/everglade/kit/ \;; fi \
+    && if [ -d crates/openagents-web/kit/bake ]; then \
+        find crates/openagents-web/kit/bake -maxdepth 1 -name '*.vlay' \
+            -exec cp {} /build/everglade/kit/bake/ \;; fi
 
 # Build the shared component catalog and Cloud privacy adapter directly in
 # this isolated stage. The local build scripts use the machine's build lease.

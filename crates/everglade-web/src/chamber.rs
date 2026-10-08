@@ -486,8 +486,8 @@ pub async fn run(
         ("z-index", "1"),
         ("padding", "0.5rem"),
         ("box-sizing", "border-box"),
-        ("background", "rgba(14, 20, 12, 0.94)"),
-        ("color", "white"),
+        ("background", "rgb(from var(--noir-surface) r g b / 0.94)"),
+        ("color", "var(--noir-content)"),
         ("font-size", "1.125rem"),
     ] {
         panel

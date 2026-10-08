@@ -39,6 +39,13 @@ in [water.md](water.md#budgets-per-tier), the remaining corrected browser
 matrix, and deployment from a normal production release image. The
 benchmark's derived WASM is for measurement only.
 
+On October 8, the idle Mac `~/work/openagents-target-agent12` cache is
+reclaimed after free disk falls below 25 GB. Its two native water capture
+executables and SHA-256 receipts remain in
+`/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/preserved-water-harnesses/`.
+The source checkout, measured evidence, and remote target remain intact;
+recreate the Mac target when a later check needs compilation.
+
 This run stops new assignments at 89 percent shared usage. W11 saves a
 resumable checkpoint; #10919 and coast C1 through C6 are unassigned.
 Recheck each issue and claim before resuming. The sections below retain

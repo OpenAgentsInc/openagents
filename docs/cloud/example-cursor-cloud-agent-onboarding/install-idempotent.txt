@@ -1,0 +1,8 @@
+
+  1.97.1-x86_64-unknown-linux-gnu unchanged - rustc 1.97.1 (8bab26f4f 2026-07-14)
+
+info: note that the toolchain '1.97.1-x86_64-unknown-linux-gnu' is currently in use (overridden by '/workspace/rust-toolchain.toml')
+EXIT:0
+protoc libprotoc 3.21.12
+openssl 3.0.13
+rustc rustc 1.97.1 (8bab26f4f 2026-07-14)

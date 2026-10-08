@@ -230,7 +230,37 @@ pub fn markdown_body(text: &str, width: u16, ladder: Ladder) -> Vec<Line<'static
 
 /// grok-build's transcript colors at the ladder's color level.
 pub(crate) fn transcript(ladder: Ladder) -> code_highlight::grok::TranscriptColors {
-    markdown::palette_for(ladder).transcript(level(ladder))
+    use coder_ui::source_theme as t;
+    let apply = |color: rust_native::style::Color| {
+        code_highlight::grok::color::quantize_color(
+            Color::Rgb(color.red, color.green, color.blue),
+            level(ladder),
+        )
+    };
+    code_highlight::grok::TranscriptColors {
+        bg_light: apply(t::BG_LIGHT),
+        accent_user: apply(t::TEXT_SECONDARY),
+        text_primary: apply(t::TEXT_PRIMARY),
+        md_text: apply(t::TEXT_SECONDARY),
+        md_code: apply(t::MD_CODE),
+        md_code_bg: apply(t::BG_DARK),
+        md_muted: apply(t::GRAY),
+        link_fg: apply(t::ACCENT_SKILL),
+        headings: [
+            t::ACCENT_SKILL,
+            t::ACCENT_SKILL,
+            t::ACCENT_DELEGATE,
+            t::GRAY_BRIGHT,
+            t::GRAY,
+            t::GRAY_DIM,
+        ]
+        .map(apply),
+        task_checked: apply(t::ACCENT_SUCCESS),
+        task_unchecked: apply(t::TEXT_SECONDARY),
+        gray_dim: apply(t::GRAY_DIM),
+        gray: apply(t::GRAY),
+        gray_bright: apply(t::GRAY_BRIGHT),
+    }
 }
 
 /// The color level the transcript's colors draw at.
@@ -320,7 +350,7 @@ pub(crate) fn marked_style(base: Style, ladder: Ladder, marks: &Marks) -> Style 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Colors;
+    use crate::{Colors, ladder::rgb};
 
     fn text(lines: &[Line<'_>]) -> Vec<String> {
         lines.iter().map(|line| line.to_string()).collect()
@@ -344,7 +374,7 @@ mod tests {
             ]
         );
         // The band is grok-build's bg_light from the accent column on.
-        let band = Color::Rgb(36, 36, 36);
+        let band = rgb(coder_ui::coder_noir::SURFACE_RAISED);
         assert_eq!(asked[1].spans[0].style.bg, None);
         assert!(
             asked[1].spans[1..]
@@ -352,8 +382,11 @@ mod tests {
                 .all(|span| span.style.bg == Some(band))
         );
         let arrow = &asked[1].spans[2];
-        assert_eq!(arrow.style.fg, Some(Color::Rgb(200, 200, 200)));
-        assert_eq!(asked[1].spans[3].style.fg, Some(Color::Rgb(225, 225, 225)));
+        assert_eq!(arrow.style.fg, Some(rgb(coder_ui::coder_noir::CONTENT)));
+        assert_eq!(
+            asked[1].spans[3].style.fg,
+            Some(rgb(coder_ui::coder_noir::ANSI[15]))
+        );
     }
 
     #[test]
@@ -388,21 +421,30 @@ mod tests {
                 .clone()
         };
         let heading = span("Plan");
-        assert_eq!(heading.style.fg, Some(Color::Rgb(122, 162, 247)));
+        assert_eq!(heading.style.fg, Some(rgb(coder_ui::coder_noir::INFO)));
         assert!(heading.style.add_modifier.contains(Modifier::BOLD));
         let code = span("cargo test");
-        assert_eq!(code.style.fg, Some(Color::Rgb(58, 149, 171)));
+        assert_eq!(code.style.fg, Some(rgb(coder_ui::coder_noir::ANSI[6])));
         assert!(code.style.add_modifier.contains(Modifier::BOLD));
         let link = span("docs");
-        assert_eq!(link.style.fg, Some(Color::Rgb(122, 166, 218)));
+        assert_eq!(link.style.fg, Some(rgb(coder_ui::coder_noir::INFO)));
         assert!(link.style.add_modifier.contains(Modifier::UNDERLINED));
-        assert_eq!(span("•").style.fg, Some(Color::Rgb(108, 108, 108)));
+        assert_eq!(
+            span("•").style.fg,
+            Some(rgb(coder_ui::coder_noir::CONTENT_TERTIARY))
+        );
         assert_eq!(
             span("(https://x.dev)").style.fg,
-            Some(Color::Rgb(108, 108, 108))
+            Some(rgb(coder_ui::coder_noir::CONTENT_TERTIARY))
         );
-        assert_eq!(span("Run").style.fg, Some(Color::Rgb(200, 200, 200)));
-        assert_eq!(span("plain").style.bg, Some(Color::Rgb(28, 28, 28)));
+        assert_eq!(
+            span("Run").style.fg,
+            Some(rgb(coder_ui::coder_noir::CONTENT))
+        );
+        assert_eq!(
+            span("plain").style.bg,
+            Some(rgb(coder_ui::coder_noir::SURFACE_SUBTLE))
+        );
     }
 
     #[test]
@@ -415,7 +457,10 @@ mod tests {
             ["Plan", "", "one two three", "", "let n = 1;   "]
         );
         assert!(body[0].spans[0].style.add_modifier.contains(Modifier::BOLD));
-        assert_eq!(body[0].spans[0].style.fg, Some(Color::Rgb(122, 162, 247)));
+        assert_eq!(
+            body[0].spans[0].style.fg,
+            Some(rgb(coder_ui::coder_noir::INFO))
+        );
         assert!(
             body[2]
                 .spans
@@ -431,7 +476,7 @@ mod tests {
         assert!(
             code.spans
                 .iter()
-                .all(|span| span.style.bg == Some(Color::Rgb(28, 28, 28)))
+                .all(|span| span.style.bg == Some(rgb(coder_ui::coder_noir::SURFACE_SUBTLE)))
         );
         let foregrounds: std::collections::HashSet<_> =
             code.spans.iter().filter_map(|span| span.style.fg).collect();

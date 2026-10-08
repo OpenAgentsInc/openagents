@@ -35,6 +35,9 @@ const MAX_STEP: f32 = 0.1;
 #[wasm_bindgen(start)]
 pub fn start() {
     console_error_panic_hook::set_once();
+    if let Some(document) = web_sys::window().and_then(|window| window.document()) {
+        let _ = crate::theme::install(&document);
+    }
     if log::set_logger(&CONSOLE).is_ok() {
         log::set_max_level(log::LevelFilter::Warn);
     }
@@ -1328,13 +1331,22 @@ fn status_element(document: &Document) -> Option<HtmlElement> {
         ("max-width", "calc(100vw - 32px)"),
         ("padding", "8px 12px"),
         ("border-radius", "6px"),
-        ("background", "rgba(10, 14, 8, 0.8)"),
-        ("color", "#e8f0d8"),
         ("font", "14px/1.4 \"Paper Mono\", monospace"),
         ("pointer-events", "none"),
     ] {
         let _ = style.set_property(name, value);
     }
+    let background = coder_ui::coder_noir::SURFACE_SUBTLE;
+    let _ = style.set_property(
+        "background",
+        &format!(
+            "rgba({},{},{},0.8)",
+            background >> 16,
+            (background >> 8) & 255,
+            background & 255
+        ),
+    );
+    let _ = style.set_property("color", &format!("#{:06x}", coder_ui::coder_noir::CONTENT));
     document.body()?.append_child(&element).ok()?;
     Some(element)
 }

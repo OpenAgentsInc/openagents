@@ -288,16 +288,25 @@ fn progress(step: usize, percent: Option<u8>, seconds: u64) -> String {
     out
 }
 
-/// grok-build's collapsed call bullets (Grok Night): `accent_success` and
-/// `accent_error` blended halfway into the field (`dim_accent` 0.5, its
-/// `blend_color`), and `accent_running` while the call runs.
-const BULLET_DONE: (u8, u8, u8) = (89, 113, 63);
-const BULLET_FAILED: (u8, u8, u8) = (134, 69, 81);
-const BULLET_RUNNING: (u8, u8, u8) = (187, 154, 247);
+/// Preserve the original collapsed bullet treatment with shared Coder Noir roles.
+const BULLET_DONE: u32 = dim_bullet(coder_ui::coder_noir::SUCCESS);
+const BULLET_FAILED: u32 = dim_bullet(coder_ui::coder_noir::DANGER);
+const BULLET_RUNNING: u32 = coder_ui::coder_noir::ANSI[5];
+
+const fn dim_bullet(color: u32) -> u32 {
+    let background = coder_ui::coder_noir::TERMINAL_BACKGROUND;
+    let red = ((color >> 16) + (background >> 16)) / 2;
+    let green = (((color >> 8) & 255) + ((background >> 8) & 255)) / 2;
+    let blue = ((color & 255) + (background & 255)) / 2;
+    (red << 16) | (green << 8) | blue
+}
 
 /// A bullet color at the ladder's level.
-fn bullet((r, g, b): (u8, u8, u8), ladder: Ladder) -> Color {
-    code_highlight::grok::color::quantize_color(Color::Rgb(r, g, b), super::turn::level(ladder))
+fn bullet(color: u32, ladder: Ladder) -> Color {
+    code_highlight::grok::color::quantize_color(
+        crate::ladder::rgb(color),
+        super::turn::level(ladder),
+    )
 }
 
 /// `runs` clipped to `room` cells, the last visible cell "…" when

@@ -124,6 +124,17 @@ impl Link {
 pub async fn start() -> Result<(), JsValue> {
     let window = web_sys::window().ok_or_else(failure)?;
     let document = window.document().ok_or_else(failure)?;
+    let theme = document
+        .get_element_by_id("coder-workbench-theme")
+        .map_or_else(|| document.create_element("style"), Ok)?;
+    theme.set_id("coder-workbench-theme");
+    theme.set_text_content(Some(&coder_ui::coder_noir::css_variables()));
+    if !theme.is_connected() {
+        document
+            .document_element()
+            .ok_or_else(failure)?
+            .append_child(&theme)?;
+    }
     let private = document
         .get_element_by_id("cloud-private")
         .ok_or_else(failure)?;
@@ -1445,7 +1456,7 @@ impl Runtime {
                                         inner.y + row as f32 * cell[1],
                                         (to - from) as f32 * cell[0],
                                         cell[1],
-                                        [0.8, 0.8, 0.8, 0.35],
+                                        terminal_gfx::draw::selection(0.35),
                                     );
                                 }
                             }

@@ -8,6 +8,12 @@ The [Coder Cloud and openagents.com specification](coder-cloud.md) defines the
 proposed Rust web workspace, connected Verse and delegation views, and customer,
 team, billing, and sales interfaces over the existing domain owners.
 
+The proposed [repository environment onboarding process](example-cursor-cloud-agent-onboarding/environment-onboarding.md)
+ports the observed Cursor setup into a native setup, build, fresh verification,
+and Save lifecycle. Start with the [Cursor workflow analysis](example-cursor-cloud-agent-onboarding/cursor-environment-onboarding-analysis.md)
+and [ordered tool ledger](example-cursor-cloud-agent-onboarding/cursor-environment-onboarding-tool-sequence.md) for the
+evidence behind the design.
+
 ## Resident operator bridge
 
 The following command loads a separately admitted operator policy:
@@ -87,6 +93,9 @@ the GCE spot pool granted as one computer (`openagents cloud up/down/status`,
 
 | Document | What it covers |
 | --- | --- |
+| [Repository environment onboarding](example-cursor-cloud-agent-onboarding/environment-onboarding.md) | Proposed native environment owner, existing infrastructure and issue dependencies, recipe/build/verifier/Save contracts, complete evidence, and implementation slices |
+| [Cursor onboarding analysis](example-cursor-cloud-agent-onboarding/cursor-environment-onboarding-analysis.md) | Exact observed setup stages, changes, backend build order, fresh verification, limitations, and decisions for the OpenAgents port |
+| [Cursor onboarding tool sequence](example-cursor-cloud-agent-onboarding/cursor-environment-onboarding-tool-sequence.md) | All 121 parent call IDs in submission order, exact shell commands, seven child calls, and links to original responses |
 | [Cloud parallel execution audit, 2026-10-02](2026-10-02-cloud-parallel-execution-audit.md) | What existed before the reset (GCE and Firecracker lanes, the Coder run pool, Factory Droid Computers and Amp orbs), what runs in Google Cloud today, the gaps, a recommended design, and the issues to open |
 | [Boat SDK plan, 2026-10-02](2026-10-02-boat-sdk-plan.md) | Boat (formerly Ascii Box): what we built against it, its current API and prices, how it compares with the GCE pool, and a plan for the Rust SDK `crates/boat` as a second placement backend |
 | [`chat work --on boat`](boat-chat-work.md) | Coder issue runs on Boat sandboxes: one sandbox per issue from the daily template, the start-limit dispatcher, per-run credentials, engine logins, streaming, cost in the issue comment and the route record, teardown |

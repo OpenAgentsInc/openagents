@@ -878,15 +878,21 @@ fn the_screen_end_to_end() {
     let raw = String::from_utf8_lossy(&grid.raw);
     assert!(status.success(), "{raw}");
     assert!(raw.contains("SCREEN CLOSED thread="), "{raw}");
-    // The look: white on Grok Night's near-black, never amber; the cursor is white and
+    // The look: Coder Noir content over its terminal field; the cursor is neutral and
     // its color is handed back, and the alternate screen is left.
-    assert!(raw.contains("\x1b]12;#FFFFFF\x07"), "a white cursor");
+    assert!(
+        raw.contains(coder_terminal::guard::CURSOR_COLOR_SET.as_str()),
+        "the Coder Noir cursor"
+    );
     assert!(
         raw.contains("\x1b]112\x07"),
         "the cursor color is handed back"
     );
     assert!(!raw.contains("255;176;0"), "no amber anywhere");
-    assert!(raw.contains("48;2;20;20;20"), "Grok Night's field, #141414");
+    assert!(
+        raw.contains("48;2;14;14;14"),
+        "Coder Noir's terminal field, #0e0e0e"
+    );
     assert!(raw.contains("38;2;255;255;255"), "full white text");
     assert!(raw.contains("\x1b[?1049l"), "the alternate screen is left");
     // Mouse reports on while the screen runs, and off again after.

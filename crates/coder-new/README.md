@@ -19,8 +19,14 @@ Type `/` to see commands above the input, following the existing OpenAgents
 terminal's slash suggestions. The command and description occupy separate
 columns. Typing filters the list; Up/Down selects, Tab completes, Enter runs,
 and Esc dismisses it. The supported commands include `/demo`, `/plugins`, `/models`,
-`/brainstorm`, and `/help`. `/models` appears when a model provider plugin is enabled;
+`/appearance`, `/brainstorm`, and `/help`. `/models` appears when a model provider plugin is enabled;
 `/brainstorm` appears when its plugin is enabled.
+
+Enter `/appearance` to configure **Use System Terminal Background**. Press Space
+or Enter to toggle it, and Esc to return. When on, Coder leaves backgrounds
+unpainted so your terminal's configured background shows. When off, Coder uses
+its existing background colors. The option defaults to off and persists in
+`~/.openagents/coder-new/appearance.json` (or your `--state` directory).
 
 Edit examples reuse Coder's port of Grok Build's diff renderer and syntax
 highlighter. Rust tokens keep their syntax colors on red and green change
@@ -44,6 +50,11 @@ plugin, Space turns it on or off, and Enter opens its settings. **Microcoder**,
 **Jev**, **OpenAgents CLI**, and **ACP Subagents** default to on. **OpenRouter
 BYOK** defaults to off; a key imported at startup enables it when no saved
 preference exists. Saving the first key also enables it. A saved off preference stays off.
+
+On macOS and Linux, this picker also lists locally installed extensions from
+`openagents plugin install`. It refreshes on opening and once a second while
+visible, preserving the selected plugin and unsaved settings. Enter shows an
+installed extension's details and the CLI commands to enable or disable it.
 
 OpenRouter's settings screen has a masked **OpenRouter API key**, an optional model ID, and
 the fixed direct endpoint `https://openrouter.ai/api/v1`. Tab moves between
@@ -235,12 +246,13 @@ directory and plugin settings stay in effect. Stop active work before resuming.
 Streaming replies checkpoint every five seconds and save again when they end;
 typing and scrolling do not write session files. Demo conversations are not saved.
 
-The base background uses Coder's shared near-black color (`#0a0a0a`). White,
-gray, and composer-border colors retain the Grok Night values. Accents use the
-historical USGC palette: cyan, magenta, amber, orange, red, and green. Markdown
-and syntax highlighting use the same accents, with dark red and green diff
-bands. Use a truecolor terminal to display them exactly. [NOTICE](NOTICE)
-records the palette references and renderer attribution.
+Coder Noir uses Superlogical's Static Noir surfaces, content tones, and ANSI
+palette, combined with Coder's neutral accent and cursor. The terminal field is
+`#0e0e0e`; active borders are neutral, models and inline code use cyan, and
+red marks errors and deletions. Markdown and syntax highlighting share those
+roles, with dark red and green diff bands. Use a truecolor terminal to display
+them exactly. [NOTICE](NOTICE) records the palette reference and renderer
+attribution.
 
 Export the actual Ratatui buffer without an interactive terminal:
 

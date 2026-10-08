@@ -1,0 +1,235 @@
+Install/setup logs for environment build bld-20261008-26522d23-d3aa-427c-b6f2-3fc6ffbabdb8 (23478 bytes):
+
+[2026-10-08T15:31:23.809Z] [INSTALL] Exit code: 0
+[2026-10-08T15:31:24.152Z] [SPAN] Started: environmentSetup id=4e99087e-847b-48a2-ba78-7951d51f17d3
+[2026-10-08T15:31:24.214Z] [SPAN] Started: gitCheckout:clone id=d3fb0203-d59d-4555-8a9d-6378f7774cd1 parent=4e99087e-847b-48a2-ba78-7951d51f17d3
+[2026-10-08T15:31:24.241Z] [CLONE] Started (Workspace Setup)
+[2026-10-08T15:31:25.931Z] [GIT:gitPrepareWorkspace:stdout] __cursor_git_effective_user_group__	ubuntu	ubuntu
+[2026-10-08T15:31:26.225Z] [GIT:gitCloneCheckout:stderr] Cloning into '/workspace'...
+[2026-10-08T15:33:28.393Z] [GIT:gitCloneCheckout:stderr] Switched to and reset branch 'main'
+[2026-10-08T15:33:28.403Z] [GIT:gitCloneCheckout:stdout] Your branch is up to date with 'origin/main'.
+[2026-10-08T15:33:28.427Z] [CLONE] Completed (Workspace Setup)
+[2026-10-08T15:33:28.432Z] [SPAN] Ended: id=d3fb0203-d59d-4555-8a9d-6378f7774cd1
+[2026-10-08T15:33:28.460Z] [INSTALL] Command: install-exec-daemon - <system command body hidden>
+[2026-10-08T15:33:28.607Z] [SPAN] Started: install:install-exec-daemon id=62bc29ed-7f0c-42e7-8ee5-3891acd8410b parent=4e99087e-847b-48a2-ba78-7951d51f17d3
+[2026-10-08T15:33:31.251Z] exec-daemon already installed, skipping download
+[2026-10-08T15:33:31.280Z] [INSTALL] Exit code: 0
+[2026-10-08T15:33:31.295Z] [SPAN] Ended: id=62bc29ed-7f0c-42e7-8ee5-3891acd8410b
+[2026-10-08T15:33:31.317Z] [INSTALL] Command: install-cloud-agent-assets - <system command body hidden>
+[2026-10-08T15:33:31.324Z] [SPAN] Started: install:install-cloud-agent-assets id=fe262839-7002-45a3-97a2-8e9a3a50dbc5 parent=4e99087e-847b-48a2-ba78-7951d51f17d3
+[2026-10-08T15:33:31.843Z] install-cloud-agent-assets: /tmp/capture-vnc-user-env already at 57549e5032ca621312a7cd50fb31854484a84248000bd8cf0875c5cbbf01cef0, skipping bundled tool install
+[2026-10-08T15:33:31.985Z] install-cloud-agent-assets: /usr/local/share/vnc-desktop.Aptfile already at 819987b7fef06af920bd9313347e05ca2fb0cd32ab4ad1e32a2a045238e4abb8, skipping bundled tool install
+[2026-10-08T15:33:32.004Z] install-cloud-agent-assets: /usr/local/bin/install-vnc-desktop-apt-packages already at 504f908ecc98b665fbd2271a8e3fffd2fb956f1204ab0a1a33b50c284c2b79ac, skipping bundled tool install
+[2026-10-08T15:33:32.027Z] install-cloud-agent-assets: /usr/local/bin/install-google-chrome already at 96080cc2263ffe8c5d818e460baa39d6f7459b9cc3dfa213b6e8602eb81e7a65, skipping bundled tool install
+[2026-10-08T15:33:32.034Z] install-cloud-agent-assets: /usr/local/bin/configure-google-chrome already at db578a6d14b8e6ac8a5c729e80126ee98a3de714c3e7b7825147bf836ce299b0, skipping bundled tool install
+[2026-10-08T15:33:32.041Z] install-cloud-agent-assets: /usr/local/bin/install-locales already at 31ae64b656886bce63bdc2981c0aaf114f3c4a01520c1f87ec2fdb4a12b45d93, skipping bundled tool install
+[2026-10-08T15:33:32.050Z] install-cloud-agent-assets: /usr/local/share/desktop-init.sh already at 08e0638a0dd96a173bce298fbf987619d1e931e30c2a6d4fb06cf43467130fc2, skipping bundled tool install
+[2026-10-08T15:33:32.058Z] install-cloud-agent-assets: /usr/local/share/anyos.conf already at 967bfcdcb82065e124c3b371f894328d72988676852e8bc4ad86056e12254a11, skipping bundled tool install
+[2026-10-08T15:33:32.076Z] install-cloud-agent-assets: /usr/local/bin/anyos-setup already at a745f7dd4eba46f54845d3ba5af70b72a96cc5b966563628b2181af1e30f5250, skipping bundled tool install
+[2026-10-08T15:33:32.093Z] install-cloud-agent-assets: /usr/local/bin/install-fonts-and-fontconfig already at 3375ff51023f1cf1cdf1b36f5567820c1238d1dd31b79dc8c8c8855d556b0da5, skipping bundled tool install
+[2026-10-08T15:33:32.106Z] install-cloud-agent-assets: /usr/local/bin/install-and-configure-themes already at 0df4e6ccb8afc98e221c7a83dbc8f6bc65106c95d15686053f6755a4c16655e6, skipping bundled tool install
+[2026-10-08T15:33:32.115Z] install-cloud-agent-assets: /usr/local/bin/install-remote-vnc-setup already at 6ed78b825a8f22567c3f65225390452ddac122647ed58740034147eb8f1d4f20, skipping bundled tool install
+[2026-10-08T15:33:32.156Z] install-cloud-agent-assets: /usr/local/bin/configure-os-display already at 3a097f02f1277d9d78571ef4133ec77330c83c7eafa6368c10aa7187f851cdbe, skipping bundled tool install
+[2026-10-08T15:33:32.172Z] install-cloud-agent-assets: /usr/local/bin/install-cursor-artifact-directories already at 1857779d15dfc92bfaf43b14006201f6fc1d061738ffe75eb748738010be9032, skipping bundled tool install
+[2026-10-08T15:33:32.265Z] install-cloud-agent-assets: manifest setup completed in 2ms
+[2026-10-08T15:33:32.283Z] install-cloud-agent-assets: /usr/share/fonts/truetype/macos/Inter-Medium.ttf already at 97ad806f526e41546d46365bb3a393145f75b7b1568913db74549ad8b8dba872, skipping
+install-cloud-agent-assets: /usr/share/fonts/truetype/macos/Inter-Regular.ttf already at 40d692fce188e4471e2b3cba937be967878f631ad3ebbbdcd587687c7ebe0c82, skipping
+install-cloud-agent-assets: /usr/share/fonts/truetype/macos/Inter-Bold.ttf already at 288316099b1e0a47a4716d159098005eef7c0066921f34e3200393dbdb01947f, skipping
+install-cloud-agent-assets: /usr/share/fonts/truetype/macos/PublicSans-Regular.ttf already at b577e9bc9887284e90aae5ad0699689ce36b5cd96207efbec68f77f8aed88379, skipping
+install-cloud-agent-assets: /usr/share/fonts/truetype/macos/JetBrainsMono-Regular.ttf already at a0bf60ef0f83c5ed4d7a75d45838548b1f6873372dfac88f71804491898d138f, skipping
+[2026-10-08T15:33:32.409Z] install-cloud-agent-assets: /usr/share/fonts/truetype/macos/Inter-BoldItalic.ttf already at 948405a16cdc62701da5f4005ed068ca5f4d27061d98f7974ccfc37831d9581d, skipping
+install-cloud-agent-assets: /usr/share/fonts/truetype/macos/JetBrainsMono-Bold.ttf already at 5590990c82e097397517f275f430af4546e1c45cff408bde4255dad142479dcb, skipping
+install-cloud-agent-assets: /usr/share/fonts/truetype/macos/PublicSans-Bold.ttf already at bddd96a0bcd49b292524b4beff57d770ce97482fb3f84b788959422e06b863a6, skipping
+install-cloud-agent-assets: /usr/share/fonts/truetype/macos/PublicSans-Italic.ttf already at d77f79eca3f513e0b883ddbd293a3d2bb8fd35453ff74aff4afc6a6a1c6ce8f1, skipping
+install-cloud-agent-assets: /usr/share/fonts/truetype/macos/PublicSans-BoldItalic.ttf already at 2cec96a74e537bb5213f5ecb520e7af378a2366cc10b17a04866fbe4344fbfef, skipping
+[2026-10-08T15:33:32.423Z] install-cloud-agent-assets: /usr/share/fonts/truetype/macos/SourceSans3-Regular.ttf already at 393fb5b878ceed04aebc34b097e853ae5138c51d0c34b496ce8e2b47e0d0b94a, skipping
+[2026-10-08T15:33:32.555Z] install-cloud-agent-assets: /usr/share/fonts/truetype/macos/JetBrainsMono-Italic.ttf already at 9d0a1f7a708e6af183f1193b7e81d40da294f5c67682c085d8401c60aac8ded4, skipping
+install-cloud-agent-assets: /usr/share/fonts/truetype/macos/Inter-MediumItalic.ttf already at 51c2c8d7c36f7c26e6e2678b5c3069b329bde9a081154553b0f5bc2d4fc14075, skipping
+install-cloud-agent-assets: /usr/share/fonts/truetype/macos/Inter-SemiBoldItalic.ttf already at eff2930c3d3b35d3fcf5f76252b6baef4c3e907d9d2fde1d16cf5d417f8deef4, skipping
+install-cloud-agent-assets: /usr/share/fonts/truetype/macos/Inter-SemiBold.ttf already at 78a843fade9d4612a5567302fb595b56976eb5fcebf4fea5a5912d638bafcde3, skipping
+install-cloud-agent-assets: /usr/share/fonts/truetype/macos/Inter-Italic.ttf already at bbc051dd204b5019a1aa0bc0ae2aa8a05ab13e7a3f979fa357631dc7feb6833a, skipping
+[2026-10-08T15:33:32.574Z] install-cloud-agent-assets: /usr/share/fonts/truetype/macos/JetBrainsMono-BoldItalic.ttf already at 4039d5ce0ed225bf9c8b2c8c6436290ae2f356b7e90d70fa666227238324aa3b, skipping
+[2026-10-08T15:33:32.605Z] install-cloud-agent-assets: /usr/local/share/cloud-agent-media/WhiteSur-icon-theme-master.tar.gz already at 44dfc32b69c1d9767e5056af9600706a09e9a91539cc50ee2cb73a7ce7780165, skipping
+[2026-10-08T15:33:32.618Z] install-cloud-agent-assets: /usr/local/share/cloud-agent-media/WhiteSur-cursors-master.tar.gz already at 7c71bea85272626fa28baedf868fd72d288462df4f64f302724d398f0315bf11, skipping
+[2026-10-08T15:33:32.627Z] install-cloud-agent-assets: /usr/local/share/cloud-agent-media/noVNC-1.2.0.zip already at eecc6b3c324b8447d2049200298575f2418525f88f58bc8b5158b209f00fff23, skipping
+install-cloud-agent-assets: /usr/share/pixmaps/cursor-logo-dark.svg already at 0a9646570501d18d844dcb085f90e7b9146ff36e3356eb72b42f43dd8a251367, skipping
+[2026-10-08T15:33:32.638Z] install-cloud-agent-assets: /usr/local/share/cloud-agent-media/CascadiaCode-2008.25.zip already at 4602a0b8b986b18a1c3f460fd959ec1ce522aedcf11ab4c0d41a5fc5ed839be0, skipping
+install-cloud-agent-assets: /usr/share/pixmaps/cursor-logo.svg already at 4961e33371b2d4ab16aef6058906f3462b140664aa277897f3d65f0681c28119, skipping
+[2026-10-08T15:33:32.644Z] install-cloud-agent-assets: /usr/local/share/cloud-agent-media/websockify-0.10.0.zip already at 0f30cd77daaa4bfddd34b3d76e6ea6c1b60fcffb99fdf4823a0df50b4d46dab5, skipping
+[2026-10-08T15:33:32.686Z] install-cloud-agent-assets: /usr/local/share/cloud-agent-media/WhiteSur-Light.tar.xz already at 2635570e218afab2d34b0663287054f7b995b9f7f810e97410dcad389987d5ba, skipping
+[2026-10-08T15:33:32.697Z] install-cloud-agent-assets: /usr/share/backgrounds/macos-wallpaper.png already at 6ea658d331552c5e07cabcbafb80824861ed6b7482fc93515d8804913c98a763, skipping
+[2026-10-08T15:33:32.710Z] install-cloud-agent-assets: /usr/share/backgrounds/desktop-background-2.png already at e0f70cc5ecb22c90d69f1e268e24fc34da93d0fc9833227d3e8d6627688d562a, skipping
+[2026-10-08T15:33:32.714Z] install-cloud-agent-assets: /usr/share/backgrounds/desktop-background-3.png already at 3b8cbb413a5aa89da88400954b59f0a6ebf1943b39c20ada3cf20551c9f64e39, skipping
+[2026-10-08T15:33:32.719Z] install-cloud-agent-assets: /usr/share/backgrounds/desktop-background-1.png already at 616ec7b3354354e08b7e9407dc36b3c58dd418f72c07642b46df0de09e43a278, skipping
+[2026-10-08T15:33:32.731Z] install-cloud-agent-assets: /usr/share/icons/hicolor/24x24/apps/cursor-logo.png already at a6ca61d1d54644986645196219e110faca7f9bb1975473540037de2d4f120d32, skipping
+[2026-10-08T15:33:32.738Z] install-cloud-agent-assets: /usr/share/icons/hicolor/24x24/apps/cursor-logo-dark.png already at e0e7a7bc01c020d3a02f6bcaaad9b86534157a6758c4bb4b2b0586317d68c975, skipping
+[2026-10-08T15:33:32.743Z] install-cloud-agent-assets: all downloads completed in 54ms
+[2026-10-08T15:33:32.749Z] install-cloud-agent-assets: no icon assets changed, skipping icon cache refresh
+install-cloud-agent-assets: no font assets changed, skipping font cache refresh
+[2026-10-08T15:33:32.754Z] install-cloud-agent-assets: cache refresh step completed in 1ms
+[2026-10-08T15:33:32.758Z] install-cloud-agent-assets: install pipeline completed in 60ms
+[2026-10-08T15:33:32.768Z] [INSTALL] Exit code: 0
+[2026-10-08T15:33:32.773Z] [SPAN] Ended: id=fe262839-7002-45a3-97a2-8e9a3a50dbc5
+[2026-10-08T15:33:32.826Z] [INSTALL] Command: capture-vnc-user-env - <system command body hidden>
+[2026-10-08T15:33:32.937Z] [SPAN] Started: install:capture-vnc-user-env id=995d725d-db08-448c-9a47-233720eadd76 parent=4e99087e-847b-48a2-ba78-7951d51f17d3
+[2026-10-08T15:33:33.457Z] Captured VNC user env for ubuntu
+[2026-10-08T15:33:33.592Z] [INSTALL] Exit code: 0
+[2026-10-08T15:33:33.694Z] [SPAN] Ended: id=995d725d-db08-448c-9a47-233720eadd76
+[2026-10-08T15:33:33.785Z] [INSTALL] Command: install-vnc-desktop-apt-packages - <system command body hidden>
+[2026-10-08T15:33:34.430Z] [SPAN] Started: install:install-vnc-desktop-apt-packages id=7eae47f5-98d2-429d-9b65-67ca4f65dc67 parent=4e99087e-847b-48a2-ba78-7951d51f17d3
+[2026-10-08T15:33:36.834Z] VNC desktop apt installer already configured (aptfile=819987b7fef06af920bd9313347e05ca2fb0cd32ab4ad1e32a2a045238e4abb8, script=504f908ecc98b665fbd2271a8e3fffd2fb956f1204ab0a1a33b50c284c2b79ac), skipping
+[2026-10-08T15:33:37.115Z] [INSTALL] Exit code: 0
+[2026-10-08T15:33:37.418Z] [SPAN] Ended: id=7eae47f5-98d2-429d-9b65-67ca4f65dc67
+[2026-10-08T15:33:37.739Z] [INSTALL] Command: install-google-chrome - <system command body hidden>
+[2026-10-08T15:33:37.901Z] [SPAN] Started: install:install-google-chrome id=473030b7-7513-4c39-8e40-ef3f800c7f0f parent=4e99087e-847b-48a2-ba78-7951d51f17d3
+[2026-10-08T15:33:39.608Z] install-google-chrome already configured at 7ee72e70bbadb403ff87c819ff1edc7e376eb34c5e18b5754207e91fb3f0c7f0, skipping
+[2026-10-08T15:33:39.631Z] [INSTALL] Exit code: 0
+[2026-10-08T15:33:39.657Z] [SPAN] Ended: id=473030b7-7513-4c39-8e40-ef3f800c7f0f
+[2026-10-08T15:33:39.673Z] [INSTALL] Command: configure-google-chrome - <system command body hidden>
+[2026-10-08T15:33:39.680Z] [SPAN] Started: install:configure-google-chrome id=9101f759-11bd-4182-8135-cae481ab3df2 parent=4e99087e-847b-48a2-ba78-7951d51f17d3
+[2026-10-08T15:33:40.020Z] configure-google-chrome already configured at 53d690f49728abb9a38fcc23f3526f5ad7906daea05caab03fcce550052bf118, skipping
+[2026-10-08T15:33:40.031Z] [INSTALL] Exit code: 0
+[2026-10-08T15:33:40.184Z] [SPAN] Ended: id=9101f759-11bd-4182-8135-cae481ab3df2
+[2026-10-08T15:33:40.311Z] [INSTALL] Command: install-locales - <system command body hidden>
+[2026-10-08T15:33:40.346Z] [SPAN] Started: install:install-locales id=d03a0305-36a5-4bec-9d78-03a41761b3e0 parent=4e99087e-847b-48a2-ba78-7951d51f17d3
+[2026-10-08T15:33:40.424Z] install-locales already configured at 31ae64b656886bce63bdc2981c0aaf114f3c4a01520c1f87ec2fdb4a12b45d93, skipping
+[2026-10-08T15:33:40.431Z] [INSTALL] Exit code: 0
+[2026-10-08T15:33:40.441Z] [SPAN] Ended: id=d03a0305-36a5-4bec-9d78-03a41761b3e0
+[2026-10-08T15:33:40.456Z] [INSTALL] Command: cleanup-vnc-desktop-apt - <system command body hidden>
+[2026-10-08T15:33:40.461Z] [SPAN] Started: install:cleanup-vnc-desktop-apt id=d59d99d4-94f1-45c0-8e70-075c669fbcaf parent=4e99087e-847b-48a2-ba78-7951d51f17d3
+[2026-10-08T15:33:40.617Z] No apt cleanup needed, skipping
+[2026-10-08T15:33:40.622Z] [INSTALL] Exit code: 0
+[2026-10-08T15:33:40.627Z] [SPAN] Ended: id=d59d99d4-94f1-45c0-8e70-075c669fbcaf
+[2026-10-08T15:33:40.636Z] [INSTALL] Command: install-fonts-and-fontconfig - <system command body hidden>
+[2026-10-08T15:33:40.640Z] [SPAN] Started: install:install-fonts-and-fontconfig id=6eb54d80-4a2b-4577-bdca-0f71a31c140b parent=4e99087e-847b-48a2-ba78-7951d51f17d3
+[2026-10-08T15:33:40.995Z] install-fonts-and-fontconfig already configured at 3375ff51023f1cf1cdf1b36f5567820c1238d1dd31b79dc8c8c8855d556b0da5, skipping
+[2026-10-08T15:33:41.007Z] [INSTALL] Exit code: 0
+[2026-10-08T15:33:41.021Z] [SPAN] Ended: id=6eb54d80-4a2b-4577-bdca-0f71a31c140b
+[2026-10-08T15:33:41.033Z] [INSTALL] Command: install-and-configure-themes - <system command body hidden>
+[2026-10-08T15:33:41.038Z] [SPAN] Started: install:install-and-configure-themes id=afdd7e37-594b-472b-8c77-e8289200461f parent=4e99087e-847b-48a2-ba78-7951d51f17d3
+[2026-10-08T15:33:41.226Z] install-and-configure-themes already configured at 0df4e6ccb8afc98e221c7a83dbc8f6bc65106c95d15686053f6755a4c16655e6, skipping
+[2026-10-08T15:33:41.254Z] [INSTALL] Exit code: 0
+[2026-10-08T15:33:41.264Z] [SPAN] Ended: id=afdd7e37-594b-472b-8c77-e8289200461f
+[2026-10-08T15:33:41.287Z] [INSTALL] Command: install-remote-vnc-setup - <system command body hidden>
+[2026-10-08T15:33:41.307Z] [SPAN] Started: install:install-remote-vnc-setup id=ceccc864-f274-42fc-9cfe-26d5741cbc1e parent=4e99087e-847b-48a2-ba78-7951d51f17d3
+[2026-10-08T15:33:42.014Z] install-remote-vnc-setup already configured at ab2575062f7fbb9e086a64ba9ae79b9f312de304a04ebdfda9281cded09dbd84, skipping
+[2026-10-08T15:33:42.059Z] [INSTALL] Exit code: 0
+[2026-10-08T15:33:42.096Z] [SPAN] Ended: id=ceccc864-f274-42fc-9cfe-26d5741cbc1e
+[2026-10-08T15:33:42.118Z] [INSTALL] Command: configure-os-display - <system command body hidden>
+[2026-10-08T15:33:42.124Z] [SPAN] Started: install:configure-os-display id=c0d1e91c-65a7-4389-99fa-c7307f66aca9 parent=4e99087e-847b-48a2-ba78-7951d51f17d3
+[2026-10-08T15:33:42.505Z] configure-os-display already configured at 5ba5682b97e8ed2a1a88ba640ed167c03cca6ce040594e51f172b5d9171ef507, skipping
+[2026-10-08T15:33:42.599Z] [INSTALL] Exit code: 0
+[2026-10-08T15:33:42.611Z] [SPAN] Ended: id=c0d1e91c-65a7-4389-99fa-c7307f66aca9
+[2026-10-08T15:33:42.771Z] [INSTALL] Command: install-cursor-artifact-directories - <system command body hidden>
+[2026-10-08T15:33:42.837Z] [SPAN] Started: install:install-cursor-artifact-directories id=ff34f6b9-2cde-43d1-8d2d-d909b75f161b parent=4e99087e-847b-48a2-ba78-7951d51f17d3
+[2026-10-08T15:33:42.969Z] install-cursor-artifact-directories already configured at 1857779d15dfc92bfaf43b14006201f6fc1d061738ffe75eb748738010be9032, skipping
+[2026-10-08T15:33:42.981Z] Cleared VNC setup command failure sentinel after successful step 'install-cursor-artifact-directories'
+[2026-10-08T15:33:42.988Z] [INSTALL] Exit code: 0
+[2026-10-08T15:33:42.996Z] [SPAN] Ended: id=ff34f6b9-2cde-43d1-8d2d-d909b75f161b
+[2026-10-08T15:33:43.011Z] [INSTALL] Command: configure-git - <system command body hidden>
+[2026-10-08T15:33:43.022Z] [SPAN] Started: install:configure-git id=4e5eddd6-df59-46fb-915c-52b73ca1fb24 parent=4e99087e-847b-48a2-ba78-7951d51f17d3
+[2026-10-08T15:33:43.243Z] [configure-git] finished git-config-setup
+[2026-10-08T15:33:43.392Z] [configure-git] finished git-cleanup
+[2026-10-08T15:33:44.688Z] [configure-git] finished token-refresh
+[2026-10-08T15:33:44.711Z] [INSTALL] Exit code: 0
+[2026-10-08T15:33:44.767Z] [SPAN] Ended: id=4e5eddd6-df59-46fb-915c-52b73ca1fb24
+[2026-10-08T15:33:44.868Z] [INSTALL] Command: link-gh-to-usr-local-bin - <system command body hidden>
+[2026-10-08T15:33:44.885Z] [SPAN] Started: install:link-gh-to-usr-local-bin id=f1bd0a80-bb5d-4f09-8481-e7bcbcf8aee4 parent=4e99087e-847b-48a2-ba78-7951d51f17d3
+[2026-10-08T15:33:49.888Z] [INSTALL] Exit code: 0
+[2026-10-08T15:33:49.947Z] [SPAN] Ended: id=f1bd0a80-bb5d-4f09-8481-e7bcbcf8aee4
+[2026-10-08T15:33:50.019Z] [INSTALL] Command: create-artifacts-dir - <system command body hidden>
+[2026-10-08T15:33:50.037Z] [SPAN] Started: install:create-artifacts-dir id=d83868ae-a8d6-461a-9a3a-47e7e03ebc6f parent=4e99087e-847b-48a2-ba78-7951d51f17d3
+[2026-10-08T15:33:50.266Z] [INSTALL] Exit code: 0
+[2026-10-08T15:33:50.331Z] [SPAN] Ended: id=d83868ae-a8d6-461a-9a3a-47e7e03ebc6f
+[2026-10-08T15:33:50.440Z] [INSTALL] Command: create-exec-daemon-dir - <system command body hidden>
+[2026-10-08T15:33:50.553Z] [SPAN] Started: install:create-exec-daemon-dir id=c2d8b5dd-a7a9-4c15-9298-bede2994e790 parent=4e99087e-847b-48a2-ba78-7951d51f17d3
+[2026-10-08T15:33:50.787Z] [INSTALL] Exit code: 0
+[2026-10-08T15:33:50.804Z] [SPAN] Ended: id=c2d8b5dd-a7a9-4c15-9298-bede2994e790
+[2026-10-08T15:33:50.878Z] [INSTALL] Command: install-agent-store-fuse - <system command body hidden>
+[2026-10-08T15:33:50.989Z] [SPAN] Started: install:install-agent-store-fuse id=7793b91b-01cf-40da-9b26-a53c27c1bf71 parent=4e99087e-847b-48a2-ba78-7951d51f17d3
+[2026-10-08T15:33:51.218Z] cursor-agent-store-fuse already installed, skipping download
+[2026-10-08T15:33:51.232Z] [INSTALL] Exit code: 0
+[2026-10-08T15:33:51.239Z] [SPAN] Ended: id=7793b91b-01cf-40da-9b26-a53c27c1bf71
+[2026-10-08T15:33:51.272Z] [SPAN] Started: start:core-dumps id=66e8ffb0-e77a-4fa3-bd04-80d1727145c8 parent=4e99087e-847b-48a2-ba78-7951d51f17d3
+[2026-10-08T15:33:51.272Z] [SPAN] Started: start:desktop-init id=9d919d7f-d786-499a-9835-1bd964b814cc parent=4e99087e-847b-48a2-ba78-7951d51f17d3
+[2026-10-08T15:33:51.272Z] [SPAN] Started: start:exec-daemon id=5565f76c-dcd1-4510-9602-cf31cd317ba2 parent=4e99087e-847b-48a2-ba78-7951d51f17d3
+[2026-10-08T15:33:51.321Z] Starting detached setup start command: start:core-dumps
+[2026-10-08T15:33:51.322Z] Starting detached setup start command: start:desktop-init
+[2026-10-08T15:33:51.323Z] Starting detached setup start command: start:exec-daemon
+[2026-10-08T15:33:51.400Z] Started detached setup start command: start:core-dumps
+[2026-10-08T15:33:51.432Z] Started detached setup start command: start:desktop-init
+[2026-10-08T15:33:51.439Z] [SPAN] Ended: id=66e8ffb0-e77a-4fa3-bd04-80d1727145c8
+[2026-10-08T15:33:51.440Z] [SPAN] Ended: id=9d919d7f-d786-499a-9835-1bd964b814cc
+[2026-10-08T15:33:51.449Z] Started detached setup start command: start:exec-daemon
+[2026-10-08T15:33:51.475Z] [SPAN] Ended: id=5565f76c-dcd1-4510-9602-cf31cd317ba2
+[2026-10-08T15:33:51.537Z] [SPAN] Ended: id=4e99087e-847b-48a2-ba78-7951d51f17d3
+[2026-10-08T15:33:52.005Z] Hit:1 http://archive.ubuntu.com/ubuntu noble InRelease
+[2026-10-08T15:33:52.024Z] Hit:2 http://archive.ubuntu.com/ubuntu noble-updates InRelease
+[2026-10-08T15:33:52.037Z] Hit:3 https://dl.google.com/linux/chrome/deb stable InRelease
+[2026-10-08T15:33:52.053Z] Hit:4 http://archive.ubuntu.com/ubuntu noble-backports InRelease
+[2026-10-08T15:33:52.083Z] Hit:5 https://dl.google.com/linux/chrome-stable/deb stable InRelease
+[2026-10-08T15:33:52.117Z] Hit:6 http://security.ubuntu.com/ubuntu noble-security InRelease
+[2026-10-08T15:33:52.328Z] Reading package lists...
+[2026-10-08T15:33:53.220Z] 
+[2026-10-08T15:33:53.242Z] Reading package lists...
+[2026-10-08T15:33:53.862Z] 
+[2026-10-08T15:33:53.877Z] Building dependency tree...
+[2026-10-08T15:33:53.986Z] 
+Reading state information...
+[2026-10-08T15:33:53.991Z] 
+[2026-10-08T15:33:54.154Z] build-essential is already the newest version (12.10ubuntu1).
+pkg-config is already the newest version (1.8.1-2build1).
+clang is already the newest version (1:18.0-59~exp2).
+cmake is already the newest version (3.28.3-1build7).
+protobuf-compiler is already the newest version (3.21.12-8.2ubuntu0.3).
+libprotobuf-dev is already the newest version (3.21.12-8.2ubuntu0.3).
+libssl-dev is already the newest version (3.0.13-0ubuntu3.16).
+libsqlite3-dev is already the newest version (3.45.1-1ubuntu2.8).
+libclang-dev is already the newest version (1:18.0-59~exp2).
+ca-certificates is already the newest version (20260601~24.04.1).
+curl is already the newest version (8.5.0-2ubuntu10.15).
+git is already the newest version (1:2.43.0-1ubuntu7.3).
+ripgrep is already the newest version (14.1.0-1).
+jq is already the newest version (1.7.1-3ubuntu0.24.04.2).
+xz-utils is already the newest version (5.6.1+really5.4.5-1ubuntu0.3).
+unzip is already the newest version (6.0-28ubuntu4.1).
+zstd is already the newest version (1 [truncated]
+[2026-10-08T15:33:54.544Z] info: syncing channel updates for 1.97.1-x86_64-unknown-linux-gnu
+[2026-10-08T15:33:54.799Z] info: latest update on 2026-07-16 for version 1.97.1 (8bab26f4f 2026-07-14)
+[2026-10-08T15:33:54.808Z] info: component clippy is up to date
+info: component rustfmt is up to date
+[2026-10-08T15:33:54.814Z] 
+[2026-10-08T15:33:54.818Z]   1.97.1-x86_64-unknown-linux-gnu unchanged - rustc 1.97.1 (8bab26f4f 2026-07-14)
+
+[2026-10-08T15:33:54.823Z] info: checking for self-update (current version: 1.29.1)
+[2026-10-08T15:33:54.868Z] info: using existing install for 1.97.1-x86_64-unknown-linux-gnu
+[2026-10-08T15:33:54.873Z] 
+[2026-10-08T15:33:54.877Z] info: default toolchain set to 1.97.1-x86_64-unknown-linux-gnu
+[2026-10-08T15:33:54.881Z]   1.97.1-x86_64-unknown-linux-gnu unchanged - rustc 1.97.1 (8bab26f4f 2026-07-14)
+
+[2026-10-08T15:33:54.886Z] info: note that the toolchain '1.97.1-x86_64-unknown-linux-gnu' is currently in use (overridden by '/workspace/rust-toolchain.toml')
+[2026-10-08T15:33:57.855Z] [INSTALL] Exit code: 0
+[2026-10-08T15:33:57.971Z] Install finished. Preparing snapshot…
+[2026-10-08T15:33:59.634Z] Creating snapshot… this can take several minutes.
+[2026-10-08T15:34:00.465Z] Snapshot created; waiting until it's ready (up to 15 minutes).
+[2026-10-08T15:35:26.105Z] Snapshot ready.
+[2026-10-08T15:35:29.032Z] Warming skipped (draft).
+
+{
+  "build": {
+    "buildId": "bld-20261008-26522d23-d3aa-427c-b6f2-3fc6ffbabdb8",
+    "environmentPublicId": "7ce2f49e-c32a-11f1-bb68-864e54d14197",
+    "owningTeam": null,
+    "owningUser": 159751030,
+    "status": "SUCCEEDED",
+    "failureType": null,
+    "source": "AGENT",
+    "triggerType": "MANUAL",
+    "environmentVersionId": "2155417",
+    "userFacingSnapshotId": "bld-20261008-26522d23-d3aa-427c-b6f2-3fc6ffbabdb8",
+    "createdAtMs": 1791473471888,
+    "completedAtMs": 1791473729124
+  },
+  "environmentDeleted": false,
+  "sizeBytes": 23478
+}

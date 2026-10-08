@@ -343,7 +343,7 @@ pub fn draw(batch: &mut UiBatch, atlas: &Atlas, size: [f32; 2]) {
             rect.x + 8.0,
             rect.y + 4.0,
             label,
-            [0.9, 0.9, 0.9, 1.0],
+            terminal_gfx::draw::white(coder_ui::theme::Intensity::ThreeQuarters, 1.0),
         );
         if let Some(pane) = model.core.focused_pane() {
             let vt = &pane.session.vt;
@@ -362,7 +362,7 @@ pub fn draw(batch: &mut UiBatch, atlas: &Atlas, size: [f32; 2]) {
                             inner.y + r as f32 * cell[1],
                             (to - from) as f32 * cell[0],
                             cell[1],
-                            [0.8, 0.8, 0.8, 0.35],
+                            terminal_gfx::draw::selection(0.35),
                         );
                     }
                 }
@@ -388,7 +388,7 @@ pub fn draw(batch: &mut UiBatch, atlas: &Atlas, size: [f32; 2]) {
                 rect.x + 8.0,
                 rect.y + rect.h - cell[1],
                 notice,
-                [0.9, 0.8, 0.5, 1.0],
+                terminal_gfx::draw::white(coder_ui::theme::Intensity::Half, 1.0),
             );
         }
     });
@@ -411,11 +411,12 @@ fn mount_controls(model: &Rc<RefCell<Workbench>>) -> std::result::Result<(), JsV
     }
     let panel = document.create_element("div")?;
     panel.set_id("host-terminal-controls");
-    panel.set_attribute("style","position:fixed;left:12px;bottom:12px;z-index:50;max-width:90vw;background:#101010;color:white;padding:8px")?;
+    panel.set_attribute("style", &format!("position:fixed;left:12px;bottom:12px;z-index:50;max-width:90vw;background:#{:06x};color:#{:06x};padding:8px", coder_ui::coder_noir::SURFACE_SUBTLE, coder_ui::coder_noir::CONTENT))?;
     let input = document
         .create_element("textarea")?
         .dyn_into::<HtmlTextAreaElement>()?;
     input.set_attribute("aria-label", "Host terminal text and IME input")?;
+    input.set_attribute("style", &control_colors())?;
     let current = model.clone();
     let callback =
         Closure::wrap(
@@ -541,11 +542,21 @@ fn button(
         .create_element("button")?
         .dyn_into::<HtmlElement>()?;
     element.set_text_content(Some(label));
+    element.set_attribute("style", &control_colors())?;
     let callback = Closure::wrap(Box::new(move || action()) as Box<dyn FnMut()>);
     element.add_event_listener_with_callback("click", callback.as_ref().unchecked_ref())?;
     callback.forget();
     parent.append_child(&element)?;
     Ok(element)
+}
+fn control_colors() -> String {
+    format!(
+        "background:#{:06x};color:#{:06x};border-color:#{:06x};caret-color:#{:06x}",
+        coder_ui::coder_noir::SURFACE,
+        coder_ui::coder_noir::CONTENT,
+        coder_ui::coder_noir::STROKE,
+        coder_ui::coder_noir::CURSOR,
+    )
 }
 fn refresh_proposals(model: &Rc<RefCell<Workbench>>) {
     let Some(document) = web_sys::window().and_then(|w| w.document()) else {

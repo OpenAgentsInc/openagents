@@ -1,5 +1,5 @@
 //! Synthetic ATIF export from the same original records shown by the demo.
-use super::{DemoState, agents::*, tools::*};
+use super::{DemoState, agents::*, onboarding, tools::*};
 use atif::{Call, Outcome, Session, Source, Step};
 use serde_json::{Map, Value, json};
 
@@ -142,6 +142,14 @@ fn child(agent: &DemoAgent, messages: &[String], elapsed: u64, notice: Option<&s
     value
 }
 pub(super) fn document(app: &DemoState) -> Value {
+    if app.onboarding {
+        return child(
+            &onboarding::DEMO,
+            &app.messages,
+            app.elapsed_seconds,
+            app.notice.as_deref(),
+        );
+    }
     if let Some(index) = app.selected_agent {
         return child(
             &DEMOS[index],

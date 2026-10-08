@@ -15,6 +15,26 @@ use tempfile::TempDir;
 const AFTERWARDS: Duration = Duration::from_millis(1500);
 
 #[tokio::test]
+async fn a_job_without_a_deadline_can_exit_and_be_stopped() {
+    let live = Job::new("sh")
+        .args(["-c", "echo ready; sleep 60"])
+        .bounded(Limits::until_stopped())
+        .start(Input::Null)
+        .unwrap();
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    assert!(!live.finished());
+    let stopped = live.stop().await;
+    assert!(stopped.requested);
+    assert!(stopped.group_clear);
+    let ended = Job::new("sh")
+        .args(["-c", "echo done"])
+        .bounded(Limits::until_stopped())
+        .run()
+        .await;
+    assert_eq!(ended.ending, Ending::Exited(Some(0)));
+}
+
+#[tokio::test]
 async fn output_arrives_before_the_job_ends() {
     let live = Job::new("sh")
         .arg("-c")

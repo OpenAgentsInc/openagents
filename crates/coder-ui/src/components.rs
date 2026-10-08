@@ -297,7 +297,23 @@ pub fn pulse(phase: u8) -> Color {
     let level = [100_u16, 85, 65, 45, 35, 55, 75, 95][usize::from(phase) % 8];
     Color::rgb(
         (u16::from(t::ACCENT_DELEGATE.red) * level / 100) as u8,
-        0,
+        (u16::from(t::ACCENT_DELEGATE.green) * level / 100) as u8,
         (u16::from(t::ACCENT_DELEGATE.blue) * level / 100) as u8,
     )
+}
+
+#[cfg(test)]
+mod pulse_tests {
+    use super::*;
+
+    #[test]
+    fn pulse_keeps_the_theme_hue_when_dimmed() {
+        assert_eq!(pulse(0), t::ACCENT_DELEGATE);
+        let dim = pulse(4);
+        assert!(dim.red > 0 && dim.green > 0 && dim.blue > 0);
+        assert!(dim.red < t::ACCENT_DELEGATE.red);
+        assert!(dim.green < t::ACCENT_DELEGATE.green);
+        assert!(dim.blue < t::ACCENT_DELEGATE.blue);
+        assert_eq!(pulse(8), pulse(0));
+    }
 }

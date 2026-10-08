@@ -1,5 +1,6 @@
 //! The same render function draws the terminal and exported previews.
 
+mod appearance;
 mod models;
 mod plugins;
 mod resume;
@@ -29,6 +30,19 @@ fn span(text: impl Into<String>, color: Color) -> Span<'static> {
 }
 
 pub fn render(frame: &mut Frame, app: &mut App) {
+    render_contents(frame, app);
+    if app.appearance.use_system_terminal_background {
+        for cell in &mut frame.buffer_mut().content {
+            cell.bg = Color::Reset;
+        }
+    }
+}
+
+fn render_contents(frame: &mut Frame, app: &mut App) {
+    if app.screen == Screen::Appearance {
+        appearance::render(frame, frame.area(), app);
+        return;
+    }
     if app.mode == Mode::Demo {
         let mut demo = app.demo_view();
         coder_demo_ui::render(frame, &mut demo);
@@ -104,7 +118,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     header_view(frame, header, app);
     match app.screen {
         Screen::Conversation => conversation(frame, body, app),
-        Screen::Plugins | Screen::PluginSettings => unreachable!(),
+        Screen::Plugins | Screen::PluginSettings | Screen::Appearance => unreachable!(),
     }
     let hints = app.slash_hints();
     let height = (hints.len() as u16).min(composer.y.saturating_sub(body.y));
@@ -179,7 +193,11 @@ fn agent_rail(frame: &mut Frame, area: Rect, app: &App) {
                 (
                     agent.name.as_str(),
                     agent.task.as_str(),
-                    token_count(agent.chat.tokens),
+                    if agent.chat.tokens == 0 {
+                        "—".into()
+                    } else {
+                        token_count(agent.chat.tokens)
+                    },
                     if agent.running {
                         app.elapsed_seconds.saturating_sub(agent.started_at)
                     } else {
@@ -350,20 +368,41 @@ fn header_view(frame: &mut Frame, area: Rect, app: &App) {
     } else {
         None
     };
-    let title_width = agent.map_or(0, |name| name.width() as u16);
     if let Some(agent) = agent {
-        frame.render_widget(
-            Paragraph::new(Span::styled(
-                agent.to_owned(),
-                Style::default()
-                    .fg(t::ACCENT_MODEL)
-                    .add_modifier(Modifier::BOLD),
-            )),
-            Rect {
-                width: title_width.min(area.width),
-                ..area
-            },
-        );
+        let model = app
+            .selected_agent
+            .and_then(|index| app.delegations.get(index))
+            .and_then(|agent| {
+                agent.chat.partial_model.as_deref().or_else(|| {
+                    agent
+                        .chat
+                        .entries
+                        .iter()
+                        .rev()
+                        .find_map(|entry| match entry {
+                            crate::live::Entry::Assistant {
+                                model: Some(model), ..
+                            } => Some(model.as_str()),
+                            _ => None,
+                        })
+                })
+            });
+        let mut title = vec![Span::styled(
+            agent.to_owned(),
+            Style::default()
+                .fg(t::ACCENT_MODEL)
+                .add_modifier(Modifier::BOLD),
+        )];
+        if let Some(model) = model {
+            title.push(span(
+                truncate(
+                    &format!(" · {model}"),
+                    area.width.saturating_sub(agent.width() as u16),
+                ),
+                t::GRAY_BRIGHT,
+            ));
+        }
+        frame.render_widget(Paragraph::new(Line::from(title)), area);
     }
 }
 
@@ -395,7 +434,7 @@ fn context_view(frame: &mut Frame, area: Rect, app: &App) {
 }
 
 fn message_body(text: &str, width: u16) -> Vec<Line<'static>> {
-    t::usgc_lines(markdown_body(text, width, Ladder::new(Colors::True)))
+    t::noir_lines(markdown_body(text, width, Ladder::new(Colors::True)))
 }
 
 fn prompt(text: &str, width: u16) -> Vec<Line<'static>> {
@@ -817,6 +856,18 @@ fn live_conversation(frame: &mut Frame, area: Rect, app: &mut App) {
     app.scroll = app.scroll.min(max_scroll);
     let visible = cache.visible(&tail, usize::from(app.scroll), usize::from(area.height));
     frame.render_widget(Paragraph::new(visible), area);
+    if app.scroll < max_scroll {
+        frame.render_widget(
+            Paragraph::new("↓")
+                .alignment(ratatui::layout::Alignment::Right)
+                .style(Style::default().bg(t::BG_DARK).fg(t::ACCENT_MODEL)),
+            Rect {
+                y: area.y + area.height - 1,
+                height: 1,
+                ..area
+            },
+        );
+    }
     chat.cache = cache;
 }
 

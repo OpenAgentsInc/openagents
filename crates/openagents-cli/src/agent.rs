@@ -153,6 +153,8 @@ pub const USAGE: &str = "usage: openagents agent COMMAND [--root DIR] [--control
                tasks there at once (default 1), in its checkout at DIR
                (default ~/work/<workspace label>), whose workspace the
                remote host admits as LABEL (default the local label).
+               Each task resets DIR to its base and removes untracked
+               files there, so give her a checkout nobody edits.
                `openagents computer enroll` gives the host the grant first.
   computers NAME remove REMOTE
                Her task mode stays on this computer again for tasks that

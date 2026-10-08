@@ -293,6 +293,10 @@ name = "kit_visual_acceptance"
 required-features = ["capture"]
 
 [[example]]
+name = "kit_light_acceptance"
+required-features = ["capture"]
+
+[[example]]
 name = "crypt_lab"
 required-features = ["capture"]
 

@@ -351,12 +351,21 @@ async fn verse_grid() -> Response {
 }
 
 async fn favicon() -> Response {
+    let svg = include_str!("../static/favicon.svg")
+        .replace(
+            "{{canvas}}",
+            &format!("#{:06x}", coder_ui::coder_noir::CANVAS),
+        )
+        .replace(
+            "{{accent}}",
+            &format!("#{:06x}", coder_ui::coder_noir::ACCENT),
+        );
     (
         [
             (header::CONTENT_TYPE, "image/svg+xml"),
             (header::CACHE_CONTROL, "public, max-age=86400"),
         ],
-        include_str!("../static/favicon.svg"),
+        svg,
     )
         .into_response()
 }

@@ -133,6 +133,7 @@ pub const STREAM_MAX: usize = 64 * 1024;
 #[derive(Clone, Copy, Debug)]
 pub struct Limits {
     /// How long the job may run before the supervisor terminates its tree.
+    /// `Duration::MAX` disables the deadline.
     pub wall: Duration,
     /// The bytes each of stdout and stderr keeps. Bytes past this are
     /// counted and dropped as they arrive.
@@ -142,6 +143,11 @@ pub struct Limits {
 }
 
 impl Limits {
+    /// Keep supervising the job until it exits or the caller stops it.
+    #[must_use]
+    pub fn until_stopped() -> Self {
+        Self::within(Duration::MAX)
+    }
     /// A job bounded in time, keeping [`STREAM_MAX`] bytes of each stream,
     /// under the default memory cap ([`memory::default_max`]).
     #[must_use]
@@ -166,6 +172,15 @@ impl Limits {
     pub fn memory(mut self, memory_max: Option<u64>) -> Self {
         self.memory_max = memory_max;
         self
+    }
+}
+
+#[cfg(feature = "job")]
+async fn deadline(wall: Duration) {
+    if wall == Duration::MAX {
+        std::future::pending::<()>().await;
+    } else {
+        tokio::time::sleep(wall).await;
     }
 }
 

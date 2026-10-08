@@ -5,6 +5,9 @@ use coder_ui::demo::{Key, KeyCode, Screen};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
+#[path = "support/coder_noir.rs"]
+mod coder_noir;
+
 fn apply(app: &mut App, action: &Value) {
     if let Some(text) = action["paste"].as_str() {
         app.paste(text);
@@ -43,14 +46,15 @@ fn apply(app: &mut App, action: &Value) {
 }
 
 #[test]
-fn all_pre_extraction_native_cells_colors_layout_and_cursors_match() {
+fn all_original_native_cells_layout_and_cursors_match_with_coder_noir_roles() {
     let golden: Value =
         serde_json::from_str(include_str!("fixtures/native-d2fb95d33d.json")).unwrap();
     assert_eq!(golden["source"], "d2fb95d33d1d5c668be3d85c53c9bedaaab174af");
+    let noir = coder_noir::expected(&golden);
     let mut dimensions = (0, 0);
     let mut app = App::default();
     let mut mismatches = Vec::new();
-    for reference in golden["frames"].as_array().unwrap() {
+    for (index, reference) in golden["frames"].as_array().unwrap().iter().enumerate() {
         let width = reference["width"].as_u64().unwrap() as u16;
         let height = reference["height"].as_u64().unwrap() as u16;
         if dimensions != (width, height) {
@@ -84,7 +88,7 @@ fn all_pre_extraction_native_cells_colors_layout_and_cursors_match() {
             .chunks(usize::from(width))
             .map(|row| row.iter().map(|c| c.symbol.as_str()).collect::<String>())
             .collect::<Vec<_>>();
-        if digest != reference["cell_sha256"].as_str().unwrap()
+        if digest != noir["frames"][index]["cell_sha256"].as_str().unwrap()
             || cursor != reference["cursor"]
             || app.scroll != reference["scroll"].as_u64().unwrap() as u16
         {
@@ -156,4 +160,32 @@ fn svg_copy_keeps_spaces_once_and_omits_only_wide_continuations() {
     assert!(row.contains("x=\"36\" y=\"15\""));
     assert!(svg.contains("user-select:none;pointer-events:none"));
     assert_eq!(row.matches("<tspan ").count(), 6);
+}
+
+#[test]
+fn svg_uses_coder_noir_cursor_and_ansi_without_recoloring_explicit_rgb() {
+    use coder_demo_ui::{Cell, Color, Modifier, Snapshot};
+    let snapshot = Snapshot {
+        width: 3,
+        height: 1,
+        cells: [Color::Blue, Color::Indexed(6), Color::Rgb(12, 34, 56)]
+            .into_iter()
+            .map(|foreground| Cell {
+                symbol: "x".into(),
+                foreground,
+                background: Color::Reset,
+                modifiers: Modifier::empty(),
+                skip: false,
+            })
+            .collect(),
+        cursor: Some((0, 0)),
+    };
+    let svg = coder_demo_ui::svg(&snapshot);
+    assert!(svg.contains(&format!("fill=\"#{:06x}\"", coder_ui::coder_noir::ANSI[4])));
+    assert!(svg.contains(&format!("fill=\"#{:06x}\"", coder_ui::coder_noir::ANSI[6])));
+    assert!(svg.contains("fill=\"#0c2238\""));
+    assert!(svg.contains(&format!(
+        "height=\"20\" fill=\"#{:06x}\"",
+        coder_ui::coder_noir::CURSOR
+    )));
 }

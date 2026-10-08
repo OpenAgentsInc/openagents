@@ -9,8 +9,8 @@
 //! - each frame holds `SPINNER_DIVISOR` (4) ticks of the 30 fps animation
 //!   clock (`crates/codegen/xai-grok-pager/src/views/turn_status.rs`,
 //!   `appearance.animation.fps` = 30), so 4 × 33 ms;
-//! - the spinner, its words, and the timer share one style, Grok Night's
-//!   `gray_dim` (#585858, `theme/groknight.rs`);
+//! - the spinner, its words, and the timer share one style, adapted to
+//!   Coder Noir's tertiary content role;
 //! - the timer is `format_duration` in
 //!   `crates/codegen/xai-grok-pager-render/src/util.rs`.
 //!
@@ -20,7 +20,7 @@
 
 use std::time::Duration;
 
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 
 use crate::ladder::{Colors, Ladder, rgb};
 
@@ -38,9 +38,8 @@ pub const TICK: Duration = Duration::from_millis(1000 / 30);
 /// How many ticks each frame holds.
 pub const DIVISOR: u64 = 4;
 
-/// Grok Night's `gray_dim`, which the spinner, its words, and its timer
-/// are drawn in.
-pub const GRAY_DIM: u32 = 0x58_58_58;
+/// The shared tertiary content role for the spinner, its words, and its timer.
+pub const GRAY_DIM: u32 = coder_ui::coder_noir::CONTENT_TERTIARY;
 
 /// The frame at animation tick `tick`.
 #[must_use]
@@ -91,7 +90,10 @@ pub fn timer(elapsed: Duration) -> String {
 pub fn style(ladder: Ladder) -> Style {
     match ladder.colors() {
         Colors::True => Style::new().fg(rgb(GRAY_DIM)),
-        Colors::Indexed => Style::new().fg(Color::Indexed(240)),
+        Colors::Indexed => Style::new().fg(code_highlight::grok::color::quantize_color(
+            rgb(GRAY_DIM),
+            code_highlight::grok::ColorLevel::Ansi256,
+        )),
         Colors::None => Style::new().add_modifier(Modifier::DIM),
     }
 }
@@ -99,6 +101,7 @@ pub fn style(ladder: Ladder) -> Style {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ratatui::style::Color;
 
     #[test]
     fn each_frame_holds_four_ticks_of_the_30_fps_clock() {
@@ -119,5 +122,18 @@ mod tests {
         assert_eq!(timer(Duration::from_secs(80)), "1m20s");
         assert_eq!(timer(Duration::from_secs(3725)), "1h2m");
         assert_eq!(elapsed(30), Duration::from_millis(990));
+    }
+
+    #[test]
+    fn the_spinner_uses_the_shared_tertiary_role_at_each_depth() {
+        assert_eq!(style(Ladder::new(Colors::True)).fg, Some(rgb(GRAY_DIM)));
+        assert_eq!(
+            style(Ladder::new(Colors::Indexed)).fg,
+            Some(Color::Indexed(241))
+        );
+        assert_eq!(
+            style(Ladder::new(Colors::None)),
+            Style::new().add_modifier(Modifier::DIM)
+        );
     }
 }

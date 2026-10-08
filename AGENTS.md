@@ -339,8 +339,8 @@ uses, and marks which are implemented and which are only specified.
   task execution, network transport, credentials, or platform objects. Read
   `crates/rust-native/docs/` before extending a shared UI contract. Put reusable
   component semantics here and keep platform implementations in adapters.
-- `crates/coder-ui` — Coder application presentation values. It owns the amber
-  intensity palette and backgrounds; `coder-terminal` preserves its public
+- `crates/coder-ui` — Coder application presentation values. It owns the Coder Noir
+  palette and backgrounds; `coder-terminal` preserves its public
   imports through re-exports. Keep Coder components and product defaults here,
   never in the reusable `rust-native` framework.
 - `crates/coder-history` — read-only retained Codex and Claude history adapters;
@@ -474,7 +474,7 @@ uses, and marks which are implemented and which are only specified.
   controls, Keychain/Keystore, camera, and sensors. Keep
   Verse identity and lifecycle separate from history-observer authority. Read
   `docs/coder/guides/mobile-readonly.md` and `docs/verse/mobile.md`.
-- `crates/coder-terminal` — the Coder terminal: the amber intensity ladder,
+- `crates/coder-terminal` — the Coder terminal: the Coder Noir intensity ladder,
   the framed composer, and the shell they draw. It also holds the terminal
   design system every other terminal here depends on — the re-exported
   `coder_ui::theme::Intensity`, `Ladder`, `frame`, and `rail`. Extend these

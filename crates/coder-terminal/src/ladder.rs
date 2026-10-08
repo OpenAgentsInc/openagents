@@ -2,7 +2,7 @@
 //!
 //! A terminal either knows truecolor, knows a 256-color palette, or honors
 //! `NO_COLOR` and knows none. The [`Ladder`] detects which and translates the
-//! four white tones into concrete colors — exact RGB, the nearest cube
+//! four content tones into concrete colors — exact RGB, the nearest cube
 //! entries, or plain dim text.
 //!
 //! One ladder serves every terminal in this repository. Where a surface
@@ -16,10 +16,10 @@ use ratatui::style::{Color, Modifier, Style};
 /// The color depth the terminal supports.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Colors {
-    /// 24-bit RGB — the whites render exactly.
+    /// 24-bit RGB — the theme roles render exactly.
     #[default]
     True,
-    /// The 256-color palette — whites render as their nearest cube entries.
+    /// The 256-color palette — theme roles render as their nearest cube entries.
     Indexed,
     /// Color off (`NO_COLOR`) — tone falls back to modifiers.
     None,
@@ -121,13 +121,11 @@ impl Ladder {
         }
     }
 
-    /// The near-black field the whites sit on, at this terminal: Grok
-    /// Night's `bg_base` (#141414), the field grok-build's transcript sits
-    /// on.
+    /// The shared terminal background at this terminal's color depth.
     pub fn background(self) -> Color {
         match self.colors {
-            Colors::True => rgb(GROK_FIELD),
-            Colors::Indexed => Color::Indexed(INDEXED_BACKGROUND),
+            Colors::True => rgb(coder_ui::coder_noir::TERMINAL_BACKGROUND),
+            Colors::Indexed => quantized(coder_ui::coder_noir::TERMINAL_BACKGROUND),
             Colors::None => Color::Reset,
         }
     }
@@ -139,7 +137,7 @@ impl Ladder {
     pub fn selection(self) -> Color {
         match self.colors {
             Colors::True => rgb(NEAR_BLACK_TINT),
-            Colors::Indexed => Color::Indexed(INDEXED_SELECTION),
+            Colors::Indexed => quantized(NEAR_BLACK_TINT),
             Colors::None => Color::Reset,
         }
     }
@@ -150,23 +148,30 @@ pub const fn rgb(color: u32) -> Color {
     Color::Rgb((color >> 16) as u8, (color >> 8) as u8, color as u8)
 }
 
-/// The indexed entry nearest to each white on the 256-color cube.
-const fn indexed(intensity: Intensity) -> Color {
-    match intensity {
-        Intensity::Quarter => Color::Indexed(239),
-        Intensity::Half => Color::Indexed(245),
-        Intensity::ThreeQuarters => Color::Indexed(251),
-        Intensity::Full => Color::Indexed(231),
-    }
+/// The indexed entry nearest to each content role on the xterm palette.
+fn indexed(intensity: Intensity) -> Color {
+    quantized(intensity.color())
 }
 
-/// Grok Night's `bg_base` (grok-build `theme/groknight.rs`, Apache-2.0,
-/// Copyright 2023-2026 SpaceXAI).
-const GROK_FIELD: u32 = 0x141414;
-/// The indexed entry nearest to [`GROK_FIELD`] (#121212).
-const INDEXED_BACKGROUND: u8 = 233;
-/// The indexed entry nearest to [`NEAR_BLACK_TINT`].
-const INDEXED_SELECTION: u8 = 234;
+fn quantized(value: u32) -> Color {
+    code_highlight::grok::color::quantize_color(
+        rgb(value),
+        code_highlight::grok::ColorLevel::Ansi256,
+    )
+}
+
+/// Adapt imported syntax and transcript colors before terminal quantization.
+pub(crate) fn appearance(color: Color, level: code_highlight::grok::ColorLevel) -> Color {
+    let color = match color {
+        Color::Rgb(red, green, blue) => {
+            let value =
+                coder_ui::source_theme::remap(rust_native::style::Color::rgb(red, green, blue));
+            Color::Rgb(value.red, value.green, value.blue)
+        }
+        color => color,
+    };
+    code_highlight::grok::color::quantize_color(color, level)
+}
 
 /// Strips foreground and background color from a style, keeping every other
 /// attribute — glyphs, modifiers, and the like.
@@ -219,9 +224,9 @@ mod tests {
     }
 
     #[test]
-    fn truecolor_renders_the_exact_white() {
+    fn truecolor_renders_the_exact_content_role() {
         let style = Ladder::new(Colors::True).style(Intensity::Full);
-        assert_eq!(style.fg, Some(Color::Rgb(0xff, 0xff, 0xff)));
+        assert_eq!(style.fg, Some(rgb(Intensity::Full.color())));
     }
 
     #[test]
@@ -230,7 +235,7 @@ mod tests {
         assert_eq!(ladder.style(Intensity::Full).fg, Some(Color::Indexed(231)));
         assert_eq!(
             ladder.style(Intensity::Quarter).fg,
-            Some(Color::Indexed(239))
+            Some(quantized(Intensity::Quarter.color()))
         );
         assert_eq!(ladder.background(), Color::Indexed(233));
     }

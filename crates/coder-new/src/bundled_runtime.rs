@@ -26,9 +26,6 @@ const TEXT_MAX: usize = 64 * 1024;
 const ARGUMENT_MAX: usize = 128;
 const ARGUMENT_BYTES: usize = 64 * 1024;
 const RUN_SECONDS: u64 = 600;
-/// How long a Codex delegation that may edit the working directory runs:
-/// a coding task takes longer than a review.
-const WRITE_SECONDS: u64 = 30 * 60;
 const POLL: Duration = Duration::from_millis(50);
 
 /// Codex starts with full access. Explicitly gated chats keep Codex
@@ -55,14 +52,6 @@ impl CodexSandbox {
             Self::FullAccess => "danger-full-access",
             Self::ReadOnly => "read-only",
             Self::WorkspaceWrite => "workspace-write",
-        }
-    }
-
-    fn seconds(self) -> u64 {
-        match self {
-            Self::FullAccess => WRITE_SECONDS,
-            Self::ReadOnly => RUN_SECONDS,
-            Self::WorkspaceWrite => WRITE_SECONDS,
         }
     }
 }
@@ -173,6 +162,7 @@ impl AcpAgent {
 pub enum RuntimeEvent {
     Text(String),
     Model(String),
+    Tokens(u64),
     Delegation {
         id: String,
         name: String,
@@ -190,6 +180,7 @@ pub enum RuntimeEvent {
 impl RuntimeEvent {
     pub(crate) fn redact(&mut self, keys: &[ApiKey]) {
         match self {
+            Self::Tokens(_) => {}
             Self::Text(text) | Self::Model(text) => *text = redact_text(text, keys),
             Self::Delegation {
                 id,
@@ -568,6 +559,24 @@ pub async fn acp(
     result.map(|reply| json!({"session":id,"reply":text,"model":model,"stop_reason":reply.stop_reason.as_str(),"usage":reply.usage,"group_clear":group_clear})).map_err(|error| format!("ACP task failed: {error}; process group cleared: {group_clear}."))
 }
 
+fn codex_failure_reason(ending: &supervise::Ending, error: Option<&str>, stderr: &str) -> String {
+    if matches!(ending, supervise::Ending::TimedOut) {
+        return "The Codex task timed out.".into();
+    }
+    if let Some(error) = error {
+        return bounded(&error.replace(['\n', '\r'], " "), 512);
+    }
+    if coder_delegate::limit::says_limited(stderr) {
+        return "Codex reached a usage limit or rate limit.".into();
+    }
+    match ending {
+        supervise::Ending::Exited(Some(code)) => format!("Codex exited with status {code}."),
+        supervise::Ending::Exited(None) => "Codex was terminated by a signal.".into(),
+        supervise::Ending::Failed(error) => bounded(&error.replace(['\n', '\r'], " "), 512),
+        supervise::Ending::TimedOut => unreachable!(),
+    }
+}
+
 /// Drive Codex's native protocol without treating its executable as an ACP server.
 async fn codex_cli(
     program: &Path,
@@ -582,22 +591,28 @@ async fn codex_cli(
     }
     let mut command = std::process::Command::new(program);
     command.args(["exec", "--json", "--skip-git-repo-check"]);
-    if let Ok(model) = std::env::var("CODER_CODEX_MODEL") {
-        if !model.is_empty() {
-            command.args(["--model", &model]);
-        }
+    let variable = |name| std::env::var(name).ok().filter(|value| !value.is_empty());
+    let model = variable("CODER_CODEX_MODEL");
+    let reasoning = variable("CODER_CODEX_REASONING");
+    if let Some(model) = &model {
+        command.args(["--model", model]);
+        emit(RuntimeEvent::Model(
+            crate::models::GenerationOptions {
+                reasoning: reasoning.clone(),
+                max_tokens: None,
+            }
+            .slug(model),
+        ));
     }
-    if let Ok(effort) = std::env::var("CODER_CODEX_REASONING") {
-        if !effort.is_empty() {
-            command.args([
-                "-c",
-                &format!(
-                    "model_reasoning_effort={}",
-                    serde_json::to_string(&effort)
-                        .map_err(|_| "Cannot encode Codex reasoning settings.")?
-                ),
-            ]);
-        }
+    if let Some(effort) = &reasoning {
+        command.args([
+            "-c",
+            &format!(
+                "model_reasoning_effort={}",
+                serde_json::to_string(&effort)
+                    .map_err(|_| "Cannot encode Codex reasoning settings.")?
+            ),
+        ]);
     }
     if sandbox == CodexSandbox::FullAccess {
         command.arg("--dangerously-bypass-approvals-and-sandbox");
@@ -611,9 +626,7 @@ async fn codex_cli(
     command.env(mark, value);
     scrub_credentials(&mut command);
     let mut live = supervise::Job::from_command(command)
-        .bounded(
-            supervise::Limits::within(Duration::from_secs(sandbox.seconds())).keeping(TEXT_MAX),
-        )
+        .bounded(supervise::Limits::until_stopped().keeping(TEXT_MAX))
         .start(supervise::Input::Piped)?;
     if let Err(error) = live.send(task.as_bytes()).await {
         let stopped = live.stop().await;
@@ -623,10 +636,31 @@ async fn codex_cli(
         ));
     }
     live.close_input();
-    let mut events = CodexEvents::default();
+    let mut events = CodexEvents {
+        model,
+        reasoning,
+        ..CodexEvents::default()
+    };
     let mut reader = coder_delegate::tail::Reader::new(TEXT_MAX);
+    let mut usage_log = crate::codex_usage::Reader::new();
     let stopped = loop {
         events.delivery(&mut reader, live.take(), emit);
+        usage_log.poll(events.session.as_deref(), &mut |event| {
+            match &event {
+                RuntimeEvent::Tokens(tokens) => events.live_tokens = Some(*tokens),
+                RuntimeEvent::Model(model) => {
+                    let (model, reasoning) = model
+                        .split_once(':')
+                        .map_or((model.as_str(), None), |(model, reasoning)| {
+                            (model, Some(reasoning.to_owned()))
+                        });
+                    events.model = Some(model.into());
+                    events.reasoning = reasoning;
+                }
+                _ => {}
+            }
+            emit(event);
+        });
         if live.finished() {
             break live.wait().await;
         }
@@ -646,16 +680,11 @@ async fn codex_cli(
         ));
     }
     if !stopped.ending.success() || events.error.is_some() {
-        let reason = events.error.unwrap_or_else(|| {
-            let stderr = bounded(&stopped.stderr.marked(), TEXT_MAX);
-            if !stderr.trim().is_empty() {
-                stderr
-            } else if matches!(stopped.ending, supervise::Ending::TimedOut) {
-                "The Codex task timed out.".into()
-            } else {
-                format!("Codex exited with status {:?}.", stopped.ending.code())
-            }
-        });
+        let reason = codex_failure_reason(
+            &stopped.ending,
+            events.error.as_deref(),
+            &stopped.stderr.marked(),
+        );
         // A usage or rate limit says so first, in one sentence, so the
         // chat carries on without Codex and the host can book the limit.
         let limited = if coder_delegate::limit::says_limited(&reason) {
@@ -686,8 +715,13 @@ async fn codex_cli(
                 .and_then(Value::as_u64)
                 .unwrap_or(0),
         );
+    let tokens = if events.usage.is_null() {
+        events.live_tokens.unwrap_or(tokens)
+    } else {
+        tokens
+    };
     Ok(
-        json!({"session":events.session,"reply":events.text,"model":events.model,"stop_reason":"end_turn","usage":events.usage,"tokens":tokens,"group_clear":stopped.group_clear,"transport":"codex-cli","sandbox":sandbox.word(),"truncated":!reader.gaps().is_empty()}),
+        json!({"session":events.session,"reply":events.text,"model":events.model.map(|model| crate::models::GenerationOptions { reasoning: events.reasoning, max_tokens: None }.slug(&model)),"stop_reason":"end_turn","usage":events.usage,"tokens":tokens,"group_clear":stopped.group_clear,"transport":"codex-cli","sandbox":sandbox.word(),"truncated":!reader.gaps().is_empty()}),
     )
 }
 
@@ -696,7 +730,9 @@ struct CodexEvents {
     text: String,
     session: Option<String>,
     model: Option<String>,
+    reasoning: Option<String>,
     usage: Value,
+    live_tokens: Option<u64>,
     error: Option<String>,
     completed: bool,
     seq: u64,
@@ -737,7 +773,13 @@ impl CodexEvents {
             && self.model.as_deref() != Some(model)
         {
             self.model = Some(model.into());
-            emit(RuntimeEvent::Model(model.into()));
+            emit(RuntimeEvent::Model(
+                crate::models::GenerationOptions {
+                    reasoning: self.reasoning.clone(),
+                    max_tokens: None,
+                }
+                .slug(model),
+            ));
         }
         if value["type"] == "item.completed"
             && value["item"]["type"] == "agent_message"
@@ -782,7 +824,14 @@ impl CodexEvents {
                 output: json!({"change":change}),
                 running: false,
             }),
-            Kind::UsageUpdate { usage } => self.usage = usage,
+            Kind::UsageUpdate { usage } => {
+                let tokens = usage["input_tokens"]
+                    .as_u64()
+                    .unwrap_or(0)
+                    .saturating_add(usage["output_tokens"].as_u64().unwrap_or(0));
+                self.usage = usage;
+                emit(RuntimeEvent::Tokens(tokens));
+            }
             Kind::SessionEnded {
                 error: true,
                 result,
@@ -815,6 +864,16 @@ impl Handler for AcpEvents<'_> {
 
     fn update(&mut self, update: Update) {
         match update {
+            Update::Usage(usage) if !usage.subagent => {
+                if usage.input_tokens.is_some() || usage.output_tokens.is_some() {
+                    (self.emit)(RuntimeEvent::Tokens(
+                        usage
+                            .input_tokens
+                            .unwrap_or(0)
+                            .saturating_add(usage.output_tokens.unwrap_or(0)),
+                    ));
+                }
+            }
             Update::AgentText(text) => {
                 let text = bounded(&text, TEXT_MAX.saturating_sub(self.text.len()));
                 self.text.push_str(&text);
@@ -1339,6 +1398,7 @@ impl Observer for MicrocoderEvents<'_> {
                     .tokens
                     .saturating_add(generated.prompt_tokens)
                     .saturating_add(generated.completion_tokens);
+                self.emit.emit(RuntimeEvent::Tokens(self.tokens));
                 if let Ok(action) = &generated.action {
                     if !action.reply.is_empty() {
                         self.reply =
@@ -1643,6 +1703,11 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":11,"output_token
         assert_eq!(result["session"], "scratch-codex");
         assert_eq!(result["reply"], "Codex answered.");
         assert_eq!(result["tokens"], 18);
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, RuntimeEvent::Tokens(18)))
+        );
         assert_eq!(result["model"], "gpt-test");
         assert_eq!(result["transport"], "codex-cli");
         assert_eq!(result["group_clear"], true);
@@ -1733,6 +1798,36 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
         assert!(
             error.starts_with("Codex is out of capacity, so continue without Codex."),
             "{error}"
+        );
+    }
+
+    #[test]
+    fn codex_failure_reports_the_ending_instead_of_old_mcp_logs() {
+        let logs = "ERROR rmcp: HTTP 401 unauthorized: bearer token required";
+        assert_eq!(
+            codex_failure_reason(&supervise::Ending::TimedOut, None, logs),
+            "The Codex task timed out."
+        );
+        assert_eq!(
+            codex_failure_reason(&supervise::Ending::Exited(None), None, logs),
+            "Codex was terminated by a signal."
+        );
+        assert_eq!(
+            codex_failure_reason(
+                &supervise::Ending::Exited(Some(1)),
+                Some("Codex needs a login."),
+                logs
+            ),
+            "Codex needs a login."
+        );
+        assert!(
+            codex_failure_reason(
+                &supervise::Ending::Exited(Some(1)),
+                Some(&"x".repeat(10_000)),
+                logs
+            )
+            .len()
+                <= 512
         );
     }
 

@@ -215,6 +215,10 @@ pub struct Flow {
     /// watching it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub remote_task: Option<String>,
+    /// `remote`'s checkout the task ran in, kept so the change comes back
+    /// after a restart.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote_checkout: Option<String>,
 }
 
 impl Flow {
@@ -236,14 +240,17 @@ impl Flow {
             command: None,
             remote: None,
             remote_task: None,
+            remote_checkout: None,
         }
     }
 
-    /// A new flow for a task `task_id` that runs on the computer `remote`.
+    /// A new flow for a task `task_id` that runs on the computer `remote`,
+    /// in its checkout `checkout`.
     #[must_use]
-    pub fn remote(task_id: &str, remote: &str) -> Self {
+    pub fn remote(task_id: &str, remote: &str, checkout: &str) -> Self {
         Self {
             remote: Some(remote.to_owned()),
+            remote_checkout: Some(checkout.to_owned()),
             ..Self::new(task_id)
         }
     }

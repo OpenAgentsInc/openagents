@@ -44,6 +44,9 @@ impl SettingsFocus {
 
 pub struct Plugins {
     pub selected: usize,
+    pub(crate) catalog_revision: u64,
+    #[cfg(unix)]
+    installed: Vec<background::plugins::Installed>,
     pub bundled: crate::bundled_settings::BundledSettings,
     pub enabled: bool,
     pub key_configured: bool,
@@ -89,6 +92,9 @@ impl Default for Plugins {
     fn default() -> Self {
         Self {
             selected: 0,
+            catalog_revision: 0,
+            #[cfg(unix)]
+            installed: Vec::new(),
             bundled: crate::bundled_settings::BundledSettings::default(),
             enabled: false,
             key_configured: false,
@@ -121,6 +127,24 @@ pub enum Connection {
     Checking,
     Verified,
     Failed(String),
+}
+
+/// A picker row describes either a host binding or an installed package.
+#[derive(Clone, Copy)]
+pub struct PickerDefinition<'a> {
+    pub id: &'a str,
+    pub name: &'a str,
+    pub description: &'a str,
+}
+
+impl<'a> From<&'a crate::plugin_definition::PluginDefinition> for PickerDefinition<'a> {
+    fn from(definition: &'a crate::plugin_definition::PluginDefinition) -> Self {
+        Self {
+            id: definition.id,
+            name: definition.name,
+            description: definition.description,
+        }
+    }
 }
 
 impl Plugins {
@@ -297,13 +321,63 @@ impl Plugins {
         std::mem::swap(&mut self.options, &mut self.other_preferences.options);
         self.live = live;
         self.bundled.set_live(live);
+        self.selected = self.selected.min(self.definitions().count() - 1);
     }
 
-    pub fn selected_definition(&self) -> &'static crate::plugin_definition::PluginDefinition {
-        &DEFINITIONS[self.selected.min(DEFINITIONS.len() - 1)]
+    pub fn definitions(&self) -> impl Iterator<Item = PickerDefinition<'_>> {
+        let bundled = DEFINITIONS.iter().map(PickerDefinition::from);
+        #[cfg(unix)]
+        let definitions =
+            bundled.chain(self.installed.iter().filter(|_| self.live).map(|plugin| {
+                PickerDefinition {
+                    id: &plugin.id,
+                    name: &plugin.name,
+                    description: &plugin.summary,
+                }
+            }));
+        #[cfg(not(unix))]
+        let definitions = bundled;
+        definitions
+    }
+
+    pub fn selected_definition(&self) -> PickerDefinition<'_> {
+        self.definitions()
+            .nth(self.selected)
+            .unwrap_or_else(|| PickerDefinition::from(&DEFINITIONS[0]))
+    }
+
+    #[cfg(unix)]
+    pub fn selected_installed(&self) -> Option<&background::plugins::Installed> {
+        self.installed_for(self.selected_definition().id)
+    }
+
+    #[cfg(unix)]
+    fn installed_for(&self, id: &str) -> Option<&background::plugins::Installed> {
+        self.installed
+            .iter()
+            .find(|plugin| self.live && plugin.id == id)
+    }
+
+    /// Replace the catalog without changing selection when its identity still exists.
+    /// Return whether the selected package was removed.
+    #[cfg(unix)]
+    pub(crate) fn replace_installed(
+        &mut self,
+        installed: Vec<background::plugins::Installed>,
+    ) -> bool {
+        let selected = self.selected_definition().id.to_owned();
+        self.installed = installed;
+        let position = self.definitions().position(|plugin| plugin.id == selected);
+        self.selected =
+            position.unwrap_or_else(|| self.selected.min(self.definitions().count() - 1));
+        position.is_none()
     }
 
     pub fn enabled_for(&self, id: &str) -> bool {
+        #[cfg(unix)]
+        if let Some(plugin) = self.installed_for(id) {
+            return plugin.enabled;
+        }
         if id == OPENROUTER_PLUGIN {
             self.enabled
         } else {
@@ -312,6 +386,14 @@ impl Plugins {
     }
 
     pub fn status_for(&self, id: &str) -> &str {
+        #[cfg(unix)]
+        if let Some(plugin) = self.installed_for(id) {
+            return if plugin.enabled {
+                "Enabled"
+            } else {
+                "Disabled"
+            };
+        }
         if id == OPENROUTER_PLUGIN {
             self.status()
         } else {
@@ -320,7 +402,11 @@ impl Plugins {
     }
 
     pub fn toggle_selected(&mut self) -> bool {
-        let id = self.selected_definition().id;
+        #[cfg(unix)]
+        if self.selected_installed().is_some() {
+            return false;
+        }
+        let id = DEFINITIONS[self.selected.min(DEFINITIONS.len() - 1)].id;
         if id == OPENROUTER_PLUGIN {
             self.toggle_enabled()
         } else {
@@ -332,7 +418,7 @@ impl Plugins {
         self.selected = if backwards {
             self.selected.saturating_sub(1)
         } else {
-            (self.selected + 1).min(DEFINITIONS.len() - 1)
+            (self.selected + 1).min(self.definitions().count() - 1)
         };
     }
 

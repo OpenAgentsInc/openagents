@@ -22,3 +22,6 @@ pub const ACCENT_SKILL: Color = color(coder_ui::source_theme::ACCENT_SKILL);
 pub const ACCENT_SUCCESS: Color = color(coder_ui::source_theme::ACCENT_SUCCESS);
 pub const DIFF_DELETE_FG: Color = color(coder_ui::source_theme::DIFF_DELETE_FG);
 pub const DIFF_INSERT_FG: Color = color(coder_ui::source_theme::DIFF_INSERT_FG);
+
+pub const CURSOR: Color = color(coder_ui::coder_noir::rgb(coder_ui::coder_noir::CURSOR));
+pub const CURSOR_TEXT: Color = color(coder_ui::coder_noir::rgb(coder_ui::coder_noir::CURSOR_TEXT));

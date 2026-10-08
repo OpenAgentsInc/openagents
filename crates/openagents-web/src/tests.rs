@@ -440,6 +440,85 @@ async fn the_everglade_page_serves_the_web_build_and_its_pack() {
     }
 }
 
+#[tokio::test]
+async fn everglade_bake_layers_are_digest_named_immutable_downloads() {
+    let root = tempfile::tempdir().unwrap();
+    let (config, _) = with_everglade(root.path());
+    let directory = config.everglade.as_ref().unwrap().join("kit/bake");
+    std::fs::create_dir_all(&directory).unwrap();
+    let digest = "ab".repeat(32);
+    let name = format!("{digest}.vlay");
+    std::fs::write(directory.join(&name), b"synthetic light layer fixture").unwrap();
+    std::fs::write(directory.join("notes.txt"), b"not a layer").unwrap();
+    let (status, headers, bytes) = get_bytes(
+        router(config.clone()),
+        &format!("/everglade/kit/bake/{name}"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(bytes, b"synthetic light layer fixture");
+    assert_eq!(headers[header::CONTENT_TYPE], "application/octet-stream");
+    assert_eq!(
+        headers[header::CACHE_CONTROL],
+        "public, max-age=31536000, immutable"
+    );
+    for file in [
+        "notes.txt".to_owned(),
+        format!("{digest}.vtp"),
+        format!("{}.vlay", digest.to_uppercase()),
+        format!("{}.vlay", &digest[1..]),
+        format!("{}.vlay", "cd".repeat(32)),
+        "..%2Fnotes.txt".to_owned(),
+        "%2E%2E%2F..%2Fsecret.js".to_owned(),
+    ] {
+        let (status, _, _) = get_bytes(
+            router(config.clone()),
+            &format!("/everglade/kit/bake/{file}"),
+        )
+        .await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{file}");
+    }
+}
+
+#[tokio::test]
+async fn everglade_bake_layers_stream_beyond_the_cloud_run_buffer_limit() {
+    use futures_util::StreamExt;
+    use hyper::body::Body as _;
+
+    let root = tempfile::tempdir().unwrap();
+    let (config, _) = with_everglade(root.path());
+    let directory = config.everglade.as_ref().unwrap().join("kit/bake");
+    std::fs::create_dir_all(&directory).unwrap();
+    let name = format!("{}.vlay", "ab".repeat(32));
+    let size = 33 * 1024 * 1024;
+    std::fs::File::create(directory.join(&name))
+        .unwrap()
+        .set_len(size)
+        .unwrap();
+    let response = router(config)
+        .oneshot(
+            Request::builder()
+                .uri(format!("/everglade/kit/bake/{name}"))
+                .header(header::HOST, LOCAL)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(!response.headers().contains_key(header::CONTENT_LENGTH));
+    assert_eq!(response.body().size_hint().exact(), None);
+    let mut stream = response.into_body().into_data_stream();
+    let mut received = 0;
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.unwrap();
+        assert!(chunk.len() <= 64 * 1024);
+        assert!(chunk.iter().all(|byte| *byte == 0));
+        received += chunk.len() as u64;
+    }
+    assert_eq!(received, size);
+}
+
 /// `/druid` (#10611): the same full-screen page and build, which starts in
 /// the Grove on this path, under the same policy.
 #[tokio::test]
@@ -636,40 +715,31 @@ async fn the_app_association_files_answer_through_the_router() {
     assert_eq!(headers[header::REFERRER_POLICY], "no-referrer");
 }
 
-/// Every color on the site is a gray from the white ladder: the
-/// stylesheet and the icon hold every color, and no page styles itself.
+/// Application styles use the same semantic tokens as native Coder Noir.
 #[tokio::test]
-async fn no_amber_and_no_hue_anywhere() {
+async fn application_styles_share_coder_noir_roles() {
     let root = tempfile::tempdir().unwrap();
-    let (status, css) = get(router(config(root.path().into())), "/static/site.css").await;
-    assert_eq!(status, StatusCode::OK);
-    let (_, favicon) = get(router(config(root.path().into())), "/favicon.svg").await;
-    for source in [&css, &favicon] {
-        let lower = source.to_ascii_lowercase();
-        for word in ["amber", "orange", "gold", "yellow", "rgb(", "hsl("] {
-            assert!(!lower.contains(word), "{word}");
-        }
-        let mut colors = 0;
-        for (at, _) in lower.match_indices('#') {
-            let hex: String = lower[at + 1..]
-                .chars()
-                .take_while(char::is_ascii_hexdigit)
-                .collect();
-            let rgb = match hex.len() {
-                6 => u32::from_str_radix(&hex, 16).ok(),
-                3 => u32::from_str_radix(&hex.chars().flat_map(|c| [c, c]).collect::<String>(), 16)
-                    .ok(),
-                _ => None,
-            };
-            if let Some(rgb) = rgb {
-                colors += 1;
-                assert!(palette::is_gray(rgb), "#{hex} is not a gray");
-            }
-        }
-        assert!(colors > 0);
+    let variables = coder_ui::coder_noir::css_variables();
+    for path in [
+        "/static/site.css",
+        "/components/assets/components.css",
+        "/components/assets/demo.css",
+        "/cloud/assets/cloud.css",
+    ] {
+        let (status, css) = get(router(config(root.path().into())), path).await;
+        assert_eq!(status, StatusCode::OK, "{path}");
+        assert_eq!(css.matches(&variables).count(), 1, "{path}");
+        assert!(css.contains("--noir-accent:#ededed"), "{path}");
+        assert!(css.contains("--noir-terminal-cursor:#ededed"), "{path}");
+        assert!(
+            css.contains("--noir-control-hover:rgb(237 237 237 / 0.047)"),
+            "{path}"
+        );
     }
-    assert!(css.contains("--w100:#ffffff"));
-    assert!(css.contains("--w25:#4a4a4a"));
+    let (_, favicon) = get(router(config(root.path().into())), "/favicon.svg").await;
+    assert!(favicon.contains(&format!("fill=\"#{:06x}\"", coder_ui::coder_noir::CANVAS)));
+    assert!(favicon.contains(&format!("stroke=\"#{:06x}\"", coder_ui::coder_noir::ACCENT)));
+    assert!(!favicon.contains("{{"));
     for uri in PAGES {
         let (_, page) = get(router(config(root.path().join("tasks"))), uri).await;
         let lower = page.to_ascii_lowercase();
