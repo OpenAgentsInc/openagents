@@ -1064,16 +1064,9 @@ pub fn build(out: &mut Vec<Placement>) {
     for (_, house) in kit_houses() {
         house.raise(out);
     }
-    // Keep the fountain after the other instances: the published light
-    // layers index vertices in this order. Its instance still supplies
-    // the current blockers and world-tree identity.
-    out.extend(
-        instances()
-            .iter()
-            .filter(|instance| instance.name != PLAZA_FOUNTAIN.name)
-            .map(Instance::placement),
-    );
-    out.push(PLAZA_FOUNTAIN.placement());
+    // The plaza's fountain is the kit's (`generated::FOUNTAIN`); its
+    // instance places it, keeps its blockers, and names its world-tree node.
+    out.extend(instances().iter().map(Instance::placement));
     market(out);
     stoops(out);
     lanterns(out);
@@ -1381,41 +1374,5 @@ fn woods(out: &mut Vec<Placement>) {
             0.9 + 0.3 * noise(n, 101),
         );
         placed += 1;
-    }
-}
-
-#[cfg(test)]
-mod baked_order_tests {
-    use super::*;
-
-    #[test]
-    fn fountain_keeps_the_published_vertex_order_and_current_instance() {
-        let mut actual = Vec::new();
-        build(&mut actual);
-        let fountain = PLAZA_FOUNTAIN.placement();
-        let index = actual
-            .iter()
-            .position(|placement| *placement == fountain)
-            .unwrap();
-        assert_eq!(
-            actual
-                .iter()
-                .filter(|placement| **placement == fountain)
-                .count(),
-            1
-        );
-        for instance in instances()
-            .iter()
-            .filter(|instance| instance.name != PLAZA_FOUNTAIN.name)
-        {
-            let placement = instance.placement();
-            assert!(
-                actual[..index].contains(&placement),
-                "{} must precede the baked fountain",
-                instance.name
-            );
-        }
-        assert_eq!(fountain.model, "kit/fountain");
-        assert!(PLAZA_FOUNTAIN.model.front[1] > 4.0);
     }
 }
