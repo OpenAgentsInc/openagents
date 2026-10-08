@@ -1,3 +1,12 @@
+## Verify native terminal display idle (#10909)
+
+Run the updated native terminal with a screen lease, leave its default sheet
+idle, and confirm WindowServer stops presenting unchanged frames and idle
+CPU stays near zero. The automated one-hour soak uses the same native raster
+pipeline and isolated PTY offscreen; it cannot measure the physical display
+or reproduce the owner's lost pre-reboot 20 GB process. If the display check
+finds a defect, open a new issue with the process RSS and CPU sample.
+
 ## Ship a TestFlight build and open the Verse tab on the iPhone (#10928)
 
 The build 53 crash — a main-thread stack overflow the moment the Verse tab

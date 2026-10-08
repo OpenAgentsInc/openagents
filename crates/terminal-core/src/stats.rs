@@ -6,7 +6,10 @@
 //! while they show the overlay logs one JSON line a second to standard
 //! error. A mount can record every frame for a stress run.
 
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, VecDeque};
+
+/// Maximum observations retained for interactive diagnostics and stress runs.
+pub const SAMPLE_LIMIT: usize = 8192;
 use web_time::{Duration, Instant};
 
 /// One frame's time, in milliseconds.
@@ -88,7 +91,7 @@ struct Pending {
 pub struct Stats {
     /// The stats line shows, and the overlay logs a summary each second.
     pub shown: bool,
-    /// Keep every frame and latency, for a stress run.
+    /// Keep bounded frame and latency samples for a stress run.
     pub record: bool,
     pub frames: Vec<Frame>,
     pub latencies: Vec<f32>,
@@ -97,7 +100,7 @@ pub struct Stats {
     window_latency: Vec<f32>,
     window_start: Option<Instant>,
     /// Per pane, bytes parsed this window.
-    window_panes: Vec<u64>,
+    window_panes: BTreeMap<u64, u64>,
     window_parse: Duration,
     pub summary: Option<Summary>,
     pending: Option<Pending>,
@@ -120,7 +123,7 @@ impl Default for Stats {
             window: Vec::new(),
             window_latency: Vec::new(),
             window_start: None,
-            window_panes: Vec::new(),
+            window_panes: BTreeMap::new(),
             window_parse: Duration::ZERO,
             summary: None,
             pending: None,
@@ -187,7 +190,9 @@ impl Stats {
         }
         self.bytes += bytes;
         self.parse += took;
-        self.panes.push_back((pane, bytes));
+        if self.panes.len() < SAMPLE_LIMIT {
+            self.panes.push_back((pane, bytes));
+        }
     }
 
     /// The frame finished: the renderer returned. `started` is when the
@@ -210,29 +215,33 @@ impl Stats {
         let parse = std::mem::take(&mut self.parse);
         if let Some(at) = self.echoed.take() {
             let latency = ms(now - at);
-            self.window_latency.push(latency);
-            if self.record {
+            if self.shown && self.window_latency.len() < SAMPLE_LIMIT {
+                self.window_latency.push(latency);
+            }
+            if self.record && self.latencies.len() < SAMPLE_LIMIT {
                 self.latencies.push(latency);
             }
         }
-        if self.record && interval > 0.0 {
+        if self.record && interval > 0.0 && self.frames.len() < SAMPLE_LIMIT {
             self.frames.push(frame);
         }
         if !self.shown {
             self.panes.clear();
+            self.window_latency.clear();
+            self.window.clear();
+            self.window_panes.clear();
+            self.window_start = None;
             return;
         }
         let start = *self.window_start.get_or_insert(now);
-        if interval > 0.0 {
+        if interval > 0.0 && self.window.len() < SAMPLE_LIMIT {
             self.window.push(frame);
         }
         self.window_parse += parse;
         for (pane, bytes) in self.panes.drain(..) {
-            let index = pane as usize;
-            if self.window_panes.len() <= index {
-                self.window_panes.resize(index + 1, 0);
+            if self.window_panes.len() < SAMPLE_LIMIT || self.window_panes.contains_key(&pane) {
+                *self.window_panes.entry(pane).or_default() += bytes;
             }
-            self.window_panes[index] += bytes;
         }
         let elapsed = now - start;
         if elapsed >= Duration::from_secs(1) {
@@ -256,7 +265,7 @@ impl Stats {
                 update_ms: mean(|f| f.update_ms),
                 draw_ms: mean(|f| f.draw_ms),
                 mb_per_s: bytes as f32 / 1e6 / seconds,
-                busiest_mb_per_s: panes.iter().copied().max().unwrap_or(0) as f32 / 1e6 / seconds,
+                busiest_mb_per_s: panes.values().copied().max().unwrap_or(0) as f32 / 1e6 / seconds,
                 parse_mb_per_s: if parse.is_zero() {
                     0.0
                 } else {
@@ -302,4 +311,39 @@ impl Stats {
 
 fn ms(duration: Duration) -> f32 {
     duration.as_secs_f32() * 1000.0
+}
+
+#[cfg(test)]
+mod retention_tests {
+    use super::*;
+    #[test]
+    fn hidden_echo_samples_and_sparse_pane_ids_do_not_accumulate() {
+        let mut stats = Stats::default();
+        for _ in 0..SAMPLE_LIMIT * 2 {
+            stats.echoed = Some(Instant::now());
+            stats.frame_done(Instant::now());
+        }
+        assert!(stats.window_latency.is_empty());
+        stats.shown = true;
+        stats.add_parse(u64::MAX, 42, Duration::ZERO);
+        stats.frame_done(Instant::now());
+        assert_eq!(stats.window_panes.len(), 1);
+        assert_eq!(stats.window_panes[&u64::MAX], 42);
+    }
+    #[test]
+    fn recording_and_unpresented_parse_events_have_finite_storage() {
+        let mut stats = Stats::default();
+        stats.record = true;
+        for _ in 0..SAMPLE_LIMIT + 10 {
+            stats.echoed = Some(Instant::now());
+            stats.frame_done(Instant::now());
+            stats.add_parse(1, 1, Duration::ZERO);
+        }
+        assert!(stats.frames.len() <= SAMPLE_LIMIT);
+        assert_eq!(stats.latencies.len(), SAMPLE_LIMIT);
+        for _ in 0..SAMPLE_LIMIT * 2 {
+            stats.add_parse(1, 1, Duration::ZERO);
+        }
+        assert_eq!(stats.panes.len(), SAMPLE_LIMIT);
+    }
 }

@@ -20,7 +20,6 @@ pub const GLYPH_ROWS: u32 = 1024;
 /// The standalone window is exactly this size and cannot be resized; the
 /// Grid draws the same sheet, anchored at the center of the screen.
 pub const SHEET_POINTS: [f32; 2] = [1200.0, 800.0];
-const BLINK: Duration = Duration::from_millis(530);
 const FLASH: Duration = Duration::from_millis(180);
 #[derive(Clone, Debug)]
 pub struct KeyIn {
@@ -63,6 +62,7 @@ pub struct Overlay {
     /// Local presentation bounds and input policy; never shared through presence.
     pub screen_rect: Option<Rect>,
     pub screen_watch: bool,
+    pub(crate) presentation: crate::presentation::Invalidation,
 }
 impl std::ops::Deref for Overlay {
     type Target = terminal_core::Application;
@@ -127,6 +127,7 @@ impl Overlay {
             control: None,
             screen_rect: None,
             screen_watch: false,
+            presentation: crate::presentation::Invalidation::default(),
         }
     }
     /// Mounts a supported local screen; unsupported resources keep the ordinary overlay.
@@ -536,8 +537,7 @@ impl Overlay {
         let zoomed = tab.zoomed;
         let pane_focused = self.core.focused;
         let now = Instant::now();
-        let blink_on =
-            (now.duration_since(self.core.typed).as_millis() / BLINK.as_millis()) % 2 == 0;
+        let blink_on = crate::presentation::caret_visible(now, self.core.typed);
         let copy_at = self.core.copy.as_ref().map(|c| (c.pane, c.cursor));
         let shown = self.shown();
         let fallback = self.fallback.get_or_insert_with(glyphs::Fallback::new);

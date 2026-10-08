@@ -88,7 +88,7 @@ const HELP: &[&str] = &[
 ];
 
 /// How loud a span is: the four whites of the ladder, and reversed text.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Tone {
     Loud,
     Present,
@@ -167,6 +167,14 @@ fn line(text: impl AsRef<str>, tone: Tone) -> Line {
         tone,
     }
 }
+
+/// Retained transcript entries, independently of the shell's bounded blocks.
+pub const MAX_ENTRIES: usize = 2048;
+pub const MAX_TRANSCRIPT_BYTES: usize = 4 * 1024 * 1024;
+pub const MAX_ENTRY_BYTES: usize = 64 * 1024;
+pub const MAX_HISTORY: usize = 512;
+pub const MAX_HISTORY_BYTES: usize = 2 * 1024 * 1024;
+pub const MAX_LATENCIES: usize = 8192;
 
 pub struct Paper {
     /// The sheet is the view; off, the panes and tabs are.
@@ -258,9 +266,75 @@ impl Default for Paper {
     }
 }
 
+impl Entry {
+    fn texts_mut(&mut self) -> Vec<&mut String> {
+        match self {
+            Self::Block(_) => Vec::new(),
+            Self::Ask { .. } => Vec::new(),
+            Self::Answer(text) | Self::Note(text) => vec![text],
+            Self::Proposal { .. } => Vec::new(),
+        }
+    }
+    fn bytes(&self) -> usize {
+        match self {
+            Self::Block(_) => 0,
+            Self::Ask { text, attached } => text.len() + attached.as_ref().map_or(0, String::len),
+            Self::Answer(text) | Self::Note(text) => text.len(),
+            Self::Proposal { key, command, .. } => key.len() + command.len(),
+        }
+    }
+}
+fn elide(text: &mut String, limit: usize) {
+    const MARKER: &str = "\n[later display text was not kept]";
+    if text.len() <= limit {
+        return;
+    }
+    let mut end = limit.saturating_sub(MARKER.len());
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    text.truncate(end);
+    text.push_str(MARKER);
+    text.shrink_to_fit();
+}
+
 impl Paper {
-    fn push(&mut self, entry: Entry) {
+    /// Changes to retained transcript content, independent of frame timing.
+    pub fn revision(&self) -> u64 {
+        self.revision
+    }
+    /// Bytes retained by transcript text; command output stays in the block owner.
+    pub fn retained_bytes(&self) -> usize {
+        self.entries.iter().map(Entry::bytes).sum()
+    }
+    fn remember(&mut self, text: String) {
+        self.history.push(text);
+        let mut bytes: usize = self.history.iter().map(String::len).sum();
+        let mut dropped = 0;
+        while self.history.len() - dropped > MAX_HISTORY || bytes > MAX_HISTORY_BYTES {
+            bytes -= self.history[dropped].len();
+            dropped += 1;
+        }
+        if dropped > 0 {
+            self.history.drain(..dropped);
+            self.browsing = self.browsing.and_then(|at| at.checked_sub(dropped));
+        }
+    }
+    fn push(&mut self, mut entry: Entry) {
+        for text in entry.texts_mut() {
+            elide(text, MAX_ENTRY_BYTES);
+        }
         self.entries.push(entry);
+        let mut bytes: usize = self.entries.iter().map(Entry::bytes).sum();
+        let mut dropped = 0;
+        while self.entries.len() - dropped > MAX_ENTRIES || bytes > MAX_TRANSCRIPT_BYTES {
+            bytes -= self.entries[dropped].bytes();
+            dropped += 1;
+        }
+        if dropped > 0 {
+            self.entries.drain(..dropped);
+            self.cache = None;
+        }
         self.revision += 1;
         self.scroll = 0;
     }
@@ -287,7 +361,7 @@ impl Paper {
     /// Records the time from the last edit to a presented frame.
     pub fn presented(&mut self) {
         if let Some(at) = self.typed_at.take()
-            && self.latencies.len() < 100_000
+            && self.latencies.len() < MAX_LATENCIES
         {
             self.latencies.push(at.elapsed().as_secs_f64() * 1000.0);
         }
@@ -800,7 +874,7 @@ impl Application {
         self.paper.cursor = 0;
         self.paper.browsing = None;
         if !line.is_empty() && self.paper.history.last() != Some(&line) {
-            self.paper.history.push(line.clone());
+            self.paper.remember(line.clone());
         }
         self.paper.typed_at = Some(Instant::now());
         line
@@ -2646,5 +2720,74 @@ fn entry_lines(entry: &Entry, pane: Option<&crate::application::Pane>, lines: &m
             lines.push(line(format!("NOTE: {text}"), Tone::Quiet));
             lines.push(line("", Tone::Quiet));
         }
+    }
+}
+
+#[cfg(test)]
+mod retention_tests {
+    use super::*;
+    #[test]
+    fn transcript_and_latency_retention_stays_bounded_and_keeps_recent_content() {
+        let mut paper = Paper::default();
+        for i in 0..MAX_ENTRIES * 3 {
+            paper.push(Entry::Note(format!("note {i}")));
+        }
+        assert_eq!(paper.entries.len(), MAX_ENTRIES);
+        assert_eq!(
+            paper.entries.last(),
+            Some(&Entry::Note(format!("note {}", MAX_ENTRIES * 3 - 1)))
+        );
+        for _ in 0..MAX_ENTRIES {
+            paper.push(Entry::Answer("界".repeat(MAX_ENTRY_BYTES)));
+        }
+        assert!(paper.retained_bytes() <= MAX_TRANSCRIPT_BYTES);
+        assert!(paper.entries.iter().all(|e| e.bytes() <= MAX_ENTRY_BYTES));
+        for _ in 0..MAX_LATENCIES + 4 {
+            paper.typed_at = Some(Instant::now());
+            paper.presented();
+        }
+        assert_eq!(paper.latencies.len(), MAX_LATENCIES);
+        assert!(paper.typed_at.is_none());
+        for i in 0..MAX_HISTORY * 4 {
+            paper.remember(format!("command {i}"));
+        }
+        assert_eq!(paper.history.len(), MAX_HISTORY);
+        assert_eq!(
+            paper.history.last().unwrap(),
+            &format!("command {}", MAX_HISTORY * 4 - 1)
+        );
+    }
+    #[test]
+    fn retention_preserves_complete_commands_questions_and_proposals() {
+        let mut paper = Paper::default();
+        let command = "printf unchanged ".repeat(8192);
+        for _ in 0..MAX_HISTORY {
+            paper.remember(command.clone());
+        }
+        assert!(paper.history.iter().map(String::len).sum::<usize>() <= MAX_HISTORY_BYTES);
+        assert!(paper.history.iter().all(|line| line == &command));
+        paper.input = "current edit".into();
+        paper.cursor = 3;
+        paper.browsing = Some(paper.history.len() - 1);
+        paper.remember(format!("{command}new"));
+        assert_eq!(paper.history[paper.browsing.unwrap()], command);
+        let ask = Entry::Ask {
+            text: command.clone(),
+            attached: Some(command.clone()),
+        };
+        let proposal = Entry::Proposal {
+            key: "identity".into(),
+            command,
+            verdict: Verdict::Pending,
+        };
+        paper.push(ask.clone());
+        paper.push(proposal.clone());
+        assert_eq!(&paper.entries[paper.entries.len() - 2..], &[ask, proposal]);
+        assert_eq!(paper.input, "current edit");
+        assert_eq!(paper.cursor, 3);
+        paper.push(Entry::Answer("x".repeat(MAX_ENTRY_BYTES * 2)));
+        assert!(
+            matches!(paper.entries.last(), Some(Entry::Answer(text)) if text.ends_with("[later display text was not kept]"))
+        );
     }
 }

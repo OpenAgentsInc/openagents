@@ -248,6 +248,7 @@ impl Sessions {
     }
     pub fn open(&self, program: &Program, rows: u16, cols: u16) -> Result<Session, String> {
         Ok(Session {
+            bytes: 0,
             vt: coder_vt::Terminal::new(rows.into(), cols.into(), SCROLLBACK),
             blocks: Blocks::default(),
             exited: None,
@@ -306,6 +307,7 @@ impl Sessions {
                 Event::Status(status) => session.status = Some(status),
                 Event::Output(data) => {
                     bytes += data.len() as u64;
+                    session.bytes = session.bytes.saturating_add(data.len() as u64);
                     session.vt.feed(&data);
                 }
                 Event::Gap => session.vt.mark("[output skipped]"),
@@ -333,6 +335,8 @@ impl Sessions {
 }
 
 pub struct Session {
+    /// Output bytes applied to the emulator, without retaining their contents.
+    pub bytes: u64,
     pub vt: coder_vt::Terminal,
     pub blocks: Blocks,
     pub exited: Option<String>,
