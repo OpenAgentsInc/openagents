@@ -504,8 +504,8 @@ fn repair_ready(before: &RepairDiagnostics, repair: &RepairDiagnostics) -> bool 
         && repair.current_complete
         && repair.current_backlog == 0
         && repair.current_processed == repair.current_targets
-        && repair.current_applied_vertices > 0
-        && repair.current_applied_vertices + repair.current_skipped == repair.current_targets
+        && repair.current_skipped == 0
+        && repair.current_applied_vertices == repair.current_targets
         && repair.last_completed_generation == repair.generation
         && repair.completed_generations > before.completed_generations
         && repair.applied_batches > before.applied_batches
@@ -673,18 +673,24 @@ mod tests {
             generation: 8,
             current_targets: 5,
             current_processed: 5,
-            current_skipped: 1,
-            current_applied_vertices: 4,
+            current_applied_vertices: 5,
             current_complete: true,
             last_completed_generation: 8,
             completed_generations: 3,
             applied_batches: 5,
-            delivered_vertices: 12,
+            delivered_vertices: 13,
             applied_static_vertices: 6,
-            applied_chunk_vertices: 6,
+            applied_chunk_vertices: 7,
             ..before.clone()
         };
         assert!(repair_ready(&before, &complete));
+        let mut skipped_target = complete.clone();
+        skipped_target.current_skipped = 1;
+        skipped_target.current_applied_vertices -= 1;
+        assert!(!repair_ready(&before, &skipped_target));
+        let mut missing_application = complete.clone();
+        missing_application.current_applied_vertices -= 1;
+        assert!(!repair_ready(&before, &missing_application));
         let mut fallback_only = complete.clone();
         fallback_only.current_targets = 0;
         fallback_only.current_processed = 0;
