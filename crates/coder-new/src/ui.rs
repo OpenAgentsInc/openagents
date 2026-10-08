@@ -87,11 +87,11 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     .min(usize::from(area.height.saturating_sub(6))) as u16;
     let composer_height = (draft.len() as u16).clamp(1, 6) + 2;
     let reserved = rail_height + 3;
-    let [header, body, _gap, composer, rail] = Layout::vertical([
+    let [header, body, composer, context, rail] = Layout::vertical([
         Constraint::Length(1),
         Constraint::Min(1),
-        Constraint::Length(1),
         Constraint::Length(composer_height.min(area.height.saturating_sub(reserved))),
+        Constraint::Length(1),
         Constraint::Length(rail_height),
     ])
     .areas(area);
@@ -146,6 +146,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
             None
         },
     );
+    context_view(frame, context, app);
     agent_rail(frame, rail, app);
     if app.model_picker.is_some() {
         models::render(frame, app);
@@ -344,34 +345,6 @@ fn header_view(frame: &mut Frame, area: Rect, app: &App) {
         None
     };
     let title_width = agent.map_or(0, |name| name.width() as u16);
-    let directory = app
-        .cwd
-        .as_ref()
-        .and_then(|path| path.file_name())
-        .and_then(|name| name.to_str())
-        .unwrap_or("openagents");
-    let branch = app.branch.as_deref().unwrap_or("main");
-    let context_width = area
-        .width
-        .saturating_sub(if agent.is_some() { title_width + 2 } else { 0 })
-        .min((directory.width() + 3 + branch.width()) as u16);
-    let context = Rect {
-        x: area.right().saturating_sub(context_width),
-        width: context_width,
-        ..area
-    };
-    let prefix_width = (3 + branch.width()) as u16;
-    let context_spans = vec![
-        span(
-            truncate(directory, context_width.saturating_sub(prefix_width)),
-            t::TEXT_PRIMARY,
-        ),
-        span(format!(" / {branch}"), t::GRAY),
-    ];
-    frame.render_widget(
-        Paragraph::new(Line::from(context_spans)).right_aligned(),
-        context,
-    );
     if let Some(agent) = agent {
         frame.render_widget(
             Paragraph::new(Span::styled(
@@ -386,6 +359,33 @@ fn header_view(frame: &mut Frame, area: Rect, app: &App) {
             },
         );
     }
+}
+
+fn context_view(frame: &mut Frame, area: Rect, app: &App) {
+    let directory = app
+        .cwd
+        .as_ref()
+        .and_then(|path| path.file_name())
+        .and_then(|name| name.to_str())
+        .unwrap_or("openagents");
+    let branch = app.branch.as_deref().unwrap_or("main");
+    let suffix = format!(" / {branch}");
+    let suffix_width = suffix.width().min(usize::from(u16::MAX)) as u16;
+    let spans = if suffix_width < area.width {
+        vec![
+            span(
+                truncate(directory, area.width - suffix_width),
+                t::TEXT_PRIMARY,
+            ),
+            span(suffix, t::GRAY),
+        ]
+    } else {
+        vec![span(
+            truncate(&format!("{directory}{suffix}"), area.width),
+            t::TEXT_PRIMARY,
+        )]
+    };
+    frame.render_widget(Paragraph::new(Line::from(spans)), area);
 }
 
 fn message_body(text: &str, width: u16) -> Vec<Line<'static>> {

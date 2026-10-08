@@ -666,21 +666,30 @@ fn header_and_rail_keep_compact_spacing_above_the_bottom_margin() {
         live.screen = target;
         let rendered = screen(&mut live, 110, 36);
         let header = rendered.lines().nth(1).unwrap();
-        assert!(header.trim_end().ends_with("openagents / main"));
+        if target == Screen::Conversation {
+            assert!(header.trim().is_empty());
+            let bottom = composer_rules(&rendered)[1].0;
+            assert_eq!(
+                rendered.lines().nth(bottom + 1).unwrap().trim(),
+                "openagents / main"
+            );
+        } else {
+            assert!(header.trim_end().ends_with("openagents / main"));
+        }
         assert!(!header.contains("live"));
     }
     let mut app = App::default();
     let rendered = screen(&mut app, 110, 36);
     let lines: Vec<_> = rendered.lines().collect();
-    assert!(lines[1].trim_end().ends_with("openagents / main"));
+    assert!(lines[1].trim().is_empty());
     assert!(!rendered.contains("UI preview"));
     assert!(!rendered.contains("Ctrl+C"));
     assert!(!rendered.contains("Enter preview"));
     let bottom = composer_rules(&rendered)[1].0;
     for (index, demo) in DEMOS.iter().enumerate() {
-        assert!(lines[bottom + 1 + index].starts_with(&format!("  ○ {}", demo.name)));
+        assert!(lines[bottom + 2 + index].starts_with(&format!("  ○ {}", demo.name)));
     }
-    assert_eq!(bottom + DEMOS.len(), lines.len() - 2);
+    assert_eq!(bottom + 1 + DEMOS.len(), lines.len() - 2);
     assert!(lines.last().unwrap().trim().is_empty());
     assert!(!rendered.contains("6 plugins"));
     assert!(!rendered.contains("24,000 sats"));
@@ -691,18 +700,16 @@ fn header_and_rail_keep_compact_spacing_above_the_bottom_margin() {
             let rendered = screen(&mut app, width, height);
             let lines: Vec<_> = rendered.lines().collect();
             let header = lines[1];
-            assert!(header.trim_end().ends_with("main"));
-            assert_eq!(header.trim_end().chars().count(), usize::from(width - 2));
+            let bottom = composer_rules(&rendered)[1].0;
+            assert!(lines[bottom + 1].starts_with("  openagents / main"));
+            assert!(!header.contains("openagents / main"));
             assert!(!rendered.contains("◆ Coder"));
             assert!(!rendered.contains("Demo conversation"));
-            if width >= 80 || selected.is_none() {
-                assert!(header.contains("openagents / main"));
-            }
             if let Some(index) = selected {
                 assert!(header.starts_with(&format!("  {}", DEMOS[index].name)));
                 assert!(lines[2].trim_start().starts_with("❯ "));
             } else {
-                assert_eq!(header.trim(), "openagents / main");
+                assert!(header.trim().is_empty());
             }
         }
     }
@@ -1017,4 +1024,26 @@ fn input_restarts_cursor_blink_without_restarting_visible_spinners_or_delegation
         screen(&mut app, 110, 70)
             .contains(&format!("{} Plugin palette-audit.colors.check", spinner(7)))
     );
+}
+
+#[test]
+fn repository_context_stays_below_multiline_input_and_truncates_on_resize() {
+    let mut app = App::default();
+    app.set_mode(coder_new::Mode::Live);
+    app.cwd = Some("/workspace/my-project".into());
+    app.branch = Some("feature/layout".into());
+    app.handle(Event::Paste("first\nsecond".into()));
+    for width in [110, 40, 24] {
+        let rendered = screen(&mut app, width, 24);
+        let bottom = composer_rules(&rendered)[1].0;
+        let context = rendered.lines().nth(bottom + 1).unwrap();
+        assert!(context.starts_with("  "));
+        assert!(context.contains(" / feature/layout"));
+        assert!(!transcript_text(&rendered).contains("my-project"));
+        if width >= 40 {
+            assert_eq!(context.trim(), "my-project / feature/layout");
+        } else {
+            assert!(context.contains('…'));
+        }
+    }
 }
