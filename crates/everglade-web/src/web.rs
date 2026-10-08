@@ -363,6 +363,10 @@ async fn run() -> Result<(), String> {
         status("Opening Everglade…");
         runtime.install_everglade_bytes_with_kit(&bytes, kit.as_deref())?;
     }
+    #[cfg(test)]
+    if query_has(&window, "light-proof") {
+        crate::light_proof::export(&runtime)?;
+    }
     // The page opens no studio panel, on a keyboard or a touchscreen.
     runtime.interact_hint = verse::runtime::InteractHint::None;
     drop(bytes);
