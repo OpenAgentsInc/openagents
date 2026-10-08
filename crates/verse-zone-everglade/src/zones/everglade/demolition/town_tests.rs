@@ -280,9 +280,12 @@ fn restoring_brings_every_building_back() {
 
 #[test]
 fn destruction_relights_standing_neighbors_and_ground_then_restores_the_exact_bake() {
-    use crate::pbr::textured::{Primitive, TexturedMesh, TexturedVertex};
+    use crate::pbr::textured::{
+        Detail, DetailGroup, Level, Primitive, TexturedMesh, TexturedVertex,
+    };
     use crate::pbr::textured_bake::decode;
     use glam::{DVec3, Mat4};
+    use std::collections::BTreeSet;
     let placements: Vec<_> = super::cottage::drafts()
         .into_iter()
         .filter(|d| d.building == 0)
@@ -291,6 +294,21 @@ fn destruction_relights_standing_neighbors_and_ground_then_restores_the_exact_ba
     let (mut world, _) = super::super::scene::build(pack(), &placements).unwrap();
     let ([x, z], _) = super::cottage::COTTAGES[0];
     let floor = height(x, z);
+    // Proxy levels share the intact fixture's mesh. Destruction must select
+    // the original pieces instead, including standing support neighbors.
+    let group = world.detail_groups.len() as u16;
+    world.detail_groups.push(DetailGroup {
+        anchor: [x, z],
+        switches: [40.0, 80.0],
+        fallback: 3,
+    });
+    for placement in &mut world.placements[..placements.len()] {
+        placement.detail = Detail::Group { group, level: 3 };
+    }
+    let proxy = world.placements[0];
+    for level in 0..3 {
+        world.place_detail(proxy.mesh, proxy.transform, Detail::Group { group, level });
+    }
     let mesh = world.add_mesh(TexturedMesh {
         primitives: vec![Primitive {
             vertices: [
@@ -306,7 +324,29 @@ fn destruction_relights_standing_neighbors_and_ground_then_restores_the_exact_ba
     });
     world.place(mesh, Mat4::IDENTITY);
     let world = Arc::new(world);
-    let count = world.merge().unwrap().vertices.len();
+    let merged = world.merge().unwrap();
+    let shown = || {
+        let eye = Vec3::new(x, floor + 2.0, z + 120.0);
+        let fallbacks = world.edits.group_fallbacks();
+        merged
+            .batches
+            .iter()
+            .filter_map(|batch| match batch.level {
+                Level::Group {
+                    group: g, level, ..
+                } if g == group
+                    && batch
+                        .level
+                        .drawn_with_fallback(batch.level.near(eye, None), &fallbacks) =>
+                {
+                    Some(level)
+                }
+                _ => None,
+            })
+            .collect::<BTreeSet<_>>()
+    };
+    assert_eq!(shown(), BTreeSet::from([2]));
+    let count = merged.vertices.len();
     let pristine = vec![[210, 180, 120, 255]; count];
     let lamps = vec![[20, 30, 40, 100]; count];
     world.baked.deliver_lights(pristine.clone());
@@ -314,6 +354,7 @@ fn destruction_relights_standing_neighbors_and_ground_then_restores_the_exact_ba
     assert_eq!(world.baked.take().unwrap(), pristine);
     assert_eq!(world.baked.take_lamps().unwrap(), lamps);
     let mut town = Town::standalone(pack(), &placements, world.clone()).unwrap();
+    assert!(!town.destruction_relighting());
     town.set_destruction_relighting(Some(Vec3::new(1.0, 1.0, 0.0)))
         .unwrap();
     let player = caster(Vec3::new(x, floor, z), 16.0);
@@ -338,6 +379,8 @@ fn destruction_relights_standing_neighbors_and_ground_then_restores_the_exact_ba
     let at = town.site().specs()[target].center;
     assert!(town.site_mut().damage(target, 10000, at, DVec3::ZERO));
     town.tick(0.0, &player);
+    assert_eq!(world.edits.group_fallbacks(), BTreeSet::from([group]));
+    assert_eq!(shown(), BTreeSet::from([3]));
     assert!(
         neighbors
             .iter()
@@ -404,6 +447,8 @@ fn destruction_relights_standing_neighbors_and_ground_then_restores_the_exact_ba
     world.baked.deliver_lights(pristine.clone());
     assert_eq!(world.baked.take().unwrap(), changed);
     town.restore();
+    assert!(world.edits.group_fallbacks().is_empty());
+    assert_eq!(shown(), BTreeSet::from([2]));
     assert_eq!(town.hidden(), 0);
     assert!(town.instances(None).is_none());
     assert_eq!(world.baked.take().unwrap(), pristine);

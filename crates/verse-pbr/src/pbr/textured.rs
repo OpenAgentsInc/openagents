@@ -2001,11 +2001,17 @@ mod tests {
         assert_eq!(slot.take_lamps().unwrap(), vec![lamps[0], [0; 4], lamps[2]]);
         assert!(slot.take().is_none() && slot.take_lamps().is_none());
         let later = vec![[220, 190, 100, 240]; 3];
+        let later_lamps = vec![[50, 60, 70, 120]; 3];
         slot.deliver_lights(later.clone());
+        slot.deliver_lamps(later_lamps.clone());
         assert_eq!(slot.take().unwrap(), vec![later[0], fallback, later[2]]);
+        assert_eq!(
+            slot.take_lamps().unwrap(),
+            vec![later_lamps[0], [0; 4], later_lamps[2]]
+        );
         slot.set_fallback(Vec::new());
         assert_eq!(slot.take().unwrap(), later);
-        assert_eq!(slot.take_lamps().unwrap(), lamps);
+        assert_eq!(slot.take_lamps().unwrap(), later_lamps);
         assert!(slot.take().is_none() && slot.take_lamps().is_none());
     }
 

@@ -1647,6 +1647,22 @@ mod tests {
     }
 
     #[test]
+    fn rebuild_capture_selects_pristine_pixels_before_the_primary_render() {
+        let mut args = Args::new(PathBuf::new());
+        args.video = None;
+        assert!(
+            !args
+                .select_frame(0, 240, 60.0, None, false, false)
+                .read_pixels(&args)
+        );
+        args.capture_rebuild = true;
+        let pristine = args.select_frame(0, 240, 60.0, None, false, false);
+        assert!(pristine.pristine && pristine.read_pixels(&args));
+        let next = args.select_frame(1, 240, 60.0, None, false, false);
+        assert!(!next.pristine && !next.read_pixels(&args));
+    }
+
+    #[test]
     fn video_legacy_and_temporal_policies_read_every_frame() {
         let mut args = Args::new(PathBuf::new());
         let no_artifact = args.select_frame(7, 240, 60.0, None, false, false);
