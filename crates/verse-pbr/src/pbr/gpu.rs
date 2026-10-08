@@ -506,6 +506,14 @@ struct Prepass {
     masked: wgpu::RenderPipeline,
 }
 
+struct StaticIndirect {
+    buffer: wgpu::Buffer,
+    runs: Vec<instanced::IndirectRun>,
+    cells: Vec<textured::Batch>,
+    /// Original batch index of each immutable command.
+    order: Vec<usize>,
+}
+
 struct RigidIndirect {
     buffer: wgpu::Buffer,
     runs: Vec<instanced::IndirectRun>,
@@ -538,6 +546,7 @@ pub struct TexturedGpu {
     rigid_meshes: Vec<Vec<textured::Batch>>,
     rendered_instances: instanced::RenderedInstances,
     rigid_indirect: Option<RigidIndirect>,
+    static_indirect: Option<StaticIndirect>,
     motion_draws: Vec<instanced::Draw>,
     /// The scene's index edits applied so far
     /// ([`textured::IndexEdits::revision`]); part of the static casters'
@@ -2562,6 +2571,37 @@ impl Photo {
         );
         let lamps = light_texture(device, "verse textured no lamps", 1, 1, 2);
         let light_group = self.light_group(device, &light, &lamps);
+        let static_indirect = (!figure
+            && !self.capability.gles
+            && device
+                .features()
+                .contains(wgpu::Features::INDIRECT_FIRST_INSTANCE))
+        .then(|| {
+            // Preserve the stable main-pass order, including coplanar winners.
+            let order: Vec<_> =
+                textured::draw_order(&prepared.items, &scene.materials, Vec3::ZERO, |_, _| true)
+                    .into_iter()
+                    .filter(|&i| {
+                        scene.materials[prepared.items[i].material].alpha.pass() != Pass::Blended
+                    })
+                    .collect();
+            let (commands, runs) = instanced::indirect_batches(&prepared.items, &order);
+            let bytes: &[u8] = if commands.is_empty() {
+                &[0; 20]
+            } else {
+                bytemuck::cast_slice(&commands)
+            };
+            StaticIndirect {
+                buffer: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("verse static indirect draws"),
+                    contents: bytes,
+                    usage: wgpu::BufferUsages::INDIRECT,
+                }),
+                runs,
+                cells: order.iter().map(|&i| prepared.items[i]).collect(),
+                order,
+            }
+        });
         let gpu = TexturedGpu {
             vertices: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("verse textured vertices"),
@@ -2592,6 +2632,7 @@ impl Photo {
             rigid_meshes: Vec::new(),
             rendered_instances: instanced::RenderedInstances::default(),
             rigid_indirect: None,
+            static_indirect,
             motion_draws: Vec::new(),
             edits: 0,
             near: vec![true; prepared.items.len()],
@@ -2657,6 +2698,50 @@ impl Photo {
         let Some(gpu) = textured else {
             return;
         };
+        if which != Pass::Blended
+            && let Some(indirect) = &gpu.static_indirect
+        {
+            let mut admitted = vec![false; gpu.batches.len()];
+            for &index in order {
+                admitted[index] = true;
+            }
+            let visible = instanced::visible_indirect_runs_by(
+                &indirect.cells,
+                &indirect.runs,
+                &|i, batch| {
+                    admitted[indirect.order[i]]
+                        && gpu.materials[batch.material].alpha.pass() == which
+                },
+            );
+            let mut sides = None;
+            let mut bound = None;
+            for run in visible {
+                let material = &gpu.materials[run.material];
+                if sides.is_none() {
+                    pass.set_vertex_buffer(0, gpu.vertices.slice(..));
+                    pass.set_vertex_buffer(1, gpu.instances.slice(..));
+                    pass.set_index_buffer(gpu.indices.slice(..), wgpu::IndexFormat::Uint32);
+                    pass.set_bind_group(3, &gpu.light_group, &[]);
+                }
+                if sides != Some(material.double_sided) {
+                    pass.set_pipeline(
+                        &pipelines[which as usize][usize::from(material.double_sided)],
+                    );
+                    sides = Some(material.double_sided);
+                }
+                if bound != Some(run.material) {
+                    pass.set_bind_group(2, &gpu.groups[run.material], &[]);
+                    bound = Some(run.material);
+                }
+                pass.multi_draw_indexed_indirect(
+                    &indirect.buffer,
+                    u64::from(run.first) * 20,
+                    run.count,
+                );
+                self.count_runs(u64::from(run.count), run.instances, run.triangles, true);
+            }
+            return;
+        }
         if which != Pass::Blended
             && order.len() == gpu.batches.len()
             && let Some(indirect) = &gpu.rigid_indirect
@@ -3342,11 +3427,25 @@ impl Photo {
             pass.set_vertex_buffer(0, gpu.vertices.slice(..));
             pass.set_vertex_buffer(1, gpu.instances.slice(..));
             pass.set_index_buffer(gpu.indices.slice(..), wgpu::IndexFormat::Uint32);
-            if k == 2
-                && let Some(indirect) = &gpu.rigid_indirect
-            {
-                let visible =
-                    instanced::visible_indirect_runs(&indirect.cells, &indirect.runs, keep);
+            let indirect = if k == 0 {
+                gpu.static_indirect.as_ref().map(|indirect| {
+                    let visible = instanced::visible_indirect_runs_by(
+                        &indirect.cells,
+                        &indirect.runs,
+                        &|i, batch| gpu.shown(indirect.order[i]) && keep(batch),
+                    );
+                    (&indirect.buffer, visible)
+                })
+            } else if k == 2 {
+                gpu.rigid_indirect.as_ref().map(|indirect| {
+                    let visible =
+                        instanced::visible_indirect_runs(&indirect.cells, &indirect.runs, keep);
+                    (&indirect.buffer, visible)
+                })
+            } else {
+                None
+            };
+            if let Some((buffer, visible)) = indirect {
                 for masked in [false, true] {
                     pass.set_pipeline(if masked {
                         masked_pipeline
@@ -3381,7 +3480,7 @@ impl Photo {
                             bound = Some(run.material);
                         }
                         pass.multi_draw_indexed_indirect(
-                            &indirect.buffer,
+                            buffer,
                             u64::from(run.first) * 20,
                             run.count,
                         );

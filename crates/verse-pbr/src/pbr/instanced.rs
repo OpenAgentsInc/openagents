@@ -784,33 +784,40 @@ pub(crate) fn visible_indirect_runs(
     runs: &[IndirectRun],
     keep: &dyn Fn(&Batch) -> bool,
 ) -> Vec<IndirectRun> {
-    let mut visible = Vec::new();
+    visible_indirect_runs_by(cells, runs, &|_, cell| keep(cell))
+}
+
+/// Applies per-command visibility without losing the immutable buffer offsets.
+pub(crate) fn visible_indirect_runs_by(
+    cells: &[Batch],
+    runs: &[IndirectRun],
+    keep: &dyn Fn(usize, &Batch) -> bool,
+) -> Vec<IndirectRun> {
+    let mut visible: Vec<IndirectRun> = Vec::new();
     for run in runs {
-        let end = run.first + run.count;
-        let mut first = run.first;
-        while first < end {
-            if !keep(&cells[first as usize]) {
-                first += 1;
+        for command in run.first..run.first + run.count {
+            let cell = &cells[command as usize];
+            if !keep(command as usize, cell) {
                 continue;
             }
-            let mut next = first;
-            let mut triangles = 0;
-            let mut instances = 0;
-            while next < end && keep(&cells[next as usize]) {
-                let cell = &cells[next as usize];
-                let copies = u64::from(cell.run.map_or(1, |r| r.count));
-                instances += copies;
-                triangles += u64::from(cell.count / 3) * copies;
-                next += 1;
+            let copies = u64::from(cell.run.map_or(1, |r| r.count));
+            let triangles = u64::from(cell.count / 3) * copies;
+            if let Some(last) = visible.last_mut()
+                && last.material == run.material
+                && last.first + last.count == command
+            {
+                last.count += 1;
+                last.instances += copies;
+                last.triangles += triangles;
+            } else {
+                visible.push(IndirectRun {
+                    material: run.material,
+                    first: command,
+                    count: 1,
+                    triangles,
+                    instances: copies,
+                });
             }
-            visible.push(IndirectRun {
-                material: run.material,
-                first,
-                count: next - first,
-                triangles,
-                instances,
-            });
-            first = next;
         }
     }
     visible
@@ -821,8 +828,31 @@ pub(crate) fn indirect_draws(
     items: &[Batch],
     order: &[usize],
 ) -> (Vec<wgpu::util::DrawIndexedIndirectArgs>, Vec<IndirectRun>) {
-    let draws = draws(items, order);
-    let mut commands = Vec::with_capacity(draws.len());
+    indirect_commands(items, draws(items, order))
+}
+
+/// Keeps each static cell separate until the current frame admits its LOD.
+/// Adjacent copies can have different detail groups or frustum visibility.
+pub(crate) fn indirect_batches(
+    items: &[Batch],
+    order: &[usize],
+) -> (Vec<wgpu::util::DrawIndexedIndirectArgs>, Vec<IndirectRun>) {
+    indirect_commands(
+        items,
+        order.iter().map(|&i| Draw {
+            item: i,
+            first: items[i].first,
+            count: items[i].count,
+            instances: items[i].run.unwrap_or(Run { first: 0, count: 1 }),
+        }),
+    )
+}
+
+fn indirect_commands(
+    items: &[Batch],
+    draws: impl IntoIterator<Item = Draw>,
+) -> (Vec<wgpu::util::DrawIndexedIndirectArgs>, Vec<IndirectRun>) {
+    let mut commands = Vec::new();
     let mut runs: Vec<IndirectRun> = Vec::new();
     for draw in draws {
         let material = items[draw.item].material;
@@ -890,6 +920,124 @@ mod tests {
             (2, 1, 12)
         );
         assert!(indirect_draws(&batches, &[]).0.is_empty());
+    }
+
+    #[test]
+    fn static_indirect_admission_matches_direct_draws_for_every_visibility_subset() {
+        let batch = |first, material, instance, copies| Batch {
+            first,
+            count: 3,
+            material,
+            min: Vec3::ZERO,
+            max: Vec3::ONE,
+            level: Level::Always,
+            run: Some(Run {
+                first: instance,
+                count: copies,
+            }),
+        };
+        let mut batches = [
+            batch(0, 0, 0, 2),
+            batch(0, 0, 2, 2),
+            batch(3, 1, 4, 1),
+            batch(6, 0, 5, 1),
+            batch(9, 2, 6, 1),
+            batch(12, 1, 7, 3),
+        ];
+        // Adjacent identical geometry has independent near/far admission.
+        batches[0].level = Level::Near {
+            anchor: [0.0; 2],
+            switch: 10.0,
+        };
+        batches[1].level = Level::Far {
+            anchor: [0.0; 2],
+            switch: 10.0,
+        };
+        let materials = [
+            TexturedMaterial::default(),
+            TexturedMaterial {
+                alpha: AlphaMode::Mask { cutoff: 0.5 },
+                ..Default::default()
+            },
+            TexturedMaterial {
+                alpha: AlphaMode::Blend,
+                ..Default::default()
+            },
+        ];
+        let order: Vec<_> = textured::draw_order(&batches, &materials, Vec3::ZERO, |_, _| true)
+            .into_iter()
+            .filter(|&i| materials[batches[i].material].alpha.pass() != textured::Pass::Blended)
+            .collect();
+        assert_eq!(order, [0, 1, 3, 2, 5]);
+        let (commands, runs) = indirect_batches(&batches, &order);
+        let cells: Vec<_> = order.iter().map(|&i| batches[i]).collect();
+        assert_eq!(
+            commands.len(),
+            order.len(),
+            "LOD cells must not merge before admission"
+        );
+        assert_eq!(commands[1].first_instance, 2);
+        assert!(commands.iter().all(|c| c.base_vertex == 0));
+        for mask in 0_u32..1 << batches.len() {
+            let selected: Vec<_> = order
+                .iter()
+                .copied()
+                .filter(|&i| mask & (1 << i) != 0)
+                .collect();
+            let direct = draws(&batches, &selected);
+            let visible =
+                visible_indirect_runs_by(&cells, &runs, &|i, _| mask & (1 << order[i]) != 0);
+            let direct_vertices: Vec<_> = direct
+                .iter()
+                .flat_map(|draw| {
+                    (draw.instances.first..draw.instances.first + draw.instances.count).flat_map(
+                        move |instance| {
+                            (draw.first..draw.first + draw.count)
+                                .map(move |index| (index, instance, batches[draw.item].material))
+                        },
+                    )
+                })
+                .collect();
+            let indirect_vertices: Vec<_> = visible
+                .iter()
+                .flat_map(|run| {
+                    commands[run.first as usize..(run.first + run.count) as usize]
+                        .iter()
+                        .flat_map(move |cmd| {
+                            (cmd.first_instance..cmd.first_instance + cmd.instance_count).flat_map(
+                                move |instance| {
+                                    (cmd.first_index..cmd.first_index + cmd.index_count)
+                                        .map(move |index| (index, instance, run.material))
+                                },
+                            )
+                        })
+                })
+                .collect();
+            assert_eq!(indirect_vertices, direct_vertices, "visibility mask {mask}");
+            assert_eq!(
+                visible.iter().map(|r| r.triangles).sum::<u64>(),
+                direct
+                    .iter()
+                    .map(|d| u64::from(d.count / 3) * u64::from(d.instances.count))
+                    .sum::<u64>()
+            );
+            assert_eq!(
+                visible.iter().map(|r| r.instances).sum::<u64>(),
+                direct
+                    .iter()
+                    .map(|d| u64::from(d.instances.count))
+                    .sum::<u64>()
+            );
+        }
+        for eye in [Vec3::ZERO, Vec3::X * 30.0] {
+            let visible = visible_indirect_runs_by(&cells, &runs, &|_, b| b.level.drawn_from(eye));
+            let admitted: Vec<_> = visible
+                .iter()
+                .flat_map(|r| r.first..r.first + r.count)
+                .collect();
+            assert_eq!(admitted.contains(&0), eye == Vec3::ZERO);
+            assert_eq!(admitted.contains(&1), eye != Vec3::ZERO);
+        }
     }
 
     #[test]
