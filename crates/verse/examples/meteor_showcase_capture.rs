@@ -60,6 +60,8 @@
 //! `VERSE_KIT_PACK` naming the licensed kit pack to draw it in place of its
 //! committed proxies.
 
+#![recursion_limit = "256"]
+
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
