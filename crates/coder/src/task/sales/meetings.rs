@@ -142,6 +142,10 @@ pub(super) struct Book {
     meetings: BTreeMap<String, Meeting>,
 }
 impl Book {
+    pub(super) fn meetings(&self) -> impl Iterator<Item = &Meeting> {
+        self.meetings.values()
+    }
+
     pub(super) fn check(&self) -> Result<()> {
         if self.slots.len() > MAX_SLOTS || self.meetings.len() > MAX_MEETINGS {
             return Err("meeting book exceeds its bound".into());

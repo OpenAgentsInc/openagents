@@ -837,6 +837,32 @@ same records that Paul's office panel and the leaderboard read.
 | Claims-check failures; certification pass rate | Whether the playbook and training work |
 | Affiliate sign-ups that activate and pay; partner introductions accepted | Whether referrals and partners bring buyers |
 
+### The floor report (REV-65, #10872)
+
+`openagents sales floor report|escalations|weekly-draft --root DIR
+--credential FILE` is Wendy's private view: one projection recomputed from
+the canonical books on every read, so a restart or a replayed command
+cannot change a count. It reads only under the sales owner's credential.
+
+- `report` counts leads by stage, active assignments, next actions due and
+  overdue, drafts by review state, outbox proposals, approvals, and distinct
+  sent attempts, replies, meetings by phase, certifications by state, and
+  unresolved incidents and replies. Delivery evidence stays apart from send
+  counts: delivered, hard bounce, failed, unknown, opt-out, and complaint are
+  separate, and `telemetry_absent` is set when messages were sent but no
+  delivery observation exists. Costs show list-price reservations, billed
+  amounts only when every reservation is settled (otherwise `unknown` with a
+  reason), and reservation cost per qualified lead. Missing enrichment is
+  listed under `gaps`, never counted as zero.
+- `escalations` lists open complaints, unsupported sent claims, suppression
+  breaches, authentication failures, a paused outbox, budget breaches,
+  injection or credential material in replies as `immediate`; hard bounces,
+  suspended certifications, unknown model usage, and ambiguous opt-outs as
+  `review`. Each row carries the exact record reference.
+- `weekly-draft` is Paul's aggregate for the owner over the trailing seven
+  days with lessons and proposed next actions. `published` is always
+  `false`; publication stays an owner decision through `sales review`.
+
 ## Costs
 
 List prices from the code, as

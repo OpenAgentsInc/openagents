@@ -13,6 +13,7 @@ pub mod agents;
 pub mod claims;
 pub mod email;
 pub mod expenses;
+pub mod floor;
 pub mod intake;
 pub mod meetings;
 pub mod outbox;
