@@ -1,0 +1,29 @@
+{
+  "source": "f9ad77960a",
+  "experiments": [
+    {
+      "name": "aligned",
+      "result": "failed validity threshold",
+      "gpu_valid_samples": 16,
+      "steady_frames": 96,
+      "files": {
+        "aligned-native.json.gz": "30bf93db6dd6e0b0419d1f4e11e03a7c4dda6431466ebf5cc795ca97c9a7bd75",
+        "aligned-run.log.gz": "a125c742999083664817a590f5d4a04398a8d911b989a762266202c1bc60fa66",
+        "aligned-quiet.json.gz": "152db43e8fdd70432f943b1e97d141c55386fee689ed732111683fd10241a793",
+        "aligned-gpu.json.gz": "013c032d16862015929a619d27a2371802ba915213f3ee8ebf07c9c03da94434"
+      }
+    },
+    {
+      "name": "separate",
+      "result": "failed validity threshold",
+      "gpu_valid_samples": 31,
+      "steady_frames": 96,
+      "files": {
+        "separate-native.json.gz": "c49f1af72a2ac9dee481a0d2c1ba7246d5058304cf6385feeb3e3b6e47f7024f",
+        "separate-run.log.gz": "744ac40ca6d5034d223b309f7224372a01d4bbc2d497e2386a24452eef801c6c",
+        "separate-quiet.json.gz": "0be3f8029d844fd94f46edf2d1ead8b6f4b5706213915afd4c64ad7270bc2da6",
+        "separate-gpu.json.gz": "332f6c8ff156ed2f9fd479e1a145a362546a79dcad1e67694c4852bbd0c8a712"
+      }
+    }
+  ]
+}
