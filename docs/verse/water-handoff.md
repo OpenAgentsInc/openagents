@@ -7,6 +7,16 @@ specification is [Water](water.md), and the coastal zone's is
 
 ## October 8 coordination checkpoint
 
+The coordinator resumes W11 directly and holds #10783. The branch is
+rebased on `7afd440fe8`. Candidate `0383832589` resolves only timestamp
+pairs for passes the frame actually wrote; omitted mirror and copy
+queries previously entered the resolve. Bounded `diagnostics` output
+retains the first 16 frames' raw counters. This correction is not yet
+verified; run focused checks and the native timing cases before accepting
+it. Cargo waits for the B2 website image build, keeping commands serial.
+
+The earlier checkpoint below remains historical evidence.
+
 W11 (#10783) remains open on the pushed branch
 [`codex/water-w11-measurement`](https://github.com/OpenAgentsInc/openagents/tree/codex/water-w11-measurement).
 Checkpoint `df50707aac` records the exact sources, measured cases,
