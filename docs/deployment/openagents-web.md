@@ -630,3 +630,32 @@ catalog and demo module is 5,689,644 bytes. The onboarding calls and outputs
 are fixtures; this demo performs no model or environment execution.
 
 Rollback: `gcloud run services update-traffic coder --region us-central1 --project openagentsgemini --to-revisions coder-web-demo-7bb5e9bccd-202610081448=100`.
+
+
+## Baked town layer delivery, October 8, 2026
+
+Revision `coder-web-b2-88cb5f7599-20261008174258` serves 100% of traffic.
+Cloud Build `b8bc150d-1be4-4e75-af79-e92713a5f3e4` produces image
+`openagents-web:b2-layers-88cb5f7599`, digest
+`sha256:310714646cd0f0f6c3ebd611f1231ff55635639c4b627393b8377ccc27818cb5`.
+It adds only the pinned 51,682,623-byte VLAY file to the preceding
+onboarding image `sha256:e3b2add25e9d435a0a36108341726e7c193a65f678c54056aa84427c85fc03ed`.
+The server and browser bundles retain source `88cb5f75996a05de9a8fe03a8c50a31e8b379a19`.
+This preserves the newer deployment while main advances, without another
+compile or bake. The spec retains the sidecar, VPC, runtime settings, and
+onboarding tag.
+
+The `new` tag receives no traffic until its complete layer download passes
+SHA-256 and size checks. Staging and production each return `200` for the
+layer file, both pinned packs, homepage, Everglade, demo, CSS, game JavaScript
+and Wasm, components, cloud, and stats; invalid layer names return `404`.
+Ten preceding production responses remain byte-identical. Native loading
+from an empty cache verifies and decodes the four sun layers and 4,326,184
+vertices. The layer digest is
+`14ae7f75e9ce4f81483f6f44369753545cb2cab892177607438b3077ebbbae23`.
+Route fix `a80bde9114` streams bounded chunks to avoid Cloud Run's buffered
+response limit; both focused route tests pass. The earlier buffered staging
+revision and superseded server image never receive production traffic.
+Evidence remains in operator scratch under `b2-verification/layers-overlay/`.
+
+Rollback: `gcloud run services update-traffic coder --region us-central1 --project openagentsgemini --to-revisions coder-web-onboarding-88cb5f7599-20261008172714=100`.
