@@ -1,0 +1,16 @@
+{
+  "schema": "openagents.native-terminal.verification.v1",
+  "issue": 10909,
+  "tested_source_commit": "f7dc14ac4fbedaedd4c6e2a9ea78c86ee2a37363",
+  "test_executable_sha256": "65670c7113f3ec9e7693b5f133318c66847e8643bbd90f2c804bce7330f83129",
+  "profile": "release",
+  "checks": [
+    "leased cargo fmt -p terminal-core -p terminal-gfx -p terminal-app",
+    "leased cargo test -p terminal-core --lib retention_tests: 4 passed",
+    "leased cargo test -p terminal-gfx --lib presentation::tests: 4 passed",
+    "leased cargo test --release -p terminal-app --bin openagents-terminal native_idle_and_busy_retention_soak --no-run",
+    "compiled release harness: 60-second pilot, 240-second pilot, and full 3600-second soak passed"
+  ],
+  "rss_scope": "30-second process RSS samples and phase-end samples, not a continuous maximum",
+  "render_scope": "Shared production native Painter and Overlay with isolated PTY; raster only, offscreen. Physical WindowServer verification remains in NEEDS_OWNER.md."
+}

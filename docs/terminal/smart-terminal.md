@@ -834,3 +834,17 @@ under `openagents lease quiet --class soak`. Set `TERMINAL_SOAK_OUT` to a JSON
 path under `openagents scratch`. `TERMINAL_SOAK_SECONDS` supports a shorter
 harness check; only the default 3,600-second run satisfies the soak acceptance.
 The test opens no window. Physical display verification is in `NEEDS_OWNER.md`.
+
+The [2026-10-08 verification](verification/2026-10-08-native-retention/verification.json)
+tested source `f7dc14ac4fbedaedd4c6e2a9ea78c86ee2a37363` in release mode on
+Apple M5 Max with Metal. The [full-hour report](verification/2026-10-08-native-retention/one-hour.json)
+records 30 idle minutes with zero submissions and 0.161% process CPU, followed
+by 30 busy minutes with 27,609 commands, 612.94 MB of parsed output, 860
+key-echo interaction cycles, and 12.069% process CPU. The peak RSS sampled
+every 30 seconds was 169.66 MiB, with 118.52 MiB growth after warm-up; final
+busy RSS was 161.33 MiB. Transcript, history, frame, and sheet latency counts
+settled at 2,048, 512, 8,192, and 8,192. The last periodic sample retained
+5,000 scrollback lines, 256 shell blocks, a 64 KiB atlas, a 1 MiB vertex
+buffer, and two GPU submissions. Both shorter harness checks passed and
+remain labeled as pilots. These results verify this workload's bounded
+owners; the lost pre-reboot 20 GB process was not independently diagnosed.
