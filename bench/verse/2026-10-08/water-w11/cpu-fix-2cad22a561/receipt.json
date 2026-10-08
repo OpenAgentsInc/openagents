@@ -1,0 +1,416 @@
+[
+  {
+    "file": "native-high-open-storm-gpu.json.gz",
+    "sha256": "89963846661d0572b5d2c55ce9e6275f1a2263eac8f39cc50a009c2625a57c34",
+    "bytes": 466,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/high-open-storm/gpu.json"
+  },
+  {
+    "file": "native-high-open-storm-native.json.gz",
+    "sha256": "8db62226b8a08ebea9fe67cd0936d6691807556f0475d3bce93921b3484fae54",
+    "bytes": 297799,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/high-open-storm/native.json"
+  },
+  {
+    "file": "native-high-open-storm-quiet.json.gz",
+    "sha256": "877fe19693e7a5a82acc844863be3a21bac2c6f2f95959c6bc3558461fe7cac0",
+    "bytes": 465,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/high-open-storm/quiet.json"
+  },
+  {
+    "file": "native-high-open-storm-run.log.gz",
+    "sha256": "b3321a27bb2255f93833218de83002fce85813f5e8183f1ea3260cad92c02745",
+    "bytes": 3247,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/high-open-storm/run.log"
+  },
+  {
+    "file": "native-high-pond-noon-gpu.json.gz",
+    "sha256": "0f1d065a20e2d7ad8ff8ce8f0cbebc79f1831846b58b6c2ba03d332e90e356f4",
+    "bytes": 466,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/high-pond-noon/gpu.json"
+  },
+  {
+    "file": "native-high-pond-noon-native.json.gz",
+    "sha256": "7e4450f8383a747a10db83e03f37bb3fcde6e1da5124c2b6c074fc3c0002ad80",
+    "bytes": 285147,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/high-pond-noon/native.json"
+  },
+  {
+    "file": "native-high-pond-noon-quiet.json.gz",
+    "sha256": "ca77867a3f538017ba02a6670111a683c347cdc1f56e6512f70c2385e8a0607c",
+    "bytes": 465,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/high-pond-noon/quiet.json"
+  },
+  {
+    "file": "native-high-pond-noon-run.log.gz",
+    "sha256": "0123da198773665d6d3057e3abd329a84653878779490e50b872f4a4768cc2bf",
+    "bytes": 3823,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/high-pond-noon/run.log"
+  },
+  {
+    "file": "native-high-pond-posts-gpu.json.gz",
+    "sha256": "7dbf2874ff4ed00f0b65826587a9660947af0c86e16fe5c578c0493884a1d5ea",
+    "bytes": 466,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/high-pond-posts/gpu.json"
+  },
+  {
+    "file": "native-high-pond-posts-native.json.gz",
+    "sha256": "6dfa38462f343406b96994013705c89ee951e6fe9b513e89e1e4525aec355a42",
+    "bytes": 285819,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/high-pond-posts/native.json"
+  },
+  {
+    "file": "native-high-pond-posts-quiet.json.gz",
+    "sha256": "b1fdd508b4219e5ff5321501316b8c58f715c724a8b11af522432a9880813f70",
+    "bytes": 465,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/high-pond-posts/quiet.json"
+  },
+  {
+    "file": "native-high-pond-posts-run.log.gz",
+    "sha256": "c641e2dad806c4edc3ee683147f7675824c243b885ed4ccdbebac6c0dab37756",
+    "bytes": 3823,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/high-pond-posts/run.log"
+  },
+  {
+    "file": "native-high-under-gpu.json.gz",
+    "sha256": "ae4129f2b034739084ff63717bca242a8550ca6d5617e7548e0c81f0c7616542",
+    "bytes": 466,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/high-under/gpu.json"
+  },
+  {
+    "file": "native-high-under-native.json.gz",
+    "sha256": "37dda63a59571910b47859600a2924570692ac511685890e7b133275ee10ed8a",
+    "bytes": 284934,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/high-under/native.json"
+  },
+  {
+    "file": "native-high-under-quiet.json.gz",
+    "sha256": "7e48c890d8b725670d506d4cf07b064015438babdeff04a99a22075fe52fc97f",
+    "bytes": 465,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/high-under/quiet.json"
+  },
+  {
+    "file": "native-high-under-run.log.gz",
+    "sha256": "86c81ba7350d8a24c9bdc85624e4919269f9092c0fc8d3a1a27bd75a297e6c16",
+    "bytes": 3247,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/high-under/run.log"
+  },
+  {
+    "file": "native-high-waterline-gpu.json.gz",
+    "sha256": "0eaf4316aef5abf84619e29c72e8e976df0141c3a96bc61669277659ca529643",
+    "bytes": 466,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/high-waterline/gpu.json"
+  },
+  {
+    "file": "native-high-waterline-native.json.gz",
+    "sha256": "1b3ed51aa3dfbbc92cadb2ca69164d5bc7cb9371db0695699e66e350dffffc81",
+    "bytes": 284450,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/high-waterline/native.json"
+  },
+  {
+    "file": "native-high-waterline-quiet.json.gz",
+    "sha256": "a8dc393eabd463b030b04f9f35736969041408497a6ca541001949ea2e0ed1ca",
+    "bytes": 465,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/high-waterline/quiet.json"
+  },
+  {
+    "file": "native-high-waterline-run.log.gz",
+    "sha256": "c8cdac7652d07012a5a45fd2919b294ab845cf913edcbbae8f46945612796806",
+    "bytes": 3247,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/high-waterline/run.log"
+  },
+  {
+    "file": "native-low-open-storm-gpu.json.gz",
+    "sha256": "ab762a3e68daf961467953d90ea6daa7de758a19ef14d485435ae82fe95567b5",
+    "bytes": 466,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/low-open-storm/gpu.json"
+  },
+  {
+    "file": "native-low-open-storm-native.json.gz",
+    "sha256": "9f00050935f00081949a687204949a6a5fdbfe44fda9bddb0e1bf053cfa9cc31",
+    "bytes": 297776,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/low-open-storm/native.json"
+  },
+  {
+    "file": "native-low-open-storm-quiet.json.gz",
+    "sha256": "99772b66f98e2e3f88d54bc226523785a4540f1b639b9a2749ea4cb0b936ed32",
+    "bytes": 465,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/low-open-storm/quiet.json"
+  },
+  {
+    "file": "native-low-open-storm-run.log.gz",
+    "sha256": "d1b59e90c704215e15181564c8eaeed96dcf3539827469b24e8f604c7baea368",
+    "bytes": 2671,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/low-open-storm/run.log"
+  },
+  {
+    "file": "native-low-pond-noon-gpu.json.gz",
+    "sha256": "d6bd0dcce401f25191d96a52862635fd8ea985cbb0297e3811bd83a4d5432fb0",
+    "bytes": 466,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/low-pond-noon/gpu.json"
+  },
+  {
+    "file": "native-low-pond-noon-native.json.gz",
+    "sha256": "88cf1e34d2366cdd665e79fbcc809cc6f70d9395dd6abd5877944d7d9c7d4531",
+    "bytes": 281952,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/low-pond-noon/native.json"
+  },
+  {
+    "file": "native-low-pond-noon-quiet.json.gz",
+    "sha256": "1959eac8a7e2090292011aa21e65779c667da9d75c25c3dfcf45f260eee232b5",
+    "bytes": 465,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/low-pond-noon/quiet.json"
+  },
+  {
+    "file": "native-low-pond-noon-run.log.gz",
+    "sha256": "e7cc53524ee4dc011e72c5015134a8ebb9d5b7fdc0ba4ce549ced0f02a88e20f",
+    "bytes": 2671,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/low-pond-noon/run.log"
+  },
+  {
+    "file": "native-low-pond-posts-gpu.json.gz",
+    "sha256": "8de0d48157b8a5dfcd17a188441f96acc34c500b30092cf25a87008fc8b5e5d7",
+    "bytes": 466,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/low-pond-posts/gpu.json"
+  },
+  {
+    "file": "native-low-pond-posts-native.json.gz",
+    "sha256": "7559c46994dea46b7dea99ff20e9c23f781119eb8ada81b389afe59e85ab16b3",
+    "bytes": 282142,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/low-pond-posts/native.json"
+  },
+  {
+    "file": "native-low-pond-posts-quiet.json.gz",
+    "sha256": "7eec0ef6960d3140d4a64aed16a2f1bac6a1a069baa93f7fad09646ff9f31a67",
+    "bytes": 465,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/low-pond-posts/quiet.json"
+  },
+  {
+    "file": "native-low-pond-posts-run.log.gz",
+    "sha256": "54eef3529de860540c7055a2a5aa08ed12bd2ae7f2347df8c8112fffdbd9f833",
+    "bytes": 2671,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/low-pond-posts/run.log"
+  },
+  {
+    "file": "native-low-under-gpu.json.gz",
+    "sha256": "c1309f16b362dcf7ac870274b10a1cdd745137fca5c8a2adeebb109aeed0a3db",
+    "bytes": 466,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/low-under/gpu.json"
+  },
+  {
+    "file": "native-low-under-native.json.gz",
+    "sha256": "cb636a3e515154172dfa7da6b9678166e1061a335180214fff8f07b22e0003a9",
+    "bytes": 282374,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/low-under/native.json"
+  },
+  {
+    "file": "native-low-under-quiet.json.gz",
+    "sha256": "b5a0bf1f8034919daea76ff1e27adca529e3bce5ca478df33443e2bac89537ba",
+    "bytes": 465,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/low-under/quiet.json"
+  },
+  {
+    "file": "native-low-under-run.log.gz",
+    "sha256": "991832a13aa0f94dc66e514011da17ba60fc99b99160016851051daead57f326",
+    "bytes": 2671,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/low-under/run.log"
+  },
+  {
+    "file": "native-low-waterline-gpu.json.gz",
+    "sha256": "6c02a9a252e51c2c3348e59e44a09c06d8660c4b27d7f3a3af622538bf202807",
+    "bytes": 466,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/low-waterline/gpu.json"
+  },
+  {
+    "file": "native-low-waterline-native.json.gz",
+    "sha256": "443f6d682853e0e4315edf51a46596fec2b151d77c012b4d09caf26e888bfb33",
+    "bytes": 282405,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/low-waterline/native.json"
+  },
+  {
+    "file": "native-low-waterline-quiet.json.gz",
+    "sha256": "72983bcdd8b62477cde7c839d7ef638e859e1fa6cacfdb88b294b1d0d4f33950",
+    "bytes": 465,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/low-waterline/quiet.json"
+  },
+  {
+    "file": "native-low-waterline-run.log.gz",
+    "sha256": "d45eee156f713cc08bc05c805c2c7fdeed7886d2feba5282d413074742abbac0",
+    "bytes": 2671,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/low-waterline/run.log"
+  },
+  {
+    "file": "native-medium-open-storm-gpu.json.gz",
+    "sha256": "4a6bdcbd1c65780b51012073d6f767cf75415b42fbde8f1b841ffccc0b7f16c1",
+    "bytes": 466,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/medium-open-storm/gpu.json"
+  },
+  {
+    "file": "native-medium-open-storm-native.json.gz",
+    "sha256": "23708a130d9de0e206c3fa8bb835be362f4fb1341b2a1c66458da12d3cbf5cc9",
+    "bytes": 298784,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/medium-open-storm/native.json"
+  },
+  {
+    "file": "native-medium-open-storm-quiet.json.gz",
+    "sha256": "830ef24f31a41074bd89c2f7e9f3b0c5b9d4e6689c5f32d70f66f4e3325c62d1",
+    "bytes": 465,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/medium-open-storm/quiet.json"
+  },
+  {
+    "file": "native-medium-open-storm-run.log.gz",
+    "sha256": "618c5e3544ac34cb927003c58870c317722d8b7e9730b0b5c54ddc1600229e54",
+    "bytes": 3247,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/medium-open-storm/run.log"
+  },
+  {
+    "file": "native-medium-pond-noon-gpu.json.gz",
+    "sha256": "9fbd6c93c7c3c8c3e43f728e3d794f2c6d839a3624420e793f58486053e144f3",
+    "bytes": 466,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/medium-pond-noon/gpu.json"
+  },
+  {
+    "file": "native-medium-pond-noon-native.json.gz",
+    "sha256": "5e9ef1e492c0f26aedb7592eec5a3e88ba2f738ac5836650af3c49a2bdc90be7",
+    "bytes": 285618,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/medium-pond-noon/native.json"
+  },
+  {
+    "file": "native-medium-pond-noon-quiet.json.gz",
+    "sha256": "10321fc05a3519f850ace893580fe98f2dfc94d70fd97a3522cb424b0ce3854d",
+    "bytes": 465,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/medium-pond-noon/quiet.json"
+  },
+  {
+    "file": "native-medium-pond-noon-run.log.gz",
+    "sha256": "44bc41d982b21c3fd9e0a14b8f9b28dfa7374618bb9ebb90a1ab30b1a474b2c7",
+    "bytes": 3823,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/medium-pond-noon/run.log"
+  },
+  {
+    "file": "native-medium-pond-posts-gpu.json.gz",
+    "sha256": "ce27328d7b37c4c4d2d2809650df3b100f70a8932c8a9ebca014a46b9becccc2",
+    "bytes": 466,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/medium-pond-posts/gpu.json"
+  },
+  {
+    "file": "native-medium-pond-posts-native.json.gz",
+    "sha256": "2e01bb5ce475df7102293ed223773b14061f13104ae0643db33b5afc914138a0",
+    "bytes": 285348,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/medium-pond-posts/native.json"
+  },
+  {
+    "file": "native-medium-pond-posts-quiet.json.gz",
+    "sha256": "d90a36ce9b847ce21ab05e78acd1c7ef2c28e86acf24014679002762f6da06c3",
+    "bytes": 465,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/medium-pond-posts/quiet.json"
+  },
+  {
+    "file": "native-medium-pond-posts-run.log.gz",
+    "sha256": "2a6ccc8aaeb5699cfb96989c45bb95b525c5700973e5ba48dcbd34582458d999",
+    "bytes": 3823,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/medium-pond-posts/run.log"
+  },
+  {
+    "file": "native-medium-under-gpu.json.gz",
+    "sha256": "57c194ada70f9659ff30184f24ff053fba7f755e1a0d8d6a4d83805cf3197885",
+    "bytes": 466,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/medium-under/gpu.json"
+  },
+  {
+    "file": "native-medium-under-native.json.gz",
+    "sha256": "da180e62595083799996ad7e3bf336453144dc7eb5b43d06aebedd6d1f4388e4",
+    "bytes": 284962,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/medium-under/native.json"
+  },
+  {
+    "file": "native-medium-under-quiet.json.gz",
+    "sha256": "39d258735abf8e8098c83cefc0a5d1e4cdeb33af56de75e6f0967b6b91e012f7",
+    "bytes": 465,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/medium-under/quiet.json"
+  },
+  {
+    "file": "native-medium-under-run.log.gz",
+    "sha256": "b2731243930d74ac2e6e82fc65fa80a6414f6f6e1a8ad1db5d7fd991e16e716f",
+    "bytes": 3247,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/medium-under/run.log"
+  },
+  {
+    "file": "native-medium-waterline-gpu.json.gz",
+    "sha256": "64ad90a1c4d5db1162493c5d20368657d6d4986c525f4c21bb5206f21de8a72d",
+    "bytes": 466,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/medium-waterline/gpu.json"
+  },
+  {
+    "file": "native-medium-waterline-native.json.gz",
+    "sha256": "d6fa67ef57009cc37b9ef60ed5adbeefc4eddcc9a40975637daac8bbf91e4445",
+    "bytes": 284928,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/medium-waterline/native.json"
+  },
+  {
+    "file": "native-medium-waterline-quiet.json.gz",
+    "sha256": "6dc6df3e0245227773c960830b677ee2ef1b8eb6196562e34f8def1b50224ef5",
+    "bytes": 465,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/medium-waterline/quiet.json"
+  },
+  {
+    "file": "native-medium-waterline-run.log.gz",
+    "sha256": "a7696a049263c90f3c67f4799feb6d38e9604277c59746da831263978ecffc97",
+    "bytes": 3247,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-cpu-fix/medium-waterline/run.log"
+  },
+  {
+    "file": "browser-browser.json.gz",
+    "sha256": "882d0ab06063fe54c1d0eef2e56dfe53e8f88c73facfe31005118353960fb60e",
+    "bytes": 3304326,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-wasm-cba15c8423/browser/browser.json"
+  },
+  {
+    "file": "browser-harness.json.gz",
+    "sha256": "0ddda2a68f375cab0ad889a2dd1e654c37a5963b45c710020b2a8b42263b2563",
+    "bytes": 203,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-wasm-cba15c8423/browser/harness.json"
+  },
+  {
+    "file": "browser-receipt.json.gz",
+    "sha256": "72c53395b8fd05e0770e676001ac55c18ba68164b8744bd304e82293c0e316f7",
+    "bytes": 609,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-wasm-cba15c8423/browser/receipt.json"
+  },
+  {
+    "file": "browser-stderr.log.gz",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "bytes": 0,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-wasm-cba15c8423/browser/stderr.log"
+  },
+  {
+    "file": "browser-stdout.log.gz",
+    "sha256": "96d272950573f3789aa7a789e6327df064194a626c4066e70d6e0025cc5213f3",
+    "bytes": 1662,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-wasm-cba15c8423/browser/stdout.log"
+  },
+  {
+    "file": "mac-rejected-gpu.json.gz",
+    "sha256": "dd4deef706dce8d06005b7dbd307a211c096bc818e7366d96e0d3ae124fe3b94",
+    "bytes": 492,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-mac-cpu-fix/low-pond-posts/gpu.json"
+  },
+  {
+    "file": "mac-rejected-native.json.gz",
+    "sha256": "2100dfddaf9b068b01574a24cf4edfc4ac7e3bf3f58a19ccc14ef4f729b13a2b",
+    "bytes": 237908,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-mac-cpu-fix/low-pond-posts/native.json"
+  },
+  {
+    "file": "mac-rejected-quiet.json.gz",
+    "sha256": "ebaa6b47d1a4279097d7b2a72c59a3e18667278211a4ab99498ce5071eaf4277",
+    "bytes": 496,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-mac-cpu-fix/low-pond-posts/quiet.json"
+  },
+  {
+    "file": "mac-rejected-run.log.gz",
+    "sha256": "e1759b24a23cb599ca40028d324d348eac3812fa5f84720dd8e1b04a1e97cd71",
+    "bytes": 2855,
+    "source": "/Users/christopherdavid/.openagents/scratch/codex-01a119ab-cb4c-7331-b0dc-8ddce4fb09a0/w11-mac-cpu-fix/low-pond-posts/run.log"
+  }
+]

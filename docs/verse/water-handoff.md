@@ -26,9 +26,13 @@ samples. Evidence is in
 The High pond cases still spend about 3.4 ms of main-thread CPU after
 reducing cadence. Candidate `2cad22a561` skips the kernel for exactly empty
 ripple fields while retaining their clock phase, and caches spectrum
-integrals independently of time and swell gain. Its regression tests and
-new measurements are pending; the website build retains the single Cargo
-slot. No W11 changes have landed on main yet.
+integrals independently of time and swell gain. Its 57 focused tests and all 15 RTX 4080 cases pass, each with 96 valid
+GPU samples. The eight browser cases at `cba15c8423` also pass. Evidence is
+in [`cpu-fix-2cad22a561`](../../bench/verse/2026-10-08/water-w11/cpu-fix-2cad22a561/README.md).
+The Mac Low pond-posts case fails sample validity: surface end counters
+are stale. A distinct aligned resolve-region experiment is unverified in
+`water/timing.rs`; do not treat it as a fix yet. No W11 changes have landed
+on main. Budget calibration and a normal production WASM deploy remain.
 
 The earlier checkpoint below remains historical evidence.
 
