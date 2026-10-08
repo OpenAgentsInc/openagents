@@ -1190,16 +1190,19 @@ Spells interact through the same two layers:
 
 ## Budgets per tier
 
-These are targets to measure in the measurement phase, not results. A
-budget overrun draws less, never fails, as `quality::Overrun` does today.
+The October 8, 2026 calibration uses 15 fixed 1080p views each on an Apple
+M5 Max (Metal) and RTX 4080 (Vulkan), with 96 valid steady GPU samples per
+view. A sustained overrun removes optional effects and reduces visual
+update frequency; authoritative water continues. These are admission caps,
+not a promise that every device or view stays below them.
 
 | Budget | Low | Medium | High |
 | --- | --- | --- | --- |
-| GPU time for water, 1080p equivalent | ≤ 1.5 ms | ≤ 2.5 ms | ≤ 4 ms |
+| GPU time for water, 1080p equivalent | ≤ 3.5 ms | ≤ 3.5 ms | ≤ 4 ms |
 | Extra passes | None | Resolve copy, half-resolution mirror | Resolve copy, mirror, SSR |
-| GPU memory for water | ≤ 8 MiB | ≤ 32 MiB | ≤ 96 MiB |
+| GPU memory for water | ≤ 8 MiB | ≤ 32 MiB | ≤ 64 MiB |
 | Main-thread CPU for water per frame | ≤ 0.3 ms | ≤ 0.5 ms | ≤ 0.8 ms |
-| Worker CPU for FFT and fields | ≤ 0.5 ms | ≤ 1 ms | ≤ 2 ms |
+| Worker CPU for FFT and fields | ≤ 0.5 ms | ≤ 1 ms | ≤ 2.5 ms |
 | Buoyant bodies simulated (host) | 32 | 64 | 128 |
 | Cosmetic floating chunks | 32 | 64 | 256 |
 | Ripple and wake sources per frame | 8 | 16 | 32 |
@@ -1207,6 +1210,34 @@ budget overrun draws less, never fails, as `quality::Overrun` does today.
 | Rain streak and splash particles (W9, beside the water fx) | 64 | 320 | 640 |
 | Rain drops written to the ripple field per frame (W9) | 2 | 4 | 8 |
 | Bodies in the shader's caustic and underwater list | 4 | 8 | 8 |
+
+Measured maxima of the per-view means, before changing the admission caps:
+
+| Device and metric | Low | Medium | High |
+| --- | --- | --- | --- |
+| M5 Max GPU, ms | 2.132 | 2.238 | 3.222 |
+| RTX 4080 GPU, ms | 3.041 | 2.837 | 2.494 |
+| M5 Max main-thread CPU, ms | 0.114 | 0.218 | 0.443 |
+| RTX 4080 main-thread CPU, ms | 0.102 | 0.113 | 0.338 |
+| M5 Max worker CPU per frame, ms | 0.023 | 0.176 | 1.095 |
+| RTX 4080 worker CPU per frame, ms | 0.108 | 0.168 | 1.846 |
+| Resident GPU memory, MiB | 2.206 | 27.518 | 46.886 |
+
+The GPU caps round the largest observed tier mean plus 10% upward to a
+half millisecond. High keeps its preceding 4 ms cap. Main-thread caps stay
+unchanged; High worker admission adds headroom above the earlier 2.180 ms
+RTX storm run. High residency drops to 64 MiB, above the measured 46.886 MiB.
+These measurements include policy reductions; they do not establish the
+cost of every effect enabled together. The original-cap overruns and their
+visible reduced-water frames remain in the record. Timestamp passes include
+instrumentation overhead and omit shared opaque underwater shading and
+implicit texture uploads. Browser elapsed CPU measurements and unavailable
+WebGL2 timestamps are reported separately, never as native thread CPU or
+zero GPU time.
+
+Records: `bench/verse/2026-10-08/water-w11/metal-deferred-f176dfa0c8/`
+and `vulkan-deferred-f176dfa0c8/`. Physical phone measurements remain owner
+steps in `NEEDS_OWNER.md`.
 
 The physics budget stays inside the existing 1 ms per 120 Hz step on the
 slowest supported phone: buoyancy is a handful of plane clips per body.
