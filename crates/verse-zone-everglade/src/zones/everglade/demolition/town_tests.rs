@@ -370,15 +370,7 @@ fn destruction_relights_standing_neighbors_and_ground_then_restores_the_exact_ba
         .site()
         .specs()
         .iter()
-        .position(|s| {
-            matches!(
-                s.role,
-                Role::Wall {
-                    story: 0,
-                    ..
-                }
-            )
-        })
+        .position(|s| matches!(s.role, Role::Wall { story: 0, .. }))
         .expect("the fixture has a ground-floor wall");
     let neighbors = town.site().support_neighbors(target);
     let at = town.site().specs()[target].center;
