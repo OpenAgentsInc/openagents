@@ -116,3 +116,20 @@ pub fn load_local(path: &Path) -> Result<Layers, String> {
     }
     decode_pinned(&bytes)
 }
+
+/// Exact platform scenes audited against the completed artifact.
+#[must_use]
+pub fn compatibility() -> Arc<verse_pbr::pbr::baked_layers::SceneCompatibility> {
+    static RECORD: std::sync::OnceLock<Arc<verse_pbr::pbr::baked_layers::SceneCompatibility>> =
+        std::sync::OnceLock::new();
+    RECORD
+        .get_or_init(|| {
+            Arc::new(
+                serde_json::from_str(include_str!(
+                    "../../../../../assets/verse/everglade-layer-compatibility.json"
+                ))
+                .expect("the checked-in layer compatibility record is valid"),
+            )
+        })
+        .clone()
+}

@@ -1,0 +1,83 @@
+{
+  "source": "2a4ac1db222768eaefd0333875082ca2418613b6",
+  "artifact": "fc5414a1bfef9e730f3d7d779e4447f12cc86d4e571042eec42518abb30ef7c2",
+  "comparisons": [
+    {
+      "scenes": [
+        "f55a1e76fca2e2b96af777e296549aa9b51776cadbcfff6eaf1c77a8ad83b2ab",
+        "5d33bd1f9115196944a8fc1a7ac3154c0d735f0d054426af0fb86a3f4caf635a"
+      ],
+      "vertices_equal": true,
+      "indices_equal": true,
+      "indices_sha256_equal": true,
+      "batches_equal": true,
+      "materials_equal": true,
+      "images_equal": false,
+      "color_equal": true,
+      "position": {
+        "finite": true,
+        "different_vertices": 22749,
+        "max_absolute_difference": 1.52587890625e-05,
+        "first_different_vertex": 3651
+      },
+      "normal": {
+        "finite": true,
+        "different_vertices": 61897,
+        "max_absolute_difference": 1.8849968910217285e-06,
+        "first_different_vertex": 3238
+      },
+      "uv": {
+        "finite": true,
+        "different_vertices": 0,
+        "max_absolute_difference": 0.0,
+        "first_different_vertex": null
+      }
+    },
+    {
+      "scenes": [
+        "f55a1e76fca2e2b96af777e296549aa9b51776cadbcfff6eaf1c77a8ad83b2ab",
+        "7588a7b1e39f424f46e9cd2da4244d2412a0b1911d4623f5631036dc2a30497a"
+      ],
+      "vertices_equal": true,
+      "indices_equal": true,
+      "indices_sha256_equal": true,
+      "batches_equal": true,
+      "materials_equal": true,
+      "images_equal": false,
+      "color_equal": true,
+      "position": {
+        "finite": true,
+        "different_vertices": 87929,
+        "max_absolute_difference": 3.0517578125e-05,
+        "first_different_vertex": 3651
+      },
+      "normal": {
+        "finite": true,
+        "different_vertices": 12432,
+        "max_absolute_difference": 1.9064173102378845e-06,
+        "first_different_vertex": 3238
+      },
+      "uv": {
+        "finite": true,
+        "different_vertices": 0,
+        "max_absolute_difference": 0.0,
+        "first_different_vertex": null
+      }
+    }
+  ],
+  "dirt": {
+    "mac_linux": {
+      "different_pixels": 1,
+      "max_channel_delta": 1
+    },
+    "mac_browser": {
+      "different_pixels": 9,
+      "max_channel_delta": 1
+    }
+  },
+  "raw_proof_sha256": {
+    "mac-release": "efb67aebe29ff717e9b7fcaeea412434002dda93cdc7f7e725b816127b7b26f0",
+    "linux-release": "515e9b0950d460ea6f401af99f0c4d9ee23128a578b5be49af9c7bc0bff2f598",
+    "browser": "44a2cdf1046d3650b69349bc0ca62ca41423eca666348df4d9f9f4668aef28ff"
+  }
+}

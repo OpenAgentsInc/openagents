@@ -474,10 +474,20 @@ fn layered(
     }
     let key = verse_bake::hex(&verse_bake::layers_key(scene, light, settings));
     if options.reuse_only {
-        let path = options.out.join(format!("{key}.vlay"));
-        let receipt_path = options
-            .out
-            .join(format!("{key}.layers.{}.json", options.backend.label()));
+        let digest = verse_bake::hex(&digest);
+        let compatibility = layer_compatibility(&options.source);
+        let record = compatibility.as_ref().filter(|record| {
+            record.targets.iter().any(|target| {
+                target.scene == digest && target.bake_key.as_deref() == Some(key.as_str())
+            })
+        });
+        let source_key = record.map_or(key.as_str(), |record| record.baked_key.as_str());
+        let source_scene = record.map_or(digest.as_str(), |record| record.baked_scene.as_str());
+        let path = options.out.join(format!("{source_key}.vlay"));
+        let receipt_path = options.out.join(format!(
+            "{source_key}.layers.{}.json",
+            options.backend.label()
+        ));
         let receipt: serde_json::Value = serde_json::from_slice(
             &std::fs::read(&receipt_path)
                 .map_err(|e| format!("{}: {e}; reuse does not bake", receipt_path.display()))?,
@@ -485,13 +495,14 @@ fn layered(
         .map_err(|e| e.to_string())?;
         let bytes = std::fs::read(&path)
             .map_err(|e| format!("{}: {e}; reuse does not bake", path.display()))?;
-        let digest = verse_bake::hex(&digest);
-        verify_reuse_receipt(&receipt, &key, &digest, &bytes)?;
+        verify_reuse_receipt(&receipt, source_key, source_scene, &bytes)?;
         let layers = verse_pbr::pbr::baked_layers::Layers::decode(&bytes)?;
-        if layers.scene != digest
-            || layers.bake_key != key
-            || layers.vertex_count() != scene.vertices.len()
-        {
+        let identity_matches = if let Some(record) = record {
+            record.accepts(&layers, &digest, Some(&key))
+        } else {
+            layers.scene == digest && layers.bake_key == key
+        };
+        if !identity_matches || layers.vertex_count() != scene.vertices.len() {
             return Err("The completed layers do not match the current scene or recipe".into());
         }
         let file_digest = verse_bake::hex(&sha2::Sha256::digest(&bytes));
@@ -585,6 +596,18 @@ fn layered(
     Ok(())
 }
 
+/// Supplies only the zone's checked-in, content-bound compatibility record.
+fn layer_compatibility(
+    source: &Source,
+) -> Option<std::sync::Arc<verse_pbr::pbr::baked_layers::SceneCompatibility>> {
+    #[cfg(feature = "everglade")]
+    if matches!(source, Source::Everglade(_)) {
+        return Some(verse_zone_everglade::zones::everglade_pack::kit_bake::compatibility());
+    }
+    let _ = source;
+    None
+}
+
 /// Writes `bytes` to `path` readable by its owner only.
 fn private_write(path: &Path, bytes: &[u8]) -> Result<(), String> {
     if let Some(parent) = path.parent() {
@@ -620,7 +643,7 @@ fn check_layers(dir: &Path, digest: &str) -> Result<(), String> {
         let Ok(layers) = kit_bake::decode_pinned(&bytes) else {
             continue;
         };
-        if layers.scene != digest {
+        if layers.scene != digest && !kit_bake::compatibility().accepts(&layers, digest, None) {
             return Err(format!(
                 "the pinned layers were baked for scene {}, and the sources build {digest}",
                 layers.scene

@@ -1,0 +1,21 @@
+{
+  "artifact_sha256": "fc5414a1bfef9e730f3d7d779e4447f12cc86d4e571042eec42518abb30ef7c2",
+  "artifact_bytes": 51684139,
+  "baked_scene": "f55a1e76fca2e2b96af777e296549aa9b51776cadbcfff6eaf1c77a8ad83b2ab",
+  "baked_key": "090f106f9c459f62f9cd67902a18531b7e00f9d15e292e0b60a0dd7b231b0b6b",
+  "vertices": 4326184,
+  "targets": [
+    {
+      "scene": "f55a1e76fca2e2b96af777e296549aa9b51776cadbcfff6eaf1c77a8ad83b2ab",
+      "bake_key": "090f106f9c459f62f9cd67902a18531b7e00f9d15e292e0b60a0dd7b231b0b6b"
+    },
+    {
+      "scene": "5d33bd1f9115196944a8fc1a7ac3154c0d735f0d054426af0fb86a3f4caf635a",
+      "bake_key": "cb19c4b9461edcc75a7d90e1a2da44a4cff967406ec333639a66a2785736a682"
+    },
+    {
+      "scene": "7588a7b1e39f424f46e9cd2da4244d2412a0b1911d4623f5631036dc2a30497a",
+      "bake_key": null
+    }
+  ]
+}

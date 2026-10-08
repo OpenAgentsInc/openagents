@@ -829,6 +829,8 @@ fn surface(
 /// to combine them ([`super::baked_layers`]).
 #[derive(Clone, Debug)]
 pub struct LayerChoice {
+    /// Exact reviewed alternatives, bound to the complete layer artifact.
+    pub compatibility: Option<Arc<super::baked_layers::SceneCompatibility>>,
     pub layers: Arc<super::baked_layers::Layers>,
     /// The sun direction whose bounce joins the sky's, if any.
     pub sun: Option<usize>,
@@ -838,7 +840,7 @@ pub struct LayerChoice {
 
 impl LayerChoice {
     /// The light and lamp texels and the probes of `scene`, when the layers
-    /// were baked for exactly that scene.
+    /// were baked for that scene or its explicitly audited equivalent.
     ///
     /// # Errors
     ///
@@ -847,7 +849,13 @@ impl LayerChoice {
     pub fn apply(&self, scene: &TexturedScene) -> Result<Layered, String> {
         let merged = scene.merge()?;
         let digest = super::baked_layers::hex(&super::baked_layers::scene_digest(scene, &merged));
-        if digest != self.layers.scene || merged.vertices.len() != self.layers.vertex_count() {
+        if (digest != self.layers.scene
+            && !self
+                .compatibility
+                .as_ref()
+                .is_some_and(|record| record.accepts(&self.layers, &digest, None)))
+            || merged.vertices.len() != self.layers.vertex_count()
+        {
             return Err(format!(
                 "the baked light layers are for scene {}, not {digest}",
                 self.layers.scene
@@ -1390,12 +1398,58 @@ mod tests {
     }
 
     #[test]
+    fn reviewed_scene_pair_requires_exact_artifact_recipe_and_target() {
+        use super::super::baked_layers::{CompatibleScene, SceneCompatibility, hex, scene_digest};
+        use sha2::Digest as _;
+        let mut scene = TexturedScene::default();
+        ground(&mut scene, [0.3; 3]);
+        let mut layers = layers_for(&scene);
+        let target = hex(&scene_digest(&scene, &scene.merge().unwrap()));
+        layers.scene = "reviewed-source".into();
+        let bytes = layers.encode();
+        let record = SceneCompatibility {
+            artifact_sha256: hex(&sha2::Sha256::digest(&bytes)),
+            artifact_bytes: bytes.len() as u64,
+            baked_scene: layers.scene.clone(),
+            baked_key: layers.bake_key.clone(),
+            vertices: layers.vertex_count(),
+            targets: vec![CompatibleScene {
+                scene: target.clone(),
+                bake_key: Some("target-recipe".into()),
+            }],
+        };
+        assert!(record.accepts(&layers, &target, Some("target-recipe")));
+        assert!(!record.accepts(&layers, &target, Some("other-recipe")));
+        assert!(!record.accepts(&layers, "unknown-scene", None));
+        let mut altered = layers.clone();
+        altered.sky[0][0] ^= 1;
+        assert!(!record.accepts(&altered, &target, None));
+        altered = layers.clone();
+        altered.bake_key = "other-source-recipe".into();
+        assert!(!record.accepts(&altered, &target, None));
+        let choice = LayerChoice {
+            compatibility: Some(Arc::new(record)),
+            layers: Arc::new(layers),
+            sun: Some(0),
+            ratio: 1.0,
+        };
+        assert!(choice.apply(&scene).is_ok());
+        let mut unreviewed = TexturedScene::default();
+        ground(&mut unreviewed, [0.31; 3]);
+        assert!(choice.apply(&unreviewed).is_err());
+        let mut strict = choice;
+        strict.compatibility = None;
+        assert!(strict.apply(&scene).is_err());
+    }
+
+    #[test]
     fn a_job_delivers_layers_baked_for_its_scene_instead_of_baking() {
         let mut scene = TexturedScene::default();
         ground(&mut scene, [0.3; 3]);
         let layers = Arc::new(layers_for(&scene));
         let scene = Arc::new(scene);
         let choice = LayerChoice {
+            compatibility: None,
             layers: layers.clone(),
             sun: Some(0),
             ratio: 1.0,
@@ -1416,6 +1470,7 @@ mod tests {
         ground(&mut scene, [0.3; 3]);
         let layers = Arc::new(layers_for(&scene));
         let choice = LayerChoice {
+            compatibility: None,
             layers: layers.clone(),
             sun: Some(0),
             ratio: 1.0,
@@ -1455,6 +1510,7 @@ mod tests {
         let scene = Arc::new(scene);
         for layers in [None, Some(stale)] {
             let choice = layers.map(|layers| LayerChoice {
+                compatibility: None,
                 layers: Arc::new(layers),
                 sun: Some(0),
                 ratio: 1.0,
