@@ -700,6 +700,7 @@ mod tests {
         }];
         town.wreck.debris = Debris::TOWN;
         town.wreck.buildings = vec![Building {
+            walls: None,
             rect: ([0.0; 2], [1.0; 2]),
             stories: 1,
             valid: true,
