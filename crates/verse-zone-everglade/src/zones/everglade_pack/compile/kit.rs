@@ -112,6 +112,9 @@ pub fn compile(directory: &Path, grade: fn(u32, u32, &mut [u8])) -> Result<Compi
     builder.contents.models = models;
     let mut contents = builder.contents;
     for texture in &mut contents.textures {
+        // Whole-house atlases sample the renderer's already graded images
+        // and linear tints. Grading them again changes the canonical palette.
+        if texture.name.starts_with("kit/house-atlas-") {continue}
         let decoded = format::decode_texture(texture)?;
         let mut rgba = decoded.rgba;
         grade(decoded.width, decoded.height, &mut rgba);
@@ -255,6 +258,21 @@ mod tests {
         let mut contents = format::decode_contents(&sample(&["wall-4"]), &Limits::KIT).unwrap();
         contents.textures[0].width = Limits::KIT.texture_edge + 1;
         assert!(format::encode(&contents, &Limits::KIT).is_err());
+    }
+
+    #[test]
+    fn house_atlases_keep_the_renderer_palette_without_a_second_grade() {
+        use crate::zones::everglade_pack::tests::{card,leaf_png};
+        let dir=tempfile::tempdir().unwrap();
+        let (gltf,bin)=card();
+        let mut doc: serde_json::Value=serde_json::from_slice(&gltf).unwrap();
+        doc["images"][0]["uri"]=serde_json::json!("house-atlas-00.png");
+        std::fs::write(dir.path().join("house-fixture-far.gltf"),serde_json::to_vec(&doc).unwrap()).unwrap();
+        std::fs::write(dir.path().join("Card.bin"),bin).unwrap();
+        std::fs::write(dir.path().join("house-atlas-00.png"),leaf_png()).unwrap();
+        let unchanged=compile(dir.path(),|_,_,_|{}).unwrap();
+        let retained=compile(dir.path(),|_,_,rgba|rgba.fill(0)).unwrap();
+        assert_eq!(retained.sha256,unchanged.sha256);
     }
 
     #[test]

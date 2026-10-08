@@ -525,6 +525,11 @@ def main():
             sys.exit(f"the recipe has no piece {', '.join(missing)}")
         pieces = {p: pieces[p] for p in wanted}
 
+    # Remove only prior derived house outputs. The current Rust recipes
+    # regenerate them after the piece build, including their atlas palette.
+    for pattern in ["house-*-near.gltf", "house-*-near.bin", "house-*-middle.gltf", "house-*-middle.bin", "house-*-far.gltf", "house-*-far.bin", "house-atlas-*.png"]:
+        for file in out.glob(pattern):
+            file.unlink()
     export = Export(export_root)
     out.mkdir(parents=True, exist_ok=True)
     built, skipped, textures_used = {}, {}, set()

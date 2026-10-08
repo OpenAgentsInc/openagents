@@ -136,9 +136,12 @@ pub fn far_placements<'p>(
     placements: &[Placement],
 ) -> Vec<Option<(&'p str, usize)>> {
     let mut next = placements.len();
+    let houses=super::house_lod::member_indices(placements);
     placements
         .iter()
-        .map(|p| {
+        .enumerate()
+        .map(|(index,p)| {
+            if houses.contains(&index) {return None}
             plan(pack, p.model).1.map(|far| {
                 next += 1;
                 (far, next - 1)

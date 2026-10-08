@@ -48,7 +48,7 @@ pub fn model(house: KitHouse, level: usize) -> String {
 
 #[must_use]
 pub fn transform(house: KitHouse) -> Mat4 {
-    Mat4::from_rotation_translation(Quat::from_rotation_y(house.facing),Vec3::new(house.center[0],house.floor()-layout::kit_house::FLOOR_RISE,house.center[1]))
+    Mat4::from_rotation_translation(Quat::from_rotation_y(house.facing),Vec3::new(house.center[0],house.floor()-normalized(house).floor(),house.center[1]))
 }
 
 /// Schema bounds, independent of access to the licensed pieces.
@@ -69,6 +69,17 @@ pub fn bounds(house: KitHouse) -> (Vec3,Vec3) {
     (low,high)
 }
 
+/// Original placement indices that belong to complete canonical recipes.
+/// Their whole-house level replaces any legacy per-piece far submission.
+pub(crate) fn member_indices(placements: &[Placement]) -> std::collections::BTreeSet<usize> {
+    houses().into_iter().flat_map(|house| {
+        let mut expected=Vec::new();
+        house.raise(&mut expected);
+        placements.windows(expected.len()).position(|p| p==expected)
+            .into_iter().flat_map(move |start| start..start+expected.len())
+    }).collect()
+}
+
 pub(crate) struct HouseGroup {
     pub house: KitHouse,
     pub members: Vec<usize>,
@@ -77,15 +88,18 @@ pub(crate) struct HouseGroup {
 }
 
 /// Adds groups only for complete canonical recipes, leaving other placements alone.
-pub(crate) fn configure(pack: &ZonePack, placements: &[Placement], world: &mut TexturedScene) -> Vec<HouseGroup> {
+pub(crate) fn configure(pack: &ZonePack, placements: &[Placement], paints: &[scene::Paint], world: &mut TexturedScene) -> Vec<HouseGroup> {
     let mut groups=Vec::new();
     for house in houses() {
         let mut expected=Vec::new();
         house.raise(&mut expected);
         let Some(start)=placements.windows(expected.len()).position(|p| p==expected) else {continue};
-        let members=(start..start+expected.len()).collect();
-        let near=pack.model(&model(house,0)).is_some();
-        let reduced=pack.model(&model(house,1)).is_some() && pack.model(&model(house,2)).is_some();
+        let members: Vec<_>=(start..start+expected.len()).collect();
+        // Atlases include the canonical kit tints. A custom paint stays on
+        // the original pieces, so it is neither lost nor applied twice.
+        let canonical=members.iter().all(|&i| paints[i]==scene::Paint::default());
+        let near=canonical && pack.model(&model(house,0)).is_some();
+        let reduced=canonical && pack.model(&model(house,1)).is_some() && pack.model(&model(house,2)).is_some();
         world.detail_groups.push(DetailGroup { anchor:house.center,switches:if reduced{SWITCHES}else{[1e9,2e9]},fallback:if near{3}else{0} });
         groups.push(HouseGroup {house,members,near,reduced});
     }
@@ -109,6 +123,27 @@ pub(crate) fn append<'p>(pack: &'p ZonePack, groups: &[HouseGroup], world: &mut 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn local_exports_preserve_facing_and_the_terrain_floor_baseline() {
+        for house in houses() {
+            let mut original=Vec::new();
+            let mut local=Vec::new();
+            house.raise(&mut original);
+            normalized(house).raise(&mut local);
+            assert_eq!(original.len(),local.len());
+            let to_world=transform(house);
+            let to_local=to_world.inverse();
+            for (world,local) in original.into_iter().zip(local) {
+                assert_eq!(world.model,local.model);
+                let expected=world.transform();
+                let actual=to_world*local.transform();
+                assert!(expected.to_cols_array().into_iter().zip(actual.to_cols_array()).all(|(a,b)| (a-b).abs()<0.002),"{} {}",house.name,world.model);
+                let roundtrip=to_world*(to_local*expected);
+                assert!(expected.to_cols_array().into_iter().zip(roundtrip.to_cols_array()).all(|(a,b)| (a-b).abs()<0.002));
+            }
+        }
+    }
 
     #[test]
     fn recipe_keys_ignore_location_but_preserve_the_selected_door_bays() {

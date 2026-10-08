@@ -95,6 +95,14 @@ fn main() -> Result<(), String> {
             ));
         }
     }
+    for house in verse_zone_everglade::zones::everglade::house_lod::houses() {
+        for level in [1,2] {
+            let name=verse_zone_everglade::zones::everglade::house_lod::model(house,level);
+            if pack.model(&name).is_none() || empty.model(&name).is_none() {
+                return Err(format!("The compiled house level is missing or refused: {name}"));
+            }
+        }
+    }
     if check {
         if compiled.sha256 != kit::KIT_SHA256 || compiled.bytes.len() as u64 != kit::KIT_BYTES {
             return Err(format!(

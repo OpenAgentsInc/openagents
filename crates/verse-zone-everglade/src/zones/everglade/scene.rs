@@ -156,7 +156,8 @@ pub fn build_painted(
         ..TexturedScene::default()
     };
     let mut copied = Copied::default();
-    let houses=super::house_lod::configure(pack,placements,&mut scene);
+    let paints: Vec<_>=placements.iter().map(&paint).collect();
+    let houses=super::house_lod::configure(pack,placements,&paints,&mut scene);
     let mut house_details=vec![None;placements.len()];
     for (group,h) in houses.iter().enumerate() {
         for &index in &h.members {
@@ -191,7 +192,7 @@ pub fn build_painted(
         }
     };
     for (index, (placement, &carved)) in placements.iter().zip(&carved).enumerate() {
-        let colors = paint(placement);
+        let colors = paints[index];
         let cut = lattice(placement, carved)?;
         let (mesh, bounds) = mesh(pack, placement.model, colors, cut, &mut scene, &mut copied)?;
         let (level, _) = detail::plan(pack, placement.model);
