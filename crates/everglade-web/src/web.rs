@@ -430,6 +430,13 @@ async fn run() -> Result<(), String> {
     }
     if query_has(&window, "frames") {
         renderer.enable_water_timing();
+        web_sys::console::info_1(&JsValue::from_str(&format!(
+            "Everglade water renderer {}",
+            serde_json::json!({
+                "tier":renderer.quality().tier.name(),
+                "physical":renderer.water_measurements().is_some(),
+            })
+        )));
     }
     // Without the physical renderer the page would show an empty field, so
     // it says why instead.
