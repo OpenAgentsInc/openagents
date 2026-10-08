@@ -172,7 +172,7 @@ fn water_shoal(k: f32, depth: f32) -> f32 {
 // The Gerstner displacement (xyz, m) of rest point `p0` of body `b`, and how
 // tightly the waves squeeze the surface there (w, crests near one). Each
 // amplitude is scaled by `scale` and the shallow-water factor.
-fn water_gerstner(b: u32, p0: vec2<f32>, depth: f32, scale: f32) -> vec4<f32> {
+fn water_gerstner(b: u32, p0: vec2<f32>, depth: f32, scale: f32, spacing: f32) -> vec4<f32> {
     var d = vec3<f32>(0.0);
     var squeeze = 0.0;
     let count = i32(water.bodies[b].params.x);
@@ -239,14 +239,17 @@ fn water_ocean_gain(c: i32, depth: f32) -> f32 {
 
 // The cascades' displacement of rest point `p0` over water `depth` deep
 // (xyz, m) and their crest squeeze, 1 − J (w).
-fn water_ocean_move(b: u32, p0: vec2<f32>, depth: f32, scale: f32) -> vec4<f32> {
+fn water_ocean_move(b: u32, p0: vec2<f32>, depth: f32, scale: f32, spacing: f32) -> vec4<f32> {
     var d = vec4<f32>(0.0);
     let count = min(water_ocean_count(b), i32(water.ocean[3].y));
     for (var c = 0; c < count; c++) {
         let uv = water_ocean_uv(c, p0);
         let g = water_ocean_gain(c, depth) * scale;
-        let a = textureSampleLevel(water_waves, water_tile_sampler, uv, c * 2, 0.0);
-        let s = textureSampleLevel(water_waves, water_tile_sampler, uv, c * 2 + 1, 0.0);
+        // Filter to the clipmap's grid spacing, including the stretched apron.
+        let texel = 2.0 * water.ocean[4].x / max(water.ocean[c].x, 1e-6);
+        let level = max(log2(max(spacing, 1e-6) / texel) + 0.7, 0.0);
+        let a = textureSampleLevel(water_waves, water_tile_sampler, uv, c * 2, level);
+        let s = textureSampleLevel(water_waves, water_tile_sampler, uv, c * 2 + 1, level);
         d += vec4<f32>(a.xyz * g, s.z * g);
     }
     return d;
@@ -344,7 +347,7 @@ struct WaterMoved {
 
 // A surface vertex moved by its body's waves at `scale` (0 for still
 // water), on a level raised by `rise` (m).
-fn water_move(v: WaterIn, scale: f32, rise: f32) -> WaterMoved {
+fn water_move_spaced(v: WaterIn, scale: f32, rise: f32, spacing: f32) -> WaterMoved {
     var o: WaterMoved;
     let b = water_body_index(v.body);
     var world = v.pos;
@@ -356,13 +359,18 @@ fn water_move(v: WaterIn, scale: f32, rise: f32) -> WaterMoved {
         o.crest = wave.w;
     }
     if scale > 0.0 && water_ocean_count(b) > 0 {
-        let sea = water_ocean_move(b, v.pos.xz, v.depth + rise, scale);
+        let sea = water_ocean_move(b, v.pos.xz, v.depth + rise, scale, spacing);
         world += sea.xyz;
         o.crest = max(o.crest, sea.w);
     }
     world.y += water_ripple_field(v.pos.xz).x;
     o.world = world;
     return o;
+}
+
+// Authored patches preserve level-zero displacement; clipmaps supply spacing.
+fn water_move(v: WaterIn, scale: f32, rise: f32) -> WaterMoved {
+    return water_move_spaced(v, scale, rise, 0.0);
 }
 
 // The varyings for a moved vertex.
@@ -486,6 +494,8 @@ fn water_footprint(v: vec3<f32>, distance: f32, dpx: vec2<f32>, dpy: vec2<f32>) 
 
 // Detail at `p` for this tier: the baked tile on Low, analytic waves above.
 fn water_detail_at(p: vec2<f32>, footprint: f32, gain: f32, dpx: vec2<f32>, dpy: vec2<f32>) -> vec3<f32> {
+    // A sustained overrun can drop cosmetic microdetail on every API.
+    if water.look.w > 0.5 { return vec3<f32>(0.0); }
     let count = i32(water_host_control().x);
     if count <= 0 {
         return water_tile_detail(p, dpx, dpy, gain);
@@ -838,7 +848,12 @@ fn water_shade(s: WaterFragment, wn: WaterNormal) -> WaterShade {
     let nov = max(dot(n, v), 1e-3);
     let fresnel = water_fresnel(nov);
     let level = water_sky_roughness(wn.roughness, s.footprint);
-    let sky = water_host_sky(reflect(-v, n), level);
+    let reflected = reflect(-v, n);
+    // Unresolved slopes spread the horizon; rays into other waves lose sky light.
+    let slope = max(wn.roughness, 0.02);
+    let visibility = smoothstep(-slope, slope, reflected.y);
+    let sky_dir = normalize(vec3<f32>(reflected.x, max(reflected.y, 0.015) + slope * (1.0 - max(reflected.y, 0.0)), reflected.z));
+    let sky = water_host_sky(sky_dir, level) * mix(0.15, 1.0, visibility);
     let sun = water_host_sun();
     var glint = vec3<f32>(0.0);
     var crest = vec3<f32>(0.0);

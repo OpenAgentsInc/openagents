@@ -104,6 +104,18 @@ impl Plan {
         self.count as u32 * LAYERS
     }
 
+    /// Levels from the original grid through its one-texel average.
+    #[must_use]
+    pub fn mip_levels(&self) -> u32 {
+        self.size.ilog2() + 1
+    }
+
+    /// Bytes per layer, including every filtered level.
+    #[must_use]
+    pub fn layer_bytes(&self) -> u64 {
+        (0..self.mip_levels()).map(|level| ((self.size >> level).pow(2) * 8) as u64).sum()
+    }
+
     /// Bytes of one tick's texels.
     #[must_use]
     pub fn bytes(&self) -> u64 {
@@ -125,8 +137,13 @@ pub struct Frame {
     pub plan: Plan,
     /// Every layer's texels in order, `size²` each, half-float RGBA.
     pub texels: Vec<[u16; 4]>,
-    /// What synthesizing it took, µs.
+    /// Box-filtered levels after level zero; each keeps its layers separate.
+    pub mips: Vec<Vec<[u16; 4]>>,
+    /// What synthesizing it took, µs, including filtering.
     pub micros: f64,
+    pub cpu_micros: Option<f64>,
+    /// Retained synthesis, scratch, and both queued frame payloads, bytes.
+    pub worker_bytes: u64,
 }
 
 /// A sea's cascades and foam field, advanced tick by tick.
@@ -178,7 +195,7 @@ impl Synthesis {
 
     /// The cascades at `tick`, the foam carried on from the tick before.
     pub fn step(&mut self, tick: u64) -> Frame {
-        let start = web_time::Instant::now();
+        let start = super::timing::CpuTimer::start();
         let spectrum = *self.synth.spectrum();
         let n = self.plan.size;
         // Foam older than a few lives, or from a later tick, is forgotten.
@@ -248,14 +265,58 @@ impl Synthesis {
                 ]
             }));
         }
+        let mips = box_mips(&texels, n, self.plan.layers() as usize);
         Frame {
             spectrum,
             tick,
             plan: self.plan,
             texels,
-            micros: start.elapsed().as_secs_f64() * 1e6,
+            mips,
+            micros: start.elapsed_ms() * 1000.0,
+            cpu_micros: start.cpu_ms().map(|ms| ms * 1000.0),
+            worker_bytes: (self.synth.heap_bytes() + self.tile.heap_bytes()
+                + self.wide.iter().map(|v| v.capacity() * 4).sum::<usize>()
+                + self.foam.iter().map(|v| v.capacity() * 4).sum::<usize>()
+                + self.scratch.capacity() * 4) as u64
+                + 2 * self.plan.layer_bytes() * u64::from(self.plan.layers()),
         }
     }
+}
+
+/// Filters each layer down to one texel without mixing displacement,
+/// slopes, or cascades. Runs beside synthesis on the native wave worker.
+fn box_mips(base: &[[u16; 4]], size: usize, layers: usize) -> Vec<Vec<[u16; 4]>> {
+    let mut levels: Vec<Vec<[u16; 4]>> = Vec::with_capacity(size.ilog2() as usize);
+    let mut n = size;
+    while n > 1 {
+        let source = levels.last().map_or(base, Vec::as_slice);
+        let side = n / 2;
+        let mut out = Vec::with_capacity(layers * side * side);
+        for layer in 0..layers {
+            let first = layer * n * n;
+            for y in 0..side {
+                for x in 0..side {
+                    let at = first + 2 * y * n + 2 * x;
+                    out.push(std::array::from_fn(|channel| {
+                        let value = [at, at + 1, at + n, at + n + 1].iter()
+                            .map(|&i| half::f16::from_bits(source[i][channel]).to_f32())
+                            .sum::<f32>() * 0.25;
+                        half(value)
+                    }));
+                }
+            }
+        }
+        levels.push(out);
+        n = side;
+    }
+    levels
+}
+
+/// The explicit vertex level for a grid's spacing and cascade texel size.
+/// Regular patches pass zero spacing and keep the authoritative base band.
+#[must_use]
+pub fn vertex_lod(spacing: f32, texel: f32) -> f32 {
+    ((spacing.max(1e-6) / texel.max(1e-6)).log2() + 0.7).max(0.0)
 }
 
 /// Doubles a periodic `n × n` field bilinearly into `out`: each source
@@ -520,6 +581,17 @@ pub struct OceanGpu {
     pub exact: bool,
     /// The worker's cost of the tick shown, µs.
     pub micros: f64,
+    pub worker_bytes: u64,
+    pub cpu_micros: Option<f64>,
+    /// Cumulative received jobs, including superseded frames. Differences
+    /// measure actual interval work; unchanged ticks and reuse add nothing.
+    pub completed_jobs: u64,
+    pub completed_micros: f64,
+    pub completed_cpu_micros: Option<f64>,
+    /// Display frames between visual FFT refreshes; physics keeps its clock.
+    pub refresh_every: u32,
+    frames: u32,
+    envelope: glam::Vec3,
 }
 
 impl OceanGpu {
@@ -534,7 +606,7 @@ impl OceanGpu {
                 height: plan.size as u32,
                 depth_or_array_layers: plan.layers() + 1,
             },
-            mip_level_count: 1,
+            mip_level_count: plan.mip_levels(),
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Rgba16Float,
@@ -557,6 +629,14 @@ impl OceanGpu {
             significant: None,
             exact: false,
             micros: 0.0,
+            worker_bytes: 0,
+            cpu_micros: None,
+            completed_jobs: 0,
+            completed_micros: 0.0,
+            completed_cpu_micros: super::timing::cpu_ms().map(|_| 0.0),
+            refresh_every: 1,
+            frames: 0,
+            envelope: glam::Vec3::ZERO,
         }
     }
 
@@ -574,7 +654,23 @@ impl OceanGpu {
     /// The texture's bytes on the GPU, the ripple layer's included.
     #[must_use]
     pub fn bytes(&self) -> u64 {
-        self.plan.bytes() + (self.plan.size * self.plan.size * 8) as u64
+        u64::from(self.plan.layers() + 1) * self.plan.layer_bytes()
+    }
+
+    /// A conservative displacement bound for culling. Interactive ripples
+    /// and control-water funnels retain the complete mesh until bounded.
+    #[must_use]
+    pub fn cull_envelope(&self, water: &super::Water, body: usize) -> Option<glam::Vec3> {
+        if water.controls.part.is_some() || water.controls.whirl.is_some()
+            || !self.ripples.is_quiet() || self.ripples.stats().wakes > 0 { return None; }
+        let body = water.bodies.get(body)?;
+        let mut pad = glam::Vec3::ZERO;
+        for term in &body.swell.terms[..body.swell.count] {
+            let amplitude = term.amplitude.abs() * body.swell_gain.abs() * 2.0;
+            pad += glam::Vec3::new(term.q.abs() * amplitude, amplitude, term.q.abs() * amplitude);
+        }
+        if body.spectrum.is_some() { pad += self.envelope * (body.swell_gain.abs() * 2.0); }
+        Some(pad + glam::Vec3::splat(0.01))
     }
 
     /// Steps the ripple field to `water`'s clock with its sources around
@@ -632,28 +728,42 @@ impl OceanGpu {
     }
 
     fn upload(&mut self, queue: &wgpu::Queue, frame: &Frame) {
-        let n = self.plan.size as u32;
-        queue.write_texture(
-            wgpu::TexelCopyTextureInfo {
-                texture: &self.texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            bytemuck::cast_slice(&frame.texels),
-            wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(n * 8),
-                rows_per_image: Some(n),
-            },
-            wgpu::Extent3d {
-                width: n,
-                height: n,
-                depth_or_array_layers: self.plan.layers(),
-            },
-        );
+        for (level, texels) in std::iter::once(&frame.texels).chain(&frame.mips).enumerate() {
+            let n = (self.plan.size >> level) as u32;
+            queue.write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture: &self.texture,
+                    mip_level: level as u32,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                bytemuck::cast_slice(texels),
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(n * 8),
+                    rows_per_image: Some(n),
+                },
+                wgpu::Extent3d {
+                    width: n,
+                    height: n,
+                    depth_or_array_layers: frame.plan.layers(),
+                },
+            );
+        }
+        self.envelope = glam::Vec3::ZERO;
+        let pixels = self.plan.size * self.plan.size;
+        for cascade in 0..self.plan.displaced {
+            let mut bound = glam::Vec3::ZERO;
+            for value in &frame.texels[cascade * 2 * pixels..(cascade * 2 + 1) * pixels] {
+                let d = glam::Vec3::from_array(std::array::from_fn(|i| half::f16::from_bits(value[i]).to_f32().abs()));
+                bound = bound.max(d);
+            }
+            self.envelope += bound;
+        }
         self.shown = Some((frame.spectrum, frame.tick));
         self.micros = frame.micros;
+        self.cpu_micros = frame.cpu_micros;
+        self.worker_bytes = frame.worker_bytes;
     }
 
     /// Shows `spectrum` (the sea's, or none) at `time` s scaled by `gain`,
@@ -670,7 +780,11 @@ impl OceanGpu {
             return [[0.0; 4]; ROWS];
         };
         let tick = spectrum.tick_at(time);
-        self.show(queue, spectrum, tick);
+        self.frames = self.frames.wrapping_add(1);
+        if self.exact || self.shown.is_none_or(|(held, _)| held != *spectrum)
+            || self.frames % self.refresh_every.max(1) == 0 {
+            self.show(queue, spectrum, tick);
+        }
         if self.shown.is_none_or(|(s, _)| s != *spectrum) {
             return [[0.0; 4]; ROWS];
         }
@@ -698,24 +812,33 @@ impl OceanGpu {
         let stale = |held: Option<(Spectrum, u64)>| {
             held.is_none_or(|(s, t)| s != *spectrum || (exact && t != tick))
         };
+        let mut jobs_completed = 0;
+        let mut work_micros = 0.0;
+        let mut cpu_micros = Some(0.0);
+        let mut record = |frame: Frame| {
+            jobs_completed += 1;
+            work_micros += frame.micros;
+            cpu_micros = cpu_micros.zip(frame.cpu_micros).map(|(sum, cost)| sum + cost);
+            frame
+        };
         let latest = match &mut self.worker {
             #[cfg(not(target_arch = "wasm32"))]
             Worker::Thread { jobs, frames, busy } => {
                 let mut latest = None;
                 while let Ok(frame) = frames.try_recv() {
                     *busy = false;
-                    latest = frame.ok().or(latest);
+                    latest = frame.ok().map(&mut record).or(latest);
                 }
                 let held = |latest: &Option<Frame>| {
                     latest.as_ref().map(|f| (f.spectrum, f.tick)).or(shown)
                 };
                 // A new sea, or an exact frame, waits for its own tick.
                 if stale(held(&latest)) && *busy {
-                    latest = frames.recv().ok().and_then(Result::ok).or(latest);
+                    latest = frames.recv().ok().and_then(Result::ok).map(&mut record).or(latest);
                     *busy = false;
                 }
                 if stale(held(&latest)) && jobs.send((*spectrum, tick)).is_ok() {
-                    latest = frames.recv().ok().and_then(Result::ok).or(latest);
+                    latest = frames.recv().ok().and_then(Result::ok).map(&mut record).or(latest);
                 }
                 if !*busy && jobs.send((*spectrum, predicted)).is_ok() {
                     *busy = true;
@@ -729,9 +852,12 @@ impl OceanGpu {
                 if synthesis.as_ref().is_none_or(|s| s.spectrum() != spectrum) {
                     *synthesis = Synthesis::new(spectrum, tier).ok();
                 }
-                synthesis.as_mut().map(|s| s.step(tick))
+                synthesis.as_mut().map(|s| s.step(tick)).map(&mut record)
             }
         };
+        self.completed_jobs += jobs_completed;
+        self.completed_micros += work_micros;
+        self.completed_cpu_micros = self.completed_cpu_micros.zip(cpu_micros).map(|(sum, cost)| sum + cost);
         if let Some(frame) = latest {
             self.upload(queue, &frame);
         }
@@ -757,6 +883,33 @@ pub fn entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn box_levels_remove_subgrid_aliasing_without_mixing_layers() {
+        let mut base = Vec::new();
+        for bias in [0.0, 8.0] {
+            for y in 0..4 {
+                for x in 0..4 {
+                    let value = bias + if (x + y) % 2 == 0 { -1.0 } else { 1.0 };
+                    base.push([half(value); 4]);
+                }
+            }
+        }
+        let levels = box_mips(&base, 4, 2);
+        assert_eq!(levels.iter().map(Vec::len).collect::<Vec<_>>(), [8, 2]);
+        for level in &levels {
+            for (layer, texels) in level.chunks(level.len() / 2).enumerate() {
+                assert!(texels.iter().all(|t| t.iter().all(|v| half::f16::from_bits(*v).to_f32() == layer as f32 * 8.0)));
+            }
+        }
+        assert_eq!(vertex_lod(0.0, 1.0), 0.0);
+        assert!((vertex_lod(4.0, 1.0) - 2.7).abs() < 1e-6);
+        for tier in Tier::ALL {
+            let plan = plan(tier);
+            assert_eq!(plan.mip_levels(), plan.size.ilog2() + 1);
+            assert!(plan.layer_bytes() * u64::from(plan.layers()) > plan.bytes());
+        }
+    }
 
     fn sea() -> Spectrum {
         Spectrum {

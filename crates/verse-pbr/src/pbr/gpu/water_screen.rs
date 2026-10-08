@@ -211,6 +211,7 @@ impl WaterScreen {
         &self,
         device: &wgpu::Device,
         scene_format: wgpu::TextureFormat,
+        plan: Plan,
         width: u32,
         height: u32,
         depth: &wgpu::TextureView,
@@ -249,7 +250,7 @@ impl WaterScreen {
             sampled,
         )
         .create_view(&Default::default());
-        let mirror_size = self.plan.mirror_size(width, height).unwrap_or([1, 1]);
+        let mirror_size = plan.mirror_size(width, height).unwrap_or([1, 1]);
         let mirror = texture("verse water mirror", scene_format, mirror_size, sampled)
             .create_view(&Default::default());
         let mirror_depth = texture(
@@ -300,7 +301,8 @@ impl WaterScreen {
     }
 
     /// Writes the depth copy from the scene's depth buffer.
-    pub fn encode_copy(&self, encoder: &mut wgpu::CommandEncoder, targets: &WaterTargets) {
+    pub fn encode_copy(&self, encoder: &mut wgpu::CommandEncoder, targets: &WaterTargets,
+        timestamp_writes: Option<wgpu::RenderPassTimestampWrites<'_>>) {
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("verse water depth copy"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -313,7 +315,7 @@ impl WaterScreen {
                 },
             })],
             depth_stencil_attachment: None,
-            timestamp_writes: None,
+            timestamp_writes,
             occlusion_query_set: None,
             multiview_mask: None,
         });

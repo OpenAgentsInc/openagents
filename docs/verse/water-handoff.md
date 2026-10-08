@@ -1,7 +1,6 @@
 # Water handoff
 
-Status: handoff, 2026-10-07. Work on the Verse water system stopped at the
-owner's instruction with phases W1 to W10 landed. This page records what
+Status: W11 in progress, 2026-10-08. Phases W1 to W10 are landed. This page records what
 landed, what remains open, and how to pick the work up again. The
 specification is [Water](water.md), and the coastal zone's is
 [The coast](coast.md).
@@ -88,7 +87,7 @@ with `c8c9f7d02e`, which split the coast into C1 to C6.
 | Issue | Remaining work | Blocked by |
 | --- | --- | --- |
 | [#10919](https://github.com/OpenAgentsInc/openagents/issues/10919) Everglade pond reflections | Not started. Find why Everglade's ponds read as flat green from above (`everglade-water/lantern-above.png`) when the harness ponds (`water-screen/`) show reflection and refraction. Candidates: the preset, Fresnel at that angle, the bed color, the scene copy and mirror not running in Everglade, or Everglade's tier defaults. Fix it, commit before and after captures from the same viewpoints, and add a test that catches the cause. | Nothing |
-| [#10783](https://github.com/OpenAgentsInc/openagents/issues/10783) W11 measurement and budgets | Not started. Measure per-tier GPU time, GPU memory, and CPU for water on the development Mac and on `everglade-web` with WebGPU and WebGL2; put device runs in `NEEDS_OWNER.md`. Replace the target budgets in [water.md](water.md#budgets-per-tier) with measured ones and set the constants and overrun behavior in `verse_engine::quality`. Known overruns: W10's floating-bodies view at 4.29 ms against High's 4 ms. | Nothing (W7 to W10 are closed) |
+| [#10783](https://github.com/OpenAgentsInc/openagents/issues/10783) W11 measurement and budgets | In progress on `codex/water-w11-measurement`. Source and measurement harness checkpointed; no W11 Cargo check or measurement has run yet. Measure per-tier GPU time, GPU memory, and CPU for water on the development Mac and on `everglade-web` with WebGPU and WebGL2; put device runs in `NEEDS_OWNER.md`. Replace the target budgets in [water.md](water.md#budgets-per-tier) with measured ones and set the constants and overrun behavior in `verse_engine::quality`. Known overruns: W10's floating-bodies view at 4.29 ms against High's 4 ms. | Nothing (W7 to W10 are closed) |
 | [#10784](https://github.com/OpenAgentsInc/openagents/issues/10784) umbrella | Close when W11 closes and [water.md](water.md) has the measured budgets. | #10783 |
 | [#10885](https://github.com/OpenAgentsInc/openagents/issues/10885) C1 zone shell | Not started. `ZoneId::Coast`, the plaza's west arch, generated terrain and bathymetry, the ocean with a tide, the harbor shelter mask, the estuary, spawn, and zone tests. Start from W10's coastal test scene, `verse_zone_water::coast`, and extend the bed to the horizon, as [coast.md](coast.md) says. | Nothing (W3, W4, and W10 are closed) |
 | [#10886](https://github.com/OpenAgentsInc/openagents/issues/10886) C2 kits and pack | Blender kits and the pinned coast pack, through `openagents artifact submit`. | C1 |
@@ -112,6 +111,36 @@ techniques to take from Tidewater (MIT). Each is assigned to an issue:
 | C4 #10888 | Splatted caustics (4), refracted-ray shadows (8). |
 | C6 #10890 | Breaker spray (11), surf sound driven by the drawn waves (15). |
 
+## W11 checkpoint
+
+The source checkpoint adds CPU-built box mips, vertex sampling at the
+clipmap spacing, slope-aware reflection darkening, conservative clipmap
+block culling, owned-resource accounting, and a sustained-overrun policy.
+GPU timestamps have delayed readback slots; unsupported APIs keep GPU time
+absent. Queue-fence estimates remain separate. Native CPU clocks measure
+thread CPU time. Worker cost counts completed synthesis jobs over the
+measurement interval, including superseded results; per-job duration is
+reported separately. Missing GPU results neither advance nor reset the
+GPU overrun streak.
+
+Resume from `codex/water-w11-measurement`; the checkpoint is unverified.
+The fixed-view ignored raster test is `w11::water_w11_fixed_views` in
+`verse-pbr`'s `water_capture` example. Compile that filtered test with
+`--release --no-run`, then run its executable under a quiet lease with
+`WATER_W11_OUTPUT` set to scratch. The browser harness is
+`bench/verse/2026-10-08/water-w11/browser.py`; run it through
+`openagents browser run` against the candidate WASM output. It measures
+Low on WebGL2 and Medium on WebGPU; the browser platform does not admit
+High. Measurements, captures, budget updates in [water.md](water.md), and
+phone steps in `NEEDS_OWNER.md` are still pending. No issue has closed.
+
+The coordinator holds the team build token. Request a window before
+Cargo or measurement, use at most four jobs for W11, and preserve the
+terminal's quiet soak. Do not run `water::parity` on the Mac: those tests
+use GPU compute. Run them only on `coderos-4080` through a remote lease.
+The required browser consumer check is
+`cargo check -p everglade-web --target wasm32-unknown-unknown`.
+
 ## Build, test, and capture commands
 
 The machine is shared, so run every Cargo command through the build lease
@@ -129,7 +158,7 @@ The sweep to run on `main` before starting water work:
 
 ```sh
 cargo test -p physics water
-cargo test -p verse-pbr --lib water
+cargo test -p verse-pbr --lib water -- --skip water::parity
 cargo test -p verse-world water
 cargo test -p verse-zone-water
 cargo test -p verse-zone-everglade water

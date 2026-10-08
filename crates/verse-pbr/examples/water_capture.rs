@@ -778,6 +778,7 @@ fn gpu() -> Result<Gpu, String> {
         .map_err(|e| e.to_string())?;
     let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
         required_limits: adapter.limits(),
+        required_features: adapter.features() & wgpu::Features::TIMESTAMP_QUERY,
         ..Default::default()
     }))
     .map_err(|e| e.to_string())?;
@@ -823,8 +824,20 @@ fn physical(
     wet: Wet,
     size: [u32; 2],
 ) -> Result<(Vec<u8>, f64, u32, u64), String> {
+    physical_sampled(gpu, photo, tier, spec, wet, size, None)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn physical_sampled(
+    gpu: &Gpu, photo: &mut Photo, tier: Tier, spec: &ViewSpec, wet: Wet,
+    size: [u32; 2], mut measurements: Option<&mut Vec<verse_pbr::water::timing::Measurements>>,
+) -> Result<(Vec<u8>, f64, u32, u64), String> {
     let world = world(spec.ground);
-    let surface = surface(&world, tier)?;
+    let mut surface = surface(&world, tier)?;
+    if measurements.is_some() && matches!(spec.ground, Ground::Open(_)) {
+        surface.patches.clear();
+        surface.ocean = Some(verse_pbr::water::frame::Ocean { body: 0, sea: true, field: None });
+    }
     let water_gpu = photo.upload_water(&gpu.device, &surface);
     let geometry = lit(&bed_triangles(&world, 0.5, spec.posts));
     let buffer = gpu
@@ -836,7 +849,7 @@ fn physical(
         });
     let with_water = wet != Wet::Dry;
     photo.water_copies = wet == Wet::Tier;
-    let neon = stage(spec, with_water.then(|| water(&world, spec)));
+    let mut neon = stage(spec, with_water.then(|| water(&world, spec)));
     let [width, height] = size;
     let mut targets = photo.targets(&gpu.device, width, height);
     let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
@@ -857,7 +870,9 @@ fn physical(
     let capture = size == [WIDTH, HEIGHT];
     let mut pixels = Vec::new();
     // Every frame shows the spectral sea at exactly the clock's tick.
-    photo.ocean.exact = true;
+    let sampled = measurements.is_some();
+    photo.ocean.exact = !sampled || capture;
+    if sampled { photo.enable_water_timing(&gpu.device, &gpu.queue); }
     let mut times = Vec::new();
     let mut view = camera(spec);
     view.view_proj = Mat4::perspective_rh(0.9, width as f32 / height as f32, 0.1, 400.0)
@@ -873,6 +888,7 @@ fn physical(
     };
     let mut frame = |photo: &mut Photo| {
         let mut encoder = gpu.device.create_command_encoder(&Default::default());
+        if sampled && let Some(water) = &mut neon.water { water.time += 1.0 / 60.0; }
         photo.encode(
             &gpu.device,
             &gpu.queue,
@@ -884,6 +900,7 @@ fn physical(
             Batches { ..*batches },
             None,
         );
+        if let Some(records) = measurements.as_mut() { records.push(photo.water_measurements()); }
         encoder
     };
     let wait = || {
@@ -898,17 +915,20 @@ fn physical(
     if capture {
         let warm = frame(photo);
         gpu.queue.submit([warm.finish()]);
+        photo.submitted();
         wait()?;
         pixels = read(gpu, &texture, frame(photo))?;
+        photo.submitted();
     } else {
         // Frames submitted back to back and waited on once a batch, so the
         // time is the GPU's throughput rather than one submission's
         // latency.
-        for round in 0..=ROUNDS {
+        for round in 0..=if sampled { 35 } else { ROUNDS } {
             let started = Instant::now();
             for _ in 0..BATCH {
                 let encoder = frame(photo);
                 gpu.queue.submit([encoder.finish()]);
+                photo.submitted();
             }
             wait()?;
             if round > 0 {
@@ -925,7 +945,7 @@ fn physical(
         pixels,
         fastest,
         water_gpu.0.count(),
-        targets.water_bytes() + water_gpu.bytes(),
+        photo.water_bytes(&targets, water_gpu.bytes()),
     ))
 }
 
@@ -1151,12 +1171,8 @@ fn decode(path: &Path) -> Result<Vec<u8>, String> {
 /// `docs/verse/water.md`'s budgets for water at 1080p: GPU time, ms, and
 /// GPU memory, bytes.
 fn budget(tier: Tier) -> (f64, u64) {
-    let mib = 1024 * 1024;
-    match tier {
-        Tier::Low => (1.5, 8 * mib),
-        Tier::Medium => (2.5, 32 * mib),
-        Tier::High => (4.0, 96 * mib),
-    }
+    let budget = verse_engine::quality::WaterBudget::of(tier);
+    (budget.gpu_ms, budget.gpu_bytes)
 }
 
 fn main() -> Result<(), String> {
@@ -1400,4 +1416,78 @@ fn main() -> Result<(), String> {
         return Err("A view's water drew nothing".into());
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod w11 {
+    use super::*;
+
+    /// CPU synthesis and raster only. Compile with a filtered `cargo test
+    /// --release --example water_capture --no-run`; execute under a quiet
+    /// lease, with WATER_W11_OUTPUT in the assigned scratch directory.
+    #[test]
+    #[ignore = "fixed-view native raster measurement under a quiet lease"]
+    fn water_w11_fixed_views() {
+        let directory = PathBuf::from(std::env::var("WATER_W11_OUTPUT").expect("WATER_W11_OUTPUT"));
+        std::fs::create_dir_all(&directory).unwrap();
+        let gpu = gpu().unwrap();
+        let mut records = Vec::new();
+        for tier in TIERS {
+            for spec in all_views().into_iter().map(placed).filter(|v|
+                ["pond-noon", "pond-posts", "open-storm", "waterline", "under"].contains(&v.name)) {
+                let mut photo = Photo::new(&gpu.device, &gpu.queue, capability(tier), wgpu::TextureFormat::Rgba8UnormSrgb).unwrap();
+                let mut dry_photo = Photo::new(&gpu.device, &gpu.queue, capability(tier), wgpu::TextureFormat::Rgba8UnormSrgb).unwrap();
+                let (_, dry_fence_ms, _, _) = physical(&gpu, &mut dry_photo, tier, &spec, Wet::Dry, BUDGET_SIZE).unwrap();
+                let mut samples = Vec::new();
+                let (_, fence_ms, _, bytes) = physical_sampled(&gpu, &mut photo, tier, &spec, Wet::Tier,
+                    BUDGET_SIZE, Some(&mut samples)).unwrap();
+                let steady = &samples[samples.len().saturating_sub(96)..];
+                let summary = |values: Vec<f64>| {
+                    let mut values: Vec<_> = values.into_iter().filter(|v| v.is_finite()).collect();
+                    values.sort_by(f64::total_cmp);
+                    let n = values.len();
+                    json!({"count":n, "mean":(n > 0).then(|| values.iter().sum::<f64>() / n as f64),
+                        "p95":values.get(n.saturating_sub(1)*95/100), "max":values.last()})
+                };
+                let gpu_samples: Vec<_> = steady.iter().filter_map(|s| s.gpu).collect();
+                let gpu_ms = summary(gpu_samples.iter().map(|s| s.water_ms).collect());
+                let main = summary(steady.iter().map(|s| s.main_cpu_ms.unwrap_or(s.main_ms)).collect());
+                let worker = summary(steady.iter().map(|s| s.worker_ms).collect());
+                let last = steady.last().unwrap();
+                let budget = verse_engine::quality::WaterBudget::of(tier);
+                let reduced = last.effects_reduced;
+                let fence_water_ms = (fence_ms - dry_fence_ms).max(0.0);
+                let gpu_cost = gpu_ms["mean"].as_f64().unwrap_or(fence_water_ms);
+                let within = bytes <= budget.gpu_bytes
+                    && main["mean"].as_f64().unwrap_or(0.0) <= budget.main_ms
+                    && worker["mean"].as_f64().unwrap_or(0.0) <= budget.worker_ms
+                    && gpu_cost <= budget.gpu_ms;
+                // Capture the final policy and the dry comparison at 540p.
+                let mut capture_samples = Vec::new();
+                let (wet, _, _, _) = physical_sampled(&gpu, &mut photo, tier, &spec, Wet::Tier,
+                    [WIDTH, HEIGHT], Some(&mut capture_samples)).unwrap();
+                let mut dry_photo = Photo::new(&gpu.device, &gpu.queue, capability(tier), wgpu::TextureFormat::Rgba8UnormSrgb).unwrap();
+                let (dry, _, _, _) = physical(&gpu, &mut dry_photo, tier, &spec, Wet::Dry, [WIDTH, HEIGHT]).unwrap();
+                let share = changed(&wet, &dry);
+                let filename = format!("native-{}-{}.png", tier_name(tier), spec.name);
+                png(&directory.join(&filename), &wet).unwrap();
+                records.push(json!({"tier":tier_name(tier),"view":spec.name,"adapter":gpu.adapter,
+                    "size":BUDGET_SIZE,"timing":"native pass timestamps when valid; queue fence is separately labeled",
+                    "gpu_ms":gpu_ms,"gpu_passes_ms":["mirror","opaque (excluded)","depth copy","surface"],
+                    "gpu_bytes":bytes,"main_ms":main,"worker_ms":worker,
+                    "main_cpu_clock":last.main_cpu_ms.is_some(),"worker_cpu_clock":last.worker_cpu_supported,
+                    "completed_jobs":steady.iter().map(|s| s.completed_jobs).sum::<u64>(),
+                    "completed_synthesis_ms":steady.iter().map(|s| s.completed_synthesis_ms).sum::<f64>(),
+                    "per_job_ms":summary(steady.iter().filter(|s| s.completed_jobs > 0).map(|s| s.synthesis_ms).collect()),
+                    "queue_fence_frame_ms_fastest":fence_ms,"queue_fence_water_ms_estimate":fence_water_ms,"last":last,
+                    "within_budget":within,"effects_reduced":reduced,"water_changed_pixels":share,
+                    "capture":filename,"capture_sha256":digest(&directory.join(&filename)).unwrap(),
+                    "samples":samples}));
+                assert!(share > 0.01, "{} {} keeps water visible", tier_name(tier), spec.name);
+                assert!(within || reduced, "{} {} admits cost or reduces effects", tier_name(tier), spec.name);
+                assert!(bytes <= budget.gpu_bytes, "{} {} water residency", tier_name(tier), spec.name);
+                std::fs::write(directory.join("native.json"), serde_json::to_vec_pretty(&records).unwrap()).unwrap();
+            }
+        }
+    }
 }

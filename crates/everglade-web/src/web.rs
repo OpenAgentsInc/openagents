@@ -217,6 +217,7 @@ struct Page {
     /// With `?frames`, the frame times gathered for the console's
     /// once-a-second line.
     frames: Option<Frames>,
+    water_dry: bool,
 }
 
 /// Frame times over the current second, for `?frames`.
@@ -229,16 +230,18 @@ struct Frames {
     /// milliseconds: their sums and their largest.
     gap: (f64, f64),
     work: (f64, f64),
+    water: Vec<verse::render::WaterMeasurements>,
 }
 
 impl Frames {
     /// Adds one frame that came `gap` ms after the last and took `work` ms,
     /// and logs the second when it is over.
-    fn add(&mut self, now: f64, gap: f64, work: f64, wreckage: Option<[usize; 3]>) {
+    fn add(&mut self, now: f64, gap: f64, work: f64, wreckage: Option<[usize; 3]>, water: Option<verse::render::WaterMeasurements>) {
         if self.count == 0 && self.since == 0.0 {
             self.since = now;
         }
         self.count += 1;
+        if let Some(water) = water.filter(|w| w.gpu_bytes > 0) { self.water.push(water); }
         self.gap = (self.gap.0 + gap, self.gap.1.max(gap));
         self.work = (self.work.0 + work, self.work.1.max(work));
         if now - self.since < 1000.0 {
@@ -254,6 +257,11 @@ impl Frames {
             self.work.0 / n,
             self.work.1,
         )));
+        if !self.water.is_empty() {
+            if let Ok(record) = serde_json::to_string(&self.water) {
+                web_sys::console::info_1(&JsValue::from_str(&format!("Everglade water {record}")));
+            }
+        }
         *self = Self {
             since: now,
             ..Self::default()
@@ -411,6 +419,7 @@ async fn run() -> Result<(), String> {
             }
         }
     }
+    if query_has(&window, "frames") { renderer.enable_water_timing(); }
     // Without the physical renderer the page would show an empty field, so
     // it says why instead.
     let unavailable = renderer.physical_error().map(|error| {
@@ -449,6 +458,7 @@ async fn run() -> Result<(), String> {
         grove_row: 0,
         presence: None,
         frames: query_has(&window, "frames").then(Frames::default),
+        water_dry: query_has(&window, "frames") && query_has(&window, "water-dry"),
     }));
     listen(&window, &page)?;
     animate(window, page);
@@ -519,6 +529,7 @@ async fn run_grid(
         grove_row: 0,
         presence,
         frames: None,
+        water_dry: false,
     }));
     listen(&window, &page)?;
     animate(window, page);
@@ -635,7 +646,11 @@ impl Page {
             let ended = web_sys::window()
                 .and_then(|w| w.performance())
                 .map_or(started, |p| p.now());
-            frames.add(now, gap, ended - started, self.runtime.everglade_wreckage());
+            let water = match &self.renderer {
+                Draw::Legacy(renderer) => renderer.water_measurements(),
+                _ => None,
+            };
+            frames.add(now, gap, ended - started, self.runtime.everglade_wreckage(), water);
         }
     }
 
@@ -728,7 +743,8 @@ impl Page {
             }
             return;
         }
-        let dynamic = self.runtime.dynamic_mesh();
+        let mut dynamic = self.runtime.dynamic_mesh();
+        if self.water_dry && let Some(neon) = &mut dynamic.neon { neon.water = None; }
         // No zone panel over the world (owner, 2026-10-04): the glade and
         // its hotbar, laid out in CSS pixels and drawn in device pixels.
         let mut ui = verse::ui::UiBatch::default();

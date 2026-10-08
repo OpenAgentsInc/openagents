@@ -518,3 +518,6 @@ mod tests {
         assert_eq!(Tier::parse("ultra"), None);
     }
 }
+
+mod water;
+pub use water::{WaterBudget, WaterEffects, WaterLoad, WaterPolicy};

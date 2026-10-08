@@ -8,6 +8,8 @@
 //! once per zone. Animated models rewrite bounded dynamic buffers each frame. [`Renderer`] presents to a window; `capture` renders the same
 //! scene to a PNG without one.
 
+pub use verse_pbr::water::timing::Measurements as WaterMeasurements;
+
 #[cfg(feature = "capture")]
 use std::path::Path;
 use std::sync::Arc;
@@ -762,6 +764,17 @@ impl Renderer {
         self.scene.capability.quality
     }
 
+    /// Enable supported per-pass water timing for fixed-view diagnostics.
+    pub fn enable_water_timing(&mut self) {
+        if let Some(photo) = &mut self.scene.photo { photo.enable_water_timing(&self.device, &self.queue); }
+    }
+
+    /// Water measurements from the physical renderer's most recent frame.
+    #[must_use]
+    pub fn water_measurements(&self) -> Option<WaterMeasurements> {
+        self.scene.photo.as_ref().map(|photo| photo.water_measurements())
+    }
+
     pub fn sample_count(&self) -> u32 {
         self.scene.samples
     }
@@ -1027,6 +1040,7 @@ impl Renderer {
             present.encode(&mut encoder, &output);
         }
         self.queue.submit([encoder.finish()]);
+        if let Some(photo) = &mut self.scene.photo { photo.submitted(); }
         frame.present();
         DrawStatus::Presented
     }
@@ -2115,7 +2129,8 @@ async fn open_async(
         .map_err(|e| format!("no graphics adapter: {e}"))?;
     let required_limits = scene_limits(adapter.limits())?;
     // The physical path prefers a compact 32-bit floating-point scene target.
-    let required_features = adapter.features() & wgpu::Features::RG11B10UFLOAT_RENDERABLE;
+    let required_features = adapter.features()
+        & (wgpu::Features::RG11B10UFLOAT_RENDERABLE | wgpu::Features::TIMESTAMP_QUERY);
     #[cfg(all(feature = "capture", not(target_arch = "wasm32")))]
     let required_features = required_features
         | if adapter.features().contains(timestamp_features()) {
