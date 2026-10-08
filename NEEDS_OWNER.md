@@ -1,3 +1,17 @@
+## Redeploy `openagents` on this Mac and coderos-4080, then smoke the remote lane (#10929-10931)
+
+The Devin engine, remote computer placement, and the durable queue are on
+main (`2c6af8ad34`). `computer task --engine` is new in this build, so the
+remote lane needs the current `openagents` deployed on both hosts before
+Alice can dispatch to `coderos-4080`. When the box is up:
+`openagents agent computers alice add coderos-4080 --max 1 --path ~/work/openagents --remote-workspace openagents`
+and `openagents agent engine alice devin`, then
+`openagents agent ask alice --mode task --computer coderos-4080 "..."` is
+the first live smoke — it must land at Alice's local Merge station.
+`agent queue alice add --computer coderos-4080 "..."` exercises the
+durable queue. The box was offline when this landed, so the lane's remote
+side is verified by scripted tests, not a live run.
+
 ## Verify native terminal display idle (#10909)
 
 Run the updated native terminal with a screen lease, leave its default sheet
