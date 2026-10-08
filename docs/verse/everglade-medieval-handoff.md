@@ -126,39 +126,30 @@ unchanged.
   B3 Cargo checks, captures, or measurements; consult the issue for newer
   verification evidence.
 - **B4 (#10908).** The coordinator holds the claim on
-  `codex/everglade-b4-tiers`. Commits `62e6b2fc52` and `bf25b60f6e` fetch
-  and verify the existing VLAY before browser town installation, deliver
-  matching layers without a stepped bake, and report the active state
-  under `?frames`. The focused delivery test and WASM check pass.
-  Browser validation correctly rejects the current scene after
-  `7afd440fe8` moved the fountain earlier in the placement order.
-  The B3 worker has completed matching current-order layers, SHA-256
-  `fc5414a1bfef9e730f3d7d779e4447f12cc86d4e571042eec42518abb30ef7c2`,
-  51,684,139 bytes, from clean source `9967c94cef`. The temporary order
-  restoration was reverted; retain main's ordering and publish these
-  completed layers through the queue after validation. Do not rebake to
-  chase main. Main `7857e78275` makes queue regeneration verified reuse
-  only. Its regression test rejects changed scenes, recipes, dirty
-  receipts, and corrupt bytes. Remote submission
-  `01791484173833860158-2604976-0` was rejected without baking: Linux builds
-  scene `5d33bd1f9115196944a8fc1a7ac3154c0d735f0d054426af0fb86a3f4caf635a`
-  and recipe key `cb19c4b9461edcc75a7d90e1a2da44a4cff967406ec333639a66a2785736a682`,
-  while the completed Mac artifact records scene
-  `f55a1e76fca2e2b96af777e296549aa9b51776cadbcfff6eaf1c77a8ad83b2ab`
-  and key `090f106f9c459f62f9cd67902a18531b7e00f9d15e292e0b60a0dd7b231b0b6b`.
-  Both input file digests and receipt settings/light agree. The release
-  Mac/Linux/browser comparison now proves identical topology, materials,
-  UVs, vertex colors, and licensed images; maximum position differences
-  are 0.031 mm, and at most nine procedural dirt pixels differ by one byte.
-  `bench/verse/2026-10-08/layer-scene-compatibility/` retains the audit
-  summary without licensed content. Checkpoint `20aa21e899` adds exact
-  reviewed scene alternatives bound to the immutable artifact SHA, source
-  recipe, and target recipe. Its checks and publication are pending; unknown
-  scenes and the different debug topology remain rejected. No new bake is
-  needed. Spatial tier reduction and budgets remain open.
-  One 512 px kit pack
-  serves every tier today (21,467,658 bytes to transfer, 60.5 MiB decoded),
-  exceeding the web and phone soft budgets. Both tiers need B4.
+  `codex/everglade-b4-publication`. Main `984bca94e3` publishes the existing
+  51,684,139-byte VLAY through the reuse-only artifact queue, with SHA-256
+  `fc5414a1bfef9e730f3d7d779e4447f12cc86d4e571042eec42518abb30ef7c2`.
+  Browser loading verifies that file before installing the town, skips the
+  stepped bake, and reports `offline_light` under `?frames`.
+  Exact reviewed Mac, Linux, and browser scene identities are bound to the
+  artifact SHA, source recipe, and target recipe. The retained audit in
+  `bench/verse/2026-10-08/layer-scene-compatibility/` proves identical
+  topology, materials, UVs, vertex colors, and licensed images; positions
+  differ by at most 0.031 mm, and nine procedural dirt pixels differ by
+  at most one byte per channel. Unknown scenes and debug topology remain
+  rejected. The compatibility, reuse, and private artifact tests pass.
+  No new bake is needed when unrelated main commits land.
+  Main `332a88c0f0` streams large browser modules; `c103b903f0` applies
+  browser chrome tokens through the DOM style API under the site's strict
+  CSP. The optimized production module is 28,450,183 bytes. Cloud Build
+  `889f9249-7d6a-427e-8889-9178dba04e35` overlays the verified module and
+  existing VLAY on the live image. Revision
+  `coder-web-b4-dbd84fdb3d-20261008195645` is staged with zero traffic;
+  its full file delivery checks pass, and browser verification is pending.
+  Spatial tier reduction and budgets remain open. The 512 px kit still
+  serves every tier (21,467,658 bytes transferred, 60.5 MiB decoded).
+  B3's final repair commit needs a subsequent browser module refresh;
+  preserve the immutable bake and the latest live native web image.
 
 ## P3 checkpoint inputs
 
