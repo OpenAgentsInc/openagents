@@ -17,7 +17,7 @@ places. No licensed asset files enter the repository.
 The saved `wip/everglade-b2-doc` commit `52ec66fe15` holds one documentation
 commit on top of B2, whose code landed as `0e0d8afd37`.
 
-Status as of October 7, 2026. The plan, its decisions, and the "As built"
+Status as of October 8, 2026. The plan, its decisions, and the "As built"
 notes are in [Everglade medieval refactor](everglade-medieval-refactor.md).
 The umbrella issue is #10903.
 
@@ -102,16 +102,22 @@ unchanged.
   separate floor/plinth and band/wall finish faces. The headless Verse
   consumer check passes; the default check stops on the remote runtime's
   missing ALSA development metadata.
-  Public integration checkpoint `b14b0e5100` adds optional canonical house
+  Public integration checkpoint `3314ae5773` adds optional canonical house
   levels, damage fallback, inverse-transform exports, and a private CPU
-  atlas builder; it is unformatted and unverified. Atlases retain the
+  atlas builder. Formatting, three house-transform/paint tests, five kit
+  compiler tests, seven admission tests, and the filtered house-export
+  precompile pass. The CPU palette fixture verifies sRGB decode, an exact
+  color round trip, and linear half-intensity tinting. Atlases retain the
   renderer's grade and tints once. Custom caller paint keeps original
   pieces at every distance. No P3
   artifact or main commit has landed. Private CPU decimation produces
   awning/cart/fountain/lamp/stall far levels of 127/255/800/192/256
   triangles, within budgets and with exact original bounds. Seven focused
-  kit-admission tests pass. Those private models still need compilation
-  and admission in the real pack.
+  kit-admission tests pass. The CPU market-hall pilot retains all original
+  parts and produces 10,000 near triangles in 12 primitives, 3,000 middle
+  triangles, and 800 far triangles. Both pilots preserve bounds within
+  0.3 mm. These are generator checks; normalized pack admission and visual
+  acceptance remain pending.
   Remaining acceptance: compile and verify private middle/far house shells and shared atlases,
   market-hall near reduction without removing visible interiors, actual
   selected batches within 10,000/3,000/800 triangles and 12/5/1 draws,
@@ -145,8 +151,25 @@ Cargo target is `~/work/openagents-target-agent11`. The same toolbox keeps
 GLBs, material tables, and textures; no matching retained screenshot is
 available. Render that original input offscreen on the remote machine and
 label it "exported Unreal demo input," not an Unreal-engine screenshot.
-Record differences from the canonical town recipe. Private `export/`, `kit-build/`, and `packs/`
+`demo-reference/exported-demo-input.blend` and `reference.json` preserve
+actor `BP_residential_house_15`, its 87 original components, 18 material
+identities, and source transforms. That actor differs from the canonical
+width/depth/door bays, plinth height, and floor spacing; compare the same
+demo actor before/after merge and grade, and report the canonical gap.
+Private `export/`, `kit-build/`, and `packs/`
 remain under `~/.openagents/verse/private/medieval-town/`.
+
+The verified source is `3314ae5773a09aab3d160b84874d9f90a1e61e0b`.
+`raw-kit-p3-identities.txt` records recipe SHA-256
+`fd798e88b6425306b72b7952df099e2e3c7b4a2a887715936553d4093eadd78e`,
+export-manifest SHA-256
+`b2edbdd659f7860c24935fe00d115cab75ac5f05a945eca66169f0b86c18cee0`,
+and build-report SHA-256
+`5362a674915f8cbabdd2503a6a12e874b7cfb2630eaa0ffb556fa3b2b9cea2cc`.
+`raw-kit-p3.log` confirms 53 pieces, zero skips, and 28 textures. The approved
+compiled export writes `house-check-p3-source/` and its log, including a
+normalized recipe manifest for the corrected CPU atlas batches. The actual
+all-house distance budgets and post-gap coplanar report are still pending.
 
 The portable headless CPU runtime is Blender 4.5.14 LTS. Its official archive
 SHA-256 is `9ba871ff2ecd36526b77432745980b7e6664ecd0c7ca11c48849073dcfe06da3`.
