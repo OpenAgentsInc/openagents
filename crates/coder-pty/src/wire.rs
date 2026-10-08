@@ -750,6 +750,11 @@ pub enum Value {
         grant: crate::share::ShareGrant,
         authorization: serde_json::Value,
     },
+    /// An engine's sign-in status, read inside the computer. It holds no
+    /// text, so no credential can ride in it.
+    EngineStatus {
+        status: crate::engine::Status,
+    },
 }
 
 /// The host's answer to one request.

@@ -191,6 +191,31 @@ pub struct Config {
     /// block journal sees each command. `None` runs `/bin/sh` without
     /// hooks.
     pub terminal_shell: Option<PathBuf>,
+    /// Where an engine status read finds Claude Code and its notices on
+    /// this computer (BYO-02). `None`, as in tests, runs nothing and
+    /// answers that the engine is unavailable.
+    pub engine_status: Option<EngineStatus>,
+}
+
+/// The Claude Code program a status read runs, and the computer's notice
+/// directory (`coder_engine_status::claude`). The device never names
+/// either.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EngineStatus {
+    pub program: PathBuf,
+    pub notices: Option<PathBuf>,
+}
+
+impl EngineStatus {
+    /// The pinned image path and this user's notice directory.
+    #[must_use]
+    pub fn installed() -> Self {
+        EngineStatus {
+            program: coder_engine_status::claude::PROGRAM.into(),
+            notices: std::env::var_os("HOME")
+                .map(|home| coder_engine_status::claude::notice_dir(home.as_ref())),
+        }
+    }
 }
 
 /// A chat worker other than the public one, as `openagents chat` takes it
@@ -243,6 +268,7 @@ impl Config {
             chat_home: None,
             verse_home: None,
             terminal_shell: None,
+            engine_status: None,
         }
     }
 

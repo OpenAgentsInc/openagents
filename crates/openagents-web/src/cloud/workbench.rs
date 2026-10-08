@@ -101,7 +101,7 @@ struct Input {
 }
 
 /// Plain-text engine copy: no logos, and no OpenAgents Claude login form.
-const CLAUDE_SIGN_IN: &str = "<p>A computer with the Claude Code engine runs Claude Code. Sign in to Claude opens a terminal on your computer and runs <code>claude</code>; you finish Anthropic's own sign-in there, with your own plan or API key. OpenAgents never asks for, receives, or stores your Claude login, and it stays only in your computer.</p>";
+const CLAUDE_SIGN_IN: &str = "<p>A computer with the Claude Code engine runs Claude Code. Sign in to Claude opens a terminal on your computer and runs <code>claude</code>; you finish Anthropic's own sign-in there, with your own plan or API key. OpenAgents never asks for, receives, or stores your Claude login, and it stays only in your computer.</p><p>Each workbench shows whether that computer's Claude Code is signed in, its plan or key type, when the login expires, and any usage-limit reset Claude Code reports, read by running <code>claude auth status</code> inside the computer. Only that status leaves it, and OpenAgents keeps no usage ledger for your plan. When the login is expiring or expired, Renew Claude sign-in opens the same terminal sign-in.</p>";
 
 /// The engine sign-in a workbench page may run: only Claude Code's own
 /// program, from the runtime image, with no arguments.

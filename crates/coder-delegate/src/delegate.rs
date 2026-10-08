@@ -2611,8 +2611,52 @@ pub async fn delegate<E: Executor>(
         &briefing.text,
     ));
     let report = executor.execute(briefing).await;
+    remember_engine_notice(executor.agent(), &report);
     recorder.push(record(executor, briefing, delegation, &report, calls + 1));
     report
+}
+
+/// Keeps what Claude Code itself reported about its sign-in on this
+/// computer, so the computer's sign-in status can show it
+/// (`coder_engine_status::claude`): a usage limit and its reset, or a
+/// login that expired or will soon. Only the typed notice is kept, never
+/// the text. A normal run clears it. Nothing is kept unless the Coder run
+/// names the computer's notice directory.
+fn remember_engine_notice(agent: &str, report: &Report) {
+    use coder_engine_status::claude;
+    let Some(dir) = std::env::var_os(claude::NOTICE_DIR_ENV) else {
+        return;
+    };
+    if crate::limit::provider_of(agent) != "anthropic" {
+        return;
+    }
+    let dir = std::path::Path::new(&dir);
+    let _ = engine_notice(agent, report, crate::limit::now()).map_or_else(
+        || {
+            if report.status == Status::Answered && report.summary.is_error != Some(true) {
+                claude::forget(dir);
+            }
+            Ok(())
+        },
+        |notice| claude::remember(dir, notice),
+    );
+}
+
+/// The notice a Claude Code run's errors carry, if any.
+fn engine_notice(agent: &str, report: &Report, now: u64) -> Option<coder_engine_status::Notice> {
+    if let Some(limit) = report.limit(agent) {
+        return Some(coder_engine_status::Notice::Limited {
+            resets_at: limit.resets_at,
+            at: now,
+        });
+    }
+    let failed = report.status != Status::Answered || report.summary.is_error == Some(true);
+    let result = report.summary.result.as_deref().filter(|_| failed);
+    [result, Some(report.stderr.as_str())]
+        .into_iter()
+        .flatten()
+        .flat_map(str::lines)
+        .find_map(|line| coder_engine_status::Notice::from_text(line, now))
 }
 
 /// Keeps the whole briefing on the step that announces a delegation, so the
@@ -3761,6 +3805,42 @@ pub mod tests {
         }
         // The mid-run session did billed work before the limit.
         assert!(Summary::parse(THROTTLED_MID_RUN).total_cost_usd.unwrap() > 1.0);
+    }
+
+    #[test]
+    fn claude_codes_limits_and_expired_logins_become_typed_notices() {
+        use coder_engine_status::Notice;
+        let report = |status: Status, stream: &str, stderr: &str| Report {
+            status,
+            summary: Summary::parse(stream),
+            milliseconds: 1,
+            stderr: stderr.into(),
+            stream: None,
+        };
+        let throttled = report(Status::Refused(USAGE_LIMIT.to_string()), THROTTLED, "");
+        assert_eq!(
+            engine_notice("claude", &throttled, 7),
+            Some(Notice::Limited {
+                resets_at: Some(1_790_164_200),
+                at: 7
+            })
+        );
+        let expired = report(
+            Status::Failed(1),
+            r#"{"type":"result","subtype":"error_during_execution","is_error":true,"result":"OAuth token has expired. Please run /login"}"#,
+            "",
+        );
+        assert_eq!(
+            engine_notice("claude", &expired, 7),
+            Some(Notice::LoginExpired { at: 7 })
+        );
+        // What a model wrote in a normal answer is never read as a notice.
+        let answered = report(
+            Status::Answered,
+            r#"{"type":"result","subtype":"success","is_error":false,"result":"Tell the user to run /login"}"#,
+            "",
+        );
+        assert_eq!(engine_notice("claude", &answered, 7), None);
     }
 
     #[test]

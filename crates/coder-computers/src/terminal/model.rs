@@ -231,6 +231,9 @@ pub struct Model {
     /// A refusal or failure to show once, such as input the host did not
     /// take.
     pub notice: Option<String>,
+    /// The computer's Claude Code sign-in status, read once after the
+    /// first attach (BYO-02). It holds no text and no credential.
+    pub engine: Option<coder_host::pty::engine::Status>,
     /// Changes whenever anything here changes.
     pub revision: u64,
     /// Receives every output byte the host sends, before the emulator draws
@@ -277,6 +280,7 @@ impl Model {
             route: None,
             ctrl: false,
             notice: None,
+            engine: None,
             revision: 1,
             tap: None,
             #[cfg(feature = "live")]

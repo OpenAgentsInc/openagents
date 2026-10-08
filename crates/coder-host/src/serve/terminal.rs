@@ -75,6 +75,9 @@ pub(crate) fn run(
     if let Some(outcome) = session(shared, principal, request, now) {
         return TerminalResult::from_outcome(id, outcome);
     }
+    if let TermRequest::EngineStatus(read) = request {
+        return TerminalResult::from_outcome(id, engine_status(shared, principal, read, now));
+    }
     let mut outcome = match request {
         TermRequest::Proposal(r) => pty.proposal(principal, r),
         TermRequest::Open(r) => pty.open(principal, r),
@@ -95,7 +98,8 @@ pub(crate) fn run(
         TermRequest::SessionRead(_)
         | TermRequest::SessionWrite(_)
         | TermRequest::SessionList(_)
-        | TermRequest::SessionRemove(_) => unreachable!("answered above"),
+        | TermRequest::SessionRemove(_)
+        | TermRequest::EngineStatus(_) => unreachable!("answered above"),
     };
     if let Ok((_, coder_pty::wire::Value::Attached { task_binding, .. })) = &mut outcome
         && let Some(reference) = task_reference(request)
@@ -190,6 +194,40 @@ fn task_reference(request: &TermRequest) -> Option<&coder_pty::wire::TerminalRef
         | TermRequest::SessionRead(_)
         | TermRequest::SessionWrite(_)
         | TermRequest::SessionList(_)
-        | TermRequest::SessionRemove(_) => None,
+        | TermRequest::SessionRemove(_)
+        | TermRequest::EngineStatus(_) => None,
     }
+}
+
+/// Answers an engine status read: it needs the `terminal` right, the same
+/// right the engine's sign-in terminal needs, and a share never reaches
+/// it. The host runs the engine's own status command inside this computer
+/// and answers with a status that holds no text; the device names only the
+/// engine, never the program (docs/cloud/claude-code-byo.md).
+fn engine_status(
+    shared: &Arc<Shared>,
+    principal: &str,
+    read: &coder_pty::engine::EngineStatusRead,
+    now: u64,
+) -> coder_pty::host::Outcome {
+    use coder_engine_status::claude;
+    read.check()?;
+    if !shared
+        .authority
+        .holds(principal, coder_access::Right::Terminal, now)
+    {
+        return Err(Refusal::new(
+            Reason::NotAdmitted,
+            "an engine status read needs the terminal right",
+        ));
+    }
+    let coder_pty::engine::Engine::Claude = read.engine;
+    let status = match &shared.config.engine_status {
+        Some(engine) => claude::check(&engine.program, engine.notices.as_deref(), now),
+        None => coder_pty::engine::Status::unavailable(read.engine, now),
+    };
+    Ok((
+        coder_pty::wire::Status::Accepted,
+        coder_pty::wire::Value::EngineStatus { status },
+    ))
 }

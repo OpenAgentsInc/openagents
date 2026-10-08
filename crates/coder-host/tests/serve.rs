@@ -714,3 +714,94 @@ async fn a_saved_session_reopens_on_two_devices_and_survives_a_restart() {
     assert_eq!(removed.status, Status::Accepted, "{removed:?}");
     fixture.running.shutdown().await;
 }
+
+/// An engine status read runs Claude Code's own status command inside the
+/// computer and answers with a status that holds no text: the account's
+/// email and anything credential-shaped the binary printed stay home. It
+/// needs the terminal right, and an unconfigured host runs nothing.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn an_engine_status_read_answers_only_the_typed_status() {
+    use coder_host::pty::engine::{Engine, EngineStatusRead, Method, Plan, State};
+    use std::os::unix::fs::PermissionsExt;
+
+    let mut fixture = fixture(5).await;
+    let phone = fixture.enroll(Rights::standard()).await;
+    let watcher = fixture.enroll(Rights::new([Right::Observe]).unwrap()).await;
+    let read = || {
+        TermRequest::EngineStatus(EngineStatusRead::new(
+            coder_host::reach::new_id(),
+            Engine::Claude,
+        ))
+    };
+    let link = fixture.direct(&phone).await;
+    let answer = link.terminal(read()).await.unwrap();
+    let Some(Value::EngineStatus { status }) = answer.value else {
+        panic!("unconfigured: {answer:?}")
+    };
+    assert_eq!(status.state, State::Unavailable);
+    drop(link);
+
+    // A fixture binary in place of the pinned one: it prints the account's
+    // email and a credential-shaped value beside the typed fields.
+    let token = format!("sk-ant-oat01-{}", "m5".repeat(40));
+    let program = fixture.temp.path().join("claude");
+    std::fs::write(
+        &program,
+        format!(
+            "#!/bin/sh\n[ \"$1 $2\" = 'auth status' ] || exit 9\necho '{{\"loggedIn\":true,\"authMethod\":\"claude.ai\",\"subscriptionType\":\"max\",\"email\":\"someone@example.com\",\"orgName\":\"{token}\"}}'\n"
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let notices = fixture.temp.path().join("engine");
+    std::fs::create_dir_all(&notices).unwrap();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    std::fs::write(
+        notices.join("claude.json"),
+        format!(
+            r#"{{"kind":"limited","resets_at":{},"at":{now}}}"#,
+            now + 3_600
+        ),
+    )
+    .unwrap();
+    let access = fixture.temp.path().join("access");
+    fixture.running.shutdown().await;
+    let mut config = Config::new(access, vec![fixture.relay.clone()], 6);
+    config.policy = POLICY;
+    config.engine_status = Some(coder_host::config::EngineStatus {
+        program,
+        notices: Some(notices),
+    });
+    fixture.running = coder_host::start(config, Arc::new(NoTasks)).await.unwrap();
+
+    let link = fixture.direct(&phone).await;
+    let answer = link.terminal(read()).await.unwrap();
+    let raw = serde_json::to_string(&answer).unwrap();
+    assert!(
+        !raw.contains("sk-ant") && !raw.contains("someone@"),
+        "{raw}"
+    );
+    let Some(Value::EngineStatus { status }) = answer.value else {
+        panic!("configured: {answer:?}")
+    };
+    assert_eq!(
+        (status.state, status.method, status.plan, status.resets_at),
+        (
+            State::RateLimited,
+            Some(Method::ClaudeAi),
+            Some(Plan::Max),
+            Some(now + 3_600)
+        )
+    );
+    drop(link);
+
+    // Observing is not enough to run anything on the computer.
+    let link = fixture.direct(&watcher).await;
+    let refused = link.terminal(read()).await.unwrap();
+    assert_eq!(refused.reason, Some(Reason::NotAdmitted), "{refused:?}");
+    fixture.running.shutdown().await;
+}

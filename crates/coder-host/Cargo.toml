@@ -49,6 +49,8 @@ coder-connect = { path = "../coder-connect", default-features = false }
 coder-history = { path = "../coder-history", default-features = false }
 coder-link = { path = "../coder-link" }
 coder-pty = { path = "../coder-pty", default-features = false }
+# Claude Code's own sign-in status, read inside this computer (BYO-02).
+coder-engine-status = { path = "../coder-engine-status" }
 # Each terminal's authoritative emulator (host feature only).
 coder-vt = { path = "../coder-vt", optional = true }
 # The shell-integration hooks a terminal's shell starts with (host feature

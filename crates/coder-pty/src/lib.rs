@@ -33,6 +33,7 @@
 
 pub mod client;
 pub mod emulator;
+pub mod engine;
 pub mod ext;
 pub mod ring;
 pub mod share;

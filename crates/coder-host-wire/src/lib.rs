@@ -11,6 +11,7 @@
 //! frame starts with one flag byte: `1` when more fragments follow and `0`
 //! for the last. A message is at most [`MAX_MESSAGE_BYTES`] bytes.
 
+use coder_pty::engine::{ENGINE_STATUS, EngineStatusRead};
 use coder_pty::ext::{
     BLOCK_PAGE, BlockPageRead, HANDOFF, HISTORY, Handoff, History, RECORDS, RELEASE, RecordsFrame,
     SESSION_LIST, SESSION_READ, SESSION_REMOVE, SESSION_WRITE, Seat, SessionList, SessionRead,
@@ -158,6 +159,8 @@ pub enum TermRequest {
     SessionWrite(SessionWrite),
     SessionList(SessionList),
     SessionRemove(SessionRemove),
+    /// An engine's sign-in status, read inside the computer (BYO-02).
+    EngineStatus(EngineStatusRead),
 }
 
 impl TermRequest {
@@ -196,6 +199,7 @@ impl TermRequest {
             SESSION_WRITE => serde_json::from_value(value).map(Self::SessionWrite),
             SESSION_LIST => serde_json::from_value(value).map(Self::SessionList),
             SESSION_REMOVE => serde_json::from_value(value).map(Self::SessionRemove),
+            ENGINE_STATUS => serde_json::from_value(value).map(Self::EngineStatus),
             _ => {
                 return Err(Refusal::new(
                     Reason::UnsupportedVersion,
@@ -230,6 +234,7 @@ impl TermRequest {
             Self::SessionWrite(r) => &r.request,
             Self::SessionList(r) => &r.request,
             Self::SessionRemove(r) => &r.request,
+            Self::EngineStatus(r) => &r.request,
         }
     }
 
@@ -262,6 +267,7 @@ impl TermRequest {
             Self::SessionWrite(_) => SESSION_WRITE,
             Self::SessionList(_) => SESSION_LIST,
             Self::SessionRemove(_) => SESSION_REMOVE,
+            Self::EngineStatus(_) => ENGINE_STATUS,
         }
     }
 
@@ -289,6 +295,7 @@ impl TermRequest {
             Self::SessionWrite(r) => serde_json::to_value(r),
             Self::SessionList(r) => serde_json::to_value(r),
             Self::SessionRemove(r) => serde_json::to_value(r),
+            Self::EngineStatus(r) => serde_json::to_value(r),
         };
         value.unwrap_or(Value::Null)
     }

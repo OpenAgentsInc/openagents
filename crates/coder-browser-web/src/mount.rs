@@ -78,6 +78,8 @@ struct Runtime {
     aborts: RefCell<Vec<AbortHandle>>,
     composition: RefCell<Composition>,
     notice: Element,
+    /// The computer's Claude Code sign-in status (BYO-02).
+    engine: Element,
     input: HtmlTextAreaElement,
     invitation: HtmlInputElement,
     sessions: Element,
@@ -275,6 +277,9 @@ impl Runtime {
         let notice = text(&root, "p", "Starting the shared terminal renderer…")?;
         notice.set_id("cloud-terminal-status");
         notice.set_attribute("role", "status")?;
+        let engine = element(&root, "div")?;
+        engine.set_id("cloud-engine-status");
+        engine.set_attribute("aria-live", "polite")?;
         let surface = shared_surface(&root)?;
         let sessions = element(&root, "div")?;
         sessions.set_id("cloud-terminal-sessions");
@@ -338,6 +343,7 @@ impl Runtime {
             aborts: RefCell::new(vec![]),
             composition: RefCell::new(Composition::default()),
             notice,
+            engine,
             input,
             invitation,
             sessions,
@@ -666,6 +672,25 @@ impl Runtime {
                 self.pending.set(true);
                 match command {
                     Command::List => {
+                        // The computer's Claude Code sign-in status, read by
+                        // running the binary there. Only the typed status
+                        // arrives; a host that cannot answer shows as such.
+                        let status = link
+                            .request(TermRequest::EngineStatus(
+                                coder_pty::engine::EngineStatusRead::new(
+                                    coder_browser::new_request_id(),
+                                    coder_pty::engine::Engine::Claude,
+                                ),
+                            ))
+                            .await
+                            .map_err(|_| failure())?;
+                        if !self.enrollment_current(epoch) {
+                            return Err(failure());
+                        }
+                        self.show_engine(match status.value {
+                            Some(Value::EngineStatus { status }) => Some(status),
+                            _ => None,
+                        })?;
                         let result = link
                             .request(TermRequest::SessionList(coder_pty::ext::SessionList::new(
                                 coder_browser::new_request_id(),
@@ -912,6 +937,33 @@ impl Runtime {
             }
         }
         Err(failure())
+    }
+
+    /// Render the engine status in plain text, with the one-click renew
+    /// that opens this computer's sign-in terminal (`?sign_in=claude`).
+    fn show_engine(&self, status: Option<coder_pty::engine::Status>) -> Result<(), JsValue> {
+        self.engine.set_text_content(None);
+        let Some(status) = status else {
+            text(
+                &self.engine,
+                "p",
+                "This computer did not report a Claude Code sign-in status.",
+            )?;
+            return Ok(());
+        };
+        text(
+            &self.engine,
+            "p",
+            &format!("{}. {}", status.headline(), status.summary()),
+        )?;
+        if let Some(label) = status.action() {
+            // The same page with BYO-01's sign-in: a terminal on this
+            // computer running the unmodified program.
+            let renew = text(&self.engine, "a", label)?;
+            renew.set_attribute("href", "?sign_in=claude")?;
+            renew.set_id("cloud-engine-renew");
+        }
+        Ok(())
     }
 
     fn show_sessions(

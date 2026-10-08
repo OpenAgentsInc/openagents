@@ -189,6 +189,7 @@ impl Admission {
             TermRequest::SessionWrite(r) => r.check_with(self.features),
             TermRequest::SessionList(r) => r.check_with(self.features),
             TermRequest::SessionRemove(r) => r.check_with(self.features),
+            TermRequest::EngineStatus(r) => r.check(),
         };
         checked.map_err(|_| Error::Malformed)?;
         let value = request.to_value();

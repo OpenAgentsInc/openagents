@@ -916,6 +916,9 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
     config.chat_home = chat_home(root);
     // The owner's private Verse placements, for paired phones.
     config.verse_home = verse_home(root);
+    // Claude Code's own sign-in status, read by running the pinned binary
+    // inside this computer (docs/cloud/claude-code-byo.md).
+    config.engine_status = Some(crate::config::EngineStatus::installed());
     // A phone that pairs with a connect code reads this host's Coder chats
     // as a tailnet-admitted one does: the same observer and sources. When
     // tailnet admission serves the observer, this only issues invitations.

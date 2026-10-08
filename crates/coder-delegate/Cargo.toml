@@ -10,6 +10,8 @@ publish.workspace = true
 # OpenCode's model names and login lookup (`acp_client::opencode`).
 acp-client = { path = "../acp-client" }
 coder-lease = { path = "../coder-lease" }
+# Usage-limit text shared with the computer's status check (BYO-02).
+coder-engine-status = { path = "../coder-engine-status" }
 atif = { path = "../atif" }
 coder-boundary = { path = "../coder-boundary" }
 coder-history = { path = "../coder-history", default-features = false }

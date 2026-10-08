@@ -751,6 +751,7 @@ async fn drive(
     // first one sent the session to fresh presence for the generation.
     let mut attached_once = false;
     let mut rechecked = false;
+    let mut engine_read = false;
     // The features to ask for: a join by snapshot with effects, effects
     // alone, or the base profile. An older host refuses a feature, and the
     // session attaches again asking for less.
@@ -846,6 +847,10 @@ async fn drive(
             }
         };
         attached_once = true;
+        if !engine_read && !watch {
+            engine_read = true;
+            read_engine_status(&link, model);
+        }
         {
             let mut model = lock(model);
             model.route = Some(route(&link));
@@ -937,6 +942,31 @@ async fn newer_reference(link: &Link, reference: &TerminalRef) -> Option<Termina
         }
     }
     None
+}
+
+/// Read the computer's Claude Code sign-in status beside the attachment,
+/// without holding up its frames. A status that needs the person shows
+/// once as the notice, with what to type in this terminal; a host that
+/// cannot answer leaves the screen as it was.
+fn read_engine_status(link: &Arc<Link>, model: &Arc<Mutex<Model>>) {
+    use coder_host::pty::engine::{Engine, EngineStatusRead};
+    let (link, model) = (link.clone(), model.clone());
+    tokio::spawn(async move {
+        let read = TermRequest::EngineStatus(EngineStatusRead::new(new_id(), Engine::Claude));
+        let Ok(TerminalResult {
+            value: Some(Value::EngineStatus { status }),
+            ..
+        }) = request(&link, read).await
+        else {
+            return;
+        };
+        let mut model = lock(&model);
+        model.engine = Some(status);
+        if let Some(notice) = status.terminal_notice() {
+            model.notice = Some(notice);
+        }
+        model.touch();
+    });
 }
 
 async fn request(link: &Link, request: TermRequest) -> Result<TerminalResult, HostError> {

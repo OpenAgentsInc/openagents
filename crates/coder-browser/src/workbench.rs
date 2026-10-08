@@ -44,6 +44,7 @@ impl IO {
                 | TermRequest::BlockPage(_)
                 | TermRequest::SessionRead(_)
                 | TermRequest::SessionList(_)
+                | TermRequest::EngineStatus(_)
                 | TermRequest::Proposal(proposal::Request {
                     action: Action::Read { .. },
                     ..

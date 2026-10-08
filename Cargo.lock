@@ -2898,6 +2898,7 @@ dependencies = [
  "base64 0.22.1",
  "boat",
  "coder-access",
+ "coder-engine-status",
  "coder-host",
  "libc",
  "secret-screen",
@@ -3032,6 +3033,7 @@ dependencies = [
  "acp-client",
  "atif",
  "coder-boundary",
+ "coder-engine-status",
  "coder-history",
  "coder-lease",
  "futures-util",
@@ -3083,6 +3085,15 @@ dependencies = [
  "clap",
  "coder-desk",
  "serde_json",
+]
+
+[[package]]
+name = "coder-engine-status"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]
@@ -3159,6 +3170,7 @@ dependencies = [
  "coder-access",
  "coder-boundary",
  "coder-connect",
+ "coder-engine-status",
  "coder-history",
  "coder-host-wire",
  "coder-link",
@@ -3370,6 +3382,7 @@ version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "coder-boundary",
+ "coder-engine-status",
  "coder-vt",
  "libc",
  "serde",

@@ -233,6 +233,9 @@ export CODEX_HOME="/tmp/oa-coder-{job}/codex"
 if [ -f "/tmp/oa-coder-{job}.env" ]; then . "/tmp/oa-coder-{job}.env"; rm -f "/tmp/oa-coder-{job}.env"; fi
 unset OA_CODEX_AUTH
 unset OPENAGENTS_CODER_EVENT_CHANNEL OPENAGENTS_CODER_MODEL_INPUT
+# Claude Code's own usage-limit and login notices, kept as typed records
+# in this computer for its sign-in status (BYO-02). No text is kept.
+export OA_ENGINE_NOTICE_DIR="$HOME/.openagents/engine"
 {model_env}
 export OA_CODER_CLOUD_CREDENTIAL_NAMES={credential_names}
 "$p" --json coder --in {workdir} --state "/tmp/oa-coder-{job}/state" delegate {agent} --task "$(cat "$d/task")" --session {session} > "$d/out" 2> "$d/err"

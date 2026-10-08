@@ -21,7 +21,7 @@ pub const VERSION: &str = "2.1.295";
 /// Where the runtime image installs the binary (`npm install -g --prefix
 /// /usr/local`). The sign-in terminal runs this exact program, with no
 /// arguments, so every sign-in method the binary offers stays available.
-pub const PROGRAM: &str = "/usr/local/bin/claude";
+pub const PROGRAM: &str = coder_engine_status::claude::PROGRAM;
 
 /// The only engine credentials a profile may inject for Claude Code: the
 /// user's own Anthropic API key (a separate custody class, rule 8). A

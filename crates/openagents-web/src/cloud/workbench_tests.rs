@@ -410,6 +410,8 @@ async fn claude_sign_in_runs_the_engine_in_the_granted_terminal_and_never_takes_
     assert!(index.body.contains(&format!("{PAGE}?sign_in=claude")));
     assert!(index.body.contains("Sign in to Claude"));
     assert!(index.body.contains("runs Claude Code"));
+    assert!(index.body.contains("claude auth status"));
+    assert!(index.body.contains("no usage ledger"));
     // Plain-text copy only, and no OpenAgents Claude login form.
     for absent in ["claude-logo", "anthropic-logo", "type=\"password\""] {
         assert!(!index.body.contains(absent), "{absent}");

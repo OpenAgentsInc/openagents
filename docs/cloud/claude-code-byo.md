@@ -86,6 +86,30 @@ October 8, 2026. Recheck both before each availability decision.
   computer running the unmodified program; the terminal host keeps only
   digests of typed input. The account sign-in form refuses claude.ai logins.
 
+## Implemented (BYO-02, #11009)
+
+- Status comes from the pinned binary itself: the host in the user's
+  computer runs `/usr/local/bin/claude auth status` (JSON; exit 0 signed in,
+  1 signed out) with standard input closed and standard error discarded,
+  and reads only `loggedIn`, `authMethod`, `subscriptionType`, and a login
+  expiry when the release reports one. The account email, organization, and
+  everything else stay in the computer. No credential file is read.
+- Usage limits and logins that stopped working show up only when Claude
+  Code runs. The Coder delegate keeps the last one as a typed notice (kind
+  and times, never text) in `~/.openagents/engine/claude.json` in that
+  computer; a normal run clears it. The usage-limit reset is the one Claude
+  Code reported. There is no usage ledger for the user's plan.
+- `coder_engine_status::Status` is the only thing that leaves the computer:
+  closed enums and Unix seconds, no string field, so it cannot carry
+  credential bytes (tested). States: signed out, signed in, expiring
+  (three days, as Claude Code warns), expired, rate limited, API key or
+  cloud credential, and unavailable.
+- The host answers it as a NIP-TERM engine status read
+  (`coder_pty::engine`, terminal right required; the device names only the
+  engine, never a program). The web workbench shows it in plain text with
+  Renew Claude sign-in, which reuses BYO-01's sign-in terminal; the native
+  terminal client shows the same summary once when the person must act.
+
 ## Existing docs this supersedes
 
 - `2026-10-02-boat-sdk-plan.md` describes connecting Claude Pro or Max on Boat's
