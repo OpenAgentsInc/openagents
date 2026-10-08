@@ -3,6 +3,7 @@
 //! [--preflight-only] [--repair-hold-seconds SECONDS]
 //! [--blend-only | --skip-blend | --destruction-only]
 //! Requires VERSE_KIT_PACK and VERSE_KIT_BAKE for exactly the current scene.
+//! Destruction modes require --features capture,dev-destruction.
 
 use serde_json::json;
 use sha2::{Digest, Sha256};
@@ -113,6 +114,9 @@ fn main() -> Result<(), String> {
     drop(merged);
     drop(world);
     let mut runtime = WorldRuntime::new();
+    if mode != CaptureMode::BlendOnly {
+        runtime.set_dev_destruction(true)?;
+    }
     runtime.set_town_clock(running_clock(12.0));
     runtime.install_everglade(&pack);
     runtime.settle_zone_light();
