@@ -309,10 +309,14 @@ compilation errors, device loss, or error-scope failures. Removing the
 fence wrapper, bringing the tab forward, and using a viewport screenshot
 do not correct the black frame. The observer retains `Log.entryAdded`,
 which the original browser harness discarded, plus uncaptured device
-errors and exact pass/query metadata. Proposed fix: bind the scene at
-group 0 inside `draw_blended`, which previously inherited it from a fused
-pass. Browser acceptance must retain device and Log errors and reject
-black captures. These changes and fresh measurements are pending.
+errors and exact pass/query metadata. The corrected source binds the scene at group 0 inside `draw_blended`,
+which previously inherited it from a fused pass. Browser acceptance now
+retains device and Log errors, rejects blank captures, and retains failed
+cases while closing their tabs. `WATER_W11_BROWSER_CASES=water-webgpu`
+selects a finite dry/wet pair. Fresh artifacts and measurements are pending.
+The source rebases cleanly on `90f90cd4f2ac8d6f175906f31ab1b3aa72709144`,
+preserving scene-lit particles and the current owner steps. Scoped PBR
+formatting passes. The coordinator grants the next serial focused batch.
 Do not relax timestamp decoding from the browser's all-zero evidence.
 The current decoder rejects `end <= start` for every masked pass;
 inspect raw native counters before treating ancillary zero-duration
