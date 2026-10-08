@@ -29,28 +29,22 @@ serves `openagents-web:d3f3ad546c` and the pinned private kit with HTTP
 fix (#10909) is closed at `98df2423e3`, with its full-hour release soak
 and consumer check passing.
 
-P3 (#10896) remains open on the pushed branch
-[`codex/everglade-p3`](https://github.com/OpenAgentsInc/openagents/tree/codex/everglade-p3).
-Checkpoint `7d27c2b761` updates its handoff with the source, commands,
-and private evidence paths. Capture source `1d38e17a75` passes the scoped checks.
-All 65 houses pass the unsuppressed coplanar detector and the compiled
-budgets: near levels have at most 10,000 triangles and 12 draws, middle
-levels at most 3,000 triangles and one draw, and far levels at most 800
-triangles and one draw. Six remote raster captures cover a cabin at
-horizontal selector distances of 10, 50, and 120 m and the market's
-exterior, roof, and interior. Their exact eye distances and hashes are in
-the capture receipts. The near cabin view favors the roof; the interior
-is dark and shows the existing rain-through-ceiling limitation.
+P3 (#10896) lands as `682435a6c1`; the `everglade-kit` artifact queue
+repins the reviewed pack in `5415c483de`. Registry prerequisite
+`14437ac3c2` includes whole-house level generation in the queue's
+regeneration and consistency check. All 65 houses pass the unsuppressed
+coplanar detector and the compiled budgets: near levels have at most
+10,000 triangles and 12 draws, middle levels at most 3,000 triangles and
+one draw, and far levels at most 800 triangles and one draw.
 
-The private candidate pack has digest
-`c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e`,
-21,467,658 bytes, and 63,438,848 decoded texture bytes. It is unpublished;
-the larger decoded footprint also needs B4's tier review. Capture source
-`b903f52e2b` completes the matching demo/grade and far damage/restore
-acceptance below. Fresh scoped checks and the web consumer check pass.
-Publication still requires `openagents artifact submit everglade-kit`,
-the private upload, and a dependent web deploy. Do not repin directly or
-commit licensed files.
+Capture source `b903f52e2b` completes the matching exported-demo and grade
+views, plus first and repeated far damage and exact restoration. The six
+geometry views and fresh scoped checks are recorded below. The reviewed
+pack is `c559955403b42861be3cc933ec572dafbe91c259bc2fa4c24a1cbab101a9998e`,
+21,467,658 bytes, with 63,438,848 decoded texture bytes (60.5 MiB).
+It is uploaded to the private bucket; dependent website verification
+remains open. This footprint needs B4's web and phone tier work.
+No licensed geometry or captures enter Git.
 
 B2 (#10906) has code in `0e0d8afd37` but remains open for verification
 and publication. B3 (#10907) has an unverified source checkpoint on
@@ -68,7 +62,7 @@ the original October 7 plan.
 | Decisions recorded | #10903 | `46a89d3587` | Done |
 | P1: export and archive | #10894 | `89328cdd2a` | Closed; vendor archive uploaded October 7 |
 | P2: kit pack, loader, proxies | #10895 | `8f6136a533`, first repin `ea39fa5cf2` | Closed |
-| P3: materials and levels | #10896 | grade in `0a44257462`, tooling `50dca3b658` | CPU acceptance passes; visual acceptance and publication remain open |
+| P3: materials and levels | #10896 | `682435a6c1`, repin `5415c483de` | Source and artifact checks pass; website deployment remains |
 | P4: kit houses and breaking | #10897 | `0a44257462` | Closed |
 | P5: Stoop Lane | #10898 | `0a44257462`, `ea39fa5cf2` | Closed |
 | P6: Main Street, the plaza, Market Row | #10899 | `611df73ca7`, repin `6b37d8ee57` | Closed |
@@ -91,8 +85,8 @@ unchanged.
 
 ## What's open
 
-- **P3 (#10896).** Checkpointed on October 8 on `codex/everglade-p3`;
-  the coordinator holds its claim and the board is In progress.
+- **P3 (#10896).** Source and artifact pin are on main; the coordinator
+  holds its claim while the dependent website deployment finishes.
   All 65 actual houses pass strict selected budgets: near 3,156–10,000
   triangles/10–12 draws, middle 2,999–3,000/one, and far 799–800/one.
   The real candidate pack admits all 53 pieces, five prop far models, and
@@ -104,10 +98,9 @@ unchanged.
   10/50/120 m and market exterior/gable/interior. Near favors the roof;
   interior lighting and rain remain limitations. The matching exported-demo
   and grade views and first/repeated far damage plus restoration pass at
-  `b903f52e2b`. Rebase on current main before artifact-queue publication,
-  private upload, and dependent deployment.
-  No P3 artifact or main commit has landed. Exact source/input/candidate
-  identities, captures, limitations, and resume commands follow below.
+  `b903f52e2b`. The artifact queue has regenerated and checked the same
+  digest, and the private upload is verified. Exact source, input, capture,
+  and limitation records follow below.
 - **B2 (#10906).** Its issue holds what its subagent landed and what
   remains.
 - **B3 (#10907).** Checkpoint `a2f4bbf7d3` on `codex/everglade-b3` holds
@@ -116,9 +109,8 @@ unchanged.
   captures, and timing plan. The claim is released while P3 takes priority;
   no B3 Cargo command, bake, capture, or measurement has run.
 - **B4 (#10908).** Not started. It needs B2 and P8. One 512 px kit pack
-  serves every tier today (10.2 MB to transfer, about 28 MiB decoded),
-  which is over the phone's 8 MiB transfer budget. A phone tier is part of
-  B4.
+  serves every tier today (21,467,658 bytes to transfer, 60.5 MiB decoded),
+  exceeding the web and phone soft budgets. Both tiers need B4.
 
 ## P3 checkpoint inputs
 
@@ -458,7 +450,7 @@ for example to compare grades.
 - **Stories.** A story is 4.5 m floor to floor (a 4 m wall and the kit's
   0.5 m band), on a plinth sunk 1.25 m, so the floor is 0.75 m up the
   steps.
-- **Breaking.** Kit pieces are carved one block each. The P3 checkpoint
+- **Breaking.** Kit pieces are carved one block each. P3
   groups intact house submissions and retains editable per-piece ranges
   for damage fallback and restore; those pieces do not draw as instances.
 - **Test edits.** The tall-ruin test lets a chunk lodge up to 4.5 m high
