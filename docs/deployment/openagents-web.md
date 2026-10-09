@@ -898,3 +898,18 @@ then moved to 100% at 20:57 UTC. Smoke on openagents.com (`--production
 Rollback (as `chris@`): `scripts/deploy/web.sh rollback
 coder-web-10866f41bb-20261009205152` (the same site without accounts;
 sign-in answers 503 again).
+
+### 2026-10-09 23:00 UTC: admin analytics, coder-serve secrets
+
+`coder-web-26cdd2ff30-20261009225545` (`91cdbe16d3`, image
+`openagents-web@sha256:26cdd2ff…`): `/admin/analytics` opens for a
+signed-in site admin and is linked from the account menu; the dashboard key
+works only as a bearer, and anyone else gets the plain 404
+([analytics](analytics.md)). The `coder-serve` sidecar's
+`CODER_GITHUB_CLIENT_SECRET` and `POSTHOG_PROJECT_TOKEN` now come from
+Secret Manager (`coder-github-client-secret`,
+`openagents-posthog-project-token`) with the same values;
+`scripts/deploy/web.sh promote` and `deploy/production/render.py` keep
+them there. Staging smoke 77 passed; openagents.com smoke (`--production`)
+56 passed, 0 failed, 2 skipped; no errors in the first 10 minutes.
+Rollback: `scripts/deploy/web.sh rollback coder-web-pg-23232df3b0-221054`.
