@@ -765,7 +765,7 @@ impl Tasks for Inbox {
             expected_revision: Some(revision),
             action: Action::Correct {
                 prompt: prompt.into(),
-                reason: "Steered by an enrolled device".into(),
+                reason: "Steered from a paired device".into(),
             },
         })
     }

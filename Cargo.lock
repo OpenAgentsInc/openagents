@@ -2776,6 +2776,7 @@ dependencies = [
  "model-access",
  "nostr",
  "nostr-transport",
+ "oa-copy",
  "openagents-chat",
  "openagents-chat-app",
  "openagents-connect",
@@ -3389,6 +3390,7 @@ dependencies = [
  "microcoder-loop",
  "model-access",
  "nostr",
+ "oa-copy",
  "openagents-login",
  "openrouter",
  "ratatui",
@@ -3562,6 +3564,7 @@ version = "0.1.0"
 dependencies = [
  "atif",
  "nostr",
+ "oa-copy",
  "oa-tokens",
  "pulldown-cmark",
  "rust-native",

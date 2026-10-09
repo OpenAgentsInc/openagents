@@ -616,7 +616,7 @@ pub fn summary(output: &serde_json::Value) -> String {
             }
             text.push_str("\nRelevance and raw continuous influence are separate units; neither is a signed 0–100 score.\n");
             for evidence in &observation.responses {
-                text.push_str(&format!("\n{} · HTTP {} · {:?} · fetched {} ms · expires {} ms\nInput digest: {}\nOutput digest: {}\n", evidence.endpoint, evidence.status, evidence.requested_algorithm, evidence.fetched_at_ms, evidence.expires_at_ms, evidence.input_digest, evidence.output_digest));
+                text.push_str(&format!("\n{} · HTTP {} · {:?} · fetched {} ms · expires {} ms\nInput hash: {}\nOutput hash: {}\n", evidence.endpoint, evidence.status, evidence.requested_algorithm, evidence.fetched_at_ms, evidence.expires_at_ms, evidence.input_digest, evidence.output_digest));
             }
             return text;
         }

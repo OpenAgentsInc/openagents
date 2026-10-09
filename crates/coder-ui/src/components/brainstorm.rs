@@ -67,7 +67,7 @@ pub fn summary(result: &ResultDisplay) -> String {
             }
             if let Some(error)=&observation.enrichment_error {text.push_str(&format!("\nInfluence unavailable: {error}.\n"));}
             text.push_str("\nRelevance and raw continuous influence are separate units; neither is a signed 0–100 score.\n");
-            for response in &observation.responses {text.push_str(&format!("\n{} · HTTP {} · {} · fetched {} ms · expires {} ms\nInput digest: {}\nOutput digest: {}\n",response.endpoint,response.status,response.algorithm,response.fetched_ms,response.expires_ms,response.input_digest,response.output_digest));}text
+            for response in &observation.responses {text.push_str(&format!("\n{} · HTTP {} · {} · fetched {} ms · expires {} ms\nInput hash: {}\nOutput hash: {}\n",response.endpoint,response.status,response.algorithm,response.fetched_ms,response.expires_ms,response.input_digest,response.output_digest));}text
         }
         ResultDisplay::Discovery{origin,house_key,search,rank,discovered_ms,expires_ms}=>format!("Brainstorm discovery from {origin}\nHouse key: {house_key}\nSearch available: {search} · Rank available: {rank}\nSeparate HTTPS identity observation at {discovered_ms} ms; not a signed or atomic observer binding.\nDiscovery expiry: {expires_ms} ms."),
         ResultDisplay::Error{recipient:Some(recipient),message}=>format!("Brainstorm lookup to {recipient}: {message}"),

@@ -325,6 +325,37 @@ fn the_held_out_questions_name_only_committed_entries() {
     }
 }
 
+/// #11031: a reviewed answer is shown to the person as written, so no
+/// committed entry's answer carries machine talk.
+#[test]
+fn reviewed_answers_have_no_machine_talk() {
+    let corpus = committed();
+    let mut hits = Vec::new();
+    for entry in &corpus.base.entries {
+        let Some(answer) = &entry.answer else {
+            continue;
+        };
+        // The Test-Time Capabilities essay defines "admission" as one of
+        // its terms; its entries answer questions about that essay.
+        let allow: &[&str] = if entry.id.starts_with("openagents.ttc-") {
+            &["admission", "admitted"]
+        } else {
+            &[]
+        };
+        for hit in oa_copy::violations(answer, allow) {
+            hits.push(format!(
+                "{}: {:?} in \"{}\"",
+                entry.id, hit.term, hit.context
+            ));
+        }
+    }
+    assert!(
+        hits.is_empty(),
+        "machine talk in product answers:\n{}",
+        hits.join("\n")
+    );
+}
+
 /// A grounded reply's `[openagents.…]` citations, with or without a
 /// version, never reach the phone: not in the final text and not in any
 /// streamed piece, however the stream splits them, and a line that held

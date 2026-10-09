@@ -1,6 +1,6 @@
 ---
 id: openagents.chat-and-coder
-version: 1
+version: 2
 kind: product
 title: "Chatting with OpenAgents and dispatching Coder"
 summary: >-
@@ -16,7 +16,7 @@ answer: >-
   In the Chat tab you talk with us, OpenAgents. We answer questions and help
   you plan, but from the chat we can't run code, read files, or reach your
   computer. Coder is our coding agent: when a message needs a computer, such
-  as changing a repository or running commands, we dispatch Coder to a
+  as changing a repository or running commands, we send Coder to a
   computer you've connected, with the conversation as its task. Coder uses
   that computer's own git and GitHub login.
 status: admitted
@@ -29,11 +29,12 @@ provenance:
     - INVARIANTS.md
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
+  - "2026-10-09: version 2 (#11031) says it in plain words, without internal terms."
 ---
 
 ## Answer
 
-In the Chat tab you talk with us, OpenAgents. We answer questions and help you plan, but from the chat we can't run code, read files, or reach your computer. Coder is our coding agent: when a message needs a computer, such as changing a repository or running commands, we dispatch Coder to a computer you've connected, with the conversation as its task. Coder uses that computer's own git and GitHub login.
+In the Chat tab you talk with us, OpenAgents. We answer questions and help you plan, but from the chat we can't run code, read files, or reach your computer. Coder is our coding agent: when a message needs a computer, such as changing a repository or running commands, we send Coder to a computer you've connected, with the conversation as its task. Coder uses that computer's own git and GitHub login.
 
 ## Details
 

@@ -1199,7 +1199,7 @@ fn evaluate(
                         Effect::Correct(prompt) => (
                             Action::Correct {
                                 prompt,
-                                reason: "Steered by an enrolled device".into(),
+                                reason: "Steered from a paired device".into(),
                             },
                             false,
                             "",

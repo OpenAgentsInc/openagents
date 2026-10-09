@@ -55,6 +55,8 @@ pub mod classify;
 pub mod cli_route;
 pub mod cloud;
 pub mod codebase;
+#[cfg(test)]
+mod copy_guard_tests;
 pub mod decision;
 pub mod defaults;
 pub mod delegate;

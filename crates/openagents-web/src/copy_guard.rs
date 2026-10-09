@@ -50,3 +50,61 @@ fn without_preformatted(html: &str) -> String {
     out.push_str(rest);
     out
 }
+
+/// Files whose strings no visitor reads, each with its reason.
+const SKIP: &[&str] = &[
+    // The chat store's errors go to the server log; a page shows its own
+    // plain message instead (`pages/chat.rs`).
+    "chat_store.rs",
+    // No route shows the key vault's or the host list's errors or terms.
+    "cloud/byo.rs",
+    "cloud/custody.rs",
+    "cloud/hosts.rs",
+    // The server's command line, for whoever runs it.
+    "main.rs",
+    "upstream.rs",
+    // The archived Coder-pilot pages, kept for the record and never served.
+    "pilot/archived.rs",
+];
+
+/// Lexicon terms a file may carry, each with its reason.
+const ALLOW_IN: &[(&str, &[&str])] = &[
+    // The purchase page shows the exact command to run, `--digest` and all.
+    ("purchases.rs", &["digest"]),
+    // `?cursor=` is the query of the next-steps link, not words.
+    ("tasks.rs", &["cursor"]),
+];
+
+/// #11031: no string in this site's sources that reads like words, and no
+/// line of its scripts, carries machine talk. Rendered pages are checked
+/// too ([`assert_plain`]); this catches copy on pages no test renders.
+#[test]
+fn site_sources_have_no_machine_talk() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let mut hits = oa_copy::scan_dir_allowing(&root.join("src"), SKIP, &[], ALLOW_IN);
+    for script in [
+        "chat.js",
+        "chat-start.js",
+        "components-start.js",
+        "flow.js",
+        "everglade.js",
+    ] {
+        let text = std::fs::read_to_string(root.join("static").join(script)).expect("the script");
+        for (index, line) in text.lines().enumerate() {
+            // `cursor` is a CSS property in scripts.
+            for v in oa_copy::violations(line, &["cursor"]) {
+                hits.push(format!(
+                    "{script}:{}: {:?} in {:?}",
+                    index + 1,
+                    v.term,
+                    v.context
+                ));
+            }
+        }
+    }
+    assert!(
+        hits.is_empty(),
+        "machine talk in the site's copy (rewrite it in plain words, see AGENTS.md):\n{}",
+        hits.join("\n")
+    );
+}

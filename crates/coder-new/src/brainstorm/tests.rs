@@ -450,7 +450,7 @@ fn explicit_lookup_works_without_credentials_and_completes_without_provider_chan
         "unavailable",
         "Separate HTTPS observation",
         "Combined expiry",
-        "Input digest",
+        "Input hash",
     ] {
         assert!(rendered.contains(label), "{label}");
     }

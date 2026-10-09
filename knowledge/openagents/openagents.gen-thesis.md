@@ -1,6 +1,6 @@
 ---
 id: openagents.gen-thesis
-version: 1
+version: 2
 kind: product
 title: "The thesis: a general agent is a composition"
 summary: >-
@@ -13,11 +13,9 @@ applies_when: >-
 answer: >-
   Our thesis: a general agent can be built as a composition, a general front
   that decides, cheaply and in typed form, what each request needs, and a
-  growing set of specialized members it admits per request, each admitted on
-  the strength of a measured claim and carried as a signed public record.
+  growing set of specialized members it brings in per request, each brought in on the strength of a measured claim and carried as a signed public record.
   Three properties set it apart from a router in front of some tools: the
-  front decides with typed judgments, not generation; members are admitted on
-  evidence, not presence; and every member, measurement, and decision is a
+  front decides with typed judgments, not generation; members are brought in on evidence, not presence; and every member, measurement, and decision is a
   signed record on an open protocol.
 status: admitted
 author: openagents
@@ -27,11 +25,12 @@ provenance:
     - docs/essays/2026-10-01-the-return-of-the-general-agent.md
 evidence:
   - "2026-10-01: written from the essay The Return of the General Agent and checked against its text (#10099); the answer text awaits the owner's copy review."
+  - "2026-10-09: version 2 (#11031) says it in plain words, without internal terms."
 ---
 
 ## Answer
 
-Our thesis: a general agent can be built as a composition, a general front that decides, cheaply and in typed form, what each request needs, and a growing set of specialized members it admits per request, each admitted on the strength of a measured claim and carried as a signed public record. Three properties set it apart from a router in front of some tools: the front decides with typed judgments, not generation; members are admitted on evidence, not presence; and every member, measurement, and decision is a signed record on an open protocol.
+Our thesis: a general agent can be built as a composition, a general front that decides, cheaply and in typed form, what each request needs, and a growing set of specialized members it brings in per request, each brought in on the strength of a measured claim and carried as a signed public record. Three properties set it apart from a router in front of some tools: the front decides with typed judgments, not generation; members are brought in on evidence, not presence; and every member, measurement, and decision is a signed record on an open protocol.
 
 ## Details
 

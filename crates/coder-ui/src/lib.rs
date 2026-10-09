@@ -5,6 +5,8 @@ pub mod coder_noir;
 pub mod components;
 pub mod control;
 pub mod coordination;
+#[cfg(test)]
+mod copy_guard_tests;
 pub mod demo;
 pub mod gui_theme;
 pub mod observation;

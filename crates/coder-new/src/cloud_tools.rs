@@ -39,13 +39,13 @@ pub fn definition(p: Placement, control: bool) -> Value {
     let (name, description, parameters) = if control {
         (
             format!("{prefix}_job"),
-            "Read, follow, cancel, steer, or continue a retained remote job. Continuation preserves its workspace. Applying a patch is an explicit caller CLI action.",
+            "Read, follow, cancel, steer, or continue a saved remote job. Continuation preserves its workspace. Applying a patch is an explicit caller CLI action.",
             json!({"type":"object","properties":{"operation":{"type":"string","enum":["status","follow","cancel","steer","continue","artifacts"]},"job":{"type":"string"},"message":{"type":"string"}},"required":["operation","job"],"additionalProperties":false}),
         )
     } else {
         (
             format!("{prefix}_delegate"),
-            "Delegate requested cloud work to an exact remote agent ID: agent@boat or agent@gce. Boat supports integrated agents or the Coder runtime; GCE runs Coder. Use configured credential variable names only. Select workspace paths before dispatching a large repository. Results retain a patch, ATIF, logs, placement, state, and usage.",
+            "Delegate requested cloud work to an exact remote agent ID: agent@boat or agent@gce. Boat supports integrated agents or the Coder runtime; GCE runs Coder. Use configured credential variable names only. Select workspace paths before sending a large repository. Results retain a patch, ATIF, logs, placement, state, and usage.",
             json!({"type":"object","properties":{"agent":{"type":"string"},"task":{"type":"string"},"mode":{"type":"string","enum":if p==Placement::Boat{vec!["integrated","coder"]}else{vec!["coder"]}},"model":{"type":"string"},"reasoning":{"type":"string"},"job":{"type":"string"},"credential_names":{"type":"array","items":{"type":"string"}},"workspace_paths":{"type":"array","items":{"type":"string"}},"include":{"type":"array","items":{"type":"string"}},"no_workspace":{"type":"boolean"},"timeout_seconds":{"type":"integer","minimum":1,"maximum":43200}},"required":["agent","task"],"additionalProperties":false}),
         )
     };
@@ -72,7 +72,9 @@ pub fn arguments(
         .strip_suffix(suffix)
         .ok_or("Use an exact agent ID with its @boat or @gce placement.")?;
     if !targets.is_empty() && !targets.contains(agent) {
-        return Err("The remote agent differs from the agent named in this request. No substitute was dispatched.".into());
+        return Err(
+            "The remote agent isn't the one named in this request, so nothing was started.".into(),
+        );
     }
     let credentials = if a.credential_names.is_empty() {
         config.credential_names.clone()
@@ -84,8 +86,7 @@ pub fn arguments(
         .any(|n| !config.credential_names.contains(n))
     {
         return Err(
-            "A requested credential variable is not admitted in this cloud plugin's settings."
-                .into(),
+            "A requested credential variable isn't allowed in this cloud plugin's settings.".into(),
         );
     }
     let mode = a.mode.unwrap_or(config.mode);
@@ -209,7 +210,7 @@ pub async fn execute(
             emit(event);
         }
     }
-    worker.await.map_err(
-        |_| "The cloud worker stopped unexpectedly. Follow the retained job to reconnect.",
-    )?
+    worker
+        .await
+        .map_err(|_| "The cloud worker stopped unexpectedly. Follow the job to reconnect.")?
 }

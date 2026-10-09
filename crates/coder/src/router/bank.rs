@@ -569,6 +569,20 @@ pub fn lint(bank: &Bank, root: Option<&Path>) -> Vec<String> {
                 }
             }
         }
+        // No machine talk in anything a person reads (#11031).
+        let read = shown
+            .iter()
+            .copied()
+            .chain(entry.chip.as_deref())
+            .chain(entry.offer.as_ref().map(|offer| offer.label.as_str()));
+        for text in read {
+            for hit in oa_copy::violations(text, &[]) {
+                push(
+                    id,
+                    format!("machine talk ({:?} in \"{}\")", hit.term, hit.context),
+                );
+            }
+        }
         for slot in entry.facts.keys() {
             if !shown
                 .iter()
@@ -703,6 +717,12 @@ pub fn lint(bank: &Bank, root: Option<&Path>) -> Vec<String> {
         if !singular(&opener.text).is_empty() {
             push(id, "speaks in the singular".into());
         }
+        for hit in oa_copy::violations(&opener.text, &[]) {
+            push(
+                id,
+                format!("machine talk ({:?} in \"{}\")", hit.term, hit.context),
+            );
+        }
         // An opener says something true and useful; a bare
         // acknowledgement is filler.
         if opener.text.split_whitespace().count() < 3 {
@@ -738,10 +758,10 @@ mod tests {
         // The chat-answers-v1 entries that shipped in coder::first are
         // here, at the versions that shipped, so logged tags still resolve.
         for (id, version) in [
-            ("meta.who", 1),
+            ("meta.who", 2),
             ("meta.model", 1),
             ("meta.capabilities", 3),
-            ("meta.limits_chat", 2),
+            ("meta.limits_chat", 3),
             ("meta.coder", 3),
             ("meta.github", 2),
             ("meta.open_source", 1),
@@ -769,7 +789,7 @@ id = "meta.bad"
 version = 1
 routes = ["meta", "weather"]
 when = "anything"
-text = "I can help. Tap Run Coder. {price} {model}"
+text = "I can help. Tap Run Coder. {price} {model} It was retained."
 facts = { model = "worker.nope", unused = "worker.lane.display" }
 sources = ["no/such/file.md"]
 followups = ["meta.missing", "meta.nochip"]
@@ -803,6 +823,7 @@ when = "x"
             "a stem needs a generic_end",
             "meta.nochip: cites no sources",
             "ok: is filler",
+            "machine talk (\"retained\"",
         ] {
             assert!(
                 problems.contains(expected),

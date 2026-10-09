@@ -430,7 +430,7 @@ pub(super) fn entries() -> Vec<CatalogEntry> {
                             path: "crates/coder-new/src/brainstorm.rs".into(),
                             symbol: "summary".into(),
                             branch: format!(
-                                "fixture:{variant}; typed {} result projection",
+                                "fixture:{variant}; typed {} result view",
                                 variant.trim_start_matches("brainstorm-")
                             ),
                         }),

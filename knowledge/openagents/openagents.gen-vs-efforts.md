@@ -1,6 +1,6 @@
 ---
 id: openagents.gen-vs-efforts
-version: 1
+version: 2
 kind: product
 title: "How our composition differs from other composition efforts"
 summary: >-
@@ -12,8 +12,7 @@ applies_when: >-
   The user asks how our approach differs from MCP, Agent2Agent, Agent Skills,
   Magentic-One, or app stores for agents.
 answer: >-
-  Each current effort supplies part of a composition. None supplies the
-  admission rule, and none is an open substrate for members and evidence
+  Each current effort supplies part of a composition. None supplies the rule for bringing members in, and none is an open substrate for members and evidence
   together. Magentic-One fixes members by one vendor. Agent Skills treats
   presence as capability, and self-written skills can score below none. MCP
   standardizes a connection, but connection is not competence. Agent2Agent
@@ -27,11 +26,12 @@ provenance:
     - docs/essays/2026-10-01-the-return-of-the-general-agent.md
 evidence:
   - "2026-10-01: written from the essay The Return of the General Agent and checked against its text (#10099); the answer text awaits the owner's copy review."
+  - "2026-10-09: version 2 (#11031) says it in plain words, without internal terms."
 ---
 
 ## Answer
 
-Each current effort supplies part of a composition. None supplies the admission rule, and none is an open substrate for members and evidence together. Magentic-One fixes members by one vendor. Agent Skills treats presence as capability, and self-written skills can score below none. MCP standardizes a connection, but connection is not competence. Agent2Agent standardizes communication, which is not evidence or authority. App stores bring a review queue, platform terms, and a platform's revenue share.
+Each current effort supplies part of a composition. None supplies the rule for bringing members in, and none is an open substrate for members and evidence together. Magentic-One fixes members by one vendor. Agent Skills treats presence as capability, and self-written skills can score below none. MCP standardizes a connection, but connection is not competence. Agent2Agent standardizes communication, which is not evidence or authority. App stores bring a review queue, platform terms, and a platform's revenue share.
 
 ## Details
 
