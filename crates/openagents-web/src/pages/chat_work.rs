@@ -70,7 +70,7 @@ pub(super) struct Offer {
 }
 
 impl Offer {
-    fn label(&self) -> String {
+    pub(super) fn label(&self) -> String {
         match self.version {
             Some(n) => format!("{} v{n}", self.repository),
             None => self.repository.clone(),
@@ -80,7 +80,10 @@ impl Offer {
 
 /// The repository a chat is about: its project's, else the one its
 /// composer selected.
-fn repository<'a>(chat: &'a Conversation, projects: Option<&'a Sidebar>) -> Option<&'a str> {
+pub(super) fn repository<'a>(
+    chat: &'a Conversation,
+    projects: Option<&'a Sidebar>,
+) -> Option<&'a str> {
     chat.project
         .as_deref()
         .and_then(|id| projects?.project(id))
@@ -222,6 +225,14 @@ fn status(state: TaskState) -> TaskStatus {
     }
 }
 
+/// What a task row is called.
+fn task_label(kind: TaskKind) -> &'static str {
+    match kind {
+        TaskKind::Claude => "Claude Code",
+        TaskKind::Continue => "Cloud computer",
+    }
+}
+
 /// The tasks that started after the chat's first `at` messages, as rows.
 /// `links` adds each run's address (see [`links`]).
 pub(super) fn rows(chat: &Conversation, at: usize, links: bool) -> Markup {
@@ -233,7 +244,7 @@ pub(super) fn rows(chat: &Conversation, at: usize, links: bool) -> Markup {
     };
     html! {
         @for task in chat.tasks.iter().filter(|task| task.after_message.min(count) == at) {
-            @let row = TaskRow::new("Claude Code", status(task.state))
+            @let row = TaskRow::new(task_label(task.kind), status(task.state))
                 .detail(task.title.clone())
                 .id(format!("chat-task-{}", task.id));
             @if links && !gone(task) {
@@ -256,27 +267,48 @@ pub(super) fn state(run: RunState) -> TaskState {
     }
 }
 
-/// The chat with its unfinished tasks' states as `read` reports them
-/// (state and version), or `None` when nothing changed. A run `read` can't
-/// find keeps its last state.
+/// What reading a run found.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct Seen {
+    pub state: TaskState,
+    pub version: Option<u64>,
+    /// Claude Code's answer, once it has one.
+    pub reply: Option<String>,
+}
+
+/// The chat with its unfinished tasks' states as `read` reports them, or
+/// `None` when nothing changed. A run `read` can't find keeps its last
+/// state. A Coder chat continued on a Cloud computer (#11050) gets the
+/// run's answer as its next message when the run is done, in the same
+/// write, so the answer lands once.
 pub(super) fn observe(
     chat: &Conversation,
-    read: impl Fn(&str, &str) -> Option<(TaskState, Option<u64>)>,
+    read: impl Fn(&str, &str) -> Option<Seen>,
 ) -> Option<Conversation> {
     let mut next = chat.clone();
     let mut changed = false;
+    let mut answers = Vec::new();
     for task in next.tasks.iter_mut().filter(|task| !task.state.finished()) {
-        let Some((state, version)) = read(&task.environment, &task.id) else {
+        let Some(seen) = read(&task.environment, &task.id) else {
             continue;
         };
-        if task.state != state {
-            task.state = state;
+        if task.state != seen.state {
+            task.state = seen.state;
+            changed = true;
+            if task.kind == TaskKind::Continue
+                && seen.state == TaskState::Done
+                && let Some(reply) = seen.reply.filter(|reply| !reply.trim().is_empty())
+            {
+                answers.push(reply);
+            }
+        }
+        if seen.version.is_some() && task.version != seen.version {
+            task.version = seen.version;
             changed = true;
         }
-        if version.is_some() && task.version != version {
-            task.version = version;
-            changed = true;
-        }
+    }
+    for answer in answers {
+        super::continued::add_message(&mut next, Role::Assistant, &answer);
     }
     changed.then_some(next)
 }
@@ -291,9 +323,11 @@ pub(super) async fn sync(app: &App, loaded: Loaded) -> Loaded {
         return loaded;
     }
     let Some(mut next) = observe(&loaded.conversation, |environment, run| {
-        studio
-            .claude_run(environment, run)
-            .map(|run| (state(run.state), run.version))
+        studio.claude_run(environment, run).map(|run| Seen {
+            state: state(run.state),
+            version: run.version,
+            reply: run.reply.or_else(|| said(&run.events)),
+        })
     }) else {
         return loaded;
     };
@@ -306,9 +340,22 @@ pub(super) async fn sync(app: &App, loaded: Loaded) -> Loaded {
     }
 }
 
+/// What Claude Code said last in a run's events, when the run recorded no
+/// answer of its own.
+fn said(events: &[serde_json::Value]) -> Option<String> {
+    use coder_environment_operator::studio::claude::{Step, transcript};
+    transcript(events)
+        .into_iter()
+        .rev()
+        .find_map(|step| match step {
+            Step::Said(text) if !text.trim().is_empty() => Some(text),
+            _ => None,
+        })
+}
+
 /// Follows the chat's running tasks until they finish, writing each change
 /// (so the sidebar and the chat update with nobody watching the run).
-fn watch(app: App, owner: String, id: String) {
+pub(super) fn watch(app: App, owner: String, id: String) {
     tokio::spawn(async move {
         let ends = tokio::time::Instant::now() + Duration::from_secs(RUN_SECONDS + 900);
         while tokio::time::Instant::now() < ends {
@@ -326,7 +373,7 @@ fn watch(app: App, owner: String, id: String) {
 }
 
 /// A task's title: the prompt's first line, cut.
-fn title(prompt: &str) -> String {
+pub(super) fn title(prompt: &str) -> String {
     let line = prompt
         .lines()
         .map(str::trim)
@@ -615,14 +662,21 @@ mod tests {
             task("b", TaskState::Working, 1),
             task("c", TaskState::Working, 1),
         ];
+        let seen = |state, version| {
+            Some(Seen {
+                state,
+                version,
+                reply: None,
+            })
+        };
         let same = observe(&chat, |_, run| match run {
-            "b" => Some((TaskState::Working, Some(3))),
+            "b" => seen(TaskState::Working, Some(3)),
             _ => None,
         });
         assert!(same.is_none());
         let next = observe(&chat, |_, run| match run {
-            "a" => Some((TaskState::Failed, None)),
-            "b" => Some((TaskState::Failed, Some(4))),
+            "a" => seen(TaskState::Failed, None),
+            "b" => seen(TaskState::Failed, Some(4)),
             _ => None,
         })
         .expect("b moved");

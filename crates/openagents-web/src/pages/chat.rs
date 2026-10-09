@@ -56,6 +56,7 @@ pub(crate) fn routes() -> Router<App> {
         .merge(delete_all::routes())
         .merge(live::routes())
         .merge(work::routes())
+        .merge(continued::routes())
         .layer(DefaultBodyLimit::max(64 * 1024))
 }
 
@@ -475,8 +476,9 @@ async fn show(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>
 /// A chat synced from Coder (#11047): the transcript, and a composer
 /// whose replies Coder on that computer takes and answers (#11048) while
 /// it is online ([`crate::coder_sync::online`]); otherwise one line saying
-/// where it runs. Rows are plain links here, since a web chat can't load
-/// into this composer.
+/// where it runs, and, when the chat's project has a saved environment,
+/// Continue on a Cloud computer (#11050, [`continued`]). Rows are plain
+/// links here, since a web chat can't load into this composer.
 async fn show_terminal(
     app: &App,
     headers: &HeaderMap,
@@ -484,17 +486,15 @@ async fn show_terminal(
     computer: &str,
 ) -> Response {
     let id = &chat.id;
-    let online = app
-        .config
-        .chat_store
-        .computers(&chat.owner)
-        .await
-        .is_ok_and(|computers| crate::coder_sync::online(&computers, computer));
+    let online = continued::online(app, chat).await;
     let dock = if online {
         terminal_composer(app, chat, computer)
+    } else if continued::offer(app, headers, chat, online).await.is_some() {
+        html! { (terminal_note(computer)) (continued::button(chat)) }
     } else {
         terminal_note(computer)
     };
+    let links = work::links(app, headers);
     let page = UiPage::new(chat.title.clone())
         .path(format!("/chat/{id}"))
         .app()
@@ -502,7 +502,7 @@ async fn show_terminal(
         .head(crate::chat_html::head())
         .sidebar_section(chat_list(app, &chat.owner, Some(id.as_str()), false, false).await)
         .content(html! {
-            div #chat-content.oa-thread-view hx-history="false" { (content(chat, None, html! {}, false)) }
+            div #chat-content.oa-thread-view hx-history="false" { (content(chat, None, html! {}, links)) }
         })
         .composer(dock);
     crate::chat_html::protect(page.respond(headers))
@@ -1594,6 +1594,8 @@ mod uuid_tests {
 #[path = "chat_sidebar.rs"]
 mod sidebar;
 
+#[path = "chat_continued.rs"]
+mod continued;
 #[path = "chat_delete_all.rs"]
 pub(crate) mod delete_all;
 #[path = "chat_live.rs"]

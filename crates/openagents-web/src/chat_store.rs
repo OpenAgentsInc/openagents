@@ -96,7 +96,18 @@ pub(crate) struct Terminal {
     /// isn't queued twice. At most [`MAX_REPLY_IDS`].
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub reply_ids: Vec<String>,
+    /// Messages added on the website while the computer was offline: the
+    /// person's words and the answers of runs on a Cloud computer
+    /// (#11050). Coder's own copy doesn't have them, so each upload keeps
+    /// them after Coder's transcript. At most [`MAX_CONTINUED`].
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub continued: Vec<Message>,
 }
+
+/// The most messages a Coder chat keeps from runs on a Cloud computer.
+pub(crate) const MAX_CONTINUED: usize = 64;
+/// The longest such message, in bytes (an answer is cut to fit).
+pub(crate) const MAX_CONTINUED_BYTES: usize = 256 * 1024;
 
 /// A reply typed on the website for a Coder chat (#11048).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -246,6 +257,9 @@ pub(crate) struct ChatTask {
 #[serde(rename_all = "lowercase")]
 pub(crate) enum TaskKind {
     Claude,
+    /// A Coder chat continued on a Cloud computer while its own computer
+    /// was offline (#11050): the run's answer joins the transcript.
+    Continue,
 }
 
 /// A task's last known state, as the run reports it.
@@ -332,7 +346,7 @@ pub(crate) struct CloudRequest {
     pub request: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct Message {
     pub role: Role,
     pub text: String,
@@ -890,6 +904,7 @@ impl Store {
             terminal.working_unix = None;
             terminal.replies.clear();
             terminal.reply_ids.clear();
+            terminal.continued.clear();
             terminal.deleted_unix = Some(now_unix());
         }
         self.compare_and_swap(loaded, &next).await.map(|_| true)
@@ -1539,6 +1554,11 @@ fn validate_conversation(conversation: &Conversation) -> Result<(), Error> {
             })
             || terminal.reply_ids.len() > MAX_REPLY_IDS
             || !terminal.reply_ids.iter().all(|id| valid_id(id))
+            || terminal.continued.len() > MAX_CONTINUED
+            || terminal
+                .continued
+                .iter()
+                .any(|message| message.text.len() > MAX_CONTINUED_BYTES)
             || !conversation.requests.is_empty()
             || conversation.pending.is_some())
     {

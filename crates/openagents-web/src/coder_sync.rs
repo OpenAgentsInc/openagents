@@ -244,6 +244,7 @@ pub(crate) async fn save(
                     deleted_unix: None,
                     replies: Vec::new(),
                     reply_ids: Vec::new(),
+                    continued: Vec::new(),
                 }),
                 environment: None,
                 tasks: Vec::new(),
@@ -277,7 +278,7 @@ pub(crate) async fn save(
         if current.title == terminal.title {
             next.title = title.clone();
         }
-        next.messages = messages.clone();
+        next.messages = with_continued(&messages, terminal);
         next.revision += 1;
         next.updated_unix = now_unix();
         if let Some(terminal) = &mut next.terminal {
@@ -297,6 +298,18 @@ pub(crate) async fn save(
         }
     }
     Err(Error::Conflict)
+}
+
+/// Coder's transcript, then the messages added on the website by runs on
+/// a Cloud computer (#11050), which Coder's own copy doesn't have, newest
+/// [`MAX_MESSAGES`] kept.
+fn with_continued(messages: &[Message], terminal: &Terminal) -> Vec<Message> {
+    let mut all = messages.to_vec();
+    all.extend(terminal.continued.iter().cloned());
+    if all.len() > MAX_MESSAGES {
+        all.drain(..all.len() - MAX_MESSAGES);
+    }
+    all
 }
 
 /// Coder says it is replying (`working`) or idle.
@@ -938,6 +951,56 @@ mod tests {
             .conversation;
         assert_eq!(chat_now.title, "My name");
         assert_eq!(chat_now.messages.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn messages_added_by_a_cloud_computer_stay_after_coder_uploads_again() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::local(dir.path().to_path_buf());
+        let first = upload("Fix", &[("user", "Fix it"), ("assistant", "Looking.")]);
+        let Saved::Saved { chat, .. } = save(&store, &owner(), "s1", &first).await.unwrap() else {
+            panic!("not saved");
+        };
+        // Continued on a Cloud computer while the computer was offline.
+        let loaded = store.load(&owner(), &chat).await.unwrap().unwrap();
+        let mut next = loaded.conversation.clone();
+        let added = [
+            Message {
+                role: Role::User,
+                text: "Go on".into(),
+                request_id: None,
+            },
+            Message {
+                role: Role::Assistant,
+                text: "Fixed in the cloud.".into(),
+                request_id: None,
+            },
+        ];
+        next.messages.extend(added.iter().cloned());
+        next.terminal.as_mut().unwrap().continued = added.to_vec();
+        next.revision += 1;
+        store.compare_and_swap(&loaded, &next).await.unwrap();
+        // Coder comes back and uploads its own copy, which lacks them.
+        let more = upload(
+            "Fix",
+            &[
+                ("user", "Fix it"),
+                ("assistant", "Looking."),
+                ("user", "Hi"),
+            ],
+        );
+        save(&store, &owner(), "s1", &more).await.unwrap();
+        let now = store.load(&owner(), &chat).await.unwrap().unwrap();
+        let texts: Vec<&str> = now
+            .conversation
+            .messages
+            .iter()
+            .map(|m| m.text.as_str())
+            .collect();
+        assert_eq!(
+            texts,
+            ["Fix it", "Looking.", "Hi", "Go on", "Fixed in the cloud."]
+        );
     }
 
     #[tokio::test]

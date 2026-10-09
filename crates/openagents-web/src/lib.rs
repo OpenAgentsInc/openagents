@@ -268,7 +268,9 @@ async fn guard(hosts: Hosts, mut request: Request, next: Next) -> Response {
         || path == "/environments"
         || path.starts_with("/environments/")
         // Running Claude Code in an environment from a chat (#11037).
-        || (path.starts_with("/chat/") && path.ends_with("/claude"));
+        || (path.starts_with("/chat/") && path.ends_with("/claude"))
+        // Continuing a Coder chat on a Cloud computer (#11050).
+        || (path.starts_with("/chat/") && path.ends_with("/continue"));
     // Intake requests can carry contact content. An unconfigured host must
     // refuse them locally rather than forwarding them to another service.
     let intake = path == "/pilot" || path.starts_with("/pilot/");
