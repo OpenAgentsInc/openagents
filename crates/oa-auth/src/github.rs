@@ -20,8 +20,10 @@ use tenancy::accounts::identities::{GithubEmail, GithubProfile, MAX_EMAILS, MAX_
 use crate::AuthError;
 use crate::config::GithubCredentials;
 
-/// The largest GitHub API body read.
-const BODY_MAX: usize = 256 * 1024;
+/// The largest GitHub API body read. A page of 100 repositories from
+/// `/user/repos` is about 6 KB a repository, so 256 KB refused real accounts
+/// ("GitHub isn't answering"); 8 MB leaves room for the largest pages.
+const BODY_MAX: usize = 8 * 1024 * 1024;
 
 /// A GitHub OAuth client with its secret.
 #[derive(Clone, Debug)]

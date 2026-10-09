@@ -153,3 +153,39 @@ fn names_ids_and_error_codes() {
         assert!(!text.contains("token") && !text.contains("scope"), "{text}");
     }
 }
+
+/// A real account's first page of 100 repositories is about 600 KB; the
+/// API read must take it (the 256 KB cap read as "GitHub isn't answering").
+#[tokio::test]
+async fn a_full_page_of_repositories_is_read() {
+    let repo = |n: usize| {
+        serde_json::json!({
+            "id": n, "full_name": format!("owner/repo-{n}"), "private": false,
+            "default_branch": "main", "description": "x".repeat(5_800),
+        })
+    };
+    let page: Vec<_> = (0..100).map(repo).collect();
+    let body = serde_json::to_string(&page).unwrap();
+    assert!(body.len() > 512 * 1024);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let origin = format!("http://{}", listener.local_addr().unwrap());
+    let app = axum::Router::new().route(
+        "/user/repos",
+        axum::routing::get(move || {
+            let body = body.clone();
+            async move { ([("content-type", "application/json")], body) }
+        }),
+    );
+    tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+    let credentials = crate::fake::credentials(
+        &origin,
+        "Ov23liAbc",
+        "secret",
+        "http://127.0.0.1:4301/auth/github/callback",
+    )
+    .unwrap();
+    let gh = Github::new(credentials).unwrap();
+    let answer = gh.api("gho_t", "/user/repos?per_page=100&page=1").await.unwrap();
+    assert_eq!(answer.status, 200);
+    assert_eq!(answer.body.as_array().map(Vec::len), Some(100));
+}
