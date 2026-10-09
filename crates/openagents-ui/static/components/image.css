@@ -1,0 +1,10 @@
+/* Ported from Apps SDK UI (src/components/Image/Image.module.css), MIT. See crates/openagents-ui/NOTICE. */
+
+.oa-image {
+  opacity: 0;
+  transition: opacity 0.3s var(--transition-ease-basic);
+
+  &[data-loaded] {
+    opacity: 1;
+  }
+}
