@@ -140,7 +140,7 @@ pub fn prepare_embedded() -> Result<verse_engine::loading::Prepared, String> {
 }
 
 /// Compiles the Grid into `dir`: the white texel, every model, the floor
-/// and Gym placements, and the manifest. Arches are placed per frame by
+/// placement, and the manifest. Arches are placed per frame by
 /// [`gates`], because the runtime decides which portals stand. Returns the admitted pack.
 pub fn compile(dir: &Path) -> Result<Pack, String> {
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
@@ -198,7 +198,20 @@ pub fn compile(dir: &Path) -> Result<Pack, String> {
             crate::grid_robot::model(dir, white, variant, name)?,
         );
     }
-    for model in [FLOOR, GYM, BOARDS] {
+    let workstation = crate::grid_workstation::mesh()?;
+    pack.models.insert(
+        crate::grid_workstation::MODEL.into(),
+        mesh_model(crate::grid_workstation::MODEL, &workstation, white, 1.7),
+    );
+    for at in crate::grid_workstation::SITES {
+        pack.placements.push(Placement {
+            model: crate::grid_workstation::MODEL.into(),
+            position: at,
+            rotation: Quat::IDENTITY.to_array(),
+            scale: crate::grid_workstation::SCALE,
+        });
+    }
+    for model in [FLOOR] {
         pack.placements.push(Placement {
             model: model.into(),
             position: [0.0; 3],
@@ -244,23 +257,38 @@ pub fn placements(pack: &Pack) -> Vec<verse_engine::presentation::Instance> {
         .collect()
 }
 
-/// What the pack's placements block: the Gym's low walls under each
-/// placement of [`GYM`], carried through that placement's transform. The
-/// runtime walks the Grid against these, so a moved Gym in the pack moves
-/// its collision with it.
+/// Collision footprints for placed workstations and any placed Gym walls,
+/// carried through each placement's transform.
 #[must_use]
 pub fn blockers(pack: &Pack) -> Vec<crate::controller::Footprint> {
     let snap = |v: f32| (v * 1000.0).round() / 1000.0;
     pack.placements
         .iter()
-        .filter(|p| p.model == GYM)
+        .filter(|p| p.model == GYM || p.model == crate::grid_workstation::MODEL)
         .flat_map(|p| {
             let transform = Mat4::from_scale_rotation_translation(
                 Vec3::splat(p.scale),
                 Quat::from_array(p.rotation),
                 Vec3::from_array(p.position),
             );
-            crate::world::GymSite::GRID.walls().map(move |wall| {
+            let walls = if p.model == GYM {
+                crate::world::GymSite::GRID.walls().to_vec()
+            } else {
+                let points = pack.models[crate::grid_workstation::MODEL]
+                    .surfaces
+                    .iter()
+                    .flat_map(|s| &s.vertices);
+                let mut min = [f32::INFINITY; 2];
+                let mut max = [f32::NEG_INFINITY; 2];
+                for v in points {
+                    for (axis, i) in [0, 2].into_iter().enumerate() {
+                        min[axis] = min[axis].min(v.position[i]);
+                        max[axis] = max[axis].max(v.position[i]);
+                    }
+                }
+                vec![crate::controller::Footprint { min, max }]
+            };
+            walls.into_iter().map(move |wall| {
                 let corners = [
                     [wall.min[0], wall.min[1]],
                     [wall.max[0], wall.min[1]],
@@ -312,6 +340,8 @@ fn admit(pack: &mut Pack, dir: &Path) -> Result<(), String> {
     let (revision, bytes) = inventory::bundle(&[
         include_bytes!("grid_pack.rs"),
         include_bytes!("grid_robot.rs"),
+        include_bytes!("grid_workstation.rs"),
+        include_bytes!("../../verse-zone-everglade/src/zones/everglade/boards.rs"),
         include_bytes!("world.rs"),
         include_bytes!("../../verse-core/src/world.rs"),
         include_bytes!("../../verse-core/src/avatar.rs"),
@@ -343,6 +373,16 @@ fn admit(pack: &mut Pack, dir: &Path) -> Result<(), String> {
         digest,
         size,
     )?);
+    let workstation = inventory::id("verse:source:grid-workstation")?;
+    let (digest, size) = crate::grid_workstation::sources()?;
+    assets.push(inventory::source(
+        workstation.as_str(),
+        "Quaternius",
+        License::Cc0,
+        "gltf",
+        digest,
+        size,
+    )?);
     let mut texture_ids = BTreeMap::new();
     for (slot, texture) in pack.textures.iter().enumerate() {
         let id = inventory::id(&format!("verse:texture:grid/{slot}"))?;
@@ -361,6 +401,9 @@ fn admit(pack: &mut Pack, dir: &Path) -> Result<(), String> {
         let mut dependencies = vec![project.clone()];
         if name.starts_with("grid/robot") {
             dependencies.push(robot.clone());
+        }
+        if name == crate::grid_workstation::MODEL {
+            dependencies.push(workstation.clone());
         }
         for slot in model.surfaces.iter().flat_map(|s| s.texture_slots()) {
             if !dependencies.contains(&texture_ids[&slot]) {
@@ -659,16 +702,29 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_pinned_pack_blocks_exactly_the_grid_gym_walls() {
+    fn the_grid_hides_the_gym_and_its_boards_without_leaving_walls() {
         let pack = embedded().unwrap();
-        assert_eq!(
-            blockers(&pack),
-            crate::world::GymSite::GRID.walls().to_vec()
+        assert!(
+            pack.placements
+                .iter()
+                .all(|p| p.model != GYM && p.model != BOARDS)
+        );
+        let empty = crate::world::GymSite::GRID.point(crate::world::GYM_CENTER);
+        assert!(
+            blockers(&pack)
+                .iter()
+                .all(|f| !f.contains(empty.x, empty.z, 0.0))
         );
         let mut moved = pack.clone();
-        for p in moved.placements.iter_mut().filter(|p| p.model == GYM) {
-            p.position = [10.0, 0.0, -4.0];
-        }
+        moved
+            .placements
+            .retain(|p| p.model != crate::grid_workstation::MODEL);
+        moved.placements.push(Placement {
+            model: GYM.into(),
+            position: [10.0, 0.0, -4.0],
+            rotation: Quat::IDENTITY.to_array(),
+            scale: 1.0,
+        });
         let walls = blockers(&moved);
         assert_eq!(walls.len(), 5);
         for (a, b) in walls.iter().zip(crate::world::GymSite::GRID.walls()) {
@@ -713,10 +769,14 @@ mod tests {
             SPADE,
             crate::grid_robot::ROBOT,
             crate::grid_robot::ROBOT_FAR,
+            crate::grid_workstation::MODEL,
         ] {
             assert!(pack.models.contains_key(name), "{name}");
         }
-        assert_eq!(pack.placements.len(), 3);
+        assert_eq!(
+            pack.placements.len(),
+            1 + crate::grid_workstation::SITES.len()
+        );
         verse_engine::loading::Prepared::load(pack, &pinned_dir(), Default::default()).unwrap();
     }
 

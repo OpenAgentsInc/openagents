@@ -46,14 +46,16 @@ pub fn build() -> World {
     world
 }
 
-/// Builds the bare world: the plaza's ground grid and the Gym standing on
-/// it at [`GymSite::GRID`], in the neutral palette. Only the Gym's low walls
-/// block walking.
+/// Builds the bare world: the ground grid and standing workstations in the neutral palette.
 #[must_use]
 pub fn bare() -> World {
     let mut world = World::default();
     ground(&mut world.mesh);
-    gym(&mut world, GymSite::GRID, true);
+    if let Ok(pack) = crate::grid_pack::embedded() {
+        world
+            .mesh
+            .extend(&crate::grid_workstation::placed_mesh(&pack));
+    }
     world.mesh.neutralize();
     world
 }
@@ -1012,6 +1014,9 @@ mod tests {
 
     #[test]
     fn gym_display_is_readable_geometry_inside_the_board_with_host_owned_action_cues() {
+        for letter in GYM_BOARD_LABELS.iter().flat_map(|label| label.bytes()) {
+            assert!(letter == b' ' || has_glyph(letter), "{}", letter as char);
+        }
         let neutral = gym_display(GymSite::PLAZA, None);
         let distant = gym_display(GymSite::PLAZA, Some(false));
         let nearby = gym_display(GymSite::PLAZA, Some(true));
@@ -1103,7 +1108,9 @@ mod tests {
 
     #[test]
     fn the_grids_gym_is_neutral_world_geometry_with_its_sign_facing_the_spawn() {
-        let world = bare();
+        let mut world = World::default();
+        gym(&mut world, GymSite::GRID, true);
+        world.mesh.neutralize();
         let gray = |v: &crate::mesh::Vertex| v.color[0] == v.color[1] && v.color[1] == v.color[2];
         assert!(world.mesh.lines.iter().chain(&world.mesh.faces).all(gray));
         assert_eq!(world.blockers, GymSite::GRID.walls().to_vec());

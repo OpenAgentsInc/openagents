@@ -40,6 +40,7 @@ pub mod grid_engine;
 pub mod grid_frame;
 pub mod grid_pack;
 pub mod grid_robot;
+pub mod grid_workstation;
 #[cfg(not(target_arch = "wasm32"))]
 pub use verse_gym::gym;
 #[cfg(not(target_arch = "wasm32"))]

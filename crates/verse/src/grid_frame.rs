@@ -236,7 +236,11 @@ mod tests {
         let pack = grid_pack::load_pinned().unwrap();
         let placed = statics(&pack);
         assert!(placed.iter().any(|i| i.model.as_str() == grid_pack::FLOOR));
-        assert!(placed.iter().any(|i| i.model.as_str() == grid_pack::BOARDS));
+        assert!(
+            placed
+                .iter()
+                .all(|i| i.model != grid_pack::GYM && i.model != grid_pack::BOARDS)
+        );
         let arches = grid_pack::gates(&runtime).len();
         let mut gait = Gait::default();
         gait.advance(3.0, false, 0.5);

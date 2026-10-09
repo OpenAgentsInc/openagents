@@ -184,9 +184,8 @@ impl WorldRuntime {
     }
 
     /// The bare world: the plaza's ground grid in the neutral palette, with
-    /// the same player, controller, and camera, the shared ball and blocks,
-    /// and the Gym at [`world::GymSite::GRID`]. It has no computer, doors,
-    /// companion, or tapped portals.
+    /// the same player, controller, and camera. It has no Gym, computer,
+    /// doors, companion, or tapped portals.
     #[must_use]
     pub fn bare() -> Self {
         let mut world = world::bare();
@@ -201,15 +200,15 @@ impl WorldRuntime {
             // The OpenAgents app's Grid opens no studio panel.
             interact_hint: InteractHint::None,
             // The ball, the blocks (cubes and dominoes), and the pedestal are off
-            // for now (owner, 2026-10-01): the Grid keeps only the Gym.
+            // for now (owner, 2026-10-01). The Gym is hidden too.
             // ball: Some(Box::default()),
             ..Self::new()
         }
     }
 
     /// The bare world with nobody playing in it here: a spectator's view of
-    /// the Grid. Other players, the ball, the blocks, and the Gym are drawn,
-    /// but no local avatar; advance it with [`Self::tick_unoccupied`], never
+    /// the Grid. Other players and portals are drawn, but no local avatar;
+    /// advance it with [`Self::tick_unoccupied`], never
     /// with player input.
     #[must_use]
     pub fn unoccupied() -> Self {
@@ -948,16 +947,14 @@ impl WorldRuntime {
             && !mesh_occludes(entities, view.eye, direction, distance)
     }
 
-    /// Where this world's Gym stands: Coder's plaza has it east of the
-    /// plaza, the Grid straight ahead of the spawn, and a zone has none.
+    /// Where this world's Gym stands: east of Coder's plaza. The Grid and
+    /// other zones have none.
     #[must_use]
     pub fn gym_site(&self) -> Option<world::GymSite> {
-        if !self.is_plaza() {
-            None
-        } else if self.bare {
-            Some(world::GymSite::GRID)
-        } else {
+        if self.is_plaza() && !self.bare {
             Some(world::GymSite::PLAZA)
+        } else {
+            None
         }
     }
 
@@ -1142,8 +1139,8 @@ impl WorldRuntime {
         &self,
         computer: bool,
         gym: bool,
-        results: bool,
-        evals: bool,
+        _results: bool,
+        _evals: bool,
     ) -> Mesh {
         #[cfg(feature = "hosted-social")]
         if self.is_hosted() {
@@ -1165,20 +1162,6 @@ impl WorldRuntime {
                 ball.draw(&mut player);
             }
             player.extend(&self.grid_portal_mesh());
-            // The Gym board's lettering, and its tap cue for a host that
-            // opens the board.
-            let mut display =
-                world::gym_display(world::GymSite::GRID, gym.then_some(self.gym(1.0).near));
-            display.extend(&world::results_display(
-                world::GymSite::GRID,
-                results.then_some(self.results(1.0).near),
-            ));
-            display.extend(&world::evals_display(
-                world::GymSite::GRID,
-                evals.then_some(self.evals(1.0).near),
-            ));
-            display.neutralize();
-            player.extend(&display);
             if let Some(at) = self.trace_ghost {
                 player.extend(&crate::gym_replay::ghost_mesh(at));
             }
@@ -1356,19 +1339,13 @@ mod tests {
     fn the_bare_world_is_a_neutral_grid_with_only_the_player() {
         let mut runtime = WorldRuntime::bare();
         assert!(runtime.is_bare() && runtime.is_plaza());
-        // The Gym's walls are the only blockers, and its hall the only
-        // geometry off the ground.
         assert_eq!(
-            runtime.world.blockers,
-            world::GymSite::GRID.walls().to_vec()
+            runtime.world.blockers.len(),
+            crate::grid_workstation::SITES.len()
         );
         let full = WorldRuntime::new();
         assert!(runtime.world.mesh.lines.len() < full.world.mesh.lines.len() / 4);
         let gray = |v: &crate::mesh::Vertex| v.color[0] == v.color[1] && v.color[1] == v.color[2];
-        let gym = |v: &crate::mesh::Vertex| {
-            let local = world::GymSite::GRID.local(Vec3::from(v.pos));
-            (35.0..=60.1).contains(&local.x) && local.z.abs() <= 9.1
-        };
         assert!(
             runtime
                 .world
@@ -1376,7 +1353,7 @@ mod tests {
                 .lines
                 .iter()
                 .chain(&runtime.world.mesh.faces)
-                .all(|v| gray(v) && (v.pos[1] == 0.0 || gym(v)))
+                .all(|v| gray(v) && v.pos[1] == 0.0)
         );
         let dynamic = runtime.dynamic_mesh_with_interactions(true, true);
         assert!(!dynamic.lines.is_empty());
@@ -1533,18 +1510,10 @@ mod tests {
         let head = crate::camera::head(runtime.player.pos);
         assert!(view.eye.distance(head) < 1e-5, "{:?}", view.eye);
         // The avatar is hidden; the ball, blocks, portal (while shown), and
-        // the Gym board's lettering still draw.
+        // their geometry still draws.
         let mesh = runtime.dynamic_mesh();
         assert!(mesh.lines.len() < third_person);
-        assert_eq!(
-            mesh.faces.len(),
-            runtime.grid_portal_mesh().faces.len()
-                + world::gym_display(world::GymSite::GRID, None).faces.len()
-                + world::results_display(world::GymSite::GRID, None)
-                    .faces
-                    .len()
-                + world::evals_display(world::GymSite::GRID, None).faces.len()
-        );
+        assert_eq!(mesh.faces.len(), runtime.grid_portal_mesh().faces.len());
         assert!(!mesh.lit.is_empty());
         // Walking keeps the eye on the head.
         let walk = InputState {
@@ -2104,119 +2073,6 @@ mod tests {
     }
 
     #[test]
-    fn the_grids_results_board_picks_apart_from_the_live_board_and_only_in_the_grid() {
-        let mut runtime = WorldRuntime::bare();
-        let site = world::GymSite::GRID;
-        // Inside the hall, facing the boards from between them.
-        let stand = site.point(Vec3::new(54.0, 0.0, 2.8));
-        runtime
-            .set_spawn(stand, site.yaw_of(std::f32::consts::FRAC_PI_2))
-            .unwrap();
-        let screen = site.point(world::GYM_RESULTS_SCREEN);
-        for aspect in [0.46, 1.0, 2.2] {
-            let results = runtime.results(aspect);
-            assert!(results.inside && results.near, "{results:?}");
-            let [x, y] = projected(&runtime, aspect, screen);
-            if !((0.0..=1.0).contains(&x) && (0.0..=1.0).contains(&y)) {
-                continue;
-            }
-            assert!(runtime.results_hit_with_entities(aspect, x, y, &Mesh::default()));
-            assert!(
-                !runtime.gym_hit(aspect, x, y),
-                "the RESULTS board isn't the live board"
-            );
-            let [x, y] = projected(&runtime, aspect, site.point(world::GYM_BOARD_SCREEN));
-            assert!(!runtime.results_hit_with_entities(aspect, x, y, &Mesh::default()));
-        }
-        // Its lettering and cue turn with the building, on its face.
-        let display = world::results_display(site, Some(true));
-        assert!(!display.faces.is_empty());
-        for vertex in &display.faces {
-            let local = site.local(Vec3::from(vertex.pos)) - world::GYM_RESULTS_SCREEN;
-            assert!(local.x.abs() < 1e-3 && local.z.abs() < world::GYM_RESULTS_HALF[0]);
-            assert!(local.y.abs() < world::GYM_RESULTS_HALF[1]);
-        }
-        // Outside the hall it is neither near nor tappable.
-        runtime.set_spawn(world::SPAWN, 0.0).unwrap();
-        assert!(!runtime.results(1.0).near);
-        // Coder's plaza has no RESULTS board.
-        let mut plaza = WorldRuntime::new();
-        plaza
-            .set_spawn(Vec3::new(54.0, 0.0, 2.8), std::f32::consts::FRAC_PI_2)
-            .unwrap();
-        assert!(!plaza.results(1.0).inside);
-        let [x, y] = projected(&plaza, 1.0, world::GYM_RESULTS_SCREEN);
-        assert!(!plaza.results_hit_with_entities(1.0, x, y, &Mesh::default()));
-    }
-
-    #[test]
-    fn the_grids_evals_board_picks_apart_from_the_other_boards_and_only_in_the_grid() {
-        let mut runtime = WorldRuntime::bare();
-        let site = world::GymSite::GRID;
-        // Inside the hall, facing the boards from the EVALS side.
-        let stand = site.point(Vec3::new(54.0, 0.0, -2.8));
-        runtime
-            .set_spawn(stand, site.yaw_of(std::f32::consts::FRAC_PI_2))
-            .unwrap();
-        let screen = site.point(world::GYM_EVALS_SCREEN);
-        let mut picked = 0;
-        for aspect in [0.46, 1.0, 2.2] {
-            let evals = runtime.evals(aspect);
-            assert!(evals.inside && evals.near, "{evals:?}");
-            let [x, y] = projected(&runtime, aspect, screen);
-            if !((0.0..=1.0).contains(&x) && (0.0..=1.0).contains(&y)) {
-                continue;
-            }
-            picked += 1;
-            assert!(runtime.evals_hit_with_entities(aspect, x, y, &Mesh::default()));
-            assert!(
-                !runtime.gym_hit(aspect, x, y),
-                "the EVALS board isn't the live board"
-            );
-            assert!(!runtime.results_hit_with_entities(aspect, x, y, &Mesh::default()));
-            let [x, y] = projected(&runtime, aspect, site.point(world::GYM_BOARD_SCREEN));
-            assert!(!runtime.evals_hit_with_entities(aspect, x, y, &Mesh::default()));
-        }
-        assert!(picked > 0, "the board is on screen in some aspect");
-        // Its lettering and cue stand on its face, and the tap cue shows
-        // only for a host that opens it.
-        let display = world::evals_display(site, Some(true));
-        assert!(!display.faces.is_empty());
-        // Every letter of its label draws: EVALS once missed its V.
-        for letter in world::GYM_BOARD_LABELS.iter().flat_map(|l| l.bytes()) {
-            assert!(
-                letter == b' ' || world::has_glyph(letter),
-                "{}",
-                letter as char
-            );
-        }
-        for vertex in &display.faces {
-            let local = site.local(Vec3::from(vertex.pos)) - world::GYM_EVALS_SCREEN;
-            assert!(local.x.abs() < 1e-3 && local.z.abs() < world::GYM_EVALS_HALF[0]);
-            assert!(local.y.abs() < world::GYM_EVALS_HALF[1]);
-        }
-        assert!(
-            runtime
-                .dynamic_mesh_with_boards(false, false, false, true)
-                .faces
-                .len()
-                > runtime
-                    .dynamic_mesh_with_panels(false, false, false)
-                    .faces
-                    .len()
-        );
-        runtime.set_spawn(world::SPAWN, 0.0).unwrap();
-        assert!(!runtime.evals(1.0).near);
-        let mut plaza = WorldRuntime::new();
-        plaza
-            .set_spawn(Vec3::new(54.0, 0.0, -2.8), std::f32::consts::FRAC_PI_2)
-            .unwrap();
-        assert!(!plaza.evals(1.0).inside);
-        let [x, y] = projected(&plaza, 1.0, world::GYM_EVALS_SCREEN);
-        assert!(!plaza.evals_hit_with_entities(1.0, x, y, &Mesh::default()));
-    }
-
-    #[test]
     fn gym_picking_tracks_the_physical_front_in_portrait_landscape_and_oblique_views() {
         let mut runtime = WorldRuntime::new();
         runtime
@@ -2328,89 +2184,61 @@ mod tests {
     }
 
     #[test]
-    fn the_grids_gym_is_entered_through_its_doorway_and_its_board_picks_like_the_plazas() {
-        let site = world::GymSite::GRID;
+    fn the_grid_has_no_gym_geometry_collision_or_board_targets() {
         let mut runtime = WorldRuntime::bare();
-        assert_eq!(runtime.gym_site(), Some(site));
+        assert_eq!(runtime.gym_site(), None);
         assert_eq!(WorldRuntime::new().gym_site(), Some(world::GymSite::PLAZA));
-        // From the spawn the board is ahead but out of reach.
-        let spawn = runtime.gym(0.46);
-        assert!(!spawn.inside && !spawn.near);
-        // Walk in from just outside the doorway, heading into the hall.
-        let into = site.yaw_of(std::f32::consts::FRAC_PI_2);
+        assert_eq!(
+            runtime.world.blockers.len(),
+            crate::grid_workstation::SITES.len()
+        );
+        let site = world::GymSite::GRID;
         runtime
-            .set_spawn(site.point(Vec3::new(33.0, 0.0, 0.0)), into)
+            .set_spawn(
+                site.point(Vec3::new(54.0, 0.0, 0.0)),
+                site.yaw_of(std::f32::consts::FRAC_PI_2),
+            )
             .unwrap();
-        assert!(!runtime.gym(1.0).inside);
+        for aspect in [0.46, 1.0, 2.2] {
+            for board in [
+                runtime.gym(aspect),
+                runtime.results(aspect),
+                runtime.evals(aspect),
+            ] {
+                assert!(!board.inside && !board.near && !board.visible);
+            }
+            for screen in [
+                world::GYM_BOARD_SCREEN,
+                world::GYM_RESULTS_SCREEN,
+                world::GYM_EVALS_SCREEN,
+            ] {
+                let [x, y] = projected(&runtime, aspect, site.point(screen));
+                assert!(!runtime.gym_hit(aspect, x, y));
+                assert!(!runtime.results_hit_with_entities(aspect, x, y, &Mesh::default()));
+                assert!(!runtime.evals_hit_with_entities(aspect, x, y, &Mesh::default()));
+            }
+        }
+        assert_eq!(
+            runtime.dynamic_mesh().faces.len(),
+            runtime
+                .dynamic_mesh_with_boards(false, true, true, true)
+                .faces
+                .len()
+        );
+        runtime
+            .set_spawn(
+                site.point(Vec3::new(33.0, 0.0, 6.0)),
+                site.yaw_of(std::f32::consts::FRAC_PI_2),
+            )
+            .unwrap();
         let forward = InputState {
             forward: true,
             ..InputState::default()
         };
-        for _ in 0..220 {
-            runtime.tick(&forward, 1.0 / 60.0);
-        }
-        let board = runtime.gym(1.0);
-        assert!(board.inside && board.near && board.visible, "{board:?}");
-        assert!((board.screen_x - 0.5).abs() < 0.001);
-        assert!(site.local(runtime.player.pos).x > 55.0);
-        // A jamb blocks walking beside the doorway.
-        runtime
-            .set_spawn(site.point(Vec3::new(33.0, 0.0, 6.0)), into)
-            .unwrap();
         for _ in 0..120 {
             runtime.tick(&forward, 1.0 / 60.0);
         }
-        assert!(site.local(runtime.player.pos).x < 36.0);
-        assert!(!runtime.gym(1.0).inside);
-        // The board picks in portrait and landscape, and not beside it.
-        runtime
-            .set_spawn(site.point(Vec3::new(54.0, 0.0, 0.0)), into)
-            .unwrap();
-        let screen = site.point(world::GYM_BOARD_SCREEN);
-        let across = site.direction(Vec3::Z);
-        for aspect in [0.46, 1.0, 2.2] {
-            for orbit in [-0.35, 0.0, 0.35] {
-                runtime.camera.yaw_offset = orbit;
-                for offset in [
-                    Vec3::ZERO,
-                    Vec3::Y * 1.3 - across * 2.3,
-                    Vec3::Y * 1.3 + across * 2.3,
-                ] {
-                    let [x, y] = projected(&runtime, aspect, screen + offset);
-                    let in_viewport = (0.0..=1.0).contains(&x) && (0.0..=1.0).contains(&y);
-                    assert_eq!(
-                        runtime.gym_hit(aspect, x, y),
-                        in_viewport,
-                        "{aspect} {orbit} {offset}"
-                    );
-                }
-                for offset in [across * 2.65, Vec3::Y * 1.7] {
-                    let [x, y] = projected(&runtime, aspect, screen + offset);
-                    assert!(!runtime.gym_hit(aspect, x, y));
-                }
-            }
-        }
-        runtime.camera.yaw_offset = std::f32::consts::PI;
-        let [x, y] = projected(&runtime, 1.0, screen);
-        assert!(
-            !runtime.gym_hit(1.0, x, y),
-            "the camera is behind the board"
-        );
-        runtime.camera.yaw_offset = 0.0;
-        // The tap cue shows only for a host that opens the board, and the
-        // whole Gym stays in the neutral palette.
-        let cue = runtime.dynamic_mesh_with_interactions(true, true);
-        assert!(cue.faces.len() > runtime.dynamic_mesh().faces.len());
-        assert!(
-            cue.lines
-                .iter()
-                .chain(&cue.faces)
-                .all(|v| v.color[0] == v.color[1] && v.color[1] == v.color[2])
-        );
-        // Lagrange 1 has no Gym.
-        runtime.zone = crate::zones::ZoneId::Lagrange1;
-        assert_eq!(runtime.gym_site(), None);
-        assert!(!runtime.gym(1.0).inside);
+        assert!(site.local(runtime.player.pos).x > 36.0);
     }
 
     #[test]

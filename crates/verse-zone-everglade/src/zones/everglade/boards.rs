@@ -166,7 +166,7 @@ fn task_wall(world: &mut Mesh) {
 }
 
 /// A desk monitor: a bezel on a short stand around a dark screen.
-fn monitor(world: &mut Mesh, board: &Board) {
+pub fn monitor(world: &mut Mesh, board: &Board) {
     let [w, h] = board.size;
     let (hw, hh) = (w / 2.0, h / 2.0);
     let mut mesh = Mesh::default();

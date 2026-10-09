@@ -134,15 +134,15 @@ fn backed_onto(wall: &Footprint) -> (Vec3, f32, impl Fn(Vec3) -> bool) {
 }
 
 #[test]
-fn the_grids_low_walls_let_the_camera_see_over_and_the_plaza_towers_do_not() {
-    // The Grid: the Gym's walls are low, so the orbit passes over them.
+fn the_grid_workstations_leave_the_spawn_camera_free_and_the_plaza_towers_do_not() {
     let mut grid = WorldRuntime::bare();
-    let (at, yaw, _) = backed_onto(&grid.world.blockers[0]);
-    grid.set_spawn(at, yaw).unwrap();
+    assert_eq!(
+        grid.world.blockers.len(),
+        crate::grid_workstation::SITES.len()
+    );
     grid.tick(&InputState::default(), 1.0 / 60.0);
     let framing = grid.framing();
     assert!(!framing.limited, "{framing:?}");
-    assert!(framing.eye.y > crate::world::GYM_WALL_HEIGHT);
     // The furnished plaza: the tallest blocker's top comes from what
     // stands on it, and backing onto it holds the eye in front.
     let mut plaza = WorldRuntime::new();
