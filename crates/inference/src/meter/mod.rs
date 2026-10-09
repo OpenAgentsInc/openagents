@@ -228,6 +228,37 @@ impl Meter {
             .unwrap_or_default()
     }
 
+    /// Adds rate rows the adapters advertise, keeping any row the config
+    /// already holds for the same upstream and model (the config wins).
+    pub fn add_rates(&self, rows: impl IntoIterator<Item = RateRow>) {
+        if let Ok(mut inner) = self.inner.lock() {
+            for row in rows {
+                if inner.card.get(&row.upstream, &row.model).is_none() {
+                    inner.card.set(row);
+                }
+            }
+        }
+    }
+
+    /// The rate row for `upstream` and `model`, when there is one.
+    pub fn rate_row(&self, upstream: &str, model: &str) -> Option<RateRow> {
+        self.inner.lock().ok()?.card.get(upstream, model).cloned()
+    }
+
+    /// A copy of the rate card and the credit ledger, for the router to
+    /// plan against without holding the meter's lock.
+    pub fn snapshot(&self) -> (RateCard, Ledger) {
+        self.inner
+            .lock()
+            .map(|inner| {
+                (
+                    inner.card.clone(),
+                    Ledger::new(inner.ledger.accounts().cloned()),
+                )
+            })
+            .unwrap_or_else(|_| (RateCard::default(), Ledger::default()))
+    }
+
     /// One account's burn-down, for the router's credit ranking.
     pub fn burn_down(&self, account: &str, now_ms: u64) -> Option<BurnDown> {
         self.inner.lock().ok()?.ledger.burn_down(account, now_ms)

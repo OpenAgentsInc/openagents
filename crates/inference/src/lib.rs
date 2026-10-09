@@ -11,6 +11,9 @@
 //!   the same internal request, both directions, streaming included.
 //! - [`router`]: model ids and task classes to ordered upstream attempts
 //!   (section 5).
+//! - [`run`]: the attempt loop: planned attempts sent to the adapters,
+//!   fallback only before the first token, every attempt metered, and the
+//!   route and cost events.
 //! - [`meter`]: the measurement half (sections 5 and 6): one record per
 //!   upstream attempt, live rates, and the credit ledger with burn-down
 //!   alerts. Adapters report each attempt through [`meter::Recorder`].
@@ -32,6 +35,7 @@ pub mod openagents;
 pub mod request;
 pub mod response;
 pub mod router;
+pub mod run;
 pub mod sse;
 pub mod stream;
 pub mod upstream;

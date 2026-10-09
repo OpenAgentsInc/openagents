@@ -46,6 +46,40 @@ the `Bench`. The module docs list the steps. Choices the spec leaves open:
   it too). `Bench::observe` benches an upstream for five minutes on a 401
   or 402.
 
+## Attempt loop
+
+`run::Gateway` holds the adapters, the class table, Gym scores, the bench,
+and the meter. `Gateway::run` plans a request and sends its attempts in
+order (`tests/run.rs` covers each rule with stub adapters):
+
+- Only adapters with their key are offered to the router, so an
+  unconfigured upstream never costs an attempt.
+- An attempt is committed at its first output token (a text, refusal,
+  reasoning, or arguments delta, a function call item, or a terminal event
+  with output). Before that, an HTTP error, a failure event, an empty
+  stream, or no first token within the plan's `first_token_ms` falls back
+  to the next attempt, except a `400` from the upstream, which is the
+  caller's `400`. After it nothing falls back: a broken stream ends with
+  `response.failed`, its error only `code` (`upstream_failed`) and
+  `message`.
+- Every attempt is recorded into the meter: fallbacks as they fail (a
+  missed deadline as `first_token_deadline`), the committed one when its
+  stream ends or the caller goes away. A 401 or 402 benches the upstream
+  for five minutes.
+- The committed stream is re-sequenced from zero and carries
+  `openagents:route` before the first output item and `openagents:cost`
+  (priced from the meter's rate card, decimal dollar strings from integer
+  micros) before the terminal event, whose response carries the
+  `openagents` object (model, upstream, every attempt, cost).
+- `openagents/auto` asks a `run::PickClass` (the gateway's is a Jev
+  System One choice over the six classes) and waits at most
+  `run::JUDGE_BUDGET`; no judgment is `chat`.
+- When every attempt fails before its first token the answer is
+  `502 upstream_failed`, naming each attempt's error class.
+
+`run::collect` folds a committed stream into one response for a caller
+that did not ask for a stream.
+
 ## Strict and lenient
 
 - **Strict where the spec is strict.** A known item, part, or event `type`
