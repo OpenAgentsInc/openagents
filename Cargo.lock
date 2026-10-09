@@ -9678,6 +9678,20 @@ name = "oa-copy"
 version = "0.1.0"
 
 [[package]]
+name = "oa-seal"
+version = "0.1.0"
+dependencies = [
+ "aes-gcm",
+ "base64 0.22.1",
+ "getrandom 0.3.4",
+ "libc",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "zeroize",
+]
+
+[[package]]
 name = "oa-tokens"
 version = "0.1.0"
 dependencies = [
@@ -10562,6 +10576,7 @@ dependencies = [
  "nostr",
  "oa-auth",
  "oa-copy",
+ "oa-seal",
  "openagents-chat",
  "openagents-ui",
  "openagents-wallet",

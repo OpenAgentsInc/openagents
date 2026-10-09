@@ -4,7 +4,7 @@ use std::path::PathBuf;
 const USAGE: &str = "usage: openagents-web [--store DIRECTORY] [--customer DIRECTORY] [--listen ADDRESS] \
 [--pay-host http://HOST:PORT] [--public-host HOST]... [--upstream http://HOST:PORT] \
 [--chat-store DIRECTORY | --chat-bucket BUCKET] [--chat-retention-days DAYS] [--chat-build DIRECTORY] [--everglade DIRECTORY] [--bunny DIRECTORY] [--components-build DIRECTORY] [--cloud-build DIRECTORY] \
-[--cloud-config PRIVATE_JSON] [--cloud-hosts PRIVATE_JSON] [--cloud-byo PRIVATE_DIR] [--pilot-config PRIVATE_JSON] \
+[--cloud-config PRIVATE_JSON] [--cloud-hosts PRIVATE_JSON] [--cloud-byo PRIVATE_DIR [--cloud-byo-keys PRIVATE_JSON]] [--pilot-config PRIVATE_JSON] \
 [--environments PRIVATE_JSON] [--github-oauth PRIVATE_JSON] [--github-redirect URL]";
 
 #[tokio::main]
@@ -19,6 +19,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut chat_retention = std::env::var("OPENAGENTS_WEB_CHAT_RETENTION_DAYS").ok();
     let mut github_oauth: Option<PathBuf> = None;
     let mut github_redirect: Option<String> = None;
+    let mut cloud_byo: Option<PathBuf> = None;
+    let mut cloud_byo_keys: Option<PathBuf> = None;
     let mut arguments = std::env::args().skip(1);
     while let Some(option) = arguments.next() {
         let value = arguments.next().ok_or(USAGE)?;
@@ -54,11 +56,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     openagents_web::cloud::hosts::Hosts::load(std::path::Path::new(&value))?,
                 ));
             }
-            "--cloud-byo" => {
-                config.cloud_byo = Some(std::sync::Arc::new(
-                    openagents_web::cloud::byo::Computers::open(std::path::Path::new(&value))?,
-                ));
-            }
+            "--cloud-byo" => cloud_byo = Some(PathBuf::from(value)),
+            "--cloud-byo-keys" => cloud_byo_keys = Some(PathBuf::from(value)),
             // The OAuth App's private file ({client_id, client_secret,
             // token_encryption_key}); the web server reads the client id only.
             "--github-oauth" => github_oauth = Some(PathBuf::from(value)),
@@ -77,6 +76,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             _ => return Err(USAGE.into()),
         }
+    }
+    // Saved own-Claude credentials are encrypted at rest (#11041) under a
+    // keyring kept outside the custody directory: a private file
+    // (--cloud-byo-keys) or the keyring document in
+    // OPENAGENTS_WEB_CLOUD_BYO_KEYS (a Secret Manager secret on Cloud Run).
+    // Custody refuses to start without one.
+    if let Some(directory) = cloud_byo {
+        let keyring = match (
+            cloud_byo_keys,
+            std::env::var("OPENAGENTS_WEB_CLOUD_BYO_KEYS"),
+        ) {
+            (Some(path), _) => oa_seal::Keyring::load(&path)?,
+            (None, Ok(document)) if !document.trim().is_empty() => {
+                let keyring = oa_seal::Keyring::parse(document.as_bytes());
+                let mut bytes = document.into_bytes();
+                bytes.fill(0);
+                keyring?
+            }
+            _ => {
+                return Err("--cloud-byo needs a keyring to encrypt saved keys: \
+--cloud-byo-keys PRIVATE_JSON or OPENAGENTS_WEB_CLOUD_BYO_KEYS"
+                    .into());
+            }
+        };
+        config.cloud_byo = Some(std::sync::Arc::new(
+            openagents_web::cloud::byo::Computers::open(&directory, keyring)?,
+        ));
+    } else if cloud_byo_keys.is_some() {
+        return Err("--cloud-byo-keys needs --cloud-byo".into());
     }
     if let Some(path) = github_oauth {
         // The callback defaults to the Cloud origin's /auth/github/callback.

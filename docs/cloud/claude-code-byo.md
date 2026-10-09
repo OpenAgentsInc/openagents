@@ -133,8 +133,54 @@ October 8, 2026. Recheck both before each availability decision.
   each boot or automated turn (never into a checkpoint, image, export, or
   evidence); removal erases the entry, so running computers lose it at their
   next start or turn and future computers never see it. The page is
-  `/settings/claude` (enabled by `--cloud-byo PRIVATE_DIR`) and
-  states that usage bills to the user's own Anthropic or cloud account.
+  `/settings/claude` (enabled by `--cloud-byo PRIVATE_DIR` with a keyring,
+  below) and states that usage bills to the user's own Anthropic or cloud
+  account.
+
+### How saved credentials are kept
+
+Fixed in [#11041](https://github.com/OpenAgentsInc/openagents/issues/11041).
+A saved credential is encrypted before it touches disk. A copy of the custody
+directory (a disk snapshot, a backup, a stolen volume) holds only ciphertext.
+
+- **The lock.** Each saved credential is encrypted with AES-256-GCM
+  (`crates/oa-seal`) under a key from a keyring. Each encryption uses a fresh
+  random nonce. The entry's owner, workspace, epoch, digest, dates, and
+  accepted terms stay readable so status needs no decryption. They are bound
+  to the ciphertext, so editing any of them makes the entry unreadable.
+- **Where the key lives.** Never in the custody directory. The server reads
+  the keyring from `--cloud-byo-keys PRIVATE_JSON` (a file owned by the server
+  user, `chmod 600`, not a symbolic link, and refused if it sits inside the
+  custody directory) or from the environment variable
+  `OPENAGENTS_WEB_CLOUD_BYO_KEYS` (for a Secret Manager secret on Cloud
+  Run). `--cloud-byo` refuses to start without one; there is no unencrypted
+  mode. The keyring document is:
+
+  ```json
+  {"schema":"openagents.seal.keyring.v1","current":"2026-10","keys":{"2026-10":"<32 random bytes, base64>"}}
+  ```
+
+  Make a key with `openssl rand -base64 32`.
+- **Rotation.** Each entry records the id of the key that sealed it. To
+  rotate, add a new key to `keys`, point `current` at it, and restart. Older
+  entries still open, and each is resealed under the new key the next time it
+  is read. Drop the old key only once nothing uses it. An entry sealed under
+  a key that is no longer in the keyring cannot be read: the person adds
+  their credential again.
+- **Older plain-text entries.** Entries saved before this change held the
+  credential in plain text. The first read seals them, and the plain-text
+  bytes are overwritten with zeros before the sealed file replaces them.
+- **Failing closed.** A wrong key, a missing key, or a changed byte makes the
+  entry unavailable. The server never falls back to plain text, never rewrites
+  an entry it could not open, and the owner's automated turns are refused
+  (not quietly moved to the plan login) until the person removes or re-adds
+  the credential.
+- **Kept from before.** Entry files are still owner-only (`0600`) in an
+  owner-only directory, written atomically and synced. A replaced or removed
+  entry's bytes are zeroed before it is unlinked. Keys in memory, including
+  the keyring, are zeroed when dropped and never printed.
+- **Local fixtures** (`cloud_session_fixture`, `github_auth_fixture`, and the
+  tests) make a throwaway keyring next to the custody directory.
 
 ## Implemented (BYO-03, #11010)
 

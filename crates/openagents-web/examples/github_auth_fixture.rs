@@ -123,7 +123,15 @@ async fn main() -> Result<(), String> {
     std::fs::create_dir_all(&byo).map_err(|_| "fixture credential store failed")?;
     std::fs::set_permissions(&byo, std::fs::Permissions::from_mode(0o700))
         .map_err(|_| "fixture credential store failed")?;
-    config.cloud_byo = Some(Arc::new(openagents_web::cloud::byo::Computers::open(&byo)?));
+    // A scratch keyring outside the store: saved credentials are encrypted
+    // at rest under it (#11041). It lives and dies with this fixture.
+    let keys = directory.join("byo-keys.json");
+    let (_, document) = oa_seal::Keyring::scratch("fixture")?;
+    private_file(&keys, document.as_bytes())?;
+    config.cloud_byo = Some(Arc::new(openagents_web::cloud::byo::Computers::open(
+        &byo,
+        oa_seal::Keyring::load(&keys)?,
+    )?));
 
     println!(
         "{}",

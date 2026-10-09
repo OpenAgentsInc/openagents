@@ -200,7 +200,9 @@ async fn fixture() -> Fixture {
     let local_store = directory.join("unopened-local-tasks");
     let mut config = crate::Config::development(local_store.clone());
     config.cloud = Some(Arc::new(CloudSession::load(&path).unwrap()));
-    config.cloud_byo = Some(Arc::new(super::byo::Computers::open(&byo).unwrap()));
+    config.cloud_byo = Some(Arc::new(
+        super::byo::Computers::open(&byo, oa_seal::Keyring::scratch("test").unwrap().0).unwrap(),
+    ));
     Fixture {
         _root: root,
         site: crate::router(config),

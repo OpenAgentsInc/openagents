@@ -77,10 +77,12 @@ pub struct Computers {
 }
 
 impl Computers {
-    /// Open an operator-provisioned private directory (mode 0700).
-    pub fn open(directory: &Path) -> Result<Self, String> {
+    /// Open an operator-provisioned private directory (mode 0700). Saved
+    /// credentials are encrypted under `keyring`, which must be kept
+    /// outside that directory.
+    pub fn open(directory: &Path, keyring: oa_seal::Keyring) -> Result<Self, String> {
         Ok(Self {
-            vault: Vault::open(directory)?,
+            vault: Vault::open(directory, keyring)?,
         })
     }
 
@@ -337,7 +339,8 @@ mod tests {
         let root = temp.path().canonicalize().unwrap().join("byo");
         std::fs::create_dir(&root).unwrap();
         std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700)).unwrap();
-        let computers = Computers::open(&root).unwrap();
+        let computers =
+            Computers::open(&root, oa_seal::Keyring::scratch("test").unwrap().0).unwrap();
         (temp, root, computers)
     }
 
@@ -382,7 +385,10 @@ mod tests {
         assert!(!format!("{status:?}{}", status.masked()).contains(FAKE_KEY));
         for entry in std::fs::read_dir(&root).unwrap() {
             let bytes = std::fs::read(entry.unwrap().path()).unwrap();
-            assert!(String::from_utf8_lossy(&bytes).contains("byo:computers"));
+            let text = String::from_utf8_lossy(&bytes);
+            assert!(text.contains("byo:computers"));
+            // Encrypted at rest: the file never holds the key (#11041).
+            assert!(!text.contains(FAKE_KEY));
         }
         // Another workspace, account, or membership epoch sees nothing.
         assert_eq!(computers.status(&owner(4), 11).unwrap(), None);

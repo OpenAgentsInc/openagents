@@ -67,7 +67,10 @@ async fn world(with_github: bool) -> World {
     let byo = private.join("byo");
     std::fs::create_dir(&byo).unwrap();
     std::fs::set_permissions(&byo, std::fs::Permissions::from_mode(0o700)).unwrap();
-    config.cloud_byo = Some(Arc::new(crate::cloud::byo::Computers::open(&byo).unwrap()));
+    config.cloud_byo = Some(Arc::new(
+        crate::cloud::byo::Computers::open(&byo, oa_seal::Keyring::scratch("test").unwrap().0)
+            .unwrap(),
+    ));
     World {
         root,
         site: crate::router(config),

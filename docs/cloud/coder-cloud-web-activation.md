@@ -28,7 +28,7 @@ configuration is loaded. Otherwise its navigation entry reads **Unavailable**.
 | `--cloud-retail PRIVATE_JSON` | Billing → Retail and Purchases (`retail.rs`, `retail/purchases.rs`, `custody.rs`) | The Retail lane is absent. |
 | `--cloud-sales PRIVATE_JSON` | Sales, Sales modules, the sales floor, and the sales-owner part of Partners (`sales.rs`, `sales_views.rs`, `partners.rs`) | Sales is unavailable. Partners shows only the viewer's own account records. |
 | `--cloud-team PRIVATE_JSON` | Team lanes listed in the owner's browser qualification (`team.rs`) | Team is unavailable. |
-| `--cloud-byo PRIVATE_DIR` | Settings → Manage Claude credential (`byo.rs`) | The section is absent. |
+| `--cloud-byo PRIVATE_DIR` with `--cloud-byo-keys PRIVATE_JSON` (or `OPENAGENTS_WEB_CLOUD_BYO_KEYS`) | Settings → Manage Claude credential (`byo.rs`), encrypted at rest (#11041) | The section is absent. `--cloud-byo` without a keyring refuses to start. |
 | `--everglade DIRECTORY` | The chamber renderer that Verse Join opens | Join is unavailable. Verse connections still show. |
 
 Billing statements and decision resources (`billing.rs`) and Partners
