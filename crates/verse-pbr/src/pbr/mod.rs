@@ -29,6 +29,7 @@ pub mod environment;
 pub mod gpu;
 pub mod instanced;
 pub mod output;
+pub mod relight;
 pub mod screen;
 pub mod sky;
 pub mod textured;

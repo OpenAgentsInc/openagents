@@ -8,7 +8,7 @@
 //! [--flash-repeats N] [--flash-every N]
 //! [--compare-particles] [--no-particle-lighting] [--no-soft-particles]
 //! [--particle-frame N] [--particle-repeats N] [--particle-every N]
-//! [--smoke-frame N]
+//! [--smoke-frame N] [--restore-at SECONDS]
 //!
 //! Installs the showcase from the committed, pinned Everglade pack as
 //! `verse --meteor-showcase` does, bakes its light, and renders it offscreen
@@ -43,6 +43,14 @@
 //! lights fixed and writes matched impact, ground-smoke, and aftermath images.
 //! `--particle-frame` measures only that snapshot; otherwise
 //! `--particle-every` selects frames. Particle repeats and spacing default to 1.
+//!
+//! A film waits for the relighting of what the swarm broke
+//! (`verse_pbr::pbr::relight`) before its aftermath frame, so the still
+//! shows the settled light. `--restore-at` presses `R` at that time, as the
+//! player rebuilds the houses, takes the aftermath half a second before it,
+//! and writes `restored.png` a second after it with the light settled
+//! again, so it can be compared with `establishing.png`. `capture.json` records what the last relight
+//! recomputed.
 //!
 //! Run it with `VERSE_QUALITY=high` for the high tier, and with
 //! `VERSE_KIT_PACK` naming the licensed kit pack to draw it in place of its
@@ -91,6 +99,7 @@ struct Args {
     particle_frame: Option<usize>,
     particle_repeats: usize,
     particle_every: usize,
+    restore_at: Option<f32>,
 }
 
 /// One frame's costs, ms, and how much it drew.
@@ -409,6 +418,7 @@ fn args() -> Result<Args, String> {
         particle_frame: None,
         particle_repeats: 1,
         particle_every: 1,
+        restore_at: None,
     };
     while let Some(flag) = it.next() {
         let mut value = || it.next().ok_or(format!("{flag} takes a value"));
@@ -461,6 +471,13 @@ fn args() -> Result<Args, String> {
                     value()?
                         .parse()
                         .map_err(|_| "--impact-frame takes a whole number".to_owned())?,
+                );
+            }
+            "--restore-at" => {
+                args.restore_at = Some(
+                    value()?
+                        .parse()
+                        .map_err(|_| "--restore-at takes a number".to_owned())?,
                 );
             }
             "--seconds" => {
@@ -731,6 +748,14 @@ fn main() -> Result<(), String> {
     let mut most_sprites = 0;
     let aspect = WIDTH as f32 / HEIGHT as f32;
     let mut cast = false;
+    let mut restored = false;
+    let mut relit = [None; 2];
+    // The aftermath still comes before any restore, half a second ahead.
+    let aftermath = args
+        .restore_at
+        .map_or(frames.saturating_sub(fps as usize), |at| {
+            (((at - 0.5) * fps).round().max(0.0) as usize).min(frames.saturating_sub(fps as usize))
+        });
     for k in 0..frames {
         let t = k as f32 / fps;
         let mut sample = Sample {
@@ -747,6 +772,20 @@ fn main() -> Result<(), String> {
             if !(runtime.demolition_aim(aspect, x, y) && runtime.demolition_confirm()) {
                 return Err("The player's Meteor Swarm did not start".into());
             }
+        }
+        if !restored && args.restore_at.is_some_and(|at| t >= at) {
+            // Key R: the houses stand whole again.
+            restored = true;
+            runtime.zone_intent(zones::Intent::Rebuild)?;
+        }
+        // The film's stills show the light settled after what broke.
+        let restored_still = restored
+            && args
+                .restore_at
+                .is_some_and(|at| k == ((at + 1.0) * fps).round() as usize);
+        if !args.live && (k == aftermath || restored_still) {
+            runtime.settle_zone_light();
+            relit[usize::from(restored_still)] = runtime.everglade_relit();
         }
         if k > 0 {
             for _ in 0..steps {
@@ -918,7 +957,10 @@ fn main() -> Result<(), String> {
                 "selected-frame",
             )?;
         }
-        if k + fps as usize == frames {
+        if restored_still {
+            write_png(&args.out.join("restored.png"), &pixels)?;
+        }
+        if k == aftermath {
             write_png(&args.out.join("aftermath.png"), &pixels)?;
             if args.compare_particles {
                 capture_particle_pair(
@@ -973,6 +1015,19 @@ fn main() -> Result<(), String> {
     let flash_pool_step_ms = args
         .compare_flash_lights
         .then(|| measure_flash_pool(runtime.view(aspect).eye));
+    let relit_report: Vec<serde_json::Value> = ["aftermath", "restored"]
+        .iter()
+        .zip(relit)
+        .map(|(still, relit)| {
+            serde_json::json!({
+                "still": still,
+                "relight": relit.map(|r: verse::pbr::relight::RelightStats| serde_json::json!({
+                    "hidden_triangles": r.hidden, "vertices": r.vertices, "probes": r.probes,
+                    "worker_ms": r.ms,
+                })),
+            })
+        })
+        .collect();
     let summary = serde_json::json!({
         "mode": if args.live { "live" } else { "film" },
         "width": WIDTH,
@@ -997,6 +1052,8 @@ fn main() -> Result<(), String> {
         "gpu_timestamps_available": flash_phases.iter().chain(&particle_phases).flat_map(|(_, pairs)| pairs).any(|p| p.gpu_overhead().is_some()),
         "flash_lights_enabled": !args.no_flash_lights,
         "impact_frame": impact_frame,
+        "relit": relit_report,
+        "restore_at": args.restore_at,
         "smoke_frame": smoke_frame,
         "particle_lighting_enabled": !args.no_particle_lighting,
         "soft_particles_enabled": !args.no_soft_particles,

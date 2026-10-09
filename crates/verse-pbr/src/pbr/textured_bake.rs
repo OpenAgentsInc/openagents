@@ -370,6 +370,9 @@ pub struct BakeGeometry {
     pub occluders: Vec<Occluder>,
     /// The merged vertices at each occluder's corners.
     pub corners: Vec<[u32; 3]>,
+    /// Each occluder's triangle in the merged indices: its first index
+    /// over three, which [`super::textured::IndexEdits`] address.
+    pub triangles: Vec<u32>,
     /// Every triangle of a near or single level whose material emits.
     pub emitters: Vec<Emitter>,
 }
@@ -396,6 +399,7 @@ impl BakeGeometry {
         let mut far = vec![false; merged.vertices.len()];
         let mut occluders = Vec::with_capacity(merged.indices.len() / 3);
         let mut corners_of = Vec::with_capacity(merged.indices.len() / 3);
+        let mut triangles = Vec::with_capacity(merged.indices.len() / 3);
         let mut emitters = Vec::new();
         for batch in &merged.batches {
             let material = &scene.materials[batch.material];
@@ -405,7 +409,8 @@ impl BakeGeometry {
                 Level::Far { .. } | Level::Group { level: 1..=3, .. }
             );
             let range = batch.first as usize..(batch.first + batch.count) as usize;
-            for triangle in merged.indices[range].chunks_exact(3) {
+            let first_triangle = batch.first / 3;
+            for (t, triangle) in merged.indices[range].chunks_exact(3).enumerate() {
                 let corners =
                     [triangle[0], triangle[1], triangle[2]].map(|i| &merged.vertices[i as usize]);
                 if masked {
@@ -433,6 +438,7 @@ impl BakeGeometry {
                     opacity,
                 });
                 corners_of.push([triangle[0], triangle[1], triangle[2]]);
+                triangles.push(first_triangle + t as u32);
             }
         }
         Ok(Self {
@@ -441,6 +447,7 @@ impl BakeGeometry {
             far,
             occluders,
             corners: corners_of,
+            triangles,
             emitters,
         })
     }
@@ -479,18 +486,34 @@ impl SceneBaker {
         settings: BakeSettings,
         key: u64,
     ) -> Result<Self, String> {
+        Ok(Self::from_geometry(
+            BakeGeometry::new(scene)?,
+            light,
+            settings,
+            key,
+        ))
+    }
+
+    /// A bake of geometry already read from a scene.
+    #[must_use]
+    pub fn from_geometry(
+        geometry: BakeGeometry,
+        light: BakeLight,
+        settings: BakeSettings,
+        key: u64,
+    ) -> Self {
         let BakeGeometry {
             vertices,
             foliage,
             far,
             occluders,
             ..
-        } = BakeGeometry::new(scene)?;
+        } = geometry;
         let rays = settings.vertex_rays.max(1);
         let probe_rays = settings.probe_rays.max(1);
         let dims = settings.dims();
         let count = (dims[0] * dims[1] * dims[2]) as usize;
-        Ok(Self {
+        Self {
             key,
             light: BakeLight {
                 sun_dir: light.sun_dir.normalize_or(Vec3::Y),
@@ -508,10 +531,31 @@ impl SceneBaker {
             next_vertex: 0,
             probes: Vec::with_capacity(count),
             valid: Vec::with_capacity(count),
-        })
+        }
     }
 
-    fn probe_count(&self) -> usize {
+    /// How many merged vertices the bake lights.
+    pub(crate) fn vertex_count(&self) -> usize {
+        self.vertices.len()
+    }
+
+    /// Where merged vertex `i` stands, m.
+    pub(crate) fn vertex_position(&self, i: usize) -> Vec3 {
+        Vec3::from(self.vertices[i].pos)
+    }
+
+    /// Where probe `index` of the grid stands, in x-fastest order, m.
+    pub(crate) fn probe_point(&self, index: usize) -> Vec3 {
+        let [dx, dy, _] = self.dims.map(|d| d as usize);
+        let cell = Vec3::new(
+            (index % dx) as f32,
+            ((index / dx) % dy) as f32,
+            (index / (dx * dy)) as f32,
+        );
+        self.settings.probe_min + cell * self.settings.probe_cell
+    }
+
+    pub(crate) fn probe_count(&self) -> usize {
         (self.dims[0] * self.dims[1] * self.dims[2]) as usize
     }
 
@@ -527,13 +571,13 @@ impl SceneBaker {
         let mut left = budget.max(1);
         while left > 0 && self.next_vertex < self.vertices.len() {
             let i = self.next_vertex;
-            let light = self.bake_vertex(i);
+            let light = self.bake_vertex(i, None);
             self.vertices[i].light = light;
             self.next_vertex += 1;
             left -= 1;
         }
         while left > 0 && self.probes.len() < self.probe_count() {
-            let (probe, valid) = self.bake_probe(self.probes.len());
+            let (probe, valid) = self.bake_probe(self.probes.len(), None);
             self.probes.push(probe);
             self.valid.push(valid);
             left -= 1;
@@ -549,62 +593,19 @@ impl SceneBaker {
             .map_or(1, std::num::NonZeroUsize::get)
             .clamp(1, 8);
         let vertices = self.vertices.len();
-        let lights = self.parallel(vertices, threads, cancel, |this, i| this.bake_vertex(i))?;
+        let lights = parallel(vertices, threads, cancel, |i| self.bake_vertex(i, None))?;
         for (v, light) in self.vertices.iter_mut().zip(lights) {
             v.light = light;
         }
         self.next_vertex = vertices;
-        let probes = self.parallel(self.probe_count(), threads, cancel, |this, i| {
-            this.bake_probe(i)
+        let probes = parallel(self.probe_count(), threads, cancel, |i| {
+            self.bake_probe(i, None)
         })?;
         for (probe, valid) in probes {
             self.probes.push(probe);
             self.valid.push(valid);
         }
         Some(self.finish())
-    }
-
-    /// `work` for each index below `count`, in index order, spread over
-    /// `threads` workers that claim [`CHUNK`]-sized runs.
-    #[cfg(not(target_arch = "wasm32"))]
-    fn parallel<T: Send>(
-        &self,
-        count: usize,
-        threads: usize,
-        cancel: &AtomicBool,
-        work: impl Fn(&Self, usize) -> T + Sync,
-    ) -> Option<Vec<T>> {
-        let next = AtomicUsize::new(0);
-        let mut parts: Vec<(usize, Vec<T>)> = Vec::new();
-        std::thread::scope(|scope| {
-            let workers: Vec<_> = (0..threads)
-                .map(|_| {
-                    scope.spawn(|| {
-                        let mut done: Vec<(usize, Vec<T>)> = Vec::new();
-                        while !cancel.load(Ordering::Relaxed) {
-                            let start = next.fetch_add(CHUNK, Ordering::Relaxed);
-                            if start >= count {
-                                break;
-                            }
-                            let end = (start + CHUNK).min(count);
-                            done.push((start, (start..end).map(|i| work(self, i)).collect()));
-                        }
-                        done
-                    })
-                })
-                .collect();
-            for worker in workers {
-                if let Ok(done) = worker.join() {
-                    parts.extend(done);
-                }
-            }
-        });
-        if cancel.load(Ordering::Relaxed) {
-            return None;
-        }
-        parts.sort_by_key(|(start, _)| *start);
-        let out: Vec<T> = parts.into_iter().flat_map(|(_, values)| values).collect();
-        (out.len() == count).then_some(out)
     }
 
     /// The finished bake. Probes buried in geometry take their neighbors'
@@ -638,11 +639,13 @@ impl SceneBaker {
     /// facing `n`.
     #[must_use]
     pub fn ambient_at(&self, p: Vec3, n: Vec3) -> (Vec3, f32) {
-        self.ambient_off(p, n, BIAS)
+        self.ambient_off(p, n, BIAS, None)
     }
 
-    /// [`Self::ambient_at`] with rays starting `bias` off the surface.
-    fn ambient_off(&self, p: Vec3, n: Vec3, bias: f32) -> (Vec3, f32) {
+    /// [`Self::ambient_at`] with rays starting `bias` off the surface,
+    /// through the occluders `skip` leaves standing
+    /// ([`super::bake::Bvh::trace_masked`]).
+    fn ambient_off(&self, p: Vec3, n: Vec3, bias: f32, skip: Option<&[bool]>) -> (Vec3, f32) {
         let Some(n) = n.try_normalize() else {
             return (Vec3::ONE, 1.0);
         };
@@ -655,8 +658,8 @@ impl SceneBaker {
                 continue;
             }
             let sky = self.light.sky_radiance(d);
-            let trace = self.bvh.trace(origin, d, self.settings.reach);
-            lit += self.incoming(origin, d, &trace, sky) * c;
+            let trace = self.bvh.trace_masked(origin, d, self.settings.reach, skip);
+            lit += self.incoming(origin, d, &trace, sky, skip) * c;
             reference += sky * c;
             open += trace.transmittance * c;
             total += c;
@@ -667,7 +670,9 @@ impl SceneBaker {
         (lit / reference, open / total)
     }
 
-    fn bake_vertex(&self, i: usize) -> [u8; 4] {
+    /// Vertex `i`'s light channel, through the occluders `skip` leaves
+    /// standing.
+    pub(crate) fn bake_vertex(&self, i: usize, skip: Option<&[bool]>) -> [u8; 4] {
         let v = &self.vertices[i];
         let p = Vec3::from(v.pos);
         let n = Vec3::from(v.normal);
@@ -675,19 +680,19 @@ impl SceneBaker {
         if self.foliage[i] {
             // Leaf cards show both faces and pass light through: average the
             // two sides and keep a floor.
-            let (front, front_open) = self.ambient_off(p, n, bias);
-            let (back, back_open) = self.ambient_off(p, -n, bias);
+            let (front, front_open) = self.ambient_off(p, n, bias, skip);
+            let (back, back_open) = self.ambient_off(p, -n, bias, skip);
             let m = ((front + back) * 0.5).max(Vec3::splat(FOLIAGE_FLOOR));
             encode(m, (front_open + back_open) * 0.5)
         } else {
-            let (m, open) = self.ambient_off(p, n, bias);
+            let (m, open) = self.ambient_off(p, n, bias, skip);
             encode(m, open)
         }
     }
 
     /// Probe `index` of the grid, in x-fastest order, and whether it lies
     /// in open air rather than inside geometry.
-    fn bake_probe(&self, index: usize) -> ([f32; 12], bool) {
+    pub(crate) fn bake_probe(&self, index: usize, skip: Option<&[bool]>) -> ([f32; 12], bool) {
         let [dx, dy, _] = self.dims.map(|d| d as usize);
         let cell = Vec3::new(
             (index % dx) as f32,
@@ -700,14 +705,14 @@ impl SceneBaker {
         let mut l1 = [Vec3::ZERO; 3];
         let mut backfaces = 0;
         for &d in &self.sphere {
-            let trace = self.bvh.trace(p, d, self.settings.reach);
+            let trace = self.bvh.trace_masked(p, d, self.settings.reach, skip);
             if let Some((hit, opacity)) = trace.nearest
                 && opacity >= SOLID
                 && hit.normal.dot(d) > 0.0
             {
                 backfaces += 1;
             }
-            let radiance = self.incoming(p, d, &trace, self.light.sky_radiance(d));
+            let radiance = self.incoming(p, d, &trace, self.light.sky_radiance(d), skip);
             l0 += radiance * (Y0 * weight);
             for (k, axis) in l1.iter_mut().enumerate() {
                 *axis += radiance * (Y1 * d[k] * weight);
@@ -726,18 +731,32 @@ impl SceneBaker {
     /// Radiance arriving at `origin` along `d`: the sky through whatever
     /// the ray crosses, and the nearest surface's reflection in proportion
     /// to its opacity.
-    fn incoming(&self, origin: Vec3, d: Vec3, trace: &Trace, sky: f32) -> Vec3 {
+    fn incoming(
+        &self,
+        origin: Vec3,
+        d: Vec3,
+        trace: &Trace,
+        sky: f32,
+        skip: Option<&[bool]>,
+    ) -> Vec3 {
         let mut radiance = Vec3::splat(sky * trace.transmittance);
         if let Some((hit, opacity)) = trace.nearest {
             let point = origin + d * hit.distance;
-            radiance += self.reflected(point, d, hit.normal, hit.albedo) * opacity.min(1.0);
+            radiance += self.reflected(point, d, hit.normal, hit.albedo, skip) * opacity.min(1.0);
         }
         radiance
     }
 
     /// Diffuse radiance leaving a hit surface back along the ray: the sun,
     /// shadowed by its own ray, and an assumed share of the open sky.
-    fn reflected(&self, point: Vec3, d: Vec3, normal: Vec3, albedo: Vec3) -> Vec3 {
+    fn reflected(
+        &self,
+        point: Vec3,
+        d: Vec3,
+        normal: Vec3,
+        albedo: Vec3,
+        skip: Option<&[bool]>,
+    ) -> Vec3 {
         // Thin panels reflect from whichever face the ray meets.
         let n = if normal.dot(d) > 0.0 { -normal } else { normal };
         let s = self.light.sun_dir;
@@ -745,12 +764,57 @@ impl SceneBaker {
         let sun = if cos > 0.0 {
             self.light.sun_illuminance
                 * cos
-                * self.bvh.transmittance(point + n * BIAS, s, SUN_REACH)
+                * self
+                    .bvh
+                    .transmittance_masked(point + n * BIAS, s, SUN_REACH, skip)
         } else {
             0.0
         };
         albedo * ((sun + self.light.ambient(n) * HIT_AMBIENT) / PI)
     }
+}
+
+/// `work` for each index below `count`, in index order, spread over
+/// `threads` workers that claim [`CHUNK`]-sized runs, or `None` once
+/// `cancel` is set.
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn parallel<T: Send>(
+    count: usize,
+    threads: usize,
+    cancel: &AtomicBool,
+    work: impl Fn(usize) -> T + Sync,
+) -> Option<Vec<T>> {
+    let next = AtomicUsize::new(0);
+    let mut parts: Vec<(usize, Vec<T>)> = Vec::new();
+    std::thread::scope(|scope| {
+        let workers: Vec<_> = (0..threads)
+            .map(|_| {
+                scope.spawn(|| {
+                    let mut done: Vec<(usize, Vec<T>)> = Vec::new();
+                    while !cancel.load(Ordering::Relaxed) {
+                        let start = next.fetch_add(CHUNK, Ordering::Relaxed);
+                        if start >= count {
+                            break;
+                        }
+                        let end = (start + CHUNK).min(count);
+                        done.push((start, (start..end).map(&work).collect()));
+                    }
+                    done
+                })
+            })
+            .collect();
+        for worker in workers {
+            if let Ok(done) = worker.join() {
+                parts.extend(done);
+            }
+        }
+    });
+    if cancel.load(Ordering::Relaxed) {
+        return None;
+    }
+    parts.sort_by_key(|(start, _)| *start);
+    let out: Vec<T> = parts.into_iter().flat_map(|(_, values)| values).collect();
+    (out.len() == count).then_some(out)
 }
 
 /// The albedo and opacity of a triangle, sampled from its material's image,

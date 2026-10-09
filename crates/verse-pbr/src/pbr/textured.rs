@@ -626,6 +626,10 @@ pub struct BakedVertices(std::sync::Arc<std::sync::Mutex<Delivery>>);
 struct Delivery {
     lights: Option<Vec<[u8; 4]>>,
     lamps: Option<Vec<[u8; 4]>>,
+    /// Whether to keep a copy of the light channel delivered, and that
+    /// copy ([`BakedVertices::keep_delivered`]).
+    keep: bool,
+    kept: Option<std::sync::Arc<Vec<[u8; 4]>>>,
 }
 
 impl BakedVertices {
@@ -642,7 +646,24 @@ impl BakedVertices {
 
     /// Hands over the light channel of every merged vertex.
     pub fn deliver_lights(&self, lights: Vec<[u8; 4]>) {
-        self.lock().lights = Some(lights);
+        let mut delivery = self.lock();
+        if delivery.keep {
+            delivery.kept = Some(std::sync::Arc::new(lights.clone()));
+        }
+        delivery.lights = Some(lights);
+    }
+
+    /// Keeps a copy of each light channel delivered from now on, for a
+    /// zone that relights what it hides ([`crate::pbr::relight`]).
+    pub fn keep_delivered(&self) {
+        self.lock().keep = true;
+    }
+
+    /// The last light channel delivered since [`Self::keep_delivered`],
+    /// whether or not the renderer took it.
+    #[must_use]
+    pub fn delivered(&self) -> Option<std::sync::Arc<Vec<[u8; 4]>>> {
+        self.lock().kept.clone()
     }
 
     /// Hands over the lamp light of every merged vertex

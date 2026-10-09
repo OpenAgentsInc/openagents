@@ -390,6 +390,13 @@ impl WorldRuntime {
             .is_some_and(|glade| super::meteor_showcase::stage(glade, delay).is_ok())
     }
 
+    /// Triangles hidden, vertices and probes relit by the last relighting
+    /// of what destruction broke, in a zone that relights.
+    #[must_use]
+    pub fn everglade_relit(&self) -> Option<crate::pbr::relight::RelightStats> {
+        self.zone_state.everglade.as_deref()?.relit()
+    }
+
     /// What Everglade's town's last tick cost, in a zone with one.
     #[must_use]
     pub fn everglade_town_profile(

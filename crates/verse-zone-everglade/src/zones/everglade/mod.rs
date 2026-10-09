@@ -50,7 +50,7 @@ use crate::{
     controller::{Footprint, InputState, PlayerController},
     mesh::Mesh,
     pbr::{
-        Daylight, Key, Neon,
+        Daylight, Key, Neon, relight,
         textured::TexturedScene,
         textured_bake::{self, AmbientProbes, BakeJob, BakeLight, BakeSettings},
     },
@@ -176,6 +176,12 @@ pub struct Everglade {
     /// The town's offline-baked light layers, when it has them
     /// ([`baked`]).
     baked: Option<baked::BakedLight>,
+    /// Whether the static scene's light follows what destruction hides
+    /// ([`Self::relight_destruction`]), the bake it starts from once the
+    /// bake finishes, and the relight itself.
+    relights: bool,
+    relight_from: Option<(Arc<TexturedScene>, BakeLight, BakeSettings)>,
+    relight: Option<relight::Relight>,
     /// Blocks another zone's rules add to the spells' own, such as the
     /// Grove's training dummies, each a footprint and its top, m.
     extra_blocks: Vec<(crate::controller::Footprint, f32)>,
@@ -355,6 +361,9 @@ impl Everglade {
             bake: None,
             probes: None,
             baked: None,
+            relights: false,
+            relight_from: None,
+            relight: None,
             extra_blocks: Vec::new(),
             demolition: None,
             town: None,
@@ -741,8 +750,32 @@ impl Everglade {
         self.baked = choice
             .as_ref()
             .map(|choice| baked::BakedLight::new(choice, scene.clone()));
+        self.relight = None;
+        self.relight_from = self.relights.then(|| {
+            scene.baked.keep_delivered();
+            (scene.clone(), light, settings)
+        });
         self.bake = Some(BakeJob::start_layered(scene, light, settings, key, choice));
         self.probes = None;
+    }
+
+    /// Relights what destruction hides from the static scene from now on
+    /// (`pbr::relight`): when the town's buildings break, the vertices and
+    /// probes near the gaps are traced again without the broken pieces, so
+    /// no baked shade floats where a wall stood and rubble takes the light
+    /// of the open lot, and when they are restored the baked light returns.
+    /// Call it before [`Self::bake_light`]. The Meteor Showcase does
+    /// (issue #10938); the town waits for its bake's destruction fallback
+    /// (#10907).
+    pub fn relight_destruction(&mut self) {
+        self.relights = true;
+    }
+
+    /// Triangles hidden, vertices and probes relit by the last relight to
+    /// land, once one has.
+    #[must_use]
+    pub fn relit(&self) -> Option<relight::RelightStats> {
+        self.relight.as_ref().and_then(relight::Relight::last)
     }
 
     /// The physical stage: the time of day's sky ([`time_of_day`]), whose
@@ -1459,6 +1492,21 @@ impl Everglade {
             }
         }
         if self.bake.is_none()
+            && let Some((scene, light, settings)) = self.relight_from.take()
+            && let (Some(base), Some(probes)) = (scene.baked.delivered(), &self.probes)
+        {
+            self.relight = Some(relight::Relight::start(
+                scene,
+                light,
+                settings,
+                base,
+                probes.as_ref().clone(),
+            ));
+        }
+        if let Some(probes) = self.relight.as_mut().and_then(relight::Relight::poll) {
+            self.probes = Some(Arc::new(probes));
+        }
+        if self.bake.is_none()
             && let Some(probes) = self.baked.as_mut().and_then(|b| b.update(&self.light))
         {
             self.probes = Some(Arc::new(probes));
@@ -1750,6 +1798,10 @@ impl Everglade {
             if self.bake.is_some() {
                 std::thread::sleep(std::time::Duration::from_millis(20));
             }
+        }
+        self.poll_bake();
+        if let Some(probes) = self.relight.as_mut().and_then(relight::Relight::settle) {
+            self.probes = Some(Arc::new(probes));
         }
     }
 

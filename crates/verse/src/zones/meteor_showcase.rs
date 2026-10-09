@@ -265,6 +265,9 @@ pub fn build(pack: &ZonePack, player: &PlayerController) -> Result<(World, Everg
     glade.set_clock(town_clock::Clock::DAYTIME.pinned(Some(HOUR)));
     glade.set_bloom(BLOOM);
     glade.set_fog(FOG.0, FOG.1);
+    // What the swarm breaks is relit, so no baked shade floats where the
+    // houses stood (#10938).
+    glade.relight_destruction();
     glade.bake_light(scene.clone());
     glade.start_wreckage(pack, &placements, scene)?;
     let town = glade

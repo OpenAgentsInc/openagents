@@ -38,6 +38,9 @@ Issue #10926 is closed.
   (`WorldRuntime::stage_meteor_showcase`), renders 1920 by 1080 at 30 frames
   a second, and writes `establishing.png`, `impact.png`, `aftermath.png`,
   and `capture.json` to `OUT_DIR`.
+- Restore: `--restore-at SECONDS` presses `R` then and writes
+  `restored.png` a second later; the aftermath still comes half a second
+  before it.
 - Frame budget: add `--live --no-video --seconds 14`. The run plays at 60
   frames a second, one simulation step a frame, with the light still baking,
   and the player casts at 3 seconds.
@@ -81,6 +84,32 @@ p50 and 43.4 ms at p99, and the dynamic mesh to 7 to 9 ms.
   chunks on the GPU, as instances, would remove most of its 7 to 9 ms.
 - After the swarm, frames stay at about 25 ms because the 700 resting
   chunks are still simulated and posed every frame.
+
+## Relighting what breaks (#10938)
+
+The showcase's light is baked at load: each vertex's sky visibility and one
+bounce of the low Sun, and a probe grid that lights the chunks. Before
+#10938, broken walls left that light behind: a standing wall kept the shade
+of the house that had stood beside it, and rubble took the probes' indoor
+darkness. Now the zone calls `Everglade::relight_destruction` before its
+bake, and `verse_pbr::pbr::relight` follows the scene's index edits: when
+pieces are hidden, a worker thread traces every vertex and probe within 6 m
+of a hidden triangle again with the hidden triangles passed through, and
+delivers the light channel and probes. When `R` restores the houses, nothing
+is hidden and the baked light returns exactly. The direct Sun's cascades
+were already redrawn on destruction edits.
+
+Measured on this Mac with the licensed kit (`--seconds 14 --restore-at 12`,
+aftermath at 11.5 s as in the default film): the aftermath relight hid
+18,460 triangles and recomputed 5,417 vertices and 66 probes in 124 ms on
+its worker, off the frame. Frame times did not change. With
+`VERSE_PHOTO_DEBUG=2` (diffuse ambient only), the aftermath shows the
+floating shade gone from the standing wall
+([captures/meteor-showcase/relight-aftermath-ambient.jpg](captures/meteor-showcase/relight-aftermath-ambient.jpg),
+committed proxies, before above and after below). `--restore-at` writes
+`restored.png` with the baked light back. The Everglade town itself still
+waits for B3 (#10907); offline-baked sun layers that change after a relight
+replace it.
 
 ## Known issues
 

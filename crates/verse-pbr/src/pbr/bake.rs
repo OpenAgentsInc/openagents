@@ -278,7 +278,16 @@ impl Bvh {
     /// one that faces the ray.
     #[must_use]
     pub fn trace(&self, origin: Vec3, dir: Vec3, max: f32) -> Trace {
-        let (transmittance, nearest) = self.crossings(origin, dir, max);
+        self.trace_masked(origin, dir, max, None)
+    }
+
+    /// [`Self::trace`] through the triangles `skip` leaves standing: a
+    /// triangle whose place in the list the hierarchy was built from is
+    /// `true` in `skip` is passed through, as if gone, such as a wall a
+    /// meteor broke.
+    #[must_use]
+    pub fn trace_masked(&self, origin: Vec3, dir: Vec3, max: f32, skip: Option<&[bool]>) -> Trace {
+        let (transmittance, nearest) = self.crossings(origin, dir, max, skip);
         Trace {
             transmittance,
             nearest: nearest.map(|(distance, i)| {
@@ -299,7 +308,7 @@ impl Bvh {
     /// the hierarchy was built from rather than by its surface.
     #[must_use]
     pub fn trace_indexed(&self, origin: Vec3, dir: Vec3, max: f32) -> IndexedTrace {
-        let (transmittance, nearest) = self.crossings(origin, dir, max);
+        let (transmittance, nearest) = self.crossings(origin, dir, max, None);
         IndexedTrace {
             transmittance,
             nearest: nearest.map(|(distance, i)| (distance, self.triangles[i].id)),
@@ -308,12 +317,21 @@ impl Bvh {
 
     /// The transmittance along a ray and the nearest crossing, as an
     /// internal triangle index.
-    fn crossings(&self, origin: Vec3, dir: Vec3, max: f32) -> (f32, Option<(f32, usize)>) {
+    fn crossings(
+        &self,
+        origin: Vec3,
+        dir: Vec3,
+        max: f32,
+        skip: Option<&[bool]>,
+    ) -> (f32, Option<(f32, usize)>) {
         let mut layers = Layers::default();
         let mut solid = false;
         let mut nearest: Option<(f32, usize)> = None;
         let mut facing: Option<(f32, usize)> = None;
         self.walk(origin, dir, max, |t, i| {
+            if self.skipped(i, skip) {
+                return None;
+            }
             if nearest.is_none_or(|(d, _)| t < d) {
                 nearest = Some((t, i));
             }
@@ -347,9 +365,25 @@ impl Bvh {
     /// stopping early once almost nothing passes.
     #[must_use]
     pub fn transmittance(&self, origin: Vec3, dir: Vec3, max: f32) -> f32 {
+        self.transmittance_masked(origin, dir, max, None)
+    }
+
+    /// [`Self::transmittance`] through the triangles `skip` leaves
+    /// standing ([`Self::trace_masked`]).
+    #[must_use]
+    pub fn transmittance_masked(
+        &self,
+        origin: Vec3,
+        dir: Vec3,
+        max: f32,
+        skip: Option<&[bool]>,
+    ) -> f32 {
         let mut layers = Layers::default();
         let mut dark = false;
         self.walk(origin, dir, max, |t, i| {
+            if self.skipped(i, skip) {
+                return None;
+            }
             let opacity = self.triangles[i].opacity;
             if opacity < SOLID {
                 layers.cross(t, opacity);
@@ -358,6 +392,15 @@ impl Bvh {
             dark.then_some(true)
         });
         if dark { 0.0 } else { layers.passed }
+    }
+
+    /// Whether the internal triangle `i` is one `skip` passes through.
+    fn skipped(&self, i: usize, skip: Option<&[bool]>) -> bool {
+        skip.is_some_and(|skip| {
+            skip.get(self.triangles[i].id as usize)
+                .copied()
+                .unwrap_or(false)
+        })
     }
 
     /// Whether anything lies within `max` meters along the ray.
