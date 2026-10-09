@@ -57,6 +57,14 @@ fn a_half_table_row_waits_and_a_header_waits_for_its_delimiter() {
     let table = "| a | b |\n|---|---|\n| 1 | 2 |\n";
     assert_eq!(cut(&format!("{table}| 3 |")), table);
     assert_eq!(cut(table), table);
+    // A row with every cell and its closing pipe is finished: it shows
+    // before its newline, as it will in the final render.
+    assert_eq!(
+        cut(&format!("{table}| 3 | 4 |")),
+        format!("{table}| 3 | 4 |")
+    );
+    assert_eq!(cut(&format!("{table}| 3 | 4")), table);
+    assert_eq!(cut(&format!("{table}| 3 \\| 4 |")), table);
     assert_eq!(cut("Intro\n\n| a | b |\n"), "Intro\n\n");
     assert_eq!(cut("Intro\n\n| a | b |\n|--"), "Intro\n\n");
     assert_eq!(cut("Intro\n\n| a | b"), "Intro\n\n");

@@ -15,6 +15,8 @@
 //!   with a pipe under a piped line), a fence's opening line, or a line
 //!   of nothing but markers (`-`, `1.`, `##`, `>`, `---`) or digits (the
 //!   start of `12.`).
+//!   A last row that closes with a pipe and has its table's full count of
+//!   cells is finished and shows, so a stopped table keeps its grid.
 //! - A table's header row is held back until its delimiter row is complete,
 //!   so it never shows as a paragraph of pipes.
 //! - In the paragraph, heading, or list item still being written, inline
@@ -100,6 +102,7 @@ fn step(text: &str) -> Step {
         // line. A pipe mid-sentence (a shell command) is text.
         let above = text[..complete].lines().next_back().unwrap_or("");
         let row = line.starts_with('|') || (tail.contains('|') && above.contains('|'));
+        let row = row && !finished_row(&text[..complete], line);
         let held = fence_run(line).is_some_and(|(_, n)| n >= 3) || row || bare_marker(line);
         if held {
             end = complete;
@@ -198,6 +201,37 @@ fn delimiter(line: &str) -> bool {
         && line
             .chars()
             .all(|c| matches!(c, '|' | ':' | '-' | ' ' | '\t'))
+}
+
+/// A line's table cells: split at unescaped pipes, without the empty
+/// cells a leading or trailing pipe makes.
+fn cells(line: &str) -> usize {
+    let line = container(line).trim();
+    let bytes = line.as_bytes();
+    let pipes = (0..bytes.len())
+        .filter(|&i| bytes[i] == b'|' && (i == 0 || bytes[i - 1] != b'\\'))
+        .count();
+    let leading = usize::from(line.starts_with('|'));
+    let trailing = usize::from(line.len() > 1 && line.ends_with('|') && !line.ends_with("\\|"));
+    (pipes + 1).saturating_sub(leading + trailing)
+}
+
+/// Whether `line`, a last table row still being written, is already whole:
+/// it closes with a pipe and has as many cells as its table's delimiter
+/// row, so the rest of the stream cannot change how it draws. A finished
+/// row then shows as it will in the final render, and the table keeps its
+/// grid when the reply ends or is stopped.
+fn finished_row(complete: &str, line: &str) -> bool {
+    let trimmed = line.trim_end();
+    if !trimmed.ends_with('|') || trimmed.ends_with("\\|") {
+        return false;
+    }
+    complete
+        .lines()
+        .rev()
+        .take_while(|above| above.contains('|') && !above.trim().is_empty())
+        .find(|above| delimiter(above))
+        .is_some_and(|delimiter_row| cells(delimiter_row) == cells(trimmed))
 }
 
 /// Where the last line of `complete` starts, when it may be a table's
