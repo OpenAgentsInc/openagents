@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-05/battle-corrected-history-wall-direct-600",
+ "files": {
+  "report.json": {
+   "bytes": 21468502,
+   "sha256": "935357e0a352bb4d2920fcbb03aa06e153e70476625abf3d7ce3081e91615ba5"
+  }
+ }
+}

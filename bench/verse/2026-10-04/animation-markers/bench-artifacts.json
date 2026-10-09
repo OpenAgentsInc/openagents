@@ -1,0 +1,20 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-04/animation-markers",
+ "files": {
+  "window/after.png": {
+   "bytes": 2156316,
+   "sha256": "723725467434d536bd022adc9bb1ea4abd65135fb39e7abc21f4d7adefba01e9"
+  },
+  "window/before.png": {
+   "bytes": 2354054,
+   "sha256": "4f58b59d3f4f8e0e263b503a522e255bd78d184851d65a09daa220f777bd2096"
+  },
+  "window/frames.ndjson.gz": {
+   "bytes": 564001,
+   "sha256": "720faa45546589347c0c7ad8299b3985c2c907fd9f20211d7fe2f5518a9d7d33"
+  }
+ }
+}

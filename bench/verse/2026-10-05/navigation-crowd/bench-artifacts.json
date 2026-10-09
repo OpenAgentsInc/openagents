@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-05/navigation-crowd",
+ "files": {
+  "sources.zip": {
+   "bytes": 279710,
+   "sha256": "7763439c1238f9c3ab9feb4f6a6764fdf929386da7667810ca22b646746a7294"
+  }
+ }
+}

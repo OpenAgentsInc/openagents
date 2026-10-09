@@ -1,0 +1,32 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-04/prediction-delayed-first",
+ "files": {
+  "player-24.png": {
+   "bytes": 539564,
+   "sha256": "527a3adf0de219c42f547671abc28476c05558541518f085fb08cf3add69e6ec"
+  },
+  "player.mp4": {
+   "bytes": 12226960,
+   "sha256": "1761fe9b2d335b97782f3d11e093a78f5ef341f58949cc4e774e2b41b44ce006"
+  },
+  "primary-24.png": {
+   "bytes": 691142,
+   "sha256": "e13afb30bd2fc95aa2fc4cd65e326533750883464b46e8661ba1ab139455dc80"
+  },
+  "primary.mp4": {
+   "bytes": 13780925,
+   "sha256": "bae213a8b6f95a7c99a0e5e4575634aa7eb29514f7d526d9b7c10f7e93f1354f"
+  },
+  "spectator-24.png": {
+   "bytes": 629900,
+   "sha256": "aa556d088a84b5582102503b2b92df95f551e0f4a49df22fb82a8c2f75f34526"
+  },
+  "spectator.mp4": {
+   "bytes": 6736186,
+   "sha256": "c1ea439b362bafc2465ce96f5d95ba7549aac0359629647c49f91ae7f4d5dd38"
+  }
+ }
+}

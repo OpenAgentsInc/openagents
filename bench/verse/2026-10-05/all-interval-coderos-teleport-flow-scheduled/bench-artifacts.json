@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-05/all-interval-coderos-teleport-flow-scheduled",
+ "files": {
+  "load-receipt.json": {
+   "bytes": 4460255,
+   "sha256": "5087b0f20bc8d952b2ffb74d10f1742eab1393a1b320fe6c391ae075b77c012b"
+  }
+ }
+}

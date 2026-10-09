@@ -1,0 +1,32 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-08/coast-c1",
+ "files": {
+  "bay-high.png": {
+   "bytes": 288269,
+   "sha256": "f058266123bc7281ab947cb44439baaaa475d748a885aa360771a96d4e8c9098"
+  },
+  "bay-low.png": {
+   "bytes": 296826,
+   "sha256": "f63a5f65c87025736c65e6598a169f548735b60c04643ed6c08734c980bad74d"
+  },
+  "bay-medium.png": {
+   "bytes": 283164,
+   "sha256": "dac83f61bc78f747818af6a51a43e29f7cb5a9a984e4bfaabbbc42d26e8291c6"
+  },
+  "estuary-high.png": {
+   "bytes": 218237,
+   "sha256": "42dba3ffdc2346c4b8b658c8a62caa18812165b81ceb9f08125ddcc394b9c318"
+  },
+  "pools-high-high.png": {
+   "bytes": 199781,
+   "sha256": "e22fd0e125e0e68bf51181248f5ec93826d2da342d60260be7de79e57b2257f9"
+  },
+  "pools-low-high.png": {
+   "bytes": 188038,
+   "sha256": "89323610015435da1212c2275eb2f984e077d86b86bae78d0fdd1deef388b244"
+  }
+ }
+}

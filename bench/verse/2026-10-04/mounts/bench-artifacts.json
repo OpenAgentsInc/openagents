@@ -1,0 +1,40 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-04/mounts",
+ "files": {
+  "body-bow.png": {
+   "bytes": 89969,
+   "sha256": "55b2e8bb2a3b49b5e70495590828bdd2949bc6dda3cb54f4833aa127c628f533"
+  },
+  "frame-017.png": {
+   "bytes": 96200,
+   "sha256": "c55e26ea0ad57ae1a30ce4abc06e9f6047282ed2dc278c2f620d1dc0e9e36913"
+  },
+  "frame-023.png": {
+   "bytes": 94666,
+   "sha256": "9308b24d5cb916e99e58e5f0b37bf7f3237a01712117b837e1bf28a49e67d872"
+  },
+  "frame-052.png": {
+   "bytes": 82428,
+   "sha256": "40069f04d50d94d9231295538aa5dcc4a21ae32ba74208ece808d492d794eafd"
+  },
+  "frame-087.png": {
+   "bytes": 52375,
+   "sha256": "cdc9e27314b7b7d31bd814e5a3ee44890715596cd29531a20a9462de9fe38dbc"
+  },
+  "frame-095.png": {
+   "bytes": 95513,
+   "sha256": "878fc7ec37b3b4292752fee681ebff68f3b825779904c24cafd472469d653ca5"
+  },
+  "gear.png": {
+   "bytes": 90203,
+   "sha256": "e6ab419f8b824a178cf0249f057f736462be10a749dadefeaf4ed5f6a419c587"
+  },
+  "transitions.mp4": {
+   "bytes": 171795,
+   "sha256": "34b2374be5f5eeeb08c28ee31bd51f819d33016314ee54ad52da53200bca7af5"
+  }
+ }
+}

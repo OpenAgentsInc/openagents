@@ -1,0 +1,16 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-09/battle-soak-600-fixes",
+ "files": {
+  "run1-report.json.gz": {
+   "bytes": 1387267,
+   "sha256": "271278199572a0c8383106297cd20d989473bf1a6da18410f82cd4be45ee4f55"
+  },
+  "run2-gpu-report.json.gz": {
+   "bytes": 1391302,
+   "sha256": "1a6f4d82f091634d20b3324b561bd42f06b7813c60fdfbde22ee23736e9751fc"
+  }
+ }
+}

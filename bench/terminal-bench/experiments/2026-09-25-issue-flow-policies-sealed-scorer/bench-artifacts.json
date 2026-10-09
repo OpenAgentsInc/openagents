@@ -1,0 +1,44 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/terminal-bench/experiments/2026-09-25-issue-flow-policies-sealed-scorer",
+ "files": {
+  "records/01-9450-lean/traces.tar.gz": {
+   "bytes": 8523345,
+   "sha256": "b76be59ee002268f8d2e59e608820bb75afc1bbf5601ccc27e8a71cdf5ee0488"
+  },
+  "records/02-9450-requirements/traces.tar.gz": {
+   "bytes": 227953,
+   "sha256": "fea2cf13c9944fd41095480639a3ecaeb90ec198216994bc895980128caa3d7b"
+  },
+  "records/03-9446-requirements/traces.tar.gz": {
+   "bytes": 342534,
+   "sha256": "f54d7bfdcdb6ade020f6e248af36bf834a90ac5f1380e0307be5c7c484f65803"
+  },
+  "records/04-9446-lean/traces.tar.gz": {
+   "bytes": 8052162,
+   "sha256": "1e97d5d761cd7be152a314c74a8f6b110fc0686ac3678be861a4e1d2e412a8d9"
+  },
+  "records/05-9451-lean/traces.tar.gz": {
+   "bytes": 9791392,
+   "sha256": "6dca189bbb2ce5af96a13d865962b7afc15867a80b7eeb2cad108e75d8d654a3"
+  },
+  "records/06-9451-requirements/traces.tar.gz": {
+   "bytes": 407798,
+   "sha256": "64185995c4ff9d77dcc3dfda700a7719b83068bd24444b3d9e90ecb1793d9611"
+  },
+  "records/07-9597-requirements/traces.tar.gz": {
+   "bytes": 242188,
+   "sha256": "805e6b946e9de0715bf0b40616c79af65dfffef96f040062050fba653a3c1d46"
+  },
+  "records/08-9597-lean/traces.tar.gz": {
+   "bytes": 4327283,
+   "sha256": "e75c7bf82b67adbce8bcd8f1d21b82ba70cd1173f473eb332e991e1a7c6f7b45"
+  },
+  "records/09-9450-requirements-interrupted/traces-and-candidate.tar.gz": {
+   "bytes": 4128902,
+   "sha256": "088b1b8ea20ac3f2cd799493d3d8cefd216f069c56b6eff64e4e99c171f48e63"
+  }
+ }
+}

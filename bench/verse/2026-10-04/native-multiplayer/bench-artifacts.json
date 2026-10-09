@@ -1,0 +1,40 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-04/native-multiplayer",
+ "files": {
+  "player-40.png": {
+   "bytes": 577977,
+   "sha256": "2f07141feffd529f5248f33ebf7af79d24bc1e07028faf2d213bcc86fe9d7f2e"
+  },
+  "player-79.png": {
+   "bytes": 423407,
+   "sha256": "0875d2188cd3196fd0c7b6fb58fb17577ba823b8332466d17274b5b20425f74f"
+  },
+  "player.mp4": {
+   "bytes": 12129379,
+   "sha256": "a97ca493cb5fcf7babb599d8ebf47779ffd9e5e59d38a7965788d4b5de203756"
+  },
+  "primary-40.png": {
+   "bytes": 672245,
+   "sha256": "5b9cf0b8a0feb481b16af0bdff5ce14e251b292d88fb20a1da86dbe35a566b8d"
+  },
+  "primary-79.png": {
+   "bytes": 693430,
+   "sha256": "c017ff906a9dde5c13837591a7aef63394a120a8cebf57baeab6eaeac514465f"
+  },
+  "primary.mp4": {
+   "bytes": 12595487,
+   "sha256": "de488bf932a9669eb4eb1a2246054c49ab4f535d42850d76a042a3002454d3b7"
+  },
+  "spectator-40.png": {
+   "bytes": 442564,
+   "sha256": "d09f1b812a062b5a1dde2c85cccd1493ba4e0fa2e19ef551ad4aec5226e36770"
+  },
+  "spectator.mp4": {
+   "bytes": 8861712,
+   "sha256": "cbf7423b66fa8b96734a2270364b7f24d079be9a1e9230e03e6c064cdf4704b5"
+  }
+ }
+}

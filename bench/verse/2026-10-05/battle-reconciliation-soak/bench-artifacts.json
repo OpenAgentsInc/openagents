@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-05/battle-reconciliation-soak",
+ "files": {
+  "combined-reconciliation-soak-01.json": {
+   "bytes": 12365644,
+   "sha256": "6742edad31bda48857631c56bd7a058aed8bf8e4e3acc99fe7a684c77b518535"
+  }
+ }
+}

@@ -1,0 +1,124 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-03/summoning-lair",
+ "files": {
+  "combat.mp4": {
+   "bytes": 23222986,
+   "sha256": "3a95b284898d542c275443c9891dc2a6b35cb1d4ba393f17ba3ae0dbd12d2eb2"
+  },
+  "combat.png": {
+   "bytes": 528217,
+   "sha256": "2b1c94fee07a10206a81d53f51ff766c1c37f5c607b5f9768513dcce25c54960"
+  },
+  "performance-hd-cold/after.png": {
+   "bytes": 1227882,
+   "sha256": "d4c766454af9cc5edf7708279f66995e3d4fef11a2819d3fa875ca2ce96b2ac9"
+  },
+  "performance-hd-cold/before.png": {
+   "bytes": 1350622,
+   "sha256": "a74c4b87b10b2657c09f0f752b4e335ae1f63c4c3bc46d2b88f249c0d9db9ea4"
+  },
+  "performance-hd-cold/frames.ndjson.gz": {
+   "bytes": 377662,
+   "sha256": "4c7e0c40d68a6ffb7660a72f53a4fd16607d67718cf64809bf58b894bb3bb032"
+  },
+  "performance-hd-interrupted/before.png": {
+   "bytes": 1259462,
+   "sha256": "a698c81363882afadf6d9289614184d43204496ce52d5164217408e2d796072b"
+  },
+  "performance-hd-interrupted/frames.ndjson.gz": {
+   "bytes": 25550,
+   "sha256": "e6032075a4303aa7e73f378f721bc74dc073c26fc44722bfc44de439e794c27b"
+  },
+  "performance-hd-shadow-bundles/after.png": {
+   "bytes": 2029003,
+   "sha256": "b59e3cfd46048406d797030de3eb0f47729d1e742e674b7b040b1b3a96dc5283"
+  },
+  "performance-hd-shadow-bundles/before.png": {
+   "bytes": 2290997,
+   "sha256": "45e3b70f63e35e3e2fea03e7be0336b662129c8980c7bb01cb3fb42940ee1c68"
+  },
+  "performance-hd-shadow-bundles/frames.ndjson.gz": {
+   "bytes": 401216,
+   "sha256": "492d7265e127abf706d32b0aa2dff6ae103ed515a8b0b6466bb6171bbf129705"
+  },
+  "performance-hd-world-bundles/after.png": {
+   "bytes": 1956762,
+   "sha256": "591aaa81cbb7ad151074c60e890cd8d26db39d8eacd5eea8c89e79e5efe1f1f8"
+  },
+  "performance-hd-world-bundles/before.png": {
+   "bytes": 2218640,
+   "sha256": "5f41af5884437563768a3f4775dfacd496c4cb95eb57a37c9ee0ececd01332f7"
+  },
+  "performance-hd-world-bundles/frames.ndjson.gz": {
+   "bytes": 341418,
+   "sha256": "e8d5752eccef964a58ce82a605f2d8aebe8b2c1baec63d8c3af9bb802fd435bc"
+  },
+  "performance-hd-zero-lights/before.png": {
+   "bytes": 2204874,
+   "sha256": "6a346d4da5ee23dd07b93a54f266b7fb1bb974deba6d02ddb83a2c5e9c63a97d"
+  },
+  "performance-hd-zero-lights/frames.ndjson.gz": {
+   "bytes": 229583,
+   "sha256": "50c44de05d161a49f749256c46e7fb5c5114f4ef56a30a7c2d016ba2635ce9a4"
+  },
+  "performance-hd/after.png": {
+   "bytes": 1927570,
+   "sha256": "d4fbcf2b50a08caad4b0009a60842a2ad209482c9b437da09b9e7719360a8777"
+  },
+  "performance-hd/before.png": {
+   "bytes": 2148584,
+   "sha256": "64020bf1947ea16768ac31fe8adf74a6ce03a4a7164835bd07f7efa3bd75501f"
+  },
+  "performance-hd/frames.ndjson": {
+   "bytes": 5876833,
+   "sha256": "1742f3c532f0e7c11f05367d890e5ef1e4342ea9a9bd1455c33363e59256f1c5"
+  },
+  "performance-spatial/before.png": {
+   "bytes": 483633,
+   "sha256": "19e4275c73869ed8a542eb3728a9722f3822fb1b6f6aef8d20c81a17b2ad5f50"
+  },
+  "performance-spatial/frames.ndjson.gz": {
+   "bytes": 392939,
+   "sha256": "bebdb4c09b1a9e8a64f1cb1ddaba91e1396a7d736645eb1d8ec0ccb5c5843159"
+  },
+  "performance/after.png": {
+   "bytes": 355449,
+   "sha256": "1c0ea3778302ff8483e4a52a7fd39b33ed26539085d0b2110fb22439d2137c71"
+  },
+  "performance/before.png": {
+   "bytes": 481963,
+   "sha256": "a502790b8f5f51c778b15d53133b285858b3ed6fcb6fc0b225445b4fe3ed5897"
+  },
+  "performance/frames.ndjson.gz": {
+   "bytes": 400782,
+   "sha256": "4a4da03a48607606af93e2c59e9997b27fa51485a1291c278c6c4f6082630b2c"
+  },
+  "player-handoff.png": {
+   "bytes": 676993,
+   "sha256": "f10e746caad9015b6eabec3b861782091168cd8f662ed14a0ead5abbbd7c2f3a"
+  },
+  "rejected-overbright.png": {
+   "bytes": 508764,
+   "sha256": "3a9429e1573b159954ff6cd19efcbad96c31ea2f6262de41e388bdbe4ed784b5"
+  },
+  "resize-hd/after.png": {
+   "bytes": 1860808,
+   "sha256": "922e25a2b85ca038732986f0622d31cc91b8b1d09f535457a447296cb30e9c0f"
+  },
+  "resize-hd/before.png": {
+   "bytes": 2146657,
+   "sha256": "220444e2972155f1dc2d9e42db95c72e59e99cbda872c0dba5b1f36a3b957777"
+  },
+  "ritual-wide.png": {
+   "bytes": 609651,
+   "sha256": "5cef6bd8641c02ba940e89abc734b0b7dfb6ae67d17cdf178d3734001e09d949"
+  },
+  "summoning.png": {
+   "bytes": 597114,
+   "sha256": "ee16440c8794e6f5b4caaaf48e193f4c88869b01686975b5a5c42176f04f0a54"
+  }
+ }
+}

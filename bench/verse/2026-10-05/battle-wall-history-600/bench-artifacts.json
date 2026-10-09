@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-05/battle-wall-history-600",
+ "files": {
+  "report.json": {
+   "bytes": 23401244,
+   "sha256": "92fae0025ee9b022d4a1d3ab8eada490202ed8171dbe61c10662d3a134193531"
+  }
+ }
+}

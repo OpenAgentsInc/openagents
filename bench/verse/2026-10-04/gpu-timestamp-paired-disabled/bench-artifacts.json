@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-04/gpu-timestamp-paired-disabled",
+ "files": {
+  "primary.mp4": {
+   "bytes": 2171464,
+   "sha256": "d7763b2021af174927690a27c7b557443a37333a16a17ba81d98ab137d861dae"
+  }
+ }
+}

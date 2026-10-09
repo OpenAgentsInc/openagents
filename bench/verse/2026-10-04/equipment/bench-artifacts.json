@@ -1,0 +1,24 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-04/equipment",
+ "files": {
+  "body-bow.png": {
+   "bytes": 89969,
+   "sha256": "55b2e8bb2a3b49b5e70495590828bdd2949bc6dda3cb54f4833aa127c628f533"
+  },
+  "gear.png": {
+   "bytes": 90203,
+   "sha256": "e6ab419f8b824a178cf0249f057f736462be10a749dadefeaf4ed5f6a419c587"
+  },
+  "panels.png": {
+   "bytes": 116479,
+   "sha256": "99fc8503a600503ae9e315c6323f8aeabab0e000f1127413abed6dd71a4092f5"
+  },
+  "ready.png": {
+   "bytes": 118289,
+   "sha256": "f4ae9d7a9a01ae7bb5bd4f464b536794cf398f911d45743e33574ff0becb10db"
+  }
+ }
+}

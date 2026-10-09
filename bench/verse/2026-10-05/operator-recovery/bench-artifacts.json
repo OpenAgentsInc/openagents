@@ -1,0 +1,16 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-05/operator-recovery",
+ "files": {
+  "source-main.patch.gz": {
+   "bytes": 28231,
+   "sha256": "87c39caf5baf015c3c97601852bcc88e3a39be172e2cb75f528c37d2b9748cca"
+  },
+  "source.patch.gz": {
+   "bytes": 28231,
+   "sha256": "87c39caf5baf015c3c97601852bcc88e3a39be172e2cb75f528c37d2b9748cca"
+  }
+ }
+}

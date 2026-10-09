@@ -1,0 +1,80 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-07/everglade-water",
+ "files": {
+  "diving.png": {
+   "bytes": 719862,
+   "sha256": "f1f9c4dcd04503c901dab0ee4c8721f868d90bb19885a9ee8c18bfb67552d265"
+  },
+  "exhausted.png": {
+   "bytes": 586598,
+   "sha256": "18fc5f474d3fcc8c14362a4954cfb8fec6b0f54493a60c509f7eb3e51ee5d542"
+  },
+  "fern-above.png": {
+   "bytes": 1235800,
+   "sha256": "a5150c75f3d9c415582127cf7725db21ba4b8cdd0503ede8003f20b14f876ee3"
+  },
+  "fern-eye.png": {
+   "bytes": 1137826,
+   "sha256": "008ee4354389fe93c27af608cf84c86ddc56982bf0579e50e1c1810f3a824e4e"
+  },
+  "fern-swimming.png": {
+   "bytes": 1196255,
+   "sha256": "f518b3a0b034781678f3b4d44d886a3a23b0563516d28107d3efa15b5fb19447"
+  },
+  "lantern-above.png": {
+   "bytes": 1097365,
+   "sha256": "0ed5011ce7b88fba7717766cb5225546b01033e54e9417557faa6e44d8be3431"
+  },
+  "lantern-eye.png": {
+   "bytes": 1113301,
+   "sha256": "4ea9fca446c71b04eabce19d440a1ce5e99960bc0aa22d159397a37ff9dae2d8"
+  },
+  "lantern-swimming.png": {
+   "bytes": 1087573,
+   "sha256": "2844ad9b643a11a55443b0c84d387ae7b4ccf2acbf55ef251da3d6796f23e7de"
+  },
+  "reed-above.png": {
+   "bytes": 1153367,
+   "sha256": "3a7462916b739a700bf8f45cbc6f59937ce7deba2f95c1dca5c8b4d6129cc9b0"
+  },
+  "reed-eye.png": {
+   "bytes": 1071030,
+   "sha256": "3f9ffc01f9882700b12b9c6cb3bd523504ffbc7d053149cccff3d924db0ec7a4"
+  },
+  "reed-swimming.png": {
+   "bytes": 1205482,
+   "sha256": "a675d898012e3cab23bf3a3fdbcd9a5bf35d0e721a72ede2dab40f6d9671ca15"
+  },
+  "run-above.png": {
+   "bytes": 1123222,
+   "sha256": "efd7f5862024393cef212507ae7c6cf0ed5b0a9a88bfe3a96de55cc548ed32b3"
+  },
+  "swimming.png": {
+   "bytes": 1117078,
+   "sha256": "04124058b1177c8868fb6b9a1d067025b4cf13162b6d938d1e9cefa2febc8f57"
+  },
+  "thinking-above.png": {
+   "bytes": 1055895,
+   "sha256": "0c5296d59f91e071bdc9f803020446e977503b885df552591023938eb5c97a05"
+  },
+  "thinking-eye.png": {
+   "bytes": 1042434,
+   "sha256": "d049b97281910c3b1234f34028c2142fecc92b030d37925e3724433bfe5758ca"
+  },
+  "thinking-swimming.png": {
+   "bytes": 1073422,
+   "sha256": "604c92116898cc9ba83764e20024d4b14b610dc03402c3dab8e3a34fec604c17"
+  },
+  "wading.png": {
+   "bytes": 1101232,
+   "sha256": "f5eabdaf63663afe3eebb34ca0b025bbd3feb40bc887dcdc4b6280c2412f615b"
+  },
+  "weir.png": {
+   "bytes": 1086266,
+   "sha256": "291e4d21b84602a5e268ff580f88b07fb06bcb980fabeaa4cd768a8a22215e04"
+  }
+ }
+}

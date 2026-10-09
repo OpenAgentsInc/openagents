@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-06/battle-committed-credit-600",
+ "files": {
+  "report.json": {
+   "bytes": 44647093,
+   "sha256": "4bf15727e9befc0eafa8b31846bebd7bd99ffe5498e889a457923a47278cbe97"
+  }
+ }
+}

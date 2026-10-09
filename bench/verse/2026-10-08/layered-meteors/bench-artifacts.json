@@ -1,0 +1,40 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-08/layered-meteors",
+ "files": {
+  "before-flight.png": {
+   "bytes": 1830189,
+   "sha256": "a0cd4ec1ae9a962eec67e18498c1025d5e668cdace68e09de25bd38e322b3326"
+  },
+  "before-impact.png": {
+   "bytes": 2012599,
+   "sha256": "97d5a713b72cf86513945733e1d4462369b6bdbcfae76a71d7cd0ee868449817"
+  },
+  "high-aftermath.png": {
+   "bytes": 1592197,
+   "sha256": "b0308cbffbbfc32c0c330240538ae8aaa06a7d2d91b5a05b0519836b84b5f5fa"
+  },
+  "high-flight.png": {
+   "bytes": 1841584,
+   "sha256": "490b08cdedde60597ce67bc9da0ce60b2b806d7147ab880edc9b1e561c53901f"
+  },
+  "high-ground-smoke.png": {
+   "bytes": 1657174,
+   "sha256": "425c15e444ed02e32087f33aa04354c547b1117ab11ad53545e82a61df4eb984"
+  },
+  "high-impact.png": {
+   "bytes": 2020514,
+   "sha256": "a990d7a6462dc0e1674bf6e8808c52f3b4bf64a30b18f69132ce4126ff466844"
+  },
+  "low-impact.png": {
+   "bytes": 1884523,
+   "sha256": "c541c90f7ac44919c1d8add541f3b4b7b480d04491d3d5365579d275ef7b652a"
+  },
+  "medium-impact.png": {
+   "bytes": 2000147,
+   "sha256": "caac2064174f4dc09d44fb771ef550f3221903e3af555647216edd1e143aef4f"
+  }
+ }
+}

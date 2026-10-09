@@ -1,0 +1,20 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-04/outfits",
+ "files": {
+  "models.png": {
+   "bytes": 89969,
+   "sha256": "55b2e8bb2a3b49b5e70495590828bdd2949bc6dda3cb54f4833aa127c628f533"
+  },
+  "panels.png": {
+   "bytes": 88215,
+   "sha256": "3d8186eafac15906689a1587a320f32b499fa20b06b1057ee765e8c745b1228d"
+  },
+  "ready.png": {
+   "bytes": 88724,
+   "sha256": "df9eb0e1c30407297353a4ab9f80ef13e34f6b5868dac8b41b9258d6b161964a"
+  }
+ }
+}

@@ -1,0 +1,136 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-07/water",
+ "files": {
+  "imported-high-pond-dusk.png": {
+   "bytes": 225593,
+   "sha256": "9053b488a5ef6fa68b57617c7bfa14141db75ad67d2b09b2f8384cdc073c5428"
+  },
+  "imported-high-pond-noon.png": {
+   "bytes": 378099,
+   "sha256": "0b24be97a1f49fda32489acfa84f2ea456848f632ce9dd1393290f01faf87a32"
+  },
+  "imported-high-river.png": {
+   "bytes": 223745,
+   "sha256": "2ba7776e4d44236814f208cf27705f407d9a6f5aa38f7240a4004eda77ee13cd"
+  },
+  "imported-high-sea.png": {
+   "bytes": 259852,
+   "sha256": "8549a8f58c3e67db2030f9c44c3859d2530f9766920ec9377fa10fbae9c8e79e"
+  },
+  "imported-high-under.png": {
+   "bytes": 242531,
+   "sha256": "bdaaec1351adeeea1baa2077dbf1cb7ce7ad1b8a83056ddc52827e41206bef0e"
+  },
+  "imported-low-pond-dusk.png": {
+   "bytes": 173077,
+   "sha256": "13d67f5205708e135a48ecb2a572effd08807e685bcb928825cbb28449b19efe"
+  },
+  "imported-low-pond-noon.png": {
+   "bytes": 219394,
+   "sha256": "e231ae31eb7179feb693f714070f0b016185fdfa43cf36dc413f909e7862cdc2"
+  },
+  "imported-low-river.png": {
+   "bytes": 165482,
+   "sha256": "6d3e7c8b96a401d9051df93537c46f465f1a0573ae51171c1159a415c089f0d0"
+  },
+  "imported-low-sea.png": {
+   "bytes": 206442,
+   "sha256": "a47f74e885dd84faaf8185e9c8f05b6d4c7c87e846504c93386b498584310c0c"
+  },
+  "imported-low-under.png": {
+   "bytes": 110985,
+   "sha256": "98add7287765c624c99cf00c1832ba0d9cb46e025ea3f5d3bd484cef2e81f640"
+  },
+  "imported-medium-pond-dusk.png": {
+   "bytes": 188555,
+   "sha256": "49d9191f2490995a54f03b2572d0e4af1cb8132cf89ec05679aaa3792c82300f"
+  },
+  "imported-medium-pond-noon.png": {
+   "bytes": 309920,
+   "sha256": "dd060388fe189ac5d02e3ed4b171d0f5607f005aec22fcc311f8790f29d539fc"
+  },
+  "imported-medium-river.png": {
+   "bytes": 200019,
+   "sha256": "2260edfa2d14fecbad2072c4e560943232a83a42940dec12ff7d1da0a359981d"
+  },
+  "imported-medium-sea.png": {
+   "bytes": 247095,
+   "sha256": "bf84b5e13b9c9ec0ddfdb65b57962230c851677246adffa1c263ac88d887c3b7"
+  },
+  "imported-medium-under.png": {
+   "bytes": 158230,
+   "sha256": "9c071e0c76750e1bd86dfb63d32b186f83e8175b9369ca7edf13e3836856be74"
+  },
+  "physical-high-pond-dusk.png": {
+   "bytes": 287310,
+   "sha256": "a0e491410bfa056b9b28374f5a94b7589f7ff613c68b881af3b8345a2908611c"
+  },
+  "physical-high-pond-noon.png": {
+   "bytes": 273043,
+   "sha256": "4c2769c872213091040944fa31579186670964c2a66ddc2856244472f736cdab"
+  },
+  "physical-high-river.png": {
+   "bytes": 205585,
+   "sha256": "3e6e4acff338cb8b996f75f5c0d31590acd561613909b627d07837fd2fa079ce"
+  },
+  "physical-high-sea.png": {
+   "bytes": 344825,
+   "sha256": "b1f1411f31771c81279e726f4841e929c9f0221220d1ca3e7db84a09579afb86"
+  },
+  "physical-high-under.png": {
+   "bytes": 203664,
+   "sha256": "1eb407f002be29a6d0b6d86848d16a6eff0e3a9ac48b1f3b15c82a2138dae774"
+  },
+  "physical-low-pond-dusk.png": {
+   "bytes": 241612,
+   "sha256": "d649dce67e00dc123575aaf2f675cb2071abdb0c2566160c0c7566b894527ffb"
+  },
+  "physical-low-pond-noon.png": {
+   "bytes": 183789,
+   "sha256": "5e02c633a795070c65c9b0e08b06e9577d883a338124b5f961c54f1cca06ccfb"
+  },
+  "physical-low-river.png": {
+   "bytes": 145994,
+   "sha256": "a1a23305a1be34460bea83ca13963b4031f22038bc9afb681b0d02bb6d5dd566"
+  },
+  "physical-low-sea.png": {
+   "bytes": 328078,
+   "sha256": "6935cab5104ec5b4df538201ea96c743cf5e65fc5aab2408e0f89fa1ea3d888d"
+  },
+  "physical-low-under.png": {
+   "bytes": 90115,
+   "sha256": "6594aec37c8f7852662183b72d896aa4b893c6dff98bd9b74a73a5b5dadb916c"
+  },
+  "physical-medium-pond-dusk.png": {
+   "bytes": 274776,
+   "sha256": "ef5b3cbf030ce92f32dc54178ef54693c2a98b142bff659401a2929c9b534379"
+  },
+  "physical-medium-pond-noon.png": {
+   "bytes": 231900,
+   "sha256": "0a1704400e17fb35b974889a6f38c497f140aa699ceb249308cdf56e13d2e351"
+  },
+  "physical-medium-river.png": {
+   "bytes": 179012,
+   "sha256": "00f2f4ca2362b05aa3bae8b8a1cc6ae95a103917f67f09742ae6ae01f5661f68"
+  },
+  "physical-medium-sea.png": {
+   "bytes": 339730,
+   "sha256": "4d72ca1abe3d22b781f4d7b7868a47163387341883ff3b46942f1131d850b961"
+  },
+  "physical-medium-under.png": {
+   "bytes": 130968,
+   "sha256": "26a4b38421aae0570272a3220ba8fc05b14b7df54b269ba816c085ab408c9e1c"
+  },
+  "web-webgl2.png": {
+   "bytes": 397453,
+   "sha256": "4a5330c280395c5bbfbe352a7036b20ddf673f4f763e2cf479add644954ffe95"
+  },
+  "web-webgpu.png": {
+   "bytes": 493413,
+   "sha256": "13c44990af4e87fdbf0285f1273458400d7b7cca4261b16f6f6bd9adcd9aead4"
+  }
+ }
+}

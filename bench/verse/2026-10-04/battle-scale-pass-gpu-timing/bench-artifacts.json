@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-04/battle-scale-pass-gpu-timing",
+ "files": {
+  "primary.mp4": {
+   "bytes": 5350717,
+   "sha256": "58053e6840fc7f00e8803c75295c83e5816767ed62e3986caebff88d094d3df5"
+  }
+ }
+}

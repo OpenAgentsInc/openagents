@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-04/battle-scale-complete-gpu-samples",
+ "files": {
+  "primary.mp4": {
+   "bytes": 2292330,
+   "sha256": "c9b841f3c0578866c10153c598a7f9da57bc8454036cdccf9267c2c9335b70b8"
+  }
+ }
+}

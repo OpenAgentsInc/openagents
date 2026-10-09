@@ -1,0 +1,16 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-05/battle-scale-blocked-write",
+ "files": {
+  "combined-blocked-write-01.json": {
+   "bytes": 7204974,
+   "sha256": "d606ba45610f88c98fe2cb9a768017bbe53da07be514438bb352bdd6351e9907"
+  },
+  "combined-blocked-write-followup-01.json": {
+   "bytes": 14814220,
+   "sha256": "b29bb5e18cc2a333a198f79366fa13b420da8cf140a187ade696ac9a1a675ae3"
+  }
+ }
+}

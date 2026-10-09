@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-06/battle-admission-timing-120",
+ "files": {
+  "report.json": {
+   "bytes": 18290729,
+   "sha256": "50c20dad7e4ecf722c5a788f71e0a1ceb202178393d20073df9684dbf2db0e89"
+  }
+ }
+}

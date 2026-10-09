@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-04/character-panels",
+ "files": {
+  "panels.png": {
+   "bytes": 62633,
+   "sha256": "0c28bf43b4fc204eefbb959e46e7606e836a208f4a3a986776ce9999ae00f399"
+  }
+ }
+}

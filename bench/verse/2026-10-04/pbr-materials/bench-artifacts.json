@@ -1,0 +1,32 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-04/pbr-materials",
+ "files": {
+  "player-handoff.png": {
+   "bytes": 724897,
+   "sha256": "cf8fae74779fead8dde6e44ff23f0d635dc11d3bd8487a95c2ffef814440adb4"
+  },
+  "ritual-wide.png": {
+   "bytes": 656118,
+   "sha256": "b4b1f8dc4b95ed5823dcef65c5f6e50fc24394f9655384f44e7a674e727e3ef4"
+  },
+  "summoning.png": {
+   "bytes": 642559,
+   "sha256": "435de28bd89b468c1c70ec3d078b4aaa66750a6e634459a3955b1dec27fa152c"
+  },
+  "window/after.png": {
+   "bytes": 2148891,
+   "sha256": "1c083f854bfca70b3c9015c073ef1e27d2ead4eb7056571ebbf65ffca5b8cccf"
+  },
+  "window/before.png": {
+   "bytes": 2331049,
+   "sha256": "97ca43b6e3246bf6b6b26057e2261e1cc2f75910ea00a568e70dc8d3ac39caff"
+  },
+  "window/frames.ndjson.gz": {
+   "bytes": 303508,
+   "sha256": "2a3d59fd1a8afd97f6ad1910a57b5d66373694b6bcb6387adc67331ebaca122c"
+  }
+ }
+}

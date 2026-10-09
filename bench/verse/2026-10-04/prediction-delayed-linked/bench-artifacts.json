@@ -1,0 +1,32 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-04/prediction-delayed-linked",
+ "files": {
+  "player-24.png": {
+   "bytes": 650852,
+   "sha256": "01004b1f0fd126cc4b1b03181fe9645916ab40000abfa93fd098530c3ad5194b"
+  },
+  "player.mp4": {
+   "bytes": 10130756,
+   "sha256": "0820b94aa213cc36148639f6dc3f1ecc7b39c0844519d778459fff2fa651d1af"
+  },
+  "primary-24.png": {
+   "bytes": 488418,
+   "sha256": "0c6395092411fee6c798c4602f9bb88b23f80138caab8dcd21251c3729e2e27e"
+  },
+  "primary.mp4": {
+   "bytes": 9467239,
+   "sha256": "49ff166ebec224372ffddc8ed707afb756a55c177cecea3188b0907cb811634c"
+  },
+  "spectator-24.png": {
+   "bytes": 551057,
+   "sha256": "d05cbfce7323be67be88f970d30aa2d55b20e84bfcadd8fb3c1be3e0d98c1acb"
+  },
+  "spectator.mp4": {
+   "bytes": 6081634,
+   "sha256": "bfa304170e3abaccbbdd3d3bb7a6428f360c6048076c2a502d7e7b677414dbc3"
+  }
+ }
+}

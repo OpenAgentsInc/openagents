@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-05/all-interval-coderos-native-clock-recovery-scheduled",
+ "files": {
+  "load-receipt.json": {
+   "bytes": 3804010,
+   "sha256": "c251408d66e66e2d93faa122852bb9318984cd16ee4056a31d62b2d2d24e6aed"
+  }
+ }
+}

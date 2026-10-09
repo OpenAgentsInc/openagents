@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-05/battle-horizon-recovery-600",
+ "files": {
+  "report.json": {
+   "bytes": 24393651,
+   "sha256": "3c8ed25df04891b977acf0616aba1b4bf6f6363fed9e9e43071f4497ba2496c7"
+  }
+ }
+}

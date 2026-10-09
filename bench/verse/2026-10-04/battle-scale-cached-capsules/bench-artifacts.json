@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-04/battle-scale-cached-capsules",
+ "files": {
+  "primary.mp4": {
+   "bytes": 15611451,
+   "sha256": "c6b27d0e573ec216e1c13a616d75cd3fc26cd4e59aba890074d1641b3334c64e"
+  }
+ }
+}

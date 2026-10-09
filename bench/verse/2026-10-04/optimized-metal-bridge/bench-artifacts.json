@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-04/optimized-metal-bridge",
+ "files": {
+  "primary.mp4": {
+   "bytes": 5293815,
+   "sha256": "9d3d63bbe00380ba8e443017741c5f198d5fb556d5171b717a4acd036fb14c57"
+  }
+ }
+}

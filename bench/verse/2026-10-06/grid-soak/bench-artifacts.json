@@ -1,0 +1,24 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-06/grid-soak",
+ "files": {
+  "browser-end.png": {
+   "bytes": 85430,
+   "sha256": "a01efddef026f57448806741ded0c5f653bcee6c6fcdc225b9259fd9ea8c8b55"
+  },
+  "browser-start.png": {
+   "bytes": 89130,
+   "sha256": "3b48df34367b6fa97bc4babc91b69bf5e8cb9532ddf2953a4986278daaa2829f"
+  },
+  "desktop-end.png": {
+   "bytes": 143358,
+   "sha256": "e4f4da711d3980f802308aaaf543fd86f446f5b06c4022a321a0d97c90875b6f"
+  },
+  "phone-end.png": {
+   "bytes": 79410,
+   "sha256": "59811a3121df46e55c53f7b43bd5e79740fdcf8ac8944aa57fd103d7c8068d7f"
+  }
+ }
+}

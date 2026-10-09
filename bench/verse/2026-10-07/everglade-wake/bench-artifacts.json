@@ -1,0 +1,68 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-07/everglade-wake",
+ "files": {
+  "fx/water_crest_spray.png": {
+   "bytes": 705684,
+   "sha256": "66983028afef915c4598132be4aa7125c079a663c621d66c408f434991c7818a"
+  },
+  "fx/water_drips.png": {
+   "bytes": 698019,
+   "sha256": "733a229ec2ab3c3accc159ce0725a5208eb65bb8ee5822c4e4cc4951432ef950"
+  },
+  "fx/water_droplets.png": {
+   "bytes": 698872,
+   "sha256": "92776fa2dd5cf00498ed95c0aa3a253685cc68424bcbb05cc9175563367204aa"
+  },
+  "fx/water_entry_splash.png": {
+   "bytes": 724566,
+   "sha256": "5c4f78cc7285e9cf4723b2a4aa6056c7e2c361a8e2e6a27ca5b5becec9dfdf65"
+  },
+  "fx/water_steam_puff.png": {
+   "bytes": 736534,
+   "sha256": "a44e72c22b50cfdb3c12d0ce026b6da0525bcd76cabf1c03be110cb01b12d904"
+  },
+  "high/boat-capsized.png": {
+   "bytes": 1244681,
+   "sha256": "465a494f69885a6ed1bad2c67f3ec863d813b204f75a8be29aa0308ec80b89f1"
+  },
+  "high/boat-jetty.png": {
+   "bytes": 1244295,
+   "sha256": "4e663a2ede717cbccf1cb3b874fb410703a29277b73ad7dd68a56067b39ba72e"
+  },
+  "high/boat-rowed.png": {
+   "bytes": 1296806,
+   "sha256": "a05f0a6448d874f552391a4b9475ff0847f3f9fbd0acece8943d608bce50e51f"
+  },
+  "high/bridge-debris.png": {
+   "bytes": 1166582,
+   "sha256": "dab6dca143ec8daa1888c069d08aefff9c3f226a5669a74261050f3f869a77fb"
+  },
+  "high/swim-wake.png": {
+   "bytes": 1218472,
+   "sha256": "973f1cdb0f95312cb32638fea12b595c3bfe8566898ac68e50636d2cb013635f"
+  },
+  "low/boat-capsized.png": {
+   "bytes": 1008015,
+   "sha256": "0e141d74b712bdb520c09671c1500ad7e979ef10606c6d1c7773f70bf9bf06af"
+  },
+  "low/boat-jetty.png": {
+   "bytes": 1097474,
+   "sha256": "e2948ad15a420026b7065eef6e17a1a03b8f0734b08326d8f725b9ade6bf1025"
+  },
+  "low/boat-rowed.png": {
+   "bytes": 1178150,
+   "sha256": "4588257870c93e67c254c170f845be014305047491769693d5715e2b3f5785ed"
+  },
+  "low/bridge-debris.png": {
+   "bytes": 1105245,
+   "sha256": "c616caa89888e62e68c8d9663142a3a9083f2e5f601319eb74380df240dfd8aa"
+  },
+  "low/swim-wake.png": {
+   "bytes": 1084512,
+   "sha256": "d07f27b8457bbbb0c8c880d9c91bb03d08aa669d324f533aad885ff497b1786b"
+  }
+ }
+}

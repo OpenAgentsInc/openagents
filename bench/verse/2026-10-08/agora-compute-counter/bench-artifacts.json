@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-08/agora-compute-counter",
+ "files": {
+  "agora-compute-counter.png": {
+   "bytes": 983419,
+   "sha256": "2d77d2d66734c65f5dfa8a0808a347b5eb26f7a0ee1760e35c1b16107800e486"
+  }
+ }
+}

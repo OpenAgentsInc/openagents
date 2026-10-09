@@ -1,0 +1,16 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-05/content-authoring",
+ "files": {
+  "source-before-main.patch.gz": {
+   "bytes": 40853,
+   "sha256": "15bceb7aea17dfb3c005daa09ab2b5229c17a4bafe16ff4a49b135b7513e4cd8"
+  },
+  "source.patch.gz": {
+   "bytes": 40853,
+   "sha256": "ca1a556210c6ba035666c055b2b231ac6f7e6a660003286a9b5b2ea4ba244885"
+  }
+ }
+}

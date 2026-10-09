@@ -1,0 +1,200 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-07/water-w7",
+ "files": {
+  "everglade-high/above.png": {
+   "bytes": 1014673,
+   "sha256": "4e85d9fd56de1b7f92b7fc9e8c569fcd3a1756275336963f202eaa7b59503c36"
+  },
+  "everglade-high/bed.png": {
+   "bytes": 481389,
+   "sha256": "ff6349fbc8f20d9da6ec374f912f2a3c2d06ac3b93c349d0d4c875e3961fc560"
+  },
+  "everglade-high/jetty.png": {
+   "bytes": 424603,
+   "sha256": "5d6a87eadf26b6f0c999a7f528486e95cc5435be9f8453abb513bda14d14df1c"
+  },
+  "everglade-high/snell.png": {
+   "bytes": 587801,
+   "sha256": "a6e3a2e932bf34fb1fae620486ac7f94a98ca72f1c964416a031d76e6bf71f43"
+  },
+  "everglade-high/swimmer-no-caustics.png": {
+   "bytes": 578623,
+   "sha256": "45f1efd487779ce82a28bd2001a7769a7f1e152e1c8ef8ff925eebf5726f3478"
+  },
+  "everglade-high/swimmer.png": {
+   "bytes": 612434,
+   "sha256": "84bce58c29b64a9fc3603c5852c97e31e19a4f5456173aac8b1895ba618a9f86"
+  },
+  "everglade-high/waterline.png": {
+   "bytes": 823411,
+   "sha256": "49fa4dc236ee4806355155cda549755c1005485cd0e37cfd0a2e9a59f707f803"
+  },
+  "everglade-low/above.png": {
+   "bytes": 922237,
+   "sha256": "dd7978964570ffdfa46803317b2519e5fd0166d67939ae29e8c52b4564f0f99e"
+  },
+  "everglade-low/bed.png": {
+   "bytes": 384354,
+   "sha256": "5069c0047f6e66ce950c601cbada16bac6dc9b5eac0dfbd1a088c01611d9f7d8"
+  },
+  "everglade-low/jetty.png": {
+   "bytes": 320054,
+   "sha256": "19c561f29564ad3afdef3bcc089784ac76ef8721c2b933551e421c35051e1584"
+  },
+  "everglade-low/snell.png": {
+   "bytes": 434631,
+   "sha256": "c962c788460862ca40f6560227e1dd2383a791503421bc8b38430e843fd2b6a3"
+  },
+  "everglade-low/swimmer-no-caustics.png": {
+   "bytes": 517132,
+   "sha256": "1932c5255e87592583de940df0a6c2d5091df8ef6e7aab585022fef9f5cb4076"
+  },
+  "everglade-low/swimmer.png": {
+   "bytes": 553845,
+   "sha256": "c95e3112b92d31efeb77c2c22bce280202b5d1956be21faa922fb7a7abba25f2"
+  },
+  "everglade-low/waterline.png": {
+   "bytes": 785976,
+   "sha256": "7c4bd246c349e2e05a8940e88800a24711850a37e88dd3d42363a2983b124230"
+  },
+  "everglade-medium/above.png": {
+   "bytes": 1014673,
+   "sha256": "4e85d9fd56de1b7f92b7fc9e8c569fcd3a1756275336963f202eaa7b59503c36"
+  },
+  "everglade-medium/bed.png": {
+   "bytes": 481389,
+   "sha256": "ff6349fbc8f20d9da6ec374f912f2a3c2d06ac3b93c349d0d4c875e3961fc560"
+  },
+  "everglade-medium/jetty.png": {
+   "bytes": 424603,
+   "sha256": "5d6a87eadf26b6f0c999a7f528486e95cc5435be9f8453abb513bda14d14df1c"
+  },
+  "everglade-medium/snell.png": {
+   "bytes": 587801,
+   "sha256": "a6e3a2e932bf34fb1fae620486ac7f94a98ca72f1c964416a031d76e6bf71f43"
+  },
+  "everglade-medium/swimmer-no-caustics.png": {
+   "bytes": 578623,
+   "sha256": "45f1efd487779ce82a28bd2001a7769a7f1e152e1c8ef8ff925eebf5726f3478"
+  },
+  "everglade-medium/swimmer.png": {
+   "bytes": 612434,
+   "sha256": "84bce58c29b64a9fc3603c5852c97e31e19a4f5456173aac8b1895ba618a9f86"
+  },
+  "everglade-medium/waterline.png": {
+   "bytes": 823411,
+   "sha256": "49fa4dc236ee4806355155cda549755c1005485cd0e37cfd0a2e9a59f707f803"
+  },
+  "harness/physical-high-pond-noon.png": {
+   "bytes": 529551,
+   "sha256": "626bab51b5cf28e728155588e84e8901966cfb9cc22bf9171d8ab5c389ba5a78"
+  },
+  "harness/physical-high-pond-posts.png": {
+   "bytes": 542469,
+   "sha256": "59772fbe4f3a758f59252c8569daf7483c5a0b82fd099a546b0023f6eb26a1fd"
+  },
+  "harness/physical-high-posts-under.png": {
+   "bytes": 310139,
+   "sha256": "ec8c76f21725f9494b2376e5358919d7b2a2e363625e283242d4dd3030a310ff"
+  },
+  "harness/physical-high-shafts.png": {
+   "bytes": 277488,
+   "sha256": "00be8b1098f164ad449ae7caac621272ea0fcb4529f62318a54e111dbfde3318"
+  },
+  "harness/physical-high-snell.png": {
+   "bytes": 423922,
+   "sha256": "b486d9f788516e36730949e955501a0af5aebd35bb2cc463ec85fbaa6b96329d"
+  },
+  "harness/physical-high-under.png": {
+   "bytes": 305033,
+   "sha256": "916df246fb1d4b05b74fc2a85cfe1b566fb82ba9186a701c6c57a3e8a91d5705"
+  },
+  "harness/physical-high-waterline.png": {
+   "bytes": 304877,
+   "sha256": "72973bc99e5d1fc689cc14111e7a75d66f2c6d771750740f4c747bce7eb501a5"
+  },
+  "harness/physical-low-pond-noon.png": {
+   "bytes": 304566,
+   "sha256": "58356fb598ce5126eb60aed26eb08acccd6af6798adec427ae6d689ec4e30428"
+  },
+  "harness/physical-low-pond-posts.png": {
+   "bytes": 317386,
+   "sha256": "d14a25a275e5601e1acd37fdc89f12338334ccfd1eee45160d4abaa9716b1f48"
+  },
+  "harness/physical-low-posts-under.png": {
+   "bytes": 176526,
+   "sha256": "31a44c9148bd32d425ddcd78a7b28f332a36d3d7c388ac2987c4398927b4238d"
+  },
+  "harness/physical-low-shafts.png": {
+   "bytes": 90350,
+   "sha256": "8d7d227617e012ae5864e6afcac3386a1659facdd9b3b6fb3429ac50ab95886c"
+  },
+  "harness/physical-low-snell.png": {
+   "bytes": 223826,
+   "sha256": "f8e37653d7ada4bb564d01a12bf78fffc38f302e03de21978e81bca99671ca5b"
+  },
+  "harness/physical-low-under.png": {
+   "bytes": 128364,
+   "sha256": "1096a98b90cd43d27a85b370a2cd7861a7baaa132f1da7b09857cb025cb964d6"
+  },
+  "harness/physical-low-waterline.png": {
+   "bytes": 229749,
+   "sha256": "323ce753a631e0afbde977e56c3a3959fef4aa44266d57d786f968822bae401b"
+  },
+  "harness/physical-medium-pond-noon.png": {
+   "bytes": 439503,
+   "sha256": "33f5cb9a32410564e89a93d229967c8719552032d714944b835418009f526aab"
+  },
+  "harness/physical-medium-pond-posts.png": {
+   "bytes": 451136,
+   "sha256": "0ab722ccce502bee4ad37728aa5099f44b90af681343069d2d79c3bb453cf117"
+  },
+  "harness/physical-medium-posts-under.png": {
+   "bytes": 231245,
+   "sha256": "001c39bfb112301908c2dd7d850dbdcdde11d05d564aea8245ec40e6759c40d0"
+  },
+  "harness/physical-medium-shafts.png": {
+   "bytes": 198279,
+   "sha256": "9938672e8f3356e9a112928be8922edfb2bc8641c39e6c9c3fb25b25b964a719"
+  },
+  "harness/physical-medium-snell.png": {
+   "bytes": 267387,
+   "sha256": "d2cd6b87438eb99b50702ad39a9ae609612d9957fcdfa5a92699169d9679503e"
+  },
+  "harness/physical-medium-under.png": {
+   "bytes": 224556,
+   "sha256": "1636cfbb2b6913481721592b5c07b7aed4c564e7949a9a87a93829e0ebf5aa02"
+  },
+  "harness/physical-medium-waterline.png": {
+   "bytes": 272097,
+   "sha256": "f4d09a92d37bcadb68bdfbd13da52230c3afb63449ddaec52c335922ccf1432a"
+  },
+  "lab-high/underwater-up.png": {
+   "bytes": 595338,
+   "sha256": "d3f116f8788f14d8589adf6b77469e124bf873f7aace1ec50a541a8c69f28e4e"
+  },
+  "lab-high/underwater.png": {
+   "bytes": 478310,
+   "sha256": "8e9e0eb24679b9e4f7e6940ef3d7a4ced55897a55a5d9914f986b4c2b38826cb"
+  },
+  "lab-low/underwater-up.png": {
+   "bytes": 335875,
+   "sha256": "6ff2f0eeebb7e169dc02c7b89bd0ec638d102b80ff150084bfeb9986061cd455"
+  },
+  "lab-low/underwater.png": {
+   "bytes": 413524,
+   "sha256": "0d0c3357ad7ff8bec0bf5b0fbbb4dac6fa6beb44d2786a787b91204f896d77d0"
+  },
+  "lab-medium/underwater-up.png": {
+   "bytes": 595338,
+   "sha256": "d3f116f8788f14d8589adf6b77469e124bf873f7aace1ec50a541a8c69f28e4e"
+  },
+  "lab-medium/underwater.png": {
+   "bytes": 478303,
+   "sha256": "5b89912b9990c132e5cccc94798ebb7766de5628753af69dedf346dab248f389"
+  }
+ }
+}

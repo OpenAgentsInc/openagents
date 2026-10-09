@@ -1,0 +1,16 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-08/pylon-league",
+ "files": {
+  "pylon-league-1920x1080-1x.png": {
+   "bytes": 179192,
+   "sha256": "384b05f9e6ffe9713a7b0eb8c497ece9b229c86c95ce3ebbeceaffa0017232ad"
+  },
+  "pylon-league.png": {
+   "bytes": 336410,
+   "sha256": "eee785ec685eec50ae8a3e4186e33ead37f5c6f061c9b1fa0e789cb7cfa04f4f"
+  }
+ }
+}

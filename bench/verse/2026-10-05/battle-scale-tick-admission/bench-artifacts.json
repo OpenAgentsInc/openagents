@@ -1,0 +1,16 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-05/battle-scale-tick-admission",
+ "files": {
+  "combined-tick-admission-01.json": {
+   "bytes": 5295348,
+   "sha256": "7a57241813287fdafb14212eeebd8e274b8efa535111eed6b93b5065b658cb01"
+  },
+  "combined-tick-reserved-01.json": {
+   "bytes": 11251687,
+   "sha256": "83356e5691a05c67487272141fc0d818b71d2995d3b983791bc28451664717ad"
+  }
+ }
+}

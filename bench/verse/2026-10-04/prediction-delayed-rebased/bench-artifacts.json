@@ -1,0 +1,24 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-04/prediction-delayed-rebased",
+ "files": {
+  "player.mp4": {
+   "bytes": 15727595,
+   "sha256": "20c1918178e21904c830b387fc43d74abbe145bbfb69080bf0117ee39691ec19"
+  },
+  "primary-24.png": {
+   "bytes": 499308,
+   "sha256": "09a9e58510390befb6c213986834ce0bb4e3ce73bbaae7c943f8558b7adeee5a"
+  },
+  "primary.mp4": {
+   "bytes": 11703329,
+   "sha256": "1c4aeedb942d11e1e38ebb070bf5450f240da08659683b15f75c4aa2d9009827"
+  },
+  "spectator.mp4": {
+   "bytes": 6079279,
+   "sha256": "8fc82bc7dcc9cad424efd579ba771e82947a1b6adacc449fdd97cb5f8c83c5a7"
+  }
+ }
+}

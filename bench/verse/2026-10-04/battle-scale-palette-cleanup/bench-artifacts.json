@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-04/battle-scale-palette-cleanup",
+ "files": {
+  "primary.mp4": {
+   "bytes": 27685506,
+   "sha256": "1de74cc23c084eeacda13f3bd298cd1fc1e2fd4439cb562f3d93a80cc5a21196"
+  }
+ }
+}

@@ -1,0 +1,16 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-04/battle-scale-instanced-shadows",
+ "files": {
+  "frame-30.png": {
+   "bytes": 664161,
+   "sha256": "7ce7701b14cf0e79588f868bc01f28857eea4ab306229871ece7d8882f3d0a16"
+  },
+  "primary.mp4": {
+   "bytes": 19747347,
+   "sha256": "8ade328b91a08cf198517ff24f6bc0d62b3edc2dc01e8c7b2bbecf1667ac83c2"
+  }
+ }
+}

@@ -1,0 +1,20 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-03/reload-window-clock-start",
+ "files": {
+  "after.png": {
+   "bytes": 261634,
+   "sha256": "0f99b82b19f71133b6da0fc421637bba3743d6d7f2dd8d544694ce2ac3b74b16"
+  },
+  "before.png": {
+   "bytes": 235633,
+   "sha256": "f34d70eaae96de90f4902ad0e6bcf608d623c97ba5478f73348f304252d58983"
+  },
+  "frames.ndjson": {
+   "bytes": 1211444,
+   "sha256": "44e94ca5dddadbbb817d8d2906bc02e000bc6a9ad88aa99f5343d59538d97fd4"
+  }
+ }
+}

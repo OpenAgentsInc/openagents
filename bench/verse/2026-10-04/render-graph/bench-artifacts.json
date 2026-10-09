@@ -1,0 +1,20 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-04/render-graph",
+ "files": {
+  "window/after.png": {
+   "bytes": 2161162,
+   "sha256": "fb88bf32476721c2886fcac7c516861658323effb5d9d8c55d11214533d1fc1b"
+  },
+  "window/before.png": {
+   "bytes": 2351840,
+   "sha256": "d51f9e638d7912e92aaac71a59710c0615b56eb77e068337024ef115c2fd5851"
+  },
+  "window/frames.ndjson.gz": {
+   "bytes": 532181,
+   "sha256": "3cbb399c4699a395fbe157d709638dd767318743db474516aea6583c8179622f"
+  }
+ }
+}

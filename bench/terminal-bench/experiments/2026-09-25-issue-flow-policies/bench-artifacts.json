@@ -1,0 +1,16 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/terminal-bench/experiments/2026-09-25-issue-flow-policies",
+ "files": {
+  "records/01-9450-lean/traces.tar.gz": {
+   "bytes": 8480992,
+   "sha256": "43248c139519867addc9fb02d56d1b26d3afe0f10fd2d67ef209b3b574b2aa1d"
+  },
+  "records/02-9450-requirements/traces.tar.gz": {
+   "bytes": 203227,
+   "sha256": "9901d7e4c877a301a3b2bb326398e11331a99fcd64c5cd9c2438180b28ec1d1f"
+  }
+ }
+}

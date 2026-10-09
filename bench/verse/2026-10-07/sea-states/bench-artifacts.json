@@ -1,0 +1,112 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-07/sea-states",
+ "files": {
+  "after/physical-high-open-calm.png": {
+   "bytes": 351077,
+   "sha256": "6fded3c0129971666ed8daffa7d3d0faa135f909326e2ac44b6f5ce042ffb1de"
+  },
+  "after/physical-high-open-moderate.png": {
+   "bytes": 432366,
+   "sha256": "3267c4cf4c656c45f19ece62aac8985e811d6fce16d40d8dd15c6f6d4cc938e8"
+  },
+  "after/physical-high-open-storm.png": {
+   "bytes": 500191,
+   "sha256": "d21f1459734aaf7e85191462f930ae3a748c6d19e36574261282454259d17335"
+  },
+  "after/physical-high-sea-calm.png": {
+   "bytes": 317769,
+   "sha256": "3702dc07b29cf1b4d84c0d3b5d4e471a0206ec8dd125bf1b78ff3b2d2b88c73f"
+  },
+  "after/physical-high-sea-moderate.png": {
+   "bytes": 338298,
+   "sha256": "10a99282038af0f71f95659c429648ba0b69e0fa3a7285447d9e2679a3172c02"
+  },
+  "after/physical-high-sea-storm.png": {
+   "bytes": 384384,
+   "sha256": "f063c119cf1ded5f70e4a834cfe2837cb7f15d15ea6f63ca6ae363016074435f"
+  },
+  "after/physical-low-open-calm.png": {
+   "bytes": 315826,
+   "sha256": "ed14811b15e1d9f027bf07fa7fdc3f8b1fd20dbbb2c168ac370dbeda4c68b69c"
+  },
+  "after/physical-low-open-moderate.png": {
+   "bytes": 337985,
+   "sha256": "1038adb7c61275ade03ab1aa52dc72f759bacbac5dec73048545e5460fb5ccc1"
+  },
+  "after/physical-low-open-storm.png": {
+   "bytes": 368218,
+   "sha256": "3cafc00c21972fc1cb27b0017eb14b6d7bc64e7a58b701a64c690e32076691fe"
+  },
+  "after/physical-low-sea-calm.png": {
+   "bytes": 284705,
+   "sha256": "e40595e52f53ae575b3344bd79063a0a9d25fb9f074d14398838982a61b47d61"
+  },
+  "after/physical-low-sea-moderate.png": {
+   "bytes": 294934,
+   "sha256": "5637269ec97e56849aef36dca093374661146eaf9c12c022502f73c64c911efb"
+  },
+  "after/physical-low-sea-storm.png": {
+   "bytes": 315930,
+   "sha256": "12a4d2cbfceeb93edf0bae5f111f8e7d8b9e5b76548d074bfa4efccea252c157"
+  },
+  "before/physical-high-open-calm.png": {
+   "bytes": 480625,
+   "sha256": "e7e029d7336ee1511d81e16f803e959ca1d9d78f1801fe33fd4047beeb04c1a1"
+  },
+  "before/physical-high-open-moderate.png": {
+   "bytes": 488895,
+   "sha256": "0b0755711b3f152d7ccbf54832b368fde1d86c7e09716f428e52cbdb5e906f4b"
+  },
+  "before/physical-high-open-storm.png": {
+   "bytes": 488520,
+   "sha256": "ac7454b5481436bcdcee02a4709ccddf793653a85b46ed0beb933e2f401cbf6a"
+  },
+  "before/physical-high-sea-calm.png": {
+   "bytes": 422376,
+   "sha256": "6f36fd8490e4f57b38edfb7afa5734a303898a1ff9b881291a5fc92be65b9cc7"
+  },
+  "before/physical-high-sea-moderate.png": {
+   "bytes": 375179,
+   "sha256": "2e10cb47c186d3a8aa63eea055f7a7ebb136e9ab313856a8d29fdd7d54949bca"
+  },
+  "before/physical-high-sea-storm.png": {
+   "bytes": 411287,
+   "sha256": "df6dbfbbb1e1d937b520cb3b5ef2db6347900bd7d2c1105908fad2d249a629fd"
+  },
+  "before/physical-low-open-calm.png": {
+   "bytes": 363192,
+   "sha256": "dee72246ace45ce5dc35e9f87969c37244302f534b99838d832149dae8d2ad2f"
+  },
+  "before/physical-low-open-moderate.png": {
+   "bytes": 358852,
+   "sha256": "b1aa818b5aaf463aee4090d0e9cce0325cb404ae596c75ce531a1f3d89241a50"
+  },
+  "before/physical-low-open-storm.png": {
+   "bytes": 339401,
+   "sha256": "e0902144f88fd046b5979472a649fd8be7243343a71f27386e2222c7c50f650d"
+  },
+  "before/physical-low-sea-calm.png": {
+   "bytes": 322274,
+   "sha256": "f65584f350eb70bc921357bd5d333fdb3b29cadc4cef553db5cf19fc3336fc27"
+  },
+  "before/physical-low-sea-moderate.png": {
+   "bytes": 312886,
+   "sha256": "bf132b094cbeb7b3a7158a401055c82257e213d709c21603a5a490931d4c5c4e"
+  },
+  "before/physical-low-sea-storm.png": {
+   "bytes": 314228,
+   "sha256": "187f928aaabfa48c1dfc513a73dde146e119e43833089401ba32c71ab87b96b3"
+  },
+  "sheet-high.png": {
+   "bytes": 2228870,
+   "sha256": "f281c84c607da8ff4b83399921c1c59512ec230ecbdc25f1adc488382d28257a"
+  },
+  "sheet-low.png": {
+   "bytes": 1626661,
+   "sha256": "2769b7e0c13920e050a7e1a54d618f8c91997dbfc445d3e0f568e221b22609ff"
+  }
+ }
+}

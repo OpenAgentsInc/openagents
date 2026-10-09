@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-05/battle-scale-catchup-admission",
+ "files": {
+  "combined-catchup-admission-01.json": {
+   "bytes": 14050558,
+   "sha256": "19c22634d45957d86442f327898ef5e9b89b48f90a0fd28b9a1202999677b2e3"
+  }
+ }
+}

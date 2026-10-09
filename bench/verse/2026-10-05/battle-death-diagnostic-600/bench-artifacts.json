@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-05/battle-death-diagnostic-600",
+ "files": {
+  "report.json": {
+   "bytes": 24037718,
+   "sha256": "5eb9bf3127cf59fddf5196507ddeb2e7976e0c855ea902b8ccb01d940787572b"
+  }
+ }
+}

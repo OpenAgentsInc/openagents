@@ -1,0 +1,52 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-04/animation-graphs",
+ "files": {
+  "combat.mp4": {
+   "bytes": 24138595,
+   "sha256": "f2df7f8e078a5818b0664076da894a047b161174713a88a6e2d20d9e94c4378c"
+  },
+  "combat.ndjson.gz": {
+   "bytes": 254977,
+   "sha256": "9ab3edf69c2d1e6b2d50724013ae5a9bc67a94af41d84ed5a0672cab8c9ad83e"
+  },
+  "combat.png": {
+   "bytes": 549373,
+   "sha256": "80fcef85908232da60fc37009c6f1b1251b58ed80b67e414840ce7636be22397"
+  },
+  "shared-poses/after.png": {
+   "bytes": 2109415,
+   "sha256": "d3beb3d7ffc452756105916acbfaef9dcdd4bba0b666f3621fbe88794eddde09"
+  },
+  "shared-poses/audio.wav.gz": {
+   "bytes": 37556417,
+   "sha256": "888ee4a4def5047bb0fa07470d6f34b81355401a070d5fd370d2d97dcb770012"
+  },
+  "shared-poses/before.png": {
+   "bytes": 2351071,
+   "sha256": "1da35e88edb4343696213eb369aa318e544802a4442881595cf6f42aa8fe850f"
+  },
+  "shared-poses/frames.ndjson.gz": {
+   "bytes": 865015,
+   "sha256": "44fbf1a2cb471626e075ebe42d8f1c910f57c3355b087f0fcbb8d2a475980888"
+  },
+  "window/after.png": {
+   "bytes": 2129816,
+   "sha256": "f457f3b6e036a26b9100aa6e5b1940a68b41b5cf33a78723a4514b218a074e4e"
+  },
+  "window/audio.wav.gz": {
+   "bytes": 37732132,
+   "sha256": "d145757ebf3691f4ae7b4a72e3a1ce191391086ea91d2df74151104bc7171fbf"
+  },
+  "window/before.png": {
+   "bytes": 2351561,
+   "sha256": "73cc550fc7db21d4cc60b2419bb54836da9ab8da7f5ba59d432f1a3cec8a030b"
+  },
+  "window/frames.ndjson.gz": {
+   "bytes": 769382,
+   "sha256": "50d38b9cfc2d4af9de375c60e86a5a13500712554c7285c1bdc53775b2cdaa2f"
+  }
+ }
+}

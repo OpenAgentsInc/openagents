@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-04/battle-scale-query-profile",
+ "files": {
+  "primary.mp4": {
+   "bytes": 2896107,
+   "sha256": "bba556f51f7f8c1d1358edf37d38eb8ab51841f04005d58659636778e7cd1864"
+  }
+ }
+}

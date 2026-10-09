@@ -1,0 +1,16 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-04/battle-scale-instanced-world",
+ "files": {
+  "preview.png": {
+   "bytes": 640318,
+   "sha256": "b091cc4e58868937ea34aa46ce387a78bdcb0044921fe613adca888fe259682f"
+  },
+  "primary.mp4": {
+   "bytes": 21155330,
+   "sha256": "541cf397d3ddd886496c02b3713dab794b9ae07ba13bb57a1d6933f8a0c1fc9c"
+  }
+ }
+}

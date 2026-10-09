@@ -1,0 +1,24 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-05/character-locomotion",
+ "files": {
+  "source-before-main.patch.gz": {
+   "bytes": 27052,
+   "sha256": "ad01c2651440c4b2ba7e212e24fc1cc923d73ca0035a83c9c558e488bacaf013"
+  },
+  "source-before-selection-main.patch.gz": {
+   "bytes": 27054,
+   "sha256": "6218ee36a21c2f286e441a8657fb71762f245320cfb8e2db76de305f1794a95f"
+  },
+  "source.patch.gz": {
+   "bytes": 27054,
+   "sha256": "21b5f7d7553b06048dceef562b7a7c12dbdf86695368f48a48e0cce78cfb0933"
+  },
+  "terrain-aim-equipment.png": {
+   "bytes": 27585,
+   "sha256": "8ad50cf536129a93e37f6c0a69128e6b6f766128ac6c70d6296fa554ab922d7f"
+  }
+ }
+}

@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-06/battle-auxiliary-credit-120",
+ "files": {
+  "report.json": {
+   "bytes": 20107056,
+   "sha256": "a08006fd75cc27d7fd03c5e1c28e69d766cf85d0ab16d22358a781a8782b9f33"
+  }
+ }
+}

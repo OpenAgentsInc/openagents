@@ -1,0 +1,20 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-05/streaming-residency",
+ "files": {
+  "traversal-before-controller.png": {
+   "bytes": 158042,
+   "sha256": "4e9c6689ea532299c436277fec53f32e64a6d736c02b2807d275518fb1ae6bbf"
+  },
+  "traversal-before-light-bake.png": {
+   "bytes": 164880,
+   "sha256": "d2fbdd5623783233ffab9f4c2b222641abc1791f657560979b96fd86c38b1113"
+  },
+  "traversal.png": {
+   "bytes": 158042,
+   "sha256": "4e9c6689ea532299c436277fec53f32e64a6d736c02b2807d275518fb1ae6bbf"
+  }
+ }
+}

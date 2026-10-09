@@ -1,0 +1,32 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-04/prediction-delayed-pipelined",
+ "files": {
+  "player-24.png": {
+   "bytes": 595872,
+   "sha256": "776fe6a057238fb48027e7a6e72c58de9495ddd0e5f4f1c1b3fcdb09d5784211"
+  },
+  "player.mp4": {
+   "bytes": 2038036,
+   "sha256": "0f649733aee7e353603e7840d7c4a41c247c362b986b1fb38d4c805e4b042dcd"
+  },
+  "primary-24.png": {
+   "bytes": 607662,
+   "sha256": "4e0a7d635e566ee661cdfebb3d47362a0ff13ea73a108e747714f31461949aca"
+  },
+  "primary.mp4": {
+   "bytes": 1907178,
+   "sha256": "774d3a27983d83dbeba6186a5af5de8c160efc2c0411b9e7bbc20fe085e26e24"
+  },
+  "spectator-24.png": {
+   "bytes": 563697,
+   "sha256": "719605fb147356df1e73ab497b9ea273edc2d8dcf9f9869c6896177e174ab799"
+  },
+  "spectator.mp4": {
+   "bytes": 1518301,
+   "sha256": "1427f855508c8fa4fca5d984a4052e0a7b561823c109d611b074f5e59d51916a"
+  }
+ }
+}

@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-06/battle-same-wake-120",
+ "files": {
+  "report.json": {
+   "bytes": 19178934,
+   "sha256": "fa558de2e9dac5d2e95d12b8b4cfe690a1e72ca4e6db0ea1d947e77f2dbc5c1d"
+  }
+ }
+}

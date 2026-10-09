@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-05/battle-reset-diagnostic-600",
+ "files": {
+  "report.json": {
+   "bytes": 23889178,
+   "sha256": "b73cbd9d69a2fcf5e5586a90c3602a332ecd96a596b94e5e92c1731d447eb122"
+  }
+ }
+}

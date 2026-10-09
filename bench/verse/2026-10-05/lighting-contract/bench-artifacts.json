@@ -1,0 +1,60 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-05/lighting-contract",
+ "files": {
+  "forest-high.png": {
+   "bytes": 16618,
+   "sha256": "14829694688ec421342af54f7978e3f9e4574072c70902cdd16cc89315ef8990"
+  },
+  "forest-low.png": {
+   "bytes": 12794,
+   "sha256": "eac737c069c463bd73fefa7958714b5d4ae5dfd576d3e7f55b61b6c505d699c0"
+  },
+  "forest-medium.png": {
+   "bytes": 12102,
+   "sha256": "d6341d84bb80185f97ffb0ad0f2746819efd1ef7cea37fd383aa7ade9a84fd8b"
+  },
+  "source.patch.gz": {
+   "bytes": 12622,
+   "sha256": "1367de099dadb37a78ac9ca38f745d176bfce42d2d5d077e14d6ae346706a043"
+  },
+  "spell-high.png": {
+   "bytes": 22205,
+   "sha256": "cf145acce7386065a3778cb5768de0c6c3cf7688a5db64496b0be8c756afd6fe"
+  },
+  "spell-low.png": {
+   "bytes": 21716,
+   "sha256": "ea9a6bba7ca307a66d01395dde18e9efba7d555713b5933a38546d198f423c0d"
+  },
+  "spell-medium.png": {
+   "bytes": 22197,
+   "sha256": "2541cf5cafa9d811ea6e82299cbb262f09a3b26825d3d7fedb122cde0343345c"
+  },
+  "station-high.png": {
+   "bytes": 9516,
+   "sha256": "16586fc78f80b0cdf1580bc20674684178d736162040b41c3acc5f4890fa6b61"
+  },
+  "station-low.png": {
+   "bytes": 8875,
+   "sha256": "28f7878a8df5531ffb2879706f4864d48b72d2333fd88e92a71ed68dceef7d2c"
+  },
+  "station-medium.png": {
+   "bytes": 8954,
+   "sha256": "c68e4071f5e0903e9025d2450271a4aa72c4837f985689fb759d572c5ad15505"
+  },
+  "torch-high.png": {
+   "bytes": 20548,
+   "sha256": "fd942e672f7de9119959c20ec09c7cb946f000308e89e7026945513412f6ff7a"
+  },
+  "torch-low.png": {
+   "bytes": 19989,
+   "sha256": "b5f2234eeb024acf3b585517f65f8b2e5c1e110751f22eba5dd70f9e4b071a44"
+  },
+  "torch-medium.png": {
+   "bytes": 20590,
+   "sha256": "fb10335cb3f7c3da0f58f031322da53f327b7c1aa1420f2f1c8e7ce859ad4d2b"
+  }
+ }
+}

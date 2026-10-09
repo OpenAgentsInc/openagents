@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-06/battle-frame-timing-120",
+ "files": {
+  "report.json": {
+   "bytes": 19448197,
+   "sha256": "59f52f3a5d670c77e2c39dbbecdff05db5becdf980ae75f5dd1724557cc81e20"
+  }
+ }
+}

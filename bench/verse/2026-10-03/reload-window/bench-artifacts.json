@@ -1,0 +1,20 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-03/reload-window",
+ "files": {
+  "after.png": {
+   "bytes": 53443,
+   "sha256": "4f93335856b35de69a4efc3078d1ca003a7c9b8a95cd9f222ce76290a3c40fb5"
+  },
+  "before.png": {
+   "bytes": 235566,
+   "sha256": "20d229340a16d13ed7ab66eca0153cdb6b6ac58cb3c0848622e21cf1710fc02c"
+  },
+  "frames.ndjson": {
+   "bytes": 8496578,
+   "sha256": "612ebfe91027d23b93676c0e882a4ebf5643d8498909767e20bea5d92bc57eed"
+  }
+ }
+}

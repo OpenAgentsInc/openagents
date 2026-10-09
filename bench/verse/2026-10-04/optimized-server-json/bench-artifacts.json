@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-04/optimized-server-json",
+ "files": {
+  "primary.mp4": {
+   "bytes": 5623561,
+   "sha256": "f01da8845a17eec13fb31dd35b925e5e875cbe401c6ded4409069f751a1ad44f"
+  }
+ }
+}

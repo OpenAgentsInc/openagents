@@ -1,0 +1,16 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-04/item-use",
+ "files": {
+  "panels.png": {
+   "bytes": 76313,
+   "sha256": "dfc18a6066b04e1c4451150d284efa9022b0199bb2de0ad24cb59cf39b053b8d"
+  },
+  "ready.png": {
+   "bytes": 79025,
+   "sha256": "fcf04bb66e343f89d46196d1bb176b62dd2c046200219d669fd93043417f7df7"
+  }
+ }
+}

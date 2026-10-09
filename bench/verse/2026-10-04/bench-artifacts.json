@@ -1,0 +1,96 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-04",
+ "files": {
+  "bow-stance.mp4": {
+   "bytes": 6292662,
+   "sha256": "d91a83d5246ea4060a56d9c13847974d5abd418b2824b24b2caf15a29290670a"
+  },
+  "bow-stance.png": {
+   "bytes": 908655,
+   "sha256": "7eca0f086f563b29436e094062380b99769b22e617d47756d2ae911c613409ea"
+  },
+  "spell-black-tentacles.mp4": {
+   "bytes": 15546926,
+   "sha256": "4658c7b503f9e189cebce35fb871b53775554b777d2d7c74d0b842335e9e4eca"
+  },
+  "spell-black-tentacles.png": {
+   "bytes": 977007,
+   "sha256": "7c3b7978ad8757c813260f1ab502923314ff2c8378b4c1660861d99468bd57e7"
+  },
+  "spell-feather-fall.mp4": {
+   "bytes": 10354340,
+   "sha256": "9d4145a20b48fa0feac4ac8ccffc345d9caee4559070cd748c98bda5f93ac824"
+  },
+  "spell-feather-fall.png": {
+   "bytes": 952219,
+   "sha256": "dc4ecbb536090960b871cd6a209af170604e1e9437f545a5e0dbc4e56ecc4799"
+  },
+  "spell-gust-of-wind.mp4": {
+   "bytes": 13794940,
+   "sha256": "48d71fcf6f00cdaf0c9992276234e71c5550d639838a074a3319db7a7994b215"
+  },
+  "spell-gust-of-wind.png": {
+   "bytes": 1095900,
+   "sha256": "072320b9a541858988100e59e8a20e9e34a8ceee907c8ab94b5ab0e7eda7b11e"
+  },
+  "spell-levitate.mp4": {
+   "bytes": 10756337,
+   "sha256": "a344925359b2bdb41f90aa78fce813a594437e5bcb982b0fbc0a32fa13780b5a"
+  },
+  "spell-levitate.png": {
+   "bytes": 1065603,
+   "sha256": "aba48d017d9bf141b4acb0094724d3cff9667703c76745bcb0e8ab461ea709d5"
+  },
+  "spell-meteor-swarm.mp4": {
+   "bytes": 9276976,
+   "sha256": "4cc1c663eb806cbc5f2a07b43d65cc7e54f1f23dd9b9f348c1b2663104ec0ddc"
+  },
+  "spell-meteor-swarm.png": {
+   "bytes": 1434105,
+   "sha256": "e2e1ad5443edf86e99fe6744d6376b54b91c5d54c2bcb68b106009e9516f09ff"
+  },
+  "spell-reverse-gravity.mp4": {
+   "bytes": 9508922,
+   "sha256": "f431717557789214b9f0ac59373844bf4ed742e3468a6824f845411d82f8f496"
+  },
+  "spell-reverse-gravity.png": {
+   "bytes": 775430,
+   "sha256": "86703b43abe980d3dfb96c59cb554380f246a151bf240b6c176038925f24251f"
+  },
+  "spell-telekinesis.mp4": {
+   "bytes": 16035793,
+   "sha256": "4050b7efc1894713bc27aae1080472fc6dc614d8c284d844dae8ace63717c39c"
+  },
+  "spell-telekinesis.png": {
+   "bytes": 827329,
+   "sha256": "9d27c50191f3ea2f3a4c06b63ac710fd275e3360d7d7d09cded2e86682d0c1bf"
+  },
+  "spell-thunderwave.mp4": {
+   "bytes": 14168246,
+   "sha256": "d5782b1f6b2a58fbaf776cbb644a4cabfadd670dcc0c5f2a589cb6770e5effac"
+  },
+  "spell-thunderwave.png": {
+   "bytes": 1002716,
+   "sha256": "358768971efa6d29b75cf3e0de8d2dda0acca55fa5314de698303e7a5c53eace"
+  },
+  "spell-wall-of-stone.mp4": {
+   "bytes": 19769947,
+   "sha256": "cd853d70c800cb5c1c60648f1a5c0ff9bebb50139ee82195fc88b560074f2851"
+  },
+  "spell-wall-of-stone.png": {
+   "bytes": 1109500,
+   "sha256": "290ad9b55e2416eb642277f69435c4db1441b5ffff193144f97c8fc2b1c31b0b"
+  },
+  "spell-wind-wall.mp4": {
+   "bytes": 14177591,
+   "sha256": "c297e81a91ed2797cf9972c6ec59653dc8fffe2b903a1aec772f2f83ed2b2094"
+  },
+  "spell-wind-wall.png": {
+   "bytes": 892506,
+   "sha256": "f1e1e3beb103e92d9e74f6ff5348a7c57453fa64b6c04af58b031eabb14de125"
+  }
+ }
+}

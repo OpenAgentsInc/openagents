@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-05/all-interval-coderos-partial-credit-scheduled",
+ "files": {
+  "load-receipt.json": {
+   "bytes": 9340019,
+   "sha256": "47415cbc576463e6ecd9c9d8aec843720899166aa4c37d6e3eee82ff9a996dc7"
+  }
+ }
+}

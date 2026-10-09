@@ -1,0 +1,20 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-03/inventory-window",
+ "files": {
+  "after.png": {
+   "bytes": 53056,
+   "sha256": "f52f503f7fb873da5ae2d30067c1ecc2119e83f30030bb227c53be7774d2e6bc"
+  },
+  "before.png": {
+   "bytes": 235508,
+   "sha256": "ca4560053bf1d0c1cc2f9f9005277c7b72dc32093b0e78aaf09267ae73d25139"
+  },
+  "frames.ndjson": {
+   "bytes": 8406217,
+   "sha256": "c36b30f0ddfb38d994a1699b627ecbf6024ac02135e05c5b5128ecdb811e8bb6"
+  }
+ }
+}

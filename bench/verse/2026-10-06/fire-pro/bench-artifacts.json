@@ -1,0 +1,40 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-06/fire-pro",
+ "files": {
+  "after-early.png": {
+   "bytes": 392465,
+   "sha256": "209929c65405380d750d2f1712a1f343d7335bf7bc8e554c320b5e76dc6fa2a6"
+  },
+  "after-late.png": {
+   "bytes": 391607,
+   "sha256": "267a5ad80f09c26041a6fbfa6e3e0279b5497cd0f93bb9c0c9664b1ce800af39"
+  },
+  "battle-after-early.png": {
+   "bytes": 132912,
+   "sha256": "97aa6693cc0798618182ff55706c5ca2d4249e48e0d0c7f0ea0dd287d71ae4aa"
+  },
+  "battle-after-late.png": {
+   "bytes": 132909,
+   "sha256": "8039f53287f442e948f6c00457ff9d42feda0498defe3f1d07d04046fcad5c7e"
+  },
+  "battle-before-early.png": {
+   "bytes": 82411,
+   "sha256": "b289835749b2849ecea276a013ec3d99231c1ad2779078ac8a0029866fbea6d0"
+  },
+  "battle-before-late.png": {
+   "bytes": 82192,
+   "sha256": "08e23d0cf255250d7d2f619c2042febf5d1a8d12779cdb9f30097173a703def4"
+  },
+  "before-early.png": {
+   "bytes": 401800,
+   "sha256": "52d930b181728e85ee7ac959b01e56998533c3ccd4519c1390a931b5d25afdd6"
+  },
+  "before-late.png": {
+   "bytes": 398287,
+   "sha256": "302e2488e4959a79f77fa961555e39a3695c0104b86a42b28a250ff80bf6e9af"
+  }
+ }
+}

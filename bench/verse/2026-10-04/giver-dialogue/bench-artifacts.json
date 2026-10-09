@@ -1,0 +1,20 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-04/giver-dialogue",
+ "files": {
+  "active.png": {
+   "bytes": 109679,
+   "sha256": "faa9ee249ac469e2d25ed70a286c1da0fbfc623bebac012729acf5d51c999228"
+  },
+  "offer.png": {
+   "bytes": 111737,
+   "sha256": "bf276394b0d4c8755fda0758020bd904f89c23faf0f9060d554f517cf234dfc5"
+  },
+  "turn-in.png": {
+   "bytes": 116334,
+   "sha256": "48bdc612d303cc563c9ed50c1fa857d59b9704e414d9c3a953c40c2f577fded9"
+  }
+ }
+}

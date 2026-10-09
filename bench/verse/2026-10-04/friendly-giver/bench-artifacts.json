@@ -1,0 +1,20 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-04/friendly-giver",
+ "files": {
+  "player-handoff.png": {
+   "bytes": 757587,
+   "sha256": "a6601d8ccf5ca832718b8f70a7f3f62baa4cd675b06c4b85481a983bbd848fe8"
+  },
+  "ritual-wide.png": {
+   "bytes": 666376,
+   "sha256": "0e220d18da43110fe22f42bb2f4bdd4453c8a63bf1cdf396020861463f8f4155"
+  },
+  "summoning.png": {
+   "bytes": 655614,
+   "sha256": "3c674794ee4faa45ab0824cd82b8cbef366216292f058b8b9d4577650b207baf"
+  }
+ }
+}

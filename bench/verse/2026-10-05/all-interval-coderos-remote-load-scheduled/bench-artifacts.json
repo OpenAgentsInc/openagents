@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-05/all-interval-coderos-remote-load-scheduled",
+ "files": {
+  "load-receipt.json": {
+   "bytes": 7592028,
+   "sha256": "4b5519c7511efadb1783079974943f1e588b5f36054389d37702d8bd224329d2"
+  }
+ }
+}

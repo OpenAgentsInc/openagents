@@ -1,0 +1,136 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-06/crypt-lab",
+ "files": {
+  "assets/alchemy_bench.png": {
+   "bytes": 280472,
+   "sha256": "a3c3c562d81bc18f3125b5c63b07d58bb2a5cbc7574900342e9cf8ce446f7ddc"
+  },
+  "assets/barrel.png": {
+   "bytes": 232323,
+   "sha256": "a212b1d7cff6774bb7a39bfd33f8a0f4e095710061c54074cf94169ffc4664e9"
+  },
+  "assets/bone_scatter.png": {
+   "bytes": 164216,
+   "sha256": "e001cfdf8e61b039a50b2a41dd713bb8822ed39ec6ffc8c6d360452d632d74c2"
+  },
+  "assets/bookshelf.png": {
+   "bytes": 298684,
+   "sha256": "4e398eea902c7622660d86e406b1ecbd2605ce9b6c3763dba8fc79682f686a11"
+  },
+  "assets/brazier.png": {
+   "bytes": 181315,
+   "sha256": "4074ce2bcad6123d45ae4fdfbbf3cdb84de666ab99d06fbfce133ba00df7222b"
+  },
+  "assets/candelabrum_short.png": {
+   "bytes": 164610,
+   "sha256": "7bb63286f49aae15aac970afeab4ffbd7bef9769541201477b70d7afa21fefd6"
+  },
+  "assets/candelabrum_tall.png": {
+   "bytes": 155869,
+   "sha256": "bb9ff3ff96a38032697386844489a7c93a7a4d5fdd70afc66b45ff4556eb164d"
+  },
+  "assets/cauldron_amber.png": {
+   "bytes": 196864,
+   "sha256": "d7a138593c95de74d9f018f396bb8dbee9de3c13d1886cfa5ce1c41bd63ad12b"
+  },
+  "assets/cauldron_green.png": {
+   "bytes": 199752,
+   "sha256": "db9f85cfd7049cb5f0d72693a456d106a351ac231091c27a4eb491b78e11a051"
+  },
+  "assets/cauldron_red.png": {
+   "bytes": 200964,
+   "sha256": "6b30bbed553fad353507becb3d10c01d116c33d2130d98470c32b3eb536eb8d9"
+  },
+  "assets/chained_skeleton.png": {
+   "bytes": 171170,
+   "sha256": "64738f8e31f597a45685e5810d08452f4032ce0ca35e515ac6d3397fd7cb171b"
+  },
+  "assets/cobweb.png": {
+   "bytes": 128677,
+   "sha256": "cf057a473eaaaa968b771196baca8d6d645ef84dac4d2126e5b484bae64f5cb6"
+  },
+  "assets/crate.png": {
+   "bytes": 319906,
+   "sha256": "23856d136cd8029abb563fd30d2ac2124cc29840efae576863fe075f64368691"
+  },
+  "assets/crypt_hall.png": {
+   "bytes": 956224,
+   "sha256": "52ab68982268e8bb43b7a23a591062e8bffc824a97af2cfc51e712998b32072e"
+  },
+  "assets/floor_candles.png": {
+   "bytes": 153191,
+   "sha256": "39850fb0e4a898f826b8e8055d9bfa70f51323d0e7304a1dec618c4e717c9f05"
+  },
+  "assets/hanging_chains.png": {
+   "bytes": 172462,
+   "sha256": "219b2d00c6e6076b1d3bfcbbdcbb922049241e8b3d81c9cf93a0fb2e2c57cf7f"
+  },
+  "assets/iron_cage.png": {
+   "bytes": 206048,
+   "sha256": "3249b69cdd43034418495964c81478635b04afd430050fb7ab792752a6418bb2"
+  },
+  "assets/jar_shelf.png": {
+   "bytes": 303743,
+   "sha256": "fca6dc60073797de939abfd700e118aad399adc3fa5bd7c6102c63d5d4401437"
+  },
+  "assets/lectern.png": {
+   "bytes": 202708,
+   "sha256": "1289d4b1e2d7d4b8b501ca8d3f4ac71e72edbece887cbd44c0b36352f9b0cd64"
+  },
+  "assets/ritual_rug.png": {
+   "bytes": 174403,
+   "sha256": "ff63402f5b5111890060eddc5b9fe96f6f0476434d8ef5629f8a4a51b9e1543c"
+  },
+  "assets/sarcophagus.png": {
+   "bytes": 258811,
+   "sha256": "babb5853ae142db63adb5380c99798a7c361b923febf10bae5915df94eed85de"
+  },
+  "assets/slab_table.png": {
+   "bytes": 181907,
+   "sha256": "66418d22aee90b116caa22f422e75c841da71fa71ac5de5177605d3724725bb8"
+  },
+  "assets/specimen_jar.png": {
+   "bytes": 237454,
+   "sha256": "261ae82879c8cc2f78574ca3c6fbf63a9e17c5abb8caf7bc351056146a402853"
+  },
+  "assets/specimen_jar_bones.png": {
+   "bytes": 235622,
+   "sha256": "d013046fc42e1af93bd5b8ee7bc10de347db1a5145adbd5d19fbc46a2e82385c"
+  },
+  "assets/writing_desk.png": {
+   "bytes": 267882,
+   "sha256": "9b1ef9ac7f2e983289eb4f7ae209ba767be6e6af05172cd393698abfbc1ad2d5"
+  },
+  "scene.mp4": {
+   "bytes": 7210608,
+   "sha256": "10a54053f97cf6f3f923bd0337e82be8dc63ac5dc297f94aaa03eddbaa17b6f6"
+  },
+  "scene.png": {
+   "bytes": 785264,
+   "sha256": "3006970dcda58f0197bae8a95b179df3f6e2e398a28fef05cd60628e25d86a18"
+  },
+  "station_brewing.png": {
+   "bytes": 878225,
+   "sha256": "af99cbea49151695bf86d59a5cc510e3fa73f3fee1fe083dcd1f9d0ef45c2b94"
+  },
+  "station_dissection.png": {
+   "bytes": 770392,
+   "sha256": "0a5cf31045d0a49b2f372b4f6e7d083d9e04b51dcc651b2506331b07dbd2ec9d"
+  },
+  "station_sarcophagus.png": {
+   "bytes": 912623,
+   "sha256": "99493b3788a494997e293fd58c38819183757b0165d2edc0e20d0fc6462a57bf"
+  },
+  "station_storage.png": {
+   "bytes": 734955,
+   "sha256": "a40dcd955b774f786e57fbb46a87658a7535a6e72ebd4e41985a76cb8ea1fc8e"
+  },
+  "station_study.png": {
+   "bytes": 782689,
+   "sha256": "5e23a64f3838add90be97fe9ef22bb09a0c465cd8bda358b25f21d6c5c5584f9"
+  }
+ }
+}

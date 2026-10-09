@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-06/battle-transport-batch-120",
+ "files": {
+  "report.json": {
+   "bytes": 17730595,
+   "sha256": "769a3a8f7471079a55b4b9ca3c5efe22a89e96ed0ba188d04d15236c0c6f1df7"
+  }
+ }
+}

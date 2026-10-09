@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-06/battle-continuous-correction-120",
+ "files": {
+  "report.json": {
+   "bytes": 17108041,
+   "sha256": "370872279368a71a9eface09b83fab1d5e0fa6223ab72d51eb190b4f5bffdaa7"
+  }
+ }
+}

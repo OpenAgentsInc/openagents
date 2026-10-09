@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-04/gpu-separate-resolve",
+ "files": {
+  "primary.mp4": {
+   "bytes": 4493594,
+   "sha256": "43823dcb3fbdfd28f777f203b90db9deeeb8839094ed0cd630f5e617beba9d82"
+  }
+ }
+}

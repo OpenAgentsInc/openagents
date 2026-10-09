@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-05/battle-blocking-geometry",
+ "files": {
+  "combined-blocking-geometry-01.json": {
+   "bytes": 12274135,
+   "sha256": "8fd578c286847c4de03b12ac781dd2864bad4636f916558cdcb9f63490fcc418"
+  }
+ }
+}

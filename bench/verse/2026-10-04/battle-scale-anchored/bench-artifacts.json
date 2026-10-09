@@ -1,0 +1,16 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-04/battle-scale-anchored",
+ "files": {
+  "frame-30.png": {
+   "bytes": 811958,
+   "sha256": "000536a848e95cbc972e99ccfe38bc5d2f52ac687f3230842c8799c5bd441b48"
+  },
+  "primary.mp4": {
+   "bytes": 22941869,
+   "sha256": "43891eb9251cf5a9b09dee8913962041fd5437090a596fe8df02f6e095c93b69"
+  }
+ }
+}

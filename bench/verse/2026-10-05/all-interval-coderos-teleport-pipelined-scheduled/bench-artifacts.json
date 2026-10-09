@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-05/all-interval-coderos-teleport-pipelined-scheduled",
+ "files": {
+  "load-receipt.json": {
+   "bytes": 5926049,
+   "sha256": "3248d1246ba51d4b38dd987931abe35407ff0f996ec1a4ec8603b8a1a28ddb30"
+  }
+ }
+}

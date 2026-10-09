@@ -1,0 +1,20 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-04/pbr-shadow-bindings",
+ "files": {
+  "window/after.png": {
+   "bytes": 2162709,
+   "sha256": "95dfb140f8c16893018e03744fbc5546cc8f1d67e4720380e3c35582d059aff5"
+  },
+  "window/before.png": {
+   "bytes": 2350057,
+   "sha256": "6ea05e9ced399b739acc484244b3e36d894b1640f71699f24f1e1157a86a4a3a"
+  },
+  "window/frames.ndjson.gz": {
+   "bytes": 534516,
+   "sha256": "fe04a4cbed7a0c99d87118e3746f80fc8944ee0dd018f41b18e09897683f3b47"
+  }
+ }
+}

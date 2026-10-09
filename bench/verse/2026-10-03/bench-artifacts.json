@@ -1,0 +1,152 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-03",
+ "files": {
+  "backpedal.png": {
+   "bytes": 176144,
+   "sha256": "127227b14560b08cd35c90a08dfa9d2506f1f26b84d08357049a9d8f49db2a20"
+  },
+  "bestiary-combat.mp4": {
+   "bytes": 7911090,
+   "sha256": "15b7dcb6cce6c9bd7e00366cc39a65d3b1778649ea89ade98398b710c7430c53"
+  },
+  "bestiary-combat.png": {
+   "bytes": 203107,
+   "sha256": "d90482ee8f798e8000d4b6feea8bb41110d00f9be5c3acba2083d3872f91e601"
+  },
+  "claude-puglin.png": {
+   "bytes": 263546,
+   "sha256": "e23e51fbd39a7dccc6c3a4e824a406dba0d4a27f85c6c23201b73625747c567a"
+  },
+  "compiled-navigation.mp4": {
+   "bytes": 2039954,
+   "sha256": "bf1ad6afcf59eca79fc0721ddbef8044184b3bb863a4cfaff55fd134d58dbbc8"
+  },
+  "compiled-navigation.png": {
+   "bytes": 341251,
+   "sha256": "8b02fbe1bc262500d7334b9072fc07fd3dd277efd5c0d4c73b94feed4dc19582"
+  },
+  "grounded-movement.mp4": {
+   "bytes": 1881200,
+   "sha256": "42562fe9433322715fba79810f783fc4632965b521ff51c3414c58908961b55e"
+  },
+  "grounded-movement.png": {
+   "bytes": 322378,
+   "sha256": "63219a57dca4fdf4dfa518955483f9bc6d26427673e2cd9d25ce8809048a285b"
+  },
+  "improved-animations.mp4": {
+   "bytes": 3389373,
+   "sha256": "fdafd9893f302a9f75e62fdbf6949c3dbd8e2c5da83ccf32472c8c13b2af8814"
+  },
+  "lag-sustained.ndjson": {
+   "bytes": 2013173,
+   "sha256": "a789accc4fce11c473130f66b5ee595b6069191d7d158280e147613caee21cfc"
+  },
+  "lag-window-stress.ndjson": {
+   "bytes": 5231224,
+   "sha256": "fc1e157f35b6e961ccdeceaea8cd5bb519d2b70be3a03d886311a6bfb3d66c3b"
+  },
+  "life-bound-battle.png": {
+   "bytes": 467362,
+   "sha256": "44fe5925acd9af4465b1d469c4ec8c6741d532b452940300e183e4373240e3bb"
+  },
+  "life-bound-combat.mp4": {
+   "bytes": 7657683,
+   "sha256": "717bc1a810a6952783338db29aa641c0fbb419d937459f43e9d13adb0f33d01a"
+  },
+  "life-bound-combat.png": {
+   "bytes": 323565,
+   "sha256": "ae2ba37d14ef57f432d2216b9dc9cc6adf1bf391036cbfe6cd8ccfe965389faa"
+  },
+  "named-animation-battle.png": {
+   "bytes": 515671,
+   "sha256": "efb6fcebfd6577d0d3d5124d5c5ceed4049f91cbe03636d7903334716c2feda3"
+  },
+  "named-animation-combat.mp4": {
+   "bytes": 17161789,
+   "sha256": "b0c66c492a6d310d276a66376ea0d83a4e53beb30029989bd1571bf530bf341e"
+  },
+  "named-animation-combat.png": {
+   "bytes": 333736,
+   "sha256": "e7b78542b8f461908a92b9d39986b5e1aaef0353bc6c73c1926337545f853e98"
+  },
+  "named-animation-profile-concurrent.ndjson": {
+   "bytes": 2012469,
+   "sha256": "8a4114c0cbfa0d70fcd8b7d380e875c253b22caf1be76345f999526a62d05e2b"
+  },
+  "named-animation-profile-isolated.ndjson": {
+   "bytes": 2010710,
+   "sha256": "f3f37e44d66b06b3a5424fa6e5743200cdd273e921ce2923d4f935a00671a352"
+  },
+  "original-combat.mp4": {
+   "bytes": 7346202,
+   "sha256": "a3905abde875e3be35cd35c2ea4ca08e1be2b626a50e8d8c4d9e59d2b6fa8477"
+  },
+  "original-combat.png": {
+   "bytes": 187074,
+   "sha256": "690be09650d2e880b40eb86a6a38a08b83374ce409a85d4ee96aa90a374a58f9"
+  },
+  "original-navigation.mp4": {
+   "bytes": 1441961,
+   "sha256": "1ac9fc8a4227c9d436fa2fa7f0e50aa2c5467d119ffcbe5da352661db6db1bbe"
+  },
+  "original-navigation.png": {
+   "bytes": 261790,
+   "sha256": "f5d34b444be08a87a95f373fa42f8c0418999eaf96aa29cef911f192be3117ec"
+  },
+  "original-ritual.png": {
+   "bytes": 250422,
+   "sha256": "e18e86189fd9b477a3dc56046404b4904f0104ed855db2d6dbcf8a9cbdbdb7ad"
+  },
+  "owned-world-battle.png": {
+   "bytes": 488536,
+   "sha256": "2cac529ee951fc1a5f8b2d4661a0114522fc56e74edbdcb6474b01815d28da13"
+  },
+  "owned-world-combat.mp4": {
+   "bytes": 7896636,
+   "sha256": "ec4a7e78d1c9c33250bdbea3b399ac74b7f0f08f78d6ba2dc92474a62ae8634c"
+  },
+  "owned-world-combat.png": {
+   "bytes": 205752,
+   "sha256": "7a11dda2c0a64c03097eb282e72e28d78c772ae266514b8f0bf7ecfdd9a60a08"
+  },
+  "player-dead.png": {
+   "bytes": 414926,
+   "sha256": "d44bc31c5812dfae2e9495f1ee4ddc4f1e6a43e147247f402e9a04ca455c2360"
+  },
+  "player-respawned.png": {
+   "bytes": 204629,
+   "sha256": "f743504b1f800a092f396a1879b26f84446b81b47da212bb09d162f5daac70b4"
+  },
+  "relative-motion-battle.png": {
+   "bytes": 386623,
+   "sha256": "aba54ee08f7da2f8079ec3cc2515896302735f855374e3dddc27df7f3200048d"
+  },
+  "relative-motion-combat.mp4": {
+   "bytes": 7630214,
+   "sha256": "2d2b084b1b1bb2649d2ebbc6934fbf7045660c67aba537352fe5f6551c64f441"
+  },
+  "relative-motion-combat.png": {
+   "bytes": 362285,
+   "sha256": "cb972753972e79945211a6fc157156ae917024a6cb54c8b20a3b20376cadb0ad"
+  },
+  "universal-action.png": {
+   "bytes": 541569,
+   "sha256": "aa7a36af320277048c4571cfeeb52b612048cc2e6c3d94662de3c8849c1e849b"
+  },
+  "universal-characters.png": {
+   "bytes": 144080,
+   "sha256": "367044af7d6dc93ac3e1bc987b375aa854c974675a43ce7a19fc73874b1a0c4f"
+  },
+  "universal-combat.mp4": {
+   "bytes": 7974717,
+   "sha256": "1c9d17a2490b4b6a54798cd447dbd91ea6bff87327081556ac90622bffdd544d"
+  },
+  "universal-combat.png": {
+   "bytes": 208364,
+   "sha256": "e3a229aa0737f00569cd5a7e6512d1772d2db88110e080cb5b2d22bc373f0cd2"
+  }
+ }
+}

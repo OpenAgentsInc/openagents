@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-06/battle-auxiliary-polling-120",
+ "files": {
+  "report.json": {
+   "bytes": 18402319,
+   "sha256": "c7c0716d4290717c6b878e858e513a5c6fe68969968934af3f98c744917e4b9a"
+  }
+ }
+}

@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-06/battle-credit-catchup-120",
+ "files": {
+  "report.json": {
+   "bytes": 21758345,
+   "sha256": "9a24ea2b06fe47cecdd83a8c2a0a436a25a9a6430100f44d8d706a3b7a5ca946"
+  }
+ }
+}

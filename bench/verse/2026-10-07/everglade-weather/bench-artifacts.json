@@ -1,0 +1,80 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-07/everglade-weather",
+ "files": {
+  "high/after-pond.png": {
+   "bytes": 1257978,
+   "sha256": "52fec9a455aeb3f8049d40025026b7b2f302c425e315d06cdefaab634839295e"
+  },
+  "high/after-street.png": {
+   "bytes": 1304918,
+   "sha256": "915ec8b89b2b7a968706811f74fbd301b70561ebbe5faed1b5faf468d3fa6020"
+  },
+  "high/dry-pond.png": {
+   "bytes": 1298397,
+   "sha256": "76df38047f38a4d5b11f1dffaed653128028c3a86b859b7bc86e74a45280f494"
+  },
+  "high/dry-street.png": {
+   "bytes": 1349938,
+   "sha256": "a1cbef81f2d1a9b765db8063a5016bc7373ebbce043716db0bdf5e5f969587fc"
+  },
+  "high/rain-pond.png": {
+   "bytes": 993048,
+   "sha256": "7664a77873b4653affc57e1f2b98870466c961ae5bed18e019b8f729c82a0395"
+  },
+  "high/rain-street.png": {
+   "bytes": 1021514,
+   "sha256": "e95b341520e18ef52e5729a595436c2a711d7283b40fb8ef68b1571ef11a8b9a"
+  },
+  "low/after-pond.png": {
+   "bytes": 1090511,
+   "sha256": "13c0572b38f74529670abbf1486e03023fe3274a207c8e1176ea1d1cbabafc2e"
+  },
+  "low/after-street.png": {
+   "bytes": 1253641,
+   "sha256": "03a90998667b7e9b41d1eec620f849eaec2e916789140b02017204f004f3d792"
+  },
+  "low/dry-pond.png": {
+   "bytes": 1127120,
+   "sha256": "4bf25cb6fbb70541d6c9f49b9711a8bf6e7d7f7e48e80fd695f868bbefa39fc7"
+  },
+  "low/dry-street.png": {
+   "bytes": 1296311,
+   "sha256": "ab9b01527ac75ffae7d00c6edf7f7cc832a443aceaa1ffc6a5352f877526d6d6"
+  },
+  "low/rain-pond.png": {
+   "bytes": 864187,
+   "sha256": "889237a34c44f1661f30e1affb615c072f1f4c39ecc0f611a724fc967f4aed9f"
+  },
+  "low/rain-street.png": {
+   "bytes": 964381,
+   "sha256": "7ad11ecf75bc7c57237a23f5e8fb4297d5528012a4f25cac3814ed03e4fe607a"
+  },
+  "medium/after-pond.png": {
+   "bytes": 1257994,
+   "sha256": "cc486cd9acb47ed140a4080064f7a14f7fba2bbb86cfa7bae6df0d9d20427fe6"
+  },
+  "medium/after-street.png": {
+   "bytes": 1304544,
+   "sha256": "c3c81cb7d904dc39ee09966310a48d6d2187d752f07f4005fb82a4b16c12d960"
+  },
+  "medium/dry-pond.png": {
+   "bytes": 1298423,
+   "sha256": "db3120d374ee79eafb0141ca20ed141f7619b6c4d52e41e9c63afbb545770f5a"
+  },
+  "medium/dry-street.png": {
+   "bytes": 1349458,
+   "sha256": "b916efc88a6944b97fe92c5c378143499b64ff7b4ffe79c77bc95862df53d2f9"
+  },
+  "medium/rain-pond.png": {
+   "bytes": 991832,
+   "sha256": "0da2ad615b04920c133c47b954c33c7b16bce5a2f26f3d5f22b9884c6724e645"
+  },
+  "medium/rain-street.png": {
+   "bytes": 1018369,
+   "sha256": "4c193db8a12470dc3d7420d0fd7e82b956b6222e9f825dbfc214eb160db5cd43"
+  }
+ }
+}

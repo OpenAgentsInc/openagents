@@ -1,0 +1,32 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-04/prediction-delayed-traced",
+ "files": {
+  "player-24.png": {
+   "bytes": 634955,
+   "sha256": "f24c886a0eb26fc5dc9e4cd9b7960700260b66f764015a99b9e8d9efb3fac41b"
+  },
+  "player.mp4": {
+   "bytes": 2188997,
+   "sha256": "03c711a35f7917dfaf63b922af5a1b34ba4211af5b560e69dfb42c2089d91615"
+  },
+  "primary-24.png": {
+   "bytes": 467835,
+   "sha256": "e3adc627dd7426b9351fd0fd78a06244c9473d17dd1efc6c75b5185cff85e504"
+  },
+  "primary.mp4": {
+   "bytes": 2060571,
+   "sha256": "7ac34253fec31d406478e83396de05d4f6312b3d0bd0a4cd7b3fca9d2113c13f"
+  },
+  "spectator-24.png": {
+   "bytes": 584131,
+   "sha256": "2b46061f344f8bf45ce917b70690ca13a7c7fef1f40881ff20316cc9416d0421"
+  },
+  "spectator.mp4": {
+   "bytes": 1772872,
+   "sha256": "a1212159d7242888362a8e7aa6dbbc2972f819c1f6d1c87271a9efe6dfacc5b6"
+  }
+ }
+}

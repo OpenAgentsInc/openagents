@@ -1,0 +1,20 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-04/pbr-submit-profile",
+ "files": {
+  "window/after.png": {
+   "bytes": 2158437,
+   "sha256": "515f3072540d7aa6a9b876346beaba3ba80fd12f1895cc2f29b05e19f1fd3019"
+  },
+  "window/before.png": {
+   "bytes": 2336202,
+   "sha256": "c21f97fcc60f3ff6bbd0a394700f92e9f6af823708441f7241de17eacecb3e40"
+  },
+  "window/frames.ndjson.gz": {
+   "bytes": 344769,
+   "sha256": "f172393ff5c87e9254facb564715b3cc967e2a94e8d2de92d82f99096f98f610"
+  }
+ }
+}

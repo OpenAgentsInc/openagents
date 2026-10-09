@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-05/battle-reconciliation-diagnostics",
+ "files": {
+  "combined-reconciliation-01.json": {
+   "bytes": 11650644,
+   "sha256": "0f2dda99e6a5879e75a57cf11aedfadc9f0746b31869ae7a63f787f578b95435"
+  }
+ }
+}

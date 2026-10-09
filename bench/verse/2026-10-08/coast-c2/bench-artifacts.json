@@ -1,0 +1,204 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-08/coast-c2",
+ "files": {
+  "base-0.jpg": {
+   "bytes": 97673,
+   "sha256": "9e5626ba8a53e2479843c90f919a9bf3adc8d99076659ee2bab25646c8e8c754"
+  },
+  "base-1.jpg": {
+   "bytes": 92177,
+   "sha256": "22ec61f1add03604bcaf859bce974694ff97d9731d551021da95fceedcc92d06"
+  },
+  "base-2.jpg": {
+   "bytes": 45213,
+   "sha256": "4da5977b3ab30632e393ce1b86c604fa7e42d83129088b4f44319eb52d977f6e"
+  },
+  "beach-barrel.png": {
+   "bytes": 166241,
+   "sha256": "2d39abed876d38d855206e2c9f4875d69eaed512694800ebf3f513f388a4af70"
+  },
+  "beach-beach_grass.png": {
+   "bytes": 184797,
+   "sha256": "5ab56ddd9dbd446a6a8d6f98a5b6a2a5da21c628893c76da940b7aeeeaa5913a"
+  },
+  "beach-crate.png": {
+   "bytes": 183132,
+   "sha256": "11d26ef5906f68ded0b2b20a8b350881dd07e5e92040f0c74c714c059283285a"
+  },
+  "beach-driftwood.png": {
+   "bytes": 159516,
+   "sha256": "fa9d496cb93af8f9365156c1464c1c10abe9206b174b2624549000e9ebfb362d"
+  },
+  "beach-dune_fence.png": {
+   "bytes": 159084,
+   "sha256": "ec555f6879e09e2b6d38b3d4cc37c31550e40be2695ea6e43b1675bcf3281ede"
+  },
+  "beach-net.png": {
+   "bytes": 128739,
+   "sha256": "1106ea7223fdc8cb7789676899e98ee03e27bf3edc48b2a1b8923d1a0e6210cb"
+  },
+  "beach-rope.png": {
+   "bytes": 151951,
+   "sha256": "b92ce8111f788b9d1687ddf7f2f8a6ced07c06ec0525e6d88fe05eee76ca174c"
+  },
+  "beach-seaweed.png": {
+   "bytes": 140094,
+   "sha256": "91f84f2b97173686f46d3403ac605fd42b0b1d9217f9f2fd04c5bd09fc2ae359"
+  },
+  "beach-shell.png": {
+   "bytes": 101172,
+   "sha256": "20f7f050f93007680f601dc258bdaf65a233c733eb7e5d15a4382ffff59fecd8"
+  },
+  "boats-oars.png": {
+   "bytes": 375359,
+   "sha256": "5ce967fd60b5a450c43a74372151ae44db0a375e2eb778751bbed7fb23e8373e"
+  },
+  "boats-sloop.png": {
+   "bytes": 371762,
+   "sha256": "2c3ae8be1f87b522272d9e479043b817347a21139112e4912d09c3b6fd29d29c"
+  },
+  "boats-wreck_bow.png": {
+   "bytes": 432711,
+   "sha256": "9eb04b6d6a0b279dcde54d7bd31b000d61dd462b6a04a4c5c58eb3b0aba88671"
+  },
+  "boats-wreck_stern.png": {
+   "bytes": 446073,
+   "sha256": "70304bf0aa72ccb195585400aa62085822157a94185a2000e733272a5cad42ac"
+  },
+  "effects.jpg": {
+   "bytes": 23602,
+   "sha256": "4bdb236ff812f6d0a42e3b9c6aeafa00cf83ccdda93fe7cd4a62e52b79283e9d"
+  },
+  "harbor-boathouse.png": {
+   "bytes": 146261,
+   "sha256": "0003d2cec018e48d283d11a4d0b6b1c94b0585c068c4ceeb67b03083340009fe"
+  },
+  "harbor-bollard.png": {
+   "bytes": 398620,
+   "sha256": "db3cbbe8c1970fb32da98422df0f46b2faa6ef60b6537bde8b7a4778cf6e48a1"
+  },
+  "harbor-breakwater.png": {
+   "bytes": 230975,
+   "sha256": "291a6e8891b5c0b552574d8f9f8f06852e537adc76704b73c1827e644d9625c5"
+  },
+  "harbor-buoy.png": {
+   "bytes": 450471,
+   "sha256": "b7c08cf8e9eb7697416d6f53b5de0a6d682df937209a269339e1bd852a6e684d"
+  },
+  "harbor-hand_crane.png": {
+   "bytes": 379811,
+   "sha256": "313b7e0c6801451282e415d6536b5b98f88d463b6f8f39387757dfa4cc18f4aa"
+  },
+  "harbor-mooring.png": {
+   "bytes": 331309,
+   "sha256": "4375c9fe843662a7de95f8edd6a76226f0eed2fd6457e3bcf1854c873da91458"
+  },
+  "harbor-pier.png": {
+   "bytes": 401170,
+   "sha256": "ac9a7b537b4205efa9c0e118a50ed9e1d9337b0280df5e3bebd7100b53098b39"
+  },
+  "harbor-piling.png": {
+   "bytes": 321898,
+   "sha256": "a2eb2fda3dfc11a4c9b913c7f099e0811b99611d716aaed42769c55b0f46207f"
+  },
+  "lighthouse-fog_bell.png": {
+   "bytes": 232440,
+   "sha256": "21d5818b8c09748b88019f1e164675e33976403c59543d760042366b627e328d"
+  },
+  "lighthouse-keeper_cottage.png": {
+   "bytes": 161083,
+   "sha256": "69c5d1fff6313b55ef1a8c67920e9a0ce3f0f84b212b2fe7327cca0a17b0e0f5"
+  },
+  "lighthouse-lighthouse.png": {
+   "bytes": 144986,
+   "sha256": "09b8c0126868fae7ac197821f022e133f20b31991a64e897afdbeff4562260d6"
+  },
+  "lod-0.jpg": {
+   "bytes": 110680,
+   "sha256": "74556577f1f1ccadb63f49c5f4b39403a47e3ba75b0042a2ef745099c872c608"
+  },
+  "lod-1.jpg": {
+   "bytes": 99177,
+   "sha256": "8d5d1dfb67b2ceb04b33749acc453cb266600d1ac771fb6cc8ea88fe1dfd1704"
+  },
+  "lod-2.jpg": {
+   "bytes": 99710,
+   "sha256": "38620f39a3156eb7409834658007bcaea7158fae3098cc92176dbbc150ce4768"
+  },
+  "lod-3.jpg": {
+   "bytes": 92766,
+   "sha256": "eef3141b37901bad4bf4179d5d60385a197c6ebbabb8c20f259560178eb6b589"
+  },
+  "lod-4.jpg": {
+   "bytes": 55480,
+   "sha256": "5ed8c9768ff0ed8e1c4661b3e03b09569e0eefa8a1c14c43d6ef252bc08c39d8"
+  },
+  "reef-anemone.png": {
+   "bytes": 273944,
+   "sha256": "5726446b8f6f4c190d43445d34b398265822183046b46a7ac89e9b71cd6db63d"
+  },
+  "reef-kelp.png": {
+   "bytes": 344766,
+   "sha256": "f5085ddd0b07879aec9f3fbba08afe63bcd8a6430542bb18f1599b17ac5a6223"
+  },
+  "reef-reef_cluster.png": {
+   "bytes": 294008,
+   "sha256": "3495447c8929d785a48a7e489d7d9718f7c5a7f5c616e7671cfde9c4aec42901"
+  },
+  "rocks-boulder.png": {
+   "bytes": 183507,
+   "sha256": "f28b6f9038858c7016c7d7575672239367b9a0970e11e0e869a19428f6bae963"
+  },
+  "rocks-cliff_corner.png": {
+   "bytes": 229239,
+   "sha256": "6acd5c389e596418ebcd5154d6cfda138264fa08439999d6b562ebde96d1240c"
+  },
+  "rocks-cliff_inlet.png": {
+   "bytes": 201205,
+   "sha256": "aab6279ecae8603febcb12e6d2c11ccd4a6229c323e213596aae7570fd6a14d1"
+  },
+  "rocks-cliff_straight.png": {
+   "bytes": 243669,
+   "sha256": "3477de3eb44ed0dc0bf740b6294906436d1a56344fa8d8d7bd449735fc1b9e23"
+  },
+  "rocks-reef_rock.png": {
+   "bytes": 349939,
+   "sha256": "6da540a443549d3a3323f85f18241d81a0dba2a116fd8879f496cd5971a30f95"
+  },
+  "rocks-sea_arch.png": {
+   "bytes": 311912,
+   "sha256": "6e0b0840713ce731fc4b5f65ead3f9c9d67abd768607338b37c7c1a0237f2058"
+  },
+  "rocks-sea_cave.png": {
+   "bytes": 291916,
+   "sha256": "604bcefefb9c414bb1c6aadef5665f1850762abfdd2fbab0e2d9a5971d4a89fb"
+  },
+  "rocks-sea_stack.png": {
+   "bytes": 250210,
+   "sha256": "96ebcb5e266da5dc478a4588b16ce05e50b6c04e124e56f2de0e2d3cf1add403"
+  },
+  "rocks-tide_pool_shelf.png": {
+   "bytes": 195809,
+   "sha256": "f3752f0966198abda8afd9df8a677c8cf8c8c49263b13857312e71427ebbaad3"
+  },
+  "wildlife-crab.png": {
+   "bytes": 156262,
+   "sha256": "fe221f9f2eafc146b35629ee8dc6b6a4ca919d15976d5800a539233196d66cfa"
+  },
+  "wildlife-fish.png": {
+   "bytes": 297043,
+   "sha256": "b23adce13632a79d840b0053182a0e51994f0ff59f7779225be42aa37609b03f"
+  },
+  "wildlife-gull.png": {
+   "bytes": 248670,
+   "sha256": "2633dd76ac926d3d76f823f3e917bd2d49954b26fa955a12f088b0e48e9955ce"
+  },
+  "wildlife-seal.png": {
+   "bytes": 145300,
+   "sha256": "d7920254084026621d5caf0aa966d14265075483b76524a1ecca9d90ee9054e3"
+  }
+ }
+}

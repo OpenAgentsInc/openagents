@@ -1,0 +1,96 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-07/water-w8",
+ "files": {
+  "cone-of-cold.png": {
+   "bytes": 967566,
+   "sha256": "24e8fa3d83afb4236c44f6c0426827e3e5ff8a267dca6a1b838125dbb515b5b2"
+  },
+  "create-water.png": {
+   "bytes": 828611,
+   "sha256": "af84a78aa92b892adcba01a9ea58a7a52546d0fa01862a6d7f9dd5dbf9277db6"
+  },
+  "destroy-water.png": {
+   "bytes": 841064,
+   "sha256": "cf28b4d1345a88bd02ff78dda691e6b8290d3f95b1800371323ffc03cf4e9e18"
+  },
+  "fireball.png": {
+   "bytes": 1004344,
+   "sha256": "231a5cbeb13c96ea667182fc10e72fd2111cd276bed738a38b60425aed9cae70"
+  },
+  "flood.png": {
+   "bytes": 776955,
+   "sha256": "2132f250063bf826a68ce521d02ecbe339c0e023fd19277e82ec0a3d6f2a7e94"
+  },
+  "fog-cloud.png": {
+   "bytes": 1002769,
+   "sha256": "d9aa1d0ab7d9e3c9d7446610c0f3854c4453d65c08515ed2f55557e10561bb7c"
+  },
+  "gust-of-wind.png": {
+   "bytes": 994324,
+   "sha256": "f551ab4d76b4f57bc7f9113566b3b8adc5ba1072fab85f86ddef075031c0f4a6"
+  },
+  "ice-knife.png": {
+   "bytes": 976982,
+   "sha256": "b4eba3700384933f147a906b808316ade2102935653cb434d6918f4b6753cc0a"
+  },
+  "ice-storm.png": {
+   "bytes": 965508,
+   "sha256": "28240ce1eedabbd78b112b644f5457700fff40cc100d713f24d77eb0049426cf"
+  },
+  "meteor-swarm.png": {
+   "bytes": 1004673,
+   "sha256": "2cb03aae10ffe6a97a93239ff59bf1b7db8eb1a8a1af0ffcf96109d3d54f698e"
+  },
+  "part-water.png": {
+   "bytes": 889543,
+   "sha256": "aabdb4f181f83f1bfc361ebf5adce0b1672b8311eecbea62886f582916c001ab"
+  },
+  "ray-of-frost.png": {
+   "bytes": 967711,
+   "sha256": "091fad4f45dd01e7afeffb31d8183d79f3072cb4006d4c2549e1a9a460c124b3"
+  },
+  "redirect-flow.png": {
+   "bytes": 912416,
+   "sha256": "70bdfed28ea8010d9e5e92bfb7aa3dd8dbd387306e3b5dd4293b742b065b0a53"
+  },
+  "reverse-gravity.png": {
+   "bytes": 959528,
+   "sha256": "e9e352d4f996c2de5affdb37977221ea6ddf06f339b86fce96ddefff7276e077"
+  },
+  "sleet-storm.png": {
+   "bytes": 874129,
+   "sha256": "cb3911d63ace540c791add076ad1bfd995b7b903127804522bed5779af31f086"
+  },
+  "sleet-thaw.png": {
+   "bytes": 890907,
+   "sha256": "4a0483366d72018bac7c9b05e43dbcaa95fbc4a561ccaff5c9097dfff2b1bff6"
+  },
+  "storm-of-vengeance.png": {
+   "bytes": 929164,
+   "sha256": "08db28359f7ec1fe6f94bbad94732e89f8a4d0791cd4f70cfbba3a4d0fb88819"
+  },
+  "swimming.png": {
+   "bytes": 802941,
+   "sha256": "a781885f2f83bfe0b0d4fb54fedcf13e129feb44ea68412ce85c36cf08c949a9"
+  },
+  "thunderwave.png": {
+   "bytes": 957055,
+   "sha256": "14c308c0dd484470a21bbdb653e3d2eda5410ef5fa0c76d23757a86670f8a392"
+  },
+  "water-breathing.png": {
+   "bytes": 459998,
+   "sha256": "8acabd164bf5d0ac8f59167c9816fbfb3b564b2a94bf15e1299ba2db541191d1"
+  },
+  "water-walk.png": {
+   "bytes": 976078,
+   "sha256": "c30e0c631e90b565483721c820832d9769f008f0dad574c9f6cb20e62b9ae583"
+  },
+  "whirlpool.png": {
+   "bytes": 1044063,
+   "sha256": "704b8550ee44a35d9ce49a5aa05ea6ab6d90ba5f2aea6662d9a21351cd45f8e9"
+  }
+ }
+}

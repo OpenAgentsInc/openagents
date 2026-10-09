@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-05/battle-blocking-geometry-600",
+ "files": {
+  "report.json": {
+   "bytes": 24099851,
+   "sha256": "771fad545afb926242141ff205ba1927b5cca963c7a29706f671f54e0a528e33"
+  }
+ }
+}

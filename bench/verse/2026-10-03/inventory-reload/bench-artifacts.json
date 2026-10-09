@@ -1,0 +1,28 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-03/inventory-reload",
+ "files": {
+  "player-dead.png": {
+   "bytes": 414926,
+   "sha256": "d44bc31c5812dfae2e9495f1ee4ddc4f1e6a43e147247f402e9a04ca455c2360"
+  },
+  "player-respawned.png": {
+   "bytes": 200014,
+   "sha256": "50886c4920fa041ffb7dc05e51227aeaa946f080a7b79b18eccd5b8336a22045"
+  },
+  "reload-after-failure.png": {
+   "bytes": 414926,
+   "sha256": "d44bc31c5812dfae2e9495f1ee4ddc4f1e6a43e147247f402e9a04ca455c2360"
+  },
+  "reload-changed.png": {
+   "bytes": 410372,
+   "sha256": "0af210cbbb4cb115afe2ea668d1f1e7dc1036210ba536a2cb3d5e23c7eaefcfb"
+  },
+  "reload-unchanged.png": {
+   "bytes": 414926,
+   "sha256": "d44bc31c5812dfae2e9495f1ee4ddc4f1e6a43e147247f402e9a04ca455c2360"
+  }
+ }
+}

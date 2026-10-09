@@ -1,0 +1,92 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-07/water-w10",
+ "files": {
+  "bay-high.png": {
+   "bytes": 262808,
+   "sha256": "ad9e95022f8c52c788d787ddfbe53f0d6e4ba68f5ff6562ddb955988ba321af3"
+  },
+  "bay-low.png": {
+   "bytes": 226877,
+   "sha256": "0a0bc29b3d7c58e1bfa27c28090829ce2a27ce5b210788f0c6e0fcf8259b2624"
+  },
+  "bay-medium.png": {
+   "bytes": 251975,
+   "sha256": "f68963f0f2bdb6afa8aba135cd70f14d26c2d61a383cb4967b5d5fd992fb5a5e"
+  },
+  "buoys-high.png": {
+   "bytes": 481814,
+   "sha256": "13e9195fcd859515a9b21ef869fb7749dfb04a5d154031a83ab496931ec5c7a8"
+  },
+  "buoys-low.png": {
+   "bytes": 367991,
+   "sha256": "6c13d1108c6d7ee6623b486c46825cee0fa493393f3a6ded41db4193d306897d"
+  },
+  "buoys-medium.png": {
+   "bytes": 441843,
+   "sha256": "b8eee7b1e2e0f0a66167839b575668505b2b0fa1cca25f0abea6e970d9243431"
+  },
+  "harbor-high.png": {
+   "bytes": 449172,
+   "sha256": "78b55ad0cb967a60413416b93ec15dbeaafbfe8954ff99cad353f2bcb0f8c2a9"
+  },
+  "harbor-low.png": {
+   "bytes": 360700,
+   "sha256": "d4ced5bbd1e943a8ade740d07cb7f42b8166f1380b4629bc8f0631effd1d64d4"
+  },
+  "harbor-medium.png": {
+   "bytes": 433265,
+   "sha256": "a1cd52fce373e1afd1805f47103c8bedc07b820cf06a93783f58152ae9978854"
+  },
+  "lab-cove-high.png": {
+   "bytes": 244381,
+   "sha256": "02b3c25718afa5dbc5f881753c2ea03d62fd70901ebd5c177ae0eda974470eef"
+  },
+  "lab-cove-low.png": {
+   "bytes": 250086,
+   "sha256": "d20e3aa105fa10533f694d35c8cf00c0a1073c1c3b9dd8362dde5ada6a015d00"
+  },
+  "lab-cove-medium.png": {
+   "bytes": 240586,
+   "sha256": "b63aa7c61fb774b08db76194b4a8224ad7f2aa0f4855ed3caf051edba078d9f1"
+  },
+  "lab-high.png": {
+   "bytes": 252119,
+   "sha256": "77c0072ca4842551a4d12cc9ef6e597c3c1c55cb602f2c85637600a6aac3673a"
+  },
+  "lab-low.png": {
+   "bytes": 219459,
+   "sha256": "a3f65182ea5c62a0b88dd442e618a1c0800187b8fdebe98e2e4d45f3d3fde7a8"
+  },
+  "lab-medium.png": {
+   "bytes": 249225,
+   "sha256": "dee37a67bb7d4049d93781ee9cbc1abbca04314e9af99a142fc22938088028b3"
+  },
+  "rings-high.png": {
+   "bytes": 382742,
+   "sha256": "9287c90d70d0f59520050e177161c85d907343cbb1e83463c05d6b464dbb654c"
+  },
+  "rings-low.png": {
+   "bytes": 362300,
+   "sha256": "761c3e2da09378358d24a247bedbf3ff1056977807cd0487ec5717544b85c72e"
+  },
+  "rings-medium.png": {
+   "bytes": 367958,
+   "sha256": "523cc072356c37576557df94323b0dc419530c8bde8dd2a7b3d7b4799766db98"
+  },
+  "surf-high.png": {
+   "bytes": 265948,
+   "sha256": "4c9c667e4d22dcf50695fb7300b22ce41ecc9f00261e1a82c593e5ba31ceab7c"
+  },
+  "surf-low.png": {
+   "bytes": 239871,
+   "sha256": "86fb6d537a908e7cb53a3f9f7939fbff959e2edad756020c48e1a2800e7e7147"
+  },
+  "surf-medium.png": {
+   "bytes": 260497,
+   "sha256": "72931491e66625861ff35aa8de619fb9b61e3751f4b22d2580e36f5d4fb9ade0"
+  }
+ }
+}

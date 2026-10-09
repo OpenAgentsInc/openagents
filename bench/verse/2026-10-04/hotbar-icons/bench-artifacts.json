@@ -1,0 +1,20 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-04/hotbar-icons",
+ "files": {
+  "hotbar-1080p.png": {
+   "bytes": 743671,
+   "sha256": "dd64b8cfe690a93d96dadcb5d6e611eb38b78aa74858d207d390ec28a3e491a7"
+  },
+  "hotbar-720p.png": {
+   "bytes": 332633,
+   "sha256": "372b4ee10bc3742922112793980a9fdcd058724f276569974f0cd49a420713af"
+  },
+  "icons.png": {
+   "bytes": 68858,
+   "sha256": "1e786882ebca6d69917181627caf0de5b981d220a898c65fe7ce818cf05c879b"
+  }
+ }
+}

@@ -1,0 +1,232 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-07/water-screen",
+ "files": {
+  "everglade-high/lantern.png": {
+   "bytes": 1121473,
+   "sha256": "da2160e9c530d7859f87d92b83bd047c5980717244ff78a3501bf3c26ac56cad"
+  },
+  "everglade-high/reed.png": {
+   "bytes": 1173813,
+   "sha256": "f2badfb805deeb1176ed1787225f5f42b87e906fc34fb56851b391316c67b11a"
+  },
+  "everglade-medium/lantern.png": {
+   "bytes": 1121482,
+   "sha256": "c3b11145d5b35e57953e59506a65555e123858fba3cf5db446716ce47164a1b0"
+  },
+  "everglade-medium/reed.png": {
+   "bytes": 1173813,
+   "sha256": "f2badfb805deeb1176ed1787225f5f42b87e906fc34fb56851b391316c67b11a"
+  },
+  "physical-high-pond-dusk.png": {
+   "bytes": 310096,
+   "sha256": "412675df4287c98b60cecbfb6c3cec32d8d39444fe1c208b1692ba05cff3c8b2"
+  },
+  "physical-high-pond-noon.png": {
+   "bytes": 341213,
+   "sha256": "81046695bf1b19295f43421a272386000a2efd0935701cd7e6f3057e8399fc46"
+  },
+  "physical-high-pond-posts.png": {
+   "bytes": 393387,
+   "sha256": "965f244beed49461b89f1cadbc9b777aa3b982571ae31ee1b5868056f7e41591"
+  },
+  "physical-high-river.png": {
+   "bytes": 213158,
+   "sha256": "324039d24413e449f5a4cff05e688d81cbd3af84782cf9ab6b10eb0cb690c1c9"
+  },
+  "physical-high-sea-calm.png": {
+   "bytes": 421346,
+   "sha256": "08bcc98622a736573362b5ae87ee2f250858485eb498f3fcabb64537845a69f6"
+  },
+  "physical-high-sea-moderate.png": {
+   "bytes": 376280,
+   "sha256": "21ded8e3668ce41a60238234bf8350f09ddd94cb482eab2eda63e5f57d168a23"
+  },
+  "physical-high-sea-storm-surf.png": {
+   "bytes": 380681,
+   "sha256": "75ff5e8f0c65b3660f439907b5b4d122698e5f5e7c6711a88f5f466699d10572"
+  },
+  "physical-high-sea-storm.png": {
+   "bytes": 411098,
+   "sha256": "ca26bce89f4178113c7d6e725c5a4e924d453389cb4e96055c12eb40d3a0ee2c"
+  },
+  "physical-high-sea.png": {
+   "bytes": 369243,
+   "sha256": "56b65a0ef7f36795df26c2fb163f56f1cd4b1de7eac91ed817e0733c2fc557de"
+  },
+  "physical-high-under.png": {
+   "bytes": 184447,
+   "sha256": "7dd5b072789a6619b835136f1cb9254cf101a9f662b0e4fe9b8722ab5f0da06e"
+  },
+  "physical-low-pond-dusk.png": {
+   "bytes": 235995,
+   "sha256": "2426132b10d204edeeb91952c2de0c378adedefe06c6726bbcde48f669d817e2"
+  },
+  "physical-low-pond-noon.png": {
+   "bytes": 176858,
+   "sha256": "21484f61d6d471f5ac32f4f090ffa8da5323abea129908a972a0dd9c78ba352c"
+  },
+  "physical-low-pond-posts.png": {
+   "bytes": 216025,
+   "sha256": "62ae73e8fa4f1b066c98681638fe96e7e01d827ef947346059a984e82db94b77"
+  },
+  "physical-low-river.png": {
+   "bytes": 143690,
+   "sha256": "9607edddb07d4e458ea695128668652c0dc755eb2ebc23280419e5cfc9e171be"
+  },
+  "physical-low-sea-calm.png": {
+   "bytes": 316025,
+   "sha256": "dd067b25c3d3bf1a9e8ff9f88ea4519bcd09bc700bbce0d8ace8355ccfe53018"
+  },
+  "physical-low-sea-moderate.png": {
+   "bytes": 307004,
+   "sha256": "cd305cb60114f8357f1d29aa6dc59d0a07eb42be07e23021380afd5b14face1c"
+  },
+  "physical-low-sea-storm-surf.png": {
+   "bytes": 258913,
+   "sha256": "33ff2c9e53bcc1a3c5d43689d8d52f46b611616a8f7b3c475ff62fb45bbdfe39"
+  },
+  "physical-low-sea-storm.png": {
+   "bytes": 309325,
+   "sha256": "5970cde815442d3a9b9eabdc05780cc5c7c01eed45831bcb92c8c724f29b03c9"
+  },
+  "physical-low-sea.png": {
+   "bytes": 324540,
+   "sha256": "a7c3a2f5a751e83c11d77a704f51e069f8faa5fe0e7c34fff7ec3116cce859e2"
+  },
+  "physical-low-under.png": {
+   "bytes": 56366,
+   "sha256": "c442cf5cb9907defec8e20b567f5a007d78c02c5d7f8367aa0e78505f7ba7976"
+  },
+  "physical-medium-pond-dusk.png": {
+   "bytes": 280864,
+   "sha256": "246259f9cec88a91429892998c4621e574bdfefa971631a63dd2d6a6423cc779"
+  },
+  "physical-medium-pond-noon.png": {
+   "bytes": 292969,
+   "sha256": "7704200785f0e10ba3daf041f6d71b3c4edf1d02215d1e07c77b912cc05039d6"
+  },
+  "physical-medium-pond-posts.png": {
+   "bytes": 338826,
+   "sha256": "ac9e8a49106bfb50ded664a5d31d62edd86c95ec6fbf6aef38d65b43f9567db1"
+  },
+  "physical-medium-river.png": {
+   "bytes": 184019,
+   "sha256": "1fe2f0ab527ac45e59ecc153844e54b1b728e53169d059fdbcd4d4352a3a041a"
+  },
+  "physical-medium-sea-calm.png": {
+   "bytes": 407347,
+   "sha256": "a0b533102beae35185ea01c36ee906bc18fa8a6af0e8f8ce3e4c2ecd23df6b66"
+  },
+  "physical-medium-sea-moderate.png": {
+   "bytes": 359783,
+   "sha256": "068aafbaf50b6f8982149d7834413962987c55714de55120522b9bbefac4a967"
+  },
+  "physical-medium-sea-storm-surf.png": {
+   "bytes": 355353,
+   "sha256": "af973ff8afe1c83cdfc5772d766c576513e8e95fb85b45f543af84a419d1d0d6"
+  },
+  "physical-medium-sea-storm.png": {
+   "bytes": 384893,
+   "sha256": "1179875443ee5f7292cd2085c5fc32bce5447fdbcf8891694d51ddf22402126c"
+  },
+  "physical-medium-sea.png": {
+   "bytes": 359643,
+   "sha256": "8fc214f1f4b4fa5867451fa41bc9cb9db49c3d238ec466d10921926c2fb20355"
+  },
+  "physical-medium-under.png": {
+   "bytes": 113529,
+   "sha256": "706df3c16369debccaadf482dd3dea0e4b69e669c798ececd1e13fd3523e4e7c"
+  },
+  "w2/physical-high-pond-dusk.png": {
+   "bytes": 287310,
+   "sha256": "a0e491410bfa056b9b28374f5a94b7589f7ff613c68b881af3b8345a2908611c"
+  },
+  "w2/physical-high-pond-noon.png": {
+   "bytes": 273043,
+   "sha256": "4c2769c872213091040944fa31579186670964c2a66ddc2856244472f736cdab"
+  },
+  "w2/physical-high-pond-posts.png": {
+   "bytes": 304219,
+   "sha256": "0e65d8330fdd52b96327b66392014c28524cc84cdc52f90b3276ad3aaa1947f3"
+  },
+  "w2/physical-high-river.png": {
+   "bytes": 205585,
+   "sha256": "3e6e4acff338cb8b996f75f5c0d31590acd561613909b627d07837fd2fa079ce"
+  },
+  "w2/physical-high-sea-calm.png": {
+   "bytes": 406014,
+   "sha256": "5c657d301eb8f318c1fa851cd090832c7899a560920b876f3492bafe7c7fc2f6"
+  },
+  "w2/physical-high-sea-moderate.png": {
+   "bytes": 356255,
+   "sha256": "d6076ea8121ce2b8b8a6bfbb4e50cfab652a93bfec57ec072126d6cb4a425fd8"
+  },
+  "w2/physical-high-sea-storm-surf.png": {
+   "bytes": 367622,
+   "sha256": "c74d6cd03f5192b9ad76cbb3ecc56d820bc1da72dfe724173a89209e6fe3ddd9"
+  },
+  "w2/physical-high-sea-storm.png": {
+   "bytes": 381661,
+   "sha256": "64ebfb20cecd90adeeae0f13f12077ed780cb14f1e35280d8757fed3826d2088"
+  },
+  "w2/physical-high-sea.png": {
+   "bytes": 344825,
+   "sha256": "b1f1411f31771c81279e726f4841e929c9f0221220d1ca3e7db84a09579afb86"
+  },
+  "w2/physical-high-under.png": {
+   "bytes": 184618,
+   "sha256": "8c3b238da0b5e869334a17c6b7e3f0b932e63a4d918fadfcc792ff9909b35bd3"
+  },
+  "w2/physical-medium-pond-dusk.png": {
+   "bytes": 274776,
+   "sha256": "ef5b3cbf030ce92f32dc54178ef54693c2a98b142bff659401a2929c9b534379"
+  },
+  "w2/physical-medium-pond-noon.png": {
+   "bytes": 231900,
+   "sha256": "0a1704400e17fb35b974889a6f38c497f140aa699ceb249308cdf56e13d2e351"
+  },
+  "w2/physical-medium-pond-posts.png": {
+   "bytes": 259904,
+   "sha256": "09ea112546e464910a9772dd21aba976384a1bd77ad3a6c7a4513787378ea19d"
+  },
+  "w2/physical-medium-river.png": {
+   "bytes": 179012,
+   "sha256": "00f2f4ca2362b05aa3bae8b8a1cc6ae95a103917f67f09742ae6ae01f5661f68"
+  },
+  "w2/physical-medium-sea-calm.png": {
+   "bytes": 372283,
+   "sha256": "85459062d0c45e06dc36c5cbadc614fbda17605ed9db87e12ec9c3bed4f72229"
+  },
+  "w2/physical-medium-sea-moderate.png": {
+   "bytes": 325760,
+   "sha256": "412a2771b56b4e10d6c32fbc98c4b5be2f612267cd7861a7b95521f24430b828"
+  },
+  "w2/physical-medium-sea-storm-surf.png": {
+   "bytes": 339596,
+   "sha256": "5f87464160b5a14e284a5c1decd1c5533c1313e60a1c84cc92e2bd970fabd111"
+  },
+  "w2/physical-medium-sea-storm.png": {
+   "bytes": 358966,
+   "sha256": "fade9c8d3c22b6b6cc16fc9754c932f5d2f26564a700a2e5d3864541f19768c7"
+  },
+  "w2/physical-medium-sea.png": {
+   "bytes": 339730,
+   "sha256": "4d72ca1abe3d22b781f4d7b7868a47163387341883ff3b46942f1131d850b961"
+  },
+  "w2/physical-medium-under.png": {
+   "bytes": 113574,
+   "sha256": "9e659dbf2d4adc94a2a1a7266183f3e4abd30348466b8d75f9bfb7db598bc530"
+  },
+  "web-webgl2.png": {
+   "bytes": 377582,
+   "sha256": "961ddc4988328ff80346b75306ac8003b21d046e99862bef45aee5e9add1fcdf"
+  },
+  "web-webgpu.png": {
+   "bytes": 478915,
+   "sha256": "64c90274c4bb88bf71e90fd79e70582d975112dae5a45c083a113cf5949c127d"
+  }
+ }
+}

@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-06/battle-grouped-durable-ticks-120",
+ "files": {
+  "report.json": {
+   "bytes": 13160868,
+   "sha256": "33d44d51f35c963affc5b9e2e1dfbaae236395948c9da8710bda950db6f71df9"
+  }
+ }
+}

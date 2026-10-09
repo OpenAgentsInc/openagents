@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-04/sampled-host-battle",
+ "files": {
+  "host-cpu-sample.txt": {
+   "bytes": 1328641,
+   "sha256": "4a8d5b57f5bf63b04252604502020483aedb390f7a1210c2aadd002ac026b661"
+  }
+ }
+}

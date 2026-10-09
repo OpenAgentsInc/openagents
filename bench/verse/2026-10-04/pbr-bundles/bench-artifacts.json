@@ -1,0 +1,20 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-04/pbr-bundles",
+ "files": {
+  "window/after.png": {
+   "bytes": 2161620,
+   "sha256": "ec35e8ed142252ee0c787e342a97b593e85886a1f0fc3437c0236bc110324f4d"
+  },
+  "window/before.png": {
+   "bytes": 2339934,
+   "sha256": "9213768845fcaf005ecf6e4828c07750180c9ebd89cf6b7d35da3ca74752a2d8"
+  },
+  "window/frames.ndjson.gz": {
+   "bytes": 387769,
+   "sha256": "ea16d4baa348b75db8881dbd3be1188e3b6364884e1bbba97b13b69732917c0a"
+  }
+ }
+}

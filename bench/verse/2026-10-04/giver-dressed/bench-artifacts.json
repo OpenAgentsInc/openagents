@@ -1,0 +1,20 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-04/giver-dressed",
+ "files": {
+  "active.png": {
+   "bytes": 652308,
+   "sha256": "cf4509737e604420cc53e8f38a0c5f03df4d1bf61d737581ad1a118f8b6e9ce7"
+  },
+  "offer.png": {
+   "bytes": 654796,
+   "sha256": "4880696cd26862599228e4db0d6cba98ec7d3a4b89793395dddfdd6f7082fa74"
+  },
+  "turn-in.png": {
+   "bytes": 670429,
+   "sha256": "218a36481bf9c32110b647b4ee6972e63f65dcb7d77e7363aea675ca7cd02bb5"
+  }
+ }
+}

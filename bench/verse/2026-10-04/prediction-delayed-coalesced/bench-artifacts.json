@@ -1,0 +1,32 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-04/prediction-delayed-coalesced",
+ "files": {
+  "player-24.png": {
+   "bytes": 558507,
+   "sha256": "a923147abca02318cb4f1a9982366f6aeb9b5ea5de9dde467aa0b454bd567b54"
+  },
+  "player.mp4": {
+   "bytes": 12085411,
+   "sha256": "06809da54e275266b8598423e08929c213aa09fa658677ec9cb871ccc0a9e29f"
+  },
+  "primary-24.png": {
+   "bytes": 641538,
+   "sha256": "3892dd04d427ac00a371ad3da8690d278f8838c9c4c0f027c4da432beeeb1002"
+  },
+  "primary.mp4": {
+   "bytes": 13230473,
+   "sha256": "a0038787cde7d2a553cb27f0c28de2b2ac71640d42a19f0e39cdf4684c054cdd"
+  },
+  "spectator-24.png": {
+   "bytes": 553651,
+   "sha256": "b1619ef3d0fcf991e04eb551855c0fc8b052e0114468431b115191fa5e73effc"
+  },
+  "spectator.mp4": {
+   "bytes": 5248908,
+   "sha256": "c37b9fe48971a17fbceb3c7651259ef43b7c605951a727dd24a392d1825f0a5f"
+  }
+ }
+}

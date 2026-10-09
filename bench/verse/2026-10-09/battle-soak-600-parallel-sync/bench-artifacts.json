@@ -1,0 +1,20 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-09/battle-soak-600-parallel-sync",
+ "files": {
+  "before-sync-profile-report.json.gz": {
+   "bytes": 1382515,
+   "sha256": "3f76259a52128e2f0ba5ade5edba72a069a9a3fbea8745413df45f868cfbba41"
+  },
+  "run1-report.json.gz": {
+   "bytes": 1364651,
+   "sha256": "4f90edaf7d40322fdeeb5a976579f339445fd88f139f2073d1fce18255dc09d4"
+  },
+  "run2-gpu-report.json.gz": {
+   "bytes": 1290804,
+   "sha256": "65a381d5b5cb5ac0037b82abb528c6fc48a928cf3f30a5b6f46d7dc8230b6e75"
+  }
+ }
+}

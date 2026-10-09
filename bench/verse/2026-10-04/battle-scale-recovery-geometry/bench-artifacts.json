@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-04/battle-scale-recovery-geometry",
+ "files": {
+  "primary.mp4": {
+   "bytes": 19983155,
+   "sha256": "dd97b02de364de54fb04cdf77b7f010230666db63934ab8c958745297f6c237e"
+  }
+ }
+}

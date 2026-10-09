@@ -1,0 +1,20 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/terminal-bench/experiments/2026-09-25-literal-confirmation",
+ "files": {
+  "records/literal-gym.tar.gz": {
+   "bytes": 75287,
+   "sha256": "82fa510f1cbd1898d0347db9ad7a3c7cb82ef9e37ccf5a730a2ce1c366efed6b"
+  },
+  "records/literal-preflight.tar.gz": {
+   "bytes": 157991,
+   "sha256": "3d3568db9069d3a122caba95b1d1d544c6365e1031c06602314469e77d4d9953"
+  },
+  "records/literal-preparation.tar.gz": {
+   "bytes": 53439,
+   "sha256": "b6b00bdc98db2a8c3736f016709d034289752cd113148a93439485a893a82935"
+  }
+ }
+}

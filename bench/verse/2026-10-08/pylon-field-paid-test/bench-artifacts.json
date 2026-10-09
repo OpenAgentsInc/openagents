@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-08/pylon-field-paid-test",
+ "files": {
+  "pylon-field-paid-test.png": {
+   "bytes": 945324,
+   "sha256": "3e899459c5b458013f3960e416258755d81df6417d3890f999fea305260f92d9"
+  }
+ }
+}

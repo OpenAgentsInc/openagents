@@ -1,0 +1,20 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-04/pbr-optimized",
+ "files": {
+  "window/after.png": {
+   "bytes": 2157669,
+   "sha256": "3b4cccaced37aa0c8bc3ce5d6a6a9220e331ff0fea33a8742b12763c6569d7ee"
+  },
+  "window/before.png": {
+   "bytes": 2342794,
+   "sha256": "09dc7c394ee89c344167ad6dd00c386a840912a27445e9e0fcfebf26444152dc"
+  },
+  "window/frames.ndjson.gz": {
+   "bytes": 328814,
+   "sha256": "df028df73f18e118e85f54879037e990be4c78765e8dc1bda51a18b4f508bd13"
+  }
+ }
+}

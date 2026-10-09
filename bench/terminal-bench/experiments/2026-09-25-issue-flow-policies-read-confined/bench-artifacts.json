@@ -1,0 +1,20 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/terminal-bench/experiments/2026-09-25-issue-flow-policies-read-confined",
+ "files": {
+  "records/01-9450-lean/traces.tar.gz": {
+   "bytes": 12680667,
+   "sha256": "2db923b962f4fa08b420655d1858a01d456717f1826d5efeec7aa56087583433"
+  },
+  "records/02-9450-requirements/traces.tar.gz": {
+   "bytes": 275366,
+   "sha256": "9999e539e7bc2346bef4abe435ccd10ed60ec5bfde2eefbc077bc22934e449af"
+  },
+  "records/preflight/compiler-traces.tar.gz": {
+   "bytes": 166804,
+   "sha256": "047d77e89194c2f5cb561a0454eb83b77ab723d7ae43efa7e7389a10f20be3bb"
+  }
+ }
+}

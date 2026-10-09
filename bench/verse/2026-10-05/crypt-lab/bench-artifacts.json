@@ -1,0 +1,72 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-05/crypt-lab",
+ "files": {
+  "assets/alchemy_bench.png": {
+   "bytes": 215726,
+   "sha256": "1d47e83cab4a67865111209f01c8954d7c0dddd42a12c2b7cf919f186728dbc2"
+  },
+  "assets/bone_scatter.png": {
+   "bytes": 94436,
+   "sha256": "444dd090551e3f3cb8f4e83e900ee62e46168d477996aee10fc81c8d55f7bb9b"
+  },
+  "assets/candelabrum_short.png": {
+   "bytes": 125864,
+   "sha256": "85a9f81995b5be92f028565378b92ba91fab306197c7361b2d43b49ad8770938"
+  },
+  "assets/candelabrum_tall.png": {
+   "bytes": 174438,
+   "sha256": "1406aa7733a74b85e430e75c5ef3b8e0b39b91fe22058fa8d5d91c11a1856db6"
+  },
+  "assets/cauldron_amber.png": {
+   "bytes": 206893,
+   "sha256": "92b9e5a3888aa98f04d53fd855bac7958246403237dcf091af6d2b8c854349a2"
+  },
+  "assets/cauldron_green.png": {
+   "bytes": 204234,
+   "sha256": "86aaf070c55018350d6de43e96cbdf7b382b2ef80b2cebff73e13c43065c05a0"
+  },
+  "assets/cauldron_red.png": {
+   "bytes": 205360,
+   "sha256": "216568b33f130454ce6a01cb4720e82dd1898c1d09b6a970441ea0eea8d8259a"
+  },
+  "assets/cobweb.png": {
+   "bytes": 118016,
+   "sha256": "f65e0a843842c83ab791f9b903aa27c52be112e98bfa85a02e73243a343f0df7"
+  },
+  "assets/crypt_hall.png": {
+   "bytes": 185794,
+   "sha256": "d07000e733df10bda23d88d893c3af2008f8c7e422102178ae38deb637bd6c06"
+  },
+  "assets/floor_candles.png": {
+   "bytes": 150509,
+   "sha256": "dd27d0c8b91579e10f9d1e43c1a7d6c1fb3b22774e95466448dad759581c686f"
+  },
+  "assets/ritual_rug.png": {
+   "bytes": 89486,
+   "sha256": "9fa14ba6d403c2df081b459a054ead44a07618c4708f1cf483430ea45892aea4"
+  },
+  "assets/slab_table.png": {
+   "bytes": 178986,
+   "sha256": "a36209e93036d9b0cd82784ca5fb186175bf9fa6412cb1619e3f28dcc2fb9008"
+  },
+  "assets/specimen_jar.png": {
+   "bytes": 272752,
+   "sha256": "fe25c842cd1e336bc4fea43d99d3e81d7ea6479a503e78723066452de1c0b7a1"
+  },
+  "assets/specimen_jar_bones.png": {
+   "bytes": 276686,
+   "sha256": "aad592de5267a7db5c3161f2b29d2f00354c523ec7119d0ba8c412f7b5cd1525"
+  },
+  "scene.mp4": {
+   "bytes": 672181,
+   "sha256": "0d8fec1677cb8dbf14bec98af9fa677df4fd65d37c976eda995c7d5f95cc8908"
+  },
+  "scene.png": {
+   "bytes": 159592,
+   "sha256": "f0a4f4e7cb0dcc8dc3832f67fdc583170e152fb08b2a0c99643fc01a620180fc"
+  }
+ }
+}

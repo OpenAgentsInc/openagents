@@ -1,0 +1,16 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-08/impact-flash-lights",
+ "files": {
+  "impact-flash-off.png": {
+   "bytes": 1988475,
+   "sha256": "639632da4267c7ba768b080fc9a3f545681ff713b3ea7b6f9216392cc8786f7c"
+  },
+  "impact-flash-on.png": {
+   "bytes": 2018768,
+   "sha256": "c566adc72a697a8733d60b77c5498e097169c9fdf88c921939784b7645087f64"
+  }
+ }
+}

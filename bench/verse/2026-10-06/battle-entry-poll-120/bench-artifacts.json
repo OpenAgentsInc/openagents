@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-06/battle-entry-poll-120",
+ "files": {
+  "report.json": {
+   "bytes": 19784126,
+   "sha256": "612aebaed32dfc2059eff53b4420c95498828bb8973263039af74047f1d25263"
+  }
+ }
+}

@@ -1,0 +1,16 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-05/battle-scale-licensed-high",
+ "files": {
+  "combined-high-05.json": {
+   "bytes": 8504421,
+   "sha256": "1498b447d4006b1de10bf54d4d962fa0867cb3de3725cc4fdb5c16b79d20aeb8"
+  },
+  "combined-high-06.json": {
+   "bytes": 10776022,
+   "sha256": "1fcd00bc827e6fe9fd66003011c118341d649122d9803a8374a3f0f1d24ea159"
+  }
+ }
+}

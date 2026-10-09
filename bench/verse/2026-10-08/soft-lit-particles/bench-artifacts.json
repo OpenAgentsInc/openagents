@@ -1,0 +1,36 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-08/soft-lit-particles",
+ "files": {
+  "ground-smoke-no-flashes-off.png": {
+   "bytes": 1667027,
+   "sha256": "d78b4102d0f8f246768f370649b06baee0f01ed2f04d2c0a70467f0556241e5a"
+  },
+  "ground-smoke-no-flashes-on.png": {
+   "bytes": 1660948,
+   "sha256": "0cc68f92eaff2f472f95586a61b39af32411ce742d1f1989197819c436ec0c04"
+  },
+  "ground-smoke-particles-off.png": {
+   "bytes": 1668766,
+   "sha256": "84ec7a625b7000bd8c5ae05f4107850a2a53e657e467d5b09c3ce0091ce5e277"
+  },
+  "ground-smoke-particles-on.png": {
+   "bytes": 1669082,
+   "sha256": "bdbe4541de1e7a1b8e11a07d6165965a4e555513a8e1f3cf65094d346b6ede50"
+  },
+  "impact-particles-off.png": {
+   "bytes": 2016683,
+   "sha256": "abbe208b29b0a7aec7705e7ca6ff39e6e8983c2796b12b4cdd2bae23385d7062"
+  },
+  "impact-particles-on.png": {
+   "bytes": 2012599,
+   "sha256": "97d5a713b72cf86513945733e1d4462369b6bdbcfae76a71d7cd0ee868449817"
+  },
+  "impact-previous-renderer.png": {
+   "bytes": 2018768,
+   "sha256": "c566adc72a697a8733d60b77c5498e097169c9fdf88c921939784b7645087f64"
+  }
+ }
+}

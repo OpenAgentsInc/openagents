@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-06/battle-writer-trace-120",
+ "files": {
+  "report.json": {
+   "bytes": 14857635,
+   "sha256": "e6cc239bd1d2b935b8fc2c7bbe7f55ffda4c8eeb3b49035a2395c01592211d62"
+  }
+ }
+}

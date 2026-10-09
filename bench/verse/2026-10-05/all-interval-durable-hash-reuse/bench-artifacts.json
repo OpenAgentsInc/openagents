@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-05/all-interval-durable-hash-reuse",
+ "files": {
+  "host-cpu-sample.txt": {
+   "bytes": 1401864,
+   "sha256": "6bc359d520547e7cf0bd2f4405f5d8c1a9de72c8db52eec9d6a61fbad0fe8c37"
+  }
+ }
+}

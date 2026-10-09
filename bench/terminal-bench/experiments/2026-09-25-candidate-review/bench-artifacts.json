@@ -1,0 +1,80 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/terminal-bench/experiments/2026-09-25-candidate-review",
+ "files": {
+  "records/archive-astra-traces.tar.gz": {
+   "bytes": 23392427,
+   "sha256": "00c112429ff09b9e649cd430a4a83bb0a2e29a7817d63230f700040ccfa3c2ef"
+  },
+  "records/archive-luna-traces.tar.gz": {
+   "bytes": 21263820,
+   "sha256": "2f0473dcb0fa25163ec199eba953ed26ef0d6b051c524430b9b7bd6a4f896b67"
+  },
+  "records/prospective-astra-traces.tar.gz": {
+   "bytes": 51387266,
+   "sha256": "9e5c09eebf6d7f4d87d88585d65e42434968a03818099b48c10b416bb93d7f44"
+  },
+  "records/prospective-traces.tar.gz": {
+   "bytes": 50203325,
+   "sha256": "0e37a456e93e7538e7c928cd7c7b4c01e5cf878a2ca7975f25f66926295f13c0"
+  },
+  "records/public-file-development.tar.gz": {
+   "bytes": 572129,
+   "sha256": "119cbcd51a61e4fae94e6abf6c4f5fcf069e4f64262fd5a1c5b1eec1e5d5f66f"
+  },
+  "records/retained.tar.gz": {
+   "bytes": 31236944,
+   "sha256": "7127e21810bfdab1e6629ff9154c14522a3d30f7ef65cd56716fe7ff85873b10"
+  },
+  "records/truth9584-archive-cohort.tar.gz": {
+   "bytes": 4807264,
+   "sha256": "69ec26eb324af9d3155eba9da657d2c1f5fa742ab5a2e1090b0a4d9e9af65d9d"
+  },
+  "records/truth9584-archive-preflight.tar.gz": {
+   "bytes": 72492,
+   "sha256": "ae8f26f624284e8e77ba9113e0c8958d3774d7041801de6c2b1883f57abb13fe"
+  },
+  "records/truth9584-gym-final-v2.tar.gz": {
+   "bytes": 77739,
+   "sha256": "f8262e7ff40a74997a6753012bdf4f7731f31542c3ae4d947cd5a5dc9f4896d4"
+  },
+  "records/truth9584-gym-final.tar.gz": {
+   "bytes": 77414,
+   "sha256": "0851bbf3eb113d51658193b4786b1063dbfdefcc6a457519b3ef33e794d3c251"
+  },
+  "records/truth9584-gym-gate.tar.gz": {
+   "bytes": 40261,
+   "sha256": "377c5ceb557240e8244dc6ab929d9591b70e0c67b0dc1af1db9c8358936f4685"
+  },
+  "records/truth9584-mini-records.tar.gz": {
+   "bytes": 698704,
+   "sha256": "0c4dc4ac19941cef9660f29d9c9861204eca774b1f01a8493be7d1e4d4e55e2d"
+  },
+  "records/truth9642-records.tar.gz": {
+   "bytes": 351956,
+   "sha256": "aa4357127e1f184ef063b9d047bebc5df6eac55bacaa02dd8e7f16cceb54849a"
+  },
+  "records/truth9643-records.tar.gz": {
+   "bytes": 1969,
+   "sha256": "afbefb4feadd69e7d0b4d0cdff18824f5d843c9786dd9a5b1fa0ef6453baa3f5"
+  },
+  "records/truth9644-records.tar.gz": {
+   "bytes": 2173,
+   "sha256": "7ae6b074ba1aca7367e35ab34be46571a2dde4ba13b3d7de34b48c9642935243"
+  },
+  "records/truth9645-records.tar.gz": {
+   "bytes": 5370,
+   "sha256": "44207878ac2c7c23f3a6e540e83a88510af465743f873a395344898567360c8a"
+  },
+  "records/truth9646-records.tar.gz": {
+   "bytes": 560752,
+   "sha256": "742e4ea79dc92d2268557030a502be7b2a4b6b9a84d5ccab4598219f22090b35"
+  },
+  "records/truth9648-records.tar.gz": {
+   "bytes": 429812,
+   "sha256": "85bc230e0cdda1b229a69cb738a540e0b9e2eec059a01d0df25578abf45108e8"
+  }
+ }
+}

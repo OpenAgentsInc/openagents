@@ -1,0 +1,32 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-05/platform-clients",
+ "files": {
+  "browser-first-joined.png": {
+   "bytes": 247120,
+   "sha256": "bbe0f68eb9c8c1ae09fe61a52c1db0414016359aaf306555217cb77b2b5e0503"
+  },
+  "browser-first-narrow.png": {
+   "bytes": 225349,
+   "sha256": "7c5997b89f44c36228b24fed5e15b8d1dbc089bdc3b52ffb70e6e954ef444cb4"
+  },
+  "browser-joined.png": {
+   "bytes": 299993,
+   "sha256": "1bd9e64da67d9d151ce28c28fc283e942ee49d21a10a238122567473b8d3627f"
+  },
+  "browser-narrow.png": {
+   "bytes": 260002,
+   "sha256": "550ebbeb38c5bbf1d3035efd054e88257601df6714300b780f5268b617ea0443"
+  },
+  "integration-current/browser-joined.png": {
+   "bytes": 313225,
+   "sha256": "0ecfed1ebb85970586bfca0ba4f2ab44639d88234b001aaca89681f0541063d0"
+  },
+  "integration-current/browser-narrow.png": {
+   "bytes": 241681,
+   "sha256": "4c29c6a02aa93ad2f68f5dac599462ffdc003b54e0d3a8fbb00addeb9484a592"
+  }
+ }
+}

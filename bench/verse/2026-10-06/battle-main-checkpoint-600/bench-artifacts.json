@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-06/battle-main-checkpoint-600",
+ "files": {
+  "report.json": {
+   "bytes": 43238891,
+   "sha256": "af7fe4f299332761b5f80c2f22c9e91f7259a7bbefaea258308127bdf7f9326c"
+  }
+ }
+}

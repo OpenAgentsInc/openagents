@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-05/battle-distant-blocker-direct-120",
+ "files": {
+  "report.json": {
+   "bytes": 11869076,
+   "sha256": "43ac13fcbb1f73831b44b96b67c8b54b52de8d76da6f60b34e74dd447dd7ca06"
+  }
+ }
+}

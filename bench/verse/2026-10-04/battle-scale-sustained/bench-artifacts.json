@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-04/battle-scale-sustained",
+ "files": {
+  "primary.mp4": {
+   "bytes": 31786268,
+   "sha256": "4cc02e7956122b3ca20a2ee93dd0fea7022df7bc589f63d052130a87eb70e954"
+  }
+ }
+}

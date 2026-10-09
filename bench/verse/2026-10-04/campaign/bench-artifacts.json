@@ -1,0 +1,16 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-04/campaign",
+ "files": {
+  "completed.png": {
+   "bytes": 72125,
+   "sha256": "23e6532751024a87eb2a31d17d9cbf7ffee26e4e8b3728b808db0da7909bd9d3"
+  },
+  "ready.png": {
+   "bytes": 74942,
+   "sha256": "e391718ce9bbaf2b328aad5abe18ca224dfb22dde75eb7fb7545dee89d0b9e52"
+  }
+ }
+}

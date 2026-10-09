@@ -1,0 +1,16 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-04/quest-enrollment",
+ "files": {
+  "completed.png": {
+   "bytes": 152432,
+   "sha256": "92d58822d5f6c2fecc909461729fed4ec72721c5c833933e016755aef80cc11f"
+  },
+  "ready.png": {
+   "bytes": 147405,
+   "sha256": "77660dd25fa507ffa337f7c22b6b2e508fa4c5222f0dba0d6201b522c937df54"
+  }
+ }
+}

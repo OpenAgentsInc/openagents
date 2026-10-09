@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-06/battle-entry-credit-120",
+ "files": {
+  "report.json": {
+   "bytes": 15894950,
+   "sha256": "48311c49d26cae7aa2e98cd1940a47826396954564af5e12f28447297a2bdd4b"
+  }
+ }
+}

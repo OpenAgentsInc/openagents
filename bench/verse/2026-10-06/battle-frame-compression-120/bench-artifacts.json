@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-06/battle-frame-compression-120",
+ "files": {
+  "report.json": {
+   "bytes": 17873124,
+   "sha256": "e74c96b6cdc049d34b11af0304ba4baec33ba79cb4817ebf2abf4019b0301449"
+  }
+ }
+}

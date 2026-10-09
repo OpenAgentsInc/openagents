@@ -1,0 +1,16 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-04/remote-combat",
+ "files": {
+  "combat-18.png": {
+   "bytes": 648657,
+   "sha256": "42e3b0c2f7bec5027aa6f7097e543396c585d2341ec69c1777f298f320230396"
+  },
+  "combat.mp4": {
+   "bytes": 6964588,
+   "sha256": "21088a882497fcb8efcf5b6ce647b34dabccec3f0f94a3f747fcb2cdc63f030c"
+  }
+ }
+}

@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-05/all-interval-coderos-batched-index-upload-scheduled",
+ "files": {
+  "load-receipt.json": {
+   "bytes": 8703446,
+   "sha256": "1da664920e6d20db6f6fc185843ec808cbbef6421c8887079d36bda61af793e5"
+  }
+ }
+}

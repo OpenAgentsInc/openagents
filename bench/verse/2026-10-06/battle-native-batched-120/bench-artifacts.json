@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-06/battle-native-batched-120",
+ "files": {
+  "report.json": {
+   "bytes": 21394792,
+   "sha256": "a41a9734733eea50c821f582e491e6e716be3bd9817c345e9baa493e9002be73"
+  }
+ }
+}

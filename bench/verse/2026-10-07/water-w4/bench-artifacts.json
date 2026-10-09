@@ -1,0 +1,104 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-07/water-w4",
+ "files": {
+  "imported-high-sea-calm.png": {
+   "bytes": 317768,
+   "sha256": "e04c76fdca7551b888af85bbf969ed6f49a533c96b96a1d6d37b781dd3debd93"
+  },
+  "imported-high-sea-moderate.png": {
+   "bytes": 251810,
+   "sha256": "c2312295a1b082e27ca65945d95f6f8dc55290029d3c5519b52073e78cf8595e"
+  },
+  "imported-high-sea-storm-surf.png": {
+   "bytes": 322923,
+   "sha256": "06048aab82f30b3329372e8828190da66716cdac938e83bb5bc039b08b040d50"
+  },
+  "imported-high-sea-storm.png": {
+   "bytes": 290734,
+   "sha256": "bfa5c0b40a5dd5c316bf3f8114fc6641ed71f1a6b0610b74dc6dda8ae7ec5aab"
+  },
+  "imported-low-sea-calm.png": {
+   "bytes": 219439,
+   "sha256": "e54645ea871439d55f04e587f1fbaec498c4d215367a32146defc7b1bb7fdc1e"
+  },
+  "imported-low-sea-moderate.png": {
+   "bytes": 204607,
+   "sha256": "c812763b12389a3246a095bfffdde3558b0b08cb768f23218b03632299ecaf84"
+  },
+  "imported-low-sea-storm-surf.png": {
+   "bytes": 225489,
+   "sha256": "517e856bdee4d7ddf45fc81fd6463efa3cf8e6bfd7d5601ed1099aa5bce4911c"
+  },
+  "imported-low-sea-storm.png": {
+   "bytes": 215379,
+   "sha256": "f567067bb37570c6d73933b3a5fa63a5724dee496fa6f9d24f83b08c5b3b9b0d"
+  },
+  "imported-medium-sea-calm.png": {
+   "bytes": 300447,
+   "sha256": "2ba112184413eae7c798965967a5e91fa649284d6fa11fbcb56b0bc2e6d64f9f"
+  },
+  "imported-medium-sea-moderate.png": {
+   "bytes": 237993,
+   "sha256": "c53d59cbbd6e9afd7d656aa4e85b1bb9fba18af9684b1aa79b5bdaa99b6ec95e"
+  },
+  "imported-medium-sea-storm-surf.png": {
+   "bytes": 308299,
+   "sha256": "fdcf5f7c79a34e2d385668aec771339cafe097f1b4b49f81f4792905f9432f07"
+  },
+  "imported-medium-sea-storm.png": {
+   "bytes": 273668,
+   "sha256": "9760f6a00033b3fdb92ee2601c3329a1ab66d508f6b04c1437228a9987f21dcb"
+  },
+  "physical-high-sea-calm.png": {
+   "bytes": 406014,
+   "sha256": "5c657d301eb8f318c1fa851cd090832c7899a560920b876f3492bafe7c7fc2f6"
+  },
+  "physical-high-sea-moderate.png": {
+   "bytes": 356255,
+   "sha256": "d6076ea8121ce2b8b8a6bfbb4e50cfab652a93bfec57ec072126d6cb4a425fd8"
+  },
+  "physical-high-sea-storm-surf.png": {
+   "bytes": 367622,
+   "sha256": "c74d6cd03f5192b9ad76cbb3ecc56d820bc1da72dfe724173a89209e6fe3ddd9"
+  },
+  "physical-high-sea-storm.png": {
+   "bytes": 381661,
+   "sha256": "64ebfb20cecd90adeeae0f13f12077ed780cb14f1e35280d8757fed3826d2088"
+  },
+  "physical-low-sea-calm.png": {
+   "bytes": 316025,
+   "sha256": "dd067b25c3d3bf1a9e8ff9f88ea4519bcd09bc700bbce0d8ace8355ccfe53018"
+  },
+  "physical-low-sea-moderate.png": {
+   "bytes": 307004,
+   "sha256": "cd305cb60114f8357f1d29aa6dc59d0a07eb42be07e23021380afd5b14face1c"
+  },
+  "physical-low-sea-storm-surf.png": {
+   "bytes": 258913,
+   "sha256": "33ff2c9e53bcc1a3c5d43689d8d52f46b611616a8f7b3c475ff62fb45bbdfe39"
+  },
+  "physical-low-sea-storm.png": {
+   "bytes": 309325,
+   "sha256": "5970cde815442d3a9b9eabdc05780cc5c7c01eed45831bcb92c8c724f29b03c9"
+  },
+  "physical-medium-sea-calm.png": {
+   "bytes": 372283,
+   "sha256": "85459062d0c45e06dc36c5cbadc614fbda17605ed9db87e12ec9c3bed4f72229"
+  },
+  "physical-medium-sea-moderate.png": {
+   "bytes": 325760,
+   "sha256": "412a2771b56b4e10d6c32fbc98c4b5be2f612267cd7861a7b95521f24430b828"
+  },
+  "physical-medium-sea-storm-surf.png": {
+   "bytes": 339596,
+   "sha256": "5f87464160b5a14e284a5c1decd1c5533c1313e60a1c84cc92e2bd970fabd111"
+  },
+  "physical-medium-sea-storm.png": {
+   "bytes": 358966,
+   "sha256": "fade9c8d3c22b6b6cc16fc9754c932f5d2f26564a700a2e5d3864541f19768c7"
+  }
+ }
+}

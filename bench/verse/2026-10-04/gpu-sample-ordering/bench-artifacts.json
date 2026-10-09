@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-04/gpu-sample-ordering",
+ "files": {
+  "primary.mp4": {
+   "bytes": 2125760,
+   "sha256": "2bbf941def533b552a8055c4a9dfed63233ed2ce2e6907adefb716f4386f4d76"
+  }
+ }
+}

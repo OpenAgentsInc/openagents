@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-05/all-interval-coderos-single-budget-scheduled",
+ "files": {
+  "load-receipt.json": {
+   "bytes": 7009428,
+   "sha256": "220804e5faedc2532371deb3a09cee31600c83d372b57ef33a7ecf58de8b2b4e"
+  }
+ }
+}

@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore bench/verse/2026-10-05/all-interval-coderos-partial-consumption-scheduled",
+ "files": {
+  "load-receipt.json": {
+   "bytes": 4334741,
+   "sha256": "27011f934d10f442a4a2aeeda25465f2eea2f7ee9e32cde7280ee25a88dc279b"
+  }
+ }
+}
