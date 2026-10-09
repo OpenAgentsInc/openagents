@@ -98,7 +98,7 @@ fn page(chat: usize) -> Response {
                 meta name="htmx-config" content=r#"{"allowEval":false,"allowScriptTags":false,"historyCacheSize":0,"historyRestoreAsHxRequest":false,"refreshOnHistoryMiss":true,"selfRequestsOnly":true,"includeIndicatorStyles":false,"timeout":20000}"#;
                 title { (title(chat)) " · OpenAgents demo" }
                 link rel="icon" href="/favicon.svg";
-                link rel="stylesheet" href="/static/site.css";
+                link rel="stylesheet" href="/static/legacy-demo.css";
                 link rel="stylesheet" href="/static/demo-html.css";
                 script src="/static/htmx.min.js" defer {}
                 script src="/static/htmx-sse.js" defer {}
@@ -492,7 +492,7 @@ async fn message(headers: HeaderMap, Form(prompt): Form<Prompt>) -> Response {
         response(html! {
             (DOCTYPE)
             html lang="en" {
-                head { title { "Demo message · OpenAgents" } link rel="stylesheet" href="/static/site.css"; }
+                head { title { "Demo message · OpenAgents" } link rel="stylesheet" href="/static/legacy-demo.css"; }
                 body { div class="scroller" { main { (markup) a href=(format!("/demo/{}", prompt.chat)) { "Back to the demo" } } } }
             }
         })

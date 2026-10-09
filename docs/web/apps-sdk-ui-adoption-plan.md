@@ -189,6 +189,15 @@ what each view adds. What it shows:
    tokens instead of `--noir-*`, so `tw:bg-surface`, `tw:text-secondary` and
    similar resolve to the active theme. Components never depend on Tailwind
    utilities, so a page can mix both safely.
+
+   **Superseded by UI-13 (2026-10-08): Tailwind is removed.** Once every page
+   rendered through `UiPage` and the components, no source used a `tw:`
+   utility, and none used the `oa-` token utilities either: page layout lives
+   in component stylesheets (`page.css`, `shell.css`, `content.css`). The
+   Tailwind route (`/static/tailwind.css`), its input file, its checked-in
+   output and `scripts/build-web-tailwind.sh` are deleted, which also drops
+   the `--color-noir-*` theme aliases they carried. New layout needs go in an
+   `openagents-ui` component stylesheet, not in utilities.
 5. **Themes**:
    - **Coder Light**: the Apps SDK UI light values, unchanged at first.
    - **Coder Noir**: our current dark theme, expressed in Apps SDK UI's token
@@ -254,7 +263,8 @@ Each phase lands on `main` with `cargo fmt` and the touched crates' tests.
 - Add `data-theme` to the document shell (`layout.rs`), the cookie-backed
   theme choice, and `prefers-color-scheme` as the default.
 - Point `static/tailwind.input.css` `@theme` at the semantic tokens. Keep the
-  `--noir-*` names as aliases until no page uses them.
+  `--noir-*` names as aliases until no page uses them. (Done, then removed
+  with Tailwind in UI-13.)
 - Vendor the Alpine CSP build with its checksum. Add a CSP test asserting no
   `'unsafe-eval'`.
 
@@ -303,6 +313,33 @@ files.
 5. The demo pages (`demo.rs`), last, because they reproduce an earlier design
    on purpose.
 
+**Status (UI-13, 2026-10-08): done, and the legacy styles are removed.**
+Every page outside `/demo` and the full-screen canvas pages renders through
+`crates/openagents-web/src/ui_page.rs` (`UiPage`) and links one stylesheet,
+`/static/ui.css`; the Cloud app adds only its area stylesheet.
+
+- **Removed**: `static/site.css` (the header, footer, `.md`, `.list`,
+  `.term*`, `.label`, `.dim`, `.error`, `.status`, `.button` rules), Tailwind
+  (see decision 4), the retired terminal script `static/ask.js`, the dead
+  `layout::{document, page}` shell, the `--bg`/`--tint`/`--w*` aliases in
+  `src/palette.rs`, and `cloud.css`'s bare-control rules (the last bare
+  control, the operator timeout input, is now `forms::Input` in a `Field`;
+  the Cloud `.dim` note is `.cloud-note`). `composer.css` and `chat-html.css`
+  were already gone.
+- **Kept on purpose**: `static/legacy-demo.css` (the Coder Noir base that
+  `/demo` and the full-screen canvas pages `/everglade`, `/druid`, `/grid`
+  and the Verse world keep), `demo-html.css` for `/demo`, `components.css`
+  and `demo.css` for the `/components` Rust Native catalog, `cloud.css` for
+  the Cloud layout on `openagents-ui` tokens, and `fonts.css`. Only those
+  surfaces still read the `--noir-*` variables (`src/palette.rs`), as do the
+  Rust Native views themselves.
+- **Locked in by tests**: the bundled `openagents-ui` stylesheet stays under
+  `openagents_ui::css_classes::STYLESHEET_BUDGET_BYTES` (290,000 bytes, about
+  10% over the 262,873 measured at removal); every `UiPage` route links only
+  `/static/ui.css` within that budget, renders no class without a rule
+  (named script hooks excepted), and carries no inline `style`; the `/ui`
+  catalog has no class without a rule. CSP tests are unchanged.
+
 ### Phase 4: native alignment
 
 - Point `coder-ui` (Rust Native, Wasm catalog, desktop and mobile GUI) at the
@@ -326,7 +363,9 @@ files.
 - **Security**: CSP tests (no `'unsafe-eval'`, scripts only from `'self'`) and
   escaping tests for every builder that takes user text.
 - **Size**: keep the shipped CSS under the current 46 KB plus the token
-  files, by deleting old CSS as pages move.
+  files, by deleting old CSS as pages move. Since UI-13 the budget is
+  enforced: `openagents_ui::css_classes::STYLESHEET_BUDGET_BYTES` caps the one
+  stylesheet a `UiPage` page ships, checked by tests in both crates.
 
 ## Decisions taken (2026-10-08)
 

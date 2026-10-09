@@ -5,10 +5,12 @@ openagents.com serves, the terms of service and the privacy policy, the one
 download page, and the landing page for the pairing QR code. It also serves a
 local, read-only task browser at `/app`.
 
-The site, catalog, Cloud, and demo use Coder Noir from
-`coder_ui::coder_noir`: Superlogical's Static Noir base with neutral Coder
-accents and cursors. Shared semantic CSS tokens preserve the native palette,
-including status colors and translucent control states. The game scenes retain
+The site and the Cloud app use the Coder Light / Coder Noir design language
+from `openagents-ui` (see "Styles"). The `/components` catalog, `/demo`, and
+the full-screen canvas pages keep Coder Noir from `coder_ui::coder_noir`:
+Superlogical's Static Noir base with neutral Coder accents and cursors, whose
+`--noir-*` CSS variables preserve the native palette, including status colors
+and translucent control states. The game scenes retain
 their content colors. All text uses the system font stacks from Apps SDK UI: the system sans for
 UI text and the system monospace for code, terminal grids, and the wordmark.
 The site serves no font files.
@@ -181,19 +183,27 @@ connect to no provider or account.
 
 ## Styles
 
-`static/site.css` styles the site. The homepage composer also uses
-Tailwind utilities with a `tw:` prefix, served from the checked-in
-`static/tailwind.css`. After you add or change a `tw:` class in `src/` or
-`static/*.js`, regenerate that file from the monorepo root and commit it:
+Every page renders through `src/ui_page.rs` (`UiPage`) and the
+`openagents-ui` components, and links one stylesheet: `/static/ui.css`, the
+`openagents-ui` bundle (Coder Light and Coder Noir from the same tokens).
+Add styles there, as a component stylesheet in
+`crates/openagents-ui/static/components/`, never as page CSS here. There is
+no Tailwind build and no inline `style`.
 
-```sh
-scripts/build-web-tailwind.sh
-```
+Area stylesheets that remain, each loaded only by its own pages:
 
-The script downloads the pinned Tailwind CSS standalone CLI once, checks its
-SHA-256, and builds from `static/tailwind.input.css`. It needs no Node. The
-build has no preflight, so the site's own base rules stay in charge, and its
-colors map to the Coder Noir `--noir-*` variables.
+- `static/cloud.css`: the Cloud app's workspace layout and shared parts
+  (`cloud-*` classes), on `openagents-ui` tokens.
+- `static/legacy-demo.css`: the Coder Noir base `/demo` and the full-screen
+  canvas pages (`/everglade`, `/druid`, `/grid`, the Verse world) keep on
+  purpose, with `static/demo-html.css` for `/demo`. Served with the
+  `--noir-*` variables from `src/palette.rs`.
+- `static/components.css` and `static/demo.css`: the `/components` Rust
+  Native catalog, also on `--noir-*`.
+
+Tests hold the line: a `UiPage` page links only `/static/ui.css`, within
+`openagents_ui::css_classes::STYLESHEET_BUDGET_BYTES`; every class it renders
+has a rule (script hooks excepted); and none carries an inline `style`.
 
 ## Pages
 

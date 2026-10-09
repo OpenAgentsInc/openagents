@@ -1,4 +1,4 @@
-/* The synthetic chat shares the Coder Noir tokens from site.css. */
+/* The synthetic chat: Coder Noir tokens from src/palette.rs, base rules from legacy-demo.css. */
 #demo-root{height:100%;min-height:0;display:grid;grid-template-columns:264px minmax(0,1fr)}
 #demo-sidebar{min-height:0;overflow-y:auto;background:var(--noir-surface);border-right:1px solid var(--noir-stroke-subtle);padding:24px 16px;display:flex;flex-direction:column;gap:24px}
 .demo-brand{font-family:var(--font-mono);font-weight:700;text-decoration:none;font-size:16px;display:block;padding:0 8px}

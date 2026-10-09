@@ -171,14 +171,12 @@ pub fn router(config: Config) -> Router {
         .route("/api/flow/{*path}", get(pay_proxy))
         .route("/api/stats", get(pay_proxy))
         .route("/health", get(|| async { "ok" }))
-        .route("/static/site.css", get(stylesheet))
-        .route("/static/tailwind.css", get(tailwind))
+        .route("/static/legacy-demo.css", get(legacy_stylesheet))
         .route(theme::STYLESHEET_PATH, get(theme::stylesheet))
         .route(theme::SCRIPT_PATH, get(theme::script))
         .route(theme::ALPINE_PATH, get(theme::alpine))
         .route(theme::TOGGLE_PATH, axum::routing::post(theme::toggle))
         .route("/static/verse-grid.jpg", get(verse_grid))
-        .route("/static/ask.js", get(ask_script))
         .route("/static/chat.js", get(chat_script))
         .route("/static/flow.js", get(flow_script))
         .route("/static/everglade.js", get(everglade_script))
@@ -308,9 +306,13 @@ async fn guard(hosts: Hosts, request: Request, next: Next) -> Response {
     response
 }
 
-/// The site stylesheet: bundled font faces, semantic tokens, then page rules.
-fn css() -> String {
-    with_fonts(&palette::stylesheet(include_str!("../static/site.css")))
+/// The stylesheet `/demo` and the full-screen canvas pages keep (UI-13):
+/// bundled font faces, Coder Noir tokens, then their rules. Every other page
+/// is styled by `openagents-ui` alone.
+fn legacy_css() -> String {
+    with_fonts(&palette::stylesheet(include_str!(
+        "../static/legacy-demo.css"
+    )))
 }
 
 /// Prefix a web surface's rules with the shared system font stacks.
@@ -326,18 +328,6 @@ async fn chat_script() -> Response {
             (header::CACHE_CONTROL, "public, max-age=300"),
         ],
         include_str!("../static/chat.js"),
-    )
-        .into_response()
-}
-
-/// The former homepage terminal's script, still served for `/ask`.
-async fn ask_script() -> Response {
-    (
-        [
-            (header::CONTENT_TYPE, "text/javascript; charset=utf-8"),
-            (header::CACHE_CONTROL, "public, max-age=300"),
-        ],
-        include_str!("../static/ask.js"),
     )
         .into_response()
 }
@@ -366,26 +356,13 @@ async fn everglade_script() -> Response {
         .into_response()
 }
 
-async fn stylesheet() -> Response {
+async fn legacy_stylesheet() -> Response {
     (
         [
             (header::CONTENT_TYPE, "text/css; charset=utf-8"),
             (header::CACHE_CONTROL, "public, max-age=300"),
         ],
-        css(),
-    )
-        .into_response()
-}
-
-/// The Tailwind utilities pages use, generated from
-/// `static/tailwind.input.css` by `scripts/build-web-tailwind.sh`.
-async fn tailwind() -> Response {
-    (
-        [
-            (header::CONTENT_TYPE, "text/css; charset=utf-8"),
-            (header::CACHE_CONTROL, "public, max-age=300"),
-        ],
-        include_str!("../static/tailwind.css"),
+        legacy_css(),
     )
         .into_response()
 }

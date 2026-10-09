@@ -1,7 +1,7 @@
 //! Pages in the Coder Light / Coder Noir design language.
 //!
-//! Every page that moves off [`crate::layout`] renders through [`UiPage`]:
-//! the `openagents-ui` document (theme from the cookie, else the system
+//! Every page except `/demo`, the `/components` catalog, and the full-screen
+//! canvas pages renders through [`UiPage`]: the `openagents-ui` document (theme from the cookie, else the system
 //! setting), the shared app shell with the site navigation, the theme
 //! toggle, and the design-language assets. Pages supply only their content,
 //! and optionally a header, actions, a composer, or extra sidebar sections.

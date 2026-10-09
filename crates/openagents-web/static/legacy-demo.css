@@ -1,0 +1,64 @@
+/* The design the pages outside UiPage keep on purpose (UI-13): /demo and
+   the full-screen canvas pages (/everglade, /druid, /grid, the Verse
+   world). Coder Noir semantic tokens come from src/palette.rs. Every other
+   page is styled by openagents-ui alone (/static/ui.css). */
+
+*{box-sizing:border-box}
+html{background:var(--noir-canvas);color:var(--noir-content);font-family:var(--font-body);font-size:14px;line-height:1.5;-webkit-text-size-adjust:100%}
+html,body{height:100%;overflow:hidden}
+/* The page is the window's height; only the region inside scrolls. */
+body{margin:0;height:100vh;height:100dvh;display:flex;flex-direction:column;background:var(--noir-canvas)}
+.scroller{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;display:flex;flex-direction:column}
+::selection{background:var(--noir-selection);color:var(--noir-selection-foreground)}
+a{color:var(--noir-content);text-underline-offset:3px}
+a:hover{background:var(--noir-control-hover)}
+a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible,summary:focus-visible{outline:1px solid var(--noir-accent);outline-offset:2px}
+h1,h2,h3,h4{color:var(--noir-content);font-weight:700;line-height:1.3}
+h1{font-size:1.4rem;margin:0 0 1rem}
+h2{font-size:1.15rem;margin:2rem 0 .75rem}
+h3{font-size:1rem;margin:1.5rem 0 .5rem}
+p,ul,ol,table,pre,blockquote{margin:0 0 1rem}
+pre,code,kbd,samp{font-family:var(--font-mono)}
+code{color:var(--noir-content)}
+pre{border:1px solid var(--noir-stroke-subtle);padding:.75rem 1ch;overflow-x:auto;white-space:pre;color:var(--noir-content)}
+pre code{color:inherit}
+hr{border:0;border-top:1px solid var(--noir-stroke-subtle);margin:1.5rem 0}
+blockquote{border-left:1px solid var(--noir-stroke);padding-left:1.5ch;color:var(--noir-content)}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}
+th,td{border:1px solid var(--noir-stroke-subtle);padding:.25rem 1ch;text-align:left;vertical-align:top}
+th{color:var(--noir-content)}
+img{max-width:100%}
+
+.skip{position:absolute;left:-999px;top:0;background:var(--noir-canvas);color:var(--noir-content);padding:.5rem 1ch;z-index:2}
+.skip:focus{left:1ch}
+.unseen{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+main{width:min(96ch,100% - 32px);margin-inline:auto;flex:1 0 auto;padding:2rem 0 3rem}
+main:focus{outline:none}
+
+main p>img{display:block;height:auto;border:1px solid var(--noir-stroke-subtle)}
+button{background:var(--noir-control);border:0;color:var(--noir-content);font:inherit;cursor:pointer;padding:0;text-decoration:none;white-space:nowrap}
+button:hover{background:var(--noir-control-hover)}
+
+details summary{cursor:pointer;color:var(--noir-content)}
+
+/* /everglade: the Everglade web build's canvas fills the window
+   (static/everglade.js), and the build sizes its drawing buffer from the
+   canvas every frame. No header, footer, scrolling, or page zoom. */
+html.stage,html.stage body{width:100%;height:100%;margin:0;overflow:hidden;overscroll-behavior:none;touch-action:none}
+html.stage body{display:block}
+.glade{position:fixed;inset:0;width:100vw;height:100vh;height:100dvh;background:var(--noir-canvas);touch-action:none}
+.glade canvas{display:block;width:100%;height:100%;outline:none;touch-action:none}
+.glade-status{position:absolute;inset:auto 0 0 0;margin:0;padding:.5rem .75rem calc(.5rem + env(safe-area-inset-bottom));color:var(--noir-content);background:var(--noir-surface)}
+.glade-status:empty{display:none}
+.glade-leave{position:absolute;top:0;left:0;margin:0;padding:calc(.5rem + env(safe-area-inset-top)) .75rem .5rem;background:var(--noir-surface)}
+
+@media (max-width:640px){
+  html{font-size:13px}
+  main{width:calc(100% - 32px)}
+}
+
+button:active{background:var(--noir-control-pressed)}
+input,textarea,select{font:inherit}
+input,textarea{caret-color:var(--noir-cursor);accent-color:var(--noir-accent)}
+input::placeholder,textarea::placeholder{color:var(--noir-content-secondary)}

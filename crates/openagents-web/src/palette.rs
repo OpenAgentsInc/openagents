@@ -1,4 +1,7 @@
-//! Coder Noir roles shared by the website and Coder application surfaces.
+//! Coder Noir roles for the surfaces that keep the Coder Noir design: `/demo`,
+//! the full-screen canvas pages, and the `/components` catalog. Pages in the
+//! Coder Light / Coder Noir design language take their tokens from
+//! `openagents-ui` instead.
 //!
 //! `Full`, `ThreeQuarters`, and `Half` carry text and meet WCAG AA (4.5:1)
 //! on [`BACKGROUND`]. `Quarter` draws rules, borders, and the faintest
@@ -38,17 +41,6 @@ impl Intensity {
             Intensity::Full => noir::ANSI[15],
         }
     }
-
-    /// The CSS custom property that carries this step.
-    #[must_use]
-    pub const fn variable(self) -> &'static str {
-        match self {
-            Intensity::Quarter => "--w25",
-            Intensity::Half => "--w50",
-            Intensity::ThreeQuarters => "--w75",
-            Intensity::Full => "--w100",
-        }
-    }
 }
 
 /// The near-black field every step sits on.
@@ -57,14 +49,11 @@ pub const BACKGROUND: u32 = noir::CANVAS;
 /// The field a hovered or selected row brightens to.
 pub const TINT: u32 = noir::SURFACE_RAISED;
 
-/// The `:root` block the stylesheet opens with, generated from the ladder
-/// so the CSS and this module cannot disagree.
+/// The `:root` block the stylesheet opens with: the native theme's
+/// `--noir-*` variables, so the CSS and the native palette cannot disagree.
 #[must_use]
 pub fn root_block() -> String {
-    let mut out = noir::css_variables();
-    // Retain the site's public variable names for existing embedded views.
-    out.push_str(":root{--bg:var(--noir-canvas);--tint:var(--noir-surface-raised);--w25:var(--noir-stroke-subtle);--w50:var(--noir-content-secondary);--w75:var(--noir-content);--w100:var(--noir-content);}\n");
-    out
+    noir::css_variables()
 }
 
 /// Prefix application styles with the native theme's exact semantic tokens.
@@ -132,11 +121,8 @@ mod tests {
     }
 
     #[test]
-    fn the_root_block_names_every_step() {
-        let block = root_block();
-        assert!(block.starts_with(&noir::css_variables()));
-        for step in Intensity::ALL {
-            assert!(block.contains(step.variable()));
-        }
+    fn the_root_block_is_the_native_palette() {
+        assert_eq!(root_block(), noir::css_variables());
+        assert!(root_block().contains("--noir-canvas:"));
     }
 }

@@ -176,9 +176,9 @@ async fn every_public_page_answers_in_development() {
         }
         assert!(body.contains("href=\"/terms\""), "{uri} links the terms");
         assert!(body.contains("href=\"/privacy\""), "{uri} links the policy");
-        // The legacy header's wordmark, or the UiPage shell's (UI-12).
+        // The UiPage shell's wordmark (UI-12; the legacy header is gone, UI-13).
         assert!(
-            body.contains("class=\"wordmark\"") || body.contains("class=\"oa-wordmark\""),
+            body.contains("class=\"oa-wordmark\""),
             "{uri} has the header"
         );
         let policy = headers[header::CONTENT_SECURITY_POLICY].to_str().unwrap();
@@ -337,6 +337,7 @@ async fn the_homepage_composer_is_the_design_language_component() {
     assert!(home.contains("<link rel=\"stylesheet\" href=\"/static/ui.css?v="));
     for legacy in [
         "site.css",
+        "legacy-demo.css",
         "tailwind.css",
         "chat-html.css",
         "composer.css",
@@ -1013,10 +1014,9 @@ async fn application_styles_share_coder_noir_roles() {
     let root = tempfile::tempdir().unwrap();
     let variables = coder_ui::coder_noir::css_variables();
     for path in [
-        "/static/site.css",
+        "/static/legacy-demo.css",
         "/components/assets/components.css",
         "/components/assets/demo.css",
-        "/cloud/assets/cloud.css",
     ] {
         let (status, css) = get(router(config(root.path().into())), path).await;
         assert_eq!(status, StatusCode::OK, "{path}");
@@ -1044,6 +1044,121 @@ async fn application_styles_share_coder_noir_roles() {
             assert!(!tag.contains(" style="), "{uri} styles an element: {tag}");
         }
     }
+}
+
+/// The stylesheet links of a page, in order, as served paths.
+fn stylesheet_links(page: &str) -> Vec<String> {
+    page.split("<link rel=\"stylesheet\" href=\"")
+        .skip(1)
+        .map(|rest| rest[..rest.find('"').unwrap_or(rest.len())].replace("&amp;", "&"))
+        .collect()
+}
+
+/// The pages in the Coder Light / Coder Noir design language that need no
+/// sign-in: every public page, the component catalog, and the problem page.
+fn ui_pages() -> Vec<&'static str> {
+    PAGES.iter().copied().chain(["/ui", "/nope"]).collect()
+}
+
+/// UI-13: a `UiPage` page links one stylesheet, `/static/ui.css`, within
+/// the `openagents-ui` byte budget; no legacy stylesheet is shipped.
+#[tokio::test]
+async fn ui_pages_ship_only_the_design_language_css_within_budget() {
+    use openagents_ui::css_classes::STYLESHEET_BUDGET_BYTES;
+    let root = tempfile::tempdir().unwrap();
+    let site = router(config(root.path().join("tasks")));
+    for uri in ui_pages() {
+        let (_, page) = get(site.clone(), uri).await;
+        let links = stylesheet_links(&page);
+        assert_eq!(links.len(), 1, "{uri} links {links:?}");
+        assert!(
+            links[0].starts_with(&format!("{}?v=", theme::STYLESHEET_PATH)),
+            "{uri} links {links:?}"
+        );
+        let (status, _, css) = get_bytes(site.clone(), &links[0]).await;
+        assert_eq!(status, StatusCode::OK, "{uri}");
+        assert!(
+            css.len() <= STYLESHEET_BUDGET_BYTES,
+            "{uri} ships {} bytes of CSS, over the {STYLESHEET_BUDGET_BYTES}-byte budget",
+            css.len()
+        );
+    }
+}
+
+/// UI-13: every class a design-language page renders has a rule in the CSS
+/// that page links (script hooks named in `openagents_ui::css_classes`
+/// excepted). A class with no rule is a missing rule or a legacy leftover.
+#[tokio::test]
+async fn ui_pages_reference_no_class_without_a_rule() {
+    use openagents_ui::css_classes::{markup_classes, needs_rule, selector_classes};
+    let root = tempfile::tempdir().unwrap();
+    let site = router(config(root.path().join("tasks")));
+    for uri in ui_pages() {
+        let (_, page) = get(site.clone(), uri).await;
+        let mut defined = std::collections::BTreeSet::new();
+        for link in stylesheet_links(&page) {
+            let (status, css) = get(site.clone(), &link).await;
+            assert_eq!(status, StatusCode::OK, "{uri}: {link}");
+            defined.extend(selector_classes(&css));
+        }
+        let missing: Vec<_> = markup_classes(&page)
+            .into_iter()
+            .filter(|class| needs_rule(class) && !defined.contains(class))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "{uri} uses classes with no rule: {missing:?}"
+        );
+    }
+}
+
+/// UI-13: no design-language page carries an inline `style` attribute or a
+/// `<style>` element (`style-src 'self'` would drop them).
+#[tokio::test]
+async fn ui_pages_carry_no_inline_style() {
+    let root = tempfile::tempdir().unwrap();
+    let site = router(config(root.path().join("tasks")));
+    for uri in ui_pages() {
+        let (_, page) = get(site.clone(), uri).await;
+        let lower = page.to_ascii_lowercase();
+        assert!(!lower.contains("<style"), "{uri}");
+        for tag in lower.split('<').skip(1) {
+            let tag = tag.split('>').next().unwrap_or_default();
+            assert!(!tag.contains(" style="), "{uri} styles an element: {tag}");
+        }
+    }
+}
+
+/// UI-13: the legacy site stylesheet, Tailwind, and the retired terminal
+/// script are gone; only `/demo` and the full-screen canvas pages load the
+/// small Coder Noir stylesheet they keep.
+#[tokio::test]
+async fn the_legacy_styles_are_removed() {
+    let root = tempfile::tempdir().unwrap();
+    let site = router(config(root.path().into()));
+    for path in ["/static/site.css", "/static/tailwind.css", "/static/ask.js"] {
+        let (status, _) = get(site.clone(), path).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{path}");
+    }
+    let (status, css) = get(site.clone(), "/static/legacy-demo.css").await;
+    assert_eq!(status, StatusCode::OK);
+    for gone in [
+        ".site-header",
+        ".term",
+        ".md{",
+        ".list{",
+        ".dim{",
+        ".error{",
+        ".button",
+    ] {
+        assert!(!css.contains(gone), "{gone}");
+    }
+    let (_, cloud) = get(site, "/cloud/assets/cloud.css").await;
+    assert!(
+        !cloud.contains("--noir-"),
+        "the Cloud area styles from openagents-ui tokens"
+    );
+    assert!(!cloud.contains(":not([class])"), "no bare-control rules");
 }
 
 #[tokio::test]
@@ -1397,9 +1512,7 @@ fn the_site_owns_its_pages_and_the_removed_sections() {
         "/health",
         "/.well-known/apple-app-site-association",
         "/.well-known/assetlinks.json",
-        "/static/site.css",
-        "/static/tailwind.css",
-        "/static/ask.js",
+        "/static/legacy-demo.css",
         "/static/chat.js",
         "/static/flow.js",
         "/static/everglade.js",
@@ -1530,7 +1643,7 @@ async fn owned_pages_removed_sections_and_the_task_browser_never_go_upstream() {
         "/health",
         "/.well-known/apple-app-site-association",
         "/.well-known/assetlinks.json",
-        "/static/site.css",
+        "/static/legacy-demo.css",
         "/favicon.svg",
     ]) {
         let (status, headers, _) = get_with(site.clone(), uri, "openagents.com").await;
