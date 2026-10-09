@@ -52,9 +52,7 @@ No licensed geometry or captures enter Git.
 B2 (#10906) verifies and publishes the landed per-vertex implementation
 from `0e0d8afd37`; its queue pin is `d138fad182` and streamed delivery is
 `a80bde9114`. Second-UV storage and denser lamp probes remain work for
-B4 and umbrella #10903. B3 (#10907) has an unverified source checkpoint on
-[`codex/everglade-b3`](https://github.com/OpenAgentsInc/openagents/tree/codex/everglade-b3),
-commit `a2f4bbf7d3`; no bake, check, or capture ran for that checkpoint.
+B4 and umbrella #10903. B3 (#10907) closed on October 9 (`720904b4c2`).
 B4 (#10908) and umbrella #10903 remain open. New delegation remains
 stopped; the coordinator continues directly after fresh claim audits.
 Recheck each issue and claim before starting its work. The sections below retain
@@ -77,7 +75,7 @@ the original October 7 plan.
 | P9: cleanup | #10902 | `f008baa090`, repin `4b9ad70748` | Closed; both suites and pack consistency pass |
 | B1: offline baker | #10905 | `0360046732`, `983432c41f` | Closed |
 | B2: lightmap layers | #10906 | `0e0d8afd37`, verification on `codex/everglade-b2-verification` | Per-vertex implementation verified and deployed; UV storage and denser lamp probes remain deferred |
-| B3: time of day and destruction | #10907 | checkpoint `a2f4bbf7d3` on `codex/everglade-b3` | Claimed separately on October 8; check its issue before resuming |
+| B3: time of day and destruction | #10907 | `720904b4c2` | Closed October 9: blended suns, relight over the layers; the `codex/everglade-b3` checkpoint was not used |
 | B4: tiers and measurement | #10908 | coordinator | Browser layer loading in progress |
 
 The town has 65 medieval kit houses: Stoop Lane, Main Street, the Fountain
@@ -118,13 +116,12 @@ unchanged.
   the coordinator's `b2-verification/` scratch directory; no licensed
   bytes enter Git. The earlier buffered staging image and superseded
   server build never receive production traffic.
-- **B3 (#10907).** Checkpoint `a2f4bbf7d3` on `codex/everglade-b3` holds
-  unverified blending, damage repair, private-layer preflight, and acceptance
-  tools. Its handoff lists the exact remaining checks, private scene identity,
-  captures, and timing plan. Another session claimed B3 at 14:57 UTC on
-  October 8; leave that claim alone. The checkpoint itself has no recorded
-  B3 Cargo checks, captures, or measurements; consult the issue for newer
-  verification evidence.
+- **B3 (#10907).** Closed on October 9 with `720904b4c2`, written fresh
+  on main rather than from the `codex/everglade-b3` checkpoint. The town
+  blends the two baked suns either side of the hour and recombines on a
+  worker in 1/64 steps; desktops relight what breaks over the layers and
+  `R` restores them. Measurements are in the refactor plan's B3 entry and
+  the issue.
 - **B4 (#10908).** The coordinator holds the claim on
   `codex/everglade-b4-publication`. Main `984bca94e3` publishes the existing
   51,684,139-byte VLAY through the reuse-only artifact queue, with SHA-256
