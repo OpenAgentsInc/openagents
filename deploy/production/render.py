@@ -81,6 +81,9 @@ def main():
         secret("openagents-web-production-github-oauth", "GITHUB_OAUTH_JSON"),
         secret("openagents-web-production-csrf-key", "CSRF_KEY"),
         secret("openagents-web-production-byo-keys", "OPENAGENTS_WEB_CLOUD_BYO_KEYS"),
+        # First-party analytics (#11153, docs/deployment/analytics.md).
+        plain("OPENAGENTS_WEB_ANALYTICS_BUCKET", "openagentsgemini-web-analytics-prod"),
+        secret("openagents-web-analytics-key", "OPENAGENTS_WEB_ANALYTICS_KEY"),
     ])
     web["volumeMounts"] = [{"name": "webstate", "mountPath": "/state"}]
 
