@@ -456,6 +456,23 @@ avoids both.
 | P1, public beta | Public keys, both APIs, `/v1/models`, `/v1/rates`, `/v1/usage`, `/v1/key`, the free tier, BYOK, user-set limits, served docs, and a passing Open Responses acceptance run | An outside developer goes from key to first answer with the OpenAI SDK in under five minutes, and the acceptance suite passes against production |
 | P2, marketplace | Pylon providers and local Psionic as upstreams with payouts, `store: true`, compaction, WebSocket, hosted tools | A Pylon provider earns from a public API request |
 
+Issues, in build order:
+
+| Issue | Piece | Blocked by |
+| --- | --- | --- |
+| [#11060](https://github.com/OpenAgentsInc/openagents/issues/11060) | P0: `crates/inference` types, streaming codec, Chat Completions translation | — |
+| [#11061](https://github.com/OpenAgentsInc/openagents/issues/11061) | P0: adapters (Vertex, Z.ai, Pro door, OpenRouter, Vercel) | #11060 |
+| [#11062](https://github.com/OpenAgentsInc/openagents/issues/11062) | P0: measurement, live rates, credit burn-down | #11060 |
+| [#11063](https://github.com/OpenAgentsInc/openagents/issues/11063) | P0: router | #11061, #11062 |
+| [#11064](https://github.com/OpenAgentsInc/openagents/issues/11064) | P0: gateway routes for our services; chat worker moves onto them | #11063 |
+| [#11065](https://github.com/OpenAgentsInc/openagents/issues/11065) | P1: public API beta | #11064 |
+| [#11066](https://github.com/OpenAgentsInc/openagents/issues/11066) | P1: public rate card | #11062, #11065 |
+| [#11067](https://github.com/OpenAgentsInc/openagents/issues/11067) | P1: bring your own key | #11061, #11065 |
+| [#11068](https://github.com/OpenAgentsInc/openagents/issues/11068) | P1: Open Responses acceptance suite and OpenAI SDK run | #11065 |
+| [#11069](https://github.com/OpenAgentsInc/openagents/issues/11069) | P1: public developer docs and Decisions guide | #11065, #11066 |
+| [#11070](https://github.com/OpenAgentsInc/openagents/issues/11070) | P2: Pylon providers and local Psionic | #11065, #11066 |
+| [#11071](https://github.com/OpenAgentsInc/openagents/issues/11071) | P2: stored responses, compaction, WebSocket, hosted tools | #11068 |
+
 ## 14. Owner steps
 
 These are also in the workspace `NEEDS_OWNER.md`.
