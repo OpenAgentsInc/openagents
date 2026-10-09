@@ -37,6 +37,7 @@ mod markdown;
 mod pages;
 pub mod palette;
 mod payments;
+mod phone_api;
 pub mod pilot;
 pub mod plan;
 mod projects;
@@ -252,6 +253,7 @@ pub fn router(config: Config) -> Router {
         .merge(auth::routes())
         .merge(device::routes())
         .merge(coder_sync::routes())
+        .merge(phone_api::routes())
         .merge(traces::routes())
         .merge(terminal_connect::routes())
         .merge(account::routes())

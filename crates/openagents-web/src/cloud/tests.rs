@@ -16,6 +16,9 @@ use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tower::ServiceExt;
 
+#[path = "phone_api_tests.rs"]
+mod phone_api;
+
 const HOST: &str = "127.0.0.1:4300";
 const ORIGIN: &str = "http://127.0.0.1:4300";
 const CANARY: &str = "synthetic-native-private-canary";

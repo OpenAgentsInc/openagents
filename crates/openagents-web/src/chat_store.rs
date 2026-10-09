@@ -2264,7 +2264,8 @@ pub(crate) fn is_account_owner(owner: &str) -> bool {
     owner.starts_with(ACCOUNT_OWNER) && validate_owner(owner).is_ok()
 }
 
-fn valid_id(id: &str) -> bool {
+/// A UUID-shaped id (36 characters, hex and dashes).
+pub(crate) fn valid_id(id: &str) -> bool {
     id.len() == 36
         && id.bytes().enumerate().all(|(index, byte)| {
             if matches!(index, 8 | 13 | 18 | 23) {

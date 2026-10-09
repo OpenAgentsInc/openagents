@@ -41,6 +41,7 @@ pub mod resume;
 pub mod sessions;
 pub mod slash;
 pub mod snapshot;
+mod supervise;
 pub mod theme;
 pub mod tools;
 pub mod trace_upload;

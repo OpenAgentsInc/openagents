@@ -31,6 +31,7 @@
 //!
 //! [`Settings`] lives in `sync.json` (0600) beside the account file.
 
+pub mod activity;
 pub mod traces;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -742,6 +743,14 @@ pub enum Job {
     Take {
         session: String,
     },
+    /// What runs on this computer now, for the phone (#11165): reported
+    /// at once when it changed, then again every [`activity::every`];
+    /// actions from the phone come back as [`Event::Commands`]. `None`
+    /// stops reporting.
+    Activity {
+        computer: String,
+        items: Option<Vec<activity::Item>>,
+    },
 }
 
 /// What the background sender reports.
@@ -771,6 +780,9 @@ pub enum Event {
         replies: Vec<Reply>,
         added: Vec<Added>,
     },
+    /// Actions sent from the phone for this computer's running work
+    /// (#11165), each handed out once.
+    Commands { commands: Vec<activity::Command> },
 }
 
 /// The background sender: one thread, its own runtime, quiet retries.
@@ -815,6 +827,10 @@ struct Queue {
     takes: BTreeSet<String>,
     /// The computer to check in as, when listening for replies.
     computer: Option<String>,
+    /// The running work to report, and for which computer (#11165).
+    activity: Option<(String, Vec<activity::Item>)>,
+    /// The running work changed since the last report.
+    activity_changed: bool,
 }
 
 impl Queue {
@@ -837,6 +853,13 @@ impl Queue {
             Job::Take { session } => {
                 self.takes.insert(session);
             }
+            Job::Activity { computer, items } => {
+                let next = items.map(|items| (computer, items));
+                if next != self.activity {
+                    self.activity_changed = next.is_some();
+                    self.activity = next;
+                }
+            }
         }
     }
 
@@ -845,6 +868,7 @@ impl Queue {
             && self.statuses.is_empty()
             && self.deletes.is_empty()
             && self.takes.is_empty()
+            && !self.activity_changed
     }
 }
 
@@ -860,16 +884,20 @@ fn run(saved: &Saved, inbox: &mpsc::Receiver<Job>, outbox: &mpsc::Sender<Event>)
     let mut queue = Queue::default();
     let mut check_at = Instant::now();
     let mut listen_at = Instant::now();
+    let mut activity_at = Instant::now();
     let mut retry_at: Option<Instant> = None;
     let mut backoff = Duration::ZERO;
     loop {
         let now = Instant::now();
         let ready = retry_at.is_none_or(|at| at <= now);
-        let timer = if queue.computer.is_some() {
+        let mut timer = if queue.computer.is_some() {
             check_at.min(listen_at)
         } else {
             check_at
         };
+        if queue.activity.is_some() {
+            timer = timer.min(activity_at);
+        }
         let due = if ready && !queue.is_empty() {
             now
         } else {
@@ -892,7 +920,7 @@ fn run(saved: &Saved, inbox: &mpsc::Receiver<Job>, outbox: &mpsc::Sender<Event>)
             &http,
             saved,
             &mut queue,
-            (&mut check_at, &mut listen_at),
+            (&mut check_at, &mut listen_at, &mut activity_at),
             outbox,
         ));
         match outcome {
@@ -923,10 +951,29 @@ async fn round(
     http: &reqwest::Client,
     saved: &Saved,
     queue: &mut Queue,
-    (check_at, listen_at): (&mut Instant, &mut Instant),
+    (check_at, listen_at, activity_at): (&mut Instant, &mut Instant, &mut Instant),
     outbox: &mpsc::Sender<Event>,
 ) -> Round {
     let mut failed = false;
+    // Running work for the phone (#11165).
+    if let Some((computer, items)) = queue.activity.clone()
+        && (queue.activity_changed || Instant::now() >= *activity_at)
+    {
+        queue.activity_changed = false;
+        *activity_at = Instant::now() + activity::every(&items);
+        match activity::report(http, saved, &computer, &items).await {
+            Ok(commands) => {
+                if !commands.is_empty() {
+                    let _ = outbox.send(Event::Commands { commands });
+                }
+            }
+            Err(Answer::SignedOut) => return Round::SignedOut,
+            // A website without the route: try again much later.
+            Err(Answer::Unknown) => *activity_at = Instant::now() + CHECK_EVERY,
+            // A missed report only leaves the phone's list a little old.
+            Err(_) => {}
+        }
+    }
     // Listening for replies typed on the website (#11048).
     if let Some(computer) = queue.computer.clone()
         && Instant::now() >= *listen_at

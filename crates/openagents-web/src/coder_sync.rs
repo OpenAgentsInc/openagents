@@ -884,15 +884,15 @@ pub(crate) async fn take_replies(
     Ok(taken)
 }
 
-fn answer(status: StatusCode, body: Value) -> Response {
+pub(crate) fn answer(status: StatusCode, body: Value) -> Response {
     protect((status, axum::Json(body)).into_response())
 }
 
-fn refused(status: StatusCode, code: &str, message: &str) -> Response {
+pub(crate) fn refused(status: StatusCode, code: &str, message: &str) -> Response {
     answer(status, json!({"error": {"code": code, "message": message}}))
 }
 
-fn stored(error: &Error) -> Response {
+pub(crate) fn stored(error: &Error) -> Response {
     eprintln!("openagents-web: coder sync: {error}");
     refused(
         StatusCode::SERVICE_UNAVAILABLE,

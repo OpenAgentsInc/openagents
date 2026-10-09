@@ -1138,6 +1138,140 @@ async fn follow(
     accepted(&app, &headers, &loaded.conversation).await
 }
 
+/// What became of a message an app (the phone, #11107) sent to a web chat.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum AppSent {
+    /// OpenAgents is answering it (or already answered this request).
+    Answering,
+    /// The chat can't take a message now; the words say why.
+    Busy(&'static str),
+    /// The text is empty or too long.
+    Invalid,
+    /// No such chat for this owner.
+    Missing,
+    Unavailable,
+}
+
+/// A follow-up sent from an app with its own token (#11107): the web's
+/// [`follow`] without the composer's form or selector row. The chat keeps
+/// its repository and environment; the same `request_id` is taken once.
+pub(crate) async fn follow_from_app(
+    app: &App,
+    owner: &str,
+    id: &str,
+    request_id: &str,
+    text: &str,
+) -> AppSent {
+    let Some(text) = normalize(text) else {
+        return AppSent::Invalid;
+    };
+    if !valid_id(request_id) || !valid_id(id) {
+        return AppSent::Invalid;
+    }
+    let store = &app.config.chat_store;
+    let loaded = match store.load(owner, id).await {
+        Ok(Some(loaded)) => loaded,
+        Ok(None) => return AppSent::Missing,
+        Err(e) => {
+            eprintln!("openagents-web: conversation storage: {e}");
+            return AppSent::Unavailable;
+        }
+    };
+    let chat = &loaded.conversation;
+    if chat.terminal.is_some() || chat.deleted() {
+        return AppSent::Missing;
+    }
+    let selection = chat.selection.clone();
+    let hash = request_digest(&text, selection.as_ref());
+    if let Some(request) = chat.requests.iter().find(|r| r.id == request_id) {
+        return if request.digest == hash {
+            AppSent::Answering
+        } else {
+            AppSent::Busy("This message was already sent with different text.")
+        };
+    }
+    if chat.requests.iter().any(|r| r.cloud.is_some())
+        || selection.as_ref().is_some_and(|s| s.runtime.is_some())
+        || work::running(chat)
+    {
+        return AppSent::Busy("Continue this chat on openagents.com.");
+    }
+    if chat.pending.is_some() {
+        return AppSent::Busy("OpenAgents is still answering your previous message.");
+    }
+    if chat.messages.len() + 2 > MAX_MESSAGES {
+        return AppSent::Busy("This chat is full. Start a new chat to keep going.");
+    }
+    let admitted_at = now();
+    match store
+        .claim(owner, request_id, admitted_at + LEASE_SECONDS)
+        .await
+    {
+        Ok(true) => {}
+        Ok(false) => {
+            return if saved_soon(app, owner, id, request_id, &hash)
+                .await
+                .is_some()
+            {
+                AppSent::Answering
+            } else {
+                AppSent::Busy("OpenAgents is still answering your previous message.")
+            };
+        }
+        Err(e) => {
+            eprintln!("openagents-web: conversation storage: {e}");
+            return AppSent::Unavailable;
+        }
+    }
+    let mut next = chat.clone();
+    next.revision += 1;
+    next.updated_unix = now();
+    next.messages.push(Message {
+        role: Role::User,
+        text,
+        request_id: Some(request_id.to_owned()),
+    });
+    next.messages.push(Message {
+        role: Role::Assistant,
+        text: String::new(),
+        request_id: Some(request_id.to_owned()),
+    });
+    next.pending = Some(Pending {
+        request_id: request_id.to_owned(),
+        started_unix: now(),
+        job_id: None,
+    });
+    next.requests.push(Request {
+        id: request_id.to_owned(),
+        digest: hash.clone(),
+        outcome: Outcome::Pending,
+        selection,
+        cloud: None,
+        reply: None,
+    });
+    match store.compare_and_swap(&loaded, &next).await {
+        Ok(saved) => {
+            spawn_answer(app.clone(), saved, admitted_at);
+            AppSent::Answering
+        }
+        Err(e) => {
+            let _ = store.release(owner, request_id).await;
+            if matches!(e, Error::Conflict)
+                && saved_soon(app, owner, id, request_id, &hash)
+                    .await
+                    .is_some()
+            {
+                return AppSent::Answering;
+            }
+            if matches!(e, Error::Conflict) {
+                return AppSent::Busy("This chat just changed. Try again.");
+            }
+            eprintln!("openagents-web: conversation storage: {e}");
+            AppSent::Unavailable
+        }
+    }
+}
+
 /// A message on a web chat that starts Claude Code in the picked
 /// project's environment: it joins the chat with the run as a task after
 /// it, in one write ([`work::begin`]).
@@ -1493,10 +1627,16 @@ pub(crate) async fn chat_list(
 /// project's group (`repository` false) the repository is left out: the
 /// group's heading names it. The list is the owner's own, so the names
 /// never reach anyone else.
-fn line_two(chat: &Conversation, repository: bool) -> Option<String> {
-    // A Coder chat says so, and on which computer (#11047).
+pub(crate) fn line_two(chat: &Conversation, repository: bool) -> Option<String> {
+    // A Coder chat says so, and on which computer (#11047); a chat synced
+    // from the phone says Phone (#11107).
     if let Some(terminal) = &chat.terminal {
-        return Some(format!("Terminal · {}", terminal.computer));
+        let surface = if crate::phone_api::phone_session(&terminal.session) {
+            "Phone"
+        } else {
+            "Terminal"
+        };
+        return Some(format!("{surface} · {}", terminal.computer));
     }
     let mut parts = Vec::new();
     if let Some(source) = chat.selection.as_ref().and_then(|s| s.repository.as_ref()) {

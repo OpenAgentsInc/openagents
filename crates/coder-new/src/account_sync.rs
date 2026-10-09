@@ -70,6 +70,8 @@ pub(crate) struct SyncState {
     /// When this computer last told the website its choice: the website's
     /// answers just before that landed are older, so they wait.
     told: Option<Instant>,
+    /// What runs here, as last told to the phone (#11165).
+    pub(crate) board: crate::supervise::Board,
 }
 
 /// What one take brought for one chat.
@@ -151,6 +153,7 @@ impl App {
             inbox: VecDeque::new(),
             asked: None,
             told: None,
+            board: crate::supervise::Board::default(),
         });
         sync.settings = settings;
         // Ask the website once where this computer's chats live: a choice
@@ -396,7 +399,51 @@ impl App {
             }
             self.store_sync();
         }
+        self.report_activity();
         self.answer_web_reply();
+    }
+
+    /// Tell the website what runs here when it changed, while sync is on
+    /// (#11165); the sender repeats it on its own schedule.
+    fn report_activity(&mut self) {
+        let on = self
+            .sync
+            .as_ref()
+            .is_some_and(|sync| sync.settings.on && sync.worker.is_some());
+        let items = if on {
+            Some(self.activity_items())
+        } else {
+            None
+        };
+        let Some(sync) = &mut self.sync else {
+            return;
+        };
+        let Some(worker) = &sync.worker else {
+            return;
+        };
+        // Token counts alone wait for the next scheduled report.
+        if crate::supervise::settled(items.as_ref())
+            == crate::supervise::settled(sync.board.sent.as_ref())
+        {
+            return;
+        }
+        sync.board.sent.clone_from(&items);
+        worker.send(Job::Activity {
+            computer: sync.computer.clone(),
+            items,
+        });
+    }
+
+    /// A message sent from the phone for a chat here (#11165): answered
+    /// like a reply typed on openagents.com.
+    pub(crate) fn queue_phone_message(&mut self, session: String, text: String) {
+        if let Some(sync) = &mut self.sync {
+            sync.inbox.push_back(Inbound {
+                session,
+                added: Vec::new(),
+                replies: vec![text],
+            });
+        }
     }
 
     /// The website's choice for this computer (#11089): one made there
@@ -455,6 +502,12 @@ impl App {
     fn apply_sync(&mut self, event: Event) {
         if let Event::Chosen { choice } = event {
             self.apply_web_choice(Some(choice));
+            return;
+        }
+        if let Event::Commands { commands } = &event {
+            for command in commands {
+                self.apply_command(command);
+            }
             return;
         }
         let open = self.session_id().map(str::to_owned);
@@ -530,7 +583,7 @@ impl App {
                     });
                 }
             }
-            Event::Waiting { .. } | Event::Chosen { .. } => {}
+            Event::Waiting { .. } | Event::Chosen { .. } | Event::Commands { .. } => {}
             Event::Gone { session } => {
                 sync.taking.remove(&session);
                 sync.settings.sent.remove(&session);

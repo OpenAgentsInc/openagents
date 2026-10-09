@@ -140,6 +140,7 @@ pub fn owned(path: &str) -> bool {
         || path.starts_with("/api/flow/")
         || OWNED_EXACT.contains(&path)
         || crate::agent_ready::owns(path)
+        || crate::phone_api::owns(path)
         || OWNED_PREFIXES.iter().any(|prefix| path.starts_with(prefix))
         || REMOVED.iter().any(|section| {
             path.strip_prefix(section)
