@@ -14,10 +14,6 @@ fn svg(size: u16, paths: &str) -> Markup {
     }
 }
 
-pub(crate) fn menu() -> Markup {
-    svg(20, r#"<path d="M4 7h16M4 12h16M4 17h16"/>"#)
-}
-
 pub(crate) fn close() -> Markup {
     svg(20, r#"<path d="M6 6l12 12M18 6L6 18"/>"#)
 }

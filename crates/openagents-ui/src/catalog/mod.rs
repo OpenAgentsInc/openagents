@@ -111,6 +111,8 @@ pub const COMPONENTS: &[&str] = &[
     "AppShell",
     "Sidebar",
     "SidebarSection",
+    "ChatList",
+    "LegalLinks",
     "NavItem",
     "ThemeToggle",
     "Document",

@@ -7,8 +7,9 @@ use crate::actions::{Button, ButtonVariant, Color, ControlSize};
 use crate::content::CodeBlock;
 use crate::icons::Icon;
 use crate::shell::{
-    AppShell, Composer, ComposerAction, ComposerDropdown, ComposerPanel, Document, HxGet, MainMode,
-    Message, ModelPickerTrigger, NavItem, Sidebar, SidebarSection, Theme, ThemeToggle,
+    AppShell, ChatList, Composer, ComposerAction, ComposerDropdown, ComposerPanel, Document, HxGet,
+    LegalLinks, MainMode, Message, ModelPickerTrigger, NavItem, Sidebar, SidebarSection, Theme,
+    ThemeToggle,
 };
 
 /// The id `AppShell` gives its left panel. The page around the catalog has
@@ -104,27 +105,25 @@ pub(super) fn app_shell(pane: Pane) -> Markup {
     let sidebar = Sidebar::new()
         .label("Preview sidebar")
         .brand(html! { a class="oa-wordmark" href="/ui" { "OpenAgents" } })
-        .nav(NavItem::new("Home", "/").icon(Icon::Globe))
-        .nav(
-            NavItem::new("Components", "/ui")
-                .icon(Icon::Sparkles)
-                .current(true),
+        .nav(NavItem::new("New chat", "/ui").icon(Icon::ComposeEditSquare))
+        .section(
+            ChatList::new()
+                .chat("Catalog review", "/ui#app-shell", true)
+                .chat("Token audit", "/ui#colors", false)
+                .chat("Icon sweep", "/ui#icons", false),
         )
-        .nav(
+        .section(SidebarSection::new("Pinned").empty("Nothing pinned yet"))
+        .bottom(
             NavItem::new("Docs", "/docs")
                 .icon(Icon::Code)
                 .trailing(html! { span class="oa-catalog-caption" { "3" } }),
         )
-        .section(
-            SidebarSection::new("Recent")
-                .item(NavItem::new("Catalog review", "/ui#app-shell"))
-                .items([
-                    NavItem::new("Token audit", "/ui#colors"),
-                    NavItem::new("Icon sweep", "/ui#icons"),
-                ]),
-        )
-        .section(SidebarSection::new("Pinned").empty("Nothing pinned yet"))
-        .footer(ThemeToggle::new());
+        .footer(
+            LegalLinks::new()
+                .link("Terms", "/terms")
+                .link("Privacy", "/privacy")
+                .note("Legal links"),
+        );
     let shell = AppShell::new()
         .sidebar(sidebar)
         .header(html! { strong { "Preview" } })
@@ -149,7 +148,7 @@ pub(super) fn app_shell(pane: Pane) -> Markup {
         .mode(MainMode::App)
         .main_id(pane.id("shell-app-main"));
     html! {
-        (specimen("AppShell Sidebar SidebarSection NavItem", "Scroll mode with sidebar", preview(pane, &shell)))
+        (specimen("AppShell Sidebar SidebarSection NavItem ChatList LegalLinks", "Scroll mode with sidebar", preview(pane, &shell)))
         (specimen("AppShell Composer", "App mode with docked composer", preview(pane, &app)))
     }
 }

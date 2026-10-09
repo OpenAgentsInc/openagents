@@ -8,8 +8,9 @@
 //! module builds that chrome as typed Maud builders:
 //!
 //! - [`Document`]: the `<html>` element with the server-chosen `data-theme`.
-//! - [`AppShell`]: layout, [`Sidebar`] in the left panel, header, main frame,
-//!   and an optional docked composer.
+//! - [`AppShell`]: layout, [`Sidebar`] in the left panel (one toggle in its
+//!   header, a [`ChatList`] of recent chats, [`LegalLinks`] at the bottom),
+//!   header, main frame, and an optional docked composer.
 //! - [`Composer`]: a plain `<form method="post">` enhanced with HTMX, with
 //!   slots for the repository, branch and environment selectors
 //!   ([`ComposerDropdown`]) and a [`ModelPickerTrigger`].
@@ -32,7 +33,10 @@ pub use composer::{
     Composer, ComposerAction, ComposerDropdown, ComposerPanel, HxGet, ModelPickerTrigger,
     composer_panel_host,
 };
-pub use layout::{AppShell, Document, MainMode, NavItem, Sidebar, SidebarSection};
+pub use layout::{
+    AppShell, ChatList, Document, LegalLinks, MainMode, NavItem, SIDEBAR_COOKIE,
+    SIDEBAR_TOGGLE_ATTR, Sidebar, SidebarSection, sidebar_collapsed_from_cookie,
+};
 pub use theme::{THEME_COOKIE, THEME_TOGGLE_ATTR, Theme, ThemeToggle};
 pub use thread::{Message, MessageRole};
 

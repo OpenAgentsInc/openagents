@@ -101,38 +101,113 @@ fn disabled_composer_disables_input_and_send() {
 }
 
 #[test]
-fn sidebar_collapses_behind_an_accessible_popover_toggle() {
-    let html = AppShell::new()
-        .sidebar(
-            Sidebar::new()
-                .brand(html! { a href="/" { "OpenAgents" } })
-                .nav(NavItem::new("Home", "/").current(true))
-                .section(SidebarSection::new("Chats").item(NavItem::new("<b>", "/chat/1"))),
-        )
-        .content(html! { p { "x" } })
-        .render()
-        .into_string();
+fn sidebar_has_one_toggle_that_collapses_or_opens_the_drawer() {
+    let shell = |collapsed| {
+        AppShell::new()
+            .sidebar(
+                Sidebar::new()
+                    .brand(html! { a href="/" { "OpenAgents" } })
+                    .nav(NavItem::new("New chat", "/").current(true))
+                    .section(SidebarSection::new("Chats").item(NavItem::new("<b>", "/chat/1")))
+                    .bottom(NavItem::new("Docs", "/docs"))
+                    .footer(LegalLinks::new().link("Terms", "/terms")),
+            )
+            .sidebar_collapsed(collapsed)
+            .content(html! { p { "x" } })
+            .render()
+            .into_string()
+    };
+    let html = shell(false);
     assert!(html.contains(
         r#"<aside id="oa-left-panel" class="oa-left-panel" popover="auto" aria-label="Sidebar">"#
     ));
-    assert!(html.contains(r#"popovertarget="oa-left-panel" popovertargetaction="show" aria-controls="oa-left-panel" aria-label="Open sidebar""#));
+    assert_eq!(html.matches("data-oa-sidebar-toggle").count(), 1, "{html}");
     assert!(html.contains(
-        r#"popovertargetaction="hide" aria-controls="oa-left-panel" aria-label="Close sidebar""#
+        r#"popovertarget="oa-left-panel" aria-controls="oa-left-panel" aria-label="Toggle sidebar""#
     ));
+    assert!(
+        !html.contains("popovertargetaction"),
+        "one toggle both opens and closes"
+    );
+    // The toggle sits in the panel's header, not the main header.
+    let header = html.find("oa-sidebar-header").unwrap();
+    let toggle = html.find("oa-sidebar-toggle").unwrap();
+    let main = html.find("oa-main-header").unwrap();
+    assert!(header < toggle && toggle < main);
+    assert!(html.contains(r#"data-sidebar="expanded""#));
+    assert!(shell(true).contains(r#"data-sidebar="collapsed""#));
     assert!(html.contains(r#"<nav class="oa-navigation" aria-label="Main">"#));
     assert!(html.contains(r#"href="/" aria-current="page""#));
     assert!(html.contains("&lt;b&gt;"));
+    // Docs and the legal links sit at the bottom, after the sections.
+    let chats = html.find("/chat/1").unwrap();
+    let docs = html.find(r#"href="/docs""#).unwrap();
+    let terms = html.find(r#"href="/terms""#).unwrap();
+    assert!(chats < docs && docs < terms);
+    assert!(html.contains(r#"<nav class="oa-sidebar-bottom" aria-label="More">"#));
     assert!(html.contains(r##"<a class="oa-skip-link" href="#content">"##));
     assert!(
         html.contains(r#"<main id="content" class="oa-workspace" tabindex="-1"><p>x</p></main>"#)
     );
     let css = SHELL_CSS;
     assert!(css.contains(".oa-left-panel[popover]:not(:popover-open)"));
+    assert!(css.contains(r#".oa-layout[data-sidebar="collapsed"] .oa-left-panel"#));
+    assert!(css.contains(":root:not([data-oa-sidebar-ready]) .oa-sidebar-toggle"));
     assert!(css.contains("@media (max-width: 47.999rem)"));
+    let script = crate::script();
+    assert!(script.contains("[data-oa-sidebar-toggle]") && script.contains("oa_sidebar"));
+    assert!(SIDEBAR_COOKIE == "oa_sidebar" && SIDEBAR_TOGGLE_ATTR == "data-oa-sidebar-toggle");
+    assert!(sidebar_collapsed_from_cookie(" collapsed") && !sidebar_collapsed_from_cookie("x"));
 }
 
 #[test]
-fn shell_without_sidebar_has_no_menu_button() {
+fn chat_list_marks_the_open_chat_and_stays_quiet_when_empty() {
+    let list = ChatList::new()
+        .id("chat-sidebar")
+        .chat("First <chat>", "/chat/1", true)
+        .chat("Second", "/chat/2", false)
+        .render()
+        .into_string();
+    assert!(list.contains(r#"id="chat-sidebar""#));
+    assert!(list.contains(r#"<h2 class="oa-sidebar-section-title">Chats</h2>"#));
+    assert!(list.contains(r#"href="/chat/1" aria-current="page""#));
+    assert!(list.contains("First &lt;chat&gt;"));
+    assert!(list.find("/chat/1").unwrap() < list.find("/chat/2").unwrap());
+    let empty = ChatList::new().id("chat-sidebar").swap_oob(true);
+    assert!(empty.is_empty());
+    let empty = empty.render().into_string();
+    assert_eq!(
+        empty,
+        r#"<section class="oa-sidebar-section oa-chat-list" id="chat-sidebar" hx-swap-oob="outerHTML" aria-label="Chats"></section>"#
+    );
+}
+
+#[test]
+fn legal_links_are_quiet_and_mark_external_links() {
+    let html = LegalLinks::new()
+        .link("Terms", "/terms")
+        .link("GitHub", "https://github.com/x")
+        .note("(c) 2026")
+        .render()
+        .into_string();
+    assert!(html.contains(r#"<nav class="oa-sidebar-legal" aria-label="Legal and links">"#));
+    assert!(html.contains(r#"<a href="/terms">Terms</a>"#));
+    assert!(html.contains(r#"<a href="https://github.com/x" rel="noopener">GitHub</a>"#));
+    assert!(html.contains(r#"<span class="oa-sidebar-legal-note">(c) 2026</span>"#));
+}
+
+#[test]
+fn composer_script_submits_on_enter_unless_an_adapter_handled_it() {
+    let script = crate::script();
+    assert!(script.contains("form[data-oa-composer]") || script.contains("data-oa-composer"));
+    assert!(script.contains("event.defaultPrevented"));
+    assert!(script.contains("event.shiftKey") && script.contains("isComposing"));
+    assert!(script.contains("requestSubmit"));
+    assert!(!script.contains("eval(") && !script.contains("innerHTML"));
+}
+
+#[test]
+fn shell_without_sidebar_has_no_sidebar_toggle() {
     let html = AppShell::new().render().into_string();
     assert!(!html.contains("oa-sidebar-toggle") && !html.contains("popover"));
     assert!(html.contains(r#"data-sidebar="none""#));

@@ -2,9 +2,10 @@
 
 use maud::{DOCTYPE, Markup, Render, html};
 
-use super::{HxGet, Theme, glyph};
+use super::{HxGet, Theme};
+use crate::icons::{Icon, IconSize};
 
-/// The `id` of the left panel; the header toggle targets it.
+/// The `id` of the left panel; the sidebar toggle targets it.
 const LEFT_PANEL_ID: &str = "oa-left-panel";
 
 /// A whole HTML document: `<html>` carries the server-chosen `data-theme`
@@ -247,13 +248,172 @@ impl Render for SidebarSection {
     }
 }
 
-/// The left panel: brand, main navigation, conversation sections, footer.
+/// The visitor's recent chats in the left panel, as ChatGPT lists them: one
+/// row per conversation (newest first, in the order the caller adds them),
+/// the open chat marked current, long titles cut with an ellipsis.
+///
+/// With no rows it renders an empty section with no heading and no text, so
+/// a later response can still replace it out of band by its id. Any page
+/// (home, chat, the demo) can build the same list:
+///
+/// ```
+/// use maud::Render;
+/// use openagents_ui::shell::ChatList;
+/// let html = ChatList::new()
+///     .id("chat-sidebar")
+///     .chat("Fix the build", "/chat/1", true)
+///     .chat("Plan the launch", "/chat/2", false)
+///     .render()
+///     .into_string();
+/// assert!(html.contains(r#"href="/chat/1" aria-current="page""#));
+/// ```
+#[derive(Clone, Debug)]
+pub struct ChatList {
+    title: String,
+    id: Option<String>,
+    swap_oob: bool,
+    items: Vec<NavItem>,
+}
+
+impl Default for ChatList {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ChatList {
+    /// An empty list headed "Chats".
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            title: "Chats".to_owned(),
+            id: None,
+            swap_oob: false,
+            items: Vec::new(),
+        }
+    }
+
+    /// The heading, "Chats" by default.
+    #[must_use]
+    pub fn title(mut self, title: impl Into<String>) -> Self {
+        self.title = title.into();
+        self
+    }
+
+    /// The section's id, so a response can replace it.
+    #[must_use]
+    pub fn id(mut self, id: impl Into<String>) -> Self {
+        self.id = Some(id.into());
+        self
+    }
+
+    /// Marks this rendering as an HTMX out-of-band replacement
+    /// (`hx-swap-oob="outerHTML"`) of the list with the same id.
+    #[must_use]
+    pub fn swap_oob(mut self, oob: bool) -> Self {
+        self.swap_oob = oob;
+        self
+    }
+
+    /// Adds a chat row: its title, link, and whether it is the open chat.
+    #[must_use]
+    pub fn chat(self, title: impl Into<String>, href: impl Into<String>, current: bool) -> Self {
+        self.item(NavItem::new(title, href).current(current))
+    }
+
+    /// Adds a prepared row (for example one that also loads with HTMX).
+    #[must_use]
+    pub fn item(mut self, item: NavItem) -> Self {
+        self.items.push(item);
+        self
+    }
+
+    /// Adds prepared rows.
+    #[must_use]
+    pub fn items(mut self, items: impl IntoIterator<Item = NavItem>) -> Self {
+        self.items.extend(items);
+        self
+    }
+
+    /// Whether the list has no rows.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.items.is_empty()
+    }
+}
+
+impl Render for ChatList {
+    fn render(&self) -> Markup {
+        html! {
+            section class="oa-sidebar-section oa-chat-list" id=[self.id.as_deref()]
+                hx-swap-oob=[self.swap_oob.then_some("outerHTML")] aria-label=(self.title) {
+                @if !self.items.is_empty() {
+                    h2 class="oa-sidebar-section-title" { (self.title) }
+                    ul class="oa-nav-list" role="list" {
+                        @for item in &self.items { (item) }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Small, quiet legal and project links for the bottom of the left panel
+/// (Terms, Privacy, source, social, copyright), kept out of the page as
+/// ChatGPT does.
+#[derive(Clone, Debug, Default)]
+pub struct LegalLinks {
+    note: Option<String>,
+    links: Vec<(String, String)>,
+}
+
+impl LegalLinks {
+    /// No links yet.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// A plain line after the links, such as the copyright.
+    #[must_use]
+    pub fn note(mut self, note: impl Into<String>) -> Self {
+        self.note = Some(note.into());
+        self
+    }
+
+    /// A link. Absolute `http(s)` links get `rel="noopener"`.
+    #[must_use]
+    pub fn link(mut self, label: impl Into<String>, href: impl Into<String>) -> Self {
+        self.links.push((label.into(), href.into()));
+        self
+    }
+}
+
+impl Render for LegalLinks {
+    fn render(&self) -> Markup {
+        html! {
+            nav class="oa-sidebar-legal" aria-label="Legal and links" {
+                @for (label, href) in &self.links {
+                    @let external = href.starts_with("http://") || href.starts_with("https://");
+                    a href=(href) rel=[external.then_some("noopener")] { (label) }
+                }
+                @if let Some(note) = &self.note {
+                    span class="oa-sidebar-legal-note" { (note) }
+                }
+            }
+        }
+    }
+}
+
+/// The left panel: brand, the toggle, top navigation ("New chat"),
+/// conversation sections, bottom navigation ("Docs"), and the footer.
 #[derive(Clone, Debug, Default)]
 pub struct Sidebar {
     label: Option<String>,
     brand: Option<Markup>,
     nav: Vec<NavItem>,
-    sections: Vec<SidebarSection>,
+    sections: Vec<Markup>,
+    bottom: Vec<NavItem>,
     footer: Option<Markup>,
 }
 
@@ -278,21 +438,30 @@ impl Sidebar {
         self
     }
 
-    /// A main navigation row.
+    /// A top navigation row, such as "New chat". A row with an icon keeps
+    /// the icon visible when the panel is collapsed to its rail.
     #[must_use]
     pub fn nav(mut self, item: NavItem) -> Self {
         self.nav.push(item);
         self
     }
 
-    /// A conversation-sidebar section.
+    /// A conversation-sidebar section: a [`SidebarSection`], a [`ChatList`],
+    /// or other markup.
     #[must_use]
-    pub fn section(mut self, section: SidebarSection) -> Self {
-        self.sections.push(section);
+    pub fn section(mut self, section: impl Render) -> Self {
+        self.sections.push(section.render());
         self
     }
 
-    /// The pinned footer (account, theme toggle, legal links).
+    /// A row pinned to the bottom of the panel, above the footer ("Docs").
+    #[must_use]
+    pub fn bottom(mut self, item: NavItem) -> Self {
+        self.bottom.push(item);
+        self
+    }
+
+    /// The pinned footer, such as [`LegalLinks`].
     #[must_use]
     pub fn footer(mut self, footer: impl Render) -> Self {
         self.footer = Some(footer.render());
@@ -313,14 +482,34 @@ pub enum MainMode {
     App,
 }
 
+/// The cookie the shell script stores the wide-screen sidebar state in:
+/// `collapsed` or `expanded`.
+pub const SIDEBAR_COOKIE: &str = "oa_sidebar";
+
+/// The data attribute the shell script binds the sidebar toggle by.
+pub const SIDEBAR_TOGGLE_ATTR: &str = "data-oa-sidebar-toggle";
+
+/// Whether a [`SIDEBAR_COOKIE`] value asks for the collapsed panel.
+#[must_use]
+pub fn sidebar_collapsed_from_cookie(value: &str) -> bool {
+    value.trim() == "collapsed"
+}
+
 /// The whole app shell: layout, left panel, header, main frame.
 ///
-/// On narrow screens the left panel collapses into a native popover opened
-/// by the header's menu button (`popovertarget`), so it works without
-/// JavaScript, closes on Escape and light-dismiss, and keeps focus order.
+/// The left panel has one toggle, in its header (ChatGPT's "Toggle
+/// sidebar"). On wide screens the shell script ([`SIDEBAR_TOGGLE_ATTR`])
+/// collapses the panel to a narrow rail and back, storing the choice in the
+/// [`SIDEBAR_COOKIE`] cookie so the server renders the next page the same
+/// way ([`AppShell::sidebar_collapsed`]). On narrow screens the panel rests
+/// as that rail and the same toggle opens it as a native popover drawer
+/// (`popovertarget`), which works without JavaScript, closes on Escape and
+/// light-dismiss, and keeps focus order. Without the script, wide screens
+/// hide the toggle rather than show a button that does nothing.
 #[derive(Clone, Debug, Default)]
 pub struct AppShell {
     sidebar: Option<Sidebar>,
+    collapsed: bool,
     header: Option<Markup>,
     actions: Option<Markup>,
     content: Option<Markup>,
@@ -337,10 +526,18 @@ impl AppShell {
         Self::default()
     }
 
-    /// The left panel. Without one, the shell has no menu button.
+    /// The left panel. Without one, the shell has no sidebar toggle.
     #[must_use]
     pub fn sidebar(mut self, sidebar: Sidebar) -> Self {
         self.sidebar = Some(sidebar);
+        self
+    }
+
+    /// Renders the left panel collapsed to its rail on wide screens (read
+    /// the [`SIDEBAR_COOKIE`] with [`sidebar_collapsed_from_cookie`]).
+    #[must_use]
+    pub fn sidebar_collapsed(mut self, collapsed: bool) -> Self {
+        self.collapsed = collapsed;
         self
     }
 
@@ -401,22 +598,19 @@ impl Render for AppShell {
             MainMode::Scroll => "scroll",
             MainMode::App => "app",
         };
+        let sidebar = match (&self.sidebar, self.collapsed) {
+            (None, _) => "none",
+            (Some(_), false) => "expanded",
+            (Some(_), true) => "collapsed",
+        };
         html! {
-            div class="oa-layout" data-mode=(mode)
-                data-sidebar=(if self.sidebar.is_some() { "present" } else { "none" }) {
+            div class="oa-layout" data-mode=(mode) data-sidebar=(sidebar) {
                 a class="oa-skip-link" href=(format!("#{main_id}")) { "Skip to content" }
                 @if let Some(sidebar) = &self.sidebar {
                     (render_sidebar(sidebar))
                 }
                 div class="oa-main-surface" {
                     header class="oa-main-header" {
-                        @if self.sidebar.is_some() {
-                            button type="button" class="oa-sidebar-toggle"
-                                popovertarget=(LEFT_PANEL_ID) popovertargetaction="show"
-                                aria-controls=(LEFT_PANEL_ID) aria-label="Open sidebar" {
-                                (glyph::menu())
-                            }
-                        }
                         div class="oa-main-header-content" {
                             @if let Some(header) = &self.header { (header) }
                         }
@@ -452,10 +646,10 @@ fn render_sidebar(sidebar: &Sidebar) -> Markup {
                 div class="oa-sidebar-brand" {
                     @if let Some(brand) = &sidebar.brand { (brand) }
                 }
-                button type="button" class="oa-sidebar-close"
-                    popovertarget=(LEFT_PANEL_ID) popovertargetaction="hide"
-                    aria-controls=(LEFT_PANEL_ID) aria-label="Close sidebar" {
-                    (glyph::close())
+                button type="button" class="oa-sidebar-toggle" data-oa-sidebar-toggle=""
+                    popovertarget=(LEFT_PANEL_ID) aria-controls=(LEFT_PANEL_ID)
+                    aria-label="Toggle sidebar" title="Toggle sidebar" {
+                    (Icon::Sidebar.size(IconSize::Lg))
                 }
             }
             div class="oa-conversation-sidebar" {
@@ -468,8 +662,17 @@ fn render_sidebar(sidebar: &Sidebar) -> Markup {
                 }
                 @for section in &sidebar.sections { (section) }
             }
-            @if let Some(footer) = &sidebar.footer {
-                div class="oa-sidebar-footer" { (footer) }
+            @if !sidebar.bottom.is_empty() || sidebar.footer.is_some() {
+                div class="oa-sidebar-footer" {
+                    @if !sidebar.bottom.is_empty() {
+                        nav class="oa-sidebar-bottom" aria-label="More" {
+                            ul class="oa-nav-list" role="list" {
+                                @for item in &sidebar.bottom { (item) }
+                            }
+                        }
+                    }
+                    @if let Some(footer) = &sidebar.footer { (footer) }
+                }
             }
         }
     }
