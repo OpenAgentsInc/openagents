@@ -207,7 +207,7 @@ fn user_and_demo_messages_render_markdown_without_changing_the_source_or_compose
     assert_eq!(cell(&buffer, "config.toml").fg, theme::MD_CODE);
     let (arrow_x, arrow_y) = position(&buffer, "❯ Please");
     assert_eq!(buffer[(arrow_x, arrow_y)].bg, theme::BG_LIGHT);
-    assert_ne!(buffer[(arrow_x, arrow_y - 1)].bg, theme::BG_LIGHT);
+    assert_eq!(arrow_y, 0);
     assert_ne!(buffer[(arrow_x, arrow_y + 1)].bg, theme::BG_LIGHT);
     assert!(rows(&buffer).join("\n").contains("❯ **Unsent draft**"));
     assert_eq!(cursor.0, 3 + app.draft.text.len() as u16);

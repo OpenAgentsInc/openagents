@@ -652,3 +652,65 @@ fn invalid_model_metadata_clears_observed_attribution_and_is_not_stored() {
         Entry::Assistant { model: None, .. }
     ));
 }
+
+#[test]
+fn main_transcript_starts_at_the_terminal_top_edge() {
+    let mut app = App::default();
+    app.set_mode(Mode::Live);
+    app.live
+        .entries
+        .push(Entry::User("Top-edge message".into()));
+    for (width, height) in [(80, 24), (24, 12)] {
+        let canvas = render(&mut app, width, height);
+        assert!(canvas.lines().next().unwrap().contains("Top-edge message"));
+    }
+}
+
+#[test]
+fn run_component_has_one_command_one_status_row_and_multiline_preview() {
+    let mut app = App::default();
+    app.set_mode(Mode::Live);
+    app.live.entries.push(Entry::Tool {
+        name: "Run".into(),
+        input: serde_json::json!({"command":"echo fixture"}),
+        output: serde_json::json!({"command":"echo fixture", "exit":0, "timed_out":false, "seconds":0.1, "output":"first\nsecond\nthird\nfourth\nfifth\nsixth"}),
+        running: false,
+    });
+    let canvas = render(&mut app, 100, 24);
+    let rows: Vec<_> = canvas.lines().collect();
+    assert!(rows[0].contains("Run echo fixture"));
+    assert_eq!(canvas.matches("echo fixture").count(), 1);
+    assert!(rows[1].contains("exit: 0"));
+    assert!(rows[1].contains(" · timed_out: false"));
+    assert!(rows[2].contains("first"));
+    assert!(rows[3].contains("second"));
+    assert!(canvas.contains("… 1 more lines"));
+    assert!(!canvas.contains("sixth"));
+    assert!(!canvas.contains("value:"));
+    for width in [24, 40] {
+        render(&mut app, width, 12);
+    }
+}
+
+#[test]
+fn running_and_failed_run_keep_the_command_visible() {
+    let mut app = App::default();
+    app.set_mode(Mode::Live);
+    app.live.entries.push(Entry::Tool {
+        name: "Run".into(),
+        input: serde_json::json!({"command":"false"}),
+        output: serde_json::Value::Null,
+        running: true,
+    });
+    assert!(render(&mut app, 80, 24).contains("Run false"));
+    if let Entry::Tool {
+        output, running, ..
+    } = &mut app.live.entries[0]
+    {
+        *running = false;
+        *output = serde_json::json!({"error":"Could not start command"});
+    }
+    let canvas = render(&mut app, 80, 24);
+    assert!(canvas.contains("× Run false"));
+    assert!(canvas.contains("Could not start command"));
+}

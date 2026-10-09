@@ -64,11 +64,12 @@ fn render_contents(frame: &mut Frame, app: &mut App) {
         return;
     }
 
+    let top_padding = u16::from(app.screen != Screen::Conversation || app.selected_agent.is_some());
     let area = Rect {
         x: area.x + 2,
-        y: area.y + 1,
+        y: area.y + top_padding,
         width: area.width.saturating_sub(4),
-        height: area.height.saturating_sub(2),
+        height: area.height.saturating_sub(top_padding + 1),
     };
     if let Some(event) = &app.disclosure_event {
         let input = serde_json::to_string_pretty(&event["input"]).unwrap_or_default();
@@ -106,9 +107,10 @@ fn render_contents(frame: &mut Frame, app: &mut App) {
     })
     .min(usize::from(area.height.saturating_sub(6))) as u16;
     let composer_height = (draft.len() as u16).clamp(1, 6) + 2;
-    let reserved = rail_height + 3;
+    let header_height = u16::from(app.selected_agent.is_some());
+    let reserved = rail_height + 2 + header_height;
     let [header, body, queued, composer, context, rail] = Layout::vertical([
-        Constraint::Length(1),
+        Constraint::Length(header_height),
         Constraint::Min(1),
         Constraint::Length(app.queued_prompts.len().min(3) as u16),
         Constraint::Length(composer_height.min(area.height.saturating_sub(reserved))),
@@ -588,6 +590,98 @@ fn conversation(frame: &mut Frame, area: Rect, app: &mut App) {
     frame.render_widget(paragraph.scroll((app.scroll, 0)), area);
 }
 
+fn run_lines(
+    input: &serde_json::Value,
+    output: &serde_json::Value,
+    running: bool,
+    width: u16,
+    phase: u8,
+) -> Vec<Line<'static>> {
+    let command = input
+        .get("command")
+        .and_then(|v| v.as_str())
+        .or_else(|| output.get("command").and_then(|v| v.as_str()))
+        .or_else(|| input.as_str())
+        .unwrap_or_default();
+    let glyph = if running {
+        crate::tools::spinner(phase)
+    } else if output.get("error").is_some() {
+        "×"
+    } else {
+        "◆"
+    };
+    let mut lines = vec![Line::from(vec![
+        span(format!(" {glyph} "), t::ACCENT_SKILL),
+        Span::styled(
+            "Run",
+            Style::default()
+                .fg(t::ACCENT_SKILL)
+                .add_modifier(Modifier::BOLD),
+        ),
+        span(
+            format!(
+                " {}",
+                truncate(&command.replace(['\n', '\r'], " "), width.saturating_sub(7))
+            ),
+            t::GRAY,
+        ),
+    ])];
+    if running {
+        lines.push(Line::from(span("   Running", t::GRAY)));
+        return lines;
+    }
+    if let Some(fields) = output.as_object() {
+        let status = fields
+            .iter()
+            .filter(|(key, _)| {
+                !matches!(
+                    key.as_str(),
+                    "command" | "output" | "stdout" | "stderr" | "error"
+                )
+            })
+            .map(|(key, value)| {
+                format!(
+                    "{key}: {}",
+                    value
+                        .as_str()
+                        .map(str::to_owned)
+                        .unwrap_or_else(|| value.to_string())
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(" · ");
+        if !status.is_empty() {
+            lines.push(Line::from(span(
+                format!("   {}", truncate(&status, width.saturating_sub(3))),
+                t::GRAY,
+            )));
+        }
+    }
+    for key in ["output", "stdout", "stderr", "error"] {
+        if let Some(text) = output
+            .get(key)
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+        {
+            let rows = wrap_display(
+                text.lines()
+                    .map(|row| Line::from(span(format!("   {row}"), t::GRAY_BRIGHT)))
+                    .collect(),
+                width,
+            );
+            let hidden = rows.len().saturating_sub(5);
+            lines.extend(rows.into_iter().take(5));
+            if hidden > 0 {
+                lines.push(Line::from(span(
+                    format!("   … {hidden} more lines"),
+                    t::GRAY,
+                )));
+            }
+        }
+    }
+    lines
+}
+
 fn entry_lines(entry: &crate::live::Entry, width: u16, phase: u8) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
     match entry {
@@ -607,6 +701,11 @@ fn entry_lines(entry: &crate::live::Entry, width: u16, phase: u8) -> Vec<Line<'s
             output,
             running,
         } => {
+            if name == "Run" {
+                lines.extend(run_lines(input, output, *running, width, phase));
+                lines.push(Line::default());
+                return lines;
+            }
             let glyph = if *running {
                 crate::tools::spinner(phase)
             } else if output.get("error").is_some() {
