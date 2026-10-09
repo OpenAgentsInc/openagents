@@ -187,9 +187,14 @@ class NativeRenderer(
                 if (kind != "button:circle") (inner as TextView).apply {
                     if (text.toString() != label) text = label
                     val size = context.dp(if (kind == "button:pill") 16 else 18)
-                    val icon = context.getDrawable(glyph(props)!!)?.apply { setBounds(0, 0, size, size) }
+                    // The glyphs are drawn white; they take the theme's text color.
+                    val icon = context.getDrawable(glyph(props)!!)?.mutate()?.apply {
+                        setBounds(0, 0, size, size); setTint(Palette.PRIMARY)
+                    }
                     setCompoundDrawables(icon, null, null, null)
-                } else (inner as android.widget.ImageView).setImageResource(glyph(props)!!)
+                } else (inner as android.widget.ImageView).apply {
+                    setImageResource(glyph(props)!!); setColorFilter(Palette.PRIMARY)
+                }
                 inner.requestLayout()
             }
             "surface" -> (view as FrameLayout).let { frame ->

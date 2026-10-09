@@ -21,7 +21,7 @@ import org.json.JSONObject
  */
 class TerminalScreen(private val activity: MainActivity, private val bridge: MobileBridge) {
     val root = FrameLayout(activity).apply {
-        setBackgroundColor(Palette.BACKGROUND)
+        setBackgroundColor(Noir.BACKGROUND)
         isClickable = true
         visibility = View.GONE
         tag = "terminal-screen"
