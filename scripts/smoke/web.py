@@ -245,6 +245,78 @@ def read_events(site, chat, seconds=60):
 
 
 # ---------------------------------------------------------------------------
+# Traces (#11109)
+
+
+def traces(base, session):
+    site = Site(base)
+    anon = site.get("/api/traces")
+    if anon.status == 404:
+        record("traces: /api/traces", None, "not on this build (#11109)")
+        return
+    record("traces: signed out is refused", anon.status == 401, f"{anon.status}")
+    if not session:
+        record("traces: upload, list, read, share, delete", None, "no test account")
+        return
+    auth = {"Authorization": f"Bearer {session}"}
+    doc = {
+        "schema_version": "ATIF-v1.7",
+        "session_id": f"smoke-{uuid.uuid4()}",
+        "agent": {"name": "openagents-coder", "version": "1", "model_name": "smoke-model"},
+        "steps": [
+            {"step_id": 1, "source": "user", "message": "Run the tests."},
+            {"step_id": 2, "source": "agent", "message": "Done. **All passed.**",
+             "model_name": "smoke-model",
+             "tool_calls": [{"tool_call_id": "c1", "function_name": "shell",
+                             "arguments": {"command": "cargo test"}}],
+             "observation": {"results": [{"source_call_id": "c1", "content": "test result: ok"}]}},
+        ],
+    }
+    up = site.request("/api/traces", method="POST", body=doc, headers=auth)
+    try:
+        trace = up.json()["trace"]
+        tid = trace["id"]
+    except (ValueError, KeyError, TypeError):
+        record("traces: POST /api/traces saves an ATIF trace", False, f"{up.status} {up.text[:120]}")
+        return
+    record("traces: POST /api/traces saves an ATIF trace", up.status == 201 and not trace.get("shared"),
+           f"{up.status} {trace.get('steps')} steps")
+    again = site.request("/api/traces", method="POST", body=doc, headers=auth)
+    record("traces: the same trace twice is saved once", again.status == 200, f"{again.status}")
+    listed = site.get("/api/traces", headers=auth)
+    try:
+        ids = [t["id"] for t in listed.json()["traces"]]
+    except (ValueError, KeyError, TypeError):
+        ids = []
+    record("traces: GET /api/traces lists it", tid in ids, f"{len(ids)} traces")
+    one = site.get(f"/api/traces/{tid}", headers=auth)
+    try:
+        same = one.json().get("session_id") == doc["session_id"]
+    except ValueError:
+        same = False
+    record("traces: GET /api/traces/{id} returns the document", one.status == 200 and same, f"{one.status}")
+    private = Site(base).get(f"/trace/{tid}")
+    record("traces: unshared /trace/{id} is 404", private.status == 404, f"{private.status}")
+    on = site.request(f"/api/traces/{tid}/share", method="POST", body={"shared": True}, headers=auth)
+    public = Site(base).get(f"/trace/{tid}")
+    record("traces: shared /trace/{id} is public", on.status == 200 and public.status == 200
+           and "All passed" in public.text, f"{on.status}/{public.status}")
+    off = site.request(f"/api/traces/{tid}/share", method="POST", body={"shared": False}, headers=auth)
+    gone = Site(base).get(f"/trace/{tid}")
+    record("traces: stop sharing makes /trace/{id} 404", off.status == 200 and gone.status == 404,
+           f"{off.status}/{gone.status}")
+    page = Site(base)
+    page.cookies["oa_cloud_session"] = session
+    settings = page.follow("/settings/traces")
+    record("traces: Settings > Traces lists it", settings.status == 200 and tid in settings.text,
+           f"{settings.status}")
+    deleted = site.request(f"/api/traces/{tid}", method="DELETE", headers=auth)
+    after = site.get(f"/api/traces/{tid}", headers=auth)
+    record("traces: DELETE removes it", deleted.status == 200 and after.status == 404,
+           f"{deleted.status}/{after.status}")
+
+
+# ---------------------------------------------------------------------------
 # Checks
 
 
@@ -365,23 +437,44 @@ def run(base, only, install):
     if want("gates"):
         dev = site.get("/device")
         record("device: signed out goes to log in", dev.status == 303 and "/login" in dev.location())
-        env = site.get("/environments")
-        record("environments: not open to signed-out visitors",
-               (env.status in (302, 303) and "/login" in env.location()) or env.status == 403,
-               f"{env.status} {env.location() or plain(env.text)[:40]}")
         proj = site.get("/projects")
         record("projects: signed out goes to log in", proj.status == 303 and "/login" in proj.location())
+        # Environments run on the local address only: a public page never
+        # links them, and the path answers plainly instead of erroring.
+        links = [p for p in ("/", "/docs", "/download", "/login")
+                 if re.search(r'href="/environments[/"]', site.get(p).text)]
+        record("environments: no link on the public pages", not links, ", ".join(links))
+        env = site.get("/environments")
+        record("environments: answers plainly on a public host",
+               env.status in (302, 303, 403, 404) and len(env.body) < 2000,
+               f"{env.status} {env.location() or plain(env.text)[:40]}")
 
-    # Signed in, through the account service's own sign-up.
-    if want("signed-in") or want("gateway"):
-        account = Site(base)
-        made = account.request("/api/v1/accounts", method="POST", body={"label": "Smoke"})
+    # Accounts: open sign-up is refused; GitHub sign-in is the way in. The
+    # signed-in checks use one test account made with the staging operator
+    # token (SMOKE_SIGNUP_TOKEN), when it is set.
+    session = key = None
+    account = Site(base)
+    if want("accounts") or want("signed-in") or want("gateway") or want("traces"):
+        open_ = Site(base).request("/api/v1/accounts", method="POST", body={"label": "Smoke"})
         try:
-            made_json = made.json()
-            session, key = made_json["session_token"], made_json["key_token"]
-        except (ValueError, KeyError):
-            session = key = None
-        record("account service: sign-up makes an account", bool(session), f"{made.status}")
+            code = open_.json().get("error", {}).get("code", "")
+        except (ValueError, AttributeError):
+            code = ""
+        record("accounts: open sign-up is refused", open_.status == 403 and code == "signup_disabled",
+               f"{open_.status} {code}")
+        token = os.environ.get("SMOKE_SIGNUP_TOKEN", "")
+        if token:
+            made = account.request("/api/v1/accounts", method="POST", body={"label": "Smoke"},
+                                   headers={"Authorization": f"Bearer {token}"})
+            try:
+                made_json = made.json()
+                session, key = made_json["session_token"], made_json["key_token"]
+            except (ValueError, KeyError):
+                pass
+            record("accounts: the operator test account is made", bool(session), f"{made.status}")
+        else:
+            record("accounts: the operator test account is made", None, "SMOKE_SIGNUP_TOKEN unset")
+    if want("signed-in") or want("gateway") or want("traces"):
         if session and want("signed-in"):
             account.cookies["oa_cloud_session"] = session
             home = account.get("/")
@@ -400,7 +493,9 @@ def run(base, only, install):
                    "needs a GitHub-connected account" if "Connect GitHub" in proj.text else "")
             device = account.get("/device")
             record("signed in: /device code page", device.status == 200 and "code" in device.text.lower())
-        if key and want("gateway"):
+            env_link = bool(re.search(r'href="/environments[/"]', home.text))
+            record("signed in: no Environments link on the public host", not env_link)
+        if want("gateway"):
             gw = Site(base)
             models = gw.get("/api/v1/models")
             try:
@@ -408,26 +503,23 @@ def run(base, only, install):
             except (ValueError, KeyError):
                 ids = []
             record("gateway: /v1/models", models.status == 200 and ids, f"{len(ids)} models")
-            resp = gw.request("/api/v1/responses", method="POST",
-                              body={"model": "google/gemini-2.5-flash-lite", "input": "Reply with the word OK.",
-                                    "max_output_tokens": 32},
-                              headers={"Authorization": f"Bearer {key}"})
-            try:
-                out = resp.json()
-                text = json.dumps(out.get("output", ""))
-                ok = resp.status == 200 and out.get("status") in ("completed", None) and "OK" in text.upper()
-            except ValueError:
-                ok, out = False, {}
-            record("gateway: one /v1/responses call on the free model", ok,
-                   f"{resp.status} {(out.get('error') or {}).get('code', '') if isinstance(out, dict) else ''}")
-
-    # Trace upload (#11109).
-    if want("traces"):
-        t = site.get("/api/traces")
-        if t.status == 404:
-            record("traces: POST/GET /api/traces", None, "not on this build (#11109)")
-        else:
-            record("traces: /api/traces answers", t.status in (200, 401, 405), f"{t.status}")
+            if key:
+                resp = gw.request("/api/v1/responses", method="POST",
+                                  body={"model": "google/gemini-2.5-flash-lite",
+                                        "input": "Reply with the word OK.", "max_output_tokens": 32},
+                                  headers={"Authorization": f"Bearer {key}"})
+                try:
+                    out = resp.json()
+                    text = json.dumps(out.get("output", ""))
+                    ok = resp.status == 200 and out.get("status") in ("completed", None) and "OK" in text.upper()
+                except ValueError:
+                    ok, out = False, {}
+                record("gateway: one /v1/responses call on the free model", ok,
+                       f"{resp.status} {(out.get('error') or {}).get('code', '') if isinstance(out, dict) else ''}")
+            else:
+                record("gateway: one /v1/responses call on the free model", None, "no test account")
+        if want("traces"):
+            traces(base, session)
 
     # The terminal: the hosted installer, into a scratch HOME.
     if want("terminal"):

@@ -75,6 +75,7 @@ def main():
             plain("PUBLIC_ORIGIN", ORIGIN),
             secret("openagents-web-1-staging-github-oauth", "GITHUB_OAUTH_JSON"),
             secret("openagents-gateway-staging-admin-token", "INFERENCE_ADMIN_TOKEN"),
+            secret("openagents-gateway-staging-smoke-signup-token", "SMOKE_SIGNUP_TOKEN"),
             secret("openagents-gateway-staging-vertex-sa", "VERTEX_SA_JSON"),
             secret("openagents-gateway-staging-openrouter-key", "OPENROUTER_API_KEY"),
             secret("openagents-gateway-staging-ai-gateway-key", "AI_GATEWAY_API_KEY"),

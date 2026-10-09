@@ -13,6 +13,8 @@
 #   PUBLIC_ORIGIN               https://... the site's origin (the OAuth callback base)
 #   GITHUB_OAUTH_JSON           the staging OAuth App's private file
 #   INFERENCE_ADMIN_TOKEN       the /admin/inference bearer
+#   SMOKE_SIGNUP_TOKEN          the operator token that makes the smoke suite's
+#                               test account; open sign-up stays off, as in production
 #   VERTEX_SA_JSON              optional: a service-account key for Vertex
 #   OPENROUTER_API_KEY, AI_GATEWAY_API_KEY, TYPESAFE_API_KEY: optional upstreams
 set -eu
@@ -51,6 +53,7 @@ cat > "$state/gateway.json" <<EOF
   "registry": "$state/gateway/registry",
   "accounts": {
     "signup_tenant": "signup",
+    "operator_signup_token_env": "SMOKE_SIGNUP_TOKEN",
     "github": {
       "credentials": "$state/private/github-oauth.json",
       "redirect_url": "$PUBLIC_ORIGIN/auth/github/callback"
