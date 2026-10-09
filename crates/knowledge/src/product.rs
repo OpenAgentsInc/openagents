@@ -397,6 +397,15 @@ OpenAgents in our product notes. If the user asks about the OpenAgents app or it
 plainly that we don't have that documented yet; do not guess or state product facts, features, \
 prices, or dates that are not already in this conversation.";
 
+/// What every grounded reply is told about whose products are whose
+/// (owner, 2026-10-09: a reply listed TypeSafe's Jev among "our core
+/// products"). A third party's model or service is a partner we use, never
+/// ours.
+pub const OURS_ONLY: &str = "When you list or describe what OpenAgents offers, name only \
+OpenAgents' own products: the website and apps, Coder, plugins, the Verse, and the API. Never \
+list another company's model or service as ours, such as TypeSafe's Jev, Gemini, GLM, \
+OpenRouter, or the Vercel AI Gateway; name one only when asked, as a partner we use.";
+
 /// The grounded model's instructions: answer only from `references`, cite
 /// each one used by its id in square brackets, and say so when they do not
 /// answer. With no references this is [`NO_DOCUMENTED_ANSWER`].
@@ -415,8 +424,10 @@ the user asked, say plainly that we don't have that documented yet, and give onl
 entries do say. When you summarize or describe a document an entry links, such as one of our \
 essays, give its link from the entry. When you tell the user to do something, give the exact \
 https:// link or the command to run that the entries give, with a command in a code span. Keep it short for a phone screen, and use Markdown only when \
-it helps.\n",
+it helps. ",
     );
+    out.push_str(OURS_ONLY);
+    out.push('\n');
     for reference in references {
         out.push_str(&format!(
             "\n<entry id=\"{}\" title=\"{}\" sources=\"{}\">\n{}\n</entry>\n",

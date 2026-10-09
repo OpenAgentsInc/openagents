@@ -2112,6 +2112,8 @@ pub fn grounded_note(corpus: Corpus, passages: &[seams::Passage], commit: Option
         // A summary of one of our essays links it (#10102).
         note.push_str(PRODUCT_LINKS);
         note.push_str(PRODUCT_FACTS);
+        note.push(' ');
+        note.push_str(knowledge::product::OURS_ONLY);
     }
     if let Some(commit) = commit {
         note.push_str(&format!(" Say that this is as of commit {commit}."));

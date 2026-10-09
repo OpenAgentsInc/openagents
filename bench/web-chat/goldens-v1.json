@@ -61,7 +61,17 @@
           "tier": ["canned"],
           "speed": "instant",
           "required": [["OpenAgents"], ["network of agents"], ["one conversation"], ["Coder"], ["many models"], ["plugin"]],
-          "forbidden": ["general agent", "one agent you", "computer you connect", "Gemini", "Vercel", "Project map", "Code finder", "Test reader", "Explain this error", "Release notes", "Dependency check"]
+          "forbidden": ["general agent", "one agent you", "computer you connect", "Gemini", "Vercel", "Jev", "TypeSafe", "OpenRouter", "Project map", "Code finder", "Test reader", "Explain this error", "Release notes", "Dependency check"]
+        },
+        {
+          "id": "starters.what_we_offer",
+          "phrasings": ["what products do you have", "what do you make", "what does openagents offer"],
+          "route": [],
+          "answers": [],
+          "tier": [],
+          "speed": "model",
+          "required": [["OpenAgents", "Coder", "we "]],
+          "forbidden": ["Jev", "TypeSafe", "OpenRouter", "Vercel", "Gemini"]
         },
         {
           "id": "starters.models",
