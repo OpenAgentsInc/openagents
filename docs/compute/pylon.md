@@ -337,6 +337,20 @@ records are not exchanged here: the buyer's acceptance is its local check
 of the answer before it pays. `crates/pylon/tests/market.rs` runs the whole
 hire on the in-process relay with `TestLightning`.
 
+In Verse, the Agora's forecourt holds the compute counter and the
+agent-services wall: the counter reads the pool's online pylons and free
+slots, the day's jobs and the jobs trusted brokers bought, and the sats
+paid on receipts (test sats marked **TEST**); the wall lists verified
+agent-service offerings. A settlement thread runs from the counter to each
+pylon a trusted broker's job finished on in the last 15 seconds: gold for
+mainnet sats, pale otherwise, since an order's job carries no payment of
+its own. The brokers come from `OPENAGENTS_PYLON_BROKERS` (npubs or hex,
+comma-separated); OpenAgents publishes no broker key yet. The clock
+tower's front clock wears a ring of light whose lit arc is the busy share
+of the pool's online slots, and villagers pass on the pool's news.
+`cargo run -p pylon --features fixture --example agent_market` runs a
+testnet market for captures.
+
 ## Limits
 
 - Paid jobs are tested on `TestLightning` only; the real wallet path

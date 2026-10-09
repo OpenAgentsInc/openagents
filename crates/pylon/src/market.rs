@@ -839,3 +839,18 @@ pub fn accept(answer: &Answer) -> Result<&str, String> {
     }
     Ok(text)
 }
+
+/// The brokers whose jobs the Agora counts as sales and draws settlement
+/// threads for: the npubs or hex keys in `OPENAGENTS_PYLON_BROKERS`,
+/// comma-separated. OpenAgents publishes no broker key yet, so an unset
+/// variable trusts none.
+#[must_use]
+pub fn brokers() -> std::collections::BTreeSet<String> {
+    std::env::var("OPENAGENTS_PYLON_BROKERS")
+        .map(|list| {
+            list.split(',')
+                .filter_map(|k| crate::identity::hex_pubkey(k.trim()))
+                .collect()
+        })
+        .unwrap_or_default()
+}

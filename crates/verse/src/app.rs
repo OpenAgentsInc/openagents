@@ -2930,7 +2930,12 @@ impl App {
         let Some(villager) = roster.villager(id) else {
             return;
         };
-        let rumors = zones::everglade::townsfolk::known_rumors(id, time);
+        // The pool's news first: every villager has heard it (P4).
+        let news = self.runtime.compute().rumor(time.day);
+        let rumors: Vec<&townsfolk::rumor::Rumor> = news
+            .iter()
+            .chain(zones::everglade::townsfolk::known_rumors(id, time))
+            .collect();
         let profile = &self.connection_options.profile;
         let talk = self.town_talk.get_or_insert_with(|| {
             crate::town_talk::TownTalk::new(

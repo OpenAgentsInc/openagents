@@ -2,7 +2,10 @@
 //! into NIP-PYLON `pylon` world states, and the verdicts of trusted
 //! checkers, which give a pylon with passing checks its sigil. Verse polls
 //! a [`RelayField`] and draws what it returns; nothing else feeds a pylon's
-//! glow or sigil.
+//! glow or sigil. The live field also holds the agent market's verified
+//! NIP-MKT offerings and counts the jobs trusted brokers bought, which the
+//! Agora's counter, services wall, and settlement threads draw
+//! ([`Live::market`]).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Mutex;
@@ -170,6 +173,39 @@ fn add_paid(paid: &mut pylon::PaidMsat, network: &str, amount_msat: u64) {
     *slot = slot.saturating_add(amount_msat);
 }
 
+/// The most agent-service offerings a live field holds.
+pub const MAX_LIVE_OFFERINGS: usize = 64;
+/// How long a broker's job draws its settlement thread, s.
+pub const THREAD_SECS: u64 = 15;
+
+/// The agent market as a live field shows it at one moment: the Agora's
+/// counter, services wall, and settlement threads.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Market {
+    /// Agent services on offer and still valid, newest first.
+    pub listings: Vec<crate::market::Listing>,
+    /// Accepted jobs in the pool over the last day.
+    pub jobs: u64,
+    /// Of those, the jobs a trusted broker bought: sales and agent orders.
+    pub sales: u64,
+    /// Paid on the pool's receipts over the last day, by network.
+    pub paid_msat: pylon::PaidMsat,
+    /// A trusted broker's jobs that finished in the last
+    /// [`THREAD_SECS`]: each draws a thread from the Agora to its pylon.
+    pub threads: Vec<Thread>,
+}
+
+/// One broker job's settlement thread.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Thread {
+    /// The pylon's `30200` address.
+    pub pylon: String,
+    pub finished_at: u64,
+    /// Gold only for a job paid in mainnet sats; an agent order's job
+    /// carries no payment of its own and is drawn pale.
+    pub mainnet: bool,
+}
+
 /// A receipt as a live field remembers it.
 #[derive(Debug, Clone)]
 struct Counted {
@@ -210,6 +246,10 @@ pub struct Live {
     by_id: BTreeMap<String, Receipt>,
     /// Trusted verdicts of the last 24 hours, raw and parsed.
     checks: Vec<(Event, Check)>,
+    /// Brokers whose jobs count as sales.
+    brokers: BTreeSet<String>,
+    /// Verified agent-service offerings, by event ID.
+    offerings: BTreeMap<String, crate::market::Listing>,
     /// Whether the subscription has caught up with the relay.
     pub synced: bool,
     /// The last connection error, until the next catch-up.
@@ -230,6 +270,13 @@ impl Live {
     #[must_use]
     pub fn trusting(mut self, checkers: BTreeSet<String>) -> Self {
         self.checkers = checkers;
+        self
+    }
+
+    /// This field, counting the jobs `brokers` bought as sales.
+    #[must_use]
+    pub fn trusting_brokers(mut self, brokers: BTreeSet<String>) -> Self {
+        self.brokers = brokers;
         self
     }
 
@@ -324,6 +371,34 @@ impl Live {
                 });
                 true
             }
+            nostr::market_contracts::OFFERING_KIND => {
+                let Ok(listing) = crate::market::listing(&event) else {
+                    return false;
+                };
+                if listing.valid_until < now
+                    || listing.created_at > now + MAX_FUTURE_SKEW_SECS
+                    || self.offerings.contains_key(&listing.id)
+                {
+                    return false;
+                }
+                // The newest offering per seller and service stands.
+                if let Some((id, older)) = self
+                    .offerings
+                    .iter()
+                    .find(|(_, l)| l.seller == listing.seller && l.offer == listing.offer)
+                    .map(|(id, l)| (id.clone(), l.created_at))
+                {
+                    if older >= listing.created_at {
+                        return false;
+                    }
+                    self.offerings.remove(&id);
+                }
+                if self.offerings.len() >= MAX_LIVE_OFFERINGS {
+                    return false;
+                }
+                self.offerings.insert(listing.id.clone(), listing);
+                true
+            }
             _ => false,
         }
     }
@@ -339,6 +414,7 @@ impl Live {
             .retain(|_, r| r.finished_at + RECEIPT_WINDOW_SECS >= now);
         self.checks
             .retain(|(_, c)| c.created_at + RECEIPT_WINDOW_SECS >= now);
+        self.offerings.retain(|_, l| l.valid_until >= now);
         self.recent.retain(|event| {
             parse_receipt(event, None).is_ok_and(|r| r.finished_at + MAX_WINDOW_SECS >= now)
         });
@@ -429,6 +505,53 @@ impl Live {
             })
             .collect();
         out.sort_by(|a, b| b.observed_at.cmp(&a.observed_at));
+        out
+    }
+
+    /// The agent market at `now`: the valid offerings, the day's jobs and
+    /// broker sales, the sats paid, and the broker jobs that finished in
+    /// the last [`THREAD_SECS`]. Self-dealt receipts never count.
+    #[must_use]
+    pub fn market(&self, now: u64) -> Market {
+        let mut out = Market::default();
+        for ((buyer, _), counted) in &self.receipts {
+            if counted.finished_at + RECEIPT_WINDOW_SECS < now
+                || counted.finished_at > now + MAX_FUTURE_SKEW_SECS
+                || self.book.self_dealt(buyer, &counted.address)
+            {
+                continue;
+            }
+            if let Some((network, amount_msat)) = &counted.paid {
+                add_paid(&mut out.paid_msat, network, *amount_msat);
+            }
+            if !counted.accepted {
+                continue;
+            }
+            out.jobs += 1;
+            if self.brokers.contains(buyer) {
+                out.sales += 1;
+                if counted.finished_at + THREAD_SECS >= now {
+                    out.threads.push(Thread {
+                        pylon: counted.address.clone(),
+                        finished_at: counted.finished_at,
+                        mainnet: counted.paid.as_ref().is_some_and(|(n, _)| n == "bitcoin"),
+                    });
+                }
+            }
+        }
+        out.threads.sort_by(|a, b| {
+            b.finished_at
+                .cmp(&a.finished_at)
+                .then(a.pylon.cmp(&b.pylon))
+        });
+        out.listings = self
+            .offerings
+            .values()
+            .filter(|l| l.valid_until >= now)
+            .cloned()
+            .collect();
+        out.listings
+            .sort_by(|a, b| b.created_at.cmp(&a.created_at).then(a.id.cmp(&b.id)));
         out
     }
 
@@ -525,6 +648,11 @@ impl RelayField {
             {"kinds": [BEACON_KIND], "#t": [BEACON_MARKER], "limit": 500},
             {"kinds": [RECEIPT_KIND], "#t": [RECEIPT_MARKER], "since": since, "limit": 2_000},
             aggregates,
+            {
+                "kinds": [nostr::market_contracts::OFFERING_KIND],
+                "#t": ["oa:market-offering:v1"],
+                "limit": 200,
+            },
         ]);
         if !self.checkers.is_empty()
             && let Some(filters) = request.as_array_mut()
@@ -579,5 +707,7 @@ fn lock(live: &Mutex<Live>) -> std::sync::MutexGuard<'_, Live> {
         .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
+#[cfg(test)]
+mod market_tests;
 #[cfg(test)]
 mod tests;

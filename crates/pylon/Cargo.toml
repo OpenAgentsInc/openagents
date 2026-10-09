@@ -41,3 +41,7 @@ workspace = true
 [[example]]
 name = "paid_field"
 required-features = ["fixture"]
+
+[[example]]
+name = "agent_market"
+required-features = ["fixture"]

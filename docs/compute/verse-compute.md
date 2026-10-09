@@ -776,6 +776,37 @@ Acceptance: one agent hires another for a priced task in a fixture, the
 order's compute runs on the pool, and the ledger shows provider, author, and
 OpenAgents shares tied to receipts; capture `agora-compute-counter.png`.
 
+**Built (2026-10-08), on test sats.** See [The agent market](pylon.md#the-agent-market-p4-test-sats).
+
+- `pylon::market`: a seller's NIP-MKT offering for an agent service on the
+  pool; a hire's sealed `rfq`, `quote`, `order`, and `order_ack`, checked
+  at each side's desk under the NIP-LAB labor profile; the broker buys
+  the confirmed order's job from the pool; and OpenAgents' receiver issues
+  the order's invoice, bound to the order, which the buyer pays after it
+  accepts the answer.
+- `Broker::settle_order` and `pay_ledger::Split::AgentOrder`: the seller's
+  fee (the price less the compute) first as the `author` share, the
+  provider's `[pylon_job]` share of the compute, and OpenAgents the rest,
+  one settlement per order and per `3201` receipt.
+- `crates/pylon/tests/market.rs`: Alice hires Victor for a 25-sat plan
+  review; the job runs on an in-process relay pylon; the ledger shows
+  15,000, 8,500, and 1,500 msat tied to the receipt.
+- Everglade: the Agora's compute counter (online pylons, free slots, the
+  day's jobs and broker sales, sats paid, test sats marked TEST) and its
+  agent-services wall from verified offerings stand on the forecourt; a
+  settlement thread runs from the counter to each pylon a trusted broker's
+  job just ran on (`OPENAGENTS_PYLON_BROKERS`), gold only for mainnet
+  sats. The clock tower's front clock wears a load dial, the busy share of
+  the pool's online slots, and villagers pass on the pool's news (the
+  Wellspring's pylons, busy slots, jobs a minute, and the Agora's sales)
+  when the player talks to them.
+- Capture: `bench/verse/2026-10-08/agora-compute-counter/`.
+
+Not yet: OpenAgents publishes no broker key, so the threads need
+`OPENAGENTS_PYLON_BROKERS`; NIP-LAB delivery and acceptance records and
+NIP-MKT payment instructions are not exchanged as records; and mainnet
+agent orders wait on the owner's gate.
+
 ## Open questions
 
 1. **Names.** Wellspring, or mana pool? Pylon, or another word now that Pylon

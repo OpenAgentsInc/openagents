@@ -24,7 +24,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use pylon::field::{Live, RelayField};
 use world_tree::{Family, PylonStatus, Tier};
 
-use super::{ComputeSource, PylonSample, Sample};
+use super::{ComputeSource, Market, PylonSample, Sample, ServiceSample, ThreadSample};
 
 /// The pool the field draws.
 pub const POOL: &str = "everglade";
@@ -55,7 +55,11 @@ impl RelaySource {
                 RelayField::new(relay, Some(POOL), pylon::identity::Identity::generate())
                     .trusting(checkers.clone()),
             ),
-            live: Arc::new(Mutex::new(Live::new(Some(POOL)).trusting(checkers))),
+            live: Arc::new(Mutex::new(
+                Live::new(Some(POOL))
+                    .trusting(checkers)
+                    .trusting_brokers(pylon::market::brokers()),
+            )),
             stop: Arc::new(AtomicBool::new(false)),
             home,
         }
@@ -111,12 +115,13 @@ impl Drop for RelaySource {
 impl ComputeSource for RelaySource {
     fn sample(&mut self, now: u64) -> Sample {
         self.start();
-        let (pylons, rate, verified) = {
+        let (pylons, rate, verified, market) = {
             let live = self.live.lock().unwrap_or_else(PoisonError::into_inner);
             (
                 live.pylons(now),
                 live.rate(now),
                 live.aggregate(now).is_some_and(|(_, verified)| verified),
+                live.market(now),
             )
         };
         let mut pylons: Vec<PylonSample> = pylons.into_iter().map(|p| sample(p, now)).collect();
@@ -138,7 +143,47 @@ impl ComputeSource for RelaySource {
             demo: false,
             in_flight,
             verified,
+            market: market_sample(market),
         }
+    }
+}
+
+/// The agent market as the Agora samples it.
+#[must_use]
+pub fn market_sample(market: pylon::field::Market) -> Market {
+    let paid = &market.paid_msat;
+    Market {
+        services: market
+            .listings
+            .iter()
+            .map(|l| ServiceSample {
+                seller: pylon::identity::npub(&l.seller).chars().take(12).collect(),
+                offer: l.offer.clone(),
+                summary: l.summary.clone(),
+                price_msat: l.price_msat,
+                test: l.test(),
+            })
+            .collect(),
+        jobs: market.jobs,
+        sales: market.sales,
+        paid_msat: [
+            ("bitcoin", paid.bitcoin),
+            ("testnet", paid.testnet),
+            ("signet", paid.signet),
+            ("regtest", paid.regtest),
+        ]
+        .into_iter()
+        .filter(|(_, msat)| *msat > 0)
+        .map(|(network, msat)| (network.to_string(), msat))
+        .collect(),
+        threads: market
+            .threads
+            .into_iter()
+            .map(|t| ThreadSample {
+                pylon: t.pylon,
+                mainnet: t.mainnet,
+            })
+            .collect(),
     }
 }
 

@@ -61,6 +61,12 @@
 //!   `VERSE_CAPTURE_ALICE_WORKING` set, Alice's seat is running at her
 //!   workstation, so the beam runs to it. Only `live` reads the real lease
 //!   table.
+//! - `agora`: the Agora's forecourt from the south, with the compute
+//!   counter, the agent-services wall, and the settlement threads to the
+//!   Pylon Field (P4). With `VERSE_CAPTURE_COMPUTE=live`,
+//!   `VERSE_CAPTURE_COMPUTE_WAIT` naming `market` waits for an offering on
+//!   the wall and a thread; `OPENAGENTS_PYLON_BROKERS` names the broker
+//!   whose jobs draw threads.
 //! - `studio-atrium`: inside the gate, at the goal board, with the goal
 //!   bar and its waiting badge over the view.
 //! - `studio-yard`, `studio-hall`, and `studio-atrium`: views of a running
@@ -192,6 +198,20 @@ fn capture(output: PathBuf, view: String, frame: Option<usize>) -> Result<(), St
                     y + 0.2
                 )
             }
+        }
+        "agora" => {
+            let [x, z] = zones::everglade::compute::draw::agora::counter();
+            let y = zones::everglade::height(x, z);
+            field_stand = Some(glam::Vec3::new(x - 1.0, 0.0, z - 17.0));
+            format!(
+                "look:{},{},{},{},{},{}",
+                x - 0.8,
+                y + 5.0,
+                z - 15.0,
+                x - 3.6,
+                y + 5.4,
+                z + 4.0
+            )
         }
         _ => view,
     };
@@ -557,8 +577,9 @@ fn compute(
 /// from its real lease table, read without changing it, beside the relay's
 /// pylons from their verified beacons. Waits until the relay subscription
 /// has caught up, and while `VERSE_CAPTURE_COMPUTE_WAIT` names `busy`, until a
-/// relay pylon is busy, `job`, until one of this computer's jobs is in flight, and
-/// `coin`, until a paid receipt lights a pylon's coin (P3), for at
+/// relay pylon is busy, `job`, until one of this computer's jobs is in flight,
+/// `coin`, until a paid receipt lights a pylon's coin (P3), and `market`,
+/// until the Agora has a service on its wall and a settlement thread (P4), for at
 /// most `VERSE_CAPTURE_COMPUTE_TIMEOUT` seconds (90 by default). Prints
 /// what the relay showed.
 #[cfg(feature = "pylon-relay")]
@@ -569,10 +590,11 @@ fn live_compute() -> Result<Option<Box<dyn zones::everglade::compute::ComputeSou
     let local = LocalSource::from_env()?;
     let mut relay = RelaySource::from_env().ok_or("VERSE_PYLON_RELAY is off")?;
     let wait = std::env::var("VERSE_CAPTURE_COMPUTE_WAIT").unwrap_or_default();
-    let (busy, job, coin) = (
+    let (busy, job, coin, market) = (
         wait.contains("busy"),
         wait.contains("job"),
         wait.contains("coin"),
+        wait.contains("market"),
     );
     let timeout = std::env::var("VERSE_CAPTURE_COMPUTE_TIMEOUT")
         .ok()
@@ -587,7 +609,9 @@ fn live_compute() -> Result<Option<Box<dyn zones::everglade::compute::ComputeSou
         let ready = relay.synced()
             && (!busy || sample.pylons.iter().any(|p| p.busy > 0))
             && (!job || !sample.in_flight.is_empty())
-            && (!coin || sample.pylons.iter().any(|p| p.coin.is_some()));
+            && (!coin || sample.pylons.iter().any(|p| p.coin.is_some()))
+            && (!market
+                || (!sample.market.services.is_empty() && !sample.market.threads.is_empty()));
         if ready || started.elapsed().as_secs() >= timeout {
             for p in &sample.pylons {
                 println!(
@@ -603,6 +627,14 @@ fn live_compute() -> Result<Option<Box<dyn zones::everglade::compute::ComputeSou
                     now.saturating_sub(p.observed_at)
                 );
             }
+            println!(
+                "market: {} services, {} jobs, {} sold, paid {:?}, {} threads",
+                sample.market.services.len(),
+                sample.market.jobs,
+                sample.market.sales,
+                sample.market.paid_msat,
+                sample.market.threads.len()
+            );
             println!(
                 "relay synced {}, rate {} a minute, aggregate recomputed {}, jobs in flight {:?}",
                 relay.synced(),

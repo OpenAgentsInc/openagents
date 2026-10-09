@@ -30,6 +30,8 @@
 //! a beam runs to Alice's workstation only while her studio seat is
 //! working or one of this computer's pylon jobs is in flight.
 
+#[cfg(test)]
+mod agora_tests;
 pub mod draw;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod local;
@@ -141,6 +143,50 @@ pub struct Sample {
     /// The pool's newest aggregate recomputed from the records the source
     /// holds, which lights the basin's rim.
     pub verified: bool,
+    /// The agent market the Agora shows (P4).
+    pub market: Market,
+}
+
+/// The agent market as a source knows it (P4): what the Agora's compute
+/// counter, services wall, and settlement threads draw.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Market {
+    /// Agent services on offer, newest first, from verified NIP-MKT
+    /// offerings.
+    pub services: Vec<ServiceSample>,
+    /// Accepted jobs in the pool over the last day.
+    pub jobs: u64,
+    /// Of those, the jobs a trusted broker bought: sales and agent orders.
+    pub sales: u64,
+    /// Paid on the pool's receipts over the last day, msat by network;
+    /// test networks never sum with `bitcoin`.
+    pub paid_msat: BTreeMap<String, u64>,
+    /// Broker jobs that just finished, by [`PylonSample::id`]: each draws a
+    /// settlement thread from the Agora to its pylon.
+    pub threads: Vec<ThreadSample>,
+}
+
+/// One agent service on the Agora's wall.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ServiceSample {
+    /// The seller, shortened for display.
+    pub seller: String,
+    /// The offering's slug, such as `plan-review`.
+    pub offer: String,
+    pub summary: String,
+    pub price_msat: Option<u64>,
+    /// Sold in test sats only: marked **TEST**.
+    pub test: bool,
+}
+
+/// One settlement thread.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ThreadSample {
+    /// The pylon's [`PylonSample::id`].
+    pub pylon: String,
+    /// Gold for mainnet sats; pale for test sats and for an agent order's
+    /// job, which carries no payment of its own.
+    pub mainnet: bool,
 }
 
 /// Where a field's pylons and wells come from.
@@ -167,6 +213,13 @@ impl ComputeSource for Merged {
             out.in_flight.extend(one.in_flight);
             out.verified |= one.verified;
             out.demo |= one.demo;
+            out.market.services.extend(one.market.services);
+            out.market.jobs += one.market.jobs;
+            out.market.sales += one.market.sales;
+            for (network, msat) in one.market.paid_msat {
+                *out.market.paid_msat.entry(network).or_default() += msat;
+            }
+            out.market.threads.extend(one.market.threads);
             if out.pool.is_empty() || (out.pool == "local" && !one.pool.is_empty()) {
                 out.pool = one.pool;
             }
@@ -317,6 +370,57 @@ impl Compute {
         self.well.as_ref()
     }
 
+    /// The pool's news for town day `day`, which a villager passes on when
+    /// the player talks to it (P4): the Wellspring's online pylons and busy
+    /// slots, the jobs a minute, and the day's sales at the Agora, all
+    /// from the newest sample. `None` while the field knows no pylon. It
+    /// names no quest step and earns no XP; its ID changes each day, so a
+    /// villager tells each player once a day.
+    #[must_use]
+    pub fn rumor(&self, day: i64) -> Option<::townsfolk::rumor::Rumor> {
+        let Some(State::Wellspring {
+            online,
+            busy,
+            total,
+            rate,
+            ..
+        }) = &self.well
+        else {
+            return None;
+        };
+        let demo = if self.sample.demo {
+            "In the demo pool, the "
+        } else {
+            "The "
+        };
+        let plural =
+            |n: u64, one: &str, many: &str| format!("{n} {}", if n == 1 { one } else { many });
+        let mut fact = format!(
+            "{demo}Wellspring runs on {} with {busy} of {total} slots busy, and {} finished in \
+             the last minute.",
+            plural(u64::from(*online), "pylon", "pylons"),
+            plural(u64::from(*rate), "job", "jobs"),
+        );
+        if self.sample.market.sales > 0 {
+            fact.push_str(&format!(
+                " The Agora sold {} today.",
+                plural(self.sample.market.sales, "job", "jobs")
+            ));
+        }
+        Some(::townsfolk::rumor::Rumor {
+            schema: ::townsfolk::rumor::RUMOR_SCHEMA.into(),
+            id: format!("pylon-pool-news-{day}"),
+            fact: fact.chars().take(::townsfolk::rumor::MAX_FACT).collect(),
+            source: String::new(),
+            node: WELLSPRING_SOURCE.into(),
+            day,
+            at: "00:00".into(),
+            days: 1,
+            step: String::new(),
+            repeat: None,
+        })
+    }
+
     /// The field's clock, s.
     #[must_use]
     pub fn clock(&self) -> f32 {
@@ -341,9 +445,13 @@ impl Compute {
     }
 
     /// What a player at `at` inspects up close: the pylon or the basin in
-    /// reach, as caption lines.
+    /// reach, or the Agora's compute counter or services wall, as caption
+    /// lines.
     #[must_use]
     pub fn inspect(&self, at: [f32; 2]) -> Option<String> {
+        if let Some(text) = draw::agora::inspect(&self.sample, &self.pylons, at) {
+            return Some(text);
+        }
         let field = pylon_field::site()?;
         inspect(
             field,

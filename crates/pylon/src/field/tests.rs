@@ -8,13 +8,13 @@ use nostr::pylon::{
 
 use super::*;
 
-const NOW: u64 = 1_791_400_000;
+pub(super) const NOW: u64 = 1_791_400_000;
 
-fn signer(byte: u8) -> RelaySigner {
+pub(super) fn signer(byte: u8) -> RelaySigner {
     RelaySigner::from_secret_hex(&format!("{byte:02x}").repeat(32)).unwrap()
 }
 
-fn beacon(provider: &RelaySigner, observed_at: u64, free: u32) -> Beacon {
+pub(super) fn beacon(provider: &RelaySigner, observed_at: u64, free: u32) -> Beacon {
     Beacon {
         v: pylon::BEACON_V.into(),
         requires: Vec::new(),
@@ -45,7 +45,12 @@ fn beacon(provider: &RelaySigner, observed_at: u64, free: u32) -> Beacon {
     }
 }
 
-fn receipt(buyer: &RelaySigner, provider: &RelaySigner, request: &str, at: u64) -> Event {
+pub(super) fn receipt(
+    buyer: &RelaySigner,
+    provider: &RelaySigner,
+    request: &str,
+    at: u64,
+) -> Event {
     let body = Receipt {
         v: RECEIPT_V.into(),
         requires: Vec::new(),

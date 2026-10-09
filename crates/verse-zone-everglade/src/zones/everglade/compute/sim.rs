@@ -7,7 +7,19 @@ use std::collections::BTreeMap;
 
 use world_tree::{Family, PylonStatus, Tier};
 
-use super::{ComputeSource, PylonSample, Sample, WellSample};
+use super::{ComputeSource, Market, PylonSample, Sample, ServiceSample, ThreadSample, WellSample};
+
+/// The demo market's services: seller, slug, summary, and price in sats.
+const SERVICES: [(&str, &str, &str, u64); 3] = [
+    (
+        "demo-victor",
+        "plan-review",
+        "Victor reviews a day plan",
+        25,
+    ),
+    ("demo-erin", "lead-brief", "Erin briefs a sales lead", 40),
+    ("demo-paul", "call-notes", "Paul summarizes a call", 15),
+];
 
 /// The demo pool's pylons: label, family, tier, memory, and slots.
 const PYLONS: [(&str, Family, Tier, u32, u32); 8] = [
@@ -88,6 +100,29 @@ impl ComputeSource for Sim {
             // demo aggregate recomputes, so the beam and the rim both show.
             in_flight: vec!["demo:pylon-1".into()],
             verified: true,
+            market: Market {
+                services: SERVICES
+                    .iter()
+                    .map(|&(seller, offer, summary, sats)| ServiceSample {
+                        seller: seller.into(),
+                        offer: offer.into(),
+                        summary: summary.into(),
+                        price_msat: Some(sats * 1_000),
+                        test: true,
+                    })
+                    .collect(),
+                jobs: 1_240 + phase % 90,
+                sales: 310 + phase % 40,
+                paid_msat: BTreeMap::from([(
+                    "regtest".to_string(),
+                    4_000_000 + 9_000 * (phase % 50),
+                )]),
+                // One settlement thread at a time, to a paying tower.
+                threads: vec![ThreadSample {
+                    pylon: format!("demo:pylon-{}", [1, 3, 6][(phase % 3) as usize]),
+                    mainnet: false,
+                }],
+            },
         }
     }
 }

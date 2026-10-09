@@ -39,6 +39,9 @@ use coder_ui::theme::Intensity;
 use super::super::layout::pylon_field::{self, BASIN, Field, STONES};
 use super::super::spells::motes;
 
+pub mod agora;
+pub mod dial;
+
 /// The light the field shines with: a cool spring-water blue.
 pub const LIGHT: [f32; 3] = [0.3, 0.78, 1.0];
 /// The light's white-hot core.
@@ -323,6 +326,17 @@ pub fn draw(
             );
         }
     }
+    agora::draw(
+        mesh,
+        &mut glows.flow,
+        field,
+        sample,
+        pylons,
+        time,
+        eye,
+        soft,
+    );
+    dial::draw(&mut glows.flow, well, eye, soft);
     let mut out = glows.key;
     out.extend(glows.flow);
     out.extend(glows.extra);
