@@ -93,7 +93,7 @@ const OWNED_EXACT: [&str; 52] = [
 /// which are proxied, load their own (`/static/coder.css`,
 /// `/static/webtui.css`, `/static/favicon.png`), so the rest of `/static/`
 /// goes upstream.
-const OWNED_PREFIXES: [&str; 12] = [
+const OWNED_PREFIXES: [&str; 13] = [
     "/auth/",
     "/docs/",
     "/studios/blue-rush/",

@@ -74,9 +74,9 @@ async fn page(app: &App, headers: &HeaderMap, back: Back, signup: bool) -> Respo
         return protect(Redirect::to(&return_to).into_response());
     }
     if github(app).is_none() {
-        // No GitHub sign-in here: the Cloud app's key form, when it runs.
+        // No GitHub sign-in here: the account-key form.
         if crate::cloud::ready(app) {
-            return protect(Redirect::to("/cloud/sign-in").into_response());
+            return protect(Redirect::to(crate::cloud::SIGN_IN).into_response());
         }
         return notice(
             headers,

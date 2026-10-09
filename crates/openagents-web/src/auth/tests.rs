@@ -204,15 +204,15 @@ async fn signed_out_header_offers_log_in_and_sign_up_and_login_offers_github() {
     );
 
     // The old key form sends people here.
-    let old = browser.get(&world, "/cloud/sign-in").await;
-    assert_eq!(old.location(), "/login?return_to=%2Fcloud%2Fapp");
+    let old = browser.get(&world, "/sign-in").await;
+    assert_eq!(old.location(), "/login");
 }
 
 #[tokio::test]
-async fn without_github_the_header_has_no_sign_in_buttons() {
+async fn without_github_log_in_is_the_key_form() {
     let world = world(false).await;
-    let home = Browser::default().get(&world, "/").await;
-    assert!(!home.body.contains("href=\"/login\"") && !home.body.contains("href=\"/signup\""));
+    let login = Browser::default().get(&world, "/login").await;
+    assert_eq!(login.location(), crate::cloud::SIGN_IN);
     let start = Browser::default().get(&world, "/auth/github").await;
     assert_eq!(start.status, StatusCode::NOT_FOUND);
 }

@@ -138,7 +138,7 @@ async fn sign_in(State(app): State<App>, headers: HeaderMap) -> Response {
     // With GitHub sign-in, people log in at /login; the key form below stays
     // only for servers without it (and for the account-key fixtures).
     if app.config.github.is_some() && app.config.cloud.is_some() {
-        return protect(Redirect::to("/login?return_to=%2Fcloud%2Fapp").into_response());
+        return protect(Redirect::to("/login").into_response());
     }
     let service = match service(&app) {
         Ok(value) => value,
