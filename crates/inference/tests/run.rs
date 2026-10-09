@@ -397,6 +397,17 @@ async fn auto_takes_the_judged_class_and_chat_without_a_judgment() {
         .await
         .expect("routed");
     assert_eq!(routed.class, Some(TaskClass::Fast));
+    // A judged class with no route right now answers as chat.
+    let (stranded, _) = gateway(&[up.clone()]);
+    let stranded = stranded.with_judge(
+        Arc::new(Judge(Some(TaskClass::Code))),
+        Duration::from_secs(1),
+    );
+    let routed = stranded
+        .run(&request("openagents/auto"), &caller())
+        .await
+        .expect("routed");
+    assert_eq!(routed.class, Some(TaskClass::Chat));
     let (silent, _) = gateway(&[up]);
     let silent = silent.with_judge(Arc::new(Judge(None)), Duration::from_secs(1));
     let routed = silent

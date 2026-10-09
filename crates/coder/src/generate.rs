@@ -41,6 +41,78 @@ pub const OPENROUTER_DOOR_URL: &str = "https://openrouter.ai/api";
 /// is reached with.
 pub const OPENROUTER_KEY_VAR: &str = "OPENROUTER_API_KEY";
 
+/// The variable naming the OpenAgents inference gateway's base URL
+/// (`docs/inference/gateway.md`): the door every chat worker model call goes
+/// through when [`INFERENCE_KEY_VAR`] holds a service key. Unset, the local
+/// gateway ([`DEFAULT_INFERENCE_URL`]).
+pub const INFERENCE_URL_VAR: &str = "CODER_INFERENCE_URL";
+
+/// The variable holding the `oak_` service key the inference gateway
+/// answers. Set, the chat worker sends its model calls through the gateway
+/// unless [`INFERENCE_MODE_VAR`] says `direct`.
+pub const INFERENCE_KEY_VAR: &str = "CODER_INFERENCE_KEY";
+
+/// The variable naming the model or task class the chat worker asks the
+/// gateway for. Unset, [`DEFAULT_INFERENCE_MODEL`].
+pub const INFERENCE_MODEL_VAR: &str = "CODER_INFERENCE_MODEL";
+
+/// The switch: `gateway` sends the chat worker's model calls through the
+/// inference gateway, `direct` keeps the provider doors it called before
+/// (OpenRouter's primary, then the Vercel AI Gateway). Unset, `gateway`
+/// whenever [`INFERENCE_KEY_VAR`] is set, `direct` otherwise.
+pub const INFERENCE_MODE_VAR: &str = "CODER_WORKER_INFERENCE";
+
+/// The local gateway's base URL (`openagents-gateway serve` with the
+/// inference routes on loopback).
+pub const DEFAULT_INFERENCE_URL: &str = "http://127.0.0.1:8790";
+
+/// What the chat worker asks the gateway for: the general conversation
+/// task class, so the gateway's router picks the model and upstream.
+pub const DEFAULT_INFERENCE_MODEL: &str = "openagents/chat";
+
+/// The gateway door from the environment, when the switch is on: the
+/// gateway URL, its service key, and the model or class asked for. `None`
+/// when the worker keeps its direct doors.
+///
+/// # Errors
+///
+/// A sentence when the switch names neither mode, or names `gateway` with
+/// no service key to reach it.
+pub fn inference_door_from_env() -> Result<Option<ResponsesDoor>, String> {
+    let key = env::var(INFERENCE_KEY_VAR)
+        .ok()
+        .filter(|key| !key.trim().is_empty());
+    let mode = env::var(INFERENCE_MODE_VAR).ok();
+    let on = match mode.as_deref().map(str::trim) {
+        None | Some("") => key.is_some(),
+        Some("gateway") => true,
+        Some("direct") => false,
+        Some(other) => {
+            return Err(format!(
+                "{INFERENCE_MODE_VAR} is `gateway` or `direct`, not `{other}`"
+            ));
+        }
+    };
+    if !on {
+        return Ok(None);
+    }
+    let key = key.ok_or_else(|| {
+        format!(
+            "{INFERENCE_MODE_VAR}=gateway needs the gateway's service key in {INFERENCE_KEY_VAR}; \
+             set {INFERENCE_MODE_VAR}=direct to keep the provider doors"
+        )
+    })?;
+    let url = env::var(INFERENCE_URL_VAR)
+        .ok()
+        .filter(|url| !url.trim().is_empty())
+        .unwrap_or_else(|| DEFAULT_INFERENCE_URL.to_string());
+    let model = env::var(INFERENCE_MODEL_VAR)
+        .ok()
+        .filter(|model| !model.trim().is_empty())
+        .unwrap_or_else(|| DEFAULT_INFERENCE_MODEL.to_string());
+    Ok(Some(ResponsesDoor::new(url, model, key).through_gateway()))
+}
+
 /// The variable choosing what every door asks of its model provider about
 /// keeping and training on the conversation: `strict` (unset), `no-training`,
 /// or `off`. See [`ProviderPrivacy`] (#11040).
@@ -457,6 +529,10 @@ pub enum Meta {
     /// job would be admitted (the NIP-CJ error status's `retry_after_ms`).
     /// A door emits it just before it returns [`GenerateError::Refused`].
     RetryAfter(u64),
+    /// The upstream account that answered, when the door is the inference
+    /// gateway and its `openagents:route` event named one (`vertex`,
+    /// `openrouter`, `vercel`, ...). Emitted with [`Meta::Model`].
+    Upstream(String),
 }
 
 /// What generation can fail with.
@@ -687,6 +763,10 @@ pub struct ResponsesDoor {
     /// What the door asks its provider about keeping and training on the
     /// conversation ([`ProviderPrivacy`]); [`PROVIDER_PRIVACY_VAR`] by default.
     privacy: ProviderPrivacy,
+    /// Whether the door is the OpenAgents inference gateway: the privacy
+    /// level goes in the request's `openagents` object, and each answer
+    /// names the model and upstream the gateway chose.
+    gateway: bool,
 }
 
 impl ResponsesDoor {
@@ -700,7 +780,24 @@ impl ResponsesDoor {
             patience: Patience::default(),
             options: None,
             privacy: ProviderPrivacy::from_env(),
+            gateway: false,
         }
+    }
+
+    /// The same door as the OpenAgents inference gateway
+    /// (`docs/inference/gateway.md`): the request carries
+    /// `openagents.privacy`, and each answer names the model and upstream
+    /// the gateway's router chose ([`Meta::Model`], [`Meta::Upstream`]).
+    #[must_use]
+    pub fn through_gateway(mut self) -> Self {
+        self.gateway = true;
+        self
+    }
+
+    /// Whether the door is the OpenAgents inference gateway.
+    #[must_use]
+    pub fn is_gateway(&self) -> bool {
+        self.gateway
     }
 
     /// The same door asking its provider for `privacy` instead of the
@@ -814,7 +911,21 @@ impl ResponsesDoor {
                 fields.insert(name.clone(), value.clone());
             }
         }
-        self.privacy.apply(&self.url, &mut body);
+        if self.gateway {
+            // The gateway carries the level to each upstream itself; the
+            // provider fields are for doors that are the provider.
+            let level = match self.privacy {
+                ProviderPrivacy::Strict => "strict",
+                ProviderPrivacy::NoTraining | ProviderPrivacy::Off => "standard",
+            };
+            if let Some(fields) = body.as_object_mut() {
+                let mut asks = serde_json::Map::new();
+                asks.insert("privacy".to_string(), json!(level));
+                merge(fields, "openagents", asks);
+            }
+        } else {
+            self.privacy.apply(&self.url, &mut body);
+        }
         body
     }
 }
@@ -848,6 +959,9 @@ struct Reader {
     events: u32,
     /// Whether `response.completed` has been read.
     completed: bool,
+    /// The model and upstream the inference gateway's `openagents:route`
+    /// event named, when the door is the gateway.
+    route: Option<(String, String)>,
 }
 
 impl Reader {
@@ -945,6 +1059,13 @@ impl Reader {
                     sink(delta);
                 }
             }
+            "openagents:route" => {
+                if let (Some(model), Some(upstream)) =
+                    (event["model"].as_str(), event["upstream"].as_str())
+                {
+                    self.route = Some((model.to_string(), upstream.to_string()));
+                }
+            }
             "response.completed" => {
                 self.completed = true;
                 self.usage = event["response"]["usage"].as_object().map(|u| Usage {
@@ -1021,8 +1142,10 @@ impl ResponsesDoor {
         instructions: &str,
         input: &[Message],
         sink: &mut (dyn FnMut(&str) + Send),
+        routed: &mut Option<(String, String)>,
     ) -> Result<(String, Option<Usage>), (String, GenerateError)> {
-        self.once_watched(instructions, input, sink, None).await
+        self.once_watched(instructions, input, sink, None, Some(routed))
+            .await
     }
 
     /// [`ResponsesDoor::once`], setting `alive` when the stream carries
@@ -1034,6 +1157,7 @@ impl ResponsesDoor {
         input: &[Message],
         sink: &mut (dyn FnMut(&str) + Send),
         alive: Option<&std::sync::atomic::AtomicBool>,
+        routed: Option<&mut Option<(String, String)>>,
     ) -> Result<(String, Option<Usage>), (String, GenerateError)> {
         let ends = Instant::now() + self.patience.whole;
         let sent = self
@@ -1106,6 +1230,9 @@ impl ResponsesDoor {
                 Err(error) => return Err((reader.text, error)),
             }
         }
+        if let Some(routed) = routed {
+            routed.clone_from(&reader.route);
+        }
         reader.finish(sink)
     }
 
@@ -1156,7 +1283,7 @@ impl Generate for ResponsesDoor {
         instructions: &'a str,
         input: &'a [Message],
         sink: &'a mut (dyn FnMut(&str) + Send),
-        _meta: &'a mut (dyn FnMut(Meta) + Send),
+        meta: &'a mut (dyn FnMut(Meta) + Send),
     ) -> Result<(String, Option<Usage>), GenerateError> {
         // Two kinds of attempt are counted, because two kinds of failure
         // earn another one.
@@ -1180,8 +1307,17 @@ impl Generate for ResponsesDoor {
         let mut empty: usize = 0;
         let mut unanswered: u32 = 0;
         loop {
-            let (partial, error) = match self.once(instructions, input, sink).await {
-                Ok(done) => return Ok(done),
+            let mut routed = None;
+            let (partial, error) = match self.once(instructions, input, sink, &mut routed).await {
+                Ok(done) => {
+                    // The gateway names what its router chose; the turn
+                    // names it rather than the class it asked for.
+                    if let Some((model, upstream)) = routed.filter(|_| self.gateway) {
+                        meta(Meta::Model(model));
+                        meta(Meta::Upstream(upstream));
+                    }
+                    return Ok(done);
+                }
                 Err(failed) => failed,
             };
             match &error {
@@ -1343,9 +1479,9 @@ impl FallbackDoor {
             spoke.store(true, relaxed);
             sink(delta);
         };
-        let attempt = self
-            .primary
-            .once_watched(instructions, input, &mut forward, Some(&alive));
+        let attempt =
+            self.primary
+                .once_watched(instructions, input, &mut forward, Some(&alive), None);
         tokio::pin!(attempt);
         let deadline = tokio::time::sleep(self.first_word);
         tokio::pin!(deadline);
@@ -1809,6 +1945,45 @@ mod tests {
         assert_eq!(body["tools"], json!([]));
         assert_eq!(body["input"][0]["content"][0]["type"], "input_text");
         assert_eq!(body["input"][1]["content"][0]["type"], "output_text");
+    }
+
+    /// #11064: the inference gateway door carries the privacy level in
+    /// `openagents`, never a provider's own fields, and reads the model and
+    /// upstream the gateway chose from `openagents:route`.
+    #[test]
+    fn the_gateway_door_asks_in_openagents_terms_and_reads_the_route() {
+        let door = ResponsesDoor::new("http://127.0.0.1:8790", "openagents/chat", "oak_x.y")
+            .with_privacy(ProviderPrivacy::Strict)
+            .through_gateway();
+        assert!(door.is_gateway());
+        let body = door.body("sys", &[]);
+        assert_eq!(body["openagents"]["privacy"], "strict");
+        assert!(body.get("provider").is_none() && body.get("providerOptions").is_none());
+        let lowered = door.clone().with_privacy(ProviderPrivacy::Off);
+        assert_eq!(
+            lowered.body("sys", &[])["openagents"]["privacy"],
+            "standard"
+        );
+
+        let mut reader = Reader::default();
+        let stream = concat!(
+            "data: {\"type\":\"response.created\",\"sequence_number\":0,\"response\":{}}\n\n",
+            "data: {\"type\":\"openagents:route\",\"sequence_number\":1,\"model\":\"google/gemini-3.8-flash\",\"upstream\":\"openrouter\"}\n\n",
+            "data: {\"type\":\"response.output_text.delta\",\"sequence_number\":2,\"delta\":\"hi\"}\n\n",
+            "data: {\"type\":\"openagents:cost\",\"sequence_number\":3,\"cost\":{}}\n\n",
+            "data: {\"type\":\"response.completed\",\"sequence_number\":4,\"response\":{}}\n\n",
+            "data: [DONE]\n\n",
+        );
+        reader.push(stream.as_bytes(), &mut |_| {}).expect("read");
+        assert_eq!(
+            reader.route,
+            Some((
+                "google/gemini-3.8-flash".to_string(),
+                "openrouter".to_string()
+            ))
+        );
+        let (text, _) = reader.finish(&mut |_| {}).expect("answer");
+        assert_eq!(text, "hi");
     }
 
     /// #11040: by default the OpenRouter door asks for no data collection

@@ -495,7 +495,15 @@ pub fn body(
         }
         _ => {}
     }
-    if row.capabilities.reasoning {
+    // A budget model (Gemini 2.5) asked for no effort keeps its own
+    // default: Vertex refuses `includeThoughts` on Flash-Lite, which does
+    // not think unless given a budget ("include_thoughts is only enabled
+    // when thinking is enabled", 400).
+    let asked = request
+        .reasoning
+        .as_ref()
+        .is_some_and(|reasoning| reasoning.effort.is_some());
+    if row.capabilities.reasoning && (asked || thinking == Thinking::Level) {
         let mut thinking_config = Map::new();
         thinking_config.insert("includeThoughts".into(), json!(true));
         if let Some(effort) = request.reasoning.as_ref().and_then(|r| r.effort.as_ref()) {

@@ -210,6 +210,7 @@ async fn a_job_turn_streams_feedback_and_a_result() {
                 Meta::Judgment(line) => judgment = line,
                 Meta::Model(name) => model = name,
                 Meta::RetryAfter(_) => {}
+                Meta::Upstream(_) => {}
             },
         )
         .await

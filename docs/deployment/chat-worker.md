@@ -264,6 +264,33 @@ new credential flow for the phone. The relay door already authenticates by
 the device key, already streams, and already has a deployed worker and
 runbook, so OpenAgents chat reuses it.
 
+## Through the inference gateway
+
+Since #11064 the worker can send every model call through the OpenAgents
+inference gateway ([docs/inference/gateway.md](../inference/gateway.md))
+instead of calling OpenRouter and the Vercel AI Gateway itself. The
+gateway's router picks the model and upstream (prepaid Google credit on
+Vertex first for `openagents/chat`, then the Pro door, then OpenRouter),
+falls back before the first token, and records every attempt.
+
+| Variable | Meaning |
+| --- | --- |
+| `CODER_INFERENCE_KEY` | The gateway's `oak_` service key. Set, the switch is on. |
+| `CODER_INFERENCE_URL` | The gateway's base URL; default `http://127.0.0.1:8790`. |
+| `CODER_INFERENCE_MODEL` | Model id or task class to ask for; default `openagents/chat`. |
+| `CODER_WORKER_INFERENCE` | `gateway` or `direct`. Unset: `gateway` when the key is set. `direct` keeps the OpenRouter primary and the Vercel lane described above. |
+
+In gateway mode the worker needs no provider key for generation; Jev's
+doors, personalization, and product search still read theirs. The Gym news
+lane asks for `openagents/fast` unless `CODER_GYM_NEWS_MODEL` names a
+model. Each result names the model the gateway chose, and the usage log's
+`door` reads `<upstream> via <gateway host>`.
+
+Locally, `scripts/dev/inference-local.sh` starts the gateway, a worker from
+this checkout on a fresh key, and the website on `127.0.0.1:4300` pointed at
+it. The deployed worker keeps the direct doors until the gateway is
+deployed and its env file gets a service key.
+
 ## Admission: no usage limits
 
 The owner decided on 2026-10-01

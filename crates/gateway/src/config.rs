@@ -217,6 +217,14 @@ pub struct Inference {
     /// The environment variable holding the bearer the admin status
     /// route (`/v1/admin/inference/status`) answers.
     pub admin_token_env: String,
+    /// The tenants whose `oak_` keys are our own services: they may call
+    /// `/v1/responses` and `/v1/chat/completions`, metered and not
+    /// charged. Empty admits no one (P0 serves our services only).
+    #[serde(default)]
+    pub service_tenants: Vec<String>,
+    /// A class table in place of the spec's starting one.
+    #[serde(default)]
+    pub classes: Option<inference::router::ClassTable>,
 }
 
 #[derive(Clone, Debug, Deserialize)]

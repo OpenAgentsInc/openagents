@@ -123,6 +123,7 @@ impl<G: Generate> microcoder_loop::models::Generate for CloudLane<G> {
                 Meta::Model(name) => model = Some(name),
                 Meta::RetryAfter(ms) => retry_after_ms = Some(ms),
                 Meta::Judgment(_) => {}
+                Meta::Upstream(_) => {}
             })
             .await;
         let (action, usage) = match answered {

@@ -14,7 +14,7 @@ use inference::router::{
 };
 
 const FLASH: &str = "google/gemini-3.8-flash";
-const LITE: &str = "google/gemini-3.8-flash-lite";
+const LITE: &str = "google/gemini-2.5-flash-lite";
 const PRO: &str = "google/gemini-3.8-pro";
 const GLM: &str = "zai/glm-5.3-flash";
 const NOW: u64 = 1_800_000_000_000;

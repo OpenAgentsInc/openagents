@@ -52,6 +52,9 @@ use crate::wire::Extra;
 /// takes `chat`.
 pub const JUDGE_BUDGET: Duration = Duration::from_millis(1_500);
 
+/// The router id that asks for a judged class.
+const AUTO: &str = "openagents/auto";
+
 /// The window of live rates the router ranks on.
 const RATE_WINDOW_MS: u64 = 5 * 60_000;
 
@@ -241,7 +244,7 @@ impl Gateway {
     pub async fn run(&self, request: &CreateResponse, caller: &Caller) -> Result<Routed, ApiError> {
         let arrived = Instant::now();
         let requested = request.model.clone().unwrap_or_default();
-        let picked = if requested == "openagents/auto" {
+        let picked = if requested == AUTO {
             match &self.judge {
                 Some(judge) => tokio::time::timeout(self.judge_budget, judge.pick(request))
                     .await
@@ -261,22 +264,36 @@ impl Gateway {
             .lock()
             .map(|bench| bench.clone())
             .unwrap_or_default();
-        let decided = Decided(picked);
-        let planned = plan(
-            request,
-            &Context {
-                offerings: &offerings,
-                classes: &self.classes,
-                card: &card,
-                ledger: &ledger,
-                rates: &rates,
-                scores: &self.scores,
-                bench: &bench,
-                limits: caller.limits,
-                judge: Some(&decided),
-                now_ms,
-            },
-        )?;
+        let plan_as = |judged: Option<TaskClass>| {
+            let decided = Decided(judged);
+            plan(
+                request,
+                &Context {
+                    offerings: &offerings,
+                    classes: &self.classes,
+                    card: &card,
+                    ledger: &ledger,
+                    rates: &rates,
+                    scores: &self.scores,
+                    bench: &bench,
+                    limits: caller.limits,
+                    judge: Some(&decided),
+                    now_ms,
+                },
+            )
+        };
+        // A judged class with nothing to run it on right now answers as
+        // `chat`, the class `openagents/auto` takes without a judgment.
+        let planned = match plan_as(picked) {
+            Err(refusal)
+                if refusal.kind == ErrorType::NoRoute
+                    && requested == AUTO
+                    && picked.is_some_and(|class| class != TaskClass::Chat) =>
+            {
+                plan_as(Some(TaskClass::Chat))?
+            }
+            other => other?,
+        };
         let class = planned.class;
         let deadline = Duration::from_millis(planned.first_token_ms);
         let mut tried: Vec<ext::Attempt> = Vec::new();

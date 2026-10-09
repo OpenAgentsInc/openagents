@@ -12,8 +12,9 @@ is the primary API, the upstreams include accounts only we hold (prepaid
 Google and Z.ai credit, the Pro door) and Pylon providers, and every price
 on the rate card shows its cost and margin.
 
-Status: design. Nothing in this document is implemented yet unless it says
-so. Section 2 records what runs today.
+Status: P0 is implemented for our own services and runs locally
+(section 13); production is not deployed. Section 2 records what ran before
+it. Anything else in this document is design unless it says so.
 
 ## Contents
 
@@ -480,6 +481,32 @@ avoids both.
 | P0, internal | `crates/inference`: Open Responses types, Chat Completions translation, adapters (Vertex, Z.ai, Pro door, OpenRouter, Vercel), the router with credit-aware ranking, attempt records, burn-down alerts. The gateway serves `/v1/responses` and `/v1/chat/completions` to service keys. The chat worker sends its model calls through it and drops its provider keys. | Every chat worker turn names an upstream the gateway chose, every attempt is recorded, and the Google and Z.ai burn-downs show on the dashboard |
 | P1, public beta | Public keys, both APIs, `/v1/models`, `/v1/rates`, `/v1/usage`, `/v1/key`, the free tier, BYOK, user-set limits, served docs, and a passing Open Responses acceptance run | An outside developer goes from key to first answer with the OpenAI SDK in under five minutes, and the acceptance suite passes against production |
 | P2, marketplace | Pylon providers and local Psionic as upstreams with payouts, `store: true`, compaction, WebSocket, hosted tools | A Pylon provider earns from a public API request |
+
+P0 as built (#11060 to #11064):
+
+- `crates/inference`: the wire types and translation, the adapters
+  (`upstream`), the meter, the router's plan, and the attempt loop
+  (`run::Gateway`). The crate README lists the rules.
+- `crates/gateway` mounts `POST /v1/responses` and
+  `POST /v1/chat/completions` when `inference` is configured
+  (`inference_routes`). Only an `oak_` key whose tenant is in
+  `inference.service_tenants` is admitted (metered, not charged); a key
+  scoped to actions needs `inference`. Adapters read their keys from the
+  environment or mounted `*_FILE`s; one without its key stays out of
+  routing. `openagents/auto` is judged by Jev (`TYPESAFE_API_KEY`); a
+  judged class with no route right now answers as `chat`.
+  `inference.classes` replaces the class table.
+- `GET /admin/inference` is the dashboard: each credit account's burn-down,
+  the alerts that hold, and live rates for the last hour and day, behind
+  the admin token (`GET /v1/admin/inference/status` is the same as JSON).
+- The chat worker sends every model call through the gateway when
+  `CODER_INFERENCE_KEY` holds a service key (`CODER_INFERENCE_URL`,
+  default `http://127.0.0.1:8790`; `CODER_INFERENCE_MODEL`, default
+  `openagents/chat`). `CODER_WORKER_INFERENCE=direct` keeps the provider
+  doors. Each result names the model the gateway chose, and the usage log's
+  `door` names the upstream (`vertex via 127.0.0.1:8790`).
+- `scripts/dev/inference-local.sh` runs the gateway, a chat worker on it,
+  and the website on one machine.
 
 Issues, in build order:
 

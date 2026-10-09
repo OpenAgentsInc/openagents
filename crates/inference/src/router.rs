@@ -194,7 +194,7 @@ impl Default for ClassTable {
                     vec![
                         ClassModel::on("openai/gpt-5.6-luna", "pro"),
                         ClassModel::on(glm, "zai"),
-                        ClassModel::on("google/gemini-3.8-flash-lite", "vertex"),
+                        ClassModel::on("google/gemini-2.5-flash-lite", "vertex"),
                     ],
                     4_000,
                 ),
