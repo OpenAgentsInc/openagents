@@ -25,6 +25,8 @@
 //!
 //! [`Settings`] lives in `sync.json` (0600) beside the account file.
 
+pub mod traces;
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::sync::mpsc;

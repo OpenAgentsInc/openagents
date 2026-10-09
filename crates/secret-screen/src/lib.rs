@@ -397,9 +397,120 @@ impl Screen {
     }
 }
 
+/// What [`Screen::redact_document`] took out, by rule name, with how many
+/// of each. `exact` counts values this host holds as credentials.
+pub type Counts = BTreeMap<String, u32>;
+
+fn walk_strings(value: &mut serde_json::Value, each: &mut dyn FnMut(&mut String)) {
+    match value {
+        serde_json::Value::String(text) => each(text),
+        serde_json::Value::Array(values) => {
+            for value in values {
+                walk_strings(value, each);
+            }
+        }
+        serde_json::Value::Object(fields) => {
+            for value in fields.values_mut() {
+                walk_strings(value, each);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// `text` with the markers redaction leaves (`[redacted:rule]`) blanked,
+/// so a marker after a variable name doesn't read as its value.
+fn without_markers(text: &str) -> std::borrow::Cow<'_, str> {
+    static MARKER: OnceLock<Regex> = OnceLock::new();
+    MARKER
+        .get_or_init(|| Regex::new(r"\[redacted(:[a-z\-]+)?\]").expect("marker pattern"))
+        .replace_all(text, " ")
+}
+
+/// The first credential rule any string in `document` (values and object
+/// keys, at every depth) matches, ignoring what redaction already took
+/// out. An uploaded or published document is refused when this is `Some`.
+#[must_use]
+pub fn credential_in_document(document: &serde_json::Value) -> Option<&'static str> {
+    match document {
+        serde_json::Value::String(text) => credential_in(&without_markers(text)),
+        serde_json::Value::Array(values) => values.iter().find_map(credential_in_document),
+        serde_json::Value::Object(fields) => fields.iter().find_map(|(key, value)| {
+            credential_in(&without_markers(key)).or_else(|| credential_in_document(value))
+        }),
+        _ => None,
+    }
+}
+
+impl Screen {
+    /// Redacts every string in `document`, at every depth: credential
+    /// shapes, this host's exact credential values, and personal data
+    /// (home folder names and email addresses). Returns what was taken
+    /// out, by rule. Object keys are left as they are.
+    pub fn redact_document(&self, document: &mut serde_json::Value) -> Counts {
+        let mut counts = Counts::new();
+        walk_strings(document, &mut |text| {
+            let mut out = redact_counted(text, &mut counts);
+            for value in &self.exact {
+                let found = out.matches(value.as_str()).count();
+                if found > 0 {
+                    out = out.replace(value.as_str(), "[redacted:exact]");
+                    *counts.entry("exact".to_owned()).or_default() +=
+                        u32::try_from(found).unwrap_or(u32::MAX);
+                }
+            }
+            if out != *text {
+                *text = out;
+            }
+        });
+        counts
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_document_is_redacted_at_every_depth_and_then_passes() {
+        let github = format!("ghp_{}", "Z9".repeat(18));
+        let mut screen = Screen::shapes();
+        let value = format!("plain{}", "x7".repeat(8));
+        screen.add(value.clone());
+        let mut document = serde_json::json!({
+            "steps": [
+                {"message": format!("use {github} please"),
+                 "extra": {"env": "CLAUDE_CODE_OAUTH_TOKEN=opaque-value"}},
+                {"observation": {"results": [
+                    {"content": format!("cat /Users/alice/x {value} bob@example.com")}
+                ]}}
+            ]
+        });
+        assert!(credential_in_document(&document).is_some());
+        let counts = screen.redact_document(&mut document);
+        let text = document.to_string();
+        for gone in [
+            github.as_str(),
+            "opaque-value",
+            value.as_str(),
+            "alice",
+            "bob@example.com",
+        ] {
+            assert!(!text.contains(gone), "{gone}: {text}");
+        }
+        for rule in [
+            "github-token",
+            "claude-oauth-env",
+            "exact",
+            "home-directory",
+            "email",
+        ] {
+            assert_eq!(counts.get(rule), Some(&1), "{rule}: {counts:?}");
+        }
+        assert_eq!(credential_in_document(&document), None);
+        let keyed = serde_json::json!({ github.clone(): 1 });
+        assert_eq!(credential_in_document(&keyed), Some("github-token"));
+    }
 
     #[test]
     fn credential_shapes_are_redacted_and_counted() {

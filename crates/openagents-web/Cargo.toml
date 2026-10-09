@@ -9,6 +9,7 @@ default-run = "openagents-web"
 
 [dependencies]
 openagents-ui = { path = "../openagents-ui" }
+atif = { path = "../atif" }
 axum = "0.8"
 base64 = "0.22"
 coder = { path = "../coder" }
@@ -50,7 +51,6 @@ workbench = { path = "../workbench" }
 
 [dev-dependencies]
 oa-copy = { path = "../oa-copy" }
-atif = { path = "../atif" }
 coder-environment = { path = "../coder-environment" }
 coder-environment-build = { path = "../coder-environment-build" }
 coder-environment-operator = { path = "../coder-environment-operator" }

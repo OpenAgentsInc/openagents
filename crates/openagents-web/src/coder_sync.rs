@@ -883,7 +883,7 @@ fn respond(result: Result<Saved, Error>) -> Response {
 }
 
 /// The account a request's app token signs in, as its chat owner.
-async fn owner(app: &App, headers: &HeaderMap) -> Result<String, Response> {
+pub(crate) async fn owner(app: &App, headers: &HeaderMap) -> Result<String, Response> {
     let Some(service) = app.config.cloud.as_deref() else {
         return Err(refused(
             StatusCode::SERVICE_UNAVAILABLE,

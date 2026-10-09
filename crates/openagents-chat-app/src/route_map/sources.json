@@ -2643,6 +2643,23 @@
         "answer": true
       },
       {
+        "id": "openagents.traces",
+        "title": "Uploading agent traces to your account",
+        "path": "knowledge/openagents/openagents.traces.md",
+        "status": "admitted",
+        "tags": [
+          "coder",
+          "traces",
+          "trace",
+          "atif",
+          "upload",
+          "share",
+          "export",
+          "settings"
+        ],
+        "answer": true
+      },
+      {
         "id": "openagents.trainer-card",
         "title": "The trainer card and levels",
         "path": "knowledge/openagents/openagents.trainer-card.md",

@@ -458,6 +458,18 @@ fn settings_content(
                     div class="oa-settings-control" { (action_link("Manage", crate::api_keys::KEYS)) }
                 }
             }
+            section class="oa-settings-group" aria-labelledby="settings-traces" {
+                h2 #settings-traces { "Traces" }
+                div class="oa-settings-row" {
+                    div class="oa-settings-text" {
+                        span class="oa-settings-label" { "Your traces" }
+                        span class="oa-settings-hint" {
+                            "Agent runs you uploaded with coder trace upload. Private unless you share one."
+                        }
+                    }
+                    div class="oa-settings-control" { (action_link("Open", crate::traces::PAGE)) }
+                }
+            }
             @if let Some((hint, manage)) = claude {
                 section class="oa-settings-group" aria-labelledby="settings-claude" {
                     h2 #settings-claude { "Claude" }

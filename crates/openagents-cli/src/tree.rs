@@ -77,6 +77,8 @@ const CODER: &[Declared] = &[
     Declared::computer("sessions delete", Effect::LocalWrite),
     Declared::computer("export", Effect::LocalWrite),
     Declared::computer("import", Effect::LocalWrite),
+    Declared::computer("trace upload", Effect::Publishes),
+    Declared::computer("trace list", Effect::ReadOnly),
 ];
 
 const PAIR: &[Declared] = &[Declared::screen("", Effect::Grants, "account.computers")];

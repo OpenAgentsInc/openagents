@@ -63,6 +63,9 @@ fn run() -> io::Result<()> {
     {
         return account_command(command, &args[1..]);
     }
+    if args.first().is_some_and(|command| command == "trace") {
+        return trace_command(&args[1..]);
+    }
     let mut app = App::default();
     let mut capture = false;
     let mut models = false;
@@ -306,6 +309,44 @@ fn account_command(command: &str, rest: &[String]) -> io::Result<()> {
     .map_err(io::Error::other)
 }
 
+/// `coder trace upload …` and `coder trace list [--state DIR]` (#11109).
+fn trace_command(rest: &[String]) -> io::Result<()> {
+    let mut args = rest.to_vec();
+    let mut dir = None;
+    if let Some(at) = args.iter().position(|arg| arg == "--state") {
+        if at + 1 >= args.len() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "--state needs a folder.",
+            ));
+        }
+        dir = Some(std::path::PathBuf::from(args.remove(at + 1)));
+        args.remove(at);
+    }
+    if args
+        .iter()
+        .any(|arg| matches!(arg.as_str(), "--help" | "-h"))
+        || args.is_empty()
+    {
+        println!("{}", coder_new::trace_upload::USAGE);
+        return Ok(());
+    }
+    let dir = dir
+        .or_else(|| model_access::store::openagents_dir().map(|root| root.join("coder-new")))
+        .ok_or_else(|| io::Error::other("Set HOME, or pass --state DIR."))?;
+    let cwd = std::env::current_dir()?;
+    match coder_new::trace_upload::run(&args, &dir, &cwd) {
+        Ok(outcome) => {
+            println!("{}", outcome.text());
+            Ok(())
+        }
+        Err(message) => {
+            eprintln!("{message}");
+            std::process::exit(1);
+        }
+    }
+}
+
 fn help() -> String {
     let (demo_option, snapshot_mode) = if DEMO_AVAILABLE {
         (
@@ -322,6 +363,8 @@ Usage:
   coder [OPTIONS]        Open Coder in this directory.
   coder login            Sign in to openagents.com: approve the code at https://openagents.com/device.
   coder logout           Sign this computer out.
+  coder trace upload     Upload a chat to your account as a trace (coder trace --help).
+  coder trace list       List the traces on your account.
 
 Options:
   --in DIR            Work in DIR instead of this directory.

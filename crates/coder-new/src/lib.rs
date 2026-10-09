@@ -39,6 +39,7 @@ pub mod slash;
 pub mod snapshot;
 pub mod theme;
 pub mod tools;
+pub mod trace_upload;
 pub mod trajectory;
 pub mod ui;
 

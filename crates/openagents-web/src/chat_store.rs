@@ -988,6 +988,147 @@ impl Store {
             Adapter::Gcs(gcs) => gcs.expire(cutoff_unix).await,
         }
     }
+
+    /// An account's own object key beside its chats: `rest` under the
+    /// owner's folder (uploaded traces, `crate::traces`). Such objects are
+    /// never listed as chats and never expire with them.
+    pub(crate) fn owner_key(owner: &str, rest: &str) -> Result<String, Error> {
+        validate_owner(owner)?;
+        let key = format!("{}/{rest}", owner_digest(owner));
+        valid_key(&key)?;
+        Ok(key)
+    }
+
+    /// The object at `key` ([`Self::owner_key`] or another fixed key) and
+    /// its generation; `None` when there is none.
+    pub(crate) async fn read_key(&self, key: &str) -> Result<Option<(Vec<u8>, String)>, Error> {
+        valid_key(key)?;
+        match self.0.as_ref() {
+            Adapter::Disk(root) => {
+                let path = root.join(key);
+                blocking(move || read_key_disk(&path)).await
+            }
+            Adapter::Gcs(gcs) => gcs.read_object(&format!("{}/{key}", gcs.prefix)).await,
+        }
+    }
+
+    /// Write `bytes` at `key` when it is still at `expected` (`None`: only
+    /// when nothing is there). Returns the new generation; `Conflict` when
+    /// it changed.
+    pub(crate) async fn write_key(
+        &self,
+        key: &str,
+        bytes: Vec<u8>,
+        expected: Option<&str>,
+    ) -> Result<String, Error> {
+        valid_key(key)?;
+        if bytes.len() > MAX_RECORD_BYTES {
+            return Err(Error::Invalid("The object exceeds its size limit."));
+        }
+        match self.0.as_ref() {
+            Adapter::Disk(root) => {
+                let path = root.join(key);
+                let expected = expected.map(str::to_owned);
+                blocking(move || {
+                    let directory = path
+                        .parent()
+                        .ok_or(Error::Invalid("The object key is invalid."))?;
+                    create_directory(directory)?;
+                    let _lock = lock(&lock_path(&path))?;
+                    let current = read_key_disk(&path)?.map(|(_, generation)| generation);
+                    if current != expected {
+                        return Err(Error::Conflict);
+                    }
+                    atomic_write(&path, &bytes)
+                })
+                .await
+            }
+            Adapter::Gcs(gcs) => {
+                gcs.put_object(
+                    &format!("{}/{key}", gcs.prefix),
+                    bytes,
+                    expected.unwrap_or("0"),
+                )
+                .await
+            }
+        }
+    }
+
+    /// Remove the object at `key` when it is still at `expected`, with
+    /// every older version a bucket kept. False when it was gone.
+    pub(crate) async fn delete_key(&self, key: &str, expected: &str) -> Result<bool, Error> {
+        valid_key(key)?;
+        match self.0.as_ref() {
+            Adapter::Disk(root) => {
+                let path = root.join(key);
+                let expected = expected.to_owned();
+                blocking(move || {
+                    let lock_file = lock_path(&path);
+                    if !path.exists() {
+                        return Ok(false);
+                    }
+                    let _lock = lock(&lock_file)?;
+                    let Some((_, current)) = read_key_disk(&path)? else {
+                        return Ok(false);
+                    };
+                    if current != expected {
+                        return Err(Error::Conflict);
+                    }
+                    fs::remove_file(&path)
+                        .map_err(|_| Error::Unavailable("The delete has an unknown outcome."))?;
+                    let _ = fs::remove_file(&lock_file);
+                    Ok(true)
+                })
+                .await
+            }
+            Adapter::Gcs(gcs) => {
+                gcs.delete_chat(&format!("{}/{key}", gcs.prefix), expected)
+                    .await
+            }
+        }
+    }
+}
+
+/// A key for [`Store::read_key`]: `/`-separated parts of letters, digits,
+/// `-`, `_`, and `.`, none empty or starting with a dot.
+fn valid_key(key: &str) -> Result<(), Error> {
+    let fine = !key.is_empty()
+        && key.len() <= 256
+        && key.split('/').all(|part| {
+            !part.is_empty()
+                && !part.starts_with('.')
+                && part
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+        });
+    if fine {
+        Ok(())
+    } else {
+        Err(Error::Invalid("The object key is invalid."))
+    }
+}
+
+fn lock_path(path: &Path) -> PathBuf {
+    let mut name = path.file_name().unwrap_or_default().to_os_string();
+    name.push(".lock");
+    path.with_file_name(name)
+}
+
+fn read_key_disk(path: &Path) -> Result<Option<(Vec<u8>, String)>, Error> {
+    let file = match File::open(path) {
+        Ok(file) => file,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(_) => return Err(Error::Unavailable("The object could not be read.")),
+    };
+    let mut bytes = Vec::new();
+    file.take((MAX_RECORD_BYTES + 1) as u64)
+        .read_to_end(&mut bytes)
+        .map_err(|_| Error::Unavailable("The object could not be read."))?;
+    if bytes.len() > MAX_RECORD_BYTES {
+        return Err(Error::Corrupt("The object exceeds its size limit."));
+    }
+    let generation = digest(&bytes);
+    Ok(Some((bytes, generation)))
 }
 
 impl Gcs {
@@ -1371,6 +1512,12 @@ impl Gcs {
             for object in listed.items {
                 if object.name == format!("{prefix}.active.json")
                     || object.name == format!("{prefix}{COMPUTERS_FILE}")
+                    // The account's other objects, such as its traces
+                    // ([`Store::owner_key`]), sit in folders below.
+                    || object
+                        .name
+                        .strip_prefix(&prefix)
+                        .is_some_and(|rest| rest.contains('/'))
                 {
                     continue;
                 }

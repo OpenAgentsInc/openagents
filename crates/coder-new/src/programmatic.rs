@@ -65,6 +65,10 @@ macro_rules! command_usage {
   sessions delete ID                  Remove one saved chat.
   export ID [--output FILE]            Export a saved chat as ATIF-v1.8.
   import FILE [--session ID]           Open an ATIF file to view or continue it.
+  trace upload [ID | --last | --file FILE] [--share]
+                                      Upload a chat to your openagents.com account
+                                      as a trace, passwords and keys taken out.
+  trace list                          List the traces on your account.
 Options: --json streams NDJSON events for chat and delegation.
          --approvals stdin asks before any command that is not read-only:
          an approval event, answered by `confirm ID` or `reject ID` on stdin.
@@ -393,6 +397,12 @@ fn execute_with_demo_policy(
     }
     if command == "import" {
         return import(rest, context);
+    }
+    if command == "trace" {
+        // The same as `coder trace` (#11109).
+        return crate::trace_upload::run(rest, &context.root, &context.cwd)
+            .map(|outcome| outcome.json())
+            .map_err(Error::from);
     }
     if command == "remote" || command == "delegate" && rest.iter().any(|v| v == "--on") {
         let app = bootstrap(context)?;

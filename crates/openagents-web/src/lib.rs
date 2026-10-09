@@ -43,6 +43,7 @@ mod settings;
 mod suggestions;
 mod tasks;
 pub mod theme;
+mod traces;
 pub mod ui_page;
 pub mod upstream;
 mod wellknown;
@@ -237,6 +238,7 @@ pub fn router(config: Config) -> Router {
         .merge(auth::routes())
         .merge(device::routes())
         .merge(coder_sync::routes())
+        .merge(traces::routes())
         .merge(account::routes())
         .merge(settings::routes())
         .merge(projects::routes())
@@ -329,7 +331,10 @@ async fn guard(hosts: Hosts, mut request: Request, next: Next) -> Response {
         || path.starts_with("/device/")
         || matches!(path, "/sign-in" | "/sign-out" | "/settings" | "/projects")
         || path.starts_with("/settings/")
-        || path.starts_with("/projects/");
+        || path.starts_with("/projects/")
+        // Uploaded traces (#11109).
+        || path == "/api/traces"
+        || path.starts_with("/api/traces/");
     let chat = path == "/chat"
         || path.starts_with("/chat/")
         || path == "/ask"

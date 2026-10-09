@@ -5083,6 +5083,93 @@
             "effect": "local_write",
             "runs_on": "connected_computer"
           }
+        },
+        {
+          "name": "trace",
+          "children": [
+            {
+              "name": "upload",
+              "leaf": {
+                "path": [
+                  "coder",
+                  "trace",
+                  "upload"
+                ],
+                "usage": [
+                  "trace upload [ID | --last | --file FILE] [--share]"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "trace"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "upload"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "ID",
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "last",
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "file",
+                        "value": "FILE",
+                        "open": true,
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "share",
+                        "optional": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Upload a chat to your openagents.com account as a trace, passwords and keys taken out.",
+                "effect": "publishes",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "list",
+              "leaf": {
+                "path": [
+                  "coder",
+                  "trace",
+                  "list"
+                ],
+                "usage": [
+                  "trace list"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "trace"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "list"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "List the traces on your account.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
         }
       ],
       "options": [
@@ -5280,6 +5367,28 @@
           "name": "output",
           "value": "FILE",
           "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "last",
+          "value": "|",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "file",
+          "value": "FILE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "share",
           "optional": true,
           "repeated": true
         },
