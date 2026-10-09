@@ -23,10 +23,18 @@
 //! the run page, and task links show only there ([`crate::local_request`]),
 //! and the site guard keeps `/chat/{id}/claude` local too.
 //!
+//! A task that ran over a minute and finished makes the row say Done until
+//! the chat is opened: the chat keeps when it saw the task finish
+//! (`finished_unix`) and, only while such a Done waits, when it was last
+//! open (`opened_unix`, written by [`mark_opened`] when the chat page or its
+//! stream loads it).
+//!
 //! Not wired, because nothing records them yet: Coder tasks on connected
 //! computers are not started from chats, runs report no steps ("3 of 7"),
-//! no run asks the person anything (so no Waiting for you), and Done needs a
-//! last-opened time per chat.
+//! and no run asks the person anything or pauses for a usage limit (runs
+//! here use the person's API key and are driven without the operator that
+//! records sign-in prompts and limit pauses), so no Waiting for you and no
+//! Paused until.
 
 use coder_environment_operator::studio::claude::{MAX_PROMPT, RUN_SECONDS, RunState};
 use coder_environment_operator::studio::{Studio, Summary};
@@ -41,6 +49,9 @@ use super::*;
 
 /// The longest task title kept on the chat (the prompt's first line).
 const TASK_TITLE_CHARS: usize = 120;
+/// A task that ran at least this long says Done on its chat's row until
+/// the chat is opened; quicker ones just finish.
+const DONE_AFTER_SECONDS: u64 = 60;
 /// How often the watcher reads a running task.
 const WATCH_EVERY: Duration = Duration::from_secs(3);
 
@@ -215,6 +226,35 @@ pub(super) fn failed(chat: &Conversation) -> bool {
     })
 }
 
+/// The newest task ran at least [`DONE_AFTER_SECONDS`], finished Done,
+/// and the chat wasn't opened since: the row says Done until it is.
+pub(super) fn unseen_done(chat: &Conversation) -> bool {
+    chat.tasks.last().is_some_and(|task| {
+        task.state == TaskState::Done
+            && task.finished_unix.is_some_and(|at| {
+                at.saturating_sub(task.started_unix) >= DONE_AFTER_SECONDS
+                    && chat.opened_unix.is_none_or(|opened| opened < at)
+            })
+    })
+}
+
+/// Records that the owner has the chat open when a Done waits to be seen,
+/// so the row's Done clears; any other time it writes nothing. The chat as
+/// stored after.
+pub(super) async fn mark_opened(app: &App, loaded: Loaded) -> Loaded {
+    if !unseen_done(&loaded.conversation) {
+        return loaded;
+    }
+    let mut next = loaded.conversation.clone();
+    next.opened_unix = Some(now());
+    next.revision += 1;
+    match app.config.chat_store.compare_and_swap(&loaded, &next).await {
+        Ok(saved) => saved,
+        // Another write won; the next load tries again.
+        Err(_) => loaded,
+    }
+}
+
 fn status(state: TaskState) -> TaskStatus {
     match state {
         TaskState::Working => TaskStatus::Working,
@@ -294,6 +334,9 @@ pub(super) fn observe(
         };
         if task.state != seen.state {
             task.state = seen.state;
+            if seen.state.finished() && task.finished_unix.is_none() {
+                task.finished_unix = Some(now());
+            }
             changed = true;
             if task.kind == TaskKind::Continue
                 && seen.state == TaskState::Done
@@ -531,6 +574,7 @@ async fn run(
         started_unix: now(),
         after_message: 0,
         version,
+        finished_unix: None,
     };
     let recorded = sidebar::update(&app, &owner, &id, |chat| {
         record(chat, environment.clone(), task.clone());
@@ -582,6 +626,7 @@ mod tests {
             terminal: None,
             environment: None,
             tasks: Vec::new(),
+            opened_unix: None,
         }
     }
 
@@ -595,6 +640,7 @@ mod tests {
             started_unix: 1,
             after_message: after,
             version: Some(3),
+            finished_unix: None,
         }
     }
 
@@ -681,7 +727,9 @@ mod tests {
         })
         .expect("b moved");
         assert_eq!(next.tasks[0].state, TaskState::Done, "finished tasks stay");
+        assert_eq!(next.tasks[0].finished_unix, None);
         assert_eq!(next.tasks[1].state, TaskState::Failed);
+        assert!(next.tasks[1].finished_unix.is_some(), "the finish is timed");
         assert_eq!(next.tasks[1].version, Some(4));
         assert_eq!(
             next.tasks[2].state,
@@ -712,7 +760,19 @@ mod tests {
         });
         assert_eq!(row_status(&chat), None, "a new message clears Failed");
         chat.tasks[0].state = TaskState::Done;
-        assert_eq!(row_status(&chat), None, "Done waits for a last-opened time");
+        assert_eq!(row_status(&chat), None, "no finish time, no Done");
+        chat.tasks[0].finished_unix = Some(30);
+        assert_eq!(row_status(&chat), None, "a quick task just finishes");
+        chat.tasks[0].finished_unix = Some(61);
+        assert_eq!(
+            row_status(&chat),
+            Some(ChatStatus::Done),
+            "a long one says Done"
+        );
+        chat.opened_unix = Some(61);
+        assert_eq!(row_status(&chat), None, "until the chat is opened");
+        chat.opened_unix = Some(60);
+        assert!(unseen_done(&chat), "an earlier opening doesn't count");
         chat.environment.as_mut().unwrap().removed = true;
         assert_eq!(detail(&chat).as_deref(), Some("Environment removed"));
     }

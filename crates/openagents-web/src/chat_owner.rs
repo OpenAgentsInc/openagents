@@ -243,6 +243,7 @@ mod tests {
             project: None,
             environment: None,
             tasks: Vec::new(),
+            opened_unix: None,
             revision: 1,
             title: "A chat".into(),
             messages: vec![Message {

@@ -94,6 +94,7 @@ impl Fixture {
                 terminal: None,
                 environment: None,
                 tasks: Vec::new(),
+                opened_unix: None,
             })
             .await
             .unwrap()
@@ -504,6 +505,7 @@ fn sidebar_rows_show_the_repository_and_a_plain_status() {
         terminal: None,
         environment: None,
         tasks: Vec::new(),
+        opened_unix: None,
     };
     assert_eq!(line_two(&chat, true), None);
     assert_eq!(row_status(&chat), None);
@@ -721,6 +723,7 @@ fn pinned_chats_keep_pin_order_and_archived_chats_leave_the_list() {
         terminal: None,
         environment: None,
         tasks: Vec::new(),
+        opened_unix: None,
     };
     let mut first = chat(CHAT, "First pinned");
     first.pinned_unix = Some(5);
@@ -1090,6 +1093,7 @@ async fn a_coder_chat_opens_read_only_with_its_computer() {
         }),
         environment: None,
         tasks: Vec::new(),
+        opened_unix: None,
     };
     assert_eq!(line_two(&chat, true).as_deref(), Some("Terminal · Studio"));
     assert_eq!(row_status(&chat), None);
@@ -1229,4 +1233,51 @@ async fn a_coder_chat_takes_a_reply_while_its_computer_is_online() {
         Ok(vec!["coder-new-1".to_string()])
     );
     fixture.no_worker();
+}
+
+/// #11035: a task that ran over a minute and finished makes the row say
+/// Done until the chat is opened; opening it records that, and the row
+/// goes quiet.
+#[tokio::test]
+async fn a_long_finished_task_says_done_until_the_chat_is_opened() {
+    use crate::chat_store::{ChatTask, TaskKind, TaskState};
+    let fixture = Fixture::new();
+    let loaded = fixture.record(None).await;
+    let mut next = loaded.conversation.clone();
+    next.revision += 1;
+    next.tasks = vec![ChatTask {
+        id: "claude-env-1-1".into(),
+        kind: TaskKind::Claude,
+        environment: "env-1".into(),
+        title: "Fix the login redirect".into(),
+        state: TaskState::Done,
+        started_unix: 100,
+        after_message: 2,
+        version: Some(3),
+        finished_unix: Some(400),
+    }];
+    fixture
+        .app
+        .config
+        .chat_store
+        .compare_and_swap(&loaded, &next)
+        .await
+        .unwrap();
+    assert_eq!(
+        row_status(&fixture.read().await.conversation),
+        Some(ChatStatus::Done)
+    );
+    let (status, body) = fixture
+        .request(Method::GET, &format!("/chat/{CHAT}"), OWNER, &[])
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let opened = fixture.read().await.conversation;
+    assert!(opened.opened_unix.is_some_and(|at| at >= 400));
+    assert_eq!(row_status(&opened), None);
+    // Opening it again writes nothing.
+    let before = fixture.read().await.generation;
+    fixture
+        .request(Method::GET, &format!("/chat/{CHAT}"), OWNER, &[])
+        .await;
+    assert_eq!(fixture.read().await.generation, before);
 }

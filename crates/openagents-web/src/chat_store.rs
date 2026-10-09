@@ -65,6 +65,11 @@ pub(crate) struct Conversation {
     /// [`MAX_TASKS`]). Older records have none.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tasks: Vec<ChatTask>,
+    /// When the owner last had the chat open, written only while a long
+    /// task's Done waits to be seen (`pages::chat_work::unseen_done`), so
+    /// opening the chat clears it. Older records have none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub opened_unix: Option<u64>,
 }
 
 /// Where a synced Coder chat came from, and what Coder last said about it
@@ -251,6 +256,9 @@ pub(crate) struct ChatTask {
     pub after_message: usize,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<u64>,
+    /// When the chat first saw the task finished. Older records have none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub finished_unix: Option<u64>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -2193,6 +2201,7 @@ mod tests {
             terminal: None,
             environment: None,
             tasks: Vec::new(),
+            opened_unix: None,
         }
     }
 
@@ -2261,6 +2270,7 @@ mod tests {
             started_unix: 5,
             after_message: 2,
             version: Some(3),
+            finished_unix: None,
         }];
         let bytes = encode(&record).unwrap();
         let text = String::from_utf8(bytes.clone()).unwrap();

@@ -334,6 +334,7 @@ async fn start(State(app): State<App>, headers: HeaderMap, Form(prompt): Form<Pr
         terminal: None,
         environment: None,
         tasks: Vec::new(),
+        opened_unix: None,
     };
     let loaded = match app.config.chat_store.create(&record).await {
         Ok(v) => v,
@@ -430,8 +431,9 @@ async fn load_owned(app: &App, owner: &str, id: &str) -> Result<Loaded, Response
             return Err(refusal(StatusCode::GONE, crate::composer::RUNTIME_GONE));
         }
     }
-    // A running task's new state is written before anything shows the chat.
-    Ok(work::sync(app, loaded).await)
+    // A running task's new state is written before anything shows the chat,
+    // and showing it clears a waiting Done.
+    Ok(work::mark_opened(app, work::sync(app, loaded).await).await)
 }
 
 async fn show(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>) -> Response {
@@ -1186,14 +1188,18 @@ pub(crate) fn row_status_slot(chat: &Conversation, oob: bool) -> Markup {
     }
 }
 
-/// Working also while a task started from the chat runs, and Failed when
-/// the newest task failed and nothing was sent since ([`work`]).
+/// Working also while a task started from the chat runs, Failed when the
+/// newest task failed and nothing was sent since, and Done when a long task
+/// finished and the chat wasn't opened since ([`work`]).
 fn row_status(chat: &Conversation) -> Option<ChatStatus> {
     if chat.working() || work::running(chat) {
         return Some(ChatStatus::Working);
     }
     if work::failed(chat) {
         return Some(ChatStatus::Failed);
+    }
+    if work::unseen_done(chat) {
+        return Some(ChatStatus::Done);
     }
     match chat.requests.last()?.outcome {
         Outcome::Failed => Some(ChatStatus::Failed),

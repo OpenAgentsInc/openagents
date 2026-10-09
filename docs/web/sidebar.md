@@ -207,10 +207,15 @@ menu need no hover: the `…` is always visible on touch.
    statuses (Waiting for you, Paused until, Done) on rows. The stream is
    built for answers (#11035, `pages/chat_live.rs`): Working and Failed
    change on their own. Claude Code runs started from a chat (phase 5)
-   make its row Working and Failed too. Other task statuses still have no
-   source: no chat names a Coder task (`Pending::job_id` is always empty
-   and running a chat on a computer is gone), runs ask nothing (Waiting for
-   you), and Done waits for a last-opened time per chat.
+   make its row Working and Failed too, and Done when a run that took over
+   a minute finished and the chat wasn't opened since (the chat keeps the
+   task's `finished_unix` and, only while that Done waits, `opened_unix`).
+   Synced Coder chats are Working while Coder says it is replying. Still
+   without a source: no chat names a Coder task on a connected computer
+   (`Pending::job_id` is always empty and running a chat on a computer is
+   gone), and chat runs neither ask anything nor pause for a usage limit
+   (they run on the person's API key, without the operator that records
+   sign-in prompts and limit pauses), so no Waiting for you or Paused until.
 4. **Organize** (built, #11036): pin, rename, archive, search, keyboard.
    `chat_store` keeps `pinned_unix` and `archived_unix`; the routes are
    `POST /chat/{id}/pin|archive|rename`, `GET /chat/{id}/rename` (the
@@ -237,6 +242,6 @@ menu need no hover: the `…` is always visible on touch.
    exists is marked removed when the chat opens ("Environment removed";
    the chat stays readable). Not built, for lack of a source: Coder tasks
    on connected computers (nothing starts them from a chat), steps ("3 of
-   7"; runs report none), Waiting for you (runs ask nothing), Done (needs a
-   last-opened time), and an environment's setup conversation as a chat
+   7"; runs report none), Waiting for you and Paused until (runs ask
+   nothing and don't pause), and an environment's setup conversation as a chat
    (it lives in the environments studio, not the chat store).

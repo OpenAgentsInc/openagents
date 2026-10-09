@@ -266,6 +266,7 @@ mod tests {
             terminal: None,
             environment: None,
             tasks: Vec::new(),
+            opened_unix: None,
         }
     }
 

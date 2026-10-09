@@ -248,6 +248,7 @@ pub(crate) async fn save(
                 }),
                 environment: None,
                 tasks: Vec::new(),
+                opened_unix: None,
             };
             match store.create(&chat).await {
                 Ok(_) => {

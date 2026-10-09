@@ -379,6 +379,7 @@ async fn start(
         started_unix: now(),
         after_message: 0,
         version,
+        finished_unix: None,
     };
     let recorded = sidebar::update(&app, &owner, &id, |chat| {
         if chat.terminal.is_none() {
@@ -432,6 +433,7 @@ mod tests {
             }),
             environment: None,
             tasks: Vec::new(),
+            opened_unix: None,
         }
     }
 
@@ -462,6 +464,7 @@ mod tests {
             started_unix: 1,
             after_message: 0,
             version: Some(3),
+            finished_unix: None,
         }
     }
 
