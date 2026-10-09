@@ -155,7 +155,7 @@ async fn main() -> ExitCode {
         }
     };
     let base_facts = router::worker_facts(
-        "google/gemini-3.8-flash",
+        coder::generate::DEFAULT_MODEL,
         Some(DEFAULT_DOOR_URL),
         &router::Seams::default(),
     );

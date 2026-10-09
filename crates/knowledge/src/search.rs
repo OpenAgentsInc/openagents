@@ -265,8 +265,26 @@ pub const OPENAI_BASE_URL: &str = "https://api.openai.com/v1";
 pub const GATEWAY_BASE_URL: &str = "https://ai-gateway.vercel.sh/v1";
 
 /// The variables that hold an AI Gateway key, in the order they are read:
-/// the chat worker's door key names.
-pub const GATEWAY_KEY_VARS: [&str; 2] = ["CODER_AI_GATEWAY_KEY", "CODER_DOOR_KEY"];
+/// the gateway's own variable, then the chat worker's door key names.
+/// `CODER_DOOR_KEY` is read only while `CODER_DOOR_URL` is unset or names
+/// the gateway: a worker whose door is OpenRouter holds an OpenRouter key
+/// there, which the gateway refuses with HTTP 401 ([`gateway_key`]).
+pub const GATEWAY_KEY_VARS: [&str; 3] = [
+    "AI_GATEWAY_API_KEY",
+    "CODER_AI_GATEWAY_KEY",
+    "CODER_DOOR_KEY",
+];
+
+/// The AI Gateway key [`GATEWAY_KEY_VARS`] holds, if any.
+fn gateway_key() -> Option<String> {
+    let door_is_gateway = std::env::var("CODER_DOOR_URL")
+        .map(|url| url.trim().is_empty() || url.contains("ai-gateway.vercel.sh"))
+        .unwrap_or(true);
+    GATEWAY_KEY_VARS
+        .iter()
+        .filter(|name| **name != "CODER_DOOR_KEY" || door_is_gateway)
+        .find_map(|name| std::env::var(name).ok().filter(|k| !k.trim().is_empty()))
+}
 
 /// The environment variable that holds an OpenAI API key.
 pub const OPENAI_KEY_VAR: &str = "OPENAI_API_KEY";
@@ -327,6 +345,10 @@ pub struct Embedder {
     /// The model's name as the cache keys it and records name it.
     pub model: String,
     transport: Transport,
+    /// Embedders of the same model on other providers, asked in order when
+    /// this one fails ([`Embedder::with_backups`]): an embedding call never
+    /// fails while one provider can answer it.
+    backups: Vec<Embedder>,
 }
 
 /// How an [`Embedder`] reaches its model.
@@ -394,6 +416,7 @@ impl Embedder {
             provider,
             model: openrouter::EMBEDDING_MODEL.to_string(),
             transport: Transport::Compatible(client),
+            backups: Vec::new(),
         }
     }
 
@@ -404,6 +427,7 @@ impl Embedder {
             provider: EmbeddingProvider::Vertex,
             model: vertex::CACHE_MODEL.to_string(),
             transport: Transport::Vertex(client),
+            backups: Vec::new(),
         }
     }
 
@@ -497,8 +521,9 @@ impl Embedder {
         ))
     }
 
-    /// An embedder on the Vercel AI Gateway, with the chat worker's door key
-    /// from `CODER_AI_GATEWAY_KEY` or `CODER_DOOR_KEY`.
+    /// An embedder on the Vercel AI Gateway, with the key from
+    /// [`GATEWAY_KEY_VARS`], and our other embedding providers behind it
+    /// ([`Embedder::with_our_backups`]).
     ///
     /// # Errors
     ///
@@ -507,9 +532,12 @@ impl Embedder {
         if let Some(theirs) = Embedder::theirs(&model_access::current()) {
             return theirs;
         }
-        let key = GATEWAY_KEY_VARS
-            .iter()
-            .find_map(|name| std::env::var(name).ok().filter(|k| !k.trim().is_empty()))
+        Embedder::gateway_alone().map(Embedder::with_our_backups)
+    }
+
+    /// The Vercel AI Gateway embedder with no backups.
+    fn gateway_alone() -> Result<Self, String> {
+        let key = gateway_key()
             .ok_or_else(|| format!("no AI Gateway key: set {}", GATEWAY_KEY_VARS.join(" or ")))?;
         let mut config =
             openrouter::Config::new(openrouter::ApiKey::new(&key)).base_url(GATEWAY_BASE_URL);
@@ -520,7 +548,8 @@ impl Embedder {
         ))
     }
 
-    /// OpenAI's API when an OpenAI key is set up, else OpenRouter.
+    /// OpenAI's API when an OpenAI key is set up, else OpenRouter, with our
+    /// other embedding providers behind it ([`Embedder::with_our_backups`]).
     ///
     /// # Errors
     ///
@@ -529,14 +558,54 @@ impl Embedder {
         if let Some(theirs) = Embedder::theirs(&model_access::current()) {
             return theirs;
         }
-        Embedder::openai().or_else(|openai| {
-            Embedder::openrouter().map_err(|openrouter| {
-                let hint = "openagents settings provider-key set openrouter";
-                // Both providers can recommend the same setup command.
-                let openai = openai.replace(&format!("; or run {hint}"), "");
-                format!("{openai}; {openrouter}")
+        Embedder::openai()
+            .or_else(|openai| {
+                Embedder::openrouter().map_err(|openrouter| {
+                    let hint = "openagents settings provider-key set openrouter";
+                    // Both providers can recommend the same setup command.
+                    let openai = openai.replace(&format!("; or run {hint}"), "");
+                    format!("{openai}; {openrouter}")
+                })
             })
-        })
+            .map(Embedder::with_our_backups)
+    }
+
+    /// The same embedder with `backups` asked in order when it fails. A
+    /// backup that embeds with another model is left out: its vectors
+    /// could not be compared with the cache's.
+    #[must_use]
+    pub fn with_backups(mut self, backups: Vec<Embedder>) -> Self {
+        let model = self.model.clone();
+        self.backups
+            .extend(backups.into_iter().filter(|backup| backup.model == model));
+        self
+    }
+
+    /// The same embedder with every other provider of ours that has a key
+    /// here behind it, in the order OpenRouter, the Vercel AI Gateway,
+    /// OpenAI. Never on a person's own keys: [`Embedder::theirs`] answers
+    /// before any caller reaches this.
+    #[must_use]
+    pub fn with_our_backups(self) -> Self {
+        let provider = self.provider;
+        let backups = [
+            Embedder::openrouter(),
+            Embedder::gateway_alone(),
+            Embedder::openai(),
+        ]
+        .into_iter()
+        .filter_map(Result::ok)
+        .filter(|backup| backup.provider != provider)
+        .collect();
+        self.with_backups(backups)
+    }
+
+    /// The providers this embedder asks, in order, named for a log line.
+    #[must_use]
+    pub fn chain(&self) -> Vec<EmbeddingProvider> {
+        std::iter::once(self.provider)
+            .chain(self.backups.iter().map(|backup| backup.provider))
+            .collect()
     }
 
     /// How this embedder's costs are reached: OpenAI reports tokens and
@@ -553,12 +622,12 @@ impl Embedder {
     }
 }
 
-impl Embed for Embedder {
-    fn model(&self) -> &str {
-        &self.model
-    }
-
-    async fn embed(&self, inputs: Vec<String>) -> Result<(Vec<Vec<f32>>, Option<f64>), EmbedError> {
+impl Embedder {
+    /// One embedding call on this embedder's own provider, no backups.
+    async fn embed_here(
+        &self,
+        inputs: Vec<String>,
+    ) -> Result<(Vec<Vec<f32>>, Option<f64>), EmbedError> {
         let client = match &self.transport {
             Transport::Compatible(client) => client,
             Transport::Vertex(vertex) => {
@@ -594,6 +663,36 @@ impl Embed for Embedder {
             EmbeddingProvider::Openrouter => reply.usage.cost.or(list),
         };
         Ok((reply.vectors, usd))
+    }
+}
+
+impl Embed for Embedder {
+    fn model(&self) -> &str {
+        &self.model
+    }
+
+    /// The call on this provider, then on each backup in order while the
+    /// last one failed. When every provider fails, the first one's error
+    /// stands; each switch is logged with the provider and its error.
+    async fn embed(&self, inputs: Vec<String>) -> Result<(Vec<Vec<f32>>, Option<f64>), EmbedError> {
+        let first = match self.embed_here(inputs.clone()).await {
+            Ok(done) => return Ok(done),
+            Err(error) => error,
+        };
+        let mut failed = (self.provider, first.message.clone());
+        for backup in &self.backups {
+            eprintln!(
+                "embeddings: {} failed ({}); {} takes the call",
+                failed.0,
+                failed.1.chars().take(200).collect::<String>(),
+                backup.provider
+            );
+            match backup.embed_here(inputs.clone()).await {
+                Ok(done) => return Ok(done),
+                Err(error) => failed = (backup.provider, error.message),
+            }
+        }
+        Err(first)
     }
 
     async fn embed_with_query(

@@ -528,9 +528,12 @@ async fn an_error_status_before_the_first_word_falls_back() {
         assert!(door.primary_down(), "{status}");
         assert_eq!(door.answering().model, Lane::Gemini.model());
 
-        // Per turn: the next one asks the primary first again.
+        // Per turn: the next one asks the primary first again, unless its
+        // model is gone (404), which benches it for a while.
         let _ = ask_ordered(&door).await;
-        assert_eq!(primary.asked(), 2, "{status}");
+        let again = if status == 404 { 1 } else { 2 };
+        assert_eq!(primary.asked(), again, "{status}");
+        assert!(door.primary_down(), "{status}");
     }
 }
 
@@ -619,6 +622,118 @@ async fn a_primary_that_thinks_past_the_bound_falls_back() {
         took >= Duration::from_millis(900) && took < Duration::from_secs(3),
         "{took:?}"
     );
+}
+
+/// Three doors on `servers`, in order, with the test's short first-word
+/// waits, each running the model in `models`.
+fn chain(servers: [&Server; 3], models: [&str; 3]) -> FallbackDoor {
+    FallbackDoor::new(servers[0].door(models[0]), servers[1].door(models[1]))
+        .with_backups(vec![servers[2].door(models[2])])
+        .first_word(Duration::from_millis(300), Duration::from_millis(900))
+}
+
+/// 2026-10-09: the primary's account is empty (402) and the fallback's
+/// model is gone (404); the third door answers, names itself, and the
+/// caller sees only its words. The next turn skips both benched doors.
+#[tokio::test]
+async fn a_402_then_a_404_then_an_answer_is_answered() {
+    let primary = Server::start(Stub::Status(402)).await;
+    let fallback = Server::start(Stub::Status(404)).await;
+    let backup = Server::start(Stub::Whole(GLM)).await;
+    let door = chain(
+        [&primary, &fallback, &backup],
+        [
+            Lane::Gemini.model(),
+            Lane::SpaceBunny.model(),
+            Lane::Glm.model(),
+        ],
+    );
+    let (seen, outcome, named) = ask_ordered(&door).await;
+    let (text, _) = outcome.expect("the third door answers");
+    assert!(!text.is_empty());
+    assert_eq!(seen, text, "only the answering door's words were shown");
+    assert_eq!(named.as_deref(), Some(Lane::Glm.model()));
+    assert_eq!(
+        (primary.asked(), fallback.asked(), backup.asked()),
+        (1, 1, 1)
+    );
+    assert!(door.primary_down());
+    assert_eq!(door.answering().model, Lane::Glm.model());
+
+    // Both refusals repeat on the next turn, so both doors sit it out.
+    let (_, outcome, named) = ask_ordered(&door).await;
+    outcome.expect("the backup answers again");
+    assert_eq!(named.as_deref(), Some(Lane::Glm.model()));
+    assert_eq!(
+        (primary.asked(), fallback.asked(), backup.asked()),
+        (1, 1, 2)
+    );
+}
+
+/// Every door failing is the last door's failure, which the worker turns
+/// into its one plain failure line; nothing reached the caller.
+#[tokio::test]
+async fn every_door_failing_is_the_last_doors_failure() {
+    let primary = Server::start(Stub::Status(402)).await;
+    let fallback = Server::start(Stub::Status(404)).await;
+    let backup = Server::start(Stub::Status(503)).await;
+    let door = chain(
+        [&primary, &fallback, &backup],
+        [
+            Lane::Gemini.model(),
+            Lane::Glm.model(),
+            Lane::Gemini.model(),
+        ],
+    );
+    let (seen, outcome, named) = ask_ordered(&door).await;
+    let error = outcome.expect_err("nothing answered");
+    assert!(matches!(error, GenerateError::Status(503, _)), "{error}");
+    assert!(seen.is_empty());
+    assert_eq!(named, None);
+
+    // When every door is benched, every door is asked anyway.
+    let all_benched = chain(
+        [&primary, &fallback, &fallback],
+        [
+            Lane::Gemini.model(),
+            Lane::Glm.model(),
+            Lane::Gemini.model(),
+        ],
+    );
+    let _ = ask_ordered(&all_benched).await;
+    let before = primary.asked();
+    let _ = ask_ordered(&all_benched).await;
+    assert_eq!(primary.asked(), before + 1, "benched doors are still asked");
+}
+
+/// Each door before the last has the first-word wait and no more: two
+/// silent doors (no headers; headers and then nothing) cost two waits, not
+/// their own thirty-second bounds, before the third answers.
+#[tokio::test]
+async fn each_door_has_the_first_word_wait_and_no_more() {
+    let deaf = Server::start(Stub::Deaf).await;
+    let mute = Server::start(Stub::Mute).await;
+    let backup = Server::start(Stub::Whole(GEMINI)).await;
+    let door = chain(
+        [&deaf, &mute, &backup],
+        [
+            Lane::Glm.model(),
+            Lane::SpaceBunny.model(),
+            Lane::Gemini.model(),
+        ],
+    );
+    let started = Instant::now();
+    let (_, outcome, named) = ask_ordered(&door).await;
+    outcome.expect("the third door answers");
+    let took = started.elapsed();
+    assert_eq!(named.as_deref(), Some(Lane::Gemini.model()));
+    assert!(
+        took >= Duration::from_millis(400) && took < Duration::from_millis(2_000),
+        "{took:?}"
+    );
+    // A silent door is not benched: the next turn asks it again.
+    let _ = ask_ordered(&door).await;
+    assert_eq!(deaf.asked(), 2);
 }
 
 /// Live: a primary OpenRouter does not serve (as Space Bunny Alpha will

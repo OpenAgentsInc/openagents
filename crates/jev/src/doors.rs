@@ -177,14 +177,15 @@ const DOOR_OWN_CODES: &[&str] = &[
 ];
 
 /// Whether a door's refusal may be asked again at the next door: the door
-/// could not pay (402), timed out (408), was over a rate or quota (429),
+/// could not pay (402), has no such model or route (404), timed out (408),
+/// was over a rate or quota (429),
 /// failed (any 5xx), or refused for a reason of its own (its key, its
 /// account, its model list: a [`DOOR_OWN_CODES`] code). A refusal of the
 /// question itself, such as `invalid_request` at 400 or `limit_exceeded`
 /// at 413, never fails over.
 #[must_use]
 pub fn fails_over(status: u16, code: Option<&str>) -> bool {
-    if matches!(status, 402 | 408 | 429 | 500..=599) {
+    if matches!(status, 402 | 404 | 408 | 429 | 500..=599) {
         return true;
     }
     let code = code.unwrap_or_else(|| code_for_http_status(status));

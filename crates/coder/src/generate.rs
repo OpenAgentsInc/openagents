@@ -254,9 +254,9 @@ pub enum Lane {
     Glm,
     /// Space Bunny Alpha, an anonymous preview model served only through
     /// OpenRouter ([`OPENROUTER_DOOR_URL`], not the gateway), until
-    /// 2026-10-05. The chat worker's primary door runs it, with the
-    /// gateway's [`Lane::Gemini`] taking any turn it does not answer
-    /// ([`FallbackDoor`], #10109).
+    /// 2026-10-05. Retired: OpenRouter answers it with HTTP 404 "No
+    /// endpoints found", and the chat worker's primary is [`Lane::Gemini`]
+    /// on OpenRouter since 2026-10-09. Kept so older records still name it.
     SpaceBunny,
 }
 
@@ -281,6 +281,17 @@ impl Lane {
         match self {
             Lane::Gemini => "google/gemini-3.8-flash",
             Lane::Glm => "zai/glm-5.3-flash",
+            Lane::SpaceBunny => "stealth/space-bunny-alpha",
+        }
+    }
+
+    /// The model id OpenRouter serves the lane under, which differs from
+    /// the gateway's for GLM (`z-ai/` there, `zai/` here).
+    #[must_use]
+    pub const fn openrouter_model(self) -> &'static str {
+        match self {
+            Lane::Gemini => "google/gemini-3.8-flash",
+            Lane::Glm => "z-ai/glm-5.3-flash",
             Lane::SpaceBunny => "stealth/space-bunny-alpha",
         }
     }
@@ -328,11 +339,17 @@ pub const WORKER_MODEL_VAR: &str = "CODER_WORKER_MODEL";
 /// asks OpenRouter for first, with the door [`WORKER_MODEL_VAR`] names as
 /// its fallback ([`FallbackDoor`]).
 ///
-/// Unset, the primary is [`Lane::SpaceBunny`] whenever
+/// Unset, the primary is [`DEFAULT_PRIMARY`] whenever
 /// [`OPENROUTER_KEY_VAR`] is set, so the worker needs no new variable; a
 /// lane name or an OpenRouter model id names another, and `off` answers on
 /// the fallback door alone. Read it with [`worker_primary`].
 pub const WORKER_PRIMARY_VAR: &str = "CODER_WORKER_PRIMARY";
+
+/// The chat worker's primary when [`WORKER_PRIMARY_VAR`] names none:
+/// Gemini Flash on OpenRouter. It replaced Space Bunny Alpha, which
+/// OpenRouter retired (#10109); a primary that goes away later costs one
+/// 404 and is then benched ([`BENCH_GONE`]).
+pub const DEFAULT_PRIMARY: Lane = Lane::Gemini;
 
 /// The reasoning effort the primary door asks for. Measured 2026-10-01
 /// through OpenRouter's Open Responses route, Space Bunny Alpha's first
@@ -380,7 +397,7 @@ pub fn worker_primary(
     match (asked, key) {
         (Some("off"), _) | (None, None) => Ok(None),
         (None, Some(key)) => Ok(Some((
-            Lane::SpaceBunny.model().to_string(),
+            DEFAULT_PRIMARY.openrouter_model().to_string(),
             key.to_string(),
         ))),
         (Some(asked), Some(key)) => Ok(Some((model_named(asked).to_string(), key.to_string()))),
@@ -389,6 +406,103 @@ pub fn worker_primary(
              set the key, or set {WORKER_PRIMARY_VAR}=off to answer on the fallback alone"
         )),
     }
+}
+
+/// The variable that lists the chat worker's backup doors: the doors a
+/// turn goes to, in order, after the primary and the door
+/// [`WORKER_MODEL_VAR`] names have both failed before their first words
+/// ([`FallbackDoor`]).
+///
+/// A comma-separated list of `door:model` entries, where the door is
+/// `openrouter` ([`OPENROUTER_KEY_VAR`]) or `vercel` (the Vercel AI
+/// Gateway, [`VERCEL_KEY_VARS`]) and the model a lane name or a model id;
+/// `off` for none. Unset, [`DEFAULT_BACKUPS`], each kept when its door's
+/// key is here. Read it with [`worker_backups`].
+pub const WORKER_BACKUPS_VAR: &str = "CODER_WORKER_BACKUPS";
+
+/// The variables that hold a Vercel AI Gateway key for a backup door, in
+/// the order they are read.
+pub const VERCEL_KEY_VARS: [&str; 2] = ["AI_GATEWAY_API_KEY", "CODER_AI_GATEWAY_KEY"];
+
+/// The backup doors when [`WORKER_BACKUPS_VAR`] is unset: GLM on
+/// OpenRouter (another model family on the same account), then Gemini and
+/// GLM on the Vercel AI Gateway (another account).
+pub const DEFAULT_BACKUPS: &str = "openrouter:gemini,openrouter:glm,vercel:gemini,vercel:glm";
+
+/// The backup doors `asked` lists ([`WORKER_BACKUPS_VAR`]), reached with
+/// `openrouter` and `vercel` keys.
+///
+/// Unset, [`DEFAULT_BACKUPS`] with each entry whose key is missing left
+/// out, so the worker needs no new variable.
+///
+/// # Errors
+///
+/// A sentence when an entry names a door this does not know, names no
+/// model, or is listed explicitly with no key to reach it: a listed
+/// backup that quietly ran nothing would be a chain shorter than the one
+/// configured.
+pub fn worker_backups(
+    asked: Option<&str>,
+    openrouter: Option<&str>,
+    vercel: Option<&str>,
+) -> Result<Vec<ResponsesDoor>, String> {
+    let openrouter = openrouter.map(str::trim).filter(|key| !key.is_empty());
+    let vercel = vercel.map(str::trim).filter(|key| !key.is_empty());
+    let asked = asked.map(str::trim).filter(|asked| !asked.is_empty());
+    let (list, strict) = match asked {
+        Some("off") => return Ok(Vec::new()),
+        Some(list) => (list, true),
+        None => (DEFAULT_BACKUPS, false),
+    };
+    let mut doors = Vec::new();
+    for entry in list.split(',').map(str::trim).filter(|e| !e.is_empty()) {
+        let Some((door, model)) = entry
+            .split_once(':')
+            .map(|(door, model)| (door.trim(), model.trim()))
+            .filter(|(_, model)| !model.is_empty())
+        else {
+            return Err(format!(
+                "{WORKER_BACKUPS_VAR} entry `{entry}` is not `door:model`"
+            ));
+        };
+        let (url, key, var) = match door {
+            "openrouter" => (OPENROUTER_DOOR_URL, openrouter, OPENROUTER_KEY_VAR),
+            "vercel" => (DEFAULT_DOOR_URL, vercel, VERCEL_KEY_VARS[0]),
+            other => {
+                return Err(format!(
+                    "{WORKER_BACKUPS_VAR} names the door `{other}`; the doors are \
+                     `openrouter` and `vercel`"
+                ));
+            }
+        };
+        match key {
+            Some(key) => doors.push(ResponsesDoor::new(url, model_at(url, model), key)),
+            None if strict => {
+                return Err(format!(
+                    "{WORKER_BACKUPS_VAR} lists {entry} and {var} is not set; set the key, \
+                     or leave the entry out"
+                ));
+            }
+            None => {}
+        }
+    }
+    Ok(doors)
+}
+
+/// [`worker_backups`] from the environment.
+///
+/// # Errors
+///
+/// As [`worker_backups`].
+pub fn worker_backups_from_env() -> Result<Vec<ResponsesDoor>, String> {
+    let vercel = VERCEL_KEY_VARS
+        .iter()
+        .find_map(|name| env::var(name).ok().filter(|key| !key.trim().is_empty()));
+    worker_backups(
+        env::var(WORKER_BACKUPS_VAR).ok().as_deref(),
+        env::var(OPENROUTER_KEY_VAR).ok().as_deref(),
+        vercel.as_deref(),
+    )
 }
 
 /// The model `asked` names: the lane's model when it names a lane, and
@@ -401,6 +515,16 @@ pub fn model_named(asked: &str) -> &str {
     match Lane::read(asked) {
         Some(lane) => lane.model(),
         None => asked.trim(),
+    }
+}
+
+/// The model `asked` names at the door at `url`: a lane's OpenRouter id
+/// when the door is OpenRouter, and [`model_named`] otherwise.
+#[must_use]
+pub fn model_at<'a>(url: &str, asked: &'a str) -> &'a str {
+    match Lane::read(asked) {
+        Some(lane) if url.trim_end_matches('/') == OPENROUTER_DOOR_URL => lane.openrouter_model(),
+        _ => model_named(asked),
     }
 }
 
@@ -865,7 +989,7 @@ impl ResponsesDoor {
     /// The same door running `model`, which may be named as a lane.
     #[must_use]
     pub fn serving(mut self, model: &str) -> Self {
-        self.model = model_named(model).to_string();
+        self.model = model_at(&self.url, model).to_string();
         self
     }
 
@@ -1351,38 +1475,81 @@ impl Generate for ResponsesDoor {
     }
 }
 
-/// Two Open Responses doors in order: a primary that answers fast while
-/// it is there, and a fallback that answers whenever it is not.
+/// Open Responses doors in order: a primary that answers fast while it is
+/// there, a fallback, and any number of backups behind it, so a turn is
+/// answered while any one of them can answer it.
 ///
-/// The fallback is per turn. Every turn goes to the primary first, and a
-/// primary that fails before the first words of its answer — an HTTP
-/// error such as an unknown model's 404 or a 429, a failure event, a
-/// stream that ends empty, nothing at all within [`PRIMARY_FIRST_WORD`],
-/// or a primary that is streaming its reasoning with no answer text by
-/// [`PRIMARY_THINKING`] — hands the same turn to the fallback, which
-/// runs with its own retries and bounds as it always has. Nothing has
-/// reached the caller by then, so the turn is not repeated where anyone
-/// can see it. A primary that fails after its first words has shown the
-/// caller part of an answer, and its failure is the turn's, as it is for a
-/// single door.
+/// The failover is per turn. Every turn goes to the first door that is not
+/// benched, and a door that fails before the first words of its answer — an
+/// HTTP error such as an unknown model's 404, an empty account's 402, a
+/// refused key's 401 or 403, a 429 or a 5xx, a connection that fails, a
+/// failure event, a stream that ends empty, nothing at all within
+/// [`PRIMARY_FIRST_WORD`], or a door that is streaming its reasoning with
+/// no answer text by [`PRIMARY_THINKING`] — hands the same turn to the next
+/// door. Nothing has reached the caller by then, so the turn is not
+/// repeated where anyone can see it. The last door runs with its own
+/// retries and bounds, as a single door does. A door that fails after its
+/// first words has shown the caller part of an answer, and its failure is
+/// the turn's, as it is for a single door.
 ///
-/// So a primary that goes away for good costs each turn one failed
-/// request, not a deploy: Space Bunny Alpha, the chat worker's primary,
-/// leaves OpenRouter on 2026-10-05 (#10109).
+/// A door whose failure will repeat on the next turn is benched
+/// ([`BENCH_GONE`] for a 404, the model gone; [`BENCH_REFUSED`] for a 401,
+/// 402, or 403, the key or the account), so later turns skip it rather than
+/// pay its failed request first; when every door is benched, every door is
+/// asked anyway. Each switch is logged with the door, its cause, and the
+/// door that takes the turn ("takes the turn").
 ///
-/// Every answer says which door wrote it with [`Meta::Model`], and the
-/// door keeps whether the primary's last turn failed before its first
-/// words ([`FallbackDoor::answering`]), so a reply that names our model
-/// can name the one answering now.
+/// On 2026-10-09 the chat worker's primary (Space Bunny Alpha, retired from
+/// OpenRouter) answered 404 and its one fallback (the Vercel AI Gateway)
+/// 402, and every chat failed; this chain is why that cannot happen while
+/// any door answers.
+///
+/// Every answer says which door wrote it with [`Meta::Model`] (and, through
+/// the inference gateway, [`Meta::Upstream`]), and the door keeps which one
+/// answered last ([`FallbackDoor::answering`]), so a reply that names our
+/// model can name the one answering now.
 pub struct FallbackDoor {
     /// The door every turn tries first.
     pub primary: ResponsesDoor,
     /// The door a turn the primary did not answer goes to.
     pub fallback: ResponsesDoor,
+    /// The doors after the fallback, in order.
+    pub backups: Vec<ResponsesDoor>,
     first_word: Duration,
     thinking: Duration,
     /// Whether the primary's last turn failed before its first words.
     down: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    /// The position in the chain of the door that answered last.
+    answered: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    /// Benched doors, by URL and model, and when each may be asked again.
+    benched: Bench,
+}
+
+/// Benched doors, shared by every copy of a chain ([`FallbackDoor::before`]).
+type Bench = std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, Instant>>>;
+
+/// How long a door whose model is gone (HTTP 404) sits out before it is
+/// asked again.
+pub const BENCH_GONE: Duration = Duration::from_secs(30 * 60);
+
+/// How long a door that refused its key or its account (HTTP 401, 402, or
+/// 403) sits out before it is asked again.
+pub const BENCH_REFUSED: Duration = Duration::from_secs(5 * 60);
+
+/// How long `error` benches the door that failed with it: `None` for a
+/// failure the next turn may not repeat (a 429, a 5xx, a timeout).
+#[must_use]
+pub fn bench_for(error: &GenerateError) -> Option<Duration> {
+    match error {
+        GenerateError::Status(404, _) => Some(BENCH_GONE),
+        GenerateError::Status(401..=403, _) => Some(BENCH_REFUSED),
+        _ => None,
+    }
+}
+
+/// The key a door is benched under.
+fn bench_key(door: &ResponsesDoor) -> String {
+    format!("{} {}", door.url, door.model)
 }
 
 impl FallbackDoor {
@@ -1393,28 +1560,81 @@ impl FallbackDoor {
         Self {
             primary,
             fallback,
+            backups: Vec::new(),
             first_word: PRIMARY_FIRST_WORD,
             thinking: PRIMARY_THINKING,
             down: std::sync::Arc::default(),
+            answered: std::sync::Arc::default(),
+            benched: Bench::default(),
         }
+    }
+
+    /// The doors in `doors`, in order, with a door that repeats an earlier
+    /// one's URL and model left out: a single door when only one is left,
+    /// and `None` when there are none.
+    #[must_use]
+    pub fn chain(doors: Vec<ResponsesDoor>) -> Option<Door> {
+        let mut seen = std::collections::HashSet::new();
+        let mut doors: Vec<ResponsesDoor> = doors
+            .into_iter()
+            .filter(|door| seen.insert(bench_key(door)))
+            .collect();
+        match doors.len() {
+            0 => None,
+            1 => doors.pop().map(Door::Live),
+            _ => {
+                let rest = doors.split_off(2);
+                let fallback = doors.pop()?;
+                let primary = doors.pop()?;
+                Some(Door::Fallback(Box::new(
+                    FallbackDoor::new(primary, fallback).with_backups(rest),
+                )))
+            }
+        }
+    }
+
+    /// The same chain with `backups` after its last door, leaving out any
+    /// that repeat a door's URL and model.
+    #[must_use]
+    pub fn with_backups(mut self, backups: Vec<ResponsesDoor>) -> Self {
+        for backup in backups {
+            if !self
+                .doors()
+                .any(|door| bench_key(door) == bench_key(&backup))
+            {
+                self.backups.push(backup);
+            }
+        }
+        self
+    }
+
+    /// Every door, in the order a turn asks them.
+    pub fn doors(&self) -> impl Iterator<Item = &ResponsesDoor> {
+        [&self.primary, &self.fallback]
+            .into_iter()
+            .chain(self.backups.iter())
     }
 
     /// `model` on OpenRouter behind `key`, asking for [`PRIMARY_EFFORT`],
     /// in front of `fallback`.
     #[must_use]
     pub fn openrouter(model: &str, key: &str, fallback: ResponsesDoor) -> Self {
-        let primary = ResponsesDoor::new(OPENROUTER_DOOR_URL, model_named(model), key)
-            .with_options(serde_json::Map::from_iter([(
-                "reasoning".to_string(),
-                json!({ "effort": PRIMARY_EFFORT }),
-            )]));
+        let primary = ResponsesDoor::new(
+            OPENROUTER_DOOR_URL,
+            model_at(OPENROUTER_DOOR_URL, model),
+            key,
+        )
+        .with_options(serde_json::Map::from_iter([(
+            "reasoning".to_string(),
+            json!({ "effort": PRIMARY_EFFORT }),
+        )]));
         Self::new(primary, fallback)
     }
 
-    /// The same order with different waits for the primary's first
-    /// event (`first_word`) and, once it is working, its first words
-    /// (`thinking`, from the request), so a test can exercise them without
-    /// spending the real ones.
+    /// The same order with different waits for each door's first event
+    /// (`first_word`) and, once it is working, its first words (`thinking`,
+    /// from the request), so a test can exercise them without spending the
+    /// real ones.
     #[must_use]
     pub fn first_word(mut self, first_word: Duration, thinking: Duration) -> Self {
         self.first_word = first_word;
@@ -1422,56 +1642,93 @@ impl FallbackDoor {
         self
     }
 
-    /// The same primary, in front of `fallback`, sharing this door's
-    /// record of whether the primary is answering.
+    /// The same primary and backups, with `fallback` second, sharing this
+    /// door's record of whether the primary is answering and which doors
+    /// are benched.
     #[must_use]
     pub fn before(&self, fallback: ResponsesDoor) -> Self {
         Self {
             primary: self.primary.clone(),
             fallback,
+            backups: self.backups.clone(),
             first_word: self.first_word,
             thinking: self.thinking,
             down: self.down.clone(),
+            answered: self.answered.clone(),
+            benched: self.benched.clone(),
         }
     }
 
-    /// The same order with both doors' request fields replaced by
+    /// The same order with every door's request fields replaced by
     /// `options` (see [`ResponsesDoor::with_options`]).
     #[must_use]
     pub fn with_options(mut self, options: serde_json::Map<String, Value>) -> Self {
         self.primary = self.primary.with_options(options.clone());
-        self.fallback = self.fallback.with_options(options);
+        self.fallback = self.fallback.with_options(options.clone());
+        for backup in &mut self.backups {
+            *backup = backup.clone().with_options(options.clone());
+        }
         self
     }
 
-    /// The door answering now: the primary, unless its last turn failed
-    /// before its first words. The next turn tries the primary again
-    /// either way.
+    /// The door answering now: the one that answered the last turn, the
+    /// primary before any has. The next turn asks the first door that is
+    /// not benched either way.
     #[must_use]
     pub fn answering(&self) -> &ResponsesDoor {
-        if self.primary_down() {
-            &self.fallback
-        } else {
-            &self.primary
-        }
+        let at = self.answered.load(std::sync::atomic::Ordering::Relaxed);
+        self.doors().nth(at).unwrap_or(&self.primary)
     }
 
-    /// Whether the primary's last turn failed before its first words.
+    /// Whether the primary's last turn failed before its first words, or
+    /// the primary is benched.
     #[must_use]
     pub fn primary_down(&self) -> bool {
         self.down.load(std::sync::atomic::Ordering::Relaxed)
     }
 
-    /// The primary's one attempt, with the caller's sink behind it.
+    /// Whether `door` is benched now.
+    fn is_benched(&self, door: &ResponsesDoor) -> bool {
+        let now = Instant::now();
+        self.benched
+            .lock()
+            .map(|mut benched| {
+                benched.retain(|_, until| *until > now);
+                benched.contains_key(&bench_key(door))
+            })
+            .unwrap_or(false)
+    }
+
+    /// Benches `door` when `error` says its next turn will fail the same
+    /// way, and says so once.
+    fn bench(&self, door: &ResponsesDoor, error: &GenerateError) {
+        let Some(wait) = bench_for(error) else {
+            return;
+        };
+        if let Ok(mut benched) = self.benched.lock() {
+            benched.insert(bench_key(door), Instant::now() + wait);
+        }
+        eprintln!(
+            "door {} at {} benched for {} s ({})",
+            door.model,
+            door.url,
+            wait.as_secs(),
+            error.cause()
+        );
+    }
+
+    /// One door's one attempt, with the caller's sink behind it.
     ///
     /// It has [`PRIMARY_FIRST_WORD`] to show it is working or to start its
     /// answer, and, once working, until [`PRIMARY_THINKING`] from the
     /// request to start it.
     async fn first(
         &self,
+        door: &ResponsesDoor,
         instructions: &str,
         input: &[Message],
         sink: &mut (dyn FnMut(&str) + Send),
+        routed: &mut Option<(String, String)>,
     ) -> First {
         let relaxed = std::sync::atomic::Ordering::Relaxed;
         let started = tokio::time::Instant::now();
@@ -1481,9 +1738,13 @@ impl FallbackDoor {
             spoke.store(true, relaxed);
             sink(delta);
         };
-        let attempt =
-            self.primary
-                .once_watched(instructions, input, &mut forward, Some(&alive), None);
+        let attempt = door.once_watched(
+            instructions,
+            input,
+            &mut forward,
+            Some(&alive),
+            Some(routed),
+        );
         tokio::pin!(attempt);
         let deadline = tokio::time::sleep(self.first_word);
         tokio::pin!(deadline);
@@ -1527,14 +1788,31 @@ impl FallbackDoor {
     }
 }
 
-/// How the primary's one attempt went.
+/// Names the door that answered: the model and upstream the inference
+/// gateway's route named, or the door's own model.
+fn name_answer(
+    door: &ResponsesDoor,
+    meta: &mut (dyn FnMut(Meta) + Send),
+    routed: Option<(String, String)>,
+) {
+    match routed.filter(|_| door.is_gateway()) {
+        Some((model, upstream)) => {
+            meta(Meta::Model(model));
+            meta(Meta::Upstream(upstream));
+        }
+        None if door.is_gateway() => {}
+        None => meta(Meta::Model(door.model.clone())),
+    }
+}
+
+/// How one door's one attempt went.
 enum First {
     /// It answered.
     Answered((String, Option<Usage>)),
     /// It failed after its first words reached the caller: the turn's
     /// failure, since a second door would repeat what was shown.
     Failed(GenerateError),
-    /// It failed before its first words: the fallback takes the turn.
+    /// It failed before its first words: the next door takes the turn.
     Missed(GenerateError),
 }
 
@@ -1548,34 +1826,93 @@ impl Generate for FallbackDoor {
     ) -> Result<(String, Option<Usage>), GenerateError> {
         let ordering = std::sync::atomic::Ordering::Relaxed;
         let started = Instant::now();
-        let missed = match self.first(instructions, input, sink).await {
-            First::Answered(done) => {
-                self.down.store(false, ordering);
-                meta(Meta::Model(self.primary.model.clone()));
-                return Ok(done);
+        // The doors this turn asks, with their places in the chain: every
+        // door not benched, or every door when all of them are.
+        let mut asked: Vec<(usize, &ResponsesDoor)> = self
+            .doors()
+            .enumerate()
+            .filter(|(_, door)| !self.is_benched(door))
+            .collect();
+        if asked.is_empty() {
+            asked = self.doors().enumerate().collect();
+        }
+        if asked.first().is_none_or(|(at, _)| *at != 0) {
+            self.down.store(true, ordering);
+        }
+        let last = asked.len() - 1;
+        for (step, (at, door)) in asked.iter().copied().enumerate() {
+            if step == last {
+                // The last door has its own retries and bounds, as a single
+                // door does; through the gateway it names what answered.
+                let answered = door.generate(instructions, input, sink, meta).await;
+                match &answered {
+                    Ok(_) => {
+                        if !door.is_gateway() {
+                            meta(Meta::Model(door.model.clone()));
+                        }
+                        self.answered.store(at, ordering);
+                        if at == 0 {
+                            self.down.store(false, ordering);
+                        }
+                    }
+                    Err(error) => {
+                        self.bench(door, error);
+                        if step > 0 {
+                            eprintln!(
+                                "door {} failed after {} ms ({}: {}); no door is left to take \
+                                 the turn",
+                                door.model,
+                                started.elapsed().as_millis(),
+                                error.cause(),
+                                clip(&error.to_string(), 200)
+                            );
+                        }
+                    }
+                }
+                return answered;
             }
-            First::Failed(error) => {
-                self.down.store(false, ordering);
-                return Err(error);
+            let mut routed = None;
+            match self
+                .first(door, instructions, input, sink, &mut routed)
+                .await
+            {
+                First::Answered(done) => {
+                    name_answer(door, meta, routed);
+                    self.answered.store(at, ordering);
+                    if at == 0 {
+                        self.down.store(false, ordering);
+                    }
+                    return Ok(done);
+                }
+                First::Failed(error) => {
+                    if at == 0 {
+                        self.down.store(false, ordering);
+                    }
+                    return Err(error);
+                }
+                First::Missed(error) => {
+                    if at == 0 {
+                        self.down.store(true, ordering);
+                    }
+                    self.bench(door, &error);
+                    let (_, next) = asked[step + 1];
+                    // Door, model, cause, and the door's own words: never
+                    // the turn's.
+                    eprintln!(
+                        "door {} missed its first words after {} ms ({}: {}); {} at {} takes \
+                         the turn",
+                        door.model,
+                        started.elapsed().as_millis(),
+                        error.cause(),
+                        clip(&error.to_string(), 200),
+                        next.model,
+                        next.url
+                    );
+                }
             }
-            First::Missed(error) => error,
-        };
-        self.down.store(true, ordering);
-        // Door, model, cause, and the door's own words: never the turn's.
-        eprintln!(
-            "door {} missed its first words after {} ms ({}: {}); {} takes the turn",
-            self.primary.model,
-            started.elapsed().as_millis(),
-            missed.cause(),
-            clip(&missed.to_string(), 200),
-            self.fallback.model
-        );
-        let answered = self
-            .fallback
-            .generate(instructions, input, sink, meta)
-            .await?;
-        meta(Meta::Model(self.fallback.model.clone()));
-        Ok(answered)
+        }
+        // `asked` is never empty, so the last step returned.
+        Err(GenerateError::Config("no door to ask".to_string()))
     }
 }
 
@@ -1770,6 +2107,23 @@ impl Door {
         }
     }
 
+    /// The same door with `backups` after its last door ([`FallbackDoor`]):
+    /// a live door becomes the first of the chain, a fallback door gains
+    /// them at its end, and a door that picks its own model (a relay, an
+    /// executor, a delegate) or the stub is kept as it is.
+    #[must_use]
+    pub fn with_backups(self, backups: Vec<ResponsesDoor>) -> Self {
+        match self {
+            Door::Live(door) => {
+                let mut doors = vec![door];
+                doors.extend(backups);
+                FallbackDoor::chain(doors).unwrap_or_else(|| unreachable!("one door at least"))
+            }
+            Door::Fallback(door) => Door::Fallback(Box::new(door.with_backups(backups))),
+            other => other,
+        }
+    }
+
     /// Warm the door's connection: a live door opens its pooled HTTPS
     /// connection now (see [`ResponsesDoor::warm`]); every other door has
     /// nothing to warm.
@@ -1777,7 +2131,7 @@ impl Door {
         match self {
             Door::Live(door) => door.warm().await,
             Door::Fallback(door) => {
-                tokio::join!(door.primary.warm(), door.fallback.warm());
+                futures_util::future::join_all(door.doors().map(ResponsesDoor::warm)).await;
             }
             _ => {}
         }
@@ -2259,16 +2613,17 @@ mod tests {
         );
     }
 
-    /// The worker's primary: Space Bunny Alpha whenever OpenRouter's key
-    /// is here and nothing names another, a named one when it is, nothing
-    /// when it is `off` or there is no key, and a refusal when one is
-    /// named with no key to reach it.
+    /// The worker's primary: Gemini Flash on OpenRouter whenever
+    /// OpenRouter's key is here and nothing names another (Space Bunny
+    /// Alpha is retired), a named one when it is, nothing when it is `off`
+    /// or there is no key, and a refusal when one is named with no key to
+    /// reach it.
     #[test]
-    fn the_primary_is_space_bunny_whenever_openrouter_is_reachable() {
+    fn the_primary_is_gemini_on_openrouter_whenever_openrouter_is_reachable() {
         assert_eq!(
             worker_primary(None, Some("k")),
             Ok(Some((
-                Lane::SpaceBunny.model().to_string(),
+                Lane::Gemini.openrouter_model().to_string(),
                 "k".to_string()
             )))
         );
@@ -2486,5 +2841,108 @@ mod tests {
         let mut reader = Reader::default();
         assert_eq!(reader.push(b": ping\n\n\n\n", &mut sink).unwrap(), 0);
         assert_eq!(reader.events, 0);
+    }
+
+    /// The backup doors: by default every entry whose key is here, with
+    /// each lane named the way its door names it; `off` for none; a listed
+    /// entry with no key, an unknown door, or no model is refused.
+    #[test]
+    fn the_backups_are_every_door_whose_key_is_here() {
+        let named = |doors: Vec<ResponsesDoor>| {
+            doors
+                .into_iter()
+                .map(|door| (door.url, door.model))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            named(worker_backups(None, Some("o"), Some("v")).unwrap()),
+            vec![
+                (
+                    OPENROUTER_DOOR_URL.to_string(),
+                    Lane::Gemini.openrouter_model().to_string()
+                ),
+                (
+                    OPENROUTER_DOOR_URL.to_string(),
+                    Lane::Glm.openrouter_model().to_string()
+                ),
+                (
+                    DEFAULT_DOOR_URL.to_string(),
+                    Lane::Gemini.model().to_string()
+                ),
+                (DEFAULT_DOOR_URL.to_string(), Lane::Glm.model().to_string()),
+            ]
+        );
+        assert_ne!(Lane::Glm.openrouter_model(), Lane::Glm.model());
+        assert_eq!(worker_backups(None, None, Some("v")).unwrap().len(), 2);
+        assert!(worker_backups(None, None, None).unwrap().is_empty());
+        assert!(
+            worker_backups(Some("off"), Some("o"), Some("v"))
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            named(worker_backups(Some("vercel:glm"), None, Some("v")).unwrap()),
+            vec![(DEFAULT_DOOR_URL.to_string(), Lane::Glm.model().to_string())]
+        );
+        let unkeyed = worker_backups(Some("openrouter:glm"), None, Some("v"))
+            .err()
+            .expect("refused");
+        assert!(unkeyed.contains(OPENROUTER_KEY_VAR), "{unkeyed}");
+        assert!(worker_backups(Some("vertex:gemini"), Some("o"), None).is_err());
+        assert!(worker_backups(Some("openrouter"), Some("o"), None).is_err());
+    }
+
+    /// A chain leaves out a door that repeats an earlier one's URL and
+    /// model, is one live door when one is left, and a live door with
+    /// backups becomes a chain.
+    #[test]
+    fn a_chain_has_each_door_once() {
+        let door = |url: &str, model: &str| ResponsesDoor::new(url, model, "k");
+        assert!(FallbackDoor::chain(Vec::new()).is_none());
+        let one = FallbackDoor::chain(vec![door("https://a", "m"), door("https://a", "m")]);
+        assert!(matches!(one, Some(Door::Live(_))));
+        let Some(Door::Fallback(three)) = FallbackDoor::chain(vec![
+            door("https://a", "m"),
+            door("https://b", "m"),
+            door("https://a", "m"),
+            door("https://a", "n"),
+        ]) else {
+            panic!("a chain");
+        };
+        let order: Vec<_> = three
+            .doors()
+            .map(|d| format!("{} {}", d.url, d.model))
+            .collect();
+        assert_eq!(order, ["https://a m", "https://b m", "https://a n"]);
+        let Door::Fallback(grown) =
+            Door::Live(door("https://a", "m")).with_backups(vec![door("https://b", "m")])
+        else {
+            panic!("a live door with a backup is a chain");
+        };
+        assert_eq!(grown.fallback.url, "https://b");
+        let stub = Door::Stub(StubGenerate::default()).with_backups(vec![door("https://b", "m")]);
+        assert!(matches!(stub, Door::Stub(_)));
+    }
+
+    /// A model gone (404) and a refused key or account (401, 402, 403)
+    /// bench a door; a rate limit, a 5xx, or silence does not.
+    #[test]
+    fn what_benches_a_door() {
+        let status = |code| GenerateError::Status(code, String::new());
+        assert_eq!(bench_for(&status(404)), Some(BENCH_GONE));
+        for code in [401, 402, 403] {
+            assert_eq!(bench_for(&status(code)), Some(BENCH_REFUSED), "{code}");
+        }
+        for code in [400, 429, 500, 503] {
+            assert_eq!(bench_for(&status(code)), None, "{code}");
+        }
+        let quiet = GenerateError::Quiet {
+            heard: false,
+            reason: String::new(),
+        };
+        assert_eq!(bench_for(&quiet), None);
+        assert_eq!(model_at(OPENROUTER_DOOR_URL, "glm"), "z-ai/glm-5.3-flash");
+        assert_eq!(model_at(DEFAULT_DOOR_URL, "glm"), Lane::Glm.model());
+        assert_eq!(model_at(OPENROUTER_DOOR_URL, "x/y"), "x/y");
     }
 }

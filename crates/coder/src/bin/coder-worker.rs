@@ -612,7 +612,7 @@ async fn serve(options: &Options) -> Result<(), String> {
                 gateway.model,
                 coder::generate::INFERENCE_MODE_VAR
             );
-            Arc::new(Door::Live(gateway))
+            Door::Live(gateway)
         }
         None => {
             let mut door = Door::from_env()?;
@@ -625,13 +625,19 @@ async fn serve(options: &Options) -> Result<(), String> {
             // asks OpenRouter's primary first, and one it does not start
             // answering goes to the door above. Unset, the primary is Space
             // Bunny Alpha whenever OpenRouter's key is here.
-            Arc::new(ordered(
+            ordered(
                 door,
                 env::var(WORKER_PRIMARY_VAR).ok().as_deref(),
                 env::var(OPENROUTER_KEY_VAR).ok().as_deref(),
-            )?)
+            )?
         }
     };
+    // The backups go behind that (`CODER_WORKER_BACKUPS`): a turn every
+    // door before them failed before its first words goes to each in turn,
+    // so one provider's outage, empty account, or retired model never
+    // reaches the person while another can answer (2026-10-09: a 404 on
+    // the primary and a 402 on the one fallback failed every chat).
+    let door = Arc::new(door.with_backups(coder::generate::worker_backups_from_env()?));
     let jobs = jobs_bound(&door)?;
     // The judge that answers first: one System One call per admitted
     // conversation turn, run beside the model call (see `coder::first`).
@@ -660,14 +666,14 @@ async fn serve(options: &Options) -> Result<(), String> {
     // compared against one that used another.
     match &*door {
         Door::Fallback(ordered) => eprintln!(
-            "door    {} ({} at {} with reasoning {}, then {} at {} for any turn it has not \
-             started in {} ms or, thinking, answered by {} ms)",
+            "door    {} ({}; each door has {} ms to start a turn or, thinking, until {} ms to \
+             answer, before the next takes it)",
             door.name(),
-            ordered.primary.model,
-            ordered.primary.url,
-            coder::generate::PRIMARY_EFFORT,
-            ordered.fallback.model,
-            ordered.fallback.url,
+            ordered
+                .doors()
+                .map(|door| format!("{} at {}", door.model, door.url))
+                .collect::<Vec<_>>()
+                .join(" → "),
             coder::generate::PRIMARY_FIRST_WORD.as_millis(),
             coder::generate::PRIMARY_THINKING.as_millis()
         ),
@@ -1300,6 +1306,12 @@ fn their_door(
     access: &model_access::Access,
 ) -> Result<(Door, model_access::Payer, model_access::Provider), String> {
     let (primary, fallback) = match ours {
+        // The gateway's class names no provider's model: their keys ask for
+        // the default lane's, as a gateway door alone does.
+        Door::Fallback(ordered) if ordered.primary.is_gateway() => (
+            model_named(coder::generate::DEFAULT_LANE.name()).to_string(),
+            ordered.fallback.model.clone(),
+        ),
         Door::Fallback(ordered) => (
             ordered.primary.model.clone(),
             ordered.fallback.model.clone(),
@@ -1336,11 +1348,9 @@ fn their_door(
     };
     let first = doors.first().ok_or("no door")?;
     let last = doors.last().ok_or("no door")?;
-    let door = if doors.len() > 1 {
-        Door::Fallback(Box::new(FallbackDoor::new(to_door(first), to_door(last))))
-    } else {
-        Door::Live(to_door(first))
-    };
+    // Every door their keys open, in order, so one of their providers
+    // failing hands the turn to the next of theirs (never to ours).
+    let door = FallbackDoor::chain(doors.iter().map(to_door).collect()).ok_or("no door")?;
     Ok((door, first.payer(), last.provider))
 }
 
@@ -1466,9 +1476,18 @@ fn ordered(door: Door, asked: Option<&str>, key: Option<&str>) -> Result<Door, S
         return Ok(door);
     };
     match door {
-        Door::Live(fallback) => Ok(Door::Fallback(Box::new(FallbackDoor::openrouter(
-            &model, &key, fallback,
-        )))),
+        Door::Live(fallback) => {
+            let ordered = FallbackDoor::openrouter(&model, &key, fallback);
+            // The same model at the same door twice is one door: the
+            // primary's, with its reasoning setting.
+            if ordered.primary.url == ordered.fallback.url
+                && ordered.primary.model == ordered.fallback.model
+            {
+                Ok(Door::Live(ordered.primary))
+            } else {
+                Ok(Door::Fallback(Box::new(ordered)))
+            }
+        }
         // Unasked, a door that picks its own model (a relay, an executor)
         // or the stub keeps answering alone.
         door if asked.is_none_or(|asked| asked.trim().is_empty()) => Ok(door),
@@ -4537,10 +4556,13 @@ mod tests {
         let Door::Fallback(ordered) = door else {
             panic!("not two doors");
         };
+        // Every door their keys open, in order, ending at their gateway.
         assert_eq!(ordered.primary.url, "https://openrouter.ai/api");
         assert_eq!(ordered.primary.model, Lane::SpaceBunny.model());
-        assert_eq!(ordered.fallback.url, "https://ai-gateway.vercel.sh");
-        assert_eq!(ordered.fallback.model, GEMINI);
+        let last_door = ordered.doors().last().expect("a last door");
+        assert_eq!(last_door.url, "https://ai-gateway.vercel.sh");
+        assert_eq!(last_door.model, GEMINI);
+        assert!(ordered.doors().all(|door| !door.url.contains("our.")));
         assert_eq!(payer.word(), "theirs");
         assert_eq!(last, model_access::Provider::Vercel);
         let mut gateway = model_access::Keys::none();
@@ -4650,14 +4672,11 @@ mod tests {
                 .and_then(|entry| entry.render(facts))
                 .unwrap_or_else(|| panic!("{id} renders"))
         };
+        // "What models do you use?" names no single model since 2026-10-09
+        // (a router picks per message), on our keys or theirs.
         let model = render(&config.facts, "meta.model");
-        assert!(
-            model.starts_with(
-                "Our chat runs on Space Bunny Alpha (an anonymous preview model) through OpenRouter \
-                 on your own key."
-            ),
-            "{model}"
-        );
+        assert!(model.starts_with("There isn't one model."), "{model}");
+        assert!(!model.contains("Space Bunny"), "{model}");
         let privacy = render(&config.facts, "meta.privacy");
         assert!(privacy.contains("Their door (embeddings)"), "{privacy}");
         assert!(!privacy.contains("Our door"), "{privacy}");
@@ -4669,11 +4688,7 @@ mod tests {
         );
         assert!(!privacy.contains("TypeSafe for Jev"), "{privacy}");
         let fell_back = config.fell_back.as_ref().expect("a fallback's facts");
-        assert!(
-            render(fell_back, "meta.model").contains("on your own key"),
-            "{}",
-            render(fell_back, "meta.model")
-        );
+        assert_eq!(render(fell_back, "meta.model"), model);
     }
 
     /// A request past the quota's byte bound is refused `limit_exceeded`
@@ -5806,13 +5821,14 @@ mod tests {
         .await;
         let result = &frames.last().unwrap().1;
         assert_eq!(result["tier"], "canned");
-        // meta.model needs the gateway, which this test worker lacks;
-        // meta.pricing needs nothing since it names no quota (#10120).
+        // The starter questions (#11095): what models, connecting a
+        // codebase, and plugins.
         assert_eq!(
             result["followups"],
             json!([
-                { "id": "meta.capabilities", "label": "What can you do?" },
-                { "id": "meta.pricing", "label": "What does it cost?" }
+                { "id": "meta.model", "label": "What models do you use?" },
+                { "id": "meta.codebase", "label": "How do I connect my codebase?" },
+                { "id": "meta.plugins", "label": "What are plugins?" }
             ])
         );
     }
@@ -6503,9 +6519,24 @@ mod tests {
         let Door::Fallback(both) = &ordered_door else {
             panic!("the primary is in front");
         };
-        assert_eq!(both.primary.model, Lane::SpaceBunny.model());
+        // Space Bunny Alpha is retired: the default primary is Gemini on
+        // OpenRouter, in front of the gateway's Gemini.
+        assert_eq!(both.primary.model, Lane::Gemini.openrouter_model());
         assert_eq!(both.primary.url, coder::generate::OPENROUTER_DOOR_URL);
         assert_eq!(both.fallback.model, GEMINI);
+        // The same model at the same door twice is one door.
+        let openrouter = Door::Live(coder::generate::ResponsesDoor::new(
+            coder::generate::OPENROUTER_DOOR_URL,
+            GEMINI,
+            "test",
+        ));
+        let Door::Live(one) = ordered(openrouter, None, Some("key")).unwrap() else {
+            panic!("one door");
+        };
+        assert_eq!(
+            (one.url.as_str(), one.model.as_str()),
+            (coder::generate::OPENROUTER_DOOR_URL, GEMINI)
+        );
         assert!(matches!(
             ordered(gateway(), Some("off"), Some("key")).unwrap(),
             Door::Live(_)
@@ -6545,7 +6576,10 @@ mod tests {
         for facts in [&config.facts, fell_back] {
             let model = render(facts, "meta.model");
             assert!(model.starts_with("There isn't one model."), "{model}");
-            assert!(!model.contains("Gemini") && !model.contains("OpenRouter"), "{model}");
+            assert!(
+                !model.contains("Gemini") && !model.contains("OpenRouter"),
+                "{model}"
+            );
         }
         for facts in [&config.facts, fell_back] {
             for id in ["meta.privacy", "meta.data_retention"] {
@@ -6921,7 +6955,7 @@ mod tests {
         )
         .await;
         let result = &frames.last().unwrap().1;
-        assert_eq!(result["answer"], "dispatch.no_computer.here@3");
+        assert_eq!(result["answer"], "dispatch.no_computer.here@4");
         assert!(
             !result["text"].as_str().unwrap().contains("Connect one"),
             "{result}"

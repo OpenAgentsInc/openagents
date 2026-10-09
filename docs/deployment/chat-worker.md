@@ -28,28 +28,46 @@ phone <--27000 partials, 26900 result------- relay.openagents.com <-- chat worke
 - **Authentication.** The identity the user already has: the device key that
   the app creates on first launch signs the request and authenticates to the
   relay (NIP-42). There is no account, sign-in, or key to paste.
-- **Model.** Since #10109, every turn asks a primary first:
-  `stealth/space-bunny-alpha` (Space Bunny Alpha, an anonymous preview
-  model) through OpenRouter's Open Responses route
-  (`https://openrouter.ai/api/v1/responses`) with `reasoning: {"effort":
-  "low"}`, under `OPENROUTER_API_KEY`. Its first token comes in about a
-  second, against about five and a half for Gemini 3.8 Flash at any effort.
-  A turn the primary fails before its first words (an HTTP error, such as
-  the 404 once OpenRouter retires the model on 2026-10-05, a 429, a failure
-  event, an empty stream, nothing at all within four seconds, or, while it
-  streams its reasoning, no answer text within eight) goes, the
-  same turn, to `google/gemini-3.8-flash` through the Vercel AI Gateway, the
-  lane the Coder terminal's chat used (`crates/coder/src/generate.rs`,
-  `FallbackDoor`), so the model going away needs no deploy. The journal logs
-  each fallback (`door stealth/space-bunny-alpha missed its first words
-  after … ms (door: …); google/gemini-3.8-flash takes the turn`) and every
-  answer (`job … answered in … ms, … chars, by <model>`), and each result's
-  `model` names the model that wrote it. `CODER_WORKER_PRIMARY` names
-  another OpenRouter model or `off`; unset, the primary is Space Bunny Alpha
-  whenever `OPENROUTER_API_KEY` is set, so the deployed environment file
-  needed no change. OpenRouter's notice for the model says its anonymous
-  provider may keep prompts and completions but does not train on them;
-  since #11040 the worker asks for zero retention (below), and the privacy
+- **Model, and failover across providers (2026-10-09).** Every turn goes
+  down a chain of doors (`crates/coder/src/generate.rs`, `FallbackDoor`)
+  and is answered by the first that starts answering, so the person never
+  sees a provider's failure while any door can answer. On 2026-10-09 the
+  old two-door chain failed every chat: the primary, Space Bunny Alpha,
+  answered 404 "No endpoints found" (OpenRouter retired it) and the one
+  fallback, the Vercel AI Gateway, answered 402 `insufficient_funds`. The
+  chain now, in order:
+  1. The OpenAgents inference gateway (`CODER_INFERENCE_KEY`,
+     `docs/inference/gateway.md`), when its service key is set. Production's
+     gateway is not deployed yet (staging's runs on loopback inside the
+     staging service), so the production worker has no gateway door today;
+     when production's gateway is deployed and its env file gets a service
+     key, the gateway goes first and every door below stays behind it.
+  2. The primary, `google/gemini-3.8-flash` on OpenRouter at reasoning
+     effort `low` (`CODER_WORKER_PRIMARY`; unset, Gemini whenever
+     `OPENROUTER_API_KEY` is set; Space Bunny Alpha is retired).
+  3. The door `CODER_DOOR_URL` and `CODER_WORKER_MODEL` name (left out when
+     it is the primary again; production's is OpenRouter's Gemini since the
+     hot fix, so it is).
+  4. The backups (`CODER_WORKER_BACKUPS`; unset, every one whose key is
+     here): `z-ai/glm-5.3-flash` on OpenRouter, then `google/gemini-3.8-flash`
+     and `zai/glm-5.3-flash` on the Vercel AI Gateway (`AI_GATEWAY_API_KEY`),
+     another account.
+
+  A door that fails before its first words (any HTTP error, including 402,
+  401/403, 404, 429, and 5xx, a connection that fails, a failure event, an
+  empty stream, nothing within four seconds, or, while it streams its
+  reasoning, no answer text within eight) hands the same turn to the next;
+  the last door keeps its own retries. A door that answered 404 (model
+  gone) sits out 30 minutes, one that answered 401, 402, or 403 (key or
+  account) five, so later turns do not pay its failed request first; when
+  every door is benched, every door is asked. The journal logs each switch
+  (`door google/gemini-3.8-flash missed its first words after … ms (door:
+  the model endpoint answered HTTP 402: …); z-ai/glm-5.3-flash at
+  https://openrouter.ai/api takes the turn`), each bench (`door … benched
+  for 300 s (door)`), and every answer (`job … answered in … ms, … chars,
+  by <model>`), and each result's `model` names the model that wrote it.
+  Only when every door fails does the person see the plain failure line.
+  Since #11040 the worker asks for zero retention (below), and the privacy
   answer (`meta.privacy`, `meta.data_retention`) says what the worker asks
   (`coder::first::keeps_sentence`), and
   "What model is this?" (`meta.model`) names the model answering now,
@@ -60,6 +78,21 @@ phone <--27000 partials, 26900 result------- relay.openagents.com <-- chat worke
   hold the first release answered "summarize your essay" turns ungrounded.
   The keys are in the worker's environment file on its host and nowhere else.
   No model API key ships in the app.
+- **Embeddings and the judge fail over too.** The product knowledge base,
+  the Gym records, and the codebase index embed with
+  `openai/text-embedding-3-small` on the provider the configuration names,
+  with every other provider of ours that has a key here behind it (OpenRouter,
+  the Vercel AI Gateway, OpenAI: the same model, so the cache stays valid);
+  a failed call goes to the next and logs `embeddings: … failed (…); …
+  takes the call`. The AI Gateway embedder reads `AI_GATEWAY_API_KEY`
+  first and `CODER_DOOR_KEY` only while the door is the gateway, so an
+  OpenRouter door key is never sent to Vercel. Jev's judge already asked
+  the Vercel AI Gateway, OpenRouter, then TypeSafe (`jev::doors`); on
+  2026-10-09 it stopped at the first door's 402 because OpenRouter answered
+  the alias `typesafe/jev-latest` with 400 "does not exist", which is not a
+  failover. `jev-latest` now names the newest alias there
+  (`typesafe/jev-1.13`), and a 404 fails over like a 402. A judge that
+  still fails costs the turn its opener, never its answer.
 - **What we ask the providers (#11040).** Every chat-model request carries
   `"store": false`. Under `CODER_PROVIDER_PRIVACY=strict` (the default when
   unset), OpenRouter requests (the primary and T1 personalization) also

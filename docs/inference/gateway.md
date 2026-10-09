@@ -678,7 +678,13 @@ P0 as built (#11060 to #11064):
   default `http://127.0.0.1:8790`; `CODER_INFERENCE_MODEL`, default
   `openagents/chat`). `CODER_WORKER_INFERENCE=direct` keeps the provider
   doors. Each result names the model the gateway chose, and the usage log's
-  `door` names the upstream (`vertex via 127.0.0.1:8790`).
+  `door` names the upstream (`vertex via 127.0.0.1:8790`). Since
+  2026-10-09 the gateway is the first door of the worker's chain, not its
+  only one: the direct OpenRouter and Vercel AI Gateway doors whose keys
+  the worker holds stay behind it, so a gateway that is down or refuses
+  hands the turn on ([chat worker](../deployment/chat-worker.md), "Model,
+  and failover across providers"). Production's worker has no gateway
+  door until production's gateway is deployed; it runs the direct chain.
 - `scripts/dev/inference-local.sh` runs the gateway, a chat worker on it,
   and the website on one machine.
 
