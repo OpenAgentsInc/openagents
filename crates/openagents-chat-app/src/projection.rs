@@ -220,18 +220,14 @@ pub fn actionable(
         .flatten()
 }
 
-/// Follow-up IDs preserve their index in the signed reply's metadata.
+/// Follow-up IDs preserve their index in the signed reply's metadata; the
+/// rule is shared with every surface
+/// ([`openagents_chat::suggestions::followups`]).
 pub fn followups<'a>(
     meta: &'a openagents_chat::router::Meta,
     used: &'a [String],
 ) -> impl Iterator<Item = (usize, &'a openagents_chat::router::Followup)> + 'a {
-    meta.followups.iter().enumerate().filter(|(_, followup)| {
-        !openagents_chat::basic_chats::suggestion_used(
-            used,
-            followup.answer.as_deref(),
-            &[&followup.label],
-        )
-    })
+    openagents_chat::suggestions::followups(meta, used)
 }
 
 pub fn completed(turns: &[Turn], busy: bool, failure: bool) -> bool {

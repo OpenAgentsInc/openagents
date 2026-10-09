@@ -20,6 +20,8 @@
 //! - [`ComposerAction`], [`ComposerPanel`]: footer icon buttons and the
 //!   panels the selectors load above the composer.
 //! - [`Message`]: one turn of a conversation thread.
+//! - [`SuggestionChips`]: questions to ask with one tap, and links a reply
+//!   points to ([`SuggestionChip`]).
 //! - [`ThemeToggle`]: the button the theme script binds through
 //!   [`THEME_TOGGLE_ATTR`].
 //!
@@ -32,6 +34,7 @@ mod glyph;
 mod layout;
 mod scroll;
 mod status;
+mod suggestions;
 mod theme;
 mod thread;
 
@@ -46,6 +49,7 @@ pub use layout::{
 };
 pub use scroll::{SCROLL_TAIL_ATTR, SCROLL_TO_BOTTOM_ATTR, ScrollToBottom};
 pub use status::ChatStatus;
+pub use suggestions::{SuggestionChip, SuggestionChips};
 pub use theme::{THEME_COOKIE, THEME_TOGGLE_ATTR, Theme, ThemeToggle};
 pub use thread::{Message, MessageRole};
 

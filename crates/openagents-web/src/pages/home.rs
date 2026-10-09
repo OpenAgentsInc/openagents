@@ -23,12 +23,20 @@ async fn home(State(app): State<App>, headers: HeaderMap) -> Response {
     let (owner, fresh) = super::chat::visitor(&headers);
     let selection = Default::default();
     let selectors = crate::composer::selectors_shown(&app, &headers, &selection).await;
+    // Starter questions under the composer, as on the phone's new chat
+    // (`crate::suggestions`). A visitor without the cookie has used none.
+    let used = if fresh.is_none() {
+        crate::suggestions::used(&app, &owner).await
+    } else {
+        Vec::new()
+    };
     let content = html! {
         div.oa-home-stage {
             (super::chat::composer("/chat", "Start a chat", None, selectors, html! {}))
             (crate::composer::state_field(&app, &owner, &selection, false))
             input type="hidden" name="request_id" value=(super::chat::new_id()) form="chat-form";
             input type="hidden" name="csrf" value=(super::chat::csrf(&app,&owner)) form="chat-form";
+            (crate::suggestions::starters(&app, &owner, &used))
         }
         (crate::ui_page::legal_links())
     };

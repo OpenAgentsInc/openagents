@@ -32,75 +32,10 @@ pub const STARTERS: &[(&str, &str, &str)] = &[
     ("check", "Check a result", "Find me a result to check"),
 ];
 
-/// A suggested question above a new chat's field: `id` is stable (a
-/// prepared answer's bank id where it leads to one, so the follow-up chip
-/// for that answer counts as the same suggestion), `label` is what the chip
-/// reads, and `message` what a tap sends.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Suggestion {
-    pub id: &'static str,
-    pub label: &'static str,
-    pub message: &'static str,
-}
-
-/// How many suggestions a new chat shows at once.
-pub const SUGGESTIONS_SHOWN: usize = 4;
-
-/// Every new chat's suggestions, in order (`SCR-15.E06`). A new chat shows
-/// the first [`SUGGESTIONS_SHOWN`] the person has not used yet (tapped, or
-/// sent the same words) first, then used ones, so there are always four.
-pub const SUGGESTIONS: &[Suggestion] = &[
-    Suggestion {
-        id: "meta.who",
-        label: "Who are you?",
-        message: "Who are you?",
-    },
-    Suggestion {
-        id: "meta.capabilities",
-        label: "What can you do?",
-        message: "What can you do?",
-    },
-    Suggestion {
-        id: "gym.news",
-        label: "What's new in the Gym?",
-        message: "What's new in the Gym?",
-    },
-    Suggestion {
-        id: "gym.test",
-        label: "Test a plugin",
-        message: "Which plugin should I try?",
-    },
-    Suggestion {
-        id: "meta.model",
-        label: "What model is this?",
-        message: "What model is this?",
-    },
-    Suggestion {
-        id: "eval.credit.how",
-        label: "How do I earn XP?",
-        message: "How do I earn XP from tests?",
-    },
-    Suggestion {
-        id: "gym.check",
-        label: "Check a result",
-        message: "Find me a result to check",
-    },
-    Suggestion {
-        id: "account.computers",
-        label: "How do I connect a computer?",
-        message: "How do I connect a computer?",
-    },
-    Suggestion {
-        id: "meta.open_source",
-        label: "Are you open source?",
-        message: "Are you open source?",
-    },
-    Suggestion {
-        id: "meta.pricing",
-        label: "What does it cost?",
-        message: "What does it cost?",
-    },
-];
+/// A new chat's suggestions, their order, and what a tap sends: one list
+/// for the phone, the desktop and the website
+/// ([`openagents_chat::suggestions`]).
+pub use openagents_chat::suggestions::{SUGGESTIONS, SUGGESTIONS_SHOWN, Suggestion};
 
 /// The player card on the menu (`SCR-01.E04`).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]

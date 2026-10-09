@@ -144,7 +144,7 @@ pub fn suggestion_used(markers: &[String], id: Option<&str>, words: &[&str]) -> 
 
 /// The mark of a suggestion's ID: a bank ID without its `@version`, so a
 /// new version of an answer is the same suggestion.
-fn id_mark(id: &str) -> String {
+pub fn id_mark(id: &str) -> String {
     format!("id:{}", id.split('@').next().unwrap_or(id))
 }
 

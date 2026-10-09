@@ -283,6 +283,7 @@ async fn start(State(app): State<App>, headers: HeaderMap, Form(prompt): Form<Pr
             outcome: Outcome::Pending,
             selection: selection.clone(),
             cloud: cloud.clone(),
+            reply: None,
         }],
         selection,
         updated_unix: now(),
@@ -386,6 +387,7 @@ async fn show(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>
         (ticket(&app, chat, false, false))
         p #chat-feedback.oa-composer-feedback role="status" aria-live="polite" {}
     };
+    let chips = crate::suggestions::reply_chips(&app, chat).await;
     let page = UiPage::new(chat.title.clone())
         .path(format!("/chat/{id}"))
         .app()
@@ -394,7 +396,7 @@ async fn show(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>
         .sidebar_section(chat_list(&app, &chat.owner, Some(&chat.id), true, false).await)
         .content(html! {
             // The thread is private: HTMX never snapshots it into history.
-            div #chat-content.oa-thread-view hx-history="false" { (content(chat, None)) }
+            div #chat-content.oa-thread-view hx-history="false" { (content(chat, None, chips)) }
         })
         .composer(composer(
             &format!("/chat/{id}"),
@@ -431,7 +433,8 @@ async fn workspace(State(app): State<App>, headers: HeaderMap, Path(id): Path<St
         &chat.selection.clone().unwrap_or_default(),
     )
     .await;
-    let body = html! { title {(chat.title) " · OpenAgents"} (Breadcrumb::new(chat.title.clone()).swap_oob(true)) (content(chat,None)) (ticket(&app,chat,true,selectors)) (chat_list(&app,&chat.owner,Some(&chat.id),true,true).await) };
+    let chips = crate::suggestions::reply_chips(&app, chat).await;
+    let body = html! { title {(chat.title) " · OpenAgents"} (Breadcrumb::new(chat.title.clone()).swap_oob(true)) (content(chat,None,chips)) (ticket(&app,chat,true,selectors)) (chat_list(&app,&chat.owner,Some(&chat.id),true,true).await) };
     let mut response = crate::chat_html::protect(body.into_response());
     response.headers_mut().insert(
         "HX-Push-Url",
@@ -555,6 +558,7 @@ async fn follow(
         outcome: Outcome::Pending,
         selection,
         cloud: cloud.clone(),
+        reply: None,
     });
     let loaded = match app.config.chat_store.compare_and_swap(&loaded, &next).await {
         Ok(v) => v,
@@ -686,12 +690,16 @@ async fn answer(app: App, mut loaded: Loaded, admitted_at: u64) {
         if let Some(job) = &mut job {
             tokio::select! { ()=job,if !asked=>asked=true, ()=tokio::time::sleep(Duration::from_millis(400))=>{} }
         }
-        let (text, done, failure) = {
+        let (text, done, failure, meta) = {
             let r = basic_coder::lock(&reply);
             (
                 r.text.clone(),
                 r.done,
                 r.failure.as_ref().map(|e| e.describe()),
+                // What the chips under the answer read (`crate::suggestions`).
+                r.done
+                    .then(|| openagents_chat::suggestions::chip_meta(&r.meta))
+                    .filter(|meta| !meta.is_empty()),
             )
         };
         let expired = tokio::time::Instant::now() >= deadline;
@@ -711,6 +719,9 @@ async fn answer(app: App, mut loaded: Loaded, admitted_at: u64) {
             if ended {
                 next.pending = None;
                 if let Some(r) = next.requests.iter_mut().find(|r| r.id == request_id) {
+                    if done {
+                        r.reply = meta.clone();
+                    }
                     r.outcome = if done {
                         Outcome::Answered
                     } else if door_unavailable {
@@ -876,13 +887,12 @@ pub(crate) fn ticket(app: &App, chat: &Conversation, oob: bool, selectors: bool)
     } (crate::composer::state_field(app, &chat.owner, &selection, oob)) @if oob && selectors { (crate::composer::controls(&selection, true)) } }
 }
 
-/// The thread, and the scroll-to-bottom button over it. The title is the
-/// header row's breadcrumb, not part of the thread.
-fn content(chat: &Conversation, before: Option<usize>) -> Markup {
+    let chips = crate::suggestions::reply_chips(&app, chat).await;
+    let body = html! { title {(chat.title) " · OpenAgents"} (Breadcrumb::new(chat.title.clone()).swap_oob(true)) (content(chat,None,chips)) (ticket(&app,chat,true,selectors)) (chat_list(&app,&chat.owner,Some(&chat.id),true,true).await) };
     html! {
         section #chat-thread.oa-thread aria-label="Chat" {
             div.oa-thread-column hx-ext="sse" sse-connect=(format!("/chat/{}/events?after={}",chat.id,chat.revision)) sse-close="retired" {
-                div #chat-transcript sse-swap="transcript,retired" hx-swap="innerHTML" { (messages(chat,before)) }
+                div #chat-transcript sse-swap="transcript,retired" hx-swap="innerHTML" { (messages(chat,before)) (chips) }
             }
         }
         (ScrollToBottom::new("#chat-thread"))
@@ -936,7 +946,14 @@ async fn transcript(
 ) -> Response {
     match load(&app, &headers, &id).await {
         Ok(v) => {
-            crate::chat_html::protect(messages(&v.conversation, window.before).into_response())
+            // The chips under the last answer show with the latest messages.
+            let chips = match window.before {
+                None => crate::suggestions::reply_chips(&app, &v.conversation).await,
+                Some(_) => html! {},
+            };
+            crate::chat_html::protect(
+                html! { (messages(&v.conversation, window.before)) (chips) }.into_response(),
+            )
         }
         Err(r) => r,
     }
@@ -1038,7 +1055,8 @@ async fn events(
                     let revision = v.conversation.revision;
                     let missed = revision.saturating_sub(cursor + 1);
                     let _ = missed; // A resume re-renders the full transcript; nothing to announce.
-                    let body = html! { (messages(&v.conversation,None)) }.into_string();
+                    let chips = crate::suggestions::reply_chips(&app, &v.conversation).await;
+                    let body = html! { (messages(&v.conversation,None)) (chips) }.into_string();
                     cursor = revision;
                     Event::default()
                         .id(format!("{id}:{revision}"))

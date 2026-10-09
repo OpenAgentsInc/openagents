@@ -118,7 +118,16 @@ pub(crate) struct Request {
     pub selection: Option<Selection>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cloud: Option<CloudRequest>,
+    /// What the router said about the answer that the chips under it read:
+    /// its prepared answer, follow-ups, and offers to run Coder or open a
+    /// screen (`openagents_chat::suggestions::chip_meta`). Older records
+    /// have none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reply: Option<openagents_chat::router::Meta>,
 }
+
+/// The most follow-ups or offers a retained answer keeps.
+const MAX_REPLY_CHIPS: usize = 16;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -891,6 +900,20 @@ fn validate_conversation(conversation: &Conversation) -> Result<(), Error> {
         if let Some(selection) = &request.selection {
             selection.validate()?;
         }
+        if let Some(reply) = &request.reply
+            && (reply.followups.len() > MAX_REPLY_CHIPS
+                || reply.offers.len() > MAX_REPLY_CHIPS
+                || reply
+                    .answer
+                    .as_ref()
+                    .is_some_and(|answer| !bounded_text(answer, 96))
+                || reply
+                    .followups
+                    .iter()
+                    .any(|followup| !bounded_text(&followup.label, 512)))
+        {
+            return Err(Error::Invalid("This chat could not be opened or saved."));
+        }
         if let Some(cloud) = &request.cloud {
             cloud.validate()?;
             if request
@@ -1229,6 +1252,7 @@ mod tests {
                 outcome: Outcome::Answered,
                 selection: None,
                 cloud: None,
+                reply: None,
             }],
             selection: None,
             updated_unix: 1,

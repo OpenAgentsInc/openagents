@@ -108,24 +108,18 @@ pub fn reply_actions_for(
     {
         output.notice = Some(("coder-runner".into(), runner.text()));
     }
-    for (index, offer) in meta.offers.iter().enumerate() {
-        let Offer::OpenScreen { screen } = offer else {
-            continue;
-        };
-        if *screen == Screen::GymResult || (*screen == Screen::GymPublish && !has_result) {
-            continue;
-        }
-        let connecting =
-            *screen == Screen::Computers && matches!(availability, Target::NotConfigured);
-        if connecting && judged {
-            continue;
-        }
-        let (label, glyph) = screen_chip(*screen, connecting);
+    // The routed chips: the typed `open_screen` offers, chosen as on every
+    // surface (`openagents_chat::suggestions::screen_offers`).
+    let no_computer = matches!(availability, Target::NotConfigured);
+    for (index, screen, connecting) in
+        openagents_chat::suggestions::screen_offers(meta, has_result, no_computer, judged)
+    {
+        let (label, glyph) = screen_chip(screen, connecting);
         output.chips.push(Chip {
             key: format!("coder-screen-{index}"),
             label: label.into(),
             glyph,
-            action: Action::OpenScreen { screen: *screen },
+            action: Action::OpenScreen { screen },
         });
     }
     for (index, followup) in crate::projection::followups(meta, used) {
@@ -139,39 +133,30 @@ pub fn reply_actions_for(
     output
 }
 
+/// A new chat's suggestions: the shared list and order
+/// ([`openagents_chat::suggestions::suggestions`]).
 pub fn suggestions(
     used: &[String],
 ) -> impl Iterator<Item = &'static crate::first_run::Suggestion> + '_ {
-    let fresh = |suggestion: &&crate::first_run::Suggestion| {
-        !openagents_chat::basic_chats::suggestion_used(
-            used,
-            Some(suggestion.id),
-            &[suggestion.label, suggestion.message],
-        )
-    };
-    // The ones not used yet come first; used ones fill the rest, so a new
-    // chat always shows suggestions (owner, 2026-10-01).
-    let all = crate::first_run::SUGGESTIONS.iter();
-    all.clone()
-        .filter(fresh)
-        .chain(all.filter(move |suggestion| !fresh(suggestion)))
-        .take(crate::first_run::SUGGESTIONS_SHOWN)
+    openagents_chat::suggestions::suggestions(used)
 }
 
 pub fn screen_chip(screen: Screen, connecting: bool) -> (&'static str, Glyph) {
-    match screen {
-        Screen::Wallet => ("Open Wallet", Glyph::Wallet),
-        Screen::Computers if connecting => ("Connect a computer", Glyph::Add),
-        Screen::Computers => ("Your computers", Glyph::Computer),
-        Screen::Keys => ("Identity keys", Glyph::Key),
-        Screen::Playtest => ("Playtest", Glyph::Flag),
-        Screen::Report => ("Report a problem", Glyph::Flag),
-        Screen::VerseGym => ("See the board", Glyph::Check),
-        Screen::GymResult => ("See your result", Glyph::Check),
-        Screen::GymPublish => ("Add to the Gym", Glyph::Add),
-        Screen::GymTestSet => ("See the tests", Glyph::Ask),
-        Screen::RoutesMap => ("Open the map", Glyph::Map),
-    }
+    let glyph = match screen {
+        Screen::Wallet => Glyph::Wallet,
+        Screen::Computers if connecting => Glyph::Add,
+        Screen::Computers => Glyph::Computer,
+        Screen::Keys => Glyph::Key,
+        Screen::Playtest | Screen::Report => Glyph::Flag,
+        Screen::VerseGym | Screen::GymResult => Glyph::Check,
+        Screen::GymPublish => Glyph::Add,
+        Screen::GymTestSet => Glyph::Ask,
+        Screen::RoutesMap => Glyph::Map,
+    };
+    (
+        openagents_chat::suggestions::screen_label(screen, connecting),
+        glyph,
+    )
 }
 
 fn clip(text: &str, limit: usize) -> String {

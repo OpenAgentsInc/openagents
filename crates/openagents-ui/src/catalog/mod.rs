@@ -105,6 +105,8 @@ pub const COMPONENTS: &[&str] = &[
     "ComposerAction",
     "ComposerPanel",
     "Message",
+    "SuggestionChips",
+    "SuggestionChip",
     "ComposerDropdown",
     "ModelPickerTrigger",
     "HxGet",

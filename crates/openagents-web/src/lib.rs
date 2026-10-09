@@ -31,6 +31,7 @@ pub mod pilot;
 mod purchases;
 pub mod sales_remote;
 mod settings;
+mod suggestions;
 mod tasks;
 pub mod theme;
 pub mod ui_page;

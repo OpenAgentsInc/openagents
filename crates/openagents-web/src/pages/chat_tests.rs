@@ -84,6 +84,7 @@ impl Fixture {
                     outcome: Outcome::Answered,
                     selection: selection.clone(),
                     cloud: None,
+                    reply: None,
                 }],
                 selection,
                 updated_unix: 1,

@@ -19,6 +19,7 @@ pub mod route;
 pub mod router;
 pub mod service;
 pub mod studio;
+pub mod suggestions;
 pub mod thread;
 pub mod tool_groups;
 

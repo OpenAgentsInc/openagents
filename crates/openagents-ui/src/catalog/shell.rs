@@ -10,7 +10,8 @@ use crate::overlays::MenuItem;
 use crate::shell::{
     AccountMenu, AppShell, Breadcrumb, ChatList, ChatStatus, Composer, ComposerAction,
     ComposerDropdown, ComposerPanel, Document, HxGet, LegalLinks, MainMode, Message,
-    ModelPickerTrigger, NavItem, ScrollToBottom, Sidebar, SidebarSection, Theme, ThemeToggle,
+    ModelPickerTrigger, NavItem, ScrollToBottom, Sidebar, SidebarSection, SuggestionChip,
+    SuggestionChips, Theme, ThemeToggle,
 };
 
 /// The id `AppShell` gives its left panel. The page around the catalog has
@@ -95,6 +96,10 @@ pub(super) fn composer(pane: Pane) -> Markup {
             (Message::assistant(html! { p { "Coder Light is on. The toggle follows your system setting." } }).author("OpenAgents"))
             (Message::status("Working…"))
         })))
+        (specimen("SuggestionChips SuggestionChip", "Suggestions to ask, and a link", SuggestionChips::new("Suggestions")
+            .chip(SuggestionChip::send("Who are you?", "/ui", [("q".to_owned(), "Who are you?".to_owned())]))
+            .chip(SuggestionChip::send("Test a plugin", "/ui", [("q".to_owned(), "Which plugin should I try?".to_owned())]))
+            .chip(SuggestionChip::link("Connect a computer", "/docs/connect-a-computer"))))
         (specimen("ComposerDropdown ModelPickerTrigger", "Triggers alone", row(html! {
             (ComposerDropdown::new("Environment", "Cloud").icon(Icon::Globe).show_label(true))
             (ModelPickerTrigger::new("Max").effort("Medium"))

@@ -421,6 +421,22 @@ async fn the_homepage_composer_is_the_design_language_component() {
     ));
     // The homepage posts a plain form and follows the redirect to the chat.
     assert!(!home.contains("hx-post="));
+    // The phone's first four starter questions sit under the composer, each
+    // a plain form posting its words to `/chat`.
+    assert!(home.contains(
+        "<div class=\"oa-suggestions\" role=\"group\" aria-label=\"Suggestions\" id=\"chat-suggestions\">"
+    ));
+    for suggestion in openagents_chat::suggestions::SUGGESTIONS.iter().take(4) {
+        assert!(
+            home.contains(&format!(
+                "<button type=\"submit\" class=\"oa-suggestion-chip\">{}</button>",
+                maud::html! { (suggestion.label) }.into_string()
+            )),
+            "{}",
+            suggestion.id
+        );
+    }
+    assert_eq!(home.matches("class=\"oa-suggestion-chip\"").count(), 4);
     assert!(home.contains("id=\"chat-card\" class=\"oa-composer-body\""));
     assert!(home.contains("placeholder=\"Ask OpenAgents anything\""));
     assert!(home.contains("maxlength=\"4000\""));
