@@ -593,6 +593,33 @@ impl SceneCache {
             .values()
             .all(|new| self.source.contains_key(&new.key) || !intersects(new))
     }
+    /// Moves admitted fixed shapes to newer poses without recompiling them.
+    /// Unknown keys and capsules are skipped; returns how many moved.
+    ///
+    /// # Errors
+    ///
+    /// Returns a message for an invalid pose, before any shape moves.
+    pub fn set_poses(&mut self, poses: &[(ColliderKey, Pose)]) -> Result<usize, String> {
+        for (_, pose) in poses {
+            valid_point(pose.position)?;
+            if !pose.rotation.is_finite() || (pose.rotation.length_squared() - 1.).abs() > 1e-8 {
+                return Err("Invalid collision pose".into());
+            }
+        }
+        let mut moved = 0;
+        for (key, pose) in poses {
+            let Some(shape) = self.source.get_mut(key) else {
+                continue;
+            };
+            if matches!(shape.geometry, GeometrySnapshot::Capsule { .. }) || shape.pose == *pose {
+                continue;
+            }
+            shape.pose = *pose;
+            self.scene.set_pose(*key, *pose)?;
+            moved += 1;
+        }
+        Ok(moved)
+    }
     /// Returns the number of recompiled shapes. Validation and compilation precede mutation.
     pub fn update(&mut self, snapshot: &SceneSnapshot) -> Result<usize, String> {
         snapshot.validate(self.instance)?;

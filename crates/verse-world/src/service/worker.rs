@@ -1009,6 +1009,7 @@ mod tests {
             epoch: 3,
             accepted_sequence: 1,
             applied_movement: None,
+            dynamic: Vec::new(),
         };
         assert!(!interval_control_changed(&frame, None));
         assert!(!interval_control_changed(&frame, Some(&control)));
@@ -1134,6 +1135,7 @@ mod tests {
             world_step: 0,
             credit_step: 0,
             applied_movement: None,
+            dynamic: Vec::new(),
         };
         assert!(!retired_control(&input, None));
         assert!(!retired_control(&input, Some(&control)));
@@ -2238,6 +2240,7 @@ mod tests {
             epoch: 1,
             accepted_sequence: 0,
             applied_movement: None,
+            dynamic: Vec::new(),
         };
         assert!(fresh_control(&input, Some(&control), Some(Instant::now())));
         assert!(!fresh_control(&input, Some(&control), None));

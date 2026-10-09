@@ -262,6 +262,7 @@ impl Gateway {
                             epoch: admission.epoch(),
                             accepted_sequence: admission.accepted_sequence(),
                             applied_movement: None,
+                            dynamic: Vec::new(),
                         },
                     )
                 })

@@ -875,6 +875,9 @@ impl Session {
         let Some(baseline) = r.control.as_ref().and_then(|c| c.applied_movement) else {
             return Ok(());
         };
+        if let Some(control) = &r.control {
+            self.prediction.observe_dynamic_poses(&control.dynamic)?;
+        }
         let before = self.prediction.pose();
         let timing = self.notes.as_ref().map(|_| self.prediction.timing());
         if !self

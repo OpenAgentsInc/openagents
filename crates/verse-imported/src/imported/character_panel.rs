@@ -1109,6 +1109,7 @@ mod tests {
                     epoch: 1,
                     accepted_sequence: 0,
                     applied_movement: None,
+                    dynamic: Vec::new(),
                 }))
                 .unwrap();
             }

@@ -310,6 +310,7 @@ mod tests {
                 epoch: 1,
                 accepted_sequence: sequence,
                 applied_movement: None,
+                dynamic: Vec::new(),
             }),
             body: Reply::Refused {
                 code: "storage_busy".into(),

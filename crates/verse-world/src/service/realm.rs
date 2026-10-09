@@ -598,6 +598,7 @@ impl Realm {
                     epoch: a.epoch(),
                     accepted_sequence: a.accepted_sequence(),
                     applied_movement: None,
+                    dynamic: Vec::new(),
                 }),
                 body: result.unwrap_or_else(|message| super::wire::Reply::Refused {
                     code: if service_handled {

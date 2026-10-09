@@ -249,6 +249,20 @@ impl Local {
         self.observe_inner(baseline, None, tick, observation)?;
         Ok(true)
     }
+    /// Moves loose props to the committed poses a movement confirmation
+    /// carries, before it replays (#10559). Their shapes stay as the last
+    /// scene snapshot admitted them.
+    ///
+    /// # Errors
+    ///
+    /// Returns a message for an invalid pose.
+    pub fn observe_dynamic_poses(
+        &mut self,
+        poses: &[crate::service::wire::ColliderPose],
+    ) -> Result<usize, String> {
+        let poses: Vec<_> = poses.iter().map(|p| (p.key, p.pose)).collect();
+        self.collision.set_poses(&poses)
+    }
     pub fn confirmed(&self) -> Option<Baseline> {
         self.baseline
     }
@@ -3316,6 +3330,73 @@ mod tests {
         assert!(
             glam::DVec2::new(moved.x, moved.z).length() < 0.01,
             "Prediction carried the player {moved:?} with no input"
+        );
+    }
+
+    #[test]
+    fn confirmed_loose_prop_poses_replace_a_stale_snapshot_pose() {
+        use physics::queries::{ColliderKey, GeometrySnapshot, Pose, ShapeSnapshot, Usage};
+        // Retained 600-second battle (run 2, player 1): the loose ritual
+        // crate stood in the client's last snapshot where the authority had
+        // already pushed it away, and the prediction climbed it while the
+        // authority walked the ground.
+        let crate_key = ColliderKey {
+            life: Life {
+                instance: 7,
+                entity: crate::spells::PROP_ENTITY_BASE,
+                generation: 0,
+            },
+            shape: 0,
+        };
+        let walk = |refresh: bool| {
+            let (mut local, mut baseline, mut source) = setup();
+            // Find the walking direction, then stand a 1.2 m box 1.5 m along it.
+            let mut probe = Local::new(7);
+            probe.observe(baseline, &source, 1, 1).unwrap();
+            probe.queue(1, movement()).unwrap();
+            probe.advance(0.1).unwrap();
+            let direction = probe.pose().unwrap().position.as_dvec3().normalize();
+            source.colliders.push(ShapeSnapshot {
+                key: crate_key,
+                layers: 1,
+                usage: Usage::Blocking,
+                pose: Pose {
+                    position: direction * 1.5 + glam::DVec3::Y * 0.6,
+                    rotation: glam::DQuat::IDENTITY,
+                },
+                geometry: GeometrySnapshot::Box {
+                    min: glam::DVec3::splat(-0.6),
+                    max: glam::DVec3::splat(0.6),
+                },
+            });
+            baseline.epoch += 1;
+            baseline.profile = movement::Profile::Frames;
+            local.observe(baseline, &source, 2, 2).unwrap();
+            if refresh {
+                let moved = local
+                    .observe_dynamic_poses(&[crate::service::wire::ColliderPose {
+                        key: crate_key,
+                        pose: Pose {
+                            position: glam::DVec3::new(15., 0.6, 15.),
+                            rotation: glam::DQuat::IDENTITY,
+                        },
+                    }])
+                    .unwrap();
+                assert_eq!(moved, 1);
+            }
+            local.queue(1, movement()).unwrap();
+            for _ in 0..6 {
+                local.advance(0.1).unwrap();
+            }
+            local.pose().unwrap().position
+        };
+        let stale = walk(false);
+        let fresh = walk(true);
+        assert!(fresh.y.abs() < 1e-4, "{fresh:?}");
+        assert!(fresh.length() > 1.5, "{fresh:?}");
+        assert!(
+            stale.y > 0.3 || stale.length() < 1.0,
+            "the crate never mattered: {stale:?}"
         );
     }
 }

@@ -34,7 +34,7 @@
     },
     "wire_version": {
       "source": "crates/verse-world/src/service/wire.rs",
-      "value": 33
+      "value": 34
     }
   },
   "generator": "scripts/verse-runtime-contract.py",
@@ -71,6 +71,12 @@
           "features": [],
           "optional": false,
           "path": "../coder-reach"
+        },
+        "cfg(target_arch = \"wasm32\"):coder-ui": {
+          "default_features": true,
+          "features": [],
+          "optional": false,
+          "path": "../coder-ui"
         },
         "cfg(target_arch = \"wasm32\"):terminal-core": {
           "default_features": true,
@@ -151,7 +157,8 @@
           "imported-desktop",
           "terminal",
           "crypt",
-          "crypt-fight"
+          "crypt-fight",
+          "pylon-relay"
         ],
         "dev-destruction": [
           "verse-zone-everglade/dev-destruction"
@@ -182,6 +189,9 @@
         "panels": [
           "dep:rust-native-desktop",
           "dep:openagents-chat-app"
+        ],
+        "pylon-relay": [
+          "verse-zone-everglade/pylon-relay"
         ],
         "remote-chamber": [
           "hosted-social",
@@ -348,6 +358,18 @@
           "optional": true,
           "path": "../terminal-studio"
         },
+        "all:town-clock": {
+          "default_features": true,
+          "features": [],
+          "optional": false,
+          "path": "../town-clock"
+        },
+        "all:townsfolk": {
+          "default_features": true,
+          "features": [],
+          "optional": false,
+          "path": "../townsfolk"
+        },
         "all:verse-content": {
           "default_features": true,
           "features": [
@@ -414,6 +436,12 @@
           "optional": false,
           "path": "../verse-world"
         },
+        "all:verse-zone-coast": {
+          "default_features": true,
+          "features": [],
+          "optional": false,
+          "path": "../verse-zone-coast"
+        },
         "all:verse-zone-crypt": {
           "default_features": true,
           "features": [],
@@ -444,6 +472,12 @@
           "optional": false,
           "path": "../verse-zone-lagrange"
         },
+        "all:verse-zone-water": {
+          "default_features": true,
+          "features": [],
+          "optional": false,
+          "path": "../verse-zone-water"
+        },
         "all:workbench": {
           "default_features": true,
           "features": [],
@@ -455,6 +489,12 @@
           "features": [],
           "optional": true,
           "path": "../xp-ledger"
+        },
+        "cfg(not(target_arch = \"wasm32\")):coder-lease": {
+          "default_features": true,
+          "features": [],
+          "optional": false,
+          "path": "../coder-lease"
         },
         "cfg(not(target_arch = \"wasm32\")):coder-pty": {
           "default_features": true,
@@ -475,6 +515,12 @@
           ],
           "optional": false,
           "path": "../gym-leaderboard"
+        },
+        "cfg(not(target_arch = \"wasm32\")):verse-private": {
+          "default_features": true,
+          "features": [],
+          "optional": false,
+          "path": "../verse-private"
         }
       },
       "source": "crates/verse/Cargo.toml"
@@ -498,6 +544,12 @@
         "default": []
       },
       "local_dependencies": {
+        "all:paper-mono": {
+          "default_features": true,
+          "features": [],
+          "optional": false,
+          "path": "../paper-mono"
+        },
         "all:physics": {
           "default_features": true,
           "features": [],

@@ -281,6 +281,18 @@ fn heap_in_use_bytes() -> Option<u64> {
 fn heap_in_use_bytes() -> Option<u64> {
     None
 }
+/// Twenty clients share this process's allocator, which a real client never
+/// does: one that reconnects returns its freed session to its own process.
+/// Without this, glibc keeps the freed pages of all twenty sessions resident
+/// when they reconnect together at the midpoint, a 26 MiB step in RSS while
+/// the allocator's in-use bytes stay flat (#10559).
+fn trim_allocator() {
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    // SAFETY: malloc_trim only returns free allocator pages to the system.
+    unsafe {
+        libc::malloc_trim(0);
+    }
+}
 async fn connect(
     address: std::net::SocketAddr,
     tls: Arc<ClientConfig>,
@@ -720,7 +732,9 @@ async fn run(
                 .await?;
                 let path = segment_directory
                     .join(format!("player-{index}-segment-{}.json", segments.len()));
-                match SegmentRecord::write(path, segment) {
+                let written = SegmentRecord::write(path, segment);
+                trim_allocator();
+                match written {
                     Ok(record) => segments.push(record),
                     Err(message) => {
                         error = Some(message);

@@ -498,6 +498,7 @@ pub(super) mod tests {
                     epoch: 1,
                     accepted_sequence: 0,
                     applied_movement: None,
+                    dynamic: Vec::new(),
                 });
                 attach_hud(&mut next);
             }
@@ -577,6 +578,7 @@ pub(super) mod tests {
             epoch: 2,
             accepted_sequence: 4,
             applied_movement: None,
+            dynamic: Vec::new(),
         });
         attach_hud(&mut first);
         let mut b = Buffer::new(130, 2.).unwrap();

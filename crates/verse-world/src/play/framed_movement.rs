@@ -46,6 +46,22 @@ impl Game {
         }
         Ok(())
     }
+    /// Committed poses of loose blocking props: the colliders whose motion
+    /// a client cannot predict between scene snapshots (#10559).
+    pub(crate) fn dynamic_poses(&self) -> Vec<crate::service::wire::ColliderPose> {
+        self.spells
+            .props
+            .iter()
+            .filter(|p| !p.removed && !p.spec.secured)
+            .filter_map(|p| {
+                let key = p.query_key();
+                Some(crate::service::wire::ColliderPose {
+                    key,
+                    pose: self.query_scene.pose(key)?,
+                })
+            })
+            .collect()
+    }
     pub(crate) fn movement_confirmations(&self, life: LifeId) -> Vec<crate::movement::Baseline> {
         let Some(admission) = self.player_admission(life.actor) else {
             return Vec::new();
