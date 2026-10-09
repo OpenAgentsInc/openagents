@@ -38,7 +38,7 @@ use sha2::{Digest, Sha256};
 
 use crate::App;
 use crate::layout::problem;
-use maud::{Markup, PreEscaped, html};
+use maud::{Markup, html};
 use session::{CloudSession, SessionError, Viewer};
 
 const POLICY: &str = "default-src 'none'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
@@ -258,17 +258,6 @@ fn render(view: &rust_native::View<workspace::WorkspaceIntent>) -> Result<String
     })
 }
 
-fn ticket(token: &str) -> String {
-    ui::csrf(token).into_string()
-}
-
-/// A Cloud page from already-escaped HTML, for pages not yet built with
-/// Maud. Without the request headers the theme follows the system setting;
-/// prefer [`ui::document`].
-fn page(body: &str) -> Response {
-    ui::document(&HeaderMap::new(), PreEscaped(body))
-}
-
 async fn sign_in(State(app): State<App>, headers: HeaderMap) -> Response {
     let service = match service(&app) {
         Ok(value) => value,
@@ -483,7 +472,7 @@ fn workspace_shell(
     service: &CloudSession,
     viewer: &Viewer,
     selected: &str,
-    supplied_content: Option<&str>,
+    supplied_content: Option<Markup>,
     resource: Option<serde_json::Value>,
 ) -> Response {
     let view = workspace::session(
@@ -555,7 +544,7 @@ fn workspace_shell(
         format!("/cloud/app/{selected}")
     };
     let content: Markup = if let Some(supplied) = supplied_content {
-        PreEscaped(supplied.to_owned())
+        supplied
     } else if selected == "overview" {
         let mut cards = Vec::new();
         for (key, label, reason) in [

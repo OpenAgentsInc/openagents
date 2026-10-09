@@ -62,7 +62,7 @@ fn agents_url(binding: &str) -> String {
     format!("/cloud/app/hosts/{binding}/agents")
 }
 
-fn shell(context: &Context<'_>, headers: &HeaderMap, content: &str) -> Response {
+fn shell(context: &Context<'_>, headers: &HeaderMap, content: Markup) -> Response {
     let resource = match context.resource(None, None, None, None) {
         Ok(value) => value,
         Err(error) => return refused(error),
@@ -163,7 +163,7 @@ async fn index(State(app): State<App>, headers: HeaderMap) -> Response {
         service,
         &viewer,
         "agents",
-        Some(&content.into_string()),
+        Some(content),
         None,
     )
 }
@@ -481,7 +481,7 @@ async fn overview(State(app): State<App>, headers: HeaderMap, Path(id): Path<Str
             }
         }
     };
-    shell(&context, &headers, &content.into_string())
+    shell(&context, &headers, content)
 }
 
 async fn agent_page(
@@ -640,7 +640,7 @@ async fn agent_page(
         }
         p { (CONFIGURATION) }
     };
-    shell(&context, &headers, &content.into_string())
+    shell(&context, &headers, content)
 }
 
 #[derive(Deserialize)]
@@ -1097,7 +1097,7 @@ async fn review(
         @if let Some(reason) = reason { p { (reason) } }
         @if let Some(form) = &form { (form) }
     };
-    shell(&context, &headers, &content.into_string())
+    shell(&context, &headers, content)
 }
 
 #[derive(Deserialize)]

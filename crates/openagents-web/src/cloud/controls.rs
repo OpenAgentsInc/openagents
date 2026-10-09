@@ -175,7 +175,7 @@ impl Context<'_> {
             .map_err(refused)
     }
 
-    pub(super) fn page(&self, headers: &HeaderMap, content: &str, resource: Value) -> Response {
+    pub(super) fn page(&self, headers: &HeaderMap, content: Markup, resource: Value) -> Response {
         workspace_shell(
             self.app,
             headers,
@@ -346,7 +346,7 @@ async fn computers(State(app): State<App>, headers: HeaderMap) -> Response {
         service,
         &viewer,
         "computers",
-        Some(&content.into_string()),
+        Some(content),
         None,
     )
 }
@@ -464,7 +464,7 @@ async fn computer(State(app): State<App>, headers: HeaderMap, Path(id): Path<Str
         Ok(v) => v,
         Err(e) => return refused(e),
     };
-    context.page(&headers, &content.into_string(), resource)
+    context.page(&headers, content, resource)
 }
 
 #[derive(Deserialize)]
@@ -615,7 +615,7 @@ async fn new_task(State(app): State<App>, headers: HeaderMap, Path(id): Path<Str
         Ok(v) => v,
         Err(e) => return refused(e),
     };
-    context.page(&headers, &content.into_string(), resource)
+    context.page(&headers, content, resource)
 }
 
 #[derive(Deserialize)]
@@ -748,7 +748,7 @@ async fn actions(
         Ok(v) => v,
         Err(e) => return refused(e),
     };
-    context.page(&headers, &content.into_string(), resource)
+    context.page(&headers, content, resource)
 }
 
 #[derive(Deserialize)]
@@ -920,7 +920,7 @@ async fn queue(
         Ok(v) => v,
         Err(e) => return refused(e),
     };
-    context.page(&headers, &content.into_string(), resource)
+    context.page(&headers, content, resource)
 }
 
 #[derive(Deserialize)]
@@ -1071,7 +1071,7 @@ async fn review(
         Ok(v) => v,
         Err(e) => return refused(e),
     };
-    context.page(&headers, &content.into_string(), resource)
+    context.page(&headers, content, resource)
 }
 
 #[derive(Deserialize)]
@@ -1362,7 +1362,7 @@ fn receipt_page(context: &Context<'_>, headers: &HeaderMap, snapshot: &Snapshot)
         Ok(v) => v,
         Err(e) => return refused(e),
     };
-    context.page(headers, &content.into_string(), resource)
+    context.page(headers, content, resource)
 }
 
 #[derive(Deserialize)]

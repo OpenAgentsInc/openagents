@@ -82,15 +82,14 @@ async fn index(State(app): State<App>, headers: HeaderMap) -> Response {
         }
         p { "Retail Cloud tasks offer no customer shell." }
         @if !ready.is_empty() { (claude_sign_in()) }
-    }
-    .into_string();
+    };
     workspace_shell(
         &app,
         &headers,
         service,
         &viewer,
         "workbench",
-        Some(&content),
+        Some(content),
         None,
     )
 }
@@ -290,15 +289,14 @@ async fn host(
             p { "Starting the shared terminal renderer. Enrollment is required before reading native sessions." }
         }
         p { "Closing this page detaches the viewer and leaves the host terminal alive. Reconnect requires fresh enrollment and a retained snapshot. Clipboard controls require a gesture. Retail Cloud tasks offer no customer shell." }
-    }
-    .into_string();
+    };
     let mut response = workspace_shell(
         &app,
         &headers,
         service,
         &current,
         "workbench",
-        Some(&content),
+        Some(content),
         Some(resource),
     );
     let origins = binding.browser_origins().join(" ");

@@ -150,7 +150,7 @@ pub(super) fn page(
         context.service,
         &context.viewer,
         "projects",
-        Some(content),
+        Some(PreEscaped(content.to_owned())),
         Some(resource),
     )
 }
@@ -185,15 +185,14 @@ async fn index(State(app): State<App>, headers: HeaderMap) -> Response {
                 }
             }
         }
-    }
-    .into_string();
+    };
     workspace_shell(
         &app,
         &headers,
         service,
         &viewer,
         "projects",
-        Some(&content),
+        Some(content),
         None,
     )
 }

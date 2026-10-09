@@ -390,7 +390,7 @@ async fn index(State(app): State<App>, headers: HeaderMap) -> Response {
         service,
         &viewer,
         "verse",
-        Some(&content.into_string()),
+        Some(content),
         None,
     )
 }
@@ -639,7 +639,7 @@ async fn open(
                 service,
                 &viewer,
                 "verse",
-                Some(&content.into_string()),
+                Some(content),
                 None,
             )
         }

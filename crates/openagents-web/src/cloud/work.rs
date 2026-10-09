@@ -1262,14 +1262,14 @@ fn observed(
                 (PreEscaped(content))
             }
         }
-    }.into_string();
+    };
     workspace_shell(
         app,
         headers,
         service,
         viewer,
         "tasks",
-        Some(&content),
+        Some(content),
         Some(resource),
     )
 }
@@ -1589,8 +1589,7 @@ async fn original(
         @if let Some(next) = &next_chunk {
             p { a href=(next) { "Next original chunk" } }
         }
-    }
-    .into_string();
+    };
     let resource = match resource(binding, &Pin::Original { query }, &viewer) {
         Ok(v) => v,
         Err(e) => return refused(e),
@@ -1601,7 +1600,7 @@ async fn original(
         service,
         &viewer,
         "tasks",
-        Some(&content),
+        Some(content),
         Some(resource),
     )
 }

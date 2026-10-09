@@ -145,8 +145,7 @@ fn state_page(context: &Context<'_>, headers: &HeaderMap, failed: Failed, retry:
     let content = html! {
         (section)
         (PreEscaped(controls::link(context.binding)))
-    }
-    .into_string();
+    };
     let status = match error {
         SessionError::Forbidden => StatusCode::FORBIDDEN,
         SessionError::Unavailable => StatusCode::SERVICE_UNAVAILABLE,
@@ -159,7 +158,7 @@ fn state_page(context: &Context<'_>, headers: &HeaderMap, failed: Failed, retry:
         context.service,
         &context.viewer,
         "projects",
-        Some(&content),
+        Some(content),
         None,
     );
     if response.status().is_success() {
