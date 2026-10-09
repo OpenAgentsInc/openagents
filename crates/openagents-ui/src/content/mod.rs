@@ -1,5 +1,7 @@
 //! Conversation content: the Markdown root and its elements, code blocks,
-//! the table family, source chips with favicons, and the sticky action bar.
+//! the table family, source chips with favicons, the sticky action bar, and
+//! agent activity (tool calls, progress steps, result cards, file changes;
+//! `static/components/activity.css`).
 //! Styles live in `static/components/content.css`. Document-page layout
 //! (the reading column, facts) lives in `page.rs` and `page.css`.
 //!
@@ -12,12 +14,14 @@
 //! Every builder escapes the text it takes. Links go through [`safe_href`],
 //! the same rule the Markdown renderer applies.
 
+mod activity;
 mod code;
 mod markdown;
 mod page;
 mod source;
 mod table;
 
+pub use activity::{ActivityStatus, FileChanges, ResultCard, Step, Steps, ToolCall, ToolGroup};
 pub use code::{CodeBlock, StickyActionBar};
 pub use markdown::{Heading, InlineCode, List, ListItem, MarkdownRoot, MarkdownSize, Paragraph};
 pub use page::{Facts, PageColumn};

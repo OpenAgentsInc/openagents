@@ -5,8 +5,9 @@ use maud::{Markup, html};
 use super::{Pane, row, specimen, stack};
 use crate::actions::{Button, ButtonVariant, Color, ControlSize};
 use crate::content::{
-    CodeBlock, ColSize, Facts, Favicon, Heading, InlineCode, List, ListItem, MarkdownRoot,
-    MarkdownSize, PageColumn, Paragraph, Source, SourceVariant, StickyActionBar, Table,
+    ActivityStatus, CodeBlock, ColSize, Facts, Favicon, FileChanges, Heading, InlineCode, List,
+    ListItem, MarkdownRoot, MarkdownSize, PageColumn, Paragraph, ResultCard, Source, SourceVariant,
+    Step, Steps, StickyActionBar, Table, ToolCall, ToolGroup,
 };
 use crate::icons::Icon;
 
@@ -90,5 +91,38 @@ pub(super) fn sources(_pane: Pane) -> Markup {
             (Source::new("OpenAgents docs", "/docs").variant(SourceVariant::Leading)
                 .favicon(Favicon::new("openagents.com").src("/favicon.svg")).extra(2))
         })))
+    }
+}
+
+pub(super) fn activity(_pane: Pane) -> Markup {
+    let calls = ToolGroup::new("Explored the repository")
+        .call(ToolCall::new(Icon::Search, "Searched").detail("rust-toolchain* in /workspace"))
+        .call(ToolCall::new(Icon::FileDocument, "Read").detail("Cargo.toml"))
+        .open(true);
+    let failed = ToolCall::new(Icon::Terminal, "Ran")
+        .detail("cargo fetch --locked")
+        .status(ActivityStatus::Failed)
+        .status_label("Exit 101")
+        .body(CodeBlock::new("error: the lock file needs to be updated").copyable(false));
+    html! {
+        (specimen("ToolCall", "Tool calls", stack(html! {
+            (ToolCall::new(Icon::FileDocument, "Read").detail("AGENTS.md"))
+            (ToolCall::new(Icon::Terminal, "Running").detail("cargo build --release").status(ActivityStatus::Running))
+            (failed)
+        })))
+        (specimen("ToolGroup ToolCall", "Grouped calls", calls))
+        (specimen("Steps Step", "Progress steps", Steps::new("Environment setup")
+            .step(Step::new("Discover the repository", ActivityStatus::Done))
+            .step(Step::new("Build a clean image", ActivityStatus::Running).detail("Installing from the trusted base"))
+            .step(Step::new("Verify a fresh machine", ActivityStatus::Waiting))))
+        (specimen("ResultCard", "Result card", ResultCard::new("Root Rust v1")
+            .subtitle("Ready to save")
+            .badge(ActivityStatus::Done.badge("Verified"))
+            .fact("Toolchain", "Rust 1.97.1")
+            .fact("Checks", "4 passed")
+            .footer("Saving selects this version for new tasks.")))
+        (specimen("FileChanges", "Changed files", FileChanges::new()
+            .file("crates/coder-lease/src/table.rs", 18, 4)
+            .file("crates/coder-lease/tests/corrupt.rs", 31, 0)))
     }
 }
