@@ -135,6 +135,10 @@ The registry has seven entries:
   no file, only `KIT_BAKE_SHA256` and `KIT_BAKE_BYTES` in
   `crates/verse-zone-everglade/src/zones/everglade_pack/kit_bake.rs`. A CPU
   bake remains an explicit offline operation, outside queue retries.
+- `everglade-kit-bake-phone` derives the phone tier's layers from the
+  pinned layer file in the same `bakes` directory
+  (`verse-bake --phone-layers`: two of the four suns, #10908) and pins
+  `KIT_BAKE_PHONE_SHA256` and `KIT_BAKE_PHONE_BYTES`. It never bakes.
 
 A generated fixture or a lockfile can join the queue with a file of its
 own.
