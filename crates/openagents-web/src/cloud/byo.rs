@@ -17,6 +17,7 @@
 //! a time ([`coder_cloud::claude::admit_turns`]).
 
 use super::custody::{self, CustodyError, Key, Material, Scope, Status, Vault};
+use super::hosts::Binding;
 use super::session::{SessionError, Viewer, now};
 use super::{failure, protect, refused, service, ticket, workspace_shell};
 use crate::App;
@@ -27,6 +28,8 @@ use axum::extract::{Form, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
+use coder_access::cloud;
+use coder_access::protocol::{Operation, Outcome};
 use coder_cloud::claude::{self, OwnCredential, SignIn};
 use coder_cloud::runtime::Credentials;
 use serde::Deserialize;
@@ -162,6 +165,27 @@ impl Computers {
         Ok(sign_in)
     }
 
+    /// Release the current credential, if any, with its class: the one
+    /// read of the value, for one boot or turn of the owner's own job.
+    /// `None` means the owner's computers run on their plan login.
+    pub fn release(
+        &self,
+        owner: &Owner,
+        at: u64,
+    ) -> Result<Option<(OwnCredential, String)>, String> {
+        let Some(status) = self.status(owner, at).map_err(|error| error.to_string())? else {
+            return Ok(None);
+        };
+        let Some(class) = status.material.claude() else {
+            return Ok(None);
+        };
+        let key = self
+            .vault
+            .release(&owner.scope(status.material), &status.digest, at)
+            .map_err(|_| claude::REVOKED_REFUSAL.to_owned())?;
+        Ok(Some((class, key.into_delivery())))
+    }
+
     /// Release the credential for one boot or automated turn of the owner's
     /// own computer, as runtime credentials that redact it from traces and
     /// refuse artifacts carrying it. `expected` is the sign-in class the turn
@@ -174,18 +198,10 @@ impl Computers {
         at: u64,
     ) -> Result<Credentials, String> {
         let revoked = || claude::REVOKED_REFUSAL.to_owned();
-        let status = self
-            .status(owner, at)
-            .map_err(|error| error.to_string())?
-            .ok_or_else(revoked)?;
-        if status.material.claude() != Some(expected) {
+        let (class, mut value) = self.release(owner, at)?.ok_or_else(revoked)?;
+        if class != expected {
             return Err(revoked());
         }
-        let key = self
-            .vault
-            .release(&owner.scope(status.material), &status.digest, at)
-            .map_err(|_| revoked())?;
-        let mut value = key.into_delivery();
         let credentials =
             Credentials::from_names(&[expected.name().to_owned()], |_| Some(value.clone()));
         // Zero this copy; the runtime credentials hold the only other one.
@@ -193,6 +209,108 @@ impl Computers {
         bytes.fill(0);
         credentials
     }
+}
+
+/// The Cloud job and admission whose next turn `action` starts, if any.
+fn turn_of(request: &str, action: &Operation) -> Option<(cloud::Admission, String)> {
+    let job = match action {
+        Operation::CloudSubmit { .. } => request.to_owned(),
+        Operation::CloudContinue { intent } => intent.scope.job.clone(),
+        Operation::CloudFollow { intent } => intent.scope.job.clone(),
+        _ => return None,
+    };
+    Some((cloud::Admission::for_operation(action)?, job))
+}
+
+/// Release the binding account's own Claude credential to the resident for
+/// the one turn `action` starts (BYO-05), immediately before the effect is
+/// sent. Only a Claude Code profile that names no own credential takes it;
+/// the credential comes from the account, workspace, and membership epoch of
+/// both the signed-in viewer and the binding. With no credential stored,
+/// nothing is released and the turn runs on the plan login inside the
+/// computer, which the resident admits one turn at a time. The released
+/// value is never staged, retained, or shown.
+pub(super) async fn release_turn(
+    app: &App,
+    binding: &Binding,
+    viewer: &Viewer,
+    request: &str,
+    action: &Operation,
+) -> Result<(), SessionError> {
+    let Some(computers) = app.config.cloud_byo.as_deref() else {
+        return Ok(());
+    };
+    let Some((admission, job)) = turn_of(request, action) else {
+        return Ok(());
+    };
+    let owner = Owner {
+        account: binding.account().to_owned(),
+        workspace: binding.account_workspace().to_owned(),
+        members_epoch: binding.members_epoch(),
+    };
+    if Owner::from_viewer(viewer)? != owner {
+        return Err(SessionError::Forbidden);
+    }
+    let query = Operation::CloudCatalog {
+        query: cloud::CatalogQuery {
+            workspace: admission.workspace.clone(),
+            project: admission.project.clone(),
+        },
+    };
+    let outcome = binding.read(viewer, query.clone()).await?;
+    if outcome.validate().is_err() || !outcome.answers(&query) {
+        return Err(SessionError::Conflict);
+    }
+    let Outcome::CloudCatalog { catalog } = outcome else {
+        return Err(SessionError::Conflict);
+    };
+    let profile = catalog
+        .profiles
+        .iter()
+        .find(|p| p.name == admission.profile && p.revision == admission.profile_revision)
+        .ok_or(SessionError::Forbidden)?;
+    if profile.executor != claude::ENGINE
+        || profile.mode != "coder"
+        || claude::sign_in(profile.credential_names.iter().map(String::as_str)) != SignIn::PlanLogin
+    {
+        return Ok(());
+    }
+    let Some((class, value)) = computers
+        .release(&owner, now())
+        .map_err(|_| SessionError::Unavailable)?
+    else {
+        return Ok(());
+    };
+    let operation = Operation::CloudRelease {
+        intent: cloud::Release {
+            workspace: admission.workspace,
+            project: admission.project,
+            profile: admission.profile,
+            profile_revision: admission.profile_revision,
+            source_digest: admission.source_digest,
+            job,
+            owner: coder_cloud::release::owner_digest(
+                &owner.account,
+                &owner.workspace,
+                owner.members_epoch,
+            ),
+            name: class.name().to_owned(),
+            value,
+        },
+    };
+    let outcome = binding.release(viewer, operation.clone()).await;
+    let answered = outcome
+        .as_ref()
+        .is_ok_and(|o| o.validate().is_ok() && o.answers(&operation));
+    // Zero this copy; the resident holds the only other one now.
+    if let Operation::CloudRelease { intent } = operation {
+        let mut bytes = intent.value.into_bytes();
+        bytes.fill(0);
+    }
+    outcome?;
+    // An owner whose credential could not be released must not run on the
+    // plan login instead without knowing: the effect is refused.
+    answered.then_some(()).ok_or(SessionError::Unavailable)
 }
 
 fn terms_digest() -> String {

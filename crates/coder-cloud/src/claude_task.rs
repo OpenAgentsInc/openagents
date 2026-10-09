@@ -47,14 +47,7 @@ pub fn applies(spec: &Spec) -> bool {
 /// The credential type a job runs on, by name only.
 #[must_use]
 pub fn credential_type(names: &[String]) -> &'static str {
-    use crate::claude::{OwnCredential, SignIn};
-    match crate::claude::sign_in(names.iter().map(String::as_str)) {
-        SignIn::PlanLogin => "claude_plan_login",
-        SignIn::Own(OwnCredential::AnthropicApiKey) => "anthropic_api_key",
-        SignIn::Own(OwnCredential::Bedrock) => "bedrock",
-        SignIn::Own(OwnCredential::Vertex) => "vertex",
-        SignIn::Own(OwnCredential::Foundry) => "foundry",
-    }
+    credential_word(crate::claude::sign_in(names.iter().map(String::as_str)))
 }
 
 /// The engine evidence a job carries: engine, pinned version, credential
@@ -79,6 +72,48 @@ pub fn admit(record: &mut Record, computer: &str) {
     let mut event = evidence;
     event["event"] = json!("engine");
     record.events.push(event);
+}
+
+fn credential_word(sign_in: crate::claude::SignIn) -> &'static str {
+    use crate::claude::{OwnCredential, SignIn};
+    match sign_in {
+        SignIn::PlanLogin => "claude_plan_login",
+        SignIn::Own(OwnCredential::AnthropicApiKey) => "anthropic_api_key",
+        SignIn::Own(OwnCredential::Bedrock) => "bedrock",
+        SignIn::Own(OwnCredential::Vertex) => "vertex",
+        SignIn::Own(OwnCredential::Foundry) => "foundry",
+    }
+}
+
+/// The sign-in class the job's current turn runs on, from its evidence.
+#[must_use]
+pub fn turn_sign_in(record: &Record) -> crate::claude::SignIn {
+    use crate::claude::{OwnCredential, SignIn};
+    match record.binding[BINDING]["evidence"]["credential"].as_str() {
+        Some("anthropic_api_key") => SignIn::Own(OwnCredential::AnthropicApiKey),
+        Some("bedrock") => SignIn::Own(OwnCredential::Bedrock),
+        Some("vertex") => SignIn::Own(OwnCredential::Vertex),
+        Some("foundry") => SignIn::Own(OwnCredential::Foundry),
+        Some(_) => SignIn::PlanLogin,
+        None => crate::claude::sign_in(record.spec.credential_names.iter().map(String::as_str)),
+    }
+}
+
+/// Set the class the job's next turn runs on (BYO-05: the user's released
+/// credential, or the plan login inside the computer). A change is shown
+/// as an engine event. The type only; never a credential.
+pub fn set_turn_sign_in(record: &mut Record, sign_in: crate::claude::SignIn) {
+    if !applies(&record.spec) || turn_sign_in(record) == sign_in {
+        return;
+    }
+    let word = credential_word(sign_in);
+    record.binding[BINDING]["evidence"]["credential"] = json!(word);
+    record.events.push(json!({
+        "event": "engine",
+        "engine": crate::claude::ENGINE,
+        "version": crate::claude::VERSION,
+        "credential": word,
+    }));
 }
 
 /// How a Claude turn ended on Claude Code's own account.

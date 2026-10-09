@@ -579,6 +579,10 @@ pub enum Operation {
     CloudCancel { intent: crate::cloud::Cancel },
     #[serde(rename = "cloud.follow")]
     CloudFollow { intent: crate::cloud::Follow },
+    /// Release the user's own Claude credential for one turn of their job
+    /// (BYO-05). Neither the request nor its reply is retained.
+    #[serde(rename = "cloud.release")]
+    CloudRelease { intent: crate::cloud::Release },
     #[serde(rename = "enroll.redeem")]
     Redeem {
         invitation: String,
@@ -1161,7 +1165,7 @@ impl Operation {
     #[must_use]
     pub fn retains_reply(&self) -> bool {
         !self.reads_only()
-            && !matches!(self, Self::PutArtifact { .. })
+            && !matches!(self, Self::PutArtifact { .. } | Self::CloudRelease { .. })
             && !self.background()
             && (!self.agent() || self.agent_effect())
     }
@@ -1205,6 +1209,7 @@ impl Operation {
             Self::CloudContinue { .. } => "cloud.continue",
             Self::CloudCancel { .. } => "cloud.cancel",
             Self::CloudFollow { .. } => "cloud.follow",
+            Self::CloudRelease { .. } => "cloud.release",
             Self::Redeem { .. } => "enroll.redeem",
             Self::Approve { .. } => "enroll.approve",
             Self::Deny { .. } => "enroll.deny",
@@ -1333,6 +1338,7 @@ impl Operation {
             | Self::CloudContinue { .. }
             | Self::CloudCancel { .. }
             | Self::CloudFollow { .. }
+            | Self::CloudRelease { .. }
             | Self::SteerTask { .. }
             | Self::CancelTask { .. }
             | Self::ArchiveTask { .. }
@@ -1396,6 +1402,7 @@ impl Operation {
             Self::CloudContinue { intent } => intent.validate()?,
             Self::CloudCancel { intent } => intent.validate()?,
             Self::CloudFollow { intent } => intent.validate()?,
+            Self::CloudRelease { intent } => intent.validate()?,
             Self::RequestOperation {
                 request,
                 request_event,
@@ -1828,6 +1835,9 @@ pub enum Outcome {
     CloudAccepted {
         accepted: crate::cloud::Accepted,
     },
+    CloudReleased {
+        released: crate::cloud::Released,
+    },
     Granted {
         authorization: Box<Event>,
     },
@@ -2016,6 +2026,7 @@ impl Outcome {
             Self::CloudRead { job } => job.validate()?,
             Self::CloudOriginal { chunk } => chunk.validate()?,
             Self::CloudAccepted { accepted } => accepted.validate()?,
+            Self::CloudReleased { released } => released.validate()?,
             Self::Tasks { tasks } => tasks.validate()?,
             Self::Task { task } => task.validate()?,
             Self::TaskOriginal { original } => original.validate()?,
@@ -2227,6 +2238,9 @@ impl Outcome {
             (Operation::CloudRead { query }, Self::CloudRead { job }) => job.answers(query),
             (Operation::CloudOriginal { query }, Self::CloudOriginal { chunk }) => {
                 chunk.answers(query)
+            }
+            (Operation::CloudRelease { intent }, Self::CloudReleased { released }) => {
+                released.answers(intent)
             }
             (Operation::CloudSubmit { intent }, Self::CloudAccepted { accepted }) => {
                 accepted.action == "submit"

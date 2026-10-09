@@ -1270,6 +1270,16 @@ async fn confirm(
                 return Err(SessionError::Conflict);
             }
             super::operator::admit_action(binding, &current, &pending.request.op).await?;
+            // The user's own Claude credential, for the one turn this effect
+            // starts (BYO-05). It travels apart from the staged packet.
+            super::byo::release_turn(
+                context_ref.app,
+                binding,
+                &current,
+                &pending.request.request,
+                &pending.request.op,
+            )
+            .await?;
             let answer = binding.send(&current, &pending).await?;
             Ok(answer)
         })

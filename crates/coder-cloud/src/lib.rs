@@ -17,6 +17,7 @@ pub mod gce_backend;
 pub mod operator;
 mod operator_adapters;
 pub mod pool;
+pub mod release;
 pub mod runtime;
 pub mod workspace;
 

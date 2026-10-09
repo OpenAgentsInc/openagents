@@ -441,6 +441,30 @@ impl Binding {
         .map_err(native_error)
     }
 
+    /// Release the account's own Claude credential for one turn of its job
+    /// (BYO-05) over a new authenticated channel. Unlike an effect it is
+    /// never staged in the effect book, and the resident retains neither the
+    /// request nor its reply.
+    pub(crate) async fn release(
+        &self,
+        viewer: &Viewer,
+        operation: Operation,
+    ) -> Result<Outcome, SessionError> {
+        self.admit(viewer)?;
+        if !matches!(operation, Operation::CloudRelease { .. })
+            || !self.access().grant.rights.contains(Right::Operate)
+        {
+            return Err(SessionError::Forbidden);
+        }
+        let link = self.connect().await?;
+        let answer = tokio::time::timeout(TIMEOUT, link.call(operation))
+            .await
+            .map_err(|_| SessionError::Unavailable)?
+            .map_err(native_error)?;
+        self.admit(viewer)?;
+        Ok(answer)
+    }
+
     /// One read opens a new authenticated channel and rechecks native authority.
     pub(crate) async fn read(
         &self,

@@ -202,7 +202,9 @@ impl<T: Transport> Backend for Gce<T> {
         self.put(
             r,
             &format!("/tmp/oa-coder-{}.env", r.id),
-            self.credentials.shell().as_bytes(),
+            crate::release::turn(&self.credentials, &r.id)
+                .shell()
+                .as_bytes(),
         )
         .await?;
         self.command(r, &runtime::prepare_script(r, &dir), None)
@@ -280,11 +282,12 @@ touch "$HOME/.oa-pool/busy"
         {
             Ok(text) => {
                 let mut observed = runtime::parse_poll(r, &text)?;
+                let credentials = crate::release::turn(&self.credentials, &r.id);
                 for e in &mut observed.events {
-                    self.credentials.redact(e);
+                    credentials.redact(e);
                 }
                 if let Some(Ok(v)) = &mut observed.end {
-                    self.credentials.redact(v);
+                    credentials.redact(v);
                 }
                 Ok(observed)
             }
@@ -337,7 +340,7 @@ touch "$HOME/.oa-pool/busy"
             .await?;
         let mut v: Value =
             serde_json::from_str(&text).map_err(|_| "Invalid remote artifact manifest.")?;
-        self.credentials.sanitize_artifacts(&mut v)?;
+        crate::release::turn(&self.credentials, &r.id).sanitize_artifacts(&mut v)?;
         Ok(Some(v))
     }
     async fn restart(&self, r: &Record) -> Result<()> {

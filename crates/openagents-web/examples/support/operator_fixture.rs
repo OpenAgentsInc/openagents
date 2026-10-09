@@ -13,12 +13,42 @@ use std::{
 
 pub const PROJECT: &str = "synthetic-cloud";
 pub const PROFILE: &str = "synthetic-boat";
-struct Synthetic;
+/// With an `operator-executor` file naming `claude` in the fixture
+/// directory, the profile runs Claude Code and each dispatched turn appends
+/// a digest of the API key it was released (or `none`) to `released-turns`
+/// (BYO-05). Never the key itself.
+const EXECUTOR_FILE: &str = "operator-executor";
+pub const RELEASED_TURNS: &str = "released-turns";
+struct Synthetic {
+    turns: Option<PathBuf>,
+}
 impl Backend for Synthetic {
     async fn provision(&self, _: &mut Record) -> coder_cloud::Result<String> {
         Ok("synthetic-local-resource".into())
     }
     async fn dispatch(&self, r: &Record) -> coder_cloud::Result<coder_cloud::Task> {
+        if let Some(path) = &self.turns {
+            use sha2::{Digest, Sha256};
+            use std::io::Write;
+            let key = coder_cloud::release::turn(&Default::default(), &r.id)
+                .environment()
+                .get(coder_cloud::claude::API_KEY)
+                .map_or_else(
+                    || "none".to_owned(),
+                    |k| {
+                        Sha256::digest(k.as_bytes())
+                            .iter()
+                            .map(|b| format!("{b:02x}"))
+                            .collect()
+                    },
+                );
+            let mut file = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path)
+                .map_err(|_| "Synthetic turn log unavailable.")?;
+            writeln!(file, "{key}").map_err(|_| "Synthetic turn log unavailable.")?;
+        }
         Ok(coder_cloud::Task {
             id: format!("synthetic-{}-{}", r.id, r.turns.len() + 1),
             conversation: Some("synthetic-continuation".into()),
@@ -110,6 +140,8 @@ pub fn operator(
     )?;
     let source_revision = git(cwd, &["rev-parse", "HEAD"])?;
     let source_digest = coder_cloud::workspace::source_identity(cwd, &source_revision, &[], &[])?;
+    let claude = std::fs::read_to_string(directory.join(EXECUTOR_FILE))
+        .is_ok_and(|v| v.trim() == coder_cloud::claude::ENGINE);
     let policy = Policy {
         schema: "openagents.coder.cloud-operator.v1".into(),
         operators: vec![Assignment {
@@ -133,7 +165,11 @@ pub fn operator(
                 pool: "synthetic-local-pool".into(),
                 placement: coder_cloud::Placement::Boat,
                 mode: coder_cloud::Mode::Coder,
-                executor: "codex".into(),
+                executor: if claude {
+                    coder_cloud::claude::ENGINE.into()
+                } else {
+                    "codex".into()
+                },
                 model: Some("synthetic-requested-model".into()),
                 reasoning: None,
                 max_timeout_seconds: 600,
@@ -152,6 +188,10 @@ pub fn operator(
     .map_err(|_| "Synthetic operator policy write failed.")?;
     std::fs::set_permissions(&policy_path, std::fs::Permissions::from_mode(0o600))
         .map_err(|_| "Synthetic operator policy protection failed.")?;
-    Operator::load(policy_path, directory.join("operator-cloud"), authority)?
-        .with_backend(PROFILE, Synthetic)
+    Operator::load(policy_path, directory.join("operator-cloud"), authority)?.with_backend(
+        PROFILE,
+        Synthetic {
+            turns: claude.then(|| directory.join(RELEASED_TURNS)),
+        },
+    )
 }

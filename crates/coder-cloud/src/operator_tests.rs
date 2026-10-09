@@ -222,6 +222,8 @@ struct Fake {
     /// The first Claude turn ends on a usage limit with this reset, or on
     /// a sign-in failure when it is zero.
     limit: Option<u64>,
+    /// The API key each dispatched turn held, from a release (BYO-05).
+    seen: Arc<Mutex<Vec<Option<String>>>>,
 }
 impl Backend for Fake {
     async fn resolve(&self, r: &mut Record) -> crate::Result<()> {
@@ -237,7 +239,13 @@ impl Backend for Fake {
             .push(r.environment.as_ref().map(|p| p.image.image_id.clone()));
         Ok("synthetic-resource".into())
     }
-    async fn dispatch(&self, _: &Record) -> crate::Result<crate::Task> {
+    async fn dispatch(&self, r: &Record) -> crate::Result<crate::Task> {
+        self.seen.lock().unwrap().push(
+            crate::release::turn(&crate::runtime::Credentials::default(), &r.id)
+                .environment()
+                .get(crate::claude::API_KEY)
+                .cloned(),
+        );
         self.dispatches.fetch_add(1, Ordering::SeqCst);
         if self.lost {
             return Err("Synthetic lost dispatch response.".into());
@@ -993,6 +1001,9 @@ fn a_claude_plan_login_runs_one_turn_while_own_keys_run_in_parallel() {
             .unwrap(),
     );
 }
+
+#[path = "operator_release_tests.rs"]
+mod release_tests;
 
 #[path = "operator_environment_tests.rs"]
 mod environment;

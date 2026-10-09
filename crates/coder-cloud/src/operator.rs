@@ -432,12 +432,26 @@ impl<B: Backend + Send + Sync + 'static> Driver for BackendDriver<B> {
                     record.updated_ms = crate::now_ms();
                     return lease.save(&record);
                 }
+                // A job on the user's released credential resumes only with a
+                // fresh release; without one it stays paused (BYO-05).
+                if crate::release::released_class(&record).is_some()
+                    && !crate::release::armed(&record.id)
+                {
+                    return Err(crate::claude::REVOKED_REFUSAL.into());
+                }
                 if !crate::claude_task::resume(&mut record, crate::now_ms() / 1000) {
                     return Ok(());
                 }
                 lease.save(&record)?;
             }
+            if crate::release::released_class(&record).is_some()
+                && !crate::release::armed(&record.id)
+            {
+                return Err(crate::claude::REVOKED_REFUSAL.into());
+            }
             let result = self.drive(&lease, &mut record, check.clone());
+            // One release serves one turn.
+            crate::release::disarm(&record.id);
             if result.is_err() {
                 return result;
             }
@@ -563,6 +577,11 @@ struct AdmittedJob {
     admission: dto::Admission,
     request_digest: String,
     input_digest: String,
+    /// The digest of the account, workspace, and membership epoch whose
+    /// released Claude credential this job first ran on (BYO-05). Only that
+    /// owner may release into it again. Never a credential.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    owner: Option<String>,
 }
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -1226,6 +1245,53 @@ impl Operator {
             }
         });
     }
+    /// Hold the user's released Claude credential, in memory only, for the
+    /// next effect of the same job from the same device (BYO-05). Only a
+    /// Claude Code profile that names no own credential takes one, and an
+    /// existing job takes one only from the device that submitted it and
+    /// the owner it first ran under.
+    fn release(&self, principal: &Principal, intent: &dto::Release) -> Result<dto::Released> {
+        let _serial = self.0.serial.lock().map_err(|_| Code::Unavailable)?;
+        let p = self.admitted(&principal.device, &intent.admission())?;
+        if p.executor != crate::claude::ENGINE
+            || p.mode != Mode::Coder
+            || crate::claude::sign_in(p.credentials.keys().map(String::as_str))
+                != crate::claude::SignIn::PlanLogin
+        {
+            return Err(Code::Unsupported);
+        }
+        let path = self
+            .0
+            .root
+            .join("admissions")
+            .join(format!("{}.json", intent.job));
+        if fs::symlink_metadata(&path).is_ok() {
+            let saved = self.job_admission(&intent.job)?;
+            if saved.principal.device != principal.device
+                || saved.admission.workspace != intent.workspace
+                || saved.admission.project != intent.project
+                || saved.admission.profile != intent.profile
+                || saved.owner.as_ref().is_some_and(|o| *o != intent.owner)
+            {
+                return Err(Code::Forbidden);
+            }
+        }
+        let (class, credentials) = crate::release::credentials(&intent.name, &intent.value)
+            .map_err(|_| Code::Malformed)?;
+        let expires_at = crate::release::offer(
+            &intent.job,
+            &principal.device,
+            &intent.owner,
+            class,
+            credentials,
+            crate::now_ms() / 1000,
+        );
+        Ok(dto::Released {
+            job: intent.job.clone(),
+            name: intent.name.clone(),
+            expires_at,
+        })
+    }
     fn effect(
         &self,
         request: &str,
@@ -1293,14 +1359,56 @@ impl Operator {
             self.start(&a.admission.profile.clone(), record, a);
             return Ok(accepted);
         }
+        // A credential the user's server released for this job serves this
+        // effect or none (BYO-05).
+        let offer = (p.executor == crate::claude::ENGINE)
+            .then(|| crate::release::claim(&job, &principal.device, crate::now_ms() / 1000))
+            .flatten();
+        let saved_owner = match op {
+            Operation::CloudSubmit { .. } => None,
+            _ => self.job_admission(&job)?.owner,
+        };
+        if let Some(offer) = &offer {
+            if saved_owner.as_ref().is_some_and(|o| *o != offer.owner) {
+                return Err(Code::Forbidden);
+            }
+        }
+        // Profiles that name no own credential take the user's released one.
+        let released = p.executor == crate::claude::ENGINE
+            && p.mode == Mode::Coder
+            && crate::claude::sign_in(p.credentials.keys().map(String::as_str))
+                == crate::claude::SignIn::PlanLogin;
+        let paused = match op {
+            Operation::CloudFollow { intent } => {
+                self.exact(&principal.device, &intent.scope)?.0.state == State::Paused
+            }
+            _ => false,
+        };
+        // The class the next turn runs on, when this effect starts one.
+        let turn = (released
+            && (paused
+                || matches!(
+                    op,
+                    Operation::CloudSubmit { .. } | Operation::CloudContinue { .. }
+                )))
+        .then(|| {
+            offer
+                .as_ref()
+                .map_or(crate::claude::SignIn::PlanLogin, |o| {
+                    crate::claude::SignIn::Own(o.class)
+                })
+        });
         if matches!(
             op,
             Operation::CloudSubmit { .. } | Operation::CloudContinue { .. }
         ) && p.executor == crate::claude::ENGINE
+            || turn.is_some()
         {
             // A Claude plan login runs one automated turn at a time; parallel
             // work needs the user's own key or cloud credential (BYO-04).
-            let sign_in = crate::claude::sign_in(p.credentials.keys().map(String::as_str));
+            let sign_in = turn.unwrap_or_else(|| {
+                crate::claude::sign_in(p.credentials.keys().map(String::as_str))
+            });
             let active = store
                 .list()
                 .map_err(|_| Code::Unavailable)?
@@ -1308,6 +1416,7 @@ impl Operator {
                 .filter(|r| {
                     r.id != job
                         && !r.state.terminal()
+                        && crate::claude_task::turn_sign_in(r) == crate::claude::SignIn::PlanLogin
                         && self
                             .job_admission(&r.id)
                             .is_ok_and(|a| a.admission.profile == admission.profile)
@@ -1340,6 +1449,9 @@ impl Operator {
         if matches!(op, Operation::CloudSubmit { .. }) {
             // Engine, pinned version, and credential type: never a credential.
             crate::claude_task::admit(&mut record, &admission.profile);
+        }
+        if let Some(turn) = turn {
+            crate::claude_task::set_turn_sign_in(&mut record, turn);
         }
         let mut journal = Effect {
             principal: principal.clone(),
@@ -1418,6 +1530,7 @@ impl Operator {
                     .ok_or(Code::Stale)?
                     .input_digest
                     .clone(),
+                owner: offer.as_ref().map(|o| o.owner.clone()),
             };
             write(
                 &self.0.root.join("admissions").join(format!("{job}.json")),
@@ -1425,8 +1538,36 @@ impl Operator {
             )?;
             a
         } else {
-            self.job_admission(&job)?
+            let mut a = self.job_admission(&job)?;
+            if a.owner.is_none() {
+                if let Some(o) = &offer {
+                    // The first release into this job pins its owner.
+                    a.owner = Some(o.owner.clone());
+                    write(
+                        &self.0.root.join("admissions").join(format!("{job}.json")),
+                        &encoded(&a)?,
+                    )?;
+                }
+            }
+            a
         };
+        // Arm the turn this effect starts with the released credential, or
+        // leave it on the plan login. A follow of a running turn re-arms it
+        // only with the same class.
+        match (turn, &offer) {
+            (Some(crate::claude::SignIn::Own(_)), Some(o)) => {
+                crate::release::arm(&job, o.credentials.clone());
+            }
+            (Some(crate::claude::SignIn::PlanLogin), _) => crate::release::disarm(&job),
+            (None, Some(o))
+                if released
+                    && crate::claude_task::turn_sign_in(&record)
+                        == crate::claude::SignIn::Own(o.class) =>
+            {
+                crate::release::arm(&job, o.credentials.clone());
+            }
+            _ => {}
+        }
         let accepted = dto::Accepted {
             request: request.into(),
             scope: self.scope(&record, &a, &encoded(&record)?)?,
@@ -1654,6 +1795,9 @@ impl coder_host::cloud::Cloud for Operator {
             | Operation::CloudCancel { .. }
             | Operation::CloudFollow { .. } => Outcome::CloudAccepted {
                 accepted: self.effect(request, principal, op)?,
+            },
+            Operation::CloudRelease { intent } => Outcome::CloudReleased {
+                released: self.release(principal, intent)?,
             },
             _ => return Err(Code::Unsupported),
         };

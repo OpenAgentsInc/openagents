@@ -405,3 +405,6 @@ async fn prepared_cloud_receipt_and_confirm_retire_when_native_operator_policy_d
     assert!(jobs(&fixture).is_empty());
     native.stop().await;
 }
+
+#[path = "byo_release_tests.rs"]
+mod byo_release;

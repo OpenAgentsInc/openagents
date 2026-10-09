@@ -14,11 +14,16 @@ pub struct Boat {
 }
 impl Boat {
     fn environment(&self, r: &Record) -> std::collections::BTreeMap<String, String> {
-        let mut environment = self.credentials.environment();
+        let mut environment = self.turn(r).environment();
         if r.spec.agent == "codex" && environment.remove("OA_CODEX_AUTH").is_some() {
             environment.insert("CODEX_HOME".into(), format!("/tmp/oa-coder-{}/codex", r.id));
         }
         environment
+    }
+    /// This job's turn credentials: the profile's, plus a released one
+    /// (BYO-05).
+    fn turn(&self, r: &Record) -> Credentials {
+        crate::release::turn(&self.credentials, &r.id)
     }
     pub async fn from_env(names: &[String]) -> Result<Self> {
         let client = Client::from_env().await.map_err(|e| e.to_string())?;
@@ -108,10 +113,11 @@ impl Boat {
             })
             .await
             .map_err(|e| e.to_string())?;
+        let credentials = self.turn(r);
         for e in &mut page.events {
             if let Some(data) = &mut e.data {
                 for v in data.values_mut() {
-                    self.credentials.redact(v);
+                    credentials.redact(v);
                 }
             }
         }
@@ -279,7 +285,7 @@ impl Backend for Boat {
             .write_text(
                 id,
                 &format!("/tmp/oa-coder-{}.env", r.id),
-                &self.credentials.shell(),
+                &self.turn(r).shell(),
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -449,11 +455,12 @@ impl Backend for Boat {
                     .await?,
             )?
         };
+        let credentials = self.turn(r);
         for event in &mut observation.events {
-            self.credentials.redact(event);
+            credentials.redact(event);
         }
         if let Some(Ok(result)) = &mut observation.end {
-            self.credentials.redact(result);
+            credentials.redact(result);
         }
         Ok(observation)
     }
@@ -485,7 +492,7 @@ impl Backend for Boat {
             .await?;
         let mut v: Value =
             serde_json::from_str(&text).map_err(|_| "Invalid remote artifact manifest.")?;
-        self.credentials.sanitize_artifacts(&mut v)?;
+        self.turn(r).sanitize_artifacts(&mut v)?;
         Ok(Some(v))
     }
     async fn restart(&self, r: &Record) -> Result<()> {

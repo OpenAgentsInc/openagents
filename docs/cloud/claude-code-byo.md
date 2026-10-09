@@ -165,6 +165,33 @@ October 8, 2026. Recheck both before each availability decision.
   adds the version and credential type Claude Code reported. Never a
   credential. Tests use a fixture `claude` stand-in only.
 
+## Implemented (BYO-05, #11012)
+
+- The web server releases the stored credential itself. When a confirmed
+  Cloud submit, continue, or follow starts a turn on a Claude Code profile
+  that names no credential of its own, `cloud::byo::release_turn` reads the
+  key for the binding's account, workspace, and membership epoch (which
+  must also be the signed-in viewer's) and sends it to the resident just
+  before the effect. It goes as a `cloud.release` operation on a fresh
+  authenticated native channel. It is never part of the staged packet or
+  the effect book, and the host retains neither the request nor its reply.
+  With no credential stored, nothing is sent.
+- The operator (`coder_cloud::release`) keeps it in memory only. An offer
+  waits up to two minutes for the effect of the same job from the same
+  device. The effect binds it to that one turn, and the backend adds it
+  only to that turn's process environment (the private per-job file the
+  launch script reads and removes) and redacts it from the turn's events,
+  results, and artifacts. The turn's end drops it. The job keeps only the
+  credential type in its evidence, plus a digest of the owner. A release
+  from another device, owner, or membership epoch is refused.
+- After removal, the next turn gets no release. It runs on the plan login
+  made inside the computer, admitted one at a time beside any key-backed
+  turns. A job paused on a released key stays paused until a follow
+  brings a fresh release. Parallel turns are admitted only when each has
+  the user's own released key. Tests use fake keys and synthetic owners
+  and check that the effect journal, the resident's access book, and the
+  operator's records, admissions, journals, and archives never hold it.
+
 ## Existing docs this supersedes
 
 - `2026-10-02-boat-sdk-plan.md` describes connecting Claude Pro or Max on Boat's

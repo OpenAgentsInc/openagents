@@ -215,6 +215,108 @@ impl Follow {
         self.scope.validate()
     }
 }
+/// The credential names a user's own Claude credential may be released
+/// under (BYO-05): an Anthropic API key, or a Bedrock, Vertex, or Foundry
+/// document. Never a claude.ai login.
+pub const RELEASE_NAMES: [&str; 4] = [
+    "ANTHROPIC_API_KEY",
+    "OA_CLAUDE_BEDROCK",
+    "OA_CLAUDE_VERTEX",
+    "OA_CLAUDE_FOUNDRY",
+];
+/// The longest a released credential waits for the turn it was released for.
+pub const RELEASE_SECONDS: u64 = 120;
+
+/// The user's own Claude credential, released by the server that holds it
+/// for exactly one boot or turn of exactly that user's job (BYO-05). The
+/// resident keeps it in memory only and hands it to that turn's process
+/// environment; it never enters a job record, journal, or reply, and the
+/// host retains neither this request nor its reply.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Release {
+    pub workspace: String,
+    pub project: String,
+    pub profile: String,
+    pub profile_revision: String,
+    pub source_digest: String,
+    /// The job the next turn belongs to: a submission's request identity,
+    /// or an existing job.
+    pub job: String,
+    /// A digest of the account, workspace, and membership epoch that own
+    /// the credential. The job keeps it, so another owner or a later epoch
+    /// cannot release into it.
+    pub owner: String,
+    /// One of [`RELEASE_NAMES`].
+    pub name: String,
+    pub value: String,
+}
+impl std::fmt::Debug for Release {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Release")
+            .field("workspace", &self.workspace)
+            .field("project", &self.project)
+            .field("profile", &self.profile)
+            .field("job", &self.job)
+            .field("name", &self.name)
+            .field("value", &"[redacted]")
+            .finish_non_exhaustive()
+    }
+}
+impl Release {
+    pub fn validate(&self) -> Result<()> {
+        context(&self.workspace, &self.project)?;
+        alias(&self.profile)?;
+        digest(&self.profile_revision)?;
+        digest(&self.source_digest)?;
+        alias(&self.job)?;
+        if self.owner.len() != 64
+            || !self
+                .owner
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        {
+            return fail(Code::Malformed, "Released credential owner is invalid.");
+        }
+        if !RELEASE_NAMES.contains(&self.name.as_str()) {
+            return fail(Code::Malformed, "Released credential class is invalid.");
+        }
+        text(&self.value, 64 * 1024, false)
+    }
+    /// The admission the release is checked against, without its value.
+    #[must_use]
+    pub fn admission(&self) -> Admission {
+        Admission {
+            workspace: self.workspace.clone(),
+            project: self.project.clone(),
+            profile: self.profile.clone(),
+            profile_revision: self.profile_revision.clone(),
+            source_digest: self.source_digest.clone(),
+            job: None,
+        }
+    }
+}
+/// The resident holds a released credential for the job's next turn.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Released {
+    pub job: String,
+    pub name: String,
+    pub expires_at: u64,
+}
+impl Released {
+    pub fn validate(&self) -> Result<()> {
+        alias(&self.job)?;
+        if !RELEASE_NAMES.contains(&self.name.as_str()) {
+            return fail(Code::Malformed, "Released credential class is invalid.");
+        }
+        Ok(())
+    }
+    #[must_use]
+    pub fn answers(&self, q: &Release) -> bool {
+        self.job == q.job && self.name == q.name
+    }
+}
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Accepted {

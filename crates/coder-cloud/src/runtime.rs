@@ -4,7 +4,7 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 
 /// Values live only in memory and in a private remote file removed before dispatch.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct Credentials {
     values: BTreeMap<String, String>,
     secrets: Vec<String>,
@@ -41,6 +41,18 @@ impl Credentials {
         secrets.sort_by_key(|v| std::cmp::Reverse(v.len()));
         secrets.dedup();
         Ok(Self { values, secrets })
+    }
+    /// These credentials plus `other`'s, which win on a shared name. Both
+    /// were admitted by [`Self::from_names`].
+    #[must_use]
+    pub fn merged(&self, other: &Self) -> Self {
+        let mut values = self.values.clone();
+        values.extend(other.values.clone());
+        let mut secrets = self.secrets.clone();
+        secrets.extend(other.secrets.iter().cloned());
+        secrets.sort_by_key(|v| std::cmp::Reverse(v.len()));
+        secrets.dedup();
+        Self { values, secrets }
     }
     pub fn sanitize_artifacts(&self, value: &mut Value) -> Result<()> {
         use base64::Engine;

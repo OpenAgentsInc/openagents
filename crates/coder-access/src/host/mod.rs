@@ -1240,8 +1240,11 @@ impl Host {
             | Operation::CloudSubmit { .. }
             | Operation::CloudContinue { .. }
             | Operation::CloudCancel { .. }
-            | Operation::CloudFollow { .. }) => {
-                if !op.reads_only() {
+            | Operation::CloudFollow { .. }
+            | Operation::CloudRelease { .. }) => {
+                // A released credential is held only in the resident's
+                // memory: nothing about it is retained here (BYO-05).
+                if op.retains_reply() {
                     if book.replies.len() >= MAX_REPLIES {
                         return fail(Code::Bounds, "retained reply limit reached");
                     }
