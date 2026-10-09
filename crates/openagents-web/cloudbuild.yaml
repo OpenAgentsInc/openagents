@@ -58,9 +58,15 @@ steps:
           printf '%s  %s\n' "$$layers_sha" "$$layers_file" | sha256sum -c -
           test "$$(wc -c < "$$layers_file")" -eq "$$layers_bytes"
         fi
+  # BuildKit, so the independent stages (the native server and the
+  # WebAssembly builds) run in parallel instead of one after another
+  # (docs/deployment/2026-10-09-faster-deploys.md).
   - name: gcr.io/cloud-builders/docker
+    env:
+      - DOCKER_BUILDKIT=1
     args:
       - build
+      - --progress=plain
       - -f
       - crates/openagents-web/Dockerfile
       - -t

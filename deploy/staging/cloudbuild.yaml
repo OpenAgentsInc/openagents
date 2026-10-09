@@ -9,9 +9,14 @@
 # The site's image is the ordinary openagents-web build
 # (crates/openagents-web/cloudbuild.yaml). See deploy/staging/README.md.
 steps:
+  # BuildKit, as in the web build: independent stages run in parallel
+  # (docs/deployment/2026-10-09-faster-deploys.md).
   - name: gcr.io/cloud-builders/docker
+    env:
+      - DOCKER_BUILDKIT=1
     args:
       - build
+      - --progress=plain
       - -f
       - deploy/staging/Dockerfile
       - -t

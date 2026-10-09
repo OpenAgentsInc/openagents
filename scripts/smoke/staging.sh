@@ -1,7 +1,7 @@
 #!/bin/sh
 # The web smoke suite against staging (or any running site):
 #
-#   scripts/smoke/staging.sh [BASE_URL] [--no-install] [--only home,docs,...]
+#   scripts/smoke/staging.sh [BASE_URL] [--no-install] [--only home,docs,...] [--production]
 #
 # BASE_URL defaults to the staging service
 # (https://staging.openagents.com,
@@ -13,8 +13,11 @@
 # token: SMOKE_SIGNUP_TOKEN, or, when unset, the Secret Manager secret
 # openagents-gateway-staging-smoke-signup-token read with the automation
 # account (never printed). Without it those checks are skipped.
+# --production (openagents.com or its tag URL): one question, no account,
+# no sign-in checks; the operator token is not read.
 set -eu
-if [ -z "${SMOKE_SIGNUP_TOKEN:-}" ] && command -v gcloud > /dev/null 2>&1; then
+case " $* " in *" --production "*) production=1 ;; *) production= ;; esac
+if [ -z "$production" ] && [ -z "${SMOKE_SIGNUP_TOKEN:-}" ] && command -v gcloud > /dev/null 2>&1; then
     config=${CLOUDSDK_CONFIG:-$HOME/work/.secrets/gcloud-sa-config}
     SMOKE_SIGNUP_TOKEN=$(CLOUDSDK_CONFIG=$config gcloud secrets versions access latest \
         --secret openagents-gateway-staging-smoke-signup-token --project openagentsgemini 2> /dev/null || true)

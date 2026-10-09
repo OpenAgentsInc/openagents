@@ -7,6 +7,11 @@ exit status 1 when anything fails. Python standard library only.
 Signed-in checks use an account made through the account service's own
 sign-up (`POST /api/v1/accounts`), never GitHub. Chats it starts are
 deleted afterwards. Nothing secret is printed.
+
+`--production` is for openagents.com and its no-traffic tag URL: it asks
+one starter question instead of four, makes no account, and skips the
+sign-in and account groups (production has no account service yet,
+#11127), so it writes nothing beyond that one chat.
 """
 
 import argparse
@@ -320,7 +325,7 @@ def traces(base, session):
 # Checks
 
 
-def run(base, only, install):
+def run(base, only, install, production=False):
     site = Site(base)
     want = (lambda name: True) if not only else (lambda name: any(name.startswith(o) for o in only))
 
@@ -337,7 +342,8 @@ def run(base, only, install):
                corner >= 0 and "data-oa-theme-toggle" in home.text[corner:corner + 1500])
         if want("home-chat") or not only:
             with concurrent.futures.ThreadPoolExecutor(4) as pool:
-                futures = {q: pool.submit(ask, base, q, i == 0) for i, q in enumerate(questions[:4])}
+                asked = questions[:1] if production else questions[:4]
+                futures = {q: pool.submit(ask, base, q, i == 0) for i, q in enumerate(asked)}
                 for i, (q, f) in enumerate(futures.items()):
                     answer, streamed, error = f.result()
                     record(f"home: '{q}' gets an answer", error is None and bool(answer),
@@ -414,8 +420,11 @@ def run(base, only, install):
             ok = False
         record("mcp/docs: initialize and tools/list", bool(ok), f"{init.status}/{tools.status}")
 
+    if production and (want("github") or want("accounts")):
+        record("sign-in and accounts", None, "production: no account service yet (#11127)")
+
     # GitHub sign-in, as far as a script can go.
-    if want("github"):
+    if want("github") and not production:
         login = site.get("/login")
         record("sign-in: /login offers GitHub", login.status == 200 and "/auth/github" in login.text)
         go = site.get("/auth/github")
@@ -454,7 +463,7 @@ def run(base, only, install):
     # token (SMOKE_SIGNUP_TOKEN), when it is set.
     session = key = None
     account = Site(base)
-    if want("accounts") or want("signed-in") or want("gateway") or want("traces"):
+    if not production and (want("accounts") or want("signed-in") or want("gateway") or want("traces")):
         open_ = Site(base).request("/api/v1/accounts", method="POST", body={"label": "Smoke"})
         try:
             code = open_.json().get("error", {}).get("code", "")
@@ -551,12 +560,14 @@ def main():
     parser.add_argument("base", nargs="?", default=os.environ.get("SMOKE_BASE", DEFAULT_BASE))
     parser.add_argument("--no-install", action="store_true")
     parser.add_argument("--only", default="")
+    parser.add_argument("--production", action="store_true",
+                        help="one question, no accounts, no sign-in checks")
     args = parser.parse_args()
     only = [o for o in args.only.split(",") if o]
     print(f"Smoke: {args.base}", flush=True)
     started = time.time()
     try:
-        run(args.base.rstrip("/"), only, not args.no_install)
+        run(args.base.rstrip("/"), only, not args.no_install, args.production)
     except Exception as e:  # a crash is a failure, never a silent pass
         record("suite: ran to the end", False, repr(e)[:200])
     passed = sum(1 for r in RESULTS if r[0] == "PASS")
