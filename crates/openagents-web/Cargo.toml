@@ -43,6 +43,7 @@ url = "2"
 workbench = { path = "../workbench" }
 
 [dev-dependencies]
+oa-copy = { path = "../oa-copy" }
 atif = { path = "../atif" }
 coder-environment = { path = "../coder-environment" }
 coder-environment-build = { path = "../coder-environment-build" }

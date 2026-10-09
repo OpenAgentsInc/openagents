@@ -429,6 +429,8 @@ async fn not_found() -> Response {
 }
 
 #[cfg(test)]
+mod copy_guard;
+#[cfg(test)]
 mod tests;
 
 async fn pay_proxy(

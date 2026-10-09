@@ -10486,6 +10486,7 @@ dependencies = [
  "libc",
  "maud",
  "nostr",
+ "oa-copy",
  "openagents-chat",
  "openagents-ui",
  "openagents-wallet",
