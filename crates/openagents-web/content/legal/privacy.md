@@ -48,7 +48,11 @@ We keep personal information for as long as reasonably necessary for the purpose
 
 ## 5. Cookies and Tracking
 
-We use cookies and similar technologies for authentication, preferences, security, and to understand how the Services are used. Most browsers let you remove or reject cookies through their settings; doing so may affect functionality such as staying signed in. We do not currently respond to browser “Do Not Track” signals.
+We use cookies and similar technologies for authentication, preferences, security, and to understand how the Services are used. Most browsers let you remove or reject cookies through their settings; doing so may affect functionality such as staying signed in.
+
+**Website analytics.** On openagents.com we measure use ourselves, without third-party analytics or tracking scripts and without cookies or other identifiers stored in your browser. We record only aggregate hourly totals: which kind of page was opened, the name of the referring site, the type of device (phone, tablet, or computer), whether the visit came from a person, an automated agent, or a crawler, response status and speed, and a fixed list of actions (sending a chat, receiving an answer, clicking a suggestion, card, or download, copying the install command, and signing in). For this purpose we do not record IP addresses, account identifiers, the content you submit, full page or referrer addresses, or any identifier that distinguishes one visitor from another. We keep these totals for up to 13 months. Our hosting provider's request logs, which we use to operate and secure the Services, include IP addresses and are deleted after 30 days.
+
+**Do Not Track and Global Privacy Control.** When your browser sends a Do Not Track or Global Privacy Control signal, our website analytics count only that a page was opened (the kind of page, its status, and its speed), and nothing else about your visit.
 
 ## 6. Data Security
 

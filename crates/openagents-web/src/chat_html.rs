@@ -19,6 +19,7 @@ pub(crate) fn head() -> Markup {
         script src="/static/htmx.min.js" defer {}
         script src="/static/htmx-sse.js" defer {}
         script type="module" src="/static/chat-start.js" {}
+        script src=(crate::analytics::SCRIPT) defer {}
     }
 }
 

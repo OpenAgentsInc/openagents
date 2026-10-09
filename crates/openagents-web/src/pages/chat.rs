@@ -1392,6 +1392,15 @@ async fn answer(app: App, mut loaded: Loaded, admitted_at: u64) {
                     loaded = v;
                     shown = text;
                     settled = ended;
+                    if ended {
+                        // A count only (#11153): never the chat or its text.
+                        let outcome = if done {
+                            "answer_shown"
+                        } else {
+                            "answer_failed"
+                        };
+                        app.config.analytics.event(outcome, "");
+                    }
                 }
                 Err(_) => {
                     // A write may have committed even if its response was lost.

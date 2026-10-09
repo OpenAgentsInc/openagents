@@ -1,6 +1,6 @@
 ---
 id: openagents.chat-privacy
-version: 11
+version: 12
 kind: product
 title: "How chat messages travel, who sees them, and whether we train on them"
 summary: >-
@@ -37,7 +37,9 @@ provenance:
     - nips/openagents/NIP-CJ.md
     - crates/openagents-web/src/chat_store.rs
     - crates/openagents-web/src/chat_owner.rs
+    - crates/openagents-web/src/analytics/mod.rs
 evidence:
+  - "2026-10-09: v12 (#11153): the website's own cookieless analytics (crates/openagents-web/src/analytics/mod.rs) keep hourly totals only, with no IP address, account, or message text, and honor Do Not Track and Global Privacy Control."
   - "2026-10-09: v9 (#11039, #11038): signed in, web chats belong to the account (crates/openagents-web/src/chat_owner.rs; the owner is a digest of the account id that no browser cookie can take), show on any browser where the person signs in, and stay hidden from the browser after sign-out. Signing in moves the browser's signed-out chats to the account once (chat_owner::claim), never replacing a chat already on the account and leaving a chat still being answered. Signed out, chats stay tied to the browser cookie. Delete all chats is in Settings (signed in) and on a chat's delete step and the Archived chats page (signed out), at /chat/delete-all."
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
   - "2026-10-01: the chat model is Space Bunny Alpha on OpenRouter first, Gemini 3.8 Flash on the gateway after (#10109); OpenRouter's notice for the model says prompts and completions may be retained by the provider but are not used for training."
@@ -76,6 +78,7 @@ The web chat saves your chats on our servers, and you can delete them. In the ap
 - The worker's usage log records each job's time, key, surface, route, model, and timings, never the message text, and deletes each day's records after 30 days.
 - Requests to the chat models (Space Bunny Alpha, Gemini) and to the OpenRouter model that writes personalized lines ask the provider not to keep or train on them; Jev and the embeddings calls don't ask this yet.
 - When Coder runs on your computer, the coding agent sends what it reads to its model provider, under your sign-in there.
+- The website counts its own use with no cookies and no outside analytics: hourly totals of pages opened (the kind of page, never its full address), the referring site's name, phone or computer, person, agent, or crawler, page speed, and a few actions (a chat sent, an answer shown, a download clicked). It never records IP addresses, accounts, or message text, and with Do Not Track or Global Privacy Control on it counts only that a page was opened (#11153).
 
 ## Sources
 
@@ -84,3 +87,4 @@ The web chat saves your chats on our servers, and you can delete them. In the ap
 - `nips/openagents/NIP-CJ.md`
 - `crates/openagents-web/src/chat_store.rs`
 - `crates/openagents-web/src/chat_owner.rs`
+- `crates/openagents-web/src/analytics/mod.rs`

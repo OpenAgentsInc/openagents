@@ -65,6 +65,29 @@ those.
 Ask the chat "What happens to my messages?" and it answers with the
 services it uses right now.
 
+## What we count on the website
+
+We count how openagents.com is used ourselves. There's no outside
+analytics service, no tracking script from another company, and no cookie
+for it.
+
+- **What we count:** which page was opened (the kind of page, not its full
+  address: every chat counts as "a chat"), the name of the site that sent
+  you (like `ycombinator.com`), whether you're on a phone, tablet, or
+  computer, whether the visit came from a person, an AI agent, or a
+  crawler, how fast the page loaded, and a few actions: sending a chat,
+  getting an answer, clicking a suggestion or a card, clicking a download,
+  copying the install command, and signing in.
+- **What we don't:** your IP address, cookies, your account, what you
+  write, or anything that tells one visitor from another. We keep hourly
+  totals, so we can't tell whether two visits came from one person.
+- **Do Not Track and Global Privacy Control:** with either one on in your
+  browser, we count only that the page was opened, and nothing else.
+- **How long:** the hourly totals are kept for 13 months.
+
+Our hosting provider's request logs, which keep the site running and
+secure, do see IP addresses; they're deleted after 30 days.
+
 ## Your computer
 
 - A phone can reach your computer only after you scanned that computer's

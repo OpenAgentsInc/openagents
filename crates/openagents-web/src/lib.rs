@@ -14,6 +14,7 @@
 
 pub mod account;
 mod agent_ready;
+pub mod analytics;
 mod api_alias;
 mod api_keys;
 pub mod ask;
@@ -156,6 +157,9 @@ pub struct Config {
     /// `--plan-checkout`). Absent, Settings shows the plan and says hours
     /// and subscribing aren't set up on this server.
     pub plan: Option<Arc<plan::Plans>>,
+    /// First-party, cookieless counts and the owner's dashboard
+    /// ([`analytics`]). In memory only unless a store is configured.
+    pub analytics: Arc<analytics::Analytics>,
 }
 
 impl Config {
@@ -189,6 +193,7 @@ impl Config {
             pilot: None,
             environments: None,
             plan: None,
+            analytics: Arc::new(analytics::Analytics::default()),
         }
     }
 }
@@ -259,9 +264,15 @@ pub fn router(config: Config) -> Router {
         .merge(wellknown::routes())
         .merge(agent_ready::routes())
         .merge(docs_mcp::routes())
+        .merge(analytics::routes())
+        .route_layer(middleware::from_fn(analytics::mark))
         .fallback(not_found)
         .layer(middleware::from_fn(projects::scope))
         .layer(middleware::from_fn_with_state(app.clone(), account::scope))
+        .layer(middleware::from_fn_with_state(
+            app.clone(),
+            analytics::observe,
+        ))
         .layer(middleware::from_fn(move |request, next| {
             let hosts = hosts.clone();
             async move { guard(hosts, request, next).await }
@@ -535,7 +546,7 @@ async fn ui_catalog(headers: axum::http::HeaderMap) -> Response {
     response
 }
 
-async fn not_found() -> Response {
+pub(crate) async fn not_found() -> Response {
     layout::problem(
         StatusCode::NOT_FOUND,
         "Not found",

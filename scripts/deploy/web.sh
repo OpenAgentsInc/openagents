@@ -209,6 +209,16 @@ if "--chat-bucket" not in args and "OPENAGENTS_WEB_CHAT_BUCKET" not in env:
 for flag, path in (("--chat-build", "/srv/chat"), ("--bunny", "/srv/bunny")):
     if flag not in args:
         args += [flag, path]
+# First-party analytics (#11153, docs/deployment/analytics.md): production's
+# private bucket and the dashboard key.
+envs = web.setdefault("env", [])
+if "OPENAGENTS_WEB_ANALYTICS_BUCKET" not in env:
+    envs.append({"name": "OPENAGENTS_WEB_ANALYTICS_BUCKET",
+                 "value": "openagentsgemini-web-analytics-prod"})
+if "OPENAGENTS_WEB_ANALYTICS_KEY" not in env:
+    envs.append({"name": "OPENAGENTS_WEB_ANALYTICS_KEY",
+                 "valueFrom": {"secretKeyRef": {"name": "openagents-web-analytics-key",
+                                                "key": "latest"}}})
 traffic = []
 for entry in service["spec"].get("traffic", []):
     if entry.get("latestRevision"):

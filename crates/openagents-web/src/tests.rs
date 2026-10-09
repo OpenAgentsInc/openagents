@@ -223,13 +223,20 @@ async fn every_public_page_answers_in_development() {
         // The composer loads HTMX, its SSE extension, and the Rust adapter,
         // after the design-language shell's component script and Alpine
         // (UI-09: the homepage renders through `UiPage`). The live map loads
-        // its own single script.
-        let script = uri == "/" || uri == "/live";
+        // its own single script. The home and download pages also load the
+        // site's own counting script (`/static/a.js`, #11153).
+        let script = uri == "/" || uri == "/live" || uri == "/download";
         assert_eq!(
             scripts(&lower),
-            if uri == "/" { 6 } else { usize::from(script) },
+            if uri == "/" { 7 } else { usize::from(script) },
             "{uri} runs a script"
         );
+        if uri == "/" || uri == "/download" {
+            assert!(
+                body.contains("src=\"/static/a.js\""),
+                "{uri}: the counting script"
+            );
+        }
         if uri == "/" {
             assert!(
                 body.contains("src=\"/static/ui.js?v="),

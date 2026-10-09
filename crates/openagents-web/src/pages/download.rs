@@ -184,13 +184,25 @@ fn installer(script: &'static str) -> Response {
         .into_response()
 }
 
+/// The site's policy plus this site's one counting script and its beacon
+/// (`/static/a.js` to `POST /a`, #11153); the page runs no other script.
+pub(crate) const DOWNLOAD_POLICY: &str = "default-src 'none'; style-src 'self'; font-src 'self'; \
+img-src 'self'; script-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; \
+frame-ancestors 'none'";
+
 async fn download(headers: HeaderMap) -> Response {
-    UiPage::new("Download OpenAgents")
+    let mut response = UiPage::new("Download OpenAgents")
         .section("/download")
         .path("/download")
         .scriptless()
+        .head(html! { script src=(crate::analytics::SCRIPT) defer {} })
         .content(page(DESKTOP_RELEASED))
-        .respond(&headers)
+        .respond(&headers);
+    response.headers_mut().insert(
+        header::CONTENT_SECURITY_POLICY,
+        axum::http::HeaderValue::from_static(DOWNLOAD_POLICY),
+    );
+    response
 }
 
 /// The page's content; `desktop` shows the desktop downloads.

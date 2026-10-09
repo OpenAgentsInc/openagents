@@ -23,6 +23,7 @@ ALT_HOST = f"{SERVICE}-ezxz4mgdsq-uc.a.run.app"
 # docs/deployment/openagents-web.md), so staging runs as the inference account.
 RUNTIME = "oa-vertex-inference@openagentsgemini.iam.gserviceaccount.com"
 CHAT_BUCKET = "openagentsgemini-web-chats-stage"
+ANALYTICS_BUCKET = "openagentsgemini-web-analytics-staging"
 # The account-store NFS server (deploy/accounts-nfs,
 # docs/deployment/account-storage.md) and the subnet the service reaches it
 # through (Direct VPC egress, private ranges only).
@@ -76,6 +77,9 @@ def main():
             secret("openagents-web-1-staging-csrf-key", "CSRF_KEY"),
             secret("openagents-web-1-staging-byo-keys", "OPENAGENTS_WEB_CLOUD_BYO_KEYS"),
             secret("openagents-web-1-staging-ask-salt", "OPENAGENTS_WEB_ASK_SALT"),
+            # First-party analytics (#11153, docs/deployment/analytics.md).
+            plain("OPENAGENTS_WEB_ANALYTICS_BUCKET", ANALYTICS_BUCKET),
+            secret("openagents-web-analytics-key-staging", "OPENAGENTS_WEB_ANALYTICS_KEY"),
         ],
         "volumeMounts": [webstate],
         "resources": {"limits": {"cpu": "1", "memory": "1Gi"}},

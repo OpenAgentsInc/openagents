@@ -219,6 +219,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             openagents_web::upstream::Upstream::new(&url)?,
         ));
     }
+    // First-party, cookieless counts (#11153): written every minute to
+    // OPENAGENTS_WEB_ANALYTICS_BUCKET (or _DIR), and once more when Cloud
+    // Run stops the instance.
+    let analytics = std::sync::Arc::new(openagents_web::analytics::Analytics::from_env()?);
+    if analytics.has_store() {
+        analytics.spawn();
+        let last = analytics.clone();
+        tokio::spawn(async move {
+            #[cfg(unix)]
+            if let Ok(mut term) =
+                tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            {
+                term.recv().await;
+                let _ = last.flush().await;
+                std::process::exit(0);
+            }
+        });
+        println!("Analytics counts are kept");
+    }
+    config.analytics = analytics;
     let listener = tokio::net::TcpListener::bind(listen).await?;
     let bound = listener.local_addr()?;
     config.port = bound.port();

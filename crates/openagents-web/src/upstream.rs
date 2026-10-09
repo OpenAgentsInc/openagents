@@ -33,8 +33,11 @@ use hyper_util::rt::{TokioExecutor, TokioIo};
 
 /// The paths this site answers itself, exactly or as a prefix. `/app`, the
 /// local task browser, is never proxied; the host guard keeps it local.
-const OWNED_EXACT: [&str; 62] = [
+const OWNED_EXACT: [&str; 65] = [
     "/",
+    crate::analytics::BEACON,
+    crate::analytics::SCRIPT,
+    crate::analytics::DASHBOARD,
     "/static/ui.css",
     "/static/ui.js",
     "/static/vendor/alpine-csp.js",
