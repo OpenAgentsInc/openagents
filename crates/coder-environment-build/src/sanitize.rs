@@ -14,7 +14,8 @@
 //! source checkout (the command's working directory).
 
 use coder_environment::capture::{
-    Capture, EXPLORED_PATHS, LOGIN_PATHS, PRIVATE_MOUNTS, TOKEN_LINE_FILES, within,
+    Capture, EXPLORED_PATHS, LOGIN_PATHS, PRIVATE_MOUNTS, SNAPSHOT_EXCLUSION_FILES,
+    TOKEN_LINE_FILES, within,
 };
 use coder_environment::digest;
 use serde::{Deserialize, Serialize};
@@ -51,7 +52,16 @@ impl Plan {
             mounts: list(PRIVATE_MOUNTS),
             explored: list(EXPLORED_PATHS),
             keep: capture.keep_explored.iter().cloned().collect(),
-            exclude: capture.exclude.iter().cloned().collect(),
+            // The recipe's exclusions, plus any provider snapshot-exclusion
+            // file, so the image holds everything the recipe installed.
+            exclude: capture
+                .exclude
+                .iter()
+                .cloned()
+                .chain(SNAPSHOT_EXCLUSION_FILES.iter().map(|s| s.to_string()))
+                .collect::<std::collections::BTreeSet<_>>()
+                .into_iter()
+                .collect(),
             required: capture.required.iter().cloned().collect(),
             own_record: own_record.into(),
         }

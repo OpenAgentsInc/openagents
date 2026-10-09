@@ -45,6 +45,11 @@ use std::time::Duration;
 pub const COMMAND_DIR: &str = "/tmp/oa-commands";
 /// The wrapper's exit code when the identity was already claimed.
 pub const ALREADY_CLAIMED: i32 = 97;
+/// Reads (2 s apart) of a ready sandbox that still reports its creator's
+/// logins before the boot is refused.
+const CREATOR_LOGIN_READS: u32 = 15;
+/// The longest command timeout Boat accepts (`invalid_timeout` above it).
+pub const BOAT_COMMAND_SECONDS: i64 = 600;
 
 fn join_dir(workdir: &str, cwd: &str) -> String {
     if cwd == "." {
@@ -68,6 +73,7 @@ pub fn command_script(root: &str, workdir: &str, spec: &CommandSpec, unset: &[&s
     format!(
         "mkdir -p {root} && mkdir {d} 2>/dev/null || exit {ALREADY_CLAIMED}\n\
          printf %s {digest} > {d}/spec\n\
+         mkdir -p {workdir}\n\
          cd {cwd} || {{ echo 126 > {d}/exit.tmp; mv {d}/exit.tmp {d}/exit; exit 126; }}\n\
          {env} sh -c {command} </dev/null >{d}/stdout 2>{d}/stderr &\n\
          echo $! > {d}/pid\n\
@@ -77,6 +83,7 @@ pub fn command_script(root: &str, workdir: &str, spec: &CommandSpec, unset: &[&s
          exit $code",
         root = shell_quote(root),
         digest = shell_quote(&spec.digest),
+        workdir = shell_quote(workdir),
         cwd = shell_quote(&join_dir(workdir, &spec.cwd)),
         env = env.join(" "),
         command = shell_quote(&spec.command),
@@ -213,7 +220,7 @@ impl BoatProvider {
                 sandbox_id: id.into(),
                 body: CommandRequest {
                     command,
-                    timeout_seconds: Some(seconds),
+                    timeout_seconds: Some(seconds.clamp(1, BOAT_COMMAND_SECONDS)),
                     ..Default::default()
                 },
                 ..Default::default()
@@ -353,10 +360,24 @@ impl Provider for BoatProvider {
     }
 
     async fn apply_credentials(&self, c: &Computer, resource: &str) -> Outcome<String> {
-        let sandbox = match self.sandbox(resource).await {
+        // Boat reports a no-env sandbox made from a template as holding the
+        // creator's logins until it has finished provisioning and scrubbed
+        // them, so judge it only once it is ready.
+        let mut sandbox = match self.client.wait_until_ready(resource, &wait(900)).await {
             Ok(s) => s,
-            Err(e) => return Outcome::unknown(format!("read sandbox: {e}")),
+            Err(boat::Error::TerminalState) => return Outcome::failed("the sandbox did not start"),
+            Err(e) => return Outcome::unknown(format!("waiting for the sandbox: {e}")),
         };
+        for _ in 0..CREATOR_LOGIN_READS {
+            if sandbox.holds_creator_logins != Some(true) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_secs(2)).await;
+            sandbox = match self.sandbox(resource).await {
+                Ok(s) => s,
+                Err(e) => return Outcome::unknown(format!("read sandbox: {e}")),
+            };
+        }
         // A Boat dashboard login copied in by the provider would carry
         // someone else's credentials into this user's computer.
         if sandbox.holds_creator_logins == Some(true) {
@@ -500,6 +521,24 @@ impl Provider for BoatProvider {
             .await
         {
             Ok(op) => Outcome::done(op.id),
+            // Boat parks a deletion as `blocked` while the sandbox's last
+            // snapshot uploads finish (or while a named snapshot still reads
+            // its chain); the machine itself is already gone, which is what
+            // this deletion is for.
+            Err(boat::Error::DeletionBlocked(op)) => match self.sandbox(resource).await {
+                Err(e) if status(&e) == Some(404) => Outcome::done(format!(
+                    "{} (machine gone; {})",
+                    op.id,
+                    op.stage.as_deref().unwrap_or("blocked")
+                )),
+                Ok(s) => Outcome::unknown(format!(
+                    "deletion {} is blocked ({}) and the sandbox is {}",
+                    op.id,
+                    op.stage.as_deref().unwrap_or("no stage"),
+                    s.state
+                )),
+                Err(e) => Outcome::unknown(format!("deletion {}: read sandbox: {e}", op.id)),
+            },
             Err(e) => Outcome::unknown(format!("deletion {}: {e}", accepted.id)),
         }
     }
@@ -582,7 +621,12 @@ impl Commands for BoatProvider {
                 resource,
                 CommandRequest {
                     command: script,
-                    timeout_seconds: Some(spec.timeout_seconds.max(1) as i64),
+                    // Boat refuses a timeout over 600 s and does not end a
+                    // detached command at it; the command's own deadline is
+                    // kept by its owner, which stops it by identity.
+                    timeout_seconds: Some(
+                        (spec.timeout_seconds as i64).clamp(1, BOAT_COMMAND_SECONDS),
+                    ),
                     ..Default::default()
                 },
             )

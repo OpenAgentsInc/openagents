@@ -999,7 +999,7 @@ impl State {
         self.verify_job = None;
         self.summary = None;
         self.input.push(user_message(&format!(
-            "{text}\n\n(You are on a new setup computer with the same commit checked out. The recipe draft and declared checks are kept.)"
+            "{text}\n\n(You are on a new setup computer with the same commit checked out. Any recipe draft and declared checks are kept.)"
         )));
     }
 }

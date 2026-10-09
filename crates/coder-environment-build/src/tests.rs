@@ -719,3 +719,38 @@ async fn a_checkout_that_is_not_the_pin_fails_before_the_install() {
     assert!(source.spec.command.contains(&pin().revision));
     assert_eq!(env_build(&h, "build-1").state, BuildState::Failed);
 }
+
+#[test]
+fn a_snapshot_exclusion_file_is_removed_so_installed_toolchains_are_captured() {
+    let plan = Plan::new(&CapturePolicy::default(), "/tmp/oa-commands/sanitize");
+    assert!(plan.exclude.iter().any(|p| p == "~/.boxignore"));
+    let with_recipe = Plan::new(&capture_policy(), "/tmp/oa-commands/sanitize");
+    assert!(with_recipe.exclude.iter().any(|p| p == "secrets.env"));
+    assert!(with_recipe.exclude.iter().any(|p| p == "~/.boxignore"));
+
+    // Run the real script against a scratch home and root.
+    let dir = tempfile::tempdir().unwrap();
+    let (home, root, work) = (
+        dir.path().join("home"),
+        dir.path().join("root"),
+        dir.path().join("work"),
+    );
+    for d in [&home, &root, &work, &home.join(".cargo/bin")] {
+        std::fs::create_dir_all(d).unwrap();
+    }
+    std::fs::write(home.join(".boxignore"), ".cache/\n.cargo/\n.rustup/\n").unwrap();
+    std::fs::write(home.join(".cargo/bin/cargo"), "").unwrap();
+    let out = std::process::Command::new("sh")
+        .arg("-c")
+        .arg(crate::sanitize::script(&plan))
+        .current_dir(&work)
+        .env("HOME", &home)
+        .env("OA_ROOT", &root)
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(out.status.success(), "{stdout}");
+    assert!(stdout.contains("removed ~/.boxignore"), "{stdout}");
+    assert!(!home.join(".boxignore").exists());
+    assert!(home.join(".cargo/bin/cargo").exists());
+}

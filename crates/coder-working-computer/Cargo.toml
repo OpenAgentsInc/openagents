@@ -13,6 +13,7 @@ coder-cloud = { path = "../coder-cloud" }
 coder-environment = { path = "../coder-environment" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+tokio = { version = "1", features = ["time"] }
 
 [dev-dependencies]
 tempfile = "3"

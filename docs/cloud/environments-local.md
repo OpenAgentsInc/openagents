@@ -73,7 +73,24 @@ The web app runs the environment owners itself. Do not also point
 
 ## Cost and cleanup
 
-Each setup, build, and check machine is deleted when its step ends, and each
-Claude Code run deletes its machine when it finishes or is stopped. Saved
-images stay in Boat as named snapshots (`oaenv-*`). To see what is running:
-`openagents boat` or the Boat console.
+Each setup, build, and check machine is deleted when its step ends, a
+setup that stops cancels its setup machine, and each Claude Code run deletes
+its machine when it finishes or is stopped. Built images stay in Boat as
+named snapshots (`oaenv-*`), including images whose fresh-machine check
+failed; Boat allows 10 named snapshots per account, so delete the ones no
+saved version uses. To see what is running: `openagents boat` or the Boat
+console.
+
+## Recipes and images
+
+- The install recipe runs under `sh`; a `#!` line is ignored. The setup
+  agent is told so.
+- The fresh-machine check runs the declared checks, then runs the recipe a
+  second time on the image; with `offline` checks that rerun has no network,
+  so a recipe must skip work already done.
+- The Coder runtime template carries a `~/.boxignore` that keeps `~/.cargo`,
+  `~/.rustup`, and `~/.cache` out of Boat snapshots. The builder removes it
+  before saving the image, so toolchains a recipe installs under home are
+  kept.
+- A failed check's output shows in the conversation and is handed to the
+  agent on **Try again**.

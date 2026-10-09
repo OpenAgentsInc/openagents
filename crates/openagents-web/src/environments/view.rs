@@ -428,6 +428,26 @@ pub(crate) fn transcript(view: &View, claude_ready: bool, notice: Option<&str>) 
                     .render(),
                 );
             }
+            Entry::CheckFailed {
+                name,
+                command,
+                exit,
+                output: text,
+            } => {
+                let mut body = format!("$ {command}\n");
+                body.push_str(text.trim_end());
+                turns.push(
+                    acts(
+                        ToolCall::new(Icon::Terminal, "Failed on the fresh computer")
+                            .detail(name.clone())
+                            .status(ActivityStatus::Failed)
+                            .status_label(exit_label(*exit))
+                            .open(true)
+                            .body(output(&body)),
+                    )
+                    .render(),
+                );
+            }
             Entry::Build { .. } | Entry::Verify { .. } => {
                 let start = i;
                 while i + 1 < records.len()

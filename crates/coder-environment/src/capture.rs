@@ -34,6 +34,12 @@ pub const LOGIN_PATHS: &[&str] = &[
 ];
 /// Files whose token lines are removed while the rest of the file stays.
 pub const TOKEN_LINE_FILES: &[&str] = &["~/.npmrc", "~/.yarnrc.yml"];
+/// Provider snapshot-exclusion files a base template may carry, removed
+/// before capture. Boat skips every path named in `~/.boxignore` when it
+/// saves a snapshot; the Coder runtime template lists `~/.cargo` and
+/// `~/.rustup` there, which silently dropped the toolchains a recipe
+/// installed from the saved image.
+pub const SNAPSHOT_EXCLUSION_FILES: &[&str] = &["~/.boxignore"];
 /// Secret mounts a builder machine may carry. Never captured.
 pub const PRIVATE_MOUNTS: &[&str] = &["/run/secrets", "/var/run/secrets", "/mnt/oa-private"];
 /// Explored state removed unless a recipe keeps a path under it.

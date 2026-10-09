@@ -57,6 +57,8 @@ pub const MODEL_OUTPUT_BYTES: usize = 12 * 1024;
 pub const INSTALL_SECONDS: u64 = 1800;
 pub const COMMAND_SECONDS: u64 = 300;
 pub const CHECK_SECONDS: u64 = 1800;
+/// The name a failed install rerun goes by in the conversation.
+const RERUN: &str = "install-rerun";
 /// Transient model failures retried before the setup stops.
 pub const MODEL_RETRIES: u32 = 4;
 
@@ -66,9 +68,9 @@ The repository is already checked out at the exact commit in your working direct
 
 How to work:
 1. Explore first with run_command: read the README, contributing notes, manifests, lock files, toolchain files, CI workflows, and any setup scripts. Keep commands short and read-only while exploring.
-2. Write the recipe with write_recipe. Use `set -euo pipefail`. Use sudo for system packages when it is available. Prefer the project's own lock files and pinned versions. Never put tokens or passwords in the script.
+2. Write the recipe with write_recipe. It runs under `sh` (dash on Ubuntu), not bash, and a `#!` line is ignored: write POSIX shell that starts with `set -eu`, or put the whole script inside `bash -euo pipefail <<'SETUP'` ... `SETUP` when you need bash. Use sudo for system packages when it is available. Prefer the project's own lock files and pinned versions. Never put tokens or passwords in the script.
 3. Run it with run_install. When it fails, read the error, fix the recipe with write_recipe, and run it again. Keep going until it passes.
-4. Choose one to four quick checks that prove the environment works, such as building the project or running a fast part of its tests, and declare them with set_checks. They run on a fresh machine made from your recipe. Set offline to true only when every dependency is installed by the recipe. Declaring checks makes a new recipe revision, so run the install once more after it.
+4. Choose one to four quick checks that prove the environment works, such as building the project or running a fast part of its tests, and declare them with set_checks. They run on a fresh machine made from your recipe. Set offline to true only when every dependency is installed by the recipe. The fresh machine also runs your recipe a second time on top of the saved image to show it changes nothing; when offline is true that second run has no network, so make every step skip work that is already done (for example, check a toolchain is installed before installing it, and use `--offline` or the package manager's cache when dependencies are present). Declaring checks makes a new recipe revision, so run the install once more after it.
 5. When the install passes on the current revision and the checks are declared, call finish with a short summary.
 
 Talk to the person like a colleague: short, plain sentences about what you found and what you are doing. Do not narrate tool mechanics. If you need a decision only the person can make, call ask_user with one clear question. If the person sends a message, follow it.";
@@ -189,7 +191,7 @@ impl State {
         self.verify_job = None;
         self.summary = None;
         self.input.push(user(&format!(
-            "The last attempt stopped: {reason}\nYou are on a new setup computer with the same commit checked out. The recipe draft and declared checks are kept. Fix what failed, run the install again, and finish."
+            "The last attempt stopped: {reason}\nYou are on a new setup computer with the same commit checked out. Any recipe draft and declared checks are kept. Fix what failed, run the install again, and finish."
         )));
     }
 }
@@ -310,7 +312,13 @@ impl<P: Commands + Images, T: Transport> Agent<P, T> {
                 }
                 Phase::Building => self.build(brief, &mut state).await,
                 Phase::Verifying => self.verify(brief, &mut state).await,
-                Phase::Review { .. } | Phase::Saved { .. } | Phase::Failed { .. } => {
+                Phase::Failed { reason } => {
+                    // A stopped setup keeps no machine running.
+                    self.release(&state.session(), &reason).await;
+                    let _ = self.save(&state);
+                    return state;
+                }
+                Phase::Review { .. } | Phase::Saved { .. } => {
                     let _ = self.save(&state);
                     return state;
                 }
@@ -323,7 +331,30 @@ impl<P: Commands + Images, T: Transport> Agent<P, T> {
         }
     }
 
+    /// Cancel a setup session that is still open, which deletes its
+    /// computer. Nothing to do when it never opened or already ended.
+    async fn release(&self, session: &str, reason: &str) {
+        match self.owners.setup.sessions().read(session) {
+            Ok(s) if !s.state.terminal() => {
+                let _ = self
+                    .owners
+                    .setup
+                    .cancel(session, &plain_reason(reason), now_ms())
+                    .await;
+            }
+            _ => {}
+        }
+    }
+
     async fn start(&self, brief: &Brief, state: &mut State) {
+        // Earlier attempts that stopped without ending keep no machine.
+        for attempt in 1..state.attempt {
+            self.release(
+                &format!("{}-s{attempt}", state.environment),
+                "A new setup attempt started.",
+            )
+            .await;
+        }
         let session = state.session();
         let request = SetupRequest {
             session: session.clone(),
@@ -405,13 +436,21 @@ impl<P: Commands + Images, T: Transport> Agent<P, T> {
             Entry::Source {
                 ok,
                 revision,
-                output: format!("{out}{err}"),
+                output: shown(&run, &out, &err),
             },
         );
         if !ok {
             return self.fail(
                 state,
-                "The repository couldn't be checked out at that commit.",
+                match unfinished(&run) {
+                    Some(why) => format!("The repository couldn't be checked out. {why}"),
+                    None => match exit_code(&run) {
+                        Some(code) if out.trim().is_empty() && err.trim().is_empty() => format!(
+                            "The repository couldn't be checked out at that commit (exit {code}, no output)."
+                        ),
+                        _ => "The repository couldn't be checked out at that commit.".into(),
+                    },
+                },
             );
         }
         state.phase = Phase::Working;
@@ -625,7 +664,7 @@ impl<P: Commands + Images, T: Transport> Agent<P, T> {
                             Entry::Explored {
                                 command,
                                 exit,
-                                output: format!("{out}{err}"),
+                                output: shown(&run, &out, &err),
                             },
                         );
                         (result(&run, &out, &err), Next::Continue)
@@ -679,7 +718,7 @@ impl<P: Commands + Images, T: Transport> Agent<P, T> {
                             Entry::Install {
                                 revision,
                                 exit: exit_code(&run),
-                                output: format!("{out}{err}"),
+                                output: shown(&run, &out, &err),
                             },
                         );
                         state.installed = run.succeeded().then_some(revision);
@@ -1076,9 +1115,80 @@ impl<P: Commands + Images, T: Transport> Agent<P, T> {
                         detail: reason.clone(),
                     },
                 );
+                if let Some((name, exit, output)) = self.failed_check(&job) {
+                    let command = if name == RERUN {
+                        "the install recipe, run again on the image".to_owned()
+                    } else {
+                        checks
+                            .lines
+                            .iter()
+                            .find(|l| l.name == name)
+                            .map(|l| l.command.clone())
+                            .unwrap_or_default()
+                    };
+                    // The model sees the check's output on the next attempt.
+                    state.input.push(user(&format!(
+                        "On the fresh machine built from the recipe, check {name} (`{command}`) failed. Its output ends with:\n{}",
+                        tail_of(&output, MODEL_OUTPUT_BYTES)
+                    )));
+                    self.log(
+                        &state.environment,
+                        Entry::CheckFailed {
+                            name,
+                            command,
+                            exit,
+                            output,
+                        },
+                    );
+                }
                 self.fail(state, format!("The fresh-machine check failed: {reason}"));
             }
         }
+    }
+}
+
+impl<P: Commands + Images, T: Transport> Agent<P, T> {
+    /// The first declared check that failed in `job`, with the output the
+    /// verifier kept for it.
+    fn failed_check(
+        &self,
+        job: &coder_environment_verify::VerifyJob,
+    ) -> Option<(String, Option<i64>, String)> {
+        use coder_environment_verify::plan::Action;
+        let step = job.steps.iter().find(|s| {
+            matches!(s.action, Action::Check { .. } | Action::Install)
+                && matches!(
+                    s.outcome,
+                    Some(coder_environment_verify::StepOutcome::Failed { .. })
+                )
+        })?;
+        let name = match &step.action {
+            Action::Check { name } => name.clone(),
+            Action::Install => RERUN.to_owned(),
+            _ => return None,
+        };
+        let role = serde_json::to_value(step.role).ok()?;
+        let streams = self
+            .owners
+            .verifier
+            .evidence_dir(&job.id)
+            .join("children")
+            .join(role.as_str()?)
+            .join("streams");
+        let read = |ext: &str| {
+            fs::read(streams.join(format!("{}.{ext}", step.id)))
+                .map(|b| String::from_utf8_lossy(&b).into_owned())
+                .unwrap_or_default()
+        };
+        let output = format!("{}{}", read("stdout"), read("stderr"));
+        Some((
+            name,
+            match step.run {
+                coder_environment_verify::Run::Exited { code } => Some(code),
+                _ => None,
+            },
+            tail_of(&output, MODEL_OUTPUT_BYTES),
+        ))
     }
 }
 
@@ -1087,6 +1197,33 @@ fn exit_code(run: &Run) -> Option<i64> {
         Run::Exited { code } => Some(*code),
         _ => None,
     }
+}
+
+/// Why a command ended without an exit code, for a person; `None` when it
+/// exited.
+fn unfinished(run: &Run) -> Option<String> {
+    match run {
+        Run::Exited { .. } => None,
+        Run::TimedOut => Some("It ran past its time limit.".into()),
+        Run::Stopped { reason } => Some(format!("It was stopped: {}", plain_reason(reason))),
+        Run::Lost => Some("It ended without reporting an exit code.".into()),
+        Run::NotStarted { reason } => Some(format!("It didn't start: {}", plain_reason(reason))),
+        Run::Unknown { reason } => Some(format!("Its state is unknown: {}", plain_reason(reason))),
+        Run::Requested | Run::Running { .. } => None,
+    }
+}
+
+/// A command's output as the conversation shows it, with the reason it
+/// ended early when it did.
+fn shown(run: &Run, out: &str, err: &str) -> String {
+    let mut text = format!("{out}{err}");
+    if let Some(why) = unfinished(run) {
+        if !text.is_empty() && !text.ends_with('\n') {
+            text.push('\n');
+        }
+        text.push_str(&why);
+    }
+    text
 }
 
 fn result(run: &Run, out: &str, err: &str) -> Value {
