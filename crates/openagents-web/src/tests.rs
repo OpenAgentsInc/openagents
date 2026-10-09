@@ -1791,6 +1791,10 @@ fn proxying(root: &std::path::Path, upstream: &str) -> Config {
 fn the_site_owns_its_pages_and_the_removed_sections() {
     for path in [
         "/",
+        "/login",
+        "/signup",
+        "/auth/github",
+        "/auth/github/callback",
         "/download",
         "/chat",
         "/chat/x",
@@ -1847,9 +1851,7 @@ fn the_site_owns_its_pages_and_the_removed_sections() {
     for path in [
         "/v1/token",
         "/api/v1/chat",
-        "/login",
         "/logout",
-        "/auth/github/callback",
         "/stripe/webhook",
         "/mcp",
         "/releases/coder-latest.tar.gz",
@@ -1914,8 +1916,6 @@ async fn unowned_paths_are_proxied_with_their_method_host_body_and_status() {
     assert_eq!(echo["body"], "{\"ask\":1}");
     for uri in [
         "/api/v1/chat",
-        "/login",
-        "/auth/github/callback",
         "/releases/install-terminal.sh",
         "/install-terminal.sh",
         "/u/someone",
@@ -1935,7 +1935,7 @@ async fn unowned_paths_are_proxied_with_their_method_host_body_and_status() {
     let (status, _, body) = get_with(site.clone(), "/", "new.openagents.com").await;
     assert_eq!(status, StatusCode::IM_A_TEAPOT);
     assert!(body.contains("\"host\":\"new.openagents.com\""), "{body}");
-    assert_eq!(hits.load(Ordering::SeqCst), 12);
+    assert_eq!(hits.load(Ordering::SeqCst), 10);
 }
 
 #[tokio::test]
