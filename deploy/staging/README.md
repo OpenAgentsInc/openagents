@@ -27,8 +27,21 @@ as its callback URL for sign-in to come back.
 `openagents-gateway-staging-{admin-token,openrouter-key,ai-gateway-key,typesafe-key,vertex-sa}`,
 `openagents-chat-worker-staging-secret`. Each grants
 `roles/secretmanager.secretAccessor` to the runtime account
-`157437760789-compute@developer.gserviceaccount.com`. Never point this
-service at a production secret.
+`oa-vertex-inference@openagentsgemini.iam.gserviceaccount.com` (the
+automation account is refused `actAs` on the default compute account), which
+also holds `roles/storage.objectAdmin` on the staging chat bucket. Never
+point this service at a production secret.
+
+The gateway opens the public inference API with a free tier of 20 requests
+a day on `google/gemini-2.5-flash-lite`, so the smoke suite can make one
+`/v1/responses` call with a fresh account's key.
+
+## Smoke
+
+`scripts/smoke/staging.sh` (default base: this service) runs every 1.0 web
+check: the homepage's four questions answered, docs and breadcrumbs,
+`/download`, the agent documents, GitHub sign-in up to github.com, the
+signed-in pages, the gateway, and the hosted installer into a scratch HOME.
 
 ## Deploy
 
@@ -45,12 +58,12 @@ gcloud builds submit --project openagentsgemini --service-account $SA \
 # Digests of both images, then:
 python3 deploy/staging/render.py --revision openagents-web-1-staging-$T \
   --web-image .../openagents-web@sha256:... --stack-image .../openagents-stack@sha256:... \
-  --worker-pubkey <the worker's public key> > /tmp/staging-service.json
+  --worker-pubkey be4c57cadade24f6a3dd95a6e5a7414cbeab2d0df219c31157b850d4b6718b9c > /tmp/staging-service.json
 gcloud run services replace /tmp/staging-service.json --region us-central1 --project openagentsgemini
 ```
 
 The worker's public key is the first line of the `worker` container's log
-(`worker <64 hex>`); it is derived from
+(`worker <64 hex>`, be4c57ca…); it is derived from
 `openagents-chat-worker-staging-secret` and does not change between deploys.
 
 Roll back by moving traffic to the previous revision:

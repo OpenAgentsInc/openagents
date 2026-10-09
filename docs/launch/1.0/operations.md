@@ -18,6 +18,7 @@ Project `openagentsgemini`, region `us-central1`, zone `us-central1-a`.
 | Service | Where | Owning doc |
 | --- | --- | --- |
 | Website (openagents.com) | Cloud Run service `coder`; container `web` plus the `coder-serve` sidecar | [openagents-web.md](../../deployment/openagents-web.md) |
+| Web staging (site, gateway, chat worker) | Cloud Run service `openagents-web-1-staging`, three containers; smoke: `scripts/smoke/staging.sh` | [deploy/staging](../../../deploy/staging/README.md) |
 | Chat worker | VM `oa-coder-worker-1`, unit `coder-worker-chat`, release symlink `/opt/coder-worker/chat` | [chat-worker.md](../../deployment/chat-worker.md) |
 | Relay (the chat worker's job channel) | Cloud Run service `openagents-nostr-relay` | [runbook-cloud-run.md](../../deployment/runbook-cloud-run.md) |
 | Gateway: account service and inference gateway | `openagents-gateway.service`, releases under `/opt/openagents-gateway/` with a `current` symlink. Production host not stood up yet (#11094) | [gateway deployment](../../decision-models/service/deployment.md), [inference gateway](../../inference/gateway.md) |
