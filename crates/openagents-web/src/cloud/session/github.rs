@@ -76,18 +76,24 @@ impl CloudSession {
         Status::from_body(&body).ok_or(RepoCallError::Session(SessionError::Unavailable))
     }
 
-    /// The repositories the person can connect.
-    pub(crate) async fn github_repositories(&self, headers: &HeaderMap) -> Result<Vec<Repository>> {
+    /// One page of the repositories the person can connect, most recently
+    /// pushed first, and whether there are more.
+    pub(crate) async fn github_repositories(
+        &self,
+        headers: &HeaderMap,
+        page: u32,
+    ) -> Result<(Vec<Repository>, bool)> {
         let body = self
             .account_call(
                 headers,
                 Method::GET,
-                "/v1/account/github/repositories",
+                &format!("/v1/account/github/repositories?page={page}"),
                 None,
             )
             .await?;
-        serde_json::from_value(body["repositories"].clone())
-            .map_err(|_| RepoCallError::Session(SessionError::Unavailable))
+        let found = serde_json::from_value(body["repositories"].clone())
+            .map_err(|_| RepoCallError::Session(SessionError::Unavailable))?;
+        Ok((found, body["more"].as_bool().unwrap_or(false)))
     }
 
     /// The person's GitHub token, to read GitHub as them for this request.

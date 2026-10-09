@@ -304,11 +304,14 @@ async fn connecting_github_adds_a_project_that_groups_chats_for_its_owner_only()
     assert_eq!(finished.location(), PAGE);
     assert!(!browser.0.contains_key("oa_auth_flow"));
 
-    // The repositories, private ones included; add one.
-    let page = browser.get(&world, PAGE).await;
+    // The page shows at once; the repositories (private ones included)
+    // load after it, one page at a time. Add one.
+    let shell = browser.get(&world, PAGE).await;
+    assert!(shell.body.contains("Disconnect GitHub"), "{}", shell.body);
+    assert!(shell.body.contains("/projects/repositories?page=1"));
+    let page = browser.get(&world, "/projects/repositories?page=1").await;
     assert!(page.body.contains("acme/storefront"), "{}", page.body);
     assert!(page.body.contains("octo-local/secret-plans"));
-    assert!(page.body.contains("Disconnect GitHub"));
     let csrf = hidden(
         &page.body,
         r#"<form method="post" action="/projects">"#,
@@ -432,6 +435,8 @@ async fn connecting_github_adds_a_project_that_groups_chats_for_its_owner_only()
 
     // Revoked on GitHub: projects stay and say Reconnect GitHub.
     world.fake.revoke("octo-local");
+    let list = browser.get(&world, "/projects/repositories?page=1").await;
+    assert!(list.body.contains("GitHub access ended"), "{}", list.body);
     let page = browser.get(&world, PAGE).await;
     assert!(page.body.contains("GitHub access ended"), "{}", page.body);
     assert!(page.body.contains("storefront"));
@@ -497,7 +502,7 @@ fn closed_groups_come_from_their_cookie_and_the_page_reads_plainly() {
         access: Access::None,
         projects: Vec::new(),
     };
-    let html = view(&status, None, "t", "", None).into_string();
+    let html = view(&status, "t", "", None).into_string();
     crate::copy_guard::assert_plain(PAGE, &html);
     let status = Status {
         access: Access::Connected {
@@ -506,16 +511,29 @@ fn closed_groups_come_from_their_cookie_and_the_page_reads_plainly() {
         },
         projects: Vec::new(),
     };
-    let listed = Ok(vec![Repository {
-        id: 1,
-        full_name: "octo/hello".into(),
+    // The page shows at once; the list loads after it.
+    let html = view(&status, "t", "", None).into_string();
+    assert!(html.contains("Include private repositories"), "{html}");
+    assert!(html.contains(r#"hx-get="/projects/repositories?page=1""#), "{html}");
+    assert!(html.contains("Loading your repositories"));
+    crate::copy_guard::assert_plain(PAGE, &html);
+    let repo = |id: u64| Repository {
+        id,
+        full_name: format!("octo/repo-{id}"),
         default_branch: "main".into(),
         private: false,
-    }]);
-    let html = view(&status, Some(&listed), "t", "", None).into_string();
-    assert!(html.contains("Include private repositories"), "{html}");
-    assert!(html.contains("octo/hello"));
+    };
+    // One page, newest first, with Show more when GitHub has more.
+    let page: Vec<Repository> = (1..=30).map(repo).collect();
+    let html = repos_page(&status, Ok((page.clone(), true)), "t", "", 1).into_string();
+    assert!(html.contains("octo/repo-1") && html.contains("octo/repo-30"));
+    assert!(html.contains(r#"hx-get="/projects/repositories?page=2""#), "{html}");
+    assert!(html.contains("Show more"));
     crate::copy_guard::assert_plain(PAGE, &html);
-    let html = view(&status, Some(&listed), "t", "zzz", None).into_string();
+    let html = repos_page(&status, Ok((page.clone(), false)), "t", "", 2).into_string();
+    assert!(!html.contains("Show more"));
+    let html = repos_page(&status, Ok((page, false)), "t", "zzz", 1).into_string();
     assert!(html.contains("No repositories match."));
+    let html = repos_page(&status, Ok((vec![repo(1)], true)), "t", "my app", 1).into_string();
+    assert!(html.contains("page=2&amp;q=my+app"), "{html}");
 }

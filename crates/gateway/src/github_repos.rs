@@ -85,8 +85,17 @@ async fn disconnect(State(state): State<Arc<ServeState>>, headers: HeaderMap) ->
     run(&state, &headers, Call::Disconnect).await
 }
 
-async fn repositories(State(state): State<Arc<ServeState>>, headers: HeaderMap) -> Response {
-    run(&state, &headers, Call::Repositories).await
+#[derive(serde::Deserialize)]
+struct RepositoryPage {
+    page: Option<u32>,
+}
+
+async fn repositories(
+    State(state): State<Arc<ServeState>>,
+    headers: HeaderMap,
+    axum::extract::Query(query): axum::extract::Query<RepositoryPage>,
+) -> Response {
+    run(&state, &headers, Call::Repositories(query.page.unwrap_or(1))).await
 }
 
 async fn token(State(state): State<Arc<ServeState>>, headers: HeaderMap) -> Response {

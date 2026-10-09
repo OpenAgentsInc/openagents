@@ -42,8 +42,6 @@ pub const STORE_DIR: &str = "github-access";
 const SCHEMA: &str = "openagents.github-access.v1";
 /// The most projects one account keeps.
 pub const MAX_PROJECTS: usize = 200;
-/// The most repositories one listing returns (three GitHub pages).
-const MAX_LISTED: usize = 300;
 const FILE_MAX: u64 = 1024 * 1024;
 
 /// An account's project: one connected GitHub repository.
@@ -230,8 +228,9 @@ pub enum Call {
     Grant(CodeRequest),
     /// `DELETE /v1/account/github/grant`
     Disconnect,
-    /// `GET /v1/account/github/repositories`
-    Repositories,
+    /// `GET /v1/account/github/repositories?page=N`: one page, most
+    /// recently pushed first.
+    Repositories(u32),
     /// `POST /v1/account/github/token`: the token, for this deployment's
     /// own web server to read GitHub as the person.
     Token,
@@ -256,8 +255,9 @@ pub async fn answer(
             Call::Status => status(dir, account)?.body(),
             Call::Grant(request) => grant(dir, github()?, account, &request).await?.body(),
             Call::Disconnect => disconnect(dir, account)?.body(),
-            Call::Repositories => {
-                json!({"repositories": repositories(dir, github()?, account).await?})
+            Call::Repositories(page) => {
+                let (found, more) = repositories(dir, github()?, account, page).await?;
+                json!({"repositories": found, "more": more})
             }
             Call::Token => {
                 let (token, private) = token(dir, github()?, account)?;
@@ -342,32 +342,35 @@ pub fn disconnect(dir: &Path, account: &str) -> Result<Status, RepoError> {
     status(dir, account)
 }
 
-/// The repositories the person can connect, most recently pushed first.
+/// Repositories listed per page: one quick GitHub call.
+pub const PAGE_SIZE: usize = 30;
+
+/// The last page offered ([`PAGE_SIZE`] × this many repositories in all).
+pub const MAX_PAGE: u32 = 20;
+
+/// One page (1-based) of the repositories the person can connect, most
+/// recently pushed first, and whether GitHub has more after it. One call
+/// to GitHub, so the page shows quickly; the next page loads on request.
 pub async fn repositories(
     dir: &Path,
     github: &Github,
     account: &str,
-) -> Result<Vec<Repository>, RepoError> {
+    page: u32,
+) -> Result<(Vec<Repository>, bool), RepoError> {
+    let page = page.clamp(1, MAX_PAGE);
     let (token, _) = token(dir, github, account)?;
-    let mut found = Vec::new();
-    for page in 1..=MAX_LISTED / 100 {
-        let answer = github
-            .api(
-                token.as_str(),
-                &format!(
-                    "/user/repos?per_page=100&page={page}&sort=pushed&affiliation=owner,collaborator,organization_member"
-                ),
-            )
-            .await?;
-        let list = checked(dir, account, answer.status, answer.body)?;
-        let rows = list.as_array().map_or(&[][..], Vec::as_slice);
-        found.extend(rows.iter().filter_map(listed));
-        if rows.len() < 100 {
-            break;
-        }
-    }
-    found.truncate(MAX_LISTED);
-    Ok(found)
+    let answer = github
+        .api(
+            token.as_str(),
+            &format!(
+                "/user/repos?per_page={PAGE_SIZE}&page={page}&sort=pushed&affiliation=owner,collaborator,organization_member"
+            ),
+        )
+        .await?;
+    let list = checked(dir, account, answer.status, answer.body)?;
+    let rows = list.as_array().map_or(&[][..], Vec::as_slice);
+    let more = rows.len() == PAGE_SIZE && page < MAX_PAGE;
+    Ok((rows.iter().filter_map(listed).collect(), more))
 }
 
 /// The stored token and whether it reaches private repositories.

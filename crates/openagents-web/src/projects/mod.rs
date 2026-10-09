@@ -51,11 +51,11 @@ pub(crate) const FINISH: &str = "/auth/github/repos/finish";
 const CLOSED_COOKIE: &str = "oa_project_groups";
 const CSRF_SCOPE: &str = "projects";
 /// The most repositories the page lists at once.
-const SHOWN: usize = 100;
 
 pub(crate) fn routes() -> Router<App> {
     Router::new()
         .route(PAGE, get(page).post(add))
+        .route(REPOS, get(repositories))
         .route("/projects/{id}/remove", post(remove))
         .route("/projects/disconnect", post(disconnect))
         .route(CONNECT, get(connect))
@@ -233,39 +233,156 @@ async fn render(
     let token = service
         .csrf(headers, viewer, CSRF_SCOPE, "")
         .unwrap_or_default();
-    let listed = match state.access {
-        Access::Connected { .. } => Some(service.github_repositories(headers).await),
-        _ => None,
-    };
-    // A token GitHub stopped accepting shows up while listing.
-    let state = match &listed {
-        Some(Err(RepoCallError::Repo(RepoError::Reconnect))) => {
-            service.github_status(headers).await.unwrap_or(state)
-        }
-        _ => state,
-    };
-    let body = view(&state, listed.as_ref(), &token, q, problem.as_deref());
+    let body = view(&state, &token, q, problem.as_deref());
     protect(
         UiPage::new("Projects")
             .path(PAGE)
             .section(PAGE)
             .status(status)
+            .head(htmx_head())
             .content(PageColumn::new(body))
             .respond(headers),
     )
 }
 
-/// The page body (separate from I/O for tests).
-fn view(
+/// HTMX for the list that loads after the page shows.
+fn htmx_head() -> Markup {
+    html! {
+        meta name="htmx-config" content=r#"{"allowEval":false,"allowScriptTags":false,"historyCacheSize":0,"selfRequestsOnly":true,"includeIndicatorStyles":false,"timeout":20000}"#;
+        script src="/static/htmx.min.js" defer {}
+    }
+}
+
+/// Where one page of repositories loads from.
+const REPOS: &str = "/projects/repositories";
+
+fn repos_href(page: u32, q: &str) -> String {
+    let mut href = format!("{REPOS}?page={page}");
+    if !q.is_empty() {
+        href.push_str("&q=");
+        href.push_str(&url::form_urlencoded::byte_serialize(q.as_bytes()).collect::<String>());
+    }
+    href
+}
+
+#[derive(Deserialize)]
+struct ReposQuery {
+    #[serde(default)]
+    page: Option<u32>,
+    #[serde(default)]
+    q: String,
+}
+
+/// One page of repositories to add, and a Show more button for the next.
+async fn repositories(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Query(query): Query<ReposQuery>,
+) -> Response {
+    let (service, viewer) = match viewer(&app, &headers).await {
+        Ok(found) => found,
+        Err(response) => return response,
+    };
+    let page = query.page.unwrap_or(1).clamp(1, oa_auth::repos::MAX_PAGE);
+    let state = match service.github_status(&headers).await {
+        Ok(state) => state,
+        Err(error) => return fragment(html! { p role="alert" { (error.to_string()) } }),
+    };
+    let csrf = service
+        .csrf(&headers, &viewer, CSRF_SCOPE, "")
+        .unwrap_or_default();
+    let listed = service.github_repositories(&headers, page).await;
+    fragment(repos_page(&state, listed, &csrf, query.q.trim(), page))
+}
+
+fn fragment(body: Markup) -> Response {
+    protect(body.into_response())
+}
+
+/// The rows of one page (filtered by `q`, without repositories already
+/// added), and the button that loads the next page in its place.
+fn repos_page(
     state: &Status,
-    listed: Option<&Result<Vec<Repository>, RepoCallError>>,
+    listed: Result<(Vec<Repository>, bool), RepoCallError>,
     csrf: &str,
     q: &str,
-    problem: Option<&str>,
+    page: u32,
 ) -> Markup {
+    let (repositories, more) = match listed {
+        Ok(found) => found,
+        Err(RepoCallError::Repo(RepoError::Reconnect)) => {
+            return html! {
+                (Alert::new()
+                    .color(Color::Warning)
+                    .title("GitHub access ended")
+                    .description("Your projects are still here. Reconnect GitHub to add repositories again.")
+                    .actions(ButtonLink::new("Reconnect GitHub", format!("{CONNECT}?access=private"))))
+            };
+        }
+        Err(error) => {
+            return html! {
+                div #projects-repos {
+                    p role="alert" { (error.to_string()) }
+                    (ButtonLink::new("Try again", repos_href(page, q))
+                        .size(ControlSize::Sm)
+                        .variant(ButtonVariant::Soft)
+                        .color(Color::Secondary)
+                        .attr("hx-get", repos_href(page, q))
+                        .attr("hx-target", "#projects-repos")
+                        .attr("hx-swap", "outerHTML"))
+                }
+            };
+        }
+    };
     let have: BTreeSet<u64> = state.projects.iter().map(|p| p.repository_id).collect();
-    let q = q.trim();
     let needle = q.to_lowercase();
+    let shown: Vec<&Repository> = repositories
+        .iter()
+        .filter(|r| !have.contains(&r.id))
+        .filter(|r| needle.is_empty() || r.full_name.to_lowercase().contains(&needle))
+        .collect();
+    let next = format!("projects-repos-{}", page + 1);
+    html! {
+        @if !shown.is_empty() {
+            ul.oa-chat-archive-list role="list" {
+                @for repository in shown {
+                    li.oa-chat-archive-row {
+                        span {
+                            (repository.full_name)
+                            @if repository.private { " " (Badge::new("Private")) }
+                        }
+                        form method="post" action=(PAGE) {
+                            input type="hidden" name="csrf" value=(csrf);
+                            input type="hidden" name="repository" value=(repository.full_name);
+                            (Button::new("Add")
+                                .kind(ButtonType::Submit)
+                                .size(ControlSize::Sm)
+                                .variant(ButtonVariant::Soft)
+                                .color(Color::Secondary))
+                        }
+                    }
+                }
+            }
+        } @else if !more && page == 1 {
+            p { @if q.is_empty() { "No more repositories to add." } @else { "No repositories match." } }
+        }
+        @if more {
+            div id=(next) {
+                (ButtonLink::new("Show more", repos_href(page + 1, q))
+                    .size(ControlSize::Sm)
+                    .variant(ButtonVariant::Soft)
+                    .color(Color::Secondary)
+                    .attr("hx-get", repos_href(page + 1, q))
+                    .attr("hx-target", format!("#{next}"))
+                    .attr("hx-swap", "outerHTML"))
+            }
+        }
+    }
+}
+
+/// The page body (separate from I/O for tests).
+fn view(state: &Status, csrf: &str, q: &str, problem: Option<&str>) -> Markup {
+    let q = q.trim();
     html! {
         (MarkdownRoot::new(html! {
             h1 { "Projects" }
@@ -315,43 +432,16 @@ fn view(
             @match &state.access {
                 Access::Connected { login, private } => {
                     p { "Connected to GitHub as " strong { (login) } "." }
-                    @match listed {
-                        Some(Ok(repositories)) => {
-                            form method="get" action=(PAGE) role="search" {
-                                (Input::new("q").value(q).placeholder("Filter repositories").aria_label("Filter repositories"))
-                            }
-                            @let shown: Vec<&Repository> = repositories
-                                .iter()
-                                .filter(|r| !have.contains(&r.id))
-                                .filter(|r| needle.is_empty() || r.full_name.to_lowercase().contains(&needle))
-                                .take(SHOWN)
-                                .collect();
-                            @if shown.is_empty() {
-                                p { @if q.is_empty() { "No more repositories to add." } @else { "No repositories match." } }
-                            } @else {
-                                ul.oa-chat-archive-list role="list" {
-                                    @for repository in shown {
-                                        li.oa-chat-archive-row {
-                                            span {
-                                                (repository.full_name)
-                                                @if repository.private { " " (Badge::new("Private")) }
-                                            }
-                                            form method="post" action=(PAGE) {
-                                                input type="hidden" name="csrf" value=(csrf);
-                                                input type="hidden" name="repository" value=(repository.full_name);
-                                                (Button::new("Add")
-                                                    .kind(ButtonType::Submit)
-                                                    .size(ControlSize::Sm)
-                                                    .variant(ButtonVariant::Soft)
-                                                    .color(Color::Secondary))
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                    form method="get" action=(PAGE) role="search" {
+                        (Input::new("q").value(q).placeholder("Filter repositories").aria_label("Filter repositories"))
+                    }
+                    // The list loads after the page shows (one GitHub call
+                    // per page of repositories), most recently pushed first.
+                    div #projects-repos hx-get=(repos_href(1, q)) hx-trigger="load" hx-swap="outerHTML" {
+                        p.oa-thread-working {
+                            (openagents_ui::actions::LoadingIndicator::new().decorative())
+                            span { "Loading your repositories" }
                         }
-                        Some(Err(error)) => { p role="alert" { (error.to_string()) } }
-                        None => {}
                     }
                     @if !private {
                         p {
