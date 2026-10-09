@@ -259,10 +259,10 @@ impl Gateway {
 
     /// The adapters' names, with whether each has its key.
     #[must_use]
-    pub fn upstreams(&self) -> Vec<(&'static str, bool)> {
+    pub fn upstreams(&self) -> Vec<(String, bool)> {
         self.upstreams
             .iter()
-            .map(|upstream| (upstream.name(), upstream.configured()))
+            .map(|upstream| (upstream.name().to_owned(), upstream.configured()))
             .collect()
     }
 

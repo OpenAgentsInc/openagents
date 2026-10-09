@@ -274,8 +274,8 @@ Manager, and only the gateway reads them.
 | TypeSafe (Jev) | Ours | TypeSafe decision API | Typed judgments, not text | Stays on the decision gateway and `crates/jev`. The inference gateway calls Jev to pick a task class for `openagents/auto`. |
 | User keys (BYOK) | The user's | Per provider | Anything the user's key reaches | Sealed per user (`oa-seal`), as the web own-key path does today. `pay: "mine"` uses only these. Builds on `crates/model-access`. |
 | User subscriptions (ChatGPT, Claude) | The user's | Codex or Claude Code on the user's own computer | The user's own coding runs | Not an HTTP upstream. A subscription serves only its owner's requests on their own computer through Coder; the gateway never pools or resells it. |
-| Pylon providers | Community | NIP-PYLON jobs to `psionic-serve` | Open-weight models at a provider-set price | P2. Paid out through `pay-ledger`. |
-| Local Psionic | The user's machine | OpenAI-compatible on localhost | Private, free, offline | Desktop only, `route.only: ["local"]`. |
+| Pylon providers | Community | NIP-PYLON jobs to `psionic-serve` | Open-weight models at a provider-set price | P2, built (below). Paid out through `pay-ledger`. |
+| Local Psionic | The user's machine | `psionic-serve` `/v1/responses` on localhost | Private, free, offline | P2, built (below). Only for `route.only: ["local"]`. |
 
 Each adapter implements one Rust trait: what it can do (tools, reasoning,
 JSON schema, images, context, privacy guarantees), its price rows, which
@@ -289,6 +289,62 @@ Z.ai, the Pro door's proxy, OpenRouter, and Vercel. Z.ai and the Pro door
 take only `standard` requests until their terms are confirmed
 (`ZAI_TERMS_VERIFIED=zero-retention`, `PRO_TERMS_VERIFIED=zero-retention`),
 and the Z.ai adapter refuses as unconfigured until `zai-api-key` exists.
+
+### Pylon providers and local Psionic
+
+Built for #11070 in `crates/inference/src/upstream/` (`psionic.rs`,
+`pylon.rs`, `whole.rs`) and mounted by `crates/gateway`
+(`inference_pylon`).
+
+**Local Psionic.** `psionic-serve` on the caller's machine is the
+upstream `local`; its models are `local/<psionic id>` (`PSIONIC_BASE_URL`,
+`PSIONIC_MODELS`). It answers only a request that sends
+`openagents.route.only: ["local"]`, so a gateway serving others never
+routes their requests to a model server on its own host. It charges
+nothing and the text never leaves the machine, so it is eligible under
+`strict`. `psionic-serve`'s types are its own; the adapter translates:
+
+| Open Responses | `psionic-serve` |
+| --- | --- |
+| `message` items | `input` as chat messages (`role`, text `content`); `developer` becomes `system` |
+| `instructions`, `max_output_tokens`, `temperature`, `top_p`, `seed`, `stop` | the same names |
+| a stream | `stream: false` (its `/v1/responses` does not stream); the whole answer is replayed as the spec's events |
+| `message` with `output_text` | `output[].content[]` `output_text` (or the top-level `output_text`) |
+| `reasoning` item | `reasoning_text` parts inside its message |
+| `usage` | `input_tokens`, `output_tokens` (no details) |
+| function tools, images, files, JSON schema | not offered (its tool calls come back outside the items); refused before sending |
+
+**Pylon providers.** A provider registers with the gateway
+(`inference.pylons`): its key, its pylon, the models it offers, its own
+price per million tokens, and its stated data policy. Each registration is
+the upstream `pylon:<pylon>`.
+
+- The rate card row is the provider's price plus the margin. A job is the
+  conversation as NIP-CJ text turns (instructions, transcript, task; at
+  most 32 turns and 16 KiB), sent over `inference.pylon_relay` and signed
+  by the gateway's buyer key (`<registry>/inference/pylon-buyer.key`),
+  which the provider allowlists. No tools, images, or schema.
+- When the answer is used, the provider earns exactly its price for the
+  tokens: a settlement in the split ledger (`earnings.ledger`, resource
+  `openagents.inference.pylon.v1`, key `debit:inference:<job request
+  id>`) with the caller's price received from their balance, the
+  provider's price as its share (`Earned`, role `provider`, paid to the
+  pylon's owner when one is named), and the margin left to OpenAgents. It
+  is converted to millisats at `inference.sats_rate`. The existing payout
+  worker (`pay-ledger`'s `payout::tick` over its rails) pays it out; the
+  gateway never sends money itself. An answer whose earning cannot be
+  recorded is not served (the router falls back), so no provider work is
+  used unpaid; an answer that arrives after the router gave up on it is
+  not used and earns nothing.
+- Privacy: a provider whose stated policy is no training and no retention
+  is eligible under `strict`; any other, including one that stated
+  nothing, serves `standard` only, like every other row.
+- Without `earnings.ledger` and `inference.sats_rate` there is no way to
+  pay a provider, so no Pylon upstream is mounted.
+- `crates/gateway/tests/inference_pylon.rs` runs the whole path with a
+  stub provider and fake payout rails: a `standard` API request served by
+  a Pylon provider, the provider's 200-sat share in the ledger, and the
+  payout worker paying it.
 
 ## 5. Routing
 
@@ -570,7 +626,7 @@ existing gateway service.
 
 | Piece | Home | Why |
 | --- | --- | --- |
-| Open Responses types, event codec, Chat Completions translation | `crates/inference` | Pure types and translation, testable without a server. `psionic-serve` keeps its own types for now; moving it onto these is a later migration (P2, with Pylon and local Psionic as upstreams). |
+| Open Responses types, event codec, Chat Completions translation | `crates/inference` | Pure types and translation, testable without a server. `psionic-serve` keeps its own types; the `local` and Pylon adapters translate at the edge (section 4). |
 | Adapters, router, rate card, credit ledger, attempt records | `crates/inference` | One library the gateway and our tools share |
 | HTTP routes, keys, holds and settlement, balances, receipts | `crates/gateway` | Already the one admission path for decision calls, with keys and money; a new route keeps one place for both |
 | OpenRouter client | `crates/openrouter`, used by its adapter | Exists |
@@ -622,6 +678,10 @@ P2 as built so far:
 - #11071: stored responses, `previous_response_id`, compaction, the
   WebSocket transport, and hosted web search (section 3, "Stored
   responses, compaction, WebSocket, hosted tools").
+- #11070: local Psionic and Pylon providers as upstreams, with provider
+  earnings in the split ledger (section 4, "Pylon providers and local
+  Psionic"). Not yet run against a live provider over a relay.
+
 P1 public API as built (#11065), local only until deployed:
 
 - `inference.public` in the gateway config opens `/v1/responses` and

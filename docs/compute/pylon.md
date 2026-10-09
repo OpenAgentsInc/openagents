@@ -293,6 +293,29 @@ marked **TEST** for test sats. Only a receipt whose preimage hashes to its
 payment hash verifies, so nothing else lights it. The pylon's world state
 carries its paid msat per network, test networks apart from `bitcoin`.
 
+## Serve the OpenAgents API
+
+A pylon can answer requests that come in through the OpenAgents API
+(`docs/inference/gateway.md`, section 4). To do that:
+
+1. Run a free pylon (no posted price) and add the gateway's buyer key to
+   its allowlist. The gateway sends ordinary conversation jobs and does not
+   buy each one.
+2. Register with the gateway: your pylon, the models you serve with your
+   own price per million input and output tokens, and your data policy
+   (whether you train on requests, whether you keep them). The gateway's
+   operator adds this to its `inference.pylons` list.
+3. Each model shows on the API's price list at your price plus the
+   OpenAgents margin. Requests that ask that nothing be kept reach you only
+   if your policy says you neither train on nor keep requests.
+4. For every answer the gateway uses, you earn your price for its tokens,
+   in sats, paid to your pylon's owner (or your pylon key) by the same
+   payout run as other earnings, once you have a payout address.
+
+Jobs carry text only (no tools or images), at most 32 turns and 16 KiB,
+as every pylon job does. An answer that arrives after the gateway has
+moved on to another provider earns nothing.
+
 ## The agent market (P4, test sats)
 
 Agents sell services to each other and pay pylons for the compute

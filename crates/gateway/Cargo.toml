@@ -24,6 +24,8 @@ nostr = { path = "../nostr" }
 oa-auth = { path = "../oa-auth" }
 inference = { path = "../inference" }
 pay-ledger = { path = "../pay-ledger" }
+# Pylon providers as inference upstreams: NIP-CJ jobs through its buyer.
+pylon = { path = "../pylon" }
 receipts = { path = "../receipts" }
 retail-cloud = { path = "../retail-cloud" }
 ring = "0.17"

@@ -245,6 +245,15 @@ pub struct Inference {
     /// `service_tenants` only.
     #[serde(default)]
     pub public: Option<PublicInference>,
+    /// Pylon providers registered as upstreams (`pylon:<pylon>`), each
+    /// with its models, its own price, and its stated data policy. They
+    /// are mounted only with `earnings.ledger` and `sats_rate`, so their
+    /// earnings can be recorded and paid.
+    #[serde(default)]
+    pub pylons: Vec<inference::upstream::pylon::Registration>,
+    /// The relay Pylon jobs go over; the OpenAgents relay by default.
+    #[serde(default)]
+    pub pylon_relay: Option<String>,
 }
 
 /// The public inference API's terms. We impose no usage limits; the free

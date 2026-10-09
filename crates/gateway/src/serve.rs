@@ -329,7 +329,11 @@ impl ServeState {
             .as_ref()
             .zip(meter.clone())
             .map(|(inference, meter)| {
-                let upstreams = upstreams.unwrap_or_else(crate::inference_routes::upstreams);
+                let upstreams = upstreams.unwrap_or_else(|| {
+                    let mut all = crate::inference_routes::upstreams();
+                    all.extend(crate::inference_pylon::upstreams(&config));
+                    all
+                });
                 Arc::new(crate::inference_routes::gateway(
                     inference, meter, upstreams,
                 ))

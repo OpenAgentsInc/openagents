@@ -26,6 +26,9 @@ does I/O. The router and the HTTP routes build on all three.
 | `seal` | AES-256-GCM sealing bound to owner and purpose; the key from the environment or a 0600 key file; `random_id` |
 | `ws` | The WebSocket transport's messages: `parse_create`, the `error` envelope, the 60-minute limit |
 | `hosted` | Hosted tools: `openagents:web_search` as a function the model calls, the `WebSearch` trait, the Exa provider |
+| `upstream::psionic` | `psionic-serve` as the `local` upstream: Open Responses to its `/v1/responses` types and back |
+| `upstream::pylon` | Pylon provider registrations as `pylon:<pylon>` upstreams: NIP-CJ jobs through a `Jobs` transport, each answer's provider earning through `Earnings` |
+| `upstream::whole` | An answer that arrived whole, replayed as the spec's event stream |
 | `upstream` | The `Upstream` trait (capabilities, privacy terms, price rows, billed account, `send`) and adapters for Vertex AI (native Gemini, prepaid Google credit), Z.ai (`glm-5.3-flash`, prepaid credit), the Pro door's proxy, OpenRouter, and the Vercel AI Gateway; key lookup (env, mounted file, Secret Manager); Google tokens; the first-token `Gate`; `AttemptMeter`, which reports each attempt as a `meter::Attempt` |
 
 ## Router

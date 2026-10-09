@@ -14,6 +14,8 @@
 //! | [`pro::Pro`] | The Pro door's upstream, Chat Completions | Free capacity |
 //! | [`openrouter::OpenRouter`] | OpenRouter Open Responses | OpenRouter credits |
 //! | [`vercel::Vercel`] | Vercel AI Gateway Open Responses | Vercel credits |
+//! | [`psionic::LocalPsionic`] | `psionic-serve` `/v1/responses` on this machine | None (`local`) |
+//! | [`pylon::PylonUpstream`] | NIP-CJ jobs to a Pylon provider's `psionic-serve` | The provider, paid through the split ledger |
 //!
 //! Every adapter streams from its upstream, whether or not the caller asked
 //! for a stream: the gateway collects a stream into one response for a
@@ -48,10 +50,13 @@ pub mod http;
 pub mod measure;
 pub mod openrouter;
 pub mod pro;
+pub mod psionic;
+pub mod pylon;
 pub mod responses;
 pub mod secret;
 pub mod vercel;
 pub mod vertex;
+pub mod whole;
 pub mod zai;
 
 pub use measure::{AttemptMeter, Measure, Stage};
@@ -66,8 +71,9 @@ pub type EventStream = Pin<Box<dyn Stream<Item = Result<Event, AttemptError>> + 
 /// One upstream account and the wire that reaches it.
 pub trait Upstream: Send + Sync {
     /// The upstream's name in routes, records, and the rate card:
-    /// `vertex`, `zai`, `pro`, `openrouter`, `vercel`.
-    fn name(&self) -> &'static str;
+    /// `vertex`, `zai`, `pro`, `openrouter`, `vercel`, `local`,
+    /// `pylon:<pylon>`.
+    fn name(&self) -> &str;
 
     /// The account each call through this adapter is billed to.
     fn account(&self) -> &Account;

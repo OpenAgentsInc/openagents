@@ -47,7 +47,7 @@ pub enum Stage {
 /// One attempt's numbers.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Measure {
-    pub upstream: &'static str,
+    pub upstream: String,
     pub account: String,
     /// The public model id.
     pub model: String,
@@ -103,7 +103,7 @@ impl AttemptMeter {
     pub fn start<U: Upstream + ?Sized>(upstream: &U, row: &ModelRow) -> Self {
         Self(Arc::new(Mutex::new(State {
             measure: Measure {
-                upstream: upstream.name(),
+                upstream: upstream.name().to_owned(),
                 account: upstream.account().id.clone(),
                 model: row.id.clone(),
                 upstream_model: row.upstream_model.clone(),
@@ -253,7 +253,7 @@ impl AttemptMeter {
 }
 
 fn fill(mut attempt: Attempt, measure: &Measure) -> Attempt {
-    attempt.upstream = measure.upstream.to_owned();
+    attempt.upstream.clone_from(&measure.upstream);
     attempt.model.clone_from(&measure.model);
     if attempt.requested_model.is_empty() {
         attempt.requested_model.clone_from(&measure.model);

@@ -5922,6 +5922,7 @@ dependencies = [
  "openagents-wallet",
  "paper-mono",
  "pay-ledger",
+ "pylon",
  "receipts",
  "reqwest 0.12.28",
  "retail-cloud",

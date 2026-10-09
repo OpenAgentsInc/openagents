@@ -142,6 +142,22 @@ impl std::fmt::Debug for Pay {
 /// When the relay cannot be reached or no pylon is available. A job that
 /// fails or times out returns an [`Answer`] with that outcome.
 pub async fn ask(buyer: &Identity, ask: &Ask) -> Result<Answer, String> {
+    ask_conversation(buyer, ask, &[], None).await
+}
+
+/// [`ask`] for a conversation: `history` (user and assistant turns) before
+/// the prompt, and `instructions` as the job's system turn. The inference
+/// gateway sends its Pylon upstreams' jobs this way.
+///
+/// # Errors
+///
+/// As [`ask`].
+pub async fn ask_conversation(
+    buyer: &Identity,
+    ask: &Ask,
+    history: &[crate::engine::Turn],
+    instructions: Option<&str>,
+) -> Result<Answer, String> {
     let started = Instant::now();
     let mut conn = relay::connect(&ask.relay, buyer, LIFETIME).await?;
     let authors = ask.pylon.as_ref().map(|p| vec![p.clone()]);
@@ -166,7 +182,10 @@ pub async fn ask(buyer: &Identity, ask: &Ask) -> Result<Answer, String> {
         .clone();
     let discover_ms = started.elapsed().as_millis() as u64;
 
-    let body = job::request_body(&ask.prompt, &[]);
+    let mut body = job::request_body(&ask.prompt, history);
+    if let Some(instructions) = instructions.filter(|text| !text.is_empty()) {
+        body["instructions"] = json!(instructions);
+    }
     let request_plain = body.to_string();
     // A direct payment buys the job before it is sent: the purchase's
     // input is this request's plaintext.

@@ -54,6 +54,7 @@ pub mod feedback;
 pub mod funding;
 mod github_repos;
 pub mod inference_public;
+pub mod inference_pylon;
 pub mod inference_rates;
 pub mod inference_routes;
 pub mod inference_state;
