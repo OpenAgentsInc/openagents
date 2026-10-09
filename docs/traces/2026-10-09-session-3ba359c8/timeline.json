@@ -1,0 +1,3197 @@
+{
+ "session": "3ba359c8-4ac9-42a6-a8e7-2e08994e591e",
+ "start": "2026-10-08T22:05:50.248Z",
+ "end": "2026-10-09T20:11:42.089Z",
+ "owner_messages": [
+  {
+   "i": 1,
+   "ts": "2026-10-08T22:05:50.248Z",
+   "typed_ts": "2026-10-08T22:05:50.248Z",
+   "delivery": "direct",
+   "topic": "backlog",
+   "paraphrase": "Review open and recently closed issues and recent commits.",
+   "has_image": false,
+   "reply_latency_s": 30.297,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 2,
+   "ts": "2026-10-08T22:06:23.851Z",
+   "typed_ts": "2026-10-08T22:06:23.851Z",
+   "delivery": "direct",
+   "topic": "backlog",
+   "paraphrase": "Read another agent's Codex thread and say which open issues relate to it.",
+   "has_image": false,
+   "reply_latency_s": 61.699,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 3,
+   "ts": "2026-10-08T22:08:29.677Z",
+   "typed_ts": "2026-10-08T22:08:29.677Z",
+   "delivery": "direct",
+   "topic": "backlog",
+   "paraphrase": "Burn down the open issue list fast, max 5 subagents, skip the build lease, no deploys yet.",
+   "has_image": false,
+   "reply_latency_s": 9.432,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 4,
+   "ts": "2026-10-08T22:08:55.085Z",
+   "typed_ts": "2026-10-08T22:08:55.085Z",
+   "delivery": "queued",
+   "topic": "research",
+   "paraphrase": "Review the OpenInspect study and say what to borrow for our design.",
+   "has_image": false,
+   "reply_latency_s": 123.035,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 5,
+   "ts": "2026-10-08T22:13:57.761Z",
+   "typed_ts": "2026-10-08T22:13:57.761Z",
+   "delivery": "direct",
+   "topic": "cloud-env",
+   "paraphrase": "Explain the ENV (environment onboarding) issues first.",
+   "has_image": false,
+   "reply_latency_s": 17.235,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 6,
+   "ts": "2026-10-08T22:14:45.384Z",
+   "typed_ts": "2026-10-08T22:14:45.384Z",
+   "delivery": "direct",
+   "topic": "cloud-env",
+   "paraphrase": "Go ahead with the ENV work as you see fit.",
+   "has_image": false,
+   "reply_latency_s": 12.705,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 7,
+   "ts": "2026-10-08T22:22:52.564Z",
+   "typed_ts": "2026-10-08T22:22:52.564Z",
+   "delivery": "direct",
+   "topic": "auth-accounts",
+   "paraphrase": "Read the pasted Claude Code authentication docs (bring-your-own-Claude).",
+   "has_image": false,
+   "reply_latency_s": 6.734,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 8,
+   "ts": "2026-10-08T22:25:53.027Z",
+   "typed_ts": "2026-10-08T22:25:53.027Z",
+   "delivery": "queued",
+   "topic": "auth-accounts",
+   "paraphrase": "File and update issues: do the most we can for bring-your-own-Claude within the provider's terms.",
+   "has_image": false,
+   "reply_latency_s": 189.669,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 9,
+   "ts": "2026-10-08T22:28:36.914Z",
+   "typed_ts": "2026-10-08T22:28:36.914Z",
+   "delivery": "queued",
+   "topic": "research",
+   "paraphrase": "FYI, read another Codex chat thread.",
+   "has_image": false,
+   "reply_latency_s": 25.782,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 10,
+   "ts": "2026-10-08T22:30:27.727Z",
+   "typed_ts": "2026-10-08T22:30:27.727Z",
+   "delivery": "queued",
+   "topic": "ops-disk",
+   "paraphrase": "Task a subagent to find more deletable files for disk space.",
+   "has_image": false,
+   "reply_latency_s": 25.331,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 11,
+   "ts": "2026-10-09T00:03:16.503Z",
+   "typed_ts": "2026-10-09T00:03:16.503Z",
+   "delivery": "direct",
+   "topic": "backlog",
+   "paraphrase": "Close remaining coastal issues as won't-do; finish any in flight.",
+   "has_image": false,
+   "reply_latency_s": 24.688,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 12,
+   "ts": "2026-10-09T01:01:32.622Z",
+   "typed_ts": "2026-10-09T01:01:32.622Z",
+   "delivery": "direct",
+   "topic": "backlog",
+   "paraphrase": "Asks where something is being accepted.",
+   "has_image": false,
+   "reply_latency_s": 42.374,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 13,
+   "ts": "2026-10-09T01:03:59.063Z",
+   "typed_ts": "2026-10-09T01:03:59.063Z",
+   "delivery": "direct",
+   "topic": "backlog",
+   "paraphrase": "Confirms they checked and do have it.",
+   "has_image": false,
+   "reply_latency_s": 1.336,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 14,
+   "ts": "2026-10-09T01:04:17.642Z",
+   "typed_ts": "2026-10-09T01:04:17.642Z",
+   "delivery": "queued",
+   "topic": "backlog",
+   "paraphrase": "Merge PR 10979 if it is good.",
+   "has_image": false,
+   "reply_latency_s": 85.704,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 15,
+   "ts": "2026-10-09T01:06:48.621Z",
+   "typed_ts": "2026-10-09T01:06:48.621Z",
+   "delivery": "direct",
+   "topic": "web-ui",
+   "paraphrase": "Adopt the Apps SDK UI design language for the whole app, incl. a light theme next to Coder Noir.",
+   "has_image": false,
+   "reply_latency_s": 4.61,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 16,
+   "ts": "2026-10-09T01:12:09.742Z",
+   "typed_ts": "2026-10-09T01:12:09.742Z",
+   "delivery": "direct",
+   "topic": "web-ui",
+   "paraphrase": "Design decisions: neutral black, a throwaway side-by-side comparison page, theme toggle starting on system.",
+   "has_image": false,
+   "reply_latency_s": 85.768,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 17,
+   "ts": "2026-10-09T01:14:51.474Z",
+   "typed_ts": "2026-10-09T01:14:51.474Z",
+   "delivery": "direct",
+   "topic": "web-ui",
+   "paraphrase": "Use system fonts; drop the others on web.",
+   "has_image": false,
+   "reply_latency_s": 4.797,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 18,
+   "ts": "2026-10-09T01:18:50.571Z",
+   "typed_ts": "2026-10-09T01:18:50.571Z",
+   "delivery": "direct",
+   "topic": "web-ui",
+   "paraphrase": "Study a saved reference-site architecture report to infer real Tailwind classes.",
+   "has_image": false,
+   "reply_latency_s": 6.854,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 19,
+   "ts": "2026-10-09T01:20:35.114Z",
+   "typed_ts": "2026-10-09T01:20:35.114Z",
+   "delivery": "direct",
+   "topic": "web-ui",
+   "paraphrase": "Update the Apps SDK UI adoption plan (no light mode for TUI), write a reference-doc script, push.",
+   "has_image": false,
+   "reply_latency_s": 131.039,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 20,
+   "ts": "2026-10-09T01:22:56.584Z",
+   "typed_ts": "2026-10-09T01:22:56.584Z",
+   "delivery": "direct",
+   "topic": "web-ui",
+   "paraphrase": "Also study saved ChatGPT pages (codex, chat and work views) and reflect them in the plan.",
+   "has_image": false,
+   "reply_latency_s": 2.534,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 21,
+   "ts": "2026-10-09T01:27:10.433Z",
+   "typed_ts": "2026-10-09T01:27:10.433Z",
+   "delivery": "direct",
+   "topic": "web-ui",
+   "paraphrase": "Open issues for every part of the UI plan and do it, top priority, maximum delegation.",
+   "has_image": false,
+   "reply_latency_s": 30.966,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 22,
+   "ts": "2026-10-09T01:28:02.089Z",
+   "typed_ts": "2026-10-09T01:28:02.089Z",
+   "delivery": "queued",
+   "topic": "process",
+   "paraphrase": "More than 5 subagents is fine.",
+   "has_image": false,
+   "reply_latency_s": 133.766,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 23,
+   "ts": "2026-10-09T01:28:05.308Z",
+   "typed_ts": "2026-10-09T01:28:05.308Z",
+   "delivery": "queued",
+   "topic": "process",
+   "paraphrase": "Be smart about Rust builds.",
+   "has_image": false,
+   "reply_latency_s": 130.547,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 24,
+   "ts": "2026-10-09T01:28:39.515Z",
+   "typed_ts": "2026-10-09T01:28:39.515Z",
+   "delivery": "queued",
+   "topic": "process",
+   "paraphrase": "Keep subagents off big Rust builds; the coordinator integrates heavier builds.",
+   "has_image": false,
+   "reply_latency_s": 96.34,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 25,
+   "ts": "2026-10-09T01:40:41.685Z",
+   "typed_ts": "2026-10-09T01:40:41.685Z",
+   "delivery": "queued",
+   "topic": "terminal",
+   "paraphrase": "Compare a private terminal project with our terminal/multiplex plans and write an adaptation doc (no specifics of the private project).",
+   "has_image": false,
+   "reply_latency_s": 35.917,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 26,
+   "ts": "2026-10-09T02:33:12.955Z",
+   "typed_ts": "2026-10-09T02:33:12.955Z",
+   "delivery": "direct",
+   "topic": "web-ui",
+   "paraphrase": "Open a local dev server so the owner can look.",
+   "has_image": false,
+   "reply_latency_s": 3.607,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 27,
+   "ts": "2026-10-09T02:38:34.759Z",
+   "typed_ts": "2026-10-09T02:38:34.759Z",
+   "delivery": "direct",
+   "topic": "web-ui",
+   "paraphrase": "Screenshot feedback: sidebar X does nothing, hamburger placement, footer, download pill, docs placement.",
+   "has_image": true,
+   "reply_latency_s": 15.474,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 28,
+   "ts": "2026-10-09T02:50:33.587Z",
+   "typed_ts": "2026-10-09T02:50:33.587Z",
+   "delivery": "direct",
+   "topic": "verse-games",
+   "paraphrase": "Brief for a new Verse mini-game, Grow Little Bunny (a family member's game concept).",
+   "has_image": false,
+   "reply_latency_s": 3.301,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 29,
+   "ts": "2026-10-09T02:53:32.878Z",
+   "typed_ts": "2026-10-09T02:53:32.878Z",
+   "delivery": "queued",
+   "topic": "misc",
+   "paraphrase": "Where is the folder with the coast proof gallery images?",
+   "has_image": false,
+   "reply_latency_s": 17.546,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 30,
+   "ts": "2026-10-09T02:59:11.753Z",
+   "typed_ts": "2026-10-09T02:59:11.753Z",
+   "delivery": "direct",
+   "topic": "web-ui",
+   "paraphrase": "Where is it? Status of #11029 and #11028?",
+   "has_image": false,
+   "reply_latency_s": 33.698,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 31,
+   "ts": "2026-10-09T03:05:53.336Z",
+   "typed_ts": "2026-10-09T03:05:53.336Z",
+   "delivery": "direct",
+   "topic": "chat-answers",
+   "paraphrase": "User-facing \"machine talk\" (e.g. \"retained snapshot\", \"projections superseded\") must never appear; should there be a rule or detector?",
+   "has_image": false,
+   "reply_latency_s": 8.299,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 32,
+   "ts": "2026-10-09T03:08:03.100Z",
+   "typed_ts": "2026-10-09T03:08:03.100Z",
+   "delivery": "queued",
+   "topic": "verse-games",
+   "paraphrase": "Build a Grow Little Bunny MVP on the website (Verse to WASM, like Everglade) at /games/grow-little-bunny.",
+   "has_image": false,
+   "reply_latency_s": 46.506,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 33,
+   "ts": "2026-10-09T03:10:04.304Z",
+   "typed_ts": "2026-10-09T03:10:04.304Z",
+   "delivery": "queued",
+   "topic": "web-ui",
+   "paraphrase": "Page title should be a breadcrumb at top left, aligned with the top-right controls.",
+   "has_image": true,
+   "reply_latency_s": 185.585,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 34,
+   "ts": "2026-10-09T03:11:38.953Z",
+   "typed_ts": "2026-10-09T03:11:38.953Z",
+   "delivery": "queued",
+   "topic": "web-ui",
+   "paraphrase": "Footer links go centered at the bottom of the home main area; bottom-left gets account info and settings.",
+   "has_image": false,
+   "reply_latency_s": 90.936,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 35,
+   "ts": "2026-10-09T03:12:04.102Z",
+   "typed_ts": "2026-10-09T03:12:04.102Z",
+   "delivery": "queued",
+   "topic": "web-ui",
+   "paraphrase": "Composer placeholder: \"Ask OpenAgents anything\".",
+   "has_image": false,
+   "reply_latency_s": 65.787,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 36,
+   "ts": "2026-10-09T03:12:24.365Z",
+   "typed_ts": "2026-10-09T03:12:24.365Z",
+   "delivery": "queued",
+   "topic": "process",
+   "paraphrase": "Keep at least one subagent working on other open issues at all times.",
+   "has_image": false,
+   "reply_latency_s": 45.524,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 37,
+   "ts": "2026-10-09T03:14:41.299Z",
+   "typed_ts": "2026-10-09T03:14:41.299Z",
+   "delivery": "direct",
+   "topic": "web-ui",
+   "paraphrase": "Gray out the submit button while the input is empty.",
+   "has_image": false,
+   "reply_latency_s": 6.605,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 38,
+   "ts": "2026-10-09T03:15:08.372Z",
+   "typed_ts": "2026-10-09T03:15:08.372Z",
+   "delivery": "direct",
+   "topic": "chat-answers",
+   "paraphrase": "Replicate the mobile app's dynamic suggested questions on web.",
+   "has_image": false,
+   "reply_latency_s": 3.36,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 39,
+   "ts": "2026-10-09T03:15:27.717Z",
+   "typed_ts": "2026-10-09T03:15:27.717Z",
+   "delivery": "queued",
+   "topic": "web-ui",
+   "paraphrase": "Less padding under the input box.",
+   "has_image": true,
+   "reply_latency_s": 29.394,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 40,
+   "ts": "2026-10-09T03:15:46.162Z",
+   "typed_ts": "2026-10-09T03:15:46.162Z",
+   "delivery": "queued",
+   "topic": "web-ui",
+   "paraphrase": "Ctrl+N should start a new chat.",
+   "has_image": false,
+   "reply_latency_s": 10.949,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 41,
+   "ts": "2026-10-09T03:16:01.564Z",
+   "typed_ts": "2026-10-09T03:16:01.564Z",
+   "delivery": "queued",
+   "topic": "web-ui",
+   "paraphrase": "Show the new-chat hotkey next to the sidebar button.",
+   "has_image": false,
+   "reply_latency_s": 8.806,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 42,
+   "ts": "2026-10-09T03:17:11.370Z",
+   "typed_ts": "2026-10-09T03:17:11.370Z",
+   "delivery": "direct",
+   "topic": "auth-accounts",
+   "paraphrase": "Connect the Claude BYOK feature to the settings page so it can be tested.",
+   "has_image": false,
+   "reply_latency_s": 3.43,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 43,
+   "ts": "2026-10-09T03:21:01.505Z",
+   "typed_ts": "2026-10-09T03:21:01.505Z",
+   "delivery": "direct",
+   "topic": "verse-games",
+   "paraphrase": "Host a website for the owner's game studio (Blue Rush Studios) in this repo, mocked like a reference game site.",
+   "has_image": true,
+   "reply_latency_s": 6.959,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 44,
+   "ts": "2026-10-09T03:22:32.556Z",
+   "typed_ts": "2026-10-09T03:22:32.556Z",
+   "delivery": "direct",
+   "topic": "auth-accounts",
+   "paraphrase": "The current sign-in screen is ugly machine design; fake API-key login is wrong; design a real auth system (Rust auth server?).",
+   "has_image": true,
+   "reply_latency_s": 13.597,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 45,
+   "ts": "2026-10-09T03:23:15.894Z",
+   "typed_ts": "2026-10-09T03:23:15.894Z",
+   "delivery": "direct",
+   "topic": "verse-games",
+   "paraphrase": "Images for the Blue Rush site.",
+   "has_image": true,
+   "reply_latency_s": 4.246,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 46,
+   "ts": "2026-10-09T03:24:54.665Z",
+   "typed_ts": "2026-10-09T03:24:54.665Z",
+   "delivery": "queued",
+   "topic": "auth-accounts",
+   "paraphrase": "Own auth in a Rust crate; GitHub one-click sign-in first, Nostr-only users can link later; spec it in docs/auth; login button top right.",
+   "has_image": false,
+   "reply_latency_s": 107.57,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 47,
+   "ts": "2026-10-09T03:26:51.836Z",
+   "typed_ts": "2026-10-09T03:26:51.836Z",
+   "delivery": "direct",
+   "topic": "auth-accounts",
+   "paraphrase": "OAuth app credentials exist for local, staging and prod; tell me the callback URLs.",
+   "has_image": false,
+   "reply_latency_s": 3.901,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 48,
+   "ts": "2026-10-09T03:34:32.248Z",
+   "typed_ts": "2026-10-09T03:34:32.248Z",
+   "delivery": "queued",
+   "topic": "cloud-env",
+   "paraphrase": "Nuke all /cloud routes and restart simply; test spinning up a repo-based environment with the onboarding chat.",
+   "has_image": false,
+   "reply_latency_s": 11.144,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 49,
+   "ts": "2026-10-09T03:35:10.177Z",
+   "typed_ts": "2026-10-09T03:35:10.177Z",
+   "delivery": "queued",
+   "topic": "web-ui",
+   "paraphrase": "Input bar did not clear after Enter; fix it.",
+   "has_image": true,
+   "reply_latency_s": 52.076,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 50,
+   "ts": "2026-10-09T03:36:28.645Z",
+   "typed_ts": "2026-10-09T03:36:28.645Z",
+   "delivery": "queued",
+   "topic": "web-ui",
+   "paraphrase": "Sidebar \"OpenAgents\" title in sans, not mono.",
+   "has_image": false,
+   "reply_latency_s": 27.551,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 51,
+   "ts": "2026-10-09T03:37:19.842Z",
+   "typed_ts": "2026-10-09T03:37:19.842Z",
+   "delivery": "queued",
+   "topic": "web-ui",
+   "paraphrase": "Hotkey hint should use the caret symbol, not \"Ctrl\".",
+   "has_image": false,
+   "reply_latency_s": 124.907,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 52,
+   "ts": "2026-10-09T03:40:01.613Z",
+   "typed_ts": "2026-10-09T03:40:01.613Z",
+   "delivery": "queued",
+   "topic": "verse-games",
+   "paraphrase": "Open the Blue Rush site now.",
+   "has_image": false,
+   "reply_latency_s": 66.842,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 53,
+   "ts": "2026-10-09T03:42:25.447Z",
+   "typed_ts": "2026-10-09T03:42:25.447Z",
+   "delivery": "queued",
+   "topic": "web-ui",
+   "paraphrase": "Replace \"OpenAgents is answering...\" with \"Working\" plus a spinner.",
+   "has_image": false,
+   "reply_latency_s": 4.314,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 54,
+   "ts": "2026-10-09T03:42:56.484Z",
+   "typed_ts": "2026-10-09T03:42:56.484Z",
+   "delivery": "queued",
+   "topic": "chat-answers",
+   "paraphrase": "An answer is confusing; fix the knowledge base.",
+   "has_image": true,
+   "reply_latency_s": 8.583,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 55,
+   "ts": "2026-10-09T03:49:27.645Z",
+   "typed_ts": "2026-10-09T03:49:27.645Z",
+   "delivery": "queued",
+   "topic": "chat-answers",
+   "paraphrase": "Is the privacy answer about storing/training on chats accurate?",
+   "has_image": false,
+   "reply_latency_s": 79.334,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 56,
+   "ts": "2026-10-09T03:53:35.422Z",
+   "typed_ts": "2026-10-09T03:53:35.422Z",
+   "delivery": "direct",
+   "topic": "research",
+   "paraphrase": "Study t3code's sidebar (projects, worktrees) to improve our sidebar.",
+   "has_image": false,
+   "reply_latency_s": 4.095,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 57,
+   "ts": "2026-10-09T03:59:53.773Z",
+   "typed_ts": "2026-10-09T03:59:53.773Z",
+   "delivery": "queued",
+   "topic": "chat-answers",
+   "paraphrase": "Answers too verbose: should be \"Yep.\" / \"Yes.\"",
+   "has_image": true,
+   "reply_latency_s": 78.008,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 58,
+   "ts": "2026-10-09T03:59:58.222Z",
+   "typed_ts": "2026-10-09T03:59:58.222Z",
+   "delivery": "queued",
+   "topic": "chat-answers",
+   "paraphrase": "The assistant can have a personality.",
+   "has_image": false,
+   "reply_latency_s": 73.559,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 59,
+   "ts": "2026-10-09T04:00:01.322Z",
+   "typed_ts": "2026-10-09T04:00:01.322Z",
+   "delivery": "queued",
+   "topic": "chat-answers",
+   "paraphrase": "But not a weird one.",
+   "has_image": false,
+   "reply_latency_s": 70.459,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 60,
+   "ts": "2026-10-09T05:01:37.631Z",
+   "typed_ts": "2026-10-09T05:01:37.631Z",
+   "delivery": "queued",
+   "topic": "auth-accounts",
+   "paraphrase": "Which URLs go into the GitHub OAuth app settings?",
+   "has_image": false,
+   "reply_latency_s": 21.808,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 61,
+   "ts": "2026-10-09T05:08:48.086Z",
+   "typed_ts": "2026-10-09T05:08:48.086Z",
+   "delivery": "direct",
+   "topic": "auth-accounts",
+   "paraphrase": "Signed in; avatar missing; also request and store the user's email.",
+   "has_image": false,
+   "reply_latency_s": 16.021,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 62,
+   "ts": "2026-10-09T05:09:38.762Z",
+   "typed_ts": "2026-10-09T05:09:38.762Z",
+   "delivery": "queued",
+   "topic": "web-ui",
+   "paraphrase": "\"Working\" must sit on the same row as the spinner.",
+   "has_image": true,
+   "reply_latency_s": 4.709,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 63,
+   "ts": "2026-10-09T05:10:11.479Z",
+   "typed_ts": "2026-10-09T05:10:11.479Z",
+   "delivery": "queued",
+   "topic": "web-ui",
+   "paraphrase": "Sidebar kept showing working after the answer finished.",
+   "has_image": true,
+   "reply_latency_s": 5.605,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 64,
+   "ts": "2026-10-09T05:10:38.154Z",
+   "typed_ts": "2026-10-09T05:10:38.154Z",
+   "delivery": "queued",
+   "topic": "web-ui",
+   "paraphrase": "Sidebar shows only a spinner (replacing the blue dot), no \"working\" text.",
+   "has_image": false,
+   "reply_latency_s": 8.73,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 65,
+   "ts": "2026-10-09T05:11:00.528Z",
+   "typed_ts": "2026-10-09T05:11:00.528Z",
+   "delivery": "queued",
+   "topic": "auth-accounts",
+   "paraphrase": "Need the GitHub repo flow soon; is there an issue?",
+   "has_image": true,
+   "reply_latency_s": 4.379,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 66,
+   "ts": "2026-10-09T05:12:37.445Z",
+   "typed_ts": "2026-10-09T05:12:37.445Z",
+   "delivery": "queued",
+   "topic": "web-ui",
+   "paraphrase": "Spec and build a custom inline plugin component for chats.",
+   "has_image": true,
+   "reply_latency_s": 74.614,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 67,
+   "ts": "2026-10-09T05:13:16.466Z",
+   "typed_ts": "2026-10-09T05:13:16.466Z",
+   "delivery": "queued",
+   "topic": "coder-sync",
+   "paraphrase": "How to connect local coder-new to the web account and see its chats in the sidebar; open issues.",
+   "has_image": false,
+   "reply_latency_s": 35.593,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 68,
+   "ts": "2026-10-09T05:13:45.436Z",
+   "typed_ts": "2026-10-09T05:13:45.436Z",
+   "delivery": "queued",
+   "topic": "auth-accounts",
+   "paraphrase": "Get the Claude (BYO) settings working.",
+   "has_image": true,
+   "reply_latency_s": 6.623,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 69,
+   "ts": "2026-10-09T05:17:04.521Z",
+   "typed_ts": "2026-10-09T05:17:04.521Z",
+   "delivery": "queued",
+   "topic": "process",
+   "paraphrase": "Goal set: continue until all open issues are resolved, web UI first.",
+   "has_image": false,
+   "reply_latency_s": 20.607,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 70,
+   "ts": "2026-10-09T05:20:12.672Z",
+   "typed_ts": "2026-10-09T05:20:12.672Z",
+   "delivery": "queued",
+   "topic": "chat-answers",
+   "paraphrase": "Update #11044: we can train on user chats, paid plans offer opt-outs subject to negotiation.",
+   "has_image": false,
+   "reply_latency_s": 13.312,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 71,
+   "ts": "2026-10-09T05:26:41.988Z",
+   "typed_ts": "2026-10-09T05:26:41.988Z",
+   "delivery": "queued",
+   "topic": "coder-sync",
+   "paraphrase": "A flow in coder-new to link the cloud / openagents.com / OpenAgents accounts, recorded in the database.",
+   "has_image": false,
+   "reply_latency_s": 28.409,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 72,
+   "ts": "2026-10-09T05:33:12.156Z",
+   "typed_ts": "2026-10-09T05:33:12.156Z",
+   "delivery": "queued",
+   "topic": "process",
+   "paraphrase": "Get everything working; one Verse subagent at all times; spend most time on the web plan.",
+   "has_image": false,
+   "reply_latency_s": 22.257,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 73,
+   "ts": "2026-10-09T05:33:23.931Z",
+   "typed_ts": "2026-10-09T05:33:23.931Z",
+   "delivery": "queued",
+   "topic": "process",
+   "paraphrase": "Going to bed.",
+   "has_image": false,
+   "reply_latency_s": 10.482,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 74,
+   "ts": "2026-10-09T05:33:27.315Z",
+   "typed_ts": "2026-10-09T05:33:27.315Z",
+   "delivery": "queued",
+   "topic": "process",
+   "paraphrase": "Do not ask or wait.",
+   "has_image": false,
+   "reply_latency_s": 7.098,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 75,
+   "ts": "2026-10-09T05:34:33.252Z",
+   "typed_ts": "2026-10-09T05:34:33.252Z",
+   "delivery": "queued",
+   "topic": "web-ui",
+   "paraphrase": "Comment out sidebar chat search for now.",
+   "has_image": false,
+   "reply_latency_s": 30.586,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 76,
+   "ts": "2026-10-09T05:37:25.960Z",
+   "typed_ts": "2026-10-09T05:37:25.960Z",
+   "delivery": "queued",
+   "topic": "ops-disk",
+   "paraphrase": "Free 150 GB+ now, aggressively if needed.",
+   "has_image": false,
+   "reply_latency_s": 4.365,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 77,
+   "ts": "2026-10-09T05:37:30.850Z",
+   "typed_ts": "2026-10-09T05:37:30.850Z",
+   "delivery": "queued",
+   "topic": "ops-disk",
+   "paraphrase": "But never delete agent traces.",
+   "has_image": false,
+   "reply_latency_s": 38.925,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 78,
+   "ts": "2026-10-09T12:42:41.896Z",
+   "typed_ts": "2026-10-09T12:42:41.896Z",
+   "delivery": "direct",
+   "topic": "process",
+   "paraphrase": "STATUS? (morning check-in)",
+   "has_image": false,
+   "reply_latency_s": 13.965,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 79,
+   "ts": "2026-10-09T12:43:44.221Z",
+   "typed_ts": "2026-10-09T12:43:44.221Z",
+   "delivery": "direct",
+   "topic": "auth-accounts",
+   "paraphrase": "Create the encryption secret locally.",
+   "has_image": false,
+   "reply_latency_s": 6.205,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 80,
+   "ts": "2026-10-09T12:43:50.072Z",
+   "typed_ts": "2026-10-09T12:43:50.072Z",
+   "delivery": "queued",
+   "topic": "auth-accounts",
+   "paraphrase": "Put it under the workspace secrets folder instead.",
+   "has_image": false,
+   "reply_latency_s": 0.354,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 81,
+   "ts": "2026-10-09T12:44:17.452Z",
+   "typed_ts": "2026-10-09T12:44:17.452Z",
+   "delivery": "direct",
+   "topic": "payments",
+   "paraphrase": "Paid environments are part of the $20/mo plan; pick a market-reasonable allowance.",
+   "has_image": false,
+   "reply_latency_s": 8.329,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 82,
+   "ts": "2026-10-09T12:44:31.986Z",
+   "typed_ts": "2026-10-09T12:44:31.986Z",
+   "delivery": "queued",
+   "topic": "process",
+   "paraphrase": "Talk me through all other decisions you need.",
+   "has_image": false,
+   "reply_latency_s": 47.035,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 83,
+   "ts": "2026-10-09T12:45:38.247Z",
+   "typed_ts": "2026-10-09T12:45:38.247Z",
+   "delivery": "direct",
+   "topic": "cloud-env",
+   "paraphrase": "Screenshot of a broken page: what is this?",
+   "has_image": true,
+   "reply_latency_s": 2.1,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 84,
+   "ts": "2026-10-09T12:46:44.380Z",
+   "typed_ts": "2026-10-09T12:46:44.380Z",
+   "delivery": "queued",
+   "topic": "research",
+   "paraphrase": "Does OpenInspect have working code to study so we stop finding small bugs in prod?",
+   "has_image": false,
+   "reply_latency_s": 9.979,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 85,
+   "ts": "2026-10-09T12:49:22.733Z",
+   "typed_ts": "2026-10-09T12:49:22.733Z",
+   "delivery": "direct",
+   "topic": "cloud-env",
+   "paraphrase": "A page took ~10 s to load; load in the background.",
+   "has_image": false,
+   "reply_latency_s": 3.176,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 86,
+   "ts": "2026-10-09T12:49:34.875Z",
+   "typed_ts": "2026-10-09T12:49:34.875Z",
+   "delivery": "queued",
+   "topic": "cloud-env",
+   "paraphrase": "Paginate for speed.",
+   "has_image": false,
+   "reply_latency_s": 8.839,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 87,
+   "ts": "2026-10-09T12:49:39.108Z",
+   "typed_ts": "2026-10-09T12:49:39.108Z",
+   "delivery": "queued",
+   "topic": "cloud-env",
+   "paraphrase": "Most recent first.",
+   "has_image": false,
+   "reply_latency_s": 4.606,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 88,
+   "ts": "2026-10-09T12:54:44.282Z",
+   "typed_ts": "2026-10-09T12:54:44.282Z",
+   "delivery": "queued",
+   "topic": "chat-answers",
+   "paraphrase": "Craft bench goldens for expected product Q&A, answered fast via Jev, run against the live API.",
+   "has_image": false,
+   "reply_latency_s": 11.96,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 89,
+   "ts": "2026-10-09T12:57:40.761Z",
+   "typed_ts": "2026-10-09T12:57:40.761Z",
+   "delivery": "direct",
+   "topic": "gateway",
+   "paraphrase": "Plan our own inference gateway: all provider accounts in one router, metering, public transparent pricing.",
+   "has_image": false,
+   "reply_latency_s": 2.966,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 90,
+   "ts": "2026-10-09T12:58:15.629Z",
+   "typed_ts": "2026-10-09T12:58:15.629Z",
+   "delivery": "direct",
+   "topic": "gateway",
+   "paraphrase": "Model it on OpenRouter's API; pass their docs to the agent.",
+   "has_image": false,
+   "reply_latency_s": 7.3,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 91,
+   "ts": "2026-10-09T12:58:55.027Z",
+   "typed_ts": "2026-10-09T12:58:55.027Z",
+   "delivery": "direct",
+   "topic": "gateway",
+   "paraphrase": "Use remaining Google inference credit and Z.ai credit; Vercel can be one provider but we want our own router.",
+   "has_image": false,
+   "reply_latency_s": 8.459,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 92,
+   "ts": "2026-10-09T12:59:09.479Z",
+   "typed_ts": "2026-10-09T12:59:09.479Z",
+   "delivery": "direct",
+   "topic": "gateway",
+   "paraphrase": "Open Responses as primary API; keep Chat Completions as a backup.",
+   "has_image": false,
+   "reply_latency_s": 5.61,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 93,
+   "ts": "2026-10-09T12:59:37.791Z",
+   "typed_ts": "2026-10-09T12:59:37.791Z",
+   "delivery": "direct",
+   "topic": "gateway",
+   "paraphrase": "Do our own version of OpenAI's API docs and decision guide.",
+   "has_image": false,
+   "reply_latency_s": 8.889,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 94,
+   "ts": "2026-10-09T13:18:47.166Z",
+   "typed_ts": "2026-10-09T13:18:47.166Z",
+   "delivery": "direct",
+   "topic": "gateway",
+   "paraphrase": "Implement all of it now and move the chat UI onto it.",
+   "has_image": false,
+   "reply_latency_s": 6.144,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 95,
+   "ts": "2026-10-09T14:04:11.713Z",
+   "typed_ts": "2026-10-09T14:04:11.713Z",
+   "delivery": "direct",
+   "topic": "v1-release",
+   "paraphrase": "Start of release day: cross-platform V1 (web, mobile, desktop, terminal); summarize the latest transcript.",
+   "has_image": false,
+   "reply_latency_s": 29.501,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 96,
+   "ts": "2026-10-09T14:05:17.654Z",
+   "typed_ts": "2026-10-09T14:05:17.654Z",
+   "delivery": "direct",
+   "topic": "v1-release",
+   "paraphrase": "Do an inventory and gap analysis for releasing today; Pro plan can slip to next week.",
+   "has_image": false,
+   "reply_latency_s": 2.874,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 97,
+   "ts": "2026-10-09T14:07:00.812Z",
+   "typed_ts": "2026-10-09T14:07:00.812Z",
+   "delivery": "direct",
+   "topic": "web-ui",
+   "paraphrase": "Evaluate the UI system: cross-platform components in one place; reconcile /components and /ui.",
+   "has_image": false,
+   "reply_latency_s": 3.997,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 98,
+   "ts": "2026-10-09T14:07:52.010Z",
+   "typed_ts": "2026-10-09T14:07:52.010Z",
+   "delivery": "direct",
+   "topic": "backlog",
+   "paraphrase": "Why can't #10559 be closed?",
+   "has_image": false,
+   "reply_latency_s": 14.912,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 99,
+   "ts": "2026-10-09T14:08:43.989Z",
+   "typed_ts": "2026-10-09T14:08:43.989Z",
+   "delivery": "direct",
+   "topic": "backlog",
+   "paraphrase": "Close #10559 as done and #11055 as won't-do.",
+   "has_image": false,
+   "reply_latency_s": 17.759,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 100,
+   "ts": "2026-10-09T14:09:14.574Z",
+   "typed_ts": "2026-10-09T14:09:14.574Z",
+   "delivery": "direct",
+   "topic": "v1-release",
+   "paraphrase": "No Google Play: ship Android as an APK; iOS to TestFlight external testers when ready.",
+   "has_image": false,
+   "reply_latency_s": 4.852,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 101,
+   "ts": "2026-10-09T14:09:36.324Z",
+   "typed_ts": "2026-10-09T14:09:36.324Z",
+   "delivery": "direct",
+   "topic": "v1-release",
+   "paraphrase": "Why would Windows need code signing? We shipped the terminal there before.",
+   "has_image": false,
+   "reply_latency_s": 11.934,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 102,
+   "ts": "2026-10-09T14:10:13.394Z",
+   "typed_ts": "2026-10-09T14:10:13.394Z",
+   "delivery": "direct",
+   "topic": "v1-release",
+   "paraphrase": "Unsigned Windows is fine; loosen the restriction and build the pipeline.",
+   "has_image": false,
+   "reply_latency_s": 45.951,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 103,
+   "ts": "2026-10-09T14:11:20.721Z",
+   "typed_ts": "2026-10-09T14:11:20.721Z",
+   "delivery": "direct",
+   "topic": "web-ui",
+   "paraphrase": "\"Loading your repositories\" sits under the spinner; fix row alignment for good.",
+   "has_image": false,
+   "reply_latency_s": 5.159,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 104,
+   "ts": "2026-10-09T14:11:54.460Z",
+   "typed_ts": "2026-10-09T14:11:54.460Z",
+   "delivery": "queued",
+   "topic": "deploy",
+   "paraphrase": "Not ready for production; staging later, only after the owner tests locally.",
+   "has_image": false,
+   "reply_latency_s": 4.83,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 105,
+   "ts": "2026-10-09T14:12:06.326Z",
+   "typed_ts": "2026-10-09T14:12:06.326Z",
+   "delivery": "queued",
+   "topic": "web-ui",
+   "paraphrase": "Why raw CSS instead of Tailwind?",
+   "has_image": false,
+   "reply_latency_s": 3.467,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 106,
+   "ts": "2026-10-09T14:12:38.435Z",
+   "typed_ts": "2026-10-09T14:12:38.435Z",
+   "delivery": "queued",
+   "topic": "gateway",
+   "paraphrase": "Why put the API on a subdomain (#11065)? Two services?",
+   "has_image": false,
+   "reply_latency_s": 30.814,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 107,
+   "ts": "2026-10-09T14:12:53.140Z",
+   "typed_ts": "2026-10-09T14:12:53.140Z",
+   "delivery": "queued",
+   "topic": "web-ui",
+   "paraphrase": "Does Apps SDK UI use Tailwind?",
+   "has_image": false,
+   "reply_latency_s": 16.109,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 108,
+   "ts": "2026-10-09T14:12:58.890Z",
+   "typed_ts": "2026-10-09T14:12:58.890Z",
+   "delivery": "queued",
+   "topic": "web-ui",
+   "paraphrase": "(clarifies: the OpenAI one)",
+   "has_image": false,
+   "reply_latency_s": 10.359,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 109,
+   "ts": "2026-10-09T14:13:27.798Z",
+   "typed_ts": "2026-10-09T14:13:27.798Z",
+   "delivery": "direct",
+   "topic": "backlog",
+   "paraphrase": "Close #11075 as won't-do.",
+   "has_image": false,
+   "reply_latency_s": 6.727,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 110,
+   "ts": "2026-10-09T14:14:28.374Z",
+   "typed_ts": "2026-10-09T14:14:28.374Z",
+   "delivery": "queued",
+   "topic": "gateway",
+   "paraphrase": "Quotes the assistant's hedged suggestion; asks it to recommend and act.",
+   "has_image": false,
+   "reply_latency_s": 9.617,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 111,
+   "ts": "2026-10-09T14:22:22.899Z",
+   "typed_ts": "2026-10-09T14:22:22.899Z",
+   "delivery": "direct",
+   "topic": "mobile",
+   "paraphrase": "Boot an iOS simulator to look at the app.",
+   "has_image": false,
+   "reply_latency_s": 2.683,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 112,
+   "ts": "2026-10-09T14:33:20.266Z",
+   "typed_ts": "2026-10-09T14:33:20.266Z",
+   "delivery": "direct",
+   "topic": "mobile",
+   "paraphrase": "Why does it use the old font?",
+   "has_image": false,
+   "reply_latency_s": 8.001,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 113,
+   "ts": "2026-10-09T14:36:23.144Z",
+   "typed_ts": "2026-10-09T14:36:23.144Z",
+   "delivery": "direct",
+   "topic": "mobile",
+   "paraphrase": "Remove the black bar at the top; transparent background.",
+   "has_image": true,
+   "reply_latency_s": 3.634,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 114,
+   "ts": "2026-10-09T14:45:52.258Z",
+   "typed_ts": "2026-10-09T14:45:52.258Z",
+   "delivery": "queued",
+   "topic": "web-ui",
+   "paraphrase": "Explain this screenshot.",
+   "has_image": true,
+   "reply_latency_s": 2.991,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 115,
+   "ts": "2026-10-09T14:47:11.857Z",
+   "typed_ts": "2026-10-09T14:47:11.857Z",
+   "delivery": "direct",
+   "topic": "web-ui",
+   "paraphrase": "The sample plugins look dumb without evals; disable them; keep real ones like ACP delegation.",
+   "has_image": false,
+   "reply_latency_s": 5.621,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 116,
+   "ts": "2026-10-09T14:48:21.936Z",
+   "typed_ts": "2026-10-09T14:48:21.936Z",
+   "delivery": "direct",
+   "topic": "cloud-env",
+   "paraphrase": "Archive and connect-repo actions to the bottom; explain how a user sets up a project with a repo.",
+   "has_image": true,
+   "reply_latency_s": 10.945,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 117,
+   "ts": "2026-10-09T14:49:17.248Z",
+   "typed_ts": "2026-10-09T14:49:17.248Z",
+   "delivery": "direct",
+   "topic": "chat-answers",
+   "paraphrase": "Advice without action is bad: every how-to must give a link or a one-line command; sweep everything.",
+   "has_image": true,
+   "reply_latency_s": 5.626,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 118,
+   "ts": "2026-10-09T14:49:51.878Z",
+   "typed_ts": "2026-10-09T14:49:51.878Z",
+   "delivery": "queued",
+   "topic": "terminal",
+   "paraphrase": "Microcoder should not be a separate download; fold into Coder.",
+   "has_image": false,
+   "reply_latency_s": 41.693,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 119,
+   "ts": "2026-10-09T14:50:23.508Z",
+   "typed_ts": "2026-10-09T14:50:23.508Z",
+   "delivery": "queued",
+   "topic": "web-ui",
+   "paraphrase": "Two download buttons on one page; remove the duplicate.",
+   "has_image": true,
+   "reply_latency_s": 10.063,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 120,
+   "ts": "2026-10-09T14:51:26.939Z",
+   "typed_ts": "2026-10-09T14:51:26.939Z",
+   "delivery": "queued",
+   "topic": "chat-answers",
+   "paraphrase": "Refactor the \"what models\" answer: we route across many models via our gateway.",
+   "has_image": true,
+   "reply_latency_s": 108.44,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 121,
+   "ts": "2026-10-09T14:53:42.724Z",
+   "typed_ts": "2026-10-09T14:53:42.724Z",
+   "delivery": "queued",
+   "topic": "cloud-env",
+   "paraphrase": "Re-add the repo/branch/environment pickers above the composer and wire them.",
+   "has_image": true,
+   "reply_latency_s": 40.288,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 122,
+   "ts": "2026-10-09T14:55:51.655Z",
+   "typed_ts": "2026-10-09T14:55:51.655Z",
+   "delivery": "queued",
+   "topic": "gateway",
+   "paraphrase": "OpenRouter-style API plus CLI (openagents inference <model> --json), with OpenAPI.",
+   "has_image": false,
+   "reply_latency_s": 57.844,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 123,
+   "ts": "2026-10-09T14:56:21.302Z",
+   "typed_ts": "2026-10-09T14:56:21.302Z",
+   "delivery": "queued",
+   "topic": "gateway",
+   "paraphrase": "What is \"oak\" (the API key prefix)?",
+   "has_image": false,
+   "reply_latency_s": 28.197,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 124,
+   "ts": "2026-10-09T14:57:41.616Z",
+   "typed_ts": "2026-10-09T14:57:41.616Z",
+   "delivery": "queued",
+   "topic": "research",
+   "paraphrase": "Read transcripts 241-247 and fold relevant ideas in.",
+   "has_image": false,
+   "reply_latency_s": 6.079,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 125,
+   "ts": "2026-10-09T14:59:40.633Z",
+   "typed_ts": "2026-10-09T14:59:40.633Z",
+   "delivery": "queued",
+   "topic": "research",
+   "paraphrase": "Pick agent-readiness scan sites, run them and fix findings.",
+   "has_image": false,
+   "reply_latency_s": 134.422,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 126,
+   "ts": "2026-10-09T15:04:21.277Z",
+   "typed_ts": "2026-10-09T15:04:21.277Z",
+   "delivery": "queued",
+   "topic": "cloud-env",
+   "paraphrase": "Center the new-environment page; it hangs/loads slowly.",
+   "has_image": true,
+   "reply_latency_s": 165.173,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 127,
+   "ts": "2026-10-09T15:04:40.481Z",
+   "typed_ts": "2026-10-09T15:04:40.481Z",
+   "delivery": "queued",
+   "topic": "web-ui",
+   "paraphrase": "Vertically center the login page too.",
+   "has_image": false,
+   "reply_latency_s": 145.969,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 128,
+   "ts": "2026-10-09T15:06:32.295Z",
+   "typed_ts": "2026-10-09T15:06:32.295Z",
+   "delivery": "queued",
+   "topic": "coder-sync",
+   "paraphrase": "A guided UI flow to connect the terminal to the web app; terminal chats in the sidebar.",
+   "has_image": false,
+   "reply_latency_s": 34.155,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 129,
+   "ts": "2026-10-09T15:07:05.226Z",
+   "typed_ts": "2026-10-09T15:07:05.226Z",
+   "delivery": "queued",
+   "topic": "coder-sync",
+   "paraphrase": "One thread set per user: local-only or full sync (an option); file and build it.",
+   "has_image": false,
+   "reply_latency_s": 1.224,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 130,
+   "ts": "2026-10-09T15:07:47.793Z",
+   "typed_ts": "2026-10-09T15:07:47.793Z",
+   "delivery": "queued",
+   "topic": "mobile",
+   "paraphrase": "Audit the mobile app; hide half-baked features for this release.",
+   "has_image": false,
+   "reply_latency_s": 172.644,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 131,
+   "ts": "2026-10-09T15:11:36.885Z",
+   "typed_ts": "2026-10-09T15:11:36.885Z",
+   "delivery": "queued",
+   "topic": "research",
+   "paraphrase": "Write a potential integration-partnership doc from a partner's materials (docs/integrations).",
+   "has_image": false,
+   "reply_latency_s": 6.692,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 132,
+   "ts": "2026-10-09T15:12:04.065Z",
+   "typed_ts": "2026-10-09T15:12:04.065Z",
+   "delivery": "queued",
+   "topic": "web-ui",
+   "paraphrase": "Move the theme toggle to the bottom-right of the sidebar.",
+   "has_image": false,
+   "reply_latency_s": 30.375,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 133,
+   "ts": "2026-10-09T15:14:55.091Z",
+   "typed_ts": "2026-10-09T15:14:55.091Z",
+   "delivery": "direct",
+   "topic": "payments",
+   "paraphrase": "Review PR 11088 from a former developer seriously; leave a detailed comment.",
+   "has_image": false,
+   "reply_latency_s": 9.302,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 134,
+   "ts": "2026-10-09T15:19:15.973Z",
+   "typed_ts": "2026-10-09T15:19:15.973Z",
+   "delivery": "direct",
+   "topic": "terminal",
+   "paraphrase": "Review a Windows tester's debug bundle and file/delegate actionable issues.",
+   "has_image": false,
+   "reply_latency_s": 34.899,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 135,
+   "ts": "2026-10-09T15:19:47.738Z",
+   "typed_ts": "2026-10-09T15:19:47.738Z",
+   "delivery": "queued",
+   "topic": "ops-disk",
+   "paraphrase": "The repo takes ~9 GB to clone; slim it (LFS?).",
+   "has_image": false,
+   "reply_latency_s": 3.134,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 136,
+   "ts": "2026-10-09T15:23:23.486Z",
+   "typed_ts": "2026-10-09T15:23:23.486Z",
+   "delivery": "direct",
+   "topic": "web-ui",
+   "paraphrase": "Docs pages need breadcrumbs.",
+   "has_image": true,
+   "reply_latency_s": 3.323,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 137,
+   "ts": "2026-10-09T15:26:13.935Z",
+   "typed_ts": "2026-10-09T15:26:13.935Z",
+   "delivery": "direct",
+   "topic": "v1-release",
+   "paraphrase": "Create a GitHub project for the Oct 9 V1 launch with V1-critical issues (no non-card agent payments).",
+   "has_image": false,
+   "reply_latency_s": 57.547,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 138,
+   "ts": "2026-10-09T15:27:38.024Z",
+   "typed_ts": "2026-10-09T15:27:38.024Z",
+   "delivery": "direct",
+   "topic": "chat-answers",
+   "paraphrase": "Set the four homepage starter questions on web and mobile; update the knowledge base.",
+   "has_image": false,
+   "reply_latency_s": 5.345,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 139,
+   "ts": "2026-10-09T15:27:54.716Z",
+   "typed_ts": "2026-10-09T15:27:54.716Z",
+   "delivery": "queued",
+   "topic": "v1-release",
+   "paraphrase": "Only three issues are in that project.",
+   "has_image": false,
+   "reply_latency_s": 149.379,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 140,
+   "ts": "2026-10-09T15:28:53.493Z",
+   "typed_ts": "2026-10-09T15:28:53.493Z",
+   "delivery": "queued",
+   "topic": "v1-release",
+   "paraphrase": "Objects to a planned 1.0.1 version bump.",
+   "has_image": false,
+   "reply_latency_s": 90.602,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 141,
+   "ts": "2026-10-09T15:29:00.839Z",
+   "typed_ts": "2026-10-09T15:29:00.839Z",
+   "delivery": "queued",
+   "topic": "v1-release",
+   "paraphrase": "Ship as 1.0.0 whatever it takes.",
+   "has_image": false,
+   "reply_latency_s": 83.256,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 142,
+   "ts": "2026-10-09T15:31:40.018Z",
+   "typed_ts": "2026-10-09T15:31:40.018Z",
+   "delivery": "direct",
+   "topic": "v1-release",
+   "paraphrase": "Is anything missing from the project to ship four platforms today?",
+   "has_image": false,
+   "reply_latency_s": 16.678,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 143,
+   "ts": "2026-10-09T15:34:10.041Z",
+   "typed_ts": "2026-10-09T15:34:10.041Z",
+   "delivery": "queued",
+   "topic": "process",
+   "paraphrase": "Goal set: complete all issues in project 22.",
+   "has_image": false,
+   "reply_latency_s": 13.99,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 144,
+   "ts": "2026-10-09T15:39:07.902Z",
+   "typed_ts": "2026-10-09T15:39:07.902Z",
+   "delivery": "queued",
+   "topic": "v1-release",
+   "paraphrase": "#11087 closed but board says In Progress; should the CLI sync board status?",
+   "has_image": false,
+   "reply_latency_s": 19.229,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 145,
+   "ts": "2026-10-09T15:44:06.105Z",
+   "typed_ts": "2026-10-09T15:44:06.105Z",
+   "delivery": "direct",
+   "topic": "terminal",
+   "paraphrase": "Upload agent traces via CLI to a user account (API + CLI); file and delegate.",
+   "has_image": false,
+   "reply_latency_s": 2.74,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 146,
+   "ts": "2026-10-09T15:54:58.455Z",
+   "typed_ts": "2026-10-09T15:54:58.455Z",
+   "delivery": "direct",
+   "topic": "v1-release",
+   "paraphrase": "More issues closed but still In Progress; fix it.",
+   "has_image": false,
+   "reply_latency_s": 19.086,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 147,
+   "ts": "2026-10-09T16:08:20.484Z",
+   "typed_ts": "2026-10-09T16:08:20.484Z",
+   "delivery": "direct",
+   "topic": "research",
+   "paraphrase": "Read a linked X post.",
+   "has_image": false,
+   "reply_latency_s": 23.177,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 148,
+   "ts": "2026-10-09T16:09:42.775Z",
+   "typed_ts": "2026-10-09T16:09:42.775Z",
+   "delivery": "direct",
+   "topic": "research",
+   "paraphrase": "Read an OpenUI blog post and file issues for what to take; add V1-relevant ones to the project.",
+   "has_image": false,
+   "reply_latency_s": 36.806,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 149,
+   "ts": "2026-10-09T16:10:13.154Z",
+   "typed_ts": "2026-10-09T16:10:13.154Z",
+   "delivery": "queued",
+   "topic": "terminal",
+   "paraphrase": "How does coder-new use Jev today?",
+   "has_image": false,
+   "reply_latency_s": 6.427,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 150,
+   "ts": "2026-10-09T16:10:34.520Z",
+   "typed_ts": "2026-10-09T16:10:34.520Z",
+   "delivery": "queued",
+   "topic": "research",
+   "paraphrase": "Study thesysdev/openui for adaptation.",
+   "has_image": false,
+   "reply_latency_s": 30.502,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 151,
+   "ts": "2026-10-09T16:14:37.005Z",
+   "typed_ts": "2026-10-09T16:14:37.005Z",
+   "delivery": "queued",
+   "topic": "desktop",
+   "paraphrase": "Boot the desktop app.",
+   "has_image": false,
+   "reply_latency_s": 64.995,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 152,
+   "ts": "2026-10-09T16:26:21.308Z",
+   "typed_ts": "2026-10-09T16:26:21.308Z",
+   "delivery": "direct",
+   "topic": "v1-release",
+   "paraphrase": "Summarize the blocked issues and blockers.",
+   "has_image": false,
+   "reply_latency_s": 13.289,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 153,
+   "ts": "2026-10-09T16:30:09.040Z",
+   "typed_ts": "2026-10-09T16:30:09.040Z",
+   "delivery": "queued",
+   "topic": "desktop",
+   "paraphrase": "Desktop app uses random fonts and unclear sidebar buttons: cut it from launch or harmonize?",
+   "has_image": false,
+   "reply_latency_s": 52.57,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 154,
+   "ts": "2026-10-09T16:35:52.582Z",
+   "typed_ts": "2026-10-09T16:35:52.582Z",
+   "delivery": "direct",
+   "topic": "v1-release",
+   "paraphrase": "Summarize why else open issues are blocked.",
+   "has_image": false,
+   "reply_latency_s": 45.308,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 155,
+   "ts": "2026-10-09T16:44:38.567Z",
+   "typed_ts": "2026-10-09T16:44:38.567Z",
+   "delivery": "direct",
+   "topic": "v1-release",
+   "paraphrase": "What blocked items need the owner?",
+   "has_image": false,
+   "reply_latency_s": 13.12,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 156,
+   "ts": "2026-10-09T16:46:15.123Z",
+   "typed_ts": "2026-10-09T16:46:15.123Z",
+   "delivery": "direct",
+   "topic": "v1-release",
+   "paraphrase": "DNS TXT record set; security contact given; the agent should deploy staging itself.",
+   "has_image": false,
+   "reply_latency_s": 16.623,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 157,
+   "ts": "2026-10-09T16:47:02.967Z",
+   "typed_ts": "2026-10-09T16:47:02.967Z",
+   "delivery": "queued",
+   "topic": "mobile",
+   "paraphrase": "The TestFlight link looks open; test it.",
+   "has_image": true,
+   "reply_latency_s": 115.949,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 158,
+   "ts": "2026-10-09T16:50:29.513Z",
+   "typed_ts": "2026-10-09T16:50:29.513Z",
+   "delivery": "queued",
+   "topic": "mobile",
+   "paraphrase": "Get to a deployable mobile build with tester sign-in instructions.",
+   "has_image": false,
+   "reply_latency_s": 57.731,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 159,
+   "ts": "2026-10-09T17:10:16.498Z",
+   "typed_ts": "2026-10-09T17:10:16.498Z",
+   "delivery": "direct",
+   "topic": "deploy",
+   "paraphrase": "At the right time, deploy to staging, update the staging smoke suite and test everything there.",
+   "has_image": false,
+   "reply_latency_s": 14.156,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 160,
+   "ts": "2026-10-09T17:21:21.430Z",
+   "typed_ts": "2026-10-09T17:21:21.430Z",
+   "delivery": "direct",
+   "topic": "v1-release",
+   "paraphrase": "Submit iOS today, but launch only web and terminal today.",
+   "has_image": false,
+   "reply_latency_s": 44.792,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 161,
+   "ts": "2026-10-09T17:42:48.849Z",
+   "typed_ts": "2026-10-09T17:42:48.849Z",
+   "delivery": "direct",
+   "topic": "terminal",
+   "paraphrase": "That is coder-new, right?",
+   "has_image": false,
+   "reply_latency_s": 1.932,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 162,
+   "ts": "2026-10-09T18:37:35.320Z",
+   "typed_ts": "2026-10-09T18:37:35.320Z",
+   "delivery": "direct",
+   "topic": "kitchen-sink",
+   "paraphrase": "Revive the product-promises registry for the current product; add /promises and /roadmap to the site.",
+   "has_image": false,
+   "reply_latency_s": 39.396,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 163,
+   "ts": "2026-10-09T18:38:14.825Z",
+   "typed_ts": "2026-10-09T18:38:14.825Z",
+   "delivery": "direct",
+   "topic": "deploy",
+   "paraphrase": "Point staging.openagents.com at the staging service.",
+   "has_image": false,
+   "reply_latency_s": 27.615,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 164,
+   "ts": "2026-10-09T18:40:59.192Z",
+   "typed_ts": "2026-10-09T18:40:59.192Z",
+   "delivery": "direct",
+   "topic": "deploy",
+   "paraphrase": "Staging GitHub callback URL updated.",
+   "has_image": false,
+   "reply_latency_s": 5.476,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 165,
+   "ts": "2026-10-09T18:44:48.129Z",
+   "typed_ts": "2026-10-09T18:44:48.129Z",
+   "delivery": "direct",
+   "topic": "web-ui",
+   "paraphrase": "Homepage: composer docked at the bottom; a grid of learn-about cards in the center.",
+   "has_image": false,
+   "reply_latency_s": 33.547,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 166,
+   "ts": "2026-10-09T18:46:46.554Z",
+   "typed_ts": "2026-10-09T18:46:46.554Z",
+   "delivery": "direct",
+   "topic": "ops-disk",
+   "paraphrase": "On the CoderOS box, open a four-pane workspace (Android emulator, local web, desktop Verse, terminals).",
+   "has_image": false,
+   "reply_latency_s": 33.534,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 167,
+   "ts": "2026-10-09T18:49:32.656Z",
+   "typed_ts": "2026-10-09T18:49:32.656Z",
+   "delivery": "direct",
+   "topic": "kitchen-sink",
+   "paraphrase": "Redo the full promises exercise: per-surface full vision (Project Kitchen Sink spec).",
+   "has_image": false,
+   "reply_latency_s": 100.461,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 168,
+   "ts": "2026-10-09T18:55:56.647Z",
+   "typed_ts": "2026-10-09T18:55:56.647Z",
+   "delivery": "direct",
+   "topic": "deploy",
+   "paraphrase": "Audit the staging/prod deploy pipeline for speed (caching, HTML-only updates); write a plan doc.",
+   "has_image": false,
+   "reply_latency_s": 30.651,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 169,
+   "ts": "2026-10-09T18:56:48.472Z",
+   "typed_ts": "2026-10-09T18:56:48.472Z",
+   "delivery": "direct",
+   "topic": "terminal",
+   "paraphrase": "Study codex and grok-build self-update; spec and build terminal auto-update.",
+   "has_image": false,
+   "reply_latency_s": 35.105,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 170,
+   "ts": "2026-10-09T18:59:10.321Z",
+   "typed_ts": "2026-10-09T18:59:10.321Z",
+   "delivery": "direct",
+   "topic": "mobile",
+   "paraphrase": "Reference screenshots (four images) for the phone shell.",
+   "has_image": true,
+   "reply_latency_s": 58.843,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 171,
+   "ts": "2026-10-09T19:03:11.849Z",
+   "typed_ts": "2026-10-09T19:03:11.849Z",
+   "delivery": "direct",
+   "topic": "chat-answers",
+   "paraphrase": "\"OpenAgents is one open agent\" is a contradiction; reframe the wording.",
+   "has_image": false,
+   "reply_latency_s": 127.641,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 172,
+   "ts": "2026-10-09T19:06:29.432Z",
+   "typed_ts": "2026-10-09T19:06:29.432Z",
+   "delivery": "direct",
+   "topic": "kitchen-sink",
+   "paraphrase": "Subagent pass over the account's three-year Twitter archive to turn public claims into spec items.",
+   "has_image": false,
+   "reply_latency_s": 30.891,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 173,
+   "ts": "2026-10-09T19:09:32.343Z",
+   "typed_ts": "2026-10-09T19:09:32.343Z",
+   "delivery": "direct",
+   "topic": "deploy",
+   "paraphrase": "Deploy to production sooner; test the fast flow in prod; what is minimal?",
+   "has_image": false,
+   "reply_latency_s": 13.788,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 174,
+   "ts": "2026-10-09T19:11:11.208Z",
+   "typed_ts": "2026-10-09T19:11:11.208Z",
+   "delivery": "direct",
+   "topic": "payments",
+   "paraphrase": "Re-read PR 11088 comments; fold into Kitchen Sink; support every agent payment protocol; merge if docs-only.",
+   "has_image": false,
+   "reply_latency_s": 62.309,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 175,
+   "ts": "2026-10-09T19:19:27.089Z",
+   "typed_ts": "2026-10-09T19:19:27.089Z",
+   "delivery": "direct",
+   "topic": "chat-answers",
+   "paraphrase": "Mobile app on CoderOS says it could not answer; make it work.",
+   "has_image": false,
+   "reply_latency_s": 22.835,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 176,
+   "ts": "2026-10-09T19:20:14.160Z",
+   "typed_ts": "2026-10-09T19:20:14.160Z",
+   "delivery": "queued",
+   "topic": "verse-games",
+   "paraphrase": "An agent in the Verse shows \"Not set up\".",
+   "has_image": false,
+   "reply_latency_s": 35.689,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 177,
+   "ts": "2026-10-09T19:23:04.289Z",
+   "typed_ts": "2026-10-09T19:23:04.289Z",
+   "delivery": "queued",
+   "topic": "video",
+   "paraphrase": "Copy a just-recorded video to a Desktop folder.",
+   "has_image": false,
+   "reply_latency_s": 9.842,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 178,
+   "ts": "2026-10-09T19:25:01.566Z",
+   "typed_ts": "2026-10-09T19:25:01.566Z",
+   "delivery": "direct",
+   "topic": "video",
+   "paraphrase": "Audio drifts ~1 s by 2:55; find why and remux.",
+   "has_image": false,
+   "reply_latency_s": 71.366,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 179,
+   "ts": "2026-10-09T19:26:07.763Z",
+   "typed_ts": "2026-10-09T19:26:07.763Z",
+   "delivery": "queued",
+   "topic": "gateway",
+   "paraphrase": "If Vercel AI SDK/gateway is down, route elsewhere through our gateway; never show errors.",
+   "has_image": false,
+   "reply_latency_s": 5.169,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 180,
+   "ts": "2026-10-09T19:29:11.402Z",
+   "typed_ts": "2026-10-09T19:29:11.402Z",
+   "delivery": "queued",
+   "topic": "mobile",
+   "paraphrase": "Switch the Android device to dark mode.",
+   "has_image": false,
+   "reply_latency_s": 1.134,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 181,
+   "ts": "2026-10-09T19:34:54.078Z",
+   "typed_ts": "2026-10-09T19:34:54.078Z",
+   "delivery": "direct",
+   "topic": "video",
+   "paraphrase": "Pull over and analyze another new video.",
+   "has_image": false,
+   "reply_latency_s": 5.35,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 182,
+   "ts": "2026-10-09T19:38:13.553Z",
+   "typed_ts": "2026-10-09T19:38:13.553Z",
+   "delivery": "queued",
+   "topic": "deploy",
+   "paraphrase": "Status? Can we ship to prod? Summarize.",
+   "has_image": false,
+   "reply_latency_s": 18.783,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 183,
+   "ts": "2026-10-09T19:43:39.229Z",
+   "typed_ts": "2026-10-09T19:43:39.229Z",
+   "delivery": "direct",
+   "topic": "video",
+   "paraphrase": "The \"synced\" output is badly out of sync; fix it.",
+   "has_image": false,
+   "reply_latency_s": 3.314,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 184,
+   "ts": "2026-10-09T19:47:20.365Z",
+   "typed_ts": "2026-10-09T19:47:20.365Z",
+   "delivery": "direct",
+   "topic": "misc",
+   "paraphrase": "Check whether a downloaded commercial font package can be distributed in the repo.",
+   "has_image": false,
+   "reply_latency_s": 14.355,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 185,
+   "ts": "2026-10-09T19:47:50.851Z",
+   "typed_ts": "2026-10-09T19:47:50.851Z",
+   "delivery": "queued",
+   "topic": "video",
+   "paraphrase": "Still ~2 s out of sync.",
+   "has_image": false,
+   "reply_latency_s": 2.566,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 186,
+   "ts": "2026-10-09T19:51:15.583Z",
+   "typed_ts": "2026-10-09T19:51:15.583Z",
+   "delivery": "direct",
+   "topic": "chat-answers",
+   "paraphrase": "Jev must not be listed under \"our products\"; remove now.",
+   "has_image": true,
+   "reply_latency_s": 59.669,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 187,
+   "ts": "2026-10-09T19:51:43.089Z",
+   "typed_ts": "2026-10-09T19:51:43.089Z",
+   "delivery": "queued",
+   "topic": "web-ui",
+   "paraphrase": "Double-submit replaced the whole screen with an error; fix.",
+   "has_image": true,
+   "reply_latency_s": 32.163,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 188,
+   "ts": "2026-10-09T19:52:22.177Z",
+   "typed_ts": "2026-10-09T19:52:22.177Z",
+   "delivery": "queued",
+   "topic": "web-ui",
+   "paraphrase": "Home/chat navigation does a full reload; use the HTMX boost behavior; then redeploy.",
+   "has_image": false,
+   "reply_latency_s": 229.54,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 189,
+   "ts": "2026-10-09T19:54:01.069Z",
+   "typed_ts": "2026-10-09T19:54:01.069Z",
+   "delivery": "queued",
+   "topic": "deploy",
+   "paraphrase": "Run smokes on prod too.",
+   "has_image": false,
+   "reply_latency_s": 130.648,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 190,
+   "ts": "2026-10-09T19:54:12.756Z",
+   "typed_ts": "2026-10-09T19:54:12.756Z",
+   "delivery": "queued",
+   "topic": "deploy",
+   "paraphrase": "Add first-party analytics/telemetry; test on staging; ship to prod.",
+   "has_image": false,
+   "reply_latency_s": 118.961,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 191,
+   "ts": "2026-10-09T19:59:15.001Z",
+   "typed_ts": "2026-10-09T19:59:15.001Z",
+   "delivery": "direct",
+   "topic": "deploy",
+   "paraphrase": "Admin-only sign-up/login on staging and prod ASAP; what database?",
+   "has_image": false,
+   "reply_latency_s": 7.175,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 192,
+   "ts": "2026-10-09T20:03:37.339Z",
+   "typed_ts": "2026-10-09T20:03:37.339Z",
+   "delivery": "direct",
+   "topic": "process",
+   "paraphrase": "Find this exact session trace, analyze it (topics, timestamps, subagents) into docs/traces, push.",
+   "has_image": false,
+   "reply_latency_s": 129.849,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 193,
+   "ts": "2026-10-09T20:03:50.807Z",
+   "typed_ts": "2026-10-09T20:03:50.807Z",
+   "delivery": "queued",
+   "topic": "deploy",
+   "paraphrase": "Use Postgres ASAP.",
+   "has_image": false,
+   "reply_latency_s": 116.381,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 194,
+   "ts": "2026-10-09T20:04:41.830Z",
+   "typed_ts": "2026-10-09T20:04:41.830Z",
+   "delivery": "queued",
+   "topic": "terminal",
+   "paraphrase": "Test the trace uploader with it after the database lands.",
+   "has_image": false,
+   "reply_latency_s": 65.358,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 195,
+   "ts": "2026-10-09T20:04:52.615Z",
+   "typed_ts": "2026-10-09T20:04:52.615Z",
+   "delivery": "queued",
+   "topic": "deploy",
+   "paraphrase": "Use a fresh Cloud SQL instance.",
+   "has_image": false,
+   "reply_latency_s": 54.573,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 196,
+   "ts": "2026-10-09T20:05:11.626Z",
+   "typed_ts": "2026-10-09T20:05:11.626Z",
+   "delivery": "queued",
+   "topic": "deploy",
+   "paraphrase": "Consult docs/glossary.md before naming tables.",
+   "has_image": false,
+   "reply_latency_s": 35.562,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 197,
+   "ts": "2026-10-09T20:05:20.389Z",
+   "typed_ts": "2026-10-09T20:05:20.389Z",
+   "delivery": "queued",
+   "topic": "deploy",
+   "paraphrase": "Think through the comprehensive data schema.",
+   "has_image": false,
+   "reply_latency_s": 26.799,
+   "queue_wait_s": 0.0
+  },
+  {
+   "i": 198,
+   "ts": "2026-10-09T20:05:27.036Z",
+   "typed_ts": "2026-10-09T20:05:27.036Z",
+   "delivery": "queued",
+   "topic": "deploy",
+   "paraphrase": "How should it all be organized?",
+   "has_image": false,
+   "reply_latency_s": 20.152,
+   "queue_wait_s": 0.0
+  }
+ ],
+ "compactions": [
+  {
+   "ts": "2026-10-09T04:03:30.197Z",
+   "trigger": "auto",
+   "preTokens": 967344,
+   "postTokens": 11131,
+   "durationMs": 122084
+  },
+  {
+   "ts": "2026-10-09T15:48:12.388Z",
+   "trigger": "auto",
+   "preTokens": 968916,
+   "postTokens": 14858,
+   "durationMs": 101816
+  }
+ ],
+ "usage_limit": [
+  {
+   "ts": "2026-10-09T17:53:52.474Z",
+   "content": "Usage limit reached \u00b7 continuing automatically at 1pm \u00b7 esc to cancel"
+  },
+  {
+   "ts": "2026-10-09T18:01:22.536Z",
+   "content": "Usage limit reset \u00b7 continuing automatically"
+  }
+ ],
+ "main_thread_gaps_over_15min": [
+  {
+   "from_": "2026-10-08T22:51:23.677Z",
+   "to": "2026-10-08T23:07:28.720Z",
+   "minutes": 16.1
+  },
+  {
+   "from_": "2026-10-09T08:38:34.346Z",
+   "to": "2026-10-09T08:54:49.448Z",
+   "minutes": 16.3
+  },
+  {
+   "from_": "2026-10-09T08:54:57.324Z",
+   "to": "2026-10-09T09:14:34.065Z",
+   "minutes": 19.6
+  },
+  {
+   "from_": "2026-10-09T09:14:42.559Z",
+   "to": "2026-10-09T09:38:19.217Z",
+   "minutes": 23.6
+  },
+  {
+   "from_": "2026-10-09T10:01:09.960Z",
+   "to": "2026-10-09T10:56:10.766Z",
+   "minutes": 55.0
+  },
+  {
+   "from_": "2026-10-09T10:56:21.380Z",
+   "to": "2026-10-09T11:38:19.273Z",
+   "minutes": 42.0
+  },
+  {
+   "from_": "2026-10-09T11:52:21.636Z",
+   "to": "2026-10-09T12:42:41.896Z",
+   "minutes": 50.3
+  },
+  {
+   "from_": "2026-10-09T18:12:57.988Z",
+   "to": "2026-10-09T18:29:05.287Z",
+   "minutes": 16.1
+  }
+ ],
+ "owner_sessions": [
+  {
+   "start": "2026-10-08T22:05:50.248Z",
+   "end": "2026-10-08T22:30:27.727Z",
+   "messages": 10
+  },
+  {
+   "start": "2026-10-09T00:03:16.503Z",
+   "end": "2026-10-09T00:03:16.503Z",
+   "messages": 1
+  },
+  {
+   "start": "2026-10-09T01:01:32.622Z",
+   "end": "2026-10-09T01:40:41.685Z",
+   "messages": 14
+  },
+  {
+   "start": "2026-10-09T02:33:12.955Z",
+   "end": "2026-10-09T04:00:01.322Z",
+   "messages": 34
+  },
+  {
+   "start": "2026-10-09T05:01:37.631Z",
+   "end": "2026-10-09T05:37:30.850Z",
+   "messages": 18
+  },
+  {
+   "start": "2026-10-09T12:42:41.896Z",
+   "end": "2026-10-09T13:18:47.166Z",
+   "messages": 17
+  },
+  {
+   "start": "2026-10-09T14:04:11.713Z",
+   "end": "2026-10-09T17:42:48.849Z",
+   "messages": 67
+  },
+  {
+   "start": "2026-10-09T18:37:35.320Z",
+   "end": "2026-10-09T20:05:27.036Z",
+   "messages": 37
+  }
+ ],
+ "agent_launches": [
+  {
+   "n": 1,
+   "ts": "2026-10-08T22:10:20.217Z",
+   "description": "Burn down #10954 WEB-07"
+  },
+  {
+   "n": 2,
+   "ts": "2026-10-08T22:10:25.921Z",
+   "description": "Burn down #10921 compute P1"
+  },
+  {
+   "n": 3,
+   "ts": "2026-10-08T22:10:31.424Z",
+   "description": "Burn down #10559 movement prediction"
+  },
+  {
+   "n": 4,
+   "ts": "2026-10-08T22:10:36.778Z",
+   "description": "Burn down #10955 WEB-08"
+  },
+  {
+   "n": 5,
+   "ts": "2026-10-08T22:10:42.683Z",
+   "description": "Burn down #10903 Everglade town"
+  },
+  {
+   "n": 6,
+   "ts": "2026-10-08T22:17:23.498Z",
+   "description": "Burn down #10996 ENV-01"
+  },
+  {
+   "n": 7,
+   "ts": "2026-10-08T22:25:04.428Z",
+   "description": "Burn down #10997 ENV-02a"
+  },
+  {
+   "n": 8,
+   "ts": "2026-10-08T22:30:49.370Z",
+   "description": "Find and free disk space"
+  },
+  {
+   "n": 9,
+   "ts": "2026-10-08T22:32:20.370Z",
+   "description": "Burn down #11008 BYO-01"
+  },
+  {
+   "n": 10,
+   "ts": "2026-10-08T22:33:46.994Z",
+   "description": "Burn down #11007 CMP-01"
+  },
+  {
+   "n": 11,
+   "ts": "2026-10-08T22:36:53.134Z",
+   "description": "Burn down #10998 ENV-02b"
+  },
+  {
+   "n": 12,
+   "ts": "2026-10-08T22:39:16.269Z",
+   "description": "Fix broken and flaky tests"
+  },
+  {
+   "n": 13,
+   "ts": "2026-10-08T22:46:19.600Z",
+   "description": "Burn down #10922 compute P2"
+  },
+  {
+   "n": 14,
+   "ts": "2026-10-08T22:47:30.165Z",
+   "description": "Burn down #10956 WEB-09"
+  },
+  {
+   "n": 15,
+   "ts": "2026-10-08T22:49:55.912Z",
+   "description": "Burn down #10999 ENV-03"
+  },
+  {
+   "n": 16,
+   "ts": "2026-10-08T22:51:07.992Z",
+   "description": "Burn down #11009 BYO-02"
+  },
+  {
+   "n": 17,
+   "ts": "2026-10-08T23:07:41.043Z",
+   "description": "Finish #10922 Gym league view"
+  },
+  {
+   "n": 18,
+   "ts": "2026-10-08T23:13:26.005Z",
+   "description": "Burn down #11011 BYO-04"
+  },
+  {
+   "n": 19,
+   "ts": "2026-10-08T23:15:01.189Z",
+   "description": "Burn down #11000 ENV-04"
+  },
+  {
+   "n": 20,
+   "ts": "2026-10-08T23:15:49.652Z",
+   "description": "Fix verse-world net timing race"
+  },
+  {
+   "n": 21,
+   "ts": "2026-10-08T23:26:56.675Z",
+   "description": "Burn down #11010 BYO-03"
+  },
+  {
+   "n": 22,
+   "ts": "2026-10-08T23:30:27.696Z",
+   "description": "Burn down #10970 WEB-10"
+  },
+  {
+   "n": 23,
+   "ts": "2026-10-08T23:30:54.040Z",
+   "description": "Burn down #10923 compute P3"
+  },
+  {
+   "n": 24,
+   "ts": "2026-10-08T23:33:27.467Z",
+   "description": "Burn down #11001 ENV-05"
+  },
+  {
+   "n": 25,
+   "ts": "2026-10-08T23:44:06.578Z",
+   "description": "Burn down #10957 WEB-11"
+  },
+  {
+   "n": 26,
+   "ts": "2026-10-08T23:49:57.627Z",
+   "description": "Burn down #10957 WEB-11"
+  },
+  {
+   "n": 27,
+   "ts": "2026-10-08T23:58:34.569Z",
+   "description": "Burn down #11002 ENV-06"
+  },
+  {
+   "n": 28,
+   "ts": "2026-10-09T00:06:44.470Z",
+   "description": "Review ledger change, finish P3"
+  },
+  {
+   "n": 29,
+   "ts": "2026-10-09T00:10:11.095Z",
+   "description": "Burn down #10958 WEB-12"
+  },
+  {
+   "n": 30,
+   "ts": "2026-10-09T00:11:41.121Z",
+   "description": "Burn down #10959 WEB-13"
+  },
+  {
+   "n": 31,
+   "ts": "2026-10-09T00:12:48.219Z",
+   "description": "Burn down #11003 ENV-07"
+  },
+  {
+   "n": 32,
+   "ts": "2026-10-09T00:18:08.943Z",
+   "description": "Burn down #11012 BYO-05"
+  },
+  {
+   "n": 33,
+   "ts": "2026-10-09T00:34:04.793Z",
+   "description": "Burn down #10960 WEB-14"
+  },
+  {
+   "n": 34,
+   "ts": "2026-10-09T00:41:11.602Z",
+   "description": "Burn down #10961 WEB-15"
+  },
+  {
+   "n": 35,
+   "ts": "2026-10-09T00:47:11.589Z",
+   "description": "Burn down #10924 compute P4"
+  },
+  {
+   "n": 36,
+   "ts": "2026-10-09T00:55:39.364Z",
+   "description": "Burn down #10962 WEB-16"
+  },
+  {
+   "n": 37,
+   "ts": "2026-10-09T01:05:00.945Z",
+   "description": "Burn down #11004 ENV-08"
+  },
+  {
+   "n": 38,
+   "ts": "2026-10-09T01:16:06.505Z",
+   "description": "Burn down #10963 WEB-17"
+  },
+  {
+   "n": 39,
+   "ts": "2026-10-09T01:30:25.330Z",
+   "description": "UI-00 tokens and themes"
+  },
+  {
+   "n": 40,
+   "ts": "2026-10-09T01:30:32.234Z",
+   "description": "UI-01 icon enum"
+  },
+  {
+   "n": 41,
+   "ts": "2026-10-09T01:30:39.032Z",
+   "description": "UI-02 action components"
+  },
+  {
+   "n": 42,
+   "ts": "2026-10-09T01:30:45.211Z",
+   "description": "UI-03 form controls"
+  },
+  {
+   "n": 43,
+   "ts": "2026-10-09T01:30:52.581Z",
+   "description": "UI-04 content components"
+  },
+  {
+   "n": 44,
+   "ts": "2026-10-09T01:31:00.435Z",
+   "description": "UI-05 overlays"
+  },
+  {
+   "n": 45,
+   "ts": "2026-10-09T01:31:09.587Z",
+   "description": "UI-06 app shell and composer"
+  },
+  {
+   "n": 46,
+   "ts": "2026-10-09T01:41:09.486Z",
+   "description": "Terminal multiplexing research doc"
+  },
+  {
+   "n": 47,
+   "ts": "2026-10-09T01:54:58.317Z",
+   "description": "UI-07 component catalog"
+  },
+  {
+   "n": 48,
+   "ts": "2026-10-09T01:55:09.670Z",
+   "description": "UI-09 migrate home and chat"
+  },
+  {
+   "n": 49,
+   "ts": "2026-10-09T01:55:20.223Z",
+   "description": "UI-10 migrate Cloud part 1"
+  },
+  {
+   "n": 50,
+   "ts": "2026-10-09T01:55:28.425Z",
+   "description": "UI-12 migrate content pages"
+  },
+  {
+   "n": 51,
+   "ts": "2026-10-09T01:57:08.142Z",
+   "description": "UI-14 native GUI alignment"
+  },
+  {
+   "n": 52,
+   "ts": "2026-10-09T02:09:32.592Z",
+   "description": "Fix inline styles and CSS reset"
+  },
+  {
+   "n": 53,
+   "ts": "2026-10-09T02:12:53.669Z",
+   "description": "UI-11 migrate Cloud part 2"
+  },
+  {
+   "n": 54,
+   "ts": "2026-10-09T02:26:49.063Z",
+   "description": "UI-13 legacy style cleanup"
+  },
+  {
+   "n": 55,
+   "ts": "2026-10-09T02:26:58.106Z",
+   "description": "UI-14 desktop surfaces remainder"
+  },
+  {
+   "n": 56,
+   "ts": "2026-10-09T02:27:07.231Z",
+   "description": "UI-14 mobile Coder Light"
+  },
+  {
+   "n": 57,
+   "ts": "2026-10-09T02:39:18.674Z",
+   "description": "ChatGPT-parity shell and homepage"
+  },
+  {
+   "n": 58,
+   "ts": "2026-10-09T02:39:33.863Z",
+   "description": "Demo page on UI components"
+  },
+  {
+   "n": 59,
+   "ts": "2026-10-09T02:50:57.533Z",
+   "description": "Grow Little Bunny GDD"
+  },
+  {
+   "n": 60,
+   "ts": "2026-10-09T03:09:14.606Z",
+   "description": "Machine-talk sweep: web"
+  },
+  {
+   "n": 61,
+   "ts": "2026-10-09T03:09:23.707Z",
+   "description": "Machine-talk sweep: native apps"
+  },
+  {
+   "n": 62,
+   "ts": "2026-10-09T03:09:32.106Z",
+   "description": "Machine-talk sweep: docs and CLI"
+  },
+  {
+   "n": 63,
+   "ts": "2026-10-09T03:09:47.443Z",
+   "description": "Grow Little Bunny web MVP"
+  },
+  {
+   "n": 64,
+   "ts": "2026-10-09T03:11:28.251Z",
+   "description": "Chat header, scroll button, fixed viewport"
+  },
+  {
+   "n": 65,
+   "ts": "2026-10-09T03:12:47.289Z",
+   "description": "Burn down #11013 offboarding"
+  },
+  {
+   "n": 66,
+   "ts": "2026-10-09T03:15:38.742Z",
+   "description": "Port mobile suggestions to web"
+  },
+  {
+   "n": 67,
+   "ts": "2026-10-09T03:21:26.551Z",
+   "description": "Blue Rush Studios site mockup"
+  },
+  {
+   "n": 68,
+   "ts": "2026-10-09T03:26:05.223Z",
+   "description": "Auth spec and GitHub sign-in"
+  },
+  {
+   "n": 69,
+   "ts": "2026-10-09T03:35:13.082Z",
+   "description": "Cloud reset: plan and teardown"
+  },
+  {
+   "n": 70,
+   "ts": "2026-10-09T03:35:31.622Z",
+   "description": "Real environment onboarding flow"
+  },
+  {
+   "n": 71,
+   "ts": "2026-10-09T03:50:17.300Z",
+   "description": "Fix privacy and data claims everywhere"
+  },
+  {
+   "n": 72,
+   "ts": "2026-10-09T03:53:59.916Z",
+   "description": "Sidebar research, issues, first build"
+  },
+  {
+   "n": 73,
+   "ts": "2026-10-09T04:23:44.200Z",
+   "description": "File privacy gap issues"
+  },
+  {
+   "n": 74,
+   "ts": "2026-10-09T04:36:41.935Z",
+   "description": "Sidebar pin/rename/archive/search"
+  },
+  {
+   "n": 75,
+   "ts": "2026-10-09T04:50:32.153Z",
+   "description": "Web chat delete and expiry #11038"
+  },
+  {
+   "n": 76,
+   "ts": "2026-10-09T05:11:15.141Z",
+   "description": "GitHub repos connect flow #11034"
+  },
+  {
+   "n": 77,
+   "ts": "2026-10-09T05:14:03.029Z",
+   "description": "Inline plugin component in chat"
+  },
+  {
+   "n": 78,
+   "ts": "2026-10-09T05:14:11.584Z",
+   "description": "Coder-to-account linking research"
+  },
+  {
+   "n": 79,
+   "ts": "2026-10-09T05:14:21.315Z",
+   "description": "Fix Claude settings page"
+  },
+  {
+   "n": 80,
+   "ts": "2026-10-09T05:18:50.291Z",
+   "description": "#11039 account-owned web chats"
+  },
+  {
+   "n": 81,
+   "ts": "2026-10-09T05:18:57.993Z",
+   "description": "#11035 sidebar live status"
+  },
+  {
+   "n": 82,
+   "ts": "2026-10-09T05:19:05.955Z",
+   "description": "#11045 Coder device sign-in"
+  },
+  {
+   "n": 83,
+   "ts": "2026-10-09T05:19:12.280Z",
+   "description": "Privacy fixes #11040 #11042 #11043"
+  },
+  {
+   "n": 84,
+   "ts": "2026-10-09T05:33:53.484Z",
+   "description": "Verse lane: #10938 then next"
+  },
+  {
+   "n": 85,
+   "ts": "2026-10-09T05:38:15.491Z",
+   "description": "Verse lane: #10938 then next"
+  },
+  {
+   "n": 86,
+   "ts": "2026-10-09T05:52:42.746Z",
+   "description": "#11046+#11047 Coder chats sync"
+  },
+  {
+   "n": 87,
+   "ts": "2026-10-09T05:52:49.001Z",
+   "description": "#11041 encrypt saved Claude keys"
+  },
+  {
+   "n": 88,
+   "ts": "2026-10-09T05:52:53.285Z",
+   "description": "#11049 coder-new saved chats"
+  },
+  {
+   "n": 89,
+   "ts": "2026-10-09T05:53:01.683Z",
+   "description": "#11032 environments real Boat run"
+  },
+  {
+   "n": 90,
+   "ts": "2026-10-09T06:10:20.554Z",
+   "description": "#11037 chat to environment link"
+  },
+  {
+   "n": 91,
+   "ts": "2026-10-09T06:17:39.369Z",
+   "description": "#11048 continue Coder chat on web"
+  },
+  {
+   "n": 92,
+   "ts": "2026-10-09T06:28:15.200Z",
+   "description": "#11028 remainder desktop engine row"
+  },
+  {
+   "n": 93,
+   "ts": "2026-10-09T06:37:31.327Z",
+   "description": "#11035 and #11031 finish"
+  },
+  {
+   "n": 94,
+   "ts": "2026-10-09T06:37:37.235Z",
+   "description": "#11050 Coder chat on Cloud computer"
+  },
+  {
+   "n": 95,
+   "ts": "2026-10-09T06:37:41.589Z",
+   "description": "#11051 flaky delegation test"
+  },
+  {
+   "n": 96,
+   "ts": "2026-10-09T06:37:47.512Z",
+   "description": "#10993 Boat Codex runs stop"
+  },
+  {
+   "n": 97,
+   "ts": "2026-10-09T06:39:22.082Z",
+   "description": "ENV-09 and ENV-10"
+  },
+  {
+   "n": 98,
+   "ts": "2026-10-09T06:50:56.350Z",
+   "description": "#11052 environments follow-ups"
+  },
+  {
+   "n": 99,
+   "ts": "2026-10-09T07:19:44.159Z",
+   "description": "#11053 retail test + flaky queue"
+  },
+  {
+   "n": 100,
+   "ts": "2026-10-09T07:47:16.155Z",
+   "description": "Verse lane 2: finish and continue"
+  },
+  {
+   "n": 101,
+   "ts": "2026-10-09T10:00:57.648Z",
+   "description": "Verse lane 3: #10559, #10908, #10903"
+  },
+  {
+   "n": 102,
+   "ts": "2026-10-09T12:44:56.718Z",
+   "description": "$20/mo plan with environment allowance"
+  },
+  {
+   "n": 103,
+   "ts": "2026-10-09T12:49:03.176Z",
+   "description": "Audit our flows vs background-agents"
+  },
+  {
+   "n": 104,
+   "ts": "2026-10-09T12:55:12.033Z",
+   "description": "Chat goldens for product flows"
+  },
+  {
+   "n": 105,
+   "ts": "2026-10-09T12:58:01.522Z",
+   "description": "Spec our own inference gateway"
+  },
+  {
+   "n": 106,
+   "ts": "2026-10-09T13:10:15.429Z",
+   "description": "#11072 Pro plan launch wiring"
+  },
+  {
+   "n": 107,
+   "ts": "2026-10-09T13:10:31.517Z",
+   "description": "Gateway P0 #11060 inference crate"
+  },
+  {
+   "n": 108,
+   "ts": "2026-10-09T13:17:26.633Z",
+   "description": "#11057 GitHub read budget and cache"
+  },
+  {
+   "n": 109,
+   "ts": "2026-10-09T13:17:33.785Z",
+   "description": "#11058 #11059 checkout and liveness"
+  },
+  {
+   "n": 110,
+   "ts": "2026-10-09T13:17:43.396Z",
+   "description": "#11056 GitHub App repo access"
+  },
+  {
+   "n": 111,
+   "ts": "2026-10-09T13:19:03.720Z",
+   "description": "Gateway #11061 upstream adapters"
+  },
+  {
+   "n": 112,
+   "ts": "2026-10-09T13:19:10.575Z",
+   "description": "Gateway #11062 measurement and credits"
+  },
+  {
+   "n": 113,
+   "ts": "2026-10-09T13:35:06.671Z",
+   "description": "#11073 fix broken tests on main"
+  },
+  {
+   "n": 114,
+   "ts": "2026-10-09T13:37:22.790Z",
+   "description": "Gateway #11063 finish + #11064 cutover"
+  },
+  {
+   "n": 115,
+   "ts": "2026-10-09T13:38:57.512Z",
+   "description": "Verse lane 4: #10559 and #11055"
+  },
+  {
+   "n": 116,
+   "ts": "2026-10-09T13:41:42.731Z",
+   "description": "#11074 Pro refunds and disputes"
+  },
+  {
+   "n": 117,
+   "ts": "2026-10-09T14:05:29.180Z",
+   "description": "Release audit: web"
+  },
+  {
+   "n": 118,
+   "ts": "2026-10-09T14:05:36.248Z",
+   "description": "Release audit: mobile"
+  },
+  {
+   "n": 119,
+   "ts": "2026-10-09T14:05:42.458Z",
+   "description": "Release audit: desktop"
+  },
+  {
+   "n": 120,
+   "ts": "2026-10-09T14:05:47.820Z",
+   "description": "Release audit: terminal"
+  },
+  {
+   "n": 121,
+   "ts": "2026-10-09T14:07:17.925Z",
+   "description": "UI system inventory across platforms"
+  },
+  {
+   "n": 122,
+   "ts": "2026-10-09T14:17:49.116Z",
+   "description": "Gateway #11065 then #11068, #11067"
+  },
+  {
+   "n": 123,
+   "ts": "2026-10-09T14:17:57.898Z",
+   "description": "Gateway #11066 rate card + #11069 docs"
+  },
+  {
+   "n": 124,
+   "ts": "2026-10-09T14:18:04.366Z",
+   "description": "Gateway #11071 then #11070"
+  },
+  {
+   "n": 125,
+   "ts": "2026-10-09T14:18:17.020Z",
+   "description": "Local full-stack test setup for owner"
+  },
+  {
+   "n": 126,
+   "ts": "2026-10-09T14:47:28.549Z",
+   "description": "Replace dummy plugins with real capabilities"
+  },
+  {
+   "n": 127,
+   "ts": "2026-10-09T14:48:40.586Z",
+   "description": "Sidebar: secondary links to bottom"
+  },
+  {
+   "n": 128,
+   "ts": "2026-10-09T14:49:43.760Z",
+   "description": "Every how-to gets a link or command"
+  },
+  {
+   "n": 129,
+   "ts": "2026-10-09T14:50:07.374Z",
+   "description": "Fold microcoder into the Coder download"
+  },
+  {
+   "n": 130,
+   "ts": "2026-10-09T14:54:36.366Z",
+   "description": "Composer: repo, branch, environment pickers"
+  },
+  {
+   "n": 131,
+   "ts": "2026-10-09T14:56:20.913Z",
+   "description": "Inference CLI, OpenAPI, x402 payments"
+  },
+  {
+   "n": 132,
+   "ts": "2026-10-09T14:57:56.600Z",
+   "description": "Fold ideas from episodes 241-247"
+  },
+  {
+   "n": 133,
+   "ts": "2026-10-09T15:02:25.800Z",
+   "description": "Agent-readiness scan and fixes"
+  },
+  {
+   "n": 134,
+   "ts": "2026-10-09T15:02:34.377Z",
+   "description": "Fix \"(internal)\" error and slow first token"
+  },
+  {
+   "n": 135,
+   "ts": "2026-10-09T15:07:22.016Z",
+   "description": "Fix sign-in state, centering, env speed"
+  },
+  {
+   "n": 136,
+   "ts": "2026-10-09T15:07:41.561Z",
+   "description": "Connect-terminal flow and full sync"
+  },
+  {
+   "n": 137,
+   "ts": "2026-10-09T15:10:14.972Z",
+   "description": "Streamline mobile app to working features"
+  },
+  {
+   "n": 138,
+   "ts": "2026-10-09T15:13:46.862Z",
+   "description": "Move theme toggle to sidebar corner"
+  },
+  {
+   "n": 139,
+   "ts": "2026-10-09T15:20:17.272Z",
+   "description": "Analyze repo size and slim plan"
+  },
+  {
+   "n": 140,
+   "ts": "2026-10-09T15:23:35.629Z",
+   "description": "Docs breadcrumbs with section links"
+  },
+  {
+   "n": 141,
+   "ts": "2026-10-09T15:28:48.827Z",
+   "description": "#11095 homepage questions web + mobile"
+  },
+  {
+   "n": 142,
+   "ts": "2026-10-09T15:41:06.245Z",
+   "description": "#11092 + #11103 desktop + download page"
+  },
+  {
+   "n": 143,
+   "ts": "2026-10-09T15:41:15.861Z",
+   "description": "#11104 launch comms + #11105 ops runbook"
+  },
+  {
+   "n": 144,
+   "ts": "2026-10-09T15:44:30.278Z",
+   "description": "#11109 trace upload API and CLI"
+  },
+  {
+   "n": 145,
+   "ts": "2026-10-09T15:49:02.768Z",
+   "description": "#11110 slim repo checkout"
+  },
+  {
+   "n": 146,
+   "ts": "2026-10-09T16:10:24.595Z",
+   "description": "How coder-new uses Jev"
+  },
+  {
+   "n": 147,
+   "ts": "2026-10-09T16:11:17.549Z",
+   "description": "Study thesysdev/openui for adaptation"
+  },
+  {
+   "n": 148,
+   "ts": "2026-10-09T16:11:28.137Z",
+   "description": "#11112 clean mid-stream rendering"
+  },
+  {
+   "n": 149,
+   "ts": "2026-10-09T16:12:11.941Z",
+   "description": "#11115 Jev % done in coder-new"
+  },
+  {
+   "n": 150,
+   "ts": "2026-10-09T16:31:16.978Z",
+   "description": "#11120 desktop harmonize with web"
+  },
+  {
+   "n": 151,
+   "ts": "2026-10-09T16:36:13.048Z",
+   "description": "#11091 terminal 1.0.0 remainder"
+  },
+  {
+   "n": 152,
+   "ts": "2026-10-09T16:36:19.238Z",
+   "description": "#11108 board status from Coder"
+  },
+  {
+   "n": 153,
+   "ts": "2026-10-09T16:41:06.880Z",
+   "description": "How-to follow-ups after desktop cut"
+  },
+  {
+   "n": 154,
+   "ts": "2026-10-09T16:49:17.521Z",
+   "description": "#11094 staging deploy"
+  },
+  {
+   "n": 155,
+   "ts": "2026-10-09T16:51:04.878Z",
+   "description": "#11093 mobile release build + TestFlight"
+  },
+  {
+   "n": 156,
+   "ts": "2026-10-09T17:20:38.361Z",
+   "description": "Fix coder-new tests broken on main"
+  },
+  {
+   "n": 157,
+   "ts": "2026-10-09T18:01:31.952Z",
+   "description": "#11106 chat quality gate"
+  },
+  {
+   "n": 158,
+   "ts": "2026-10-09T18:08:52.299Z",
+   "description": "Fix coder-new markdown table test"
+  },
+  {
+   "n": 159,
+   "ts": "2026-10-09T18:29:19.078Z",
+   "description": "#11120 desktop harmonize round 2"
+  },
+  {
+   "n": 160,
+   "ts": "2026-10-09T18:38:03.095Z",
+   "description": "#11122 promises registry + roadmap"
+  },
+  {
+   "n": 161,
+   "ts": "2026-10-09T18:45:12.476Z",
+   "description": "#11123 homepage card grid"
+  },
+  {
+   "n": 162,
+   "ts": "2026-10-09T18:47:15.260Z",
+   "description": "#11124 CoderOS four-pane workspace"
+  },
+  {
+   "n": 163,
+   "ts": "2026-10-09T18:50:10.287Z",
+   "description": "#11125 Project Kitchen Sink spec"
+  },
+  {
+   "n": 164,
+   "ts": "2026-10-09T18:56:13.845Z",
+   "description": "Audit deploy pipeline speed"
+  },
+  {
+   "n": 165,
+   "ts": "2026-10-09T18:57:10.706Z",
+   "description": "Terminal auto-update spec + build"
+  },
+  {
+   "n": 166,
+   "ts": "2026-10-09T18:59:47.013Z",
+   "description": "#11126 phone app ChatGPT-style shell"
+  },
+  {
+   "n": 167,
+   "ts": "2026-10-09T19:00:51.907Z",
+   "description": "#11127 durable account storage"
+  },
+  {
+   "n": 168,
+   "ts": "2026-10-09T19:05:29.771Z",
+   "description": "Reframe \"one agent\" in answers and drafts"
+  },
+  {
+   "n": 169,
+   "ts": "2026-10-09T19:06:46.905Z",
+   "description": "Twitter archive pass for Kitchen Sink"
+  },
+  {
+   "n": 170,
+   "ts": "2026-10-09T19:09:59.733Z",
+   "description": "Fast build + promote to production"
+  },
+  {
+   "n": 171,
+   "ts": "2026-10-09T19:11:47.928Z",
+   "description": "PR 11088 review, payments-everything, merge"
+  },
+  {
+   "n": 172,
+   "ts": "2026-10-09T19:26:30.135Z",
+   "description": "Chat failover across providers (#11132)"
+  },
+  {
+   "n": 173,
+   "ts": "2026-10-09T19:32:20.591Z",
+   "description": "#11136 + #11137 payment router and discovery"
+  },
+  {
+   "n": 174,
+   "ts": "2026-10-09T19:43:12.038Z",
+   "description": "#11126 Android port of new phone shell"
+  },
+  {
+   "n": 175,
+   "ts": "2026-10-09T19:53:18.044Z",
+   "description": "Web fixes: double-submit, hx-boost, security.txt; redeploy"
+  },
+  {
+   "n": 176,
+   "ts": "2026-10-09T19:54:57.730Z",
+   "description": "#11153 first-party analytics, staging + prod"
+  },
+  {
+   "n": 177,
+   "ts": "2026-10-09T19:59:41.572Z",
+   "description": "Admin-only sign-in on staging + production"
+  },
+  {
+   "n": 178,
+   "ts": "2026-10-09T20:04:10.487Z",
+   "description": "Analyze this session trace into docs"
+  },
+  {
+   "n": 179,
+   "ts": "2026-10-09T20:05:03.119Z",
+   "description": "#11154 Postgres account store + migrate"
+  },
+  {
+   "n": 180,
+   "ts": "2026-10-09T20:06:48.179Z",
+   "description": "API design doc: public vs internal map"
+  }
+ ]
+}
