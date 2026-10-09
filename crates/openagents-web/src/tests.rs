@@ -1016,7 +1016,6 @@ async fn application_styles_share_coder_noir_roles() {
     for path in [
         "/static/legacy-demo.css",
         "/components/assets/components.css",
-        "/components/assets/demo.css",
     ] {
         let (status, css) = get(router(config(root.path().into())), path).await;
         assert_eq!(status, StatusCode::OK, "{path}");
@@ -1057,7 +1056,17 @@ fn stylesheet_links(page: &str) -> Vec<String> {
 /// The pages in the Coder Light / Coder Noir design language that need no
 /// sign-in: every public page, the component catalog, and the problem page.
 fn ui_pages() -> Vec<&'static str> {
-    PAGES.iter().copied().chain(["/ui", "/nope"]).collect()
+    PAGES
+        .iter()
+        .copied()
+        .chain([
+            "/ui",
+            "/nope",
+            "/demo",
+            "/demo/lease-fix",
+            "/demo/benchmark",
+        ])
+        .collect()
 }
 
 /// UI-13: a `UiPage` page links one stylesheet, `/static/ui.css`, within
@@ -1130,7 +1139,7 @@ async fn ui_pages_carry_no_inline_style() {
 }
 
 /// UI-13: the legacy site stylesheet, Tailwind, and the retired terminal
-/// script are gone; only `/demo` and the full-screen canvas pages load the
+/// script are gone; only the full-screen canvas pages load the
 /// small Coder Noir stylesheet they keep.
 #[tokio::test]
 async fn the_legacy_styles_are_removed() {
