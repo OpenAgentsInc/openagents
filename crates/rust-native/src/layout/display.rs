@@ -213,6 +213,10 @@ pub enum WidgetKind {
     Spinner,
     /// The control that loads older rows.
     Earlier { loading: bool },
+    /// A surface the adapter draws itself, such as a link's preview card,
+    /// in the box the layout reserved for it: a [`crate::view::Element::Surface`]
+    /// with a `min_height` in its style. Its label is the spoken text.
+    Surface { resource: String, label: String },
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]

@@ -63,8 +63,7 @@ pub struct Launch {
     pub pulled_transcripts: bool,
     /// The host draws the phone's shell (#11126): the top bar with the
     /// Chat / Code switch, the drawer, and the feature cards, from the
-    /// packet's `shell`. The iOS host sets it; the Android host draws the
-    /// tab's own header.
+    /// packet's `shell`. Both phone hosts set it.
     #[serde(default)]
     pub shell: bool,
     /// Run the Wallet tab on an offline fixture wallet, for simulator
@@ -709,6 +708,11 @@ pub struct Packet {
     pub coder: Option<serde_json::Value>,
     /// The phone's shell, when the host draws it (`Launch::shell`).
     pub shell: Option<crate::coder_tab::ShellView>,
+    /// The link cards the chat shows, by surface resource (`link:…`): the
+    /// link a tap opens, the title and site, and whether the card has a
+    /// picture, read as that surface's image.
+    #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub links: std::collections::BTreeMap<String, openagents_chat_app::links::Card>,
     /// The open Coder chat changes on its own, as while its task runs: ask
     /// for a packet again soon.
     pub coder_live: bool,
@@ -801,6 +805,8 @@ const ADMISSION_LIMIT: Duration = Duration::from_secs(5);
 
 pub struct App {
     runtime: tokio::runtime::Runtime,
+    /// The link cards' page reads in flight (`link_fetch`).
+    link_reads: Arc<tokio::sync::Semaphore>,
     native_computers: bool,
     /// The device key. It leaves the app only through an explicit
     /// [`Request::Account`] reveal.
@@ -1065,6 +1071,7 @@ impl App {
         };
         Ok(Self {
             runtime,
+            link_reads: Arc::new(tokio::sync::Semaphore::new(crate::link_fetch::AT_ONCE)),
             native_computers: launch.native_computers,
             secret,
             state_dir: config.state_dir.clone(),
@@ -1202,6 +1209,15 @@ impl App {
     /// the attachments code already decoded and bounded; empty when the
     /// open draft has no such image.
     pub fn image(&self, resource: &str) -> Vec<u8> {
+        // A link card's picture, already re-encoded (`links::card_image`).
+        if resource.starts_with("link:") {
+            return self
+                .coder
+                .link_previews()
+                .image(resource)
+                .map(|image| image.as_ref().clone())
+                .unwrap_or_default();
+        }
         self.coder
             .image(resource)
             .map(|image| image.bytes.as_ref().clone())
@@ -2129,6 +2145,9 @@ impl App {
         }
         let coder = self.coder.render(self.computers.as_ref(), &mut self.chats);
         let shell = self.coder.shell_view(self.computers.as_ref(), &self.chats);
+        let previews = self.coder.link_previews();
+        crate::link_fetch::fetch_wanted(&previews, self.runtime.handle(), &self.link_reads);
+        let links = previews.shown();
         let gym = self.coder.gym_view();
         for code in self.coder.gym.take_logged() {
             self.playtest.event(code);
@@ -2148,6 +2167,7 @@ impl App {
             self.coder.notice_shown(),
         );
         let coder_live = self.coder.live(self.computers.as_ref())
+            || previews.pending()
             || self.spend.live()
             || self.wallet_link.live();
         crate::wake::set_live(coder_live);
@@ -2190,6 +2210,7 @@ impl App {
                 }),
             coder,
             shell,
+            links,
             // A payment request on the sheet keeps packets coming too.
             coder_live,
             chat_streaming: self.coder.streaming(),

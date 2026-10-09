@@ -105,6 +105,12 @@ impl CoderTab {
         self
     }
 
+    /// The link cards' shared state: the app reads the pages they ask for.
+    #[must_use]
+    pub fn link_previews(&self) -> crate::links::LinkPreviews {
+        self.links.clone()
+    }
+
     /// The composer's words for a message to OpenAgents.
     pub(super) fn ask_words(&self) -> &'static str {
         if self.shell.on {
@@ -282,13 +288,15 @@ impl CoderTab {
             "Work with Coder"
         } else {
             // The host draws the cards and fills the screen with them.
-            children.push(node(
+            let mut cards = node(
                 "shell-cards",
                 Element::Surface {
                     resource: "home-cards".into(),
                     label: "What's new".into(),
                 },
-            ));
+            );
+            cards.style.fill_height = Some(true);
+            children.push(cards);
             self.ask_words()
         };
         children.extend(self.attachments());
@@ -548,6 +556,53 @@ pub(super) fn worked(
     }
 }
 
+/// After each reply that names web links, a card for each (#11126): the
+/// page's title, its site, and its picture once read ([`crate::links`]).
+/// The host draws the card in the box the transcript reserves for it.
+pub(super) fn link_cards(
+    rows: &mut Vec<Node<Intent>>,
+    turns: &[openagents_chat::basic_coder::Turn],
+    previews: &crate::links::LinkPreviews,
+) {
+    use crate::links;
+    use openagents_chat::basic_coder::Role;
+    let mut at = rows.len();
+    while at > 0 {
+        at -= 1;
+        let Some(index) = rows[at]
+            .key
+            .strip_prefix("talk-m")
+            .and_then(|rest| rest.parse::<usize>().ok())
+        else {
+            continue;
+        };
+        let Some(turn) = turns.get(index).filter(|turn| turn.role == Role::Assistant) else {
+            continue;
+        };
+        for (n, url) in links::answer_links(&turn.text).iter().enumerate().rev() {
+            let card = previews.card(url);
+            let label = if card.title == card.site {
+                card.site.clone()
+            } else {
+                format!("{}, {}", card.title, card.site)
+            };
+            let mut row = node(
+                &format!("talk-l{index}-{n}"),
+                Element::Surface {
+                    resource: links::resource(url),
+                    label,
+                },
+            );
+            row.style.min_height = Some(if card.image {
+                links::IMAGE_CARD_HEIGHT
+            } else {
+                links::PLAIN_CARD_HEIGHT
+            });
+            rows.insert(at + 1, row);
+        }
+    }
+}
+
 /// `7s`, `1m 5s`, `2m`.
 fn duration(seconds: u64) -> String {
     match (seconds / 60, seconds % 60) {
@@ -590,6 +645,58 @@ mod tests {
         assert_eq!(children.len(), 2);
         assert_eq!(duration(65), "1m 5s");
         assert_eq!(duration(120), "2m");
+    }
+
+    #[test]
+    fn replies_with_links_get_cards_after_them() {
+        use openagents_chat::basic_coder::Role;
+        let asked = Turn::user("where is the roadmap? https://ignored.example.com");
+        let mut answered = Turn::user(
+            "It's at [the roadmap](https://openagents.com/roadmap) and https://github.com/OpenAgentsInc.",
+        );
+        answered.role = Role::Assistant;
+        let turns = vec![asked, answered];
+        let mut rows: Vec<Node<Intent>> = (0..2)
+            .map(|index| status(&format!("talk-m{index}"), "x"))
+            .collect();
+        let previews = crate::links::LinkPreviews::default();
+        link_cards(&mut rows, &turns, &previews);
+        let keys: Vec<_> = rows.iter().map(|row| row.key.as_str()).collect();
+        assert_eq!(keys, ["talk-m0", "talk-m1", "talk-l1-0", "talk-l1-1"]);
+        let Element::Surface { resource, label } = &rows[2].element else {
+            panic!("a surface");
+        };
+        assert_eq!(
+            resource,
+            &crate::links::resource("https://openagents.com/roadmap")
+        );
+        assert_eq!(label, "openagents.com");
+        assert_eq!(
+            rows[2].style.min_height,
+            Some(crate::links::PLAIN_CARD_HEIGHT)
+        );
+        assert_eq!(previews.take_wanted().len(), 2);
+        // A page with a picture makes a taller card.
+        previews.finish(
+            "https://openagents.com/roadmap",
+            Some(crate::links::Preview {
+                title: Some("Roadmap".into()),
+                site: Some("OpenAgents".into()),
+                image: Some(std::sync::Arc::new(vec![0])),
+            }),
+        );
+        let mut again: Vec<Node<Intent>> = (0..2)
+            .map(|index| status(&format!("talk-m{index}"), "x"))
+            .collect();
+        link_cards(&mut again, &turns, &previews);
+        assert_eq!(
+            again[2].style.min_height,
+            Some(crate::links::IMAGE_CARD_HEIGHT)
+        );
+        let Element::Surface { label, .. } = &again[2].element else {
+            panic!("a surface");
+        };
+        assert_eq!(label, "Roadmap, OpenAgents");
     }
 
     #[test]

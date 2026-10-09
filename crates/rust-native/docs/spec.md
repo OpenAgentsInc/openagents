@@ -273,7 +273,10 @@ adapter presents them, not a separate wire contract.
   UTF-16 ranges, `x`, and baseline, rounded rectangles for bubbles, code
   blocks, quotes, tables, rules, and inline code, inert link rectangles, and
   native widgets (copy, disclosure toggle and chevron, tool state, checkbox,
-  working indicator, spinner, and the earlier control). Code blocks keep their
+  working indicator, spinner, the earlier control, and a `surface` box: a
+  `Surface` row with a `min_height` reserves that height, at most 360 points
+  wide and 480 tall, for the adapter to draw the resource in, such as a
+  link's preview card; without one it shows its label). Code blocks keep their
   lines, and a code block or table wider than the row becomes a sideways
   scroller: a clip rectangle, a content width, and the ranges of runs,
   rectangles, and links that scroll inside it. Lines longer than 8,192 points

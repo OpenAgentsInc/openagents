@@ -490,6 +490,8 @@ pub struct CoderTab {
     /// The phone's shell (#11126): the host draws the top bar, the drawer,
     /// and the feature cards, from [`CoderTab::shell_view`].
     shell: shell::Shell,
+    /// The link cards under replies, and the pages they still need read.
+    links: crate::links::LinkPreviews,
 }
 
 /// A read of an ended Coder task's chat for the one line its start card
@@ -566,6 +568,7 @@ impl CoderTab {
             outcome_tried: std::collections::BTreeSet::new(),
             attachments: ATTACHMENTS_ENABLED,
             shell: shell::Shell::default(),
+            links: crate::links::LinkPreviews::default(),
         }
     }
 
@@ -2926,6 +2929,7 @@ impl CoderTab {
             self.basic.want_rank(candidates);
         }
         self.revision += 1;
+        self.links.begin_view();
         let view = loop {
             let mut root = match (&self.open, &self.talk) {
                 _ if self.drawer => self.previous(computers, chats),
@@ -3491,6 +3495,7 @@ impl CoderTab {
         let failed = rows.last().is_some_and(|row| row.key == "talk-failed");
         if self.shell.on {
             shell::worked(&mut rows, self.basic.turns(id), skipped);
+            shell::link_cards(&mut rows, self.basic.turns(id), &self.links);
         }
         // What a proposed command printed scrolls with the conversation,
         // so a long result never pushes the composer off the screen.

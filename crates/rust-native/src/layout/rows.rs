@@ -25,6 +25,10 @@ pub const MAX_SCROLL_WIDTH: f32 = 8_192.0;
 /// The widest a table column grows, at the default text size, before its
 /// cells wrap.
 pub const MAX_COLUMN_WIDTH: f32 = 260.0;
+/// The widest an adapter-drawn surface in a transcript grows.
+pub const SURFACE_WIDTH: f32 = 360.0;
+/// The tallest an adapter-drawn surface in a transcript grows.
+pub const SURFACE_HEIGHT: f32 = 480.0;
 
 /// The horizontal band a row's content occupies at `width`.
 pub fn content_band(width: f32) -> (f32, f32) {
@@ -930,6 +934,28 @@ impl Ctx<'_> {
                     },
                 );
                 height
+            }
+            // A surface with a height is drawn by the adapter in the box
+            // reserved here, at most a reading card's width; one without
+            // shows its label.
+            Element::Surface { resource, label } if node.style.min_height.is_some() => {
+                let h = f32::from(node.style.min_height.unwrap_or_default()).min(SURFACE_HEIGHT);
+                let w = w.min(SURFACE_WIDTH);
+                let mut bounds = rect(x, y, w, h, 14.0);
+                bounds.fill = Some(Ink::Role(ColorRole::Raised));
+                bounds.stroke = Some(Ink::Role(ColorRole::Border));
+                self.out.rects.push(bounds);
+                self.widget(
+                    x,
+                    y,
+                    w,
+                    h,
+                    WidgetKind::Surface {
+                        resource: resource.clone(),
+                        label: label.clone(),
+                    },
+                );
+                h
             }
             Element::Surface { label, .. } => {
                 let style = self.style(15.0, Weight::Regular, SECONDARY);

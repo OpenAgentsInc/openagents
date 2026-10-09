@@ -37,6 +37,7 @@ mod connect;
 mod eval_cards;
 mod first_run;
 mod gym;
+mod link_fetch;
 mod nearby;
 // Debug builds only: offline fixtures for simulator and emulator screenshots.
 // A release build does not compile them.

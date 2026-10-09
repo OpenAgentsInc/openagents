@@ -18,6 +18,7 @@ pub mod gym;
 pub mod host_threads;
 pub mod hosted;
 pub mod landing;
+pub mod links;
 pub mod outbox;
 pub mod preferences;
 pub mod route_map;

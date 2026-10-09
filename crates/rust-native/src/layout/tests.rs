@@ -1276,3 +1276,38 @@ fn pill_and_intrinsic_buttons_hug_their_labels() {
     assert_eq!(pill_rect.w, pill.w);
     assert!(pill_rect.radii[0] > 7.0, "a capsule: {pill_rect:?}");
 }
+
+#[test]
+fn a_surface_with_a_height_reserves_a_box_for_the_adapter() {
+    let mut layout = TranscriptLayout::new();
+    let mut measurer = FixedMeasurer::default();
+    let mut card = node(
+        "card",
+        Element::Surface {
+            resource: "link:5f2b1c".into(),
+            label: "Example\nexample.com".into(),
+        },
+    );
+    card.style.min_height = Some(220);
+    let plain = node(
+        "plain",
+        Element::Surface {
+            resource: "link:5f2b1c".into(),
+            label: "Example".into(),
+        },
+    );
+    layout
+        .update(update(vec![card, plain], 800.0), &mut measurer)
+        .unwrap();
+    let display = layout.display(0).unwrap().clone();
+    let widget = display.widgets.first().expect("a surface widget");
+    assert!(matches!(
+        &widget.kind,
+        WidgetKind::Surface { resource, .. } if resource == "link:5f2b1c"
+    ));
+    assert_eq!(widget.h, 220.0);
+    assert!(widget.w <= rows::SURFACE_WIDTH);
+    assert!(layout.placement(0).unwrap().height >= 220.0);
+    // Without a height the label shows, and the adapter draws nothing.
+    assert!(layout.display(1).unwrap().widgets.is_empty());
+}
