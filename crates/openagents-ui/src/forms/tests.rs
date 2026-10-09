@@ -84,7 +84,11 @@ fn textarea_auto_grow_uses_alpine_component_name_only() {
             .max_rows(8),
     );
     assert!(out.contains(r#"x-data="oaTextareaAutogrow""#));
-    assert!(out.contains("--textarea-min-rows: 2; --textarea-max-rows: 8;"));
+    assert!(out.contains(r#"data-min-rows="2" data-max-rows="8""#));
+    assert!(!out.contains(" style="));
+    let clamped = html(Textarea::new("long").min_rows(40).max_rows(90));
+    assert!(clamped.contains(r#"data-min-rows="12" data-max-rows="24""#));
+    assert!(clamped.contains(r#"rows="40""#));
     assert!(out.contains("&lt;b&gt;hi&lt;/b&gt;"));
     let plain = html(Textarea::new("notes"));
     assert!(!plain.contains("x-data"));
@@ -148,7 +152,9 @@ fn slider_is_a_native_range() {
             r#"type="range" id="temp" name="temp" min="0" max="2" step="0.1" value="0.5""#
         )
     );
-    assert!(out.contains("--oa-slider-fill: 25.00%;"));
+    assert!(out.contains(r#"data-fill="25""#));
+    assert!(!out.contains(" style="));
+    assert!(html(Slider::new("t").value(33.0)).contains(r#"data-fill="35""#));
     assert!(out.contains(r#"<label for="temp">Temperature</label>"#));
     assert!(out.contains(r#"<output class="oa-slider__value" for="temp">"#));
 }

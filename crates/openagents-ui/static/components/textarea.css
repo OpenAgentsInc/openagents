@@ -35,6 +35,153 @@
   transition-timing-function: var(--transition-ease-basic);
 }
 
+/* Row presets. The site CSP blocks inline style attributes, so Textarea
+   emits data-min-rows (1-12) and data-max-rows (1-24) and these rules map
+   them onto the row variables. */
+.oa-textarea[data-min-rows="1"] {
+  --textarea-min-rows: 1;
+}
+
+.oa-textarea[data-min-rows="2"] {
+  --textarea-min-rows: 2;
+}
+
+.oa-textarea[data-min-rows="3"] {
+  --textarea-min-rows: 3;
+}
+
+.oa-textarea[data-min-rows="4"] {
+  --textarea-min-rows: 4;
+}
+
+.oa-textarea[data-min-rows="5"] {
+  --textarea-min-rows: 5;
+}
+
+.oa-textarea[data-min-rows="6"] {
+  --textarea-min-rows: 6;
+}
+
+.oa-textarea[data-min-rows="7"] {
+  --textarea-min-rows: 7;
+}
+
+.oa-textarea[data-min-rows="8"] {
+  --textarea-min-rows: 8;
+}
+
+.oa-textarea[data-min-rows="9"] {
+  --textarea-min-rows: 9;
+}
+
+.oa-textarea[data-min-rows="10"] {
+  --textarea-min-rows: 10;
+}
+
+.oa-textarea[data-min-rows="11"] {
+  --textarea-min-rows: 11;
+}
+
+.oa-textarea[data-min-rows="12"] {
+  --textarea-min-rows: 12;
+}
+
+.oa-textarea[data-max-rows="1"] {
+  --textarea-max-rows: 1;
+}
+
+.oa-textarea[data-max-rows="2"] {
+  --textarea-max-rows: 2;
+}
+
+.oa-textarea[data-max-rows="3"] {
+  --textarea-max-rows: 3;
+}
+
+.oa-textarea[data-max-rows="4"] {
+  --textarea-max-rows: 4;
+}
+
+.oa-textarea[data-max-rows="5"] {
+  --textarea-max-rows: 5;
+}
+
+.oa-textarea[data-max-rows="6"] {
+  --textarea-max-rows: 6;
+}
+
+.oa-textarea[data-max-rows="7"] {
+  --textarea-max-rows: 7;
+}
+
+.oa-textarea[data-max-rows="8"] {
+  --textarea-max-rows: 8;
+}
+
+.oa-textarea[data-max-rows="9"] {
+  --textarea-max-rows: 9;
+}
+
+.oa-textarea[data-max-rows="10"] {
+  --textarea-max-rows: 10;
+}
+
+.oa-textarea[data-max-rows="11"] {
+  --textarea-max-rows: 11;
+}
+
+.oa-textarea[data-max-rows="12"] {
+  --textarea-max-rows: 12;
+}
+
+.oa-textarea[data-max-rows="13"] {
+  --textarea-max-rows: 13;
+}
+
+.oa-textarea[data-max-rows="14"] {
+  --textarea-max-rows: 14;
+}
+
+.oa-textarea[data-max-rows="15"] {
+  --textarea-max-rows: 15;
+}
+
+.oa-textarea[data-max-rows="16"] {
+  --textarea-max-rows: 16;
+}
+
+.oa-textarea[data-max-rows="17"] {
+  --textarea-max-rows: 17;
+}
+
+.oa-textarea[data-max-rows="18"] {
+  --textarea-max-rows: 18;
+}
+
+.oa-textarea[data-max-rows="19"] {
+  --textarea-max-rows: 19;
+}
+
+.oa-textarea[data-max-rows="20"] {
+  --textarea-max-rows: 20;
+}
+
+.oa-textarea[data-max-rows="21"] {
+  --textarea-max-rows: 21;
+}
+
+.oa-textarea[data-max-rows="22"] {
+  --textarea-max-rows: 22;
+}
+
+.oa-textarea[data-max-rows="23"] {
+  --textarea-max-rows: 23;
+}
+
+.oa-textarea[data-max-rows="24"] {
+  --textarea-max-rows: 24;
+}
+
 /* Sizes */
 .oa-textarea:where([data-size="3xs"]) {
   --textarea-base-height: var(--control-size-3xs);

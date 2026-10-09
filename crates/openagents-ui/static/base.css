@@ -1,7 +1,9 @@
 /* openagents-ui base layer: theme selection and opinionated globals.
    Ported from Apps SDK UI src/styles/globals.css and base.css (MIT, see
-   crates/openagents-ui/NOTICE). No preflight: openagents-web keeps its own
-   resets until pages move over. */
+   crates/openagents-ui/NOTICE). No global preflight: openagents-web keeps
+   its own resets until pages move over. The reset below is scoped to oa-
+   elements and sits in @layer base, so every @layer components rule (and
+   any unlayered page rule) beats it regardless of specificity. */
 @layer base {
   /* No data-theme: follow the system setting. data-theme pins a theme on
      <html> or on any element (themes nest, e.g. a dark terminal panel). */
@@ -45,5 +47,39 @@
   b,
   strong {
     font-weight: var(--font-weight-semibold);
+  }
+
+  /* Scoped component reset: oa- elements size by border box, and native
+     form controls carrying an oa- class drop browser borders, backgrounds,
+     margins and fonts so component CSS starts from a blank control. */
+  :where([class^="oa-"], [class*=" oa-"]),
+  :where([class^="oa-"], [class*=" oa-"])::before,
+  :where([class^="oa-"], [class*=" oa-"])::after {
+    box-sizing: border-box;
+  }
+
+  :where(button, input, select, textarea):where([class^="oa-"], [class*=" oa-"]) {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    letter-spacing: inherit;
+  }
+
+  /* Checkboxes and radios are invisible hit targets over drawn indicators,
+     and the slider styles its own track; they keep native appearance here. */
+  :where(button, select, textarea, input:not([type="checkbox"], [type="radio"], [type="range"])):where([class^="oa-"], [class*=" oa-"]) {
+    appearance: none;
+  }
+
+  :where(button):where([class^="oa-"], [class*=" oa-"]) {
+    cursor: pointer;
+  }
+
+  :where(button):where([class^="oa-"], [class*=" oa-"]):disabled {
+    cursor: not-allowed;
   }
 }

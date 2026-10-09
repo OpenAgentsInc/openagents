@@ -170,16 +170,11 @@ fn ids_are_unique_and_never_clash_with_the_page_shell() {
 #[test]
 fn csp_safe_no_inline_styles_or_scripts() {
     let html = catalog().to_ascii_lowercase();
-    // The catalog adds no inline styles. Textarea and Slider (UI-03) still
-    // set their custom properties through `style` (`--textarea-*-rows`,
-    // `--oa-slider-fill`), which `style-src 'self'` drops; those are the
-    // only ones allowed here until the components move them to classes.
-    for style in attr_values(&html, "style") {
-        assert!(
-            style.starts_with("--textarea-min-rows:") || style.starts_with("--oa-slider-fill:"),
-            "inline style {style}"
-        );
-    }
+    // `style-src 'self'` drops inline style attributes, so no component
+    // emits one: Textarea and Slider use data-attribute presets instead.
+    let styles = attr_values(&html, "style");
+    assert!(styles.is_empty(), "inline styles {styles:?}");
+    assert!(!html.contains(" style="), "inline style attribute");
     assert!(!html.contains("<style"), "style element");
     assert!(!html.contains("<script"), "script element");
     for handler in [

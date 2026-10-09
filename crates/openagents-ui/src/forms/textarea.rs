@@ -2,6 +2,11 @@ use maud::{Markup, Render, html};
 
 use super::{ControlSize, FieldAria, Variant};
 
+/// Largest `data-min-rows` value textarea.css has a preset for.
+const MAX_MIN_ROWS_PRESET: u32 = 12;
+/// Largest `data-max-rows` value textarea.css has a preset for.
+const MAX_MAX_ROWS_PRESET: u32 = 24;
+
 /// A native `<textarea>` in the Apps SDK UI Textarea container.
 ///
 /// With [`Textarea::auto_grow`] the field grows with its content between
@@ -132,7 +137,10 @@ impl Render for Textarea {
         let id = self.aria.id.clone().unwrap_or_else(|| self.name.clone());
         let min_rows = self.min_rows.unwrap_or(self.rows);
         let max_rows = self.max_rows.unwrap_or(min_rows.max(12)).max(min_rows);
-        let style = format!("--textarea-min-rows: {min_rows}; --textarea-max-rows: {max_rows};");
+        // CSP-safe sizing: textarea.css maps these onto presets (min 1-12,
+        // max 1-24); the native `rows` keeps the exact minimum.
+        let min_preset = min_rows.clamp(1, MAX_MIN_ROWS_PRESET);
+        let max_preset = max_rows.clamp(min_preset, MAX_MAX_ROWS_PRESET);
         html! {
             span.oa-textarea
                 data-variant=(self.variant.as_str())
@@ -141,7 +149,8 @@ impl Render for Textarea {
                 data-invalid[self.aria.invalid]
                 data-auto-grow[self.auto_grow]
                 x-data=[self.auto_grow.then_some("oaTextareaAutogrow")]
-                style=(style)
+                data-min-rows=(min_preset)
+                data-max-rows=(max_preset)
             {
                 textarea.oa-textarea__control
                     id=(id)

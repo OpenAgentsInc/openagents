@@ -116,7 +116,9 @@ fn number(value: f64) -> String {
 impl Render for Slider {
     fn render(&self) -> Markup {
         let id = self.aria.id.clone().unwrap_or_else(|| self.name.clone());
-        let style = format!("--oa-slider-fill: {:.2}%;", self.fill_percent());
+        // CSP-safe fill: slider.css has a preset per 5%; oaSlider sets the
+        // exact value through the CSSOM once Alpine starts.
+        let fill = ((self.fill_percent() / 5.0).round() as u32) * 5;
         html! {
             div.oa-slider x-data="oaSlider" {
                 @if self.label.is_some() || self.unit.is_some() {
@@ -142,7 +144,7 @@ impl Render for Slider {
                     max=(number(self.max))
                     step=(number(self.step))
                     value=(number(self.value))
-                    style=(style)
+                    data-fill=(fill)
                     aria-label=[self.aria_label.as_deref()]
                     aria-describedby=[self.aria.described_by.as_deref()]
                     aria-invalid=[self.aria.invalid_attr()]

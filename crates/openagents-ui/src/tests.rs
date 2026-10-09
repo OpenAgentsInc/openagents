@@ -1,6 +1,85 @@
 use super::*;
 use std::path::Path;
 
+/// The site CSP is `style-src 'self'`, which drops inline `style` attributes,
+/// so no component source may emit one: every rendering path is scanned
+/// (tests excluded), covering maud `style=` attributes and string-built
+/// markup alike. Runtime values go through data-attribute presets in CSS or
+/// through the CSSOM from the component scripts.
+#[test]
+fn no_component_source_emits_an_inline_style_attribute() {
+    fn visit(dir: &Path, hits: &mut Vec<String>) {
+        for entry in std::fs::read_dir(dir).expect("read src dir").flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                visit(&path, hits);
+                continue;
+            }
+            let name = path.file_name().unwrap().to_string_lossy();
+            if !name.ends_with(".rs") || name == "tests.rs" {
+                continue;
+            }
+            let source = std::fs::read_to_string(&path).expect("read source");
+            for (index, line) in source.lines().enumerate() {
+                let code = line.trim_start();
+                if code.starts_with("//") {
+                    continue;
+                }
+                let code = code.split(" //").next().unwrap_or(code);
+                if code.starts_with("style=")
+                    || code.contains(" style=")
+                    || code.contains("\"style\"")
+                {
+                    hits.push(format!("{}:{}: {}", path.display(), index + 1, line.trim()));
+                }
+            }
+        }
+    }
+    let mut hits = Vec::new();
+    visit(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
+        &mut hits,
+    );
+    assert!(
+        hits.is_empty(),
+        "inline style attributes:\n{}",
+        hits.join("\n")
+    );
+}
+
+/// Every component, in every variant the catalog shows, renders without an
+/// inline `style` attribute (`style-src 'self'` would drop it).
+#[test]
+fn every_rendered_component_carries_no_inline_style() {
+    let markup = crate::catalog::render().into_string().to_ascii_lowercase();
+    assert!(
+        !markup.contains(" style="),
+        "inline style attribute in catalog"
+    );
+    assert!(!markup.contains("<style"), "style element in catalog");
+}
+
+#[test]
+fn base_reset_is_scoped_to_oa_elements_in_the_base_layer() {
+    let css =
+        std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("static/base.css"))
+            .expect("base.css");
+    let body = css.split_once("@layer base {").expect("base layer").1;
+    for rule in [
+        "box-sizing: border-box;",
+        "font: inherit;",
+        "background: transparent;",
+        "border: 0;",
+        "appearance: none;",
+    ] {
+        assert!(body.contains(rule), "reset sets {rule}");
+    }
+    // Zero specificity and scoped: every reset selector is a :where() on oa-
+    // classes, and checkbox, radio and range inputs keep native appearance.
+    assert!(body.contains(r#":where([class^="oa-"], [class*=" oa-"])"#));
+    assert!(body.contains(r#"input:not([type="checkbox"], [type="radio"], [type="range"])"#));
+}
+
 #[test]
 fn stylesheet_bundles_tokens_base_and_every_component_file() {
     let css = stylesheet();

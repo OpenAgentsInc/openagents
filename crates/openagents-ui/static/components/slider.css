@@ -1,8 +1,11 @@
 /*
  * Slider. Ported from Apps SDK UI `Slider.module.css` (MIT, see NOTICE) onto a
- * native <input type="range">. The filled range uses `--oa-slider-fill`, set
- * by the server and kept current by the `oaSlider` Alpine component; Firefox
- * draws it natively with ::-moz-range-progress.
+ * native <input type="range">. The filled range uses `--oa-slider-fill`. The
+ * site CSP blocks inline style attributes, so the server emits the initial
+ * fill rounded to 5% as `data-fill` (mapped by the presets below) and the
+ * `oaSlider` Alpine component sets the exact value through the CSSOM
+ * (`style.setProperty`, which CSP allows) as the value changes. Firefox draws
+ * the fill natively with ::-moz-range-progress.
  */
 .oa-slider {
   position: relative;
@@ -46,6 +49,90 @@
   background: transparent;
   cursor: pointer;
   touch-action: none;
+}
+
+.oa-slider__input[data-fill="0"] {
+  --oa-slider-fill: 0%;
+}
+
+.oa-slider__input[data-fill="5"] {
+  --oa-slider-fill: 5%;
+}
+
+.oa-slider__input[data-fill="10"] {
+  --oa-slider-fill: 10%;
+}
+
+.oa-slider__input[data-fill="15"] {
+  --oa-slider-fill: 15%;
+}
+
+.oa-slider__input[data-fill="20"] {
+  --oa-slider-fill: 20%;
+}
+
+.oa-slider__input[data-fill="25"] {
+  --oa-slider-fill: 25%;
+}
+
+.oa-slider__input[data-fill="30"] {
+  --oa-slider-fill: 30%;
+}
+
+.oa-slider__input[data-fill="35"] {
+  --oa-slider-fill: 35%;
+}
+
+.oa-slider__input[data-fill="40"] {
+  --oa-slider-fill: 40%;
+}
+
+.oa-slider__input[data-fill="45"] {
+  --oa-slider-fill: 45%;
+}
+
+.oa-slider__input[data-fill="50"] {
+  --oa-slider-fill: 50%;
+}
+
+.oa-slider__input[data-fill="55"] {
+  --oa-slider-fill: 55%;
+}
+
+.oa-slider__input[data-fill="60"] {
+  --oa-slider-fill: 60%;
+}
+
+.oa-slider__input[data-fill="65"] {
+  --oa-slider-fill: 65%;
+}
+
+.oa-slider__input[data-fill="70"] {
+  --oa-slider-fill: 70%;
+}
+
+.oa-slider__input[data-fill="75"] {
+  --oa-slider-fill: 75%;
+}
+
+.oa-slider__input[data-fill="80"] {
+  --oa-slider-fill: 80%;
+}
+
+.oa-slider__input[data-fill="85"] {
+  --oa-slider-fill: 85%;
+}
+
+.oa-slider__input[data-fill="90"] {
+  --oa-slider-fill: 90%;
+}
+
+.oa-slider__input[data-fill="95"] {
+  --oa-slider-fill: 95%;
+}
+
+.oa-slider__input[data-fill="100"] {
+  --oa-slider-fill: 100%;
 }
 
 .oa-slider__input:focus {
