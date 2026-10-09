@@ -21,7 +21,7 @@ The words these docs use, in plain terms.
 | **Knowledge** | Cited reference entries, such as a method or how a command is used. A plugin can carry it; our product notes are knowledge too. |
 | **Level** | Your trainer level, worked out from your XP. Level 2 at 100 XP, 3 at 283, 4 at 520. |
 | **Map** | The Mac app's graph of how OpenAgents routes a message. |
-| **Microcoder** | The engine Coder runs its turns through. It installs with the Terminal and comes inside the Mac app. |
+| **Microcoder** | The engine Coder runs its turns through. It is part of Coder: it installs with Coder and comes inside the Mac app, with nothing separate to download. |
 | **Nostr** | The open protocol of signed records OpenAgents runs on. |
 | **npub, nsec** | A Nostr public key and secret key. Share an npub; never share an nsec. |
 | **Pairing** | Connecting your phone to a computer by scanning its QR code. |

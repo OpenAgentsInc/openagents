@@ -228,7 +228,7 @@ fn download_guidance_matches_the_published_apps() {
     for (id, minimum_version, claims) in [
         (
             "openagents.get-the-app",
-            5,
+            6,
             &["openagents.com/download", "macOS, Linux, and Windows", "from source"][..],
         ),
         ("openagents.overview", 4, &["openagents.com/download"][..]),
@@ -239,7 +239,7 @@ fn download_guidance_matches_the_published_apps() {
         ),
         (
             "openagents.install-coder",
-            5,
+            6,
             &["openagents.com/download", "install.sh", "install.ps1"][..],
         ),
     ] {
@@ -269,6 +269,10 @@ fn download_guidance_matches_the_published_apps() {
                 ".dmg",
                 "Mac 1.0.0-rc.2",
                 "Terminal 1.0.0-rc.2",
+                // The engine Coder runs with is part of Coder, never a
+                // separate download.
+                "microcoder",
+                "Microcoder",
             ] {
                 assert!(
                     !text.contains(outdated),

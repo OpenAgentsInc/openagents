@@ -1,12 +1,12 @@
 # Download
 
-The [download page](/download) has Coder's install commands and manual
-downloads for seven platforms.
+The [download page](/download) has Coder's install commands for seven
+platforms.
 
-## Coder + OpenAgents CLI
+## Coder
 
-Coder 1.0.0-rc.5 is the new terminal UI. Its installer also installs the
-OpenAgents CLI and Microcoder, the companion commands Coder uses.
+Coder 1.0.0-rc.5 is the new terminal UI. Installing Coder also adds the
+`openagents` command.
 
 On macOS and Linux:
 
@@ -34,10 +34,10 @@ model when that plugin is enabled.
 
 ## Manual downloads
 
-The download page includes Coder, OpenAgents CLI, and Microcoder for
-macOS, Linux, and Windows. Download every file in your platform's row and
-follow the manual install instructions on that page. Windows also needs
-the Coder launcher in the same row.
+For a manual install, the download page offers one Coder download per
+platform when the release has them: one archive to extract into `~/.openagents/bin`
+(`%USERPROFILE%\.openagents\bin` on Windows). The install commands above
+need no manual download.
 
 Windows RC: local task services and background automation require macOS
 or Linux.

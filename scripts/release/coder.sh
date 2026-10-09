@@ -1,23 +1,27 @@
 #!/bin/sh
-# Build, sign, and publish Coder with its bundled OpenAgents CLI and Microcoder.
+# Build, sign, and publish Coder: one archive per platform holding coder,
+# the openagents command, and the microcoder engine Coder runs its turns with.
 # Reimplemented from this repository's scripts/release/terminal.sh.
 #
 # The public contract is under
 # https://storage.googleapis.com/openagentsgemini-cli-releases/coder:
-#   coder.<channel>                         a version string
-#   coder-<version>-<platform>               coder-new, installed as coder
-#   openagents-<version>-<platform>          the bundled CLI
-#   microcoder-<version>-<platform>          the CLI's local execution engine
-#   coder-boundary-<version>-windows-x86_64.exe  the Windows command boundary
-#   SHA256SUMS-coder-<version>               all artifact digests
-#   coder-<version>.release-manifest.json    source and build evidence
+#   coder.<channel>                          a version string
+#   coder-<version>-<platform>.tar.gz        macOS and Linux: coder (built from
+#                                            coder-new), openagents, microcoder
+#   coder-<version>-windows-x86_64.zip       coder.exe, openagents.exe,
+#                                            microcoder.exe, coder-boundary.exe
+#   SHA256SUMS-coder-<version>               the archive digests
+#   coder-<version>.release-manifest.json    source, build, and per-binary evidence
 #   install.sh, install.ps1                  hosted installers
-# Every Windows artifact URL and checksum name ends in .exe.
+# The archives hold the executables at their top level under their installed
+# names, so a manual install extracts one archive into ~/.openagents/bin.
+# Versions up to 1.0.0-rc.5 were published as separate executables
+# (<name>-<version>-<platform>[.exe]); the installers still read those.
 #
 # Builds read an isolated archive of the commit. Published versions are
 # immutable. macOS binaries are signed, notarized, and accepted by Gatekeeper
-# before publishing. The channel moves only when all seven platforms have
-# every required executable and checksum entry. --allow-partial publishes the
+# before they are archived. The channel moves only when all seven platforms
+# have their archive and its checksum entry. --allow-partial publishes the
 # built artifacts and leaves the channel unchanged.
 #
 # Usage:
@@ -157,6 +161,23 @@ artifact_name() {
   esac
 }
 
+# The one file a platform publishes: every executable of products_for, at
+# the archive's top level.
+archive_name() {
+  case "$1" in
+    windows-*) echo "$product-$version-$1.zip" ;;
+    *) echo "$product-$version-$1.tar.gz" ;;
+  esac
+}
+
+# The name an executable is installed under, which is its name in the archive.
+installed_name() {
+  case "$2" in
+    windows-*) echo "$1.exe" ;;
+    *) echo "$1" ;;
+  esac
+}
+
 sums_file_name() {
   echo "SHA256SUMS-$product-$version"
 }
@@ -190,20 +211,18 @@ sums_entry() {
 }
 
 # The platforms a version does not cover, as a leading-space list. Covered
-# means the bucket holds every executable and its checksum entry. `$1` is
-# the sums file, `$2` a file of the object names the bucket holds.
+# means the bucket holds the platform's archive and the sums file its
+# checksum. `$1` is the sums file, `$2` a file of the object names the bucket
+# holds.
 uncovered_platforms() {
   _gap=''
   for _platform in $all_platforms; do
-    for _name in $(products_for "$_platform"); do
-      _artifact=$(artifact_name "$_name" "$_platform")
-      _sha=''
-      [ -f "$1" ] && _sha=$(sums_entry "$1" "$(sums_name_for "$_artifact" "$_platform")")
-      if [ -z "$_sha" ] || ! grep -qxF "$_artifact" "$2" 2>/dev/null; then
-        _gap="$_gap $_platform"
-        break
-      fi
-    done
+    _archive=$(archive_name "$_platform")
+    _sha=''
+    [ -f "$1" ] && _sha=$(sums_entry "$1" "$(sums_name_for "$_archive" "$_platform")")
+    if [ -z "$_sha" ] || ! grep -qxF "$_archive" "$2" 2>/dev/null; then
+      _gap="$_gap $_platform"
+    fi
   done
   printf '%s' "$_gap"
 }
@@ -214,6 +233,32 @@ bucket_objects() {
   for _name in "$product" "$companion" "$engine" "$helper"; do
     gs ls "$root/$_name-$version-*" 2>/dev/null || :
   done | sed 's|.*/||'
+}
+
+# Packs one platform's staged executables (`$dist/<artifact_name>`) into
+# `$dist/<archive_name>` under their installed names.
+make_archive() {
+  _platform=$1
+  _bundle="$dist/.bundle-$_platform"
+  rm -rf "$_bundle"
+  mkdir -p "$_bundle"
+  _files=''
+  for _name in $(products_for "$_platform"); do
+    _file=$(installed_name "$_name" "$_platform")
+    cp -p "$dist/$(artifact_name "$_name" "$_platform")" "$_bundle/$_file"
+    chmod 755 "$_bundle/$_file"
+    _files="$_files $_file"
+  done
+  _archive="$dist/$(archive_name "$_platform")"
+  rm -f "$_archive"
+  case "$_platform" in
+    # shellcheck disable=SC2086
+    windows-*) (cd "$_bundle" && zip -q -X "$_archive" $_files) ;;
+    # COPYFILE_DISABLE keeps macOS tar from adding AppleDouble (._) entries.
+    # shellcheck disable=SC2086
+    *) (cd "$_bundle" && COPYFILE_DISABLE=1 tar -czf "$_archive" $_files) ;;
+  esac
+  rm -rf "$_bundle"
 }
 
 published_version() {
@@ -426,9 +471,9 @@ fi
 # each name this version would publish is matched whole.
 existing=$(bucket_objects)
 for platform in $all_platforms; do
-  for name in $(products_for "$platform"); do
-    if printf '%s\n' "$existing" | grep -qxF "$(artifact_name "$name" "$platform")"; then
-      die "refusing to build: $root/$(artifact_name "$name" "$platform") already exists; take the next version"
+  for name in $(archive_name "$platform") $(for executable in $(products_for "$platform"); do artifact_name "$executable" "$platform"; done); do
+    if printf '%s\n' "$existing" | grep -qxF "$name"; then
+      die "refusing to build: $root/$name already exists; take the next version"
     fi
   done
 done
@@ -445,7 +490,7 @@ done
 
 [ -n "$targets" ] || targets=$all_platforms
 
-for command_name in cargo file shasum git; do
+for command_name in cargo file shasum git tar zip; do
   command -v "$command_name" >/dev/null 2>&1 || die "$command_name is required to build a release"
 done
 
@@ -692,6 +737,36 @@ fi
 
 wait_for_gatekeeper "$notarized"
 
+# Each platform publishes one archive of its signed, checked executables.
+archive_rows=''
+for platform in $built; do
+  make_archive "$platform"
+  archive=$(archive_name "$platform")
+  archive_sha=$(shasum -a 256 "$dist/$archive" | awk '{print $1}')
+  size=$(wc -c <"$dist/$archive" | tr -d ' ')
+  echo "  ok  $archive  $archive_sha  ($size bytes)"
+  archive_rows="$archive_rows
+$archive|$platform|$archive_sha|$size"
+done
+
+# The native archive must extract to executables that still run.
+case " $built " in
+  *" $native_platform "*)
+    unpacked=$(mktemp -d "${TMPDIR:-/tmp}/coder-release-archive.XXXXXX")
+    tar -xzf "$dist/$(archive_name "$native_platform")" -C "$unpacked"
+    for name in $(products_for "$native_platform"); do
+      said=$("$unpacked/$(installed_name "$name" "$native_platform")" --version 2>&1) ||
+        die "$name from $(archive_name "$native_platform") does not run: $said"
+      case "$said" in
+        "$name $version"*) ;;
+        *) die "$name from $(archive_name "$native_platform") says '$said', not $version" ;;
+      esac
+    done
+    rm -rf "$unpacked"
+    echo "  $(archive_name "$native_platform") extracts and runs"
+    ;;
+esac
+
 entries=''
 while IFS='|' read -r name platform triple builder artifact_sha size notary_status notary_submission; do
   [ -n "$name" ] || continue
@@ -708,15 +783,26 @@ done <<EOF
 $manifest_rows
 EOF
 
+archive_entries=''
+while IFS='|' read -r name platform archive_sha size; do
+  [ -n "$name" ] || continue
+  contains=''
+  for executable in $(products_for "$platform"); do
+    contains="$contains${contains:+, }\"$(installed_name "$executable" "$platform")\""
+  done
+  archive_entries="$archive_entries
+    {\"name\": \"$name\", \"platform\": \"$platform\", \"sha256\": \"$archive_sha\", \"bytes\": $size, \"contains\": [$contains]},"
+done <<EOF
+$archive_rows
+EOF
+
 sums="$dist/$(sums_file_name)"
 : >"$sums"
 for platform in $all_platforms; do
   case " $built " in *" $platform "*) ;; *) continue ;; esac
-  for name in $(products_for "$platform"); do
-    artifact=$(artifact_name "$name" "$platform")
-    printf '%s  %s\n' "$(shasum -a 256 "$dist/$artifact" | awk '{print $1}')" \
-      "$(sums_name_for "$artifact" "$platform")" >>"$sums"
-  done
+  archive=$(archive_name "$platform")
+  printf '%s  %s\n' "$(shasum -a 256 "$dist/$archive" | awk '{print $1}')" \
+    "$(sums_name_for "$archive" "$platform")" >>"$sums"
 done
 
 cat >"$dist/release-manifest.json" <<EOF
@@ -732,6 +818,8 @@ cat >"$dist/release-manifest.json" <<EOF
   "host": $(json_string "$(uname -sm)"),
   "toolchain": $(toolchain_json),
   "base_url": "$public_base",
+  "archives": [$(printf '%s' "$archive_entries" | sed '$ s/,$//')
+  ],
   "artifacts": [$(printf '%s' "$entries" | sed '$ s/,$//')
   ]
 }
@@ -756,13 +844,15 @@ fi
 
 echo "Publishing to $root"
 for platform in $built; do
-  for name in $(products_for "$platform"); do
-    artifact=$(artifact_name "$name" "$platform")
-    # `--no-clobber` keeps a published object immutable even if another
-    # publisher raced this one past the check above.
-    gs cp --no-clobber "$dist/$artifact" "$root/$artifact" \
-      --content-type=application/octet-stream --quiet
-  done
+  archive=$(archive_name "$platform")
+  case "$archive" in
+    *.zip) content_type=application/zip ;;
+    *) content_type=application/gzip ;;
+  esac
+  # `--no-clobber` keeps a published object immutable even if another
+  # publisher raced this one past the check above.
+  gs cp --no-clobber "$dist/$archive" "$root/$archive" \
+    --content-type="$content_type" --quiet
 done
 gs cp --no-clobber "$sums" "$root/$(sums_file_name)" --content-type=text/plain --quiet
 gs cp --no-clobber "$dist/release-manifest.json" "$root/$product-$version.release-manifest.json" \

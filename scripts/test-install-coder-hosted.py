@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import tarfile
 import tempfile
 import threading
 import unittest
@@ -61,16 +62,33 @@ class HostedInstallerTests(unittest.TestCase):
         path.write_text("#!/bin/sh\n" + source)
         path.chmod(0o755)
 
-    def publish(self, version, platform="macos-aarch64", bad_command=None, wrong_version_command=None):
+    def publish(self, version, platform="macos-aarch64", bad_command=None, wrong_version_command=None,
+                separate=False, omit=None):
+        """Publish one archive per platform, or (`separate`) the per-command
+        files releases up to 1.0.0-rc.5 used."""
         sums = []
+        staging = self.root / "staging" / f"{version}-{platform}"
+        staging.mkdir(parents=True, exist_ok=True)
         for command in ("coder", "openagents", "microcoder"):
-            path = self.release / f"{command}-{version}-{platform}"
+            if command == omit:
+                continue
+            path = staging / command
             reported_version = "0.0.0" if command == wrong_version_command else version
             text = f"#!/bin/sh\nprintf '%s\\n' '{command} {reported_version}'\n"
             if command == bad_command:
                 text += "exit 7\n"
             path.write_text(text)
-            sums.append(f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}\n")
+            path.chmod(0o755)
+            if separate:
+                artifact = self.release / f"{command}-{version}-{platform}"
+                shutil.copyfile(path, artifact)
+                sums.append(f"{hashlib.sha256(artifact.read_bytes()).hexdigest()}  {artifact.name}\n")
+        if not separate:
+            archive = self.release / f"coder-{version}-{platform}.tar.gz"
+            with tarfile.open(archive, "w:gz") as bundle:
+                for path in sorted(staging.iterdir()):
+                    bundle.add(path, arcname=path.name)
+            sums.append(f"{hashlib.sha256(archive.read_bytes()).hexdigest()}  {archive.name}\n")
         (self.release / f"SHA256SUMS-coder-{version}").write_text("".join(sums))
 
     def run_install(self, *args, **overrides):
@@ -132,6 +150,12 @@ class HostedInstallerTests(unittest.TestCase):
     def test_hash_and_version_failures_keep_the_existing_bundle(self):
         self.install_initial()
         self.publish("1.0.0-rc.2")
+        (self.release / "coder-1.0.0-rc.2-macos-aarch64.tar.gz").write_text("tampered\n")
+        result = self.run_install("1.0.0-rc.2")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Checksum mismatch for coder-1.0.0-rc.2-macos-aarch64.tar.gz", result.stderr)
+        self.assert_installed("1.0.0-rc.1")
+        self.publish("1.0.0-rc.2", separate=True)
         (self.release / "microcoder-1.0.0-rc.2-macos-aarch64").write_text("tampered\n")
         result = self.run_install("1.0.0-rc.2")
         self.assertNotEqual(result.returncode, 0)
@@ -165,7 +189,7 @@ class HostedInstallerTests(unittest.TestCase):
         self.publish("1.0.0-rc.2")
         real_mv = shutil.which("mv")
         self.stub("mv", '''
-case "$2" in */.coder-install.*/microcoder) exit 9;; esac
+case "$1 $2" in "-f "*/.coder-install.*/microcoder) exit 9;; esac
 exec "$CODER_TEST_REAL_MV" "$@"
 ''')
         result = self.run_install("1.0.0-rc.2", CODER_TEST_REAL_MV=real_mv)
@@ -216,6 +240,31 @@ exec "$CODER_TEST_REAL_MV" "$@"
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("no verified macos-aarch64 build", result.stderr)
         self.assertFalse(list(self.bin.glob(".coder-install.*")))
+
+    def test_one_archive_installs_every_command(self):
+        self.publish("1.0.0-rc.6")
+        self.assertEqual(
+            sorted(path.name for path in self.release.iterdir() if "1.0.0-rc.6" in path.name),
+            ["SHA256SUMS-coder-1.0.0-rc.6", "coder-1.0.0-rc.6-macos-aarch64.tar.gz"],
+        )
+        result = self.run_install("1.0.0-rc.6")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assert_installed("1.0.0-rc.6")
+        self.assertNotIn("microcoder", result.stderr)
+
+    def test_releases_published_as_separate_commands_still_install(self):
+        self.publish("1.0.0-rc.5", separate=True)
+        result = self.run_install("1.0.0-rc.5")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assert_installed("1.0.0-rc.5")
+
+    def test_an_archive_missing_a_command_preserves_the_bundle(self):
+        self.install_initial()
+        self.publish("1.0.0-rc.6", omit="microcoder")
+        result = self.run_install("1.0.0-rc.6")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("has no microcoder", result.stderr)
+        self.assert_installed("1.0.0-rc.1")
 
     def test_skipping_path_setup_leaves_the_profile_unchanged(self):
         self.publish("1.0.0-rc.3")

@@ -35,8 +35,8 @@ const PLUGINS: [Plugin; 8] = [
     },
     Plugin {
         id: "microcoder",
-        name: "Microcoder",
-        description: "The bundled coding loop, with local model logins and bounded commands.",
+        name: "Coder loop",
+        description: "Coder's own coding loop, with local model logins and bounded commands.",
         enabled: true,
     },
     Plugin {

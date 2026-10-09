@@ -75,8 +75,8 @@ pub const DEFINITIONS: &[PluginDefinition] = &[
     },
     PluginDefinition {
         id: "microcoder",
-        name: "Microcoder",
-        description: "The bundled coding loop, with local model logins and bounded commands.",
+        name: "Coder loop",
+        description: "Coder's own coding loop, with local model logins and bounded commands.",
         default_enabled: true,
         tools: &[ToolBinding::Microcoder],
         model_provider: None,

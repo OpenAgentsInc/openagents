@@ -29,7 +29,10 @@ pub(crate) use connect::TESTFLIGHT;
 #[cfg(test)]
 pub(crate) use content::DOCS;
 #[cfg(test)]
-pub(crate) use download::{CODER_BASE, CODER_PLATFORMS, CODER_PS1, CODER_SH, CODER_VERSION};
+pub(crate) use download::{
+    CODER_BASE, CODER_PLATFORMS, CODER_PS1, CODER_SH, CODER_VERSION, coder_archive,
+    published_as_archives,
+};
 #[cfg(test)]
 pub(crate) use everglade::GRID_POLICY;
 pub(crate) use everglade::{CANVAS_ID, EVERGLADE_POLICY, GLUE, WASM};

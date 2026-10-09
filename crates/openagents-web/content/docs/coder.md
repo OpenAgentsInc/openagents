@@ -4,7 +4,7 @@ Coder is an AI coding assistant in your terminal. Ask it to explain code,
 change files, or run commands in the folder you open. You can follow its work
 in the chat and open a delegated agent's conversation below the input bar.
 
-The new **1.0.0-rc.5** release ships Coder, OpenAgents CLI, and Microcoder for
+The new **1.0.0-rc.5** release ships Coder, with the `openagents` command, for
 macOS, Linux, and Windows. It includes plugin settings, an OpenRouter model
 picker, agent conversations, Markdown replies, code diffs, and saved chats
 that you can resume or export.
@@ -98,7 +98,7 @@ Some requests run entirely in the main chat and have no separate agent row.
 Enter `/plugins` or press F2. Up/Down selects a plugin, Space turns it on or
 off, and Enter opens its settings. Esc returns to the previous screen.
 
-Microcoder, Jev, OpenAgents CLI, and ACP Subagents ship enabled. OpenRouter
+Coder loop, Jev, OpenAgents CLI, and ACP Subagents ship enabled. OpenRouter
 BYOK starts off unless a key is already configured. Try turning Jev off and
 back on. Open **ACP Subagents** to see detected local agents and their
 checkboxes; an empty list is normal if none are installed.

@@ -1,11 +1,28 @@
 # Releasing OpenAgents Terminal
 
 Coder's new terminal uses `scripts/release/coder.sh` and the separate
-`coder/` bucket prefix. It ships `coder`, `openagents`, and `microcoder`
-for all seven platforms, plus `coder-boundary.exe` on Windows. Publish a
-complete release with `--version 1.0.0-rc.3 --publish --channel rc`, then
-publish its installers with `--publish-installers` from the same commit.
-The website serves those installers at `/cli/install.sh` and `/cli/install.ps1`.
+`coder/` bucket prefix. Coder is one download per platform: from
+`1.0.0-rc.6` on, each of the seven platforms publishes one archive,
+`coder-<version>-<platform>.tar.gz` (Windows: `.zip`), holding `coder`,
+`openagents`, and the `microcoder` engine at its top level, plus
+`coder-boundary.exe` on Windows. `SHA256SUMS-coder-<version>` names the
+archives, and the manifest records each archive and each signed binary in
+it. Versions up to `1.0.0-rc.5` were published as separate executables;
+the installers still install those, and `/download` lists manual
+downloads only for an archive release (`published_as_archives` in
+`crates/openagents-web/src/pages/download.rs`).
+
+To publish a release: bump the three crates' versions and commit; deploy
+the website first if its installers changed (the hosted installers read
+both layouts, so an older site installer must not meet an archive-only
+channel); run `--version 1.0.0-rc.6` to build and check locally, then the
+same with `--publish --channel rc`; run `--publish-installers` from the same
+commit; then set `CODER_VERSION` in `download.rs` to the new version and
+deploy the site, which turns on the per-platform "Coder for <platform>"
+downloads. The website serves the installers at `/cli/install.sh` and
+`/cli/install.ps1`. `scripts/test-release-coder.sh` and
+`scripts/test-install-coder-hosted.py` test the archive layout, channel
+coverage, and the installers (both layouts) without a bucket.
 
 Published on 2026-10-06: `1.0.0-rc.3`, from commit `1701e1d3c1`.
 All 22 public executables passed checksum verification. The Mac executables

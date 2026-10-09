@@ -1,5 +1,5 @@
 #!/bin/sh
-# Install Coder, its bundled OpenAgents CLI, and Microcoder. Rerun to update.
+# Install Coder. Rerun to update.
 # Reimplemented from the public Grok installer workflow and the existing
 # OpenAgents release contract; no xAI authentication or backend code is used.
 #
@@ -14,10 +14,13 @@
 #   CODER_BASE_URL        Default the release bucket's /coder prefix.
 #   CODER_NO_PATH_UPDATE  1 leaves shell profiles unchanged.
 #
-# Each version publishes coder-VERSION-PLATFORM, openagents-VERSION-PLATFORM,
-# microcoder-VERSION-PLATFORM, and SHA256SUMS-coder-VERSION. Windows artifacts
-# include .exe. The pointers coder.stable and coder.rc name immutable versions.
-# All checksums and --version checks pass before any installed command changes.
+# Each version publishes one archive per platform, coder-VERSION-PLATFORM.tar.gz,
+# holding the commands Coder installs (coder, the openagents command, and the
+# microcoder engine Coder runs with), and SHA256SUMS-coder-VERSION. Versions up
+# to 1.0.0-rc.5 published each command separately (NAME-VERSION-PLATFORM); a
+# sums file without the archive selects that layout. The pointers coder.stable
+# and coder.rc name immutable versions. All checksums and --version checks pass
+# before any installed command changes.
 
 set -eu
 
@@ -32,7 +35,7 @@ say() { printf '%s\n' "$*" >&2; }
 die() { say "coder installer: $*"; exit 1; }
 usage() {
     cat <<'EOF'
-Install Coder, the OpenAgents CLI, and Microcoder.
+Install Coder and the openagents command.
 Usage: install.sh [VERSION | stable | rc]
 Rerun without a version to install the latest channel release.
 CODER_BIN_DIR changes the install directory; CODER_NO_PATH_UPDATE=1 skips PATH setup.
@@ -147,25 +150,50 @@ fi
 [ -n "$coder_version" ] || die "Could not read coder.$coder_channel from $coder_base_url. Check your connection or choose an exact version."
 is_version "$coder_version" || die "The channel does not name a valid version: $coder_version."
 
-say "Installing Coder $coder_version and its companion tools for $coder_platform..."
+say "Installing Coder $coder_version for $coder_platform..."
 download "$coder_base_url/SHA256SUMS-coder-$coder_version" "$coder_work/SHA256SUMS" 2>/dev/null ||
     die "Version $coder_version is not published, or $coder_base_url is unreachable."
-for coder_command in $coder_commands; do
-    coder_artifact="$coder_command-$coder_version-$coder_platform"
-    coder_expected="$(awk -v name="$coder_artifact" '
+# The digest the sums file names for $1 once, or nothing.
+sums_entry() {
+    awk -v name="$1" '
         $2 == name || $2 == "*" name { count++; hash=$1 }
         END { if (count == 1) print hash }
-    ' "$coder_work/SHA256SUMS")"
-    printf '%s' "$coder_expected" | grep -Eq '^[A-Fa-f0-9]{64}$' ||
-        die "Version $coder_version has no verified $coder_platform build for $coder_command."
-    coder_expected="$(printf '%s' "$coder_expected" | tr 'A-F' 'a-f')"
-    download "$coder_base_url/$coder_artifact" "$coder_work/$coder_command" 2>/dev/null ||
-        die "Could not download $coder_artifact. Rerun the installer to retry."
-    coder_actual="$(digest "$coder_work/$coder_command")"
-    [ "$coder_actual" = "$coder_expected" ] || die "Checksum mismatch for $coder_artifact. The existing installation is unchanged."
-    chmod 755 "$coder_work/$coder_command"
-    say "  Verified $coder_artifact."
-done
+    ' "$coder_work/SHA256SUMS"
+}
+# Downloads $1 to $2 and checks it against the sums file's digest $3.
+fetch_verified() {
+    printf '%s' "$3" | grep -Eq '^[A-Fa-f0-9]{64}$' ||
+        die "Version $coder_version has no verified $coder_platform build."
+    download "$coder_base_url/$1" "$2" 2>/dev/null ||
+        die "Could not download $1. Rerun the installer to retry."
+    [ "$(digest "$2")" = "$(printf '%s' "$3" | tr 'A-F' 'a-f')" ] ||
+        die "Checksum mismatch for $1. The existing installation is unchanged."
+    say "  Verified $1."
+}
+coder_archive="coder-$coder_version-$coder_platform.tar.gz"
+if grep -Eq "[[:space:]]\*?coder-$coder_version-$coder_platform\.tar\.gz\$" "$coder_work/SHA256SUMS"; then
+    command -v tar >/dev/null 2>&1 || die "Install tar before running this installer."
+    fetch_verified "$coder_archive" "$coder_work/archive.tar.gz" "$(sums_entry "$coder_archive")"
+    mkdir "$coder_work/unpacked"
+    tar -xzf "$coder_work/archive.tar.gz" -C "$coder_work/unpacked" ||
+        die "Could not unpack $coder_archive. The existing installation is unchanged."
+    for coder_command in $coder_commands; do
+        if [ -L "$coder_work/unpacked/$coder_command" ] || [ ! -f "$coder_work/unpacked/$coder_command" ]; then
+            die "$coder_archive has no $coder_command. The existing installation is unchanged."
+        fi
+        mv "$coder_work/unpacked/$coder_command" "$coder_work/$coder_command"
+        chmod 755 "$coder_work/$coder_command"
+    done
+else
+    for coder_command in $coder_commands; do
+        coder_artifact="$coder_command-$coder_version-$coder_platform"
+        coder_expected="$(sums_entry "$coder_artifact")"
+        printf '%s' "$coder_expected" | grep -Eq '^[A-Fa-f0-9]{64}$' ||
+            die "Version $coder_version has no verified $coder_platform build."
+        fetch_verified "$coder_artifact" "$coder_work/$coder_command" "$coder_expected"
+        chmod 755 "$coder_work/$coder_command"
+    done
+fi
 for coder_command in $coder_commands; do
     coder_version_output="$("$coder_work/$coder_command" --version </dev/null)" ||
         die "Downloaded $coder_command does not run on this system. The existing installation is unchanged."
@@ -173,7 +201,7 @@ for coder_command in $coder_commands; do
         NR == 1 && $1 == name && $2 == version { matches=1 }
         END { exit !matches }
     ' || die "Downloaded $coder_command does not report version $coder_version. The existing installation is unchanged."
-    say "  $coder_version_output"
+    if [ "$coder_command" = coder ]; then say "  $coder_version_output"; fi
 done
 
 # Stage and replace on the same filesystem. Keep previous entries until all
@@ -191,7 +219,7 @@ for coder_command in $coder_commands; do
     mv -f "$coder_work/$coder_command" "$coder_bin_dir/$coder_command" || die "Could not install $coder_command; restoring the previous commands."
 done
 coder_installed=1
-say "Installed coder, openagents, and microcoder in $coder_bin_dir."
+say "Installed Coder (coder and openagents) in $coder_bin_dir."
 
 # Append an idempotent PATH entry. Appending preserves symlinked dotfiles,
 # their permissions, and every setting outside this installer block.
@@ -225,4 +253,4 @@ case ":$PATH:" in
     *":$coder_bin_dir:"*) say "Run coder from your project directory." ;;
     *) say "Run $coder_bin_dir/coder now, or reopen your terminal and run coder." ;;
 esac
-say "Rerun this installer to update the complete bundle."
+say "Rerun this installer to update Coder."

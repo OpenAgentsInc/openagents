@@ -35,40 +35,57 @@ done
 : >"$work/sums"
 : >"$work/objects"
 for platform in $all_platforms; do
-  for name in $(products_for "$platform"); do
-    artifact=$(artifact_name "$name" "$platform")
-    printf '%s\n' "$artifact" >>"$work/objects"
-    printf '%064d  %s\n' 0 "$(sums_name_for "$artifact" "$platform")" >>"$work/sums"
-  done
+  archive=$(archive_name "$platform")
+  printf '%s\n' "$archive" >>"$work/objects"
+  printf '%064d  %s\n' 0 "$(sums_name_for "$archive" "$platform")" >>"$work/sums"
 done
-[ "$(wc -l <"$work/objects" | tr -d ' ')" = 22 ] && [ -z "$(uncovered_platforms "$work/sums" "$work/objects")" ] &&
-  pass "all seven platforms require all 22 executables and checksums" || fail "all seven platforms require all 22 executables and checksums"
-for name in coder openagents microcoder coder-boundary; do
-  artifact="$name-1.0.0-rc.3-windows-x86_64.exe"
-  grep -qxF "$artifact" "$work/objects" && [ -n "$(sums_entry "$work/sums" "$artifact")" ] &&
-    pass "Windows URL and checksum name $name end in .exe" || fail "Windows URL and checksum name $name end in .exe"
-done
+[ "$(wc -l <"$work/objects" | tr -d ' ')" = 7 ] && [ -z "$(uncovered_platforms "$work/sums" "$work/objects")" ] &&
+  pass "all seven platforms require one archive and its checksum" || fail "all seven platforms require one archive and its checksum"
+[ "$(archive_name macos-aarch64)" = coder-1.0.0-rc.3-macos-aarch64.tar.gz ] &&
+  [ "$(archive_name windows-x86_64)" = coder-1.0.0-rc.3-windows-x86_64.zip ] &&
+  [ "$(installed_name microcoder windows-x86_64)" = microcoder.exe ] && [ "$(installed_name coder linux-x86_64)" = coder ] &&
+  pass "archives are .tar.gz, Windows .zip, holding installed names" || fail "archives are .tar.gz, Windows .zip, holding installed names"
 
-for missing in coder openagents microcoder; do
-  grep -vxF "$missing-1.0.0-rc.3-linux-aarch64-musl" "$work/objects" >"$work/gap-objects"
-  [ "$(uncovered_platforms "$work/sums" "$work/gap-objects")" = ' linux-aarch64-musl' ] &&
-    pass "missing $missing blocks its platform" || fail "missing $missing blocks its platform"
-done
-grep -vxF 'coder-boundary-1.0.0-rc.3-windows-x86_64.exe' "$work/objects" >"$work/gap-objects"
-[ "$(uncovered_platforms "$work/sums" "$work/gap-objects")" = ' windows-x86_64' ] &&
-  pass "missing Windows boundary blocks the channel" || fail "missing Windows boundary blocks the channel"
-grep -v 'openagents-1.0.0-rc.3-windows-x86_64.exe' "$work/sums" >"$work/gap-sums"
+grep -vxF 'coder-1.0.0-rc.3-linux-aarch64-musl.tar.gz' "$work/objects" >"$work/gap-objects"
+[ "$(uncovered_platforms "$work/sums" "$work/gap-objects")" = ' linux-aarch64-musl' ] &&
+  pass "a missing archive blocks its platform" || fail "a missing archive blocks its platform"
+grep -v 'coder-1.0.0-rc.3-windows-x86_64.zip' "$work/sums" >"$work/gap-sums"
 [ "$(uncovered_platforms "$work/gap-sums" "$work/objects")" = ' windows-x86_64' ] &&
-  pass "a missing companion checksum blocks the channel" || fail "a missing companion checksum blocks the channel"
+  pass "a missing archive checksum blocks the channel" || fail "a missing archive checksum blocks the channel"
+grep -vxF 'coder-1.0.0-rc.3-windows-x86_64.zip' "$work/objects" >"$work/gap-objects"
+for name in coder openagents microcoder coder-boundary; do
+  printf '%s\n' "$name-1.0.0-rc.3-windows-x86_64.exe" >>"$work/gap-objects"
+done
+[ "$(uncovered_platforms "$work/sums" "$work/gap-objects")" = ' windows-x86_64' ] &&
+  pass "separate executables do not cover an archive release" || fail "separate executables do not cover an archive release"
 sed 's/1\.0\.0-rc\.3-/1.0.0-rc.30-/' "$work/objects" >"$work/longer-objects"
 [ "$(uncovered_platforms "$work/sums" "$work/longer-objects")" = " $(printf '%s' "$all_platforms" | sed 's/ $//')" ] &&
   pass "a longer RC version cannot cover this RC" || fail "a longer RC version cannot cover this RC"
 
+# The archive step packs the staged executables under their installed names.
+dist="$work/dist"
+mkdir -p "$dist"
+for platform in linux-x86_64 windows-x86_64; do
+  for name in $(products_for "$platform"); do
+    printf '#!/bin/sh\necho %s\n' "$name" >"$dist/$(artifact_name "$name" "$platform")"
+  done
+  make_archive "$platform"
+done
+[ "$(tar -tzf "$dist/coder-1.0.0-rc.3-linux-x86_64.tar.gz" | sort | tr '\n' ' ')" = 'coder microcoder openagents ' ] &&
+  pass "a Unix archive holds coder, openagents, and microcoder" || fail "a Unix archive holds coder, openagents, and microcoder"
+mkdir -p "$work/unpacked"
+tar -xzf "$dist/coder-1.0.0-rc.3-linux-x86_64.tar.gz" -C "$work/unpacked"
+[ -x "$work/unpacked/coder" ] && [ "$("$work/unpacked/microcoder")" = microcoder ] &&
+  pass "archived executables keep their mode" || fail "archived executables keep their mode"
+[ "$(unzip -Z1 "$dist/coder-1.0.0-rc.3-windows-x86_64.zip" | sort | tr '\n' ' ')" = 'coder-boundary.exe coder.exe microcoder.exe openagents.exe ' ] &&
+  pass "the Windows archive holds the four executables" || fail "the Windows archive holds the four executables"
+[ -z "$(find "$dist" -name '.bundle-*')" ] && pass "the archive step leaves no staging folder" || fail "the archive step leaves no staging folder"
+
 gs() { return 1; }
 if (refuse_uncovered_channel rc "$work/sums" "$work/gap-objects") >"$work/refusal.log" 2>&1; then
-  fail "a channel cannot pass a missing Windows helper"
+  fail "a channel cannot pass a missing Windows archive"
 else
-  grep -q 'windows-x86_64' "$work/refusal.log" && pass "a channel cannot pass a missing Windows helper" || fail "a channel cannot pass a missing Windows helper"
+  grep -q 'windows-x86_64' "$work/refusal.log" && pass "a channel cannot pass a missing Windows archive" || fail "a channel cannot pass a missing Windows archive"
 fi
 
 # Compare a scratch commit and its archive, then reject a changed source.

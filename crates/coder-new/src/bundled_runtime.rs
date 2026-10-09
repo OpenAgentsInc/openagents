@@ -1207,7 +1207,7 @@ async fn run_microcoder<G: Generate>(
     emit: &mut dyn FnMut(RuntimeEvent),
 ) -> Result<Value, String> {
     if cancel.load(Ordering::Relaxed) {
-        return Err("The Microcoder task was canceled before it started.".into());
+        return Err("The coding task was canceled before it started.".into());
     }
     let directory = cwd
         .canonicalize()

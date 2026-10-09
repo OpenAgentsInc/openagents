@@ -1,6 +1,11 @@
-# Install Coder, the OpenAgents CLI, Microcoder, and the Windows boundary helper.
-# Reimplemented from the public Grok installer workflow and the OpenAgents
-# release contract. Rerun this script to update the complete bundle.
+# Install Coder. Reimplemented from the public Grok installer workflow and the
+# OpenAgents release contract. Rerun this script to update Coder.
+#
+# Each version publishes coder-VERSION-windows-x86_64.zip, holding coder.exe,
+# openagents.exe, microcoder.exe (the engine Coder runs with), and
+# coder-boundary.exe, and SHA256SUMS-coder-VERSION. Versions up to 1.0.0-rc.5
+# published each executable separately; a sums file without the archive
+# selects that layout.
 #
 #   irm https://openagents.com/cli/install.ps1 | iex
 #   $env:CODER_VERSION = '1.0.0-rc.5'; irm https://openagents.com/cli/install.ps1 | iex
@@ -77,7 +82,7 @@ $CoderChanged = New-Object System.Collections.ArrayList
 $CoderKeepWork = $false
 
 try {
-    Write-Host "Installing Coder $Version and its companion tools for $CoderPlatform..."
+    Write-Host "Installing Coder $Version for $CoderPlatform..."
     $CoderSumsPath = Join-Path $CoderWork 'SHA256SUMS'
     try { Invoke-WebRequest -Uri "$CoderBaseUrl/SHA256SUMS-coder-$Version" -OutFile $CoderSumsPath -UseBasicParsing -TimeoutSec 60 }
     catch { throw "Version $Version is not published, or $CoderBaseUrl is unreachable." }
@@ -90,16 +95,33 @@ try {
             $CoderSums[$CoderName] = $CoderEntry.Groups[1].Value.ToLowerInvariant()
         }
     }
-    foreach ($CoderInstall in $CoderInstalls) {
-        $CoderArtifact = "$($CoderInstall.Name)-$Version-$CoderPlatform.exe"
-        $CoderExpected = $CoderSums[$CoderArtifact]
-        if (-not $CoderExpected) { throw "Version $Version has no verified $CoderPlatform build for $($CoderInstall.Name)." }
-        $CoderPath = Join-Path $CoderWork "$($CoderInstall.Name).exe"
-        try { Invoke-WebRequest -Uri "$CoderBaseUrl/$CoderArtifact" -OutFile $CoderPath -UseBasicParsing -TimeoutSec 600 }
-        catch { throw "Could not download $CoderArtifact. Rerun the installer to retry." }
-        $CoderActual = (Get-FileHash -Algorithm SHA256 -LiteralPath $CoderPath).Hash.ToLowerInvariant()
-        if ($CoderActual -cne $CoderExpected) { throw "Checksum mismatch for $CoderArtifact. The existing installation is unchanged." }
-        Write-Host "  Verified $CoderArtifact."
+    $CoderArchive = "coder-$Version-$CoderPlatform.zip"
+    if ($CoderSums.ContainsKey($CoderArchive)) {
+        $CoderArchivePath = Join-Path $CoderWork 'archive.zip'
+        try { Invoke-WebRequest -Uri "$CoderBaseUrl/$CoderArchive" -OutFile $CoderArchivePath -UseBasicParsing -TimeoutSec 600 }
+        catch { throw "Could not download $CoderArchive. Rerun the installer to retry." }
+        $CoderActual = (Get-FileHash -Algorithm SHA256 -LiteralPath $CoderArchivePath).Hash.ToLowerInvariant()
+        if ($CoderActual -cne $CoderSums[$CoderArchive]) { throw "Checksum mismatch for $CoderArchive. The existing installation is unchanged." }
+        Write-Host "  Verified $CoderArchive."
+        $CoderUnpacked = Join-Path $CoderWork 'unpacked'
+        Expand-Archive -LiteralPath $CoderArchivePath -DestinationPath $CoderUnpacked
+        foreach ($CoderInstall in $CoderInstalls) {
+            $CoderFile = Join-Path $CoderUnpacked "$($CoderInstall.Name).exe"
+            if (-not (Test-Path -LiteralPath $CoderFile -PathType Leaf)) { throw "$CoderArchive has no $($CoderInstall.Name).exe. The existing installation is unchanged." }
+            Move-Item -LiteralPath $CoderFile -Destination (Join-Path $CoderWork "$($CoderInstall.Name).exe")
+        }
+    } else {
+        foreach ($CoderInstall in $CoderInstalls) {
+            $CoderArtifact = "$($CoderInstall.Name)-$Version-$CoderPlatform.exe"
+            $CoderExpected = $CoderSums[$CoderArtifact]
+            if (-not $CoderExpected) { throw "Version $Version has no verified $CoderPlatform build." }
+            $CoderPath = Join-Path $CoderWork "$($CoderInstall.Name).exe"
+            try { Invoke-WebRequest -Uri "$CoderBaseUrl/$CoderArtifact" -OutFile $CoderPath -UseBasicParsing -TimeoutSec 600 }
+            catch { throw "Could not download $CoderArtifact. Rerun the installer to retry." }
+            $CoderActual = (Get-FileHash -Algorithm SHA256 -LiteralPath $CoderPath).Hash.ToLowerInvariant()
+            if ($CoderActual -cne $CoderExpected) { throw "Checksum mismatch for $CoderArtifact. The existing installation is unchanged." }
+            Write-Host "  Verified $CoderArtifact."
+        }
     }
     foreach ($CoderInstall in $CoderInstalls) {
         if ($CoderInstall.VersionCheck) {
@@ -110,7 +132,7 @@ try {
             if ($CoderVersionWords.Count -lt 2 -or $CoderVersionWords[0] -cne $CoderInstall.Name -or $CoderVersionWords[1] -cne $Version) {
                 throw "Downloaded $($CoderInstall.Name) does not report version $Version. The existing installation is unchanged."
             }
-            Write-Host "  $CoderVersionOutput"
+            if ($CoderInstall.Name -ceq 'coder') { Write-Host "  $CoderVersionOutput" }
         }
     }
     # File.Replace preserves the old destination until the atomic replacement
@@ -145,7 +167,7 @@ try {
     if (-not $CoderKeepWork) { Remove-Item -Recurse -Force -LiteralPath $CoderWork -ErrorAction SilentlyContinue }
 }
 
-Write-Host "Installed coder.exe, openagents.exe, microcoder.exe, and coder-boundary.exe in $CoderBinDir."
+Write-Host "Installed Coder (coder.exe and openagents.exe) in $CoderBinDir."
 if ($env:CODER_NO_PATH_UPDATE -ne '1') {
     $CoderUserPath = [Environment]::GetEnvironmentVariable('Path', 'User')
     $CoderPathEntries = @($CoderUserPath -split ';' | Where-Object { $_ })
@@ -155,4 +177,4 @@ if ($env:CODER_NO_PATH_UPDATE -ne '1') {
     }
     if (($env:Path -split ';') -notcontains $CoderBinDir) { $env:Path = "$CoderBinDir;$env:Path" }
 }
-Write-Host 'Run coder from your project directory. Rerun this installer to update the complete bundle.'
+Write-Host 'Run coder from your project directory. Rerun this installer to update Coder.'

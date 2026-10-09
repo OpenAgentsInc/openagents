@@ -46,7 +46,7 @@ width while model labels stay separate from the message content.
 See the [Markdown transcript preview](../../docs/coder-new/markdown.svg).
 
 Press F2 or enter `/plugins` to manage the bundled plugins. Up/Down selects a
-plugin, Space turns it on or off, and Enter opens its settings. **Microcoder**,
+plugin, Space turns it on or off, and Enter opens its settings. **Coder loop**,
 **Jev**, **OpenAgents CLI**, and **ACP Subagents** default to on. **OpenRouter
 BYOK** defaults to off; a key imported at startup enables it when no saved
 preference exists. Saving the first key also enables it. A saved off preference stays off.
@@ -110,7 +110,7 @@ model-proposed Brainstorm reads.
 Enabled plugins register their tools and usage instructions for OpenRouter
 chat. Tool calls run on the background worker, appear in the transcript, and
 return their results to the model. Each turn allows at most eight model rounds
-and 32 plugin calls. **Microcoder** uses the existing coding loop, Jev judgments
+and 32 plugin calls. **Coder loop** (the `microcoder` tool and engine) uses Coder's own coding loop, Jev judgments
 when configured, and commands bounded to the current checkout. With OpenRouter
 off or unconfigured, live chat uses Microcoder through an existing Codex or
 Claude Code login. That local loop retains its structured command protocol.

@@ -477,10 +477,10 @@ fn run_with_provider(
                         };
                         reply.usage.total_tokens = result["tokens"].as_u64().unwrap_or_default();
                         if !matches!(result["outcome"]["ending"]["reason"].as_str(), Some("finished" | "tests_held" | "checks_passed" | "asked")) {
-                            return Err(format!("Microcoder stopped: {}.", result["outcome"]));
+                            return Err(format!("The coding loop stopped: {}.", result["outcome"]));
                         }
                         if reply.text.is_empty() {
-                            return Err("Microcoder stopped before producing a reply. Inspect the tool results or retry with a smaller task.".into());
+                            return Err("The coding loop stopped before producing a reply. Inspect the tool results or retry with a smaller task.".into());
                         }
                         Ok(reply)
                     }.await;

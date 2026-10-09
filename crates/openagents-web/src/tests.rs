@@ -1202,35 +1202,27 @@ async fn the_download_page_links_only_the_coder_release_bundle() {
         .map(|rest| &rest[..rest.find('"').unwrap()])
         .filter(|href| href.starts_with("http"))
         .collect();
+    // One Coder download per platform, never the engine or the CLI as a
+    // download of its own. A release published as separate executables
+    // (up to 1.0.0-rc.5) is installed only by the one-line installers.
     let mut expected = Vec::new();
-    for (_, platform) in pages::CODER_PLATFORMS {
-        let extension = if platform.starts_with("windows-") {
-            ".exe"
-        } else {
-            ""
-        };
-        for command in ["coder", "openagents", "microcoder"] {
+    if pages::published_as_archives(pages::CODER_VERSION) {
+        for (_, platform) in pages::CODER_PLATFORMS {
             expected.push(format!(
-                "{}/{command}-{}-{platform}{extension}",
+                "{}/{}",
                 pages::CODER_BASE,
-                pages::CODER_VERSION
+                pages::coder_archive(pages::CODER_VERSION, platform)
             ));
         }
-        if platform.starts_with("windows-") {
-            expected.push(format!(
-                "{}/coder-boundary-{}-{platform}.exe",
-                pages::CODER_BASE,
-                pages::CODER_VERSION
-            ));
-        }
+        expected.push(format!(
+            "{}/SHA256SUMS-coder-{}",
+            pages::CODER_BASE,
+            pages::CODER_VERSION
+        ));
     }
-    expected.push(format!(
-        "{}/SHA256SUMS-coder-{}",
-        pages::CODER_BASE,
-        pages::CODER_VERSION
-    ));
     assert_eq!(links, expected, "{body}");
-    assert!(body.contains("<h2 id=\"coder-title\">Coder + OpenAgents CLI</h2>"));
+    assert!(!main.to_lowercase().contains("microcoder"), "{main}");
+    assert!(body.contains("<h2 id=\"coder-title\">Coder</h2>"));
     assert!(body.contains("<title>Download Coder \u{b7} OpenAgents</title>"));
     assert!(body.contains("<h1>Download Coder</h1>"));
     // Download is the header pill now; on its own page it is marked current.
@@ -1250,6 +1242,7 @@ async fn the_download_page_links_only_the_coder_release_bundle() {
     assert!(!guide.contains("1.0.0-rc.2"));
     assert!(!guide.contains(".dmg"));
     assert!(!guide.contains("OpenAgents Terminal"));
+    assert!(!guide.to_lowercase().contains("microcoder"));
     // Its older addresses, and the guide's old name, redirect for good.
     for (old, new) in [
         ("/install", "/download"),

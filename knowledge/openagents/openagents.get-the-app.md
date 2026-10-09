@@ -1,6 +1,6 @@
 ---
 id: openagents.get-the-app
-version: 5
+version: 6
 kind: product
 title: "Getting the apps"
 summary: >-
@@ -33,6 +33,7 @@ evidence:
   - "2026-10-01: We checked the download page and corrected the installation guidance."
   - "2026-10-01: The page offers Mac and Terminal release candidates. All other apps require source builds."
   - "2026-10-09: v5 (chat goldens): the download page now offers only Coder and the OpenAgents command-line program (download.rs: Download Coder), not a Mac .dmg, so the answer says so."
+  - "2026-10-09: v6: the install command's result is Coder and the `openagents` command; the engine Coder runs with is part of Coder, not a separate download."
 ---
 
 ## Answer
@@ -42,7 +43,7 @@ openagents.com/download has Coder, our coding agent for your terminal, with the 
 ## Details
 
 - macOS and Linux: `curl -fsSL https://openagents.com/cli/install.sh | bash`. Windows, in PowerShell: `irm https://openagents.com/cli/install.ps1 | iex`.
-- The page's command installs `coder`, `openagents`, and `microcoder` together; run it again to update.
+- The page's command installs `coder` and the `openagents` command together; run it again to update.
 
 ## Sources
 
