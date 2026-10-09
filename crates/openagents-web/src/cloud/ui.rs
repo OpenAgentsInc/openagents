@@ -355,18 +355,18 @@ mod tests {
             "<form class=\"cloud-form\" method=\"post\" action=\"/x/confirm\"><input type=\"hidden\" name=\"csrf\" value=\"t&lt;1&gt;\"><input type=\"hidden\" name=\"request\" value=\"r-1\"><input type=\"hidden\" name=\"revision\" value=\"7\"><p>Exact</p>"
         ), "{html}");
         assert!(html.contains("type=\"submit\""), "{html}");
-        assert!(html.contains(">Confirm</span></button></div></form>"), "{html}");
+        assert!(
+            html.contains(">Confirm</span></button></div></form>"),
+            "{html}"
+        );
         let here = BoundForm::here().render().into_string();
         assert!(!here.contains("action="), "{here}");
     }
 
     #[test]
     fn outcome_unknown_offers_the_same_request_again() {
-        let html = outcome_unknown(
-            "request r-1",
-            Some(retry("/x", "t").bind("request", "r-1")),
-        )
-        .into_string();
+        let html = outcome_unknown("request r-1", Some(retry("/x", "t").bind("request", "r-1")))
+            .into_string();
         for needle in [
             "Outcome unknown",
             "request r-1",
@@ -380,21 +380,30 @@ mod tests {
 
     #[test]
     fn details_states_and_links_escape_text() {
-        let html = Details::new()
-            .row("Owner", "<b>")
-            .render()
-            .into_string();
+        let html = Details::new().row("Owner", "<b>").render().into_string();
         assert_eq!(
             html,
             "<dl class=\"cloud-details\"><dt>Owner</dt><dd>&lt;b&gt;</dd></dl>"
         );
         assert!(denied("No", "x").into_string().contains("role=\"alert\""));
-        assert!(unavailable("Off", "<i>").into_string().contains("&lt;i&gt;"));
-        assert!(empty("None", "yet").into_string().contains("oa-empty-message"));
+        assert!(
+            unavailable("Off", "<i>")
+                .into_string()
+                .contains("&lt;i&gt;")
+        );
+        assert!(
+            empty("None", "yet")
+                .into_string()
+                .contains("oa-empty-message")
+        );
         assert_eq!(
             links([("/a", "A"), ("/b", "B")]).into_string(),
             "<p class=\"cloud-links\"><a href=\"/a\">A</a> \u{b7} <a href=\"/b\">B</a></p>"
         );
-        assert!(status("failed", Tone::Danger).into_string().contains("data-color=\"danger\""));
+        assert!(
+            status("failed", Tone::Danger)
+                .into_string()
+                .contains("data-color=\"danger\"")
+        );
     }
 }
