@@ -347,6 +347,7 @@ fn missing_preexisting_self_and_source_only_have_visible_review_outcomes() {
 
 #[test]
 fn legacy_source_stays_unknown_without_rewriting_its_original_signup_evidence() {
+    crate::files_only!();
     let (dir, accounts, owner, _, policy) = fixture();
     let (buyer, r, source) = signup(&accounts, &owner);
     accounts

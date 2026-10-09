@@ -311,7 +311,18 @@ impl Store {
     }
 
     /// Read and validate a store's text.
-    fn parse(text: &str, name: &str) -> Result<Self, String> {
+    /// A store read back from the database, checked as a file is.
+    #[cfg(feature = "postgres")]
+    fn from_document(doc: &Value) -> Result<Self, Trouble> {
+        let store: Self = Self::deserialize(doc)
+            .map_err(|e| Trouble::Invalid(format!("account database: {e}")))?;
+        store
+            .validate("account database")
+            .map_err(Trouble::Invalid)?;
+        Ok(store)
+    }
+
+    pub(crate) fn parse(text: &str, name: &str) -> Result<Self, String> {
         let store: Self = serde_json::from_str(text).map_err(|error| format!("{name}: {error}"))?;
         store.validate(name)?;
         Ok(store)
@@ -738,14 +749,31 @@ fn invite_status_name(status: InviteStatus) -> &'static str {
 /// lock is per mutation rather than per open handle — reads never take
 /// it, and a writer waits a bounded time for the holder to finish before
 /// reporting the store locked.
-struct Lock {
-    path: PathBuf,
-    file: std::fs::File,
-    directory: std::fs::File,
+pub(crate) struct Lock {
+    inner: LockInner,
+}
+
+enum LockInner {
+    Files {
+        path: PathBuf,
+        file: std::fs::File,
+        directory: std::fs::File,
+    },
+    /// A transaction holding the store's advisory lock (`crate::db`).
+    #[cfg(feature = "postgres")]
+    Database(#[allow(dead_code)] crate::db::Held),
 }
 
 impl Lock {
     fn acquire(dir: &Path) -> Result<Self, Trouble> {
+        #[cfg(feature = "postgres")]
+        if let Some(database) = crate::db::bound(dir) {
+            let held = crate::db::Held::acquire(&database, crate::db::docs::ACCOUNTS.store)
+                .map_err(|e| Trouble::Io(e.into()))?;
+            return Ok(Self {
+                inner: LockInner::Database(held),
+            });
+        }
         let directory = private_fs::flags(
             std::fs::OpenOptions::new().read(true),
             private_fs::O_DIRECTORY | private_fs::O_NOFOLLOW,
@@ -761,9 +789,11 @@ impl Lock {
                 Ok(mut file) => {
                     writeln!(file, "pid {}", std::process::id()).ok();
                     return Ok(Self {
-                        path,
-                        file,
-                        directory,
+                        inner: LockInner::Files {
+                            path,
+                            file,
+                            directory,
+                        },
                     });
                 }
                 Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
@@ -777,16 +807,23 @@ impl Lock {
 
     /// Refuse an old writer after its lock or account directory was replaced.
     fn check(&self) -> Result<(), Trouble> {
+        #[allow(irrefutable_let_patterns)]
+        let LockInner::Files {
+            path,
+            file,
+            directory,
+        } = &self.inner
+        else {
+            // The database's advisory lock cannot be taken over while held.
+            return Ok(());
+        };
         let matches = |file: &std::fs::File, path: &Path| -> Result<bool, Trouble> {
             let held = file.metadata()?;
             let current = std::fs::symlink_metadata(path)?;
             Ok(!current.file_type().is_symlink() && private_fs::same_file(&held, &current))
         };
-        if !matches(&self.file, &self.path)?
-            || !matches(
-                &self.directory,
-                self.path.parent().expect("a lock has a parent"),
-            )?
+        if !matches(file, path)?
+            || !matches(directory, path.parent().expect("a lock has a parent"))?
         {
             return Err(Trouble::Invalid("Account writer custody changed.".into()));
         }
@@ -796,8 +833,11 @@ impl Lock {
 
 impl Drop for Lock {
     fn drop(&mut self) {
-        if self.check().is_ok() {
-            std::fs::remove_file(&self.path).ok();
+        #[allow(irrefutable_let_patterns)]
+        if let LockInner::Files { path, .. } = &self.inner
+            && self.check().is_ok()
+        {
+            std::fs::remove_file(path).ok();
         }
     }
 }
@@ -886,6 +926,18 @@ fn valid_principal(value: &str) -> bool {
 /// created by [`Accounts::install`], and a directory that should hold one
 /// and does not is incomplete storage — it fails closed.
 fn load(dir: &Path) -> Result<Store, Trouble> {
+    #[cfg(feature = "postgres")]
+    if let Some(database) = crate::db::bound(dir) {
+        let (_, doc) = crate::db::docs::load(&database, &crate::db::docs::ACCOUNTS)
+            .map_err(|e| Trouble::Io(e.into()))?
+            .ok_or_else(|| {
+                Trouble::Io(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    "the account database holds no account store",
+                ))
+            })?;
+        return Store::from_document(&doc);
+    }
     let path = dir.join(ACCOUNTS);
     let text = read_store(&path)?;
     Store::parse(&text, &path.display().to_string()).map_err(Trouble::Invalid)
@@ -894,6 +946,13 @@ fn load(dir: &Path) -> Result<Store, Trouble> {
 /// Write a sealed store: archive it by digest, then replace
 /// `accounts.json` in one rename.
 fn save(dir: &Path, store: &Store) -> Result<(), Trouble> {
+    #[cfg(feature = "postgres")]
+    if let Some(database) = crate::db::bound(dir) {
+        let doc = serde_json::to_value(store).map_err(|e| Trouble::Invalid(e.to_string()))?;
+        crate::db::docs::save(&database, &crate::db::docs::ACCOUNTS, &doc)
+            .map_err(|e| Trouble::Io(e.into()))?;
+        return Ok(());
+    }
     let history = dir.join(HISTORY);
     std::fs::create_dir_all(&history)?;
     let text =
@@ -962,7 +1021,17 @@ impl Accounts {
     pub fn install(dir: &Path) -> Result<Self, Trouble> {
         std::fs::create_dir_all(dir)?;
         let _lock = Lock::acquire(dir)?;
-        if dir.join(ACCOUNTS).exists()
+        #[cfg(feature = "postgres")]
+        let installed = match crate::db::bound(dir) {
+            Some(database) => crate::db::docs::load(&database, &crate::db::docs::ACCOUNTS)
+                .map_err(|e| Trouble::Io(e.into()))?
+                .is_some(),
+            None => false,
+        };
+        #[cfg(not(feature = "postgres"))]
+        let installed = false;
+        if installed
+            || dir.join(ACCOUNTS).exists()
             || (dir.join(HISTORY).exists()
                 && std::fs::read_dir(dir.join(HISTORY))?.next().is_some())
         {
@@ -1037,6 +1106,19 @@ impl Accounts {
             return Err(Trouble::Invalid(
                 "revision must be a SHA-256 identity".into(),
             ));
+        }
+        #[cfg(feature = "postgres")]
+        if let Some(database) = crate::db::bound(dir) {
+            let doc = crate::db::docs::revision(&database, "accounts", digest)
+                .map_err(|e| Trouble::Io(e.into()))?
+                .ok_or_else(|| Trouble::UnknownRevision(digest.to_string()))?;
+            let store = Store::from_document(&doc)?;
+            if store.digest != digest {
+                return Err(Trouble::Invalid(
+                    "archived revision identity mismatch".into(),
+                ));
+            }
+            return Ok(store);
         }
         let path = dir.join(HISTORY).join(format!("{digest}.json"));
         if !path.exists() {
@@ -1818,8 +1900,52 @@ mod tests {
             .unwrap()
     }
 
+    /// Two writers at once, many times: every account each made is kept,
+    /// and the chain has one revision per write, on files and in
+    /// Postgres.
+    #[test]
+    fn concurrent_writers_lose_no_update() {
+        let dir = tempfile::tempdir().unwrap();
+        let accounts = Accounts::install(dir.path()).unwrap();
+        let made: Vec<String> = std::thread::scope(|scope| {
+            let handles: Vec<_> = (0..2)
+                .map(|writer| {
+                    let accounts = accounts.clone();
+                    scope.spawn(move || {
+                        (0..10)
+                            .map(|n| {
+                                accounts
+                                    .create_account(&format!("writer {writer} #{n}"), &[])
+                                    .unwrap()
+                                    .id
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                })
+                .collect();
+            handles
+                .into_iter()
+                .flat_map(|handle| handle.join().unwrap())
+                .collect()
+        });
+        let store = accounts.store().unwrap();
+        assert_eq!(store.accounts.len(), 20);
+        for id in &made {
+            assert!(store.accounts.contains_key(id), "account {id} was lost");
+        }
+        assert_eq!(store.sequence, 20);
+        // Every revision in the chain is archived and reads back.
+        let mut digest = store.digest.clone();
+        for _ in 0..20 {
+            let revision = Accounts::revision(dir.path(), &digest).unwrap();
+            digest = revision.supersedes.clone().unwrap();
+        }
+        assert_eq!(Accounts::revision(dir.path(), &digest).unwrap().sequence, 0);
+    }
+
     #[test]
     fn concurrent_installation_has_one_genesis_writer() {
+        crate::files_only!();
         let dir = tempfile::tempdir().unwrap();
         let barrier = std::sync::Arc::new(std::sync::Barrier::new(4));
         let handles: Vec<_> = (0..4)
@@ -1848,6 +1974,7 @@ mod tests {
 
     #[test]
     fn revision_lookup_rejects_paths_and_wrong_archived_identity() {
+        crate::files_only!();
         let (dir, accounts) = installed();
         let genesis = accounts.store().unwrap();
         assert!(matches!(
@@ -1871,6 +1998,7 @@ mod tests {
 
     #[test]
     fn secrets_and_invalid_expiry_do_not_enter_the_store() {
+        crate::files_only!();
         let (dir, accounts) = installed();
         let before = accounts.store().unwrap().digest;
         let secret = "oak_fixture_is_not_a_principal_reference";
@@ -2123,6 +2251,7 @@ mod tests {
 
     #[test]
     fn invitations_expire_replay_and_die_once() {
+        crate::files_only!();
         let (_dir, accounts) = installed();
         let owner = account(&accounts, "owner");
         let joiner = account(&accounts, "joiner");
@@ -2480,6 +2609,7 @@ mod tests {
 
     #[test]
     fn corrupt_and_incomplete_storage_fails_closed() {
+        crate::files_only!();
         let dir = tempfile::tempdir().unwrap();
 
         // Missing entirely: an opened store is not an empty one.

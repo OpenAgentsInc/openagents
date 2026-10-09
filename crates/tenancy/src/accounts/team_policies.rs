@@ -69,7 +69,7 @@ pub struct Guard {
     pub snapshot: Snapshot,
     _lock: Lock,
     accounts: Accounts,
-    state: std::fs::File,
+    state: super::team_capabilities::StateHandle,
     digest: String,
 }
 impl Guard {

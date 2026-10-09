@@ -288,6 +288,7 @@ mod custody_tests {
     use super::*;
     #[test]
     fn replaced_native_account_state_cannot_finish_an_admitted_read() {
+        crate::files_only!();
         let dir = tempfile::tempdir().unwrap();
         let accounts = Accounts::install(dir.path()).unwrap();
         let owner = accounts.create_account("fixture owner", &[]).unwrap();

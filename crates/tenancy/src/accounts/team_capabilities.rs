@@ -7,6 +7,14 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::fs::File;
+
+/// What a team writer holds to notice the account state changing under
+/// it: the open file, or the database revision it read.
+pub(super) enum StateHandle {
+    File(File),
+    #[cfg(feature = "postgres")]
+    Revision(i64),
+}
 use std::io::Read;
 
 pub const SCHEMA: &str = "openagents.team-capability.v1";
@@ -383,7 +391,15 @@ impl Accounts {
         Self::principal_in_store(store, workspace, &format!("key:{}", key.key_id))
             .map_err(|e| e.to_string())
     }
-    pub(super) fn team_state(&self) -> Result<(Store, File), String> {
+    pub(super) fn team_state(&self) -> Result<(Store, StateHandle), String> {
+        #[cfg(feature = "postgres")]
+        if let Some(database) = crate::db::bound(&self.dir) {
+            let (revision, _) = crate::db::docs::load(&database, &crate::db::docs::ACCOUNTS)
+                .map_err(|e| e.to_string())?
+                .ok_or("Native team account state is unavailable.")?;
+            let store = super::load(&self.dir).map_err(|e| e.to_string())?;
+            return Ok((store, StateHandle::Revision(revision)));
+        }
         let mut file = private_fs::flags(
             std::fs::OpenOptions::new().read(true),
             private_fs::O_NOFOLLOW | private_fs::O_NONBLOCK,
@@ -403,13 +419,22 @@ impl Accounts {
             return Err("Native team account state exceeds 16 MiB.".into());
         }
         let store = Store::parse(&text, "team account state")?;
-        Ok((store, file))
+        Ok((store, StateHandle::File(file)))
     }
-    pub(super) fn team_check_state(&self, held: &File, digest: &str) -> Result<(), String> {
+    pub(super) fn team_check_state(&self, held: &StateHandle, digest: &str) -> Result<(), String> {
         let (current, file) = self.team_state()?;
-        let original = held.metadata().map_err(|e| e.to_string())?;
-        let observed = file.metadata().map_err(|e| e.to_string())?;
-        if !private_fs::same_file(&original, &observed) || current.digest != digest {
+        let same = match (held, &file) {
+            (StateHandle::File(held), StateHandle::File(file)) => {
+                let original = held.metadata().map_err(|e| e.to_string())?;
+                let observed = file.metadata().map_err(|e| e.to_string())?;
+                private_fs::same_file(&original, &observed)
+            }
+            #[cfg(feature = "postgres")]
+            (StateHandle::Revision(held), StateHandle::Revision(now)) => held == now,
+            #[allow(unreachable_patterns)]
+            _ => false,
+        };
+        if !same || current.digest != digest {
             return Err("Account state custody changed outside its held writer.".into());
         }
         Ok(())
@@ -417,7 +442,7 @@ impl Accounts {
     pub(super) fn team_commit(
         &self,
         lock: &Lock,
-        held: &mut File,
+        held: &mut StateHandle,
         store: &mut Store,
     ) -> Result<(), String> {
         lock.check().map_err(|e| e.to_string())?;
@@ -481,7 +506,7 @@ impl Accounts {
     fn team_retain_observation(
         &self,
         lock: &Lock,
-        held: &mut File,
+        held: &mut StateHandle,
         store: &mut Store,
         key: &str,
         source: &dyn Sources,

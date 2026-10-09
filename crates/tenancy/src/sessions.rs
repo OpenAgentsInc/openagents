@@ -955,7 +955,18 @@ impl Store {
     }
 
     /// Read and validate a store's text.
-    fn parse(text: &str, name: &str) -> Result<Self, String> {
+    /// A store read back from the database, checked as a file is.
+    #[cfg(feature = "postgres")]
+    fn from_document(doc: &serde_json::Value) -> Result<Self, crate::accounts::Trouble> {
+        let store: Self = Self::deserialize(doc)
+            .map_err(|e| crate::accounts::Trouble::Invalid(format!("session database: {e}")))?;
+        store
+            .validate("session database")
+            .map_err(crate::accounts::Trouble::Invalid)?;
+        Ok(store)
+    }
+
+    pub(crate) fn parse(text: &str, name: &str) -> Result<Self, String> {
         let store: Self = serde_json::from_str(text).map_err(|error| format!("{name}: {error}"))?;
         store.validate(name)?;
         Ok(store)
@@ -1034,7 +1045,17 @@ impl Sessions {
     pub fn install(dir: &Path, book: SessionBook) -> Result<Self, crate::accounts::Trouble> {
         std::fs::create_dir_all(dir)?;
         let _lock = SessionLock::acquire(dir)?;
-        if dir.join(SESSIONS).exists()
+        #[cfg(feature = "postgres")]
+        let installed = match crate::db::bound(dir) {
+            Some(database) => crate::db::docs::load(&database, &crate::db::docs::SESSIONS)
+                .map_err(|e| crate::accounts::Trouble::Io(e.into()))?
+                .is_some(),
+            None => false,
+        };
+        #[cfg(not(feature = "postgres"))]
+        let installed = false;
+        if installed
+            || dir.join(SESSIONS).exists()
             || (dir.join(HISTORY_DIR).exists()
                 && std::fs::read_dir(dir.join(HISTORY_DIR))?.next().is_some())
         {
@@ -1085,6 +1106,19 @@ impl Sessions {
             return Err(crate::accounts::Trouble::Invalid(
                 "revision must be a SHA-256 identity".into(),
             ));
+        }
+        #[cfg(feature = "postgres")]
+        if let Some(database) = crate::db::bound(dir) {
+            let doc = crate::db::docs::revision(&database, "sessions", digest)
+                .map_err(|e| crate::accounts::Trouble::Io(e.into()))?
+                .ok_or_else(|| crate::accounts::Trouble::UnknownRevision(digest.to_string()))?;
+            let store = Store::from_document(&doc)?;
+            if store.digest != digest {
+                return Err(crate::accounts::Trouble::Invalid(
+                    "archived revision identity mismatch".into(),
+                ));
+            }
+            return Ok(store);
         }
         let path = dir.join(HISTORY_DIR).join(format!("{digest}.json"));
         if !path.exists() {
@@ -1171,11 +1205,22 @@ pub fn push_access(access: &mut Vec<Access>, event: Access) {
 /// `accounts.lock`: `create_new` makes it atomic, absence is the
 /// release, a dropped guard removes it.
 struct SessionLock {
-    path: PathBuf,
+    path: Option<PathBuf>,
+    #[cfg(feature = "postgres")]
+    _held: Option<crate::db::Held>,
 }
 
 impl SessionLock {
     fn acquire(dir: &Path) -> Result<Self, crate::accounts::Trouble> {
+        #[cfg(feature = "postgres")]
+        if let Some(database) = crate::db::bound(dir) {
+            let held = crate::db::Held::acquire(&database, crate::db::docs::SESSIONS.store)
+                .map_err(|e| crate::accounts::Trouble::Io(e.into()))?;
+            return Ok(Self {
+                path: None,
+                _held: Some(held),
+            });
+        }
         let path = dir.join(SESSIONS_LOCK);
         for _ in 0..SESSIONS_LOCK_RETRIES {
             match std::fs::OpenOptions::new()
@@ -1185,7 +1230,11 @@ impl SessionLock {
             {
                 Ok(mut file) => {
                     writeln!(file, "pid {}", std::process::id()).ok();
-                    return Ok(Self { path });
+                    return Ok(Self {
+                        path: Some(path),
+                        #[cfg(feature = "postgres")]
+                        _held: None,
+                    });
                 }
                 Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
                     std::thread::sleep(std::time::Duration::from_millis(10));
@@ -1199,7 +1248,9 @@ impl SessionLock {
 
 impl Drop for SessionLock {
     fn drop(&mut self) {
-        std::fs::remove_file(&self.path).ok();
+        if let Some(path) = &self.path {
+            std::fs::remove_file(path).ok();
+        }
     }
 }
 
@@ -1238,6 +1289,18 @@ fn write_sessions_synced(path: &Path, text: &str) -> Result<(), crate::accounts:
 
 /// Load the store from a directory, validating it end to end.
 fn load_sessions(dir: &Path) -> Result<Store, crate::accounts::Trouble> {
+    #[cfg(feature = "postgres")]
+    if let Some(database) = crate::db::bound(dir) {
+        let (_, doc) = crate::db::docs::load(&database, &crate::db::docs::SESSIONS)
+            .map_err(|e| crate::accounts::Trouble::Io(e.into()))?
+            .ok_or_else(|| {
+                crate::accounts::Trouble::Io(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    "the account database holds no session store",
+                ))
+            })?;
+        return Store::from_document(&doc);
+    }
     let path = dir.join(SESSIONS);
     let text = read_sessions(&path)?;
     Store::parse(&text, &path.display().to_string()).map_err(crate::accounts::Trouble::Invalid)
@@ -1246,6 +1309,14 @@ fn load_sessions(dir: &Path) -> Result<Store, crate::accounts::Trouble> {
 /// Write a sealed store: archive it by digest, then replace
 /// `sessions.json` in one rename.
 fn save_sessions(dir: &Path, store: &Store) -> Result<(), crate::accounts::Trouble> {
+    #[cfg(feature = "postgres")]
+    if let Some(database) = crate::db::bound(dir) {
+        let doc = serde_json::to_value(store)
+            .map_err(|e| crate::accounts::Trouble::Invalid(e.to_string()))?;
+        crate::db::docs::save(&database, &crate::db::docs::SESSIONS, &doc)
+            .map_err(|e| crate::accounts::Trouble::Io(e.into()))?;
+        return Ok(());
+    }
     let history = dir.join(HISTORY_DIR);
     std::fs::create_dir_all(&history)?;
     let text = serde_json::to_string_pretty(store)

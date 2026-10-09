@@ -261,6 +261,33 @@ fn fresh() -> Result<String, KeyTrouble> {
 
 /// Load the key store from a registry directory.
 pub fn load(dir: &Path) -> Result<KeyStore, KeyTrouble> {
+    #[cfg(feature = "postgres")]
+    if let Some(database) = crate::db::bound(dir) {
+        let held = crate::db::docs::load(&database, &crate::db::docs::KEYS)
+            .map_err(|e| KeyTrouble::Io(e.into()))?;
+        return match held {
+            Some((_, doc)) => {
+                let store: KeyStore = serde_json::from_value((*doc).clone())
+                    .map_err(|e| KeyTrouble::Invalid(format!("key database: {e}")))?;
+                if store.v != KEYS_SCHEMA {
+                    return Err(KeyTrouble::Invalid(format!(
+                        "key database: schema `{}` is not `{KEYS_SCHEMA}`",
+                        store.v
+                    )));
+                }
+                Ok(store)
+            }
+            None => Ok(KeyStore {
+                v: KEYS_SCHEMA.to_string(),
+                keys: BTreeMap::new(),
+            }),
+        };
+    }
+    load_files(dir)
+}
+
+/// Load the key store from `keys.json` itself, whatever backs `dir`.
+pub(crate) fn load_files(dir: &Path) -> Result<KeyStore, KeyTrouble> {
     let path = dir.join(KEYS);
     match std::fs::read_to_string(&path) {
         Ok(text) => {
@@ -286,14 +313,91 @@ pub fn load(dir: &Path) -> Result<KeyStore, KeyTrouble> {
 }
 
 /// Write the store atomically: a temp file and a rename, the same way the
-/// manifest lands.
+/// manifest lands. Callers hold [`KeyLock`], so the read-modify-write
+/// around it cannot lose another writer's key (#11150).
 fn save(dir: &Path, store: &KeyStore) -> Result<(), KeyTrouble> {
+    #[cfg(feature = "postgres")]
+    if let Some(database) = crate::db::bound(dir) {
+        let doc = serde_json::to_value(store).map_err(|e| KeyTrouble::Invalid(e.to_string()))?;
+        crate::db::docs::save(&database, &crate::db::docs::KEYS, &doc)
+            .map_err(|e| KeyTrouble::Io(e.into()))?;
+        return Ok(());
+    }
     let text = serde_json::to_string_pretty(store)
         .map_err(|error| KeyTrouble::Invalid(error.to_string()))?;
-    let staged = dir.join(format!(".{KEYS}.tmp"));
+    let staged = dir.join(format!(".{KEYS}.{}.tmp", &fresh()?[..16]));
     std::fs::write(&staged, format!("{text}\n"))?;
     std::fs::rename(&staged, dir.join(KEYS))?;
     Ok(())
+}
+
+/// The lock file serializing key writers.
+const KEYS_LOCK: &str = "keys.lock";
+
+/// The writer lock every key mutation holds across its load and save:
+/// an exclusive-create `keys.lock` beside the store, or the database's
+/// advisory lock when `dir` is kept in Postgres.
+struct KeyLock {
+    path: Option<std::path::PathBuf>,
+    #[cfg(feature = "postgres")]
+    _held: Option<crate::db::Held>,
+}
+
+impl KeyLock {
+    fn acquire(dir: &Path) -> Result<Self, KeyTrouble> {
+        #[cfg(feature = "postgres")]
+        if let Some(database) = crate::db::bound(dir) {
+            let held = crate::db::Held::acquire(&database, crate::db::docs::KEYS.store)
+                .map_err(|e| KeyTrouble::Io(e.into()))?;
+            return Ok(Self {
+                path: None,
+                _held: Some(held),
+            });
+        }
+        let path = dir.join(KEYS_LOCK);
+        for attempt in 0..500 {
+            match std::fs::OpenOptions::new()
+                .create_new(true)
+                .write(true)
+                .open(&path)
+            {
+                Ok(_) => {
+                    return Ok(Self {
+                        path: Some(path),
+                        #[cfg(feature = "postgres")]
+                        _held: None,
+                    });
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                    // A lock older than a minute was left by a crash.
+                    if attempt == 0
+                        && std::fs::metadata(&path)
+                            .and_then(|m| m.modified())
+                            .ok()
+                            .and_then(|t| t.elapsed().ok())
+                            .is_some_and(|age| age.as_secs() > 60)
+                    {
+                        std::fs::remove_file(&path).ok();
+                        continue;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                }
+                Err(error) => return Err(KeyTrouble::Io(error)),
+            }
+        }
+        Err(KeyTrouble::Invalid(format!(
+            "{} is held by another writer",
+            path.display()
+        )))
+    }
+}
+
+impl Drop for KeyLock {
+    fn drop(&mut self) {
+        if let Some(path) = &self.path {
+            std::fs::remove_file(path).ok();
+        }
+    }
 }
 
 /// Issue a key for a tenant the registry binds.
@@ -315,6 +419,7 @@ pub fn issue_scoped(
     if !manifest.tenants.contains_key(tenant) {
         return Err(KeyTrouble::UnknownTenant(tenant.to_string()));
     }
+    let _lock = KeyLock::acquire(dir)?;
     let mut store = load(dir)?;
     let id = &fresh()?[..16];
     let secret = fresh()?;
@@ -342,6 +447,7 @@ pub fn issue_scoped(
 /// reach without sharing a secret — the copy records `copied_from`, and
 /// revoking one never touches the other.
 pub fn copy(dir: &Path, key_id: &str) -> Result<Issued, KeyTrouble> {
+    let _lock = KeyLock::acquire(dir)?;
     let mut store = load(dir)?;
     let source = store
         .keys
@@ -373,6 +479,7 @@ pub fn copy(dir: &Path, key_id: &str) -> Result<Issued, KeyTrouble> {
 /// ending it — the record, its attribution, and its scopes all survive,
 /// which is what separates a held key from a revoked one.
 pub fn pause(dir: &Path, key_id: &str) -> Result<(), KeyTrouble> {
+    let _lock = KeyLock::acquire(dir)?;
     let mut store = load(dir)?;
     let key = store
         .keys
@@ -385,6 +492,7 @@ pub fn pause(dir: &Path, key_id: &str) -> Result<(), KeyTrouble> {
 /// Resume a paused key. A revoked key does not come back — `resume` on
 /// one refuses rather than resurrecting it.
 pub fn resume(dir: &Path, key_id: &str) -> Result<(), KeyTrouble> {
+    let _lock = KeyLock::acquire(dir)?;
     let mut store = load(dir)?;
     let key = store
         .keys
@@ -405,6 +513,7 @@ pub fn resume(dir: &Path, key_id: &str) -> Result<(), KeyTrouble> {
 /// doors and quota carry straight across — and names the superseded key
 /// in `rotated_from` so the lineage is auditable.
 pub fn rotate(dir: &Path, key_id: &str) -> Result<Issued, KeyTrouble> {
+    let _lock = KeyLock::acquire(dir)?;
     let mut store = load(dir)?;
     let old = store
         .keys
@@ -436,6 +545,7 @@ pub fn rotate(dir: &Path, key_id: &str) -> Result<Issued, KeyTrouble> {
 /// Revoke a key. The record stays — a revoked key must still be
 /// recognizable as revoked rather than unknown.
 pub fn revoke(dir: &Path, key_id: &str) -> Result<(), KeyTrouble> {
+    let _lock = KeyLock::acquire(dir)?;
     let mut store = load(dir)?;
     let key = store
         .keys
@@ -527,6 +637,7 @@ mod tests {
 
     #[test]
     fn issue_authenticates_and_never_stores_the_secret() {
+        crate::files_only!();
         let (dir, manifest) = installed();
         let issued = issue(dir.path(), &manifest, "acme").unwrap();
         let auth = authenticate(dir.path(), &manifest, &issued.token).unwrap();
@@ -739,6 +850,7 @@ mod tests {
 
     #[test]
     fn a_store_from_before_names_and_scopes_still_reads() {
+        crate::files_only!();
         let (dir, manifest) = installed();
         let issued = issue(dir.path(), &manifest, "acme").unwrap();
         let text = std::fs::read_to_string(dir.path().join(KEYS)).unwrap();
@@ -753,5 +865,33 @@ mod tests {
                 .scopes,
             None
         );
+    }
+
+    /// Keys issued at the same moment are all kept (#11150): the writer
+    /// lock serializes the read-modify-write, on files and in Postgres.
+    #[test]
+    fn concurrent_issues_lose_no_key() {
+        let (dir, manifest) = installed();
+        let issued: Vec<String> = std::thread::scope(|scope| {
+            let handles: Vec<_> = (0..8)
+                .map(|_| {
+                    scope.spawn(|| {
+                        (0..5)
+                            .map(|_| issue(dir.path(), &manifest, "acme").unwrap().key.id)
+                            .collect::<Vec<_>>()
+                    })
+                })
+                .collect();
+            handles
+                .into_iter()
+                .flat_map(|handle| handle.join().unwrap())
+                .collect()
+        });
+        let store = load(dir.path()).unwrap();
+        assert_eq!(issued.len(), 40);
+        for id in &issued {
+            assert!(store.keys.contains_key(id), "key {id} was lost");
+        }
+        assert_eq!(store.keys.len(), 40);
     }
 }

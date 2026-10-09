@@ -20,6 +20,7 @@ fn setup() -> (tempfile::TempDir, Accounts, Account, Account) {
 
 #[test]
 fn signup_capture_is_stable_private_and_replay_cannot_rewrite_it() {
+    crate::files_only!();
     let (dir, accounts, alice, bob) = setup();
     let record = accounts
         .create_referrer(&alice.id, Kind::Person, "Private lead notes")

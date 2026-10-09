@@ -255,6 +255,7 @@ fn expired_policy_and_changed_owner_refuse_new_effects_without_erasing_history()
 
 #[test]
 fn policy_disclosure_guard_refuses_replaced_native_state_after_sealed_admission() {
+    crate::files_only!();
     let f = fixture();
     review(&f);
     let member = actor(&f, &f.member);

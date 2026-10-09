@@ -58,10 +58,26 @@
 //! authorization read a session or key makes to learn whether a
 //! membership still stands.
 
+/// Ends a test that reads or tampers with the store files themselves
+/// when the suite runs against Postgres (`TENANCY_TEST_DATABASE_URL`).
+#[cfg(test)]
+#[macro_export]
+#[doc(hidden)]
+macro_rules! files_only {
+    () => {
+        #[cfg(feature = "postgres")]
+        if $crate::db::testing::url().is_some() {
+            return;
+        }
+    };
+}
+
 pub mod accounts;
 pub mod admission;
 pub mod backend;
 pub mod billing;
+#[cfg(feature = "postgres")]
+pub mod db;
 pub mod keys;
 mod manifest;
 pub mod money;

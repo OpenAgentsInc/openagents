@@ -405,6 +405,7 @@ fn recipient_membership_changes_require_a_new_review_without_invalidating_other_
 }
 #[test]
 fn expiry_is_enforced_and_unknown_or_changed_retries_never_dispatch() {
+    crate::files_only!();
     let f = Fixture::new();
     let mut expired = f.request();
     expired.expires_at = super::unix_now();
@@ -480,6 +481,7 @@ fn expiry_is_enforced_and_unknown_or_changed_retries_never_dispatch() {
 }
 #[test]
 fn replacing_writer_lock_during_source_read_refuses_and_preserves_new_lock() {
+    crate::files_only!();
     let f = Fixture::new();
     f.grant();
     struct Replaced<'a> {
@@ -787,6 +789,7 @@ fn refused_older_observation_cannot_erase_retained_newer_signed_knowledge() {
 
 #[test]
 fn oversized_combined_history_refuses_before_replacing_readable_native_state() {
+    crate::files_only!();
     struct Large {
         release: Release,
         evidence: serde_json::Value,
