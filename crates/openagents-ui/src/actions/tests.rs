@@ -224,19 +224,19 @@ fn badge_snapshot() {
 fn indicators_snapshot() {
     assert_eq!(
         out(LoadingIndicator::new()),
-        r#"<div class="oa-loading-indicator" role="status" aria-label="Loading"></div>"#
+        r#"<span class="oa-loading-indicator" role="status" aria-label="Loading"></span>"#
     );
     assert_eq!(
         out(LoadingIndicator::new().decorative()),
-        r#"<div class="oa-loading-indicator" aria-hidden="true"></div>"#
+        r#"<span class="oa-loading-indicator" aria-hidden="true"></span>"#
     );
     assert_eq!(
         out(LoadingDots::new().label("Thinking")),
-        r#"<div class="oa-loading-dots" role="status" aria-label="Thinking"><div class="oa-loading-dots-dot"></div><div class="oa-loading-dots-dot"></div><div class="oa-loading-dots-dot"></div></div>"#
+        r#"<span class="oa-loading-dots" role="status" aria-label="Thinking"><span class="oa-loading-dots-dot"></span><span class="oa-loading-dots-dot"></span><span class="oa-loading-dots-dot"></span></span>"#
     );
     let ring = out(CircularProgress::new(25.0));
     assert!(ring.starts_with(
-        r#"<div class="oa-circular-progress" role="progressbar" aria-label="Progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="25">"#
+        r#"<span class="oa-circular-progress" role="progressbar" aria-label="Progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="25">"#
     ));
     assert!(ring.contains(r#"stroke-dashoffset="37.5""#));
     assert!(out(CircularProgress::new(250.0)).contains(r#"stroke-dashoffset="0""#));

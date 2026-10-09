@@ -68,7 +68,7 @@ pub use button::{
 };
 pub use empty_message::{EmptyMessage, EmptyMessageFill, EmptyMessageIconSize};
 pub use image::Image;
-pub use indicator::{CircularProgress, LoadingDots, LoadingIndicator};
+pub use indicator::{Busy, CircularProgress, LoadingDots, LoadingIndicator};
 pub use shimmer_text::{ShimmerTag, ShimmerText};
 pub use text_link::TextLink;
 

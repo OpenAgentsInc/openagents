@@ -487,10 +487,7 @@ fn view(state: &Status, csrf: &str, q: &str, problem: Option<&str>, install: boo
                             (Input::new("q").value(q).placeholder("Filter repositories").aria_label("Filter repositories"))
                         }
                         div #projects-repos hx-get=(repos_href(1, q)) hx-trigger="load" hx-swap="outerHTML" {
-                            p.oa-thread-working {
-                                (openagents_ui::actions::LoadingIndicator::new().decorative())
-                                span { "Loading your repositories" }
-                            }
+                            p { (openagents_ui::actions::Busy::new("Loading your repositories")) }
                         }
                         p {
                             "Missing one? "
@@ -523,10 +520,7 @@ fn view(state: &Status, csrf: &str, q: &str, problem: Option<&str>, install: boo
                     // The list loads after the page shows (one GitHub call
                     // per page of repositories), most recently pushed first.
                     div #projects-repos hx-get=(repos_href(1, q)) hx-trigger="load" hx-swap="outerHTML" {
-                        p.oa-thread-working {
-                            (openagents_ui::actions::LoadingIndicator::new().decorative())
-                            span { "Loading your repositories" }
-                        }
+                        p { (openagents_ui::actions::Busy::new("Loading your repositories")) }
                     }
                     @if install {
                         p {

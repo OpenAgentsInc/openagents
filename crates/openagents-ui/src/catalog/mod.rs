@@ -51,6 +51,7 @@ pub const COMPONENTS: &[&str] = &[
     "TextLink",
     "Badge",
     "LoadingIndicator",
+    "Busy",
     "LoadingDots",
     "CircularProgress",
     "Avatar",

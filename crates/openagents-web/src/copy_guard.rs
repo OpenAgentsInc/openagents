@@ -21,6 +21,7 @@ fn allowed(route: &str) -> &'static [&'static str] {
 /// Fails the test, naming the route, each term and its context, when the
 /// visible text of `html` has machine talk.
 pub(crate) fn assert_plain(route: &str, html: &str) {
+    assert_paragraphs_hold_only_text(route, html);
     let text = oa_copy::visible_text(&without_preformatted(html));
     let path = route.split('?').next().unwrap_or(route);
     let hits = oa_copy::violations(&text, allowed(path));
@@ -32,6 +33,36 @@ pub(crate) fn assert_plain(route: &str, html: &str) {
             .collect::<Vec<_>>()
             .join("; ")
     );
+}
+
+/// A block element (`<div>`, a list, a section, another `<p>`, a form)
+/// inside a `<p>` makes the browser close the paragraph early, so what
+/// followed it drops to a new line: the words wrapped under the spinner on
+/// "Working" and "Loading your repositories". Every page test fails on it.
+fn assert_paragraphs_hold_only_text(route: &str, html: &str) {
+    const BLOCKS: [&str; 10] = [
+        "<div", "<p ", "<p>", "<ul", "<ol", "<section", "<form", "<table", "<h1", "<h2",
+    ];
+    let mut rest = html;
+    while let Some(at) = rest.find("<p") {
+        let tail = &rest[at..];
+        // Only a real <p> or <p ...>, not <pre>, <path>, <progress>.
+        if !(tail.starts_with("<p>") || tail.starts_with("<p ")) {
+            rest = &tail[2..];
+            continue;
+        }
+        let open_end = tail.find('>').map_or(tail.len(), |i| i + 1);
+        let body = &tail[open_end..];
+        let end = body.find("</p>").unwrap_or(body.len());
+        let inside = &body[..end];
+        if let Some(block) = BLOCKS.iter().find(|block| inside.contains(*block)) {
+            panic!(
+                "{route}: a {block}> inside a <p> breaks the line: {}",
+                &inside[..inside.len().min(200)]
+            );
+        }
+        rest = &body[end..];
+    }
 }
 
 /// `html` without its `<pre>` blocks: raw records, terminal output, and

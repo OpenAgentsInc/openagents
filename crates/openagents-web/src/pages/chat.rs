@@ -1305,7 +1305,7 @@ fn messages(chat: &Conversation, before: Option<usize>, links: bool) -> Markup {
             }
         }
         div #chat-status.oa-thread-status role="status" aria-live="polite" {
-            @if chat.working() {span.oa-thread-working {(openagents_ui::actions::LoadingIndicator::new().decorative()) span {"Working"}}}
+            @if chat.working() {(openagents_ui::actions::Busy::new("Working"))}
             @else if let Some(terminal) = chat.terminal.as_ref().filter(|t| !t.replies.is_empty()) {"Waiting for Coder on " (terminal.computer) "."}
             @else if chat.requests.last().is_some_and(|r|r.outcome==Outcome::Unknown) {"We couldn't confirm your last message went through. Try asking again."}
             @else {""}

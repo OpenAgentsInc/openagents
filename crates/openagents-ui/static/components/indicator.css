@@ -1,6 +1,9 @@
 /* Ported from Apps SDK UI (src/components/Indicator/LoadingIndicator.module.css), MIT. See crates/openagents-ui/NOTICE. */
 
 .oa-loading-indicator {
+  display: inline-block;
+  flex: none;
+  vertical-align: middle;
   position: relative;
   width: var(--indicator-size, 1em);
   height: var(--indicator-size, 1em);
@@ -44,7 +47,7 @@
 /* Ported from Apps SDK UI (src/components/Indicator/LoadingDots.module.css), MIT. See crates/openagents-ui/NOTICE. */
 
 .oa-loading-dots {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: flex-start;
   gap: 4px;
@@ -85,6 +88,9 @@
 /* Ported from Apps SDK UI (src/components/Indicator/CircularProgress.module.css), MIT. See crates/openagents-ui/NOTICE. */
 
 .oa-circular-progress {
+  display: inline-block;
+  flex: none;
+  vertical-align: middle;
   position: relative;
   width: var(--circular-progress-size, 28px);
   height: var(--circular-progress-size, 28px);
@@ -114,4 +120,15 @@
   transform: rotate(-90deg);
   transition: stroke-dashoffset 0.3s ease;
   will-change: transform;
+}
+
+/* A spinner and its words, always on one row (Busy). */
+.oa-busy {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--spacing) * 2);
+  color: var(--color-text-secondary);
+}
+.oa-busy-text {
+  white-space: nowrap;
 }
