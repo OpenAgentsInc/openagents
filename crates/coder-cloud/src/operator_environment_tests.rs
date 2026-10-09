@@ -57,14 +57,8 @@ fn run(job: &str) -> env::RunLink {
 }
 #[track_caller]
 fn apply(s: &EnvStore, c: Command) {
-    // A concurrently spawned process can briefly inherit the lease's lock
-    // descriptor; `Busy` is the store's typed retry outcome.
-    let applied = loop {
-        match s.apply("env-1", &c, 10) {
-            Err(env::store::StoreError::Busy) => std::thread::sleep(Duration::from_millis(5)),
-            other => break other.unwrap(),
-        }
-    };
+    // The store's lease waits out a lock briefly inherited by a forked child.
+    let applied = s.apply("env-1", &c, 10).unwrap();
     assert!(matches!(applied, Applied::Changed(..)));
 }
 /// Build, verify, and promote recipe revision `n` as version `vN`.

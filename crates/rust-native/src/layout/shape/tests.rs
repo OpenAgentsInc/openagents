@@ -348,7 +348,10 @@ fn line_breaks_match_coretext_for_the_bundled_fonts() {
     // CoreText's UAX #14 tailoring differs from ours: one paragraph breaks
     // after a space before a code run that starts with a period. Paragraphs
     // that need fallback faces are reported above, not gated.
-    assert!(counts <= 1, "{counts} paragraphs with a different line count");
+    assert!(
+        counts <= 1,
+        "{counts} paragraphs with a different line count"
+    );
     assert!(ratio >= 0.997, "exact line starts {ratio}");
 }
 
@@ -536,7 +539,10 @@ fn every_font_is_paper_mono_at_its_weight() {
             }
         }
     }
-    assert_eq!(weights.into_iter().collect::<Vec<_>>(), [400, 500, 600, 700]);
+    assert_eq!(
+        weights.into_iter().collect::<Vec<_>>(),
+        [400, 500, 600, 700]
+    );
     let row = node(
         "font-test".into(),
         Element::Text {

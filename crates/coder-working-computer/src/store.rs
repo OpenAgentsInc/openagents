@@ -95,7 +95,7 @@ impl Store {
             .truncate(false)
             .open(lock)
             .map_err(|_| StoreError::Io("Cannot open the computer lock."))?;
-        file.try_lock().map_err(|_| StoreError::Busy)?;
+        coder_environment::store::lock_waiting(&file).map_err(|()| StoreError::Busy)?;
         Ok(Lease {
             path,
             id: id.into(),

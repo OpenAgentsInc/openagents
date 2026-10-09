@@ -380,8 +380,11 @@ pub fn prepare(
         out(&path, &["rev-parse", "--verify", "HEAD^{commit}"])?
     } else {
         let start = base.unwrap_or("HEAD");
-        let base = out(&top, &["rev-parse", "--verify", &format!("{start}^{{commit}}")])
-            .map_err(|why| format!("the checkout has no commit to start from: {why}"))?;
+        let base = out(
+            &top,
+            &["rev-parse", "--verify", &format!("{start}^{{commit}}")],
+        )
+        .map_err(|why| format!("the checkout has no commit to start from: {why}"))?;
         let name = branch(seat, task, title);
         // `-B`: a branch an interrupted release left is this task's own.
         out(&top, &["worktree", "add", "-q", "-B", &name, &at, &base])

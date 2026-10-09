@@ -1259,7 +1259,10 @@ impl Engine<'_> {
             | Element::Dialog { .. } => {
                 self.scene.unsupported.insert("view.v3");
                 let paragraph = self.paragraph(
-                    "Unsupported v3 component", TextRole::Status, &node.style, Some(inner),
+                    "Unsupported v3 component",
+                    TextRole::Status,
+                    &node.style,
+                    Some(inner),
                 );
                 (paragraph.width, paragraph.height)
             }
@@ -1692,7 +1695,10 @@ impl Engine<'_> {
             | Element::Dialog { .. } => {
                 self.scene.unsupported.insert("view.v3");
                 let paragraph = self.paragraph(
-                    "Unsupported v3 component", TextRole::Status, &node.style, Some(inner),
+                    "Unsupported v3 component",
+                    TextRole::Status,
+                    &node.style,
+                    Some(inner),
                 );
                 self.text(paragraph, ix, iy, inner, align, self.theme.muted);
             }

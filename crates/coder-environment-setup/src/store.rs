@@ -98,7 +98,7 @@ impl Store {
             .truncate(false)
             .open(path.with_extension("lock"))
             .map_err(|_| StoreError::Io("Cannot open the setup lock."))?;
-        lock.try_lock().map_err(|_| StoreError::Busy)?;
+        coder_environment::store::lock_waiting(&lock).map_err(|()| StoreError::Busy)?;
         Ok(Lease { path, _lock: lock })
     }
 }

@@ -145,7 +145,7 @@ impl Store {
             .truncate(false)
             .open(lock)
             .map_err(|_| StoreError::Io("Cannot open the environment lock."))?;
-        file.try_lock().map_err(|_| StoreError::Busy)?;
+        lock_waiting(&file).map_err(|()| StoreError::Busy)?;
         Ok(Lease { path, _lock: file })
     }
 
@@ -244,6 +244,35 @@ fn read_record(path: &Path, id: &str) -> Result<Environment> {
     }
     env.validate().map_err(StoreError::Corrupt)?;
     Ok(env)
+}
+
+/// How long a lease waits for a held lock before refusing as busy.
+pub const LOCK_WAIT: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// Take `file`'s exclusive lock, waiting up to [`LOCK_WAIT`] for a holder.
+///
+/// A lease holds its lock only for one short local operation, but the lock
+/// can also look held after its holder dropped it: `flock` belongs to the
+/// open file description, and a thread that forks a child (a PTY, or any
+/// spawn with a `pre_exec` hook) shares every open descriptor with that
+/// child until it execs. Standard-library files are opened close-on-exec, so
+/// the exec drops them, but the window before it can be long under load.
+/// Retrying briefly absorbs that window; a genuinely concurrent holder that
+/// keeps the lock past the wait is still refused. The environment, setup,
+/// build, verify, and working-computer stores all lock through this.
+pub fn lock_waiting(file: &File) -> std::result::Result<(), ()> {
+    let deadline = std::time::Instant::now() + LOCK_WAIT;
+    let mut pause = std::time::Duration::from_millis(1);
+    loop {
+        match file.try_lock() {
+            Ok(()) => return Ok(()),
+            Err(fs::TryLockError::WouldBlock) if std::time::Instant::now() < deadline => {
+                std::thread::sleep(pause);
+                pause = (pause * 2).min(std::time::Duration::from_millis(25));
+            }
+            Err(_) => return Err(()),
+        }
+    }
 }
 
 fn private_options() -> OpenOptions {

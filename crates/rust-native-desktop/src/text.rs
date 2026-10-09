@@ -497,13 +497,7 @@ impl Fonts {
                     ),
                     None => (spec.face, face),
                 };
-                let key = (
-                    key_face,
-                    spec.weight.to_bits(),
-                    size.to_bits(),
-                    id,
-                    quarter,
-                );
+                let key = (key_face, spec.weight.to_bits(), size.to_bits(), id, quarter);
                 if !self.glyphs.contains_key(&key) {
                     let mut scaler = self
                         .scale

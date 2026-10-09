@@ -562,8 +562,7 @@ impl SpellWorld {
             }
         }
         self.fields.retain(|f| f.cast != cast);
-        self.water
-            .end_cast(cast, water::ticks(self.time));
+        self.water.end_cast(cast, water::ticks(self.time));
         self.concentration.retain(|_, held| *held != cast);
         let owned: Vec<_> = self
             .owned

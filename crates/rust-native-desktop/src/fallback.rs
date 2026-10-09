@@ -27,7 +27,10 @@ const FILES: &[(&str, u32)] = &[
     ("/System/Library/Fonts/AppleSDGothicNeo.ttc", 0),
     // Linux.
     ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 0), // check-fonts: allow
-    ("/usr/share/fonts/truetype/noto/NotoSansSymbols2-Regular.ttf", 0),
+    (
+        "/usr/share/fonts/truetype/noto/NotoSansSymbols2-Regular.ttf",
+        0,
+    ),
     ("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", 0),
     ("/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc", 0),
     // Windows.
