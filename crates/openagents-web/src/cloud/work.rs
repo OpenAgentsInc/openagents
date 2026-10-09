@@ -2,9 +2,8 @@
 
 use super::hosts::{Binding, Hosts};
 use super::session::{CloudSession, SessionError, Viewer};
-use super::{protect, refused, service, standing_value, workspace_shell};
+use super::{protect, refused, service, standing_value, ui, workspace_shell};
 use crate::App;
-use crate::layout::escape;
 use axum::Router;
 use axum::extract::rejection::QueryRejection;
 use axum::extract::{Path, Query, State};
@@ -813,18 +812,7 @@ async fn tasks(
         Ok(_) => return refused(SessionError::Conflict),
         Err(response) => return response,
     };
-    let mut content = format!(
-        "<h2>Resident tasks</h2><p>Host <code>{}</code> · Generation {} · Workspace <code>{}</code></p><p>Snapshot <code>{}</code>. Read at {}. Closing this view detaches observation.</p><p><a href=\"/cloud/app/hosts/{}/tasks\">Refresh tasks</a></p>",
-        escape(binding.host()),
-        binding.generation(),
-        escape(&answer.workspace),
-        escape(&answer.snapshot_digest),
-        super::session::now(),
-        escape(binding.id())
-    );
-    if answer.rows.is_empty() {
-        content.push_str("<p>No tasks in this admitted workspace.</p>");
-    }
+    let mut rows = Vec::with_capacity(answer.rows.len());
     for (index, row) in answer.rows.iter().enumerate() {
         let attempt = row.attempt.map(|v| v.to_string());
         let revision = row.revision.to_string();
@@ -853,10 +841,14 @@ async fn tasks(
             super::colors(),
         );
         match show(&view) {
-            Ok(html)=>content.push_str(&format!("<section class=\"cloud-card\">{html}<p><a href=\"/cloud/app/hosts/{}/tasks/{}\">Open task</a></p></section>",escape(binding.id()),escape(&row.task))),
-            Err(response)=>return response,
+            Ok(view) => rows.push(ui::card(html! {
+                (ui::native(&view))
+                p { a href=(format!("/cloud/app/hosts/{}/tasks/{}", binding.id(), row.task)) { "Open task" } }
+            })),
+            Err(response) => return response,
         }
     }
+    let mut next = None;
     if answer.more_available
         && let Some(cursor) = &answer.next
     {
@@ -864,11 +856,30 @@ async fn tasks(
             Ok(v) => v,
             Err(e) => return refused(e),
         };
-        content.push_str(&format!(
-            "<p><a href=\"/cloud/app/hosts/{}/tasks?cursor={encoded}\">Next tasks</a></p>",
-            escape(binding.id())
+        next = Some(format!(
+            "/cloud/app/hosts/{}/tasks?cursor={encoded}",
+            binding.id()
         ));
     }
+    let content = html! {
+        h2 { "Resident tasks" }
+        (ui::Details::new()
+            .row("Host", html! { code { (binding.host()) } })
+            .row("Generation", binding.generation())
+            .row("Workspace", html! { code { (answer.workspace) } })
+            .row("Snapshot", html! { code { (answer.snapshot_digest) } })
+            .row("Read at", super::session::now()))
+        p { "Closing this view detaches observation." }
+        p { a href=(format!("/cloud/app/hosts/{}/tasks", binding.id())) { "Refresh tasks" } }
+        @if answer.rows.is_empty() {
+            (ui::empty("No tasks", "No tasks in this admitted workspace."))
+        }
+        @for row in &rows { (row) }
+        @if let Some(next) = &next {
+            p { a href=(next) { "Next tasks" } }
+        }
+    }
+    .into_string();
     observed(
         &app,
         &headers,
@@ -936,24 +947,31 @@ async fn task(
         Ok(_) => return refused(SessionError::Conflict),
         Err(r) => return r,
     };
-    let mut content = format!(
-        "<p><a href=\"/cloud/app/hosts/{}/tasks\">Resident tasks</a> · <a href=\"/cloud/app/hosts/{}/tasks/{}\">Reopen this task</a></p><p>Resident generation {}. Bounded original evidence refreshes while this admission remains current. Reopen the task after its source or revision changes.</p>",
-        escape(&id),
-        escape(&id),
-        escape(&task),
-        binding.generation()
-    );
-    if coder_access::protocol::identity(&task).is_ok() {
-        content.push_str(&format!("<p><a href=\"/cloud/app/hosts/{}/tasks/{}/review\">Read exact candidate review</a></p>",escape(&id),escape(&task)));
-        if app
+    let reviewable = coder_access::protocol::identity(&task).is_ok();
+    let controllable = reviewable
+        && app
             .config
             .cloud_hosts
             .as_ref()
-            .is_some_and(|hosts| hosts.effects(&viewer, &id).is_ok())
-        {
-            content.push_str(&format!("<p><a href=\"/cloud/app/hosts/{}/tasks/{}/actions\">Review granted task controls</a></p>",escape(&id),escape(&task)));
+            .is_some_and(|hosts| hosts.effects(&viewer, &id).is_ok());
+    let base = format!("/cloud/app/hosts/{id}/tasks/{task}");
+    let list = format!("/cloud/app/hosts/{id}/tasks");
+    let mut parts: Vec<maud::Markup> = vec![html! {
+        (ui::links([
+            (list.as_str(), "Resident tasks"),
+            (base.as_str(), "Reopen this task"),
+        ]))
+        p {
+            "Resident generation " (binding.generation())
+            ". Bounded original evidence refreshes while this admission remains current. Reopen the task after its source or revision changes."
         }
-    }
+        @if reviewable {
+            p { a href=(format!("{base}/review")) { "Read exact candidate review" } }
+            @if controllable {
+                p { a href=(format!("{base}/actions")) { "Review granted task controls" } }
+            }
+        }
+    }];
     let attempt = page.scope.attempt.map(|v| v.to_string());
     let revision = page.scope.revision.to_string();
     let phase = format!("{:?}", page.phase);
@@ -984,17 +1002,17 @@ async fn task(
         super::colors(),
     );
     match show(&summary) {
-        Ok(v) => content.push_str(&v),
+        Ok(v) => parts.push(ui::native(&v)),
         Err(r) => return r,
     }
-    if page.prompt.is_empty() {
-        content.push_str("<h3>Request</h3><p>No inline request is included. Read the canonical task journal below for the original request.</p>");
-    } else {
-        content.push_str(&format!(
-            "<h3>Request</h3><pre>{}</pre>",
-            escape(&page.prompt)
-        ));
-    }
+    parts.push(html! {
+        h3 { "Request" }
+        @if page.prompt.is_empty() {
+            p { "No inline request is included. Read the canonical task journal below for the original request." }
+        } @else {
+            pre { (page.prompt) }
+        }
+    });
     let description = format!(
         "{} original steps; {} faults included{}.",
         page.evidence.total_steps,
@@ -1015,7 +1033,7 @@ async fn task(
         super::colors(),
     );
     match show(&evidence) {
-        Ok(v) => content.push_str(&v),
+        Ok(v) => parts.push(ui::native(&v)),
         Err(r) => return r,
     }
     for step in &page.evidence.steps {
@@ -1029,15 +1047,16 @@ async fn task(
                 };
                 let view = observation::step(&projected, super::colors());
                 match show(&view) {
-                    Ok(v) => {
-                        content.push_str(&format!("<section class=\"cloud-card\">{v}</section>"))
-                    }
+                    Ok(v) => parts.push(ui::card(ui::native(&v))),
                     Err(r) => return r,
                 }
                 match show(&observation::original_step(&projected, super::colors())) {
-                    Ok(v) => content.push_str(&format!(
-                        "<details><summary>Original step {index}</summary>{v}</details>"
-                    )),
+                    Ok(v) => parts.push(html! {
+                        details {
+                            summary { "Original step " (index) }
+                            (ui::native(&v))
+                        }
+                    }),
                     Err(r) => return r,
                 }
             }
@@ -1048,7 +1067,10 @@ async fn task(
                     Ok(v) => v,
                     Err(e) => return refused(e),
                 };
-                content.push_str(&format!("<section class=\"cloud-card\"><h3>Step {index} · Oversized record</h3><p>The original is retained. <a href=\"{}\">Read bounded original chunks</a>.</p></section>",escape(&url)));
+                parts.push(ui::card(html! {
+                    h3 { "Step " (index) " \u{b7} Oversized record" }
+                    p { "The original is retained. " a href=(url) { "Read bounded original chunks" } "." }
+                }));
             }
         }
     }
@@ -1059,49 +1081,65 @@ async fn task(
             Ok(v) => v,
             Err(e) => return refused(e),
         };
-        content.push_str(&format!("<p><a href=\"/cloud/app/hosts/{}/tasks/{}?cursor={encoded}\">Next original steps</a></p>",escape(&id),escape(&task)));
+        parts.push(html! {
+            p { a href=(format!("{base}?cursor={encoded}")) { "Next original steps" } }
+        });
     }
-    content.push_str("<h3>Child references</h3><p>Child references retain their original parent step and call. A reference grants no child task, session, or control access.</p>");
-    if page.children.is_empty() {
-        content.push_str("<p>No structured child references are included in this view.</p>");
-    }
-    for child in &page.children {
-        content.push_str(&format!("<section class=\"cloud-card\"><p>Parent step {} · Call <code>{}</code> · Agent {}</p><p>Child reference: <code>{}</code> · {}</p></section>", child.source_step, escape(&child.call_id),escape(&child.agent),escape(child.reference.as_deref().unwrap_or("Unavailable")),escape(&child.state)));
-    }
-    if page.more_children {
-        content.push_str("<p>Additional child references remain in the original transcript.</p>");
-    }
-    content.push_str("<h3>Artifacts and original records</h3><p>These are resident evidence. An executor ending, checks passing, delivery, integration, stop, and cleanup remain separate.</p>");
-    if let Some(original) = &page.evidence.original {
-        let url = match original_url(binding, &page.scope, original) {
-            Ok(v) => v,
+    let transcript = match &page.evidence.original {
+        Some(original) => match original_url(binding, &page.scope, original) {
+            Ok(url) => Some((url, original.digest.clone())),
             Err(e) => return refused(e),
-        };
-        content.push_str(&format!(
-            "<p><a href=\"{}\">Original transcript</a> · <code>{}</code></p>",
-            escape(&url),
-            escape(&original.digest)
-        ));
-    }
+        },
+        None => None,
+    };
+    let mut artifacts = Vec::with_capacity(page.artifacts.len());
     for artifact in &page.artifacts {
-        content.push_str(&format!(
-            "<p>{} · {}</p>",
-            escape(&artifact.label),
-            escape(&artifact.state)
-        ));
-        if let Some(original) = &artifact.original {
-            let url = match original_url(binding, &page.scope, original) {
-                Ok(v) => v,
+        let original = match &artifact.original {
+            Some(original) => match original_url(binding, &page.scope, original) {
+                Ok(url) => Some((url, original.bytes, original.digest.clone())),
                 Err(e) => return refused(e),
-            };
-            content.push_str(&format!(
-                "<p><a href=\"{}\">Read original artifact</a> · {} bytes · <code>{}</code></p>",
-                escape(&url),
-                original.bytes,
-                escape(&original.digest)
-            ));
-        }
+            },
+            None => None,
+        };
+        artifacts.push((artifact, original));
     }
+    parts.push(html! {
+        h3 { "Child references" }
+        p { "Child references retain their original parent step and call. A reference grants no child task, session, or control access." }
+        @if page.children.is_empty() {
+            p { "No structured child references are included in this view." }
+        }
+        @for child in &page.children {
+            (ui::card(html! {
+                p {
+                    "Parent step " (child.source_step) " \u{b7} Call " code { (child.call_id) }
+                    " \u{b7} Agent " (child.agent)
+                }
+                p {
+                    "Child reference: " code { (child.reference.as_deref().unwrap_or("Unavailable")) }
+                    " \u{b7} " (child.state)
+                }
+            }))
+        }
+        @if page.more_children {
+            p { "Additional child references remain in the original transcript." }
+        }
+        h3 { "Artifacts and original records" }
+        p { "These are resident evidence. An executor ending, checks passing, delivery, integration, stop, and cleanup remain separate." }
+        @if let Some((url, digest)) = &transcript {
+            p { a href=(url) { "Original transcript" } " \u{b7} " code { (digest) } }
+        }
+        @for (artifact, original) in &artifacts {
+            p { (artifact.label) " \u{b7} " (artifact.state) }
+            @if let Some((url, bytes, digest)) = original {
+                p {
+                    a href=(url) { "Read original artifact" }
+                    " \u{b7} " (bytes) " bytes \u{b7} " code { (digest) }
+                }
+            }
+        }
+    });
+    let content = html! { @for part in &parts { (part) } }.into_string();
     let pin = Pin::Task {
         query: PageQuery {
             workspace: page.scope.workspace.clone(),
@@ -1521,21 +1559,11 @@ async fn original(
         },
         super::colors(),
     );
-    let mut content = format!(
-        "<p><a href=\"/cloud/app/hosts/{}/tasks/{}\">Canonical task</a></p>",
-        escape(&id),
-        escape(&task)
-    );
-    match show(&file) {
-        Ok(v) => content.push_str(&v),
+    let file = match show(&file) {
+        Ok(v) => v,
         Err(r) => return r,
-    }
-    // A chunk can split a UTF-8 sequence. The original bytes stay available
-    // without replacing invalid bytes or silently skipping them.
-    content.push_str(&format!(
-        "<details><summary>Original chunk bytes (base64)</summary><pre>{}</pre></details>",
-        escape(&chunk.data)
-    ));
+    };
+    let mut next_chunk = None;
     if chunk.more_available
         && let Some(cursor) = &chunk.next
     {
@@ -1545,8 +1573,24 @@ async fn original(
             Ok(v) => v,
             Err(e) => return refused(e),
         };
-        content.push_str(&format!("<p><a href=\"/cloud/app/hosts/{}/tasks/{}/original?cursor={encoded}\">Next original chunk</a></p>",escape(&id),escape(&task)));
+        next_chunk = Some(format!(
+            "/cloud/app/hosts/{id}/tasks/{task}/original?cursor={encoded}"
+        ));
     }
+    // A chunk can split a UTF-8 sequence. The original bytes stay available
+    // without replacing invalid bytes or silently skipping them.
+    let content = html! {
+        p { a href=(format!("/cloud/app/hosts/{id}/tasks/{task}")) { "Canonical task" } }
+        (ui::native(&file))
+        details {
+            summary { "Original chunk bytes (base64)" }
+            pre { (chunk.data) }
+        }
+        @if let Some(next) = &next_chunk {
+            p { a href=(next) { "Next original chunk" } }
+        }
+    }
+    .into_string();
     let resource = match resource(binding, &Pin::Original { query }, &viewer) {
         Ok(v) => v,
         Err(e) => return refused(e),
