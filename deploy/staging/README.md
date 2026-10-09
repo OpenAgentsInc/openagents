@@ -59,6 +59,13 @@ just that).
 
 ## Deploy
 
+`scripts/deploy/web.sh stage [REF]` does all of this from a clean export
+of a commit (both builds in parallel, skipped when already built, then the
+smoke) and prints the web digest to promote to production with
+`scripts/deploy/web.sh promote DIGEST`. `stage --keep-spec` builds only
+the web image and swaps it into the live staging spec, leaving the rest
+(for example storage being tried for #11127) as it is. By hand:
+
 ```sh
 export CLOUDSDK_CONFIG=/Users/christopherdavid/work/.secrets/gcloud-sa-config
 SA=projects/openagentsgemini/serviceAccounts/oa-mvp-automation@openagentsgemini.iam.gserviceaccount.com

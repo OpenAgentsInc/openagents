@@ -2,7 +2,7 @@
 # Build the website once, test it on staging, and promote that exact image
 # to production (docs/deployment/2026-10-09-faster-deploys.md):
 #
-#   scripts/deploy/web.sh stage [REF]        # default origin/main
+#   scripts/deploy/web.sh stage [--keep-spec] [REF]   # default origin/main
 #   scripts/deploy/web.sh promote DIGEST     # no-traffic revision at the `new` tag
 #   scripts/deploy/web.sh shift [REVISION]   # 100% of openagents.com to it
 #   scripts/deploy/web.sh rollback [REVISION]
@@ -13,6 +13,9 @@
 # tag SHA) in parallel, skipping either when that tag is already in
 # Artifact Registry, deploys both by digest to openagents-web-1-staging with
 # REF's deploy/staging/render.py, and runs scripts/smoke/staging.sh.
+# --keep-spec builds only the web image and swaps it into the live staging
+# spec, keeping everything else (another change being tried on staging,
+# such as its storage, stays as it is).
 #
 # promote: copies the spec of the revision serving production's traffic
 # (service `coder`), swaps only the `web` container's image for DIGEST, and
@@ -78,6 +81,8 @@ print(t[0]["revisionName"] if t else "")'
 }
 
 stage() {
+    keep=
+    if [ "${1:-}" = --keep-spec ]; then keep=1; shift; fi
     ref=${1:-origin/main}
     started=$(now)
     git -C "$ROOT" fetch -q origin
@@ -100,7 +105,9 @@ stage() {
     else
         say "  $web is already built"
     fi
-    if [ -z "$(digest "$stack")" ]; then
+    if [ -n "$keep" ]; then
+        say "  --keep-spec: the live staging stack image stays"
+    elif [ -z "$(digest "$stack")" ]; then
         (cd "$ctx" && g builds submit --project "$PROJECT" --service-account "$BUILD_SA" \
             --config deploy/staging/cloudbuild.yaml \
             --ignore-file deploy/staging/stack.gcloudignore \
@@ -115,15 +122,38 @@ stage() {
     done
     took build "$t"
     web_digest=$(digest "$web")
-    stack_digest=$(digest "$stack")
-    [ -n "$web_digest" ] && [ -n "$stack_digest" ] || { say "No digest for the built images"; exit 1; }
+    [ -n "$web_digest" ] || { say "No digest for the web image"; exit 1; }
     t=$(now)
     spec=$STATE/staging-$sha.json
-    python3 "$ctx/deploy/staging/render.py" \
-        --revision "$STAGING-$sha-$(date -u +%H%M%S)" \
-        --web-image "$REPO/openagents-web@$web_digest" \
-        --stack-image "$REPO/openagents-stack@$stack_digest" \
-        --worker-pubkey "$WORKER_PUBKEY" > "$spec"
+    revision=$STAGING-$sha-$(date -u +%H%M%S)
+    if [ -n "$keep" ]; then
+        g run services describe "$STAGING" --region "$REGION" --project "$PROJECT" --format=json |
+            python3 -c 'import json, sys
+d = json.load(sys.stdin)
+image, name = sys.argv[1:3]
+drop = ("serving.knative.dev/", "client.knative.dev/", "run.googleapis.com/operation-id",
+        "run.googleapis.com/ingress-status", "run.googleapis.com/urls",
+        "run.googleapis.com/creator", "run.googleapis.com/lastModifier")
+keep = lambda m: {k: v for k, v in (m or {}).items() if not k.startswith(drop)}
+t = d["spec"]["template"]
+next(c for c in t["spec"]["containers"] if c["name"] == "web")["image"] = image
+meta = d["metadata"]
+print(json.dumps({"apiVersion": "serving.knative.dev/v1", "kind": "Service",
+    "metadata": {"name": meta["name"], "namespace": meta["namespace"],
+                 "labels": keep(meta.get("labels")), "annotations": keep(meta.get("annotations"))},
+    "spec": {"template": {"metadata": {"name": name, "labels": keep(t["metadata"].get("labels")),
+                                       "annotations": keep(t["metadata"].get("annotations"))},
+                          "spec": t["spec"]},
+             "traffic": [{"latestRevision": True, "percent": 100}]}}, indent=2))' \
+            "$REPO/openagents-web@$web_digest" "$revision" > "$spec"
+    else
+        stack_digest=$(digest "$stack")
+        [ -n "$stack_digest" ] || { say "No digest for the stack image"; exit 1; }
+        python3 "$ctx/deploy/staging/render.py" --revision "$revision" \
+            --web-image "$REPO/openagents-web@$web_digest" \
+            --stack-image "$REPO/openagents-stack@$stack_digest" \
+            --worker-pubkey "$WORKER_PUBKEY" > "$spec"
+    fi
     g run services replace "$spec" --region "$REGION" --project "$PROJECT" >&2
     took "staging deploy" "$t"
     printf '%s\n' "$web_digest" > "$STATE/staged-$sha"

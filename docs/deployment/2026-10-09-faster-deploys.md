@@ -206,6 +206,27 @@ versioned, and rolled back exactly like code.
 Target: staging code deploy about **8 minutes** end to end; production
 promotion about **1 minute** after staging passes.
 
+**Done 2026-10-09** (#11094): BuildKit in both `cloudbuild.yaml` files and
+`scripts/deploy/web.sh` (`stage`, `promote`, `shift`, `rollback`). First
+run, commit `dba9b59ff8`, build `3b9081ea`:
+
+| Phase | Before (`b2b67216`) | After (`3b9081ea`) |
+| --- | ---: | ---: |
+| Export and upload from the Mac | 86 s | ~180 s (`git archive` of the commit, then the upload) |
+| Queue | 54 s | 58 s |
+| Cloud Build (fetch, kit, docker, push) | 760 s | 604 s |
+| `docker build` step | ~700 s | 556 s |
+| Staging deploy, smoke | ~15 s, not measured | 42 s, 41 s |
+| Production | a second full build, then hand edits | promote 26 s, candidate smoke 51 s, traffic 10 s |
+
+BuildKit saved about 2.5 minutes, not 5: the native and WebAssembly
+stages now overlap, but each still compiles from nothing. Promoting by
+digest removed the second build. The upload grew because the script
+exports the whole commit before `gcloud` applies the ignore file; the
+next saving there is exporting only what `web.gcloudignore` lets through,
+or the persistent builder below. The `actAs` refusal still holds: the
+script retries production writes as `chris@`.
+
 ### Next (one to two weeks)
 
 | Step | Saving | Owner decision |

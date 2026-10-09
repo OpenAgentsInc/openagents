@@ -21,6 +21,8 @@ original Host so sign-in and billing links stay on openagents.com. Removed
 sections stay 404. `OPENAGENTS_WEB_ASK_SALT` is the secret
 `openagents-web-ask-salt`.
 
+- Since 2026-10-09: `scripts/deploy/web.sh` (below, "promote by digest")
+  replaces the steps in this item.
 - Deploy a new site build: build the image with Cloud Build, then replace
   the `web` container's image in a copy of the live revision spec
   (`gcloud run services describe coder --format export`) and apply it with
@@ -823,3 +825,57 @@ gcloud run services update-traffic coder \
   --region us-central1 --project openagentsgemini \
   --update-tags onboarding=coder-web-chat-985297571c-20261008213052
 ```
+
+## October 9, 2026: promote by digest
+
+Production serves the image staging tested, with no second build
+(#11094, [faster deploys](2026-10-09-faster-deploys.md)):
+
+```sh
+scripts/deploy/web.sh stage                 # build origin/main once, staging, smoke
+scripts/deploy/web.sh promote sha256:...    # same digest, no traffic, tag `new`
+scripts/smoke/staging.sh https://new---coder-ezxz4mgdsq-uc.a.run.app --production
+scripts/deploy/web.sh shift                 # 100% to the candidate
+scripts/deploy/web.sh rollback              # 100% back to the revision before it
+```
+
+`promote` copies the spec of the revision serving the traffic (not the
+service template, which can be a tagged test revision), swaps only the
+`web` image, writes JSON so `CODER_CHAT_SYNC` stays `"on"`, and moves the
+`new` tag. The automation account is still refused `actAs`, so the script
+retries `replace` and `update-traffic` once as the default account
+(`chris@`). `--production` on the smoke asks one question, makes no
+account, and skips the sign-in checks.
+
+First run: commit `dba9b59ff8`, Cloud Build `3b9081ea`, image
+`openagents/openagents-web@sha256:8f60ac6514ae03a2fef5312952c6257f8aa3473491a34d8788e60cb38a143d80`.
+Staging (`--keep-spec`, keeping the NFS account storage being tried there)
+passed 55, failed 0, skipped 1. Revision
+`coder-web-8f60ac6514-20261009193426` serves 100% of openagents.com since
+19:36 UTC; `coder-web-w11-1d126aad2b-20261008202124` is the rollback.
+
+The current binary refuses a public host without a chat bucket, so the
+`web` container gained `--chat-bucket openagentsgemini-web-chats-prod`
+(production's own private, versioned bucket; the runtime account has
+`objectUser` on it), plus `--chat-build /srv/chat` and `--bunny /srv/bunny`,
+which the image ships. Everything else in the spec is unchanged: the
+`coder-serve` sidecar, its environment and secrets, the VPC annotations,
+and the pay host.
+
+Production smoke, before and after (`--production`): 13 passed, 14 failed
+on the W11 revision; 25 passed, 5 failed, 3 skipped on the new one, on
+the tag URL and on openagents.com. Every check that passed before still
+passes; the homepage composer, the four starter questions and an answer
+streamed, docs breadcrumbs, `/docs/api`, `llms.txt`, `robots.txt`,
+`sitemap.xml`, the AI catalog, and `/mcp/docs` now pass. The five
+failures wait on the account service and the gateway, which production
+does not have yet (#11127): `/device`, `/projects`, and `/api/traces`
+answer 503 ("This site doesn't offer accounts"), `/login` says sign-in
+isn't available, and `/openapi.json` (the gateway's) and
+`/.well-known/security.txt` answer 404, as before. The old `coder-serve`
+GitHub sign-in (`/auth/github`, `/settings`), which only the owner's login
+was allowed, is no longer reachable: this binary keeps sign-in paths on
+the site. `/api/v1/*` still reaches `coder-serve`.
+
+Rollback: `gcloud run services update-traffic coder --region us-central1 --project openagentsgemini --to-revisions coder-web-w11-1d126aad2b-20261008202124=100`
+(as `chris@`), or `scripts/deploy/web.sh rollback coder-web-w11-1d126aad2b-20261008202124`.
