@@ -12,7 +12,9 @@
 //!
 //! Releasing comments [`RELEASE_MARK`], removes that assignee, and moves
 //! the status back to the first "ready" value the project has; landing
-//! moves it to "done". An issue on no project gets the comment and the
+//! moves it to "done", and [`blocked`] to "blocked" with the reason as a
+//! comment (#11108). When the GraphQL limit is spent, [`Gh`] finds and
+//! moves the issue's items through the REST projects API instead. An issue on no project gets the comment and the
 //! assignee only, so a repository without Projects behaves the same way
 //! minus the board.
 //!
@@ -69,6 +71,8 @@ pub struct Project {
     pub ready: Vec<String>,
     /// The value a landed issue gets.
     pub done: String,
+    /// The value an issue waiting on the owner or another issue gets.
+    pub blocked: String,
     /// The project (by number, under the repository's owner) pickup
     /// orders by. Without it, the one open project linked to the
     /// repository, when there is exactly one.
@@ -82,6 +86,7 @@ impl Default for Project {
             in_progress: "In progress".into(),
             ready: vec!["Ready".into(), "Todo".into()],
             done: "Done".into(),
+            blocked: "Blocked".into(),
             number: None,
         }
     }
@@ -320,6 +325,33 @@ pub fn done<H: Hub + ?Sized>(
         number,
         project,
         std::slice::from_ref(&project.done),
+        &mut said,
+    );
+    said
+}
+
+/// Marks an issue that waits on the owner or another issue: `reason` as a
+/// "Blocked: ..." comment, and "blocked" on each project it is on. The
+/// claim and assignee stay, so nobody else picks it up meanwhile.
+pub fn blocked<H: Hub + ?Sized>(
+    hub: &H,
+    repository: &str,
+    number: u64,
+    reason: &str,
+    project: &Project,
+) -> Vec<String> {
+    let mut said = vec![
+        match hub.comment(repository, number, &format!("Blocked: {reason}")) {
+            Ok(()) => format!("Said why #{number} is blocked on the issue."),
+            Err(why) => format!("Could not comment why #{number} is blocked: {why}"),
+        },
+    ];
+    status(
+        hub,
+        repository,
+        number,
+        project,
+        std::slice::from_ref(&project.blocked),
         &mut said,
     );
     said
@@ -837,6 +869,93 @@ const BOARD: &str = r"query($id: ID!, $field: String!, $cursor: String) {
 const BOARD_PAGES: usize = 10;
 
 impl Gh {
+    fn graphql_items(repository: &str, number: u64, field: &str) -> Result<Vec<Item>, String> {
+        let (owner, name) = split(repository)?;
+        let value = json(&gh(
+            None,
+            &[
+                "api",
+                "graphql",
+                "-f",
+                &format!("query={ITEMS_QUERY}"),
+                "-f",
+                &format!("owner={owner}"),
+                "-f",
+                &format!("name={name}"),
+                "-F",
+                &format!("number={number}"),
+                "-f",
+                &format!("field={field}"),
+            ],
+        )?)?;
+        Ok(items_of(&value))
+    }
+
+    /// The issue's items over REST, for when the GraphQL limit is spent:
+    /// each open project of the owner whose item search finds the issue,
+    /// with `field`'s value. One search per project, two more on a hit.
+    fn rest_items(repository: &str, number: u64, field: &str) -> Result<Vec<Item>, String> {
+        let (owner, _) = split(repository)?;
+        let (scope, pages) = ["orgs", "users"]
+            .iter()
+            .find_map(|scope| {
+                let path = format!("/{scope}/{owner}/projectsV2?per_page=100");
+                let text = gh(None, &["api", "--paginate", "--slurp", &path]).ok()?;
+                Some((*scope, serde_json::from_str::<Value>(&text).ok()?))
+            })
+            .ok_or_else(|| format!("cannot list {owner}'s projects"))?;
+        let projects = pages
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_array)
+            .flatten()
+            .filter(|project| project["state"].as_str() == Some("open"));
+        let mut found = Vec::new();
+        for project in projects {
+            let Some(project_number) = project["number"].as_u64() else {
+                continue;
+            };
+            let base = format!("/{scope}/{owner}/projectsV2/{project_number}");
+            let search = |field_id: Option<&str>| -> Option<Value> {
+                let items = format!("{base}/items");
+                let q = format!("q={number}");
+                let fields = field_id.map(|id| format!("fields[]={id}"));
+                let mut args = vec!["api", "-X", "GET", &items, "-f", "per_page=100", "-f", &q];
+                if let Some(fields) = &fields {
+                    args.extend(["-f", fields]);
+                }
+                serde_json::from_str(&gh(None, &args).ok()?).ok()
+            };
+            let Some(items) = search(None) else { continue };
+            if rest_item(&items, repository, number, field).is_none() {
+                continue;
+            }
+            let Some((field_id, options)) = gh(None, &["api", &format!("{base}/fields")])
+                .ok()
+                .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+                .and_then(|fields| rest_field(&fields, field))
+            else {
+                continue;
+            };
+            let items = search(Some(&field_id)).unwrap_or(items);
+            let Some((item, status, status_at)) = rest_item(&items, repository, number, field)
+            else {
+                continue;
+            };
+            found.push(Item {
+                project: format!("{REST_PROJECT}{base}"),
+                project_title: project["title"].as_str().unwrap_or_default().into(),
+                item,
+                field: Some(field_id),
+                options,
+                status,
+                status_at,
+            });
+        }
+        Ok(found)
+    }
+
     fn project_id(repository: &str, project: &Project) -> Result<Option<String>, String> {
         let (owner, name) = split(repository)?;
         if let Some(number) = project.number {
@@ -960,25 +1079,10 @@ impl Hub for Gh {
     }
 
     fn items(&self, repository: &str, number: u64, field: &str) -> Result<Vec<Item>, String> {
-        let (owner, name) = split(repository)?;
-        let value = json(&gh(
-            None,
-            &[
-                "api",
-                "graphql",
-                "-f",
-                &format!("query={ITEMS_QUERY}"),
-                "-f",
-                &format!("owner={owner}"),
-                "-f",
-                &format!("name={name}"),
-                "-F",
-                &format!("number={number}"),
-                "-f",
-                &format!("field={field}"),
-            ],
-        )?)?;
-        Ok(items_of(&value))
+        Gh::graphql_items(repository, number, field).or_else(|graphql| {
+            Gh::rest_items(repository, number, field)
+                .map_err(|rest| format!("{graphql} (and over REST: {rest})"))
+        })
     }
 
     fn set_status(&self, item: &Item, option: &str) -> Result<(), String> {
@@ -986,6 +1090,22 @@ impl Hub for Gh {
             .field
             .as_deref()
             .ok_or("the project has no status field")?;
+        if let Some(base) = item.project.strip_prefix(REST_PROJECT) {
+            return gh(
+                None,
+                &[
+                    "api",
+                    "-X",
+                    "PATCH",
+                    &format!("{base}/items/{}", item.item),
+                    "-F",
+                    &format!("fields[][id]={field}"),
+                    "-f",
+                    &format!("fields[][value]={option}"),
+                ],
+            )
+            .map(|_| ());
+        }
         json(&gh(
             None,
             &[
@@ -1134,6 +1254,76 @@ fn items_of(value: &Value) -> Vec<Item> {
             }
         })
         .collect()
+}
+
+/// Marks an [`Item`] found over REST: its `project` is this and then the
+/// project's REST path, and its ids are REST's numeric ones.
+const REST_PROJECT: &str = "rest:";
+
+/// A REST name, which is `{"raw": ..}` or a plain string.
+fn rest_name(value: &Value) -> Option<&str> {
+    value["raw"].as_str().or_else(|| value.as_str())
+}
+
+/// The single-select `field` of a REST project's fields answer: its id
+/// and its options (name, id). Names match without regard to case.
+fn rest_field(fields: &Value, field: &str) -> Option<(String, Vec<(String, String)>)> {
+    let found = fields.as_array()?.iter().find(|candidate| {
+        rest_name(&candidate["name"]).is_some_and(|name| name.eq_ignore_ascii_case(field))
+    })?;
+    let id = match &found["id"] {
+        Value::Number(id) => id.to_string(),
+        Value::String(id) => id.clone(),
+        _ => return None,
+    };
+    let options = found["options"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|option| {
+            Some((
+                rest_name(&option["name"])?.to_owned(),
+                option["id"].as_str()?.to_owned(),
+            ))
+        })
+        .collect();
+    Some((id, options))
+}
+
+/// The issue's item in a REST items answer: its id, `field`'s value when
+/// the answer carries it, and when the item last changed. A search for
+/// the number also finds issues that mention it and issues of other
+/// repositories; those are skipped.
+fn rest_item(
+    items: &Value,
+    repository: &str,
+    number: u64,
+    field: &str,
+) -> Option<(String, Option<String>, u64)> {
+    let suffix = format!("/repos/{}", repository.to_ascii_lowercase());
+    let item = items.as_array()?.iter().find(|item| {
+        item["content"]["number"].as_u64() == Some(number)
+            && item["content"]["repository_url"]
+                .as_str()
+                .is_some_and(|url| url.to_ascii_lowercase().ends_with(&suffix))
+    })?;
+    let status = item["fields"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|value| {
+            rest_name(&value["name"]).is_some_and(|name| name.eq_ignore_ascii_case(field))
+        })
+        .and_then(|value| rest_name(&value["value"]["name"]))
+        .map(str::to_owned);
+    Some((
+        item["id"].as_u64()?.to_string(),
+        status,
+        item["updated_at"]
+            .as_str()
+            .and_then(iso_seconds)
+            .unwrap_or(0),
+    ))
 }
 
 /// The repository's issues on one [`BOARD`] page, in project order.

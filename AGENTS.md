@@ -131,14 +131,16 @@ steps in the workspace `NEEDS_OWNER.md`, say in the closing comment what the
 owner still has to do, and close the issue. If the owner's step later finds a
 defect, open a new issue for it.
 
-Keep the OpenAgents project board
-(<https://github.com/orgs/OpenAgentsInc/projects/19>, `docs/project-board.md`)
-current: when you start an issue, claim it and run
-`scripts/project-status.sh N in-progress`; when it is blocked, run
-`scripts/project-status.sh N blocked --blocked-by "B"` naming the blocker; when
-it is done, the closing commit closes it and the issue becomes Done
-(`scripts/project-status.sh N done`, or `scripts/project-sync.sh`). A new issue
-goes on the board with its blockers.
+Keep the project boards current on every project the issue is on (V1 Launch
+22, OpenAgents 19, ...) with the REST helper (#11108):
+`scripts/dev/issue-board.sh claim N` when you start (after `openagents issue
+claim N`), `scripts/dev/issue-board.sh block N "what it waits on"` when it is
+blocked, and `scripts/dev/issue-board.sh close N "closing comment"` to close
+it, which also moves it to Done. Coder's flows do the same via `coder::claim`.
+`scripts/dev/project-status-sync.sh 22` fixes drift;
+`scripts/project-status.sh N blocked --blocked-by "B"` records native blocker
+links (`docs/project-board.md`). A new issue goes on the board with its
+blockers.
 
 The full workspace gate (`./scripts/verify-rust.sh --release`) is for full
 releases only. Never require it before ordinary issue development, integration,
