@@ -1,11 +1,11 @@
 //! Project supervision and operator Cloud work over separately admitted owners.
 //! Reads never advance a worker. Effects use the exact reviewed native packet.
 
-use super::controls::{self, Context, admitted, digest, hidden, show, submit};
+use super::controls::{self, Context, admitted, digest, show, submit};
 use super::session::SessionError;
-use super::{colors, protect, refused, service, ticket, work, workspace_shell};
+use super::ui::{self, BoundForm};
+use super::{colors, protect, refused, service, work, workspace_shell};
 use crate::App;
-use crate::layout::escape;
 use axum::Router;
 use axum::extract::rejection::FormRejection;
 use axum::extract::{DefaultBodyLimit, Form, Path, Query, State};
@@ -19,6 +19,7 @@ use base64::{
 use coder_access::protocol::{Operation, Outcome, random_id};
 use coder_access::{Right, cloud, project};
 use coder_ui::{control, coordination};
+use maud::{Markup, PreEscaped, html};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::json;
 
@@ -79,8 +80,14 @@ pub(super) fn decoded<T: DeserializeOwned>(value: &str) -> Result<T, Response> {
     serde_json::from_slice(&bytes).map_err(|_| refused(SessionError::InvalidRequest))
 }
 
+/// The pretty JSON of an original native record (escaped when rendered).
 fn pretty(value: &impl Serialize) -> String {
-    escape(&serde_json::to_string_pretty(value).unwrap_or_else(|_| "Unknown".into()))
+    serde_json::to_string_pretty(value).unwrap_or_else(|_| "Unknown".into())
+}
+
+/// The computer connection and resident task links every page ends with.
+fn connection_links(context: &Context<'_>) -> Markup {
+    PreEscaped(controls::link(context.binding))
 }
 
 fn project_url(context: &Context<'_>, project: &str) -> String {
@@ -157,21 +164,29 @@ async fn index(State(app): State<App>, headers: HeaderMap) -> Response {
         Ok(v) => v,
         Err(e) => return refused(e),
     };
-    let mut content = String::from(
-        "<h2>Projects and operator Cloud jobs</h2><p>Choose a resident connection. Its project policy and Cloud executor policy admit these views separately.</p><ul>",
-    );
     let bindings = app
         .config
         .cloud_hosts
         .as_ref()
         .map_or_else(Vec::new, |hosts| hosts.current(&viewer));
-    if bindings.is_empty() {
-        content.push_str("<li>No current resident connection.</li>");
+    let content = html! {
+        h2 { "Projects and operator Cloud jobs" }
+        p { "Choose a resident connection. Its project policy and Cloud executor policy admit these views separately." }
+        ul {
+            @if bindings.is_empty() {
+                li { "No current resident connection." }
+            }
+            @for binding in &bindings {
+                li {
+                    "Connection " (binding.id()) " \u{b7} "
+                    a href=(format!("/cloud/app/hosts/{}/projects", binding.id())) { "Project supervision" }
+                    " \u{b7} "
+                    a href=(format!("/cloud/app/hosts/{}/cloud", binding.id())) { "Operator Cloud jobs" }
+                }
+            }
+        }
     }
-    for binding in bindings {
-        content.push_str(&format!("<li>Connection {} · <a href=\"/cloud/app/hosts/{}/projects\">Project supervision</a> · <a href=\"/cloud/app/hosts/{}/cloud\">Operator Cloud jobs</a></li>", escape(binding.id()), escape(binding.id()), escape(binding.id())));
-    }
-    content.push_str("</ul>");
+    .into_string();
     workspace_shell(
         &app,
         &headers,
@@ -202,23 +217,24 @@ async fn projects(
     let Outcome::ProjectList { projects } = &outcome else {
         return refused(SessionError::Conflict);
     };
-    let mut content = format!(
-        "{}<h2>Native project supervision</h2><p>Only project aliases admitted by this native owner are listed. Reading does not claim issues, recover a scheduler, create worktrees, or start work.</p><ul>",
-        controls::link(context.binding)
-    );
-    for row in &projects.rows {
-        content.push_str(&format!(
-            "<li><a href=\"{}\">{}</a> · goals {} · snapshot <code>{}</code></li>",
-            project_url(&context, &row.id),
-            escape(&row.label),
-            escape(&row.goals_state),
-            escape(&row.snapshot_digest)
-        ));
+    let content = html! {
+        (connection_links(&context))
+        h2 { "Native project supervision" }
+        p { "Only project aliases admitted by this native owner are listed. Reading does not claim issues, recover a scheduler, create worktrees, or start work." }
+        ul {
+            @for row in &projects.rows {
+                li {
+                    a href=(project_url(&context, &row.id)) { (row.label) }
+                    " \u{b7} goals " (row.goals_state)
+                    " \u{b7} snapshot " code { (row.snapshot_digest) }
+                }
+            }
+            @if projects.rows.is_empty() {
+                li { "No admitted project records." }
+            }
+        }
     }
-    if projects.rows.is_empty() {
-        content.push_str("<li>No admitted project records.</li>");
-    }
-    content.push_str("</ul>");
+    .into_string();
     page(&context, &headers, &content, &operation, &outcome, false)
 }
 
@@ -306,7 +322,8 @@ fn project_view(context: &Context<'_>, value: &project::Page) -> Result<String, 
         tasks: &[],
         blockers: &[],
     }];
-    let mut html = show(&coordination::project(
+    let mut html = String::new();
+    html.push_str(&show(&coordination::project(
         &coordination::Project {
             source: source(
                 context,
@@ -323,11 +340,11 @@ fn project_view(context: &Context<'_>, value: &project::Page) -> Result<String, 
             review_backpressure: &review,
         },
         colors(),
-    ))?;
+    ))?);
     for issue in issues {
         html.push_str(&show(&coordination::issue(&issue, colors()))?);
     }
-    Ok(html)
+    Ok(ui::native(&html).into_string())
 }
 
 async fn project_page(
@@ -371,49 +388,75 @@ async fn project_page(
         Ok(v) => v,
         Err(r) => return r,
     };
-    content.push_str(&format!("<p>Sequence {} · {} tasks remain on later pages. Dependencies absent from this page remain unknown. The original native projection retains dependency IDs, resource footprints, backoff, claims, review capacity, exclusions, and observed worktree evidence.</p><details><summary>Original bounded native projection</summary><pre>{}</pre></details><h3>Retained source records</h3><ul>", value.sequence, value.remaining, pretty(value)));
+    let mut sources = Vec::with_capacity(value.sources.len());
     for retained in &value.sources {
-        content.push_str(&format!(
-            "<li>{} · {}",
-            escape(&retained.id),
-            escape(&retained.state)
-        ));
-        if let Some(original) = &retained.original {
-            let query = project::OriginalQuery {
+        let original = match &retained.original {
+            Some(original) => {
+                let query = project::OriginalQuery {
+                    workspace: value.workspace.clone(),
+                    project: value.project.clone(),
+                    snapshot_digest: value.snapshot_digest.clone(),
+                    original: original.clone(),
+                    cursor: None,
+                    limit: project::MAX_CHUNK_BYTES as u32,
+                };
+                match encoded(&query) {
+                    Ok(q) => Some((q, original)),
+                    Err(r) => return r,
+                }
+            }
+            None => None,
+        };
+        sources.push((retained, original));
+    }
+    let next = match &value.next {
+        Some(cursor) => {
+            let query = project::Query {
                 workspace: value.workspace.clone(),
-                project: value.project.clone(),
-                snapshot_digest: value.snapshot_digest.clone(),
-                original: original.clone(),
-                cursor: None,
-                limit: project::MAX_CHUNK_BYTES as u32,
+                project: project.clone(),
+                snapshot: Some(value.snapshot_digest.clone()),
+                cursor: Some(cursor.clone()),
+                limit: 32,
             };
-            let q = match encoded(&query) {
-                Ok(v) => v,
+            match encoded(&query) {
+                Ok(q) => Some(q),
                 Err(r) => return r,
-            };
-            content.push_str(&format!(" · <a href=\"{}/original?q={q}\">Read original bytes</a> · {} bytes · <code>{}</code>", project_url(&context, &project), original.bytes, escape(&original.digest)));
+            }
         }
-        content.push_str("</li>");
-    }
-    content.push_str("</ul>");
-    if let Some(cursor) = &value.next {
-        let query = project::Query {
-            workspace: value.workspace.clone(),
-            project: project.clone(),
-            snapshot: Some(value.snapshot_digest.clone()),
-            cursor: Some(cursor.clone()),
-            limit: 32,
-        };
-        let q = match encoded(&query) {
-            Ok(v) => v,
-            Err(r) => return r,
-        };
-        content.push_str(&format!(
-            "<p><a href=\"{}?q={q}\">Next original snapshot page</a></p>",
-            project_url(&context, &project)
-        ));
-    }
-    content.push_str(&controls::link(context.binding));
+        None => None,
+    };
+    let base = project_url(&context, &project);
+    content.push_str(
+        &html! {
+            p {
+                "Sequence " (value.sequence) " \u{b7} " (value.remaining)
+                " tasks remain on later pages. Dependencies absent from this page remain unknown. The original native projection retains dependency IDs, resource footprints, backoff, claims, review capacity, exclusions, and observed worktree evidence."
+            }
+            details {
+                summary { "Original bounded native projection" }
+                pre { (pretty(value)) }
+            }
+            h3 { "Retained source records" }
+            ul {
+                @for (retained, original) in &sources {
+                    li {
+                        (retained.id) " \u{b7} " (retained.state)
+                        @if let Some((q, original)) = original {
+                            " \u{b7} "
+                            a href=(format!("{base}/original?q={q}")) { "Read original bytes" }
+                            " \u{b7} " (original.bytes) " bytes \u{b7} "
+                            code { (original.digest) }
+                        }
+                    }
+                }
+            }
+            @if let Some(q) = &next {
+                p { a href=(format!("{base}?q={q}")) { "Next original snapshot page" } }
+            }
+            (connection_links(&context))
+        }
+        .into_string(),
+    );
     page(&context, &headers, &content, &operation, &outcome, false)
 }
 
@@ -436,20 +479,19 @@ async fn cloud_projects(
     let Outcome::CloudProjects { projects } = &outcome else {
         return refused(SessionError::Conflict);
     };
-    let mut content = String::from(
-        "<h2>Operator Cloud projects</h2><p>The native operator policy separately admits these projects and executor profiles. Retail purchases use their own admission.</p><ul>",
-    );
-    for project in &projects.projects {
-        content.push_str(&format!(
-            "<li><a href=\"{}\">{}</a></li>",
-            cloud_url(&context, project),
-            escape(project)
-        ));
+    let content = html! {
+        h2 { "Operator Cloud projects" }
+        p { "The native operator policy separately admits these projects and executor profiles. Retail purchases use their own admission." }
+        ul {
+            @for project in &projects.projects {
+                li { a href=(cloud_url(&context, project)) { (project) } }
+            }
+            @if projects.projects.is_empty() {
+                li { "No admitted operator Cloud projects." }
+            }
+        }
     }
-    if projects.projects.is_empty() {
-        content.push_str("<li>No admitted operator Cloud projects.</li>");
-    }
-    content.push_str("</ul>");
+    .into_string();
     page(&context, &headers, &content, &operation, &outcome, false)
 }
 
@@ -504,39 +546,51 @@ async fn jobs(
     let Outcome::CloudList { jobs } = &outcome else {
         return refused(SessionError::Conflict);
     };
-    let mut content = format!(
-        "<h2>Operator Cloud jobs · {}</h2><p>These are canonical native jobs. Listing and reading never submit, continue, cancel, or drive a worker.</p><p><a href=\"{}/new\">Inspect admitted executor profiles and compose a job</a> · <a href=\"{}\">Project environment</a></p><ul>",
-        escape(&project),
-        cloud_url(&context, &project),
-        escape(&super::environment::panel_url(
-            context.binding.id(),
-            &project
-        ))
-    );
-    for row in &jobs.rows {
-        content.push_str(&format!("<li><a href=\"{}\">{}</a> · {} · attempt {} · executor {} · requested model {} · cleanup {}</li>", job_url(context.binding.id(), &row.scope), escape(&row.scope.job), escape(&row.state), row.scope.attempt, escape(&row.executor), escape(row.model.as_deref().unwrap_or("Unknown")), escape(&row.cleanup)));
+    let next = match &jobs.next {
+        Some(cursor) => {
+            let query = cloud::ListQuery {
+                workspace: jobs.workspace.clone(),
+                project: jobs.project.clone(),
+                cursor: Some(cursor.clone()),
+                limit: 32,
+            };
+            match encoded(&query) {
+                Ok(q) => Some(q),
+                Err(r) => return r,
+            }
+        }
+        None => None,
+    };
+    let base = cloud_url(&context, &project);
+    let environment = super::environment::panel_url(context.binding.id(), &project);
+    let content = html! {
+        h2 { "Operator Cloud jobs \u{b7} " (project) }
+        p { "These are canonical native jobs. Listing and reading never submit, continue, cancel, or drive a worker." }
+        (ui::links([
+            (format!("{base}/new").as_str(), "Inspect admitted executor profiles and compose a job"),
+            (environment.as_str(), "Project environment"),
+        ]))
+        ul {
+            @for row in &jobs.rows {
+                li {
+                    a href=(job_url(context.binding.id(), &row.scope)) { (row.scope.job) }
+                    " \u{b7} " (ui::status(&row.state, ui::Tone::Neutral))
+                    " \u{b7} attempt " (row.scope.attempt)
+                    " \u{b7} executor " (row.executor)
+                    " \u{b7} requested model " (row.model.as_deref().unwrap_or("Unknown"))
+                    " \u{b7} cleanup " (row.cleanup)
+                }
+            }
+            @if jobs.rows.is_empty() {
+                li { "No retained jobs in this admitted project." }
+            }
+        }
+        @if let Some(q) = &next {
+            p { a href=(format!("{base}?q={q}")) { "Next original list page" } }
+        }
+        (connection_links(&context))
     }
-    if jobs.rows.is_empty() {
-        content.push_str("<li>No retained jobs in this admitted project.</li>");
-    }
-    content.push_str("</ul>");
-    if let Some(cursor) = &jobs.next {
-        let query = cloud::ListQuery {
-            workspace: jobs.workspace.clone(),
-            project: jobs.project.clone(),
-            cursor: Some(cursor.clone()),
-            limit: 32,
-        };
-        let q = match encoded(&query) {
-            Ok(v) => v,
-            Err(r) => return r,
-        };
-        content.push_str(&format!(
-            "<p><a href=\"{}?q={q}\">Next original list page</a></p>",
-            cloud_url(&context, &project)
-        ));
-    }
-    content.push_str(&controls::link(context.binding));
+    .into_string();
     page(&context, &headers, &content, &operation, &outcome, false)
 }
 
@@ -652,9 +706,7 @@ async fn new_job(
         return refused(SessionError::Conflict);
     };
     let enabled = can_operate(&context);
-    let mut content = String::from(
-        "<h2>Admitted operator Cloud profiles</h2><p>Each native profile fixes its source revision and digest, pool, placement, executor, model policy, credential names, and timeout bound. Review stages intent; confirmation submits the exact signed request. Browser drafts remain in this page.</p>",
-    );
+    let mut cards = Vec::with_capacity(catalog.profiles.len());
     for profile in &catalog.profiles {
         let request = random_id();
         let basis = digest(&json!({"request":request,"profile":profile,"project":project}));
@@ -671,20 +723,43 @@ async fn new_job(
             Err(r) => return r,
         };
         // Each composer has a unique semantic key while keeping the native form name.
+        let name = crate::layout::escape(&profile.name);
         let field = match composer(&context, Some(&profile.executor), enabled) {
             Ok(v) => v
-                .replace("task:prompt", &format!("{}:prompt", escape(&profile.name)))
-                .replace(
-                    &format!("name=\"{}:prompt\"", escape(&profile.name)),
-                    "name=\"task:prompt\"",
-                ),
+                .replace("task:prompt", &format!("{name}:prompt"))
+                .replace(&format!("name=\"{name}:prompt\""), "name=\"task:prompt\""),
             Err(r) => return r,
         };
-        content.push_str(&format!("<section class=\"cloud-card\"><h3>{}</h3><pre>{}</pre><form method=\"post\">{}{}{}{}{field}<label>Timeout in seconds <input type=\"number\" name=\"timeout\" min=\"1\" max=\"{}\" value=\"{}\" required></label>{button}</form></section>", escape(&profile.name), pretty(profile), ticket(&csrf), hidden("request", &request), hidden("profile", &profile.name), hidden("basis", &basis), profile.max_timeout_seconds, profile.max_timeout_seconds.min(3600)));
+        let timeout = profile.max_timeout_seconds.to_string();
+        let form = BoundForm::here()
+            .csrf(&csrf)
+            .bind("request", &request)
+            .bind("profile", &profile.name)
+            .bind("basis", &basis)
+            .body(html! {
+                (ui::native(&field))
+                label {
+                    "Timeout in seconds "
+                    input type="number" name="timeout" min="1" max=(timeout)
+                        value=(profile.max_timeout_seconds.min(3600)) required;
+                }
+            })
+            .submit_with(PreEscaped(button));
+        cards.push(ui::card(html! {
+            h3 { (profile.name) }
+            pre { (pretty(profile)) }
+            (form)
+        }));
     }
-    if catalog.profiles.is_empty() {
-        content.push_str("<p>No admitted executor profiles.</p>");
+    let content = html! {
+        h2 { "Admitted operator Cloud profiles" }
+        p { "Each native profile fixes its source revision and digest, pool, placement, executor, model policy, credential names, and timeout bound. Review stages intent; confirmation submits the exact signed request. Browser drafts remain in this page." }
+        @for card in &cards { (card) }
+        @if catalog.profiles.is_empty() {
+            (ui::empty("No admitted executor profiles", "No admitted executor profiles."))
+        }
     }
+    .into_string();
     let resource_effectful = context.book().is_ok();
     page(
         &context,
@@ -780,27 +855,29 @@ pub(super) async fn job_read(
 /// The saved environment version a job started with (ENV-06). A job keeps
 /// this pin; later selections and rollbacks never reach it.
 pub(super) fn environment_pin(binding: &str, project: &str, value: &cloud::Job) -> String {
-    let Some(pin) = &value.environment else {
-        return "<section aria-labelledby=\"job-environment\"><h3 id=\"job-environment\">Environment</h3><p>This job started without a saved environment version; it uses its admitted profile's runtime.</p></section>".into();
+    let body = match &value.environment {
+        None => html! {
+            p { "This job started without a saved environment version; it uses its admitted profile's runtime." }
+        },
+        Some(pin) => html! {
+            p {
+                "Started from version " (pin.number) " (" code { (pin.version_id) } ") of environment "
+                a href=(format!("{}?environment={}", super::environment::panel_url(binding, project), pin.environment)) {
+                    code { (pin.environment) }
+                }
+                " at selection revision " (pin.selection_revision)
+                " \u{b7} recipe revision " (pin.recipe_revision)
+                " \u{b7} source " code { (pin.source_revision) }
+                " \u{b7} image " code { (pin.image.image_id) }
+                @if let Some(snapshot) = pin.image.snapshot_id.as_deref() {
+                    " \u{b7} snapshot " code { (snapshot) }
+                }
+                " \u{b7} evidence " code { (&pin.evidence_digest[..pin.evidence_digest.len().min(12)]) }
+                ". Continuations and retries keep this exact version; later selections or rollbacks never change it."
+            }
+        },
     };
-    format!(
-        "<section aria-labelledby=\"job-environment\"><h3 id=\"job-environment\">Environment</h3><p>Started from version {} (<code>{}</code>) of environment <a href=\"{}?environment={}\"><code>{}</code></a> at selection revision {} · recipe revision {} · source <code>{}</code> · image <code>{}</code>{} · evidence <code>{}</code>. Continuations and retries keep this exact version; later selections or rollbacks never change it.</p></section>",
-        pin.number,
-        escape(&pin.version_id),
-        escape(&super::environment::panel_url(binding, project)),
-        escape(&pin.environment),
-        escape(&pin.environment),
-        pin.selection_revision,
-        pin.recipe_revision,
-        escape(&pin.source_revision),
-        escape(&pin.image.image_id),
-        pin.image
-            .snapshot_id
-            .as_deref()
-            .map(|s| format!(" · snapshot <code>{}</code>", escape(s)))
-            .unwrap_or_default(),
-        escape(&pin.evidence_digest[..pin.evidence_digest.len().min(12)]),
-    )
+    ui::section("job-environment", "Environment", body).into_string()
 }
 
 fn job_view(context: &Context<'_>, value: &cloud::Job) -> Result<String, Response> {
@@ -866,6 +943,7 @@ fn job_view(context: &Context<'_>, value: &cloud::Job) -> Result<String, Respons
         },
         colors(),
     ))
+    .map(|view| ui::native(&view).into_string())
 }
 
 pub(super) async fn job(
@@ -889,7 +967,7 @@ pub(super) async fn job(
         Err(r) => return r,
     };
     content.push_str(&environment_pin(context.binding.id(), &project, value));
-    content.push_str(&format!("<h3>Original job projection</h3><pre>{}</pre><p>Cost and publication remain unknown unless their own canonical records supply evidence. A cancellation request does not establish termination or cleanup. An omitted prompt or detail remains available only through an admitted retained original.</p><h3>Retained originals</h3><ul>", pretty(value)));
+    let mut originals = Vec::with_capacity(value.originals.len());
     for original in &value.originals {
         let query = cloud::OriginalQuery {
             scope: value.scope.clone(),
@@ -897,20 +975,14 @@ pub(super) async fn job(
             cursor: None,
             limit: cloud::MAX_CHUNK_BYTES,
         };
-        let q = match encoded(&query) {
-            Ok(v) => v,
+        match encoded(&query) {
+            Ok(q) => originals.push((q, original)),
             Err(r) => return r,
-        };
-        content.push_str(&format!(
-            "<li><a href=\"{}/original?q={q}\">{}</a> · {} bytes · <code>{}</code></li>",
-            job_url(context.binding.id(), &value.scope),
-            escape(&original.source),
-            original.bytes,
-            escape(&original.digest)
-        ));
+        }
     }
-    content.push_str("</ul>");
+    let job_href = job_url(context.binding.id(), &value.scope);
     let enabled = can_operate(&context);
+    let mut forms = Vec::with_capacity(3);
     for (action, label, prompt) in [
         ("continue", "Review a new continuation turn", true),
         ("cancel", "Review stop request", false),
@@ -938,26 +1010,46 @@ pub(super) async fn job(
         };
         let field = if prompt {
             match composer(&context, Some(&value.executor), action_enabled) {
-                Ok(v) => v,
+                Ok(v) => ui::native(&v),
                 Err(r) => return r,
             }
         } else if action == "cancel" {
-            "<label>Reason <input name=\"reason\" maxlength=\"4096\" required></label>".into()
+            html! { label { "Reason " input name="reason" maxlength="4096" required; } }
         } else {
-            String::new()
+            html! {}
         };
-        content.push_str(&format!(
-            "<form method=\"post\" action=\"{}\">{}{}{}{}{field}{button}</form>",
-            escape(&job_url(context.binding.id(), &value.scope)),
-            ticket(&csrf),
-            hidden("request", &request),
-            hidden("action", action),
-            hidden("basis", &basis)
-        ));
+        forms.push(
+            BoundForm::new(job_href.as_str())
+                .csrf(&csrf)
+                .bind("request", &request)
+                .bind("action", action)
+                .bind("basis", &basis)
+                .body(field)
+                .submit_with(PreEscaped(button)),
+        );
     }
-    content.push_str("<p>Continue creates a separately reviewed native turn. Reconcile advances observation of the original job under its current admission. Review, apply artifacts, and publish remain separate native actions.</p>");
-    content.push_str("<p>Candidate review, artifact application, and publication are unavailable without their separately admitted native candidate owner. Leaving this page detaches observation and does not stop work.</p>");
-    content.push_str(&controls::link(context.binding));
+    content.push_str(
+        &html! {
+            h3 { "Original job projection" }
+            pre { (pretty(value)) }
+            p { "Cost and publication remain unknown unless their own canonical records supply evidence. A cancellation request does not establish termination or cleanup. An omitted prompt or detail remains available only through an admitted retained original." }
+            h3 { "Retained originals" }
+            ul {
+                @for (q, original) in &originals {
+                    li {
+                        a href=(format!("{job_href}/original?q={q}")) { (original.source) }
+                        " \u{b7} " (original.bytes) " bytes \u{b7} "
+                        code { (original.digest) }
+                    }
+                }
+            }
+            @for form in &forms { (form) }
+            p { "Continue creates a separately reviewed native turn. Reconcile advances observation of the original job under its current admission. Review, apply artifacts, and publish remain separate native actions." }
+            p { "Candidate review, artifact application, and publication are unavailable without their separately admitted native candidate owner. Leaving this page detaches observation and does not stop work." }
+            (connection_links(&context))
+        }
+        .into_string(),
+    );
     page(
         &context,
         &headers,
@@ -1050,12 +1142,17 @@ fn chunk_content(bytes: &[u8], offset: u64, total: u64, digest: &str, url: &str)
         |_| format!("Base64: {}", STANDARD.encode(bytes)),
         str::to_owned,
     );
-    format!(
-        "<h2>Original native source bytes</h2><p>Byte offset {offset} · chunk {} bytes · original {total} bytes · <code>{}</code>. Chunks retain the original bytes and may split a UTF-8 character. Download this chunk to preserve its exact bytes.</p><p><a href=\"{url}&amp;download=yes\">Download these exact bytes</a></p><pre>{}</pre>",
-        bytes.len(),
-        escape(digest),
-        escape(&display)
-    )
+    html! {
+        h2 { "Original native source bytes" }
+        p {
+            "Byte offset " (offset) " \u{b7} chunk " (bytes.len()) " bytes \u{b7} original " (total)
+            " bytes \u{b7} " code { (digest) }
+            ". Chunks retain the original bytes and may split a UTF-8 character. Download this chunk to preserve its exact bytes."
+        }
+        p { a href=(format!("{url}&download=yes")) { "Download these exact bytes" } }
+        pre { (display) }
+    }
+    .into_string()
 }
 
 async fn project_original(
@@ -1113,10 +1210,12 @@ async fn project_original(
             Ok(v) => v,
             Err(r) => return r,
         };
-        content.push_str(&format!(
-            "<p><a href=\"{}/original?q={next}\">Next original chunk</a></p>",
-            project_url(&context, &project)
-        ));
+        content.push_str(
+            &html! {
+                p { a href=(format!("{}/original?q={next}", project_url(&context, &project))) { "Next original chunk" } }
+            }
+            .into_string(),
+        );
     }
     page(&context, &headers, &content, &operation, &outcome, false)
 }
@@ -1182,10 +1281,12 @@ async fn cloud_original(
             Ok(v) => v,
             Err(r) => return r,
         };
-        content.push_str(&format!(
-            "<p><a href=\"{}/original?q={next}\">Next original chunk</a></p>",
-            job_url(context.binding.id(), &chunk.scope)
-        ));
+        content.push_str(
+            &html! {
+                p { a href=(format!("{}/original?q={next}", job_url(context.binding.id(), &chunk.scope))) { "Next original chunk" } }
+            }
+            .into_string(),
+        );
     }
     page(&context, &headers, &content, &operation, &outcome, false)
 }
