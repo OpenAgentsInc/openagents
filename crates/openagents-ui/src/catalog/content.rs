@@ -1,0 +1,88 @@
+//! Content: the Markdown root and its elements, code, tables, sources.
+
+use maud::{Markup, html};
+
+use super::{Pane, row, specimen, stack};
+use crate::actions::{Button, ButtonVariant, Color, ControlSize};
+use crate::content::{
+    CodeBlock, ColSize, Favicon, Heading, InlineCode, List, ListItem, MarkdownRoot, MarkdownSize,
+    Paragraph, Source, SourceVariant, StickyActionBar, Table,
+};
+use crate::icons::Icon;
+
+const RUST: &str = "fn main() {\n    let catalog = openagents_ui::catalog::render();\n    println!(\"{}\", catalog.into_string());\n}";
+
+pub(super) fn markdown(pane: Pane) -> Markup {
+    let body = html! {
+        (Heading::new(2, "Shipping the catalog").id(pane.id("md-heading")))
+        (Paragraph::new(html! {
+            "The catalog renders every builder. Run " (InlineCode::new("cargo test -p openagents-ui"))
+            " before you push."
+        }))
+        (Heading::new(3, "Checklist"))
+        (List::unordered().items(["Tokens", "Components", "Both themes"]))
+        (Heading::new(4, "Order"))
+        (List::ordered().start(3).item("Rebase").item("Test").item("Push"))
+        (Heading::new(5, "Level five"))
+        (Heading::new(6, "Level six"))
+        ul class="oa-list" data-variant="unordered" {
+            (ListItem::new(html! { "A lone " strong { "ListItem" } }))
+        }
+    };
+    html! {
+        (specimen("MarkdownRoot Heading Paragraph List ListItem InlineCode", "Markdown, md", MarkdownRoot::new(body).label("Sample message")))
+        (specimen("MarkdownRoot", "Markdown, sm", MarkdownRoot::new(html! {
+            p { "Dense panels use the small size. Plain " code { "<p>" } " and " a href="/docs" { "links" } " from the renderer are styled too." }
+            blockquote { p { "A quote from the Markdown renderer." } }
+        }).size(MarkdownSize::Sm)))
+        (specimen("Heading", "Heading levels", stack(html! {
+            @for level in 1..=6_u8 {
+                (Heading::new(level, format!("Heading {level}")))
+            }
+        })))
+    }
+}
+
+pub(super) fn code(_pane: Pane) -> Markup {
+    html! {
+        (specimen("CodeBlock", "Code block with language", CodeBlock::new(RUST).language("rust")))
+        (specimen("CodeBlock", "Wrapped, custom copy icon", CodeBlock::new("openagents issue claim 11021 && cargo test -p openagents-ui --quiet -- --nocapture --test-threads 1")
+            .language("sh").wrap(true).copy_icon(Icon::Copy)))
+        (specimen("CodeBlock", "Not copyable, no language", CodeBlock::new("plain output\nsecond line").copyable(false)))
+        (specimen("CodeBlock", "Pre-highlighted markup", CodeBlock::new("let x = 1;").language("rust")
+            .highlighted(html! { span class="hljs-keyword" { "let" } " x = " span class="hljs-number" { "1" } ";" })))
+        (specimen("StickyActionBar", "Sticky action bar", StickyActionBar::new().label("diff.patch")
+            .aria_label("Patch actions")
+            .action(Button::icon(Icon::Copy, "Copy patch").size(ControlSize::Xs).variant(ButtonVariant::Ghost).color(Color::Secondary))
+            .action(Button::icon(Icon::Download, "Download patch").size(ControlSize::Xs).variant(ButtonVariant::Ghost).color(Color::Secondary))))
+    }
+}
+
+pub(super) fn table(_pane: Pane) -> Markup {
+    html! {
+        (specimen("Table", "Table", Table::new().label("Agent runs")
+            .caption("Runs in the last day")
+            .header(["Agent", "Status", "Tokens", "Cost"])
+            .row(["Coder", "Done", "12,480", "$0.42"])
+            .row(["Reviewer", "Running", "3,102", "$0.08"])
+            .row(["Planner", "Queued", "0", "$0.00"])
+            .numeric(2).numeric(3)
+            .col_size(0, ColSize::Lg).col_size(1, ColSize::Sm).col_size(2, ColSize::Md)))
+    }
+}
+
+pub(super) fn sources(_pane: Pane) -> Markup {
+    html! {
+        (specimen("Source Favicon", "Compact", row(html! {
+            (Source::new("Apps SDK UI", "https://github.com/openai/apps-sdk-ui"))
+            (Source::new("Docs", "/docs").favicon(Favicon::new("openagents.com").src("/favicon.svg")))
+            (Source::new("Rust book", "https://doc.rust-lang.org/book/").extra(3))
+            (Source::new("Unsafe link", "javascript:alert(1)"))
+        })))
+        (specimen("Source Favicon", "Leading", stack(html! {
+            (Source::new("Apps SDK UI", "https://github.com/openai/apps-sdk-ui").variant(SourceVariant::Leading))
+            (Source::new("OpenAgents docs", "/docs").variant(SourceVariant::Leading)
+                .favicon(Favicon::new("openagents.com").src("/favicon.svg")).extra(2))
+        })))
+    }
+}

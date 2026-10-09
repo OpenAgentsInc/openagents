@@ -1,0 +1,195 @@
+//! Shell: Composer, AppShell with Sidebar, ThemeToggle, Document.
+
+use maud::{Markup, PreEscaped, Render, html};
+
+use super::{Pane, row, specimen, stack};
+use crate::actions::{Button, ButtonVariant, Color, ControlSize};
+use crate::content::CodeBlock;
+use crate::icons::Icon;
+use crate::shell::{
+    AppShell, Composer, ComposerDropdown, Document, HxGet, MainMode, ModelPickerTrigger, NavItem,
+    Sidebar, SidebarSection, Theme, ThemeToggle,
+};
+
+/// The id `AppShell` gives its left panel. The page around the catalog has
+/// its own shell with that id, so preview copies get a pane-local one.
+const SHELL_LEFT_PANEL_ID: &str = "oa-left-panel";
+
+pub(super) fn composer(pane: Pane) -> Markup {
+    let full = Composer::new(pane.id("composer"), "/ui")
+        .label("Task composer")
+        .enhanced(false)
+        .placeholder("Describe a task")
+        .input_label("Task")
+        .max_chars(4000)
+        .rows(2)
+        .hidden(html! { input type="hidden" name="source" value="catalog"; })
+        .dropdown(
+            ComposerDropdown::new("Repository", "openagents")
+                .icon(Icon::Folder)
+                .popover(pane.id("composer-repo")),
+        )
+        .dropdown(
+            ComposerDropdown::new("Branch", "main")
+                .icon(Icon::Branch)
+                .show_label(true)
+                .hx(HxGet::new("/composer/branches")
+                    .target(format!("#{}", pane.id("composer-status")))
+                    .include(format!("#{}", pane.id("composer")))
+                    .swap("innerHTML")
+                    .sync("this:replace")),
+        )
+        .model_picker(
+            ModelPickerTrigger::new("Max")
+                .effort("High")
+                .popover(pane.id("composer-model")),
+        )
+        .leading(
+            Button::icon(Icon::Paperclip, "Attach files")
+                .variant(ButtonVariant::Ghost)
+                .color(Color::Secondary)
+                .size(ControlSize::Sm),
+        )
+        .trailing(
+            Button::icon(Icon::Mic, "Dictate")
+                .variant(ButtonVariant::Ghost)
+                .color(Color::Secondary)
+                .size(ControlSize::Sm),
+        )
+        .status(html! { "Ready" });
+    let draft = Composer::new(pane.id("composer-draft"), "/ui")
+        .enhanced(false)
+        .draft("Fix the flaky upstream test")
+        .model_picker(ModelPickerTrigger::new("Mini").hx(HxGet::new("/composer/models")))
+        .send_label("Start task");
+    let rich = Composer::new(pane.id("composer-rich"), "/ui")
+        .enhanced(true)
+        .hx_include(format!("#{}", pane.id("composer-rich")))
+        .input_id(pane.id("composer-rich-text"))
+        .body_id(pane.id("composer-rich-body"))
+        .name("prompt")
+        .autofocus(false)
+        .selectors(html! { span class="oa-catalog-caption" { "Selectors slot" } })
+        .attachments(html! { span class="oa-catalog-caption" { "notes.md attached" } })
+        .send(Button::icon(Icon::ArrowRight, "Send").size(ControlSize::Sm));
+    let off = Composer::new(pane.id("composer-off"), "/ui")
+        .enhanced(false)
+        .placeholder("Sign in to start a task")
+        .disabled(true);
+    html! {
+        (specimen("Composer ComposerDropdown ModelPickerTrigger HxGet", "Full composer", full))
+        (specimen("Composer ModelPickerTrigger HxGet", "Draft and send label", draft))
+        (specimen("Composer", "HTMX-enhanced, custom slots", rich))
+        (specimen("Composer", "Disabled", off))
+        (specimen("ComposerDropdown ModelPickerTrigger", "Triggers alone", row(html! {
+            (ComposerDropdown::new("Environment", "Cloud").icon(Icon::Globe).show_label(true))
+            (ModelPickerTrigger::new("Max").effort("Medium"))
+        })))
+    }
+}
+
+pub(super) fn app_shell(pane: Pane) -> Markup {
+    let sidebar = Sidebar::new()
+        .label("Preview sidebar")
+        .brand(html! { a class="oa-wordmark" href="/ui" { "OpenAgents" } })
+        .nav(NavItem::new("Home", "/").icon(Icon::Globe))
+        .nav(
+            NavItem::new("Components", "/ui")
+                .icon(Icon::Sparkles)
+                .current(true),
+        )
+        .nav(
+            NavItem::new("Docs", "/docs")
+                .icon(Icon::Code)
+                .trailing(html! { span class="oa-catalog-caption" { "3" } }),
+        )
+        .section(
+            SidebarSection::new("Recent")
+                .item(NavItem::new("Catalog review", "/ui#app-shell"))
+                .items([
+                    NavItem::new("Token audit", "/ui#colors"),
+                    NavItem::new("Icon sweep", "/ui#icons"),
+                ]),
+        )
+        .section(SidebarSection::new("Pinned").empty("Nothing pinned yet"))
+        .footer(ThemeToggle::new());
+    let shell = AppShell::new()
+        .sidebar(sidebar)
+        .header(html! { strong { "Preview" } })
+        .actions(
+            Button::new("Share")
+                .size(ControlSize::Sm)
+                .variant(ButtonVariant::Outline)
+                .color(Color::Secondary),
+        )
+        .content(html! { p { "The main frame scrolls this content." } })
+        .footer(html! { p class="oa-catalog-caption" { "Footer slot" } })
+        .mode(MainMode::Scroll)
+        .main_id(pane.id("shell-main"));
+    let app = AppShell::new()
+        .header(html! { strong { "App mode, no sidebar" } })
+        .content(html! { p { "App pages fill the frame and dock the composer." } })
+        .composer(
+            Composer::new(pane.id("shell-composer"), "/ui")
+                .enhanced(false)
+                .placeholder("Ask anything"),
+        )
+        .mode(MainMode::App)
+        .main_id(pane.id("shell-app-main"));
+    html! {
+        (specimen("AppShell Sidebar SidebarSection NavItem", "Scroll mode with sidebar", preview(pane, &shell)))
+        (specimen("AppShell Composer", "App mode with docked composer", preview(pane, &app)))
+    }
+}
+
+/// An app shell in a fixed-height frame. The shell's `<main>` becomes a
+/// `div` (the page has its own `<main>`), and its left panel gets a
+/// pane-local id.
+fn preview(pane: Pane, shell: &AppShell) -> Markup {
+    let panel = pane.id("left-panel");
+    let html = shell
+        .render()
+        .into_string()
+        .replace(
+            &format!("id=\"{SHELL_LEFT_PANEL_ID}\""),
+            &format!("id=\"{panel}\""),
+        )
+        .replace(
+            &format!("popovertarget=\"{SHELL_LEFT_PANEL_ID}\""),
+            &format!("popovertarget=\"{panel}\""),
+        )
+        .replace(
+            &format!("aria-controls=\"{SHELL_LEFT_PANEL_ID}\""),
+            &format!("aria-controls=\"{panel}\""),
+        )
+        .replace(
+            "<main id=",
+            "<div role=\"region\" aria-label=\"Preview content\" id=",
+        )
+        .replace("</main>", "</div>");
+    html! { div class="oa-catalog-frame" { (PreEscaped(html)) } }
+}
+
+pub(super) fn theme(_pane: Pane) -> Markup {
+    html! {
+        (specimen("ThemeToggle", "Theme toggle", row(html! {
+            (ThemeToggle::new())
+            (ThemeToggle::new().label("Switch theme").light_icon(Icon::Star).dark_icon(Icon::Sparkles))
+            (ThemeToggle::new().fallback_action("/theme").return_to("/ui"))
+        })))
+    }
+}
+
+pub(super) fn document(_pane: Pane) -> Markup {
+    let document = Document::new("Components")
+        .theme(Some(Theme::Dark))
+        .head(html! { link rel="stylesheet" href="/static/ui.css"; })
+        .body(html! { p { "Page body" } });
+    let system = Document::new("OpenAgents").theme(None);
+    html! {
+        (specimen("Document", "The <html> element, rendered as source", stack(html! {
+            (CodeBlock::new(document.render().into_string()).language("html").wrap(true))
+            (CodeBlock::new(system.render().into_string()).language("html").wrap(true))
+        })))
+    }
+}

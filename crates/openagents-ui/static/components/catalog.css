@@ -1,0 +1,350 @@
+/* Component catalog (UI-07): layout for openagents_ui::catalog::render().
+   Each theme pane sets data-theme, so its tokens resolve through
+   light-dark(); the pane restates color and background so text and surface
+   follow the pane instead of inheriting the page's computed values.
+   Per-token swatch rules live in catalog-tokens.css (generated). */
+
+.oa-catalog {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--spacing) * 10);
+  width: 100%;
+  max-width: 90rem;
+  margin: 0 auto;
+  padding: calc(var(--spacing) * 6) calc(var(--spacing) * 4) calc(var(--spacing) * 16);
+  box-sizing: border-box;
+  color: var(--color-text);
+}
+
+.oa-catalog-intro__title {
+  margin: 0;
+  font-size: var(--font-heading-2xl-size);
+  line-height: var(--font-heading-2xl-line-height);
+  font-weight: var(--font-heading-2xl-weight);
+  letter-spacing: var(--font-heading-2xl-tracking);
+}
+
+.oa-catalog-intro__lede {
+  margin: calc(var(--spacing) * 2) 0 0;
+  color: var(--color-text-secondary);
+}
+
+/* Section nav */
+.oa-catalog-nav {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
+  gap: calc(var(--spacing) * 4);
+  padding: calc(var(--spacing) * 4);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-xl);
+  background: var(--color-surface-secondary);
+}
+
+.oa-catalog-nav__heading {
+  display: block;
+  margin-bottom: calc(var(--spacing) * 1.5);
+  color: var(--color-text);
+  font-size: var(--font-text-sm-size);
+  font-weight: var(--font-weight-semibold);
+  text-decoration: none;
+}
+
+.oa-catalog-nav__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.oa-catalog-nav__link {
+  display: block;
+  padding: calc(var(--spacing) * 0.5) 0;
+  color: var(--color-text-secondary);
+  font-size: var(--font-text-sm-size);
+  text-decoration: none;
+}
+
+.oa-catalog-nav__link:hover,
+.oa-catalog-nav__heading:hover {
+  color: var(--color-text);
+  text-decoration: underline;
+}
+
+/* Groups and sections */
+.oa-catalog-group {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--spacing) * 8);
+  scroll-margin-top: calc(var(--spacing) * 4);
+}
+
+.oa-catalog-group__title {
+  margin: 0;
+  padding-bottom: calc(var(--spacing) * 2);
+  border-bottom: 1px solid var(--color-border);
+  font-size: var(--font-heading-xl-size);
+  line-height: var(--font-heading-xl-line-height);
+  font-weight: var(--font-heading-xl-weight);
+}
+
+.oa-catalog-section {
+  scroll-margin-top: calc(var(--spacing) * 4);
+}
+
+.oa-catalog-section__title {
+  margin: 0 0 calc(var(--spacing) * 3);
+  font-size: var(--font-heading-md-size);
+  line-height: var(--font-heading-md-line-height);
+  font-weight: var(--font-heading-md-weight);
+}
+
+.oa-catalog-themes {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: calc(var(--spacing) * 4);
+}
+
+@media (min-width: 64rem) {
+  .oa-catalog-themes {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.oa-catalog-theme {
+  min-width: 0;
+  padding: calc(var(--spacing) * 5);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-xl);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: var(--font-text-md-size);
+  line-height: var(--font-text-md-line-height);
+}
+
+.oa-catalog-theme__name {
+  margin: 0 0 calc(var(--spacing) * 4);
+  color: var(--color-text-tertiary);
+  font-size: var(--font-text-xs-size);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+}
+
+.oa-catalog-theme__body {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--spacing) * 6);
+}
+
+/* Specimens */
+.oa-catalog-specimen {
+  min-width: 0;
+}
+
+.oa-catalog-specimen__title {
+  margin: 0 0 calc(var(--spacing) * 2);
+  color: var(--color-text-secondary);
+  font-size: var(--font-text-sm-size);
+  font-weight: var(--font-weight-medium);
+}
+
+.oa-catalog-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(var(--spacing) * 2);
+}
+
+.oa-catalog-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: calc(var(--spacing) * 3);
+  min-width: 0;
+}
+
+.oa-catalog-stack > p {
+  margin: 0;
+}
+
+.oa-catalog-labelled {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(var(--spacing) * 1);
+}
+
+.oa-catalog-caption {
+  color: var(--color-text-tertiary);
+  font-size: var(--font-text-xs-size);
+}
+
+/* A trigger given extra classes in the overlay specimens. */
+.oa-catalog-trigger {
+  font-weight: var(--font-weight-semibold);
+}
+
+/* Color swatches */
+.oa-catalog-swatches__list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+  gap: calc(var(--spacing) * 2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.oa-catalog-swatch {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  column-gap: calc(var(--spacing) * 2.5);
+  align-items: center;
+}
+
+.oa-catalog-swatch__chip {
+  grid-row: 1 / span 2;
+  width: calc(var(--spacing) * 9);
+  height: calc(var(--spacing) * 9);
+  border-radius: var(--radius-md);
+  box-shadow: inset 0 0 0 1px var(--color-border-subtle);
+}
+
+.oa-catalog-swatch__name {
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: var(--font-text-xs-size);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oa-catalog-swatch__value {
+  color: var(--color-text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--font-text-2xs-size);
+}
+
+/* Type scale */
+.oa-catalog-type {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--spacing) * 2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.oa-catalog-type__row {
+  display: grid;
+  grid-template-columns: 6.5rem minmax(0, 1fr);
+  align-items: baseline;
+  gap: calc(var(--spacing) * 3);
+}
+
+.oa-catalog-type__name {
+  color: var(--color-text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--font-text-xs-size);
+}
+
+.oa-catalog-type__sample {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oa-catalog-type__mono {
+  margin: calc(var(--spacing) * 3) 0 0;
+  font-family: var(--font-mono);
+  font-size: var(--font-text-sm-size);
+}
+
+/* Radius and shadow */
+.oa-catalog-shapes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--spacing) * 4);
+  margin: 0 0 calc(var(--spacing) * 2);
+  padding: 0;
+  list-style: none;
+}
+
+.oa-catalog-shapes__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(var(--spacing) * 1.5);
+}
+
+.oa-catalog-shape {
+  width: calc(var(--spacing) * 14);
+  height: calc(var(--spacing) * 14);
+  background: var(--color-surface-elevated);
+}
+
+.oa-catalog-shape[data-kind="radius"] {
+  background: var(--color-background-secondary-soft);
+  box-shadow: inset 0 0 0 1px var(--color-border);
+}
+
+.oa-catalog-shape[data-kind="shadow"] {
+  border-radius: var(--radius-lg);
+}
+
+/* Icons */
+.oa-catalog-icons {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(6.5rem, 1fr));
+  gap: calc(var(--spacing) * 1);
+  max-height: 32rem;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.oa-catalog-icons__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(var(--spacing) * 1.5);
+  padding: calc(var(--spacing) * 2) calc(var(--spacing) * 1);
+  border-radius: var(--radius-md);
+  text-align: center;
+}
+
+.oa-catalog-icons__item:hover {
+  background: var(--color-background-secondary-soft);
+}
+
+.oa-catalog-icons__name {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--color-text-secondary);
+  font-size: var(--font-text-2xs-size);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* App shell previews: a fixed-height frame instead of the full window. */
+.oa-catalog-frame {
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.oa-catalog-frame .oa-layout {
+  height: 26rem;
+}
+
+.oa-catalog-frame .oa-skip-link {
+  display: none;
+}
+
+/* The icon sprite the icon grids <use>. */
+.oa-catalog-sprite {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
