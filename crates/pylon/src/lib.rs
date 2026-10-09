@@ -8,14 +8,18 @@
 //! publishes a `3201` receipt. An aggregator counts a pool's beacons and
 //! receipts into a `30201` aggregate that any reader can recompute.
 //!
-//! Phases P1 to P3 of `docs/compute/verse-compute.md`. A checker
+//! Phases P1 to P4 of `docs/compute/verse-compute.md`. A checker
 //! ([`check`]) runs canaries and redundant jobs and signs NIP-32 verdicts;
 //! the pylon league ([`league`]) ranks pylons per class on pinned suites.
 //! Paid jobs (P3, test sats first): a priced pylon sells each job under
 //! NIP-X402's native purchase records ([`paid`]), and OpenAgents' broker
 //! settles customers' x402 payments through the x402 facilitator, records
 //! brokered sales in the split ledger, and sweeps provider balances
-//! ([`broker`]).
+//! ([`broker`]). The agent market (P4): agents offer services under
+//! NIP-MKT, hire each other through NIP-LAB orders whose compute runs on
+//! the pool, and the broker settles each order with the seller's fee, the
+//! provider's share, and OpenAgents' tied to the job's receipt
+//! ([`market`]).
 //! See `docs/compute/pylon.md`.
 
 pub mod broker;
@@ -31,6 +35,7 @@ pub mod inflight;
 pub mod job;
 pub mod league;
 pub mod lease;
+pub mod market;
 pub mod paid;
 pub mod pool;
 pub mod provider;

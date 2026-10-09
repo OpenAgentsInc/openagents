@@ -267,6 +267,109 @@ impl Broker {
             .map_err(|e| e.to_string())
     }
 
+    /// Settle a confirmed agent `order` whose compute ran as the job in
+    /// `event` (P4): the buyer paid the order's fixed price (`terms`) to
+    /// `receiver`, OpenAgents', by `bolt11`, an invoice bound to the order
+    /// ([`crate::market::instruction`]), and `preimage` proves it. The
+    /// seller's fee is the price less `compute_msat`, the broker's price
+    /// for one job; it comes first, the provider's share is of the
+    /// compute, and OpenAgents keeps the rest. The receipt names no
+    /// payment: the order pays for it. Replaying a settled order returns
+    /// it.
+    ///
+    /// # Errors
+    ///
+    /// A receipt the broker did not buy, that failed, or that names a
+    /// payment; terms that are not fixed-price Lightning on this book's
+    /// network or that name other parties; an invoice for another amount,
+    /// order, or payee; a preimage that does not match; a payment the
+    /// receiver never received; and ledger refusals.
+    #[allow(clippy::too_many_arguments)]
+    pub fn settle_order(
+        &mut self,
+        receiver: &dyn Receiver,
+        event: &Event,
+        owner: Option<&str>,
+        order: &nostr::market_contracts::OrderRef,
+        terms: &nostr::market_contracts::Terms,
+        bolt11: &str,
+        preimage: &str,
+        compute_msat: u64,
+        at: i64,
+    ) -> Result<Recorded, String> {
+        let receipt = self.job(event, owner)?;
+        if receipt.payment.is_some() {
+            return Err("an order's job carries no payment of its own".into());
+        }
+        if terms.payment_profile != nostr::market_contracts::LIGHTNING_PROFILE
+            || terms.network.as_deref() != Some(self.network.as_str())
+        {
+            return Err(format!(
+                "an order is paid by fixed-price Lightning on {}",
+                self.network.as_str()
+            ));
+        }
+        if terms.buyer != order.buyer || terms.provider != order.provider {
+            return Err("the terms name other parties than the order".into());
+        }
+        let invoice = nostr::x402::decode_invoice(bolt11).map_err(|e| format!("{e:?}"))?;
+        let hrp = match self.network {
+            Network::Bitcoin => "bc",
+            _ => "tb",
+        };
+        if invoice.currency() != hrp {
+            return Err("the invoice is on another network".into());
+        }
+        if invoice.amount_msat() != terms.price_msat {
+            return Err("the invoice is not for the order's price".into());
+        }
+        if invoice.description_hash() != crate::market::binding(order)? {
+            return Err("the invoice is bound to another order".into());
+        }
+        let payee: String = invoice.payee().iter().map(|b| format!("{b:02x}")).collect();
+        if payee != receiver.pay_to() {
+            return Err("the invoice is not OpenAgents' receiver's".into());
+        }
+        let hash: String = invoice
+            .payment_hash()
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
+        if !crate::paid::preimage_matches(preimage, &hash) {
+            return Err("the preimage does not match the invoice".into());
+        }
+        let received = receiver
+            .received_msat(invoice.payment_hash())?
+            .ok_or("the receiver never received this payment")?;
+        if received > terms.price_msat {
+            return Err("received more than the price".into());
+        }
+        if compute_msat > terms.price_msat {
+            return Err("the compute costs more than the order's price".into());
+        }
+        let price = i64::try_from(terms.price_msat).map_err(|e| e.to_string())?;
+        self.ledger
+            .record_settlement(SettlementInput {
+                key: hash,
+                resource: pay_ledger::agent_order::RESOURCE.into(),
+                plugin_id: None,
+                release_id: None,
+                price_msat: price,
+                received_msat: i64::try_from(received).map_err(|e| e.to_string())?,
+                rail: Rail::Lightning,
+                payer_alias: None,
+                settled_at: at,
+                split: Split::AgentOrder {
+                    seller: terms.provider.clone(),
+                    fee_msat: price - i64::try_from(compute_msat).map_err(|e| e.to_string())?,
+                    provider: party(&receipt.provider, owner),
+                    receipt: event.id.clone(),
+                    order: order.order_id.clone(),
+                },
+            })
+            .map_err(|e| e.to_string())
+    }
+
     /// Settle a compute balance hold that paid for the job in `event` at
     /// `charge_msat`. The receipt names no payment: a balance debit has no
     /// preimage.

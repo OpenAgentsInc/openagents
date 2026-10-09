@@ -13,6 +13,7 @@ use sha2::{Digest, Sha256};
 use std::{collections::BTreeMap, path::Path};
 
 pub mod adjustment;
+pub mod agent_order;
 pub mod commission;
 pub mod commission_abuse;
 pub mod compute;
@@ -167,6 +168,20 @@ pub enum Split {
         provider: String,
         receipt: String,
         plugin: Option<PluginFee>,
+    },
+    /// One agent's NIP-MKT order to another, whose compute ran on the pool
+    /// (`docs/compute/verse-compute.md`, P4): the selling agent's service
+    /// fee comes first, as an author's per-call fee does, the provider's
+    /// share under `[pylon_job]` is of what remains, and OpenAgents keeps
+    /// the rest. It binds the order (`order`, its 64-hex order ID) and the
+    /// NIP-PYLON receipt (`3201` event ID) of the job that ran it, one
+    /// settlement each.
+    AgentOrder {
+        seller: String,
+        fee_msat: i64,
+        provider: String,
+        receipt: String,
+        order: String,
     },
 }
 /// A priced plugin a pylon job used: its author's per-call fee.
@@ -376,6 +391,7 @@ impl Ledger {
         connection.execute_batch(shared::TABLES)?;
         connection.execute_batch(shared::accounting::TABLES)?;
         connection.execute_batch(pylon::TABLES)?;
+        connection.execute_batch(agent_order::TABLES)?;
         let mut ledger = Self {
             connection,
             #[cfg(unix)]
@@ -838,46 +854,59 @@ pub(crate) fn record_settlement_in(tx: &Connection, input: SettlementInput) -> R
             receipt,
             plugin,
         } => {
-            if provider.is_empty()
-                || provider == OPENAGENTS
-                || !pylon::is_event_id(receipt)
-                || input.plugin_id.as_deref() != plugin.as_ref().map(|p| p.plugin_id.as_str())
-                || input.release_id.is_some()
-            {
+            if input.plugin_id.as_deref() != plugin.as_ref().map(|p| p.plugin_id.as_str()) {
                 return Err(Error::Invalid(
                     "pylon job provider, receipt, or classification",
                 ));
             }
-            let bps = rule
-                .pylon_job
-                .as_ref()
-                .ok_or(Error::Invalid("the effective rule has no pylon job split"))?
-                .provider_bps;
-            if pylon::settlement_for(tx, receipt)?.is_some() {
-                return Err(Error::Conflict("the receipt already has a settlement"));
-            }
             // The plugin author's fee comes first, as `[plugin_call]` pays
             // it; the provider's share is of what remains.
-            let fee = match plugin {
+            let author = match plugin {
                 Some(p) => {
-                    if p.plugin_id.is_empty()
-                        || p.author.is_empty()
-                        || p.author == OPENAGENTS
-                        || p.fee_msat < 0
-                        || p.fee_msat > input.price_msat
-                    {
+                    if p.plugin_id.is_empty() {
                         return Err(Error::Invalid("plugin id, author, or declared fee"));
                     }
-                    short = input.received_msat < p.fee_msat;
-                    let fee = input.received_msat.min(p.fee_msat);
-                    shares.push((p.author.as_str(), "author", fee));
-                    fee
+                    Some((p.author.as_str(), p.fee_msat))
                 }
-                None => 0,
+                None => None,
             };
-            let amount = (((input.received_msat - fee) as i128 * bps as i128) / 10_000) as i64;
-            shares.push((provider.as_str(), "provider", amount));
-            fee + amount
+            pylon_split(
+                tx,
+                &rule,
+                &input,
+                provider,
+                receipt,
+                author,
+                &mut shares,
+                &mut short,
+            )?
+        }
+        Split::AgentOrder {
+            seller,
+            fee_msat,
+            provider,
+            receipt,
+            order,
+        } => {
+            if input.plugin_id.is_some()
+                || !pylon::is_event_id(order)
+                || input.resource != agent_order::RESOURCE
+            {
+                return Err(Error::Invalid("agent order, resource, or classification"));
+            }
+            if agent_order::settlement_for(tx, order)?.is_some() {
+                return Err(Error::Conflict("the order already has a settlement"));
+            }
+            pylon_split(
+                tx,
+                &rule,
+                &input,
+                provider,
+                receipt,
+                Some((seller.as_str(), *fee_msat)),
+                &mut shares,
+                &mut short,
+            )?
         }
         Split::OpenAgents => 0,
     };
@@ -923,11 +952,20 @@ pub(crate) fn record_settlement_in(tx: &Connection, input: SettlementInput) -> R
     }
     if let Split::PylonJob {
         provider, receipt, ..
+    }
+    | Split::AgentOrder {
+        provider, receipt, ..
     } = &input.split
     {
         tx.execute(
             "INSERT INTO pylon_job(settlement,receipt,provider) VALUES(?,?,?)",
             params![input.key, receipt, provider],
+        )?;
+    }
+    if let Split::AgentOrder { seller, order, .. } = &input.split {
+        tx.execute(
+            "INSERT INTO agent_order(settlement,order_id,seller) VALUES(?,?,?)",
+            params![input.key, order, seller],
         )?;
     }
     if let Split::Plugin { author, .. } = &input.split
@@ -942,6 +980,57 @@ pub(crate) fn record_settlement_in(tx: &Connection, input: SettlementInput) -> R
         first_call_bonus(&tx, &input, author, rule.bonus.first_paid_call_msat as i64)?;
     }
     read_record(tx, &input.key)?.ok_or(Error::Invalid("missing settlement"))
+}
+/// A job on the pool's split: `author`'s fee (a plugin author's per-call
+/// fee, or a selling agent's service fee) first, then the provider's
+/// `[pylon_job]` share of what remains. Returns what it allocated.
+#[allow(clippy::too_many_arguments)]
+fn pylon_split<'a>(
+    tx: &Connection,
+    rule: &Rule,
+    input: &SettlementInput,
+    provider: &'a str,
+    receipt: &str,
+    author: Option<(&'a str, i64)>,
+    shares: &mut Vec<(&'a str, &'static str, i64)>,
+    short: &mut bool,
+) -> Result<i64> {
+    if provider.is_empty()
+        || provider == OPENAGENTS
+        || !pylon::is_event_id(receipt)
+        || input.release_id.is_some()
+    {
+        return Err(Error::Invalid(
+            "pylon job provider, receipt, or classification",
+        ));
+    }
+    let bps = rule
+        .pylon_job
+        .as_ref()
+        .ok_or(Error::Invalid("the effective rule has no pylon job split"))?
+        .provider_bps;
+    if pylon::settlement_for(tx, receipt)?.is_some() {
+        return Err(Error::Conflict("the receipt already has a settlement"));
+    }
+    let fee = match author {
+        Some((author, fee_msat)) => {
+            if author.is_empty()
+                || author == OPENAGENTS
+                || fee_msat < 0
+                || fee_msat > input.price_msat
+            {
+                return Err(Error::Invalid("plugin id, author, or declared fee"));
+            }
+            *short = input.received_msat < fee_msat;
+            let fee = input.received_msat.min(fee_msat);
+            shares.push((author, "author", fee));
+            fee
+        }
+        None => 0,
+    };
+    let amount = (((input.received_msat - fee) as i128 * bps as i128) / 10_000) as i64;
+    shares.push((provider, "provider", amount));
+    Ok(fee + amount)
 }
 fn month(at: i64) -> Result<String> {
     let at = DateTime::from_timestamp(at, 0).ok_or(Error::Invalid("settlement time"))?;

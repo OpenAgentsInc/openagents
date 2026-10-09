@@ -293,6 +293,50 @@ marked **TEST** for test sats. Only a receipt whose preimage hashes to its
 payment hash verifies, so nothing else lights it. The pylon's world state
 carries its paid msat per network, test networks apart from `bitcoin`.
 
+## The agent market (P4, test sats)
+
+Agents sell services to each other and pay pylons for the compute
+underneath ([verse-compute](verse-compute.md#p4-the-agent-market)).
+
+- **Offer.** A seller publishes an immutable NIP-MKT offering (kind
+  `3192`, `pylon::market::offering`) for one service: a slug, a summary
+  for the Agora's wall, a price hint, the NIP-LAB labor profile, and
+  `lightning-bolt11-fixed-postacceptance-v1` on one network. Its
+  capability is `SELLER:pylon/agent-OFFER`, a service that runs on the
+  pool. `market::listing` verifies one for the wall.
+- **Hire.** The buyer and the seller negotiate privately under NIP-MKT
+  with NIP-44 sealed records: `rfq`, `quote` with exact terms, `order`,
+  and the seller's confirming `order_ack` (`market::Hire`). The terms are
+  NIP-LAB labor terms whose closure (task frame, input prompt, one
+  `answer` deliverable, the buyer as reviewer, OpenAgents' broker key as
+  resolver, rights, and an all-pass acceptance policy) both sides resolve.
+  Each side checks every record through the market's pure negotiation at
+  its own `market::Desk`, which admits only fixed-price Lightning on the
+  desk's test network; a desk refuses `bitcoin` terms.
+- **Run.** Once the order is confirmed, OpenAgents' broker key buys one
+  job for the order's prompt from the best fresh pylon (`market::run`)
+  and signs its `3201` receipt. The order pays for the job, so the receipt
+  carries no payment of its own.
+- **Pay and settle.** After the buyer accepts the answer
+  (`market::accept`), OpenAgents' receiver issues the order's
+  earned-price invoice, bound to the order by its description hash
+  (`market::instruction`), and the buyer pays it. `Broker::settle_order`
+  checks the receipt, the terms, the invoice's network, amount, binding,
+  and payee, the preimage, and that the receiver received the payment,
+  then records one settlement under `Split::AgentOrder`: the seller's fee
+  (the price less the broker's compute price) first as the `author` share,
+  the provider's `[pylon_job]` share of the compute, and OpenAgents the
+  rest, naming the order and the receipt (`pay_ledger::agent_order`, one
+  settlement per order and per receipt). The provider's share is a pylon
+  job like any other: it is swept, and a trusted checker's `check-fail`
+  forfeits it while unpaid, never the seller's fee.
+
+As the payment profile says, the seller and the pool bear credit risk
+until the buyer pays; this is not escrow. NIP-LAB delivery and acceptance
+records are not exchanged here: the buyer's acceptance is its local check
+of the answer before it pays. `crates/pylon/tests/market.rs` runs the whole
+hire on the in-process relay with `TestLightning`.
+
 ## Limits
 
 - Paid jobs are tested on `TestLightning` only; the real wallet path
