@@ -13,6 +13,7 @@
 //! service's site, reimplemented here.
 
 pub mod account;
+mod api_keys;
 pub mod ask;
 mod auth;
 pub mod backend;
@@ -96,10 +97,12 @@ pub struct Config {
     pub upstream: Option<Arc<upstream::Upstream>>,
     /// The pay host for same-origin public flow and stats reads.
     pub pay_upstream: Option<Arc<upstream::Upstream>>,
-    /// The inference gateway (`--inference`): the API docs' models page
-    /// reads its rate card (`GET /v1/rates`). Without it, or when it
-    /// doesn't answer in time, the page shows the card the gateway's own
-    /// adapters publish.
+    /// The inference gateway (`--inference`): `/api/v1/...` goes there as
+    /// `/v1/...`, cookies removed, so `openagents.com/api/v1` is an alias
+    /// of `api.openagents.com/v1` (docs/inference/gateway.md, section 3),
+    /// and the API docs' models page reads its rate card (`GET /v1/rates`).
+    /// Without it, `/api/v1/` answers `404`, and the models page shows the
+    /// card the gateway's own adapters publish.
     pub inference: Option<Arc<upstream::Upstream>>,
     /// The Everglade web build and its pack (`--everglade DIR`), served
     /// under `/everglade/`. Without it, `/everglade` says Everglade is
@@ -199,8 +202,10 @@ pub fn router(config: Config) -> Router {
         port: app.config.port,
         public: app.config.public_hosts.clone(),
         upstream: app.config.upstream.clone(),
+        api: app.config.inference.is_some(),
     };
     Router::new()
+        .route("/api/v1/{*path}", axum::routing::any(api_proxy))
         .route("/api/flow/{*path}", get(pay_proxy))
         .route("/api/stats", get(pay_proxy))
         .route("/health", get(|| async { "ok" }))
@@ -259,6 +264,8 @@ struct Hosts {
     port: u16,
     public: Vec<String>,
     upstream: Option<Arc<upstream::Upstream>>,
+    /// `/api/v1/` goes to the inference gateway.
+    api: bool,
 }
 
 impl Hosts {
@@ -334,10 +341,9 @@ async fn guard(hosts: Hosts, mut request: Request, next: Next) -> Response {
                 })
             })
         });
+    let owned = upstream::owned(path) || (hosts.api && path.starts_with("/api/v1/"));
     // A wrongly routed Cloud credential cannot become a legacy credential.
-    if cloud_cookie && (!(local || public) || !upstream::owned(path))
-        || native_session && !(local || public)
-    {
+    if cloud_cookie && (!(local || public) || !owned) || native_session && !(local || public) {
         return cloud::protect(
             (StatusCode::FORBIDDEN, "Use the configured Cloud address").into_response(),
         );
@@ -347,7 +353,7 @@ async fn guard(hosts: Hosts, mut request: Request, next: Next) -> Response {
         && !intake
         && !cloud
         && !chat
-        && (!(local || public) || !upstream::owned(path))
+        && (!(local || public) || !owned)
     {
         return upstream.forward(request).await;
     }
@@ -507,6 +513,28 @@ async fn not_found() -> Response {
 mod copy_guard;
 #[cfg(test)]
 mod tests;
+
+/// `/api/v1/...` to the API gateway as `/v1/...`. The site's cookies stay
+/// behind: an API call carries only its own key.
+async fn api_proxy(
+    axum::extract::State(app): axum::extract::State<App>,
+    mut request: Request,
+) -> Response {
+    let Some(upstream) = &app.config.inference else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let Some(path) = request
+        .uri()
+        .path_and_query()
+        .and_then(|path| path.as_str().strip_prefix("/api"))
+        .and_then(|path| path.parse().ok())
+    else {
+        return StatusCode::BAD_REQUEST.into_response();
+    };
+    *request.uri_mut() = path;
+    request.headers_mut().remove(header::COOKIE);
+    upstream.forward(request).await
+}
 
 async fn pay_proxy(
     axum::extract::State(app): axum::extract::State<App>,

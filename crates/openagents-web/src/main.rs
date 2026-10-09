@@ -205,7 +205,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ));
         println!("Paths this site doesn't own are proxied to {url}");
     }
-    // The inference gateway the API docs' rate card is read from.
+    // The inference gateway: `/api/v1/...` and the API docs' rate card.
     if let Some(url) = inference.filter(|url| !url.is_empty()) {
         config.inference = Some(std::sync::Arc::new(
             openagents_web::upstream::Upstream::new(&url)?,

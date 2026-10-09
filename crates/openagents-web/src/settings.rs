@@ -35,6 +35,11 @@ pub(crate) fn routes() -> Router<App> {
         .route(PAGE, get(settings))
         .route(CLAUDE, get(claude).post(add))
         .route(CLAUDE_REMOVE, post(remove))
+        .route(
+            crate::api_keys::KEYS,
+            get(crate::api_keys::keys).post(crate::api_keys::make),
+        )
+        .route(crate::api_keys::REVOKE, post(crate::api_keys::revoke))
         .route(crate::plan::EXTRA, post(extra_hours))
         .route(crate::plan::SUBSCRIBE, post(subscribe))
         .route(crate::plan::MANAGE, post(manage))
@@ -45,7 +50,7 @@ pub(crate) fn routes() -> Router<App> {
 /// A session that opened without a workspace (GitHub sign-ins before they
 /// picked one) gets the account's own workspace selected here and comes
 /// back to `back`; the next request checks that selection as usual.
-async fn viewer<'a>(
+pub(crate) async fn viewer<'a>(
     app: &'a App,
     headers: &HeaderMap,
     back: &str,
@@ -70,7 +75,7 @@ async fn viewer<'a>(
 }
 
 /// The page, shown with the viewer's account menu.
-fn page(
+pub(crate) fn page(
     headers: &HeaderMap,
     service: &CloudSession,
     viewer: &Viewer,
@@ -436,6 +441,18 @@ fn settings_content(
             }
             (chats_section(chats))
             (plan)
+            section class="oa-settings-group" aria-labelledby="settings-api" {
+                h2 #settings-api { "API" }
+                div class="oa-settings-row" {
+                    div class="oa-settings-text" {
+                        span class="oa-settings-label" { "API keys" }
+                        span class="oa-settings-hint" {
+                            "Keys for calling models through the OpenAgents API from your own code."
+                        }
+                    }
+                    div class="oa-settings-control" { (action_link("Manage", crate::api_keys::KEYS)) }
+                }
+            }
             @if let Some((hint, manage)) = claude {
                 section class="oa-settings-group" aria-labelledby="settings-claude" {
                     h2 #settings-claude { "Claude" }

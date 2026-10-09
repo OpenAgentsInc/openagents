@@ -41,8 +41,8 @@ use crate::openagents::{
 use crate::request::CreateResponse;
 use crate::response::{Response, ResponseStatus};
 use crate::router::{
-    Bench, Capabilities, ClassJudge, ClassTable, Context, Offering, PriceLimit, Scores, TaskClass,
-    plan,
+    Bench, Candidate, Capabilities, ClassJudge, ClassTable, Context, Offering, Plan, PriceLimit,
+    Scores, TaskClass, plan,
 };
 use crate::stream::{Accumulator, Sequencer};
 use crate::upstream::{AttemptError, AttemptMeter, BoxFuture, ErrorClass, EventStream, Upstream};
@@ -75,11 +75,79 @@ pub struct Caller {
     pub api: Api,
     /// Limits the key's owner set.
     pub limits: PriceLimit,
+    /// Admission for a paying caller: checked before planning, held
+    /// between planning and sending, settled when the stream ends. Every
+    /// path that runs a request (stored turns, compaction, hosted tool
+    /// loops, the WebSocket) goes through it.
+    pub admission: Option<Admission>,
+}
+
+/// A caller's admission ([`Admit`]), cloneable with the caller.
+#[derive(Clone)]
+pub struct Admission(pub Arc<dyn Admit>);
+
+impl std::fmt::Debug for Admission {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Admission")
+    }
+}
+
+/// Decides whether a request may run and what it costs the caller: the
+/// gateway's public API holds the worst-case price from a balance or
+/// takes a free request.
+pub trait Admit: Send + Sync {
+    /// Before planning: the limits the caller's owner set that need no
+    /// plan (and count toward a rate), returning the price limit to plan
+    /// under.
+    fn check<'a>(
+        &'a self,
+        request: &'a CreateResponse,
+        caller: &'a Caller,
+    ) -> BoxFuture<'a, Result<PriceLimit, ApiError>>;
+
+    /// Between planning and sending: take the hold or the free request.
+    fn admit<'a>(
+        &'a self,
+        request: &'a CreateResponse,
+        prepared: &'a Prepared,
+        caller: &'a Caller,
+    ) -> BoxFuture<'a, Result<Box<dyn Admitted>, ApiError>>;
+}
+
+/// What an admitted request stands under until it ends.
+pub trait Admitted: Send {
+    /// Nothing was answered: release the hold, give a free request back.
+    fn abandon(self: Box<Self>) -> BoxFuture<'static, ()>;
+
+    /// The committed stream, settling as its terminal event passes.
+    fn settle_on_end(self: Box<Self>, events: Events) -> Events;
 }
 
 /// A stream of our events, sequence numbers stamped. It always ends with a
 /// terminal event.
 pub type Events = Pin<Box<dyn Stream<Item = Event> + Send>>;
+
+/// A planned request, not yet sent ([`Gateway::prepare`]).
+#[derive(Clone, Debug)]
+pub struct Prepared {
+    plan: Plan,
+    requested: String,
+    arrived: Instant,
+}
+
+impl Prepared {
+    /// The attempts that will be tried, best first.
+    #[must_use]
+    pub fn attempts(&self) -> &[Candidate] {
+        &self.plan.attempts
+    }
+
+    /// The task class, when the request named or was given one.
+    #[must_use]
+    pub fn class(&self) -> Option<TaskClass> {
+        self.plan.class
+    }
+}
 
 /// A committed request: which model and upstream answer it, and its
 /// events.
@@ -177,6 +245,12 @@ impl Gateway {
         self
     }
 
+    /// The class table the router plans task classes with.
+    #[must_use]
+    pub fn classes(&self) -> &ClassTable {
+        &self.classes
+    }
+
     /// The meter attempts are recorded into.
     #[must_use]
     pub fn meter(&self) -> &Arc<Meter> {
@@ -242,6 +316,43 @@ impl Gateway {
     /// `400` when an upstream refused the request as malformed, or `502
     /// upstream_failed` when every attempt failed before its first token.
     pub async fn run(&self, request: &CreateResponse, caller: &Caller) -> Result<Routed, ApiError> {
+        let Some(Admission(admission)) = &caller.admission else {
+            let prepared = self.prepare(request, caller).await?;
+            return self.send(request, caller, prepared).await;
+        };
+        let limits = admission.check(request, caller).await?;
+        let caller = Caller {
+            limits: caller.limits.min(limits),
+            ..caller.clone()
+        };
+        let prepared = self.prepare(request, &caller).await?;
+        let admitted = admission.admit(request, &prepared, &caller).await?;
+        match self.send(request, &caller, prepared).await {
+            Ok(mut routed) => {
+                let events =
+                    std::mem::replace(&mut routed.events, Box::pin(futures_util::stream::empty()));
+                routed.events = admitted.settle_on_end(events);
+                Ok(routed)
+            }
+            Err(refusal) => {
+                admitted.abandon().await;
+                Err(refusal)
+            }
+        }
+    }
+
+    /// Judges and plans `request` without sending anything: the attempts
+    /// [`Gateway::send`] will make, so a caller can hold their worst-case
+    /// price first.
+    ///
+    /// # Errors
+    ///
+    /// The router's refusal (`404`, `403 limit_reached`, `503 no_route`).
+    pub async fn prepare(
+        &self,
+        request: &CreateResponse,
+        caller: &Caller,
+    ) -> Result<Prepared, ApiError> {
         let arrived = Instant::now();
         let requested = request.model.clone().unwrap_or_default();
         let picked = if requested == AUTO {
@@ -294,6 +405,31 @@ impl Gateway {
             }
             other => other?,
         };
+        Ok(Prepared {
+            plan: planned,
+            requested,
+            arrived,
+        })
+    }
+
+    /// Sends the attempts [`Gateway::prepare`] planned, answering once one
+    /// has its first output token.
+    ///
+    /// # Errors
+    ///
+    /// `400` when an upstream refused the request as malformed, or `502
+    /// upstream_failed` when every attempt failed before its first token.
+    pub async fn send(
+        &self,
+        request: &CreateResponse,
+        caller: &Caller,
+        prepared: Prepared,
+    ) -> Result<Routed, ApiError> {
+        let Prepared {
+            plan: planned,
+            requested,
+            arrived,
+        } = prepared;
         let class = planned.class;
         let deadline = Duration::from_millis(planned.first_token_ms);
         let mut tried: Vec<ext::Attempt> = Vec::new();

@@ -2381,7 +2381,7 @@ async fn key_issue(
 /// caller's principal and account, their membership in the named
 /// workspace, and the key record — checked to belong to the
 /// workspace's tenant and to be one the caller may touch.
-struct KeyContext {
+pub(crate) struct KeyContext {
     principal: Principal,
     account: String,
     /// The key's bound owner — the account the `key:<id>` principal
@@ -2391,7 +2391,7 @@ struct KeyContext {
 }
 
 /// Resolve the shared preconditions of a single-key operation.
-fn key_context(
+pub(crate) fn key_context(
     state: &ServeState,
     headers: &HeaderMap,
     workspace: &str,

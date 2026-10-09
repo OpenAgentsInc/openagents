@@ -517,7 +517,8 @@ pub fn micros_usd(micros: u64) -> String {
 }
 
 /// The caller's price per million tokens on a row, margin included.
-fn caller_rate(per_million: u64, row: &RateRow) -> u64 {
+#[must_use]
+pub fn caller_rate(per_million: u64, row: &RateRow) -> u64 {
     let margin = (u128::from(per_million) * u128::from(row.margin_bps)).div_ceil(10_000);
     per_million.saturating_add(u64::try_from(margin).unwrap_or(u64::MAX))
 }

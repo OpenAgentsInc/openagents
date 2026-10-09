@@ -151,6 +151,9 @@ pub struct ServeState {
     /// the WebSocket transport, hosted tools), present when `inference`
     /// is configured.
     pub sessions: Option<Arc<inference::session::Sessions>>,
+    /// Public inference keys' limits, spend, and free counts, present when
+    /// `inference` is configured.
+    pub(crate) inference_book: Option<Mutex<crate::inference_public::Book>>,
     receipts: Mutex<std::fs::File>,
     /// The process-wide forward bound.
     in_flight: Arc<Semaphore>,
@@ -331,6 +334,13 @@ impl ServeState {
                     inference, meter, upstreams,
                 ))
             });
+        let inference_book = config
+            .inference
+            .as_ref()
+            .map(|_| crate::inference_public::Book::open(&config.registry))
+            .transpose()
+            .map_err(Trouble::Money)?
+            .map(Mutex::new);
         let sessions = match (&config.inference, &gateway) {
             (Some(inference), Some(gateway)) => Some(Arc::new(
                 crate::inference_state::sessions(inference, gateway.clone(), &config.registry)
@@ -342,6 +352,7 @@ impl ServeState {
             meter,
             inference: gateway,
             sessions,
+            inference_book,
             dir: config.registry.clone(),
             in_flight: Arc::new(Semaphore::new(config.max_in_flight)),
             classify_inputs: Arc::new(Semaphore::new(config.max_classify_inputs as usize)),
@@ -635,6 +646,7 @@ fn api_routes(state: &ServeState) -> Vec<(&'static str, MethodRouter<Arc<ServeSt
         routes.extend(crate::inference_status::routes());
         routes.extend(crate::inference_routes::routes());
         routes.extend(crate::inference_rates::routes());
+        routes.extend(crate::inference_public::routes(state));
     }
     routes
 }
@@ -667,9 +679,20 @@ pub(crate) async fn models(
     State(state): State<Arc<ServeState>>,
     headers: HeaderMap,
 ) -> Result<Json<Value>, Response> {
+    // The inference catalog is public: an OpenAI SDK lists it with only a
+    // key, no workspace header, or with no key at all.
+    let catalog = crate::inference_public::catalog(&state);
     let (registry, caller) = match authenticate(&state, &headers) {
         Ok(parts) => parts,
-        Err((status, code, message)) => return Err(gateway_error(status.as_u16(), code, &message)),
+        Err((status, code, message)) => {
+            return match catalog {
+                Some(mut catalog) => {
+                    catalog["models"] = json!([]);
+                    Ok(Json(catalog))
+                }
+                None => Err(gateway_error(status.as_u16(), code, &message)),
+            };
+        }
     };
     if caller
         .scopes
@@ -740,7 +763,7 @@ pub(crate) async fn models(
     let mut body = json!({"models": cards});
     // With inference set up, the OpenAI list shape rides alongside: the
     // models the gateway routes to, with their rate card rows.
-    if let Some(catalog) = crate::inference_rates::catalog(&state) {
+    if let Some(catalog) = catalog {
         body["object"] = catalog["object"].clone();
         body["data"] = catalog["data"].clone();
     }

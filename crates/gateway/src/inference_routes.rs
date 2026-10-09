@@ -3,10 +3,12 @@
 //! `POST /v1/chat/completions` (OpenAI Chat Completions, translated onto
 //! the same request).
 //!
-//! P0 admits only service keys: an `oak_` key whose tenant is one of
-//! `inference.service_tenants` (a house tenant). Calls are metered, every
-//! attempt recorded into the meter, and not charged. A key scoped to
-//! actions must include `inference`. Anyone else gets `401` or `403`.
+//! A service key (an `oak_` key whose tenant is one of
+//! `inference.service_tenants`, a house tenant) is metered and not
+//! charged. With `inference.public` set, any other `oak_` key may call too
+//! ([`crate::inference_public`]: the free tier, the balance hold, and the
+//! limits the key's owner set); without it, they get `403`. A key scoped
+//! to actions must include `inference`.
 //!
 //! Each answer carries `x-request-id`, `x-openagents-model`, and
 //! `x-openagents-upstream`; a non-streaming answer also carries
@@ -211,8 +213,11 @@ pub(crate) fn error(error: &ApiError, request_id: &str) -> Response {
     response
 }
 
-/// The service caller, or the refusal.
-pub(crate) fn admit(state: &ServeState, headers: &HeaderMap) -> Result<Caller, ApiError> {
+/// The caller, or the refusal. A service tenant's key is metered and not
+/// charged. With `inference.public` set, any other key is admitted with
+/// [`crate::inference_public::PublicAdmission`]: its owner's limits, the
+/// free tier, and the balance hold, on every run its requests make.
+pub(crate) fn admit(state: &Arc<ServeState>, headers: &HeaderMap) -> Result<Caller, ApiError> {
     let unauthorized = |message: &str| ApiError::new(ErrorType::Unauthorized, message);
     let Some(config) = &state.config.inference else {
         return Err(ApiError::new(
@@ -224,7 +229,7 @@ pub(crate) fn admit(state: &ServeState, headers: &HeaderMap) -> Result<Caller, A
         .get("authorization")
         .and_then(|value| value.to_str().ok())
         .and_then(|value| value.strip_prefix("Bearer "))
-        .ok_or_else(|| unauthorized("Send a service key in the `Authorization: Bearer` header."))?;
+        .ok_or_else(|| unauthorized("Send your API key in the `Authorization: Bearer` header."))?;
     let registry = Registry::open(&state.dir).map_err(|_| {
         ApiError::new(
             ErrorType::ServerError,
@@ -233,11 +238,11 @@ pub(crate) fn admit(state: &ServeState, headers: &HeaderMap) -> Result<Caller, A
     })?;
     let authenticated = keys::authenticate(&state.dir, registry.manifest(), token)
         .map_err(|_| unauthorized("Your API key was rejected."))?;
-    if !config
+    let service = config
         .service_tenants
         .iter()
-        .any(|tenant| *tenant == authenticated.tenant)
-    {
+        .any(|tenant| *tenant == authenticated.tenant);
+    if !service && config.public.is_none() {
         return Err(ApiError::new(
             ErrorType::LimitReached,
             "Inference is open to OpenAgents services only for now.",
@@ -256,12 +261,29 @@ pub(crate) fn admit(state: &ServeState, headers: &HeaderMap) -> Result<Caller, A
             )
         });
     }
+    let admission = (!service).then(|| {
+        inference::run::Admission(Arc::new(crate::inference_public::PublicAdmission::new(
+            state.clone(),
+            crate::inference_public::Public {
+                tenant: authenticated.tenant.clone(),
+                key_id: authenticated.key_id.clone(),
+                token: token.to_owned(),
+                scopes: authenticated.scopes.clone(),
+                workspace: headers
+                    .get("x-workspace-id")
+                    .and_then(|value| value.to_str().ok())
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_owned),
+            },
+        )))
+    });
     Ok(Caller {
         request_id: request_id(),
         tenant: Some(authenticated.tenant),
         key_id: Some(authenticated.key_id),
         api: Api::Responses,
         limits: inference::router::PriceLimit::default(),
+        admission,
     })
 }
 

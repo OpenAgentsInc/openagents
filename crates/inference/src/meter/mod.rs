@@ -220,6 +220,24 @@ impl Meter {
         })
     }
 
+    /// Every attempt kept for `request_id`, in the order recorded: what
+    /// `GET /v1/usage/{request_id}` reads.
+    pub fn request(&self, request_id: &str) -> Vec<Attempt> {
+        self.inner
+            .lock()
+            .map(|inner| {
+                let mut found: Vec<Attempt> = inner
+                    .store
+                    .since(0)
+                    .filter(|attempt| attempt.request_id == request_id)
+                    .cloned()
+                    .collect();
+                found.sort_by_key(|attempt| attempt.attempt);
+                found
+            })
+            .unwrap_or_default()
+    }
+
     /// Live rates for one window ending at `now`, for the router.
     pub fn rates(&self, span_ms: u64, now_ms: u64) -> Vec<Rate> {
         self.inner

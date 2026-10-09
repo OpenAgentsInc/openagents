@@ -2775,3 +2775,54 @@ async fn the_models_page_shows_the_gateways_rate_card() {
     assert!(markdown.contains("(158 sats)"), "{markdown}");
     server.abort();
 }
+
+/// `openagents.com/api/v1/...` is the API gateway's `/v1/...` (#11065):
+/// the key rides along, the site's cookies stay behind, and nothing reaches
+/// the legacy upstream.
+#[tokio::test]
+async fn the_api_alias_goes_to_the_gateway_without_cookies() {
+    let api = Router::new().fallback(|request: Request<Body>| async move {
+        let headers = request.headers();
+        let value = |name: &str| {
+            headers
+                .get(name)
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or_default()
+                .to_owned()
+        };
+        axum::Json(json!({
+            "method": request.method().as_str(),
+            "uri": request.uri().to_string(),
+            "authorization": value("authorization"),
+            "cookie": value("cookie"),
+        }))
+    });
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = format!("http://{}", listener.local_addr().unwrap());
+    tokio::spawn(async move { axum::serve(listener, api).await.unwrap() });
+    let root = tempfile::tempdir().unwrap();
+    let (legacy, hits) = echo_upstream().await;
+    let mut config = proxying(root.path(), &legacy);
+    config.inference = Some(Arc::new(upstream::Upstream::new(&address).unwrap()));
+    let response = router(config)
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/chat/completions?x=1")
+                .header(header::HOST, "openagents.com")
+                .header(header::AUTHORIZATION, "Bearer oak_1.secret")
+                .header(header::COOKIE, "oa_cloud_session=abc; theme=dark")
+                .body(Body::from("{}"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
+    let echoed: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(echoed["method"], "POST");
+    assert_eq!(echoed["uri"], "/v1/chat/completions?x=1");
+    assert_eq!(echoed["authorization"], "Bearer oak_1.secret");
+    assert_eq!(echoed["cookie"], "");
+    assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 0);
+}

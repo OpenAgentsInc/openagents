@@ -597,6 +597,58 @@ P2 as built so far:
 - #11071: stored responses, `previous_response_id`, compaction, the
   WebSocket transport, and hosted web search (section 3, "Stored
   responses, compaction, WebSocket, hosted tools").
+P1 public API as built (#11065), local only until deployed:
+
+- `inference.public` in the gateway config opens `/v1/responses` and
+  `/v1/chat/completions` to every active `oak_` key
+  (`crates/gateway/src/inference_public.rs`); without it, only service
+  tenants call. A public key's `Caller` carries a `run::Admission`, so
+  every run (plain, stored turns, compaction, hosted tool loops, the
+  WebSocket) is checked against the key's limits, planned
+  (`Gateway::prepare`), admitted, sent (`Gateway::send`), and settled.
+- Free tier: `inference.public.free_tier` (`requests_per_day`, `models`),
+  counted per workspace (tenant) per UTC day so minting keys does not add
+  free requests. A request is free only when every planned attempt is a
+  listed model; one that fails before its first token gives its count back.
+- Paying: one `tenancy::money` hold per distinct model the plan may try,
+  priced at that model's rate card row plus margin (capacity `inference`,
+  policy `observed-usage-v1`, a price version per model and rates), over
+  the worst case: the request's bytes as input tokens plus framing (capped
+  at the context window), and its `max_output_tokens` or the model's
+  maximum as output. The answering model's hold settles at the reported
+  usage; the others are released, since attempts that fall back before
+  their first token are never charged. No usage at the end, or a caller
+  who leaves mid-stream, leaves the hold outstanding for reconciliation.
+  The workspace is `X-Workspace-Id` or the one workspace on the key's
+  tenant, checked for current membership. No account or too little
+  balance is `402 insufficient_balance`.
+- Limits only the key's owner sets (`GET`/`PUT
+  /v1/workspaces/{ws}/keys/{key}/limits`, a signed-in member, never the
+  key itself): `spend_cap` (`usd`, `period` `day`, `month`, or `total`,
+  checked against spend plus the request's worst case), `max_price`
+  (dollars per million tokens, into the router's price limit), `models`,
+  `requests_per_minute`, and `expires_at`. Each answers `403
+  limit_reached` naming it in `param`. The key book is
+  `inference-keys.json` beside the registry.
+- `GET /v1/models` is public and in OpenAI's list shape (`object`,
+  `data`), each model with an `openagents` object: context, maximum
+  output, what it can do, whether the free tier covers it, and per upstream
+  its price per million tokens with margin, zero retention, and the last
+  hour's requests, uptime, and median time to first token; then the router
+  ids. A keyed caller also gets the decision doors in `models`, as before.
+- `GET /v1/usage/{request_id}` (the meter keeps 25 hours) and `GET
+  /v1/key` (limits, spend today, this month, and in total, free requests
+  left, balance), to the key's own tenant only.
+- Web Settings, API keys (`/settings/api-keys`): make a key with a name
+  and an optional monthly spending limit (shown once), and revoke keys.
+- `openagents-web --inference http://HOST:PORT` (or
+  `OPENAGENTS_WEB_INFERENCE`, the flag the models page reads the rate card
+  through) also passes `/api/v1/...` to the gateway as
+  `/v1/...` with the site's cookies removed: the `openagents.com/api/v1`
+  alias.
+- Not yet: keyless `402` through `crates/x402` (pay per request with no
+  key), and hierarchical team budgets on inference holds (a shared-spend
+  workspace is refused with a plain message).
 
 Issues, in build order:
 

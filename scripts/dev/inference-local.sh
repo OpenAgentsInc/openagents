@@ -4,8 +4,15 @@
 # its adapters, a chat worker from this checkout that sends every model call
 # to it, and the website on 127.0.0.1:4300 pointed at that worker.
 #
-#   scripts/dev/inference-local.sh            # build, start all three, wait
-#   scripts/dev/inference-local.sh --no-build # start what is already built
+#   scripts/dev/inference-local.sh                # build, start all three, wait
+#   scripts/dev/inference-local.sh --no-build     # start what is already built
+#   scripts/dev/inference-local.sh --gateway-only # the gateway alone (no worker or site)
+#
+# The website passes /api/v1/... to the gateway (--inference), so
+# http://127.0.0.1:$WEB_PORT/api/v1 is the same API as the gateway's /v1.
+# The public API is on (#11065): any key works, with 20 free requests a
+# day on the Pro door's models; keys outside the house tenant have no
+# balance here, so other models answer 402 for them.
 #
 # Provider keys come from the environment or, when unset, from
 # openrouter.env, ai-gateway.env, and typesafe.env in $OPENAGENTS_SECRETS
@@ -43,9 +50,24 @@ load OPENROUTER_API_KEY openrouter.env
 load AI_GATEWAY_API_KEY ai-gateway.env
 load TYPESAFE_API_KEY typesafe.env
 
-if [ "${1:-}" != "--no-build" ]; then
-    (cd "$root" && cargo build -q -p gateway --bin gateway -p coder --bin coder-worker \
-        -p openagents-web --bin openagents-web && cargo build -q -p tenancy --example bootstrap_registry)
+build=1
+only=""
+for argument in "$@"; do
+    case "$argument" in
+        --no-build) build="" ;;
+        --gateway-only) only=1 ;;
+        *) echo "unknown option $argument" >&2; exit 64 ;;
+    esac
+done
+
+if [ -n "$build" ]; then
+    if [ -n "$only" ]; then
+        (cd "$root" && cargo build -q -p gateway --bin gateway \
+            && cargo build -q -p tenancy --example bootstrap_registry)
+    else
+        (cd "$root" && cargo build -q -p gateway --bin gateway -p coder --bin coder-worker \
+            -p openagents-web --bin openagents-web && cargo build -q -p tenancy --example bootstrap_registry)
+    fi
 fi
 
 mkdir -p "$state/usage" "$state/attempts" "$state/store" "$state/chats"
@@ -71,6 +93,7 @@ cat > "$state/gateway.json" <<EOF
   "inference": {
     "admin_token_env": "INFERENCE_ADMIN_TOKEN",
     "service_tenants": ["house"],
+    "public": {"free_tier": {"requests_per_day": 20, "models": ["openai/gpt-5.6-luna", "openai/gpt-5.6-terra", "openai/gpt-5.6-sol"]}},
     "journal": "$state/attempts",
     "accounts": [
       {"id": "google-credit", "upstream": "vertex", "granted": 30000000000, "balance": 30000000000, "basis": "prepaid"},
@@ -107,6 +130,14 @@ for _ in $(seq 1 60); do
     sleep 1
 done
 
+if [ -n "$only" ]; then
+    echo "Gateway:   http://127.0.0.1:$gateway_port/v1 (service key in $state/service.key)"
+    echo "Dashboard: http://127.0.0.1:$gateway_port/admin/inference (admin token in $state/admin.token)"
+    echo "Log:       $state/gateway.log"
+    wait
+    exit 0
+fi
+
 (
     CODER_WORKER_SECRET=$(cat "$state/worker.secret")
     CODER_INFERENCE_KEY=$(cat "$state/service.key")
@@ -132,7 +163,8 @@ done
 (
     export OPENAGENTS_WEB_CHAT_WORKER="$key"
     cd "$state" && exec "$target/debug/openagents-web" --listen "127.0.0.1:$web_port" \
-        --store "$state/store" --chat-store "$state/chats" > "$state/web.log" 2>&1
+        --store "$state/store" --chat-store "$state/chats" \
+        --inference "http://127.0.0.1:$gateway_port" > "$state/web.log" 2>&1
 ) &
 pids="$pids $!"
 for _ in $(seq 1 60); do
@@ -140,7 +172,7 @@ for _ in $(seq 1 60); do
     sleep 1
 done
 
-echo "Website:   http://127.0.0.1:$web_port"
+echo "Website:   http://127.0.0.1:$web_port (the API also at /api/v1)"
 echo "Gateway:   http://127.0.0.1:$gateway_port/v1/responses (service key in $state/service.key)"
 echo "Dashboard: http://127.0.0.1:$gateway_port/admin/inference (admin token in $state/admin.token)"
 echo "Logs:      $state/{gateway,worker,web}.log"

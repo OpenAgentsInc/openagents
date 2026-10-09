@@ -240,6 +240,30 @@ pub struct Inference {
     /// connection's memory while it is open.
     #[serde(default)]
     pub zero_retention_tenants: Vec<String>,
+    /// The public API (P1, #11065): any `oak_` key may call, paying from
+    /// its workspace balance or the free tier. Absent keeps the API to
+    /// `service_tenants` only.
+    #[serde(default)]
+    pub public: Option<PublicInference>,
+}
+
+/// The public inference API's terms. We impose no usage limits; the free
+/// tier is a gift, and every other limit is one a key's owner sets.
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PublicInference {
+    /// Free requests per workspace per day (UTC) on free-capacity models.
+    #[serde(default)]
+    pub free_tier: Option<FreeTier>,
+}
+
+/// The free tier: a fixed number of requests a day, only on the models
+/// listed (free capacity we hold, such as the Pro door's).
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FreeTier {
+    pub requests_per_day: u32,
+    pub models: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize)]

@@ -84,7 +84,11 @@ order (`tests/run.rs` covers each rule with stub adapters):
   `502 upstream_failed`, naming each attempt's error class.
 
 `run::collect` folds a committed stream into one response for a caller
-that did not ask for a stream.
+that did not ask for a stream. `Gateway::run` is `Gateway::prepare` (judge
+and plan, nothing sent) then `Gateway::send`; a caller with a `run::Admission` (the public API)
+is checked before planning, admitted (the free request or the worst-case
+hold) between the two, and settled when the stream ends. `Meter::request` returns one
+request's kept attempts, for `GET /v1/usage/{request_id}`.
 
 ## Stateful layer
 

@@ -31,6 +31,19 @@ pub struct KeyIdentity {
     pub tenant: String,
 }
 
+/// One API key as the workspace's key list shows it: never its secret.
+#[derive(Debug, Clone, Deserialize)]
+pub struct KeyRecord {
+    pub id: String,
+    #[serde(default)]
+    pub name: Option<String>,
+    /// `active`, `paused`, or `revoked`.
+    #[serde(default)]
+    pub status: Option<String>,
+    #[serde(default)]
+    pub created: Option<String>,
+}
+
 /// A recovery or rotation result. The credential belongs in private storage.
 #[derive(Debug)]
 pub struct KeyGrant {
@@ -404,6 +417,66 @@ impl Account<'_> {
             key: wire.key,
             token: ApiKey::new(wire.key_token),
         })
+    }
+
+    /// The workspace's API keys the caller may see: ids, names, and states,
+    /// never a secret.
+    pub async fn keys(&self, workspace: &str) -> Result<Vec<KeyRecord>> {
+        #[derive(Deserialize)]
+        struct Wire {
+            keys: Vec<KeyRecord>,
+        }
+        identifier(workspace)?;
+        let raw = self
+            .client
+            .request_private_bounded(
+                Method::GET,
+                &format!("/v1/workspaces/{workspace}/keys"),
+                None,
+                1024 * 1024,
+            )
+            .await?;
+        serde_json::from_slice::<Wire>(&raw.bytes)
+            .map(|wire| wire.keys)
+            .map_err(|_| Error::ResponseValidation {
+                status: raw.status,
+                field_path: "keys".into(),
+                body: None,
+                request_id: None,
+            })
+    }
+
+    /// Issue a new API key on the workspace, bound to the caller's account.
+    /// The secret is in the grant only.
+    pub async fn issue_key(&self, workspace: &str, name: &str) -> Result<KeyGrant> {
+        identifier(workspace)?;
+        let body = serde_json::to_vec(&serde_json::json!({"name": name}))
+            .map_err(|_| Error::Config("Key request encoding failed.".into()))?;
+        self.key_mutation(&format!("/v1/workspaces/{workspace}/keys"), Some(body))
+            .await
+    }
+
+    /// Replace the limits a key's owner set for the model API (spending
+    /// cap, price cap, models, rate, expiry), as the gateway's
+    /// `.../keys/{key}/limits` document.
+    pub async fn set_key_limits(
+        &self,
+        workspace: &str,
+        key: &str,
+        limits: &serde_json::Value,
+    ) -> Result<()> {
+        identifier(workspace)?;
+        identifier(key)?;
+        let body = serde_json::to_vec(limits)
+            .map_err(|_| Error::Config("Limits encoding failed.".into()))?;
+        self.client
+            .request_private(
+                Method::PUT,
+                &format!("/v1/workspaces/{workspace}/keys/{key}/limits"),
+                Some(body),
+            )
+            .await?;
+        Ok(())
     }
 
     /// Revoke the named key through current authenticated workspace rights.
