@@ -96,11 +96,47 @@ On every sign-in, from `/user` and `/user/emails`, in the account store's
 | `linked`, `refreshed` | Ours |
 
 Text is stripped of control characters and bounded (2 KiB per field, 32
-emails). The GitHub access token is never stored: the account service uses
-it for the two reads and drops it. If a later feature (repository access,
-for example) needs a stored token, it is requested with its own scopes,
-encrypted with AES-256-GCM under the App file's `token_encryption_key`, and
-kept per feature.
+emails). The sign-in token is never stored: the account service uses it
+for the two reads and drops it. Repository access asks for its own token
+(below).
+
+## Repository access
+
+Connecting repositories (#11034, `/projects` on the web,
+[sidebar](../web/sidebar.md#projects-and-repositories)) is a second trip
+through the same OAuth App and callback, started at
+`/auth/github/repos?access=private|public` by a signed-in person:
+
+- `access=private` asks for `read:user repo read:org`: private and
+  organization repositories. `access=public` asks for `read:user` only,
+  which sign-in already granted, so GitHub shows no new permission screen.
+  Nothing more is ever asked at sign-in.
+- The flow cookie carries the purpose (`.repos` or `.repos-public`). The
+  callback, a cross-site request that lacks the `SameSite=Strict` session
+  cookie, answers a page that continues same-site to
+  `/auth/github/repos/finish`, which checks the state again and hands the
+  code and verifier to the account service under the session.
+- The account service (`oa_auth::repos`) exchanges the code, reads `/user`
+  and its `X-OAuth-Scopes`, refuses a GitHub user other than the one the
+  account signs in with (`409 github_other_account`), and keeps the token
+  sealed with AES-256-GCM under the App file's `token_encryption_key`,
+  bound to the account and GitHub user id, in
+  `github-access/<sha256 of account>.json` (mode 0600) beside
+  `accounts.json`, with the granted scopes. A GitHub 401 marks it revoked:
+  the status reads `reconnect` and projects stay.
+
+Account-service routes (session bearer), served by the gateway and by
+`oa_auth::local`:
+
+| Route | Answer |
+| --- | --- |
+| `GET /v1/account/github` | `{github: {state: none\|connected\|reconnect, login, private}, projects}` |
+| `POST /v1/account/github/grant` `{code, code_verifier}` | the status |
+| `DELETE /v1/account/github/grant` | the status; the token is forgotten |
+| `GET /v1/account/github/repositories` | up to 300, most recently pushed first |
+| `POST /v1/account/github/token` | `{token, private}` for this deployment's web server to read GitHub as the person (`/environments`); never stored there |
+| `POST /v1/account/projects` `{repository}` | `{project}`: id, name, repository id and full name, default branch, private, created time; one per repository |
+| `DELETE /v1/account/projects/{id}` | `{removed}` |
 
 ## Local testing
 
@@ -126,6 +162,15 @@ under the scratch directory (printed as `stores`).
 
 Tests: `cargo test -p oa-auth` (flow, config, and end to end against the
 fake: sign-up, returning user, rename, email-less user, wrong verifier,
-reused code, cancel, linking conflict), `cargo test -p tenancy identities`,
-and `openagents-web`'s `auth::tests` (header buttons, `/login`, the full
-browser trip, state mismatch, cancel, open-redirect attempts).
+reused code, cancel, linking conflict; repository access: public and
+private grants, projects, revocation, another GitHub account, the token
+only encrypted on disk), `cargo test -p tenancy identities`, and
+`openagents-web`'s `auth::tests` (header buttons, `/login`, the full
+browser trip, state mismatch, cancel, open-redirect attempts) and
+`projects::tests` (Connect GitHub through the site, adding a project, the
+sidebar groups and the composer's picker, moving a chat, revocation, and
+what signed-out visitors and other accounts see).
+
+To try repository access locally, sign in on the fixture above, then open
+**Connect a GitHub repository** at the bottom of the chat list (or
+`/projects`).

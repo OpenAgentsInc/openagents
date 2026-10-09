@@ -232,10 +232,10 @@ OPENAGENTS_ORIGIN=http://127.0.0.1:4301 cargo run -p coder-new -- login --state 
   github.com) and scoped to `/auth/`; `Secure` everywhere on HTTPS.
 - **Secrets**: the GitHub client secret lives only in the account service's
   private config file (mode 0600, never committed, never logged). The web
-  server needs only the client id. GitHub access tokens are discarded after
-  the profile read; if a later feature must keep one, it is encrypted at rest
-  with the per-deployment `token_encryption_key` (AES-256-GCM, key in the same
-  private file) and scoped to that feature.
+  server needs only the client id. The sign-in token is discarded after the
+  profile read. Repository access ([GitHub](github.md#repository-access))
+  keeps its own token, encrypted at rest with the per-deployment
+  `token_encryption_key` (AES-256-GCM, key in the same private file).
 - **Outbound requests**: the account service talks only to the configured
   GitHub endpoints, follows no redirects, and bounds time and response size.
 - **Rate limits** (P2): per IP and per account on `/auth/*` and

@@ -191,15 +191,15 @@ followups = ["meta.github", "meta.pricing"]
 
 [[answer]]
 id = "meta.github"
-version = 1
+version = 2
 routes = ["meta"]
 place = "away"
-when = "The user asks us to connect to, sign in to, or link their GitHub account, or asks how or whether we work with GitHub or can work on their GitHub repositories in general, without handing us a specific change in a repository"
+when = "The user asks us to connect to, sign in to, or link their GitHub account, asks how to connect or add a GitHub repository, or asks how or whether we work with GitHub or can work on their GitHub repositories in general, without handing us a specific change in a repository"
 not_for = "A specific task in a repository, such as fixing an issue, pushing a change, or opening a pull request"
-examples = ["connect github", "can you sign in to github for me", "do you work with github?", "Conecta mi GitHub"]
-text = "We work with GitHub through a computer you connect: Coder, our coding agent, runs there and uses that computer's own git and GitHub login."
+examples = ["connect github", "can you sign in to github for me", "do you work with github?", "Conecta mi GitHub", "how do I connect a github repo"]
+text = "We work with GitHub two ways. On openagents.com, sign in with GitHub, open Projects in the left panel, and connect GitHub to add your repositories as projects; chats you start in a project are grouped under it. And Coder, our coding agent, works on a computer you connect, with that computer's own git and GitHub login."
 chip = "How do you work with GitHub?"
-sources = ["crates/openagents-mobile/src/basic_coder.rs"]
+sources = ["docs/auth/github.md", "crates/openagents-web/src/projects/mod.rs", "crates/openagents-mobile/src/basic_coder.rs"]
 followups = ["meta.coder", "account.computers"]
 
 [[answer]]

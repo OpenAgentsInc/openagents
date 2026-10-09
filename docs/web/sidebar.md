@@ -1,6 +1,6 @@
 # Web sidebar: chats, projects, and live status
 
-Status: design, 2026-10-08. Phase 1 is being built; later phases are design.
+Status: design, 2026-10-08. Phases 1, 2, and 4 are built; 3 and 5 are design.
 
 The web app's left panel today has **New chat** (⌃N), the recent chats list
 (`openagents_ui::shell::ChatList`, filled by `pages::chat::chat_list`),
@@ -175,8 +175,15 @@ menu need no hover: the `…` is always visible on touch.
 1. **Row line and status** (now): `NavItem::detail` and `ChatStatus` in
    `openagents-ui`; the chat list shows repository · branch from the chat's
    selection, Working while an answer runs, Failed when the last one failed.
-2. **Projects**: connect a GitHub repository, a project record, chats join a
-   project, sidebar groups.
+2. **Projects** (built, #11034): `/projects` connects GitHub
+   (`docs/auth/github.md`, "Repository access") and adds repositories as
+   projects, kept by the account service. `chat_store` keeps `project`;
+   the composer's project picker (`/?project=` preselects it), the row
+   menu's Move to and Remove from entries (`POST /chat/{id}/project`, or
+   the `/chat/{id}/project` page with many projects), and
+   `openagents_ui::shell::ChatGroup` groups (`oa_project_groups` cookie for
+   closed ones; Reconnect GitHub when access ended). Status dots on group
+   headings wait for phase 3.
 3. **Live status**: the sidebar event stream; Cloud job and Coder task
    statuses (Waiting for you, Paused until, Done) on rows. The stream is
    built for answers (#11035, `pages/chat_live.rs`): Working and Failed
@@ -190,8 +197,7 @@ menu need no hover: the `…` is always visible on touch.
    `POST /chat/{id}/pin|archive|rename`, `GET /chat/{id}/rename` (the
    field), `GET /chat/list?q=` (search), and `GET /chat/archived`
    (`pages/chat_sidebar.rs`). The parts are `openagents_ui::shell`'s
-   `RowMenu`, `RowRename`, and `ChatSearch`. Move to project waits for
-   projects (phase 2).
+   `RowMenu`, `RowRename`, and `ChatSearch`.
 5. **Environment and task links**: a chat records the environment and the
    tasks it started; line 2 shows the environment and version; a long task
    shows its steps.
