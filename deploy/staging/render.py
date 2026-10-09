@@ -16,7 +16,9 @@ SERVICE = "openagents-web-1-staging"
 PROJECT_NUMBER = "157437760789"
 ORIGIN = f"https://{SERVICE}-{PROJECT_NUMBER}.us-central1.run.app"
 ALT_HOST = f"{SERVICE}-ezxz4mgdsq-uc.a.run.app"
-RUNTIME = f"{PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+# The automation account may not act as the default compute account (see
+# docs/deployment/openagents-web.md), so staging runs as the inference account.
+RUNTIME = "oa-vertex-inference@openagentsgemini.iam.gserviceaccount.com"
 CHAT_BUCKET = "openagentsgemini-web-chats-stage"
 
 
