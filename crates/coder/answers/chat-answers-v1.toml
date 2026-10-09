@@ -109,6 +109,19 @@ sources = ["crates/openagents-mobile/src/basic_coder.rs"]
 followups = ["meta.coder", "account.computers", "meta.limits_chat"]
 
 [[answer]]
+id = "meta.tools"
+version = 1
+routes = ["meta"]
+place = "away"
+when = "The user asks what tools, abilities, or integrations we have or use, or what we can use to help them, without naming a project, file, error, or plugin of their own"
+not_for = "What a plugin is, or what one named plugin does, which other answers cover"
+examples = ["What tools do you have?", "what tools can you use", "do you have any tools", "what can you use to help me"]
+text = "Here in chat we answer questions, explain code and ideas, and help you plan and write. We can't run code, browse the web, or open your files from here. For real work on code, Coder, our coding agent, runs on a computer you connect: it reads and edits your files, runs commands and tests, and shows you every change. You can give Coder extra abilities with plugins, like Project map, which shows it how a project is laid out."
+chip = "What tools do you have?"
+sources = ["crates/openagents-mobile/src/basic_coder.rs", "docs/plugins/README.md"]
+followups = ["meta.coder", "gym.what_tool", "account.computers"]
+
+[[answer]]
 id = "meta.capabilities.here"
 version = 3
 routes = ["meta"]
@@ -603,8 +616,8 @@ followups = ["gym.what_tool", "eval.credit.how"]
 id = "gym.what_tool"
 version = 3
 routes = ["product.kb", "general"]
-when = "The user asks what a plugin is (or a tool, capability, or extension), what a plugin contains, or which kinds of plugins there are; not what one named plugin does"
-not_for = "What one named plugin such as Project map does, which our notes answer"
+when = "The user asks what a plugin is (or a capability or extension), what a plugin contains, or which kinds of plugins there are; not what one named plugin does, and not what tools we have"
+not_for = "What one named plugin such as Project map does, which our notes answer; what tools or abilities we have, which meta.tools answers"
 examples = ["what is a plugin", "What's a plugin?", "what is a tool in the gym"]
 text = "A plugin is anything you add to OpenAgents. It can contain skills (instructions Coder reads), workflows (typed step-by-step programs), knowledge (cited reference entries), Wasm (small sandboxed code), and the tests that show whether it helps. Project map is one; ask us which plugins the Gym has to see them all. In the Gym we test a plugin by running the same tests with it and without it, so you can see whether it makes Coder better."
 chip = "What's a plugin?"
