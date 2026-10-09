@@ -24,7 +24,7 @@ as its callback URL for sign-in to come back.
 ## Secrets (Secret Manager, staging only)
 
 `openagents-web-1-staging-{github-oauth,byo-keys,ask-salt,csrf-key}`,
-`openagents-gateway-staging-{admin-token,openrouter-key,ai-gateway-key,typesafe-key,vertex-sa}`,
+`openagents-gateway-staging-{admin-token,openrouter-key,ai-gateway-key,typesafe-key,vertex-sa,smoke-signup-token}`,
 `openagents-chat-worker-staging-secret`. Each grants
 `roles/secretmanager.secretAccessor` to the runtime account
 `oa-vertex-inference@openagentsgemini.iam.gserviceaccount.com` (the
@@ -35,6 +35,11 @@ point this service at a production secret.
 The gateway opens the public inference API with a free tier of 20 requests
 a day on `google/gemini-2.5-flash-lite`, so the smoke suite can make one
 `/v1/responses` call with a fresh account's key.
+
+Open sign-up (`POST /v1/accounts` without GitHub) is off, as in production.
+The gateway's `operator_signup_token_env` names `SMOKE_SIGNUP_TOKEN`
+(`openagents-gateway-staging-smoke-signup-token`): the smoke suite sends it
+to make its one test account.
 
 ## Smoke
 
