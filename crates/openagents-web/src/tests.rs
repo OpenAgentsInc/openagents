@@ -146,15 +146,25 @@ async fn every_public_page_answers_in_development() {
         assert_eq!(status, StatusCode::OK, "{uri}: {body}");
         let lower = body.to_ascii_lowercase();
         assert!(lower.starts_with("<!doctype html>"), "{uri}");
-        // The composer loads HTMX, its SSE extension, and the Rust adapter.
-        // The live map loads its own single script.
+        // The composer loads HTMX, its SSE extension, and the Rust adapter,
+        // after the design-language shell's component script and Alpine
+        // (UI-09: the homepage renders through `UiPage`). The live map loads
+        // its own single script.
         let script = uri == "/" || uri == "/live";
         assert_eq!(
             lower.matches("<script").count(),
-            if uri == "/" { 3 } else { usize::from(script) },
+            if uri == "/" { 5 } else { usize::from(script) },
             "{uri} runs a script"
         );
         if uri == "/" {
+            assert!(
+                body.contains("src=\"/static/ui.js?v="),
+                "the component script"
+            );
+            assert!(
+                body.contains("src=\"/static/vendor/alpine-csp.js\""),
+                "Alpine"
+            );
             for asset in ["htmx.min.js", "htmx-sse.js", "chat-start.js"] {
                 assert!(
                     body.contains(&format!("src=\"/static/{asset}\"")),
@@ -279,8 +289,10 @@ async fn the_homepage_links_one_download_page_and_starts_a_chat() {
     let site = router(config(root.path().into()));
     let (_, home) = get(site.clone(), "/").await;
     assert!(
-        home.contains("<a href=\"/download\">Download</a>"),
-        "the header links /download"
+        home.contains(
+            "<a class=\"oa-nav-item\" href=\"/download\"><span class=\"oa-nav-item-label\">Download</span></a>"
+        ),
+        "the navigation links /download"
     );
     assert!(!home.contains("[ Download OpenAgents ]") && !home.contains("<h1>OpenAgents</h1>"));
     assert!(!home.contains("/install"), "every link says /download");
@@ -316,36 +328,62 @@ async fn the_homepage_links_one_download_page_and_starts_a_chat() {
 }
 
 #[tokio::test]
-async fn the_composer_card_is_styled_by_the_served_tailwind_utilities() {
+async fn the_homepage_composer_is_the_design_language_component() {
     let root = tempfile::tempdir().unwrap();
     let site = router(config(root.path().into()));
     let (_, home) = get(site.clone(), "/").await;
-    assert!(home.contains("<link rel=\"stylesheet\" href=\"/static/tailwind.css\">"));
-    assert!(home.contains("chat-composer-card"));
-    assert!(home.contains("tw:w-full tw:h-[155px]"));
-    assert!(home.contains("tw:max-w-[640px]"));
-    assert!(home.contains("<div class=\"home-stage\"><section class=\"composer"));
-    let site_css = include_str!("../static/site.css");
-    assert!(
-        site_css
-            .contains(".home-stage{flex:1;display:flex;align-items:center;justify-content:center}")
-    );
+    // UI-09: the homepage renders through `UiPage`, styled by `/static/ui.css`
+    // alone; the legacy site, Tailwind and chat stylesheets are not loaded.
+    assert!(home.contains("<link rel=\"stylesheet\" href=\"/static/ui.css?v="));
+    for legacy in [
+        "site.css",
+        "tailwind.css",
+        "chat-html.css",
+        "composer.css",
+        "tw:",
+    ] {
+        assert!(!home.contains(legacy), "{legacy}");
+    }
+    assert!(home.contains(
+        "<div class=\"oa-home-stage\"><section class=\"oa-composer\" aria-label=\"Start a chat\">"
+    ));
+    assert!(home.contains(
+        "<form id=\"chat-form\" class=\"oa-composer-root\" action=\"/chat\" method=\"post\""
+    ));
+    // The homepage posts a plain form and follows the redirect to the chat.
+    assert!(!home.contains("hx-post="));
+    assert!(home.contains("id=\"chat-card\" class=\"oa-composer-body\""));
     assert!(home.contains("placeholder=\"Ask OpenAgents to build, fix bugs, explore\""));
-    assert!(home.contains("<button type=\"submit\" aria-label=\"Send\""));
-    let (status, headers, css) = get_with(site, "/static/tailwind.css", LOCAL).await;
+    assert!(home.contains("maxlength=\"4000\""));
+    assert!(
+        home.contains("<button type=\"submit\" class=\"oa-composer-send\" aria-label=\"Send\"")
+    );
+    assert!(home.contains("<div id=\"composer-panel\" class=\"oa-composer-panel-host\"></div>"));
+    for kind in [
+        "repository",
+        "branch",
+        "environment",
+        "context",
+        "model",
+        "voice",
+    ] {
+        assert!(
+            home.contains(&format!("hx-get=\"/composer/{kind}\"")),
+            "{kind}"
+        );
+    }
+    assert!(home.contains("<footer") || home.contains("class=\"oa-legal\""));
+    let (status, headers, css) = get_with(site, "/static/ui.css", LOCAL).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(headers[header::CONTENT_TYPE], "text/css; charset=utf-8");
-    assert!(css.contains(".tw\\:h-\\[155px\\]{height:155px}"), "{css}");
-    assert!(
-        css.contains(".tw\\:max-w-\\[640px\\]{max-width:640px}"),
-        "{css}"
-    );
-    assert!(
-        css.contains(".tw\\:size-6{width:24px;height:24px}"),
-        "{css}"
-    );
-    assert!(css.contains("var(--noir-surface-subtle)"), "{css}");
-    assert!(!css.contains("@layer base"), "no preflight");
+    for rule in [
+        ".oa-home-stage",
+        ".oa-composer-body",
+        ".oa-composer-panel",
+        ".oa-message",
+    ] {
+        assert!(css.contains(rule), "{rule}");
+    }
 }
 
 #[tokio::test]
@@ -430,19 +468,35 @@ async fn posting_the_homepage_composer_opens_a_chat_page() {
         String::from_utf8(to_bytes(chat.into_body(), 1 << 20).await.unwrap().to_vec()).unwrap();
     assert!(html.contains("Set up OpenAgents"));
     assert!(html.contains(&format!("action=\"{location}\"")));
-    assert!(html.contains("<header class=\"site-header\">"));
-    assert!(!html.contains("site-footer"), "the chat page has no footer");
+    // UI-09: an app-mode `UiPage`: the shell header, no legal footer, and the
+    // composer docked under the scrolling thread.
+    assert!(html.contains("<header class=\"oa-main-header\">"));
+    assert!(html.contains("class=\"oa-layout\" data-mode=\"app\""));
+    assert!(
+        !html.contains("class=\"oa-legal\""),
+        "the chat page has no footer"
+    );
     assert!(!html.contains("href=\"/terms\"") && !html.contains("href=\"/privacy\""));
-    assert!(html.contains("<main id=\"content\" class=\"app\""));
+    assert!(html.contains("<main id=\"content\" class=\"oa-workspace\""));
+    assert!(html.contains("href=\"/chat\" aria-current=\"page\""));
     let thread = html.find("id=\"chat-thread\"").unwrap();
-    let dock = html.find("class=\"chat-dock chat-column\"").unwrap();
-    let card = html.find("chat-composer-card").unwrap();
+    let dock = html.find("class=\"oa-main-composer\"").unwrap();
+    let card = html.find("id=\"chat-card\"").unwrap();
     assert!(
         thread < dock && dock < card,
         "the composer docks under the thread"
     );
+    assert!(
+        html.contains("hx-post=\"/chat/"),
+        "the chat posts with HTMX"
+    );
+    assert!(
+        html.contains("id=\"chat-sidebar\""),
+        "the conversation list"
+    );
+    assert!(html.contains("id=\"chat-feedback\""));
     let (_, home) = get(site.clone(), "/").await;
-    assert!(home.contains("<footer class=\"site-footer\">"));
+    assert!(home.contains("class=\"oa-legal\""));
     assert!(home.contains("href=\"/terms\"") && home.contains("href=\"/privacy\""));
     let (status, missing) = get(site, "/chat/00000000-0000-4000-8000-000000000000").await;
     assert_eq!(status, StatusCode::NOT_FOUND);

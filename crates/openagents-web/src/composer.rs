@@ -17,7 +17,8 @@ use axum::{
 };
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use hmac::{Hmac, Mac};
-use maud::{Markup, html};
+use maud::{Markup, Render, html};
+use openagents_ui::shell::{ComposerDropdown, ComposerPanel, HxGet};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use sha2::Sha256;
 
@@ -203,16 +204,21 @@ pub(crate) fn controls(selection: &Selection, oob: bool) -> Markup {
         .map(|runtime| runtime.profile.as_str())
         .unwrap_or("Web answers");
     html! {
-        div id="composer-controls" class="composer-controls" hx-swap-oob=[oob.then_some("outerHTML")] {
+        div id="composer-controls" class="oa-composer-selector-group" hx-swap-oob=[oob.then_some("outerHTML")] {
             @for (kind, label, selected) in [("repository", "Repository", repository), ("branch", "Branch", branch), ("environment", "Environment", environment)] {
-                button type="button" class="composer-picker" aria-label=(label)
-                    hx-get=(format!("/composer/{kind}")) hx-include=(INCLUDE)
-                    hx-target="#composer-panel" hx-swap="innerHTML" hx-sync="#composer-panel:replace" {
-                    span { (selected) } span aria-hidden="true" { "⌄" }
-                }
+                (ComposerDropdown::new(label, selected).hx(load(kind)))
             }
         }
     }
+}
+
+/// A request that loads the `kind` panel into `#composer-panel`.
+pub(crate) fn load(kind: &str) -> HxGet {
+    HxGet::new(format!("/composer/{kind}"))
+        .include(INCLUDE)
+        .target("#composer-panel")
+        .swap("innerHTML")
+        .sync("#composer-panel:replace")
 }
 
 #[derive(Default, Deserialize)]
@@ -234,14 +240,16 @@ struct Submit {
 }
 
 fn panel(title: &str, content: Markup) -> Markup {
-    html! {
-        section class="composer-popover" aria-label=(title) {
-            header { h2 { (title) } button type="button" aria-label="Close selection"
-                hx-get="/composer/close" hx-target="#composer-panel" hx-swap="innerHTML"
-                hx-sync="#composer-panel:replace" { "×" } }
-            (content)
-        }
-    }
+    ComposerPanel::new(title)
+        .close(
+            HxGet::new("/composer/close")
+                .target("#composer-panel")
+                .swap("innerHTML")
+                .sync("#composer-panel:replace"),
+        )
+        .close_label("Close selection")
+        .body(content)
+        .render()
 }
 
 fn fields(app: &App, owner: &str, selection: &Selection, chat: Option<&str>) -> Markup {
@@ -361,7 +369,7 @@ async fn show(
 
 fn picker_link(kind: &str, label: &str) -> Markup {
     html! {
-        button type="button" class="composer-choice" hx-get=(format!("/composer/{kind}"))
+        button type="button" class="oa-composer-choice" hx-get=(format!("/composer/{kind}"))
             hx-include=(INCLUDE) hx-target="#composer-panel" hx-swap="innerHTML"
             hx-sync="#composer-panel:replace" { (label) }
     }
@@ -372,7 +380,7 @@ fn context_panel(selection: &Selection) -> Markup {
         "Context",
         html! {
             @if let Some(source) = &selection.repository {
-                dl class="composer-source-details" {
+                dl class="oa-composer-details" {
                     dt { "Repository" } dd { (source.repository) }
                     dt { "Branch" } dd { (if source.branch == source.revision { "Pinned revision" } else { &source.branch }) }
                     dt { "Commit" } dd { code { (source.revision) } }
@@ -381,7 +389,7 @@ fn context_panel(selection: &Selection) -> Markup {
                 p { "No repository is selected. Your message supplies the conversation's context." }
             }
             (picker_link("repository", "Choose repository"))
-            p class="composer-note" { "File uploads are not available yet. Repository commands require an admitted execution runtime and a separate review." }
+            p class="oa-composer-note" { "File uploads are not available yet. Repository commands require an admitted execution runtime and a separate review." }
         },
     )
 }
@@ -416,7 +424,7 @@ fn repository_panel(
             form action="/composer/repository" method="post" hx-post="/composer/repository" hx-target="#composer-panel" hx-swap="innerHTML" hx-sync="#composer-panel:replace" {
                 (fields(app, owner, selection, chat))
                 label for="composer-repository" { "Public GitHub repository" }
-                div class="composer-source-entry" {
+                div class="oa-composer-entry" {
                     input id="composer-repository" name="value" placeholder="owner/repository" maxlength="140" required
                         value=[selection.repository.as_ref().map(|source| source.repository.as_str())];
                     button type="submit" { "Select" }
@@ -427,7 +435,7 @@ fn repository_panel(
                 @for choice in choices.iter().filter(|choice| choice.repository.is_some()) {
                     form action="/composer/repository" method="post" hx-post="/composer/repository" hx-target="#composer-panel" hx-swap="innerHTML" hx-sync="#composer-panel:replace" {
                         (fields(app, owner, selection, chat))
-                        button type="submit" name="value" value=(native_token(app, owner, choice)) class="composer-choice" disabled[!choice.available] {
+                        button type="submit" name="value" value=(native_token(app, owner, choice)) class="oa-composer-choice" disabled[!choice.available] {
                             strong { (choice.repository.as_deref().unwrap_or_default()) }
                             small { (choice.branch.as_deref().unwrap_or("Pinned revision")) " · " (revision_prefix(&choice.runtime.source_revision)) }
                             small { "Runtime: " (choice.runtime.profile) }
@@ -437,13 +445,13 @@ fn repository_panel(
                 }
             }
             @if choices.is_empty() {
-                p class="composer-note" { "To select an admitted repository, open Cloud and choose a workspace with a connected computer." }
+                p class="oa-composer-note" { "To select an admitted repository, open Cloud and choose a workspace with a connected computer." }
                 a href="/cloud/app" { "Choose Cloud workspace" }
             }
             form action="/composer/repository" method="post" hx-post="/composer/repository" hx-target="#composer-panel" hx-swap="innerHTML" hx-sync="#composer-panel:replace" {
-                (fields(app, owner, selection, chat)) button type="submit" name="value" value="none" class="composer-choice" { "No repository" }
+                (fields(app, owner, selection, chat)) button type="submit" name="value" value="none" class="oa-composer-choice" { "No repository" }
             }
-            p class="composer-note" { "Public metadata does not connect a computer or authorize code execution." }
+            p class="oa-composer-note" { "Public metadata does not connect a computer or authorize code execution." }
         },
     )
 }
@@ -485,7 +493,7 @@ async fn branch_panel(
     let Some(source) = &selection.repository else {
         return panel(
             "Branch",
-            html! { p { "Choose a repository first." } button type="button" hx-get="/composer/repository" hx-include=(INCLUDE) hx-target="#composer-panel" hx-swap="innerHTML" { "Choose repository" } },
+            html! { p { "Choose a repository first." } button type="button" class="oa-composer-choice" hx-get="/composer/repository" hx-include=(INCLUDE) hx-target="#composer-panel" hx-swap="innerHTML" { "Choose repository" } },
         );
     };
     let native: Vec<_> = choices
@@ -505,7 +513,7 @@ async fn branch_panel(
                 @for choice in native {
                     form action="/composer/branch" method="post" hx-post="/composer/branch" hx-target="#composer-panel" hx-swap="innerHTML" hx-sync="#composer-panel:replace" {
                         (fields(app, owner, selection, chat))
-                        button type="submit" name="value" value=(native_token(app, owner, choice)) class="composer-choice" disabled[!choice.available] {
+                        button type="submit" name="value" value=(native_token(app, owner, choice)) class="oa-composer-choice" disabled[!choice.available] {
                             strong { (choice.branch.as_deref().unwrap_or("Pinned revision")) }
                             small { (revision_prefix(&choice.runtime.source_revision)) " · " (choice.runtime.profile) }
                             small { "Selects this source and its configured runtime." }
@@ -542,16 +550,16 @@ async fn branch_panel(
             @for branch in branches {
                 form action="/composer/branch" method="post" hx-post="/composer/branch" hx-target="#composer-panel" hx-swap="innerHTML" hx-sync="#composer-panel:replace" {
                     (fields(app, owner, selection, chat))
-                    button type="submit" name="value" value=(branch.name) class="composer-choice" {
+                    button type="submit" name="value" value=(branch.name) class="oa-composer-choice" {
                         strong { (branch.name) } small { (revision_prefix(&branch.commit.sha)) }
                     }
                 }
             }
-            @if more { p class="composer-note" { "This is a bounded page of up to 100 branches. Enter another branch below." } }
+            @if more { p class="oa-composer-note" { "This is a bounded page of up to 100 branches. Enter another branch below." } }
             form action="/composer/branch" method="post" hx-post="/composer/branch" hx-target="#composer-panel" hx-swap="innerHTML" hx-sync="#composer-panel:replace" {
                 (fields(app, owner, selection, chat))
                 label for="composer-branch" { "Branch name" }
-                div class="composer-source-entry" { input id="composer-branch" name="value" maxlength="256" required; button type="submit" { "Select" } }
+                div class="oa-composer-entry" { input id="composer-branch" name="value" maxlength="256" required; button type="submit" { "Select" } }
             }
         },
     )
@@ -569,7 +577,7 @@ fn environment_panel(
         html! {
             form action="/composer/environment" method="post" hx-post="/composer/environment" hx-target="#composer-panel" hx-swap="innerHTML" hx-sync="#composer-panel:replace" {
                 (fields(app, owner, selection, chat))
-                button type="submit" name="value" value="none" class="composer-choice" {
+                button type="submit" name="value" value="none" class="oa-composer-choice" {
                     strong { "Web answers" } small { "Questions and conversation. Choosing Web answers clears an admitted repository's source pins." }
                 }
             }
@@ -577,7 +585,7 @@ fn environment_panel(
                 @let compatible = selection.repository.as_ref().is_none_or(|source| matches_source(choice, source));
                 form action="/composer/environment" method="post" hx-post="/composer/environment" hx-target="#composer-panel" hx-swap="innerHTML" hx-sync="#composer-panel:replace" {
                     (fields(app, owner, selection, chat))
-                    button type="submit" name="value" value=(native_token(app, owner, choice)) class="composer-choice" disabled[!choice.available || !compatible] {
+                    button type="submit" name="value" value=(native_token(app, owner, choice)) class="oa-composer-choice" disabled[!choice.available || !compatible] {
                         strong { (choice.runtime.profile) }
                         small { (choice.runtime.placement) " · " (choice.size) " · " (choice.runtime.executor) }
                         small { "Source " (revision_prefix(&choice.runtime.source_revision)) " · model " (choice.runtime.model.as_deref().unwrap_or("Native policy")) }
@@ -588,7 +596,7 @@ fn environment_panel(
                 }
             }
             @if choices.is_empty() { p { "No execution runtime is admitted for this browser. Open Cloud and choose a workspace with a connected computer." } }
-            p class="composer-note" { "A runtime selection stages a separate native review when you send a message. Saved project-image preparation remains a separate operation." }
+            p class="oa-composer-note" { "A runtime selection stages a separate native review when you send a message. Saved project-image preparation remains a separate operation." }
             a href="/cloud/app" { "Open connected computers and native profiles" }
         },
     )
@@ -807,7 +815,7 @@ async fn select(
             (controls(&next, true))
             (state_field(&app, &owner, &next, true))
         }
-        p class="composer-selection-result" role="status" { "Selection updated." }
+        p class="oa-composer-result" role="status" { "Selection updated." }
     })
 }
 

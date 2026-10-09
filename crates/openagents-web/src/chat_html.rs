@@ -12,11 +12,10 @@ use crate::App;
 pub(crate) const POLICY: &str = "default-src 'none'; style-src 'self'; font-src 'self'; img-src 'self'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
 
 /// HTMX never stores private HTML, evaluates expressions, or runs fragment scripts.
+/// The chat and composer styles come from `openagents-ui` (`/static/ui.css`).
 pub(crate) fn head() -> Markup {
     html! {
         meta name="htmx-config" content=r#"{"allowEval":false,"allowScriptTags":false,"historyCacheSize":0,"historyRestoreAsHxRequest":false,"refreshOnHistoryMiss":true,"selfRequestsOnly":true,"includeIndicatorStyles":false,"timeout":20000}"#;
-        link rel="stylesheet" href="/static/chat-html.css";
-        link rel="stylesheet" href="/static/composer.css";
         script src="/static/htmx.min.js" defer {}
         script src="/static/htmx-sse.js" defer {}
         script type="module" src="/static/chat-start.js" {}
@@ -56,29 +55,11 @@ pub(crate) fn routes() -> Router<App> {
             get(|| async { script(include_str!("../static/chat-start.js")) }),
         )
         .route(
-            "/static/chat-html.css",
-            get(|| async {
-                (
-                    [(header::CONTENT_TYPE, "text/css; charset=utf-8")],
-                    include_str!("../static/chat-html.css"),
-                )
-            }),
-        )
-        .route(
             "/static/demo-html.css",
             get(|| async {
                 (
                     [(header::CONTENT_TYPE, "text/css; charset=utf-8")],
                     crate::palette::stylesheet(include_str!("../static/demo-html.css")),
-                )
-            }),
-        )
-        .route(
-            "/static/composer.css",
-            get(|| async {
-                (
-                    [(header::CONTENT_TYPE, "text/css; charset=utf-8")],
-                    include_str!("../static/composer.css"),
                 )
             }),
         )

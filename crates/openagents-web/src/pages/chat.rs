@@ -8,12 +8,18 @@ use axum::Router;
 use axum::extract::{DefaultBodyLimit, Form, Path, Query, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::sse::{Event, KeepAlive};
-use axum::response::{Html, IntoResponse, Redirect, Response, Sse};
+use axum::response::{IntoResponse, Redirect, Response, Sse};
 use axum::routing::{get, post};
 use hmac::{Hmac, Mac};
-use maud::{Markup, PreEscaped, html};
+use maud::{Markup, PreEscaped, Render, html};
 use openagents_chat::basic_coder::{self, Reply, Turn};
 use openagents_chat::router::{Context, Surface};
+use openagents_ui::content::MarkdownRoot;
+use openagents_ui::icons::Icon;
+use openagents_ui::shell::{
+    Composer, ComposerAction, HxGet, Message as ThreadMessage, ModelPickerTrigger, NavItem,
+    SidebarSection, composer_panel_host,
+};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
@@ -21,7 +27,8 @@ use crate::App;
 use crate::chat_store::{
     Conversation, Error, Loaded, Message, Outcome, Pending, Request, Role, Selection,
 };
-use crate::layout::{self, problem};
+use crate::layout::problem;
+use crate::ui_page::UiPage;
 
 const MAX_CHARS: usize = 4_000;
 const MAX_MESSAGES: usize = 96;
@@ -30,7 +37,12 @@ const LEASE_SECONDS: u64 = 180;
 
 pub(crate) fn routes() -> Router<App> {
     Router::new()
-        .route("/chat", post(start))
+        // The navigation's "Chat" entry: a new chat starts on the home page.
+        .route(
+            "/chat",
+            get(|| async { crate::chat_html::protect(Redirect::to("/").into_response()) })
+                .post(start),
+        )
         .route("/chat/{id}", get(show).post(follow))
         .route("/chat/{id}/workspace", get(workspace))
         .route("/chat/{id}/transcript", get(transcript))
@@ -383,25 +395,28 @@ async fn show(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>
     {
         return crate::cloud::composer::view(&app, &headers, cloud).await;
     }
-    let body = html! {
-        div.chat-shell hx-history="false" {
-            (sidebar(&app,&record.conversation).await)
-            section.chat-main aria-label="Conversation" {
-                div #chat-content { (content(&record.conversation, None)) }
-                div.chat-dock.chat-column {
-                    (PreEscaped(composer(&format!("/chat/{id}"),"Continue this chat", record.conversation.selection.as_ref())))
-                    div #composer-panel {}
-                    (ticket(&app,&record.conversation,false))
-                    p #chat-feedback role="status" aria-live="polite" {}
-                }
-            }
-        }
+    let chat = &record.conversation;
+    let dock = html! {
+        (ticket(&app, chat, false))
+        p #chat-feedback.oa-composer-feedback role="status" aria-live="polite" {}
     };
-    let html = layout::app_document(&record.conversation.title, None, &body.into_string()).replace(
-        "</head>",
-        &format!("{}</head>", crate::chat_html::head().into_string()),
-    );
-    crate::chat_html::protect(Html(html).into_response())
+    let page = UiPage::new(chat.title.clone())
+        .section("/chat")
+        .path(format!("/chat/{id}"))
+        .app()
+        .head(crate::chat_html::head())
+        .sidebar_section(sidebar(&app, chat, false).await)
+        .content(html! {
+            // The thread is private: HTMX never snapshots it into history.
+            div #chat-content.oa-thread-view hx-history="false" { (content(chat, None)) }
+        })
+        .composer(composer(
+            &format!("/chat/{id}"),
+            "Continue this chat",
+            chat.selection.as_ref(),
+            dock,
+        ));
+    crate::chat_html::protect(page.respond(&headers))
 }
 
 async fn workspace(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>) -> Response {
@@ -422,7 +437,7 @@ async fn workspace(State(app): State<App>, headers: HeaderMap, Path(id): Path<St
         );
         return response;
     }
-    let body = html! { title {(record.conversation.title) " · OpenAgents"} (content(&record.conversation,None)) (ticket(&app,&record.conversation,true)) (sidebar(&app,&record.conversation).await) };
+    let body = html! { title {(record.conversation.title) " · OpenAgents"} (content(&record.conversation,None)) (ticket(&app,&record.conversation,true)) (sidebar(&app,&record.conversation,true).await) };
     let mut response = crate::chat_html::protect(body.into_response());
     response.headers_mut().insert(
         "HX-Push-Url",
@@ -585,7 +600,7 @@ async fn accepted(app: &App, headers: &HeaderMap, chat: &Conversation) -> Respon
             return response;
         }
         crate::chat_html::protect(
-            html! { (ticket(app,chat,true)) (sidebar(app,chat).await) }.into_response(),
+            html! { (ticket(app,chat,true)) (sidebar(app,chat,true).await) }.into_response(),
         )
     } else {
         crate::chat_html::protect(Redirect::to(&format!("/chat/{}", chat.id)).into_response())
@@ -792,22 +807,37 @@ async fn answer(app: App, mut loaded: Loaded, admitted_at: u64) {
     }
 }
 
-async fn sidebar(app: &App, chat: &Conversation) -> Markup {
+/// The conversation list in the left panel. Responses that change it carry
+/// it again with `oob`, replacing `#chat-sidebar` in place.
+async fn sidebar(app: &App, chat: &Conversation, oob: bool) -> SidebarSection {
     let chats = app.config.chat_store.list(&chat.owner).await;
-    html! {
-        aside #chat-sidebar.chat-sidebar hx-swap-oob="outerHTML" aria-label="Chats" {
-            a.new-chat href="/" { "+ New chat" }
-            h2 { "Chats" }
-            nav aria-label="Your conversations" {
-                @match chats {
-                    Ok(chats)=> { @for row in chats {
-                        a href=(format!("/chat/{}",row.id)) hx-get=(format!("/chat/{}/workspace",row.id)) hx-target="#chat-content" hx-swap="innerHTML" hx-sync="#chat-content:replace" aria-current=[(row.id==chat.id).then_some("page")] { (row.title) }
-                    } p.dim { "Showing up to 256 recent chats." } }
-                    Err(_)=> {p.error {"The chat list is unavailable. Your current conversation is retained."}}
-                }
+    let section = SidebarSection::new("Chats")
+        .id("chat-sidebar")
+        .swap_oob(oob)
+        .item(NavItem::new("New chat", "/").icon(Icon::Plus));
+    let demo = html! {
+        ul.oa-nav-list role="list" { (NavItem::new("Onboarding demo", "/demo")) }
+    };
+    match chats {
+        Ok(rows) => section
+            .items(rows.iter().map(|row| {
+                NavItem::new(row.title.clone(), format!("/chat/{}", row.id))
+                    .current(row.id == chat.id)
+                    .hx(HxGet::new(format!("/chat/{}/workspace", row.id))
+                        .target("#chat-content")
+                        .swap("innerHTML")
+                        .sync("#chat-content:replace"))
+            }))
+            .after(html! {
+                p.oa-sidebar-empty { "Showing up to 256 recent chats." }
+                (demo)
+            }),
+        Err(_) => section.after(html! {
+            p.oa-sidebar-empty role="alert" {
+                "The chat list is unavailable. Your current conversation is retained."
             }
-            a href="/demo" { "Onboarding demo" }
-        }
+            (demo)
+        }),
     }
 }
 
@@ -822,14 +852,36 @@ pub(crate) fn ticket(app: &App, chat: &Conversation, oob: bool) -> Markup {
 }
 
 fn content(chat: &Conversation, before: Option<usize>) -> Markup {
+    let beginning = format!("/chat/{}/transcript?before=24", chat.id);
+    let latest = format!("/chat/{}/transcript", chat.id);
     html! {
-        header.chat-heading { h1 {(chat.title)} div {a href=(format!("/chat/{}/transcript?before=24",chat.id)) hx-get=(format!("/chat/{}/transcript?before=24",chat.id)) hx-target="#chat-transcript" data-chat-history="start" {"Beginning"} a href=(format!("/chat/{}/transcript",chat.id)) hx-get=(format!("/chat/{}/transcript",chat.id)) hx-target="#chat-transcript" data-chat-history="end" {"Latest"}} }
-        section #chat-thread.thread aria-label="Chat" {
-            div.chat-column hx-ext="sse" sse-connect=(format!("/chat/{}/events?after={}",chat.id,chat.revision)) sse-close="retired" {
+        header.oa-thread-header {
+            h1.oa-thread-title { (chat.title) }
+            div.oa-thread-links {
+                a href=(beginning) hx-get=(beginning) hx-target="#chat-transcript" data-chat-history="start" { "Beginning" }
+                a href=(latest) hx-get=(latest) hx-target="#chat-transcript" data-chat-history="end" { "Latest" }
+            }
+        }
+        section #chat-thread.oa-thread aria-label="Chat" {
+            div.oa-thread-column hx-ext="sse" sse-connect=(format!("/chat/{}/events?after={}",chat.id,chat.revision)) sse-close="retired" {
                 div #chat-transcript sse-swap="transcript,retired" hx-swap="innerHTML" { (messages(chat,before)) }
             }
         }
     }
+}
+
+/// One stored message as a thread turn. Assistant text is rendered Markdown
+/// (the renderer escapes it); user and status text is escaped as written.
+fn turn(message: &Message, index: usize) -> ThreadMessage {
+    match message.role {
+        Role::User => ThreadMessage::user(&message.text),
+        Role::Assistant => ThreadMessage::assistant(MarkdownRoot::new(PreEscaped(
+            crate::markdown::render(&message.text),
+        )))
+        .author("OpenAgents"),
+        Role::Tool => ThreadMessage::status(&message.text),
+    }
+    .id(format!("chat-message-{index}"))
 }
 
 fn messages(chat: &Conversation, before: Option<usize>) -> Markup {
@@ -839,16 +891,12 @@ fn messages(chat: &Conversation, before: Option<usize>) -> Markup {
     let start = end.saturating_sub(WINDOW);
     html! {
         input type="hidden" id="chat-history-window" value=(if before.is_some() {"older"}else{"latest"});
-        @if start>0 {p.dim {"Showing messages " (start+1) "–" (end) " of " (chat.messages.len()) ". " a href=(format!("/chat/{}/transcript?before={start}",chat.id)) hx-get=(format!("/chat/{}/transcript?before={start}",chat.id)) hx-target="#chat-transcript" {"Read earlier messages"}}}
-        @if before.is_some() && end<chat.messages.len() {p {a href=(format!("/chat/{}/transcript?before={}",chat.id,(end+WINDOW).min(chat.messages.len()))) hx-get=(format!("/chat/{}/transcript?before={}",chat.id,(end+WINDOW).min(chat.messages.len()))) hx-target="#chat-transcript" {"Read newer messages"} " · " a href=(format!("/chat/{}/transcript",chat.id)) hx-get=(format!("/chat/{}/transcript",chat.id)) hx-target="#chat-transcript" data-chat-history="end" {"Latest"}}}
+        @if start>0 {p.oa-thread-notice {"Showing messages " (start+1) "–" (end) " of " (chat.messages.len()) ". " a href=(format!("/chat/{}/transcript?before={start}",chat.id)) hx-get=(format!("/chat/{}/transcript?before={start}",chat.id)) hx-target="#chat-transcript" {"Read earlier messages"}}}
+        @if before.is_some() && end<chat.messages.len() {p.oa-thread-notice {a href=(format!("/chat/{}/transcript?before={}",chat.id,(end+WINDOW).min(chat.messages.len()))) hx-get=(format!("/chat/{}/transcript?before={}",chat.id,(end+WINDOW).min(chat.messages.len()))) hx-target="#chat-transcript" {"Read newer messages"} " · " a href=(format!("/chat/{}/transcript",chat.id)) hx-get=(format!("/chat/{}/transcript",chat.id)) hx-target="#chat-transcript" data-chat-history="end" {"Latest"}}}
         @for (index,message) in chat.messages[start..end].iter().enumerate() {
-            article.chat-message id=(format!("chat-message-{}",index+start)) {
-                h2 { (match message.role {Role::User=>"You",Role::Assistant=>"OpenAgents",Role::Tool=>"Status"}) }
-                @if message.role==Role::Assistant {div.md {(PreEscaped(crate::markdown::render(&message.text)))}}
-                @else {p.chat-plain {(message.text)}}
-            }
+            (turn(message, index + start))
         }
-        p #chat-status role="status" aria-live="polite" {
+        p #chat-status.oa-thread-status role="status" aria-live="polite" {
             @if chat.pending.is_some() {"OpenAgents is answering…"}
             @else if chat.requests.last().is_some_and(|r|r.outcome==Outcome::Unknown) {"The previous request's outcome is unknown. It will not be repeated automatically."}
             @else {""}
@@ -968,7 +1016,7 @@ async fn events(
                 Ok(v) if v.conversation.revision > cursor => {
                     let revision = v.conversation.revision;
                     let missed = revision.saturating_sub(cursor + 1);
-                    let body=html! { @if missed>0 {p.dim {"Resumed from the retained snapshot; " (missed) " intermediate projections were superseded. All original messages remain available."}} (messages(&v.conversation,None)) }.into_string();
+                    let body=html! { @if missed>0 {p.oa-thread-notice {"Resumed from the retained snapshot; " (missed) " intermediate projections were superseded. All original messages remain available."}} (messages(&v.conversation,None)) }.into_string();
                     cursor = revision;
                     Event::default()
                         .id(format!("{id}:{revision}"))
@@ -978,7 +1026,7 @@ async fn events(
                 Ok(_) => Event::default().comment("current"),
                 Err(_) => {
                     ticks = 299;
-                    Event::default().id(format!("{id}:{cursor}")).event("retired").data("<p class=\"error\">The conversation is unavailable. Reopen it to check access.</p>")
+                    Event::default().id(format!("{id}:{cursor}")).event("retired").data("<p class=\"oa-thread-error\" role=\"alert\">The conversation is unavailable. Reopen it to check access.</p>")
                 }
             };
             Some((
@@ -1018,70 +1066,41 @@ fn unavailable(error: Error) -> Response {
         "The conversation store is unavailable. Your message was not repeated; try again with the same ticket.",
     )
 }
-/// A 24-pixel lucide icon path set, drawn at `size` with a 2-pixel stroke.
-fn icon(size: u8, paths: &str) -> String {
-    format!(
-        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{size}\" height=\"{size}\" \
-viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" \
-stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\" focusable=\"false\">\
-{paths}</svg>"
-    )
-}
-
-const CHEVRON_DOWN: &str = "<path d=\"m6 9 6 6 6-6\"/>";
-const PLUS: &str = "<path d=\"M5 12h14\"/><path d=\"M12 5v14\"/>";
-const MIC: &str = "<path d=\"M12 19v3\"/><path d=\"M19 10v2a7 7 0 0 1-14 0v-2\"/>\
-<rect x=\"9\" y=\"2\" width=\"6\" height=\"13\" rx=\"3\"/>";
-const ARROW_UP: &str = "<path d=\"m5 12 7-7 7 7\"/><path d=\"M12 19V5\"/>";
-
-/// The homepage and chat share source/runtime controls and a stable text box.
-pub(crate) fn composer(action: &str, label: &str, selection: Option<&Selection>) -> String {
-    let transport = if action.starts_with("/chat/") {
-        format!(
-            " hx-post=\"{action}\" hx-swap=\"none\" hx-disabled-elt=\"#chat-form button[type=submit]\" hx-sync=\"this:drop\""
-        )
-    } else {
-        String::new()
-    };
+/// The homepage and chat share one composer: the source/runtime selectors
+/// (replaced out of band as `#composer-controls`), a stable text box
+/// (`#chat-input` in `#chat-card`, which the browser adapter binds), the
+/// context, model and voice panels loaded into `#composer-panel`, and
+/// `after` under the form. The chat posts with HTMX and keeps the draft
+/// until the server accepts it; the homepage posts a plain form and follows
+/// the redirect to the new chat.
+pub(crate) fn composer(
+    action: &str,
+    label: &str,
+    selection: Option<&Selection>,
+    after: Markup,
+) -> Markup {
     let selection = selection.cloned().unwrap_or_default();
-    let pickers = crate::composer::controls(&selection, false).into_string();
-    let round = "tw:inline-flex tw:items-center tw:justify-center tw:size-6 tw:shrink-0 \
-tw:rounded-full tw:p-0";
-    let quiet = "tw:bg-noir-surface-raised tw:text-noir-content-secondary \
-tw:hover:bg-noir-stroke-subtle tw:hover:text-noir-content tw:active:bg-noir-stroke";
-    format!(
-        "<section class=\"composer tw:w-full tw:max-w-[640px]\" aria-label=\"{label}\">\
-<form id=\"chat-form\" action=\"{action}\" method=\"post\"{transport}>\
-<div class=\"tw:flex tw:items-center tw:gap-2 tw:min-h-8 tw:px-1.5 tw:pb-1.5\">{pickers}</div>\
-<div id=\"chat-card\" class=\"chat-composer-card tw:relative tw:flex tw:flex-col tw:overflow-hidden \
-tw:w-full tw:h-[155px] tw:rounded-xl tw:cursor-text tw:border tw:border-noir-stroke-subtle \
-tw:bg-noir-surface-subtle tw:focus-within:border-noir-stroke\">\
-<label class=\"unseen\" for=\"chat-input\">Message</label>\
-<textarea id=\"chat-input\" name=\"q\" rows=\"2\" maxlength=\"{MAX_CHARS}\" required autofocus \
-placeholder=\"Ask OpenAgents to build, fix bugs, explore\" \
-class=\"tw:block tw:flex-1 tw:w-full tw:min-h-[32px] tw:max-h-[360px] tw:m-0 tw:px-3 tw:py-3 \
-tw:border-0 tw:bg-transparent tw:resize-none tw:font-sans tw:text-sm \
-tw:text-noir-content tw:placeholder:text-noir-content-secondary tw:outline-none \
-tw:focus-visible:outline-none\"></textarea>\
-<div class=\"tw:flex tw:items-center tw:gap-3 tw:px-3 tw:py-3\">\
-<button type=\"button\" aria-label=\"Add context and tools\" \
-hx-get=\"/composer/context\" hx-include=\"#composer-state,#chat-selected,[name=csrf][form=chat-form]\" hx-target=\"#composer-panel\" hx-swap=\"innerHTML\" hx-sync=\"#composer-panel:replace\" class=\"{round} {quiet}\">{plus}</button>\
-<button type=\"button\" title=\"Model\" hx-get=\"/composer/model\" hx-include=\"#composer-state,#chat-selected,[name=csrf][form=chat-form]\" hx-target=\"#composer-panel\" hx-swap=\"innerHTML\" hx-sync=\"#composer-panel:replace\" \
-class=\"tw:inline-flex tw:items-center tw:gap-1 tw:h-6 tw:pl-2 tw:pr-1.5 tw:rounded-full \
-tw:bg-transparent tw:text-xs tw:text-noir-content-secondary tw:hover:bg-noir-surface-raised \
-tw:hover:text-noir-content tw:active:bg-noir-stroke-subtle\">Auto{chevron}</button>\
-<div class=\"tw:flex-1\"></div>\
-<button type=\"button\" aria-label=\"Voice input\" hx-get=\"/composer/voice\" hx-include=\"#composer-state,#chat-selected,[name=csrf][form=chat-form]\" hx-target=\"#composer-panel\" hx-swap=\"innerHTML\" hx-sync=\"#composer-panel:replace\" \
-title=\"Voice input availability\" class=\"{round} {quiet}\">{mic}</button>\
-<button type=\"submit\" aria-label=\"Send\" title=\"Send\" class=\"{round} \
-tw:bg-noir-accent-solid tw:text-noir-on-accent-solid tw:hover:bg-noir-content-secondary \
-tw:active:bg-noir-content-tertiary\">{arrow}</button>\
-</div></div></form></section>",
-        plus = icon(14, PLUS),
-        chevron = icon(12, CHEVRON_DOWN),
-        mic = icon(14, MIC),
-        arrow = icon(16, ARROW_UP),
-    )
+    Composer::new("chat-form", action)
+        .label(label)
+        .enhanced(action.starts_with("/chat/"))
+        .input_id("chat-input")
+        .body_id("chat-card")
+        .max_chars(MAX_CHARS)
+        .placeholder("Ask OpenAgents to build, fix bugs, explore")
+        .autofocus(true)
+        .selectors(crate::composer::controls(&selection, false))
+        .leading(
+            ComposerAction::new(Icon::Plus, "Add context and tools")
+                .hx(crate::composer::load("context")),
+        )
+        .model_picker(ModelPickerTrigger::new("Auto").hx(crate::composer::load("model")))
+        .trailing(
+            ComposerAction::new(Icon::Mic, "Voice input")
+                .title("Voice input availability")
+                .hx(crate::composer::load("voice")),
+        )
+        .after(html! { (composer_panel_host("composer-panel")) (after) })
+        .render()
 }
 
 fn normalize(value: &str) -> Option<String> {

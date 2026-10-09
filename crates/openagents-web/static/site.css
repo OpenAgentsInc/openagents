@@ -54,20 +54,6 @@ main:focus{outline:none}
 .dim{color:var(--noir-content-secondary)}
 .error{color:var(--noir-danger);border-left:2px solid var(--noir-danger);padding-left:1ch}
 
-/* The composer's card is styled by Tailwind utilities (static/tailwind.css). */
-.composer{margin:0 0 1.5rem}
-/* The homepage: the composer centered between the header and the footer. */
-main:has(>.home-stage){display:flex;flex-direction:column;padding:2rem 0}
-.home-stage{flex:1;display:flex;align-items:center;justify-content:center}
-.home-stage .composer{margin:0}
-.thread{margin:0 0 1.5rem}
-/* The chat page (layout::app): no footer; the thread scrolls between the
-   header and the composer, which stays docked at the bottom. */
-main.app{flex:1;min-height:0;width:100%;display:flex;flex-direction:column;padding:0}
-.app .thread{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;margin:0;padding:2rem 0 1rem}
-.chat-column{width:min(640px,100% - 32px);margin-inline:auto}
-.chat-dock{flex:none;padding:.5rem 0 1rem}
-.chat-dock .composer{margin:0}
 .thread-said{white-space:pre-wrap;overflow-wrap:anywhere}
 .thread-said .term-mark{display:block;margin-bottom:.25rem}
 /* The former homepage terminal, kept for leftover term classes. */

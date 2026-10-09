@@ -42,6 +42,15 @@
   padding: 0 calc(var(--spacing) * 1.5);
 }
 
+/* A group of selectors a response replaces as one (by its id). */
+.oa-composer-selector-group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: calc(var(--spacing) * 1);
+  min-width: 0;
+}
+
 .oa-composer-body {
   position: relative;
   display: flex;
