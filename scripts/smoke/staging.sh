@@ -20,4 +20,10 @@ if [ -z "${SMOKE_SIGNUP_TOKEN:-}" ] && command -v gcloud > /dev/null 2>&1; then
         --secret openagents-gateway-staging-smoke-signup-token --project openagentsgemini 2> /dev/null || true)
     export SMOKE_SIGNUP_TOKEN
 fi
-exec python3 -I "$(dirname "$0")/web.py" "$@"
+# macOS's /usr/bin/python3 links LibreSSL 2.8, whose TLS drops connections
+# to Google's front end on custom domains; prefer a current Python.
+py=python3
+for candidate in python3.13 python3.12 python3.11; do
+    if command -v "$candidate" > /dev/null 2>&1; then py=$candidate; break; fi
+done
+exec "$py" -I "$(dirname "$0")/web.py" "$@"
