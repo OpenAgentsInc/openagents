@@ -497,11 +497,15 @@ async fn select(fixture: &Fixture, cookies: &mut Cookies, workspace: &str) {
 }
 
 fn no_money_controls(body: &str) {
-    // Only the shell's own workspace switch and sign-out post anywhere.
+    // Only the shell's own workspace switch, sign-out, and theme toggle
+    // (its no-JavaScript fallback) post anywhere.
     for form in body.split("method=\"post\" action=\"").skip(1) {
         let action = form.split('"').next().unwrap();
         assert!(
-            matches!(action, "/cloud/select-workspace" | "/cloud/sign-out"),
+            matches!(
+                action,
+                "/cloud/select-workspace" | "/cloud/sign-out" | "/theme"
+            ),
             "a page offered a control: {action}"
         );
     }

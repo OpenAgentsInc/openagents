@@ -7,8 +7,8 @@ use crate::actions::{Button, ButtonVariant, Color, ControlSize};
 use crate::content::CodeBlock;
 use crate::icons::Icon;
 use crate::shell::{
-    AppShell, Composer, ComposerDropdown, Document, HxGet, MainMode, ModelPickerTrigger, NavItem,
-    Sidebar, SidebarSection, Theme, ThemeToggle,
+    AppShell, Composer, ComposerAction, ComposerDropdown, ComposerPanel, Document, HxGet, MainMode,
+    Message, ModelPickerTrigger, NavItem, Sidebar, SidebarSection, Theme, ThemeToggle,
 };
 
 /// The id `AppShell` gives its left panel. The page around the catalog has
@@ -81,6 +81,18 @@ pub(super) fn composer(pane: Pane) -> Markup {
         (specimen("Composer ModelPickerTrigger HxGet", "Draft and send label", draft))
         (specimen("Composer", "HTMX-enhanced, custom slots", rich))
         (specimen("Composer", "Disabled", off))
+        (specimen("ComposerAction ComposerPanel", "Footer actions and a panel", stack(html! {
+            (row(html! {
+                (ComposerAction::new(Icon::Plus, "Add context").title("Add context"))
+                (ComposerAction::new(Icon::Mic, "Dictate"))
+            }))
+            (ComposerPanel::new("Repository").body(html! { p { "Choose a repository for this task." } }))
+        })))
+        (specimen("Message", "Thread messages", stack(html! {
+            (Message::user("Add a light theme to the web app"))
+            (Message::assistant(html! { p { "Coder Light is on. The toggle follows your system setting." } }).author("OpenAgents"))
+            (Message::status("Working…"))
+        })))
         (specimen("ComposerDropdown ModelPickerTrigger", "Triggers alone", row(html! {
             (ComposerDropdown::new("Environment", "Cloud").icon(Icon::Globe).show_label(true))
             (ModelPickerTrigger::new("Max").effort("Medium"))

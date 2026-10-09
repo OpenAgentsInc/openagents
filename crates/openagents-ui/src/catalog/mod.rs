@@ -82,6 +82,8 @@ pub const COMPONENTS: &[&str] = &[
     "CodeBlock",
     "StickyActionBar",
     "Table",
+    "PageColumn",
+    "Facts",
     "Source",
     "Favicon",
     // Overlays
@@ -94,6 +96,9 @@ pub const COMPONENTS: &[&str] = &[
     "DialogTrigger",
     // Shell
     "Composer",
+    "ComposerAction",
+    "ComposerPanel",
+    "Message",
     "ComposerDropdown",
     "ModelPickerTrigger",
     "HxGet",

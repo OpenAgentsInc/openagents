@@ -5,8 +5,8 @@ use maud::{Markup, html};
 use super::{Pane, row, specimen, stack};
 use crate::actions::{Button, ButtonVariant, Color, ControlSize};
 use crate::content::{
-    CodeBlock, ColSize, Favicon, Heading, InlineCode, List, ListItem, MarkdownRoot, MarkdownSize,
-    Paragraph, Source, SourceVariant, StickyActionBar, Table,
+    CodeBlock, ColSize, Facts, Favicon, Heading, InlineCode, List, ListItem, MarkdownRoot,
+    MarkdownSize, PageColumn, Paragraph, Source, SourceVariant, StickyActionBar, Table,
 };
 use crate::icons::Icon;
 
@@ -68,6 +68,12 @@ pub(super) fn table(_pane: Pane) -> Markup {
             .row(["Planner", "Queued", "0", "$0.00"])
             .numeric(2).numeric(3)
             .col_size(0, ColSize::Lg).col_size(1, ColSize::Sm).col_size(2, ColSize::Md)))
+        (specimen("PageColumn Facts", "Reading column with facts", PageColumn::new(
+            Facts::new()
+                .fact("Jobs", html! { "12" })
+                .fact("Median time", html! { "4.2 s" })
+                .fact("Pass rate", html! { "97%" }),
+        )))
     }
 }
 

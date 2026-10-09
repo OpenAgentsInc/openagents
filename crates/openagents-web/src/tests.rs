@@ -1995,9 +1995,9 @@ async fn the_stats_page_renders_the_pay_hosts_numbers() {
     assert!(
         plugins.contains("<td>explain-error</td><td>2</td><td>1,200.5 sats</td><td>900 sats</td>")
     );
-    assert!(html.contains(
-        "<td>alice</td><td>1,200.5 sats</td><td>900 sats</td><td>300.5 sats</td>"
-    ));
+    assert!(
+        html.contains("<td>alice</td><td>1,200.5 sats</td><td>900 sats</td><td>300.5 sats</td>")
+    );
     // Recent payouts: the author's part only, no treasury-only payout.
     let payouts = &html[html.find("id=\"stats-payouts\"").unwrap()..];
     let payouts = &payouts[..payouts.find("</table>").unwrap()];

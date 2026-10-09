@@ -104,7 +104,10 @@ mod tests {
         let narrow = PageColumn::new(html! { p { "x" } }).render().into_string();
         assert_eq!(narrow, "<div class=\"oa-page\"><p>x</p></div>");
         let wide = PageColumn::new("<b>").wide().render().into_string();
-        assert_eq!(wide, "<div class=\"oa-page\" data-width=\"wide\">&lt;b&gt;</div>");
+        assert_eq!(
+            wide,
+            "<div class=\"oa-page\" data-width=\"wide\">&lt;b&gt;</div>"
+        );
     }
 
     #[test]
