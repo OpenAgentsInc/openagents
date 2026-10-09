@@ -37,3 +37,13 @@ What the captures show:
   Coder Light.
 - No Verse, Map, Gym runs, or Give feedback: those return in a build made
   with `OPENAGENTS_DESKTOP_PREVIEW=on`.
+
+Second pass (same day): the conversation is on the web's chat scale
+(text-md 16/24 body, headings heading-lg to heading-xs, code text-sm),
+shared with the phone through `oa_tokens::typography::conversation`; the
+command palette and account menu rows are on `--menu-font-size` (text-sm
+14/20, second lines text-xs); the composer says "Ask OpenAgents anything"
+as the web does; the account menu is headed by the computer's name (the
+captures answer as a host named "Studio Mac"); cards, the Connect a phone
+page's buttons, and the slide viewer's chrome paint from the shared token
+roles in both looks.
