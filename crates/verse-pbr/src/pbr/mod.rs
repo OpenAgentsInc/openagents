@@ -31,6 +31,7 @@ pub mod instanced;
 pub mod output;
 pub mod relight;
 pub mod screen;
+pub mod taa;
 pub mod sky;
 pub mod textured;
 pub mod textured_bake;

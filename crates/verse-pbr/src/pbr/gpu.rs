@@ -37,6 +37,7 @@ use super::environment::{SkyInputs, SkyLightGpu};
 use super::instanced::{self, GpuVertex, Instance, Prepared};
 use super::output::{self, Look, Output, OutputTargets};
 use super::screen::{self as screen_space, ScreenGpu, ScreenTargets, ScreenUniform};
+use super::taa::{Taa, TaaTargets};
 use super::textured::{self, Pass, TexturedMaterial, TexturedScene, TexturedVertex};
 use super::{GlowVertex, LitVertex, Neon, ProbeGrid, Sky, sky};
 use verse_engine::lighting::{
@@ -721,6 +722,8 @@ pub struct PhotoTargets {
     guide_groups: [wgpu::BindGroup; 2],
     /// The high tier's prepass depth and screen-space terms.
     screen: Option<ScreenTargets>,
+    /// The temporal histories, where anti-aliasing runs.
+    taa: Option<TaaTargets>,
     /// The resolved scene, kept to copy from when it has one sample.
     scene_texture: wgpu::Texture,
     /// Medium and High: the water's scene copies and planar mirror
@@ -816,6 +819,9 @@ pub struct Photo {
     /// The high tier's depth prepass and screen-space passes.
     prepass: Option<Prepass>,
     screen: Option<ScreenGpu>,
+    /// Temporal anti-aliasing where the depth prepass runs and the scene
+    /// has a float target ([`super::taa`]).
+    taa: Option<Taa>,
     /// The screen-space terms on tiers that do not trace them: one white
     /// texel, so lit surfaces multiply their light by exactly one.
     screen_white: wgpu::TextureView,
@@ -1604,6 +1610,8 @@ impl Photo {
         let screen = plan
             .runs(PhotoPass::ScreenTrace)
             .then(|| ScreenGpu::new(device));
+        let taa = (screen.is_some() && capability.hdr.is_some() && super::taa::enabled())
+            .then(|| Taa::new(device, scene_format));
         // Every fx sheet as one layer of a texture array (group 3), so all
         // particles draw in one pipeline. Group 2 is the textured
         // material's slot in this shader module, so it stays empty here.
@@ -2100,6 +2108,7 @@ impl Photo {
             textured_sampler,
             post,
             prepass,
+            taa,
             screen,
             screen_white: white_terms(device, queue),
             stars: star_buffer,
@@ -2826,6 +2835,12 @@ impl Photo {
             .screen
             .as_ref()
             .map(|screen| screen.targets(device, width, height));
+        let taa = match (&self.taa, &screen) {
+            (Some(taa), Some(screen)) if self.post.is_some() => {
+                Some(taa.targets(device, scene_format, &scene, &screen.depth, [width, height]))
+            }
+            _ => None,
+        };
         let terms = screen
             .as_ref()
             .map_or(&self.screen_white, |screen| &screen.occlusion);
@@ -2899,6 +2914,7 @@ impl Photo {
             water_effects: self.water_policy.effects(),
             guide_groups,
             screen,
+            taa,
             size: [width, height],
             msaa,
             scene,
@@ -3560,6 +3576,13 @@ impl Photo {
     ) {
         let [width, height] = targets.size;
         let reversed = reversed_depth() * view.view_proj;
+        // With temporal anti-aliasing the frame draws a sub-pixel off,
+        // differently each frame; culling and the shadows' cascades keep
+        // the steady camera.
+        let drawn = match (&self.taa, &targets.taa, neon.key) {
+            (Some(taa), Some(_), Some(_)) => taa.jitter(reversed, targets.size).0,
+            _ => reversed,
+        };
         let frame = |view_proj: Mat4, width_px: f32, mode: f32| Frame {
             view_proj: view_proj.to_cols_array_2d(),
             inv_view_proj: view_proj.inverse().to_cols_array_2d(),
@@ -3598,7 +3621,7 @@ impl Photo {
             water_control: self.water_control(),
             ..Frame::zeroed()
         };
-        let mut uniform = frame(reversed, neon.line_width, 1.0);
+        let mut uniform = frame(drawn, neon.line_width, 1.0);
         uniform.set_particle_controls(neon);
         let daylight = neon.daylight.filter(super::Daylight::valid);
         if let Some(day) = &daylight {
@@ -4141,6 +4164,15 @@ impl Photo {
                     .unwrap_or(self.water_measurements.main_ms),
                 worker_ms: self.water_measurements.worker_ms,
             });
+        }
+        // The jittered scene settles into its history before bloom and the
+        // output transform read it.
+        if let (Some(taa), Some(taa_targets)) = (&mut self.taa, &mut targets.taa) {
+            if lit.is_some() {
+                taa.encode(queue, encoder, taa_targets, &targets.scene, reversed);
+            } else {
+                taa.reset();
+            }
         }
         self.post_chain(
             queue,

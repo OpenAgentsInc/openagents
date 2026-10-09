@@ -85,6 +85,43 @@ p50 and 43.4 ms at p99, and the dynamic mesh to 7 to 9 ms.
 - After the swarm, frames stay at about 25 ms because the 700 resting
   chunks are still simulated and posed every frame.
 
+## Temporal anti-aliasing (#10936)
+
+`verse_pbr::pbr::taa` adds temporal anti-aliasing to the physical path on
+the high tier, which draws the depth prepass it reprojects through. Each
+frame draws with a Halton (2, 3) sub-pixel jitter (eight phases); culling
+and the shadow cascades keep the steady camera, so cached cascades stay
+cached. After the scene, the resolve pass rebuilds the current frame at
+each pixel's center from its jittered 3 by 3 neighborhood, reprojects the
+pixel into the last frame's history through the prepass depth and the last
+camera (Catmull-Rom history reads, so the image does not soften as the
+camera moves), clamps the history in YCoCg to the neighborhood's box
+tightened to 1.5 standard deviations, and blends with inverse-luminance
+weights, trusting the current frame more as the pixel moves faster. A
+sharpening pass, bounded by the neighborhood, writes the result back into
+the scene before bloom and the output transform. `VERSE_TAA=0` turns it
+off. Objects that move on their own reproject by the camera only; the clamp
+and the motion weight keep fast debris from trailing (no visible smear in
+the impact frames).
+
+`meteor_showcase_capture --orbit` measures it: a slow orbit round the
+standing houses (`VERSE_ORBIT_SPEED`, rad/s), and the mean absolute second
+temporal difference of luminance at edge pixels. Live, High, licensed kit:
+
+| Orbit | Edge crawl off: mean / p99 | On: mean / p99 | Frame p50 off / on (ms) |
+| --- | --- | --- | --- |
+| 0.03 rad/s (under a pixel a frame) | 2.21 / 32.2 | 1.12 / 12.7 | 6.76 / 6.94 |
+| 0.1 rad/s | 6.23 / 112 | 3.27 / 49.9 | 6.84 / 7.85 |
+
+The GPU wait was 4.66 against 4.67 ms where the GPU held one clock; the
+0.1 rad/s pair caught the GPU at its other clock (5.8 ms either way across
+runs). The side-by-side
+([captures/meteor-showcase/taa-orbit-side-by-side.mp4](captures/meteor-showcase/taa-orbit-side-by-side.mp4)
+and [taa-orbit-zoom.jpg](captures/meteor-showcase/taa-orbit-zoom.jpg),
+committed proxies, off left) shows the foliage and frame edges steady with
+it on. Left: the medium tier, which has no depth prepass to reproject
+through, and per-object motion vectors for chunks.
+
 ## Instanced chunks, merged rubble, and cheaper contacts (#10937)
 
 - Broken chunks draw as GPU instances (`Town::set_instanced`, on in the

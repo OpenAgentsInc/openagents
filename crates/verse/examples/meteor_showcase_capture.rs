@@ -8,7 +8,7 @@
 //! [--flash-repeats N] [--flash-every N]
 //! [--compare-particles] [--no-particle-lighting] [--no-soft-particles]
 //! [--particle-frame N] [--particle-repeats N] [--particle-every N]
-//! [--smoke-frame N] [--restore-at SECONDS]
+//! [--smoke-frame N] [--restore-at SECONDS] [--orbit]
 //!
 //! Installs the showcase from the committed, pinned Everglade pack as
 //! `verse --meteor-showcase` does, bakes its light, and renders it offscreen
@@ -51,6 +51,16 @@
 //! and writes `restored.png` a second after it with the light settled
 //! again, so it can be compared with `establishing.png`. `capture.json` records what the last relight
 //! recomputed.
+//!
+//! `--orbit` replaces the director's camera with a slow orbit round the
+//! standing houses, under a pixel a frame at their edges, for judging
+//! temporal anti-aliasing (`verse_pbr::pbr::taa`, off with `VERSE_TAA=0`):
+//! `capture.json` then records the frames' temporal flicker, the mean
+//! absolute second difference of each pixel's luminance from frame to
+//! frame over the middle of the view, which a smooth pan keeps near zero
+//! and crawling edges raise, overall and at edges (the tenth of the pixels
+//! with the steepest gradient), and `orbit.png` is a frame of it.
+//! `VERSE_ORBIT_SPEED` sets the orbit's speed in radians a second.
 //!
 //! Run it with `VERSE_QUALITY=high` for the high tier, and with
 //! `VERSE_KIT_PACK` naming the licensed kit pack to draw it in place of its
@@ -100,6 +110,7 @@ struct Args {
     particle_repeats: usize,
     particle_every: usize,
     restore_at: Option<f32>,
+    orbit: bool,
 }
 
 /// One frame's costs, ms, and how much it drew.
@@ -429,6 +440,7 @@ fn args() -> Result<Args, String> {
         particle_repeats: 1,
         particle_every: 1,
         restore_at: None,
+        orbit: false,
     };
     while let Some(flag) = it.next() {
         let mut value = || it.next().ok_or(format!("{flag} takes a value"));
@@ -483,6 +495,7 @@ fn args() -> Result<Args, String> {
                         .map_err(|_| "--impact-frame takes a whole number".to_owned())?,
                 );
             }
+            "--orbit" => args.orbit = true,
             "--restore-at" => {
                 args.restore_at = Some(
                     value()?
@@ -635,6 +648,37 @@ fn camera(t: f32) -> (Vec3, Vec3) {
     (eye, target)
 }
 
+/// A slow orbit round the standing houses at time `t`: 30 m out and 8 m
+/// up, turning 0.03 radians a second, so their edges move under a pixel a
+/// frame, or `VERSE_ORBIT_SPEED` radians a second (0 holds still).
+fn orbit(t: f32) -> (Vec3, Vec3) {
+    let [cx, cz] = showcase::LOT;
+    let speed = std::env::var("VERSE_ORBIT_SPEED")
+        .ok()
+        .and_then(|s| s.parse::<f32>().ok())
+        .unwrap_or(0.03);
+    let angle = 2.75 + speed * t;
+    let eye = Vec3::new(cx + angle.sin() * 30.0, 8.0, cz + angle.cos() * 30.0);
+    (eye, Vec3::new(cx, 5.0, cz))
+}
+
+/// Each pixel's luminance over the middle half of a frame's RGBA bytes.
+fn middle_luma(pixels: &[u8]) -> Vec<f32> {
+    let (w, h) = (WIDTH as usize, HEIGHT as usize);
+    let mut out = Vec::with_capacity(w * h / 4);
+    for y in h / 4..h * 3 / 4 {
+        for x in w / 4..w * 3 / 4 {
+            let o = (y * w + x) * 4;
+            out.push(
+                0.2126 * f32::from(pixels[o])
+                    + 0.7152 * f32::from(pixels[o + 1])
+                    + 0.0722 * f32::from(pixels[o + 2]),
+            );
+        }
+    }
+    out
+}
+
 fn main() -> Result<(), String> {
     let args = args()?;
     std::fs::create_dir_all(&args.out).map_err(|e| format!("{}: {e}", args.out.display()))?;
@@ -758,6 +802,11 @@ fn main() -> Result<(), String> {
     let mut most_sprites = 0;
     let aspect = WIDTH as f32 / HEIGHT as f32;
     let mut cast = false;
+    let camera: fn(f32) -> (Vec3, Vec3) = if args.orbit { orbit } else { camera };
+    // The last two frames' luminance and the flicker between them.
+    let mut lumas: std::collections::VecDeque<Vec<f32>> = std::collections::VecDeque::new();
+    let mut flicker: Vec<f32> = Vec::new();
+    let mut edge_crawl: Vec<f32> = Vec::new();
     let mut restored = false;
     let mut relit = [None; 2];
     // The aftermath still comes before any restore, half a second ahead.
@@ -975,6 +1024,47 @@ fn main() -> Result<(), String> {
         if restored_still {
             write_png(&args.out.join("restored.png"), &pixels)?;
         }
+        if args.orbit {
+            let luma = middle_luma(&pixels);
+            // Past the first second, once the history has filled.
+            if lumas.len() == 2 && t >= 1.0 {
+                let (a, b) = (&lumas[0], &lumas[1]);
+                let second: Vec<f32> = a
+                    .iter()
+                    .zip(b)
+                    .zip(&luma)
+                    .map(|((a, b), c)| (a - 2.0 * b + c).abs())
+                    .collect();
+                flicker.push(second.iter().sum::<f32>() / second.len() as f32);
+                // At edges: the tenth of the pixels with the steepest
+                // gradient in the middle frame.
+                let (w, h) = (WIDTH as usize / 2, HEIGHT as usize / 2);
+                let mut grad = vec![0.0f32; w * h];
+                for y in 1..h - 1 {
+                    for x in 1..w - 1 {
+                        let i = y * w + x;
+                        grad[i] = (b[i + 1] - b[i - 1]).hypot(b[i + w] - b[i - w]);
+                    }
+                }
+                let mut sorted = grad.clone();
+                let cut = sorted.len() * 9 / 10;
+                let threshold = *sorted.select_nth_unstable_by(cut, f32::total_cmp).1;
+                edge_crawl.extend(
+                    second
+                        .iter()
+                        .zip(&grad)
+                        .filter(|(_, g)| **g >= threshold && **g > 0.0)
+                        .map(|(s, _)| *s),
+                );
+            }
+            lumas.push_back(luma);
+            if lumas.len() > 2 {
+                lumas.pop_front();
+            }
+            if k == frames / 2 {
+                write_png(&args.out.join("orbit.png"), &pixels)?;
+            }
+        }
         if k == aftermath {
             write_png(&args.out.join("aftermath.png"), &pixels)?;
             if args.compare_particles {
@@ -1069,6 +1159,17 @@ fn main() -> Result<(), String> {
         "impact_frame": impact_frame,
         "relit": relit_report,
         "restore_at": args.restore_at,
+        "orbit": args.orbit,
+        "taa": std::env::var("VERSE_TAA").map_or(true, |v| !matches!(v.as_str(), "0" | "off" | "false")),
+        "temporal_flicker": if flicker.is_empty() { serde_json::Value::Null } else {
+            serde_json::json!({
+                "frames": flicker.len(),
+                "mean": flicker.iter().sum::<f32>() / flicker.len() as f32,
+                "spread": spread(flicker.clone()),
+                "edge_crawl_mean": edge_crawl.iter().sum::<f32>() / edge_crawl.len().max(1) as f32,
+                "edge_crawl": spread(edge_crawl.clone()),
+            })
+        },
         "smoke_frame": smoke_frame,
         "particle_lighting_enabled": !args.no_particle_lighting,
         "soft_particles_enabled": !args.no_soft_particles,
