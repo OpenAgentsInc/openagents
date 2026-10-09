@@ -913,3 +913,22 @@ Secret Manager (`coder-github-client-secret`,
 them there. Staging smoke 77 passed; openagents.com smoke (`--production`)
 56 passed, 0 failed, 2 skipped; no errors in the first 10 minutes.
 Rollback: `scripts/deploy/web.sh rollback coder-web-pg-23232df3b0-221054`.
+
+### 2026-10-09 23:34 UTC: no third-party analytics from coder-serve
+
+`coder-web-d43ac84129-20261009233236` (`9d5e6858ad`, image
+`openagents-web@sha256:d43ac841…`) serves 100% of openagents.com. The
+`coder-serve` sidecar no longer carries `POSTHOG_PROJECT_TOKEN` or
+`POSTHOG_HOST`, so it sends no PostHog events (privacy policy section 5:
+no third-party analytics). `scripts/deploy/web.sh promote` and
+`deploy/production/render.py` drop both settings. The `coder` repository
+removed the PostHog client from `coder-serve` (`4df6443812`), so the next
+`coder` image sends nothing even with them set. The Secret Manager secret
+`openagents-posthog-project-token` is no longer referenced; it stays in
+place for the owner to delete. Staging smoke (`--keep-spec`) 77 passed. The
+no-traffic candidate failed only its 8 gateway checks, because the gateway
+waits for traffic (`GATEWAY_HOLD=serving`). openagents.com smoke
+(`--production`) after the shift: 56 passed, 0 failed, 2 skipped. In the
+first 10 minutes the homepage answered 200 on 20 of 20 checks, and the
+revision logged no errors after the shift.
+Rollback: `scripts/deploy/web.sh rollback coder-web-26cdd2ff30-20261009225545`.
