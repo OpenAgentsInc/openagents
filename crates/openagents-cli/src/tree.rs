@@ -82,7 +82,7 @@ const COMPLETIONS: &[Declared] = &[Declared::computer("", Effect::ReadOnly)];
 const PYLON: &[Declared] = &[
     Declared::computer("whoami", Effect::LocalWrite),
     Declared::computer("serve", Effect::LongRunning),
-    Declared::computer("ask", Effect::Publishes),
+    Declared::computer("ask", Effect::Spends),
     Declared::computer("status", Effect::LocalWrite),
     Declared::computer("pool", Effect::Publishes),
     Declared::computer("pool verify", Effect::LocalWrite),

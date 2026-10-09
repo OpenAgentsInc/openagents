@@ -28463,7 +28463,7 @@
               }
             ],
             "summary": "Find a pylon, run one job, and publish a receipt. --pylon NPUB          Use this pylon instead of the best fresh one. --wait SECS           How long to wait for the answer (default 90). --no-receipt          Do not publish a receipt.",
-            "effect": "publishes",
+            "effect": "spends",
             "runs_on": "connected_computer"
           }
         },

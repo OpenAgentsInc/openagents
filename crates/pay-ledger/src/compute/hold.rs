@@ -383,6 +383,7 @@ impl Ledger {
         at: i64,
         provider: &str,
         receipt: &str,
+        plugin: Option<crate::PluginFee>,
     ) -> Result<(Hold, Option<Recorded>)> {
         if self.shared_retail_outcome(id)?.is_some() {
             return Err(Error::Invalid(
@@ -397,6 +398,7 @@ impl Ledger {
             Split::PylonJob {
                 provider: provider.into(),
                 receipt: receipt.into(),
+                plugin,
             },
         )
     }
@@ -433,7 +435,12 @@ impl Ledger {
                 SettlementInput {
                     key: format!("debit:{id}"),
                     resource: resource.into(),
-                    plugin_id: None,
+                    plugin_id: match &split {
+                        Split::PylonJob {
+                            plugin: Some(p), ..
+                        } => Some(p.plugin_id.clone()),
+                        _ => None,
+                    },
                     release_id: None,
                     price_msat: charge_msat,
                     received_msat: charge_msat,

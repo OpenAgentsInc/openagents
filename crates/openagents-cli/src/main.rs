@@ -83,6 +83,8 @@ mod plugin_use;
 #[cfg(unix)]
 mod plugin_workbench;
 mod provider_key;
+#[cfg(unix)]
+mod pylon_wallet;
 mod quest;
 mod reach;
 mod relay;
@@ -392,6 +394,9 @@ fn main() -> ExitCode {
         "reach" => reach::run(&output, &rest),
         "playtest" => playtest::run(&output, &rest),
         "relay" => relay::run(&output, &rest),
+        #[cfg(unix)]
+        "pylon" => pylon_wallet::run(output.json(), &rest),
+        #[cfg(not(unix))]
         "pylon" => pylon::cli::run(output.json(), &rest),
         #[cfg(unix)]
         "service" => service::run(&output, &rest),

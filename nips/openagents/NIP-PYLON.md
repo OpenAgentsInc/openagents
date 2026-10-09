@@ -357,11 +357,14 @@ is unchanged. `crates/pylon` runs the checker (`openagents pylon check`),
 the per-class league, and `pylon-check` XP awards (NIP-XP).
 
 Phase P3 (2026-10-08, test networks): a pylon that advertises
-`lightning-bolt11` answers an admitted CJ request with `status` feedback
-`payment-required` carrying `profile`, `network`, `amount_msat`, `bolt11`,
-and `payment_hash`, and runs the job only after that invoice settles. The
+`x402-exact` sells each job under [X402](NIP-X402.md)'s native binding:
+the buyer seals a `request` whose input is the digest of the CJ request
+plaintext, pays the pylon's `challenge`, and sends the CJ request only
+after the pylon's `admitted` status; the pylon runs a CJ request only when
+its plaintext matches an admitted purchase's input, once per purchase. The
 buyer's receipt then carries the payment with its preimage. Brokered sales
-carry the customer's `x402-exact` payment in the broker's receipt. Readers
+carry the customer's `x402-exact` payment, settled through the broker's
+x402 facilitator, in the broker's receipt. Readers
 sum paid amounts per network and light a pylon's coin only for receipts
 that verify.
 

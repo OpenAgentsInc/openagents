@@ -5,6 +5,14 @@
 //! central split ledger (`crates/pay-ledger`) under the v2 rule, with the
 //! provider's share bound to that receipt.
 //!
+//! The customer's x402 payment goes through the embedded x402 facilitator
+//! before the broker buys anything: [`Broker::quote`] issues the `http:1`
+//! terms, and [`Broker::admit`] verifies the proof and inserts its replay
+//! key exactly once. [`Broker::settle`] then records only a payment the
+//! facilitator consumed, for the amount it consumed, so a receipt alone
+//! never creates a sale. When the job used a priced plugin, its author's
+//! per-call fee comes first in the split.
+//!
 //! Providers are paid by balance sweeps, never per job: [`Broker::sweep`]
 //! runs the ordinary payout worker (`pay_ledger::payout::tick`) under
 //! `Policy::pylon_sweeps` (1,000 sats owed, or the oldest share ten
@@ -17,15 +25,24 @@
 //! per-payment and daily ceilings.
 
 use std::collections::BTreeSet;
+use std::sync::Arc;
 
 use nostr::domain::Event;
 use nostr::pylon::check::{Verdict, counted, parse_check};
 use nostr::pylon::{Outcome, Receipt, parse_receipt};
+use nostr::x402::{PaymentRequirements, binding_hash, http_binding};
+use openagents_x402::facilitator::{Admission, Facilitator};
+use openagents_x402::{PaymentPayload, ReplayStore};
 use pay_ledger::adjustment::Adjustment;
 use pay_ledger::payout::{Invoice, Lookup, Outcome as SendOutcome, Policy, Rails, Step, tick};
-use pay_ledger::{Ledger, PayoutState, Rail, Recorded, SettlementInput, Split};
+use pay_ledger::{Ledger, PayoutState, PluginFee, Rail, Recorded, SettlementInput, Split};
+use serde_json::{Map, json};
 
-use crate::paid::{Grant, Network};
+use crate::paid::{Grant, Network, Receiver};
+
+/// The replay store the broker's facilitator shares with every other
+/// process that settles OpenAgents' x402 payments.
+pub type Replay = Arc<dyn ReplayStore + Send + Sync>;
 
 /// The ledger party a pylon's provider share goes to: the pylon's NIP-OA
 /// owner when its beacon carries one, else the pylon key.
@@ -40,22 +57,108 @@ pub struct Broker {
     network: Network,
     /// The broker's key: the buyer of every receipt it settles.
     key: String,
+    facilitator: Facilitator<Replay>,
 }
 
 impl Broker {
-    /// A broker over `ledger` on `network`, buying as `key`. Installs the
-    /// v2 split rule.
+    /// A broker over `ledger` on `network`, buying as `key`, settling
+    /// customers' x402 payments against `replay`. Installs the v2 split
+    /// rule.
     ///
     /// # Errors
     ///
     /// When the rule cannot be installed.
-    pub fn open(mut ledger: Ledger, network: Network, key: &str) -> Result<Self, String> {
+    pub fn open(
+        mut ledger: Ledger,
+        network: Network,
+        key: &str,
+        replay: Replay,
+    ) -> Result<Self, String> {
         ledger.install_pylon_rule().map_err(|e| e.to_string())?;
         Ok(Self {
             ledger,
             network,
             key: key.into(),
+            facilitator: Facilitator::new(replay, nostr::x402::DEFAULT_CLOCK_SKEW),
         })
+    }
+
+    /// The x402 `http:1` terms for one brokered job sold at `url` for
+    /// `amount_msat`, with `body` as the request: an invoice from
+    /// OpenAgents' `receiver`, bound to that request.
+    ///
+    /// # Errors
+    ///
+    /// A book on a network x402 does not name, a malformed request, or a
+    /// receiver that cannot issue the invoice.
+    pub fn quote(
+        &self,
+        receiver: &dyn Receiver,
+        url: &str,
+        body: &[u8],
+        amount_msat: u64,
+        expiry_secs: u32,
+    ) -> Result<PaymentRequirements, String> {
+        let network = self
+            .network
+            .x402()
+            .ok_or("x402 names bitcoin and testnet only")?;
+        let hash =
+            binding_hash(&http_binding("POST", url, body, &[]).map_err(|e| format!("{e:?}"))?)
+                .map_err(|e| format!("{e:?}"))?;
+        let mut raw = [0u8; 32];
+        for (i, byte) in raw.iter_mut().enumerate() {
+            *byte = u8::from_str_radix(&hash[2 * i..2 * i + 2], 16).map_err(|e| e.to_string())?;
+        }
+        let invoice = receiver.invoice(amount_msat, raw, expiry_secs)?;
+        let mut extra = Map::new();
+        extra.insert("assetTransferMethod".into(), json!("bolt11"));
+        extra.insert("paymentFlow".into(), json!("upfront"));
+        extra.insert("requestHash".into(), json!(hash));
+        extra.insert("requestBindingProfile".into(), json!("http:1"));
+        extra.insert("requestBindingParams".into(), json!({"headers": []}));
+        extra.insert("invoice".into(), json!(invoice));
+        Ok(PaymentRequirements {
+            scheme: "exact".into(),
+            network: network.into(),
+            amount: amount_msat.to_string(),
+            asset: "BTC".into(),
+            pay_to: receiver.pay_to(),
+            max_timeout_seconds: u64::from(expiry_secs),
+            extra,
+        })
+    }
+
+    /// Settle a customer's x402 payment for one brokered job through the
+    /// facilitator: verify the proof against `requirements` (the terms
+    /// [`Broker::quote`] issued) and insert its replay key exactly once,
+    /// naming `sale`, the broker's own reference. Only an admitted payment
+    /// buys a job; a replayed proof is `duplicate_settlement`.
+    ///
+    /// # Errors
+    ///
+    /// Terms on another network, and the facilitator's refusal reason.
+    pub fn admit(
+        &self,
+        requirements: &PaymentRequirements,
+        payload: &PaymentPayload,
+        sale: &str,
+        now: u64,
+    ) -> Result<Admission, String> {
+        if Some(requirements.network.as_str()) != self.network.x402() {
+            return Err(format!(
+                "terms on {} in the {} book",
+                requirements.network,
+                self.network.as_str()
+            ));
+        }
+        self.facilitator
+            .settle(requirements, payload, sale, now)
+            .map_err(|refused| {
+                refused
+                    .error_reason
+                    .unwrap_or_else(|| "settlement_failed".into())
+            })
     }
 
     #[must_use]
@@ -91,21 +194,26 @@ impl Broker {
 
     /// Settle the x402 sale that paid for the job in `event`: the receipt
     /// carries the customer's payment (`x402-exact`, this book's network),
-    /// whose hash is the settlement key; `received_msat` is what reached
-    /// the receiver after its service-provider fee. `owner` is the pylon's
-    /// verified NIP-OA owner, if any. Replaying a settled sale returns it.
+    /// whose hash is the settlement key, and the facilitator must already
+    /// have consumed that payment ([`Broker::admit`]) for the same amount;
+    /// `received_msat` is what reached the receiver after its
+    /// service-provider fee. `owner` is the pylon's verified NIP-OA owner,
+    /// if any; `plugin` is a priced plugin the job used. Replaying a
+    /// settled sale returns it.
     ///
     /// # Errors
     ///
     /// A receipt that does not verify, that the broker did not buy, that
     /// was not accepted, or whose payment is missing, on another network,
-    /// or under another profile; and ledger refusals.
+    /// under another profile, or never settled through the facilitator;
+    /// and ledger refusals.
     pub fn settle(
         &mut self,
         event: &Event,
         owner: Option<&str>,
         received_msat: u64,
         at: i64,
+        plugin: Option<PluginFee>,
     ) -> Result<Recorded, String> {
         let receipt = self.job(event, owner)?;
         let payment = receipt
@@ -125,12 +233,25 @@ impl Broker {
         if received_msat > payment.amount_msat {
             return Err("received more than the price".into());
         }
+        let network = self
+            .network
+            .x402()
+            .ok_or("x402 names bitcoin and testnet only")?;
+        let consumed = self
+            .facilitator
+            .store()
+            .get(&format!("{network}:{}", payment.payment_hash))
+            .map_err(|e| e.to_string())?
+            .ok_or("the facilitator never settled this payment")?;
+        if consumed.amount_msat != payment.amount_msat {
+            return Err("the receipt's amount is not what the facilitator settled".into());
+        }
         let price = i64::try_from(payment.amount_msat).map_err(|e| e.to_string())?;
         self.ledger
             .record_settlement(SettlementInput {
                 key: payment.payment_hash.clone(),
                 resource: pay_ledger::pylon::RESOURCE.into(),
-                plugin_id: None,
+                plugin_id: plugin.as_ref().map(|p| p.plugin_id.clone()),
                 release_id: None,
                 price_msat: price,
                 received_msat: i64::try_from(received_msat).map_err(|e| e.to_string())?,
@@ -140,6 +261,7 @@ impl Broker {
                 split: Split::PylonJob {
                     provider: party(&receipt.provider, owner),
                     receipt: event.id.clone(),
+                    plugin,
                 },
             })
             .map_err(|e| e.to_string())
@@ -160,6 +282,7 @@ impl Broker {
         hold: &str,
         charge_msat: i64,
         at: i64,
+        plugin: Option<PluginFee>,
     ) -> Result<Recorded, String> {
         let receipt = self.job(event, owner)?;
         if receipt.payment.is_some() {
@@ -173,6 +296,7 @@ impl Broker {
                 at,
                 &party(&receipt.provider, owner),
                 &event.id,
+                plugin,
             )
             .map_err(|e| e.to_string())?;
         recorded.ok_or_else(|| "a zero charge settles nothing".into())

@@ -27,7 +27,7 @@ use crate::identity::Identity;
 use crate::job::{self, Refusal};
 use crate::lease::{Dedicated, Machine};
 use crate::now;
-use crate::paid::{self, Invoicer, Price, Terms};
+use crate::paid::{self, Grant, Price, Receiver, Seller};
 use crate::relay::{self, Frame, LIFETIME};
 
 /// How a pylon is set up.
@@ -54,10 +54,8 @@ pub struct Config {
     /// every beacon carries it.
     pub owner: Option<MintedOwnerAttestation>,
     /// A posted price per job; `None` serves free (`free-v1`). A priced
-    /// pylon needs an invoicer ([`Provider::priced`]).
+    /// pylon sells each job under NIP-X402 ([`Provider::priced`]).
     pub price: Option<Price>,
-    /// How long a priced pylon waits for a job's invoice to settle.
-    pub payment_wait: Duration,
 }
 
 impl Config {
@@ -82,7 +80,6 @@ impl Config {
             job_timeout: Duration::from_secs(90),
             owner: None,
             price: None,
-            payment_wait: Duration::from_secs(30),
         }
     }
 
@@ -126,7 +123,7 @@ pub struct Provider {
     identity: Identity,
     engine: Arc<dyn Engine>,
     machine: Arc<dyn Machine>,
-    invoicer: Option<Arc<dyn Invoicer>>,
+    seller: Option<Seller>,
     generation: u64,
     since: u64,
     state: Mutex<State>,
@@ -169,29 +166,39 @@ impl Provider {
         Self::build(config, identity, engine, machine, None)
     }
 
-    /// A priced pylon: every job is paid first through an invoice from
-    /// `invoicer`, on the price's network.
+    /// A priced pylon: every job is bought first under NIP-X402, with
+    /// invoices from `receiver` on the price's network; its purchase
+    /// ledger and replay store live under `config.home`.
     ///
     /// # Errors
     ///
-    /// As [`Provider::on`], and when the config has no price, the invoicer
-    /// is on another network, or the price is on `bitcoin` (mainnet sales
-    /// wait for the owner's grant and a real wallet adapter).
+    /// As [`Provider::on`], and when the config has no price, the price is
+    /// on a network x402 does not name, or the price is on `bitcoin`
+    /// without the owner's standing `grant` or over its per-payment
+    /// ceiling.
     pub fn priced(
         config: Config,
         identity: Identity,
         engine: Arc<dyn Engine>,
         machine: Arc<dyn Machine>,
-        invoicer: Arc<dyn Invoicer>,
+        receiver: Arc<dyn Receiver>,
+        grant: Option<Grant>,
     ) -> Result<Arc<Self>, String> {
         let price = config.price.ok_or("a priced pylon needs a price")?;
-        if invoicer.network() != price.network {
-            return Err("the invoicer is on another network than the price".into());
-        }
         if !price.network.is_test() {
-            return Err("mainnet pylon sales are off until the owner turns them on".into());
+            let grant = grant.ok_or("mainnet pylon sales need the owner's standing grant")?;
+            if price.msat > grant.per_payment_msat {
+                return Err("the price is over the owner's per-payment ceiling".into());
+            }
         }
-        Self::build(config, identity, engine, machine, Some(invoicer))
+        let dir =
+            config
+                .home
+                .join("x402")
+                .join(format!("{}-{}", config.pylon, &identity.pubkey()[..16]));
+        let per_hour = config.rate_per_minute.saturating_mul(60);
+        let seller = Seller::open(&dir, identity.pubkey(), price, receiver, Some(per_hour))?;
+        Self::build(config, identity, engine, machine, Some(seller))
     }
 
     fn build(
@@ -199,10 +206,10 @@ impl Provider {
         identity: Identity,
         engine: Arc<dyn Engine>,
         machine: Arc<dyn Machine>,
-        invoicer: Option<Arc<dyn Invoicer>>,
+        seller: Option<Seller>,
     ) -> Result<Arc<Self>, String> {
-        if config.price.is_some() && invoicer.is_none() {
-            return Err("a priced pylon needs an invoicer".into());
+        if config.price.is_some() && seller.is_none() {
+            return Err("a priced pylon needs a wallet".into());
         }
         if let Some(owner) = &config.owner {
             crate::identity::check_owner(&identity, owner)?;
@@ -231,7 +238,7 @@ impl Provider {
             identity,
             engine,
             machine,
-            invoicer,
+            seller,
             generation,
             since: now(),
             outbound,
@@ -404,7 +411,13 @@ impl Provider {
             "#p": [self.pubkey()],
             "since": now().saturating_sub(10),
         });
-        if conn.send(json!(["REQ", "jobs", filter])).await.is_err() {
+        let mut req = json!(["REQ", "jobs", filter]);
+        if self.seller.is_some()
+            && let Some(frame) = req.as_array_mut()
+        {
+            frame.push(paid::inbox(self.pubkey(), now().saturating_sub(10)));
+        }
+        if conn.send(req).await.is_err() {
             return;
         }
         let deadline = tokio::time::Instant::from_std(window);
@@ -413,7 +426,11 @@ impl Provider {
                 frame = conn.next() => match frame {
                     Ok(value) => match Frame::parse(value) {
                         Frame::Event { sub, event } if sub == "jobs" => {
-                            tokio::spawn(Arc::clone(&self).admit(*event));
+                            if event.kind == job::REQUEST_KIND {
+                                tokio::spawn(Arc::clone(&self).admit(*event));
+                            } else {
+                                tokio::spawn(Arc::clone(&self).purchase(*event));
+                            }
                         }
                         Frame::Ok { accepted: false, message, .. } => {
                             eprintln!("pylon: relay refused an event: {message}");
@@ -487,11 +504,16 @@ impl Provider {
                 }
             }
         }
+        let mut plaintext = String::new();
         let request = match gate {
             Err(refusal) => Err(refusal),
             Ok(()) => match job::open(&self.identity, &event) {
                 Err(_) => Err(Refusal::new("malformed", "request does not decrypt")),
-                Ok(plaintext) => job::parse_request(&plaintext),
+                Ok(plain) => {
+                    let parsed = job::parse_request(&plain);
+                    plaintext = plain;
+                    parsed
+                }
             },
         };
         let request = match request {
@@ -509,19 +531,22 @@ impl Provider {
             }
         };
         self.changed.notify_one();
-        if let Err(refusal) = self.collect(&event, request.version).await {
-            let mut state = self.state.lock().await;
-            state.counters.refused += 1;
-            state.free += 1;
-            drop(state);
-            self.changed.notify_one();
-            self.answer(
-                &event,
-                job::FEEDBACK_KIND,
-                &job::refusal_body(request.version, &refusal),
-            );
-            return;
-        }
+        let purchase = match self.collect(&event, &plaintext).await {
+            Ok(purchase) => purchase,
+            Err(refusal) => {
+                let mut state = self.state.lock().await;
+                state.counters.refused += 1;
+                state.free += 1;
+                drop(state);
+                self.changed.notify_one();
+                self.answer(
+                    &event,
+                    job::FEEDBACK_KIND,
+                    &job::refusal_body(request.version, &refusal),
+                );
+                return;
+            }
+        };
         self.answer(
             &event,
             job::FEEDBACK_KIND,
@@ -547,7 +572,7 @@ impl Provider {
                 {
                     body["usage"] = json!({"input": input, "output": output});
                 }
-                Some(body)
+                Ok(body)
             }
             Ok(Err(e)) => {
                 eprintln!("pylon: job {} failed: {e}", &event.id[..12]);
@@ -560,7 +585,7 @@ impl Provider {
                         &Refusal::new("unavailable", "the model failed"),
                     ),
                 );
-                None
+                Err("worker_failed")
             }
             Err(_) => {
                 self.state.lock().await.counters.failed += 1;
@@ -572,60 +597,103 @@ impl Provider {
                         &Refusal::new("limit_exceeded", "the job ran out of time"),
                     ),
                 );
-                None
+                Err("execute_until_passed")
             }
         };
-        if let Some(body) = body {
-            self.answer(&event, job::RESULT_KIND, &body);
+        if let Ok(body) = &body {
+            self.answer(&event, job::RESULT_KIND, body);
+        }
+        if let Some(purchase) = purchase {
+            // The result's plaintext is what `answer` sealed: the body's
+            // JSON text.
+            let result = body.as_ref().map(ToString::to_string).map_err(|e| *e);
+            self.settle_purchase(&event.pubkey, &purchase, result).await;
         }
         self.state.lock().await.free += 1;
         self.changed.notify_one();
     }
 
-    /// For a priced pylon, send the job's terms and wait until its invoice
-    /// settles; a free pylon collects nothing.
-    async fn collect(&self, request: &Event, version: u64) -> Result<(), Refusal> {
-        let (Some(price), Some(invoicer)) = (self.config.price, self.invoicer.as_ref()) else {
-            return Ok(());
+    /// For a priced pylon, the buyer's admitted NIP-X402 purchase whose
+    /// input is this request's plaintext, moved to `running`; a free pylon
+    /// collects nothing. A job no settled purchase admits is refused.
+    async fn collect(&self, request: &Event, plaintext: &str) -> Result<Option<String>, Refusal> {
+        let Some(seller) = &self.seller else {
+            return Ok(None);
         };
-        let memo = format!("pylon job {}", request.id);
-        let invoice = {
-            let invoicer = Arc::clone(invoicer);
-            tokio::task::spawn_blocking(move || invoicer.invoice(price.msat, &memo))
-                .await
-                .map_err(|e| e.to_string())
-                .and_then(|r| r)
-                .map_err(|e| Refusal::new("unavailable", format!("no invoice: {e}")))?
+        let (purchase, records) = seller
+            .start(
+                &request.pubkey,
+                plaintext,
+                &self.config.relay,
+                &request.id,
+                now(),
+            )
+            .map_err(|e| Refusal::new("payment_required", e))?;
+        self.send_records(&request.pubkey, &purchase, &records);
+        Ok(Some(purchase))
+    }
+
+    /// Record a paid job's end on its purchase and tell the buyer.
+    async fn settle_purchase(
+        &self,
+        buyer: &str,
+        purchase: &str,
+        result: Result<String, &'static str>,
+    ) {
+        let Some(seller) = &self.seller else {
+            return;
         };
-        let hash = invoice.payment_hash.clone();
-        self.answer(
-            request,
-            job::FEEDBACK_KIND,
-            &paid::terms_body(
-                version,
-                &Terms {
-                    network: price.network,
-                    invoice,
-                },
-            ),
-        );
-        let until = Instant::now() + self.config.payment_wait;
-        loop {
-            let invoicer = Arc::clone(invoicer);
-            let hash = hash.clone();
-            let settled = tokio::task::spawn_blocking(move || invoicer.settled(&hash))
-                .await
-                .unwrap_or(false);
-            if settled {
-                return Ok(());
+        let records = seller.finish(buyer, purchase, result.as_deref().map_err(|e| *e), now());
+        self.send_records(buyer, purchase, &records);
+    }
+
+    /// Answer one NIP-X402 record a buyer sealed to this pylon. Only keys
+    /// the allowlist admits may buy.
+    pub async fn purchase(self: Arc<Self>, event: Event) {
+        let Some(seller) = &self.seller else {
+            return;
+        };
+        if event.validate_crypto().is_err() {
+            return;
+        }
+        if let Some(allow) = &self.config.allow
+            && !allow.contains(&event.pubkey)
+        {
+            return;
+        }
+        {
+            let mut state = self.state.lock().await;
+            if !state.seen.insert(event.id.clone()) {
+                return;
             }
-            if Instant::now() >= until {
-                return Err(Refusal::new(
-                    "payment_required",
-                    "the job's invoice was not paid in time",
-                ));
+            state.order.push_back(event.id.clone());
+            if state.order.len() > SEEN_BOUND
+                && let Some(old) = state.order.pop_front()
+            {
+                state.seen.remove(&old);
             }
-            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        let Some((record, signed)) = paid::open_record(&self.identity, &event) else {
+            return;
+        };
+        if record.provider != self.pubkey() || record.buyer != event.pubkey {
+            return;
+        }
+        let records = seller.handle(&record, &signed, now());
+        self.send_records(&record.buyer, &record.purchase, &records);
+    }
+
+    /// Seal NIP-X402 records to `buyer` in the purchase's mailbox and queue them.
+    fn send_records(&self, buyer: &str, purchase: &str, records: &[serde_json::Value]) {
+        for record in records {
+            match paid::seal_record(&self.identity, buyer, purchase, record, now()) {
+                Ok(event) => {
+                    if self.outbound.try_send(event).is_err() {
+                        eprintln!("pylon: outbound queue full; dropped a purchase record");
+                    }
+                }
+                Err(e) => eprintln!("pylon: sealing a purchase record: {e}"),
+            }
         }
     }
 

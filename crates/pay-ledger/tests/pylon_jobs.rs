@@ -29,6 +29,7 @@ fn job(key: &str, receipt: &str, msat: i64) -> SettlementInput {
         split: Split::PylonJob {
             provider: PROVIDER.into(),
             receipt: receipt.into(),
+            plugin: None,
         },
     }
 }
@@ -80,6 +81,7 @@ fn the_v2_split_pays_the_provider_and_names_the_receipt() {
     own.split = Split::PylonJob {
         provider: OPENAGENTS.into(),
         receipt: id(104),
+        plugin: None,
     };
     assert!(ledger.record_settlement(own).is_err());
     // Plugin calls keep their v1 terms under v2.
@@ -124,7 +126,7 @@ fn a_compute_balance_debit_pays_a_pylon_job() {
         })
         .unwrap();
     let (_, recorded) = ledger
-        .settle_pylon_hold("h1", 12_000, AT + 3, PROVIDER, &id(201))
+        .settle_pylon_hold("h1", 12_000, AT + 3, PROVIDER, &id(201), None)
         .unwrap();
     let recorded = recorded.unwrap();
     assert_eq!(recorded.key, "debit:h1");
@@ -408,4 +410,37 @@ fn any_other_loss_on_a_pylon_job_still_holds_payouts() {
         .unwrap();
     assert_eq!(loss.loss_msat, 1_000);
     assert!(ledger.commission_payouts_held().unwrap());
+}
+
+#[test]
+fn a_plugin_author_fee_comes_first_in_a_pylon_job_split() {
+    let mut ledger = Ledger::in_memory().unwrap();
+    ledger.install_pylon_rule().unwrap();
+    let plugin = pay_ledger::PluginFee {
+        plugin_id: "weather".into(),
+        author: "npub-author".into(),
+        fee_msat: 2_000,
+    };
+    let mut input = job(&id(1), &id(101), 10_000);
+    input.split = Split::PylonJob {
+        provider: PROVIDER.into(),
+        receipt: id(101),
+        plugin: Some(plugin),
+    };
+    // The settlement must name the plugin it paid for.
+    assert!(ledger.record_settlement(input.clone()).is_err());
+    input.plugin_id = Some("weather".into());
+    ledger.record_settlement(input).unwrap();
+    // Author 2,000; provider 85% of the remaining 8,000; OpenAgents the rest.
+    assert_eq!(share(&ledger, &id(1), "npub-author", "author"), 2_000);
+    assert_eq!(share(&ledger, &id(1), PROVIDER, "provider"), 6_800);
+    assert_eq!(share(&ledger, &id(1), OPENAGENTS, "openagents"), 1_200);
+    // A forfeit takes the provider's share only; the author's fee stands.
+    let forfeit = ledger.forfeit_pylon_job(&id(101), &id(901), AT).unwrap();
+    assert_eq!(forfeit.reduced_msat, 6_800);
+    assert_eq!(ledger.accrued("npub-author").unwrap(), 2_000);
+    // A plugin ID without the plugin's fee is refused.
+    let mut stray = job(&id(2), &id(102), 10_000);
+    stray.plugin_id = Some("weather".into());
+    assert!(ledger.record_settlement(stray).is_err());
 }

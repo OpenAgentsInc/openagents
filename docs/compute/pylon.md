@@ -217,27 +217,43 @@ above its point.
 Two settlement paths, both on test networks until the owner turns mainnet
 on ([verse-compute](verse-compute.md#p3-paid-jobs)).
 
-**Direct, per job.** A pylon with a price (`provider::Config::price`,
-started with `Provider::priced` and an invoicer) advertises
-`price_hint_msat` and the `lightning-bolt11` settlement profile. For each
-admitted request it sends `payment-required` feedback (`27000`, NIP-44
-encrypted) with a BOLT11 invoice, its payment hash, network, and amount
-(`pylon::paid::terms_body`), waits up to `payment_wait` for the invoice to
-settle, and only then runs the job; an unpaid invoice ends in a
-`payment_required` refusal. The buyer (`client::Ask::pay` =
-`Pay::Wallet`) refuses terms on another network or over its per-job
-ceiling, pays, checks that the preimage hashes to the payment hash, and
-puts `{profile, network, amount_msat, payment_hash, preimage}` in its
-`3201` receipt. A priced pylon on `bitcoin` refuses to start.
+**Direct, per job, under NIP-X402.** A pylon with a price
+(`provider::Config::price`, started with `Provider::priced` and an x402
+`Receiver`) advertises `price_hint_msat` and the `x402-exact` settlement
+profile, and sells each job through NIP-X402's native records
+(`nostr:openagents:1`, private kind `3188` artifacts), never through
+invoices inside job messages. The buyer (`client::Ask::pay` =
+`Pay::Wallet`) buys the job before it sends it: it seals a `request` whose
+input is the digest of the CJ request plaintext it will send. The pylon's
+`paid::Seller` answers with a `challenge` carrying an x402 `exact`
+Lightning invoice bound to that request. The buyer checks the challenge,
+refuses an invoice on another network or over its ceiling, pays, and
+seals a `claim` with the preimage. The seller settles the claim through
+the embedded x402 facilitator and its replay store, which admits each
+proof exactly once, and sends the `admitted` status. Only then does the
+buyer send the CJ request, and the pylon runs it only if its plaintext
+matches an admitted purchase's input; the purchase moves to `running`,
+then `completed` or `failed`, and a second job for one purchase is
+refused. The buyer's `3201` receipt carries `{profile, network,
+amount_msat, payment_hash, preimage}`. x402 names `bitcoin` and `testnet`
+only, so a priced pylon on `signet` or `regtest` refuses to start.
 
 **Brokered.** A customer pays OpenAgents by an x402 payment or a compute
-balance debit; OpenAgents' broker key buys the job (`Pay::Brokered` puts
+balance debit. OpenAgents' broker issues `http:1` terms on its own
+receiver (`Broker::quote`) and settles the customer's proof through the
+embedded x402 facilitator and its replay store before it buys anything
+(`Broker::admit`). The broker key then buys the job (`Pay::Brokered` puts
 the customer's x402 payment in the receipt) and `pylon::broker::Broker`
 settles it in the central split ledger (`crates/pay-ledger`) under rule
-v2: the provider (the pylon's NIP-OA owner, else its key) gets
-`provider_bps` = 8,500 of the net receipts, OpenAgents the rest, and the
-settlement names the receipt it pays (`pay_ledger::pylon`, one settlement
-per receipt). `Broker::sweep` pays providers by balance sweeps through the
+v2, but only for a payment the facilitator consumed, at the amount it
+consumed; a receipt alone never creates a sale. The provider (the pylon's
+NIP-OA owner, else its key) gets `provider_bps` = 8,500 of the net
+receipts, OpenAgents the rest, and the settlement names the receipt it
+pays (`pay_ledger::pylon`, one settlement per receipt). When the job used
+a priced plugin, its author's per-call fee comes first, as
+`[plugin_call]` pays it (`pay_ledger::PluginFee`), and the provider's
+share is of what remains; a forfeit never takes the author's fee.
+`Broker::sweep` pays providers by balance sweeps through the
 ordinary payout worker (`Policy::pylon_sweeps`: 1,000 sats owed, or the
 oldest share ten minutes old), never per job. `Broker::forfeit` turns a
 trusted checker's `check-fail` on a sold job's receipt into a forfeit of
@@ -248,12 +264,28 @@ every payout, as any other ledger loss does. A book takes receipts of one networ
 on `bitcoin` a sweep needs the owner's grant (`paid::Grant`), with every
 payout under its per-payment and daily ceilings.
 
-`pylon::paid::TestLightning` is an in-memory regtest network for fixtures;
-it refuses `bitcoin`. `crates/pylon/tests/paid.rs` runs nine direct paid
-jobs on three priced pylons and 1,000 brokered jobs across three pylons
-through the in-process relay, with sweeps, forfeits, and ledger rows
-matched to receipts. `cargo run -p pylon --features fixture --example
-paid_field` runs a paid regtest field for captures.
+**A real wallet.** `openagents pylon serve --price-msat N` sells from this
+computer's Lightning node (`openagents x402 node`, the receiver `x402
+native-serve` uses), and `openagents pylon ask --max-msat N` pays through
+`openagents x402`'s payer, under its policy's ceilings, allowlist, and
+daily cap, recording each payment in its ledger
+(`crates/openagents-cli/src/pylon_wallet.rs`). Both default to `testnet`.
+On `bitcoin` both refuse before any wallet opens unless the owner's
+standing grant is in `grant.json` in the pylon home (`{"per_payment_msat":
+N, "daily_msat": N}`, written by the owner; no command writes it). A
+priced pylon's price must be under its per-payment ceiling, and
+`paid::Granted` journals every mainnet payment before it is attempted and
+refuses one over either ceiling. The standalone `pylon` binary has no
+wallet and refuses both.
+
+`pylon::paid::TestLightning` (feature `fixture`) is an in-memory testnet
+for fixtures that signs real BOLT11 invoices, so its proofs pass the x402
+facilitator; it refuses `bitcoin`. `crates/pylon/tests/paid.rs` runs nine
+direct jobs bought under NIP-X402 on three priced pylons and 1,000
+brokered jobs across three pylons through the in-process relay, with
+sweeps, forfeits, facilitator refusals, and ledger rows matched to
+receipts. `cargo run -p pylon --features fixture --example paid_field`
+runs a paid testnet field for captures.
 
 In Verse, a pylon whose newest paid receipt finished in the last 15 seconds
 shows a coin of light over its point: gold for mainnet sats, pale and
@@ -263,12 +295,12 @@ carries its paid msat per network, test networks apart from `bitcoin`.
 
 ## Limits
 
-- No real wallet adapter for pylons or buyers yet: paid jobs run on
-  `TestLightning` only, and `openagents pylon serve` and `ask` stay free.
-  Mainnet needs the owner's grant and ceilings (`NEEDS_OWNER.md`).
-- Direct payment rides NIP-CJ feedback, not NIP-X402's native `3188`
-  purchase records; the brokered x402 path is recorded from the receipt,
-  not run through `openagents-x402`'s facilitator.
+- Paid jobs are tested on `TestLightning` only; the real wallet path
+  (`openagents pylon serve --price-msat`, `ask --max-msat`) has not been
+  run against a live wallet. Mainnet needs the owner's grant and ceilings
+  (`NEEDS_OWNER.md`).
+- Direct paid jobs need a network x402 names: `testnet` or `bitcoin`, not
+  `signet` or `regtest`.
 - The capability is a qualified ID, not a published NIP-CAP manifest.
 - Redundant runs compare normalized text exactly; there is no Jev
   judgment for non-deterministic answers yet.

@@ -13,13 +13,15 @@ use nostr::pylon::{
     self, BEACON_MARKER, Beacon, BeaconBook, Freshness, Lane, Outcome, Payment, RECEIPT_V, Receipt,
     Status, UnitKind, Units, parse_beacon, receipt_event, sha256_hex,
 };
+use openagents_x402::PaymentPayload;
+use openagents_x402::native::{self, Phase, RecordType, Signed, parse_status};
 use serde::Serialize;
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 
 use crate::identity::Identity;
 use crate::job;
 use crate::now;
-use crate::paid::Payer;
+use crate::paid::{self, Network, Payer};
 use crate::relay::{self, Frame, LIFETIME};
 
 /// Fetch and verify the beacons on a relay, keeping the newest per pylon.
@@ -112,8 +114,8 @@ pub struct Ask {
 /// How a buyer pays for a job.
 #[derive(Clone)]
 pub enum Pay {
-    /// Directly: pay the pylon's per-job invoice from this wallet, up to
-    /// `max_msat` a job.
+    /// Directly: buy the job from the pylon under NIP-X402 before sending
+    /// it, paying its invoice from this wallet, up to `max_msat` a job.
     Wallet {
         payer: Arc<dyn Payer>,
         max_msat: u64,
@@ -166,6 +168,23 @@ pub async fn ask(buyer: &Identity, ask: &Ask) -> Result<Answer, String> {
 
     let body = job::request_body(&ask.prompt, &[]);
     let request_plain = body.to_string();
+    // A direct payment buys the job before it is sent: the purchase's
+    // input is this request's plaintext.
+    let mut bought = None;
+    if let Some(Pay::Wallet { payer, max_msat }) = &ask.pay {
+        bought = Some(
+            buy(
+                &mut conn,
+                buyer,
+                &beacon.provider,
+                &request_plain,
+                payer,
+                *max_msat,
+                ask.wait,
+            )
+            .await,
+        );
+    }
     let request = job::seal(
         buyer,
         &beacon.provider,
@@ -192,7 +211,10 @@ pub async fn ask(buyer: &Identity, ask: &Ask) -> Result<Answer, String> {
             started_at: sent_at_unix,
         },
     );
-    conn.send(json!(["EVENT", request])).await?;
+    // A purchase that failed sends no job: nothing would run it.
+    if !matches!(bought, Some(Err(_))) {
+        conn.send(json!(["EVENT", request])).await?;
+    }
 
     let mut contact_ms = None;
     let mut answer_ms = None;
@@ -206,6 +228,14 @@ pub async fn ask(buyer: &Identity, ask: &Ask) -> Result<Answer, String> {
         Some(Pay::Brokered(payment)) => Some(payment.clone()),
         _ => None,
     };
+    match bought {
+        Some(Ok(paid)) => payment = Some(paid),
+        Some(Err(why)) => {
+            error = Some(format!("payment: {why}"));
+            outcome = Outcome::Failed;
+        }
+        None => {}
+    }
     let deadline = tokio::time::Instant::now() + ask.wait;
     while text.is_none() && error.is_none() {
         let frame = match tokio::time::timeout_at(deadline, conn.next()).await {
@@ -247,14 +277,6 @@ pub async fn ask(buyer: &Identity, ask: &Ask) -> Result<Answer, String> {
                         }
                         result_plain = Some(plain);
                         outcome = Outcome::Accepted;
-                    }
-                } else if value["status"] == crate::paid::PAYMENT_REQUIRED {
-                    match pay_terms(ask.pay.as_ref(), &value, payment.is_some()).await {
-                        Ok(paid) => payment = Some(paid),
-                        Err(why) => {
-                            error = Some(format!("payment: {why}"));
-                            outcome = Outcome::Failed;
-                        }
                     }
                 } else if value["status"] == "error" {
                     error = Some(format!(
@@ -346,20 +368,145 @@ pub async fn ask(buyer: &Identity, ask: &Ask) -> Result<Answer, String> {
     })
 }
 
-/// Pay a pylon's `payment-required` terms from the buyer's wallet.
-async fn pay_terms(pay: Option<&Pay>, body: &Value, paid: bool) -> Result<Payment, String> {
-    let terms = crate::paid::parse_terms(body)?.ok_or("not payment terms")?;
-    if paid {
-        return Err("the pylon asked for a second payment".into());
-    }
-    let Some(Pay::Wallet { payer, max_msat }) = pay else {
-        return Err("the pylon asks for payment and this buyer has no wallet".into());
+/// Buy one job from `provider` under NIP-X402 before sending it: seal a
+/// `request` whose input is `request_plain`, check the pylon's challenge,
+/// pay its invoice from `payer` under `max_msat`, seal the `claim`, and
+/// wait until the pylon admits the purchase. Returns the receipt's
+/// payment. A refusal before payment leaves nothing paid.
+async fn buy(
+    conn: &mut nostr_transport::Connection,
+    buyer: &Identity,
+    provider: &str,
+    request_plain: &str,
+    payer: &Arc<dyn Payer>,
+    max_msat: u64,
+    wait: Duration,
+) -> Result<Payment, String> {
+    let nonce: [u8; 32] = secp256k1::rand::random();
+    let purchase: String = nonce.iter().map(|b| format!("{b:02x}")).collect();
+    let at = now();
+    let record = native::buyer::request(
+        &purchase,
+        buyer.pubkey(),
+        provider,
+        paid::capability(provider),
+        paid::OPERATION,
+        paid::plaintext_ref(request_plain, paid::INPUT_SCHEMA),
+        max_msat,
+        max_msat / 50,
+        at,
+        60,
+        wait.as_secs().max(1),
+        3_600,
+    )?;
+    conn.send(json!([
+        "REQ",
+        "purchase",
+        paid::inbox(buyer.pubkey(), at.saturating_sub(5))
+    ]))
+    .await?;
+    let event = paid::seal_record(buyer, provider, &purchase, &record, at)?;
+    let request = Signed::new(&record)?.with_event(&event.id, buyer.pubkey());
+    let mut sent = vec![event.id.clone()];
+    conn.send(json!(["EVENT", event])).await?;
+    let deadline = tokio::time::Instant::now() + wait.min(Duration::from_secs(60));
+    let mut payment: Option<Payment> = None;
+    let result = loop {
+        let frame = match tokio::time::timeout_at(deadline, conn.next()).await {
+            Err(_) => {
+                break Err(match payment {
+                    Some(_) => "paid, but the pylon never admitted the purchase".to_string(),
+                    None => "the pylon never answered the purchase request".to_string(),
+                });
+            }
+            Ok(Err(e)) => break Err(format!("relay: {e}")),
+            Ok(Ok(frame)) => Frame::parse(frame),
+        };
+        let event = match frame {
+            Frame::Ok {
+                id,
+                accepted: false,
+                message,
+            } if sent.contains(&id) => {
+                break Err(format!("relay refused a purchase record: {message}"));
+            }
+            Frame::Event { sub, event } if sub == "purchase" => event,
+            _ => continue,
+        };
+        if event.pubkey != provider {
+            continue;
+        }
+        let Some((record, signed)) = paid::open_record(buyer, &event) else {
+            continue;
+        };
+        if record.purchase != purchase || record.provider != provider {
+            continue;
+        }
+        match record.kind {
+            RecordType::Challenge if payment.is_none() => {
+                let terms = native::buyer::check_challenge(&record, &request, now(), 60)?;
+                let network = Network::from_x402(&terms.requirements.network)
+                    .ok_or("the challenge names an unknown network")?;
+                let decoded = nostr::x402::decode_invoice(&terms.invoice)
+                    .map_err(|_| "the challenge's invoice does not decode")?;
+                let invoice = paid::Invoice {
+                    bolt11: terms.invoice.clone(),
+                    payment_hash: decoded
+                        .payment_hash()
+                        .iter()
+                        .map(|b| format!("{b:02x}"))
+                        .collect(),
+                    amount_msat: terms.amount_msat,
+                };
+                let paying = Arc::clone(payer);
+                let paid = tokio::task::spawn_blocking(move || {
+                    paid::pay(paying.as_ref(), &invoice, network, max_msat)
+                })
+                .await
+                .map_err(|e| e.to_string())??;
+                let mut proof = Map::new();
+                proof.insert("preimage".into(), Value::String(paid.preimage.clone()));
+                let payload = PaymentPayload {
+                    x402_version: 2,
+                    resource: None,
+                    accepted: terms.requirements,
+                    payload: proof,
+                    extensions: None,
+                };
+                let claim = native::buyer::claim(&record, &request, &signed, &payload, now())?;
+                let event = paid::seal_record(buyer, provider, &purchase, &claim, now())?;
+                sent.push(event.id.clone());
+                conn.send(json!(["EVENT", event])).await?;
+                payment = Some(paid);
+            }
+            RecordType::Status => {
+                let status = parse_status(&record.body)?;
+                match status.phase {
+                    Phase::Admitted | Phase::Running | Phase::Completed => {
+                        if let Some(paid) = payment.take() {
+                            break Ok(paid);
+                        }
+                    }
+                    Phase::Refused | Phase::Failed | Phase::Unknown => {
+                        break Err(format!(
+                            "the pylon refused the purchase: {}",
+                            status.cause.as_deref().unwrap_or("no cause")
+                        ));
+                    }
+                    Phase::Offered | Phase::ClaimPending => {}
+                }
+            }
+            RecordType::ClaimRejected => {
+                break Err(format!(
+                    "the pylon rejected the payment: {}",
+                    record.body["cause"].as_str().unwrap_or("no cause")
+                ));
+            }
+            _ => {}
+        }
     };
-    let payer = Arc::clone(payer);
-    let max = *max_msat;
-    tokio::task::spawn_blocking(move || crate::paid::pay(payer.as_ref(), &terms, max))
-        .await
-        .map_err(|e| e.to_string())?
+    let _ = conn.send(json!(["CLOSE", "purchase"])).await;
+    result
 }
 
 /// Append the receipt to `receipts.jsonl` in `home`. Best effort: a buyer

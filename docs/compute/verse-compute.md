@@ -377,8 +377,9 @@ answer or the agreed answer) is a routing mode, not a protocol change.
 Payments start free and stay free until checks work.
 
 1. **Free (`free-v1`).** P1 runs only free jobs. Receipts carry no payment.
-2. **Test sats.** P3 starts on `regtest` or `signet`: real Lightning code
-   paths, worthless sats, every amount marked **TEST** in the world.
+2. **Test sats.** P3 starts on `testnet`, the test network x402's `exact`
+   Lightning method names: real Lightning code paths, worthless sats,
+   every amount marked **TEST** in the world.
 3. **Mainnet.** Only after the owner turns it on, under the ceilings below.
 
 Two settlement paths cover the market:
@@ -736,10 +737,20 @@ valid preimage; capture `pylon-field-paid-test.png`.
   job a trusted checker failed, and sweeps provider balances through the
   existing payout worker under `Policy::pylon_sweeps`; a mainnet sweep
   needs the owner's grant and stays under its ceilings.
-- `pylon::paid`: priced pylons send `payment-required` terms and run a job
-  only once its invoice settled; buyers pay under a ceiling and publish
-  the preimage in the receipt. `TestLightning` is the in-memory regtest
-  network.
+- `pylon::paid`: priced pylons sell each job through NIP-X402's native
+  `3188` purchase records; the seller settles the buyer's claim through
+  the embedded x402 facilitator and its replay store and runs only the CJ
+  job an admitted purchase names. Buyers pay under a ceiling and publish
+  the preimage in the receipt. `TestLightning` is the in-memory testnet
+  that signs real BOLT11 invoices.
+- The broker settles a customer's x402 payment through the same
+  facilitator before it buys the job, and records only a payment the
+  facilitator consumed. A priced plugin's author fee comes first in a
+  pylon job split (`pay_ledger::PluginFee`).
+- `openagents pylon serve --price-msat` and `ask --max-msat` use this
+  computer's Lightning node and `openagents x402`'s payer and policy; on
+  `bitcoin` both refuse without the owner's `grant.json`, and every
+  mainnet payment stays under its ceilings.
 - `crates/pylon/tests/paid.rs`: 1,000 brokered jobs across three pylons on
   the in-process relay settle through six sweeps with every ledger row
   matching its receipt; ten failed jobs swept already are recorded losses
@@ -747,9 +758,8 @@ valid preimage; capture `pylon-field-paid-test.png`.
 - Everglade lights a pylon's coin for 15 seconds after a receipt with a
   valid preimage, pale and marked TEST on test networks.
 
-Not yet: a real wallet adapter (pylons and `openagents pylon` stay free
-outside fixtures), NIP-X402 native `3188` records for direct jobs, and
-mainnet, which waits on the owner (`NEEDS_OWNER.md`).
+Not yet: a paid job on a live wallet, and mainnet, both of which wait on
+the owner (`NEEDS_OWNER.md`).
 
 ### P4: the agent market
 

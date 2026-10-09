@@ -717,11 +717,17 @@ pub(crate) fn payer(args: &Args, phone: bool) -> Result<Payer, String> {
         Some("phone") if phone => Ok(Payer::Phone),
         Some(_) if phone => Err("--pay-with takes wallet, node, or phone".into()),
         Some(_) => Err("--pay-with takes wallet or node".into()),
-        None => Ok(default_payer(
-            openagents_spark::computer::has_seed(&openagents_spark::computer::home()),
-            config::home().join(config::CONFIG_FILE).is_file(),
-        )),
+        None => Ok(computer_payer()),
     }
+}
+
+/// The payer this computer uses when nothing names one: its wallet, unless
+/// it has none and has a Lightning node set up.
+pub(crate) fn computer_payer() -> Payer {
+    default_payer(
+        openagents_spark::computer::has_seed(&openagents_spark::computer::home()),
+        config::home().join(config::CONFIG_FILE).is_file(),
+    )
 }
 
 /// The payer when `--pay-with` is not given.

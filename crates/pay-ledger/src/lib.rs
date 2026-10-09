@@ -159,10 +159,23 @@ pub enum Split {
     /// A brokered pylon compute job: the provider's share under the
     /// effective rule's `[pylon_job]`, bound to the NIP-PYLON receipt
     /// (`3201` event ID) it pays.
+    ///
+    /// When the job used a priced plugin, `plugin` pays its author the
+    /// plugin's declared per-call fee first, as `[plugin_call]` does; the
+    /// provider's share is then taken from what remains.
     PylonJob {
         provider: String,
         receipt: String,
+        plugin: Option<PluginFee>,
     },
+}
+/// A priced plugin a pylon job used: its author's per-call fee.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PluginFee {
+    /// The plugin's ID; the settlement records it as `plugin_id`.
+    pub plugin_id: String,
+    pub author: String,
+    pub fee_msat: i64,
 }
 #[derive(Debug, Clone)]
 pub struct SettlementInput {
@@ -820,11 +833,15 @@ pub(crate) fn record_settlement_in(tx: &Connection, input: SettlementInput) -> R
             shares.push((beneficiary.as_str(), role, *amount_msat));
             *amount_msat
         }
-        Split::PylonJob { provider, receipt } => {
+        Split::PylonJob {
+            provider,
+            receipt,
+            plugin,
+        } => {
             if provider.is_empty()
                 || provider == OPENAGENTS
                 || !pylon::is_event_id(receipt)
-                || input.plugin_id.is_some()
+                || input.plugin_id.as_deref() != plugin.as_ref().map(|p| p.plugin_id.as_str())
                 || input.release_id.is_some()
             {
                 return Err(Error::Invalid(
@@ -839,9 +856,28 @@ pub(crate) fn record_settlement_in(tx: &Connection, input: SettlementInput) -> R
             if pylon::settlement_for(tx, receipt)?.is_some() {
                 return Err(Error::Conflict("the receipt already has a settlement"));
             }
-            let amount = ((input.received_msat as i128 * bps as i128) / 10_000) as i64;
+            // The plugin author's fee comes first, as `[plugin_call]` pays
+            // it; the provider's share is of what remains.
+            let fee = match plugin {
+                Some(p) => {
+                    if p.plugin_id.is_empty()
+                        || p.author.is_empty()
+                        || p.author == OPENAGENTS
+                        || p.fee_msat < 0
+                        || p.fee_msat > input.price_msat
+                    {
+                        return Err(Error::Invalid("plugin id, author, or declared fee"));
+                    }
+                    short = input.received_msat < p.fee_msat;
+                    let fee = input.received_msat.min(p.fee_msat);
+                    shares.push((p.author.as_str(), "author", fee));
+                    fee
+                }
+                None => 0,
+            };
+            let amount = (((input.received_msat - fee) as i128 * bps as i128) / 10_000) as i64;
             shares.push((provider.as_str(), "provider", amount));
-            amount
+            fee + amount
         }
         Split::OpenAgents => 0,
     };
@@ -885,7 +921,10 @@ pub(crate) fn record_settlement_in(tx: &Connection, input: SettlementInput) -> R
             params![input.key, party, role, amount],
         )?;
     }
-    if let Split::PylonJob { provider, receipt } = &input.split {
+    if let Split::PylonJob {
+        provider, receipt, ..
+    } = &input.split
+    {
         tx.execute(
             "INSERT INTO pylon_job(settlement,receipt,provider) VALUES(?,?,?)",
             params![input.key, receipt, provider],

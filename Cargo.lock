@@ -11772,6 +11772,7 @@ dependencies = [
  "futures-util",
  "nostr",
  "nostr-transport",
+ "openagents-x402",
  "pay-ledger",
  "pylon",
  "reqwest 0.12.28",

@@ -1,7 +1,7 @@
-//! A paid Pylon Field on regtest for captures: an in-process relay, three
+//! A paid Pylon Field on testnet for captures: an in-process relay, three
 //! priced pylons of different classes on fake engines, and a buyer that
-//! pays each job from an in-memory test-sat wallet (`TestLightning`), one
-//! job every second, round-robin. Every receipt carries a preimage that
+//! buys each job under NIP-X402 from an in-memory test-sat wallet
+//! (`TestLightning`), one job every second, round-robin. Every receipt carries a preimage that
 //! hashes to its payment hash, so Verse lights each pylon's TEST coin.
 //! Nothing touches a wallet or a live relay.
 //!
@@ -21,7 +21,7 @@ use nostr::pylon::{Class, Family, Tier};
 use pylon::client::{self, Ask, Pay};
 use pylon::fixture::{Oracle, relay};
 use pylon::identity::Identity;
-use pylon::paid::{Invoicer, Network, Payer, Price, TestLightning};
+use pylon::paid::{Network, Payer, Price, Receiver, TestLightning};
 use pylon::provider::{Config, Provider};
 
 #[tokio::main]
@@ -32,7 +32,7 @@ async fn main() -> Result<(), String> {
         .unwrap_or(300);
     let (url, _hub) = relay().await?;
     let home = std::env::temp_dir().join(format!("pylon-paid-field-{}", std::process::id()));
-    let net = Arc::new(TestLightning::new(Network::Regtest)?);
+    let net = Arc::new(TestLightning::new(Network::Testnet)?);
     let mut keys = Vec::new();
     for (slug, family, tier, memory_gb) in [
         ("studio-mac", Family::UnifiedMemory, Tier::Large, 64),
@@ -51,14 +51,15 @@ async fn main() -> Result<(), String> {
         };
         config.price = Some(Price {
             msat: 3_000,
-            network: Network::Regtest,
+            network: Network::Testnet,
         });
         let provider = Provider::priced(
             config,
             key.clone(),
             Arc::new(Oracle),
             Arc::new(pylon::lease::Dedicated),
-            Arc::clone(&net) as Arc<dyn Invoicer>,
+            Arc::clone(&net) as Arc<dyn Receiver>,
+            None,
         )?;
         tokio::spawn(Arc::clone(&provider).run(std::future::pending()));
         keys.push(key);
@@ -89,7 +90,7 @@ async fn main() -> Result<(), String> {
         )
         .await?;
         println!(
-            "job {n}: {} paid {:?} msat (TEST, regtest), receipt {:?}",
+            "job {n}: {} paid {:?} msat (TEST, testnet), receipt {:?}",
             answer.label, answer.paid_msat, answer.receipt
         );
         tokio::time::sleep(Duration::from_millis(700)).await;

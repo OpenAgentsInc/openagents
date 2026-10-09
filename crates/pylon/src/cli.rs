@@ -9,13 +9,14 @@ use std::time::Duration;
 use nostr::pylon::{PoolPolicy, Tier};
 use serde_json::{Value, json};
 
-use crate::client::{self, Ask};
+use crate::client::{self, Ask, Pay};
 use crate::engine::Psionic;
 use crate::field::RelayField;
 use crate::identity::{
     Identity, check_owner, hex_pubkey, load_owner, mint_owner, npub, parse_owner, save_owner,
 };
 use crate::lease::{Dedicated, Leases, Machine};
+use crate::paid::{Grant, Granted, Network, Price, Wallet};
 use crate::pool;
 use crate::provider::{Config, Provider};
 use crate::{DEFAULT_RELAY, home};
@@ -24,8 +25,9 @@ use crate::{DEFAULT_RELAY, home};
 pub const USAGE: &str = "\
 Usage: openagents pylon <command> [options]
 
-Share this computer's model as a NIP-PYLON pylon, or use one. Free jobs
-only; every job is NIP-44 encrypted to the pylon.
+Share this computer's model as a NIP-PYLON pylon, or use one. Every job is
+NIP-44 encrypted to the pylon. Jobs are free unless the pylon names a price;
+a priced job is bought first under NIP-X402 from this computer's wallet.
 
 Commands:
   whoami                    Print this computer's pylon, buyer, and aggregator keys.
@@ -45,6 +47,10 @@ Commands:
                             runs no owner work); otherwise each job takes a
                             background `pylon` lease and the pylon drains
                             while the owner's work needs the computer.
+      --price-msat N        Sell each job for N msat under NIP-X402, with
+                            invoices from this computer's Lightning node.
+      --network NAME        The price's network: testnet (default) or
+                            bitcoin, which needs the owner's grant.json.
   link                      Show the owner's NIP-OA link on this pylon's beacons.
       --owner-secret FILE   Mint the link with the owner key in FILE (hex or
                             nsec); the key is read once, never stored.
@@ -60,6 +66,11 @@ Commands:
       --pylon NPUB          Use this pylon instead of the best fresh one.
       --wait SECS           How long to wait for the answer (default 90).
       --no-receipt          Do not publish a receipt.
+      --max-msat N          Pay a priced pylon up to N msat for the job,
+                            from this computer's wallet (see `openagents
+                            x402`); its policy's ceilings also apply.
+      --network NAME        The wallet's network: testnet (default) or
+                            bitcoin, which needs the owner's grant.json.
   check canary --pylon NPUB Send the pylon its class's pinned Gym suite of
                             known-answer jobs as the buyer key, and sign a
                             check verdict on each receipt with the checker key.
@@ -87,7 +98,9 @@ Common options:
                             OPENAGENTS_PYLON_CHECKERS are always trusted.
   --json                    One JSON document on standard output.
 
-Keys live in ~/.openagents/compute (OPENAGENTS_PYLON_HOME overrides).";
+Keys live in ~/.openagents/compute (OPENAGENTS_PYLON_HOME overrides). On
+bitcoin, nothing sells or pays without the owner's standing grant in
+grant.json there: {\"per_payment_msat\": N, \"daily_msat\": N}.";
 
 struct Args {
     words: Vec<String>,
@@ -137,7 +150,13 @@ fn emit(json_out: bool, value: &Value, text: &str) {
 
 /// Run one command. Returns the process exit code.
 #[must_use]
+/// Run a command with no wallet: priced serving and paid asking refuse.
 pub fn run(json_out: bool, words: &[String]) -> u8 {
+    run_with(json_out, words, &crate::paid::NoWallet)
+}
+
+/// Run a command with `wallet` behind priced serving and paid asking.
+pub fn run_with(json_out: bool, words: &[String], wallet: &dyn Wallet) -> u8 {
     let Some((command, rest)) = words.split_first() else {
         println!("{USAGE}");
         return 2;
@@ -173,8 +192,8 @@ pub fn run(json_out: bool, words: &[String]) -> u8 {
             "route" => crate::route::command(&args.words, &home()).map(|(value, text)| {
                 emit(json_out, &value, &text);
             }),
-            "serve" => serve(json_out, &mut args, &relay).await,
-            "ask" => ask(json_out, &mut args, &relay, checkers).await,
+            "serve" => serve(json_out, &mut args, &relay, wallet).await,
+            "ask" => ask(json_out, &mut args, &relay, checkers, wallet).await,
             "status" => status(json_out, &mut args, &relay).await,
             "pool" => pool(json_out, &mut args, &relay, checkers).await,
             "check" => check(json_out, &mut args, &relay).await,
@@ -252,7 +271,35 @@ pub fn host_slug() -> String {
     }
 }
 
-async fn serve(json_out: bool, args: &mut Args, relay: &str) -> Result<(), String> {
+/// `--network`: testnet unless named.
+fn network(args: &mut Args) -> Result<Network, String> {
+    match args.value("--network")?.as_deref() {
+        None | Some("testnet") => Ok(Network::Testnet),
+        Some("bitcoin") => Ok(Network::Bitcoin),
+        Some(other) => Err(format!(
+            "--network takes testnet or bitcoin (x402 names no other), not `{other}`"
+        )),
+    }
+}
+
+/// The owner's grant, which `bitcoin` requires before any wallet opens.
+fn grant_for(network: Network) -> Result<Option<Grant>, String> {
+    let grant = Grant::load(&home())?;
+    if network == Network::Bitcoin && grant.is_none() {
+        return Err(format!(
+            "bitcoin needs the owner's standing grant in {}; nothing was opened",
+            home().join(Grant::FILE).display()
+        ));
+    }
+    Ok(grant)
+}
+
+async fn serve(
+    json_out: bool,
+    args: &mut Args,
+    relay: &str,
+    wallet: &dyn Wallet,
+) -> Result<(), String> {
     let engine_url = args
         .value("--engine")?
         .unwrap_or_else(|| "http://127.0.0.1:18080".into());
@@ -291,6 +338,8 @@ async fn serve(json_out: bool, args: &mut Args, relay: &str) -> Result<(), Strin
         }
         config.allow = Some(allow);
     }
+    let price_msat = args.number("--price-msat", 0)?;
+    let net = network(args)?;
     let machine: Arc<dyn Machine> = if args.flag("--dedicated") {
         Arc::new(Dedicated)
     } else {
@@ -302,7 +351,24 @@ async fn serve(json_out: bool, args: &mut Args, relay: &str) -> Result<(), Strin
     config.owner = load_owner(&home())?;
     let engine = Arc::new(Psionic::new(&engine_url, &model)?);
     let identity = key("provider")?;
-    let provider = Provider::on(config.clone(), identity.clone(), engine, machine)?;
+    let provider = if price_msat > 0 {
+        let grant = grant_for(net)?;
+        config.price = Some(Price {
+            msat: price_msat,
+            network: net,
+        });
+        let receiver = wallet.receiver(net)?;
+        Provider::priced(
+            config.clone(),
+            identity.clone(),
+            engine,
+            machine,
+            receiver,
+            grant,
+        )?
+    } else {
+        Provider::on(config.clone(), identity.clone(), engine, machine)?
+    };
     emit(
         json_out,
         &json!({
@@ -313,6 +379,8 @@ async fn serve(json_out: bool, args: &mut Args, relay: &str) -> Result<(), Strin
             "engine": engine_url,
             "model": model,
             "allow": config.allow.as_ref().map(|a| a.iter().map(|k| npub(k)).collect::<Vec<_>>()),
+            "price_msat": config.price.map(|p| p.msat),
+            "network": config.price.map(|p| p.network.as_str()),
         }),
         &format!(
             "pylon {} serving {model} from {engine_url} on {relay}\nnpub {}\nstop with Ctrl-C or SIGTERM; an offline beacon goes out on the way down",
@@ -379,6 +447,7 @@ async fn ask(
     args: &mut Args,
     relay: &str,
     checkers: BTreeSet<String>,
+    wallet: &dyn Wallet,
 ) -> Result<(), String> {
     let pylon = match args.value("--pylon")? {
         Some(p) => Some(hex_pubkey(&p).ok_or("--pylon is not a key")?),
@@ -386,11 +455,23 @@ async fn ask(
     };
     let wait = Duration::from_secs(args.number("--wait", 90)?.clamp(1, 600));
     let publish_receipt = !args.flag("--no-receipt");
+    let max_msat = args.number("--max-msat", 0)?;
+    let net = network(args)?;
     let prompt = args.words.join(" ");
     if prompt.trim().is_empty() {
         return Err("ask needs a prompt".into());
     }
     let buyer = key("buyer")?;
+    let pay = if max_msat > 0 {
+        let grant = grant_for(net)?;
+        let payer = wallet.payer(net, max_msat)?;
+        Some(Pay::Wallet {
+            payer: Arc::new(Granted::new(payer, grant, &home())),
+            max_msat,
+        })
+    } else {
+        None
+    };
     let answer = client::ask(
         &buyer,
         &Ask {
@@ -401,7 +482,7 @@ async fn ask(
             publish_receipt,
             home: home(),
             checkers,
-            pay: None,
+            pay,
         },
     )
     .await?;

@@ -1,20 +1,26 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 //! P3 paid pylon jobs on a test network, against the in-process relay:
 //!
-//! - Direct: three priced pylons take per-job Lightning payments on
-//!   regtest from a buyer's wallet; every receipt carries a preimage that
-//!   hashes to its payment hash, and the pool's aggregate counts the sats
-//!   under `regtest`, never `bitcoin`.
+//! - Direct: three priced pylons sell each job under NIP-X402's native
+//!   records on testnet: the buyer buys the job (request, challenge, paid
+//!   claim, admitted status) before it sends it, every receipt carries a
+//!   preimage that hashes to its payment hash, every purchase ends
+//!   `completed`, and the pool's aggregate counts the sats under
+//!   `testnet`, never `bitcoin`.
 //! - Brokered: 1,000 jobs across three pylons, each paid by a customer's
-//!   x402 payment to OpenAgents, settle in the split ledger with one row
-//!   per receipt; providers are paid by balance sweeps, never per job; and
-//!   failed checks forfeit the unpaid share of the failing jobs.
+//!   x402 payment to OpenAgents that the broker's facilitator settles
+//!   first, settle in the split ledger with one row per receipt; providers
+//!   are paid by balance sweeps, never per job; and failed checks forfeit
+//!   the unpaid share of the failing jobs.
 //!
-//! All sats are worthless test sats in memory (`TestLightning`) and the
+//! All sats are worthless testnet sats in memory (`TestLightning`) and the
 //! payout rails are a fake; nothing touches a wallet.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
+
+use openagents_x402::native::{Phase, PurchaseStore};
+use openagents_x402::{FileReplayStore, PaymentPayload};
 use std::time::Duration;
 
 use nostr::domain::Event;
@@ -27,7 +33,7 @@ use pylon::client::{self, Ask, Pay};
 use pylon::engine::Echo;
 use pylon::fixture::{Oracle, relay};
 use pylon::identity::Identity;
-use pylon::paid::{Grant, Invoicer, Network, Payer, Price, Terms, TestLightning, pay};
+use pylon::paid::{Grant, Network, Payer, Price, Receiver, TestLightning, pay};
 use pylon::pool;
 use pylon::provider::{Config, Provider};
 
@@ -60,7 +66,8 @@ async fn start(
                     key.clone(),
                     engine,
                     Arc::new(pylon::lease::Dedicated),
-                    Arc::clone(net) as Arc<dyn Invoicer>,
+                    Arc::clone(net) as Arc<dyn Receiver>,
+                    None,
                 )
                 .unwrap()
             }
@@ -110,15 +117,16 @@ fn ask(url: &str, home: &std::path::Path, pylon: Option<String>, pay: Option<Pay
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn priced_pylons_take_direct_per_job_payments_on_regtest() {
+async fn priced_pylons_sell_direct_jobs_under_nip_x402_on_testnet() {
     let (url, hub) = relay().await.unwrap();
     let home = tempfile::tempdir().unwrap();
-    let net = Arc::new(TestLightning::new(Network::Regtest).unwrap());
+    let net = Arc::new(TestLightning::new(Network::Testnet).unwrap());
     let price = Price {
         msat: 3_000,
-        network: Network::Regtest,
+        network: Network::Testnet,
     };
-    // A mainnet price never starts.
+    // A mainnet price never starts without the owner's grant, nor over its
+    // per-payment ceiling.
     let mut mainnet = Config::new(&url, "mainnet", home.path().to_path_buf());
     mainnet.price = Some(Price {
         msat: 3_000,
@@ -130,7 +138,48 @@ async fn priced_pylons_take_direct_per_job_payments_on_regtest() {
             Identity::generate(),
             Arc::new(Echo),
             Arc::new(pylon::lease::Dedicated),
-            Arc::clone(&net) as Arc<dyn Invoicer>,
+            Arc::clone(&net) as Arc<dyn Receiver>,
+            None,
+        )
+        .err()
+        .unwrap()
+        .contains("grant")
+    );
+    let mut over = Config::new(&url, "over", home.path().to_path_buf());
+    over.price = Some(Price {
+        msat: 3_000,
+        network: Network::Bitcoin,
+    });
+    assert!(
+        Provider::priced(
+            over,
+            Identity::generate(),
+            Arc::new(Echo),
+            Arc::new(pylon::lease::Dedicated),
+            Arc::clone(&net) as Arc<dyn Receiver>,
+            Some(Grant {
+                per_payment_msat: 2_999,
+                daily_msat: 100_000,
+            }),
+        )
+        .err()
+        .unwrap()
+        .contains("per-payment")
+    );
+    // x402 names no regtest: a regtest price never starts.
+    let mut regtest = Config::new(&url, "regtest", home.path().to_path_buf());
+    regtest.price = Some(Price {
+        msat: 3_000,
+        network: Network::Regtest,
+    });
+    assert!(
+        Provider::priced(
+            regtest,
+            Identity::generate(),
+            Arc::new(Echo),
+            Arc::new(pylon::lease::Dedicated),
+            Arc::clone(&net) as Arc<dyn Receiver>,
+            None,
         )
         .is_err()
     );
@@ -167,15 +216,35 @@ async fn priced_pylons_take_direct_per_job_payments_on_regtest() {
         let event = stored.iter().find(|e| &e.id == id).unwrap();
         let receipt = parse_receipt(event, None).unwrap();
         let payment = receipt.payment.unwrap();
-        assert_eq!(payment.network, "regtest");
+        assert_eq!(payment.network, "testnet");
+        assert_eq!(payment.profile, "x402-exact");
         assert!(pylon::paid::preimage_matches(
             &payment.preimage,
             &payment.payment_hash
         ));
     }
 
+    // Every purchase ran once and ended completed, in each pylon's ledger.
+    for key in &keys {
+        let n = keys
+            .iter()
+            .position(|k| k.pubkey() == key.pubkey())
+            .unwrap();
+        let dir = home
+            .path()
+            .join("x402")
+            .join(format!("pylon-{n}-{}", &key.pubkey()[..16]))
+            .join("purchases");
+        let purchases = PurchaseStore::open(&dir).unwrap().list().unwrap();
+        assert_eq!(purchases.len(), 3);
+        for purchase in purchases {
+            assert_eq!(purchase.phase().unwrap(), Phase::Completed);
+            assert!(purchase.settlement.unwrap().success);
+        }
+    }
+
     // A buyer without a wallet, or with a lower ceiling, never pays and
-    // gets no answer; the pylon refuses once the invoice goes unpaid.
+    // gets no answer: the pylon runs no job no purchase admits.
     let unpaid = client::ask(
         &Identity::generate(),
         &ask(&url, home.path(), Some(keys[0].pubkey().into()), None),
@@ -183,7 +252,7 @@ async fn priced_pylons_take_direct_per_job_payments_on_regtest() {
     .await
     .unwrap();
     assert!(unpaid.text.is_none());
-    assert!(unpaid.error.unwrap().contains("no wallet"));
+    assert!(unpaid.error.unwrap().contains("payment_required"));
     let stingy = client::ask(
         &Identity::generate(),
         &ask(
@@ -201,12 +270,12 @@ async fn priced_pylons_take_direct_per_job_payments_on_regtest() {
     assert!(stingy.error.unwrap().contains("ceiling"));
     assert_eq!(net.paid(), (9, 27_000));
 
-    // The pool counts the sats under regtest and never under bitcoin.
+    // The pool counts the sats under testnet and never under bitcoin.
     let policy = PoolPolicy::open("everglade", pool::SLICES);
     let (aggregate, _) = pool::aggregate(&Identity::generate(), &url, &policy, 60, false)
         .await
         .unwrap();
-    assert_eq!(aggregate.totals.paid_msat.regtest, 27_000);
+    assert_eq!(aggregate.totals.paid_msat.testnet, 27_000);
     assert_eq!(aggregate.totals.paid_msat.bitcoin, 0);
     for (stop, task) in running {
         stop.send(()).unwrap();
@@ -249,9 +318,46 @@ impl Rails for Rail {
     }
 }
 
+/// The URL OpenAgents sells brokered pylon jobs at, in fixtures.
+const SALE_URL: &str = "https://openagents.test/v1/pylon/jobs";
+
+/// One customer's x402 payment for a brokered job: the broker quotes
+/// `http:1` terms on OpenAgents' receiver, the customer pays the invoice,
+/// and the broker's facilitator settles the proof before anything is
+/// bought. Returns the payment for the receipt and the proof.
+fn customer_pays(
+    book: &Mutex<Broker>,
+    receiver: &TestLightning,
+    sale: &str,
+) -> (Payment, nostr::x402::PaymentRequirements, PaymentPayload) {
+    let body = format!("{{\"sale\":\"{sale}\"}}");
+    let requirements = book
+        .lock()
+        .unwrap()
+        .quote(receiver, SALE_URL, body.as_bytes(), 10_000, 300)
+        .unwrap();
+    let bolt11 = requirements.extra["invoice"].as_str().unwrap();
+    let invoice = receiver.lookup(bolt11).unwrap();
+    let payment = pay(receiver, &invoice, Network::Testnet, 10_000).unwrap();
+    let mut proof = serde_json::Map::new();
+    proof.insert("preimage".into(), payment.preimage.clone().into());
+    let payload = PaymentPayload {
+        x402_version: 2,
+        resource: None,
+        accepted: requirements.clone(),
+        payload: proof,
+        extensions: None,
+    };
+    book.lock()
+        .unwrap()
+        .admit(&requirements, &payload, sale, pylon::now())
+        .unwrap();
+    (payment, requirements, payload)
+}
+
 /// Buy `count` brokered jobs on `pylon`: the customer pays OpenAgents an
-/// x402 invoice on regtest, and the broker buys the job with that payment
-/// in its receipt.
+/// x402 invoice on testnet, the broker's facilitator settles it, and the
+/// broker buys the job with that payment in its receipt.
 async fn brokered_jobs(
     url: String,
     home: std::path::PathBuf,
@@ -259,23 +365,12 @@ async fn brokered_jobs(
     pylon: String,
     count: usize,
     receiver: Arc<TestLightning>,
+    book: Arc<Mutex<Broker>>,
 ) -> Vec<String> {
     let mut out = Vec::new();
-    for _ in 0..count {
-        let invoice = receiver.invoice(10_000, "x402 pylon job").unwrap();
-        let payment: Payment = pay(
-            receiver.as_ref(),
-            &Terms {
-                network: Network::Regtest,
-                invoice,
-            },
-            10_000,
-        )
-        .unwrap();
-        let payment = Payment {
-            profile: "x402-exact".into(),
-            ..payment
-        };
+    for n in 0..count {
+        let sale = format!("{}-{n}", &pylon[..12]);
+        let (payment, _, _) = customer_pays(&book, &receiver, &sale);
         let answer = client::ask(
             &broker,
             &ask(
@@ -308,13 +403,18 @@ async fn a_thousand_brokered_jobs_settle_through_balance_sweeps() {
     )
     .await;
     wait_for_beacons(&hub, 3).await;
-    let receiver = Arc::new(TestLightning::new(Network::Regtest).unwrap());
-    let mut broker = Broker::open(
-        Ledger::in_memory().unwrap(),
-        Network::Regtest,
-        broker_key.pubkey(),
-    )
-    .unwrap();
+    let receiver = Arc::new(TestLightning::new(Network::Testnet).unwrap());
+    let replay: pylon::broker::Replay =
+        Arc::new(FileReplayStore::open(&home.path().join("broker-replay")).unwrap());
+    let book = Arc::new(Mutex::new(
+        Broker::open(
+            Ledger::in_memory().unwrap(),
+            Network::Testnet,
+            broker_key.pubkey(),
+            Arc::clone(&replay),
+        )
+        .unwrap(),
+    ));
     let mut ledger_payees = BTreeMap::new();
     for key in &keys {
         ledger_payees.insert(
@@ -344,7 +444,8 @@ async fn a_thousand_brokered_jobs_settle_through_balance_sweeps() {
     };
     // The payout worker pays registered destinations only.
     for (party, address) in &ledger_payees {
-        broker
+        book.lock()
+            .unwrap()
             .register_payee(Payee {
                 party: party.clone(),
                 destination_kind: "lud16".into(),
@@ -368,6 +469,7 @@ async fn a_thousand_brokered_jobs_settle_through_balance_sweeps() {
                 key.pubkey().to_string(),
                 count,
                 Arc::clone(&receiver),
+                Arc::clone(&book),
             )));
         }
         let mut batch = Vec::new();
@@ -378,18 +480,25 @@ async fn a_thousand_brokered_jobs_settle_through_balance_sweeps() {
         for id in &batch {
             let event = stored.iter().find(|e| &e.id == id).unwrap();
             // What reached the receiver: the whole price, no LSP fee here.
-            broker.settle(event, None, 10_000, start_at).unwrap();
+            book.lock()
+                .unwrap()
+                .settle(event, None, 10_000, start_at, None)
+                .unwrap();
         }
         receipts.extend(batch);
         if half == 0 {
             // Every provider is owed over 1,000 sats: the sweep pays all three.
-            let steps = sweep(&mut broker, start_at + 1);
+            let steps = sweep(&mut book.lock().unwrap(), start_at + 1);
             assert!(!steps.is_empty());
             assert_eq!(rails.0.lock().unwrap().len(), 3);
         }
     }
     assert_eq!(receipts.len(), JOBS);
     assert_eq!(receiver.paid(), (JOBS, JOBS as u64 * 10_000));
+    let mut broker = Arc::try_unwrap(book)
+        .unwrap_or_else(|_| panic!("the book is still shared"))
+        .into_inner()
+        .unwrap();
 
     // Victor checks some of the third pylon's jobs and fails them: ten
     // from the first half (already swept: a recorded loss) and ten from
@@ -495,14 +604,15 @@ async fn a_thousand_brokered_jobs_settle_through_balance_sweeps() {
         Ledger::in_memory().unwrap(),
         Network::Bitcoin,
         broker_key.pubkey(),
+        Arc::clone(&replay),
     )
     .unwrap();
-    // A regtest receipt never settles in the mainnet book.
+    // A testnet receipt never settles in the mainnet book.
     assert!(
         mainnet
-            .settle(&by_id[&receipts[0]], None, 10_000, start_at)
+            .settle(&by_id[&receipts[0]], None, 10_000, start_at, None)
             .unwrap_err()
-            .contains("regtest")
+            .contains("testnet")
     );
     let mut none = |_: &mut Ledger, _: &str, _: i64| Ok(None);
     let mut id = || "m".to_string();
@@ -530,4 +640,124 @@ async fn a_thousand_brokered_jobs_settle_through_balance_sweeps() {
         stop.send(()).unwrap();
         task.await.unwrap().unwrap();
     }
+}
+
+/// A receipt the broker signs for a job on `provider` paid by `payment`.
+fn sold(broker: &Identity, provider: &str, n: u8, payment: Payment) -> Event {
+    let at = pylon::now();
+    nostr::pylon::receipt_event(
+        broker.signer(),
+        &nostr::pylon::Receipt {
+            v: nostr::pylon::RECEIPT_V.into(),
+            requires: Vec::new(),
+            meta: None,
+            buyer: broker.pubkey().into(),
+            provider: provider.into(),
+            pylon: "pylon-0".into(),
+            lane: nostr::pylon::Lane::CjConversation,
+            capability: Config::capability(provider),
+            request: format!("{n:02x}").repeat(32),
+            request_digest: nostr::pylon::sha256_hex(&[n]),
+            result_digest: Some(nostr::pylon::sha256_hex(&[n, n])),
+            started_at: at,
+            finished_at: at,
+            units: nostr::pylon::Units {
+                kind: nostr::pylon::UnitKind::Jobs,
+                count: 1,
+            },
+            outcome: nostr::pylon::Outcome::Accepted,
+            payment: Some(payment),
+        },
+        at,
+    )
+    .unwrap()
+}
+
+#[test]
+fn a_brokered_sale_settles_only_a_payment_the_facilitator_consumed() {
+    let home = tempfile::tempdir().unwrap();
+    let broker_key = Identity::generate();
+    let provider = Identity::generate();
+    let receiver = TestLightning::new(Network::Testnet).unwrap();
+    let book = Mutex::new(
+        Broker::open(
+            Ledger::in_memory().unwrap(),
+            Network::Testnet,
+            broker_key.pubkey(),
+            Arc::new(FileReplayStore::open(&home.path().join("replay")).unwrap()),
+        )
+        .unwrap(),
+    );
+    let (payment, requirements, payload) = customer_pays(&book, &receiver, "sale-1");
+    let mut broker = book.into_inner().unwrap();
+    // The same proof never settles twice.
+    assert!(
+        broker
+            .admit(&requirements, &payload, "sale-1", pylon::now())
+            .unwrap_err()
+            .contains("duplicate_settlement")
+    );
+    // A receipt naming a payment the facilitator never consumed sells
+    // nothing, whatever its preimage.
+    let preimage = "07".repeat(32);
+    let forged = Payment {
+        profile: "x402-exact".into(),
+        network: "testnet".into(),
+        amount_msat: 10_000,
+        payment_hash: nostr::pylon::sha256_hex(&[7; 32]),
+        preimage,
+    };
+    assert!(
+        broker
+            .settle(
+                &sold(&broker_key, provider.pubkey(), 1, forged),
+                None,
+                10_000,
+                0,
+                None
+            )
+            .unwrap_err()
+            .contains("never settled")
+    );
+    // Nor one that claims another amount than the facilitator settled.
+    let inflated = Payment {
+        amount_msat: 20_000,
+        ..payment.clone()
+    };
+    assert!(
+        broker
+            .settle(
+                &sold(&broker_key, provider.pubkey(), 2, inflated),
+                None,
+                20_000,
+                0,
+                None
+            )
+            .unwrap_err()
+            .contains("amount")
+    );
+    // The consumed payment settles, with a plugin author's fee first.
+    let recorded = broker
+        .settle(
+            &sold(&broker_key, provider.pubkey(), 3, payment),
+            None,
+            10_000,
+            pylon::now() as i64,
+            Some(pay_ledger::PluginFee {
+                plugin_id: "weather".into(),
+                author: "npub-author".into(),
+                fee_msat: 1_000,
+            }),
+        )
+        .unwrap();
+    let share = |party: &str, role: &str| {
+        recorded
+            .shares
+            .iter()
+            .find(|s| s.party == party && s.role == role)
+            .map_or(0, |s| s.amount_msat)
+    };
+    assert_eq!(recorded.plugin_id.as_deref(), Some("weather"));
+    assert_eq!(share("npub-author", "author"), 1_000);
+    assert_eq!(share(provider.pubkey(), "provider"), 7_650);
 }
