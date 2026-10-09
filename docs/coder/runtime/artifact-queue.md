@@ -96,7 +96,7 @@ so a submitted branch can't change the commands that check it.
 | `pin` | Optional. The source `file` whose `lines` (line prefixes) hold the pin, and the `history` list that keeps earlier digests. |
 | `message` | The repin commit's subject. `{changes}` becomes the summaries. |
 
-The registry has five entries:
+The registry has seven entries:
 
 - `everglade-pack` runs
   `cargo run --release -p verse --example everglade_pack -- assets/verse/everglade`
@@ -121,6 +121,10 @@ The registry has five entries:
   `crates/verse-zone-everglade/src/zones/everglade_pack/kit.rs`, and it runs
   only on a machine with the private export
   (`docs/verse/everglade-medieval-refactor.md`).
+- `everglade-kit-phone` derives the phone tier's kit pack from the pinned
+  kit pack in `~/.openagents/verse/private/medieval-town/packs`
+  (`everglade_kit --phone`: every image halved to at most 256 px, #10908)
+  and pins `KIT_PHONE_SHA256` and `KIT_PHONE_BYTES` in the same file.
 - `everglade-kit-bake` runs `verse-bake --layers --reuse-only` over the
   Everglade pack with the pinned kit installed. Put the completed VLAY and
   its clean CPU receipt in `~/.openagents/verse/private/medieval-town/bakes`.
