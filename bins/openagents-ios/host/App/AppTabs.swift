@@ -29,6 +29,26 @@ enum AppTab: String, CaseIterable {
 /// A screen that the Account tab pushes.
 enum AccountRoute: String, Hashable {
     case trainer, computers, tailnet, keys, identity, device, changelog, playtest, reports
+
+    /// Shown only in a preview build (`Preview`).
+    var previewOnly: Bool {
+        switch self {
+        case .trainer, .tailnet, .playtest, .reports: true
+        default: false
+        }
+    }
+}
+
+/// The release gate (docs/mobile/1.0-audit.md): the Verse tab, the Gym
+/// (Train Coder, Profile), Trainer, Playtest, Tailnet, and the display name
+/// show only when the Rust library was built with
+/// `OPENAGENTS_MOBILE_PREVIEW=on`. Release and normal simulator builds hide
+/// them; their code stays.
+enum Preview {
+    static let on = openagents_mobile_preview()
+
+    static func shows(_ tab: AppTab) -> Bool { on || tab != .verse }
+    static func shows(_ route: AccountRoute) -> Bool { on || !route.previewOnly }
 }
 
 /// Developer launch arguments that open a tab or an Account screen directly,
@@ -36,14 +56,15 @@ enum AccountRoute: String, Hashable {
 enum AppTabLaunch {
     static var tab: AppTab {
         #if DEBUG || targetEnvironment(simulator)
-        if let value = argument("--tab"), let tab = AppTab(rawValue: value) { return tab }
+        if let value = argument("--tab"), let tab = AppTab(rawValue: value), Preview.shows(tab) { return tab }
         #endif
         return .coder
     }
 
     static var route: [AccountRoute] {
         #if DEBUG || targetEnvironment(simulator)
-        if let value = argument("--account-route"), let route = AccountRoute(rawValue: value) {
+        if let value = argument("--account-route"), let route = AccountRoute(rawValue: value),
+           Preview.shows(route) {
             return [route]
         }
         #endif
@@ -92,11 +113,14 @@ struct AppTabs: View {
         TabView(selection: $tab) {
             CoderTab(bridge: bridge)
                 .tabIcon(.coder)
-            // The Verse and the Wallet are dark only for now (#11028).
-            VerseTab(app: bridge, selected: tab == .verse, studioComputer: bridge.studioComputer,
-                     connectStudio: bridge.studioConnect) { bridge.gymTrain() }
-                .environment(\.colorScheme, .dark)
-                .tabIcon(.verse)
+            // The Verse and the Wallet are dark only for now (#11028). The
+            // Verse is a preview feature.
+            if Preview.on {
+                VerseTab(app: bridge, selected: tab == .verse, studioComputer: bridge.studioComputer,
+                         connectStudio: bridge.studioConnect) { bridge.gymTrain() }
+                    .environment(\.colorScheme, .dark)
+                    .tabIcon(.verse)
+            }
             WalletTab(bridge: bridge)
                 .environment(\.colorScheme, .dark)
                 .tabIcon(.wallet)
@@ -122,14 +146,15 @@ struct AppTabs: View {
         .onChange(of: bridge.screenRequest) { _, request in
             switch request.screen {
             case "wallet": tab = .wallet
-            case "keys", "playtest": tab = .account
+            case "keys": tab = .account
+            case "playtest" where Preview.on: tab = .account
             case "report": reporter.start(bridge: bridge, place: place)
             // Train Coder from the Verse or Account: the Chat tab, on the
             // Gym intro.
             case "chat": tab = .coder
             // See the board: the Verse tab, walked into the Gym before its
             // EVALS board.
-            case "verse_gym":
+            case "verse_gym" where Preview.on:
                 VerseWorldView.pendingGoEvals = true
                 tab = .verse
             default: break
@@ -203,33 +228,39 @@ struct AccountTab: View {
     var body: some View {
         NavigationStack(path: $path) {
             List {
-                Section {
-                    NavigationLink(value: AccountRoute.trainer) {
-                        Label("Trainer", systemImage: "star.circle")
+                // Trainer, Train Coder, Profile, and Playtest are preview
+                // features (`Preview`).
+                if Preview.on {
+                    Section {
+                        NavigationLink(value: AccountRoute.trainer) {
+                            Label("Trainer", systemImage: "star.circle")
+                        }
+                        .accessibilityIdentifier("account-trainer")
+                        // Opt into the Gym: Rust opens its intro on the Chat tab.
+                        Button {
+                            bridge.gymTrain()
+                        } label: {
+                            Label("Train Coder", systemImage: "dumbbell")
+                        }
+                        .foregroundStyle(appColors.primary)
+                        .accessibilityIdentifier("account-train")
+                        // Profile: Rust shows it as a sheet on the Chat tab.
+                        Button {
+                            bridge.profile()
+                        } label: {
+                            Label("Profile", systemImage: "person.circle")
+                        }
+                        .foregroundStyle(appColors.primary)
+                        .accessibilityIdentifier("account-profile")
                     }
-                    .accessibilityIdentifier("account-trainer")
-                    // Opt into the Gym: Rust opens its intro on the Chat tab.
-                    Button {
-                        bridge.gymTrain()
-                    } label: {
-                        Label("Train Coder", systemImage: "dumbbell")
-                    }
-                    .foregroundStyle(appColors.primary)
-                    .accessibilityIdentifier("account-train")
-                    // Profile: Rust shows it as a sheet on the Chat tab.
-                    Button {
-                        bridge.profile()
-                    } label: {
-                        Label("Profile", systemImage: "person.circle")
-                    }
-                    .foregroundStyle(appColors.primary)
-                    .accessibilityIdentifier("account-profile")
                 }
                 Section {
-                    NavigationLink(value: AccountRoute.playtest) {
-                        Label("Playtest", systemImage: "gamecontroller")
+                    if Preview.on {
+                        NavigationLink(value: AccountRoute.playtest) {
+                            Label("Playtest", systemImage: "gamecontroller")
+                        }
+                        .accessibilityIdentifier("account-playtest")
                     }
-                    .accessibilityIdentifier("account-playtest")
                     Button {
                         reporter.start(bridge: bridge, place: place)
                     } label: {
@@ -240,7 +271,9 @@ struct AccountTab: View {
                 }
                 Section {
                     NavigationLink("Computers", value: AccountRoute.computers)
-                    NavigationLink("Tailnet", value: AccountRoute.tailnet)
+                    if Preview.on {
+                        NavigationLink("Tailnet", value: AccountRoute.tailnet)
+                    }
                 }
                 Section {
                     // System follows the phone; Rust saves the choice.
@@ -278,7 +311,7 @@ struct AccountTab: View {
         .onChange(of: bridge.screenRequest) { _, request in
             switch request.screen {
             case "keys": path = [.identity]
-            case "playtest": path = [.playtest]
+            case "playtest" where Preview.on: path = [.playtest]
             default: break
             }
         }
@@ -291,6 +324,14 @@ struct AccountTab: View {
     }
 
     @ViewBuilder private func destination(_ route: AccountRoute) -> some View {
+        if !Preview.shows(route) {
+            EmptyView()
+        } else {
+            routeScreen(route)
+        }
+    }
+
+    @ViewBuilder private func routeScreen(_ route: AccountRoute) -> some View {
         switch route {
         case .trainer: TrainerScreen(bridge: bridge).navigationTitle("Trainer")
         case .computers: ComputersTab(bridge: bridge) // It sets its own title.

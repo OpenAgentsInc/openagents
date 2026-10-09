@@ -36,6 +36,9 @@ uint64_t openagents_mobile_wait(uint64_t seen, uint32_t timeout_ms);
 // Whether the Coder tab shows. While it does and its chat is live,
 // openagents_mobile_wait also returns once a second.
 void openagents_mobile_coder_shown(bool shown);
+/* Whether this build shows the preview features (the Verse, the Gym,
+   Trainer, Playtest, Tailnet): built with OPENAGENTS_MOBILE_PREVIEW=on. */
+bool openagents_mobile_preview(void);
 
 // The Verse tab's world. Create, call, and destroy it on the main thread while
 // its CAMetalLayer stays alive. Results are released with

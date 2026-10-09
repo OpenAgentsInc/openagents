@@ -68,7 +68,8 @@ internal class AccountScreens(private val activity: MainActivity, private val br
         val npub = account?.textOrNull("npub")
         val hex = account?.textOrNull("public_hex")
         val shown = account?.textOrNull("display_name")
-        body.section("Display name", "Other players in the Grid read this over your avatar. Up to 24 letters, digits, and punctuation.") {
+        // The name shows only over a player in the Verse, which is a preview feature.
+        if (Preview.on) body.section("Display name", "Other players in the Grid read this over your avatar. Up to 24 letters, digits, and punctuation.") {
             add(key(shown ?: "Not set", "identity-display-name")); rowDivider()
             add(action("Change display name", "identity-display-name-change") { askDisplayName(shown, refresh) })
         }

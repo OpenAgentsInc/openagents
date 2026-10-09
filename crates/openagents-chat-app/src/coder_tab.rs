@@ -640,6 +640,14 @@ impl CoderTab {
         self
     }
 
+    /// Hide the Gym in this build (the phone's release gate,
+    /// `docs/mobile/1.0-audit.md`): no intro, menu, Profile, card, Gym
+    /// starter chip, or Gym and game screen chip shows. See
+    /// [`crate::gym::Gym::hide`].
+    pub fn hide_gym(&mut self) {
+        self.gym.hide();
+    }
+
     /// Play `steps` in the chat at launch, for simulator screenshots.
     /// Honored only in debug builds.
     pub fn with_script(mut self, steps: Vec<String>) -> Self {
@@ -1624,7 +1632,8 @@ impl CoderTab {
                     .as_ref()
                     .and_then(|id| self.basic.last_meta(id))
                     .is_some_and(|meta| meta.offers.contains(&Offer::OpenScreen { screen }));
-                if offered {
+                let hidden = self.gym.hidden() && crate::cards::preview_screen(screen);
+                if offered && !hidden {
                     let draft = self
                         .talk
                         .as_ref()
@@ -1700,6 +1709,7 @@ impl CoderTab {
                 let Some(suggestion) = crate::first_run::SUGGESTIONS
                     .iter()
                     .find(|suggestion| suggestion.id == id)
+                    .filter(|s| !(self.gym.hidden() && crate::cards::preview_answer(s.id)))
                 else {
                     return;
                 };
@@ -1947,6 +1957,9 @@ impl CoderTab {
     /// **Profile**, from Account: `SCR-11` as a sheet on the Chat tab, so
     /// the host switches to it.
     pub fn show_profile(&mut self) {
+        if self.gym.hidden() {
+            return;
+        }
         self.gym.sheet = Some(crate::gym::Sheet::Profile);
         self.notice = None;
         self.go = Some(Go::Chat);
@@ -1955,6 +1968,9 @@ impl CoderTab {
     /// **Train Coder**, from the Verse's Gym board or Account: opt into the
     /// Gym and show its intro on the Chat tab.
     pub fn train_coder(&mut self) {
+        if self.gym.hidden() {
+            return;
+        }
         self.gym.opt_in();
         self.gym.sheet = None;
         self.keep(true);
@@ -3259,7 +3275,15 @@ impl CoderTab {
     /// previous chat (those are behind the menu) and never a way to run
     /// Coder on a computer (that is an offer under a reply).
     fn candidates(&self) -> Vec<(String, Node<Intent>)> {
-        crate::cards::suggestions(self.basic.used_markers())
+        let used = self.basic.used_markers();
+        // With the Gym hidden, its questions are left out, not just cut.
+        let suggestions: Vec<&crate::first_run::Suggestion> = if self.gym.hidden() {
+            crate::cards::released_suggestions(used).collect()
+        } else {
+            crate::cards::suggestions(used).collect()
+        };
+        suggestions
+            .into_iter()
             .map(|suggestion| {
                 (
                     suggestion.id.to_owned(),
@@ -3486,6 +3510,9 @@ impl CoderTab {
             &availability,
             self.gym.latest_result().is_some(),
         );
+        if self.gym.hidden() {
+            crate::cards::drop_preview_chips(&mut actions.chips, meta.as_ref());
+        }
         // The reply that started Coder, at once or from a tap, shows the
         // start with Stop instead of offering it again (#10101).
         let newest = self.basic.turns(id).len().checked_sub(1);
@@ -3660,13 +3687,16 @@ impl CoderTab {
             meta.offers
                 .retain(|offer| !matches!(offer, Offer::RunCoder));
         }
-        let actions = crate::cards::reply_actions_for(
+        let mut actions = crate::cards::reply_actions_for(
             meta.as_ref(),
             &[],
             false,
             &crate::cards::Target::Ready(&label),
             self.gym.latest_result().is_some(),
         );
+        if self.gym.hidden() {
+            crate::cards::drop_preview_chips(&mut actions.chips, meta.as_ref());
+        }
         let mut agents = vec![];
         if let Some((key, value)) = &actions.notice {
             agents.push(status(key, value));

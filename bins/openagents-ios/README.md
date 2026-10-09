@@ -11,6 +11,16 @@ them.
 The Android build, with the same tabs and the same Rust library, is in
 [`bins/openagents-android`](../openagents-android/README.md).
 
+**Release gate (2026-10-09).** A release or normal simulator build has three
+tabs, **Chat**, **Wallet**, and **Account**. The Verse tab, the Gym in chat
+(Train Coder, Profile, its intro, menu, cards, and Gym starter chips),
+**Trainer**, **Playtest** and **My reports**, **Tailnet**, and the display
+name are preview features, shown only when the Rust library is built with
+`OPENAGENTS_MOBILE_PREVIEW=on` (`OPENAGENTS_MOBILE_PREVIEW=on build.sh sim`);
+their developer launch arguments do nothing otherwise. See the
+[mobile 1.0 audit](../../docs/mobile/1.0-audit.md). The rest of this page
+describes a preview build.
+
 The app has four tabs, shown as icons:
 
 - **Chat** (the message icon) opens on the main menu (wireframe revision
@@ -282,9 +292,9 @@ log**), **Report a problem**, and **My reports**; a long press on the tab
 bar also opens **Report a problem** for the screen on view
 (`crates/openagents-mobile/src/playtest.rs`, `host/App/Playtest.swift`,
 [playtesting](../../docs/game/playtesting.md)). Playtest logging has no
-switch in the app: it is on in every build, TestFlight archives included,
-unless `build.sh` runs with `OPENAGENTS_PLAYTEST_LOGGING=off` (release
-mode). `--report` opens the report form at launch in simulator builds.
+switch in the app: it is on only in a preview build or one made with
+`OPENAGENTS_PLAYTEST_LOGGING=on`, and off in release builds
+([playtesting](../../docs/game/playtesting.md#playtest-logging-in-a-release)). `--report` opens the report form at launch in simulator builds.
 
 In simulator builds, `--tab account --account-route
 computers|tailnet|identity|device|changelog|playtest|reports` opens a screen directly, and

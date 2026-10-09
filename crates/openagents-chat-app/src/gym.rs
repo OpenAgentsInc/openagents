@@ -535,6 +535,9 @@ pub struct Gym {
     /// The Gym menu is on screen instead of the chat. Never at launch: the
     /// Chat tab opens on the chat.
     pub on_menu: bool,
+    /// The Gym is hidden in this build ([`Gym::hide`]): the phone's
+    /// release gate (`docs/mobile/1.0-audit.md`).
+    hidden: bool,
     /// Cards already shown, so the playtest log records each once.
     seen: std::collections::BTreeSet<String>,
     /// Structural events for the playtest log, taken by the app.
@@ -584,6 +587,7 @@ impl Gym {
             standing: Standing::default(),
             notice: None,
             on_menu: false,
+            hidden: false,
             seen: std::collections::BTreeSet::new(),
             logged: Vec::new(),
             lazy_world: false,
@@ -698,12 +702,30 @@ impl Gym {
 
     /// The person opted into the Gym with **Train Coder**.
     pub fn opted_in(&self) -> bool {
-        self.saved.gym
+        self.saved.gym && !self.hidden
+    }
+
+    /// Hide the Gym in this build, as the phone's release gate does
+    /// (`docs/mobile/1.0-audit.md`): no intro, menu, sheet, or card shows
+    /// and nothing opts in, while a person's earlier opt-in stays saved for
+    /// a build that shows the Gym again.
+    pub fn hide(&mut self) {
+        self.hidden = true;
+        self.on_menu = false;
+        self.sheet = None;
+    }
+
+    /// The Gym is hidden in this build ([`Gym::hide`]).
+    pub fn hidden(&self) -> bool {
+        self.hidden
     }
 
     /// **Train Coder**: opt into the Gym. The intro opens at its furthest
     /// step (step 1 on the first opt-in); the menu waits behind the chat.
     pub fn opt_in(&mut self) {
+        if self.hidden {
+            return;
+        }
         self.saved.gym = true;
         self.on_menu = false;
         self.save();
@@ -720,6 +742,9 @@ impl Gym {
     /// Start the Gym intro at a named step, for simulator screenshots;
     /// every step opts in.
     pub fn set_start(&mut self, step: &str) {
+        if self.hidden {
+            return;
+        }
         let step = match step {
             "choose" => FirstRun::Choose,
             "end_card" => FirstRun::EndCard,
@@ -1510,6 +1535,9 @@ impl Gym {
     /// caller's check. `false` for any other screen, or with nothing to
     /// show.
     pub fn open_screen(&mut self, screen: Screen, open: Option<&str>, draft: bool) -> bool {
+        if self.hidden {
+            return false;
+        }
         let latest = self.latest_result().map(|run| run.id.clone());
         let sheet = match screen {
             Screen::GymPublish => latest.map(|run| Sheet::Publish { run }),
@@ -1536,6 +1564,9 @@ impl Gym {
     /// surface the tab places in the page, by ID.
     pub fn cards_for(&mut self, talk: &str, turns: &[Turn], here: &Here) -> Vec<String> {
         let mut ids = vec![];
+        if self.hidden {
+            return ids;
+        }
         let Some((turn, meta)) = turns
             .iter()
             .enumerate()

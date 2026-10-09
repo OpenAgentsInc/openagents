@@ -86,17 +86,20 @@ struct IdentityKeysScreen: View {
 
     var body: some View {
         List {
-            Section {
-                TextField("Shown over your head", text: $displayName)
-                    .textInputAutocapitalization(.words)
-                    .autocorrectionDisabled()
-                    .submitLabel(.done)
-                    .onSubmit { bridge.setDisplayName(displayName) { account = $0; displayName = $0.display_name ?? "" } }
-                    .accessibilityIdentifier("identity-display-name")
-            } header: {
-                Text("Display name")
-            } footer: {
-                Text("Other players in the Grid read this over your avatar. Up to 24 letters, digits, and punctuation.")
+            // The name shows only over a player in the Verse, a preview feature.
+            if Preview.on {
+                Section {
+                    TextField("Shown over your head", text: $displayName)
+                        .textInputAutocapitalization(.words)
+                        .autocorrectionDisabled()
+                        .submitLabel(.done)
+                        .onSubmit { bridge.setDisplayName(displayName) { account = $0; displayName = $0.display_name ?? "" } }
+                        .accessibilityIdentifier("identity-display-name")
+                } header: {
+                    Text("Display name")
+                } footer: {
+                    Text("Other players in the Grid read this over your avatar. Up to 24 letters, digits, and punctuation.")
+                }
             }
             Section {
                 KeyText(value: account?.npub)

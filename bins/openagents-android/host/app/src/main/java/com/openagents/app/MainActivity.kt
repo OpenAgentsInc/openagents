@@ -45,7 +45,22 @@ enum class AppTab(val title: String, val icon: Int) {
 /** A screen that the Account tab opens. */
 enum class AccountRoute(val title: String) {
     TRAINER("Trainer"), COMPUTERS("Computers"), TAILNET("Tailnet"), KEYS("Your keys"), IDENTITY("Identity keys"), DEVICE("About this device"), CHANGELOG("Changelog"),
-    PLAYTEST("Playtest"), REPORTS("My reports"),
+    PLAYTEST("Playtest"), REPORTS("My reports");
+
+    /** Shown only in a preview build ([Preview]). */
+    val previewOnly: Boolean get() = this == TRAINER || this == TAILNET || this == PLAYTEST || this == REPORTS
+}
+
+/**
+ * The release gate (docs/mobile/1.0-audit.md): the Verse tab, the Gym
+ * (Train Coder, Profile), Trainer, Playtest, Tailnet, and the display name
+ * show only in a build whose Rust library was made with
+ * `OPENAGENTS_MOBILE_PREVIEW=on`. Release and normal debug builds hide them.
+ */
+object Preview {
+    val on: Boolean by lazy { runCatching { OpenAgentsNative.preview() }.getOrDefault(false) }
+    fun shows(tab: AppTab) = on || tab != AppTab.VERSE
+    fun shows(route: AccountRoute) = on || !route.previewOnly
 }
 
 class MainActivity : ComponentActivity() {
@@ -229,7 +244,8 @@ class MainActivity : ComponentActivity() {
                 setOnLongClickListener { report(); true }
             }
             tabButtons[value] = button
-            tabBar.addView(button, LinearLayout.LayoutParams(0, -1, 1f))
+            // The Verse's page is built but has no tab outside a preview build.
+            if (Preview.shows(value)) tabBar.addView(button, LinearLayout.LayoutParams(0, -1, 1f))
             val page = FrameLayout(this).apply { visibility = View.GONE }
             pages[value] = page
             pageHost.addView(page, FrameLayout.LayoutParams(-1, -1))
@@ -282,9 +298,10 @@ class MainActivity : ComponentActivity() {
         // Developer launch extras open a tab or an Account screen directly,
         // for example `--es tab account --es account_route tailnet`.
         if (BuildConfig.DEBUG) {
-            intent.getStringExtra("tab")?.let { name -> AppTab.entries.firstOrNull { it.name.equals(name, true) } }?.let { tab = it }
+            intent.getStringExtra("tab")?.let { name -> AppTab.entries.firstOrNull { it.name.equals(name, true) } }
+                ?.takeIf { Preview.shows(it) }?.let { tab = it }
             intent.getStringExtra("account_route")?.let { name -> AccountRoute.entries.firstOrNull { it.name.equals(name, true) } }
-                ?.let { tab = AppTab.ACCOUNT; route = it }
+                ?.takeIf { Preview.shows(it) }?.let { tab = AppTab.ACCOUNT; route = it }
         }
         if (TranscriptDebug.ENABLED && intent.getBooleanExtra("rust_native_fixture", false)) {
             fixture = runCatching { JSONObject(assets.open("conversation.json").bufferedReader().readText()) }.getOrNull()
@@ -609,18 +626,19 @@ class MainActivity : ComponentActivity() {
         addView(column().apply {
             setPadding(dp(16), dp(12), dp(16), dp(24))
             addView(text("Account", 32f).bold(), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(16) })
-            addView(group(listOf(
+            if (Preview.on) addView(group(listOf(
                 "★  ${AccountRoute.TRAINER.title}" to "account-trainer" to { open(AccountRoute.TRAINER) },
                 // Opt into the Gym: Rust opens its intro on the Chat tab.
                 "Train Coder" to "account-train" to { bridge.gymTrain() },
                 // Profile: Rust shows it as a sheet on the Chat tab.
                 "Profile" to "account-profile" to { bridge.profile() },
             )))
-            addView(group(listOf(
-                "Playtest" to "account-playtest" to { open(AccountRoute.PLAYTEST) },
+            addView(group(listOfNotNull(
+                ("Playtest" to "account-playtest" to { open(AccountRoute.PLAYTEST) }).takeIf { Preview.on },
                 "Report a problem" to "account-report" to { report() },
-            )), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(24) })
-            addView(group(listOf(AccountRoute.COMPUTERS, AccountRoute.TAILNET).map { it.title to "account-${it.name.lowercase()}" to { open(it) } }))
+            )), LinearLayout.LayoutParams(-1, -2).apply { if (Preview.on) topMargin = dp(24) })
+            addView(group(listOf(AccountRoute.COMPUTERS, AccountRoute.TAILNET).filter { Preview.shows(it) }
+                .map { it.title to "account-${it.name.lowercase()}" to { open(it) } }))
             // System follows the phone; Rust saves the choice.
             addView(group(listOf("Appearance" to "account-appearance" to { chooseTheme() })),
                 LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(24) })
@@ -790,10 +808,10 @@ class MainActivity : ComponentActivity() {
             when (bridge.screenRequested) {
                 "wallet" -> select(AppTab.WALLET)
                 "keys" -> { select(AppTab.ACCOUNT); open(AccountRoute.IDENTITY) }
-                "playtest" -> { select(AppTab.ACCOUNT); open(AccountRoute.PLAYTEST) }
+                "playtest" -> if (Preview.on) { select(AppTab.ACCOUNT); open(AccountRoute.PLAYTEST) }
                 "report" -> report()
                 // See the board: the Verse tab, at the Gym's EVALS board.
-                "verse_gym" -> { select(AppTab.VERSE); panels.openEvals() }
+                "verse_gym" -> if (Preview.on) { select(AppTab.VERSE); panels.openEvals() }
                 // Train Coder from the Verse or Account: the Chat tab, on
                 // the Gym intro.
                 "chat" -> select(AppTab.CODER)

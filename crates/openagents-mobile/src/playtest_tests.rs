@@ -347,15 +347,23 @@ fn a_build_with_playtest_logging_off_records_nothing_and_deletes_the_log() {
 }
 
 #[test]
-fn the_build_switch_turns_playtest_logging_off_only_when_set_to_off() {
-    assert!(logging_setting(None));
-    assert!(logging_setting(Some("on")));
-    assert!(logging_setting(Some("")));
-    assert!(!logging_setting(Some("off")));
+fn playtest_logging_is_off_in_a_release_build_unless_switched_on() {
+    // A release or normal debug build (no preview): off unless set to on.
+    assert!(!logging_setting(None, false));
+    assert!(!logging_setting(Some(""), false));
+    assert!(!logging_setting(Some("off"), false));
+    assert!(logging_setting(Some("on"), false));
+    // A preview build: on unless set to off.
+    assert!(logging_setting(None, true));
+    assert!(logging_setting(Some(""), true));
+    assert!(!logging_setting(Some("off"), true));
     // The live constructor uses this build's setting.
     assert_eq!(
         LOGGING,
-        logging_setting(option_env!("OPENAGENTS_PLAYTEST_LOGGING"))
+        logging_setting(
+            option_env!("OPENAGENTS_PLAYTEST_LOGGING"),
+            crate::preview::ON
+        )
     );
     assert_eq!(Playtest::live(None).packet(None, None).log.on, LOGGING);
 }

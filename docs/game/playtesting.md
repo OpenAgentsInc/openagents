@@ -813,31 +813,31 @@ still reaches the triage key, without a public record or playtest XP.
 
 ### Playtest logging in a release
 
-Playtest logging is on for every tester in every build, including
-TestFlight archives and Android release and bundle builds, and on for
-installs that had the old **Playtest session** switch off. The app has no
-switch; **Account > Playtest** shows one line, "Playtest logging is on in
-this build." The log's rules don't change: closed structural values only,
-kept on the phone in the app's encrypted store (at most 200 events, oldest
-dropped first), deletable with **Delete the log**, and sent only inside a
-report whose preview showed it and whose tester ticked it.
-
-One build-time switch turns it off, for a future release:
-`OPENAGENTS_PLAYTEST_LOGGING=off` (default `on`; any other value is
-refused by the build scripts). Set it on the build command:
+Playtest logging follows the app's release gate
+([mobile 1.0 audit](../mobile/1.0-audit.md)), changed on 2026-10-09: it is
+on only in a preview build (made with `OPENAGENTS_MOBILE_PREVIEW=on`) or one
+made with `OPENAGENTS_PLAYTEST_LOGGING=on`, and off in release archives,
+Android release and bundle builds, and normal debug builds.
+`OPENAGENTS_PLAYTEST_LOGGING=off` forces it off in any build; any value but
+`on`, `off`, or unset is refused by the build scripts. The app has no
+switch; **Account > Playtest** (itself a preview screen) shows one line
+saying whether it is on. The log's rules don't change: closed structural
+values only, kept on the phone in the app's encrypted store (at most 200
+events, oldest dropped first), deletable with **Delete the log**, and sent
+only inside a report whose preview showed it and whose tester ticked it.
 
 ```sh
-OPENAGENTS_PLAYTEST_LOGGING=off OPENAGENTS_IOS_PUSH=production bins/openagents-ios/build.sh archive
-OPENAGENTS_PLAYTEST_LOGGING=off bins/openagents-android/build.sh bundle   # or release
+OPENAGENTS_MOBILE_PREVIEW=on bins/openagents-ios/build.sh sim          # preview: logging on
+OPENAGENTS_PLAYTEST_LOGGING=on bins/openagents-android/build.sh run    # logging on, no preview
 ```
 
-The Rust library reads it when it compiles
+The Rust library reads both when it compiles
 (`crates/openagents-mobile/src/playtest.rs`, `LOGGING`), so Cargo rebuilds
-it when the value changes. A build made with it off records nothing, offers
+it when a value changes. A build with logging off records nothing, offers
 no log in **Report a problem**, deletes any log a playtest build left on
-the phone, and shows "Playtest logging is off in this build." The test
-`a_build_with_playtest_logging_off_records_nothing_and_deletes_the_log`
-checks it.
+the phone, and shows "Playtest logging is off in this build." The tests
+`a_build_with_playtest_logging_off_records_nothing_and_deletes_the_log` and
+`playtest_logging_is_off_in_a_release_build_unless_switched_on` check it.
 
 ### Stage 2: public, re-checkable reports for XP
 

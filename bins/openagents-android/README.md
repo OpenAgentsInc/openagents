@@ -11,6 +11,16 @@ tabs, navigation, the camera, keyboards, the Keystore, and the Verse
 
 ## What the app has
 
+**Release gate (2026-10-09).** A release or normal debug build has three
+tabs, **Chat**, **Wallet**, and **Account**. The Verse tab, the Gym in chat
+(Train Coder, Profile, its intro, menu, cards, and Gym starter chips),
+**Trainer**, **Playtest** and **My reports**, **Tailnet**, and the display
+name are preview features, shown only when the Rust library is built with
+`OPENAGENTS_MOBILE_PREVIEW=on` (`OPENAGENTS_MOBILE_PREVIEW=on build.sh run`);
+their debug extras do nothing otherwise. See the
+[mobile 1.0 audit](../../docs/mobile/1.0-audit.md). The rest of this page
+describes a preview build.
+
 The app has four tabs, shown as white icons on black:
 
 - **Chat** (the message icon) opens on the main menu, as on iOS: the
@@ -145,8 +155,8 @@ The app has four tabs, shown as white icons on black:
   and hex key, where the key comes from, and the app version),
   **Changelog**, **Playtest** (the playtest card: playtest XP beside the
   trainer level, sessions, accepted reports, fixes verified, and titles
-  from the playtest referee; **Playtest logging**, on in every build unless
-  it was built with `OPENAGENTS_PLAYTEST_LOGGING=off`, with one line saying
+  from the playtest referee; **Playtest logging**, on only in a preview build or
+  one built with `OPENAGENTS_PLAYTEST_LOGGING=on`, with one line saying
   so, the log's lines, and **Delete the log**; and **My reports**), **Report a problem**,
   and links to the source code and to OpenAgents on X. A long press on the
   tab bar opens **Report a problem** for the screen on view. Rust fills in

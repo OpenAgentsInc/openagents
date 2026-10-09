@@ -17,9 +17,9 @@
 //! accepted report can earn XP. It is kept on the phone until a relay
 //! accepts it and sent again from My reports.
 //!
-//! **Playtest logging** is on for everyone in a build unless the build
-//! turned it off ([`LOGGING`], set by `OPENAGENTS_PLAYTEST_LOGGING=off`
-//! for a release). There is no switch in the app. The log holds only
+//! **Playtest logging** is on only in a preview build or one made with
+//! `OPENAGENTS_PLAYTEST_LOGGING=on` ([`LOGGING`]); release builds keep
+//! none. There is no switch in the app. The log holds only
 //! closed structural values ([`playtest::session`]), stays on the phone,
 //! and is attached to a report only when the tester chose to and the log
 //! is exactly the one the preview showed them (its digest). A build with
@@ -40,18 +40,27 @@ use secp256k1::{SecretKey, XOnlyPublicKey};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-/// Whether this build keeps the playtest log: on unless the build was made
-/// with `OPENAGENTS_PLAYTEST_LOGGING=off` (release mode). The build scripts
-/// pass the variable to Cargo; see `docs/game/playtesting.md`.
-pub const LOGGING: bool = logging_setting(option_env!("OPENAGENTS_PLAYTEST_LOGGING"));
+/// Whether this build keeps the playtest log: only in a preview build
+/// (`crate::preview`) or one made with `OPENAGENTS_PLAYTEST_LOGGING=on`;
+/// `OPENAGENTS_PLAYTEST_LOGGING=off` forces it off. Release and normal
+/// debug builds keep none. The build scripts pass the variables to Cargo;
+/// see `docs/game/playtesting.md` and `docs/mobile/1.0-audit.md`.
+pub const LOGGING: bool = logging_setting(
+    option_env!("OPENAGENTS_PLAYTEST_LOGGING"),
+    crate::preview::ON,
+);
 
-/// Reads the build's `OPENAGENTS_PLAYTEST_LOGGING`: exactly `off` turns
-/// playtest logging off; unset or anything else leaves it on.
+/// Reads the build's `OPENAGENTS_PLAYTEST_LOGGING`: exactly `on` turns
+/// playtest logging on and exactly `off` turns it off; unset or anything
+/// else follows the release gate (`preview`).
 #[must_use]
-pub const fn logging_setting(value: Option<&str>) -> bool {
-    let Some(value) = value else { return true };
-    let bytes = value.as_bytes();
-    !(bytes.len() == 3 && bytes[0] == b'o' && bytes[1] == b'f' && bytes[2] == b'f')
+pub const fn logging_setting(value: Option<&str>, preview: bool) -> bool {
+    let Some(value) = value else { return preview };
+    match value.as_bytes() {
+        b"on" => true,
+        b"off" => false,
+        _ => preview,
+    }
 }
 
 /// The one line the Playtest screen shows about playtest logging.

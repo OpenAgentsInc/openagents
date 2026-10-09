@@ -3749,3 +3749,67 @@ fn a_task_in_an_unknown_state_can_be_stopped_from_the_phone() {
         script.lock().unwrap().commands
     );
 }
+
+/// The release gate (`docs/mobile/1.0-audit.md`): with the Gym hidden, a
+/// new chat offers no Gym or XP question, a reply's Gym and game screens
+/// and Gym follow-ups show no chip, Train Coder and Profile do nothing, and
+/// the tab never leaves the chat for the Gym's intro or menu.
+#[test]
+fn a_hidden_gym_shows_no_entry_point_in_chat() {
+    let hand = Hand::default();
+    let mut fixture =
+        Fixture::new(NoComputers(Synthetic::fixture(Platform::Phone, now))).answered_by(&hand);
+    fixture.coder.hide_gym();
+    let screen = fixture.render();
+    let shown = suggestions(&screen);
+    assert_eq!(shown.len(), 4, "{shown:?}");
+    assert!(
+        shown
+            .iter()
+            .all(|(key, _)| !key.contains("gym.") && !key.contains("eval.")),
+        "{shown:?}"
+    );
+
+    // Train Coder and Profile from Account do nothing.
+    fixture.coder.train_coder();
+    fixture.coder.show_profile();
+    fixture.render();
+    let gym = fixture.coder.gym_view();
+    assert_eq!(gym.screen, "chat");
+    assert!(gym.first_run.is_none() && gym.sheet.is_none());
+
+    // A reply offering the Gym's board, Playtest, and Wallet, with a Gym
+    // follow-up: only Wallet and the other follow-up show.
+    fixture.say("What can I do here?");
+    hand.route(&[
+        json!({"v": 2, "type": "offer", "offer": "open_screen", "screen": "verse.gym",
+            "label": "Walk to the Gym"}),
+        json!({"v": 2, "type": "offer", "offer": "open_screen", "screen": "account.playtest",
+            "label": "Playtest"}),
+        json!({"v": 2, "type": "offer", "offer": "open_screen", "screen": "wallet",
+            "label": "Wallet"}),
+        json!({"v": 2, "type": "result", "text": "Chat, pay, and run Coder.",
+            "model": "bank:chat-answers-v1", "tier": "canned", "answer": "meta.capabilities@1",
+            "route": "meta", "bank": "chat-answers-v1@9f2c",
+            "followups": [{"id": "gym.test", "label": "Test a plugin"},
+                {"id": "meta.coder", "label": "What is Coder?"}]}),
+    ]);
+    hand.say("Chat, pay, and run Coder.", true);
+    let chat = fixture.render();
+    let labels: Vec<String> = keys(&chat)
+        .iter()
+        .filter(|key| key.starts_with("coder-screen-") || key.starts_with("coder-followup-"))
+        .map(|key| {
+            node(&chat, key).unwrap()["element"]["props"]["label"]
+                .as_str()
+                .unwrap()
+                .to_owned()
+        })
+        .collect();
+    assert_eq!(
+        labels,
+        ["Open Wallet", "What is Coder?"],
+        "{:?}",
+        keys(&chat)
+    );
+}

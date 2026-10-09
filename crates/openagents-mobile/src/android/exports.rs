@@ -186,6 +186,15 @@ pub extern "system" fn Java_com_openagents_app_OpenAgentsNative_waitChange<'loca
         .cast_signed()
 }
 
+/// Whether this build shows the preview features; see `crate::preview`.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_openagents_app_OpenAgentsNative_preview<'local>(
+    _unowned: EnvUnowned<'local>,
+    _class: JClass<'local>,
+) -> bool {
+    crate::preview::ON
+}
+
 /// Whether the Coder tab shows; see `crate::wake::set_shown`.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_openagents_app_OpenAgentsNative_coderShown<'local>(

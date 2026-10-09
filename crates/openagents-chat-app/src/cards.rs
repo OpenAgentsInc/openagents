@@ -141,6 +141,59 @@ pub fn suggestions(
     openagents_chat::suggestions::suggestions(used)
 }
 
+/// A routed screen that belongs to the Gym or the game layer, which a phone
+/// build behind its release gate hides (`docs/mobile/1.0-audit.md`): the
+/// Playtest screen, the Gym's board, sheets, and the routes map.
+#[must_use]
+pub fn preview_screen(screen: Screen) -> bool {
+    matches!(
+        screen,
+        Screen::Playtest
+            | Screen::VerseGym
+            | Screen::GymResult
+            | Screen::GymPublish
+            | Screen::GymTestSet
+            | Screen::RoutesMap
+    )
+}
+
+/// A suggestion or prepared answer about the Gym or XP, hidden with the
+/// Gym ([`preview_screen`]).
+#[must_use]
+pub fn preview_answer(id: &str) -> bool {
+    id.starts_with("gym.") || id.starts_with("eval.")
+}
+
+/// A new chat's suggestions without the Gym's: the shared order, the ones
+/// not used yet first, then used ones, up to the shared count.
+pub fn released_suggestions(
+    used: &[String],
+) -> impl Iterator<Item = &'static crate::first_run::Suggestion> + '_ {
+    use openagents_chat::suggestions::{SUGGESTIONS, SUGGESTIONS_SHOWN};
+    let shown = |suggestion: &&crate::first_run::Suggestion| !preview_answer(suggestion.id);
+    let fresh = move |suggestion: &&crate::first_run::Suggestion| {
+        !openagents_chat::suggestions::used(suggestion, used)
+    };
+    let all = SUGGESTIONS.iter().filter(shown);
+    all.clone()
+        .filter(fresh)
+        .chain(all.filter(move |suggestion| !fresh(suggestion)))
+        .take(SUGGESTIONS_SHOWN)
+}
+
+/// Drop the chips a hidden Gym leaves out: routed screens of the Gym or
+/// the game layer, and follow-ups to a prepared answer about them.
+pub fn drop_preview_chips(chips: &mut Vec<Chip>, meta: Option<&Meta>) {
+    chips.retain(|chip| match &chip.action {
+        Action::OpenScreen { screen } => !preview_screen(*screen),
+        Action::Followup { index } => !meta
+            .and_then(|meta| meta.followups.get(*index))
+            .and_then(|followup| followup.answer.as_deref())
+            .is_some_and(preview_answer),
+        _ => true,
+    });
+}
+
 pub fn screen_chip(screen: Screen, connecting: bool) -> (&'static str, Glyph) {
     let glyph = match screen {
         Screen::Wallet => Glyph::Wallet,

@@ -683,6 +683,8 @@ pub struct QrModules {
 #[derive(Serialize)]
 pub struct Packet {
     pub schema: &'static str,
+    /// This build shows the preview features (`crate::preview`).
+    pub preview: bool,
     /// This device's public key in hex, for display.
     pub device: String,
     /// The same key in NIP-19 form (`npub1…`).
@@ -1022,6 +1024,12 @@ impl App {
             hosted_runner(&launch, secret),
             Some(runtime.handle().clone()),
         );
+        // The release gate (`crate::preview`): outside a preview build the
+        // Gym never shows, whatever an earlier build saved or a launch
+        // option asks.
+        if !crate::preview::ON {
+            gym.hide();
+        }
         if cfg!(debug_assertions)
             && let Some(step) = launch.gym_first_run.as_deref()
         {
@@ -2127,6 +2135,7 @@ impl App {
         crate::wake::set_live(coder_live);
         Packet {
             schema: "openagents.mobile.v1",
+            preview: crate::preview::ON,
             device: self.device.clone(),
             device_npub: self.device_npub.clone(),
             // The host's navigation replaces the shared screens' tab row and

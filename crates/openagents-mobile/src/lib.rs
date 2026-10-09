@@ -46,6 +46,7 @@ mod hosted;
 mod outbox;
 mod payees;
 mod playtest;
+mod preview;
 mod provider_keys;
 mod router;
 mod spark;
@@ -66,6 +67,7 @@ mod wallet_link;
 mod wallet_fixture;
 
 pub use app::{App, Config, Launch, Packet, Request};
+pub use preview::openagents_mobile_preview;
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr;

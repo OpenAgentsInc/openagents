@@ -20,7 +20,8 @@ if [[ "${OPENAGENTS_ANDROID_SANITIZED:-}" != 1 ]]; then
     OPENAGENTS_ANDROID_KEYSTORE_PASSWORD="${OPENAGENTS_ANDROID_KEYSTORE_PASSWORD:-}" \
     OPENAGENTS_ANDROID_KEY_PASSWORD="${OPENAGENTS_ANDROID_KEY_PASSWORD:-}" \
     OPENAGENTS_ANDROID_SIGNING_ENV="${OPENAGENTS_ANDROID_SIGNING_ENV:-}" \
-    OPENAGENTS_PLAYTEST_LOGGING="${OPENAGENTS_PLAYTEST_LOGGING:-on}" \
+    OPENAGENTS_PLAYTEST_LOGGING="${OPENAGENTS_PLAYTEST_LOGGING:-}" \
+    OPENAGENTS_MOBILE_PREVIEW="${OPENAGENTS_MOBILE_PREVIEW:-}" \
     OPENAGENTS_ANDROID_SANITIZED=1 "$BASH" "$root/scripts/build-openagents-android.sh" "$@"
 fi
 
@@ -52,9 +53,12 @@ Rust profile and signs it the same way. OPENAGENTS_ANDROID_SIGNING_ENV may
 name a file of KEY=value lines for the four signing variables instead.
 No command creates, resets, or launches an emulator, or uploads an app.
 
-OPENAGENTS_PLAYTEST_LOGGING=on|off: playtest logging is on in every build,
-release and bundle included, unless this is off (release mode). The Rust
-library reads it when it compiles; see docs/game/playtesting.md.
+OPENAGENTS_MOBILE_PREVIEW=on shows the features still in development (the
+Verse, the Gym, Trainer, Playtest, Tailnet); unset, every build hides them
+(docs/mobile/1.0-audit.md). OPENAGENTS_PLAYTEST_LOGGING=on|off overrides
+playtest logging, which otherwise follows OPENAGENTS_MOBILE_PREVIEW: off in
+release, bundle, and normal debug builds. The Rust library reads both when it
+compiles; see docs/game/playtesting.md.
 
 bench builds release Rust and a non-debuggable app, signed with the debug
 key, with the transcript fixture, benchmark, and selection extras compiled in,
@@ -78,7 +82,8 @@ version_name="$(sed -n 's/^ *MARKETING_VERSION: *\([0-9][0-9.]*\) *$/\1/p' "$roo
 [[ "$version_name" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Could not read MARKETING_VERSION from bins/openagents-ios/host/project.yml.' >&2; exit 1; }
 case "$OPENAGENTS_ANDROID_ABI" in arm64-v8a|x86_64) ;; *) echo 'Unsupported Android ABI; use arm64-v8a or x86_64.' >&2; exit 64 ;; esac
 case "$OPENAGENTS_ANDROID_PROFILE" in dev|release) ;; *) echo 'Android profile must be dev or release.' >&2; exit 64 ;; esac
-case "$OPENAGENTS_PLAYTEST_LOGGING" in on|off) export OPENAGENTS_PLAYTEST_LOGGING ;; *) echo 'OPENAGENTS_PLAYTEST_LOGGING must be on or off.' >&2; exit 64 ;; esac
+case "$OPENAGENTS_PLAYTEST_LOGGING" in on|off) export OPENAGENTS_PLAYTEST_LOGGING ;; "") unset OPENAGENTS_PLAYTEST_LOGGING ;; *) echo 'OPENAGENTS_PLAYTEST_LOGGING must be on, off, or unset.' >&2; exit 64 ;; esac
+case "$OPENAGENTS_MOBILE_PREVIEW" in on) export OPENAGENTS_MOBILE_PREVIEW ;; ""|off) unset OPENAGENTS_MOBILE_PREVIEW ;; *) echo 'OPENAGENTS_MOBILE_PREVIEW must be on, off, or unset.' >&2; exit 64 ;; esac
 if [[ -z "$OPENAGENTS_ANDROID_VERSION_CODE" ]]; then
   OPENAGENTS_ANDROID_VERSION_CODE="$(sed -n 's/^ *CURRENT_PROJECT_VERSION: *\([0-9][0-9]*\) *$/\1/p' "$root/bins/openagents-ios/host/project.yml" | head -1)"
 fi
