@@ -992,9 +992,10 @@ fn live_conversation(frame: &mut Frame, area: Rect, app: &mut App) {
                 .alignment(ratatui::layout::Alignment::Right)
                 .style(Style::default().bg(t::BG_DARK).fg(t::ACCENT_MODEL)),
             Rect {
+                x: area.x + area.width.saturating_sub(1),
                 y: area.y + area.height - 1,
+                width: 1,
                 height: 1,
-                ..area
             },
         );
     }
@@ -1107,5 +1108,28 @@ fn composer_view(
             text_area.x + cursor.0.min(text_area.width.saturating_sub(1)),
             text_area.y + cursor.1.saturating_sub(scroll),
         ));
+    }
+}
+
+#[cfg(test)]
+mod export_notice_tests {
+    use super::*;
+    use ratatui::{Terminal, backend::TestBackend};
+
+    #[test]
+    fn scroll_arrow_does_not_repaint_notice_row() {
+        let mut app = App::default();
+        app.notice = Some("Exported ATIF to chat.json. Path copied to clipboard. ".repeat(5));
+        app.scroll = 0;
+        let mut terminal = Terminal::new(TestBackend::new(40, 3)).unwrap();
+        terminal
+            .draw(|frame| live_conversation(frame, frame.area(), &mut app))
+            .unwrap();
+        let buffer = terminal.backend().buffer();
+        assert_ne!(buffer[(0, 2)].symbol(), " ");
+        assert_eq!(buffer[(0, 2)].fg, t::GRAY);
+        assert_eq!(buffer[(9, 2)].fg, t::GRAY);
+        assert_eq!(buffer[(39, 2)].symbol(), "↓");
+        assert_eq!(buffer[(39, 2)].fg, t::ACCENT_MODEL);
     }
 }

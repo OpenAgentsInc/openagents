@@ -125,6 +125,7 @@ pub struct App {
     history: resume::History,
     pub(crate) active_options: models::GenerationOptions,
     pending_export_path: Option<std::path::PathBuf>,
+    export_notice_expiry: Option<(std::time::Instant, String)>,
     active_delegation: Option<String>,
     main_draft: Draft,
     main_scroll: u16,
@@ -723,6 +724,7 @@ impl App {
 
     fn export(&mut self, path: Option<&std::path::Path>) {
         self.pending_export_path = None;
+        self.export_notice_expiry = None;
         let cwd = self.cwd.clone().unwrap_or_else(|| {
             std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
         });
@@ -738,6 +740,9 @@ impl App {
                 Err(error) => error,
             },
         );
+        if self.pending_export_path.is_some() {
+            self.time_export_notice();
+        }
         self.draft = Draft::default();
     }
 
@@ -751,6 +756,30 @@ impl App {
             Err(error) => format!("Cannot copy path to clipboard: {error}."),
         };
         self.notice = Some(format!("Exported ATIF to {}. {status}", path.display()));
+        self.time_export_notice();
+    }
+
+    fn time_export_notice(&mut self) {
+        self.export_notice_expiry = self.notice.clone().map(|notice| {
+            (
+                std::time::Instant::now() + std::time::Duration::from_secs(3),
+                notice,
+            )
+        });
+    }
+
+    fn expire_export_notice(&mut self, now: std::time::Instant) {
+        if self
+            .export_notice_expiry
+            .as_ref()
+            .is_some_and(|(deadline, _)| now >= *deadline)
+        {
+            let (_, notice) = self.export_notice_expiry.take().unwrap();
+            // A subsequent command may have replaced the export notification.
+            if self.notice.as_ref() == Some(&notice) {
+                self.notice = None;
+            }
+        }
     }
 
     pub fn submit(&mut self, text: &str, cwd: &std::path::Path) {
@@ -1173,6 +1202,7 @@ impl App {
     }
 
     pub fn tick(&mut self) {
+        self.expire_export_notice(std::time::Instant::now());
         self.poll_login();
         self.poll_sync();
         self.animation_frame = self.animation_frame.wrapping_add(1) % 8;
@@ -1831,5 +1861,39 @@ impl Draft {
             cursor = (column as u16, (lines.len() - 1) as u16);
         }
         (lines, cursor)
+    }
+}
+
+#[cfg(test)]
+mod export_notice_tests {
+    use super::*;
+
+    #[test]
+    fn export_notice_expires_after_three_seconds_without_clearing_replacements() {
+        let root = tempfile::tempdir().unwrap();
+        let mut app = App::default();
+        app.cwd = Some(root.path().to_owned());
+        app.export(Some(std::path::Path::new("chat.json")));
+        let deadline = app.export_notice_expiry.as_ref().unwrap().0;
+        app.expire_export_notice(deadline - std::time::Duration::from_millis(1));
+        assert!(app.notice.as_deref().unwrap().contains("Exported ATIF"));
+        app.copy_export_path(|_| Ok(()));
+        let deadline = app.export_notice_expiry.as_ref().unwrap().0;
+        assert!(
+            app.notice
+                .as_deref()
+                .unwrap()
+                .contains("Path copied to clipboard")
+        );
+        app.expire_export_notice(deadline);
+        assert!(app.notice.is_none());
+        assert!(app.export_notice_expiry.is_none());
+
+        app.notice = Some("export notification".into());
+        app.time_export_notice();
+        let deadline = app.export_notice_expiry.as_ref().unwrap().0;
+        app.notice = Some("another command".into());
+        app.expire_export_notice(deadline);
+        assert_eq!(app.notice.as_deref(), Some("another command"));
     }
 }
