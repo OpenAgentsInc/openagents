@@ -384,56 +384,95 @@ fn engine(state: &ServeState) -> Result<&Arc<Gateway>, ApiError> {
         .ok_or_else(|| ApiError::new(ErrorType::NotFound, "Inference is not set up here."))
 }
 
+fn parse<T: serde::de::DeserializeOwned>(body: &[u8], id: &str) -> Result<T, Response> {
+    serde_json::from_slice(body).map_err(|why| {
+        error(
+            &ApiError::invalid_request(
+                "body",
+                format!("The request body isn't a valid request: {why}"),
+            ),
+            id,
+        )
+    })
+}
+
 async fn responses(
     State(state): State<Arc<ServeState>>,
     headers_in: HeaderMap,
     body: Bytes,
 ) -> Response {
+    if crate::inference_x402::applies(&state, &headers_in) {
+        let id = request_id();
+        let request: CreateResponse = match parse(&body, &id) {
+            Ok(request) => request,
+            Err(refusal) => return refusal,
+        };
+        let paid = match crate::inference_x402::admit(
+            &state,
+            &headers_in,
+            RESPONSES,
+            &body,
+            &request,
+            Api::Responses,
+            &id,
+        ) {
+            Ok(paid) => paid,
+            Err(answer) => return answer,
+        };
+        let events = wants_events(&headers_in);
+        let outcome = run_responses(&state, paid.caller.clone(), request, events).await;
+        return crate::inference_x402::finish(&paid, outcome);
+    }
     let caller = match admit(&state, &headers_in) {
         Ok(caller) => caller,
         Err(refusal) => return error(&refusal, &request_id()),
     };
-    let id = caller.request_id.clone();
-    let request: CreateResponse = match serde_json::from_slice(&body) {
+    let request: CreateResponse = match parse(&body, &caller.request_id) {
         Ok(request) => request,
-        Err(why) => {
-            return error(
-                &ApiError::invalid_request(
-                    "body",
-                    format!("The request body isn't a valid request: {why}"),
-                ),
-                &id,
-            );
-        }
+        Err(refusal) => return refusal,
     };
-    let sessions = match crate::inference_state::engine(&state) {
+    match run_responses(&state, caller, request, wants_events(&headers_in)).await {
+        Ok(answer) | Err(answer) => answer,
+    }
+}
+
+/// Run an admitted Open Responses request: the answer, or a refusal that
+/// came before any answer.
+async fn run_responses(
+    state: &Arc<ServeState>,
+    caller: Caller,
+    request: CreateResponse,
+    events: bool,
+) -> Result<Response, Response> {
+    let id = caller.request_id.clone();
+    let sessions = match crate::inference_state::engine(state) {
         Ok(sessions) => sessions.clone(),
-        Err(refusal) => return error(&refusal, &id),
+        Err(refusal) => return Err(error(&refusal, &id)),
     };
-    let owner = crate::inference_state::owner(&state, &caller);
+    let owner = crate::inference_state::owner(state, &caller);
     let stream = request.stream == Some(true);
     let turn = match sessions.create(request, &owner, &caller, None).await {
         Ok(turn) => turn,
-        Err(refusal) => return error(&refusal, &id),
+        Err(refusal) => return Err(error(&refusal, &id)),
     };
     if stream {
-        let frames = outgoing(turn.events, wants_events(&headers_in))
+        let frames = outgoing(turn.events, events)
             .map(|event| encode_event(&event))
             .chain(futures_util::stream::once(async { DONE_FRAME.to_owned() }));
         let mut response = sse(frames);
         route_headers(&mut response, &id, &turn.model, &turn.upstream);
-        return response;
+        return Ok(response);
     }
     let Some(folded) = collect(turn.events).await else {
-        return error(
+        return Ok(error(
             &ApiError::new(ErrorType::UpstreamFailed, "The model sent no answer."),
             &id,
-        );
+        ));
     };
     let mut response = axum::Json(&folded).into_response();
     route_headers(&mut response, &id, &turn.model, &turn.upstream);
     cost_header(&mut response, folded.openagents.as_ref());
-    response
+    Ok(response)
 }
 
 async fn chat(
@@ -441,39 +480,68 @@ async fn chat(
     headers_in: HeaderMap,
     body: Bytes,
 ) -> Response {
+    if crate::inference_x402::applies(&state, &headers_in) {
+        let id = request_id();
+        let chat: ChatRequest = match parse(&body, &id) {
+            Ok(chat) => chat,
+            Err(refusal) => return refusal,
+        };
+        let (request, shape) = match to_responses_request(chat) {
+            Ok(translated) => translated,
+            Err(refusal) => return error(&refusal, &id),
+        };
+        let paid = match crate::inference_x402::admit(
+            &state,
+            &headers_in,
+            CHAT,
+            &body,
+            &request,
+            Api::Chat,
+            &id,
+        ) {
+            Ok(paid) => paid,
+            Err(answer) => return answer,
+        };
+        let outcome = run_chat(&state, paid.caller.clone(), request, shape.include_usage).await;
+        return crate::inference_x402::finish(&paid, outcome);
+    }
     let mut caller = match admit(&state, &headers_in) {
         Ok(caller) => caller,
         Err(refusal) => return error(&refusal, &request_id()),
     };
     caller.api = Api::Chat;
-    let id = caller.request_id.clone();
-    let chat: ChatRequest = match serde_json::from_slice(&body) {
+    let chat: ChatRequest = match parse(&body, &caller.request_id) {
         Ok(chat) => chat,
-        Err(why) => {
-            return error(
-                &ApiError::invalid_request(
-                    "body",
-                    format!("The request body isn't a valid request: {why}"),
-                ),
-                &id,
-            );
-        }
+        Err(refusal) => return refusal,
     };
     let (request, shape) = match to_responses_request(chat) {
         Ok(translated) => translated,
-        Err(refusal) => return error(&refusal, &id),
+        Err(refusal) => return error(&refusal, &caller.request_id),
     };
-    let gateway = match engine(&state) {
+    match run_chat(&state, caller, request, shape.include_usage).await {
+        Ok(answer) | Err(answer) => answer,
+    }
+}
+
+/// Run an admitted Chat Completions request (already translated).
+async fn run_chat(
+    state: &Arc<ServeState>,
+    caller: Caller,
+    request: CreateResponse,
+    include_usage: bool,
+) -> Result<Response, Response> {
+    let id = caller.request_id.clone();
+    let gateway = match engine(state) {
         Ok(gateway) => gateway.clone(),
-        Err(refusal) => return error(&refusal, &id),
+        Err(refusal) => return Err(error(&refusal, &id)),
     };
     let mut routed = match gateway.run(&request, &caller).await {
         Ok(routed) => routed,
-        Err(refusal) => return error(&refusal, &id),
+        Err(refusal) => return Err(error(&refusal, &id)),
     };
     let events = std::mem::replace(&mut routed.events, Box::pin(futures_util::stream::empty()));
     if request.stream == Some(true) {
-        let mut writer = ChunkWriter::new(shape.include_usage);
+        let mut writer = ChunkWriter::new(include_usage);
         let frames = events
             .flat_map(move |event| {
                 futures_util::stream::iter(
@@ -487,17 +555,17 @@ async fn chat(
             .chain(futures_util::stream::once(async { DONE_FRAME.to_owned() }));
         let mut response = sse(frames);
         headers(&mut response, &id, &routed);
-        return response;
+        return Ok(response);
     }
     let Some(folded) = collect(events).await else {
-        return error(
+        return Ok(error(
             &ApiError::new(ErrorType::UpstreamFailed, "The model sent no answer."),
             &id,
-        );
+        ));
     };
     let completion = completion_from_response(&folded);
     let mut response = axum::Json(&completion).into_response();
     headers(&mut response, &id, &routed);
     cost_header(&mut response, folded.openagents.as_ref());
-    response
+    Ok(response)
 }

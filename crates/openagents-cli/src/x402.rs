@@ -925,7 +925,7 @@ pub(crate) fn offered<'a>(
         })
 }
 
-fn buy(
+pub(crate) fn buy(
     required: &openagents_x402::PaymentRequired,
     request_hash: &str,
     profiles: SupportedProfiles,
@@ -1626,7 +1626,7 @@ enum Refusal {
 }
 
 /// A resolved `oa-x402-v1` adapter: the advertised endpoint and descriptor.
-struct PaidCapability {
+pub(crate) struct PaidCapability {
     endpoint: String,
     x402: nostr::cap::X402Descriptor,
 }

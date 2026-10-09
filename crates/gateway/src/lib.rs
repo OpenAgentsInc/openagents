@@ -60,6 +60,8 @@ pub mod inference_rates;
 pub mod inference_routes;
 pub mod inference_state;
 pub mod inference_status;
+pub mod inference_x402;
+pub mod inference_openapi;
 pub mod jobs;
 pub mod money;
 pub mod open_quota;

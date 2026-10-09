@@ -5923,6 +5923,7 @@ dependencies = [
  "oa-auth",
  "oa-seal",
  "openagents-wallet",
+ "openagents-x402",
  "paper-mono",
  "pay-ledger",
  "pylon",

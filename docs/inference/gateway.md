@@ -96,6 +96,7 @@ balances, and error shapes. The agent is one more model id there
 | `GET /v1/rates` | The rate card as JSON, one row per model and upstream, with cost, margin, and price. | P1 |
 | `GET /v1/usage/{request_id}` | Tokens, cost, upstream, attempts, and timings for one finished request. | P1 |
 | `GET /v1/key` | The calling key's balance, spend, and the limits its owner set. | P1 |
+| `GET /v1/openapi.json` | OpenAPI 3.1 for every public inference route, held to the mounted route table by a test. | P1 (built, #11078) |
 | `POST /v1/responses/compact` | Open Responses compaction. | P2 (built) |
 | WebSocket `/v1/responses` | Open Responses WebSocket transport (optional in the spec). | P2 (built) |
 | `GET /v1/responses/{id}`, `DELETE /v1/responses/{id}` | The caller's stored response (`store: true`), read or deleted at once. Not in the spec; OpenAI's shape. | P2 (built) |
@@ -739,9 +740,32 @@ P1 public API as built (#11065), local only until deployed:
   through) also passes `/api/v1/...` to the gateway as
   `/v1/...` with the site's cookies removed: the `openagents.com/api/v1`
   alias.
-- Not yet: keyless `402` through `crates/x402` (pay per request with no
-  key), and hierarchical team budgets on inference holds (a shared-spend
-  workspace is refused with a plain message) (#11077).
+- Keyless `402` through `crates/x402` (#11078): with `inference.x402`
+  set (the resident wallet's home and node id, the network, and
+  `sats_rate`), a request with no key gets `402 payment_required` with
+  x402 v2 `exact`/`lnbtc` terms priced at its worst case from the rate
+  card (the same `priced` the balance hold uses, over every model its name
+  can reach, in whole sats rounded up). The same bytes with
+  `PAYMENT-SIGNATURE` settle through the facilitator and replay store and
+  run; the answer carries `PAYMENT-RESPONSE`. The unspent part is not
+  returned per call; a request that gets no answer releases its replay
+  key so the same proof can be sent again. Stored responses, hosted
+  tools, and the WebSocket need a key. `crates/gateway/src/inference_x402.rs`,
+  `tests/inference_api.rs`.
+- `GET /v1/openapi.json` (#11078, also at `/openapi.json`, which
+  `openagents.com/openapi.json` forwards to): `crates/gateway/src/inference_openapi.rs`;
+  `tests/inference_api.rs` fails when a mounted inference path lacks an
+  entry or an entry lacks a path or method. `x-payment-info` appears only
+  when x402 is configured.
+- `openagents inference MODEL [TEXT]` (#11078): the command-line client
+  (`crates/openagents-cli/src/inference.rs`), with `--stream`,
+  `--format text|json|events`, `--api responses|chat`, `--json BODY`,
+  `--max-price`, `--base`, `--key`, `--pay x402`, and `inference models`
+  and `inference rates`.
+- Not yet: hierarchical team budgets on inference holds (a shared-spend
+  workspace is refused with a plain message) (#11077), and the `Payment` scheme
+  and Lightning sessions (pay the actual cost, refund the rest) on the
+  inference routes.
 
 P1 bring your own key as built (#11067):
 

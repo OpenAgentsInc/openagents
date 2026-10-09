@@ -157,6 +157,9 @@ pub struct ServeState {
     /// Workspaces' own provider keys, sealed, present when `inference.byok`
     /// is configured.
     pub(crate) provider_keys: Option<Arc<crate::inference_byok::Keys>>,
+    /// Pay per request with x402, present when `inference.x402` is
+    /// configured.
+    pub(crate) inference_x402: Option<crate::inference_x402::Toll>,
     receipts: Mutex<std::fs::File>,
     /// The process-wide forward bound.
     in_flight: Arc<Semaphore>,
@@ -189,6 +192,17 @@ impl ServeState {
     pub fn open_with_upstreams(
         config: Config,
         upstreams: Option<Vec<Arc<dyn inference::upstream::Upstream>>>,
+    ) -> Result<Arc<Self>, Trouble> {
+        Self::open_with(config, upstreams, None)
+    }
+
+    /// [`ServeState::open_with_upstreams`] with the x402 invoice receiver
+    /// given rather than the resident wallet `inference.x402` names, for
+    /// tests.
+    pub fn open_with(
+        config: Config,
+        upstreams: Option<Vec<Arc<dyn inference::upstream::Upstream>>>,
+        x402_receiver: Option<Arc<dyn openagents_x402::server::Receiver>>,
     ) -> Result<Arc<Self>, Trouble> {
         if config.commercial.is_some()
             || config.team_policy.is_some()
@@ -363,8 +377,29 @@ impl ServeState {
             )),
             _ => None,
         };
+        let inference_x402 = config
+            .inference
+            .as_ref()
+            .and_then(|inference| inference.x402.as_ref())
+            .map(|x402| {
+                let receiver = x402_receiver.unwrap_or_else(|| {
+                    Arc::new(crate::inference_x402::WalletReceiver {
+                        wallet_home: x402.wallet_home.clone(),
+                        receiver_node: x402.receiver_node.clone(),
+                    })
+                });
+                crate::inference_x402::Toll::open(
+                    x402,
+                    &config.registry,
+                    config.public_origin.as_deref(),
+                    receiver,
+                )
+            })
+            .transpose()
+            .map_err(|error| Trouble::Io(std::io::Error::other(error)))?;
         let state = Arc::new(Self {
             meter,
+            inference_x402,
             inference: gateway,
             sessions,
             inference_book,
@@ -666,6 +701,7 @@ fn api_routes(state: &ServeState) -> Vec<(&'static str, MethodRouter<Arc<ServeSt
         if state.provider_keys.is_some() && state.config.accounts.is_some() {
             routes.extend(crate::inference_byok::routes());
         }
+        routes.extend(crate::inference_openapi::routes());
     }
     routes
 }

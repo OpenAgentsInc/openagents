@@ -4261,7 +4261,7 @@
                     ]
                   }
                 ],
-                "summary": "List retained remote jobs.",
+                "summary": "List saved remote jobs.",
                 "effect": "read_only",
                 "runs_on": "connected_computer"
               }
@@ -4295,7 +4295,7 @@
                     ]
                   }
                 ],
-                "summary": "Read one retained remote job.",
+                "summary": "Read one saved remote job.",
                 "effect": "read_only",
                 "runs_on": "connected_computer"
               }
@@ -4937,7 +4937,7 @@
                     ]
                   }
                 ],
-                "summary": "List retained local chats.",
+                "summary": "List saved local chats.",
                 "effect": "read_only",
                 "runs_on": "connected_computer"
               }
@@ -4971,7 +4971,7 @@
                     ]
                   }
                 ],
-                "summary": "Read one retained ATIF trajectory.",
+                "summary": "Read one saved chat as an ATIF trajectory.",
                 "effect": "read_only",
                 "runs_on": "connected_computer"
               }
@@ -5005,7 +5005,7 @@
                     ]
                   }
                 ],
-                "summary": "Remove one retained chat.",
+                "summary": "Remove one saved chat.",
                 "effect": "local_write",
                 "runs_on": "connected_computer"
               }
@@ -5043,7 +5043,7 @@
                 ]
               }
             ],
-            "summary": "Export a retained chat as ATIF-v1.8.",
+            "summary": "Export a saved chat as ATIF-v1.8.",
             "effect": "local_write",
             "runs_on": "connected_computer"
           }
@@ -24079,6 +24079,358 @@
         {
           "kind": "option",
           "name": "reconcile",
+          "optional": true,
+          "repeated": true
+        }
+      ]
+    },
+    {
+      "name": "inference",
+      "summary": "Run a model through the OpenAgents API: one answer, or a stream. Also `inference models` and `inference rates`.",
+      "children": [
+        {
+          "name": "run",
+          "leaf": {
+            "path": [
+              "inference",
+              "run"
+            ],
+            "usage": [
+              "run MODEL [TEXT] [--input TEXT] [--json BODY] [--instructions TEXT] [--stream] [--format text|json|events] [--api responses|chat] [--max-output-tokens N] [--max-price IN/OUT] [--base URL] [--key KEY] [--pay x402 --max-msat N]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "run"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "MODEL"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "TEXT",
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "input",
+                    "value": "TEXT",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "json",
+                    "value": "BODY",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "instructions",
+                    "value": "TEXT",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "stream",
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "format",
+                    "value": "text|json|events",
+                    "choices": [
+                      "text",
+                      "json",
+                      "events"
+                    ],
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "api",
+                    "value": "responses|chat",
+                    "choices": [
+                      "responses",
+                      "chat"
+                    ],
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "max-output-tokens",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "max-price",
+                    "value": "IN/OUT",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "base",
+                    "value": "URL",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "key",
+                    "value": "KEY",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "pay",
+                    "value": "x402",
+                    "choices": [
+                      "x402"
+                    ],
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "max-msat",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Run a model through the OpenAgents API and print its answer. `openagents inference MODEL [TEXT]` is the same. MODEL is a model id (google/gemini-3.8-flash, or just gemini-3.8-flash) or a task class we route for you: openagents/auto, openagents/chat, openagents/fast, openagents/code, openagents/long, openagents/reason, openagents/classify. TEXT or --input is the prompt; `-` reads it from stdin. --json BODY is the whole request body as JSON (`-` reads stdin); MODEL fills its `model` when it has none. --stream prints the answer as it arrives. --format: text (the answer's words, the default), json (the whole answer), or events (each streamed event as one JSON line). --api: responses (Open Responses, the default) or chat (OpenAI Chat Completions). --max-price: the most to pay per million tokens, in dollars, such as 0.50/2.00. --base: the API (default https://api.openagents.com/v1, or OPENAGENTS_API_BASE). --key: your API key (default OPENAGENTS_API_KEY); keys draw on your account's credit. --pay x402: with no key, pay for this one request over Lightning from your wallet, at most --max-msat N (also --max-fee-msat N and --pay-with wallet|node).",
+            "effect": "spends",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "models",
+          "leaf": {
+            "path": [
+              "inference",
+              "models"
+            ],
+            "usage": [
+              "models [--base URL] [--key KEY]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "models"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "base",
+                    "value": "URL",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "key",
+                    "value": "KEY",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Every model, its providers, and its price.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "rates",
+          "leaf": {
+            "path": [
+              "inference",
+              "rates"
+            ],
+            "usage": [
+              "rates [--base URL]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "rates"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "base",
+                    "value": "URL",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "The rate card: each provider's price, our margin, and what you pay, per million tokens.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        }
+      ],
+      "options": [
+        {
+          "kind": "option",
+          "name": "input",
+          "value": "TEXT",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "json",
+          "value": "BODY",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "instructions",
+          "value": "TEXT",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "stream",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "format",
+          "value": "text|json|events",
+          "choices": [
+            "text",
+            "json",
+            "events"
+          ],
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "api",
+          "value": "responses|chat",
+          "choices": [
+            "responses",
+            "chat"
+          ],
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "max-output-tokens",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "max-price",
+          "value": "IN/OUT",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "base",
+          "value": "URL",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "key",
+          "value": "KEY",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "pay",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "max-msat",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "format:",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "api:",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "max-price:",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "base:",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "key:",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "max-fee-msat",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "pay-with",
+          "value": "wallet|node",
+          "choices": [
+            "wallet",
+            "node"
+          ],
           "optional": true,
           "repeated": true
         }

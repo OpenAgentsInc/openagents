@@ -387,7 +387,7 @@ impl Book {
         true
     }
 
-    fn record_charge(&mut self, request_id: &str, mut charge: Charge) {
+    pub(crate) fn record_charge(&mut self, request_id: &str, mut charge: Charge) {
         if let Some(found) = self.charges.iter_mut().find(|(id, _)| id == request_id) {
             if found.1.settlement == "settled" || found.1.free {
                 // An earlier run of the same request: add this one to it.
@@ -620,7 +620,7 @@ enum Kind {
 
 /// One model's worst case: its price (rate card plus margin) and the
 /// largest usage the request can report.
-fn priced(
+pub(crate) fn priced(
     gateway: &Gateway,
     request: &CreateResponse,
     model: &str,

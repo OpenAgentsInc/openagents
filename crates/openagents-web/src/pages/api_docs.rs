@@ -28,7 +28,7 @@ use crate::markdown;
 use crate::ui_page::{UiPage, action_link, problem, prose};
 
 /// The guides, by slug, in reading order.
-pub(crate) const API_DOCS: [(&str, &str); 10] = [
+pub(crate) const API_DOCS: [(&str, &str); 11] = [
     (
         "quickstart",
         include_str!("../../content/docs/api/quickstart.md"),
@@ -50,6 +50,10 @@ pub(crate) const API_DOCS: [(&str, &str); 10] = [
     (
         "bring-your-own-key",
         include_str!("../../content/docs/api/bring-your-own-key.md"),
+    ),
+    (
+        "pay-per-request",
+        include_str!("../../content/docs/api/pay-per-request.md"),
     ),
     ("errors", include_str!("../../content/docs/api/errors.md")),
     ("limits", include_str!("../../content/docs/api/limits.md")),
@@ -242,7 +246,8 @@ Chat Completions at <code>https://api.openagents.com/v1</code>. Beta.</p>\
     }
     body.push_str(
         "</ol><p class=\"oa-page-meta\">Each guide is also plain Markdown: add <code>.md</code> \
-to its address, or start from <a href=\"/docs/api/llms.txt\">llms.txt</a>.</p>",
+to its address, or start from <a href=\"/docs/api/llms.txt\">llms.txt</a>. Every route is \
+described in OpenAPI at <code>https://api.openagents.com/v1/openapi.json</code>.</p>",
     );
     UiPage::new("API")
         .breadcrumb(Breadcrumb::new("API").crumb("Docs", "/docs"))
@@ -265,6 +270,9 @@ https://api.openagents.com/v1 (also https://openagents.com/api/v1). Beta.\n\n## 
             markdown::title(text, slug)
         ));
     }
+    out.push_str(
+        "\n## Reference\n\n- [OpenAPI 3.1 description of every route](https://api.openagents.com/v1/openapi.json)\n",
+    );
     out
 }
 

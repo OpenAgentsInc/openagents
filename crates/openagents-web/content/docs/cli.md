@@ -68,6 +68,23 @@ openagents plugin defaults sync                 # the plugins Coder uses for eve
 
 See [Plugins](/docs/plugins) and the guides after it.
 
+## Models
+
+Call any model on the [OpenAgents API](/docs/api) with your key in
+`OPENAGENTS_API_KEY`:
+
+```sh
+openagents inference google/gemini-3.8-flash "Say hello."
+openagents inference openagents/chat --input "Tell me a story." --stream
+openagents inference openagents/fast --json '{"input": "Hi", "temperature": 0.2}'
+openagents inference models                     # every model and its price
+openagents inference rates                      # the rate card
+```
+
+`--format json` prints the whole answer and `--format events` each streamed
+event. With no key, `--pay x402 --max-msat N` pays for one request from
+your wallet ([Pay per request](/docs/api/pay-per-request)).
+
 ## Connect
 
 For a computer without the Mac app, or to script pairing. The host must be

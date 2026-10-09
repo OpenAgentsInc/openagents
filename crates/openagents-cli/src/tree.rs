@@ -288,6 +288,11 @@ pub fn help() -> Vec<GroupHelp<'static>> {
         group("eval", Some(crate::eval::USAGE), crate::eval::EFFECTS),
         group("gym", Some(crate::gym::USAGE), crate::gym::EFFECTS),
         group("labor", Some(crate::labor::USAGE), crate::labor::EFFECTS),
+        group(
+            "inference",
+            Some(crate::inference::USAGE),
+            crate::inference::EFFECTS,
+        ),
         group("key", Some(crate::key::USAGE), crate::key::EFFECTS),
         group("wallet", Some(crate::wallet::USAGE), crate::wallet::EFFECTS),
         group("x402", Some(x402_usage()), x402_effects()),

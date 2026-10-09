@@ -69,6 +69,35 @@ app's; otherwise the command keeps its own under `~/.openagents/chat/`, and
 the router's typed metadata, and `--run-coder` accepts a Coder offer through
 the host. The full guide is [chat.md](chat.md).
 
+## Models on the OpenAgents API (`openagents inference`)
+
+A plain HTTP client of the public inference API
+(`docs/inference/gateway.md`; OpenAPI at `BASE/openapi.json`).
+
+```sh
+openagents inference google/gemini-3.8-flash "Say hello."     # the answer's words
+openagents inference gemini-3.8-flash --input "Hi"           # a bare name is the catalog's id
+openagents inference openagents/chat - --stream < prompt.txt # stdin, printed as it arrives
+openagents inference openagents/fast --json '{"input":"Hi","temperature":0.2}' --format json
+openagents inference openagents/code "Fix it" --api chat --format events
+openagents inference openagents/chat "Hi" --max-price 0.50/2.00 --max-output-tokens 200
+openagents inference models
+openagents inference rates
+openagents inference google/gemini-3.8-flash "Hi" --pay x402 --max-msat 10000   # no key
+```
+
+- `--base URL` (or `OPENAGENTS_API_BASE`) points it at another gateway,
+  such as a local one (`http://127.0.0.1:PORT/v1`); the default is
+  `https://api.openagents.com/v1`.
+- `--key` (or `OPENAGENTS_API_KEY`) is an `oak_` key; requests draw on its
+  account's credit.
+- `--json BODY` after `inference` is the request body, not the global
+  output switch; `openagents --json inference ...` still sets JSON output.
+- `--pay x402` (no key): the `402`'s invoice is checked against the
+  request and the spending policy, paid from the wallet (`--pay-with
+  wallet|node`, `--max-fee-msat`), and the same bytes are sent again with
+  `PAYMENT-SIGNATURE`, as `openagents x402 fetch` does.
+
 ## Private sales records (`openagents sales`)
 
 `openagents sales` reads and updates the host's private lead/account pipeline

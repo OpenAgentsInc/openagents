@@ -259,6 +259,39 @@ pub struct Inference {
     /// The relay Pylon jobs go over; the OpenAgents relay by default.
     #[serde(default)]
     pub pylon_relay: Option<String>,
+    /// Pay per request with x402 over Lightning (#11078): a request with
+    /// no key gets a `402` priced from the rate card and runs once it
+    /// carries the payment. Needs `sats_rate`. Absent, a request with no
+    /// key is `401`.
+    #[serde(default)]
+    pub x402: Option<InferenceX402>,
+}
+
+/// Where x402 invoices come from and how they are bound.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct InferenceX402 {
+    /// The resident wallet's home (`openagents wallet serve`), owned by
+    /// this user and closed to others.
+    pub wallet_home: PathBuf,
+    /// The wallet's node id: the `payTo` of every invoice.
+    pub receiver_node: String,
+    /// `bitcoin` or `testnet`.
+    pub network: String,
+    /// The origin requests are bound to (`https://api.openagents.com`).
+    /// Absent, `public_origin`, then the request's own `Host`.
+    #[serde(default)]
+    pub origin: Option<String>,
+    /// The replay store; absent, `<registry>/inference/x402-replay`.
+    #[serde(default)]
+    pub replay_dir: Option<PathBuf>,
+    /// How long an invoice stays payable, seconds.
+    #[serde(default = "x402_timeout")]
+    pub timeout_secs: u32,
+}
+
+fn x402_timeout() -> u32 {
+    300
 }
 
 /// The public inference API's terms. We impose no usage limits; the free

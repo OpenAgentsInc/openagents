@@ -72,8 +72,21 @@ console.log(reply.choices[0].message.content);
 
 Add `stream: true` to either call to get the answer as it's written.
 
+## From the command line
+
+```sh
+openagents inference google/gemini-3.8-flash "Say hello in five words."
+openagents inference openagents/chat --input "Tell me a story." --stream
+openagents inference models
+```
+
+It reads your key from `OPENAGENTS_API_KEY`. With no key,
+`--pay x402 --max-msat N` pays for one request over Lightning
+([Pay per request](/docs/api/pay-per-request)).
+
 ## Next
 
 - [Models and prices](/docs/api/models): every model and what it costs.
 - [Which model to use](/docs/api/decisions): pick by task, price, and speed.
 - [Errors](/docs/api/errors): what each error means and what to do.
+- The OpenAPI description of every route: `https://api.openagents.com/v1/openapi.json`.

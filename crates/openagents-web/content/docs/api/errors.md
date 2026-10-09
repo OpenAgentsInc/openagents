@@ -20,6 +20,7 @@ An error comes back as JSON with an HTTP status:
 | 400 | `invalid_request` | The request is malformed, or asks for something the API doesn't do (such as `store: true`) | Fix the field named in `param` |
 | 401 | `unauthorized` | The key is missing, wrong, or revoked | Check the `Authorization` header |
 | 402 | `insufficient_balance` | Your balance can't cover the request | Top up, then retry |
+| 402 | `payment_required` | You sent no key, so the request must be paid for | Pay the invoice in `PAYMENT-REQUIRED` and send the request again ([Pay per request](/docs/api/pay-per-request)), or use a key |
 | 403 | `limit_reached` | A limit you set was hit; `param` names it | Raise the limit, or wait for it to reset |
 | 404 | `not_found` | No such model or route | Check the model name against `GET /v1/models` |
 | 429 | `too_many_requests` | Too many requests at once | Retry after a short wait |

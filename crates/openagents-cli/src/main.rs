@@ -45,6 +45,7 @@ mod ext_run;
 mod gym;
 mod host_observers;
 mod hosts;
+mod inference;
 mod issue;
 mod jev_judge;
 mod kb;
@@ -203,6 +204,10 @@ Gym (NIP-EVAL):
 Labor (NIP-MKT, NIP-LAB):
   labor        Admit, negotiate, execute, deliver, and accept free labor orders.
 
+Models (the OpenAgents API):
+  inference    Run a model through the OpenAgents API: one answer, or a stream.
+               Also `inference models` and `inference rates`.
+
 Keys, relays, and money:
   key          Show or create Nostr identities.
   wallet       Your OpenAgents wallet: your balance and an address to get paid at.
@@ -280,10 +285,16 @@ fn main() -> ExitCode {
     let mut arguments: Vec<String> = std::env::args().skip(1).collect();
     // `--json` is this program's switch only before `--`; after it, the
     // words belong to the command a group runs (`lease`, `boat run`).
-    let end = arguments
-        .iter()
-        .position(|argument| argument == "--")
-        .unwrap_or(arguments.len());
+    // `openagents inference MODEL --json BODY`: after `inference`, `--json`
+    // is that command's request body.
+    let group = arguments.iter().position(|argument| argument != "--json");
+    let end = match group {
+        Some(index) if arguments[index] == "inference" => index,
+        _ => arguments
+            .iter()
+            .position(|argument| argument == "--")
+            .unwrap_or(arguments.len()),
+    };
     let json = arguments[..end].iter().any(|argument| argument == "--json");
     let tail = arguments.split_off(end);
     arguments.retain(|argument| argument != "--json");
@@ -378,6 +389,7 @@ fn main() -> ExitCode {
         #[cfg(unix)]
         "labor" => labor::run(&output, &rest),
         "key" => key::run(&output, &rest),
+        "inference" => inference::run(&output, &rest),
         // `wallet serve` is the x402 node's resident under its old name,
         // which services installed before 2026-10-02 still start.
         #[cfg(unix)]
