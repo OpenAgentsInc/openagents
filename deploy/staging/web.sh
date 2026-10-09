@@ -1,5 +1,5 @@
 # The staging web container's launcher, run by /bin/sh -c in the
-# openagents-web image (service.yaml inlines this file; keep them in step).
+# openagents-web image (render.py inlines this file into the service).
 # It writes the secrets Cloud Run passes as environment variables into
 # owner-only files the site's private-file checks accept, then starts the
 # site the way scripts/dev/full-local.sh does, with the account service and
