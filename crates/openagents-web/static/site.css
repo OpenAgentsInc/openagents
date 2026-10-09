@@ -50,22 +50,10 @@ main:focus{outline:none}
 .site-footer a{color:var(--noir-content)}
 .sep{color:var(--noir-content-secondary)}
 
-/* A box: a one-cell frame with its title set into the top rule. */
-.box{position:relative;border:1px solid var(--noir-stroke);padding:1.25rem 2ch 1rem;margin:0 0 1.5rem}
-.box>.box-title{position:absolute;top:-.75rem;left:1.5ch;background:var(--noir-canvas);padding:0 1ch;color:var(--noir-content);font-weight:700;line-height:1.5rem;margin:0;font-size:1rem}
-.box.quiet{border-color:var(--noir-stroke-subtle)}
-.box>:last-child{margin-bottom:0}
-
-.label,.hint,.meta{color:var(--noir-content-secondary)}
+.label{color:var(--noir-content-secondary)}
 .dim{color:var(--noir-content-secondary)}
-.loud{color:var(--noir-content)}
 .error{color:var(--noir-danger);border-left:2px solid var(--noir-danger);padding-left:1ch}
-.notice{border:1px dashed var(--noir-stroke);padding:.75rem 2ch;color:var(--noir-content);margin:0 0 1.5rem}
 
-/* A page's intro: its heading and lede. */
-.intro{margin:0 0 2rem}
-.intro h1{font-size:2rem;margin:0 0 .75rem}
-.lede{color:var(--noir-content);font-size:1.1rem;max-width:60ch}
 /* The composer's card is styled by Tailwind utilities (static/tailwind.css). */
 .composer{margin:0 0 1.5rem}
 /* The homepage: the composer centered between the header and the footer. */
@@ -103,8 +91,6 @@ main p>img{display:block;height:auto;border:1px solid var(--noir-stroke-subtle)}
 button,.button{background:var(--noir-control);border:0;color:var(--noir-content);font:inherit;cursor:pointer;padding:0;text-decoration:none;white-space:nowrap}
 button:hover,.button:hover{background:var(--noir-control-hover)}
 
-.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 2ch}
-
 /* Lists of documents and posts. */
 .list{list-style:none;margin:0;padding:0}
 .list>li{border-top:1px solid var(--noir-stroke-subtle);padding:.75rem 0}
@@ -118,54 +104,9 @@ button:hover,.button:hover{background:var(--noir-control-hover)}
 .md li{margin:.2rem 0}
 .md a{overflow-wrap:anywhere}
 
-.crumbs{color:var(--noir-content-secondary);margin:0 0 1rem}
-.chips{display:flex;flex-wrap:wrap;gap:.25rem 1ch;list-style:none;margin:.25rem 0 .75rem;padding:0}
-.chips li{border:1px solid var(--noir-stroke-subtle);padding:0 1ch;color:var(--noir-content);font-size:.9rem}
-.cells{display:flex;flex-wrap:wrap;gap:.25rem 1ch;margin:.25rem 0 0;padding:0;list-style:none}
-.cells a{border:1px solid var(--noir-stroke-subtle);padding:0 1ch;text-decoration:none;color:var(--noir-content)}
-.cells a.pass{color:var(--noir-content);border-color:var(--noir-content-secondary)}
-.cells a.beat{color:var(--noir-canvas);background:var(--noir-content);border-color:var(--noir-content)}
-.tabs{display:flex;flex-wrap:wrap;gap:.25rem 1ch;margin:0 0 1rem;padding:0;list-style:none}
-.tabs a,.tabs span{border:1px solid var(--noir-stroke-subtle);padding:0 1ch;text-decoration:none}
-.tabs [aria-current=page]{border-color:var(--noir-content);color:var(--noir-content)}
-.tabs span{color:var(--noir-content-secondary)}
-.steps{list-style:none;margin:0;padding:0}
-.steps>li{border-top:1px solid var(--noir-stroke-subtle);padding:.5rem 0}
-.steps .at{color:var(--noir-content-secondary)}
-.steps pre{margin:.5rem 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
 details summary{cursor:pointer;color:var(--noir-content)}
 
-/* The download page: numbered sections of platform rows. */
-.dl-section{margin:0 0 2.5rem}
-.dl-section h2{margin:0 0 .25rem}
-.dl-list{list-style:none;margin:.75rem 0 1rem;padding:0;border:1px solid var(--noir-stroke-subtle)}
-.dl-row{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:.5rem 2ch;padding:.75rem 2ch;border-top:1px solid var(--noir-stroke-subtle)}
-.dl-row:first-child{border-top:0}
-.dl-name strong{color:var(--noir-content)}
-.soon{color:var(--noir-content-secondary)}
-.faq dt{color:var(--noir-content);font-weight:700;margin:1rem 0 .25rem}
-.faq dd{margin:0}
-
-/* The local task browser. */
-.facts{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:1ch;margin:1rem 0 2rem}
-.facts div{border-top:1px solid var(--noir-content-secondary);padding-top:.5rem;min-width:0}
-.facts dt{color:var(--noir-content-secondary);font-size:.85rem;text-transform:uppercase}
-.facts dd{color:var(--noir-content);margin:.25rem 0 0;overflow-wrap:anywhere}
-.task-row{display:flex;gap:2ch;justify-content:space-between;align-items:center;text-decoration:none}
-.task-row small{display:block;color:var(--noir-content-secondary)}
 .status{color:var(--noir-content-secondary);text-transform:lowercase}
-.detail pre{white-space:pre-wrap;overflow-wrap:anywhere}
-
-/* /live: the route map with the flow stream's real traffic, drawn on a
-   canvas by static/flow.js; the totals under it. */
-.flow{position:relative;border:1px solid var(--noir-stroke-subtle);aspect-ratio:16/10;margin:0 0 .75rem;background:var(--noir-canvas)}
-.flow canvas{display:block;width:100%;height:100%}
-.flow-status{color:var(--noir-content);margin:0 0 .75rem}
-.flow-totals{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1ch;margin:0 0 1rem}
-.flow-totals dt{color:var(--noir-content-secondary)}
-.flow-totals dd{color:var(--noir-content);margin:0;font-size:1.1rem}
-.flow-recent{list-style:none;padding:0;margin:0 0 1rem}
-.flow-recent li{border-bottom:1px solid var(--noir-stroke-subtle);padding:.25rem 0;overflow-wrap:anywhere}
 
 /* /everglade: the Everglade web build's canvas fills the window
    (static/everglade.js), and the build sizes its drawing buffer from the
@@ -178,30 +119,9 @@ html.stage body{display:block}
 .glade-status:empty{display:none}
 .glade-leave{position:absolute;top:0;left:0;margin:0;padding:calc(.5rem + env(safe-area-inset-top)) .75rem .5rem;background:var(--noir-surface)}
 
-/* /stats: the payment numbers as tables and bar series, no script. */
-.stats-id{overflow-wrap:anywhere}
-.stats-series{margin:0 0 1.5rem}
-.stats-series svg{display:block;width:100%;height:4rem;border-bottom:1px solid var(--noir-stroke-subtle)}
-.stats-slot{fill:transparent}
-.stats-bar{fill:var(--noir-content)}
-.stats-series g:hover .stats-bar{fill:var(--noir-content)}
-.stats-series figcaption{color:var(--noir-content-secondary);margin:.25rem 0 0}
-
-/* /pilot: a bounded private request, with no client-side script. */
-.pilot-form label{display:block;margin:1rem 0}
-.pilot-form input:not([type=checkbox]):not([type=hidden]),.pilot-form textarea{display:block;width:100%;box-sizing:border-box;background:var(--noir-canvas);color:var(--noir-content);border:1px solid var(--noir-stroke);font:inherit;padding:.5rem;margin-top:.4rem}
-.pilot-consent input{margin-right:.5ch}
-.pilot-reference{overflow-wrap:anywhere}
-.pilot-trap{position:absolute;left:-10000px;width:1px;height:1px;overflow:hidden}
-
 @media (max-width:640px){
   html{font-size:13px}
   .site-header nav,.site-footer,main{width:calc(100% - 32px)}
-  .grid2{grid-template-columns:1fr}
-  .facts{grid-template-columns:repeat(2,minmax(0,1fr))}
-  .box{padding:1.25rem 1.5ch 1rem}
-  .flow{aspect-ratio:1/1}
-  .stats-totals{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
 
 button:active,.button:active{background:var(--noir-control-pressed)}

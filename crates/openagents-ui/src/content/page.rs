@@ -1,7 +1,7 @@
 //! Document pages: the reading column and the facts grid. The other page
 //! classes in `static/components/page.css` (`oa-page-eyebrow`,
 //! `oa-page-lead`, `oa-page-meta`, `oa-page-actions`, `oa-page-section`,
-//! `oa-card`, `oa-item-list`, `oa-item-title`, `oa-chart`,
+//! `oa-card`, `oa-disclosure`, `oa-item-list`, `oa-item-title`, `oa-chart`,
 //! `oa-canvas-panel`, `oa-event-list`) are plain classes on plain elements.
 
 use maud::{Markup, Render, html};
