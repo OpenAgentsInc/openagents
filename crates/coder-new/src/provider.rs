@@ -551,6 +551,14 @@ impl Provider {
                 redact_value(&mut observation, self.key.expose());
                 history.push(observation);
             }
+            // Claude query.ts drains user prompts only after the full tool batch.
+            if let Some(inbox) = &execution.prompt_inbox {
+                for slot in inbox.lock().unwrap().drain(..) {
+                    if let Some(text) = slot.lock().unwrap().take() {
+                        history.push(json!({"role":"user","content":text}));
+                    }
+                }
+            }
         }
     }
 
@@ -1120,6 +1128,7 @@ mod tests {
 
     fn jev_settings(endpoint: String, key: Option<model_access::ApiKey>) -> ExecutionSettings {
         ExecutionSettings {
+            prompt_inbox: None,
             boat: Default::default(),
             gce: crate::cloud_settings::Configuration::gce(),
             cloud_root: "fixture-state".into(),
@@ -1304,6 +1313,47 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn queued_prompts_follow_complete_tool_results_in_order() {
+        let final_reply = format!(
+            "data: {}\n\ndata: [DONE]\n\n",
+            json!({"model":"fixture/served","choices":[{"delta":{"content":"Done"},"finish_reason":"stop"}],"usage":{"total_tokens":1}})
+        );
+        let (base, server) = sequence(vec![tool_reply("fixture-call", json!({})), final_reply]);
+        let provider = Provider::with_base(ApiKey::new(FIXTURE_TOKEN), &base).unwrap();
+        let inbox: crate::prompt_queue::Inbox = Default::default();
+        let slots: Vec<_> = ["second", "third"]
+            .into_iter()
+            .map(|text| Arc::new(std::sync::Mutex::new(Some(text.to_owned()))))
+            .collect();
+        let mut settings = jev_settings("http://unused".into(), None);
+        settings.prompt_inbox = Some(inbox.clone());
+        runtime()
+            .block_on(provider.chat_with_plugins(
+                "fixture/model",
+                &crate::models::GenerationOptions::default(),
+                vec![Message::user("first")],
+                &settings,
+                &mut |_| {},
+                &mut |_| {},
+                &mut |event| {
+                    if matches!(event, RuntimeEvent::Tool { running: true, .. }) {
+                        inbox.lock().unwrap().extend(slots.iter().cloned());
+                    }
+                },
+                &Arc::new(AtomicBool::new(false)),
+            ))
+            .unwrap();
+        let requests = server.join().unwrap();
+        let messages = requests[1]["messages"].as_array().unwrap();
+        let tail = &messages[messages.len() - 3..];
+        assert_eq!(tail[0]["role"], "tool");
+        assert_eq!(tail[1], json!({"role":"user","content":"second"}));
+        assert_eq!(tail[2], json!({"role":"user","content":"third"}));
+        assert!(slots.iter().all(|slot| slot.lock().unwrap().is_none()));
+        assert!(inbox.lock().unwrap().is_empty());
     }
 
     #[test]

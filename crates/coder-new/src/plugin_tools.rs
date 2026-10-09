@@ -18,6 +18,7 @@ use crate::{
 
 #[derive(Clone)]
 pub struct ExecutionSettings {
+    pub prompt_inbox: Option<crate::prompt_queue::Inbox>,
     pub boat: crate::cloud_settings::Configuration,
     pub gce: crate::cloud_settings::Configuration,
     pub cloud_root: PathBuf,
@@ -660,6 +661,7 @@ mod tests {
     }
     fn settings() -> ExecutionSettings {
         ExecutionSettings {
+            prompt_inbox: None,
             boat: Default::default(),
             gce: crate::cloud_settings::Configuration::gce(),
             cloud_root: "fixture-state".into(),

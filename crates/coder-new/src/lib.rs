@@ -29,6 +29,7 @@ pub mod plugin_store;
 pub mod plugin_tools;
 pub mod plugins;
 pub mod programmatic;
+mod prompt_queue;
 pub mod provider;
 pub mod resume;
 pub mod sessions;
@@ -97,6 +98,8 @@ pub struct App {
     pub(crate) sync: Option<account_sync::SyncState>,
     pub request: Option<live::Request>,
     pub request_id: u64,
+    pub(crate) prompt_inbox: prompt_queue::Inbox,
+    pub(crate) queued_prompts: Vec<prompt_queue::Prompt>,
     pub checking_key: bool,
     pub checking_jev: bool,
     pub(crate) brainstorm_job: Option<brainstorm::Job>,
@@ -364,6 +367,9 @@ impl App {
     }
 
     pub fn cancel_request(&mut self) {
+        self.prompt_inbox.lock().unwrap().clear();
+        self.acknowledge_prompts();
+        self.prompt_inbox = Default::default();
         self.clear_disclosure();
         let brainstorm = self.brainstorm_job.take();
         self.brainstorm_conversation = None;
@@ -470,6 +476,7 @@ impl App {
         if update.id() != self.request_id || self.mode != Mode::Live {
             return;
         }
+        self.acknowledge_prompts();
         self.history.dirty |= self.live.busy;
         match update {
             live::Update::BrainstormFinished {
@@ -732,9 +739,6 @@ impl App {
         self.cwd = Some(cwd.to_owned());
         self.draft.text = text.into();
         self.draft.cursor = text.len();
-        if self.submit_brainstorm_command() {
-            return;
-        }
         self.submit_live();
     }
 
@@ -879,11 +883,12 @@ impl App {
     }
 
     pub fn submit_live(&mut self) {
-        if self.submit_brainstorm_command() {
+        if self.live.busy || self.checking_key || self.checking_jev || self.brainstorm_job.is_some()
+        {
+            self.queue_prompt();
             return;
         }
-        if self.live.busy {
-            self.live.notice = Some("Wait for the current reply or press Esc to stop it.".into());
+        if self.submit_brainstorm_command() {
             return;
         }
         if !self.ensure_session() {
@@ -921,6 +926,7 @@ impl App {
                 std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
             }));
         execution.instructions = self.live.instructions.clone();
+        execution.prompt_inbox = Some(self.prompt_inbox.clone());
         if key.is_some()
             && execution.brainstorm.is_some()
             && execution.disclosure_desk.is_none()
@@ -1575,6 +1581,9 @@ impl App {
                     KeyCode::Up if self.mode == Mode::Live => self
                         .select_agent(self.selected_agent.and_then(|index| index.checked_sub(1))),
                     KeyCode::Esc if self.mode == Mode::Live => {
+                        if !self.live.busy && self.restore_queued_prompts() {
+                            return true;
+                        }
                         self.cancel_request();
                         self.live
                             .notice
@@ -1588,6 +1597,13 @@ impl App {
                         self.draft.insert("\n");
                     }
                     KeyCode::Enter if !ctrl => {
+                        if self.mode == Mode::Live
+                            && self.live.busy
+                            && !self.draft.text.trim().is_empty()
+                        {
+                            self.queue_prompt();
+                            return true;
+                        }
                         if self.submit_brainstorm_command() {
                             return true;
                         } else if let Some(selection) = self

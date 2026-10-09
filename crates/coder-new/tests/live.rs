@@ -443,7 +443,7 @@ fn live_streaming_preserves_stopped_text_and_ignores_stale_updates() {
     key(&mut app, KeyCode::Esc);
     paste(&mut app, "follow-up question");
     key(&mut app, KeyCode::Enter);
-    assert_eq!(app.draft.text, "follow-up question");
+    assert!(app.draft.text.is_empty());
     assert!(app.request.is_none());
     assert!(app.live.busy);
     key(&mut app, KeyCode::Esc);
@@ -480,6 +480,7 @@ fn live_streaming_preserves_stopped_text_and_ignores_stale_updates() {
     assert!(matches!(app.plugins.connection, Connection::Verified));
     assert!(!render(&mut app, 80, 24).contains("late"));
 
+    key(&mut app, KeyCode::Esc); // Restore queued input for editing while idle.
     key(&mut app, KeyCode::Enter);
     let second = app.request.take().unwrap();
     assert_ne!(second.id, first.id);

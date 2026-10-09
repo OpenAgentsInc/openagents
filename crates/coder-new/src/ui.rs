@@ -107,15 +107,27 @@ fn render_contents(frame: &mut Frame, app: &mut App) {
     .min(usize::from(area.height.saturating_sub(6))) as u16;
     let composer_height = (draft.len() as u16).clamp(1, 6) + 2;
     let reserved = rail_height + 3;
-    let [header, body, composer, context, rail] = Layout::vertical([
+    let [header, body, queued, composer, context, rail] = Layout::vertical([
         Constraint::Length(1),
         Constraint::Min(1),
+        Constraint::Length(app.queued_prompts.len().min(3) as u16),
         Constraint::Length(composer_height.min(area.height.saturating_sub(reserved))),
         Constraint::Length(1),
         Constraint::Length(rail_height),
     ])
     .areas(area);
     header_view(frame, header, app);
+    let pending = app
+        .queued_prompts
+        .iter()
+        .map(|p| {
+            Line::from(span(
+                format!("Queued: {}", p.text.replace('\n', " ")),
+                t::GRAY,
+            ))
+        })
+        .collect::<Vec<_>>();
+    frame.render_widget(Paragraph::new(pending), queued);
     match app.screen {
         Screen::Conversation => conversation(frame, body, app),
         Screen::Plugins | Screen::PluginSettings | Screen::Appearance => unreachable!(),

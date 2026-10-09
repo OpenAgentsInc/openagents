@@ -354,6 +354,7 @@ impl Background {
             self.active = None;
         }
         app.poll_disclosure();
+        app.process_prompt_queue();
     }
 
     fn cancel(&mut self) {

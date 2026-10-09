@@ -427,6 +427,7 @@ impl Plugins {
         cwd: std::path::PathBuf,
     ) -> crate::plugin_tools::ExecutionSettings {
         crate::plugin_tools::ExecutionSettings {
+            prompt_inbox: None,
             boat: crate::cloud_settings::Configuration {
                 enabled: self.live && self.bundled.boat.enabled,
                 ..self.bundled.boat.clone()
