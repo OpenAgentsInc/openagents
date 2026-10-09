@@ -10434,6 +10434,7 @@ name = "openagents-ui"
 version = "0.1.0"
 dependencies = [
  "maud",
+ "oa-copy",
  "oa-tokens",
 ]
 

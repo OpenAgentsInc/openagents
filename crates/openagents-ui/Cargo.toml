@@ -10,5 +10,8 @@ description = "Server-rendered web components in the Apps SDK UI design language
 maud = "0.27"
 oa-tokens = { path = "../oa-tokens" }
 
+[dev-dependencies]
+oa-copy = { path = "../oa-copy" }
+
 [build-dependencies]
 oa-tokens = { path = "../oa-tokens" }

@@ -61,7 +61,7 @@ pub(super) fn composer(pane: Pane) -> Markup {
         .status(html! { "Ready" });
     let draft = Composer::new(pane.id("composer-draft"), "/ui")
         .enhanced(false)
-        .draft("Fix the flaky upstream test")
+        .draft("Fix the flaky login test")
         .model_picker(ModelPickerTrigger::new("Mini").hx(HxGet::new("/composer/models")))
         .send_label("Start task");
     let rich = Composer::new(pane.id("composer-rich"), "/ui")
