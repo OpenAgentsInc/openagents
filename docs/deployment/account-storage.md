@@ -8,6 +8,48 @@ keys. They now live on an NFS disk that outlives the instance. This page
 is the decision, how it works, backups and restore, and the production
 steps.
 
+## Postgres (#11154)
+
+The owner asked for Postgres ("use postgres asap"). The account
+service's own stores now live in Cloud SQL when the gateway is given the
+database's connection string; the design of every table is
+[the data schema](../data/schema.md).
+
+| Moved to Postgres | Still on the NFS share |
+| --- | --- |
+| `accounts.json` (accounts, workspaces, memberships, invitations, GitHub identities) and its history, `sessions.json` and its history, `keys.json`, `github-access/`, `inference-provider-keys.json` | The tenant registry, `inference-keys.json` (API-key limits, spend and free counts), the quota ledger, receipts and the attempt journal, stored responses, `service.key`, the worker's usage lines, the web's own-Claude files (`web/byo/`) |
+
+So the share and the gateway handoff stay until the money domain moves
+too. The instances are `openagents-staging-pg` (db-f1-micro) and
+`openagents-production-pg` (db-custom-1-3840), PostgreSQL 18, daily
+backups and point-in-time recovery, deletion protection; each has a
+database `openagents` and a login `openagents_app` whose connection
+string is the secret `openagents-<env>-pg-dsn`. The service reaches the
+instance through the Cloud SQL connector
+(`run.googleapis.com/cloudsql-instances`, a socket at `/cloudsql/…`); the
+runtime account holds `roles/cloudsql.client` and access to that secret.
+
+**Switching over.** With `OPENAGENTS_ACCOUNTS_DATABASE_URL` set,
+`gateway.sh` writes `"store": "postgres", "import_files": true` into the
+gateway's config. At its first start on the database (after the handoff,
+so no other gateway writes the files) the gateway imports the files
+(`tenancy::db::import`), reads every store back and compares it with the
+files, refuses to start on any difference, and leaves
+`postgres-import.json` in the registry directory with the counts, so a
+later start never imports stale files. Migrations are embedded in the
+gateway and applied at start under an advisory lock.
+
+**By hand:** `tenant-db import --registry DIR` and `tenant-db verify
+--registry DIR` (`crates/tenancy/src/bin/tenant-db.rs`, connection string
+in `OPENAGENTS_ACCOUNTS_DATABASE_URL`) do the same against an export, for
+example through `cloud-sql-proxy`.
+
+**Rolling back** (kept possible for a week, to 2026-10-16): render with
+the database left out (`deploy/production/render.py --files`; on staging,
+drop the secret and annotation in `render.py`) and deploy. The gateway
+goes back to the files, which hold the state of the switch-over moment:
+accounts, sessions and keys made after it are not in them.
+
 ## What is kept
 
 | Where on the share | Written by | What |
@@ -254,8 +296,8 @@ automation account, from the repository root:
 
 ## Follow-ups
 
-- #11150: `tenancy::keys::save` writes `keys.json` through one fixed temporary
-  name without a lock, so two keys issued at the same moment can lose one.
-  It predates this change (one process has the same race).
+- #11150 (fixed): key writes now hold a writer lock (`keys.lock` on files,
+  an advisory lock in Postgres) and stage through a unique temporary name,
+  so keys issued at the same moment are all kept.
 - Each `--restart` smoke run leaves one test account behind, now that
   accounts persist.

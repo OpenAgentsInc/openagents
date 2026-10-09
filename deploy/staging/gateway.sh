@@ -36,6 +36,8 @@
 #   INFERENCE_ADMIN_TOKEN       the /admin/inference bearer
 #   SMOKE_SIGNUP_TOKEN          optional: the operator token that makes the smoke
 #                               suite's test account (staging only); open sign-up stays off
+#   OPENAGENTS_ACCOUNTS_DATABASE_URL  optional: the account database's connection
+#                               string; set, the account stores live in Postgres (#11154)
 #   INVITE_ONLY_JSON            optional: accounts.invite_only, the GitHub people who
 #                               may sign in ({"github": [{"id": N, "login": L, "admin": true}]})
 #   GATEWAY_HOLD                optional: `serving` (above)
@@ -178,6 +180,15 @@ invite=""
 if [ -n "${INVITE_ONLY_JSON:-}" ]; then
     invite="\"invite_only\": $INVITE_ONLY_JSON,"
 fi
+# With the account database's connection string (Secret Manager, through
+# the Cloud SQL connector's socket), accounts, sessions, API keys, GitHub
+# access and provider keys live in Postgres (#11154,
+# docs/data/schema.md). The first start moves the files in and leaves
+# postgres-import.json beside them; the files stay as the rollback.
+database=""
+if [ -n "${OPENAGENTS_ACCOUNTS_DATABASE_URL:-}" ]; then
+    database='"store": "postgres", "import_files": true,'
+fi
 cat > "$private/gateway.json" << EOF
 {
   "v": "openagents.gateway.v1",
@@ -187,6 +198,7 @@ cat > "$private/gateway.json" << EOF
     "signup_tenant": "signup",
     $operator
     $invite
+    $database
     "github": {
       "credentials": "$private/github-oauth.json",
       "redirect_url": "$PUBLIC_ORIGIN/auth/github/callback"

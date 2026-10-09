@@ -28,6 +28,12 @@ ANALYTICS_BUCKET = "openagentsgemini-web-analytics-staging"
 # docs/deployment/account-storage.md) and the subnet the service reaches it
 # through (Direct VPC egress, private ranges only).
 NFS_SERVER = "10.42.26.2"
+# The account database (#11154, docs/data/schema.md): the Cloud SQL
+# instance the gateway reaches through the connector's socket at
+# /cloudsql/<connection>, and the secret holding its connection string.
+# The NFS share stays for the stores not moved yet and as the rollback.
+DATABASE = "openagentsgemini:us-central1:openagents-staging-pg"
+DATABASE_SECRET = "openagents-staging-pg-dsn"
 EGRESS_SUBNET = "openagents-web-staging"
 # Invite-only sign-in (oa_auth::invite, docs/auth/github.md): only the
 # owner's GitHub account (AtlantisPleb, id 14167547) may sign in, as a site
@@ -109,6 +115,7 @@ def main():
             secret("openagents-gateway-staging-typesafe-key", "TYPESAFE_API_KEY"),
             secret("openagents-gateway-staging-byok-keyring", "BYOK_KEYRING_JSON"),
             secret("openagents-gateway-staging-store-key", "INFERENCE_STORE_KEY"),
+            secret(DATABASE_SECRET, "OPENAGENTS_ACCOUNTS_DATABASE_URL"),
         ],
         "volumeMounts": [stack],
         "resources": {"limits": {"cpu": "1", "memory": "512Mi"}},
@@ -157,6 +164,7 @@ def main():
                             [{"network": "default", "subnetwork": EGRESS_SUBNET}]
                         ),
                         "run.googleapis.com/vpc-access-egress": "private-ranges-only",
+                        "run.googleapis.com/cloudsql-instances": DATABASE,
                         "run.googleapis.com/container-dependencies": json.dumps(
                             {"web": ["gateway"], "worker": ["gateway"]}
                         ),

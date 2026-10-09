@@ -22,6 +22,11 @@ ORIGIN = "https://openagents.com"
 # deploy/accounts-nfs/provision.sh production.
 NFS_SERVER = "10.42.27.2"
 EGRESS_SUBNET = "openagents-web-production"
+# The account database (#11154, docs/data/schema.md): Cloud SQL through the
+# connector's socket, its connection string in Secret Manager. --files
+# leaves it out (the stores stay on the NFS share, the rollback).
+DATABASE = "openagentsgemini:us-central1:openagents-production-pg"
+DATABASE_SECRET = "openagents-production-pg-dsn"
 # Invite-only sign-in: only the owner (GitHub AtlantisPleb, id 14167547),
 # as a site admin (docs/auth/github.md).
 INVITE_ONLY = json.dumps(
@@ -58,6 +63,8 @@ def main():
     parser.add_argument("--stack-image", required=True)
     parser.add_argument("--web-image")
     parser.add_argument("--name", required=True)
+    parser.add_argument("--files", action="store_true",
+                        help="keep the account stores on the NFS share, not the database")
     args = parser.parse_args()
     here = pathlib.Path(__file__).resolve().parent
     service = json.load(open(args.service))
@@ -106,7 +113,7 @@ def main():
             secret("openagents-vercel-gateway-api-key", "AI_GATEWAY_API_KEY"),
             secret("openagents-gateway-production-byok-keyring", "BYOK_KEYRING_JSON"),
             secret("openagents-gateway-production-store-key", "INFERENCE_STORE_KEY"),
-        ],
+        ] + ([] if args.files else [secret(DATABASE_SECRET, "OPENAGENTS_ACCOUNTS_DATABASE_URL")]),
         "volumeMounts": [{"name": "stack", "mountPath": "/stack"}],
         "resources": {"limits": {"cpu": "1", "memory": "512Mi"}},
         # No startup probe and no dependency: the gateway waits for its
@@ -129,6 +136,10 @@ def main():
         "run.googleapis.com/vpc-access-egress": "private-ranges-only",
         "run.googleapis.com/container-dependencies": json.dumps({"web": ["coder-serve"]}),
     })
+    if args.files:
+        annotations.pop("run.googleapis.com/cloudsql-instances", None)
+    else:
+        annotations["run.googleapis.com/cloudsql-instances"] = DATABASE
 
     traffic = []
     for entry in service["spec"].get("traffic", []):
