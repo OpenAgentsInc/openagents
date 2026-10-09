@@ -269,6 +269,7 @@ mod tests {
             updated_unix: 1,
             pinned_unix: None,
             archived_unix: None,
+            terminal: None,
         }
     }
 

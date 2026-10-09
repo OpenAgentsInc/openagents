@@ -20,6 +20,7 @@ mod chat_html;
 mod chat_owner;
 pub mod chat_store;
 pub mod cloud;
+mod coder_sync;
 mod components;
 mod composer;
 mod demo;
@@ -207,6 +208,7 @@ pub fn router(config: Config) -> Router {
         .merge(cloud::routes())
         .merge(auth::routes())
         .merge(device::routes())
+        .merge(coder_sync::routes())
         .merge(account::routes())
         .merge(settings::routes())
         .merge(projects::routes())

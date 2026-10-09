@@ -423,6 +423,7 @@ mod tests {
             updated_unix,
             pinned_unix: None,
             archived_unix: None,
+            terminal: None,
         }
     }
 

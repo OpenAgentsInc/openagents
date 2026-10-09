@@ -44,6 +44,8 @@ We may share personal information with:
 
 We keep personal information for as long as reasonably necessary for the purposes described in this Privacy Policy, while we have a business need, or as required by law (for example, for tax, accounting, billing, or legal purposes), whichever is longer. Usage receipts and certain publicly projected records may be retained as part of the verifiable record of activity.
 
+**Coder chats saved to your account.** Coder saves chats only on your computer unless you turn on saving them to your account (it is off by default). When it is on, we keep each chat's title, its messages, and your computer's name, visible only to you when you are signed in. Coder leaves out messages that look like they hold a password or key, and we refuse any that get through. A saved chat stays until you delete it, in Coder or on the website (deleting it in one deletes it in both), or until it goes unused for as long as we keep web chats. Turning saving off stops new uploads, and Coder can delete the chats it already saved.
+
 ## 5. Cookies and Tracking
 
 We use cookies and similar technologies for authentication, preferences, security, and to understand how the Services are used. Most browsers let you remove or reject cookies through their settings; doing so may affect functionality such as staying signed in. We do not currently respond to browser “Do Not Track” signals.

@@ -263,6 +263,7 @@ mod tests {
             pinned_unix: None,
             archived_unix: None,
             project: None,
+            terminal: None,
         }
     }
 

@@ -329,6 +329,7 @@ async fn start(State(app): State<App>, headers: HeaderMap, Form(prompt): Form<Pr
         pinned_unix: None,
         archived_unix: None,
         project,
+        terminal: None,
     };
     let loaded = match app.config.chat_store.create(&record).await {
         Ok(v) => v,
@@ -366,6 +367,7 @@ async fn load_owned(app: &App, owner: &str, id: &str) -> Result<Loaded, Response
         .load(&owner, id)
         .await
         .map_err(unavailable)?
+        .filter(|loaded| !loaded.conversation.deleted())
         .ok_or_else(missing)?;
     if let Some(pending) = &loaded.conversation.pending
         && now().saturating_sub(pending.started_unix) > LEASE_SECONDS
@@ -433,6 +435,9 @@ async fn show(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>
         Err(r) => return r,
     };
     let chat = &record.conversation;
+    if let Some(terminal) = &chat.terminal {
+        return show_terminal(&app, &headers, chat, &terminal.computer).await;
+    }
     let selection = chat.selection.clone().unwrap_or_default();
     let selectors = crate::composer::selectors_shown(&app, &headers, &selection).await;
     let dock = html! {
@@ -460,16 +465,46 @@ async fn show(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>
     crate::chat_html::protect(page.respond(&headers))
 }
 
+/// A chat synced from Coder (#11047): the transcript, read-only, and in
+/// place of the composer one line saying where it runs. Rows are plain
+/// links here, since there is no composer for a web chat to load into.
+async fn show_terminal(
+    app: &App,
+    headers: &HeaderMap,
+    chat: &Conversation,
+    computer: &str,
+) -> Response {
+    let id = &chat.id;
+    let page = UiPage::new(chat.title.clone())
+        .path(format!("/chat/{id}"))
+        .app()
+        .breadcrumb(Breadcrumb::new(chat.title.clone()))
+        .head(crate::chat_html::head())
+        .sidebar_section(chat_list(app, &chat.owner, Some(id.as_str()), false, false).await)
+        .content(html! {
+            div #chat-content.oa-thread-view hx-history="false" { (content(chat, None, html! {})) }
+        })
+        .composer(terminal_note(computer));
+    crate::chat_html::protect(page.respond(headers))
+}
+
+/// What a Coder chat shows where the composer would be.
+pub(crate) fn terminal_note(computer: &str) -> Markup {
+    html! { p.oa-thread-notice #chat-terminal-note { "This chat runs in Coder on " (computer) "." } }
+}
+
 async fn workspace(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>) -> Response {
     let record = match load(&app, &headers, &id).await {
         Ok(v) => v,
         Err(r) => return r,
     };
-    if record
-        .conversation
-        .requests
-        .iter()
-        .any(|r| r.cloud.is_some())
+    // A Coder chat has no composer to load into: open it as a page.
+    if record.conversation.terminal.is_some()
+        || record
+            .conversation
+            .requests
+            .iter()
+            .any(|r| r.cloud.is_some())
     {
         let mut response = crate::chat_html::protect(StatusCode::OK.into_response());
         response.headers_mut().insert(
@@ -507,6 +542,7 @@ async fn stored(app: &App, owner: &str, id: &str) -> Result<Loaded, Response> {
         .load(owner, id)
         .await
         .map_err(unavailable)?
+        .filter(|loaded| !loaded.conversation.deleted())
         .ok_or_else(missing)
 }
 
@@ -526,7 +562,12 @@ async fn confirm_delete(
     };
     let chat = &record.conversation;
     let content = PageColumn::new(html! {
-        (MarkdownRoot::new(html! { p { "Delete this chat? This can't be undone." } }))
+        (MarkdownRoot::new(html! {
+            p { "Delete this chat? This can't be undone." }
+            @if let Some(terminal) = &chat.terminal {
+                p { "It's deleted in Coder on " (terminal.computer) " too." }
+            }
+        }))
         form method="post" action=(format!("/chat/{id}/delete")) {
             input type="hidden" name="csrf" value=(csrf(&app, &owner));
             div.oa-page-actions {
@@ -574,12 +615,9 @@ async fn delete(
         Some(pending) => Some(pending.request_id.clone()),
         None => None,
     };
-    match app
-        .config
-        .chat_store
-        .delete(&owner, &id, &record.generation)
-        .await
-    {
+    // A Coder chat is deleted in Coder too, the next time it checks
+    // (`crate::coder_sync`).
+    match app.config.chat_store.remove(&record).await {
         Ok(_) => {}
         Err(Error::Conflict) => {
             return not_deleted(
@@ -628,6 +666,9 @@ async fn follow(
         Ok(v) => v,
         Err(r) => return r,
     };
+    if loaded.conversation.terminal.is_some() {
+        return refusal(StatusCode::CONFLICT, "Continue this chat in Coder.");
+    }
     let selection = match selected(&app, &owner, &prompt) {
         Ok(v) => v,
         Err(r) => return r,
@@ -1015,6 +1056,10 @@ pub(crate) async fn chat_list(
 /// A chat row's second line: the repository and branch it was started
 /// with. The list is the owner's own, so the names never reach anyone else.
 fn row_detail(chat: &Conversation) -> Option<String> {
+    // A Coder chat says so, and on which computer (#11047).
+    if let Some(terminal) = &chat.terminal {
+        return Some(format!("Terminal · {}", terminal.computer));
+    }
     let source = chat.selection.as_ref()?.repository.as_ref()?;
     Some(if source.branch.is_empty() {
         source.repository.clone()
@@ -1037,7 +1082,7 @@ pub(crate) fn row_status_slot(chat: &Conversation, oob: bool) -> Markup {
 }
 
 fn row_status(chat: &Conversation) -> Option<ChatStatus> {
-    if chat.pending.is_some() {
+    if chat.working() {
         return Some(ChatStatus::Working);
     }
     match chat.requests.last()?.outcome {
@@ -1107,7 +1152,7 @@ fn messages(chat: &Conversation, before: Option<usize>) -> Markup {
             (turn(message, index + start, crate::suggestions::message_plugins(chat, message)))
         }
         div #chat-status.oa-thread-status role="status" aria-live="polite" {
-            @if chat.pending.is_some() {span.oa-thread-working {(openagents_ui::actions::LoadingIndicator::new().decorative()) span {"Working"}}}
+            @if chat.working() {span.oa-thread-working {(openagents_ui::actions::LoadingIndicator::new().decorative()) span {"Working"}}}
             @else if chat.requests.last().is_some_and(|r|r.outcome==Outcome::Unknown) {"We couldn't confirm your last message went through. Try asking again."}
             @else {""}
         }

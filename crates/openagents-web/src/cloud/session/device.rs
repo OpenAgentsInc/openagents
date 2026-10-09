@@ -216,6 +216,39 @@ impl CloudSession {
         }
     }
 
+    /// The account an app's own token (a signed-in Coder, #11046) belongs
+    /// to, when the token is a live user session.
+    pub async fn app_account(&self, token: &str) -> Result<String> {
+        if !session_token(token) {
+            return Err(SessionError::Unauthenticated);
+        }
+        let answer = self
+            .device_call(reqwest::Method::GET, "/v1/session", Some(token), None)
+            .await?;
+        if answer.status == 401 || answer.status == 403 {
+            return Err(SessionError::Unauthenticated);
+        }
+        if answer.status != 200 {
+            return Err(SessionError::Unavailable);
+        }
+        let session = &answer.body["session"];
+        let expires = session["expires_at"]
+            .as_u64()
+            .or_else(|| session["expires_at"].as_str().and_then(|v| v.parse().ok()))
+            .unwrap_or(0);
+        match session["account"].as_str() {
+            Some(account)
+                if session["kind"] == "user"
+                    && session["state"] == "active"
+                    && expires > super::now()
+                    && super::identifier(account) =>
+            {
+                Ok(account.to_owned())
+            }
+            _ => Err(SessionError::Unauthenticated),
+        }
+    }
+
     /// An app signing itself out with its own token.
     pub async fn app_sign_out(&self, token: &str) -> Result<()> {
         if !session_token(token) {

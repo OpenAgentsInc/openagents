@@ -91,6 +91,7 @@ impl Fixture {
                 pinned_unix: None,
                 archived_unix: None,
                 project: None,
+                terminal: None,
             })
             .await
             .unwrap()
@@ -498,6 +499,7 @@ fn sidebar_rows_show_the_repository_and_a_plain_status() {
         pinned_unix: None,
         archived_unix: None,
         project: None,
+        terminal: None,
     };
     assert_eq!(row_detail(&chat), None);
     assert_eq!(row_status(&chat), None);
@@ -712,6 +714,7 @@ fn pinned_chats_keep_pin_order_and_archived_chats_leave_the_list() {
         pinned_unix: None,
         archived_unix: None,
         project: None,
+        terminal: None,
     };
     let mut first = chat(CHAT, "First pinned");
     first.pinned_unix = Some(5);
@@ -1035,5 +1038,103 @@ async fn the_sidebar_follows_row_statuses_live() {
             .get(header::CONTENT_SECURITY_POLICY)
             .is_some()
     );
+    fixture.no_worker();
+}
+
+/// A Coder chat synced to the account (#11047): marked in the sidebar,
+/// read-only, Working from Coder's heartbeat, and deleted for Coder too.
+#[tokio::test]
+async fn a_coder_chat_opens_read_only_with_its_computer() {
+    let fixture = Fixture::new();
+    let store = fixture.app.config.chat_store.clone();
+    let mut chat = Conversation {
+        id: CHAT.into(),
+        owner: OWNER.into(),
+        revision: 1,
+        title: "Fix the build".into(),
+        messages: vec![
+            Message {
+                role: Role::User,
+                text: "Fix the build".into(),
+                request_id: None,
+            },
+            Message {
+                role: Role::Assistant,
+                text: "Fixed **it**.".into(),
+                request_id: None,
+            },
+        ],
+        pending: None,
+        requests: Vec::new(),
+        selection: None,
+        updated_unix: 1,
+        pinned_unix: None,
+        archived_unix: None,
+        terminal: Some(crate::chat_store::Terminal {
+            computer: "Studio".into(),
+            session: "coder-new-1".into(),
+            title: "Fix the build".into(),
+            digest: "d".repeat(64),
+            working_unix: None,
+            deleted_unix: None,
+        }),
+    };
+    assert_eq!(row_detail(&chat).as_deref(), Some("Terminal · Studio"));
+    assert_eq!(row_status(&chat), None);
+    chat.terminal.as_mut().unwrap().working_unix = Some(now());
+    assert_eq!(row_status(&chat), Some(ChatStatus::Working));
+    chat.terminal.as_mut().unwrap().working_unix = Some(now() - 600);
+    assert_eq!(row_status(&chat), None);
+    chat.terminal.as_mut().unwrap().working_unix = None;
+    store.create(&chat).await.unwrap();
+
+    let page = format!("/chat/{CHAT}");
+    let (status, body) = fixture.request(Method::GET, &page, OWNER, &[]).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(
+        body.contains("This chat runs in Coder on Studio."),
+        "{body}"
+    );
+    assert!(body.contains("Terminal · Studio"), "{body}");
+    assert!(body.contains("<strong>it</strong>"), "{body}");
+    assert!(!body.contains("id=\"chat-form\""), "{body}");
+
+    // It can't be continued here, and a row click opens it as a page.
+    let token = csrf(&fixture.app, OWNER);
+    let (status, _) = fixture
+        .request(
+            Method::POST,
+            &page,
+            OWNER,
+            &[("q", "More"), ("request_id", NEXT), ("csrf", &token)],
+        )
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(
+        store
+            .load(OWNER, CHAT)
+            .await
+            .unwrap()
+            .unwrap()
+            .conversation
+            .messages
+            .len(),
+        2
+    );
+
+    // The confirm step says Coder loses it too; the delete hides it here
+    // and keeps a marker until Coder hears of it.
+    let delete = format!("/chat/{CHAT}/delete");
+    let (_, body) = fixture.request(Method::GET, &delete, OWNER, &[]).await;
+    assert!(body.contains("deleted in Coder on Studio too"), "{body}");
+    let (status, _) = fixture
+        .request(Method::POST, &delete, OWNER, &[("csrf", &token)])
+        .await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    assert!(store.list(OWNER).await.unwrap().is_empty());
+    let marker = store.load(OWNER, CHAT).await.unwrap().unwrap().conversation;
+    assert!(marker.deleted() && marker.messages.is_empty());
+    let (status, _) = fixture.request(Method::GET, &page, OWNER, &[]).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
     fixture.no_worker();
 }

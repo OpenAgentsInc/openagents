@@ -62,6 +62,12 @@ acme/storefront · fix-login · Node 20 v3
   environment and its version, joined with " · ", cut with an ellipsis.
   Inside a project group the repository is dropped (the heading says it).
   A chat with no repository has no second line.
+- A Coder chat synced from a terminal (#11046, #11047,
+  `crates/openagents-web/src/coder_sync.rs`) says "Terminal · <computer>"
+  on line 2, shows Working while Coder's heartbeat says it is replying,
+  and opens read-only at `/chat/{id}` with "This chat runs in Coder on
+  <computer>." in place of the composer. Deleting it on the web deletes it
+  in Coder the next time Coder checks.
 - Long-running tasks (phase 3) add a thin progress line under the row only
   when the task reports steps ("3 of 7"); never a fake percentage.
 - Collapsed to the rail (or the closed narrow panel), rows hide like other

@@ -53,6 +53,56 @@ pub(crate) struct Conversation {
     /// have none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project: Option<String>,
+    /// A chat synced from Coder in a terminal (#11046): read-only on the
+    /// web. Web chats have none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub terminal: Option<Terminal>,
+}
+
+/// Where a synced Coder chat came from, and what Coder last said about it
+/// (`crate::coder_sync`).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct Terminal {
+    /// The computer's name, as Coder reported it.
+    pub computer: String,
+    /// Coder's own session id.
+    pub session: String,
+    /// The title Coder last sent; a web rename differs from it and is kept.
+    pub title: String,
+    /// A digest of the last upload, so an unchanged one writes nothing.
+    pub digest: String,
+    /// When Coder last said it is replying; cleared when it says it is idle.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub working_unix: Option<u64>,
+    /// Deleted on the web: kept, empty, until Coder hears of it and deletes
+    /// its own copy, so the next upload doesn't bring it back.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deleted_unix: Option<u64>,
+}
+
+/// How long a "working" heartbeat from Coder shows the chat as Working.
+pub(crate) const TERMINAL_WORKING_SECONDS: u64 = 90;
+
+impl Conversation {
+    /// Whether the chat is being answered now: a web answer is running, or
+    /// Coder said it is replying within the last
+    /// [`TERMINAL_WORKING_SECONDS`].
+    pub(crate) fn working(&self) -> bool {
+        self.pending.is_some()
+            || self.terminal.as_ref().is_some_and(|terminal| {
+                terminal
+                    .working_unix
+                    .is_some_and(|at| now_unix().saturating_sub(at) <= TERMINAL_WORKING_SECONDS)
+            })
+    }
+
+    /// Whether this is a Coder chat deleted on the web (hidden everywhere).
+    pub(crate) fn deleted(&self) -> bool {
+        self.terminal
+            .as_ref()
+            .is_some_and(|terminal| terminal.deleted_unix.is_some())
+    }
 }
 
 /// GitHub metadata identifies a selected source; it does not authorize execution.
@@ -366,7 +416,15 @@ impl Store {
     }
 
     /// The list is private to one visitor. Fail explicitly if it exceeds 256.
+    /// Coder chats deleted on the web are left out ([`Conversation::deleted`]).
     pub(crate) async fn list(&self, owner: &str) -> Result<Vec<Conversation>, Error> {
+        let mut rows = self.list_with_deleted(owner).await?;
+        rows.retain(|chat| !chat.deleted());
+        Ok(rows)
+    }
+
+    /// [`Self::list`], with the deleted Coder chats Coder hasn't heard of yet.
+    pub(crate) async fn list_with_deleted(&self, owner: &str) -> Result<Vec<Conversation>, Error> {
         validate_owner(owner)?;
         let ids = match self.0.as_ref() {
             Adapter::Disk(root) => {
@@ -553,6 +611,34 @@ impl Store {
             }
             Adapter::Gcs(gcs) => gcs.delete_chat(&gcs.object(owner, id), expected).await,
         }
+    }
+
+    /// Delete a chat the person asked to delete, read at `loaded`. A Coder
+    /// chat is emptied and marked deleted instead, until Coder deletes its
+    /// own copy (`crate::coder_sync`); other chats go for good. Returns
+    /// false when it was already gone.
+    pub(crate) async fn remove(&self, loaded: &Loaded) -> Result<bool, Error> {
+        let chat = &loaded.conversation;
+        if chat.terminal.is_none() {
+            return self.delete(&chat.owner, &chat.id, &loaded.generation).await;
+        }
+        if chat.deleted() {
+            return Ok(false);
+        }
+        let mut next = chat.clone();
+        next.revision += 1;
+        next.updated_unix = now_unix();
+        next.title = String::new();
+        next.messages.clear();
+        next.pinned_unix = None;
+        next.archived_unix = None;
+        if let Some(terminal) = &mut next.terminal {
+            terminal.title.clear();
+            terminal.digest.clear();
+            terminal.working_unix = None;
+            terminal.deleted_unix = Some(now_unix());
+        }
+        self.compare_and_swap(loaded, &next).await.map(|_| true)
     }
 
     /// Move one chat to `to` (a signed-in account's owner, see
@@ -1178,6 +1264,22 @@ fn validate_conversation(conversation: &Conversation) -> Result<(), Error> {
     {
         return Err(Error::Invalid("The chat's project is invalid."));
     }
+    if let Some(terminal) = &conversation.terminal
+        && (!bounded_text(&terminal.computer, 128)
+            || terminal.title.len() > 512
+            || terminal.title.chars().any(char::is_control)
+            || terminal.session.is_empty()
+            || terminal.session.len() > 128
+            || !terminal
+                .session
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+            || !(terminal.digest.is_empty() || terminal.digest.len() == 64)
+            || !conversation.requests.is_empty()
+            || conversation.pending.is_some())
+    {
+        return Err(Error::Invalid("This chat could not be opened or saved."));
+    }
     let mut identities = HashSet::new();
     for request in &conversation.requests {
         if !valid_id(&request.id)
@@ -1777,6 +1879,7 @@ mod tests {
             pinned_unix: None,
             archived_unix: None,
             project: None,
+            terminal: None,
         }
     }
 

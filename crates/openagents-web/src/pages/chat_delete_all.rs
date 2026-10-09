@@ -143,7 +143,7 @@ pub(super) async fn delete_all(
                 Some(pending) => Some(pending.request_id.clone()),
                 None => None,
             };
-            match store.delete(owner, &chat.id, &loaded.generation).await {
+            match store.remove(&loaded).await {
                 Ok(_) => {
                     if let Some(request_id) = stale {
                         let _ = store.release(owner, &request_id).await;

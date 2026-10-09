@@ -78,7 +78,7 @@ pub(super) async fn render_working(
     };
     let working = rows
         .iter()
-        .filter(|chat| chat.archived_unix.is_none() && chat.pending.is_some())
+        .filter(|chat| chat.archived_unix.is_none() && chat.working())
         .map(|chat| chat.id.clone())
         .collect();
     let projects = crate::projects::sidebar(app).await;
@@ -235,7 +235,7 @@ fn row(chat: &Conversation, csrf: &str, view: View<'_>, grouped: bool) -> NavIte
     if let Some(detail) = detail {
         item = item.detail(detail);
     }
-    let working = chat.pending.is_some();
+    let working = chat.working();
     item = item.trailing(row_status_slot(chat, false));
     if view.hx {
         item = item.hx(HxGet::new(format!("/chat/{id}/workspace"))
