@@ -16,6 +16,7 @@
 //! platform's key store.
 
 mod account;
+mod account_link;
 mod amounts;
 mod appearance;
 #[cfg(any(target_os = "android", test))]
@@ -38,6 +39,7 @@ mod eval_cards;
 mod first_run;
 mod gym;
 mod link_fetch;
+mod link_view;
 mod nearby;
 // Debug builds only: offline fixtures for simulator and emulator screenshots.
 // A release build does not compile them.
@@ -247,6 +249,8 @@ pub extern "C" fn openagents_mobile_coder_shown(shown: bool) {
 mod coder_tab_tests;
 #[cfg(test)]
 mod copy_guard_tests;
+#[cfg(test)]
+mod link_tests;
 #[cfg(test)]
 mod speed_tests;
 #[cfg(test)]

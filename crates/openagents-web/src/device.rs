@@ -429,9 +429,15 @@ async fn decide(
         Ok(request) if approve => html! {
             (MarkdownRoot::new(html! {
                 h1 { (request.app) " on " (request.computer) " is signed in" }
-                p {
-                    "Go back to your terminal. To show its chats here, type "
-                    code { "/sync on" } " in Coder. You can close this tab."
+                // The phone app signs in as "OpenAgents" (#11107); Coder
+                // in a terminal as "Coder".
+                @if request.app == "OpenAgents" {
+                    p { "Go back to the OpenAgents app. You can close this tab." }
+                } @else {
+                    p {
+                        "Go back to your terminal. To show its chats here, type "
+                        code { "/sync on" } " in Coder. You can close this tab."
+                    }
                 }
             }))
             p { (action_link("Settings", crate::settings::PAGE)) }

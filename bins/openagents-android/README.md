@@ -32,6 +32,17 @@ it. Debug builds take `--es shell_mode code`, `--ez drawer true`, and `--es
 appearance light|dark|system` for screenshots. Where the text below says
 tab, read place in the drawer.
 
+**Your openagents.com account (#11107, #11165).** **Settings > Log in**
+signs the phone in with a code and a QR code of the approval page, as on
+iOS; the session lives in the Keystore-encrypted store (`DeviceKey.kt`,
+`ACCOUNT`). The drawer then lists **Running** and the account's chats;
+`AccountLink.kt` draws Rust's screens (`account_link.rs`, `link_view.rs`)
+and shows notifications for agents that finish, fail, or ask, with
+**Approve** and **Deny** (Android 13 and later ask for permission after
+sign-in). Android reads only while the app runs; there is no background read
+or remote push for these notices yet. A debug build takes `--es
+account_origin https://staging.openagents.com`.
+
 **Release gate (2026-10-09).** A release or normal debug build has three
 places, **Chat**, **Wallet**, and **Settings**. The Verse, the Gym in chat
 (Train Coder, Profile, its intro, menu, cards, and Gym starter chips),

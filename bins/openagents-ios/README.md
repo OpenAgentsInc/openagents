@@ -248,6 +248,38 @@ bins/openagents-ios/host/OpenAgents.xcodeproj -scheme OpenAgents
 -destination id=UDID OPENAGENTS_RUST_LIBRARY_DIR=<target>/aarch64-apple-ios-sim/debug`
 after `build.sh sim` has built the Rust library and generated the project.
 
+## Your openagents.com account (#11107, #11165)
+
+**Settings > Log in** signs the phone in to your openagents.com account
+with a code: the phone shows the code and a QR code of
+`openagents.com/device?code=…`; approve it there (scan the QR with a
+signed-in phone or computer, tap **Approve on this phone**, or type the code
+at openagents.com/device). Only accounts the site lets sign in can approve.
+Rust keeps the session in memory and hands it to the host once; the host
+keeps it in Keychain (this device only, readable after first unlock) and
+hands it back at launch (`AccountLink.swift`). **Sign out** ends it on the
+site and removes it.
+
+Signed in, the drawer lists **Running** and the account's newest chats
+(web chats, and each computer's synced terminal chats); **All account
+chats…** lists them by computer. A chat opens read and reply: a reply to a
+terminal chat waits until Coder on that computer takes it. The phone asks
+once where its own chats live (**Sync all my chats** or **Keep chats on
+this phone**); with sync on, each phone chat uploads, screened for keys.
+**Running** shows what Coder runs on each computer (status, time, cost) with
+**Approve**, **Deny**, **Stop**, and **Message**. A change to finished,
+failed, or asking shows as a local notification, with **Approve** and
+**Deny** on a question; the app also reads in the background
+(`BGAppRefreshTask`, `com.openagents.app.link-refresh`) about every 15
+minutes. Remote push for these notices is not wired yet: the push gateway
+(`docs/deployment/push-gateway.md`) wakes the phone only for payment
+requests today.
+
+Release builds sign in to openagents.com. A debug build takes
+`--account-origin https://staging.openagents.com` to sign in to staging.
+Rust owns all of it (`crates/openagents-mobile/src/account_link.rs`,
+`link_view.rs`).
+
 ## Account
 
 **Trainer** is your trainer card: your level, your XP, the XP to the next

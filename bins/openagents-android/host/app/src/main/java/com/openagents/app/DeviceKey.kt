@@ -32,6 +32,8 @@ object DeviceKey {
         // The person's own model provider keys (BYOK, #10176), one each.
         PROVIDER_OPENROUTER("provider-openrouter", 512), PROVIDER_VERCEL("provider-vercel", 512),
         PROVIDER_TYPESAFE("provider-typesafe", 512),
+        // The openagents.com account session (#11107), as Rust's JSON.
+        ACCOUNT("account", 8192),
     }
     private val lock = Any()
 
@@ -117,6 +119,24 @@ object DeviceKey {
         val purpose = providerPurpose(provider) ?: return
         file(context, purpose).delete()
         runCatching { KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.deleteEntry(alias(purpose)) }
+    }
+
+    /** The openagents.com account session Rust handed over, as its JSON; null without one. */
+    fun loadAccountSession(context: Context): String? = synchronized(lock) {
+        runCatching { read(context, Purpose.ACCOUNT) }.getOrNull()?.toString(Charsets.UTF_8)
+    }
+
+    /** Keeps the account session Rust handed over. */
+    fun saveAccountSession(context: Context, session: String): Boolean = synchronized(lock) {
+        val bytes = session.toByteArray(Charsets.UTF_8)
+        if (bytes.isEmpty() || bytes.size > Purpose.ACCOUNT.maxBytes) return false
+        runCatching { write(context, Purpose.ACCOUNT, bytes) }.isSuccess
+    }
+
+    /** Forgets the account session and its Keystore key. */
+    fun deleteAccountSession(context: Context): Unit = synchronized(lock) {
+        file(context, Purpose.ACCOUNT).delete()
+        runCatching { KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.deleteEntry(alias(Purpose.ACCOUNT)) }
     }
 
     /** The app's private state directory, excluded from backup. */

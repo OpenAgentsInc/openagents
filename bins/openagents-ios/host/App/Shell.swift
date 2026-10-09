@@ -319,6 +319,9 @@ struct ShellDrawer: View {
                                 go(place.id)
                             }
                         }
+                        // Running and the account's chats, once signed in
+                        // (#11107, #11165).
+                        LinkDrawerSection(bridge: bridge, go: go)
                         Divider().overlay(appColors.border).padding(.vertical, 14)
                     }
                     recent

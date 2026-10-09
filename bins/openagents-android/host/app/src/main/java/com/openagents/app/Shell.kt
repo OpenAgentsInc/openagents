@@ -383,10 +383,13 @@ internal class ShellDrawer(private val context: Context, private val bridge: Mob
         }, LinearLayout.LayoutParams(context.dp(52), context.dp(52)))
     }
 
-    /** Draws the drawer's rows from the packet's `shell.drawer`. */
-    fun update(shell: JSONObject?) {
+    /** Draws the drawer's rows from the packet's `shell.drawer`, and the account's (`link`). */
+    fun update(shell: JSONObject?, link: JSONObject? = bridge.packet?.objectOrNull("link")) {
         val drawer = shell?.objectOrNull("drawer")
-        val encoded = "$searching:${drawer?.toString()}:${Preview.on}"
+        val account = link?.takeIf { it.optBoolean("signed_in") }
+        val accountRows = account?.optJSONArray("drawer")?.objects().orEmpty()
+        val encoded = "$searching:${drawer?.toString()}:${Preview.on}:${account?.optInt("running")}:" +
+            "${account?.optInt("asking")}:${account?.optJSONArray("drawer")}"
         if (encoded == shown) return
         shown = encoded
         body.removeAllViews()
@@ -400,6 +403,33 @@ internal class ShellDrawer(private val context: Context, private val bridge: Mob
                 add(Triple("settings", "Settings", R.drawable.ic_glyph_settings))
             }
             for ((id, title, icon) in places) body.addView(row(title, "shell-place-$id", icon) { go(id) })
+            // Running and the account's chats, once signed in (#11107, #11165).
+            if (account != null) {
+                val running = account.optInt("running")
+                val asking = account.optInt("asking")
+                val label = when {
+                    asking > 0 -> "Running · $asking asking"
+                    running > 0 -> "Running · $running"
+                    else -> "Running"
+                }
+                body.addView(row(label, "shell-place-running", R.drawable.ic_glyph_terminal) { go("running") })
+                if (accountRows.isNotEmpty()) {
+                    body.addView(context.text("On your account", 13f, Palette.SECONDARY).apply {
+                        typeface = PaperMono.typeface(context, PaperMono.BOLD)
+                        setPadding(0, context.dp(10), 0, context.dp(4))
+                    })
+                    for (chat in accountRows) {
+                        val id = chat.optString("id")
+                        val title = chat.optString("title").ifEmpty { "New chat" }
+                        val detail = chat.optString("detail")
+                        body.addView(row("$title · $detail", "shell-account-chat-$id", null) { go("link_chat:$id") }
+                            .apply { contentDescription = "$title, $detail" })
+                    }
+                    body.addView(row("All account chats…", "shell-account-chats", null, Palette.SECONDARY) {
+                        go("account_chats")
+                    })
+                }
+            }
             body.addView(context.divider(), LinearLayout.LayoutParams(-1, 1).apply {
                 topMargin = context.dp(14); bottomMargin = context.dp(14) })
         }

@@ -41,6 +41,8 @@ enum class AppTab(val title: String) {
     VERSE("Verse"),
     WALLET("Wallet"),
     ACCOUNT("Settings"),
+    /** The account surface (#11107, #11165): sign-in, the account's chats, and Running. */
+    LINK("Account"),
 }
 
 /** A screen that the Account tab opens. */
@@ -84,6 +86,10 @@ class MainActivity : ComponentActivity() {
     }
 
     private lateinit var bridge: MobileBridge
+    /** The account surface's page (#11107, #11165). */
+    private lateinit var link: AccountLink
+    /** Signed in to the account when Settings was last drawn. */
+    private var settingsSignedIn: Boolean? = null
     private lateinit var scanner: QRScanner
     private lateinit var world: VerseSurface
     private lateinit var terminal: TerminalScreen
@@ -203,7 +209,9 @@ class MainActivity : ComponentActivity() {
         bridge = MobileBridge(applicationContext, BuildConfig.DEBUG && intent.getBooleanExtra("computers_fixture", false),
             BuildConfig.DEBUG && intent.getBooleanExtra("wallet_fixture", false),
             BuildConfig.DEBUG && intent.getBooleanExtra("chat_fixture", false),
-            BuildConfig.DEBUG && intent.getBooleanExtra("gym_fixture", false)) { render() }
+            BuildConfig.DEBUG && intent.getBooleanExtra("gym_fixture", false),
+            // Debug builds only: `--es account_origin https://staging.openagents.com`.
+            if (BuildConfig.DEBUG) intent.getStringExtra("account_origin") else null) { render() }
         bridge.systemAppearance(night(resources.configuration))
         gym = GymViews(this) { id -> bridge.gym(id) }
         homeCards = HomeCards(this) { id -> bridge.shell("try_card", "id" to id) }
@@ -260,6 +268,8 @@ class MainActivity : ComponentActivity() {
         buildWallet(walletBody)
         pages.getValue(AppTab.VERSE).addView(verseMenu, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.START))
         pages.getValue(AppTab.ACCOUNT).addView(accountPage, FrameLayout.LayoutParams(-1, -1))
+        link = AccountLink(this, bridge, menuButton({ openDrawer(true) }) { report() })
+        pages.getValue(AppTab.LINK).addView(link.root, FrameLayout.LayoutParams(-1, -1))
         // The drawer lies under the app; opening it slides the app aside.
         drawer = ShellDrawer(this, bridge) { place -> go(place) }
         drawer.root.visibility = View.GONE
@@ -365,7 +375,7 @@ class MainActivity : ComponentActivity() {
     // Playtest
 
     /** The tab as Rust's playtest log names it. */
-    private val playtestTab get() = tab.name.lowercase()
+    private val playtestTab get() = if (tab == AppTab.LINK) "coder" else tab.name.lowercase()
 
     /** The screen as Rust's playtest log names it; an unnamed screen is its tab's `home`. */
     private val playtestRoute get() = when (tab) {
@@ -373,6 +383,7 @@ class MainActivity : ComponentActivity() {
         AppTab.VERSE -> panels.openPanel.ifEmpty { "home" }
         AppTab.WALLET -> "home"
         AppTab.ACCOUNT -> route?.name?.lowercase() ?: "home"
+        AppTab.LINK -> "home"
     }
 
     /** Opens Report a problem for the screen on view. */
@@ -411,6 +422,7 @@ class MainActivity : ComponentActivity() {
             getSystemService(InputMethodManager::class.java)?.hideSoftInputFromWindow(focus.windowToken, 0)
             focus.clearFocus()
         }
+        if (tab == AppTab.LINK && value != AppTab.LINK && ::link.isInitialized) link.hide()
         tab = value
         for ((key, page) in pages) page.visibility = if (key == value) View.VISIBLE else View.GONE
         world.setShown(value == AppTab.VERSE)
@@ -477,7 +489,14 @@ class MainActivity : ComponentActivity() {
             "wallet" -> select(AppTab.WALLET)
             "verse" -> if (Preview.on) select(AppTab.VERSE)
             "settings" -> { select(AppTab.ACCOUNT); open(null) }
-            else -> select(AppTab.CODER)
+            "account", "running", "account_chats" -> {
+                link.show(if (place == "account_chats") "chats" else place)
+                select(AppTab.LINK)
+            }
+            else -> if (place.startsWith("link_chat:")) {
+                link.show("chat", place.removePrefix("link_chat:"))
+                select(AppTab.LINK)
+            } else select(AppTab.CODER)
         }
         openDrawer(false)
     }
@@ -719,6 +738,13 @@ class MainActivity : ComponentActivity() {
                 // Profile: Rust shows it as a sheet on the Chat tab.
                 "Profile" to "account-profile" to { bridge.profile() },
             )))
+            // The openagents.com account (#11107): Log in, or the account.
+            val account = bridge.packet?.objectOrNull("link")
+            val signedIn = account?.optBoolean("signed_in") == true
+            settingsSignedIn = signedIn
+            addView(group(listOf((if (signedIn) account?.textOrNull("label") ?: "Your account" else "Log in")
+                to "account-link" to { go("account") })),
+                LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(24) })
             addView(group(listOfNotNull(
                 ("Playtest" to "account-playtest" to { open(AccountRoute.PLAYTEST) }).takeIf { Preview.on },
                 "Report a problem" to "account-report" to { report() },
@@ -957,6 +983,13 @@ class MainActivity : ComponentActivity() {
             null -> Unit
         }
         if (tab == AppTab.WALLET) wallet.update(packet)
+        // The account surface (#11107, #11165).
+        val account = packet?.objectOrNull("link")
+        if (tab == AppTab.LINK && ::link.isInitialized) link.update(account)
+        val signedIn = account?.optBoolean("signed_in") == true
+        if (signedIn) AccountLink.ask(this)
+        // Settings names the account: redraw it when sign-in changes.
+        if (tab == AppTab.ACCOUNT && route == null && settingsSignedIn != null && settingsSignedIn != signedIn) open(null)
         // An agent's payment request shows over any tab until the owner
         // approves or denies it; Rust closes it.
         if (::payments.isInitialized) payments.update(packet)
@@ -1067,6 +1100,8 @@ class MainActivity : ComponentActivity() {
      *  the system camera opens this app with it, and Rust pairs as if it was
      *  scanned. Rust checks the link; the code rides in the fragment. */
     private fun handleLink(intent: Intent?) {
+        // A notification from Coder: Approve, Deny, or open Running.
+        if (AccountLink.handle(intent, bridge) { go("running") }) return
         if (intent?.action != Intent.ACTION_VIEW) return
         val link = intent.dataString ?: return
         // Handle each link once, not again when the activity is recreated.

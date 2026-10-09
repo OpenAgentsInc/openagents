@@ -190,6 +190,9 @@ struct AppPacket: Decodable {
     let provider_keys: ProviderKeysState?
     /// The theme: the choice, the resolved scheme, and the chrome palette.
     let appearance: AppearanceState?
+    /// The account surface: sign-in, the account's chats, and Running
+    /// (#11107, #11165).
+    let link: LinkPacket?
 
     /// The Gym's part, when it decodes.
     var gymPacket: GymPacket? { gym?.value }
@@ -487,6 +490,9 @@ final class MobileBridge: ObservableObject {
             // `--gym-fixture 1`: the chat router's recorded Gym cards and a
             // recorded test run, offline, for screenshots (debug builds only).
             if AppTabLaunch.wallet("--gym-fixture") != nil { options["gym_fixture"] = true }
+            // `--account-origin https://staging.openagents.com`: sign in to
+            // another site (debug builds only; release is openagents.com).
+            if let origin = AppTabLaunch.wallet("--account-origin") { options["account_origin"] = origin }
             let configuration = try JSONSerialization.data(withJSONObject: options)
             handle = configuration.withUnsafeBytes { bytes in
                 openagents_mobile_create(bytes.bindMemory(to: UInt8.self).baseAddress, bytes.count)
@@ -499,6 +505,8 @@ final class MobileBridge: ObservableObject {
         send(["op": "snapshot"])
         gymWorld()
         providerKeysLoad()
+        linkHello()
+        LinkNotifier.shared.install(self)
         if handle != nil { watchChanges() }
     }
 
@@ -573,6 +581,13 @@ final class MobileBridge: ObservableObject {
 
     /// A shell action (`coder_tab::ShellAction`): the switch, the drawer,
     /// a recent chat, See all, or a card's Try it.
+    /// An action on the account surface (`account_link::Action`).
+    func link(_ action: String, _ fields: [String: Any] = [:], done: (() -> Void)? = nil) {
+        var link = fields
+        link["action"] = action
+        send(["op": "link", "link": link], done: done)
+    }
+
     func shell(_ action: String, _ fields: [String: Any] = [:]) {
         var shell = fields
         shell["action"] = action
@@ -981,6 +996,7 @@ final class MobileBridge: ObservableObject {
             self.updateHud("computers", value: ((try? JSONSerialization.jsonObject(with: data)) as? [String: Any])?["computers"])
             self.packet = packet
             self.settleProviderKeys(packet.provider_keys)
+            self.settleLink(packet.link)
             if let share = packet.gymPacket?.share { self.gymShare = share }
             switch packet.coder_go {
             case "computers": self.computersRequested += 1

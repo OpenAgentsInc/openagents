@@ -73,6 +73,13 @@ final class PushRegistration {
 /// The system reports APNs registration only to the application delegate.
 final class PushAppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication,
+                     didFinishLaunchingWithOptions options: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        // The account's background read (#11165) registers before launch ends.
+        LinkBackground.register()
+        return true
+    }
+
+    func application(_ application: UIApplication,
                      didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
         Task { @MainActor in PushRegistration.shared.received(deviceToken) }
     }

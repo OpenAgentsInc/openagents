@@ -75,6 +75,7 @@ use rust_native::{
 };
 use serde::{Deserialize, Serialize};
 
+mod phone_sync;
 mod shell;
 pub use shell::{ShellAction, ShellView};
 

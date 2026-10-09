@@ -30,6 +30,14 @@
 	</array>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Confirm larger payments your agents ask you to approve.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+	</array>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.openagents.app.link-refresh</string>
+	</array>
 	<key>OpenAgentsPushAppProfile</key>
 	<string>$(OPENAGENTS_PUSH_APP_PROFILE)</string>
 	<key>OpenAgentsPushGatewayURL</key>

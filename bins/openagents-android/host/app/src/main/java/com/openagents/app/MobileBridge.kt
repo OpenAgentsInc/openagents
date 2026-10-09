@@ -17,7 +17,8 @@ import java.util.concurrent.Executors
  */
 class MobileBridge(private val context: Context, private val computersFixture: Boolean = false,
                    private val walletFixture: Boolean = false, private val chatFixture: Boolean = false,
-                   private val gymFixture: Boolean = false, private val changed: () -> Unit) {
+                   private val gymFixture: Boolean = false, private val accountOrigin: String? = null,
+                   private val changed: () -> Unit) {
     companion object {
         // Rust keeps each app handle on the thread that created it, so one
         // process-wide worker owns every handle for its whole lifetime.
@@ -81,6 +82,8 @@ class MobileBridge(private val context: Context, private val computersFixture: B
                 if (chatFixture) config.put("chat_fixture", true)
                 // Debug builds only: the Gym's recorded cards and a recorded test run.
                 if (gymFixture) config.put("gym_fixture", true)
+                // Debug builds only: sign in to another site (staging).
+                accountOrigin?.let { config.put("account_origin", it) }
                 handle = OpenAgentsNative.create(config.toString())
                 check(handle != 0L) { "OpenAgents could not start." }
             }
@@ -93,6 +96,7 @@ class MobileBridge(private val context: Context, private val computersFixture: B
         send(json("op" to "snapshot"))
         gymWorld()
         providerKeysLoad()
+        linkHello()
         watchChanges()
     }
 
@@ -174,6 +178,19 @@ class MobileBridge(private val context: Context, private val computersFixture: B
      */
     fun shell(action: String, vararg fields: Pair<String, Any?>) =
         send(json("op" to "shell", "shell" to json("action" to action, *fields)))
+
+    /** An action on the account surface (`account_link::Action`, #11107). */
+    fun link(action: String, vararg fields: Pair<String, Any?>) =
+        send(json("op" to "link", "link" to json("action" to action, *fields)))
+
+    /** Tells Rust this phone's name and the session the Keystore-encrypted store kept. */
+    private fun linkHello() {
+        val name = runCatching {
+            android.provider.Settings.Global.getString(context.contentResolver, android.provider.Settings.Global.DEVICE_NAME)
+        }.getOrNull()?.takeIf { it.isNotBlank() } ?: android.os.Build.MODEL
+        val session = runCatching { DeviceKey.loadAccountSession(context) }.getOrNull()
+        link("hello", "name" to name, "session" to session)
+    }
 
     /** Text Rust asked the system share sheet to open, until it shows. */
     var gymShare: String? = null
@@ -551,6 +568,10 @@ class MobileBridge(private val context: Context, private val computersFixture: B
         packet = next
         failure = null
         settleProviderKeys(next.objectOrNull("provider_keys"))
+        next.objectOrNull("link")?.let { link ->
+            AccountLink.settle(context, link)
+            link.textOrNull("open_url")?.let { browse(it) }
+        }
         nearby.hold(next.optBoolean("nearby_listening"))
         next.objectOrNull("gym")?.textOrNull("share")?.let { gymShare = it }
         when (val go = next.textOrNull("coder_go")) {

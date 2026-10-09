@@ -112,6 +112,11 @@ pub struct Launch {
     /// the Nostr relay only.
     #[serde(default)]
     pub iroh_secret_hex: Option<String>,
+    /// The site the phone signs in to, in place of openagents.com, for
+    /// tests against staging or a local site (#11107). Honored only in
+    /// debug builds; a release build always signs in to openagents.com.
+    #[serde(default)]
+    pub account_origin: Option<String>,
 }
 
 /// The basic Coder's door: the OpenAgents chat worker on its relay, or, in
@@ -476,6 +481,23 @@ pub enum Request {
     Shell {
         shell: crate::coder_tab::ShellAction,
     },
+    /// The account surface (#11107, #11165): the phone's name and kept
+    /// session at launch, which screen shows, the drawer, a background
+    /// fetch, and a notification's Approve or Deny.
+    Link {
+        link: crate::account_link::Action,
+    },
+    /// A tap on the account surface.
+    LinkActivate {
+        instance: String,
+        revision: u64,
+        node: String,
+    },
+    /// A composer's send on the account surface.
+    LinkInput {
+        token: String,
+        value: String,
+    },
     /// The trainer's Verse world key (64 hex characters from the platform's
     /// protected store): it names the trainer on the menu, reads their XP,
     /// and signs their hosted test requests. Kept in memory only.
@@ -768,6 +790,9 @@ pub struct Packet {
     /// Account > **Your keys** (BYOK): each provider's last four
     /// characters and state, the switch, and the status line. Never a key.
     pub provider_keys: crate::provider_keys::View,
+    /// The account surface: sign-in, the account's chats, and what runs on
+    /// the computers (#11107, #11165).
+    pub link: crate::account_link::Packet,
 }
 
 /// The encrypted store for the Computers record, keyed by the device key.
@@ -862,6 +887,10 @@ pub struct App {
     provider_keys: crate::provider_keys::ProviderKeys,
     /// How a provider key is tested.
     key_check: Arc<dyn crate::provider_keys::Check>,
+    /// The phone on the openagents.com account (#11107, #11165).
+    link: crate::account_link::Link,
+    /// The account surface's page to open in the browser, once.
+    link_open: Option<String>,
 }
 
 impl App {
@@ -1069,7 +1098,30 @@ impl App {
                 Err(reason) => (None, Some(format!("Wakes unavailable: {reason}"))),
             },
         };
+        // Release builds sign in to openagents.com; a debug build may name
+        // another site (staging) for tests.
+        let account_origin = launch
+            .account_origin
+            .clone()
+            .filter(|_| cfg!(debug_assertions))
+            .map(|origin| origin.trim().trim_end_matches('/').to_owned())
+            .filter(|origin| {
+                origin.starts_with("https://")
+                    || origin.starts_with("http://127.0.0.1:")
+                    || origin.starts_with("http://localhost:")
+                    || origin.starts_with("http://10.0.2.2:")
+            })
+            .unwrap_or_else(|| crate::account_link::PRODUCTION.to_owned());
+        let link = crate::account_link::Link::new(
+            &account_origin,
+            Arc::new(crate::account_link::Https::new()),
+            Some(runtime.handle().clone()),
+            Arc::new(crate::wake::ring),
+            Cache::open(&config.state_dir.join("link"), &secret).ok(),
+        );
         Ok(Self {
+            link,
+            link_open: None,
             runtime,
             link_reads: Arc::new(tokio::sync::Semaphore::new(crate::link_fetch::AT_ONCE)),
             native_computers: launch.native_computers,
@@ -1470,6 +1522,7 @@ impl App {
             }
             Request::Lifecycle { active } => {
                 crate::wake::set_active(active);
+                self.link.set_active(active);
                 self.connect.set_active(active);
                 if let Some(computers) = self.computers.as_mut() {
                     let _ = computers.set_active(active);
@@ -1737,6 +1790,20 @@ impl App {
                     self.coder.gym.set_world(world);
                 }
             }
+            Request::Link { link } => self.link.act(link),
+            Request::LinkActivate {
+                instance,
+                revision,
+                node,
+            } => {
+                let event = Activation {
+                    instance,
+                    revision,
+                    node,
+                };
+                self.link_open = self.link.activate(&event);
+            }
+            Request::LinkInput { token, value } => self.link.input(&token, &value),
             Request::ProviderKeys { keys, mine } => self.provider_keys.load(keys, mine),
             Request::ProviderKeyAdd { provider, key } => {
                 self.provider_keys
@@ -2170,6 +2237,36 @@ impl App {
             || previews.pending()
             || self.spend.live()
             || self.wallet_link.live();
+        // This phone's chats go to the account when the person chose so.
+        if self.link.syncs() {
+            let listed = self.coder.phone_chats();
+            let wanted = self.link.wanted_uploads(
+                &listed
+                    .iter()
+                    .map(|(id, _, updated)| (id.clone(), *updated))
+                    .collect::<Vec<_>>(),
+            );
+            if !wanted.is_empty() {
+                let chats = listed
+                    .into_iter()
+                    .filter(|(id, _, _)| wanted.contains(id))
+                    .map(|(id, title, updated)| {
+                        let messages =
+                            crate::account_link::upload_messages(&self.coder.phone_turns(&id));
+                        (
+                            id,
+                            crate::account_link::upload_title(&title),
+                            updated,
+                            messages,
+                        )
+                    })
+                    .collect();
+                self.link.queue_uploads(chats);
+            }
+        }
+        let mut link = self.link.packet();
+        link.open_url = self.link_open.take();
+        let coder_live = coder_live || link.live;
         crate::wake::set_live(coder_live);
         Packet {
             schema: "openagents.mobile.v1",
@@ -2244,6 +2341,7 @@ impl App {
             appearance: self.appearance.view(),
             gym,
             provider_keys: self.provider_keys.view(),
+            link,
         }
     }
 

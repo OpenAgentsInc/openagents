@@ -5,6 +5,9 @@ import UIKit
 
 enum AppTab: String, CaseIterable {
     case coder, verse, wallet, account
+    /// The account surface (#11107, #11165): sign-in, the account's chats,
+    /// and Running. Opened from the drawer and Settings.
+    case link
 
     var title: String {
         switch self {
@@ -12,6 +15,7 @@ enum AppTab: String, CaseIterable {
         case .verse: "Verse"
         case .wallet: "Wallet"
         case .account: "Settings"
+        case .link: "Account"
         }
     }
 
@@ -22,6 +26,7 @@ enum AppTab: String, CaseIterable {
         // `wallet.bifold` arrived in iOS 18.
         case .wallet: UIImage(systemName: "wallet.bifold") == nil ? "creditcard" : "wallet.bifold"
         case .account: "person.crop.circle"
+        case .link: "person.crop.circle.badge.checkmark"
         }
     }
 }
@@ -121,6 +126,11 @@ struct AppTabs: View {
     @State private var drawer = AppTabLaunch.drawer
     /// Settings opens on its first screen when this changes.
     @State private var settingsHome = 0
+    /// The account surface's screen (`account`, `chats`, `chat`, or
+    /// `running`) and the chat it opens.
+    @State private var linkScreen = "account"
+    @State private var linkChat: String?
+    @ObservedObject private var notifier = LinkNotifier.shared
     @Environment(\.appColors) private var appColors
 
     var body: some View {
@@ -152,6 +162,7 @@ struct AppTabs: View {
         }
         .onChange(of: drawer, initial: true) { _, open in
             bridge.shell("drawer", ["open": open])
+            bridge.link("drawer", ["open": open])
             if open {
                 UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
             }
@@ -169,6 +180,8 @@ struct AppTabs: View {
         }
         // Coder asked to connect a computer: Account > Computers.
         .onChange(of: bridge.computersRequested) { _, _ in tab = .account }
+        // A tap on a notice from Coder: Running.
+        .onChange(of: notifier.openRunning) { _, _ in go("running") }
         // An offer under a chat reply opened another screen.
         .onChange(of: bridge.screenRequest) { _, request in
             switch request.screen {
@@ -258,7 +271,10 @@ extension AppTabs {
                         .environment(\.colorScheme, .dark)
                 }
         case .account:
-            AccountTab(bridge: bridge, home: settingsHome, menu: { AnyView(menuButton) })
+            AccountTab(bridge: bridge, home: settingsHome, menu: { AnyView(menuButton) },
+                       openLink: { go("account") })
+        case .link:
+            LinkScreen(bridge: bridge, screen: linkScreen, chat: linkChat, menu: { AnyView(menuButton) })
         }
     }
 
@@ -284,6 +300,14 @@ extension AppTabs {
         case "settings":
             settingsHome += 1
             tab = .account
+        case "account", "running", "account_chats":
+            linkScreen = id == "account_chats" ? "chats" : id
+            linkChat = nil
+            tab = .link
+        case let place where place.hasPrefix("link_chat:"):
+            linkScreen = "chat"
+            linkChat = String(place.dropFirst("link_chat:".count))
+            tab = .link
         default: tab = .coder
         }
         drawer = false
@@ -297,6 +321,8 @@ struct AccountTab: View {
     var home = 0
     /// The menu button that opens the drawer, on the first screen.
     var menu: (() -> AnyView)?
+    /// Open the account surface (Log in, or the account).
+    var openLink: () -> Void = {}
     @Environment(\.appColors) private var appColors
     @State private var path = AppTabLaunch.route
     @EnvironmentObject private var place: PlaytestPlace
@@ -305,6 +331,9 @@ struct AccountTab: View {
     var body: some View {
         NavigationStack(path: $path) {
             List {
+                Section {
+                    LinkSettingsRow(bridge: bridge, open: openLink)
+                }
                 // Trainer, Train Coder, Profile, and Playtest are preview
                 // features (`Preview`).
                 if Preview.on {

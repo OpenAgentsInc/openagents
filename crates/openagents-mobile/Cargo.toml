@@ -84,6 +84,9 @@ tokio = { version = "1", features = ["rt-multi-thread", "time", "io-util", "sync
 url = "2"
 # Nearby on Connect a computer: the mDNS listing's event stream.
 futures-util = "0.3"
+# The account sync (#11107): phone chats and replies are screened for
+# credential shapes before they leave the phone.
+secret-screen = { path = "../secret-screen" }
 
 # The Android host's JNI surface (`src/android.rs`).
 [target.'cfg(target_os = "android")'.dependencies]

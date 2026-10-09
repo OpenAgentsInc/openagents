@@ -12,7 +12,8 @@ final class PlaytestPlace: ObservableObject {
     @Published var tab: AppTab = AppTabLaunch.tab
     @Published var accountRoute: AccountRoute?
 
-    var tabName: String { tab.rawValue }
+    // The account surface counts as the Chat tab for reports.
+    var tabName: String { tab == .link ? AppTab.coder.rawValue : tab.rawValue }
 
     var routeName: String {
         guard tab == .account, let route = accountRoute else { return "home" }
