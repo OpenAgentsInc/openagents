@@ -150,6 +150,7 @@ impl App {
             Ok(()) => {
                 self.history.dirty = false;
                 self.history.save_failed = false;
+                self.sync_saved(&document);
                 if self
                     .notice
                     .as_deref()

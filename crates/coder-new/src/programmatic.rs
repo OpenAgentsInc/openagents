@@ -1535,6 +1535,9 @@ fn sessions(args: &[String], context: &Context) -> Result<Value, Error> {
             let lease = lock_session(context, &args[1])?;
             let _ = fs::remove_file(instructions_path(lease.path()));
             lease.delete()?;
+            // Saved to the account too (#11046): delete it there.
+            drop(lease);
+            crate::account_sync::forget_deleted(&context.root, &args[1]);
             Ok(json!({"deleted":args[1]}))
         }
         _ => Err(usage("Use sessions list, read ID, or delete ID.")),

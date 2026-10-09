@@ -187,6 +187,7 @@ impl crate::App {
             return;
         }
         self.account = None;
+        self.stop_sync();
         self.notice = Some("Signed out of OpenAgents.".into());
         // End the token on the website without holding the terminal.
         std::thread::spawn(move || {
@@ -229,6 +230,7 @@ impl crate::App {
                         Ok(_) => {
                             self.notice = Some(format!("Signed in to OpenAgents as {label}."));
                             self.account = Some(label);
+                            self.start_sync();
                         }
                         Err(error) => self.notice = Some(error),
                     }

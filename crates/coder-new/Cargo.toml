@@ -30,6 +30,7 @@ supervise = { path = "../supervise" }
 model-access = { path = "../model-access" }
 openrouter = { path = "../openrouter" }
 openagents-login = { path = "../openagents-login" }
+coder-sync = { path = "../coder-sync" }
 crossterm = "0.29"
 ratatui = { version = "0.30", default-features = false, features = ["crossterm", "layout-cache", "unstable-rendered-line-info"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }

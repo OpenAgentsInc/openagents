@@ -1,0 +1,24 @@
+[package]
+name = "coder-sync"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Save Coder chats to the signed-in openagents.com account: the setting, the screened upload, and the background sender."
+
+[dependencies]
+openagents-login = { path = "../openagents-login" }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+secret-screen = { path = "../secret-screen" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tokio = { version = "1", features = ["rt", "time"] }
+
+[dev-dependencies]
+axum = "0.8"
+tempfile = "3"
+tokio = { version = "1", features = ["macros", "net", "rt", "rt-multi-thread", "time"] }
+
+[lints]
+workspace = true

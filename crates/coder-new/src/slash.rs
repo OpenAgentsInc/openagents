@@ -22,6 +22,7 @@ pub enum Command {
     Brainstorm,
     Login,
     Logout,
+    Sync,
     Help,
 }
 
@@ -37,6 +38,7 @@ pub const ALL: &[Command] = if crate::DEMO_AVAILABLE {
         Command::Brainstorm,
         Command::Login,
         Command::Logout,
+        Command::Sync,
         Command::Help,
     ]
 } else {
@@ -49,6 +51,7 @@ pub const ALL: &[Command] = if crate::DEMO_AVAILABLE {
         Command::Brainstorm,
         Command::Login,
         Command::Logout,
+        Command::Sync,
         Command::Help,
     ]
 };
@@ -68,6 +71,7 @@ impl Command {
             Self::Brainstorm => "brainstorm",
             Self::Login => "login",
             Self::Logout => "logout",
+            Self::Sync => "sync",
             Self::Help => "help",
         }
     }
@@ -85,6 +89,7 @@ impl Command {
             Self::Brainstorm => "Explicit public profile or reputation lookup",
             Self::Login => "Sign in to your openagents.com account",
             Self::Logout => "Sign out of your openagents.com account",
+            Self::Sync => "Save chats to your account",
             Self::Help => "Show commands and keys",
         }
     }
@@ -116,7 +121,7 @@ pub fn help() -> String {
     if crate::DEMO_AVAILABLE {
         text.push_str("/demo  Toggle demo/live\n");
     }
-    text.push_str("/plugins  Manage plugins\n/appearance  Configure terminal appearance\n/models  Choose a model for an enabled provider\n/export [path]  Export the selected conversation as ATIF\n/resume [number|id]  Resume a saved conversation\n/login  Sign in to your openagents.com account\n/logout  Sign out of it\n/help  Show commands\nTab  Complete a command\nEsc  Close suggestions or stop a reply\nCtrl+C  Quit");
+    text.push_str("/plugins  Manage plugins\n/appearance  Configure terminal appearance\n/models  Choose a model for an enabled provider\n/export [path]  Export the selected conversation as ATIF\n/resume [number|id]  Resume a saved conversation\n/login  Sign in to your openagents.com account\n/logout  Sign out of it\n/sync on|all|off|delete  Save chats to your account\n/help  Show commands\nTab  Complete a command\nEsc  Close suggestions or stop a reply\nCtrl+C  Quit");
     text.push_str("\n/brainstorm search <public query>  Search public profiles\n/brainstorm rank <hex-or-npub>  Look up raw influence\nBrainstorm sends only explicit queries and public keys to its configured HTTPS origin.");
     text
 }

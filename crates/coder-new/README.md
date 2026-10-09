@@ -249,6 +249,14 @@ directory and plugin settings stay in effect. Stop active work before resuming.
 Streaming replies checkpoint every five seconds and save again when they end;
 typing and scrolling do not write session files. Demo conversations are not saved.
 
+Signed in (`coder login`), `/sync on` also saves chats to your openagents.com
+account, where they show in the web sidebar, read-only, marked Terminal with
+this computer's name (`crates/coder-sync`). It is off by default. `/sync all`
+adds your earlier chats, `/sync off` stops, and `/sync delete` removes this
+computer's chats from the account. Messages that look like they hold a
+password or key are left out. Deleting a chat in one place deletes it in the
+other. The setting lives in `~/.openagents/coder-new/sync.json`.
+
 Coder Noir uses Superlogical's Static Noir surfaces, content tones, and ANSI
 palette, combined with Coder's neutral accent and cursor. The terminal field is
 `#0e0e0e`; active borders are neutral, models and inline code use cyan, and

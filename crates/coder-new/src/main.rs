@@ -103,6 +103,7 @@ fn main() -> io::Result<()> {
         app.account = coder_new::account::signed_in(&store);
         app.account_dir = Some(store.clone());
         app.attach_session_store(coder_new::sessions::Store::under(&store));
+        app.start_sync();
         if let Err(error) = app.load_plugin_settings(coder_new::plugin_store::Store::under(&store))
         {
             app.notice = Some(error);

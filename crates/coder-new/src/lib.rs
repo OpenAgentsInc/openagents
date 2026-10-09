@@ -1,6 +1,7 @@
 //! A Coder terminal with bundled plugins, live chat, and demo fixtures.
 
 pub mod account;
+pub mod account_sync;
 pub mod acp_discovery;
 pub mod agents;
 pub mod appearance;
@@ -90,6 +91,8 @@ pub struct App {
     /// Where the account sign-in is kept (`~/.openagents/coder-new`).
     pub account_dir: Option<std::path::PathBuf>,
     pub(crate) login: Option<account::Login>,
+    /// Saving chats to the account (#11046), once read.
+    pub(crate) sync: Option<account_sync::SyncState>,
     pub request: Option<live::Request>,
     pub request_id: u64,
     pub checking_key: bool,
@@ -346,6 +349,8 @@ impl App {
         slash::matches(&self.draft.text)
             .into_iter()
             .filter(|command| *command != slash::Command::Models || self.plugins.enabled)
+            // Saving chats to the account needs a sign-in (#11046).
+            .filter(|command| *command != slash::Command::Sync || self.account.is_some())
             .filter(|command| {
                 *command != slash::Command::Brainstorm
                     || self.plugins.bundled.brainstorm.preferences.enabled
@@ -682,6 +687,7 @@ impl App {
             slash::Command::Help => self.notice = Some(slash::help()),
             slash::Command::Login => self.login(),
             slash::Command::Logout => self.logout(),
+            slash::Command::Sync => self.sync_command(""),
         }
     }
 
@@ -1135,6 +1141,7 @@ impl App {
 
     pub fn tick(&mut self) {
         self.poll_login();
+        self.poll_sync();
         self.animation_frame = self.animation_frame.wrapping_add(1) % 8;
         self.cursor_blink_frame = self.cursor_blink_frame.wrapping_add(1) % 8;
     }
@@ -1593,6 +1600,15 @@ impl App {
                             }) {
                                 self.draft = Draft::default();
                             }
+                        } else if let Some(argument) = self
+                            .draft
+                            .text
+                            .trim()
+                            .strip_prefix("/sync ")
+                            .map(str::to_owned)
+                        {
+                            self.sync_command(&argument);
+                            self.draft = Draft::default();
                         } else if let Some(path) = self
                             .draft
                             .text
