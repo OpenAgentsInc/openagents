@@ -21,9 +21,9 @@
 
 use super::sales::Failure;
 use super::session::{SessionError, Viewer};
+use super::ui;
 use super::{failure, protect, refused, service, workspace_shell};
 use crate::App;
-use crate::layout::escape;
 use axum::Router;
 use axum::body::Body;
 use axum::extract::{Query, State};
@@ -35,6 +35,8 @@ use coder::task::sales::earned::{Ledger, Settlement};
 use coder::task::sales::partners::{Assignment, Status, Terms, View};
 use coder::task::sales::remote::{Op, PartnerCursor, Standing, record_id};
 use coder::task::sales::roles::{AttributionView as DeskAttribution, Brief, Desk};
+use maud::{Markup, html};
+use openagents_ui::forms::{Field, Input};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -450,24 +452,13 @@ impl Context<'_> {
 
 // ---- Rendering -------------------------------------------------------------------
 
-fn dd(out: &mut String, label: &str, value: &str) {
-    out.push_str(&format!(
-        "<dt>{}</dt><dd>{}</dd>",
-        escape(label),
-        escape(value)
-    ));
-}
-
 fn msat(value: i64) -> String {
     format!("{value} msat")
 }
 
-fn unavailable(out: &mut String, title: &str, why: &str) {
-    out.push_str(&format!(
-        "<section class=\"cloud-card\"><h3>{} · Unavailable</h3><p>{}</p></section>",
-        escape(title),
-        escape(why)
-    ));
+/// A section whose owner could not be read: the title and the owner's reason.
+fn unavailable(title: &str, why: &str) -> Markup {
+    ui::unavailable(&format!("{title} \u{b7} Unavailable"), why)
 }
 
 fn snake<T: Serialize>(value: &T) -> String {
@@ -477,182 +468,190 @@ fn snake<T: Serialize>(value: &T) -> String {
     }
 }
 
-fn render_referrals(r: &Referrals) -> String {
-    let mut out = String::from("<h3>Referrals and attribution</h3>");
-    match &r.source {
+fn render_referrals(r: &Referrals) -> Markup {
+    let source = match &r.source {
         Lane::Read(Some(source)) => {
-            out.push_str("<section class=\"cloud-card\" id=\"referral-source\"><h4>Original source</h4><dl>");
-            dd(&mut out, "Outcome", &source.outcome);
-            dd(
-                &mut out,
-                "Referrer",
-                &source.referrer.as_ref().map_or("none".into(), |i| {
-                    format!(
-                        "{} version {} · {}{}",
-                        i.id,
-                        i.version,
-                        snake(&i.kind),
-                        if i.source_only { " · source only, never paid" } else { "" }
-                    )
-                }),
-            );
-            dd(
-                &mut out,
-                "Consent version",
-                source.consent_version.as_deref().unwrap_or("none"),
-            );
-            dd(&mut out, "Captured at", &source.captured_at.to_string());
-            out.push_str("</dl><p class=\"dim\">A captured source is attribution evidence only; it creates no commission.</p></section>");
-        }
-        Lane::Read(None) | Lane::Absent => out.push_str(
-            "<p id=\"referral-source\">No original referral source is recorded for this account.</p>",
-        ),
-        Lane::Unavailable(why) => unavailable(&mut out, "Original source", why),
-    }
-    match &r.attribution {
-        Lane::Read(Some(view)) => {
-            out.push_str(
-                "<section class=\"cloud-card\" id=\"attribution\"><h4>Attribution</h4><dl>",
-            );
-            dd(&mut out, "Customer", &view.customer);
-            dd(&mut out, "Status", &snake(&view.status));
-            match &view.binding {
-                Some(b) => {
-                    dd(
-                        &mut out,
-                        "Permanent binding",
-                        &format!(
-                            "{} · referrer {} version {} · policy {} · accepted decision {}",
-                            b.id,
-                            b.referrer.id,
-                            b.referrer.version,
-                            b.policy_digest,
-                            b.accepted_decision
-                        ),
-                    );
+            let referrer = source.referrer.as_ref().map_or("none".into(), |i| {
+                format!(
+                    "{} version {} \u{b7} {}{}",
+                    i.id,
+                    i.version,
+                    snake(&i.kind),
+                    if i.source_only {
+                        " \u{b7} source only, never paid"
+                    } else {
+                        ""
+                    }
+                )
+            });
+            html! {
+                section class="cloud-card" id="referral-source" {
+                    h4 { "Original source" }
+                    (ui::Details::new()
+                        .row("Outcome", &source.outcome)
+                        .row("Referrer", referrer)
+                        .row("Consent version", source.consent_version.as_deref().unwrap_or("none"))
+                        .row("Captured at", source.captured_at))
+                    p { "A captured source is attribution evidence only; it creates no commission." }
                 }
-                None => dd(&mut out, "Permanent binding", "none accepted"),
             }
-            dd(
-                &mut out,
-                "Commission eligibility",
-                if view.commission_eligibility {
-                    "eligible for an accepted agreement; attribution alone accrues nothing"
-                } else {
-                    "not eligible"
+        }
+        Lane::Read(None) | Lane::Absent => html! {
+            p id="referral-source" { "No original referral source is recorded for this account." }
+        },
+        Lane::Unavailable(why) => unavailable("Original source", why),
+    };
+    let attribution = match &r.attribution {
+        Lane::Read(Some(view)) => {
+            let binding = view.binding.as_ref().map_or_else(
+                || "none accepted".to_owned(),
+                |b| {
+                    format!(
+                        "{} \u{b7} referrer {} version {} \u{b7} policy {} \u{b7} accepted decision {}",
+                        b.id,
+                        b.referrer.id,
+                        b.referrer.version,
+                        b.policy_digest,
+                        b.accepted_decision
+                    )
                 },
             );
-            out.push_str("</dl><ol class=\"attribution-decisions\">");
-            for d in &view.decisions {
-                out.push_str(&format!(
-                    "<li>Decision {} · sequence {} · {} · {}{} · policy {}</li>",
-                    escape(&d.digest),
-                    d.sequence,
-                    escape(&snake(&d.introduction)),
-                    escape(&snake(&d.status)),
-                    d.review.as_ref().map_or(String::new(), |r| format!(
-                        " · under review: {}",
-                        escape(&snake(r))
-                    )),
-                    escape(&d.policy_digest)
-                ));
+            html! {
+                section class="cloud-card" id="attribution" {
+                    h4 { "Attribution" }
+                    (ui::Details::new()
+                        .row("Customer", &view.customer)
+                        .row("Status", snake(&view.status))
+                        .row("Permanent binding", binding)
+                        .row(
+                            "Commission eligibility",
+                            if view.commission_eligibility {
+                                "eligible for an accepted agreement; attribution alone accrues nothing"
+                            } else {
+                                "not eligible"
+                            },
+                        ))
+                    ol class="attribution-decisions" {
+                        @for d in &view.decisions {
+                            li {
+                                "Decision " (d.digest) " \u{b7} sequence " (d.sequence)
+                                " \u{b7} " (snake(&d.introduction)) " \u{b7} " (snake(&d.status))
+                                @if let Some(review) = &d.review {
+                                    " \u{b7} under review: " (snake(review))
+                                }
+                                " \u{b7} policy " (d.policy_digest)
+                            }
+                        }
+                    }
+                    p { "A self-referral, a source-only identity, or an agent's own link is reviewed and never paid." }
+                }
             }
-            out.push_str("</ol><p class=\"dim\">A self-referral, a source-only identity, or an agent's own link is reviewed and never paid.</p></section>");
         }
-        Lane::Read(None) | Lane::Absent => out.push_str(
-            "<p id=\"attribution\">No attribution decision is recorded for this account.</p>",
-        ),
-        Lane::Unavailable(why) => unavailable(&mut out, "Attribution", why),
-    }
-    match &r.workspace {
-        Lane::Read(Some(w)) => out.push_str(&format!(
-            "<p id=\"workspace-attribution\">Workspace {} adopts binding {} ({}).</p>",
-            escape(&w.workspace),
-            escape(&w.binding.id),
-            escape(&snake(&w.status))
-        )),
-        Lane::Read(None) | Lane::Absent => out.push_str(
-            "<p id=\"workspace-attribution\">This workspace has adopted no attribution.</p>",
-        ),
-        Lane::Unavailable(why) => unavailable(&mut out, "Workspace attribution", why),
-    }
-    match &r.agreement {
+        Lane::Read(None) | Lane::Absent => html! {
+            p id="attribution" { "No attribution decision is recorded for this account." }
+        },
+        Lane::Unavailable(why) => unavailable("Attribution", why),
+    };
+    let workspace = match &r.workspace {
+        Lane::Read(Some(w)) => html! {
+            p id="workspace-attribution" {
+                "Workspace " (w.workspace) " adopts binding " (w.binding.id) " (" (snake(&w.status)) ")."
+            }
+        },
+        Lane::Read(None) | Lane::Absent => html! {
+            p id="workspace-attribution" { "This workspace has adopted no attribution." }
+        },
+        Lane::Unavailable(why) => unavailable("Workspace attribution", why),
+    };
+    let agreement = match &r.agreement {
         Lane::Read(Some(view)) => {
             let a = &view.agreement;
-            out.push_str("<section class=\"cloud-card\" id=\"commission-agreement\"><h4>Commission agreement</h4><dl>");
-            dd(&mut out, "Agreement", &a.id);
-            dd(&mut out, "Customer", &a.customer);
-            dd(
-                &mut out,
-                "Accepted terms",
-                &format!(
-                    "version {} · {}",
-                    view.terms.terms["version"].as_str().unwrap_or("unknown"),
-                    a.terms_digest
-                ),
-            );
-            dd(&mut out, "State", &view.state);
+            let mut details = ui::Details::new()
+                .row("Agreement", &a.id)
+                .row("Customer", &a.customer)
+                .row(
+                    "Accepted terms",
+                    format!(
+                        "version {} \u{b7} {}",
+                        view.terms.terms["version"].as_str().unwrap_or("unknown"),
+                        a.terms_digest
+                    ),
+                )
+                .row("State", &view.state);
             for (role, acceptance) in &a.acceptances {
-                dd(
-                    &mut out,
+                details = details.row(
                     &format!("Accepted by {role}"),
-                    &format!("{} at {}", acceptance.actor, acceptance.accepted_at),
+                    format!("{} at {}", acceptance.actor, acceptance.accepted_at),
                 );
             }
-            dd(
-                &mut out,
-                "Accrual",
-                if view.accrual_enabled {
-                    "enabled"
-                } else {
-                    "not enabled"
-                },
-            );
-            dd(
-                &mut out,
-                "Payout",
-                if view.payout_enabled && view.payout_qualified {
-                    "enabled by its own native admission"
-                } else {
-                    "not enabled"
-                },
-            );
-            out.push_str("</dl><p class=\"dim\">An accepted agreement names terms; only original settled revenue under it earns, and only its native owner pays.</p></section>");
-        }
-        Lane::Read(None) | Lane::Absent => {
-            if let Some(customer) = &r.agreement_customer {
-                out.push_str(&format!(
-                    "<p id=\"commission-agreement\">No commission agreement you are party to is recorded for customer {}.</p>",
-                    escape(customer)
-                ));
+            details = details
+                .row(
+                    "Accrual",
+                    if view.accrual_enabled {
+                        "enabled"
+                    } else {
+                        "not enabled"
+                    },
+                )
+                .row(
+                    "Payout",
+                    if view.payout_enabled && view.payout_qualified {
+                        "enabled by its own native admission"
+                    } else {
+                        "not enabled"
+                    },
+                );
+            html! {
+                section class="cloud-card" id="commission-agreement" {
+                    h4 { "Commission agreement" }
+                    (details)
+                    p { "An accepted agreement names terms; only original settled revenue under it earns, and only its native owner pays." }
+                }
             }
         }
-        Lane::Unavailable(why) => unavailable(&mut out, "Commission agreement", why),
+        Lane::Read(None) | Lane::Absent => html! {
+            @if let Some(customer) = &r.agreement_customer {
+                p id="commission-agreement" {
+                    "No commission agreement you are party to is recorded for customer " (customer) "."
+                }
+            }
+        },
+        Lane::Unavailable(why) => unavailable("Commission agreement", why),
+    };
+    let customer = Field::new("partners-customer", "Referred customer").required(true);
+    html! {
+        h3 { "Referrals and attribution" }
+        (source)
+        (attribution)
+        (workspace)
+        (agreement)
+        form class="cloud-form" method="get" action=(PAGE) {
+            (customer.clone().control(
+                Input::new("customer").maxlength(128).required(true).aria(customer.aria()),
+            ))
+            div class="cloud-form-actions" { (ui::submit("Read agreement", false)) }
+        }
     }
-    out.push_str(&format!(
-        "<form method=\"get\" action=\"{PAGE}\"><label>Referred customer <input name=\"customer\" maxlength=\"128\" required></label> <button type=\"submit\">Read agreement</button></form>"
-    ));
-    out
 }
 
-fn render_payee(lane: &Lane<Payee>, selection: &Selection) -> String {
-    let mut out = String::from("<h3>Earnings and payouts</h3>");
+fn render_payee(lane: &Lane<Payee>, selection: &Selection) -> Markup {
     let payee = match lane {
         Lane::Read(payee) => payee,
         Lane::Absent => {
-            out.push_str("<p id=\"payee\">No payee read is approved for this account and workspace. Earnings appear only under the account's own original payee authority.</p>");
-            return out;
+            return html! {
+                h3 { "Earnings and payouts" }
+                p id="payee" { "No payee read is approved for this account and workspace. Earnings appear only under the account's own original payee authority." }
+            };
         }
         Lane::Unavailable(why) => {
-            unavailable(&mut out, "Payee statement", why);
-            return out;
+            return html! {
+                h3 { "Earnings and payouts" }
+                (unavailable("Payee statement", why))
+            };
         }
     };
     let f = &payee.statement.figures;
-    out.push_str(&format!(
-        "<section class=\"cloud-card\" id=\"payee\"><p>Party {} · unit msat. These are the payee owner's own totals over original settlements; this page adds nothing to them, and earnings are never netted against spending.</p><dl class=\"payee-figures\">",
-        escape(&payee.party)
-    ));
+    let mut figures = ui::Details::new();
     for (label, value) in [
         ("Earned", f.earned_msat),
         ("Accrued, not reserved", f.accrued_msat),
@@ -665,50 +664,15 @@ fn render_payee(lane: &Lane<Payee>, selection: &Selection) -> String {
             f.unverified_sent_msat,
         ),
     ] {
-        dd(&mut out, label, &msat(value));
+        figures = figures.row(label, msat(value));
     }
-    out.push_str(
-        "</dl></section><section class=\"cloud-card\"><h4>Earnings by original settlement</h4>",
-    );
-    if payee.statement.earnings.is_empty() {
-        out.push_str("<p>No earnings on this page.</p>");
-    } else {
-        out.push_str("<ol class=\"payee-earnings\">");
-        for e in &payee.statement.earnings {
-            out.push_str(&format!(
-                "<li>Settlement {} · {}{} · settled at {} · rule version {}<ul>",
-                e.sequence,
-                escape(&e.resource),
-                match (&e.plugin_id, &e.release_id) {
-                    (Some(p), Some(r)) => format!(" · plugin {} release {}", escape(p), escape(r)),
-                    _ => String::new(),
-                },
-                e.settled_at,
-                e.rule_version
-            ));
-            for o in &e.obligations {
-                out.push_str(&format!(
-                    "<li>{} share {} · {}{}</li>",
-                    escape(&o.role),
-                    msat(o.amount_msat),
-                    escape(&o.state),
-                    o.payout
-                        .as_ref()
-                        .map_or(String::new(), |p| format!(" · payout {}", escape(p)))
-                ));
-            }
-            out.push_str("</ul></li>");
-        }
-        out.push_str("</ol>");
-    }
-    out.push_str("</section><section class=\"cloud-card\"><h4>Payouts</h4>");
-    if payee.statement.payouts.is_empty() {
-        out.push_str("<p>No payouts recorded.</p>");
-    } else {
-        out.push_str("<ol class=\"payee-payouts\">");
-        for p in &payee.statement.payouts {
+    let payouts: Vec<String> = payee
+        .statement
+        .payouts
+        .iter()
+        .map(|p| {
             let mut line = format!(
-                "Payout {} · {} to {} on {} · {}",
+                "Payout {} \u{b7} {} to {} on {} \u{b7} {}",
                 p.id,
                 msat(p.amount_msat),
                 p.destination,
@@ -716,62 +680,100 @@ fn render_payee(lane: &Lane<Payee>, selection: &Selection) -> String {
                 p.state
             );
             if let Some(sent) = p.sent_msat {
-                line.push_str(&format!(" · rail amount {}", msat(sent)));
+                line.push_str(&format!(" \u{b7} rail amount {}", msat(sent)));
             }
             if let Some(fee) = p.fee_msat {
-                line.push_str(&format!(" · fee {}", msat(fee)));
+                line.push_str(&format!(" \u{b7} fee {}", msat(fee)));
             }
             if let Some(reference) = &p.wallet_reference {
-                line.push_str(&format!(" · wallet reference {reference}"));
+                line.push_str(&format!(" \u{b7} wallet reference {reference}"));
             }
-            line.push_str(&format!(" · {} attempts", p.attempts));
+            line.push_str(&format!(" \u{b7} {} attempts", p.attempts));
             if p.lookup_required {
                 line.push_str(
-                    " · Outcome unresolved: only a wallet lookup by its owner can settle it",
+                    " \u{b7} Outcome unresolved: only a wallet lookup by its owner can settle it",
                 );
             }
             if let Some(reason) = &p.reason {
-                line.push_str(&format!(" · {}", reason.replace('_', " ")));
+                line.push_str(&format!(" \u{b7} {}", reason.replace('_', " ")));
             }
-            out.push_str(&format!("<li>{}</li>", escape(&line)));
-        }
-        out.push_str("</ol>");
-    }
-    out.push_str("<p class=\"dim\">Payout destinations and payout runs are managed only by their native owner under its own admission; this page cannot start, retry, or redirect a payout.</p>");
+            line
+        })
+        .collect();
     let mut links = Vec::new();
     if let Some(next) = payee.statement.next_earning {
-        links.push(format!(
-            "<a href=\"{}\">Older earnings</a>",
-            escape(
-                &Selection {
-                    after_earning: Some(next),
-                    after_payout: selection.after_payout,
-                    customer: selection.customer.clone(),
-                    ..Default::default()
-                }
-                .href(PAGE)
-            )
+        links.push((
+            Selection {
+                after_earning: Some(next),
+                after_payout: selection.after_payout,
+                customer: selection.customer.clone(),
+                ..Default::default()
+            }
+            .href(PAGE),
+            "Older earnings",
         ));
     }
     if let Some(next) = payee.statement.next_payout {
-        links.push(format!(
-            "<a href=\"{}\">Older payouts</a>",
-            escape(
-                &Selection {
-                    after_earning: selection.after_earning,
-                    after_payout: Some(next),
-                    customer: selection.customer.clone(),
-                    ..Default::default()
-                }
-                .href(PAGE)
-            )
+        links.push((
+            Selection {
+                after_earning: selection.after_earning,
+                after_payout: Some(next),
+                customer: selection.customer.clone(),
+                ..Default::default()
+            }
+            .href(PAGE),
+            "Older payouts",
         ));
     }
-    if !links.is_empty() {
-        out.push_str(&format!("<p>{}</p>", links.join(" · ")));
+    html! {
+        h3 { "Earnings and payouts" }
+        section class="cloud-card" id="payee" {
+            p {
+                "Party " (payee.party) " \u{b7} unit msat. These are the payee owner's own totals over original settlements; this page adds nothing to them, and earnings are never netted against spending."
+            }
+            (figures)
+        }
+        section class="cloud-card" {
+            h4 { "Earnings by original settlement" }
+            @if payee.statement.earnings.is_empty() {
+                p { "No earnings on this page." }
+            } @else {
+                ol class="payee-earnings" {
+                    @for e in &payee.statement.earnings {
+                        li {
+                            "Settlement " (e.sequence) " \u{b7} " (e.resource)
+                            @if let (Some(p), Some(r)) = (&e.plugin_id, &e.release_id) {
+                                " \u{b7} plugin " (p) " release " (r)
+                            }
+                            " \u{b7} settled at " (e.settled_at) " \u{b7} rule version " (e.rule_version)
+                            ul {
+                                @for o in &e.obligations {
+                                    li {
+                                        (o.role) " share " (msat(o.amount_msat)) " \u{b7} " (o.state)
+                                        @if let Some(p) = &o.payout { " \u{b7} payout " (p) }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        section class="cloud-card" {
+            h4 { "Payouts" }
+            @if payouts.is_empty() {
+                p { "No payouts recorded." }
+            } @else {
+                ol class="payee-payouts" {
+                    @for line in &payouts { li { (line) } }
+                }
+            }
+            p { "Payout destinations and payout runs are managed only by their native owner under its own admission; this page cannot start, retry, or redirect a payout." }
+            @if !links.is_empty() {
+                (ui::links(links.iter().map(|(href, label)| (href.as_str(), *label))))
+            }
+        }
     }
-    out.push_str("</section>");
-    out
 }
 
 fn status_label(status: Status) -> &'static str {
@@ -790,21 +792,16 @@ fn render_assignment(
     lead: &str,
     a: &Assignment,
     fulfillment: Option<&receipts::service_sale::Fulfillment>,
-) -> String {
+) -> Markup {
     let p = &a.proposal;
-    let mut out = format!(
-        "<li class=\"partner-assignment\" id=\"assignment-{}\"><h5>{} · {}</h5><dl>",
-        escape(&p.id),
-        escape(&p.id),
-        status_label(a.status)
-    );
-    dd(&mut out, "Pipeline record", lead);
-    dd(&mut out, "Responsible human", &p.recipient_human);
-    dd(&mut out, "Owner", &a.owner_human);
-    dd(&mut out, "Expires at", &p.expires_at.to_string());
+    let mut details = ui::Details::new()
+        .row("Pipeline record", lead)
+        .row("Responsible human", &p.recipient_human)
+        .row("Owner", &a.owner_human)
+        .row("Expires at", p.expires_at);
     match &p.terms {
         Terms::Discovery { permitted_use, .. } => {
-            dd(&mut out, "Scope", &format!("discovery · {permitted_use}"));
+            details = details.row("Scope", format!("discovery \u{b7} {permitted_use}"));
         }
         Terms::Fulfillment {
             offer_version,
@@ -812,288 +809,251 @@ fn render_assignment(
             obligation,
             ..
         } => {
-            dd(
-                &mut out,
-                "Scope",
-                &format!("fulfillment · offer {offer_version} · service sale {service_sale}"),
-            );
-            dd(
-                &mut out,
-                "Agreed compensation",
-                &format!(
-                    "{} minor units of {} (scale {}) · agreement {} · acceptance {}",
-                    obligation.amount_minor,
-                    obligation.currency,
-                    obligation.currency_scale,
-                    obligation.agreement.sha256,
-                    obligation.acceptance.sha256
-                ),
-            );
+            details = details
+                .row(
+                    "Scope",
+                    format!(
+                        "fulfillment \u{b7} offer {offer_version} \u{b7} service sale {service_sale}"
+                    ),
+                )
+                .row(
+                    "Agreed compensation",
+                    format!(
+                        "{} minor units of {} (scale {}) \u{b7} agreement {} \u{b7} acceptance {}",
+                        obligation.amount_minor,
+                        obligation.currency,
+                        obligation.currency_scale,
+                        obligation.agreement.sha256,
+                        obligation.acceptance.sha256
+                    ),
+                );
         }
     }
-    match &a.proposal.commission {
-        Some(c) => dd(
-            &mut out,
+    details = match &a.proposal.commission {
+        Some(c) => details.row(
             "Referral agreement",
-            &format!(
-                "{} · attribution {} · accepted reference only, not an earned commission",
+            format!(
+                "{} \u{b7} attribution {} \u{b7} accepted reference only, not an earned commission",
                 c.agreement.sha256, c.attribution_id
             ),
         ),
-        None => dd(&mut out, "Referral agreement", "none"),
-    }
+        None => details.row("Referral agreement", "none"),
+    };
     if let Some(next) = &a.next {
-        dd(
-            &mut out,
+        details = details.row(
             "Next action",
-            &format!("{} by {}", next.description, next.due_at),
+            format!("{} by {}", next.description, next.due_at),
         );
     }
-    dd(
-        &mut out,
-        "Support",
-        &match &a.handoff {
-            Some(h) => format!(
-                "handoff to {} proposed, pending until {}",
-                h.target, h.expires_at
-            ),
-            None if a.events.iter().any(|e| e.outcome == "handoff_accepted") => {
-                "accepted by its support human".into()
+    details = details
+        .row(
+            "Support",
+            match &a.handoff {
+                Some(h) => format!(
+                    "handoff to {} proposed, pending until {}",
+                    h.target, h.expires_at
+                ),
+                None if a.events.iter().any(|e| e.outcome == "handoff_accepted") => {
+                    "accepted by its support human".into()
+                }
+                None => "no handoff".into(),
+            },
+        )
+        .row(
+            "Delivery",
+            match (&a.delivery_sale, fulfillment) {
+                (Some(sale), Some(f)) => format!(
+                    "service sale {sale} \u{b7} bill {} \u{b7} payment {}",
+                    f.bill.as_ref().map_or("not billed", |_| "recorded"),
+                    f.payment.as_ref().map_or("not paid", |_| "recorded")
+                ),
+                (Some(sale), None) => {
+                    format!("service sale {sale} \u{b7} fulfillment not visible to you")
+                }
+                (None, _) => "not delivered".into(),
+            },
+        );
+    html! {
+        li class="partner-assignment" id=(format!("assignment-{}", p.id)) {
+            h5 { (p.id) " \u{b7} " (status_label(a.status)) }
+            (details)
+            ol class="partner-events" {
+                @for e in &a.events {
+                    li { (e.outcome.replace('_', " ")) " \u{b7} " (e.actor) " at " (e.at) }
+                }
             }
-            None => "no handoff".into(),
-        },
-    );
-    dd(
-        &mut out,
-        "Delivery",
-        &match (&a.delivery_sale, fulfillment) {
-            (Some(sale), Some(f)) => format!(
-                "service sale {sale} · bill {} · payment {}",
-                f.bill.as_ref().map_or("not billed", |_| "recorded"),
-                f.payment.as_ref().map_or("not paid", |_| "recorded")
-            ),
-            (Some(sale), None) => format!("service sale {sale} · fulfillment not visible to you"),
-            (None, _) => "not delivered".into(),
-        },
-    );
-    out.push_str("</dl><ol class=\"partner-events\">");
-    for e in &a.events {
-        out.push_str(&format!(
-            "<li>{} · {} at {}</li>",
-            escape(&e.outcome.replace('_', " ")),
-            escape(&e.actor),
-            e.at
-        ));
+        }
     }
-    out.push_str("</ol></li>");
-    out
 }
 
-fn render_delegated(d: &Delegated, selection: &Selection) -> String {
-    let mut out = format!(
-        "<section class=\"cloud-card\" id=\"partners-{}\"><h4>Sales delegation {}</h4>",
-        escape(&d.id),
-        escape(&d.id)
-    );
-    match &d.standing {
-        Ok(s) => out.push_str(&format!(
-            "<p>Bound principal {} · {}.</p>",
-            escape(&s.principal),
-            match s.role {
-                Role::Owner => "sales owner",
-                Role::Writer => "writer",
-                Role::Reader => "reader",
-            }
-        )),
-        Err(why) => out.push_str(&format!("<p>{}</p>", escape(why))),
-    }
-    match &d.partners {
-        Ok(views) if views.is_empty() => {
-            out.push_str("<p>No partner assignment or invitation names you.</p>")
+fn render_delegated(d: &Delegated, selection: &Selection) -> Markup {
+    let more = match &d.partners {
+        Ok(views) if views.len() == coder::task::sales::partners::MAX_LISTED => {
+            let (lead, assignment) = match views.last() {
+                Some(View::Accepted {
+                    lead, assignment, ..
+                }) => (lead.clone(), assignment.proposal.id.clone()),
+                Some(View::Invitation { lead, id, .. }) => (lead.clone(), id.clone()),
+                None => unreachable!(),
+            };
+            Some(
+                Selection {
+                    customer: selection.customer.clone(),
+                    delegation: Some(d.id.clone()),
+                    after_lead: Some(lead),
+                    after_assignment: Some(assignment),
+                    ..Default::default()
+                }
+                .href(PAGE),
+            )
         }
-        Ok(views) => {
-            out.push_str("<ol class=\"partner-assignments\">");
-            for view in views {
-                match view {
-                    View::Accepted {
-                        lead,
-                        assignment,
-                        canonical_fulfillment,
-                        ..
-                    } => out.push_str(&render_assignment(
-                        lead,
-                        assignment,
-                        canonical_fulfillment.as_ref(),
-                    )),
-                    View::Invitation {
-                        id,
-                        kind,
-                        status,
-                        expires_at,
-                        ..
-                    } => out.push_str(&format!(
-                        "<li class=\"partner-invitation\" id=\"assignment-{}\"><h5>{} · {}</h5><p>{} assignment, open until {}. An invitation creates no obligation and shows no terms until you accept it with its owner.</p></li>",
-                        escape(id),
-                        escape(id),
-                        status_label(*status),
-                        escape(kind),
-                        expires_at
-                    )),
+        _ => None,
+    };
+    html! {
+        section class="cloud-card" id=(format!("partners-{}", d.id)) {
+            h4 { "Sales delegation " (d.id) }
+            @match &d.standing {
+                Ok(s) => {
+                    p {
+                        "Bound principal " (s.principal) " \u{b7} "
+                        (match s.role {
+                            Role::Owner => "sales owner",
+                            Role::Writer => "writer",
+                            Role::Reader => "reader",
+                        })
+                        "."
+                    }
+                }
+                Err(why) => { p { (why) } }
+            }
+            @match &d.partners {
+                Ok(views) if views.is_empty() => {
+                    p { "No partner assignment or invitation names you." }
+                }
+                Ok(views) => {
+                    ol class="partner-assignments" {
+                        @for view in views {
+                            @match view {
+                                View::Accepted { lead, assignment, canonical_fulfillment, .. } => {
+                                    (render_assignment(lead, assignment, canonical_fulfillment.as_ref()))
+                                }
+                                View::Invitation { id, kind, status, expires_at, .. } => {
+                                    li class="partner-invitation" id=(format!("assignment-{id}")) {
+                                        h5 { (id) " \u{b7} " (status_label(*status)) }
+                                        p {
+                                            (kind) " assignment, open until " (expires_at)
+                                            ". An invitation creates no obligation and shows no terms until you accept it with its owner."
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    @if let Some(href) = &more {
+                        p { a href=(href) { "More assignments" } }
+                    }
+                }
+                Err(why) => { p { "Partner assignments: Unavailable. " (why) } }
+            }
+            @if let Some(arthur) = &d.arthur {
+                h5 { "Arthur \u{b7} partner desk" }
+                @match arthur {
+                    Ok(brief) => {
+                        p {
+                            "Projected at " (brief.generated_at) " from current assignments; growth owner "
+                            (brief.growth_owner) ". " (brief.disclosure)
+                        }
+                        ul class="desk-offerings" {
+                            @for o in &brief.offerings {
+                                li {
+                                    (o.lead_reference) " \u{b7} " (o.kind) " \u{b7} " (status_label(o.status))
+                                    @if o.handoff_pending { " \u{b7} handoff awaiting the owner" }
+                                }
+                            }
+                        }
+                    }
+                    Err(why) => { p { "Unavailable. " (why) } }
                 }
             }
-            out.push_str("</ol>");
-            if views.len() == coder::task::sales::partners::MAX_LISTED {
-                let (lead, assignment) = match views.last() {
-                    Some(View::Accepted {
-                        lead, assignment, ..
-                    }) => (lead.clone(), assignment.proposal.id.clone()),
-                    Some(View::Invitation { lead, id, .. }) => (lead.clone(), id.clone()),
-                    None => unreachable!(),
-                };
-                out.push_str(&format!(
-                    "<p><a href=\"{}\">More assignments</a></p>",
-                    escape(
-                        &Selection {
-                            customer: selection.customer.clone(),
-                            delegation: Some(d.id.clone()),
-                            after_lead: Some(lead),
-                            after_assignment: Some(assignment),
-                            ..Default::default()
+            @if let Some(vanna) = &d.vanna {
+                h5 { "Vanna \u{b7} affiliate desk" }
+                @match vanna {
+                    Ok(view) => {
+                        p {
+                            "Projected at " (view.generated_at) " from canonical acquisition sources; "
+                            (view.under_review) " under review; payout authority: none. " (view.disclosure)
                         }
-                        .href(PAGE)
-                    )
-                ));
-            }
-        }
-        Err(why) => out.push_str(&format!(
-            "<p>Partner assignments: Unavailable. {}</p>",
-            escape(why)
-        )),
-    }
-    if let Some(arthur) = &d.arthur {
-        out.push_str("<h5>Arthur · partner desk</h5>");
-        match arthur {
-            Ok(brief) => {
-                out.push_str(&format!(
-                    "<p>Projected at {} from current assignments; growth owner {}. {}</p><ul class=\"desk-offerings\">",
-                    brief.generated_at,
-                    escape(&brief.growth_owner),
-                    escape(&brief.disclosure)
-                ));
-                for o in &brief.offerings {
-                    out.push_str(&format!(
-                        "<li>{} · {} · {}{}</li>",
-                        escape(&o.lead_reference),
-                        escape(&o.kind),
-                        status_label(o.status),
-                        if o.handoff_pending {
-                            " · handoff awaiting the owner"
-                        } else {
-                            ""
+                        ul class="desk-attribution" {
+                            @for row in &view.rows {
+                                li {
+                                    (row.lead_reference) " \u{b7} " (snake(&row.outcome))
+                                    " \u{b7} earns: " (snake(&row.earns)) " \u{b7} "
+                                    (row.settled_sales) " settled, " (row.reversed_sales) " reversed"
+                                    @if !row.findings.is_empty() {
+                                        " \u{b7} review: "
+                                        (row.findings.iter().map(snake).collect::<Vec<_>>().join(", "))
+                                    }
+                                }
+                            }
                         }
-                    ));
+                    }
+                    Err(why) => { p { "Unavailable. " (why) } }
                 }
-                out.push_str("</ul>");
             }
-            Err(why) => out.push_str(&format!("<p>Unavailable. {}</p>", escape(why))),
-        }
-    }
-    if let Some(vanna) = &d.vanna {
-        out.push_str("<h5>Vanna · affiliate desk</h5>");
-        match vanna {
-            Ok(view) => {
-                out.push_str(&format!(
-                    "<p>Projected at {} from canonical acquisition sources; {} under review; payout authority: none. {}</p><ul class=\"desk-attribution\">",
-                    view.generated_at,
-                    view.under_review,
-                    escape(&view.disclosure)
-                ));
-                for row in &view.rows {
-                    out.push_str(&format!(
-                        "<li>{} · {} · earns: {} · {} settled, {} reversed{}</li>",
-                        escape(&row.lead_reference),
-                        escape(&snake(&row.outcome)),
-                        escape(&snake(&row.earns)),
-                        row.settled_sales,
-                        row.reversed_sales,
-                        if row.findings.is_empty() {
-                            String::new()
-                        } else {
-                            format!(
-                                " · review: {}",
-                                escape(
-                                    &row.findings
-                                        .iter()
-                                        .map(snake)
-                                        .collect::<Vec<_>>()
-                                        .join(", ")
-                                )
-                            )
-                        }
-                    ));
+            @if let Some(earned) = &d.earned {
+                h5 { "Earned sales" }
+                @match earned {
+                    Ok(ledger) => { (render_earned(ledger)) }
+                    Err(why) => { p { "Unavailable. " (why) } }
                 }
-                out.push_str("</ul>");
             }
-            Err(why) => out.push_str(&format!("<p>Unavailable. {}</p>", escape(why))),
         }
     }
-    if let Some(earned) = &d.earned {
-        out.push_str("<h5>Earned sales</h5>");
-        match earned {
-            Ok(ledger) => out.push_str(&render_earned(ledger)),
-            Err(why) => out.push_str(&format!("<p>Unavailable. {}</p>", escape(why))),
-        }
-    }
-    out.push_str("</section>");
-    out
 }
 
-fn render_earned(ledger: &Ledger) -> String {
-    let mut out = format!(
-        "<p>The sales owner's ledger at {}: a sale earns only on verified paid settlement and reconciled delivery. Reading it rings no bell; a refund or dispute adjusts its own row and never rings again.</p><ol class=\"earned-rows\">",
-        ledger.generated_at
-    );
-    for row in &ledger.rows {
-        out.push_str(&format!(
-            "<li>Sale {} · settlement {} · gross {} · refunded {} · net {} USD millionths · delivery {} · {}{}</li>",
-            escape(&row.key[..row.key.len().min(23)]),
-            match row.settlement {
-                Settlement::Paid => "paid",
-                Settlement::Reversed => "reversed",
-                Settlement::Disputed => "disputed",
-                Settlement::Unknown => "unknown",
-                Settlement::Pending => "pending",
-                Settlement::Invalid => "invalid",
-            },
-            row.gross_usd_millionths,
-            row.refunded_usd_millionths,
-            row.net_usd_millionths,
-            if row.delivery_reconciled {
-                "reconciled"
-            } else {
-                "not reconciled"
-            },
-            if row.eligible {
-                "eligible".to_owned()
-            } else {
-                format!("not eligible: {}", escape(&row.ineligible_because.join(", ")))
-            },
-            row.rung_at
-                .map_or(String::new(), |at| format!(" · bell rang once at {at}"))
-        ));
-    }
+fn render_earned(ledger: &Ledger) -> Markup {
     let t = &ledger.totals;
-    out.push_str(&format!(
-        "</ol><p>Owner totals (USD millionths): gross {} · refunded {} · net {} · {} earned sales · {} unknown settlements · {} reversals · {} bells.</p>",
-        t.gross_usd_millionths,
-        t.refunded_usd_millionths,
-        t.net_usd_millionths,
-        t.earned_sales,
-        t.unknown_settlement,
-        t.reversals,
-        t.rung
-    ));
-    out
+    html! {
+        p {
+            "The sales owner's ledger at " (ledger.generated_at)
+            ": a sale earns only on verified paid settlement and reconciled delivery. Reading it rings no bell; a refund or dispute adjusts its own row and never rings again."
+        }
+        ol class="earned-rows" {
+            @for row in &ledger.rows {
+                li {
+                    "Sale " (&row.key[..row.key.len().min(23)])
+                    " \u{b7} settlement "
+                    (match row.settlement {
+                        Settlement::Paid => "paid",
+                        Settlement::Reversed => "reversed",
+                        Settlement::Disputed => "disputed",
+                        Settlement::Unknown => "unknown",
+                        Settlement::Pending => "pending",
+                        Settlement::Invalid => "invalid",
+                    })
+                    " \u{b7} gross " (row.gross_usd_millionths)
+                    " \u{b7} refunded " (row.refunded_usd_millionths)
+                    " \u{b7} net " (row.net_usd_millionths) " USD millionths \u{b7} delivery "
+                    (if row.delivery_reconciled { "reconciled" } else { "not reconciled" })
+                    " \u{b7} "
+                    @if row.eligible {
+                        "eligible"
+                    } @else {
+                        "not eligible: " (row.ineligible_because.join(", "))
+                    }
+                    @if let Some(at) = row.rung_at { " \u{b7} bell rang once at " (at) }
+                }
+            }
+        }
+        p {
+            "Owner totals (USD millionths): gross " (t.gross_usd_millionths)
+            " \u{b7} refunded " (t.refunded_usd_millionths)
+            " \u{b7} net " (t.net_usd_millionths)
+            " \u{b7} " (t.earned_sales) " earned sales \u{b7} "
+            (t.unknown_settlement) " unknown settlements \u{b7} "
+            (t.reversals) " reversals \u{b7} " (t.rung) " bells."
+        }
+    }
 }
 
 // ---- Handlers --------------------------------------------------------------------
@@ -1117,27 +1077,30 @@ async fn index(
     if let Err(response) = context.still_current(&headers).await {
         return response;
     }
-    let mut content = format!(
-        "<h2>Partners, referrals, and earnings</h2><p>Workspace <code>{}</code>. Each section is an original record read from its own owner under your current session. An invitation is not an obligation, attribution is not a commission, and nothing here moves money. <a href=\"{}\">Export these records (NDJSON)</a></p>",
-        escape(&context.workspace),
-        escape(&selection.href(&format!("{PAGE}/export")))
-    );
-    content.push_str(&render_referrals(&gathered.referrals));
-    content.push_str(&render_payee(&gathered.payee, &selection));
-    content.push_str("<h3>Partner assignments</h3>");
-    if gathered.delegated.is_empty() {
-        content.push_str("<p>Partner assignments · Unavailable: no sales delegation is provisioned for this account, workspace, and membership.</p>");
-    }
-    for d in &gathered.delegated {
-        content.push_str(&render_delegated(d, &selection));
-    }
+    let content = html! {
+        h2 { "Partners, referrals, and earnings" }
+        p {
+            "Workspace " code { (context.workspace) }
+            ". Each section is an original record read from its own owner under your current session. An invitation is not an obligation, attribution is not a commission, and nothing here moves money. "
+            a href=(selection.href(&format!("{PAGE}/export"))) { "Export these records (NDJSON)" }
+        }
+        (render_referrals(&gathered.referrals))
+        (render_payee(&gathered.payee, &selection))
+        h3 { "Partner assignments" }
+        @if gathered.delegated.is_empty() {
+            p { "Partner assignments \u{b7} Unavailable: no sales delegation is provisioned for this account, workspace, and membership." }
+        }
+        @for d in &gathered.delegated {
+            (render_delegated(d, &selection))
+        }
+    };
     workspace_shell(
         context.app,
         &headers,
         context.service,
         &context.viewer,
         "partners",
-        Some(&content),
+        Some(content),
         None,
     )
 }
