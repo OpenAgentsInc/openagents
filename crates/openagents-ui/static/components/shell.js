@@ -135,6 +135,28 @@
       grow(composerParts(form).input);
     }
   });
+  // After a composer post succeeds, clear the text box — unless the person
+  // has typed something new while it was sending. A failed post keeps the
+  // draft. (The Wasm adapter, when loaded, clears it too; doing it twice is
+  // harmless.)
+  document.addEventListener("htmx:beforeRequest", function (event) {
+    var form = event.detail && event.detail.elt;
+    if (!form || !form.hasAttribute || !form.hasAttribute("data-oa-composer")) return;
+    var input = composerParts(form).input;
+    if (input) form._oaSent = input.value;
+  });
+  document.addEventListener("htmx:afterRequest", function (event) {
+    var form = event.detail && event.detail.elt;
+    if (!form || !form.hasAttribute || !form.hasAttribute("data-oa-composer")) return;
+    if (!event.detail.successful) return;
+    var input = composerParts(form).input;
+    if (input && form._oaSent !== undefined && input.value === form._oaSent) {
+      input.value = "";
+      grow(input);
+      syncSend(form);
+    }
+    form._oaSent = undefined;
+  });
   ["htmx:afterRequest", "htmx:afterSettle", "htmx:load", "reset"].forEach(function (name) {
     document.addEventListener(name, function () { setTimeout(syncAllSends, 0); });
   });
