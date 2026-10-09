@@ -1,7 +1,7 @@
 /* Site chrome used by openagents-web's UiPage: the wordmark in the left
    panel. */
 .oa-wordmark {
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   font-weight: var(--font-weight-semibold);
   color: var(--color-text);
   text-decoration: none;
