@@ -54,7 +54,10 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+pub mod activity;
+pub mod agent;
 pub mod boat;
+pub mod studio;
 
 pub const SCHEMA: &str = "openagents.environment.owners.v1";
 /// The default interval between recovery visits.

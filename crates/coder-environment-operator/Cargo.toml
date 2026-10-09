@@ -8,6 +8,7 @@ description = "The environment setup, build, and verify owners packaged as one s
 
 [dependencies]
 boat = { path = "../boat" }
+codex-transport = { path = "../codex-transport" }
 coder-access = { path = "../coder-access", default-features = false }
 coder-cloud = { path = "../coder-cloud" }
 coder-environment = { path = "../coder-environment" }
@@ -16,6 +17,7 @@ coder-environment-setup = { path = "../coder-environment-setup" }
 coder-environment-verify = { path = "../coder-environment-verify" }
 coder-working-computer = { path = "../coder-working-computer" }
 serde = { version = "1", features = ["derive"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 serde_json = "1"
 tokio = { version = "1", features = ["macros", "rt", "sync", "time"] }
 

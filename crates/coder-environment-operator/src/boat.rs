@@ -30,3 +30,31 @@ pub async fn providers(config: &Config) -> Result<Providers<BoatProvider>, Strin
         verify: with(Credentials::default()),
     })
 }
+
+/// The newest ready interactive runtime template (`oa-coder-runtime-*`),
+/// which carries the headless Coder runtime and Claude Code; `None` when
+/// Boat holds none.
+pub async fn runtime_template() -> Result<Option<String>, String> {
+    let client = boat::Client::from_env()
+        .await
+        .map_err(|e| format!("The Boat client is unavailable: {e}"))?;
+    let snapshots = client
+        .list_named_snapshots()
+        .await
+        .map_err(|e| format!("Boat's templates couldn't be listed: {e}"))?
+        .snapshots;
+    Ok(newest_runtime(
+        snapshots
+            .iter()
+            .map(|s| (s.name.as_str(), s.status.as_str())),
+    ))
+}
+
+/// The newest ready name in the interactive runtime namespace.
+pub fn newest_runtime<'a>(snapshots: impl Iterator<Item = (&'a str, &'a str)>) -> Option<String> {
+    snapshots
+        .filter(|(name, status)| *status == "ready" && name.starts_with("oa-coder-runtime-"))
+        .map(|(name, _)| name)
+        .max()
+        .map(str::to_owned)
+}

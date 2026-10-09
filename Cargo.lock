@@ -3153,6 +3153,8 @@ dependencies = [
  "coder-environment-setup",
  "coder-environment-verify",
  "coder-working-computer",
+ "codex-transport",
+ "reqwest 0.12.28",
  "serde",
  "serde_json",
  "tempfile",
