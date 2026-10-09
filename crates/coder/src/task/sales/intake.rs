@@ -382,6 +382,7 @@ impl Store {
                     details,
                     proposed_handoff: None,
                     service_sales: BTreeMap::new(),
+                    offboarding: BTreeMap::new(),
                     partner_assignments: BTreeMap::new(),
                     funnel_journeys: BTreeMap::new(),
                     agent_records: super::agents::LeadRecords::default(),

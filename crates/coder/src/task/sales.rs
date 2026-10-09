@@ -18,6 +18,7 @@ pub mod floor;
 pub mod intake;
 pub mod jurisdictions;
 pub mod meetings;
+pub mod offboarding;
 pub mod outbox;
 pub mod partners;
 pub mod paul;
@@ -173,6 +174,9 @@ pub struct Lead {
     pub partner_assignments: BTreeMap<String, partners::Assignment>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub funnel_journeys: BTreeMap<String, receipts::sales_funnel::Journey>,
+    /// Verified offboarding per service sale, keyed by sale id.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub offboarding: BTreeMap<String, offboarding::Record>,
     /// Private assigned-agent records; suppression erases them with this lead.
     #[serde(default)]
     pub agent_records: agents::LeadRecords,
@@ -225,6 +229,11 @@ pub enum Operation {
     ReconcileServiceFulfillment {
         sale: String,
         fulfillment: receipts::service_sale::FulfillmentInput,
+    },
+    /// The owner's checked cleanup report for one sale (#11013).
+    RecordOffboarding {
+        sale: String,
+        report: offboarding::Report,
     },
     ProposePartner {
         proposal: partners::Proposal,
@@ -603,6 +612,16 @@ impl Store {
                     return Err("private service sale ownership disagrees".into());
                 }
             }
+            for (id, record) in &lead.offboarding {
+                record.validate()?;
+                if lead
+                    .service_sales
+                    .get(id)
+                    .is_none_or(|s| s.admission.sources.handoff.sha256 != record.handoff_sha256)
+                {
+                    return Err("private offboarding record ownership disagrees".into());
+                }
+            }
         }
         if let Some(owner) = &state.owner {
             id(owner)?;
@@ -792,6 +811,10 @@ impl Store {
             let before = lead.service_sales.len();
             lead.service_sales.retain(|_, sale| sale.retain_until > now);
             changed |= before != lead.service_sales.len();
+            let sales = &lead.service_sales;
+            let before = lead.offboarding.len();
+            lead.offboarding.retain(|sale, _| sales.contains_key(sale));
+            changed |= before != lead.offboarding.len();
             if lead.details.permission.state == PermissionState::Granted
                 && lead.details.permission.expires_at <= now
             {
@@ -1082,6 +1105,10 @@ impl Store {
                     .admitted_recipients
                     .contains(&format!("human:{}", access.principal()))
         });
+        let sales = &visible.service_sales;
+        visible
+            .offboarding
+            .retain(|sale, _| sales.contains_key(sale));
         visible.partner_assignments.retain(|_, assignment| {
             (self.clock)() < assignment.data.retain_until
                 && assignment
@@ -1228,6 +1255,7 @@ impl Store {
                     intake: None,
                     acquisition: None,
                     service_sales: BTreeMap::new(),
+                    offboarding: BTreeMap::new(),
                     partner_assignments: BTreeMap::new(),
                     funnel_journeys: BTreeMap::new(),
                     agent_records: agents::LeadRecords::default(),
@@ -1526,6 +1554,26 @@ impl Store {
                     outcome = "service_fulfillment_reconciled";
                     reference = fulfillment.bill.sha256.clone();
                 }
+                Operation::RecordOffboarding { sale, report } => {
+                    self.admin(access)?;
+                    self.readable(access, found)?;
+                    let record = self.record_offboarding(
+                        access,
+                        found,
+                        sale,
+                        report,
+                        &input_digest,
+                        evidence_root,
+                        now,
+                    )?;
+                    next.leads
+                        .get_mut(&lead_id)
+                        .unwrap()
+                        .offboarding
+                        .insert(sale.clone(), record);
+                    outcome = "offboarding_recorded";
+                    reference = report.handoff_sha256.clone();
+                }
                 Operation::ProposePartner { proposal } => {
                     let assignment =
                         self.propose_partner(access, found, proposal, evidence_root, now)?;
@@ -1652,7 +1700,7 @@ pub(crate) mod tests {
     }
     use super::*;
     use tempfile::TempDir;
-    fn now() -> u64 {
+    pub(crate) fn now() -> u64 {
         1000
     }
     fn later() -> u64 {
@@ -1693,7 +1741,7 @@ pub(crate) mod tests {
             readers: vec![],
         }
     }
-    fn command(id: &str, lead: Option<&str>, revision: u64, operation: Operation) -> Vec<u8> {
+    pub(crate) fn command(id: &str, lead: Option<&str>, revision: u64, operation: Operation) -> Vec<u8> {
         serde_json::to_vec(&Command {
             schema: COMMAND_SCHEMA.into(),
             id: id.into(),
@@ -1734,7 +1782,7 @@ pub(crate) mod tests {
             .unwrap();
         (dir, store, a, cred)
     }
-    fn grant(dir: &TempDir, store: &mut Store, admin: &Access, name: &str, role: Role) -> Access {
+    pub(crate) fn grant(dir: &TempDir, store: &mut Store, admin: &Access, name: &str, role: Role) -> Access {
         let path = dir.path().join(name);
         store.issue(admin, name, role, &path).unwrap();
         store
@@ -2288,7 +2336,7 @@ pub(crate) mod tests {
         );
         assert!(s.show(&a, &r.lead).unwrap().proposed_handoff.is_none());
     }
-    fn service_setup() -> (
+    pub(crate) fn service_setup() -> (
         TempDir,
         Store,
         Access,
@@ -2340,7 +2388,7 @@ pub(crate) mod tests {
         );
         (dir, store, owner, lead, admission)
     }
-    fn service_apply(
+    pub(crate) fn service_apply(
         store: &mut Store,
         access: &Access,
         root: &Path,

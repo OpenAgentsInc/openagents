@@ -13,7 +13,8 @@
 use super::*;
 use coder::task::sales::Audit;
 use coder::task::sales::claims::{PriceTerms, Purpose, Verdict};
-use coder::task::sales::remote::{Claims, Delivery, RecordView, Weekly};
+use coder::task::sales::offboarding::{self, View as Offboarding};
+use coder::task::sales::remote::{Claims, Delivery, Handoff, RecordView, Weekly};
 use receipts::sales_funnel::Journey;
 use receipts::service_sale::{Disposition, FulfillmentTrigger, Reference, Sale};
 
@@ -349,7 +350,8 @@ fn pilot(id: &str, record: &RecordView, sale: &Sale) -> Markup {
         .row(
             "Reuse and marketing",
             "No separate reuse, training, public example, or marketing permission is part of this record.",
-        );
+        )
+        .row("Offboarding", offboarding_line(record, &sale.admission.id));
     html! {
         section class="cloud-card sales-pilot" {
             (record_heading(id, record))
@@ -463,6 +465,7 @@ async fn delivery(
         let content = html! {
             (top)
             (ui::unavailable("No handoff detail", reason))
+            (offboarding_section(found.offboarding.as_ref(), None))
         };
         return shell(&context, &headers, content);
     };
@@ -480,22 +483,6 @@ async fn delivery(
             d.scope.as_str(),
             d.readiness.as_str(),
             d.unavailable_reason.as_str(),
-        ]);
-    }
-    let mut cleanup = ui::table("Offboarding").header([
-        "Item",
-        "Class",
-        "Responsible human",
-        "Due",
-        "Verification",
-    ]);
-    for item in &handoff.cleanup_plan {
-        cleanup = cleanup.row([
-            item.id.clone(),
-            item.class.replace('_', " "),
-            item.responsible_human.clone(),
-            when(item.due_at),
-            "Unverified".to_owned(),
         ]);
     }
     let support = &handoff.support;
@@ -531,15 +518,76 @@ async fn delivery(
             .row("Out of scope", support.out_of_scope_route.as_str())
             .row("Ends at", when(support.ends_at)))
         p { "Support acceptance is the separate support-owner record listed with the pilot." }
-        h3 { "Offboarding" }
-        @if handoff.cleanup_plan.is_empty() {
-            p { "No cleanup plan is recorded in this handoff. Offboarding is unverified." }
-        } @else {
-            p { "Planned items. None is shown as done: no verified cleanup report is recorded with the sales owner, so each item remains open." }
-            (cleanup)
-        }
+        (offboarding_section(found.offboarding.as_ref(), Some(&handoff)))
     };
     shell(&context, &headers, content)
+}
+
+/// One cleanup item's due date, or "Not set".
+fn due(at: Option<u64>) -> String {
+    at.map_or_else(|| "Not set".into(), offboarding::date)
+}
+
+/// What happened to each planned cleanup item: removed, kept because it is
+/// required, or not yet removed. Only the sales owner's checked record can
+/// show an item as done; anything it does not cover reads as not yet removed.
+fn offboarding_section(record: Option<&Offboarding>, handoff: Option<&Handoff>) -> Markup {
+    let plan = handoff.map_or(&[][..], |h| h.cleanup_plan.as_slice());
+    let responsible = |id: &str| {
+        plan.iter()
+            .find(|item| item.id == id)
+            .map_or_else(String::new, |item| item.responsible_human.clone())
+    };
+    let mut cleanup =
+        ui::table("Offboarding").header(["Item", "Kind", "Responsible", "Due", "Status"]);
+    let summary = if let Some(record) = record {
+        for row in &record.rows {
+            cleanup = cleanup.row([
+                row.id.clone(),
+                row.class.replace('_', " "),
+                responsible(&row.id),
+                due(row.due_at),
+                row.state.plain(),
+            ]);
+        }
+        Some(record.summary())
+    } else {
+        for item in plan {
+            cleanup = cleanup.row([
+                item.id.clone(),
+                item.class.replace('_', " "),
+                item.responsible_human.clone(),
+                due(item.due_at),
+                "Not yet removed".to_owned(),
+            ]);
+        }
+        None
+    };
+    html! {
+        h3 { "Offboarding" }
+        @match (summary, plan.is_empty()) {
+            (Some(summary), _) => {
+                p { (summary) "." }
+                (cleanup.render())
+            }
+            (None, false) => {
+                p { "No cleanup has been recorded yet." }
+                (cleanup.render())
+            }
+            (None, true) => {
+                p { "No cleanup plan was handed over for this delivery." }
+            }
+        }
+    }
+}
+
+/// One sale's offboarding in a line, for the pilot list.
+fn offboarding_line(record: &RecordView, sale: &str) -> String {
+    record
+        .offboarding
+        .iter()
+        .find(|o| o.sale == sale)
+        .map_or_else(|| "No cleanup recorded yet".into(), Offboarding::summary)
 }
 
 // ---- Invoices and fulfillment ----------------------------------------------

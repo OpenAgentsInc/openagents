@@ -267,11 +267,20 @@ pub struct RecordView {
     pub data: DataBoundary,
     pub services: Vec<Sale>,
     pub journeys: Vec<Journey>,
+    /// Verified offboarding for the shown sales that have any recorded.
+    #[serde(default)]
+    pub offboarding: Vec<super::offboarding::View>,
 }
 
 impl RecordView {
-    fn of(lead: &Lead) -> Self {
+    fn of(lead: &Lead, now: u64) -> Self {
         Self {
+            offboarding: lead
+                .offboarding
+                .iter()
+                .filter(|(sale, _)| lead.service_sales.contains_key(*sale))
+                .map(|(sale, record)| record.view(sale, now))
+                .collect(),
             summary: Summary::of(lead),
             account: lead.details.account.clone(),
             workflow: lead.details.workflow.clone(),
@@ -424,6 +433,11 @@ pub struct Delivery {
     pub handoff: Option<Handoff>,
     /// Why no handoff is shown: `not_configured` or `unreadable`.
     pub unavailable: Option<String>,
+    /// The verified offboarding record, when the owner has recorded one.
+    /// It is read from the owner's store, so it shows even when the
+    /// handoff document itself is unavailable here.
+    #[serde(default)]
+    pub offboarding: Option<super::offboarding::View>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -791,7 +805,13 @@ impl Service {
                 let leads = store
                     .list(&access, after.as_deref(), limit)
                     .map_err(|_| Code::InvalidRequest)?;
-                Ok(json!(leads.iter().map(RecordView::of).collect::<Vec<_>>()))
+                let now = (self.clock)();
+                Ok(json!(
+                    leads
+                        .iter()
+                        .map(|lead| RecordView::of(lead, now))
+                        .collect::<Vec<_>>()
+                ))
             }
             Op::Delivery { lead, sale } => {
                 if !record_id(&lead) || super::id(&sale).is_err() {
@@ -800,6 +820,9 @@ impl Service {
                 // Retention and recipients fence the sale like any read.
                 let sale = store
                     .service_show(&access, &lead, &sale)
+                    .map_err(|_| Code::AccessDenied)?;
+                let offboarding = store
+                    .offboarding_show(&access, &lead, &sale.admission.id)
                     .map_err(|_| Code::AccessDenied)?;
                 let handoff = &sale.admission.sources.handoff;
                 let (document, unavailable) = match &config.evidence {
@@ -818,6 +841,7 @@ impl Service {
                     handoff_sha256: handoff.sha256.clone(),
                     handoff: document,
                     unavailable: unavailable.map(String::from),
+                    offboarding,
                 }))
             }
             Op::Audit { lead } => {

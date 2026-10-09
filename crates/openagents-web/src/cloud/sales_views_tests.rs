@@ -278,11 +278,13 @@ async fn sales_modules_show_separate_exact_records_and_offer_no_effects() {
         "openagents.sales.pilot-kit.v1",
         "openagents.sales.delivery-kit.v1",
         "real customer qualified: false",
+        "No cleanup recorded yet",
     ] {
         assert!(pilots.body.contains(line), "{line}");
     }
 
-    // Delivery: support from the exact handoff; offboarding stays unverified.
+    // Delivery: support from the exact handoff; no cleanup is recorded, so
+    // every planned item reads as not yet removed.
     let delivery = get(
         &fixture,
         &cookies,
@@ -291,7 +293,11 @@ async fn sales_modules_show_separate_exact_records_and_offer_no_effects() {
     .await;
     checked(&delivery);
     assert!(delivery.body.contains("one synthetic correction"));
-    assert!(delivery.body.contains("Offboarding is unverified"));
+    assert!(delivery.body.contains("No cleanup has been recorded yet."));
+    assert!(delivery.body.contains("temporary-credentials"));
+    assert!(delivery.body.contains("Not yet removed"));
+    assert!(!delivery.body.contains("Unverified"));
+    assert!(!delivery.body.contains("Removed "));
     assert!(!delivery.body.contains("synthetic support contact"));
 
     // Invoices: the invoice, every verification including unknown, no form.

@@ -474,3 +474,110 @@ fn records_delivery_audit_and_claims_are_fenced_and_scoped_to_one_record() {
     assert_eq!(weekly.status, 200);
     assert!(weekly.body["result"].is_null());
 }
+
+#[test]
+fn delivery_and_records_show_verified_offboarding_read_only_without_paths() {
+    use crate::task::sales::offboarding::tests::{kept, pending, removed};
+    use crate::task::sales::offboarding::{Report, View};
+    use crate::task::sales::tests::service_fixture::{self as fixture, Comparison, retain};
+    let owner = owner(&[Effect::Create]);
+    let service = Service::open_with_clock(&owner.config, clock).unwrap();
+    let lead = apply(&service, "lead-one", &create("lead-one")).body["result"]["lead"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let evidence = owner.dir.join("evidence");
+    std::fs::create_dir(&evidence).unwrap();
+    std::fs::set_permissions(&evidence, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let comparison = Comparison {
+        manifest: retain(&evidence, "comparison.json", b"synthetic manifest"),
+        report: retain(&evidence, "comparison-report.json", b"synthetic report"),
+        candidate: retain(&evidence, "candidate.patch", b"synthetic candidate"),
+        check: retain(&evidence, "independent-check", b"synthetic check"),
+        decision: retain(&evidence, "buyer-decision", b"synthetic decision"),
+        frozen_checks: vec![retain(&evidence, "frozen-command", b"synthetic frozen")],
+    };
+    let admission = fixture::admission(
+        &evidence,
+        1000,
+        &lead,
+        "synthetic-account",
+        "offer-v1",
+        comparison,
+    );
+    let handoff = admission.sources.handoff.sha256.clone();
+    let mut store = Store::open_with_clock(&owner.host, clock).unwrap();
+    let admin = store
+        .authenticate(&Store::read_credential(&owner.owner).unwrap())
+        .unwrap();
+    let admit = json!({"schema":crate::task::sales::COMMAND_SCHEMA,"id":"admit-sale","lead":lead,
+        "expected_revision":1,"operation":{"kind":"record_service_sale","admission":admission}});
+    store
+        .apply_with_evidence_root(
+            &admin,
+            &serde_json::to_vec(&admit).unwrap(),
+            Some(&evidence),
+        )
+        .unwrap();
+    drop(store);
+
+    // Before any cleanup report, nothing reads as done.
+    owner.bind_as("operator", &owner.owner, None);
+    let delivery = json!({"kind":"delivery","lead":lead,"sale":"synthetic-sale"});
+    let before = call(&service, SITE, actor(), delivery.clone());
+    assert_eq!(before.status, 200, "{}", before.body);
+    assert!(before.body["result"]["offboarding"].is_null());
+
+    let report = Report {
+        handoff_sha256: handoff,
+        items: vec![
+            removed(
+                &evidence,
+                "temporary-credentials",
+                "synthetic-temporary-key",
+                "synthetic-revoke-key",
+            ),
+            kept(&evidence, "test-data", 1800),
+            pending("local-copies"),
+        ],
+    };
+    let command = json!({"schema":crate::task::sales::COMMAND_SCHEMA,"id":"offboard","lead":lead,
+        "expected_revision":2,"operation":{"kind":"record_offboarding","sale":"synthetic-sale","report":report}});
+    let bytes = serde_json::to_vec(&command).unwrap();
+    // The adapter only reads offboarding; it never records it.
+    owner.bind_as("operator", &owner.owner, Some(&evidence));
+    assert_ne!(apply(&service, "offboard", &bytes).status, 200);
+    let mut store = Store::open_with_clock(&owner.host, clock).unwrap();
+    let admin = store
+        .authenticate(&Store::read_credential(&owner.owner).unwrap())
+        .unwrap();
+    store
+        .apply_with_evidence_root(&admin, &bytes, Some(&evidence))
+        .unwrap();
+    drop(store);
+
+    let read = call(&service, SITE, actor(), delivery);
+    assert_eq!(read.status, 200, "{}", read.body);
+    let view: View = serde_json::from_value(read.body["result"]["offboarding"].clone()).unwrap();
+    let plain: Vec<String> = view.rows.iter().map(|r| r.state.plain()).collect();
+    assert_eq!(
+        plain,
+        [
+            "Removed 1970-01-01",
+            "Kept until 1970-01-01 (required)",
+            "Not yet removed (due 1970-01-01)",
+        ]
+    );
+    let text = read.body.to_string();
+    assert!(!text.contains("-operation.json") && !text.contains("-reread.json"));
+    assert!(!text.contains("-requirement"));
+
+    let records = call(
+        &service,
+        SITE,
+        actor(),
+        json!({"kind":"records","after":null,"limit":10}),
+    );
+    let views: Vec<RecordView> = serde_json::from_value(records.body["result"].clone()).unwrap();
+    assert_eq!(views[0].offboarding, vec![view]);
+}

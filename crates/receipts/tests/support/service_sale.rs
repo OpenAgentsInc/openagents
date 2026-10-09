@@ -93,7 +93,15 @@ pub fn admission(
             "accepted_checks":[comparison.check],"deliverables":[{"id":"result","kind":"patch","version":"synthetic-v1","artifact":comparison.candidate}],
             "support":{"responsible_human":"operator","contact_reference":"synthetic support contact","business_hours":"synthetic hours",
                 "response_boundary":"synthetic bounded response","included_work":"one synthetic correction",
-                "out_of_scope_route":"new agreement","ends_at":now+100}
+                "out_of_scope_route":"new agreement","ends_at":now+100},
+            "cleanup_plan":[
+                {"id":"temporary-credentials","class":"credentials","target_reference":"synthetic-temporary-key",
+                    "responsible_human":"operator","due_at":now+50,"operation_reference":"synthetic-revoke-key"},
+                {"id":"test-data","class":"test_data","target_reference":"synthetic-test-rows",
+                    "responsible_human":"operator","due_at":now+50,"operation_reference":"synthetic-delete-rows"},
+                {"id":"local-copies","class":"local_copies","target_reference":"synthetic-local-copy",
+                    "responsible_human":"operator","due_at":now+50,"operation_reference":"synthetic-remove-copy"}
+            ]
         }),
     );
     let customer_acceptance = doc(
