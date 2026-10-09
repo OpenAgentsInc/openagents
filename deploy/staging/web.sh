@@ -3,11 +3,16 @@
 # It writes the secrets Cloud Run passes as environment variables into
 # owner-only files the site's private-file checks accept, then starts the
 # site the way scripts/dev/full-local.sh does, with the account service and
-# the inference gateway on the gateway sidecar.
+# the inference gateway on the gateway sidecar. Saved own-Claude keys
+# (sealed with the keyring in OPENAGENTS_WEB_CLOUD_BYO_KEYS) are kept in
+# $WEB_STATE/byo, an NFS volume on the account-store server
+# (docs/deployment/account-storage.md), so they outlive the instance.
 set -eu
 umask 077
 p=/tmp/private
-mkdir -p "$p" /tmp/byo
+byo=${WEB_STATE:-/tmp}/byo
+mkdir -p "$p" "$byo"
+chmod 700 "$byo"
 printf '%s' "$GITHUB_OAUTH_JSON" > "$p/github-oauth.json"
 printf '%s' "$CSRF_KEY" > "$p/csrf.key"
 unset GITHUB_OAUTH_JSON CSRF_KEY
@@ -18,5 +23,5 @@ exec /usr/local/bin/openagents-web --listen 0.0.0.0:8080 \
   --cloud-build /srv/cloud --chat-build /srv/chat --bunny /srv/bunny \
   --chat-bucket "$CHAT_BUCKET" \
   --cloud-config "$p/cloud.json" --github-oauth "$p/github-oauth.json" \
-  --cloud-byo /tmp/byo --plan-meter /tmp/plan-meter.sqlite \
+  --cloud-byo "$byo" --plan-meter /tmp/plan-meter.sqlite \
   --inference http://127.0.0.1:8791

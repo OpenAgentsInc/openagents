@@ -23,6 +23,11 @@ ALT_HOST = f"{SERVICE}-ezxz4mgdsq-uc.a.run.app"
 # docs/deployment/openagents-web.md), so staging runs as the inference account.
 RUNTIME = "oa-vertex-inference@openagentsgemini.iam.gserviceaccount.com"
 CHAT_BUCKET = "openagentsgemini-web-chats-stage"
+# The account-store NFS server (deploy/accounts-nfs,
+# docs/deployment/account-storage.md) and the subnet the service reaches it
+# through (Direct VPC egress, private ranges only).
+NFS_SERVER = "10.42.26.2"
+EGRESS_SUBNET = "openagents-web-staging"
 
 
 def secret(name, var):
@@ -43,6 +48,7 @@ def main():
     here = pathlib.Path(__file__).resolve().parent
     web_sh = (here / "web.sh").read_text()
     stack = {"name": "stack", "mountPath": "/stack"}
+    webstate = {"name": "webstate", "mountPath": "/state"}
     web = {
         "name": "web",
         "image": args.web_image,
@@ -51,6 +57,7 @@ def main():
         "ports": [{"containerPort": 8080, "name": "http1"}],
         "env": [
             plain("PUBLIC_ORIGIN", ORIGIN),
+            plain("WEB_STATE", "/state"),
             plain("ALT_HOST", ALT_HOST),
             plain("RUN_HOST", RUN_HOST),
             plain("CHAT_BUCKET", CHAT_BUCKET),
@@ -60,6 +67,7 @@ def main():
             secret("openagents-web-1-staging-byo-keys", "OPENAGENTS_WEB_CLOUD_BYO_KEYS"),
             secret("openagents-web-1-staging-ask-salt", "OPENAGENTS_WEB_ASK_SALT"),
         ],
+        "volumeMounts": [webstate],
         "resources": {"limits": {"cpu": "1", "memory": "1Gi"}},
         "startupProbe": {
             # A TCP check: the site answers only its public hosts, so an
@@ -84,12 +92,16 @@ def main():
             secret("openagents-gateway-staging-openrouter-key", "OPENROUTER_API_KEY"),
             secret("openagents-gateway-staging-ai-gateway-key", "AI_GATEWAY_API_KEY"),
             secret("openagents-gateway-staging-typesafe-key", "TYPESAFE_API_KEY"),
+            secret("openagents-gateway-staging-byok-keyring", "BYOK_KEYRING_JSON"),
+            secret("openagents-gateway-staging-store-key", "INFERENCE_STORE_KEY"),
         ],
         "volumeMounts": [stack],
         "resources": {"limits": {"cpu": "1", "memory": "512Mi"}},
+        # Up to 240 s: a new instance waits (at most 150 s) for the old
+        # one to hand over the store before its gateway starts.
         "startupProbe": {
             "httpGet": {"path": "/healthz", "port": 8791},
-            "periodSeconds": 2,
+            "periodSeconds": 4,
             "failureThreshold": 60,
         },
     }
@@ -126,6 +138,10 @@ def main():
                         "run.googleapis.com/cpu-throttling": "false",
                         "run.googleapis.com/startup-cpu-boost": "true",
                         "run.googleapis.com/execution-environment": "gen2",
+                        "run.googleapis.com/network-interfaces": json.dumps(
+                            [{"network": "default", "subnetwork": EGRESS_SUBNET}]
+                        ),
+                        "run.googleapis.com/vpc-access-egress": "private-ranges-only",
                         "run.googleapis.com/container-dependencies": json.dumps(
                             {"web": ["gateway"], "worker": ["gateway"]}
                         ),
@@ -135,8 +151,11 @@ def main():
                     "serviceAccountName": RUNTIME,
                     "containerConcurrency": 80,
                     "timeoutSeconds": 3600,
+                    # Durable: accounts, sessions, API keys, sealed GitHub
+                    # tokens, saved provider keys, saved own-Claude keys.
                     "volumes": [
-                        {"name": "stack", "emptyDir": {"medium": "Memory", "sizeLimit": "256Mi"}}
+                        {"name": "stack", "nfs": {"server": NFS_SERVER, "path": "/srv/accounts/stack"}},
+                        {"name": "webstate", "nfs": {"server": NFS_SERVER, "path": "/srv/accounts/web"}},
                     ],
                     "containers": [web, gateway, worker],
                 },

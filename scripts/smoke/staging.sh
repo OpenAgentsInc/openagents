@@ -9,6 +9,9 @@
 # any check fails. Groups for --only: home, docs, download, agent, github,
 # gates, accounts, signed-in, gateway, traces, terminal. The terminal group runs the
 # site's hosted installer into a scratch HOME and checks `coder --version`.
+# --restart (opt-in) also forces a new revision of the service and checks
+# that an account, its session, an API key, a saved provider key and a
+# saved own-Claude key survive it (docs/deployment/account-storage.md).
 # Signed-in checks use one test account made with the staging operator
 # token: SMOKE_SIGNUP_TOKEN, or, when unset, the Secret Manager secret
 # openagents-gateway-staging-smoke-signup-token read with the automation

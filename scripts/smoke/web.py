@@ -2,7 +2,10 @@
 running site (staging by default). One PASS, FAIL, or SKIP line per check;
 exit status 1 when anything fails. Python standard library only.
 
-    scripts/smoke/staging.sh [BASE_URL] [--no-install] [--only NAME,...]
+    scripts/smoke/staging.sh [BASE_URL] [--no-install] [--only NAME,...] [--restart]
+
+`--restart` forces a new revision of the service (gcloud, the automation
+account) and checks the account and its keys survive it.
 
 Signed-in checks use an account made through the account service's own
 sign-up (`POST /api/v1/accounts`), never GitHub. Chats it starts are
@@ -322,10 +325,98 @@ def traces(base, session):
 
 
 # ---------------------------------------------------------------------------
+# Durable accounts across a new revision (#11127)
+
+
+def gcloud(*args):
+    env = dict(os.environ)
+    env.setdefault("CLOUDSDK_CONFIG", os.path.expanduser("~/work/.secrets/gcloud-sa-config"))
+    return subprocess.run(["gcloud", *args], env=env, capture_output=True, text=True, timeout=900)
+
+
+def durable(base, token, service, region, project):
+    """Make an account, an API key, a saved provider key and a saved
+    own-Claude key; force a new revision of `service`; check all four
+    still work. Opt-in (--restart): it replaces the running instance."""
+    if not token:
+        record("durable: test account", None, "SMOKE_SIGNUP_TOKEN unset")
+        return
+    api = Site(base)
+    made = api.request("/api/v1/accounts", method="POST", body={"label": "Smoke durable"},
+                       headers={"Authorization": f"Bearer {token}"})
+    try:
+        d = made.json()
+        session, key, ws, account_id = (d["session_token"], d["key_token"],
+                                        d["workspace"]["id"], d["account"]["id"])
+    except (ValueError, KeyError, TypeError):
+        record("durable: test account", False, f"{made.status}")
+        return
+    bearer = {"Authorization": f"Bearer {session}"}
+    provider = "sk-or-v1-smoke-" + uuid.uuid4().hex
+    put = api.request(f"/api/v1/workspaces/{ws}/provider-keys/openrouter", method="PUT",
+                      body={"key": provider}, headers=bearer)
+    try:
+        fingerprint = put.json()["fingerprint"]
+    except (ValueError, KeyError, TypeError):
+        fingerprint = None
+    web = Site(base)
+    web.cookies["oa_cloud_session"] = session
+    page = web.follow("/settings/claude")
+    form = re.search(r'<form[^>]*action="/settings/claude"[^>]*>(.*?)</form>', page.text, re.S)
+    fields = hidden_fields(form.group(1)) if form else {}
+    saved = web.request("/settings/claude", method="POST", form={
+        "csrf": fields.get("csrf", ""), "request": fields.get("request", ""),
+        "material": "anthropic_api_key", "value": "sk-ant-api03-smoke-durable-not-a-real-key",
+        "consent": "custody"})
+    claude_saved = saved.status in (302, 303) and "Saved: Anthropic API key" in web.follow(
+        "/settings/claude").text
+    record("durable: account, API key, provider key and own-Claude key made",
+           bool(fingerprint) and claude_saved,
+           f"provider key {put.status}, own-Claude key {saved.status}")
+
+    def still(label):
+        acct = api.request("/api/v1/account", headers=bearer)
+        try:
+            same = acct.json()["account"]["id"] == account_id
+        except (ValueError, KeyError, TypeError):
+            same = False
+        record(f"durable: {label}: the session still signs in", acct.status == 200 and same,
+               f"{acct.status}")
+        # A valid key gets past authentication to the body check (400);
+        # an unknown one is 401. No model call is made.
+        r = api.request("/api/v1/responses", method="POST", body={},
+                        headers={"Authorization": f"Bearer {key}"})
+        record(f"durable: {label}: the API key authenticates", r.status == 400, f"{r.status}")
+        listed = api.request(f"/api/v1/workspaces/{ws}/provider-keys", headers=bearer)
+        try:
+            prints = [k["fingerprint"] for k in listed.json()["keys"] if k["provider"] == "openrouter"]
+        except (ValueError, KeyError, TypeError):
+            prints = []
+        record(f"durable: {label}: the saved provider key is kept", prints == [fingerprint],
+               f"{listed.status}")
+        mine = web.follow("/settings/claude")
+        record(f"durable: {label}: the saved own-Claude key is kept",
+               mine.status == 200 and "Saved: Anthropic API key" in mine.text, f"{mine.status}")
+
+    still("before")
+    where = ["--region", region, "--project", project]
+    before = gcloud("run", "services", "describe", service, *where,
+                    "--format=value(status.latestReadyRevisionName)").stdout.strip()
+    forced = gcloud("run", "services", "update", service, *where, "--quiet",
+                    f"--update-labels=smoke-restart={int(time.time())}")
+    after = gcloud("run", "services", "describe", service, *where,
+                   "--format=value(status.latestReadyRevisionName)").stdout.strip()
+    record("durable: a new revision takes the traffic", forced.returncode == 0 and after
+           and after != before, f"{before} -> {after}" if forced.returncode == 0
+           else (forced.stderr.strip().splitlines() or ["?"])[-1][:160])
+    if forced.returncode == 0:
+        still("after a new revision")
+
+
 # Checks
 
 
-def run(base, only, install, production=False):
+def run(base, only, install, production=False, restart=None):
     site = Site(base)
     want = (lambda name: True) if not only else (lambda name: any(name.startswith(o) for o in only))
 
@@ -554,6 +645,10 @@ def run(base, only, install, production=False):
         elif not install:
             record("terminal: installer run", None, "--no-install")
 
+    # Durable accounts: only with --restart, since it forces a new revision.
+    if restart:
+        durable(base, os.environ.get("SMOKE_SIGNUP_TOKEN", ""), *restart)
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -562,12 +657,20 @@ def main():
     parser.add_argument("--only", default="")
     parser.add_argument("--production", action="store_true",
                         help="one question, no accounts, no sign-in checks")
+    parser.add_argument("--restart", action="store_true",
+                        help="also check that an account, its session, an API key, a saved provider "
+                        "key and a saved own-Claude key survive a forced new revision of "
+                        "--service (it replaces the running instance)")
+    parser.add_argument("--service", default="openagents-web-1-staging")
+    parser.add_argument("--region", default="us-central1")
+    parser.add_argument("--project", default="openagentsgemini")
     args = parser.parse_args()
     only = [o for o in args.only.split(",") if o]
     print(f"Smoke: {args.base}", flush=True)
     started = time.time()
     try:
-        run(args.base.rstrip("/"), only, not args.no_install, args.production)
+        restart = (args.service, args.region, args.project) if args.restart else None
+        run(args.base.rstrip("/"), only, not args.no_install, args.production, restart)
     except Exception as e:  # a crash is a failure, never a silent pass
         record("suite: ran to the end", False, repr(e)[:200])
     passed = sum(1 for r in RESULTS if r[0] == "PASS")

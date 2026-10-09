@@ -3,11 +3,22 @@
 # sessions, device sign-in, projects) and the inference gateway in one
 # process, as scripts/dev/full-local.sh runs it, on 127.0.0.1:8791.
 #
-# State lives in the shared in-memory volume $STACK_STATE (/stack), so a
-# new instance starts with an empty registry: staging accounts and
-# sessions do not survive a restart. Secrets arrive as environment
-# variables from Secret Manager and are written to owner-only files here;
-# none is printed.
+# State lives in $STACK_STATE (/stack), an NFS volume on the account-store
+# server (docs/deployment/account-storage.md), so accounts, sessions, API
+# keys, sealed GitHub tokens, and saved provider keys outlive the
+# instance. Secrets arrive as environment variables from Secret Manager
+# and are written to owner-only files in the container's own memory
+# (/tmp/private), never to the shared disk; none is printed.
+#
+# One gateway at a time. The stores assume a single writer (the quota
+# ledger holds its lock for the process's life; the provider-key store is
+# cached in memory), and a deploy briefly runs the old and the new
+# instance side by side. So a starting gateway claims the store
+# ($state/handoff/takeover), the running one sees the claim, stops its
+# gateway, and marks the store released ($state/handoff/holder), and only
+# then does the new one start. A holder that never answers (a lost
+# instance) is taken over after 150 seconds. Reads go through `cat`, an
+# open(), which NFS revalidates against the server.
 #
 # Environment:
 #   PUBLIC_ORIGIN               https://... the site's origin (the OAuth callback base)
@@ -15,24 +26,78 @@
 #   INFERENCE_ADMIN_TOKEN       the /admin/inference bearer
 #   SMOKE_SIGNUP_TOKEN          the operator token that makes the smoke suite's
 #                               test account; open sign-up stays off, as in production
+#   BYOK_KEYRING_JSON           optional: the oa-seal keyring that seals workspaces'
+#                               own provider keys (Settings > API keys)
+#   INFERENCE_STORE_KEY         optional: the key that seals stored responses
 #   VERTEX_SA_JSON              optional: a service-account key for Vertex
 #   OPENROUTER_API_KEY, AI_GATEWAY_API_KEY, TYPESAFE_API_KEY: optional upstreams
 set -eu
 umask 077
 state=${STACK_STATE:-/stack}
-mkdir -p "$state/gateway/attempts" "$state/private"
-chmod 700 "$state/gateway" "$state/private"
+private=${STACK_PRIVATE:-/tmp/private}
+mkdir -p "$state/gateway/attempts" "$state/handoff" "$private"
+chmod 700 "$state/gateway" "$state/handoff" "$private"
 
 : "${PUBLIC_ORIGIN:?PUBLIC_ORIGIN is unset}"
 : "${GITHUB_OAUTH_JSON:?GITHUB_OAUTH_JSON is unset}"
 : "${INFERENCE_ADMIN_TOKEN:?INFERENCE_ADMIN_TOKEN is unset}"
-printf '%s' "$GITHUB_OAUTH_JSON" > "$state/private/github-oauth.json"
+printf '%s' "$GITHUB_OAUTH_JSON" > "$private/github-oauth.json"
 unset GITHUB_OAUTH_JSON
 if [ -n "${VERTEX_SA_JSON:-}" ]; then
-    printf '%s' "$VERTEX_SA_JSON" > "$state/private/vertex.json"
+    printf '%s' "$VERTEX_SA_JSON" > "$private/vertex.json"
     unset VERTEX_SA_JSON
-    export GOOGLE_APPLICATION_CREDENTIALS="$state/private/vertex.json"
+    export GOOGLE_APPLICATION_CREDENTIALS="$private/vertex.json"
 fi
+byok=""
+if [ -n "${BYOK_KEYRING_JSON:-}" ]; then
+    printf '%s' "$BYOK_KEYRING_JSON" > "$private/byok-keyring.json"
+    unset BYOK_KEYRING_JSON
+    byok=",
+    \"byok\": {\"keyring\": \"$private/byok-keyring.json\"}"
+fi
+
+# --- the handoff --------------------------------------------------------
+instance=$(curl -fsS -H 'Metadata-Flavor: Google' \
+    http://metadata.google.internal/computeMetadata/v1/instance/id 2> /dev/null \
+    || hostname)
+me="$instance.$(date +%s).$$"
+put() {
+    printf '%s\n' "$2" > "$1.$$.tmp"
+    mv "$1.$$.tmp" "$1"
+}
+get() {
+    cat "$1" 2> /dev/null || true
+}
+idle() {
+    trap 'exit 0' TERM INT
+    while :; do
+        sleep 3600 &
+        wait $! || true
+    done
+}
+put "$state/handoff/takeover" "$me"
+waited=0
+while [ -e "$state/handoff/holder" ]; do
+    holder=$(get "$state/handoff/holder")
+    case "$holder" in
+        released | "$instance".*) break ;;
+    esac
+    claim=$(get "$state/handoff/takeover")
+    if [ -n "$claim" ] && [ "$claim" != "$me" ]; then
+        echo "gateway: a newer instance claimed the store first; not starting" >&2
+        idle
+    fi
+    if [ "$waited" -ge 150 ]; then
+        echo "gateway: the previous holder never released the store; taking it over" >&2
+        break
+    fi
+    sleep 1
+    waited=$((waited + 1))
+done
+put "$state/handoff/holder" "$me"
+# No other gateway runs now, so any lock file on the share is stale.
+find "$state/gateway" -name '*.lock' -type f -delete
+echo "gateway: holding the store after ${waited}s"
 
 # One registry: `house` is the service tenant the chat worker calls
 # inference as (its key goes to $state/service.key for the worker
@@ -43,10 +108,10 @@ if [ ! -s "$state/service.key" ]; then
         --signature "sha256:0000000000000000000000000000000000000000000000000000000000000000" \
         > "$state/service.key.tmp"
     mv "$state/service.key.tmp" "$state/service.key"
-    chmod 644 "$state/service.key"
 fi
+chmod 600 "$state/service.key"
 
-cat > "$state/gateway.json" <<EOF
+cat > "$private/gateway.json" << EOF
 {
   "v": "openagents.gateway.v1",
   "listen": "0.0.0.0:8791",
@@ -55,7 +120,7 @@ cat > "$state/gateway.json" <<EOF
     "signup_tenant": "signup",
     "operator_signup_token_env": "SMOKE_SIGNUP_TOKEN",
     "github": {
-      "credentials": "$state/private/github-oauth.json",
+      "credentials": "$private/github-oauth.json",
       "redirect_url": "$PUBLIC_ORIGIN/auth/github/callback"
     }
   },
@@ -70,12 +135,42 @@ cat > "$state/gateway.json" <<EOF
       {"id": "pro-free-capacity", "upstream": "pro", "granted": 0, "balance": 0, "basis": "free_capacity"},
       {"id": "openrouter", "upstream": "openrouter", "granted": 0, "balance": 0, "basis": "pay_as_you_go"},
       {"id": "vercel", "upstream": "vercel", "granted": 0, "balance": 0, "basis": "pay_as_you_go"}
-    ]
+    ]$byok
   }
 }
 EOF
 
-# A lock left by a previous process in this instance names a pid that is gone.
-rm -f "$state/gateway/registry/quota-ledger.lock"
 cd "$state/gateway"
-exec gateway --config "$state/gateway.json"
+gateway --config "$private/gateway.json" &
+child=$!
+yielded="$private/yielded"
+rm -f "$yielded"
+# The watcher: when another instance claims the store, stop the gateway.
+(
+    while sleep 2; do
+        claim=$(get "$state/handoff/takeover")
+        if [ -n "$claim" ] && [ "$claim" != "$me" ]; then
+            echo "gateway: a new instance claimed the store; handing it over" >&2
+            : > "$yielded"
+            kill -TERM "$child" 2> /dev/null || true
+            exit 0
+        fi
+    done
+) &
+watcher=$!
+release() {
+    if [ "$(get "$state/handoff/holder")" = "$me" ]; then
+        put "$state/handoff/holder" released
+    fi
+}
+trap 'kill "$watcher" "$child" 2> /dev/null || true; wait "$child" 2> /dev/null || true; release; exit 0' TERM INT
+status=0
+wait "$child" || status=$?
+kill "$watcher" 2> /dev/null || true
+if [ -e "$yielded" ]; then
+    release
+    idle
+fi
+# The gateway stopped on its own: exit, and Cloud Run restarts this
+# container, which takes the store straight back (same instance).
+exit "$status"

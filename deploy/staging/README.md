@@ -14,9 +14,13 @@ the production service `coder`, with three containers in one instance:
 URL: <https://staging.openagents.com> (a Cloud Run domain mapping in openagentsgemini;
 the DNS CNAME is `ghs.googlehosted.com`), also <https://openagents-web-1-staging-157437760789.us-central1.run.app>
 and `openagents-web-1-staging-ezxz4mgdsq-uc.a.run.app`. It is one
-instance (min and max 1). Gateway and worker state is in an in-memory
-volume, so accounts, sessions, and saved keys reset when the instance is
-replaced; chats are in the staging bucket and stay.
+instance (min and max 1). Accounts, sessions, API keys, sealed GitHub
+tokens, saved provider keys and saved own-Claude keys are on an NFS disk
+on `oa-accounts-nfs-staging` (10.42.26.2, reached over Direct VPC egress
+on the subnet `openagents-web-staging`), backed up by hourly snapshots,
+so they outlive the instance; chats are in the staging bucket. See
+[account storage](../../docs/deployment/account-storage.md), which also
+explains the gateway handoff a deploy goes through.
 
 The staging GitHub OAuth App must list
 `https://staging.openagents.com/auth/github/callback`
@@ -25,7 +29,7 @@ as its callback URL for sign-in to come back.
 ## Secrets (Secret Manager, staging only)
 
 `openagents-web-1-staging-{github-oauth,byo-keys,ask-salt,csrf-key}`,
-`openagents-gateway-staging-{admin-token,openrouter-key,ai-gateway-key,typesafe-key,vertex-sa,smoke-signup-token}`,
+`openagents-gateway-staging-{admin-token,openrouter-key,ai-gateway-key,typesafe-key,vertex-sa,smoke-signup-token,byok-keyring,store-key}`,
 `openagents-chat-worker-staging-secret`. Each grants
 `roles/secretmanager.secretAccessor` to the runtime account
 `oa-vertex-inference@openagentsgemini.iam.gserviceaccount.com` (the
@@ -48,6 +52,10 @@ to make its one test account.
 check: the homepage's four questions answered, docs and breadcrumbs,
 `/download`, the agent documents, GitHub sign-in up to github.com, the
 signed-in pages, the gateway, and the hosted installer into a scratch HOME.
+`--restart` adds the durable-accounts check: it makes an account, an API
+key, a saved provider key and a saved own-Claude key, forces a new
+revision, and checks they all still work (`--only durable --restart` runs
+just that).
 
 ## Deploy
 
@@ -72,7 +80,9 @@ The worker's public key is the first line of the `worker` container's log
 (`worker <64 hex>`, be4c57ca…); it is derived from
 `openagents-chat-worker-staging-secret` and does not change between deploys.
 
-Roll back by moving traffic to the previous revision:
-`gcloud run services update-traffic openagents-web-1-staging --to-revisions PREVIOUS=100 --region us-central1 --project openagentsgemini`.
+Roll back by deploying the previous image digests as a new revision
+(`render.py` with a new `--revision` name). Moving traffic back to an old
+revision with `update-traffic` does not work: that revision's instance
+has handed the account store to the newer one and runs without a gateway.
 
 Logs: `gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="openagents-web-1-staging"' --project openagentsgemini --freshness=30m`.
